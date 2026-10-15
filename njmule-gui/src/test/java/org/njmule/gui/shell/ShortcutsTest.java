@@ -41,6 +41,7 @@ class ShortcutsTest {
 
     private TestGui test;
     private MainWindow window;
+    private String tooltip;
 
     @AfterEach
     void close() throws Exception {
@@ -53,16 +54,21 @@ class ShortcutsTest {
     }
 
     @Test
-    void f1ListsTheShortcutsWithWhatTheyDo() throws Exception {
+    void shouldListTheShortcutsWithWhatTheyDoOnF1() throws Exception {
         givenTheWindow();
+
         whenF1IsPressed();
+
         thenTheShortcutsShow(MainWindow.shortcut(0), "Transfers", MainWindow.shortcut(4), "Network", "F1");
     }
 
     @Test
-    void eachPlaceOfTheRailTellsItsShortcut() throws Exception {
+    void shouldTellTheShortcutOfEachPlaceOfTheRail() throws Exception {
         givenTheWindow();
-        thenTheTooltipOf("Search", "Search  " + MainWindow.shortcut(1));
+
+        whenTheTooltipOfThePlaceIsRead("Search");
+
+        thenTheTooltipIs("Search  " + MainWindow.shortcut(1));
     }
 
     private void givenTheWindow() throws Exception {
@@ -73,6 +79,16 @@ class ShortcutsTest {
 
     private void whenF1IsPressed() throws Exception {
         FxTesting.onFx(() -> this.window.root().fireEvent(FxTesting.key(KeyCode.F1, false)));
+    }
+
+    private void whenTheTooltipOfThePlaceIsRead(String place) throws Exception {
+        this.tooltip = FxTesting.onFx(() -> this.window.root().lookupAll(".nav-rail .toggle-button").stream()
+                .map(ToggleButton.class::cast)
+                .filter(b -> place.equals(b.getText()))
+                .findFirst()
+                .orElseThrow()
+                .getTooltip()
+                .getText());
     }
 
     private void thenTheShortcutsShow(String... texts) throws Exception {
@@ -86,14 +102,7 @@ class ShortcutsTest {
         assertThat(labels).contains(texts);
     }
 
-    private void thenTheTooltipOf(String place, String text) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.window.root().lookupAll(".nav-rail .toggle-button").stream()
-                        .map(ToggleButton.class::cast)
-                        .filter(b -> place.equals(b.getText()))
-                        .findFirst()
-                        .orElseThrow()
-                        .getTooltip()
-                        .getText()))
-                .isEqualTo(text);
+    private void thenTheTooltipIs(String text) {
+        assertThat(this.tooltip).isEqualTo(text);
     }
 }

@@ -18,10 +18,13 @@ package org.njmule.gui.shell;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.application.Platform;
 import javafx.geometry.Bounds;
@@ -59,6 +62,9 @@ class MainWindowTest {
     private NjMuleEngine engine;
     private EngineModel model;
     private Stage stage;
+    private MainWindow window;
+    private final List<Shown> shown = new ArrayList<>();
+    private final Map<String, List<String>> cut = new LinkedHashMap<>();
 
     @BeforeAll
     static void toolkit() throws Exception {
@@ -79,19 +85,57 @@ class MainWindowTest {
     }
 
     @Test
-    void everyScreenShowsInEveryLanguageAndMode() throws Exception {
+    void shouldShowEveryScreenInEveryLanguageAndMode() throws Exception {
+        givenTheEngine();
+
+        whenEveryScreenIsShownInEveryLanguageAndMode();
+
+        thenEachScreenShowedAsAsked();
+    }
+
+    @Test
+    void shouldShowEveryButtonWholeAtTheMinimumSize() throws Exception {
+        givenTheEngine();
+
+        whenEveryScreenIsLaidOutAtTheMinimumSizeInEveryLanguage();
+
+        thenNoButtonIsCut();
+    }
+
+    @Test
+    void shouldLetMessagesComeAndGo() throws Exception {
+        givenTheEngine();
+        givenTheWindowIn(Locale.ENGLISH, GuiSettings.Mode.LIGHT);
+
+        whenAMessageIsShown("hello");
+
+        thenTheMessagesShownAre(1);
+        thenConnectReads("Connect");
+        thenTheEd2kChipTells("Not Connected");
+    }
+
+    private void givenTheEngine() throws IOException {
         this.engine = FxTesting.engine(this.dir.resolve("njmule"));
         this.model = new EngineModel(this.engine, Platform::runLater);
+    }
+
+    private void givenTheWindowIn(Locale language, GuiSettings.Mode mode) throws Exception {
+        this.window = window(language, mode);
+    }
+
+    private void whenEveryScreenIsShownInEveryLanguageAndMode() throws Exception {
         for (Locale language : I18n.LANGUAGES) {
             for (GuiSettings.Mode mode : List.of(GuiSettings.Mode.LIGHT, GuiSettings.Mode.DARK)) {
                 MainWindow window = window(language, mode);
                 for (String screen : SCREENS) {
-                    FxTesting.onFx(() -> {
+                    String current = FxTesting.onFx(() -> {
                         window.show(screen);
-                        assertThat(window.current()).isEqualTo(screen);
+                        String now = window.current();
                         window.root().applyCss();
                         window.root().layout();
+                        return now;
                     });
+                    this.shown.add(new Shown(language + " " + mode, screen, current));
                     FxTesting.onFx(() -> {
                         FxTesting.snapshot(
                                 window.root(),
@@ -107,15 +151,12 @@ class MainWindowTest {
         }
     }
 
-    @Test
-    void atItsMinimumSizeEveryButtonShowsWhole() throws Exception {
-        this.engine = FxTesting.engine(this.dir.resolve("njmule"));
-        this.model = new EngineModel(this.engine, Platform::runLater);
+    private void whenEveryScreenIsLaidOutAtTheMinimumSizeInEveryLanguage() throws Exception {
         for (Locale language : I18n.LANGUAGES) {
             MainWindow window = window(language, GuiSettings.Mode.LIGHT);
             Dimension2D minimum = FxTesting.onFx(window::minimumSize);
             for (String screen : SCREENS) {
-                List<String> cut = FxTesting.onFx(() -> {
+                List<String> cutButtons = FxTesting.onFx(() -> {
                     window.show(screen);
                     Parent root = window.root();
                     root.resize(minimum.getWidth(), minimum.getHeight());
@@ -139,22 +180,37 @@ class MainWindowTest {
                     }
                     return wrong;
                 });
-                assertThat(cut).as(language + " " + screen).isEmpty();
+                this.cut.put(language + " " + screen, cutButtons);
             }
         }
     }
 
-    @Test
-    void messagesComeAndGo() throws Exception {
-        this.engine = FxTesting.engine(this.dir.resolve("njmule"));
-        this.model = new EngineModel(this.engine, Platform::runLater);
-        MainWindow window = window(Locale.ENGLISH, GuiSettings.Mode.LIGHT);
+    private void whenAMessageIsShown(String text) throws Exception {
+        FxTesting.onFx(() -> this.window.message(text));
+    }
 
-        FxTesting.onFx(() -> window.message("hello"));
+    private void thenEachScreenShowedAsAsked() {
+        assertThat(this.shown).hasSize(I18n.LANGUAGES.size() * 2 * SCREENS.size());
+        for (Shown screen : this.shown) {
+            assertThat(screen.current()).as(screen.where()).isEqualTo(screen.asked());
+        }
+    }
 
-        assertThat(FxTesting.onFx(() -> window.messages().size())).isEqualTo(1);
-        assertThat(FxTesting.onFx(() -> window.connectButton().getText())).isEqualTo("Connect");
-        assertThat(FxTesting.onFx(() -> window.ed2kChip().getText())).contains("Not Connected");
+    private void thenNoButtonIsCut() {
+        assertThat(this.cut).hasSize(I18n.LANGUAGES.size() * SCREENS.size());
+        this.cut.forEach((where, wrong) -> assertThat(wrong).as(where).isEmpty());
+    }
+
+    private void thenTheMessagesShownAre(int count) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.window.messages().size())).isEqualTo(count);
+    }
+
+    private void thenConnectReads(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.window.connectButton().getText())).isEqualTo(text);
+    }
+
+    private void thenTheEd2kChipTells(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.window.ed2kChip().getText())).contains(text);
     }
 
     private static boolean scrolled(Node node) {
@@ -195,4 +251,7 @@ class MainWindowTest {
         this.model.start();
         return created.get();
     }
+
+    // A screen asked for in one language and mode, and the one the window showed.
+    private record Shown(String where, String asked, String current) {}
 }

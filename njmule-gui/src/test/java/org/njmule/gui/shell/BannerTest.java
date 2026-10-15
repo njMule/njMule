@@ -64,17 +64,20 @@ class BannerTest {
         "DISCONNECTED, false, firewalled, UNREACHABLE",
         "DISCONNECTED, false, open, NONE"
     })
-    void theBannerTellsOfNoNetworkAndOfANetworkThatCannotReachUs(
+    void shouldTellOfNoNetworkAndOfANetworkThatCannotReachUs(
             EngineModel.Connection connection, boolean lowId, String kad, Banner.Kind expected) {
         whenTheStateIs(connection, lowId, kad);
+
         thenTheBannerTellsOf(expected);
     }
 
     @Test
-    void offlineTheBannerOffersToConnectAndOnceClosedStaysAway() throws Exception {
+    void shouldOfferToConnectWhileOfflineAndStayAwayOnceClosed() throws Exception {
         givenTheWindowOffline();
-        thenTheBannerShowsAfterAMoment(Banner.Kind.OFFLINE, "Connect");
+        givenTheBannerShowsAfterAMoment(Banner.Kind.OFFLINE, "Connect");
+
         whenTheBannerIsClosed();
+
         thenTheBannerIsGone();
     }
 
@@ -82,6 +85,22 @@ class BannerTest {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
         this.test.show(this.window.root());
+    }
+
+    private void givenTheBannerShowsAfterAMoment(Banner.Kind expected, String action) throws Exception {
+        FxTesting.await("the banner", () -> this.window.banner().shown() == expected);
+        assertThat(FxTesting.onFx(() -> this.window.banner().view().isVisible()))
+                .isTrue();
+        assertThat(FxTesting.onFx(() -> this.window.banner().view().getChildren().stream()
+                        .filter(Button.class::isInstance)
+                        .map(n -> ((Button) n).getText())
+                        .toList()))
+                .contains(action);
+        assertThat(FxTesting.onFx(() -> this.window.banner().view().getChildren().stream()
+                        .filter(Label.class::isInstance)
+                        .map(n -> ((Label) n).getText())
+                        .toList()))
+                .anyMatch(t -> t.startsWith("Not connected"));
     }
 
     private void whenTheStateIs(EngineModel.Connection connection, boolean lowId, String kad) {
@@ -101,22 +120,6 @@ class BannerTest {
 
     private void thenTheBannerTellsOf(Banner.Kind expected) {
         assertThat(this.kind).isEqualTo(expected);
-    }
-
-    private void thenTheBannerShowsAfterAMoment(Banner.Kind expected, String action) throws Exception {
-        FxTesting.await("the banner", () -> this.window.banner().shown() == expected);
-        assertThat(FxTesting.onFx(() -> this.window.banner().view().isVisible()))
-                .isTrue();
-        assertThat(FxTesting.onFx(() -> this.window.banner().view().getChildren().stream()
-                        .filter(Button.class::isInstance)
-                        .map(n -> ((Button) n).getText())
-                        .toList()))
-                .contains(action);
-        assertThat(FxTesting.onFx(() -> this.window.banner().view().getChildren().stream()
-                        .filter(Label.class::isInstance)
-                        .map(n -> ((Label) n).getText())
-                        .toList()))
-                .anyMatch(t -> t.startsWith("Not connected"));
     }
 
     private void thenTheBannerIsGone() throws Exception {

@@ -72,45 +72,54 @@ class TransfersViewTest {
         "NO_SPACE, 9, 0, NO_SPACE",
         "COMPLETE, 0, 0, COMPLETE"
     })
-    void aRunningDownloadTellsWhetherDataComesOrNoSourceIsKnown(
+    void shouldTellWhetherDataComesOrNoSourceIsKnownForARunningDownload(
             DownloadInfo.Status status, int sources, int transferring, TransfersScreen.Shown expected) {
         whenADownloadIs(status, sources, transferring);
+
         thenItShowsAs(expected);
     }
 
     @Test
-    void theFilterKeepsTheDownloadsWhoseNameHoldsEveryWord() throws Exception {
+    void shouldKeepTheDownloadsWhoseNameHoldsEveryWordOfTheFilter() throws Exception {
         givenTheDownloads("Debian 13 DVD.iso", "debian-netinst.iso", "Sintel.mkv");
-        whenTheFilterReads("DEBIAN iso");
-        thenTheDownloadsShownAre("Debian 13 DVD.iso", "debian-netinst.iso");
-        whenTheFilterReads("dvd debian");
-        thenTheDownloadsShownAre("Debian 13 DVD.iso");
+        givenTheFilterReads("DEBIAN iso");
+        givenTheDownloadsShownAre("Debian 13 DVD.iso", "debian-netinst.iso");
+        givenTheFilterReads("dvd debian");
+        givenTheDownloadsShownAre("Debian 13 DVD.iso");
+
         whenTheFilterReads("");
+
         thenTheDownloadsShownAre("Debian 13 DVD.iso", "debian-netinst.iso", "Sintel.mkv");
     }
 
     @Test
-    void theSourcesBelowAreThoseOfTheDownloadChosen() throws Exception {
+    void shouldShowBelowTheSourcesOfTheDownloadChosen() throws Exception {
         givenTheDownloads("first.bin", "second.bin");
-        thenTheSourcesShownAre(3);
-        whenTheDownloadIsChosen(1);
-        thenTheSourcesShownAre(1);
+        givenTheSourcesShownAre(3);
+        givenTheDownloadChosen(1);
+        givenTheSourcesShownAre(1);
+
         whenTheDownloadIsChosen(0);
+
         thenTheSourcesShownAre(2);
     }
 
     @Test
-    void theCommandsOnDownloadsWaitForOneChosen() throws Exception {
+    void shouldKeepTheCommandsOnDownloadsOffUntilOneIsChosen() throws Exception {
         givenTheDownloads("first.bin", "second.bin");
-        thenTheCommandsOnTheChosenAreOff(true);
+        givenTheCommandsOnTheChosenAreOff(true);
+
         whenTheDownloadIsChosen(1);
+
         thenTheCommandsOnTheChosenAreOff(false);
     }
 
     @Test
-    void ctrlFPutsTheCursorInTheFilter() throws Exception {
+    void shouldPutTheCursorInTheFilterOnCtrlF() throws Exception {
         givenTheDownloads("first.bin");
+
         whenCtrlFIsPressed();
+
         thenTheFilterHasTheCursor();
     }
 
@@ -136,6 +145,26 @@ class TransfersViewTest {
         FxTesting.await(
                 "the downloads", () -> this.screen.downloads().getItems().size() == names.length);
         FxTesting.await("the sources", () -> this.test.model.sources().rows().size() == sources.size());
+    }
+
+    private void givenTheFilterReads(String text) throws Exception {
+        whenTheFilterReads(text);
+    }
+
+    private void givenTheDownloadsShownAre(String... names) throws Exception {
+        thenTheDownloadsShownAre(names);
+    }
+
+    private void givenTheSourcesShownAre(int count) throws Exception {
+        thenTheSourcesShownAre(count);
+    }
+
+    private void givenTheDownloadChosen(int index) throws Exception {
+        whenTheDownloadIsChosen(index);
+    }
+
+    private void givenTheCommandsOnTheChosenAreOff(boolean off) throws Exception {
+        thenTheCommandsOnTheChosenAreOff(off);
     }
 
     private void whenADownloadIs(DownloadInfo.Status status, int sources, int transferring) {

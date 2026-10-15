@@ -30,37 +30,48 @@ class SpeedLimitsScaleTest {
 
     @ParameterizedTest
     @CsvSource({"0", "5", "50", "300", "1200", "12000", "120000"})
-    void aLimitSetIsTheLimitItsPositionGivesBack(int kib) {
-        whenTheLimitIsPlaced(kib, FIBRE);
+    void shouldGiveBackTheLimitSetFromItsPosition(int kib) {
+        givenTheLimitPlaced(kib, FIBRE);
+
         whenTheLimitIsRead(FIBRE);
+
         thenTheLimitIs(kib);
     }
 
     @ParameterizedTest
     @CsvSource({"0, 0", "1000, " + FIBRE})
-    void theEndsAreNoLimitAndTheTop(double position, int kib) {
+    void shouldReadTheEndsAsNoLimitAndTheTop(double position, int kib) {
         givenThePosition(position);
+
         whenTheLimitIsRead(FIBRE);
+
         thenTheLimitIs(kib);
     }
 
     @ParameterizedTest
     @CsvSource({"1234, 1200", "98765, 99000"})
-    void aDraggedLimitKeepsTwoDigits(int kib, int expected) {
-        whenTheLimitIsPlaced(kib, FIBRE);
+    void shouldKeepTwoDigitsOfADraggedLimit(int kib, int expected) {
+        givenTheLimitPlaced(kib, FIBRE);
+
         whenTheLimitIsRead(FIBRE);
+
         thenTheLimitIs(expected);
     }
 
     @ParameterizedTest
     @CsvSource({"50", "500", "5000", "50000"})
-    void aLowerLimitSitsLowerOnTheSlider(int kib) {
+    void shouldPutALowerLimitLowerOnTheSlider(int kib) {
         whenTheLimitIsPlaced(kib, FIBRE);
+
         thenThePositionIsBelow(SpeedLimits.position(kib * 2, FIBRE));
     }
 
     private void givenThePosition(double position) {
         this.position = position;
+    }
+
+    private void givenTheLimitPlaced(int kib, int top) {
+        this.position = SpeedLimits.position(kib, top);
     }
 
     private void whenTheLimitIsPlaced(int kib, int top) {

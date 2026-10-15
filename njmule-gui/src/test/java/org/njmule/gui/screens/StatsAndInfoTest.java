@@ -18,6 +18,7 @@ package org.njmule.gui.screens;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -58,6 +59,9 @@ class StatsAndInfoTest {
     private TestGui test;
     private final AtomicReference<EngineStatus> status = new AtomicReference<>();
     private final AtomicReference<List<SourceInfo>> sources = new AtomicReference<>(List.of());
+    private StatsTree tree;
+    private List<StatsTree.Entry> entries;
+    private MyInfoPane pane;
 
     @AfterEach
     void close() {
@@ -67,110 +71,213 @@ class StatsAndInfoTest {
     }
 
     @Test
-    void theStatisticsCountTheClientsServersAndFiles() throws Exception {
-        this.status.set(status(Optional.empty(), 0, false, false, "", Optional.empty(), 1000, 2500, 0, 500));
-        this.sources.set(List.of(source("10.0.0.1:4662", "eMule"), source("10.0.0.2:4662", "")));
-        start();
-        FxTesting.onFx(this.test.model::tick);
-        FxTesting.await("the clients", () -> this.test.model.uploads().size() == 2);
-        StatsTree tree = FxTesting.onFx(() -> new StatsTree(this.test.gui));
+    void shouldCountTheClientsServersAndFilesInTheStatistics() throws Exception {
+        givenTheTraffic(1000, 2500, 0, 500);
+        givenTheSources(source("10.0.0.1:4662", "eMule"), source("10.0.0.2:4662", ""));
+        givenTheEngine();
+        givenTheClientsRead(2);
+        givenTheStatistics();
 
-        List<StatsTree.Entry> entries = FxTesting.onFx(tree::entries);
-        assertThat(texts(entries.getFirst()))
-                .containsExactly("Session UL:DL Ratio: 1 : 2.50", "Cumulative UL:DL Ratio: 0 : 1");
+        whenTheStatisticsAreRead();
+
+        thenTheFirstEntryHolds("Session UL:DL Ratio: 1 : 2.50", "Cumulative UL:DL Ratio: 0 : 1");
         // The same client as source and upload counts once, by the software it has now.
-        assertThat(entry(entries, "Clients").text()).isEqualTo("Clients (3)");
-        assertThat(texts(entry(entries, "Clients"))).containsExactly("aMule: 2 (66.7 %)", "?: 1 (33.3 %)");
-        assertThat(texts(entry(entries, "Servers")))
-                .containsExactly(
-                        "Working Servers: 2",
-                        "Failed Servers: 1",
-                        "Total: 4",
-                        "Users on Working Servers: 1,300",
-                        "Files on Working Servers: 34,000",
-                        "Total Users: 1,350",
-                        "Total Files: 34,000");
-        assertThat(texts(entry(entries, "Shared Files")))
-                .containsExactly(
-                        "Total: 2",
-                        "Total size of Shared Files: 2.93 KB",
-                        "Average file size: 1.46 KB",
-                        "Largest Shared File: notes.txt (1.95 KB)");
-        List<StatsTree.Entry> disk = entries.getLast().children();
-        assertThat(disk).hasSize(2);
-        assertThat(FxTesting.onFx(tree::entries).getLast().children())
-                .as("read again only after a while")
-                .isSameAs(entries.getLast().children());
+        thenTheEntryReads("Clients", "Clients (3)");
+        thenTheEntryHolds("Clients", "aMule: 2 (66.7 %)", "?: 1 (33.3 %)");
+        thenTheEntryHolds(
+                "Servers",
+                "Working Servers: 2",
+                "Failed Servers: 1",
+                "Total: 4",
+                "Users on Working Servers: 1,300",
+                "Files on Working Servers: 34,000",
+                "Total Users: 1,350",
+                "Total Files: 34,000");
+        thenTheEntryHolds(
+                "Shared Files",
+                "Total: 2",
+                "Total size of Shared Files: 2.93 KB",
+                "Average file size: 1.46 KB",
+                "Largest Shared File: notes.txt (1.95 KB)");
+        thenTheLastEntryHoldsLines(2);
+        thenTheLastEntryIsReadAgainOnlyAfterAWhile();
+    }
 
-        // Fewer clients: the tree drops the lines that went.
-        FxTesting.onFx(tree::refresh);
-        TreeItem<String> clients = FxTesting.onFx(() -> item(tree, "Clients"));
-        assertThat(FxTesting.onFx(() -> clients.getChildren().size())).isEqualTo(2);
+    @Test
+    void shouldDropTheLinesOfTheClientsThatWentFromTheStatistics() throws Exception {
+        givenTheTraffic(1000, 2500, 0, 500);
+        givenTheSources(source("10.0.0.1:4662", "eMule"), source("10.0.0.2:4662", ""));
+        givenTheEngine();
+        givenTheClientsRead(2);
+        givenTheStatistics();
+        givenTheStatisticsRefreshed();
+        givenTheLinesUnder("Clients", 2);
+        givenTheSourcesGone();
+
+        whenTheStatisticsAreRefreshed();
+
+        thenTheLinesUnderAre("Clients", "aMule: 2 (100.0 %)");
+    }
+
+    @Test
+    void shouldShowTheServerKadAndTheWebInterfaceInMyInfo() throws Exception {
+        givenTheWebInterfaceOn(4712, false);
+        givenTheStatusOnBig(true, true, "", Statuses.kad(false, false, ""));
+        givenTheEngine();
+        givenConnectedToBig();
+        givenMyInfoShown();
+        givenMyInfoReads(
+                "Status: Connected",
+                "IP:Port: " + text("IDS_UNKNOWN"),
+                "ID: 7",
+                text("IDS_IDLOW"),
+                "Name: Big",
+                "IP:Port: 81.2.3.4:4661",
+                "Connections: " + text("IDS_OBFUSCATED"),
+                "Status: Connecting",
+                "Status: Enabled",
+                "URL: http://127.0.0.1:4712/");
+        givenTheStatusOnBigBecomes(false, false, "5.6.7.8", Statuses.kad(true, true, "1.2.3.4"));
+        givenMyInfoReads(
+                "IP:Port: 5.6.7.8:4662",
+                text("IDS_IDHIGH"),
+                "Connections: Normal",
+                "Status: Firewalled",
+                "UDP Status: " + text("IDS_UNKNOWN"),
+                "IP:Port: 1.2.3.4:4672",
+                "ID: 16909060");
+        givenTheStatusOnBigBecomes(false, false, "5.6.7.8", Statuses.kad(true, false, ""));
+        givenMyInfoReads("Status: Open", "ID:");
+        givenTheWebInterfaceOn(4712, true);
+
+        whenMyInfoReadsTheWebInterfaceAgain();
+
+        thenMyInfoShowsAUrlOfThisComputerEndingWith(":4712/");
+    }
+
+    private void givenTheTraffic(long uploaded, long downloaded, long totalUploaded, long totalDownloaded) {
+        this.status.set(status(
+                Optional.empty(),
+                0,
+                false,
+                false,
+                "",
+                Optional.empty(),
+                uploaded,
+                downloaded,
+                totalUploaded,
+                totalDownloaded));
+    }
+
+    private void givenTheSources(SourceInfo... sources) {
+        this.sources.set(List.of(sources));
+    }
+
+    private void givenTheEngine() throws Exception {
+        start();
+    }
+
+    private void givenTheClientsRead(int uploads) throws Exception {
+        FxTesting.onFx(this.test.model::tick);
+        FxTesting.await("the clients", () -> this.test.model.uploads().size() == uploads);
+    }
+
+    private void givenTheStatistics() throws Exception {
+        this.tree = FxTesting.onFx(() -> new StatsTree(this.test.gui));
+    }
+
+    private void givenTheStatisticsRefreshed() throws Exception {
+        whenTheStatisticsAreRefreshed();
+    }
+
+    private void givenTheLinesUnder(String prefix, int count) throws Exception {
+        TreeItem<String> item = FxTesting.onFx(() -> item(this.tree, prefix));
+        assertThat(FxTesting.onFx(() -> item.getChildren().size())).isEqualTo(count);
+    }
+
+    // Fewer clients: the tree drops the lines that went.
+    private void givenTheSourcesGone() throws Exception {
         this.sources.set(List.of());
         FxTesting.onFx(this.test.model::tick);
         FxTesting.onFx(this.test.model::tick);
         FxTesting.await("one client left", () -> this.test.model.sources().size() == 0);
-        FxTesting.onFx(tree::refresh);
-        assertThat(FxTesting.onFx(() -> item(tree, "Clients").getChildren().stream()
-                        .map(TreeItem::getValue)
-                        .toList()))
-                .containsExactly("aMule: 2 (100.0 %)");
     }
 
-    @Test
-    void myInfoShowsTheServerKadAndTheWebInterface() throws Exception {
-        new WebUiSettings(true, 4712, false, "hash")
+    private void givenTheWebInterfaceOn(int port, boolean lan) throws IOException {
+        new WebUiSettings(true, port, lan, "hash")
                 .save(this.dir.resolve("njmule").resolve("config"));
-        this.status.set(
-                status(Optional.of(BIG), 7, true, true, "", Optional.of(Statuses.kad(false, false, "")), 0, 0, 0, 0));
-        start();
+    }
+
+    private void givenTheStatusOnBig(boolean lowId, boolean obfuscated, String publicIp, KadInfo kad) {
+        this.status.set(status(Optional.of(BIG), 7, lowId, obfuscated, publicIp, Optional.of(kad), 0, 0, 0, 0));
+    }
+
+    private void givenConnectedToBig() throws Exception {
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServerConnected(BIG, 7, true, true)));
-        MyInfoPane pane = new MyInfoPane(this.test.gui);
-        this.test.show(FxTesting.onFx(pane::node));
+    }
 
-        List<String> lines = lines(pane);
-        assertThat(lines)
-                .contains(
-                        "Status: Connected",
-                        "IP:Port: " + this.test.gui.t("IDS_UNKNOWN"),
-                        "ID: 7",
-                        this.test.gui.t("IDS_IDLOW"),
-                        "Name: Big",
-                        "IP:Port: 81.2.3.4:4661",
-                        "Connections: " + this.test.gui.t("IDS_OBFUSCATED"),
-                        "Status: Connecting",
-                        "Status: Enabled",
-                        "URL: http://127.0.0.1:4712/");
+    private void givenMyInfoShown() throws Exception {
+        this.pane = new MyInfoPane(this.test.gui);
+        this.test.show(FxTesting.onFx(this.pane::node));
+    }
 
-        status(status(
-                Optional.of(BIG),
-                7,
-                false,
-                false,
-                "5.6.7.8",
-                Optional.of(Statuses.kad(true, true, "1.2.3.4")),
-                0,
-                0,
-                0,
-                0));
-        assertThat(lines(pane))
-                .contains(
-                        "IP:Port: 5.6.7.8:4662",
-                        this.test.gui.t("IDS_IDHIGH"),
-                        "Connections: Normal",
-                        "Status: Firewalled",
-                        "UDP Status: " + this.test.gui.t("IDS_UNKNOWN"),
-                        "IP:Port: 1.2.3.4:4672",
-                        "ID: 16909060");
-        status(status(
-                Optional.of(BIG), 7, false, false, "5.6.7.8", Optional.of(Statuses.kad(true, false, "")), 0, 0, 0, 0));
-        assertThat(lines(pane)).contains("Status: Open", "ID:");
+    private void givenMyInfoReads(String... lines) throws Exception {
+        assertThat(lines(this.pane)).contains(lines);
+    }
 
-        // On the LAN the address is this computer's own, when it has one.
-        new WebUiSettings(true, 4712, true, "hash")
-                .save(this.dir.resolve("njmule").resolve("config"));
-        FxTesting.onFx(pane::readWebUi);
-        assertThat(lines(pane)).anyMatch(l -> l.startsWith("URL: http://") && l.endsWith(":4712/"));
+    private void givenTheStatusOnBigBecomes(boolean lowId, boolean obfuscated, String publicIp, KadInfo kad)
+            throws Exception {
+        status(status(Optional.of(BIG), 7, lowId, obfuscated, publicIp, Optional.of(kad), 0, 0, 0, 0));
+    }
+
+    private void whenTheStatisticsAreRead() throws Exception {
+        this.entries = FxTesting.onFx(this.tree::entries);
+    }
+
+    private void whenTheStatisticsAreRefreshed() throws Exception {
+        FxTesting.onFx(this.tree::refresh);
+    }
+
+    private void whenMyInfoReadsTheWebInterfaceAgain() throws Exception {
+        FxTesting.onFx(this.pane::readWebUi);
+    }
+
+    private void thenTheFirstEntryHolds(String... lines) {
+        assertThat(texts(this.entries.getFirst())).containsExactly(lines);
+    }
+
+    private void thenTheEntryReads(String prefix, String text) {
+        assertThat(entry(this.entries, prefix).text()).isEqualTo(text);
+    }
+
+    private void thenTheEntryHolds(String prefix, String... lines) {
+        assertThat(texts(entry(this.entries, prefix))).containsExactly(lines);
+    }
+
+    private void thenTheLastEntryHoldsLines(int count) {
+        assertThat(this.entries.getLast().children()).hasSize(count);
+    }
+
+    private void thenTheLastEntryIsReadAgainOnlyAfterAWhile() throws Exception {
+        assertThat(FxTesting.onFx(this.tree::entries).getLast().children())
+                .as("read again only after a while")
+                .isSameAs(this.entries.getLast().children());
+    }
+
+    private void thenTheLinesUnderAre(String prefix, String... lines) throws Exception {
+        assertThat(FxTesting.onFx(() -> item(this.tree, prefix).getChildren().stream()
+                        .map(TreeItem::getValue)
+                        .toList()))
+                .containsExactly(lines);
+    }
+
+    // On the LAN the address is this computer's own, when it has one.
+    private void thenMyInfoShowsAUrlOfThisComputerEndingWith(String end) throws Exception {
+        assertThat(lines(this.pane)).anyMatch(l -> l.startsWith("URL: http://") && l.endsWith(end));
+    }
+
+    private String text(String key) {
+        return this.test.gui.t(key);
     }
 
     private void start() throws Exception {

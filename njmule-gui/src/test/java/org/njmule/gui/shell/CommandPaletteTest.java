@@ -46,30 +46,36 @@ class CommandPaletteTest {
     }
 
     @Test
-    void ctrlKOpensThePaletteAndEnterRunsTheCommandFound() throws Exception {
+    void shouldOpenThePaletteOnCtrlKAndRunTheCommandFoundOnEnter() throws Exception {
         givenTheWindow();
-        whenTheShortcutIsPressed(KeyCode.K);
-        thenThePaletteShows(true);
-        whenTyped("stat");
-        thenTheFirstCommandIs("Statistics");
+        givenTheShortcutPressed(KeyCode.K);
+        givenThePaletteShows(true);
+        givenTyped("stat");
+        givenTheFirstCommandIs("Statistics");
+
         whenEnterIsPressed();
+
         thenThePaletteShows(false);
         thenTheScreenIs("statistics");
     }
 
     @Test
-    void wordsTypedOfferASearchOfTheNetwork() throws Exception {
+    void shouldOfferASearchOfTheNetworkForTheWordsTyped() throws Exception {
         givenTheWindow();
-        whenTheShortcutIsPressed(KeyCode.K);
+        givenTheShortcutPressed(KeyCode.K);
+
         whenTyped("big buck bunny");
+
         thenTheFirstCommandIs("Search the network for \u201cbig buck bunny\u201d");
     }
 
     @Test
-    void aLinkTypedOffersItsDownload() throws Exception {
+    void shouldOfferTheDownloadOfALinkTyped() throws Exception {
         givenTheWindow();
-        whenTheShortcutIsPressed(KeyCode.K);
+        givenTheShortcutPressed(KeyCode.K);
+
         whenTyped(LINK);
+
         thenTheFirstCommandIs("Download: film.mkv");
     }
 
@@ -79,8 +85,20 @@ class CommandPaletteTest {
         this.test.show(this.window.root());
     }
 
-    private void whenTheShortcutIsPressed(KeyCode key) throws Exception {
+    private void givenTheShortcutPressed(KeyCode key) throws Exception {
         FxTesting.onFx(() -> this.window.root().fireEvent(FxTesting.key(key, true)));
+    }
+
+    private void givenThePaletteShows(boolean shown) throws Exception {
+        thenThePaletteShows(shown);
+    }
+
+    private void givenTyped(String text) throws Exception {
+        whenTyped(text);
+    }
+
+    private void givenTheFirstCommandIs(String text) throws Exception {
+        thenTheFirstCommandIs(text);
     }
 
     private void whenTyped(String text) throws Exception {

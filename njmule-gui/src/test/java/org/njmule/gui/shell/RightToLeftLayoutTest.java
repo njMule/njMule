@@ -59,29 +59,29 @@ class RightToLeftLayoutTest {
     }
 
     @Test
-    void inArabicTheWindowItsDialogsAndTheTrayWindowsRunRightToLeft() throws Exception {
+    void shouldRunTheWindowItsDialogsAndTheTrayWindowsRightToLeftInArabic() throws Exception {
         givenTheInterfaceIn(ARABIC);
+        givenTheMainWindowShown();
+        givenTheAboutDialogOpen();
 
-        whenTheMainWindowShows();
-        whenTheAboutDialogOpens();
         whenTheWindowsOfTheNotificationAreaAreBuilt();
 
         thenEachRuns(NodeOrientation.RIGHT_TO_LEFT);
     }
 
     @Test
-    void inEnglishTheWindowItsDialogsAndTheTrayWindowsRunLeftToRight() throws Exception {
+    void shouldRunTheWindowItsDialogsAndTheTrayWindowsLeftToRightInEnglish() throws Exception {
         givenTheInterfaceIn(Locale.ENGLISH);
+        givenTheMainWindowShown();
+        givenTheAboutDialogOpen();
 
-        whenTheMainWindowShows();
-        whenTheAboutDialogOpens();
         whenTheWindowsOfTheNotificationAreaAreBuilt();
 
         thenEachRuns(NodeOrientation.LEFT_TO_RIGHT);
     }
 
     @Test
-    void inArabicTheLinkAndAddressFieldsStayLeftToRight() throws Exception {
+    void shouldKeepTheLinkAndAddressFieldsLeftToRightInArabic() throws Exception {
         givenTheInterfaceIn(ARABIC);
 
         whenTheMainWindowShows();
@@ -94,13 +94,11 @@ class RightToLeftLayoutTest {
         this.test = TestGui.start(this.dir.resolve("njmule"), language);
     }
 
-    private void whenTheMainWindowShows() throws Exception {
-        this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
-        this.test.show(this.window.root());
-        this.shown.add(this.window.root());
+    private void givenTheMainWindowShown() throws Exception {
+        whenTheMainWindowShows();
     }
 
-    private void whenTheAboutDialogOpens() throws Exception {
+    private void givenTheAboutDialogOpen() throws Exception {
         FxTesting.onFx(() -> {
             Window owner = this.window.root().getScene().getWindow();
             new AboutDialog(this.test.gui, owner).show();
@@ -114,6 +112,12 @@ class RightToLeftLayoutTest {
                 }
             }
         });
+    }
+
+    private void whenTheMainWindowShows() throws Exception {
+        this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
+        this.test.show(this.window.root());
+        this.shown.add(this.window.root());
     }
 
     // Their owner never shows and has no scene of its own, so they have no direction to inherit.

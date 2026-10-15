@@ -17,6 +17,7 @@
 package org.njmule.gui.screens;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,6 +40,7 @@ import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.input.Clipboard;
@@ -82,6 +84,7 @@ class TransfersMenusTest {
     private final AtomicBoolean sourceTaken = new AtomicBoolean(true);
     private final AtomicReference<List<DownloadInfo>> downloads = new AtomicReference<>();
     private TransfersScreen transfers;
+    private Throwable exception;
 
     @AfterEach
     void close() throws Exception {
@@ -94,186 +97,87 @@ class TransfersMenusTest {
     }
 
     @Test
-    void theListsBelowShowTheClientsAndTheBans() throws Exception {
-        TransfersScreen screen = screen();
-        FxTesting.onFx(this.test.model::tick);
-        FxTesting.await("the lower lists", () -> screen.bans().getItems().size() == 1);
-
-        assertThat(FxTesting.onFx(() -> screen.lowerTabs().getTabs().stream()
-                        .map(t -> t.getText())
-                        .toList()))
-                .containsExactly("Uploading (1)", "On Queue (1)", "Downloading (6)", "Banned (1)");
-        showTab(screen, 0);
-        FxTesting.await(
-                "the upload",
-                () -> FxTesting.cellTexts(screen.uploads()).containsAll(List.of("Peer", "eMule", "film.mkv")));
-        showTab(screen, 1);
-        FxTesting.await(
-                "the waiting client", () -> FxTesting.cellTexts(screen.queue()).contains("10.0.0.2:4662"));
-        showTab(screen, 2);
-        FxTesting.await(
-                "the sources", () -> FxTesting.cellTexts(screen.sources()).contains("Waiting"));
-        assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(screen.sources())))
-                .contains("Waiting", "Connecting", "Asking", "On Queue", "7", "50 %", "0 %");
-        FxTesting.onFx(() -> screen.sources().scrollTo(4));
-        FxTesting.await(
-                "the last source", () -> FxTesting.cellTexts(screen.sources()).contains("Transferring"));
-        showTab(screen, 3);
-        FxTesting.await("the ban", () -> FxTesting.cellTexts(screen.bans()).contains("10.0.0.9"));
-
-        FxTesting.onFx(() -> {
-            screen.bans().getSelectionModel().select(0);
-            screen.bans().getContextMenu().getItems().getFirst().fire();
-        });
-        FxTesting.await("unbanned", () -> this.calls.contains("unban 10.0.0.9"));
-
+    void shouldShowTheClientsAndTheBansInTheListsBelow() throws Exception {
+        givenTheTransfersScreen();
+        givenTheListsBelowRead();
+        givenTheTabsBelowRead("Uploading (1)", "On Queue (1)", "Downloading (6)", "Banned (1)");
+        givenTheListBelowShows(0, "Peer", "eMule", "film.mkv");
+        givenTheListBelowShows(1, "10.0.0.2:4662");
+        givenTheListBelowShows(2, "Waiting");
+        givenTheSourcesShow("Waiting", "Connecting", "Asking", "On Queue", "7", "50 %", "0 %");
+        givenTheSourcesShowAfterScrollingTo(4, "Transferring");
+        givenTheListBelowShows(3, "10.0.0.9");
+        givenTheFirstBanLifted();
+        givenTheEngineAskedTo("unban 10.0.0.9");
         // View Shared Files opens the client's list, for one client only.
-        ContextMenu menu = FxTesting.onFx(() -> screen.uploads().getContextMenu());
-        MenuItem view = FxTesting.onFx(() -> menu.getItems().getFirst());
-        FxTesting.onFx(() -> {
-            screen.uploads().getSelectionModel().clearSelection();
-            menu.getOnShowing().handle(null);
-            assertThat(view.isDisable()).isTrue();
-            view.fire();
-            screen.uploads().getSelectionModel().select(0);
-            menu.getOnShowing().handle(null);
-            assertThat(view.isDisable()).isFalse();
-            view.fire();
-        });
-        FxTesting.await("the client's files", () -> window("View Shared Files: Peer") != null);
-        assertThat(this.calls).contains("browse 10.0.0.1:4662");
-        FxTesting.onFx(() -> {
-            window("View Shared Files: Peer").hide();
-            screen.sources().getSelectionModel().select(0);
-            screen.sources().getContextMenu().getItems().getFirst().fire();
-        });
-        FxTesting.await("the source's files", () -> window("View Shared Files: 10.0.0.3:4662") != null);
+        givenTheSharedFilesViewedWithNoClientChosen();
+        givenTheSharedFilesOfTheFirstUploadViewed();
+        givenAWindowShows("View Shared Files: Peer");
+        givenTheCallsInclude("browse 10.0.0.1:4662");
+        givenTheWindowClosed("View Shared Files: Peer");
+
+        whenTheSharedFilesOfTheFirstSourceAreViewed();
+
+        thenAWindowShows("View Shared Files: 10.0.0.3:4662");
     }
 
     @Test
-    void theDownloadMenuActsOnTheSelectedDownloads() throws Exception {
-        TransfersScreen screen = screen();
-        FxTesting.onFx(() -> this.test
-                .gui
-                .model()
-                .setCategories(
-                        List.of(new Category(
-                                1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "*.mkv", false)),
-                        () -> {}));
-        FxTesting.await("the category", () -> this.test.gui.model().categories().size() == 1);
-        FxTesting.onFx(() -> {
-            screen.linkField().setText(LINK);
-            screen.addLink();
-        });
-        FxTesting.await("the download row", () -> screen.downloads().getItems().size() == 1);
-        ContextMenu menu = FxTesting.onFx(() -> screen.downloads().getContextMenu());
-
-        FxTesting.onFx(() -> {
-            screen.downloads().getSelectionModel().select(0);
-            menu.getOnShowing().handle(null);
-            Menu category = (Menu) item(menu, "IDS_CAT");
-            assertThat(category.getItems()).extracting(MenuItem::getText).containsExactly("(Unassign)", "Films");
-            category.getItems().get(1).fire();
-        });
-        FxTesting.await("in the category", () -> first(screen).category() == 1);
-        FxTesting.onFx(() -> {
-            CheckMenuItem first = (CheckMenuItem) item(menu, "IDS_DOWNLOADMOVIECHUNKS");
-            assertThat(first.isSelected()).isFalse();
-            first.setSelected(true);
-            first.fire();
-        });
-        FxTesting.await("preview parts first", () -> first(screen).previewFirst());
-        FxTesting.onFx(() -> {
-            menu.getOnShowing().handle(null);
-            assertThat(((CheckMenuItem) item(menu, "IDS_DOWNLOADMOVIECHUNKS")).isSelected())
-                    .isTrue();
-            ((Menu) item(menu, "IDS_PRIORITY"))
-                    .getItems().stream()
-                            .filter(i -> i.getText().equals("High"))
-                            .findFirst()
-                            .orElseThrow()
-                            .fire();
-        });
-        FxTesting.await("high", () -> first(screen).priority() == DownloadPriority.HIGH);
-        FxTesting.onFx(() -> item(menu, "IDS_DL_PAUSE").fire());
-        FxTesting.await("paused", () -> first(screen).status() == DownloadInfo.Status.PAUSED);
-        FxTesting.onFx(() -> item(menu, "IDS_DL_STOP").fire());
-        FxTesting.await("stopped", () -> first(screen).status() == DownloadInfo.Status.STOPPED);
-        FxTesting.onFx(() -> item(menu, "IDS_DL_RESUME").fire());
-        FxTesting.await("resumed", () -> first(screen).status() == DownloadInfo.Status.DOWNLOADING);
-        FxTesting.onFx(() -> {
-            item(menu, "IDS_DL_LINK2").fire();
-            assertThat(Clipboard.getSystemClipboard().getString())
-                    .startsWith("<a href=\"ed2k://|file|test%20file.bin|");
-            item(menu, "nj.copyLink").fire();
-            assertThat(Clipboard.getSystemClipboard().getString()).startsWith("ed2k://|file|test%20file.bin|");
-            item(menu, "IDS_DL_CLEAR").fire();
-        });
-        assertThat(FxTesting.onFx(() -> screen.downloads().getItems().size()))
-                .as("only finished downloads are cleared")
-                .isEqualTo(1);
-
+    void shouldActOnTheChosenDownloadsFromTheDownloadMenu() throws Exception {
+        givenTheTransfersScreen();
+        givenTheCategories(new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "*.mkv", false));
+        givenTheCategoriesKnown(1);
+        givenADownloadFromTheLink();
+        givenTheMenuOfTheFirstDownloadShown();
+        givenTheCategoriesOfTheMenuAre("(Unassign)", "Films");
+        givenTheCategoryOfTheMenuChosen("Films");
+        givenTheFirstDownloadInTheCategory(1);
+        givenThePreviewPartsFirstChosen();
+        givenTheFirstDownloadWithPreviewPartsFirst();
+        givenThePreviewPartsFirstCheckedWhenTheMenuShowsAgain();
+        givenThePriorityChosen("High");
+        givenTheFirstDownloadWithPriority(DownloadPriority.HIGH);
+        givenTheItemOfTheMenuChosen("IDS_DL_PAUSE");
+        givenTheFirstDownloadIs(DownloadInfo.Status.PAUSED);
+        givenTheItemOfTheMenuChosen("IDS_DL_STOP");
+        givenTheFirstDownloadIs(DownloadInfo.Status.STOPPED);
+        givenTheItemOfTheMenuChosen("IDS_DL_RESUME");
+        givenTheFirstDownloadIs(DownloadInfo.Status.DOWNLOADING);
+        givenTheLinkCopied("IDS_DL_LINK2", "<a href=\"ed2k://|file|test%20file.bin|");
+        givenTheLinkCopied("nj.copyLink", "ed2k://|file|test%20file.bin|");
+        givenTheItemOfTheMenuChosen("IDS_DL_CLEAR");
+        givenTheDownloadsLeftAfterTheClear(1);
         // Cancel asks first.
-        FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE);
-            item(menu, "IDS_CANCEL").fire();
-        });
-        assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS)).hasSize(1);
-        FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonBar.ButtonData.OK_DONE);
-            screen.cancelSelected();
-        });
-        FxTesting.await("cancelled", () -> screen.downloads().getItems().isEmpty());
-        FxTesting.onFx(screen::cancelSelected);
+        givenTheCancelOfTheMenuAnswered(ButtonBar.ButtonData.CANCEL_CLOSE);
+        givenTheEngineDownloads(1);
+        givenTheCancelOfTheChosenAnswered(ButtonBar.ButtonData.OK_DONE);
+        givenNoDownloadLeft();
+
+        whenTheChosenAreCancelledAgain();
+
+        thenNoExceptionOccurred();
     }
 
     @Test
-    void aSourceIsAddedByHandAndCommentsOpen() throws Exception {
-        TransfersScreen screen = screen();
-        FxTesting.onFx(() -> {
-            screen.linkField().setText(LINK);
-            screen.addLink();
-        });
-        FxTesting.await("the download row", () -> screen.downloads().getItems().size() == 1);
-        FxTesting.onFx(() -> {
-            screen.addSourceToSelected();
-            screen.downloads().getSelectionModel().select(0);
-            FxTesting.answer(ButtonType.OK, pane -> type(pane, "nowhere"));
-            screen.addSourceToSelected();
-        });
-        assertThat(this.test.told).contains("Not an address of the form host:port: nowhere");
+    void shouldAddASourceByHandAndOpenTheComments() throws Exception {
+        givenTheTransfersScreen();
+        givenADownloadFromTheLink();
+        givenASourceAddedWithNoDownloadChosen();
+        givenTheFirstDownloadChosen();
+        givenASourceTyped("nowhere");
+        givenTheUserToldAlready("Not an address of the form host:port: nowhere");
+        givenASourceTyped(" 10.0.0.5:4662 ");
+        givenTheUserTold("Source 10.0.0.5:4662 added");
+        givenTheSourcesRefusedByTheEngine();
+        givenASourceTyped("10.0.0.6:4662");
+        givenTheUserTold("Source 10.0.0.6:4662 not added: known already or refused by the IP filter");
+        givenTheSourceDialogCancelled();
+        givenTheCallsAre("source 10.0.0.5:4662", "source 10.0.0.6:4662");
+        givenTheItemOfTheMenuChosen("IDS_CMT_ADD");
+        givenAWindowShows("Comments: test file.bin");
 
-        FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.OK, pane -> type(pane, " 10.0.0.5:4662 "));
-            screen.addSourceToSelected();
-        });
-        FxTesting.await("added", () -> this.test.told.contains("Source 10.0.0.5:4662 added"));
-        this.sourceTaken.set(false);
-        FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.OK, pane -> type(pane, "10.0.0.6:4662"));
-            screen.addSourceToSelected();
-        });
-        FxTesting.await(
-                "refused",
-                () -> this.test.told.contains(
-                        "Source 10.0.0.6:4662 not added: known already or refused by the IP filter"));
-        FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.CANCEL);
-            screen.addSourceToSelected();
-        });
-        assertThat(this.calls).containsExactly("source 10.0.0.5:4662", "source 10.0.0.6:4662");
+        whenTheCategoriesButtonIsPressed();
 
-        FxTesting.onFx(
-                () -> item(screen.downloads().getContextMenu(), "IDS_CMT_ADD").fire());
-        FxTesting.await("the comment window", () -> window("Comments: test file.bin") != null);
-
-        FxTesting.onFx(() -> screen.view().lookupAll(".button").stream()
-                .filter(n -> n instanceof Button b && "Categories".equals(b.getAccessibleText()))
-                .map(Button.class::cast)
-                .findFirst()
-                .orElseThrow()
-                .fire());
-        FxTesting.await("the categories window", () -> window("Categories") != null);
+        thenAWindowShows("Categories");
     }
 
     @Test
@@ -298,14 +202,73 @@ class TransfersMenusTest {
         thenTheUserIsTold("The source cannot move now: it is being asked or sends data");
     }
 
-    private void givenTheTransfersScreenWithADownload() throws Exception {
+    @Test
+    void shouldNeedAPlayerForAPreviewAndTellWhyItCannotStart() throws Exception {
+        givenTheTransfersScreen();
+        givenTheLinkAdded();
+        givenAPreviewAskedWithNoDownloadChosen();
+        givenTheDownloadRowsAre(1);
+        givenTheFirstDownloadChosen();
+        givenTheItemOfTheMenuChosen("IDS_DL_PREVIEW");
+        givenTheUserToldExactly("Choose a video player in the settings first");
+        // A player that is not there: nothing starts, the user learns why.
+        givenTheVideoPlayer("no such player", "--fullscreen");
+
+        whenAPreviewOfTheChosenIsAsked();
+
+        thenTheUserIsToldTimes(2);
+        thenNothingIsAt("no such player");
+    }
+
+    @Test
+    void shouldShowTheStateAndPriorityOfEachDownload() throws Exception {
+        givenTheDownloads(
+                download("00000000000000000000000000000001", "paused.bin", DownloadInfo.Status.PAUSED, 5),
+                download("00000000000000000000000000000002", "stopped.bin", DownloadInfo.Status.STOPPED, 50),
+                download("00000000000000000000000000000003", "full.bin", DownloadInfo.Status.NO_SPACE, 500),
+                download("00000000000000000000000000000004", "broken.bin", DownloadInfo.Status.ERROR, 0));
+        givenTheTransfersScreen();
+        givenTheDownloadsRead();
+        givenTheDownloadsShow(
+                "Paused",
+                "Stopped",
+                "Insufficient disk space",
+                "Erroneous",
+                "Auto [Hi]",
+                "Auto [No]",
+                "Auto [Lo]",
+                "?");
+        // Sorted by priority, as each download acts: the rarest first.
+        givenTheDownloadsSortedByPriorityDescending();
+        givenTheDownloadsEndWith("stopped.bin", "full.bin");
+        // The bar of the categories: All, then one button each; a click on the chosen one keeps it chosen.
+        givenTheCategories(new Category(3, "Music", Optional.empty(), "", 2, DownloadPriority.AUTO, "*.mp3", false));
+        givenTheCategoryButtons(2);
+        givenTheCategoryButtonPressed(1);
+        givenTheDownloadsShownAre(0);
+        givenTheChosenCategoryButtonClickedAgain(1);
+        givenTheCategoryButtonPressed(0);
+        givenTheDownloadsShownAre(4);
+        // The category shown stays chosen when the categories change.
+        givenTheFirstCategoryShown();
+        givenACategoryAddedAfterTheFirst(
+                new Category(4, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false));
+        givenTheCategoryButtons(3);
+        givenTheCategoryButtonChosen(1);
+        givenTheCategoryShown(3);
+
+        whenTheCategoriesAreRemoved();
+
+        thenAllTheDownloadsShowAgain(4);
+    }
+
+    private void givenTheTransfersScreen() throws Exception {
         this.transfers = screen();
-        FxTesting.onFx(() -> {
-            this.transfers.linkField().setText(LINK);
-            this.transfers.addLink();
-        });
-        FxTesting.await(
-                "the download row", () -> this.transfers.downloads().getItems().size() == 1);
+    }
+
+    private void givenTheTransfersScreenWithADownload() throws Exception {
+        givenTheTransfersScreen();
+        givenADownloadFromTheLink();
     }
 
     private void givenTheListOfSourcesIsShown() throws Exception {
@@ -314,6 +277,379 @@ class TransfersMenusTest {
         FxTesting.onFx(this.test.model::tick);
         showTab(this.transfers, 2);
         FxTesting.await("the A4AF source", () -> a4afRow() >= 0);
+    }
+
+    private void givenTheListsBelowRead() throws Exception {
+        FxTesting.onFx(this.test.model::tick);
+        FxTesting.await(
+                "the lower lists", () -> this.transfers.bans().getItems().size() == 1);
+    }
+
+    private void givenTheTabsBelowRead(String... titles) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.transfers.lowerTabs().getTabs().stream()
+                        .map(t -> t.getText())
+                        .toList()))
+                .containsExactly(titles);
+    }
+
+    private void givenTheListBelowShows(int tab, String... texts) throws Exception {
+        showTab(this.transfers, tab);
+        TableView<?> list = switch (tab) {
+            case 0 -> this.transfers.uploads();
+            case 1 -> this.transfers.queue();
+            case 2 -> this.transfers.sources();
+            default -> this.transfers.bans();
+        };
+        FxTesting.await("the list below " + tab, () -> FxTesting.cellTexts(list).containsAll(List.of(texts)));
+    }
+
+    private void givenTheSourcesShow(String... texts) throws Exception {
+        assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(this.transfers.sources())))
+                .contains(texts);
+    }
+
+    private void givenTheSourcesShowAfterScrollingTo(int row, String text) throws Exception {
+        FxTesting.onFx(() -> this.transfers.sources().scrollTo(row));
+        FxTesting.await(
+                "the last source",
+                () -> FxTesting.cellTexts(this.transfers.sources()).contains(text));
+    }
+
+    private void givenTheFirstBanLifted() throws Exception {
+        FxTesting.onFx(() -> {
+            this.transfers.bans().getSelectionModel().select(0);
+            this.transfers.bans().getContextMenu().getItems().getFirst().fire();
+        });
+    }
+
+    private void givenTheEngineAskedTo(String... asked) throws Exception {
+        thenTheEngineIsAskedTo(asked);
+    }
+
+    private void givenTheSharedFilesViewedWithNoClientChosen() throws Exception {
+        FxTesting.onFx(() -> {
+            ContextMenu menu = this.transfers.uploads().getContextMenu();
+            MenuItem view = menu.getItems().getFirst();
+            this.transfers.uploads().getSelectionModel().clearSelection();
+            menu.getOnShowing().handle(null);
+            assertThat(view.isDisable()).isTrue();
+            view.fire();
+        });
+    }
+
+    private void givenTheSharedFilesOfTheFirstUploadViewed() throws Exception {
+        FxTesting.onFx(() -> {
+            ContextMenu menu = this.transfers.uploads().getContextMenu();
+            MenuItem view = menu.getItems().getFirst();
+            this.transfers.uploads().getSelectionModel().select(0);
+            menu.getOnShowing().handle(null);
+            assertThat(view.isDisable()).isFalse();
+            view.fire();
+        });
+    }
+
+    private void givenAWindowShows(String title) throws Exception {
+        thenAWindowShows(title);
+    }
+
+    private void givenTheCallsInclude(String call) {
+        assertThat(this.calls).contains(call);
+    }
+
+    private void givenTheWindowClosed(String title) throws Exception {
+        FxTesting.onFx(() -> window(title).hide());
+    }
+
+    private void givenTheCategories(Category... categories) throws Exception {
+        FxTesting.onFx(() -> this.test.gui.model().setCategories(List.of(categories), () -> {}));
+    }
+
+    private void givenTheCategoriesKnown(int count) throws Exception {
+        FxTesting.await("the category", () -> this.test.gui.model().categories().size() == count);
+    }
+
+    private void givenTheLinkAdded() throws Exception {
+        FxTesting.onFx(() -> {
+            this.transfers.linkField().setText(LINK);
+            this.transfers.addLink();
+        });
+    }
+
+    private void givenTheDownloadRowsAre(int count) throws Exception {
+        FxTesting.await(
+                "the download row", () -> this.transfers.downloads().getItems().size() == count);
+    }
+
+    private void givenADownloadFromTheLink() throws Exception {
+        givenTheLinkAdded();
+        givenTheDownloadRowsAre(1);
+    }
+
+    private void givenTheMenuOfTheFirstDownloadShown() throws Exception {
+        FxTesting.onFx(() -> {
+            this.transfers.downloads().getSelectionModel().select(0);
+            downloadMenu().getOnShowing().handle(null);
+        });
+    }
+
+    private void givenTheCategoriesOfTheMenuAre(String... names) throws Exception {
+        FxTesting.onFx(() -> {
+            Menu category = (Menu) item(downloadMenu(), "IDS_CAT");
+            assertThat(category.getItems()).extracting(MenuItem::getText).containsExactly(names);
+        });
+    }
+
+    private void givenTheCategoryOfTheMenuChosen(String name) throws Exception {
+        FxTesting.onFx(() -> ((Menu) item(downloadMenu(), "IDS_CAT"))
+                .getItems().stream()
+                        .filter(i -> name.equals(i.getText()))
+                        .findFirst()
+                        .orElseThrow()
+                        .fire());
+    }
+
+    private void givenTheFirstDownloadInTheCategory(int category) throws Exception {
+        FxTesting.await("in the category", () -> first(this.transfers).category() == category);
+    }
+
+    private void givenThePreviewPartsFirstChosen() throws Exception {
+        FxTesting.onFx(() -> {
+            CheckMenuItem first = (CheckMenuItem) item(downloadMenu(), "IDS_DOWNLOADMOVIECHUNKS");
+            assertThat(first.isSelected()).isFalse();
+            first.setSelected(true);
+            first.fire();
+        });
+    }
+
+    private void givenTheFirstDownloadWithPreviewPartsFirst() throws Exception {
+        FxTesting.await("preview parts first", () -> first(this.transfers).previewFirst());
+    }
+
+    private void givenThePreviewPartsFirstCheckedWhenTheMenuShowsAgain() throws Exception {
+        FxTesting.onFx(() -> {
+            downloadMenu().getOnShowing().handle(null);
+            assertThat(((CheckMenuItem) item(downloadMenu(), "IDS_DOWNLOADMOVIECHUNKS")).isSelected())
+                    .isTrue();
+        });
+    }
+
+    private void givenThePriorityChosen(String priority) throws Exception {
+        FxTesting.onFx(() -> ((Menu) item(downloadMenu(), "IDS_PRIORITY"))
+                .getItems().stream()
+                        .filter(i -> i.getText().equals(priority))
+                        .findFirst()
+                        .orElseThrow()
+                        .fire());
+    }
+
+    private void givenTheFirstDownloadWithPriority(DownloadPriority priority) throws Exception {
+        FxTesting.await("the priority", () -> first(this.transfers).priority() == priority);
+    }
+
+    private void givenTheItemOfTheMenuChosen(String key) throws Exception {
+        FxTesting.onFx(() -> item(downloadMenu(), key).fire());
+    }
+
+    private void givenTheFirstDownloadIs(DownloadInfo.Status status) throws Exception {
+        FxTesting.await("the status", () -> first(this.transfers).status() == status);
+    }
+
+    private void givenTheLinkCopied(String key, String start) throws Exception {
+        String copied = FxTesting.onFx(() -> {
+            item(downloadMenu(), key).fire();
+            return Clipboard.getSystemClipboard().getString();
+        });
+        assertThat(copied).startsWith(start);
+    }
+
+    private void givenTheDownloadsLeftAfterTheClear(int count) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.transfers.downloads().getItems().size()))
+                .as("only finished downloads are cleared")
+                .isEqualTo(count);
+    }
+
+    private void givenTheCancelOfTheMenuAnswered(ButtonBar.ButtonData answer) throws Exception {
+        FxTesting.onFx(() -> {
+            FxTesting.answer(answer);
+            item(downloadMenu(), "IDS_CANCEL").fire();
+        });
+    }
+
+    private void givenTheEngineDownloads(int count) throws Exception {
+        assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS)).hasSize(count);
+    }
+
+    private void givenTheCancelOfTheChosenAnswered(ButtonBar.ButtonData answer) throws Exception {
+        FxTesting.onFx(() -> {
+            FxTesting.answer(answer);
+            this.transfers.cancelSelected();
+        });
+    }
+
+    private void givenNoDownloadLeft() throws Exception {
+        FxTesting.await("cancelled", () -> this.transfers.downloads().getItems().isEmpty());
+    }
+
+    private void givenASourceAddedWithNoDownloadChosen() throws Exception {
+        FxTesting.onFx(this.transfers::addSourceToSelected);
+    }
+
+    private void givenTheFirstDownloadChosen() throws Exception {
+        FxTesting.onFx(() -> this.transfers.downloads().getSelectionModel().select(0));
+    }
+
+    private void givenASourceTyped(String address) throws Exception {
+        FxTesting.onFx(() -> {
+            FxTesting.answer(ButtonType.OK, pane -> type(pane, address));
+            this.transfers.addSourceToSelected();
+        });
+    }
+
+    private void givenTheUserToldAlready(String message) {
+        assertThat(this.test.told).contains(message);
+    }
+
+    private void givenTheUserTold(String... messages) throws Exception {
+        thenTheUserIsTold(messages);
+    }
+
+    private void givenTheSourcesRefusedByTheEngine() {
+        this.sourceTaken.set(false);
+    }
+
+    private void givenTheSourceDialogCancelled() throws Exception {
+        FxTesting.onFx(() -> {
+            FxTesting.answer(ButtonType.CANCEL);
+            this.transfers.addSourceToSelected();
+        });
+    }
+
+    private void givenTheCallsAre(String... calls) {
+        assertThat(this.calls).containsExactly(calls);
+    }
+
+    private void givenAPreviewAskedWithNoDownloadChosen() throws Exception {
+        FxTesting.onFx(this.transfers::previewSelected);
+    }
+
+    private void givenTheUserToldExactly(String... messages) {
+        assertThat(this.test.told).containsExactly(messages);
+    }
+
+    private void givenTheVideoPlayer(String name, String args) throws Exception {
+        Path player = this.dir.resolve(name);
+        Preferences prefs = this.test
+                .engine
+                .updatePreferences(p -> p.toBuilder()
+                        .videoPlayer(player.toString())
+                        .videoPlayerArgs(args)
+                        .build())
+                .get(10, TimeUnit.SECONDS);
+        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.PreferencesChanged(prefs)));
+    }
+
+    private void givenTheDownloads(DownloadInfo... downloads) {
+        this.downloads.set(List.of(downloads));
+    }
+
+    private void givenTheDownloadsRead() throws Exception {
+        FxTesting.onFx(this.test.model::tick);
+    }
+
+    private void givenTheDownloadsShow(String... texts) throws Exception {
+        FxTesting.await(
+                "the states",
+                () -> FxTesting.cellTexts(this.transfers.downloads()).containsAll(List.of(texts)));
+    }
+
+    private void givenTheDownloadsSortedByPriorityDescending() throws Exception {
+        FxTesting.onFx(() -> {
+            TableColumn<LiveList.Row<DownloadInfo>, ?> priority = this.transfers.downloads().getColumns().stream()
+                    .filter(c -> "Priority".equals(c.getText()))
+                    .findFirst()
+                    .orElseThrow();
+            priority.setSortType(TableColumn.SortType.DESCENDING);
+            this.transfers.downloads().getSortOrder().setAll(List.of(priority));
+        });
+    }
+
+    private void givenTheDownloadsEndWith(String... names) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.transfers.downloads().getItems().stream()
+                        .map(r -> r.get().name())
+                        .toList()))
+                .endsWith(names);
+    }
+
+    private void givenTheCategoryButtons(int count) throws Exception {
+        FxTesting.await(
+                "the category buttons", () -> categoryButtons(this.transfers).size() == count);
+    }
+
+    private void givenTheCategoryButtonPressed(int index) throws Exception {
+        FxTesting.onFx(() -> categoryButtons(this.transfers).get(index).fire());
+    }
+
+    private void givenTheDownloadsShownAre(int count) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.transfers.downloads().getItems().size()))
+                .isEqualTo(count);
+    }
+
+    private void givenTheChosenCategoryButtonClickedAgain(int index) throws Exception {
+        FxTesting.onFx(() -> {
+            ToggleButton button = categoryButtons(this.transfers).get(index);
+            button.setSelected(false);
+            assertThat(button.isSelected()).as("still chosen").isTrue();
+        });
+    }
+
+    private void givenTheFirstCategoryShown() throws Exception {
+        FxTesting.onFx(() -> this.transfers.showCategory(
+                this.test.gui.model().categories().getFirst().id()));
+    }
+
+    private void givenACategoryAddedAfterTheFirst(Category category) throws Exception {
+        FxTesting.onFx(() -> this.test
+                .gui
+                .model()
+                .setCategories(List.of(this.test.gui.model().categories().getFirst(), category), () -> {}));
+    }
+
+    private void givenTheCategoryButtonChosen(int index) throws Exception {
+        assertThat(FxTesting.onFx(
+                        () -> categoryButtons(this.transfers).get(index).isSelected()))
+                .isTrue();
+    }
+
+    private void givenTheCategoryShown(int id) throws Exception {
+        FxTesting.onFx(() -> this.transfers.showCategory(id));
+    }
+
+    private void whenTheSharedFilesOfTheFirstSourceAreViewed() throws Exception {
+        FxTesting.onFx(() -> {
+            this.transfers.sources().getSelectionModel().select(0);
+            this.transfers.sources().getContextMenu().getItems().getFirst().fire();
+        });
+    }
+
+    private void whenTheChosenAreCancelledAgain() {
+        this.exception = catchThrowable(() -> FxTesting.onFx(this.transfers::cancelSelected));
+    }
+
+    private void whenTheCategoriesButtonIsPressed() throws Exception {
+        FxTesting.onFx(() -> this.transfers.view().lookupAll(".button").stream()
+                .filter(n -> n instanceof Button b && "Categories".equals(b.getAccessibleText()))
+                .map(Button.class::cast)
+                .findFirst()
+                .orElseThrow()
+                .fire());
+    }
+
+    private void whenAPreviewOfTheChosenIsAsked() throws Exception {
+        FxTesting.onFx(this.transfers::previewSelected);
+    }
+
+    private void whenTheCategoriesAreRemoved() throws Exception {
+        FxTesting.onFx(() -> this.test.gui.model().setCategories(List.of(), () -> {}));
     }
 
     private void whenEveryA4afItemOfTheDownloadMenuIsUsed() throws Exception {
@@ -375,6 +711,27 @@ class TransfersMenusTest {
         });
     }
 
+    private void thenAWindowShows(String title) throws Exception {
+        FxTesting.await("the window " + title, () -> window(title) != null);
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
+    }
+
+    private void thenTheUserIsToldTimes(int count) throws Exception {
+        FxTesting.await("told", () -> this.test.told.size() == count);
+    }
+
+    private void thenNothingIsAt(String name) {
+        assertThat(Files.exists(this.dir.resolve(name))).isFalse();
+    }
+
+    private void thenAllTheDownloadsShowAgain(int count) throws Exception {
+        FxTesting.await(
+                "all shown again", () -> this.transfers.downloads().getItems().size() == count);
+    }
+
     // The row of the source asked for another file, -1 while there is none.
     private int a4afRow() {
         List<LiveList.Row<SourceInfo>> rows = this.transfers.sources().getItems();
@@ -384,115 +741,6 @@ class TransfersMenusTest {
             }
         }
         return -1;
-    }
-
-    @Test
-    void aPreviewNeedsAPlayerAndTellsWhyItCannotStart() throws Exception {
-        TransfersScreen screen = screen();
-        FxTesting.onFx(() -> {
-            screen.linkField().setText(LINK);
-            screen.addLink();
-            screen.previewSelected();
-        });
-        FxTesting.await("the download row", () -> screen.downloads().getItems().size() == 1);
-        FxTesting.onFx(() -> {
-            screen.downloads().getSelectionModel().select(0);
-            item(screen.downloads().getContextMenu(), "IDS_DL_PREVIEW").fire();
-        });
-        assertThat(this.test.told).containsExactly("Choose a video player in the settings first");
-
-        // A player that is not there: nothing starts, the user learns why.
-        Path player = this.dir.resolve("no such player");
-        Preferences prefs = this.test
-                .engine
-                .updatePreferences(p -> p.toBuilder()
-                        .videoPlayer(player.toString())
-                        .videoPlayerArgs("--fullscreen")
-                        .build())
-                .get(10, TimeUnit.SECONDS);
-        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.PreferencesChanged(prefs)));
-        FxTesting.onFx(screen::previewSelected);
-        FxTesting.await("told", () -> this.test.told.size() == 2);
-        assertThat(Files.exists(player)).isFalse();
-    }
-
-    @Test
-    void eachDownloadShowsItsStateAndPriority() throws Exception {
-        this.downloads.set(List.of(
-                download("00000000000000000000000000000001", "paused.bin", DownloadInfo.Status.PAUSED, 5),
-                download("00000000000000000000000000000002", "stopped.bin", DownloadInfo.Status.STOPPED, 50),
-                download("00000000000000000000000000000003", "full.bin", DownloadInfo.Status.NO_SPACE, 500),
-                download("00000000000000000000000000000004", "broken.bin", DownloadInfo.Status.ERROR, 0)));
-        TransfersScreen screen = screen();
-        FxTesting.onFx(this.test.model::tick);
-
-        FxTesting.await(
-                "the states",
-                () -> FxTesting.cellTexts(screen.downloads())
-                        .containsAll(List.of(
-                                "Paused",
-                                "Stopped",
-                                "Insufficient disk space",
-                                "Erroneous",
-                                "Auto [Hi]",
-                                "Auto [No]",
-                                "Auto [Lo]",
-                                "?")));
-
-        // Sorted by priority, as each download acts: the rarest first.
-        FxTesting.onFx(() -> {
-            TableColumn<LiveList.Row<DownloadInfo>, ?> priority = screen.downloads().getColumns().stream()
-                    .filter(c -> "Priority".equals(c.getText()))
-                    .findFirst()
-                    .orElseThrow();
-            priority.setSortType(TableColumn.SortType.DESCENDING);
-            screen.downloads().getSortOrder().setAll(List.of(priority));
-        });
-        assertThat(FxTesting.onFx(() -> screen.downloads().getItems().stream()
-                        .map(r -> r.get().name())
-                        .toList()))
-                .endsWith("stopped.bin", "full.bin");
-
-        // The bar of the categories: All, then one button each; a click on the chosen one keeps it chosen.
-        FxTesting.onFx(() -> this.test
-                .gui
-                .model()
-                .setCategories(
-                        List.of(new Category(
-                                3, "Music", Optional.empty(), "", 2, DownloadPriority.AUTO, "*.mp3", false)),
-                        () -> {}));
-        FxTesting.await("the category button", () -> categoryButtons(screen).size() == 2);
-        FxTesting.onFx(() -> {
-            ToggleButton music = categoryButtons(screen).get(1);
-            music.fire();
-            assertThat(screen.downloads().getItems()).isEmpty();
-            music.setSelected(false);
-            assertThat(music.isSelected()).as("still chosen").isTrue();
-            categoryButtons(screen).getFirst().fire();
-        });
-        assertThat(FxTesting.onFx(() -> screen.downloads().getItems().size())).isEqualTo(4);
-
-        // The category shown stays chosen when the categories change.
-        int music = FxTesting.onFx(
-                () -> this.test.gui.model().categories().getFirst().id());
-        FxTesting.onFx(() -> {
-            screen.showCategory(music);
-            this.test
-                    .gui
-                    .model()
-                    .setCategories(
-                            List.of(
-                                    this.test.gui.model().categories().getFirst(),
-                                    new Category(
-                                            4, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "", false)),
-                            () -> {});
-        });
-        FxTesting.await("two category buttons", () -> categoryButtons(screen).size() == 3);
-        assertThat(FxTesting.onFx(() -> categoryButtons(screen).get(1).isSelected()))
-                .isTrue();
-        FxTesting.onFx(() -> screen.showCategory(3));
-        FxTesting.onFx(() -> this.test.gui.model().setCategories(List.of(), () -> {}));
-        FxTesting.await("all shown again", () -> screen.downloads().getItems().size() == 4);
     }
 
     private TransfersScreen screen() throws Exception {
@@ -620,6 +868,10 @@ class TransfersMenusTest {
                 .filter(w -> w instanceof Stage s && title.equals(s.getTitle()) && s.isShowing())
                 .findFirst()
                 .orElse(null);
+    }
+
+    private ContextMenu downloadMenu() {
+        return this.transfers.downloads().getContextMenu();
     }
 
     private MenuItem item(ContextMenu menu, String key) {

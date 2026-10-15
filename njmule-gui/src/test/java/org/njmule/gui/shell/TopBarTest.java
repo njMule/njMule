@@ -55,45 +55,53 @@ class TopBarTest {
     }
 
     @Test
-    void connectTakesTheAccentOnlyWhileThereIsNoConnection() throws Exception {
+    void shouldGiveConnectTheAccentOnlyWhileThereIsNoConnection() throws Exception {
         givenTheWindow();
-        thenConnectIsTheAccent(true);
+        givenConnectIsTheAccent(true);
+
         whenTheServerIsTried();
+
         thenConnectIsTheAccent(false);
     }
 
     @Test
-    void theChipsOpenTheNetworkWhereTheyTell() throws Exception {
+    void shouldOpenTheNetworkWhereTheChipsTell() throws Exception {
         givenTheWindow();
-        whenClicked(this.window.kadChip());
-        thenTheScreenIs("kad");
-        whenClicked(this.window.ed2kChip());
+        givenTheChipClicked("kad");
+        givenTheScreenIs("kad");
+
+        whenTheChipIsClicked("ed2k");
+
         thenTheScreenIs("servers");
     }
 
     @Test
-    void theLastLineOfTheLogOpensTheLog() throws Exception {
+    void shouldOpenTheLogFromItsLastLine() throws Exception {
         givenTheWindow();
-        whenClicked(lastLog());
+
+        whenTheLastLineOfTheLogIsClicked();
+
         thenTheScreenIs("servers");
         thenTheLogIsInFront();
     }
 
     @Test
-    void theToolsOpenTheIncomingFolderAndTheOptions() throws Exception {
+    void shouldOpenTheIncomingFolderAndTheOptionsFromTheTools() throws Exception {
         givenTheWindow();
-        thenTheToolsAre("incoming", "options", "wizard", null, "import", "shortcuts", "about");
+        givenTheToolsAre("incoming", "options", "wizard", null, "import", "shortcuts", "about");
+
         whenTheToolIsChosen("options");
+
         thenTheScreenIs("settings");
     }
 
     @Test
-    void theRatesOpenTheLimitsAsTheyAre() throws Exception {
+    void shouldOpenTheLimitsAsTheyAreFromTheRates() throws Exception {
         givenTheWindow();
+
         whenTheRatesArePressed();
-        thenTheLimitsShow(
-                this.test.engine.preferences().maxDownloadKiBps(),
-                this.test.engine.preferences().maxUploadKiBps());
+
+        thenTheLimitsOfThePreferencesShow();
     }
 
     private void givenTheWindow() throws Exception {
@@ -102,54 +110,37 @@ class TopBarTest {
         this.test.show(this.window.root());
     }
 
+    private void givenConnectIsTheAccent(boolean accent) throws Exception {
+        thenConnectIsTheAccent(accent);
+    }
+
+    private void givenTheChipClicked(String network) throws Exception {
+        click(chip(network));
+    }
+
+    private void givenTheScreenIs(String id) throws Exception {
+        thenTheScreenIs(id);
+    }
+
+    private void givenTheToolsAre(String... ids) throws Exception {
+        assertThat(FxTesting.onFx(() -> tools().stream().map(MenuItem::getId).toList()))
+                .containsExactly(ids);
+    }
+
     private void whenTheRatesArePressed() throws Exception {
         FxTesting.onFx(() -> ((javafx.scene.control.Button) this.window.root().lookup("#rates")).fire());
-    }
-
-    private void thenTheLimitsShow(int down, int up) throws Exception {
-        FxTesting.await(
-                "the limits",
-                () -> javafx.stage.Window.getWindows().stream()
-                        .filter(w -> w instanceof javafx.stage.PopupWindow && w.isShowing() && w.getScene() != null)
-                        .anyMatch(w -> w.getScene().getRoot().lookup(".tray-speeds") != null));
-        List<String> values = FxTesting.onFx(() -> javafx.stage.Window.getWindows().stream()
-                .filter(w -> w instanceof javafx.stage.PopupWindow && w.isShowing() && w.getScene() != null)
-                .flatMap(w -> w.getScene().getRoot().lookupAll(".tray-speeds .speed-value").stream())
-                .map(n -> ((javafx.scene.control.Label) n).getText())
-                .toList());
-        assertThat(values).containsExactly(limit(down), limit(up));
-    }
-
-    private String limit(int kib) {
-        return kib == 0
-                ? this.test.gui.t("nj.rate.noLimit")
-                : this.test.gui.formats().rate(kib * 1024L);
     }
 
     private void whenTheServerIsTried() throws Exception {
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServerConnecting(SERVER)));
     }
 
-    private void whenClicked(Label label) throws Exception {
-        FxTesting.onFx(() -> label.fireEvent(new MouseEvent(
-                MouseEvent.MOUSE_CLICKED,
-                1,
-                1,
-                1,
-                1,
-                MouseButton.PRIMARY,
-                1,
-                false,
-                false,
-                false,
-                false,
-                true,
-                false,
-                false,
-                true,
-                false,
-                false,
-                null)));
+    private void whenTheChipIsClicked(String network) throws Exception {
+        click(chip(network));
+    }
+
+    private void whenTheLastLineOfTheLogIsClicked() throws Exception {
+        click(lastLog());
     }
 
     private void whenTheToolIsChosen(String id) throws Exception {
@@ -180,13 +171,60 @@ class TopBarTest {
                         .anyMatch(tab -> tab != null && log.equals(tab.getText())));
     }
 
-    private void thenTheToolsAre(String... ids) throws Exception {
-        assertThat(FxTesting.onFx(() -> tools().stream().map(MenuItem::getId).toList()))
-                .containsExactly(ids);
+    private void thenTheLimitsOfThePreferencesShow() throws Exception {
+        thenTheLimitsShow(
+                this.test.engine.preferences().maxDownloadKiBps(),
+                this.test.engine.preferences().maxUploadKiBps());
+    }
+
+    private void thenTheLimitsShow(int down, int up) throws Exception {
+        FxTesting.await(
+                "the limits",
+                () -> javafx.stage.Window.getWindows().stream()
+                        .filter(w -> w instanceof javafx.stage.PopupWindow && w.isShowing() && w.getScene() != null)
+                        .anyMatch(w -> w.getScene().getRoot().lookup(".tray-speeds") != null));
+        List<String> values = FxTesting.onFx(() -> javafx.stage.Window.getWindows().stream()
+                .filter(w -> w instanceof javafx.stage.PopupWindow && w.isShowing() && w.getScene() != null)
+                .flatMap(w -> w.getScene().getRoot().lookupAll(".tray-speeds .speed-value").stream())
+                .map(n -> ((javafx.scene.control.Label) n).getText())
+                .toList());
+        assertThat(values).containsExactly(limit(down), limit(up));
+    }
+
+    private String limit(int kib) {
+        return kib == 0
+                ? this.test.gui.t("nj.rate.noLimit")
+                : this.test.gui.formats().rate(kib * 1024L);
+    }
+
+    private void click(Label label) throws Exception {
+        FxTesting.onFx(() -> label.fireEvent(new MouseEvent(
+                MouseEvent.MOUSE_CLICKED,
+                1,
+                1,
+                1,
+                1,
+                MouseButton.PRIMARY,
+                1,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                true,
+                false,
+                false,
+                null)));
     }
 
     private List<MenuItem> tools() {
         return ((MenuButton) this.window.root().lookup(".top-bar .menu-button")).getItems();
+    }
+
+    private Label chip(String network) {
+        return "kad".equals(network) ? this.window.kadChip() : this.window.ed2kChip();
     }
 
     private Label lastLog() throws Exception {

@@ -59,43 +59,86 @@ class NavigationTest {
     }
 
     @Test
-    void theRailPutsTheEverydayPlacesFirstAndTheOptionsLast() throws Exception {
-        givenTheWindow();
+    void shouldPutTheEverydayPlacesFirstInTheRailAndTheOptionsLast() throws Exception {
+        givenTheEngine();
+
+        whenTheWindowShows();
+
         thenTheRailReads("Transfers", "Search", "Shared Files", "Messages", "Network", "Statistics", "Options");
     }
 
     @Test
-    void theNetworkHoldsTheServersAndKadAndRemembersTheLastOne() throws Exception {
+    void shouldHoldTheServersAndKadInTheNetworkAndRememberTheLastOne() throws Exception {
         givenTheWindow();
-        whenTheRailOpens("Network");
-        thenTheScreenIs("servers");
-        whenTheNetworkSwitchesTo("kad");
-        thenTheScreenIs("kad");
-        thenTheRailShows("Network");
-        whenTheRailOpens("Transfers");
+        givenTheRailOpened("Network");
+        givenTheScreenIs("servers");
+        givenTheNetworkSwitchedTo("kad");
+        givenTheScreenIs("kad");
+        givenTheRailShows("Network");
+        givenTheRailOpened("Transfers");
+
         whenTheShortcutIsPressed(KeyCode.DIGIT5);
+
         thenTheScreenIs("kad");
     }
 
     @Test
-    void theMessagesPlaceCountsWhatCameWhileItDidNotShow() throws Exception {
+    void shouldCountTheMessagesThatCameWhileTheirPlaceDidNotShow() throws Exception {
         givenTheWindow();
-        whenMessagesArrive(2);
-        thenTheBadgeOf("Messages", "2");
+        givenMessagesArrived(2);
+        givenTheBadgeOf("Messages", "2");
+
         whenTheRailOpens("Messages");
+
         thenTheBadgeOf("Messages", null);
     }
 
     @Test
-    void theTransfersPlaceCountsTheRunningDownloads() throws Exception {
+    void shouldCountTheRunningDownloadsOnTheTransfersPlace() throws Exception {
         givenTheWindowWithDownloads(
                 DownloadInfo.Status.DOWNLOADING, DownloadInfo.Status.DOWNLOADING, DownloadInfo.Status.PAUSED);
+
+        whenTheDownloadsAreRead(3);
+
         thenTheBadgeOf("Transfers", "2");
+    }
+
+    private void givenTheEngine() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
     }
 
     private void givenTheWindow() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         show();
+    }
+
+    private void givenTheRailOpened(String title) throws Exception {
+        whenTheRailOpens(title);
+    }
+
+    private void givenTheScreenIs(String id) throws Exception {
+        thenTheScreenIs(id);
+    }
+
+    private void givenTheNetworkSwitchedTo(String part) throws Exception {
+        FxTesting.onFx(() -> ((ToggleButton) this.window.root().lookup("#network-" + part)).fire());
+    }
+
+    private void givenTheRailShows(String title) throws Exception {
+        assertThat(FxTesting.onFx(() -> rail(title).isSelected())).isTrue();
+    }
+
+    private void givenMessagesArrived(int count) throws Exception {
+        FxTesting.onFx(() -> {
+            for (int i = 0; i < count; i++) {
+                this.test.model.handle(
+                        new EngineEvent.MessageReceived("10.0.0.1:4662", PEER, Optional.of("Bob"), "hi " + i));
+            }
+        });
+    }
+
+    private void givenTheBadgeOf(String title, String count) throws Exception {
+        thenTheBadgeOf(title, count);
     }
 
     private void givenTheWindowWithDownloads(DownloadInfo.Status... statuses) throws Exception {
@@ -120,35 +163,24 @@ class NavigationTest {
                 Map.of("downloads", a -> CompletableFuture.completedFuture(List.copyOf(downloads)));
         this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, commands));
         show();
-        FxTesting.onFx(this.test.model::tick);
-        FxTesting.await(
-                "the downloads", () -> this.test.model.downloads().rows().size() == statuses.length);
     }
 
-    private void show() throws Exception {
-        this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
-        this.test.show(this.window.root());
+    private void whenTheWindowShows() throws Exception {
+        show();
     }
 
     private void whenTheRailOpens(String title) throws Exception {
         FxTesting.onFx(() -> rail(title).fire());
     }
 
-    private void whenTheNetworkSwitchesTo(String part) throws Exception {
-        FxTesting.onFx(() -> ((ToggleButton) this.window.root().lookup("#network-" + part)).fire());
-    }
-
     private void whenTheShortcutIsPressed(KeyCode digit) throws Exception {
         FxTesting.onFx(() -> this.window.root().fireEvent(FxTesting.key(digit, true)));
     }
 
-    private void whenMessagesArrive(int count) throws Exception {
-        FxTesting.onFx(() -> {
-            for (int i = 0; i < count; i++) {
-                this.test.model.handle(
-                        new EngineEvent.MessageReceived("10.0.0.1:4662", PEER, Optional.of("Bob"), "hi " + i));
-            }
-        });
+    private void whenTheDownloadsAreRead(int count) throws Exception {
+        FxTesting.onFx(this.test.model::tick);
+        FxTesting.await(
+                "the downloads", () -> this.test.model.downloads().rows().size() == count);
     }
 
     private void thenTheRailReads(String... titles) throws Exception {
@@ -162,10 +194,6 @@ class NavigationTest {
         assertThat(FxTesting.onFx(this.window::current)).isEqualTo(id);
     }
 
-    private void thenTheRailShows(String title) throws Exception {
-        assertThat(FxTesting.onFx(() -> rail(title).isSelected())).isTrue();
-    }
-
     private void thenTheBadgeOf(String title, String count) throws Exception {
         Optional<String> shown = FxTesting.onFx(() -> {
             Node badge = rail(title).getGraphic().lookup(".rail-badge");
@@ -175,6 +203,11 @@ class NavigationTest {
         if (count != null) {
             assertThat(FxTesting.onFx(() -> rail(title).getAccessibleHelp())).endsWith(count);
         }
+    }
+
+    private void show() throws Exception {
+        this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
+        this.test.show(this.window.root());
     }
 
     private ToggleButton rail(String title) {

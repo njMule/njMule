@@ -49,6 +49,8 @@ class TransfersScreenTest {
     Path dir;
 
     private TestGui test;
+    private TransfersScreen screen;
+    private ContextMenu menu;
 
     @AfterEach
     void close() {
@@ -58,47 +60,76 @@ class TransfersScreenTest {
     }
 
     @Test
-    void aCompletedDownloadOffersNoPreviewNorSource() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        TransfersScreen screen = new TransfersScreen(this.test.gui);
-        this.test.show(FxTesting.onFx(screen::view));
-        DownloadInfo done = new DownloadInfo(
-                FILE,
-                "film.mkv",
-                1000,
-                1000,
-                DownloadInfo.Status.COMPLETE,
-                DownloadPriority.AUTO,
-                0,
-                0,
-                0,
-                0,
-                PartMap.EMPTY);
-        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.DownloadCompleted(done, this.dir.resolve("f"))));
-        FxTesting.await("the download row", () -> screen.downloads().getItems().size() == 1);
+    void shouldOfferNeitherPreviewNorSourceForACompletedDownload() throws Exception {
+        givenTheEngine();
+        givenTheScreen();
+        givenACompletedDownload();
 
-        FxTesting.onFx(() -> {
-            screen.downloads().getSelectionModel().select(0);
-            ContextMenu menu = screen.downloads().getContextMenu();
-            menu.getOnShowing().handle(null);
-            assertThat(item(menu, "IDS_DL_PREVIEW").isDisable()).as("preview").isTrue();
-            assertThat(item(menu, "IDS_ADDSRCMANUALLY").isDisable())
-                    .as("add a source")
-                    .isTrue();
-            assertThat(item(menu, "IDS_CMT_ADD").isDisable()).as("comments").isFalse();
-        });
+        whenTheMenuOfTheFirstDownloadShows();
+
+        thenTheItemIsOff("IDS_DL_PREVIEW", "preview");
+        thenTheItemIsOff("IDS_ADDSRCMANUALLY", "add a source");
+        thenTheItemIsOn("IDS_CMT_ADD", "comments");
     }
 
     @Test
-    void aPreviewBeforeTheStartOfTheFileCameSaysSo() throws Exception {
+    void shouldSaySoForAPreviewBeforeTheStartOfTheFileCame() throws Exception {
+        givenTheEngine();
+        givenTheVideoPlayer("player");
+        givenTheScreen();
+        givenAStartedDownload();
+
+        whenThePreviewOfTheFirstDownloadIsAsked();
+
+        thenTheUserIsTold("nj.preview.notYet");
+    }
+
+    @Test
+    void shouldShowTheProgressInTheLanguageOfTheInterface() throws Exception {
+        givenTheEngine();
+        givenTheScreenIn(Locale.ITALIAN);
+
+        whenADownloadCompletes();
+
+        thenALabelReads("100,0 %");
+    }
+
+    private void givenTheEngine() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
+    }
+
+    private void givenTheScreen() throws Exception {
+        show(new TransfersScreen(this.test.gui));
+    }
+
+    private void givenTheScreenIn(Locale language) throws Exception {
+        Gui gui = FxTesting.onFx(() -> new Gui(
+                I18n.of(language),
+                new Formats(language),
+                this.test.model,
+                this.test.gui.themes(),
+                this.test.gui.settings(),
+                this.test.gui.directories(),
+                this.test.told::add,
+                () -> {}));
+        show(new TransfersScreen(gui));
+    }
+
+    private void givenTheVideoPlayer(String player) throws Exception {
         Preferences prefs = this.test
                 .engine
-                .updatePreferences(p -> p.toBuilder().videoPlayer("player").build())
+                .updatePreferences(p -> p.toBuilder().videoPlayer(player).build())
                 .get(10, TimeUnit.SECONDS);
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.PreferencesChanged(prefs)));
-        TransfersScreen screen = new TransfersScreen(this.test.gui);
-        this.test.show(FxTesting.onFx(screen::view));
+    }
+
+    private void givenACompletedDownload() throws Exception {
+        whenADownloadCompletes();
+        FxTesting.await(
+                "the download row", () -> this.screen.downloads().getItems().size() == 1);
+    }
+
+    private void givenAStartedDownload() throws Exception {
         DownloadInfo started = new DownloadInfo(
                 FILE,
                 "film.mkv",
@@ -112,32 +143,11 @@ class TransfersScreenTest {
                 0,
                 PartMap.EMPTY);
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.DownloadAdded(started)));
-        FxTesting.await("the download row", () -> screen.downloads().getItems().size() == 1);
-
-        FxTesting.onFx(() -> {
-            screen.downloads().getSelectionModel().select(0);
-            screen.previewSelected();
-        });
-
-        String notYet = this.test.gui.t("nj.preview.notYet");
-        assertThat(notYet).isNotEqualTo("nj.preview.notYet");
-        FxTesting.await("told so", () -> this.test.told.contains(notYet));
+        FxTesting.await(
+                "the download row", () -> this.screen.downloads().getItems().size() == 1);
     }
 
-    @Test
-    void theProgressShowsInTheLanguageOfTheInterface() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        Gui italian = FxTesting.onFx(() -> new Gui(
-                I18n.of(Locale.ITALIAN),
-                new Formats(Locale.ITALIAN),
-                this.test.model,
-                this.test.gui.themes(),
-                this.test.gui.settings(),
-                this.test.gui.directories(),
-                this.test.told::add,
-                () -> {}));
-        TransfersScreen screen = new TransfersScreen(italian);
-        this.test.show(FxTesting.onFx(screen::view));
+    private void whenADownloadCompletes() throws Exception {
         DownloadInfo done = new DownloadInfo(
                 FILE,
                 "film.mkv",
@@ -150,13 +160,53 @@ class TransfersScreenTest {
                 0,
                 0,
                 PartMap.EMPTY);
-
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.DownloadCompleted(done, this.dir.resolve("f"))));
+    }
 
+    private void whenTheMenuOfTheFirstDownloadShows() throws Exception {
+        this.menu = FxTesting.onFx(() -> {
+            this.screen.downloads().getSelectionModel().select(0);
+            ContextMenu shown = this.screen.downloads().getContextMenu();
+            shown.getOnShowing().handle(null);
+            return shown;
+        });
+    }
+
+    private void whenThePreviewOfTheFirstDownloadIsAsked() throws Exception {
+        FxTesting.onFx(() -> {
+            this.screen.downloads().getSelectionModel().select(0);
+            this.screen.previewSelected();
+        });
+    }
+
+    private void thenTheItemIsOff(String key, String what) throws Exception {
+        assertThat(FxTesting.onFx(() -> item(this.menu, key).isDisable()))
+                .as(what)
+                .isTrue();
+    }
+
+    private void thenTheItemIsOn(String key, String what) throws Exception {
+        assertThat(FxTesting.onFx(() -> item(this.menu, key).isDisable()))
+                .as(what)
+                .isFalse();
+    }
+
+    private void thenTheUserIsTold(String key) throws Exception {
+        String text = this.test.gui.t(key);
+        assertThat(text).isNotEqualTo(key);
+        FxTesting.await("told so", () -> this.test.told.contains(text));
+    }
+
+    private void thenALabelReads(String text) throws Exception {
         FxTesting.await(
                 "the percentage",
-                () -> screen.downloads().lookupAll(".label").stream()
-                        .anyMatch(n -> n instanceof Label l && "100,0 %".equals(l.getText())));
+                () -> this.screen.downloads().lookupAll(".label").stream()
+                        .anyMatch(n -> n instanceof Label l && text.equals(l.getText())));
+    }
+
+    private void show(TransfersScreen shown) throws Exception {
+        this.screen = shown;
+        this.test.show(FxTesting.onFx(shown::view));
     }
 
     private MenuItem item(ContextMenu menu, String key) {
