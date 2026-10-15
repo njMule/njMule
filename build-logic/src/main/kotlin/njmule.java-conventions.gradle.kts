@@ -96,8 +96,8 @@ tasks.withType<Test>().configureEach {
         excludeTags(*excludedTags.toTypedArray())
         includeTags(*includedTags.toTypedArray())
     }
-    // Test classes spread over JVMs of their own: no static state is shared, and each test keeps to
-    // its temp folders and port 0.
+    // Test classes spread over a few JVMs, each running many classes one after the other: what a class
+    // leaves in static state, the next one finds, so tests and the engine take back what they set.
     maxParallelForks = testForks.getOrElse(4)
     // Gradle gives test JVMs 512 MiB unless told otherwise: within 1 GiB the window tests slow down to a
     // time-out.
