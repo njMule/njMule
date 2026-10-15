@@ -375,6 +375,9 @@ All notable changes to this project are documented here. The format follows
 - Kad tells its state in plain words with what to do about it, and the two ways to join it (a list
   of nodes from the web, or a client one knows) sit together, explained, in a section that is open
   while Kad is not connected.
+- The servers list takes the whole width: My Info moved to a tab beside the server messages and the
+  log, its sections side by side, and the ways to add servers (a server.met from the web, an
+  address, a server.met file) sit together in a section that is open while the list is empty.
 - The commands that act on the chosen downloads, shared files or search results are off while none
   is chosen, and More and Stop while no search is open.
 - Messages come in three kinds: news, successes (a finished download) and problems, which carry a

@@ -302,7 +302,7 @@ class ScreensTest {
         assertThat(FxTesting.onFx(() -> screen.connectButton().getText())).isEqualTo("Connect");
         assertThat(FxTesting.onFx(() -> screen.logTabs().getTabs()))
                 .extracting(t -> t.getText())
-                .containsExactly("Server Info", "Log");
+                .containsExactly("Server Info", "Log", "My Info");
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServerDisconnected(Optional.empty(), "test")));
         FxTesting.onFx(() -> {
             screen.table().getSelectionModel().clearSelection();

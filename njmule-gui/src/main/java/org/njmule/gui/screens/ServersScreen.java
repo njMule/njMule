@@ -52,6 +52,7 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.Toggle;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
@@ -60,6 +61,8 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
@@ -97,6 +100,9 @@ public final class ServersScreen implements Screen {
 
     private final Gui gui;
     private final MyInfoPane myInfo;
+    private final TitledPane add = new TitledPane();
+    private Tab logTab;
+    private boolean wasEmpty;
     private Node view;
     private TableView<LiveList.Row<ServerInfo>> table;
     private final TextField address = new TextField();
@@ -198,8 +204,7 @@ public final class ServersScreen implements Screen {
         this.addressInput = new Inputs(this.gui)
                 .address(this.address, this.gui.t("nj.servers.addConnect"))
                 .quietWhenEmpty();
-        Button connectTo =
-                Fx.primary(Fx.button(this.gui.t("nj.servers.addConnect"), Material2AL.ADD, this::connectToAddress));
+        Button connectTo = Fx.button(this.gui.t("nj.servers.addConnect"), Material2AL.ADD, this::connectToAddress);
         connectTo.disableProperty().bind(this.addressInput.validProperty().not());
         this.connectButton.setOnAction(e -> this.connectOrDisconnect());
         this.table.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> this.showConnect());
@@ -207,22 +212,26 @@ public final class ServersScreen implements Screen {
         this.gui.subscriptions().onChange(this.gui.model().serverAddressProperty(), (was, now) -> this.showCurrent());
         this.showConnect();
         var tools = Fx.toolRow(
-                this.connectButton,
-                Fx.button(this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeSelected),
-                Fx.spacer(),
-                this.address,
-                connectTo,
-                Fx.button(this.gui.t("nj.servers.addMet"), Material2AL.FOLDER_OPEN, this::chooseServerMet));
+                this.connectButton, Fx.button(this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeSelected));
+        this.add.setText(this.gui.t("nj.servers.add"));
+        this.add.getStyleClass().add(Styles.DENSE);
+        this.add.setContent(this.ways(connectTo));
+        // Open while there is no server to connect to, closed once there are some; in between, as the user leaves it.
+        this.add.setExpanded(this.table.getItems().isEmpty());
+        this.gui.subscriptions().onListChange(this.gui.model().servers().rows(), c -> {
+            boolean none = this.gui.model().servers().rows().isEmpty();
+            if (none != this.add.isExpanded() && none != this.wasEmpty) {
+                this.add.setExpanded(none);
+            }
+            this.wasEmpty = none;
+        });
+        this.wasEmpty = this.gui.model().servers().rows().isEmpty();
 
-        // The list with My Info beside it; the logs below.
-        Node info = this.myInfo.node();
-        SplitPane top = new SplitPane(this.listPane(), info);
-        top.setDividerPositions(0.78);
-        SplitPane.setResizableWithParent(info, false);
-        SplitPane split = new SplitPane(top, this.logs());
+        // The list, with the server's messages, the log and My Info below it.
+        SplitPane split = new SplitPane(this.listPane(), this.logs());
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.62);
-        VBox content = new VBox(8, this.listRow(), split);
+        VBox content = new VBox(8, this.add, split);
         VBox.setVgrow(split, Priority.ALWAYS);
         // Shown under the network, which gives the title.
         return Fx.part(tools, content);
@@ -249,7 +258,9 @@ public final class ServersScreen implements Screen {
                         this.gui.model().log(), c -> log.scrollTo(log.getItems().size() - 1));
         Tab infoTab = new Tab(this.gui.t("IDS_SV_SERVERINFO"), info);
         Tab logTab = new Tab(this.gui.t("IDS_SV_LOG"), log);
-        TabPane tabs = new TabPane(infoTab, logTab);
+        this.logTab = logTab;
+        Tab mine = new Tab(this.gui.t("IDS_MYINFO"), this.myInfo.node());
+        TabPane tabs = new TabPane(infoTab, logTab, mine);
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         this.logTabs = tabs;
         Button clear = Fx.button(this.gui.t("IDS_PW_RESET"), Material2AL.CLEAR_ALL, () -> {
@@ -260,6 +271,8 @@ public final class ServersScreen implements Screen {
             }
         });
         clear.getStyleClass().add("small");
+        // My Info has nothing to reset.
+        clear.visibleProperty().bind(mine.selectedProperty().not());
         StackPane pane = new StackPane(tabs, clear);
         StackPane.setAlignment(clear, Pos.TOP_RIGHT);
         return pane;
@@ -330,24 +343,38 @@ public final class ServersScreen implements Screen {
     /** Brings the log to the front, below the server list. */
     public void showLog() {
         this.view();
-        this.logTabs.getSelectionModel().selectLast();
+        this.logTabs.getSelectionModel().select(this.logTab);
     }
 
     Button connectButton() {
         return this.connectButton;
     }
 
-    // A server list from the web, from an address typed or used before.
-    private Node listRow() {
+    // The ways to add servers, together: a server list from the web (an address typed or used before), one server by
+    // its address, or a server.met file.
+    private Node ways(Button connectTo) {
         this.list = new UrlBox(this.gui, "serverMet", this.gui.t("IDS_SV_MET"));
         this.list.node().setPromptText("https://\u2026/server.met");
         this.list.node().getEditor().setOnAction(e -> this.updateFromUrl());
+        this.list.node().setMaxWidth(Double.MAX_VALUE);
         Button update = Fx.button(this.gui.t("IDS_SV_UPDATE"), Material2MZ.REFRESH, this::updateFromUrl);
         update.disableProperty().bind(this.list.input().validProperty().not());
-        HBox row = new HBox(8, new Label(this.gui.t("IDS_SV_MET")), this.list.node(), update);
-        row.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(this.list.node(), Priority.ALWAYS);
-        return row;
+        this.address.setMaxWidth(Double.MAX_VALUE);
+        GridPane ways = new GridPane(8, 8);
+        ways.addRow(0, Fx.whole(new Label(this.gui.t("IDS_SV_MET"))), this.list.node(), Fx.whole(update));
+        ways.addRow(1, Fx.whole(new Label(this.gui.t("IDS_SV_ADDRESS"))), this.address, Fx.whole(connectTo));
+        ways.add(
+                Fx.whole(Fx.button(this.gui.t("nj.servers.addMet"), Material2AL.FOLDER_OPEN, this::chooseServerMet)),
+                1,
+                2);
+        ColumnConstraints grows = new ColumnConstraints();
+        grows.setHgrow(Priority.ALWAYS);
+        ways.getColumnConstraints().addAll(new ColumnConstraints(), grows);
+        return ways;
+    }
+
+    TitledPane addPane() {
+        return this.add;
     }
 
     void updateFromUrl() {

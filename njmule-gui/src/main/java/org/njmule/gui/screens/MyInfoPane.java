@@ -25,14 +25,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import javafx.geometry.Insets;
-import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.njmule.core.api.EngineStatus;
@@ -57,8 +55,10 @@ final class MyInfoPane {
         }
     }
 
+    private static final double SECTION_WIDTH = 280;
+
     private final Gui gui;
-    private final VBox box = new VBox(2);
+    private final FlowPane box = new FlowPane(32, 12);
     private List<Line> shown = List.of();
     private WebUiSettings web = WebUiSettings.DEFAULTS;
     private String lanAddress = "";
@@ -67,24 +67,17 @@ final class MyInfoPane {
         this.gui = gui;
     }
 
+    // The sections side by side, wrapping as the width allows.
     Node node() {
-        this.box.setPadding(new Insets(4, 8, 4, 8));
+        this.box.setPadding(new Insets(8, 12, 8, 12));
         this.box.getStyleClass().add("my-info");
-        Label head = new Label(this.gui.t("IDS_MYINFO"));
-        head.getStyleClass().add(Styles.TEXT_BOLD);
         ScrollPane scroll = new ScrollPane(this.box);
         scroll.setFitToWidth(true);
-        HBox top = new HBox(head);
-        top.setAlignment(Pos.CENTER_LEFT);
-        top.setMinHeight(30);
-        VBox pane = new VBox(6, top, scroll);
-        VBox.setVgrow(scroll, Priority.ALWAYS);
-        pane.setMinWidth(220);
         this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> this.refresh());
         this.gui.subscriptions().onChange(this.gui.model().connectionProperty(), (was, now) -> this.refresh());
         this.readWebUi();
         this.refresh();
-        return pane;
+        return scroll;
     }
 
     /** The web interface settings can change in the settings screen: read again when the screen shows. */
@@ -107,12 +100,11 @@ final class MyInfoPane {
             if (line.title()) {
                 Label title = new Label(line.label());
                 title.getStyleClass().add(Styles.TEXT_BOLD);
-                if (!this.box.getChildren().isEmpty()) {
-                    VBox.setMargin(title, new Insets(8, 0, 0, 0));
-                }
                 grid = grid();
                 row = 0;
-                this.box.getChildren().addAll(title, grid);
+                VBox section = new VBox(4, title, grid);
+                section.setPrefWidth(SECTION_WIDTH);
+                this.box.getChildren().add(section);
             } else if (grid != null) {
                 // Addresses, numbers and names read in their own direction.
                 Label value = Fx.ownDirection(new Label(line.value()));
