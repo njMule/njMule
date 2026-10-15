@@ -653,10 +653,28 @@ public final class ServersScreen implements Screen {
             this.getStyleClass().removeAll("log-line", "debug", "info", "success", "warning", "error");
             if (empty || line == null) {
                 this.setText(null);
+                this.setGraphic(null);
                 return;
             }
             this.setText(this.formats.dateTime(line.time()) + ": " + line.message());
+            this.setGraphic(icon(line.level()));
             this.getStyleClass().addAll("log-line", line.level().name().toLowerCase(Locale.ROOT));
+        }
+
+        // Problems and successes carry an icon besides their colour; the other lines keep the same indent.
+        private static FontIcon icon(LogLine.Level level) {
+            FontIcon icon = new FontIcon(
+                    switch (level) {
+                        case ERROR -> Material2AL.ERROR_OUTLINE;
+                        case WARNING -> Material2MZ.WARNING;
+                        case SUCCESS -> Material2AL.CHECK_CIRCLE_OUTLINE;
+                        case INFO, DEBUG -> Material2AL.INFO;
+                    });
+            icon.getStyleClass().add("log-icon");
+            if (level == LogLine.Level.INFO || level == LogLine.Level.DEBUG) {
+                icon.getStyleClass().add("blank");
+            }
+            return icon;
         }
     }
 
