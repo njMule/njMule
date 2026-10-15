@@ -155,6 +155,22 @@ public final class UploadManager implements AutoCloseable {
     private static final int MIN_COMPRESSIBLE = 32;
     private static final Logger logger = LoggerFactory.getLogger(UploadManager.class);
     private static final int RATE_SECONDS = 5;
+    private static final FileCounts NO_COUNTS = new FileCounts() {
+        @Override
+        public void asked(Hash16 file) {
+            // Not counted.
+        }
+
+        @Override
+        public void accepted(Hash16 file) {
+            // Not counted.
+        }
+
+        @Override
+        public void sent(Hash16 file, long bytes) {
+            // Not counted.
+        }
+    };
     // A client not in the queue that asks over UDP is told the queue is full this close to its size.
     private static final int QUEUE_FULL_MARGIN = 50;
 
@@ -296,6 +312,7 @@ public final class UploadManager implements AutoCloseable {
     private ScheduledFuture<?> ticking;
     private long budget;
     private Function<Hash16, UploadPriority> priorities = hash -> UploadPriority.AUTO;
+    private FileCounts counts = NO_COUNTS;
     private long nextCreditsSave;
     private long nextSourcesPurge;
     private int turn;
@@ -408,6 +425,20 @@ public final class UploadManager implements AutoCloseable {
                 sent,
                 rate,
                 Math.max(0, now - client.waitStart) / 1_000_000_000L);
+    }
+
+    /** Where the requests, slots and bytes sent of each file are counted. */
+    public interface FileCounts {
+        void asked(Hash16 file);
+
+        void accepted(Hash16 file);
+
+        void sent(Hash16 file, long bytes);
+    }
+
+    /** Counts the requests, slots and bytes sent of each file in {@code counts}. */
+    public void countIn(FileCounts counts) {
+        this.counts = Objects.requireNonNull(counts, "counts");
     }
 
     /** What a UDP re-ask is answered with, and the user hash that obfuscates the answer, when it is known. */
@@ -619,6 +650,7 @@ public final class UploadManager implements AutoCloseable {
                 }
                 if (slot.session.sendData(item.packet())) {
                     slot.sent += item.payload();
+                    this.counts.sent(slot.client.file.hash(), item.payload());
                     long now = this.ticker.read();
                     slot.rate.add(item.payload(), now);
                     this.rate.add(item.payload(), now);
@@ -809,6 +841,7 @@ public final class UploadManager implements AutoCloseable {
     }
 
     private void open(Client client, UploadSession session) {
+        this.counts.accepted(client.file.hash());
         Slot slot = new Slot(client, session, this.ticker.read());
         this.slots.add(slot);
         client.session = session;
@@ -1124,6 +1157,11 @@ public final class UploadManager implements AutoCloseable {
                     .apply(file)
                     .filter(tree -> tree.masterHash().equals(master) && AichRecovery.hasRecovery(tree.size(), part))
                     .map(tree -> AichRecovery.create(tree, part));
+        }
+
+        @Override
+        public void named(Uploadable file) {
+            UploadManager.this.counts.asked(file.hash());
         }
 
         @Override

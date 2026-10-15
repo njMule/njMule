@@ -360,6 +360,10 @@ All notable changes to this project are documented here. The format follows
   longer has the file) spares the connection until the next time; without one it is asked over TCP
   as before. Clients in our queue are answered the same way, found by address and UDP port, and
   the hello announces the UDP version while Kad runs.
+- Statistics of each shared file: how often it was asked for, how many asks got a slot and how many
+  bytes went out, in this run and in all (kept in known.met under eMule's tags); the shared files
+  show them in their columns, beside a pane of the shared folders where a folder is added, removed
+  or switched to share its subfolders too.
 - Undo for cancelled downloads: a cancel asks nothing first, and its message offers to take the
   downloads back; their files are kept for 15 seconds (engine API `restoreDownload`), set aside so
   that a start in between does not load them, then deleted.

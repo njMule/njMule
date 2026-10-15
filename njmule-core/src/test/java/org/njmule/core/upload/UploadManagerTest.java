@@ -118,6 +118,7 @@ class UploadManagerTest {
     private SharedFiles.SharedFile other;
     private Hello eager;
     private Optional<UploadManager.ReaskAnswer> reaskAnswer = Optional.empty();
+    private final List<String> counted = new CopyOnWriteArrayList<>();
     private Packet answer;
     private long queued;
     private long dataBeforeAnswer;
@@ -1089,6 +1090,18 @@ class UploadManagerTest {
     }
 
     @Test
+    void shouldCountTheRequestByNameTheSlotAndTheBytesSentOfAFile() throws Exception {
+        givenTheSharedFile("counted.bin", 3000, 41);
+        givenTheUploadsStarted();
+        givenAClientThatAskedForTheFileByName();
+        givenItGotASlotForTheFile();
+
+        whenItDownloadsTheFile();
+
+        thenTheFileWasCounted("asked", "accepted", "sent 3000");
+    }
+
+    @Test
     void shouldPassAClientsUdpTestRequestToKadWithItsAddress() throws Exception {
         givenTheUploadsTellKadOfUdpTests();
         givenAClientConnected();
@@ -1171,6 +1184,33 @@ class UploadManagerTest {
 
     private void thenTheAnswerIsPlain(Packet expected) {
         assertThat(this.reaskAnswer).contains(new UploadManager.ReaskAnswer(expected, Optional.empty()));
+    }
+
+    private void givenAClientThatAskedForTheFileByName() throws Exception {
+        this.client = client(1, 0, 0);
+        this.client.send(ClientMessages.forFile(Opcodes.Client.REQUESTFILENAME, this.file.hash()));
+        this.client.until(Opcodes.Client.REQFILENAMEANSWER);
+    }
+
+    private void givenItGotASlotForTheFile() throws Exception {
+        assertThat(ask(this.client, this.file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
+    }
+
+    private void whenItDownloadsTheFile() throws Exception {
+        this.client.send(blocks(this.file.hash(), 0, this.data.length));
+        long received = 0;
+        while (received < this.data.length) {
+            Packet packet = this.client.next();
+            if (packet.opcode() == Opcodes.Client.SENDINGPART.code()) {
+                received += ClientMessages.SendingPart.decode(packet).data().length;
+            }
+        }
+    }
+
+    private void thenTheFileWasCounted(String... events) {
+        Hash16 hash = this.file.hash();
+        assertThat(this.counted)
+                .containsExactly(Arrays.stream(events).map(e -> e + " " + hash).toArray(String[]::new));
     }
 
     private void givenTwoSlotsBusyUnderALimit() throws Exception {
@@ -1663,6 +1703,22 @@ class UploadManagerTest {
                 random,
                 this.ticker);
         this.manager.priorities(hash -> this.priorities.getOrDefault(hash, UploadPriority.AUTO));
+        this.manager.countIn(new UploadManager.FileCounts() {
+            @Override
+            public void asked(Hash16 file) {
+                UploadManagerTest.this.counted.add("asked " + file);
+            }
+
+            @Override
+            public void accepted(Hash16 file) {
+                UploadManagerTest.this.counted.add("accepted " + file);
+            }
+
+            @Override
+            public void sent(Hash16 file, long bytes) {
+                UploadManagerTest.this.counted.add("sent " + bytes + " " + file);
+            }
+        });
         onLoop(() -> {
             this.manager.start();
             return null;

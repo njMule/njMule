@@ -543,6 +543,23 @@ final class Network {
         this.shares = SharedFiles.open(
                 this.loop, this.configDir, this::incomingDirs, () -> List.of(tempDir()), new ShareEvents());
         this.shares.rememberDownloaded(this.preferences.get().rememberDownloadedFiles());
+        SharedFiles counted = this.shares;
+        this.uploads.countIn(new UploadManager.FileCounts() {
+            @Override
+            public void asked(Hash16 file) {
+                counted.asked(file);
+            }
+
+            @Override
+            public void accepted(Hash16 file) {
+                counted.accepted(file);
+            }
+
+            @Override
+            public void sent(Hash16 file, long bytes) {
+                counted.sent(file, bytes);
+            }
+        });
         this.uploads.start();
         if (this.preferences.get().kadEnabled()) {
             startKad();
@@ -1148,7 +1165,13 @@ final class Network {
         List<SharedFileInfo> all = new ArrayList<>();
         if (this.shares != null) {
             for (SharedFiles.SharedFile f : this.shares.all()) {
-                all.add(new SharedFileInfo(f.hash(), f.name(), f.size(), f.path(), this.shares.priority(f.hash())));
+                all.add(new SharedFileInfo(
+                        f.hash(),
+                        f.name(),
+                        f.size(),
+                        f.path(),
+                        this.shares.priority(f.hash()),
+                        this.shares.statistics(f.hash())));
             }
         }
         return all;

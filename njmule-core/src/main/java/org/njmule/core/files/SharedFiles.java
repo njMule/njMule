@@ -57,6 +57,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
+import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.hash.AichTree;
@@ -161,6 +162,8 @@ public final class SharedFiles implements AutoCloseable {
     private final Supplier<List<Path>> privateDirs;
     private final Listener listener;
     private final Map<Key, KnownMet.KnownFile> known = new LinkedHashMap<>();
+    // The asks, slots and bytes of the shared files in this run.
+    private final Map<Hash16, Counts> counts = new HashMap<>();
     private final Map<Hash20, Known2Met.Entry> aich = new LinkedHashMap<>();
     // By master hash, the least recently asked for first: building a tree hashes all of it again.
     private final Map<Hash20, Optional<AichTree>> built = new LinkedHashMap<>(16, 0.75f, true) {
@@ -262,6 +265,65 @@ public final class SharedFiles implements AutoCloseable {
                 return Optional.empty();
             }
         });
+    }
+
+    /** A request of the shared file with {@code hash}, counted in its statistics. */
+    public void asked(Hash16 hash) {
+        counts(hash).ifPresent(c -> c.requests++);
+    }
+
+    /** An upload slot for the shared file with {@code hash}, counted in its statistics. */
+    public void accepted(Hash16 hash) {
+        counts(hash).ifPresent(c -> c.accepted++);
+    }
+
+    /** Bytes of the shared file with {@code hash} that went out, counted in its statistics. */
+    public void sent(Hash16 hash, long bytes) {
+        counts(hash).ifPresent(c -> c.transferred += bytes);
+    }
+
+    /** What the shared file with {@code hash} was asked for and sent, in this run and in all. */
+    public SharedFileInfo.Statistics statistics(Hash16 hash) {
+        return counts(hash).map(Counts::statistics).orElse(SharedFileInfo.Statistics.NONE);
+    }
+
+    // The counts of a run start from the totals known.met kept, which are written back with them at each save.
+    private Optional<Counts> counts(Hash16 hash) {
+        SharedFile file = this.byHash.get(hash);
+        if (file == null) {
+            return Optional.empty();
+        }
+        return Optional.of(this.counts.computeIfAbsent(hash, h -> {
+            KnownMet.KnownFile record = this.known.get(key(file));
+            return record == null
+                    ? new Counts(0, 0, 0)
+                    : new Counts(record.requests(), record.accepted(), record.transferred());
+        }));
+    }
+
+    private static final class Counts {
+        private final long requestsBefore;
+        private final long acceptedBefore;
+        private final long transferredBefore;
+        private long requests;
+        private long accepted;
+        private long transferred;
+
+        Counts(long requestsBefore, long acceptedBefore, long transferredBefore) {
+            this.requestsBefore = requestsBefore;
+            this.acceptedBefore = acceptedBefore;
+            this.transferredBefore = transferredBefore;
+        }
+
+        SharedFileInfo.Statistics statistics() {
+            return new SharedFileInfo.Statistics(
+                    this.requests,
+                    this.accepted,
+                    this.transferred,
+                    this.requestsBefore + this.requests,
+                    this.acceptedBefore + this.accepted,
+                    this.transferredBefore + this.transferred);
+        }
     }
 
     /** The upload priority of the file shared with {@code hash}: AUTO unless one was chosen. */
@@ -1027,6 +1089,10 @@ public final class SharedFiles implements AutoCloseable {
             }
             if (shared) {
                 file = lastShared(file, now);
+                Counts counts = this.counts.get(file.fileHash());
+                if (counts != null) {
+                    file = withTotals(file, counts.statistics());
+                }
                 entry.setValue(file);
             }
             kept.add(file);
@@ -1049,6 +1115,26 @@ public final class SharedFiles implements AutoCloseable {
         } catch (IOException e) {
             logger.warn("Cannot save the known files", e);
         }
+    }
+
+    private static KnownMet.KnownFile withTotals(KnownMet.KnownFile known, SharedFileInfo.Statistics statistics) {
+        Map<Integer, Long> totals = Map.of(
+                FileTag.ATREQUESTED,
+                Math.min(statistics.totalRequests(), 0xFFFF_FFFFL),
+                FileTag.ATACCEPTED,
+                Math.min(statistics.totalAccepted(), 0xFFFF_FFFFL),
+                FileTag.ATTRANSFERRED,
+                statistics.totalTransferred() & 0xFFFF_FFFFL,
+                FileTag.ATTRANSFERREDHI,
+                statistics.totalTransferred() >>> 32);
+        List<Tag> tags = new ArrayList<>();
+        for (Tag tag : known.tags()) {
+            if (!tag.name().isId() || !totals.containsKey(tag.name().id())) {
+                tags.add(tag);
+            }
+        }
+        totals.forEach((id, value) -> tags.add(new Tag.IntTag(TagName.id(id), value)));
+        return new KnownMet.KnownFile(known.mtime(), known.fileHash(), known.partHashes(), tags);
     }
 
     private static KnownMet.KnownFile lastShared(KnownMet.KnownFile known, long now) {

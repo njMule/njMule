@@ -70,6 +70,9 @@ final class UploadSession implements PeerLink.Role {
     interface Queue {
         Optional<Uploadable> find(Hash16 file);
 
+        /** The client asks for {@code file} by its name. */
+        default void named(Uploadable file) {}
+
         /** The client asks for an upload of {@code file}. */
         void requested(UploadSession session, Uploadable file);
 
@@ -369,6 +372,7 @@ final class UploadSession implements PeerLink.Role {
                 name(lookup(hash)).ifPresent(f -> {
                     send(new ClientMessages.FileName(hash, f.name()).encode());
                     tellComment(hash);
+                    this.queue.named(f);
                 });
             }
             case SETREQFILEID -> {

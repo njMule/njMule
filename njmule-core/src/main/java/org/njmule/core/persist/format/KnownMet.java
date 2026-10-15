@@ -71,6 +71,16 @@ public final class KnownMet {
             return Tags.stringValue(this.tags, FileTag.AICH_HASH).flatMap(KnownMet::base32);
         }
 
+        /** All-time requests of the file (FT_ATREQUESTED). */
+        public long requests() {
+            return Tags.intValue(this.tags, FileTag.ATREQUESTED).orElse(0);
+        }
+
+        /** All-time requests that got an upload slot (FT_ATACCEPTED). */
+        public long accepted() {
+            return Tags.intValue(this.tags, FileTag.ATACCEPTED).orElse(0);
+        }
+
         /** All-time uploaded bytes (FT_ATTRANSFERRED with FT_ATTRANSFERREDHI). */
         public long transferred() {
             return Tags.intValue(this.tags, FileTag.ATTRANSFERREDHI).orElse(0) << 32

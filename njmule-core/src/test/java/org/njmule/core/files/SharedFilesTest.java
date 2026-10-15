@@ -50,6 +50,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
+import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.hash.AichTree;
@@ -201,6 +202,34 @@ class SharedFilesTest {
 
         thenTheSharesReportInAnyOrder("unshared c.bin", "unshared d.bin", "unshared e.bin");
         thenNoTreeIsShared();
+    }
+
+    @Test
+    void shouldCountTheRequestsSlotsAndBytesOfASharedFile() throws Exception {
+        givenAnIncomingAndAConfigDirectory();
+        givenAFile("incoming/a.bin", 20_000, 3);
+        givenTheSharesAreOpen();
+        givenTheSharesReport("shared a.bin");
+
+        whenTheFileIsAskedForTwiceAndSentOnce("a.bin", 9_000);
+
+        thenItsStatisticsAre("a.bin", new SharedFileInfo.Statistics(2, 1, 9_000, 2, 1, 9_000));
+    }
+
+    @Test
+    void shouldAddTheCountsOfARunToTheTotalsKnownMetKeeps() throws Exception {
+        givenAnIncomingAndAConfigDirectory();
+        givenAFile("incoming/a.bin", 20_000, 3);
+        givenTheSharesAreOpen();
+        givenTheSharesReport("shared a.bin");
+        givenTheFileAskedForTwiceAndSentOnce("a.bin", 9_000);
+        givenTheSharesAreClosed();
+        givenTheSharesAreOpen();
+        givenTheSharesAreScanned();
+
+        whenTheFileIsAskedForTwiceAndSentOnce("a.bin", 1_000);
+
+        thenItsStatisticsAre("a.bin", new SharedFileInfo.Statistics(2, 1, 1_000, 4, 2, 10_000));
     }
 
     @Test
@@ -740,6 +769,26 @@ class SharedFilesTest {
     private void givenTheUploadPriorityIs(String name, UploadPriority expected) throws Exception {
         Hash16 hash = hashOf(name);
         assertThat(onLoop(() -> this.shares.priority(hash))).isEqualTo(expected);
+    }
+
+    private void givenTheFileAskedForTwiceAndSentOnce(String name, long bytes) throws Exception {
+        whenTheFileIsAskedForTwiceAndSentOnce(name, bytes);
+    }
+
+    private void whenTheFileIsAskedForTwiceAndSentOnce(String name, long bytes) throws Exception {
+        Hash16 hash = hashOf(name);
+        onLoop(() -> {
+            this.shares.asked(hash);
+            this.shares.asked(hash);
+            this.shares.accepted(hash);
+            this.shares.sent(hash, bytes);
+            return null;
+        });
+    }
+
+    private void thenItsStatisticsAre(String name, SharedFileInfo.Statistics expected) throws Exception {
+        Hash16 hash = hashOf(name);
+        assertThat(onLoop(() -> this.shares.statistics(hash))).isEqualTo(expected);
     }
 
     private void givenTheUploadPriorityIsSet(String name, UploadPriority priority) throws Exception {
