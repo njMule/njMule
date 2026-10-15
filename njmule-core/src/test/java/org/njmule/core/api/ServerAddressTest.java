@@ -17,50 +17,151 @@
 package org.njmule.core.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class ServerAddressTest {
 
+    private ServerAddress address;
+    private String text;
+    private ServerAddress parsed;
+    private boolean valid;
+    private Throwable exception;
+
     @Test
-    void parsesHostsWithTheirPort() {
-        assertThat(ServerAddress.parse(" 192.168.1.10:4661 ")).isEqualTo(new ServerAddress("192.168.1.10", 4661));
-        assertThat(ServerAddress.parse("[2001:db8::1]:4661").host()).isEqualTo("2001:db8::1");
-        assertThatThrownBy(() -> ServerAddress.parse("server.example.org"))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> ServerAddress.parse("host:70000")).isInstanceOf(IllegalArgumentException.class);
+    void shouldParseAHostWithItsPort() {
+        whenTheAddressIsParsed(" 192.168.1.10:4661 ");
+
+        thenTheAddressIs(new ServerAddress("192.168.1.10", 4661));
     }
 
     @Test
-    void writesAddressesThatParseBack() {
-        for (ServerAddress address : new ServerAddress[] {
-            new ServerAddress("2001:db8::1", 4661),
-            new ServerAddress("::1", 1),
-            new ServerAddress("192.168.1.10", 65535),
-            new ServerAddress("server.example.org", 4242)
-        }) {
-            assertThat(ServerAddress.parse(address.toString())).isEqualTo(address);
-        }
-        assertThat(new ServerAddress("2001:db8::1", 4661)).hasToString("[2001:db8::1]:4661");
+    void shouldParseAnIpv6HostInBrackets() {
+        whenTheAddressIsParsed("[2001:db8::1]:4661");
+
+        thenTheHostIs("2001:db8::1");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"server.example.org", "host:70000"})
+    void shouldRefuseAHostWithoutAValidPort(String input) {
+        whenTheAddressIsParsed(input);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"2001:db8::1, 4661", "::1, 1", "192.168.1.10, 65535", "server.example.org, 4242"})
+    void shouldWriteAddressesThatParseBack(String host, int port) {
+        givenTheAddress(host, port);
+
+        whenItIsWrittenAndParsedBack();
+
+        thenTheAddressParsedBackIsTheSame();
     }
 
     @Test
-    void tellsWellFormedHosts() {
-        assertThat(ServerAddress.isValidHost("server.example.org")).isTrue();
-        assertThat(ServerAddress.isValidHost("localhost")).isTrue();
-        assertThat(ServerAddress.isValidHost("10.0.0.1")).isTrue();
-        assertThat(ServerAddress.isValidHost("2001:db8::1")).isTrue();
-        assertThat(ServerAddress.isValidHost("bad..host")).isFalse();
-        assertThat(ServerAddress.isValidHost("no spaces")).isFalse();
-        assertThat(ServerAddress.isValidHost("")).isFalse();
+    void shouldWriteAnIpv6HostInBrackets() {
+        givenTheAddress("2001:db8::1", 4661);
+
+        whenItIsWritten();
+
+        thenTheTextIs("[2001:db8::1]:4661");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "server.example.org, true",
+        "localhost, true",
+        "10.0.0.1, true",
+        "2001:db8::1, true",
+        "bad..host, false",
+        "no spaces, false",
+        "'', false"
+    })
+    void shouldTellWellFormedHosts(String host, boolean expected) {
+        whenTheHostIsChecked(host);
+
+        thenTheHostIsValid(expected);
     }
 
     @Test
-    void searchExpressionsAreChecked() {
-        SearchRequest.checkExpression("ubuntu iso");
-        assertThatThrownBy(() -> SearchRequest.checkExpression("(ubuntu")).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> SearchRequest.checkExpression("x".repeat(SearchRequest.MAX_EXPRESSION_LENGTH + 1)))
-                .isInstanceOf(IllegalArgumentException.class);
+    void shouldAcceptAPlainSearchExpression() {
+        whenTheSearchExpressionIsChecked("ubuntu iso");
+
+        thenNoExceptionOccurred();
+    }
+
+    @Test
+    void shouldRefuseAnUnbalancedSearchExpression() {
+        whenTheSearchExpressionIsChecked("(ubuntu");
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRefuseASearchExpressionThatIsTooLong() {
+        whenTheSearchExpressionIsChecked("x".repeat(SearchRequest.MAX_EXPRESSION_LENGTH + 1));
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    private void givenTheAddress(String host, int port) {
+        this.address = new ServerAddress(host, port);
+    }
+
+    private void whenTheAddressIsParsed(String input) {
+        this.exception = catchThrowable(() -> this.parsed = ServerAddress.parse(input));
+    }
+
+    private void whenItIsWrittenAndParsedBack() {
+        this.text = this.address.toString();
+        this.parsed = ServerAddress.parse(this.text);
+    }
+
+    private void whenItIsWritten() {
+        this.text = this.address.toString();
+    }
+
+    private void whenTheHostIsChecked(String host) {
+        this.valid = ServerAddress.isValidHost(host);
+    }
+
+    private void whenTheSearchExpressionIsChecked(String expression) {
+        this.exception = catchThrowable(() -> SearchRequest.checkExpression(expression));
+    }
+
+    private void thenTheAddressIs(ServerAddress expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.parsed).isEqualTo(expected);
+    }
+
+    private void thenTheHostIs(String expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.parsed.host()).isEqualTo(expected);
+    }
+
+    private void thenTheAddressParsedBackIsTheSame() {
+        assertThat(this.parsed).isEqualTo(this.address);
+    }
+
+    private void thenTheTextIs(String expected) {
+        assertThat(this.text).isEqualTo(expected);
+    }
+
+    private void thenTheHostIsValid(boolean expected) {
+        assertThat(this.valid).isEqualTo(expected);
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
     }
 }

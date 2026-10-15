@@ -17,35 +17,144 @@
 package org.njmule.core.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.nio.file.Path;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class PreferencesTest {
 
     @TempDir
     Path dir;
 
+    private Preferences preferences;
+    private ObfuscationMode obfuscation;
+    private Throwable exception;
+
     @Test
-    void defaultsAreValidAndUseNjMulePorts() {
-        Preferences p = Preferences.defaults();
-        assertThat(p.tcpPort()).isEqualTo(4662);
-        assertThat(p.udpPort()).isEqualTo(4672);
-        assertThat(p.obfuscation()).isEqualTo(ObfuscationMode.REQUESTED);
-        assertThat(p.upnp())
-                .as("the router forwards our ports unless turned off")
-                .isTrue();
-        assertThat(p.toBuilder().build()).isEqualTo(p);
+    void shouldHaveValidDefaultsWithTheNjMulePorts() {
+        whenTheDefaultsAreTaken();
+
+        thenTheTcpPortIs(4662);
+        thenTheUdpPortIs(4672);
+        thenTheObfuscationIs(ObfuscationMode.REQUESTED);
+        thenTheRouterForwardsThePorts();
+        thenTheyBuildBackToTheSame();
     }
 
     @Test
-    void builderChangesEveryField() {
-        Path incoming = this.dir.resolve("in");
-        Path temp = this.dir.resolve("tmp");
-        Preferences p = Preferences.defaults().toBuilder()
+    void shouldChangeEveryFieldThroughTheBuilder() {
+        whenEveryFieldIsChangedThroughTheBuilder();
+
+        thenTheNickIs("Tester");
+        thenUdpIsOff();
+        thenTheMaxSourcesPerFileAre(40);
+        thenTheEffectiveIncomingDirectoryIs("in");
+        thenTheEffectiveTempDirectoryIs("tmp");
+    }
+
+    @Test
+    void shouldUseTheTempDirectoryOfTheProfileByDefault() {
+        whenTheDefaultsAreTaken();
+
+        thenTheEffectiveTempDirectoryIsTheOneOfTheProfile();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069})
+    void shouldNotLetANickReverseOrIsolateTheTextAroundIt(int codePoint) {
+        whenTheNickIsSet("abc" + Character.toString(codePoint) + "def");
+
+        thenTheNickIsRefusedBecauseOf(codePoint);
+    }
+
+    @Test
+    void shouldKeepAJoinerInANick() {
+        whenTheNickIsSet("Nicolò 名前 a" + Character.toString(0x200D) + "b");
+
+        thenTheNickIs("Nicolò 名前 a" + Character.toString(0x200D) + "b");
+    }
+
+    @Test
+    void shouldRejectABlankNick() {
+        whenTheNickIsSet(" ");
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRejectAControlCharacterInANick() {
+        whenTheNickIsSet("a\u0001b");
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRejectATooLongNick() {
+        whenTheNickIsSet("x".repeat(51));
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRejectAnInvalidTcpPort() {
+        whenTheTcpPortIsSet(0);
+
+        thenTheValueIsRefusedNaming("tcpPort");
+    }
+
+    @Test
+    void shouldRejectAnInvalidUdpPort() {
+        whenTheUdpPortIsSet(70_000);
+
+        thenTheValueIsRefusedNaming("udpPort");
+    }
+
+    @Test
+    void shouldRejectAnInvalidMaximumOfConnections() {
+        whenTheMaxConnectionsAreSet(0);
+
+        thenTheValueIsRefusedNaming("maxConnections");
+    }
+
+    @Test
+    void shouldRejectAnUnknownLogLevel() {
+        whenTheLogLevelIsSet("LOUD");
+
+        thenTheValueIsRefusedNaming("logLevel");
+    }
+
+    @Test
+    void shouldRejectARelativeTempDirectory() {
+        whenTheTempDirectoryIsSet(Path.of("rel"));
+
+        thenTheValueIsRefusedNaming("tempDir");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "false, true, true, DISABLED",
+        "true, false, false, SUPPORTED",
+        "true, true, false, REQUESTED",
+        "true, false, true, REQUIRED"
+    })
+    void shouldMapObfuscationFlags(boolean supported, boolean requested, boolean required, ObfuscationMode expected) {
+        whenTheObfuscationFlagsAreMapped(supported, requested, required);
+
+        thenTheMappedObfuscationIs(expected);
+    }
+
+    private void whenTheDefaultsAreTaken() {
+        this.preferences = Preferences.defaults();
+    }
+
+    private void whenEveryFieldIsChangedThroughTheBuilder() {
+        this.preferences = Preferences.defaults().toBuilder()
                 .nick("  Tester  ")
                 .tcpPort(1)
                 .udpPort(65_535)
@@ -61,66 +170,110 @@ class PreferencesTest {
                 .obfuscation(ObfuscationMode.REQUIRED)
                 .secureIdent(false)
                 .creditSystem(false)
-                .incomingDir(Optional.of(incoming))
-                .tempDir(Optional.of(temp))
+                .incomingDir(Optional.of(this.dir.resolve("in")))
+                .tempDir(Optional.of(this.dir.resolve("tmp")))
                 .logLevel("DEBUG")
                 .build();
+    }
 
-        assertThat(p.nick()).isEqualTo("Tester");
-        assertThat(p.udpEnabled()).isFalse();
-        assertThat(p.maxSourcesPerFile()).isEqualTo(40);
+    private void whenTheNickIsSet(String nick) {
+        this.exception = catchThrowable(() ->
+                this.preferences = Preferences.defaults().toBuilder().nick(nick).build());
+    }
+
+    private void whenTheTcpPortIsSet(int port) {
+        this.exception = catchThrowable(() -> this.preferences =
+                Preferences.defaults().toBuilder().tcpPort(port).build());
+    }
+
+    private void whenTheUdpPortIsSet(int port) {
+        this.exception = catchThrowable(() -> this.preferences =
+                Preferences.defaults().toBuilder().udpPort(port).build());
+    }
+
+    private void whenTheMaxConnectionsAreSet(int maxConnections) {
+        this.exception = catchThrowable(() -> this.preferences = Preferences.defaults().toBuilder()
+                .maxConnections(maxConnections)
+                .build());
+    }
+
+    private void whenTheLogLevelIsSet(String logLevel) {
+        this.exception = catchThrowable(() -> this.preferences =
+                Preferences.defaults().toBuilder().logLevel(logLevel).build());
+    }
+
+    private void whenTheTempDirectoryIsSet(Path tempDir) {
+        this.exception = catchThrowable(() -> this.preferences =
+                Preferences.defaults().toBuilder().tempDir(Optional.of(tempDir)).build());
+    }
+
+    private void whenTheObfuscationFlagsAreMapped(boolean supported, boolean requested, boolean required) {
+        this.obfuscation = ObfuscationMode.fromFlags(supported, requested, required);
+    }
+
+    private void thenTheTcpPortIs(int expected) {
+        assertThat(this.preferences.tcpPort()).isEqualTo(expected);
+    }
+
+    private void thenTheUdpPortIs(int expected) {
+        assertThat(this.preferences.udpPort()).isEqualTo(expected);
+    }
+
+    private void thenTheObfuscationIs(ObfuscationMode expected) {
+        assertThat(this.preferences.obfuscation()).isEqualTo(expected);
+    }
+
+    private void thenTheRouterForwardsThePorts() {
+        assertThat(this.preferences.upnp())
+                .as("the router forwards our ports unless turned off")
+                .isTrue();
+    }
+
+    private void thenTheyBuildBackToTheSame() {
+        assertThat(this.preferences.toBuilder().build()).isEqualTo(this.preferences);
+    }
+
+    private void thenTheNickIs(String expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.preferences.nick()).isEqualTo(expected);
+    }
+
+    private void thenUdpIsOff() {
+        assertThat(this.preferences.udpEnabled()).isFalse();
+    }
+
+    private void thenTheMaxSourcesPerFileAre(int expected) {
+        assertThat(this.preferences.maxSourcesPerFile()).isEqualTo(expected);
+    }
+
+    private void thenTheEffectiveIncomingDirectoryIs(String name) {
+        assertThat(this.preferences.effectiveIncomingDir(AppDirectories.underRoot(this.dir, false)))
+                .isEqualTo(this.dir.resolve(name));
+    }
+
+    private void thenTheEffectiveTempDirectoryIs(String name) {
+        assertThat(this.preferences.effectiveTempDir(AppDirectories.underRoot(this.dir, false)))
+                .isEqualTo(this.dir.resolve(name));
+    }
+
+    private void thenTheEffectiveTempDirectoryIsTheOneOfTheProfile() {
         AppDirectories dirs = AppDirectories.underRoot(this.dir, false);
-        assertThat(p.effectiveIncomingDir(dirs)).isEqualTo(incoming);
-        assertThat(p.effectiveTempDir(dirs)).isEqualTo(temp);
-        assertThat(Preferences.defaults().effectiveTempDir(dirs)).isEqualTo(dirs.temp());
+        assertThat(this.preferences.effectiveTempDir(dirs)).isEqualTo(dirs.temp());
     }
 
-    @Test
-    void aNickCannotReverseOrIsolateTheTextAroundIt() {
-        for (int c : new int[] {0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069}) {
-            String nick = "abc" + Character.toString(c) + "def";
-            assertThatThrownBy(
-                            () -> Preferences.defaults().toBuilder().nick(nick).build())
-                    .as("U+%04X", c)
-                    .isInstanceOf(IllegalArgumentException.class);
-        }
-        String joined = "Nicolò 名前 a" + Character.toString(0x200D) + "b";
-        assertThat(Preferences.defaults().toBuilder().nick(joined).build().nick())
-                .isEqualTo(joined);
+    private void thenTheNickIsRefusedBecauseOf(int codePoint) {
+        assertThat(this.exception).as("U+%04X", codePoint).isInstanceOf(IllegalArgumentException.class);
     }
 
-    @Test
-    void rejectsInvalidValues() {
-        Preferences.Builder b = Preferences.defaults().toBuilder();
-        assertThatThrownBy(() -> b.nick(" ").build()).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() ->
-                        Preferences.defaults().toBuilder().nick("a\u0001b").build())
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() ->
-                        Preferences.defaults().toBuilder().nick("x".repeat(51)).build())
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Preferences.defaults().toBuilder().tcpPort(0).build())
-                .hasMessageContaining("tcpPort");
-        assertThatThrownBy(
-                        () -> Preferences.defaults().toBuilder().udpPort(70_000).build())
-                .hasMessageContaining("udpPort");
-        assertThatThrownBy(() ->
-                        Preferences.defaults().toBuilder().maxConnections(0).build())
-                .hasMessageContaining("maxConnections");
-        assertThatThrownBy(() ->
-                        Preferences.defaults().toBuilder().logLevel("LOUD").build())
-                .hasMessageContaining("logLevel");
-        assertThatThrownBy(() -> Preferences.defaults().toBuilder()
-                        .tempDir(Optional.of(Path.of("rel")))
-                        .build())
-                .hasMessageContaining("tempDir");
+    private void thenTheValueIsRefusedNaming(String field) {
+        assertThat(this.exception).hasMessageContaining(field);
     }
 
-    @Test
-    void mapsObfuscationFlags() {
-        assertThat(ObfuscationMode.fromFlags(false, true, true)).isEqualTo(ObfuscationMode.DISABLED);
-        assertThat(ObfuscationMode.fromFlags(true, false, false)).isEqualTo(ObfuscationMode.SUPPORTED);
-        assertThat(ObfuscationMode.fromFlags(true, true, false)).isEqualTo(ObfuscationMode.REQUESTED);
-        assertThat(ObfuscationMode.fromFlags(true, false, true)).isEqualTo(ObfuscationMode.REQUIRED);
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private void thenTheMappedObfuscationIs(ObfuscationMode expected) {
+        assertThat(this.obfuscation).isEqualTo(expected);
     }
 }

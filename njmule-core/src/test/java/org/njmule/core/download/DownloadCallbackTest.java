@@ -92,6 +92,15 @@ class DownloadCallbackTest {
     private final List<String> routed = new CopyOnWriteArrayList<>();
     private DownloadManager manager;
     private int port;
+    private ScriptedSource source;
+    private ScriptedSource second;
+    private ScriptedSource.Link asked;
+    private ScriptedSource.Link queued;
+    private ScriptedSource.Link call;
+    private Socket silent;
+    private Hash16 hash;
+    private Hash16 gone;
+    private List<Packet> request;
 
     @AfterEach
     void stop() throws Exception {
@@ -109,62 +118,100 @@ class DownloadCallbackTest {
     }
 
     @Test
-    void aSourceThatCallsBackWhileWeWaitInItsQueueTakesTheSessionOver() throws Exception {
-        ScriptedSource asking = source();
-        ScriptedSource queuing = source();
+    void shouldLetASourceThatCallsBackWhileWeWaitInItsQueueTakeTheSessionOver() throws Exception {
+        givenTwoSources();
+        givenTheDownloadManagerWithAListener();
+        givenAPausedDownloadAndADownloadFromBothSources(
+                Hash16.parseHex("41".repeat(16)), Hash16.parseHex("42".repeat(16)));
+        givenTheFirstSourceIsStillAsked();
+        givenTheSecondSourceKeepsUsInItsQueue();
+        givenTheFirstSourceCalledBackAndWasRefused();
+        givenTheSecondSourceCalledBackAndWasAdopted();
+        givenTheQueuedConnectionEnded();
+
+        whenTheSecondSourceGivesUsASlotOverItsCall();
+
+        thenWeRequestPartsWithoutAskingForTheSlotItGave();
+    }
+
+    @Test
+    void shouldAskAClientConnectedToUsOverItsOwnConnection() throws Exception {
+        givenASource();
+        givenTheDownloadManagerWithAListener();
+        givenTheSourceConnectedToUsForOurFiles();
+
+        whenADownloadFromTheSourceIsAdded("asked.bin", Hash16.parseHex("43".repeat(16)));
+
+        thenTheSourceIsAskedForTheFileOverItsOwnConnection();
+    }
+
+    @Test
+    void shouldTakeAFirewalledSourceCallingBackOnlyWithItsServerAndHashAndAskItThroughTheServerAgain()
+            throws Exception {
+        givenASource();
+        givenTheDownloadManagerWithAListener();
+        givenTwoDownloadsWithFirewalledSourcesFromTheServer(
+                Hash16.parseHex("44".repeat(16)), Hash16.parseHex("45".repeat(16)));
+        givenBothSourcesWereAskedThroughTheServer();
+        givenTheSecondDownloadPaused();
+        givenCallsBackWithAnotherClientIdServerOrHashWereRefused();
+        givenTheSourceCalledBackWithItsServerAndHashAndWasAdopted();
+        givenTheSourceKeptUsInItsQueueAndHungUp();
+
+        whenItIsTimeToAskTheSourceAgain();
+
+        thenTheServerIsAskedForCallbacksOf(5000L, 6000L, 5000L);
+    }
+
+    @Test
+    void shouldKeepASourceAskedObfuscatedConnectingUntilItAnswers() throws Exception {
+        givenASourceSupportingObfuscation();
+        givenTheDownloadManagerWithAListener();
+        givenADownloadFromTheSource("crypt.bin", Hash16.parseHex("47".repeat(16)));
+        givenTheSourceKeptUsInItsQueueOverAPlainConnection();
+        givenTheSourceIsAskedAgainObfuscatedAndDoesNotAnswer();
+
+        whenTheDownloadIsPausedBeforeTheSourceAnswers();
+
+        thenTheSourceIs(SourceInfo.State.WAITING);
+        thenTheDownloadIs(DownloadInfo.Status.PAUSED);
+    }
+
+    private void givenASource() throws Exception {
+        this.source = source();
+    }
+
+    private void givenTwoSources() throws Exception {
+        this.source = source();
+        this.second = source();
+    }
+
+    private void givenASourceSupportingObfuscation() throws Exception {
+        this.source = new ScriptedSource(PEER, 0, Hello.MISC2_SUPPORTS_CRYPT);
+        this.resources.add(this.source);
+    }
+
+    private void givenTheDownloadManagerWithAListener() throws Exception {
         start();
-        Hash16 paused = Hash16.parseHex("41".repeat(16));
-        Hash16 hash = Hash16.parseHex("42".repeat(16));
+    }
+
+    private void givenAPausedDownloadAndADownloadFromBothSources(Hash16 paused, Hash16 hash) throws Exception {
+        this.hash = hash;
         onLoop(() -> {
             this.manager.add(Ed2kLink.FileLink.of("paused.bin", 5000, paused));
             this.manager.pause(paused);
-            return this.manager.add(link("taken.bin", hash, asking, queuing));
+            return this.manager.add(link("taken.bin", hash, this.source, this.second));
         });
-        ScriptedSource.Link stillAsking = asking.accept();
-        stillAsking.until(Opcodes.Client.SETREQFILEID);
-        ScriptedSource.Link queued = queuing.accept();
-        queued.until(Opcodes.Client.SETREQFILEID);
-        queued.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-        queued.until(Opcodes.Client.STARTUPLOADREQ);
-
-        // One still being asked cannot call back; one keeping us queued can, with a slot.
-        ScriptedSource.Link early = ScriptedSource.call(this.port, asking.hello());
-        assertThat(routedAs(asking)).isEqualTo("refused");
-        ScriptedSource.Link slot = ScriptedSource.call(this.port, queuing.hello());
-        assertThat(routedAs(queuing)).isEqualTo("adopted");
-
-        assertThat(queued.closesWithin(WAIT)).as("the queued connection ends").isTrue();
-        slot.until(Opcodes.Client.SETREQFILEID);
-        slot.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-        slot.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
-        List<Packet> request = slot.until(Opcodes.Client.REQUESTPARTS);
-        assertThat(request)
-                .as("no request for a slot it gave")
-                .noneMatch(p -> p.opcode() == Opcodes.Client.STARTUPLOADREQ.code());
-        onLoop(() -> this.manager.pause(hash));
-        early.close();
     }
 
-    @Test
-    void aClientConnectedToUsIsAskedOverItsOwnConnection() throws Exception {
-        ScriptedSource client = source();
-        start();
-        ScriptedSource.Link link = ScriptedSource.call(this.port, client.hello());
-        assertThat(routedAs(client)).isEqualTo("refused");
-        Hash16 hash = Hash16.parseHex("43".repeat(16));
-
-        onLoop(() -> this.manager.add(client.link("asked.bin", 5000, hash)));
-
-        assertThat(names(link.until(Opcodes.Client.SETREQFILEID))).contains("REQUESTFILENAME");
-        onLoop(() -> this.manager.pause(hash));
+    private void givenADownloadFromTheSource(String name, Hash16 hash) throws Exception {
+        this.hash = hash;
+        onLoop(() -> this.manager.add(this.source.link(name, 5000, hash)));
     }
 
-    @Test
-    void aFirewalledSourceCallsBackOnlyWithItsServerAndHashAndIsAskedThroughTheServerAgain() throws Exception {
-        ScriptedSource firewalled = source();
-        start();
-        Hash16 hash = Hash16.parseHex("44".repeat(16));
-        Hash16 gone = Hash16.parseHex("45".repeat(16));
+    private void givenTwoDownloadsWithFirewalledSourcesFromTheServer(Hash16 hash, Hash16 gone) throws Exception {
+        this.hash = hash;
+        this.gone = gone;
         onLoop(() -> {
             this.manager.add(Ed2kLink.FileLink.of("lowid.bin", 5000, hash));
             this.manager.add(Ed2kLink.FileLink.of("gone.bin", 5000, gone));
@@ -174,58 +221,142 @@ class DownloadCallbackTest {
                     gone, List.of(new ServerMessages.Source(6000, PORT, 0, Optional.empty()))));
             return null;
         });
-        await("both asked through the server", () -> this.callbacks.size() >= 2);
-        onLoop(() -> this.manager.pause(gone));
+    }
 
-        // Only the client with the LowID, the server and the user hash the server told calls back.
-        ScriptedSource.call(this.port, firewalled.hello(PEER, 5000, 0)).close();
-        ScriptedSource.call(this.port, firewalled.hello(PEER, 5000, Ipv4.of(198, 51, 100, 98)))
+    private void givenTheFirstSourceIsStillAsked() throws Exception {
+        this.asked = this.source.accept();
+        this.resources.add(this.asked);
+        this.asked.until(Opcodes.Client.SETREQFILEID);
+    }
+
+    private void givenTheSecondSourceKeepsUsInItsQueue() throws Exception {
+        this.queued = this.second.accept();
+        this.resources.add(this.queued);
+        this.queued.until(Opcodes.Client.SETREQFILEID);
+        this.queued.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
+        this.queued.until(Opcodes.Client.STARTUPLOADREQ);
+    }
+
+    // One still being asked cannot call back; one keeping us queued can, with a slot.
+    private void givenTheFirstSourceCalledBackAndWasRefused() throws Exception {
+        ScriptedSource.Link early = ScriptedSource.call(this.port, this.source.hello());
+        this.resources.add(early);
+        assertThat(routedAs(this.source)).isEqualTo("refused");
+    }
+
+    private void givenTheSecondSourceCalledBackAndWasAdopted() throws Exception {
+        this.call = ScriptedSource.call(this.port, this.second.hello());
+        this.resources.add(this.call);
+        assertThat(routedAs(this.second)).isEqualTo("adopted");
+    }
+
+    private void givenTheQueuedConnectionEnded() throws Exception {
+        assertThat(this.queued.closesWithin(WAIT))
+                .as("the queued connection ends")
+                .isTrue();
+    }
+
+    private void givenTheSourceConnectedToUsForOurFiles() throws Exception {
+        this.call = ScriptedSource.call(this.port, this.source.hello());
+        this.resources.add(this.call);
+        assertThat(routedAs(this.source)).isEqualTo("refused");
+    }
+
+    private void givenBothSourcesWereAskedThroughTheServer() throws Exception {
+        await("both asked through the server", () -> this.callbacks.size() >= 2);
+    }
+
+    private void givenTheSecondDownloadPaused() throws Exception {
+        onLoop(() -> this.manager.pause(this.gone));
+    }
+
+    // Only the client with the LowID, the server and the user hash the server told calls back.
+    private void givenCallsBackWithAnotherClientIdServerOrHashWereRefused() throws Exception {
+        ScriptedSource.call(this.port, this.source.hello(PEER, 5000, 0)).close();
+        ScriptedSource.call(this.port, this.source.hello(PEER, 5000, Ipv4.of(198, 51, 100, 98)))
                 .close();
-        ScriptedSource.call(this.port, firewalled.hello(Hash16.parseHex("46".repeat(16)), 5000, SERVER_IP))
+        ScriptedSource.call(this.port, this.source.hello(Hash16.parseHex("46".repeat(16)), 5000, SERVER_IP))
                 .close();
-        ScriptedSource.call(this.port, firewalled.hello(PEER, 6000, SERVER_IP)).close();
+        ScriptedSource.call(this.port, this.source.hello(PEER, 6000, SERVER_IP)).close();
         await("four calls routed", () -> this.routed.size() == 4);
         assertThat(this.routed).containsOnly("refused");
         this.routed.clear();
-        ScriptedSource.Link link = ScriptedSource.call(this.port, firewalled.hello(PEER, 5000, SERVER_IP));
-        assertThat(routedAs(firewalled)).isEqualTo("adopted");
-
-        link.until(Opcodes.Client.SETREQFILEID);
-        link.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
-        link.until(Opcodes.Client.STARTUPLOADREQ);
-        link.close();
-        awaitWaiting(hash);
-        advance(DownloadManager.REASK_INTERVAL);
-        await("asked through the server again", () -> this.callbacks.size() >= 3);
-        assertThat(this.callbacks).containsExactly(5000L, 6000L, 5000L);
-        onLoop(() -> this.manager.pause(hash));
     }
 
-    @Test
-    void aSourceAskedObfuscatedStaysConnectingUntilItAnswers() throws Exception {
-        ScriptedSource source = new ScriptedSource(PEER, 0, Hello.MISC2_SUPPORTS_CRYPT);
-        this.resources.add(source);
-        start();
-        Hash16 hash = Hash16.parseHex("47".repeat(16));
-        onLoop(() -> this.manager.add(source.link("crypt.bin", 5000, hash)));
-        ScriptedSource.Link plain = source.accept();
+    private void givenTheSourceCalledBackWithItsServerAndHashAndWasAdopted() throws Exception {
+        this.call = ScriptedSource.call(this.port, this.source.hello(PEER, 5000, SERVER_IP));
+        this.resources.add(this.call);
+        assertThat(routedAs(this.source)).isEqualTo("adopted");
+    }
+
+    private void givenTheSourceKeptUsInItsQueueAndHungUp() throws Exception {
+        this.call.until(Opcodes.Client.SETREQFILEID);
+        this.call.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
+        this.call.until(Opcodes.Client.STARTUPLOADREQ);
+        this.call.close();
+        awaitWaiting(this.hash);
+    }
+
+    private void givenTheSourceKeptUsInItsQueueOverAPlainConnection() throws Exception {
+        ScriptedSource.Link plain = this.source.accept();
         plain.until(Opcodes.Client.SETREQFILEID);
-        plain.send(new ClientMessages.FileStatus(hash, 0, new BitSet()).encode());
+        plain.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
         plain.until(Opcodes.Client.STARTUPLOADREQ);
         plain.close();
-        awaitWaiting(hash);
+        awaitWaiting(this.hash);
+    }
 
-        // Its user hash and its taste for obfuscation known now, it is asked again obfuscated.
+    // Its user hash and its taste for obfuscation known now, it is asked again obfuscated.
+    private void givenTheSourceIsAskedAgainObfuscatedAndDoesNotAnswer() throws Exception {
         advance(DownloadManager.REASK_INTERVAL);
-        Socket silent = source.acceptSilently();
+        this.silent = this.source.acceptSilently();
         await("connecting", () -> this.manager.sources().getFirst().state() == SourceInfo.State.CONNECTING);
         Thread.sleep(1200);
-        onLoop(() -> this.manager.pause(hash));
-        silent.close();
+    }
 
-        assertThat(onLoop(() -> this.manager.sources().getFirst().state())).isEqualTo(SourceInfo.State.WAITING);
-        assertThat(onLoop(() -> this.manager.download(hash).orElseThrow().status()))
-                .isEqualTo(DownloadInfo.Status.PAUSED);
+    private void whenTheSecondSourceGivesUsASlotOverItsCall() throws Exception {
+        this.call.until(Opcodes.Client.SETREQFILEID);
+        this.call.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
+        this.call.send(Packet.empty(Protocol.EDONKEY, Opcodes.Client.ACCEPTUPLOADREQ.code()));
+        this.request = this.call.until(Opcodes.Client.REQUESTPARTS);
+    }
+
+    private void whenADownloadFromTheSourceIsAdded(String name, Hash16 hash) throws Exception {
+        this.hash = hash;
+        onLoop(() -> this.manager.add(this.source.link(name, 5000, hash)));
+    }
+
+    private void whenItIsTimeToAskTheSourceAgain() {
+        advance(DownloadManager.REASK_INTERVAL);
+    }
+
+    private void whenTheDownloadIsPausedBeforeTheSourceAnswers() throws Exception {
+        onLoop(() -> this.manager.pause(this.hash));
+        this.silent.close();
+    }
+
+    private void thenWeRequestPartsWithoutAskingForTheSlotItGave() {
+        assertThat(this.request)
+                .as("no request for a slot it gave")
+                .noneMatch(p -> p.opcode() == Opcodes.Client.STARTUPLOADREQ.code());
+    }
+
+    private void thenTheSourceIsAskedForTheFileOverItsOwnConnection() throws Exception {
+        assertThat(names(this.call.until(Opcodes.Client.SETREQFILEID))).contains("REQUESTFILENAME");
+    }
+
+    private void thenTheServerIsAskedForCallbacksOf(Long... lowIds) throws Exception {
+        await("asked through the server again", () -> this.callbacks.size() >= lowIds.length);
+        assertThat(this.callbacks).containsExactly(lowIds);
+    }
+
+    private void thenTheSourceIs(SourceInfo.State expected) throws Exception {
+        assertThat(onLoop(() -> this.manager.sources().getFirst().state())).isEqualTo(expected);
+    }
+
+    private void thenTheDownloadIs(DownloadInfo.Status expected) throws Exception {
+        assertThat(onLoop(() -> this.manager.download(this.hash).orElseThrow().status()))
+                .isEqualTo(expected);
     }
 
     private String routedAs(ScriptedSource source) throws Exception {

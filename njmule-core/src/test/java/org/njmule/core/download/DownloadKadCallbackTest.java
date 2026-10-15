@@ -185,12 +185,10 @@ class DownloadKadCallbackTest {
     }
 
     @Test
-    void aSourceBehindABuddyIsAskedThroughItAndTakenWhenItCallsBack() throws Exception {
+    void shouldAskASourceBehindABuddyThroughItAndTakeItWhenItCallsBack() throws Exception {
         givenADownloadThatKadSearches();
-
-        whenKadFinds(behindABuddy(PEER));
-
-        thenACallbackIsAskedFor(1, PEER, true);
+        givenKadFound(behindABuddy(PEER));
+        givenACallbackWasAskedFor(1, PEER, true);
 
         whenTheSourceCallsBackAs(PEER);
 
@@ -199,7 +197,7 @@ class DownloadKadCallbackTest {
     }
 
     @Test
-    void aSourceTakingDirectCallbacksIsAskedDirectly() throws Exception {
+    void shouldAskASourceTakingDirectCallbacksDirectly() throws Exception {
         givenADownloadThatKadSearches();
 
         whenKadFinds(takingDirectCallbacks(PEER));
@@ -208,7 +206,7 @@ class DownloadKadCallbackTest {
     }
 
     @Test
-    void aClientWeDidNotAskIsNotTakenForTheSource() throws Exception {
+    void shouldNotTakeAClientWeDidNotAskForTheSource() throws Exception {
         givenADownloadThatKadSearches();
         givenKadFound(behindABuddy(PEER));
 
@@ -218,7 +216,7 @@ class DownloadKadCallbackTest {
     }
 
     @Test
-    void weAreNeverAskedToCallOurselves() throws Exception {
+    void shouldNeverAskUsToCallOurselves() throws Exception {
         givenADownloadThatKadSearches();
 
         whenKadFinds(behindABuddy(OURS), takingDirectCallbacks(PEER));
@@ -228,7 +226,7 @@ class DownloadKadCallbackTest {
     }
 
     @Test
-    void aSourceThatCalledBackIsAskedThroughKadAgainAndNeverPassedOn() throws Exception {
+    void shouldAskASourceThatCalledBackThroughKadAgainAndNeverPassItOn() throws Exception {
         givenADownloadThatKadSearches();
         givenKadFound(behindABuddy(PEER));
         givenTheSourceCalledBackAndKeepsUsQueued();
@@ -252,6 +250,10 @@ class DownloadKadCallbackTest {
                 1,
                 found.userHash().orElseThrow(),
                 found.callback().orElseThrow().viaBuddy());
+    }
+
+    private void givenACallbackWasAskedFor(int times, Hash16 userHash, boolean viaBuddy) throws Exception {
+        thenACallbackIsAskedFor(times, userHash, viaBuddy);
     }
 
     private void givenTheSourceCalledBackAndKeepsUsQueued() throws Exception {

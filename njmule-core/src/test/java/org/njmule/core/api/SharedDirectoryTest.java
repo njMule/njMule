@@ -22,75 +22,220 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class SharedDirectoryTest {
 
     @TempDir
     Path dir;
 
-    @Test
-    void rootsSystemDirectoriesAndPersonalFoldersAreSensitive() {
-        Path home = Path.of(System.getProperty("user.home"));
+    private List<Path> sensitiveDirectories;
+    private boolean sensitive;
 
-        assertThat(SharedDirectory.isSensitive(home.getRoot())).isTrue();
-        assertThat(SharedDirectory.isSensitive(home.resolve("Documents"))).isTrue();
-        assertThat(SharedDirectory.isSensitive(home.resolve("Desktop").resolve("photos")))
-                .isTrue();
-        assertThat(SharedDirectory.isSensitive(home.resolve("Music"))).isFalse();
-        String windows = System.getenv("SystemRoot");
-        if (windows != null) {
-            assertThat(SharedDirectory.isSensitive(Path.of(windows, "System32")))
-                    .isTrue();
-        } else {
-            assertThat(SharedDirectory.isSensitive(Path.of("/etc"))).isTrue();
+    @Test
+    void shouldTakeTheRootForSensitive() {
+        whenTheRootOfTheHomeIsChecked();
+
+        thenItIsSensitive();
+    }
+
+    @Test
+    void shouldTakeThePersonalDocumentsForSensitive() {
+        whenTheFolderOfTheHomeIsChecked("Documents");
+
+        thenItIsSensitive();
+    }
+
+    @Test
+    void shouldTakeAFolderInsideTheDesktopForSensitive() {
+        whenTheFolderOfTheHomeIsChecked("Desktop", "photos");
+
+        thenItIsSensitive();
+    }
+
+    @Test
+    void shouldNotTakeThePersonalMusicForSensitive() {
+        whenTheFolderOfTheHomeIsChecked("Music");
+
+        thenItIsNotSensitive();
+    }
+
+    @Test
+    void shouldTakeASystemDirectoryForSensitive() {
+        whenTheSystemDirectoryIsChecked();
+
+        thenItIsSensitive();
+    }
+
+    @Test
+    void shouldTakeTheHomeForSensitive() {
+        whenTheHomeIsChecked();
+
+        thenItIsSensitive();
+    }
+
+    @Test
+    void shouldTakeTheDirectoryOfAllHomesForSensitive() {
+        whenTheDirectoryOfAllHomesIsChecked();
+
+        thenItIsSensitive();
+    }
+
+    @Test
+    void shouldTakeTheSshKeysForSensitive() {
+        whenTheFolderOfTheHomeIsChecked(".ssh");
+
+        thenItIsSensitive();
+    }
+
+    @Test
+    void shouldTakeAFolderInsideTheGnupgKeysForSensitive() {
+        whenTheFolderOfTheHomeIsChecked(".gnupg", "private-keys-v1.d");
+
+        thenItIsSensitive();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"home", ""})
+    void shouldTakeADirectoryContainingASensitiveOneForSensitive(String directory) throws IOException {
+        givenTheDirectories("home/Documents", "home/Music");
+        givenTheSensitiveDirectories("home/Documents");
+
+        whenTheDirectoryIsChecked(directory);
+
+        thenItIsSensitive();
+    }
+
+    @Test
+    void shouldTakeADirectoryInsideASensitiveOneForSensitive() throws IOException {
+        givenTheDirectories("home/Documents", "home/Music");
+        givenTheSensitiveDirectories("home/Documents");
+
+        whenTheDirectoryIsChecked("home/Documents/taxes");
+
+        thenItIsSensitive();
+    }
+
+    @Test
+    void shouldNotTakeADirectoryBesideASensitiveOneForSensitive() throws IOException {
+        givenTheDirectories("home/Documents", "home/Music");
+        givenTheSensitiveDirectories("home/Documents");
+
+        whenTheDirectoryIsChecked("home/Music");
+
+        thenItIsNotSensitive();
+    }
+
+    @Test
+    void shouldNotTakeASiblingWithTheSamePrefixForSensitive() throws IOException {
+        givenTheDirectories("home/Documents", "home/Music");
+        givenTheSensitiveDirectories("home/Documents");
+
+        whenTheDirectoryIsChecked("home2");
+
+        thenItIsNotSensitive("a sibling with the same prefix");
+    }
+
+    @Test
+    void shouldJudgeALinkByWhereItLeads() throws IOException {
+        givenTheDirectories("home/Documents", "share");
+        givenALinkTo("share/docs", "home/Documents");
+        givenTheSensitiveDirectories("home/Documents");
+
+        whenTheDirectoryIsChecked("share/docs");
+
+        thenItIsSensitive();
+    }
+
+    @Test
+    void shouldNotTakeTheDirectoryBesideASensitiveLinkForSensitive() throws IOException {
+        givenTheDirectories("home/Documents", "share");
+        givenALinkTo("share/docs", "home/Documents");
+        givenTheSensitiveDirectories("share/docs");
+
+        whenTheDirectoryIsChecked("share/other");
+
+        thenItIsNotSensitive();
+    }
+
+    @Test
+    void shouldTakeWhereASensitiveLinkLeadsForSensitive() throws IOException {
+        givenTheDirectories("home/Documents", "share");
+        givenALinkTo("share/docs", "home/Documents");
+        givenTheSensitiveDirectories("share/docs");
+
+        whenTheDirectoryIsChecked("home/Documents");
+
+        thenItIsSensitive();
+    }
+
+    private void givenTheDirectories(String... relatives) throws IOException {
+        for (String relative : relatives) {
+            Files.createDirectories(this.dir.resolve(relative));
         }
     }
 
-    @Test
-    void theHomeTheDirectoryOfAllHomesAndKeyFoldersAreSensitive() {
-        Path home = Path.of(System.getProperty("user.home"));
-
-        assertThat(SharedDirectory.isSensitive(home)).isTrue();
-        assertThat(SharedDirectory.isSensitive(home.getParent())).isTrue();
-        assertThat(SharedDirectory.isSensitive(home.resolve(".ssh"))).isTrue();
-        assertThat(SharedDirectory.isSensitive(home.resolve(".gnupg").resolve("private-keys-v1.d")))
-                .isTrue();
-    }
-
-    @Test
-    void aDirectoryContainingASensitiveOneIsSensitive() throws IOException {
-        Path home = Files.createDirectories(this.dir.resolve("home"));
-        Path documents = Files.createDirectories(home.resolve("Documents"));
-        Path music = Files.createDirectories(home.resolve("Music"));
-        List<Path> sensitive = List.of(documents);
-
-        assertThat(SharedDirectory.isSensitive(home, sensitive)).isTrue();
-        assertThat(SharedDirectory.isSensitive(this.dir, sensitive)).isTrue();
-        assertThat(SharedDirectory.isSensitive(documents.resolve("taxes"), sensitive))
-                .isTrue();
-        assertThat(SharedDirectory.isSensitive(music, sensitive)).isFalse();
-        assertThat(SharedDirectory.isSensitive(this.dir.resolve("home2"), sensitive))
-                .as("a sibling with the same prefix")
-                .isFalse();
-    }
-
-    @Test
-    void aLinkIsJudgedByWhereItLeads() throws IOException {
-        Path documents = Files.createDirectories(this.dir.resolve("home").resolve("Documents"));
-        Path share = Files.createDirectories(this.dir.resolve("share"));
-        Path link = share.resolve("docs");
+    private void givenALinkTo(String link, String target) throws IOException {
         try {
-            Files.createSymbolicLink(link, documents);
+            Files.createSymbolicLink(this.dir.resolve(link), this.dir.resolve(target));
         } catch (IOException | UnsupportedOperationException e) {
             assumeTrue(false, "symbolic links are not available: " + e);
         }
+    }
 
-        assertThat(SharedDirectory.isSensitive(link, List.of(documents))).isTrue();
-        assertThat(SharedDirectory.isSensitive(share.resolve("other"), List.of(link)))
-                .isFalse();
-        assertThat(SharedDirectory.isSensitive(documents, List.of(link))).isTrue();
+    private void givenTheSensitiveDirectories(String... relatives) {
+        this.sensitiveDirectories =
+                Arrays.stream(relatives).map(this.dir::resolve).toList();
+    }
+
+    private void whenTheRootOfTheHomeIsChecked() {
+        this.sensitive = SharedDirectory.isSensitive(home().getRoot());
+    }
+
+    private void whenTheHomeIsChecked() {
+        this.sensitive = SharedDirectory.isSensitive(home());
+    }
+
+    private void whenTheDirectoryOfAllHomesIsChecked() {
+        this.sensitive = SharedDirectory.isSensitive(home().getParent());
+    }
+
+    private void whenTheFolderOfTheHomeIsChecked(String... names) {
+        Path folder = home();
+        for (String name : names) {
+            folder = folder.resolve(name);
+        }
+        this.sensitive = SharedDirectory.isSensitive(folder);
+    }
+
+    private void whenTheSystemDirectoryIsChecked() {
+        String windows = System.getenv("SystemRoot");
+        Path system = windows != null ? Path.of(windows, "System32") : Path.of("/etc");
+        this.sensitive = SharedDirectory.isSensitive(system);
+    }
+
+    private void whenTheDirectoryIsChecked(String relative) {
+        this.sensitive = SharedDirectory.isSensitive(this.dir.resolve(relative), this.sensitiveDirectories);
+    }
+
+    private void thenItIsSensitive() {
+        assertThat(this.sensitive).isTrue();
+    }
+
+    private void thenItIsNotSensitive() {
+        assertThat(this.sensitive).isFalse();
+    }
+
+    private void thenItIsNotSensitive(String description) {
+        assertThat(this.sensitive).as(description).isFalse();
+    }
+
+    private static Path home() {
+        return Path.of(System.getProperty("user.home"));
     }
 }

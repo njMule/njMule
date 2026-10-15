@@ -19,16 +19,42 @@ package org.njmule.core.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class DownloadPriorityTest {
 
+    private DownloadPriority priority;
+    private DownloadPriority effective;
+
+    @ParameterizedTest
+    @CsvSource({"0, HIGH", "20, HIGH", "21, NORMAL", "100, NORMAL", "101, LOW"})
+    void shouldPutRareFilesFirstWhenAutomatic(int sources, DownloadPriority expected) {
+        givenThePriority(DownloadPriority.AUTO);
+
+        whenItActsForAFileWithSources(sources);
+
+        thenItActsWith(expected);
+    }
+
     @Test
-    void autoPutsRareFilesFirst() {
-        assertThat(DownloadPriority.AUTO.effective(0)).isEqualTo(DownloadPriority.HIGH);
-        assertThat(DownloadPriority.AUTO.effective(20)).isEqualTo(DownloadPriority.HIGH);
-        assertThat(DownloadPriority.AUTO.effective(21)).isEqualTo(DownloadPriority.NORMAL);
-        assertThat(DownloadPriority.AUTO.effective(100)).isEqualTo(DownloadPriority.NORMAL);
-        assertThat(DownloadPriority.AUTO.effective(101)).isEqualTo(DownloadPriority.LOW);
-        assertThat(DownloadPriority.LOW.effective(0)).isEqualTo(DownloadPriority.LOW);
+    void shouldKeepAChosenPriorityWhateverTheSources() {
+        givenThePriority(DownloadPriority.LOW);
+
+        whenItActsForAFileWithSources(0);
+
+        thenItActsWith(DownloadPriority.LOW);
+    }
+
+    private void givenThePriority(DownloadPriority chosen) {
+        this.priority = chosen;
+    }
+
+    private void whenItActsForAFileWithSources(int sources) {
+        this.effective = this.priority.effective(sources);
+    }
+
+    private void thenItActsWith(DownloadPriority expected) {
+        assertThat(this.effective).isEqualTo(expected);
     }
 }

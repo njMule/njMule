@@ -17,172 +17,338 @@
 package org.njmule.core.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class AppDirectoriesTest {
 
     @TempDir
     Path home;
 
-    private AppDirectories resolve(OsFamily os, Map<String, String> env) {
-        return AppDirectories.resolve(os, env, this.home, Optional.empty(), Optional.empty());
+    private OsFamily os;
+    private final Map<String, String> env = new HashMap<>();
+    private Optional<Path> overrideRoot = Optional.empty();
+    private Optional<Path> executableDir = Optional.empty();
+    private AppDirectories directories;
+    private Optional<Path> download;
+    private OsFamily detected;
+    private Throwable exception;
+
+    @Test
+    void shouldUseRoamingForConfigAndLocalForBulkDataOnWindows() {
+        givenTheOperatingSystem(OsFamily.WINDOWS);
+        givenTheVariableInTheHome("APPDATA", "AppData/Roaming");
+        givenTheVariableInTheHome("LOCALAPPDATA", "AppData/Local");
+        givenTheVariableInTheHome("USERPROFILE", "");
+
+        whenTheDirectoriesAreResolved();
+
+        thenTheConfigDirectoryIs("AppData/Roaming/njMule/config");
+        thenTheGuiDirectoryIs("AppData/Roaming/njMule/gui");
+        thenTheDataDirectoryIs("AppData/Local/njMule/data");
+        thenTheTempDirectoryIs("AppData/Local/njMule/temp");
+        thenTheCacheDirectoryIs("AppData/Local/njMule/cache");
+        thenTheLogsDirectoryIs("AppData/Local/njMule/logs");
+        thenTheDownloadsDirectoryIs("Downloads/njMule");
+        thenTheDirectoriesArePortable(false);
     }
 
     @Test
-    void windowsUsesRoamingForConfigAndLocalForBulkData() {
-        Path roaming = this.home.resolve("AppData/Roaming");
-        Path local = this.home.resolve("AppData/Local");
-        AppDirectories d = resolve(
-                OsFamily.WINDOWS,
-                Map.of(
-                        "APPDATA", roaming.toString(),
-                        "LOCALAPPDATA", local.toString(),
-                        "USERPROFILE", this.home.toString()));
+    void shouldFallBackToTheProfileOnWindowsWhenVariablesAreMissing() {
+        givenTheOperatingSystem(OsFamily.WINDOWS);
 
-        assertThat(d.config()).isEqualTo(roaming.resolve("njMule/config"));
-        assertThat(d.gui()).isEqualTo(roaming.resolve("njMule/gui"));
-        assertThat(d.data()).isEqualTo(local.resolve("njMule/data"));
-        assertThat(d.temp()).isEqualTo(local.resolve("njMule/temp"));
-        assertThat(d.cache()).isEqualTo(local.resolve("njMule/cache"));
-        assertThat(d.logs()).isEqualTo(local.resolve("njMule/logs"));
-        assertThat(d.downloads()).isEqualTo(this.home.resolve("Downloads/njMule"));
-        assertThat(d.portable()).isFalse();
+        whenTheDirectoriesAreResolved();
+
+        thenTheConfigDirectoryIs("AppData/Roaming/njMule/config");
     }
 
     @Test
-    void windowsFallsBackToTheProfileWhenVariablesAreMissing() {
-        AppDirectories d = resolve(OsFamily.WINDOWS, Map.of());
-        assertThat(d.config()).isEqualTo(this.home.resolve("AppData/Roaming/njMule/config"));
+    void shouldUseTheLibraryOnMacos() {
+        givenTheOperatingSystem(OsFamily.MACOS);
+
+        whenTheDirectoriesAreResolved();
+
+        thenTheConfigDirectoryIs("Library/Application Support/njMule/config");
+        thenTheDataDirectoryIs("Library/Application Support/njMule/data");
+        thenTheCacheDirectoryIs("Library/Caches/org.njmule.njMule");
+        thenTheLogsDirectoryIs("Library/Logs/njMule");
+        thenTheDownloadsDirectoryIs("Downloads/njMule");
     }
 
     @Test
-    void macosUsesTheLibrary() {
-        AppDirectories d = resolve(OsFamily.MACOS, Map.of());
+    void shouldFollowXdgDefaultsOnLinux() {
+        givenTheOperatingSystem(OsFamily.LINUX);
 
-        Path support = this.home.resolve("Library/Application Support/njMule");
-        assertThat(d.config()).isEqualTo(support.resolve("config"));
-        assertThat(d.data()).isEqualTo(support.resolve("data"));
-        assertThat(d.cache()).isEqualTo(this.home.resolve("Library/Caches/org.njmule.njMule"));
-        assertThat(d.logs()).isEqualTo(this.home.resolve("Library/Logs/njMule"));
-        assertThat(d.downloads()).isEqualTo(this.home.resolve("Downloads/njMule"));
+        whenTheDirectoriesAreResolved();
+
+        thenTheConfigDirectoryIs(".config/njmule");
+        thenTheDataDirectoryIs(".local/share/njmule");
+        thenTheTempDirectoryIs(".local/share/njmule/temp");
+        thenTheCacheDirectoryIs(".cache/njmule");
+        thenTheLogsDirectoryIs(".local/state/njmule/logs");
+        thenTheDownloadsDirectoryIs("Downloads/njMule");
     }
 
     @Test
-    void linuxFollowsXdgDefaults() {
-        AppDirectories d = resolve(OsFamily.LINUX, Map.of());
+    void shouldHonourAbsoluteXdgVariablesAndIgnoreRelativeOnesOnLinux() {
+        givenTheOperatingSystem(OsFamily.LINUX);
+        givenTheVariableInTheHome("XDG_CONFIG_HOME", "cfg");
+        givenTheVariable("XDG_CACHE_HOME", "rel");
 
-        assertThat(d.config()).isEqualTo(this.home.resolve(".config/njmule"));
-        assertThat(d.data()).isEqualTo(this.home.resolve(".local/share/njmule"));
-        assertThat(d.temp()).isEqualTo(this.home.resolve(".local/share/njmule/temp"));
-        assertThat(d.cache()).isEqualTo(this.home.resolve(".cache/njmule"));
-        assertThat(d.logs()).isEqualTo(this.home.resolve(".local/state/njmule/logs"));
-        assertThat(d.downloads()).isEqualTo(this.home.resolve("Downloads/njMule"));
+        whenTheDirectoriesAreResolved();
+
+        thenTheConfigDirectoryIs("cfg/njmule");
+        thenTheCacheDirectoryIs(".cache/njmule");
     }
 
     @Test
-    void linuxHonoursAbsoluteXdgVariablesAndIgnoresRelativeOnes() {
-        Path cfg = this.home.resolve("cfg");
-        AppDirectories d = resolve(OsFamily.LINUX, Map.of("XDG_CONFIG_HOME", cfg.toString(), "XDG_CACHE_HOME", "rel"));
-
-        assertThat(d.config()).isEqualTo(cfg.resolve("njmule"));
-        assertThat(d.cache()).isEqualTo(this.home.resolve(".cache/njmule"));
-    }
-
-    @Test
-    void linuxReadsTheDownloadDirectoryFromUserDirs() throws IOException {
-        Path config = Files.createDirectories(this.home.resolve(".config"));
-        Files.writeString(config.resolve("user-dirs.dirs"), """
+    void shouldReadTheDownloadDirectoryFromUserDirsOnLinux() throws IOException {
+        givenTheOperatingSystem(OsFamily.LINUX);
+        givenTheFileInTheHome(".config/user-dirs.dirs", """
                 # comment
                 XDG_DESKTOP_DIR="$HOME/Desktop"
                 XDG_DOWNLOAD_DIR="$HOME/Scaricati"
                 """);
 
-        AppDirectories d = resolve(OsFamily.LINUX, Map.of());
-        assertThat(d.downloads()).isEqualTo(this.home.resolve("Scaricati/njMule"));
+        whenTheDirectoriesAreResolved();
+
+        thenTheDownloadsDirectoryIs("Scaricati/njMule");
     }
 
     @Test
-    void userDirsWithAbsoluteOrRelativeValues() throws IOException {
-        Path file = this.home.resolve("user-dirs.dirs");
-        Path abs = this.home.resolve("abs");
-        Files.writeString(file, "XDG_DOWNLOAD_DIR=\"" + abs + "\"\n");
-        assertThat(AppDirectories.userDirsDownload(file, this.home)).contains(abs);
+    void shouldReadAnAbsoluteDownloadDirectoryFromUserDirs() throws IOException {
+        givenUserDirsWithTheAbsoluteDownloadDirectoryInTheHome("abs");
 
-        Files.writeString(file, "XDG_DOWNLOAD_DIR=relative\n");
-        assertThat(AppDirectories.userDirsDownload(file, this.home)).isEmpty();
+        whenTheDownloadDirectoryIsReadFromUserDirs();
 
-        Files.writeString(file, "XDG_DOWNLOAD_DIR=\"$HOME\"\n");
-        assertThat(AppDirectories.userDirsDownload(file, this.home)).contains(this.home);
+        thenTheDownloadDirectoryReadIs("abs");
     }
 
     @Test
-    void theLastDownloadDirectoryLineWinsAsInTheShell() throws IOException {
-        Path file = this.home.resolve("user-dirs.dirs");
-        Files.writeString(file, """
+    void shouldIgnoreARelativeDownloadDirectoryInUserDirs() throws IOException {
+        givenTheFileInTheHome("user-dirs.dirs", "XDG_DOWNLOAD_DIR=relative\n");
+
+        whenTheDownloadDirectoryIsReadFromUserDirs();
+
+        thenNoDownloadDirectoryIsRead();
+    }
+
+    @Test
+    void shouldReadTheHomeAsDownloadDirectoryFromUserDirs() throws IOException {
+        givenTheFileInTheHome("user-dirs.dirs", "XDG_DOWNLOAD_DIR=\"$HOME\"\n");
+
+        whenTheDownloadDirectoryIsReadFromUserDirs();
+
+        thenTheDownloadDirectoryReadIs("");
+    }
+
+    @Test
+    void shouldLetTheLastDownloadDirectoryLineWinAsInTheShell() throws IOException {
+        givenTheFileInTheHome("user-dirs.dirs", """
                 XDG_DOWNLOAD_DIR="$HOME/Old"
                 # moved
                 XDG_DOWNLOAD_DIR="$HOME/New"
                 """);
-        assertThat(AppDirectories.userDirsDownload(file, this.home)).contains(this.home.resolve("New"));
 
-        Files.writeString(file, "XDG_DOWNLOAD_DIR=\"$HOME/Old\"\nXDG_DOWNLOAD_DIR=relative\n");
-        assertThat(AppDirectories.userDirsDownload(file, this.home)).isEmpty();
+        whenTheDownloadDirectoryIsReadFromUserDirs();
+
+        thenTheDownloadDirectoryReadIs("New");
     }
 
     @Test
-    void overrideRootPutsEverythingBelowIt() {
-        Path root = this.home.resolve("custom");
-        AppDirectories d =
-                AppDirectories.resolve(OsFamily.WINDOWS, Map.of(), this.home, Optional.of(root), Optional.empty());
+    void shouldReadNoDownloadDirectoryWhenTheLastLineIsRelative() throws IOException {
+        givenTheFileInTheHome("user-dirs.dirs", "XDG_DOWNLOAD_DIR=\"$HOME/Old\"\nXDG_DOWNLOAD_DIR=relative\n");
 
-        assertThat(d.config()).isEqualTo(root.resolve("config"));
-        assertThat(d.downloads()).isEqualTo(root.resolve("incoming"));
-        assertThat(d.portable()).isFalse();
+        whenTheDownloadDirectoryIsReadFromUserDirs();
+
+        thenNoDownloadDirectoryIsRead();
     }
 
     @Test
-    void portableMarkerNextToTheExecutableEnablesPortableMode() throws IOException {
-        Path exeDir = Files.createDirectories(this.home.resolve("app"));
+    void shouldPutEverythingBelowAnOverrideRoot() {
+        givenTheOperatingSystem(OsFamily.WINDOWS);
+        givenTheOverrideRootInTheHome("custom");
+
+        whenTheDirectoriesAreResolved();
+
+        thenTheConfigDirectoryIs("custom/config");
+        thenTheDownloadsDirectoryIs("custom/incoming");
+        thenTheDirectoriesArePortable(false);
+    }
+
+    @Test
+    void shouldEnablePortableModeWithAMarkerNextToTheExecutable() throws IOException {
+        givenTheOperatingSystem(OsFamily.LINUX);
+        givenThePortableMarkerNextToTheExecutableIn("app");
+
+        whenTheDirectoriesAreResolved();
+
+        thenTheDirectoriesArePortable(true);
+        thenTheConfigDirectoryIs("app/data/config");
+    }
+
+    @Test
+    void shouldCreateEveryDirectory() throws IOException {
+        givenTheDirectoriesBelowTheRoot("r");
+
+        whenAllDirectoriesAreCreated();
+
+        thenTheLogsDirectoryExists();
+        thenTheDownloadsDirectoryExists();
+    }
+
+    @Test
+    void shouldRejectRelativeDirectories() {
+        whenDirectoriesAreMadeWithTheRelativeConfig("rel");
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"Windows 11, WINDOWS", "Mac OS X, MACOS", "Linux, LINUX", "FreeBSD, LINUX", ", LINUX"})
+    void shouldDetectTheOsFamily(String osName, OsFamily expected) {
+        whenTheOsFamilyIsDetectedFrom(osName);
+
+        thenTheDetectedOsFamilyIs(expected);
+    }
+
+    @Test
+    void shouldDetectTheCurrentOsFamily() {
+        whenTheCurrentOsFamilyIsDetected();
+
+        thenAnOsFamilyIsDetected();
+    }
+
+    private void givenTheOperatingSystem(OsFamily family) {
+        this.os = family;
+    }
+
+    private void givenTheVariable(String name, String value) {
+        this.env.put(name, value);
+    }
+
+    private void givenTheVariableInTheHome(String name, String pathInTheHome) {
+        this.env.put(name, this.home.resolve(pathInTheHome).toString());
+    }
+
+    private void givenTheFileInTheHome(String pathInTheHome, String content) throws IOException {
+        Path file = this.home.resolve(pathInTheHome);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, content);
+    }
+
+    private void givenUserDirsWithTheAbsoluteDownloadDirectoryInTheHome(String pathInTheHome) throws IOException {
+        Files.writeString(
+                this.home.resolve("user-dirs.dirs"), "XDG_DOWNLOAD_DIR=\"" + this.home.resolve(pathInTheHome) + "\"\n");
+    }
+
+    private void givenTheOverrideRootInTheHome(String pathInTheHome) {
+        this.overrideRoot = Optional.of(this.home.resolve(pathInTheHome));
+    }
+
+    private void givenThePortableMarkerNextToTheExecutableIn(String pathInTheHome) throws IOException {
+        Path exeDir = Files.createDirectories(this.home.resolve(pathInTheHome));
         Files.createFile(exeDir.resolve(AppDirectories.PORTABLE_MARKER));
-
-        AppDirectories d =
-                AppDirectories.resolve(OsFamily.LINUX, Map.of(), this.home, Optional.empty(), Optional.of(exeDir));
-
-        assertThat(d.portable()).isTrue();
-        assertThat(d.config()).isEqualTo(exeDir.resolve("data/config"));
+        this.executableDir = Optional.of(exeDir);
     }
 
-    @Test
-    void createAllCreatesEveryDirectory() throws IOException {
-        AppDirectories d = AppDirectories.underRoot(this.home.resolve("r"), false);
-        d.createAll();
-        assertThat(d.logs()).isDirectory();
-        assertThat(d.downloads()).isDirectory();
+    private void givenTheDirectoriesBelowTheRoot(String pathInTheHome) {
+        this.directories = AppDirectories.underRoot(this.home.resolve(pathInTheHome), false);
     }
 
-    @Test
-    void rejectsRelativeDirectories() {
-        Path rel = Path.of("rel");
+    private void whenTheDirectoriesAreResolved() {
+        this.directories = AppDirectories.resolve(this.os, this.env, this.home, this.overrideRoot, this.executableDir);
+    }
+
+    private void whenTheDownloadDirectoryIsReadFromUserDirs() {
+        this.download = AppDirectories.userDirsDownload(this.home.resolve("user-dirs.dirs"), this.home);
+    }
+
+    private void whenAllDirectoriesAreCreated() throws IOException {
+        this.directories.createAll();
+    }
+
+    private void whenDirectoriesAreMadeWithTheRelativeConfig(String config) {
+        Path rel = Path.of(config);
         Path abs = this.home;
-        assertThatThrownBy(() -> new AppDirectories(rel, abs, abs, abs, abs, abs, abs, false))
-                .isInstanceOf(IllegalArgumentException.class);
+        this.exception = catchThrowable(() -> new AppDirectories(rel, abs, abs, abs, abs, abs, abs, false));
     }
 
-    @Test
-    void detectsTheOsFamily() {
-        assertThat(OsFamily.fromOsName("Windows 11")).isEqualTo(OsFamily.WINDOWS);
-        assertThat(OsFamily.fromOsName("Mac OS X")).isEqualTo(OsFamily.MACOS);
-        assertThat(OsFamily.fromOsName("Linux")).isEqualTo(OsFamily.LINUX);
-        assertThat(OsFamily.fromOsName("FreeBSD")).isEqualTo(OsFamily.LINUX);
-        assertThat(OsFamily.fromOsName(null)).isEqualTo(OsFamily.LINUX);
-        assertThat(OsFamily.current()).isNotNull();
+    private void whenTheOsFamilyIsDetectedFrom(String osName) {
+        this.detected = OsFamily.fromOsName(osName);
+    }
+
+    private void whenTheCurrentOsFamilyIsDetected() {
+        this.detected = OsFamily.current();
+    }
+
+    private void thenTheConfigDirectoryIs(String pathInTheHome) {
+        assertThat(this.directories.config()).isEqualTo(this.home.resolve(pathInTheHome));
+    }
+
+    private void thenTheGuiDirectoryIs(String pathInTheHome) {
+        assertThat(this.directories.gui()).isEqualTo(this.home.resolve(pathInTheHome));
+    }
+
+    private void thenTheDataDirectoryIs(String pathInTheHome) {
+        assertThat(this.directories.data()).isEqualTo(this.home.resolve(pathInTheHome));
+    }
+
+    private void thenTheTempDirectoryIs(String pathInTheHome) {
+        assertThat(this.directories.temp()).isEqualTo(this.home.resolve(pathInTheHome));
+    }
+
+    private void thenTheCacheDirectoryIs(String pathInTheHome) {
+        assertThat(this.directories.cache()).isEqualTo(this.home.resolve(pathInTheHome));
+    }
+
+    private void thenTheLogsDirectoryIs(String pathInTheHome) {
+        assertThat(this.directories.logs()).isEqualTo(this.home.resolve(pathInTheHome));
+    }
+
+    private void thenTheDownloadsDirectoryIs(String pathInTheHome) {
+        assertThat(this.directories.downloads()).isEqualTo(this.home.resolve(pathInTheHome));
+    }
+
+    private void thenTheDirectoriesArePortable(boolean expected) {
+        assertThat(this.directories.portable()).isEqualTo(expected);
+    }
+
+    private void thenTheLogsDirectoryExists() {
+        assertThat(this.directories.logs()).isDirectory();
+    }
+
+    private void thenTheDownloadsDirectoryExists() {
+        assertThat(this.directories.downloads()).isDirectory();
+    }
+
+    private void thenTheDownloadDirectoryReadIs(String pathInTheHome) {
+        assertThat(this.download).contains(this.home.resolve(pathInTheHome));
+    }
+
+    private void thenNoDownloadDirectoryIsRead() {
+        assertThat(this.download).isEmpty();
+    }
+
+    private void thenTheDetectedOsFamilyIs(OsFamily expected) {
+        assertThat(this.detected).isEqualTo(expected);
+    }
+
+    private void thenAnOsFamilyIsDetected() {
+        assertThat(this.detected).isNotNull();
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
     }
 }

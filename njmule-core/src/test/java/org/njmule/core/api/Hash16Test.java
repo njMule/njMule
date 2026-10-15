@@ -17,52 +17,184 @@
 package org.njmule.core.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class Hash16Test {
 
-    @Test
-    void parsesAndFormatsUpperCaseHex() {
-        Hash16 hash = Hash16.parseHex("31d6cfe0d16ae931b73c59d7e0c089c0");
+    private byte[] source;
+    private Hash16 hash;
+    private boolean zero;
+    private int comparison;
+    private Throwable exception;
 
-        assertThat(hash.toHex()).isEqualTo("31D6CFE0D16AE931B73C59D7E0C089C0");
-        assertThat(hash).isEqualTo(Hash16.parseHex(hash.toHex())).hasSameHashCodeAs(hash);
-        assertThat(hash.isZero()).isFalse();
-        assertThat(Hash16.ZERO.isZero()).isTrue();
+    @Test
+    void shouldParseAndFormatUpperCaseHex() {
+        whenTheHexIsParsed("31d6cfe0d16ae931b73c59d7e0c089c0");
+
+        thenTheHexIs("31D6CFE0D16AE931B73C59D7E0C089C0");
+        thenTheHashEqualsItsHexParsedBack();
     }
 
     @Test
-    void isImmutable() {
-        byte[] raw = new byte[16];
-        Hash16 hash = Hash16.of(raw);
-        raw[0] = 1;
-        hash.toByteArray()[1] = 1;
+    void shouldNotTakeAHashWithBitsSetForZero() {
+        givenTheHash(Hash16.parseHex("31d6cfe0d16ae931b73c59d7e0c089c0"));
 
-        assertThat(hash).isEqualTo(Hash16.ZERO);
+        whenItIsCheckedForZero();
+
+        thenItIsZero(false);
     }
 
     @Test
-    void comparesUnsigned() {
-        assertThat(Hash16.parseHex("80" + "00".repeat(15))).isGreaterThan(Hash16.parseHex("7F" + "FF".repeat(15)));
+    void shouldTakeTheZeroHashForZero() {
+        givenTheHash(Hash16.ZERO);
+
+        whenItIsCheckedForZero();
+
+        thenItIsZero(true);
     }
 
     @Test
-    void rejectsWrongLengths() {
-        assertThatThrownBy(() -> Hash16.of(new byte[15])).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Hash16.parseHex("00")).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Hash16.parseHex("G".repeat(32))).isInstanceOf(IllegalArgumentException.class);
+    void shouldStayTheSameWhenTheBytesItWasMadeOfChange() {
+        givenAHashMadeOfZeroBytes();
+
+        whenTheBytesItWasMadeOfChange();
+
+        thenTheHashIs(Hash16.ZERO);
     }
 
     @Test
-    void readsOnlyFromInsideTheSource() {
-        byte[] source = new byte[20];
-        source[4] = 7;
+    void shouldStayTheSameWhenTheBytesItGaveChange() {
+        givenAHashMadeOfZeroBytes();
 
-        assertThat(Hash16.of(source, 4).get(0)).isEqualTo((byte) 7);
-        assertThatThrownBy(() -> Hash16.of(source, 5)).isInstanceOf(IndexOutOfBoundsException.class);
-        assertThatThrownBy(() -> Hash16.of(new byte[10], 0)).isInstanceOf(IndexOutOfBoundsException.class);
-        assertThatThrownBy(() -> Hash16.of(source, -1)).isInstanceOf(IndexOutOfBoundsException.class);
+        whenTheBytesItGaveChange();
+
+        thenTheHashIs(Hash16.ZERO);
+    }
+
+    @Test
+    void shouldCompareUnsigned() {
+        whenTheHashesAreCompared("80" + "00".repeat(15), "7F" + "FF".repeat(15));
+
+        thenTheFirstIsGreater();
+    }
+
+    @Test
+    void shouldRejectBytesOfTheWrongLength() {
+        whenAHashIsMadeOf(new byte[15]);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRejectHexOfTheWrongLength() {
+        whenTheHexIsParsed("00");
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRejectCharactersThatAreNotHexDigits() {
+        whenTheHexIsParsed("G".repeat(32));
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldReadFromInsideTheSource() {
+        givenASourceOfBytes(20);
+        givenTheSourceByteAt(4, (byte) 7);
+
+        whenAHashIsReadFrom(4);
+
+        thenTheFirstByteIs((byte) 7);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"20, 5", "10, 0", "20, -1"})
+    void shouldNotReadFromOutsideTheSource(int sourceLength, int offset) {
+        givenASourceOfBytes(sourceLength);
+
+        whenAHashIsReadFrom(offset);
+
+        thenExceptionOccurred(IndexOutOfBoundsException.class);
+    }
+
+    private void givenTheHash(Hash16 given) {
+        this.hash = given;
+    }
+
+    private void givenAHashMadeOfZeroBytes() {
+        this.source = new byte[16];
+        this.hash = Hash16.of(this.source);
+    }
+
+    private void givenASourceOfBytes(int length) {
+        this.source = new byte[length];
+    }
+
+    private void givenTheSourceByteAt(int index, byte value) {
+        this.source[index] = value;
+    }
+
+    private void whenTheHexIsParsed(String hex) {
+        this.exception = catchThrowable(() -> this.hash = Hash16.parseHex(hex));
+    }
+
+    private void whenItIsCheckedForZero() {
+        this.zero = this.hash.isZero();
+    }
+
+    private void whenTheBytesItWasMadeOfChange() {
+        this.source[0] = 1;
+    }
+
+    private void whenTheBytesItGaveChange() {
+        this.hash.toByteArray()[1] = 1;
+    }
+
+    private void whenTheHashesAreCompared(String hex, String otherHex) {
+        this.comparison = Hash16.parseHex(hex).compareTo(Hash16.parseHex(otherHex));
+    }
+
+    private void whenAHashIsMadeOf(byte[] bytes) {
+        this.exception = catchThrowable(() -> this.hash = Hash16.of(bytes));
+    }
+
+    private void whenAHashIsReadFrom(int offset) {
+        this.exception = catchThrowable(() -> this.hash = Hash16.of(this.source, offset));
+    }
+
+    private void thenTheHexIs(String expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.hash.toHex()).isEqualTo(expected);
+    }
+
+    private void thenTheHashEqualsItsHexParsedBack() {
+        assertThat(this.hash).isEqualTo(Hash16.parseHex(this.hash.toHex())).hasSameHashCodeAs(this.hash);
+    }
+
+    private void thenItIsZero(boolean expected) {
+        assertThat(this.zero).isEqualTo(expected);
+    }
+
+    private void thenTheHashIs(Hash16 expected) {
+        assertThat(this.hash).isEqualTo(expected);
+    }
+
+    private void thenTheFirstIsGreater() {
+        assertThat(this.comparison).isPositive();
+    }
+
+    private void thenTheFirstByteIs(byte expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.hash.get(0)).isEqualTo(expected);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
     }
 }

@@ -22,31 +22,84 @@ import org.junit.jupiter.api.Test;
 
 class NjMuleInfoTest {
 
+    private String text;
+
     @Test
-    void versionIsAFilteredSemanticVersion() {
-        assertThat(NjMuleInfo.version())
-                .matches("\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?")
-                .isNotEqualTo("0.0.0-unknown");
+    void shouldGiveAFilteredSemanticVersion() {
+        whenTheVersionIsRead();
+
+        thenTheTextMatches("\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?");
+        thenTheTextIsNot("0.0.0-unknown");
     }
 
     @Test
-    void startupNoticeFollowsTheGplRecommendation() {
-        assertThat(NjMuleInfo.startupNotice("--warranty", "--license"))
-                .contains("njMule", "Next generation Java Mule", NjMuleInfo.COPYRIGHT)
-                .contains("ABSOLUTELY NO WARRANTY", "'--warranty'", "'--license'");
+    void shouldFollowTheGplRecommendationInTheStartupNotice() {
+        whenTheStartupNoticeIsMadeWithTheHints("--warranty", "--license");
+
+        thenTheTextContains("njMule", "Next generation Java Mule", NjMuleInfo.COPYRIGHT);
+        thenTheTextContains("ABSOLUTELY NO WARRANTY", "'--warranty'", "'--license'");
     }
 
     @Test
-    void licenseAndNoticeAreBundled() {
-        assertThat(NjMuleInfo.licenseText()).contains("GNU GENERAL PUBLIC LICENSE", "Version 3");
-        assertThat(NjMuleInfo.noticeText()).contains("Third-party components");
+    void shouldBundleTheLicense() {
+        whenTheLicenseIsRead();
+
+        thenTheTextContains("GNU GENERAL PUBLIC LICENSE", "Version 3");
     }
 
     @Test
-    void warrantyTextIsSectionsFifteenAndSixteen() {
-        assertThat(NjMuleInfo.warrantyText())
-                .startsWith("15. Disclaimer of Warranty.")
-                .contains("16. Limitation of Liability.")
-                .doesNotContain("17. Interpretation");
+    void shouldBundleTheNotice() {
+        whenTheNoticeIsRead();
+
+        thenTheTextContains("Third-party components");
+    }
+
+    @Test
+    void shouldGiveSectionsFifteenAndSixteenAsTheWarrantyText() {
+        whenTheWarrantyIsRead();
+
+        thenTheTextStartsWith("15. Disclaimer of Warranty.");
+        thenTheTextContains("16. Limitation of Liability.");
+        thenTheTextDoesNotContain("17. Interpretation");
+    }
+
+    private void whenTheVersionIsRead() {
+        this.text = NjMuleInfo.version();
+    }
+
+    private void whenTheStartupNoticeIsMadeWithTheHints(String warrantyHint, String licenseHint) {
+        this.text = NjMuleInfo.startupNotice(warrantyHint, licenseHint);
+    }
+
+    private void whenTheLicenseIsRead() {
+        this.text = NjMuleInfo.licenseText();
+    }
+
+    private void whenTheNoticeIsRead() {
+        this.text = NjMuleInfo.noticeText();
+    }
+
+    private void whenTheWarrantyIsRead() {
+        this.text = NjMuleInfo.warrantyText();
+    }
+
+    private void thenTheTextMatches(String regex) {
+        assertThat(this.text).matches(regex);
+    }
+
+    private void thenTheTextIsNot(String unexpected) {
+        assertThat(this.text).isNotEqualTo(unexpected);
+    }
+
+    private void thenTheTextContains(String... parts) {
+        assertThat(this.text).contains(parts);
+    }
+
+    private void thenTheTextStartsWith(String prefix) {
+        assertThat(this.text).startsWith(prefix);
+    }
+
+    private void thenTheTextDoesNotContain(String part) {
+        assertThat(this.text).doesNotContain(part);
     }
 }

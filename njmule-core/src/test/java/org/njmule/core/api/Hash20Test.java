@@ -17,9 +17,10 @@
 package org.njmule.core.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.util.Locale;
+import java.util.stream.Stream;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
@@ -27,58 +28,98 @@ import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 import net.jqwik.api.constraints.Size;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class Hash20Test {
 
-    @Test
-    void aichHashesAre32Base32Characters() {
-        Hash20 zero = Hash20.of(new byte[20]);
+    private byte[] source;
+    private String text;
+    private Hash20 hash;
+    private Throwable exception;
 
-        assertThat(zero.toBase32()).isEqualTo("A".repeat(32));
-        assertThat(Hash20.parseBase32("a".repeat(32))).isEqualTo(zero);
-        assertThatThrownBy(() -> Hash20.parseBase32("A".repeat(31) + "1")).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> Hash20.parseBase32("A".repeat(31))).isInstanceOf(IllegalArgumentException.class);
+    @Test
+    void shouldFormatAnAichHashAs32Base32Characters() {
+        givenTheHashOf(new byte[20]);
+
+        whenItIsFormattedInBase32();
+
+        thenTheTextIs("A".repeat(32));
     }
 
     @Test
-    void paddedBase32IsRefused() {
-        for (String padded : new String[] {
-            "A".repeat(29) + "===",
-            "A".repeat(28) + "====",
-            "A".repeat(31) + "=",
-            "=".repeat(32),
-            "A".repeat(26) + "======"
-        }) {
-            assertThatThrownBy(() -> Hash20.parseBase32(padded))
-                    .as(padded)
-                    .isInstanceOf(IllegalArgumentException.class);
-        }
+    void shouldParse32Base32CharactersInLowerCase() {
+        whenTheBase32IsParsed("a".repeat(32));
+
+        thenTheHashIs(Hash20.of(new byte[20]));
     }
 
     @Test
-    void readsOnlyFromInsideTheSource() {
-        byte[] source = new byte[24];
+    void shouldRefuseACharacterOutsideBase32() {
+        whenTheBase32IsParsed("A".repeat(31) + "1");
 
-        assertThat(Hash20.of(source, 4)).isEqualTo(Hash20.of(new byte[20]));
-        assertThatThrownBy(() -> Hash20.of(source, 5)).isInstanceOf(IndexOutOfBoundsException.class);
-        assertThatThrownBy(() -> Hash20.of(new byte[10], 0)).isInstanceOf(IndexOutOfBoundsException.class);
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRefuseFewerThan32Characters() {
+        whenTheBase32IsParsed("A".repeat(31));
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @MethodSource("paddedBase32")
+    void shouldRefusePaddedBase32(String padded) {
+        whenTheBase32IsParsed(padded);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldReadFromInsideTheSource() {
+        givenASourceOfBytes(24);
+
+        whenAHashIsReadFrom(4);
+
+        thenTheHashIs(Hash20.of(new byte[20]));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"24, 5", "10, 0"})
+    void shouldNotReadFromOutsideTheSource(int sourceLength, int offset) {
+        givenASourceOfBytes(sourceLength);
+
+        whenAHashIsReadFrom(offset);
+
+        thenExceptionOccurred(IndexOutOfBoundsException.class);
     }
 
     @Property
-    void base32RoundTripsInEitherCase(@ForAll @Size(20) byte[] data) {
-        Hash20 hash = Hash20.of(data);
+    void shouldRoundTripBase32InEitherCase(@ForAll @Size(20) byte[] data) {
+        givenTheHashOf(data);
 
-        assertThat(Hash20.parseBase32(hash.toBase32())).isEqualTo(hash);
-        assertThat(Hash20.parseBase32(hash.toBase32().toLowerCase(Locale.ROOT))).isEqualTo(hash);
+        whenItIsFormattedInBase32();
+
+        thenTheTextParsesBackToTheHash();
+        thenTheTextInLowerCaseParsesBackToTheHash();
     }
 
     @Property
-    void anythingParsedFormatsBackToTheSameText(@ForAll("base32ish") String text) {
-        try {
-            assertThat(Hash20.parseBase32(text).toBase32()).isEqualTo(text.toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException expected) {
-            // not an AICH hash
-        }
+    void shouldFormatAnythingParsedBackToTheSameText(@ForAll("base32ish") String base32) {
+        whenTheBase32IsParsed(base32);
+
+        thenEitherItFormatsBackToTheSameTextOrItIsNoAichHash();
+    }
+
+    static Stream<String> paddedBase32() {
+        return Stream.of(
+                "A".repeat(29) + "===",
+                "A".repeat(28) + "====",
+                "A".repeat(31) + "=",
+                "=".repeat(32),
+                "A".repeat(26) + "======");
     }
 
     @Provide
@@ -87,5 +128,56 @@ class Hash20Test {
                 .withChars("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz234567=01")
                 .ofMinLength(28)
                 .ofMaxLength(34);
+    }
+
+    private void givenTheHashOf(byte[] data) {
+        this.hash = Hash20.of(data);
+    }
+
+    private void givenASourceOfBytes(int length) {
+        this.source = new byte[length];
+    }
+
+    private void whenItIsFormattedInBase32() {
+        this.text = this.hash.toBase32();
+    }
+
+    private void whenTheBase32IsParsed(String base32) {
+        this.text = base32;
+        this.hash = null;
+        this.exception = catchThrowable(() -> this.hash = Hash20.parseBase32(base32));
+    }
+
+    private void whenAHashIsReadFrom(int offset) {
+        this.exception = catchThrowable(() -> this.hash = Hash20.of(this.source, offset));
+    }
+
+    private void thenTheTextIs(String expected) {
+        assertThat(this.text).isEqualTo(expected);
+    }
+
+    private void thenTheHashIs(Hash20 expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.hash).isEqualTo(expected);
+    }
+
+    private void thenTheTextParsesBackToTheHash() {
+        assertThat(Hash20.parseBase32(this.text)).isEqualTo(this.hash);
+    }
+
+    private void thenTheTextInLowerCaseParsesBackToTheHash() {
+        assertThat(Hash20.parseBase32(this.text.toLowerCase(Locale.ROOT))).isEqualTo(this.hash);
+    }
+
+    private void thenEitherItFormatsBackToTheSameTextOrItIsNoAichHash() {
+        if (this.exception == null) {
+            assertThat(this.hash.toBase32()).isEqualTo(this.text.toUpperCase(Locale.ROOT));
+        } else {
+            assertThat(this.exception).isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).as(this.text).isInstanceOf(type);
     }
 }

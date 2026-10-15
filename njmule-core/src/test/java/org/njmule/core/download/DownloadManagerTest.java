@@ -31,11 +31,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
@@ -62,6 +65,15 @@ class DownloadManagerTest {
     private static final int CORRUPT = Ipv4.of(192, 0, 2, 66);
     private static final int HONEST = Ipv4.of(192, 0, 2, 67);
     private static final Hash16 CORRUPT_FILE = Hash16.parseHex("c0".repeat(16));
+    // A link with a loopback, a blocked and a LAN source.
+    private static final String LINK_WITH_SOURCES = "ed2k://|file|link.bin|5000|" + "34".repeat(16)
+            + "|/|sources,127.0.0.1:" + PORT + "," + Ipv4.format(BLOCKED_IP) + ":" + PORT + ",172.20.0.9:" + PORT
+            + "|/";
+    private static final String LINK_TO_STOP =
+            "ed2k://|file|stop.bin|5000|" + "56".repeat(16) + "|/|sources,192.0.2.10:" + PORT + "|/";
+    private static final String LINK_WITH_ODD_SOURCES = "ed2k://|file|odd.bin|5000|" + "4a".repeat(16)
+            + "|/|sources,0.1.2.3:" + PORT + ",224.0.0.251:" + PORT + ",240.1.2.3:" + PORT
+            + ",255.255.255.255:" + PORT + "|/";
 
     @TempDir
     Path dir;
@@ -73,6 +85,13 @@ class DownloadManagerTest {
     private DownloadManager.Listener listener = new Quiet();
     private final List<String> banned = new CopyOnWriteArrayList<>();
     private Consumer<List<DownloadManager.KadSource>> kadFound;
+    private final List<DownloadInfo> added = new CopyOnWriteArrayList<>();
+    private HighIdServer server;
+    private Hash16 hash;
+    private DownloadInfo info;
+    private boolean answer;
+    private Optional<DownloadInfo> next;
+    private Optional<Path> preview;
 
     @AfterEach
     void stop() throws Exception {
@@ -86,7 +105,7 @@ class DownloadManagerTest {
     }
 
     @Test
-    void aSourceFoundSendingCorruptDataIsDroppedAndReportedForABan() throws Exception {
+    void shouldDropASourceFoundSendingCorruptDataAndReportItForABan() throws Exception {
         givenAPausedDownloadWithTheKadSources(CORRUPT, HONEST);
 
         whenTheSourceIsFoundSendingCorruptData(CORRUPT);
@@ -96,7 +115,7 @@ class DownloadManagerTest {
     }
 
     @Test
-    void aSourceFoundSendingCorruptDataIsNotTakenAgain() throws Exception {
+    void shouldNotTakeAgainASourceFoundSendingCorruptData() throws Exception {
         givenAPausedDownloadWithTheKadSources(CORRUPT, HONEST);
         givenTheSourceWasFoundSendingCorruptData(CORRUPT);
 
@@ -163,313 +182,715 @@ class DownloadManagerTest {
     }
 
     @Test
-    void keepsOnlyUsableSourcesFromKad() throws Exception {
-        DownloadManager manager = manager();
-        Hash16 hash = Hash16.parseHex("12".repeat(16));
-        onLoop(() -> manager.add(Ed2kLink.FileLink.of("kad.bin", 5000, hash)));
-        Consumer<List<DownloadManager.KadSource>> found = this.kadSearch.get(30, TimeUnit.SECONDS);
+    void shouldKeepOnlyUsableSourcesFromKad() throws Exception {
+        givenTheDownloadManager();
+        givenADownloadThatKadSearches("kad.bin", hashOf("12"));
+        givenTheDownloadPaused();
 
-        DownloadInfo info = onLoop(() -> {
-            manager.pause(hash);
-            found.accept(direct(
-                    address(Ipv4.of(127, 0, 0, 1), PORT),
-                    address(Ipv4.of(224, 0, 0, 1), PORT),
-                    address(BLOCKED_IP, PORT),
-                    address(OUR_IP, PORT),
-                    address(Ipv4.of(192, 168, 1, 20), PORT),
-                    address(Ipv4.of(10, 1, 2, 3), PORT),
-                    address(Ipv4.of(192, 0, 2, 10), 0),
-                    address(Ipv4.of(192, 0, 2, 10), PORT)));
-            return manager.download(hash).orElseThrow();
-        });
+        whenKadFinds(
+                address(Ipv4.of(127, 0, 0, 1), PORT),
+                address(Ipv4.of(224, 0, 0, 1), PORT),
+                address(BLOCKED_IP, PORT),
+                address(OUR_IP, PORT),
+                address(Ipv4.of(192, 168, 1, 20), PORT),
+                address(Ipv4.of(10, 1, 2, 3), PORT),
+                address(Ipv4.of(192, 0, 2, 10), 0),
+                address(Ipv4.of(192, 0, 2, 10), PORT));
 
-        assertThat(info.sources()).isEqualTo(1);
+        thenTheResultingDownloadHasSources(1);
     }
 
     @Test
-    void takesTheLinkSourcesTheIpFilterAllows() throws Exception {
-        DownloadManager manager = manager();
-        Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse("ed2k://|file|link.bin|5000|" + "34".repeat(16)
-                + "|/|sources,127.0.0.1:" + PORT + "," + Ipv4.format(BLOCKED_IP) + ":" + PORT + ",172.20.0.9:" + PORT
-                + "|/");
+    void shouldTakeTheLinkSourcesTheIpFilterAllows() throws Exception {
+        givenTheDownloadManager();
 
-        DownloadInfo info = onLoop(() -> {
-            DownloadInfo added = manager.add(link);
-            manager.pause(link.hash());
-            return added;
-        });
+        whenTheLinkIsAddedPaused(LINK_WITH_SOURCES);
 
-        assertThat(info.sources()).as("the user chose them, LAN or loopback").isEqualTo(2);
-        assertThat(onLoop(() -> manager.addSourceByHand(link.hash(), address(Ipv4.of(10, 0, 0, 5), PORT))))
-                .isTrue();
-        assertThat(onLoop(() -> manager.addSourceByHand(link.hash(), address(Ipv4.of(10, 0, 0, 5), PORT))))
-                .as("known already")
-                .isFalse();
-        assertThat(onLoop(() -> manager.addSourceByHand(link.hash(), address(BLOCKED_IP, PORT))))
-                .as("the IP filter still applies")
-                .isFalse();
-        assertThat(onLoop(() -> manager.download(link.hash()).orElseThrow().sources()))
-                .isEqualTo(3);
+        thenTheResultingDownloadHasSources(2, "the user chose them, LAN or loopback");
     }
 
     @Test
-    void stoppingForgetsTheSourcesAndKeepsThePriority() throws Exception {
-        DownloadManager manager = manager();
-        Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse(
-                "ed2k://|file|stop.bin|5000|" + "56".repeat(16) + "|/|sources,192.0.2.10:" + PORT + "|/");
+    void shouldTakeASourceAddedByHand() throws Exception {
+        givenTheDownloadManager();
+        givenTheLinkAddedPaused(LINK_WITH_SOURCES);
 
-        DownloadInfo stopped = onLoop(() -> {
-            manager.add(link);
-            manager.setPriority(link.hash(), DownloadPriority.HIGH);
-            manager.stop(link.hash());
-            return manager.download(link.hash()).orElseThrow();
-        });
+        whenASourceIsAddedByHand(address(Ipv4.of(10, 0, 0, 5), PORT));
 
-        assertThat(stopped.status()).isEqualTo(DownloadInfo.Status.STOPPED);
-        assertThat(stopped.sources()).isZero();
-        assertThat(stopped.priority()).isEqualTo(DownloadPriority.HIGH);
-        DownloadInfo resumed = onLoop(() -> {
-            manager.resume(link.hash());
-            DownloadInfo info = manager.download(link.hash()).orElseThrow();
-            manager.pause(link.hash());
-            return info;
-        });
-        assertThat(resumed.status()).isEqualTo(DownloadInfo.Status.DOWNLOADING);
-        assertThat(onLoop(() -> manager.stop(Hash16.parseHex("00".repeat(16))))).isFalse();
+        thenItIsAccepted();
+        thenTheDownloadNowHasSources(3);
     }
 
     @Test
-    void resumesThePausedDownloadOfHighestPriorityAsAsked() throws Exception {
-        this.categories =
-                List.of(new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "*.mkv", false));
-        DownloadManager manager = manager();
-        Hash16 film = Hash16.parseHex("a1".repeat(16));
-        Hash16 urgent = Hash16.parseHex("a2".repeat(16));
-        Hash16 later = Hash16.parseHex("a3".repeat(16));
-        onLoop(() -> {
-            manager.add(Ed2kLink.FileLink.of("film.mkv", 5000, film));
-            manager.add(Ed2kLink.FileLink.of("urgent.txt", 5000, urgent));
-            manager.add(Ed2kLink.FileLink.of("later.txt", 5000, later));
-            manager.setPriority(film, DownloadPriority.LOW);
-            manager.setPriority(urgent, DownloadPriority.HIGH);
-            manager.setPriority(later, DownloadPriority.NORMAL);
-            manager.pause(film);
-            manager.stop(urgent);
-            manager.pause(later);
-            return null;
-        });
+    void shouldNotTakeASourceAddedByHandTwice() throws Exception {
+        givenTheDownloadManager();
+        givenTheLinkAddedPaused(LINK_WITH_SOURCES);
+        givenASourceAddedByHand(address(Ipv4.of(10, 0, 0, 5), PORT));
 
-        assertThat(onLoop(() -> manager.resumeNext(1, NextDownload.NONE))).isEmpty();
-        assertThat(onLoop(() -> manager.resumeNext(1, NextDownload.SAME_CATEGORY_FIRST)))
-                .map(DownloadInfo::hash)
-                .as("the category's, though of low priority")
-                .contains(film);
-        assertThat(onLoop(() -> manager.resumeNext(1, NextDownload.SAME_CATEGORY)))
-                .as("none left in the category")
-                .isEmpty();
-        assertThat(onLoop(() -> manager.resumeNext(1, NextDownload.SAME_CATEGORY_FIRST)))
-                .map(DownloadInfo::hash)
-                .as("then any, a stopped one too")
-                .contains(urgent);
-        assertThat(onLoop(() -> manager.resumeNext(Category.NONE, NextDownload.ANY)))
-                .map(DownloadInfo::status)
-                .contains(DownloadInfo.Status.DOWNLOADING);
-        assertThat(onLoop(() -> manager.resumeNext(Category.NONE, NextDownload.ANY)))
-                .isEmpty();
+        whenASourceIsAddedByHand(address(Ipv4.of(10, 0, 0, 5), PORT));
+
+        thenItIsRefused("known already");
+        thenTheDownloadNowHasSources(3);
     }
 
     @Test
-    void newDownloadsGoInTheFirstCategoryTheirNameMatches() throws Exception {
-        this.categories = List.of(
-                new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.HIGH, "*.mkv", false),
-                new Category(2, "Video", Optional.empty(), "", 0, DownloadPriority.AUTO, "mkv|avi", false));
-        DownloadManager manager = manager();
-        Hash16 film = Hash16.parseHex("bc".repeat(16));
-        Hash16 other = Hash16.parseHex("cd".repeat(16));
+    void shouldApplyTheIpFilterToASourceAddedByHand() throws Exception {
+        givenTheDownloadManager();
+        givenTheLinkAddedPaused(LINK_WITH_SOURCES);
 
-        DownloadInfo added = onLoop(() -> manager.add(Ed2kLink.FileLink.of("Film.MKV", 5000, film)));
-        DownloadInfo plain = onLoop(() -> manager.add(Ed2kLink.FileLink.of("notes.txt", 5000, other)));
+        whenASourceIsAddedByHand(address(BLOCKED_IP, PORT));
 
-        assertThat(added.category()).isEqualTo(1);
-        assertThat(added.priority()).as("the category's priority").isEqualTo(DownloadPriority.HIGH);
-        assertThat(plain.category()).isEqualTo(Category.NONE);
-        assertThat(onLoop(() -> manager.setCategory(other, 2))).isTrue();
-        assertThat(onLoop(() -> manager.setCategory(other, 9)))
-                .as("no such category")
-                .isFalse();
-        assertThat(onLoop(() -> manager.download(other).orElseThrow().category()))
-                .isEqualTo(2);
+        thenItIsRefused("the IP filter still applies");
+    }
 
+    @Test
+    void shouldForgetTheSourcesAndKeepThePriorityWhenStopping() throws Exception {
+        givenTheDownloadManager();
+        givenTheLinkAddedWithThePriority(LINK_TO_STOP, DownloadPriority.HIGH);
+
+        whenTheDownloadIsStopped();
+
+        thenTheResultingDownloadIs(DownloadInfo.Status.STOPPED);
+        thenTheResultingDownloadHasSources(0);
+        thenTheResultingDownloadHasThePriority(DownloadPriority.HIGH);
+    }
+
+    @Test
+    void shouldResumeAStoppedDownload() throws Exception {
+        givenTheDownloadManager();
+        givenTheLinkAddedWithThePriority(LINK_TO_STOP, DownloadPriority.HIGH);
+        givenTheDownloadStopped();
+
+        whenTheDownloadIsResumed();
+
+        thenTheResultingDownloadIs(DownloadInfo.Status.DOWNLOADING);
+    }
+
+    @Test
+    void shouldNotStopADownloadWeDoNotHave() throws Exception {
+        givenTheDownloadManager();
+
+        whenADownloadWeDoNotHaveIsStopped(hashOf("00"));
+
+        thenItIsRefused();
+    }
+
+    @Test
+    void shouldResumeNoPausedDownloadWhenAskedForNone() throws Exception {
+        givenTheCategories(category(1, "Films", 1, DownloadPriority.AUTO, "*.mkv"));
+        givenTheDownloadManager();
+        givenAPausedFilmAStoppedUrgentFileAndAPausedLaterFile(hashOf("a1"), hashOf("a2"), hashOf("a3"));
+
+        whenTheNextDownloadIsResumed(1, NextDownload.NONE);
+
+        thenNothingIsResumed();
+    }
+
+    @Test
+    void shouldResumeThePausedDownloadOfTheCategoryFirstThoughOfLowPriority() throws Exception {
+        givenTheCategories(category(1, "Films", 1, DownloadPriority.AUTO, "*.mkv"));
+        givenTheDownloadManager();
+        givenAPausedFilmAStoppedUrgentFileAndAPausedLaterFile(hashOf("a1"), hashOf("a2"), hashOf("a3"));
+
+        whenTheNextDownloadIsResumed(1, NextDownload.SAME_CATEGORY_FIRST);
+
+        thenTheResumedDownloadIs(hashOf("a1"), "the category's, though of low priority");
+    }
+
+    @Test
+    void shouldResumeNothingWhenNoneIsLeftInTheCategory() throws Exception {
+        givenTheCategories(category(1, "Films", 1, DownloadPriority.AUTO, "*.mkv"));
+        givenTheDownloadManager();
+        givenAPausedFilmAStoppedUrgentFileAndAPausedLaterFile(hashOf("a1"), hashOf("a2"), hashOf("a3"));
+        givenTheNextDownloadResumed(1, NextDownload.SAME_CATEGORY_FIRST);
+
+        whenTheNextDownloadIsResumed(1, NextDownload.SAME_CATEGORY);
+
+        thenNothingIsResumed("none left in the category");
+    }
+
+    @Test
+    void shouldResumeTheDownloadOfHighestPriorityThenAStoppedOneToo() throws Exception {
+        givenTheCategories(category(1, "Films", 1, DownloadPriority.AUTO, "*.mkv"));
+        givenTheDownloadManager();
+        givenAPausedFilmAStoppedUrgentFileAndAPausedLaterFile(hashOf("a1"), hashOf("a2"), hashOf("a3"));
+        givenTheNextDownloadResumed(1, NextDownload.SAME_CATEGORY_FIRST);
+
+        whenTheNextDownloadIsResumed(1, NextDownload.SAME_CATEGORY_FIRST);
+
+        thenTheResumedDownloadIs(hashOf("a2"), "then any, a stopped one too");
+    }
+
+    @Test
+    void shouldResumeTheLastWaitingDownload() throws Exception {
+        givenTheCategories(category(1, "Films", 1, DownloadPriority.AUTO, "*.mkv"));
+        givenTheDownloadManager();
+        givenAPausedFilmAStoppedUrgentFileAndAPausedLaterFile(hashOf("a1"), hashOf("a2"), hashOf("a3"));
+        givenTheNextDownloadResumed(1, NextDownload.SAME_CATEGORY_FIRST);
+        givenTheNextDownloadResumed(1, NextDownload.SAME_CATEGORY_FIRST);
+
+        whenTheNextDownloadIsResumed(Category.NONE, NextDownload.ANY);
+
+        thenTheResumedDownloadIs(DownloadInfo.Status.DOWNLOADING);
+    }
+
+    @Test
+    void shouldResumeNothingOnceAllDownloadsRun() throws Exception {
+        givenTheCategories(category(1, "Films", 1, DownloadPriority.AUTO, "*.mkv"));
+        givenTheDownloadManager();
+        givenAPausedFilmAStoppedUrgentFileAndAPausedLaterFile(hashOf("a1"), hashOf("a2"), hashOf("a3"));
+        givenTheNextDownloadResumed(1, NextDownload.SAME_CATEGORY_FIRST);
+        givenTheNextDownloadResumed(1, NextDownload.SAME_CATEGORY_FIRST);
+        givenTheNextDownloadResumed(Category.NONE, NextDownload.ANY);
+
+        whenTheNextDownloadIsResumed(Category.NONE, NextDownload.ANY);
+
+        thenNothingIsResumed();
+    }
+
+    @Test
+    void shouldPutANewDownloadInTheFirstCategoryItsNameMatches() throws Exception {
+        givenTheCategories(
+                category(1, "Films", 1, DownloadPriority.HIGH, "*.mkv"),
+                category(2, "Video", 0, DownloadPriority.AUTO, "mkv|avi"));
+        givenTheDownloadManager();
+
+        whenADownloadIsAdded("Film.MKV", hashOf("bc"));
+
+        thenTheResultingDownloadIsInTheCategory(1);
+        thenTheResultingDownloadHasThePriority(DownloadPriority.HIGH, "the category's priority");
+    }
+
+    @Test
+    void shouldPutANewDownloadThatMatchesNoCategoryInNone() throws Exception {
+        givenTheCategories(
+                category(1, "Films", 1, DownloadPriority.HIGH, "*.mkv"),
+                category(2, "Video", 0, DownloadPriority.AUTO, "mkv|avi"));
+        givenTheDownloadManager();
+
+        whenADownloadIsAdded("notes.txt", hashOf("cd"));
+
+        thenTheResultingDownloadIsInTheCategory(Category.NONE);
+    }
+
+    @Test
+    void shouldMoveADownloadToAnotherCategory() throws Exception {
+        givenTheCategories(
+                category(1, "Films", 1, DownloadPriority.HIGH, "*.mkv"),
+                category(2, "Video", 0, DownloadPriority.AUTO, "mkv|avi"));
+        givenTheDownloadManager();
+        givenADownload("notes.txt", hashOf("cd"));
+
+        whenTheDownloadIsMovedToTheCategory(2);
+
+        thenItIsAccepted();
+        thenTheDownloadIsNowInTheCategory(hashOf("cd"), 2);
+    }
+
+    @Test
+    void shouldNotMoveADownloadToACategoryThatDoesNotExist() throws Exception {
+        givenTheCategories(
+                category(1, "Films", 1, DownloadPriority.HIGH, "*.mkv"),
+                category(2, "Video", 0, DownloadPriority.AUTO, "mkv|avi"));
+        givenTheDownloadManager();
+        givenADownload("notes.txt", hashOf("cd"));
+
+        whenTheDownloadIsMovedToTheCategory(9);
+
+        thenItIsRefused("no such category");
+    }
+
+    @Test
+    void shouldTakeADownloadOutOfACategoryThatIsGone() throws Exception {
+        givenTheCategories(
+                category(1, "Films", 1, DownloadPriority.HIGH, "*.mkv"),
+                category(2, "Video", 0, DownloadPriority.AUTO, "mkv|avi"));
+        givenTheDownloadManager();
+        givenAPausedDownload("Film.MKV", 5000, hashOf("bc"));
+        givenAPausedDownload("notes.txt", 5000, hashOf("cd"));
+        givenTheDownloadMovedToTheCategory(2);
+        givenOnlyTheFirstCategoryLeft();
+
+        whenTheCategoriesChange();
+
+        thenTheDownloadIsNowInTheCategory(hashOf("cd"), Category.NONE, "its category is gone");
+        thenTheDownloadIsNowInTheCategory(hashOf("bc"), 1);
+    }
+
+    @Test
+    void shouldAskTheServerForHigherPrioritiesFirst() throws Exception {
+        givenTheDownloadManagerWithAServerThatAnswers();
+
+        whenALowAndAHighPriorityDownloadAreAddedTogether(hashOf("78"), hashOf("9a"));
+
+        thenTheServerIsAskedFirstFor(hashOf("9a"), hashOf("78"));
+    }
+
+    @Test
+    void shouldChangeNothingWhenResumingARunningDownload() throws Exception {
+        givenTheDownloadManagerWithAServerThatAnswers();
+        givenARunningDownloadTheServerWasAskedFor("running.bin", hashOf("bd"));
+
+        whenTheRunningDownloadIsResumed();
+
+        thenItIsRefused("it runs already");
+        thenTheServerIsNotAskedAgainBeforeItsTime();
+    }
+
+    @Test
+    void shouldKeepTheFirstAddedFirstAfterARestart() throws Exception {
+        givenTheDownloadManager();
+        givenTwoPausedDownloadsAfterACancelledOne(hashOf("e1"), hashOf("e2"), hashOf("e3"));
+        givenTheDownloadManagerRestarted();
+
+        whenTheNextDownloadIsResumed(Category.NONE, NextDownload.ANY);
+
+        thenTheResumedDownloadIs(hashOf("e2"));
+    }
+
+    @Test
+    void shouldRefuseLinkSourcesNoClientCanHave() throws Exception {
+        givenTheDownloadManager();
+
+        whenTheLinkIsAddedPaused(LINK_WITH_ODD_SOURCES);
+
+        thenTheResultingDownloadHasSources(0);
+    }
+
+    @ParameterizedTest
+    @MethodSource("addressesNoClientCanHave")
+    void shouldRefuseSourcesByHandNoClientCanHave(int ip) throws Exception {
+        givenTheDownloadManager();
+        givenTheLinkAddedPaused(LINK_WITH_ODD_SOURCES);
+
+        whenASourceIsAddedByHand(address(ip, PORT));
+
+        thenItIsRefused(Ipv4.format(ip));
+    }
+
+    @Test
+    void shouldTakeALoopbackSourceByHandAsTheUserChose() throws Exception {
+        givenTheDownloadManager();
+        givenTheLinkAddedPaused(LINK_WITH_ODD_SOURCES);
+
+        whenASourceIsAddedByHand(address(Ipv4.of(127, 0, 0, 1), PORT));
+
+        thenItIsAccepted("loopback, as the user chose");
+    }
+
+    @Test
+    void shouldTellTheCategoryAndPriorityInTheAddedEvent() throws Exception {
+        givenTheCategories(category(1, "Films", 1, DownloadPriority.HIGH, "*.mkv"));
+        givenAListenerOfAddedDownloads();
+        givenTheDownloadManager();
+
+        whenADownloadIsAddedPaused("film.mkv", hashOf("4b"));
+
+        thenOneAddedEventTells(1, DownloadPriority.HIGH);
+    }
+
+    @Test
+    void shouldGiveNoSourcesWhenALinkOfAnotherSizeIsAddedAgain() throws Exception {
+        givenTheDownloadManager();
+        givenAPausedDownload("same.bin", 5000, hashOf("4c"));
+
+        whenTheLinkIsAddedAgain(6000, Optional.empty(), Ipv4.of(192, 0, 2, 1));
+
+        thenTheResultingDownloadHasSources(0, "another size");
+    }
+
+    @Test
+    void shouldGiveSourcesAndTheAichHashWhenALinkOfTheSameFileIsAddedAgain() throws Exception {
+        givenTheDownloadManager();
+        givenAPausedDownload("same.bin", 5000, hashOf("4c"));
+
+        whenTheLinkIsAddedAgain(5000, Optional.of(aich("A")), Ipv4.of(192, 0, 2, 2));
+
+        thenTheResultingDownloadHasSources(1);
+        thenTheFileTookTheAichHash(aich("A"));
+    }
+
+    @Test
+    void shouldGiveNoSourcesWhenALinkWithAnotherAichHashIsAddedAgain() throws Exception {
+        givenTheDownloadManager();
+        givenAPausedDownload("same.bin", 5000, hashOf("4c"));
+        givenTheLinkAddedAgain(5000, Optional.of(aich("A")), Ipv4.of(192, 0, 2, 2));
+
+        whenTheLinkIsAddedAgain(5000, Optional.of(aich("B")), Ipv4.of(192, 0, 2, 3));
+
+        thenTheResultingDownloadHasSources(1, "another AICH hash");
+    }
+
+    @Test
+    void shouldNotPreviewWithoutTheStartOfTheFile() throws Exception {
+        givenTheDownloadManager();
+        givenAPausedDownload("film.avi", 100_000, hashOf("4d"));
+        givenTheFileWritten(16 * 1024, 100_000);
+
+        whenAFileToPreviewIsAskedFor();
+
+        thenThereIsNoFileToPreview("all but the start");
+    }
+
+    @Test
+    void shouldPreviewWithTheStartOfTheFile() throws Exception {
+        givenTheDownloadManager();
+        givenAPausedDownload("film.avi", 100_000, hashOf("4d"));
+        givenTheFileWritten(16 * 1024, 100_000);
+        givenTheFileWritten(0, 16 * 1024);
+
+        whenAFileToPreviewIsAskedFor();
+
+        thenThereIsAFileToPreview();
+    }
+
+    static IntStream addressesNoClientCanHave() {
+        return IntStream.of(0, Ipv4.of(0, 0, 0, 1), Ipv4.of(239, 255, 255, 250), -1);
+    }
+
+    private void givenTheDownloadManager() throws Exception {
+        manager();
+    }
+
+    private void givenTheDownloadManagerWithAServerThatAnswers() throws Exception {
+        this.server = new HighIdServer(true);
+        manager(this.server);
+    }
+
+    private void givenTheDownloadManagerRestarted() throws Exception {
+        manager();
+    }
+
+    private void givenTheCategories(Category... list) {
+        this.categories = List.of(list);
+    }
+
+    private void givenOnlyTheFirstCategoryLeft() {
         this.categories = List.of(this.categories.getFirst());
-        onLoop(() -> {
-            manager.categoriesChanged();
-            manager.pause(film);
-            manager.pause(other);
-            return null;
-        });
-        assertThat(onLoop(() -> manager.download(other).orElseThrow().category()))
-                .as("its category is gone")
-                .isEqualTo(Category.NONE);
-        assertThat(onLoop(() -> manager.download(film).orElseThrow().category()))
-                .isEqualTo(1);
     }
 
-    @Test
-    void higherPrioritiesAskTheServerFirst() throws Exception {
-        HighIdServer server = new HighIdServer(true);
-        DownloadManager manager = manager(server);
-        Hash16 low = Hash16.parseHex("78".repeat(16));
-        Hash16 high = Hash16.parseHex("9a".repeat(16));
-
-        onLoop(() -> {
-            manager.add(Ed2kLink.FileLink.of("low.bin", 5000, low));
-            manager.setPriority(low, DownloadPriority.LOW);
-            manager.add(Ed2kLink.FileLink.of("high.bin", 5000, high));
-            manager.setPriority(high, DownloadPriority.HIGH);
-            return null;
-        });
-        for (int i = 0; i < 100 && server.asked.size() < 2; i++) {
-            Thread.sleep(100);
-        }
-
-        assertThat(server.asked).startsWith(high, low);
-    }
-
-    @Test
-    void resumingARunningDownloadChangesNothing() throws Exception {
-        HighIdServer server = new HighIdServer(true);
-        DownloadManager manager = manager(server);
-        Hash16 hash = Hash16.parseHex("bd".repeat(16));
-        onLoop(() -> manager.add(Ed2kLink.FileLink.of("running.bin", 5000, hash)));
-        for (int i = 0; i < 100 && server.asked.isEmpty(); i++) {
-            Thread.sleep(100);
-        }
-        assertThat(server.asked).hasSize(1);
-
-        assertThat(onLoop(() -> manager.resume(hash))).as("it runs already").isFalse();
-        Thread.sleep(2500);
-
-        assertThat(server.asked).as("not asked again before its time").hasSize(1);
-        onLoop(() -> manager.pause(hash));
-    }
-
-    @Test
-    void theFirstAddedStaysFirstAfterARestart() throws Exception {
-        DownloadManager manager = manager();
-        Hash16 gone = Hash16.parseHex("e1".repeat(16));
-        Hash16 first = Hash16.parseHex("e2".repeat(16));
-        Hash16 second = Hash16.parseHex("e3".repeat(16));
-        onLoop(() -> {
-            manager.add(Ed2kLink.FileLink.of("gone.bin", 5000, gone));
-            manager.add(Ed2kLink.FileLink.of("first.bin", 5000, first));
-            manager.cancel(gone);
-            // Takes the part file number the cancelled download left.
-            manager.add(Ed2kLink.FileLink.of("second.bin", 5000, second));
-            manager.pause(first);
-            manager.pause(second);
-            manager.close();
-            return null;
-        });
-
-        DownloadManager again = manager();
-
-        assertThat(onLoop(() -> again.resumeNext(Category.NONE, NextDownload.ANY)))
-                .map(DownloadInfo::hash)
-                .contains(first);
-        onLoop(() -> again.pause(first));
-    }
-
-    @Test
-    void refusesSourcesNoClientCanHave() throws Exception {
-        DownloadManager manager = manager();
-        Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse("ed2k://|file|odd.bin|5000|" + "4a".repeat(16)
-                + "|/|sources,0.1.2.3:" + PORT + ",224.0.0.251:" + PORT + ",240.1.2.3:" + PORT
-                + ",255.255.255.255:" + PORT + "|/");
-
-        DownloadInfo info = onLoop(() -> {
-            DownloadInfo added = manager.add(link);
-            manager.pause(link.hash());
-            return added;
-        });
-
-        assertThat(info.sources()).isZero();
-        for (int ip : new int[] {0, Ipv4.of(0, 0, 0, 1), Ipv4.of(239, 255, 255, 250), -1}) {
-            assertThat(onLoop(() -> manager.addSourceByHand(link.hash(), address(ip, PORT))))
-                    .as(Ipv4.format(ip))
-                    .isFalse();
-        }
-        assertThat(onLoop(() -> manager.addSourceByHand(link.hash(), address(Ipv4.of(127, 0, 0, 1), PORT))))
-                .as("loopback, as the user chose")
-                .isTrue();
-    }
-
-    @Test
-    void theAddedEventTellsTheCategoryAndPriority() throws Exception {
-        this.categories =
-                List.of(new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.HIGH, "*.mkv", false));
-        List<DownloadInfo> added = new CopyOnWriteArrayList<>();
+    private void givenAListenerOfAddedDownloads() {
+        List<DownloadInfo> events = this.added;
         this.listener = new Quiet() {
             @Override
             public void added(DownloadInfo download) {
-                added.add(download);
+                events.add(download);
             }
         };
-        DownloadManager manager = manager();
-        Hash16 hash = Hash16.parseHex("4b".repeat(16));
+    }
 
+    private void givenADownload(String name, Hash16 hash) throws Exception {
+        this.hash = hash;
+        onLoop(() -> this.manager.add(Ed2kLink.FileLink.of(name, 5000, hash)));
+    }
+
+    private void givenAPausedDownload(String name, long size, Hash16 hash) throws Exception {
+        this.hash = hash;
         onLoop(() -> {
-            manager.add(Ed2kLink.FileLink.of("film.mkv", 5000, hash));
-            return manager.pause(hash);
-        });
-
-        assertThat(added).singleElement().satisfies(info -> {
-            assertThat(info.category()).isEqualTo(1);
-            assertThat(info.priority()).isEqualTo(DownloadPriority.HIGH);
+            this.manager.add(Ed2kLink.FileLink.of(name, size, hash));
+            return this.manager.pause(hash);
         });
     }
 
-    @Test
-    void aLinkAddedAgainGivesSourcesOnlyWhenItIsOfTheSameFile() throws Exception {
-        DownloadManager manager = manager();
-        Hash16 hash = Hash16.parseHex("4c".repeat(16));
-        Hash20 aich = Hash20.parseBase32("A".repeat(32));
-        Hash20 other = Hash20.parseBase32("B".repeat(32));
-        onLoop(() -> {
-            manager.add(Ed2kLink.FileLink.of("same.bin", 5000, hash));
-            return manager.pause(hash);
-        });
+    private void givenADownloadThatKadSearches(String name, Hash16 hash) throws Exception {
+        this.hash = hash;
+        onLoop(() -> this.manager.add(Ed2kLink.FileLink.of(name, 5000, hash)));
+        this.kadFound = this.kadSearch.get(30, TimeUnit.SECONDS);
+    }
 
-        DownloadInfo bigger = onLoop(() -> manager.add(link(hash, 6000, Optional.empty(), Ipv4.of(192, 0, 2, 1))));
-        assertThat(bigger.sources()).as("another size").isZero();
-        DownloadInfo withAich = onLoop(() -> manager.add(link(hash, 5000, Optional.of(aich), Ipv4.of(192, 0, 2, 2))));
-        assertThat(withAich.sources()).isEqualTo(1);
-        assertThat(onLoop(() -> manager.find(hash).orElseThrow().file().aichHash()))
+    private void givenTheDownloadPaused() throws Exception {
+        onLoop(() -> this.manager.pause(this.hash));
+    }
+
+    private void givenTheLinkAddedPaused(String uri) throws Exception {
+        whenTheLinkIsAddedPaused(uri);
+    }
+
+    private void givenTheLinkAddedWithThePriority(String uri, DownloadPriority priority) throws Exception {
+        Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse(uri);
+        this.hash = link.hash();
+        onLoop(() -> {
+            this.manager.add(link);
+            return this.manager.setPriority(link.hash(), priority);
+        });
+    }
+
+    private void givenTheDownloadStopped() throws Exception {
+        onLoop(() -> this.manager.stop(this.hash));
+    }
+
+    private void givenASourceAddedByHand(InetSocketAddress address) throws Exception {
+        whenASourceIsAddedByHand(address);
+    }
+
+    private void givenTheLinkAddedAgain(long size, Optional<Hash20> aich, int source) throws Exception {
+        whenTheLinkIsAddedAgain(size, aich, source);
+    }
+
+    private void givenAPausedFilmAStoppedUrgentFileAndAPausedLaterFile(Hash16 film, Hash16 urgent, Hash16 later)
+            throws Exception {
+        onLoop(() -> {
+            this.manager.add(Ed2kLink.FileLink.of("film.mkv", 5000, film));
+            this.manager.add(Ed2kLink.FileLink.of("urgent.txt", 5000, urgent));
+            this.manager.add(Ed2kLink.FileLink.of("later.txt", 5000, later));
+            this.manager.setPriority(film, DownloadPriority.LOW);
+            this.manager.setPriority(urgent, DownloadPriority.HIGH);
+            this.manager.setPriority(later, DownloadPriority.NORMAL);
+            this.manager.pause(film);
+            this.manager.stop(urgent);
+            this.manager.pause(later);
+            return null;
+        });
+    }
+
+    private void givenTheNextDownloadResumed(int category, NextDownload mode) throws Exception {
+        assertThat(onLoop(() -> this.manager.resumeNext(category, mode))).isPresent();
+    }
+
+    private void givenTheDownloadMovedToTheCategory(int category) throws Exception {
+        assertThat(onLoop(() -> this.manager.setCategory(this.hash, category))).isTrue();
+    }
+
+    private void givenARunningDownloadTheServerWasAskedFor(String name, Hash16 hash) throws Exception {
+        givenADownload(name, hash);
+        for (int i = 0; i < 100 && this.server.asked.isEmpty(); i++) {
+            Thread.sleep(100);
+        }
+        assertThat(this.server.asked).hasSize(1);
+    }
+
+    private void givenTwoPausedDownloadsAfterACancelledOne(Hash16 gone, Hash16 first, Hash16 second) throws Exception {
+        onLoop(() -> {
+            this.manager.add(Ed2kLink.FileLink.of("gone.bin", 5000, gone));
+            this.manager.add(Ed2kLink.FileLink.of("first.bin", 5000, first));
+            this.manager.cancel(gone);
+            // Takes the part file number the cancelled download left.
+            this.manager.add(Ed2kLink.FileLink.of("second.bin", 5000, second));
+            this.manager.pause(first);
+            this.manager.pause(second);
+            this.manager.close();
+            return null;
+        });
+    }
+
+    private void givenTheFileWritten(long start, long end) throws Exception {
+        onLoop(() -> {
+            this.manager.find(this.hash).orElseThrow().file().written(start, end);
+            return null;
+        });
+    }
+
+    private void whenKadFinds(InetSocketAddress... addresses) throws Exception {
+        this.info = onLoop(() -> {
+            this.kadFound.accept(direct(addresses));
+            return this.manager.download(this.hash).orElseThrow();
+        });
+    }
+
+    private void whenTheLinkIsAddedPaused(String uri) throws Exception {
+        Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse(uri);
+        this.hash = link.hash();
+        this.info = onLoop(() -> {
+            DownloadInfo added = this.manager.add(link);
+            this.manager.pause(link.hash());
+            return added;
+        });
+    }
+
+    private void whenADownloadIsAdded(String name, Hash16 hash) throws Exception {
+        this.hash = hash;
+        this.info = onLoop(() -> this.manager.add(Ed2kLink.FileLink.of(name, 5000, hash)));
+    }
+
+    private void whenADownloadIsAddedPaused(String name, Hash16 hash) throws Exception {
+        this.hash = hash;
+        onLoop(() -> {
+            this.manager.add(Ed2kLink.FileLink.of(name, 5000, hash));
+            return this.manager.pause(hash);
+        });
+    }
+
+    private void whenASourceIsAddedByHand(InetSocketAddress address) throws Exception {
+        this.answer = onLoop(() -> this.manager.addSourceByHand(this.hash, address));
+    }
+
+    private void whenTheDownloadIsStopped() throws Exception {
+        this.info = onLoop(() -> {
+            this.manager.stop(this.hash);
+            return this.manager.download(this.hash).orElseThrow();
+        });
+    }
+
+    private void whenTheDownloadIsResumed() throws Exception {
+        this.info = onLoop(() -> {
+            this.manager.resume(this.hash);
+            DownloadInfo resumed = this.manager.download(this.hash).orElseThrow();
+            // Paused again at once, so that it asks no source.
+            this.manager.pause(this.hash);
+            return resumed;
+        });
+    }
+
+    private void whenADownloadWeDoNotHaveIsStopped(Hash16 unknown) throws Exception {
+        this.answer = onLoop(() -> this.manager.stop(unknown));
+    }
+
+    private void whenTheNextDownloadIsResumed(int category, NextDownload mode) throws Exception {
+        this.next = onLoop(() -> this.manager.resumeNext(category, mode));
+    }
+
+    private void whenTheDownloadIsMovedToTheCategory(int category) throws Exception {
+        this.answer = onLoop(() -> this.manager.setCategory(this.hash, category));
+    }
+
+    private void whenTheCategoriesChange() throws Exception {
+        onLoop(() -> {
+            this.manager.categoriesChanged();
+            return null;
+        });
+    }
+
+    private void whenALowAndAHighPriorityDownloadAreAddedTogether(Hash16 low, Hash16 high) throws Exception {
+        onLoop(() -> {
+            this.manager.add(Ed2kLink.FileLink.of("low.bin", 5000, low));
+            this.manager.setPriority(low, DownloadPriority.LOW);
+            this.manager.add(Ed2kLink.FileLink.of("high.bin", 5000, high));
+            this.manager.setPriority(high, DownloadPriority.HIGH);
+            return null;
+        });
+    }
+
+    private void whenTheRunningDownloadIsResumed() throws Exception {
+        this.answer = onLoop(() -> this.manager.resume(this.hash));
+    }
+
+    private void whenTheLinkIsAddedAgain(long size, Optional<Hash20> aich, int source) throws Exception {
+        this.info = onLoop(() -> this.manager.add(link(this.hash, size, aich, source)));
+    }
+
+    private void whenAFileToPreviewIsAskedFor() throws Exception {
+        this.preview = onLoop(() -> this.manager.dataFile(this.hash));
+    }
+
+    private void thenTheResultingDownloadHasSources(int expected) {
+        assertThat(this.info.sources()).isEqualTo(expected);
+    }
+
+    private void thenTheResultingDownloadHasSources(int expected, String description) {
+        assertThat(this.info.sources()).as(description).isEqualTo(expected);
+    }
+
+    private void thenTheResultingDownloadIs(DownloadInfo.Status expected) {
+        assertThat(this.info.status()).isEqualTo(expected);
+    }
+
+    private void thenTheResultingDownloadHasThePriority(DownloadPriority expected) {
+        assertThat(this.info.priority()).isEqualTo(expected);
+    }
+
+    private void thenTheResultingDownloadHasThePriority(DownloadPriority expected, String description) {
+        assertThat(this.info.priority()).as(description).isEqualTo(expected);
+    }
+
+    private void thenTheResultingDownloadIsInTheCategory(int expected) {
+        assertThat(this.info.category()).isEqualTo(expected);
+    }
+
+    private void thenTheDownloadNowHasSources(int expected) throws Exception {
+        assertThat(onLoop(() -> this.manager.download(this.hash).orElseThrow().sources()))
+                .isEqualTo(expected);
+    }
+
+    private void thenTheDownloadIsNowInTheCategory(Hash16 download, int expected) throws Exception {
+        assertThat(onLoop(() -> this.manager.download(download).orElseThrow().category()))
+                .isEqualTo(expected);
+    }
+
+    private void thenTheDownloadIsNowInTheCategory(Hash16 download, int expected, String description) throws Exception {
+        assertThat(onLoop(() -> this.manager.download(download).orElseThrow().category()))
+                .as(description)
+                .isEqualTo(expected);
+    }
+
+    private void thenItIsAccepted() {
+        assertThat(this.answer).isTrue();
+    }
+
+    private void thenItIsAccepted(String description) {
+        assertThat(this.answer).as(description).isTrue();
+    }
+
+    private void thenItIsRefused() {
+        assertThat(this.answer).isFalse();
+    }
+
+    private void thenItIsRefused(String description) {
+        assertThat(this.answer).as(description).isFalse();
+    }
+
+    private void thenNothingIsResumed() {
+        assertThat(this.next).isEmpty();
+    }
+
+    private void thenNothingIsResumed(String description) {
+        assertThat(this.next).as(description).isEmpty();
+    }
+
+    private void thenTheResumedDownloadIs(Hash16 expected) {
+        assertThat(this.next).map(DownloadInfo::hash).contains(expected);
+    }
+
+    private void thenTheResumedDownloadIs(Hash16 expected, String description) {
+        assertThat(this.next).map(DownloadInfo::hash).as(description).contains(expected);
+    }
+
+    private void thenTheResumedDownloadIs(DownloadInfo.Status expected) {
+        assertThat(this.next).map(DownloadInfo::status).contains(expected);
+    }
+
+    private void thenTheServerIsAskedFirstFor(Hash16... files) throws Exception {
+        for (int i = 0; i < 100 && this.server.asked.size() < files.length; i++) {
+            Thread.sleep(100);
+        }
+        assertThat(this.server.asked).startsWith(files);
+    }
+
+    private void thenTheServerIsNotAskedAgainBeforeItsTime() throws Exception {
+        Thread.sleep(2500);
+        assertThat(this.server.asked).as("not asked again before its time").hasSize(1);
+    }
+
+    private void thenOneAddedEventTells(int category, DownloadPriority priority) {
+        assertThat(this.added).singleElement().satisfies(info -> {
+            assertThat(info.category()).isEqualTo(category);
+            assertThat(info.priority()).isEqualTo(priority);
+        });
+    }
+
+    private void thenTheFileTookTheAichHash(Hash20 expected) throws Exception {
+        assertThat(onLoop(
+                        () -> this.manager.find(this.hash).orElseThrow().file().aichHash()))
                 .as("the link's AICH hash is taken")
-                .contains(aich);
-        DownloadInfo otherAich = onLoop(() -> manager.add(link(hash, 5000, Optional.of(other), Ipv4.of(192, 0, 2, 3))));
-        assertThat(otherAich.sources()).as("another AICH hash").isEqualTo(1);
+                .contains(expected);
     }
 
-    @Test
-    void aPreviewNeedsTheStartOfTheFile() throws Exception {
-        DownloadManager manager = manager();
-        Hash16 hash = Hash16.parseHex("4d".repeat(16));
-        onLoop(() -> {
-            manager.add(Ed2kLink.FileLink.of("film.avi", 100_000, hash));
-            return manager.pause(hash);
-        });
+    private void thenThereIsNoFileToPreview(String description) {
+        assertThat(this.preview).as(description).isEmpty();
+    }
 
-        onLoop(() -> {
-            manager.find(hash).orElseThrow().file().written(16 * 1024, 100_000);
-            return null;
-        });
-        assertThat(onLoop(() -> manager.dataFile(hash))).as("all but the start").isEmpty();
+    private void thenThereIsAFileToPreview() {
+        assertThat(this.preview).isPresent();
+    }
 
-        onLoop(() -> {
-            manager.find(hash).orElseThrow().file().written(0, 16 * 1024);
-            return null;
-        });
-        assertThat(onLoop(() -> manager.dataFile(hash))).isPresent();
+    private static Hash16 hashOf(String octet) {
+        return Hash16.parseHex(octet.repeat(16));
+    }
+
+    private static Hash20 aich(String letter) {
+        return Hash20.parseBase32(letter.repeat(32));
+    }
+
+    private static Category category(int id, String name, int color, DownloadPriority priority, String patterns) {
+        return new Category(id, name, Optional.empty(), "", color, priority, patterns, false);
     }
 
     private static Ed2kLink.FileLink link(Hash16 hash, long size, Optional<Hash20> aich, int source) {
