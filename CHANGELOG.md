@@ -351,6 +351,23 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The rail starts with what one does every day (transfers, search, shared files, messages), then the
+  network and the statistics, with the options at the bottom. Servers and Kad are one place, the
+  network, with a switch between them. The places count the running downloads and the unread
+  messages, and the network shows whether it is up; Ctrl+1 to Ctrl+7 follow the new order.
+- Connect takes the accent only while there is no connection; the eD2K and Kad chips open the
+  network, the last log line opens the log, the Tools menu opens the incoming folder, the options and
+  a list of the keyboard shortcuts (also F1), and the rates open the speed limits.
+- A banner above the screens tells of a lasting state with its remedy: no network (Connect) or a
+  network others cannot reach us on (the options).
+- The transfers tell downloading, waiting and no sources apart, with an icon for every state; a box
+  filters the downloads by name (Ctrl+F); the sources below are those of the download chosen; a
+  Details pane (Alt+Enter) shows the parts drawn large with a legend and the facts the columns cut.
+- The lists use dense rows; empty lists say how to fill them and offer the buttons that do it.
+- The search parameters fold behind a button that counts those in use.
+- The options have an index of their sections and a box that finds an option by its words.
+- The rate graph has a scale; chat tabs with unread messages are marked.
+- eD2K links dropped on the window become downloads; the shared folders window can share a folder.
 - Messages come in three kinds: news, successes (a finished download) and problems, which carry a
   colour and an icon of their own and stay until closed. They stack in the bottom corner above the
   status strip, at most four at a time, instead of covering the tool rows.
@@ -398,6 +415,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The labels of the comment, category and import dialogs are no longer cut short.
 - The friends list is titled "Friends" (it used the text meaning "visible to friends"), and a
   CAPTCHA request in a chat is no longer cut short.
 - The native desktop app plays its notification sounds: the sound system no longer stops for want of
