@@ -22,6 +22,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
     <a href="https://semver.org/spec/v2.0.0.html"><img alt="Semantic Versioning 2.0.0" src="https://img.shields.io/badge/SemVer-2.0.0-F5A65B?labelColor=24427A"></a>
     <a href="https://github.com/palantir/palantir-java-format"><img alt="Code style: palantir-java-format" src="https://img.shields.io/badge/code%20style-palantir--java--format-F5A65B?labelColor=24427A"></a>
     <a href="CODE_OF_CONDUCT.md"><img alt="Contributor Covenant 2.1" src="https://img.shields.io/badge/Contributor%20Covenant-2.1-F5A65B?labelColor=24427A"></a>
+    <a href="https://buymeacoffee.com/scoppolap"><img alt="Buy me a coffee" src="https://img.shields.io/badge/Buy%20me%20a%20coffee-F5A65B?logo=buymeacoffee&logoColor=white&labelColor=24427A"></a>
 </p>
 
 **njMule — Next generation Java Mule** is a modern, open-source client for the eD2K and Kad
