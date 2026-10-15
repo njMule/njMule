@@ -17,15 +17,18 @@
 package org.njmule.core.protocol.ed2k;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.util.BitSet;
+import java.util.Collections;
 import java.util.HexFormat;
 import java.util.List;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.constraints.Size;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.protocol.io.DecodeException;
@@ -42,113 +45,270 @@ class ClientMessagesTest {
 
     private Packet packet;
     private ClientMessages.RequestParts request;
+    private ClientMessages.RequestParts sentRequest;
+    private ClientMessages.FileStatus status;
+    private ClientMessages.FileStatus decodedStatus;
+    private boolean fits;
+    private ClientMessages.SendingPart part;
+    private ClientMessages.SendingPart decodedPart;
+    private ClientMessages.CompressedPart chunk;
+    private ClientMessages.CompressedPart decodedChunk;
+    private ClientMessages.FileName fileName;
+    private ClientMessages.FileName decodedFileName;
+    private ClientMessages.HashSet hashSet;
+    private ClientMessages.HashSet decodedHashSet;
+    private long queueRank;
+    private Hash16 file;
+    private byte[] garbage;
+    private Throwable exception;
 
     @Test
-    void fileStatusBitsStartWithTheLowestBit() throws DecodeException {
-        BitSet parts = new BitSet();
-        parts.set(0);
-        parts.set(2);
-        parts.set(9);
-        ClientMessages.FileStatus status = new ClientMessages.FileStatus(FILE, 10, parts);
+    void shouldEncodeTheFileStatusBitsFromTheLowestBit() {
+        givenAFileStatusOfParts(10, 0, 2, 9);
 
-        assertThat(HEX.formatHex(status.encode().payload())).isEqualTo("ab".repeat(16) + "0a00" + "05" + "02");
-        ClientMessages.FileStatus decoded = ClientMessages.FileStatus.decode(status.encode());
-        assertThat(decoded.has(2)).isTrue();
-        assertThat(decoded.has(1)).isFalse();
-        assertThat(decoded.has(9)).isTrue();
+        whenTheFileStatusIsEncoded();
 
-        ClientMessages.FileStatus complete =
-                ClientMessages.FileStatus.decode(new ClientMessages.FileStatus(FILE, 0, new BitSet()).encode());
-        assertThat(complete.has(123)).isTrue();
-        assertThat(complete.dataParts(3 * 9_728_000L).cardinality()).isEqualTo(3);
+        thenNoExceptionOccurred();
+        thenThePayloadIs("ab".repeat(16) + "0a00" + "05" + "02");
     }
 
     @Test
-    void aFileStatusFitsOnlyTheSizesOfItsPartCount() {
-        ClientMessages.FileStatus three = new ClientMessages.FileStatus(FILE, 3, new BitSet());
+    void shouldDecodeTheFileStatusBitsFromTheLowestBit() throws DecodeException {
+        givenAFileStatusOfParts(10, 0, 2, 9);
+        givenTheFileStatusIsEncoded();
 
-        assertThat(new ClientMessages.FileStatus(FILE, 0, new BitSet()).fits(123))
-                .isTrue();
-        assertThat(three.fits(2 * Ed2k.PARTSIZE + 1)).isTrue();
-        assertThat(three.fits(2 * Ed2k.PARTSIZE))
-                .as("the empty last part counts")
-                .isTrue();
-        assertThat(three.fits(Ed2k.PARTSIZE)).isFalse();
-        assertThat(three.fits(3 * Ed2k.PARTSIZE)).isFalse();
+        whenTheFileStatusIsDecoded();
+
+        thenTheDecodedStatusHasPart(2);
+        thenTheDecodedStatusLacksPart(1);
+        thenTheDecodedStatusHasPart(9);
     }
 
     @Test
-    void requestsAndDataRoundTripInBothWidths() throws DecodeException {
-        ClientMessages.RequestParts request = new ClientMessages.RequestParts(
-                FILE,
-                List.of(
-                        new ClientMessages.Range(0, 184_320),
-                        new ClientMessages.Range(184_320, 368_640),
-                        new ClientMessages.Range(0, 0)));
-        Packet narrow = request.encode(false);
-        Packet wide = request.encode(true);
+    void shouldDecodeAFileStatusWithoutPartsAsComplete() throws DecodeException {
+        givenAFileStatusOfParts(0);
+        givenTheFileStatusIsEncoded();
 
-        assertThat(narrow.opcode()).isEqualTo(Opcodes.Client.REQUESTPARTS.code());
-        assertThat(narrow.length()).isEqualTo(16 + 6 * 4);
-        assertThat(wide.protocol()).isEqualTo(Protocol.EMULE);
-        assertThat(wide.length()).isEqualTo(16 + 6 * 8);
-        assertThat(ClientMessages.RequestParts.decode(narrow)).isEqualTo(request);
-        assertThat(ClientMessages.RequestParts.decode(wide)).isEqualTo(request);
+        whenTheFileStatusIsDecoded();
 
-        ClientMessages.SendingPart data = new ClientMessages.SendingPart(FILE, 10, 13, new byte[] {1, 2, 3});
-        for (boolean w : new boolean[] {false, true}) {
-            ClientMessages.SendingPart back = ClientMessages.SendingPart.decode(data.encode(w));
-            assertThat(back.start()).isEqualTo(10);
-            assertThat(back.end()).isEqualTo(13);
-            assertThat(back.data()).containsExactly(1, 2, 3);
-        }
-        assertThatThrownBy(() -> ClientMessages.SendingPart.decode(Packet.of(
-                        Protocol.EDONKEY, 0x46, HEX.parseHex("ab".repeat(16) + "0a000000" + "0d000000" + "01"))))
-                .isInstanceOf(DecodeException.class);
+        thenTheDecodedStatusHasPart(123);
+        thenTheDecodedStatusHasDataPartsForTheSize(3 * 9_728_000L, 3);
     }
 
     @Test
-    void compressedChunksRoundTripInBothWidths() throws DecodeException {
-        ClientMessages.CompressedPart chunk = new ClientMessages.CompressedPart(FILE, 184_320, 5, new byte[] {9, 8, 7});
-        Packet narrow = chunk.encode(false);
-        Packet wide = chunk.encode(true);
+    void shouldFitAnySizeWithAFileStatusWithoutParts() {
+        givenAFileStatusOfParts(0);
 
-        assertThat(narrow.opcode()).isEqualTo(Opcodes.Extended.COMPRESSEDPART.code());
-        assertThat(HEX.formatHex(narrow.payload())).isEqualTo("ab".repeat(16) + "00d00200" + "05000000" + "090807");
-        assertThat(wide.opcode()).isEqualTo(Opcodes.Extended.COMPRESSEDPART_I64.code());
-        assertThat(wide.length()).isEqualTo(16 + 8 + 4 + 3);
-        for (Packet packet : List.of(narrow, wide)) {
-            ClientMessages.CompressedPart back = ClientMessages.CompressedPart.decode(packet);
-            assertThat(back.blockStart()).isEqualTo(184_320);
-            assertThat(back.compressedSize()).isEqualTo(5);
-            assertThat(back.chunk()).containsExactly(9, 8, 7);
-        }
-        assertThatThrownBy(() -> ClientMessages.CompressedPart.decode(
-                        new ClientMessages.CompressedPart(FILE, 0, 2, new byte[] {1, 2, 3}).encode(false)))
-                .isInstanceOf(DecodeException.class);
+        whenItIsCheckedAgainstTheSize(123);
+
+        thenItFits();
     }
 
     @Test
-    void theNarrowFormsRefuseOffsetsBeyondFourGigabytes() throws DecodeException {
-        long past = 0x1_0000_0000L;
-        ClientMessages.RequestParts request = new ClientMessages.RequestParts(
-                FILE,
-                List.of(
-                        new ClientMessages.Range(past - 10, past + 10),
-                        new ClientMessages.Range(0, 0),
-                        new ClientMessages.Range(0, 0)));
-        ClientMessages.SendingPart data = new ClientMessages.SendingPart(FILE, past, past + 1, new byte[] {1});
-        ClientMessages.CompressedPart chunk = new ClientMessages.CompressedPart(FILE, past, 5, new byte[] {1});
+    void shouldFitASizeOfItsPartCount() {
+        givenAFileStatusOfParts(3);
 
-        assertThatThrownBy(() -> request.encode(false)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> data.encode(false)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> chunk.encode(false)).isInstanceOf(IllegalArgumentException.class);
-        assertThat(ClientMessages.RequestParts.decode(request.encode(true))).isEqualTo(request);
-        assertThat(ClientMessages.SendingPart.decode(data.encode(true))).isEqualTo(data);
-        assertThat(ClientMessages.CompressedPart.decode(chunk.encode(true))).isEqualTo(chunk);
-        ClientMessages.SendingPart last =
-                new ClientMessages.SendingPart(FILE, 0xFFFF_FFFEL, 0xFFFF_FFFFL, new byte[] {1});
-        assertThat(ClientMessages.SendingPart.decode(last.encode(false))).isEqualTo(last);
+        whenItIsCheckedAgainstTheSize(2 * Ed2k.PARTSIZE + 1);
+
+        thenItFits();
+    }
+
+    @Test
+    void shouldFitASizeWhoseEmptyLastPartCounts() {
+        givenAFileStatusOfParts(3);
+
+        whenItIsCheckedAgainstTheSize(2 * Ed2k.PARTSIZE);
+
+        thenItFitsAs("the empty last part counts");
+    }
+
+    @Test
+    void shouldNotFitASizeOfFewerParts() {
+        givenAFileStatusOfParts(3);
+
+        whenItIsCheckedAgainstTheSize(Ed2k.PARTSIZE);
+
+        thenItDoesNotFit();
+    }
+
+    @Test
+    void shouldNotFitASizeOfMoreParts() {
+        givenAFileStatusOfParts(3);
+
+        whenItIsCheckedAgainstTheSize(3 * Ed2k.PARTSIZE);
+
+        thenItDoesNotFit();
+    }
+
+    @Test
+    void shouldEncodeANarrowPartRequest() {
+        givenAPartRequest(range(0, 184_320), range(184_320, 368_640), range(0, 0));
+
+        whenTheRequestIsEncoded(false);
+
+        thenNoExceptionOccurred();
+        thenThePacketOpcodeIs(Opcodes.Client.REQUESTPARTS.code());
+        thenThePacketLengthIs(16 + 6 * 4);
+    }
+
+    @Test
+    void shouldEncodeAWidePartRequest() {
+        givenAPartRequest(range(0, 184_320), range(184_320, 368_640), range(0, 0));
+
+        whenTheRequestIsEncoded(true);
+
+        thenNoExceptionOccurred();
+        thenThePacketProtocolIs(Protocol.EMULE);
+        thenThePacketLengthIs(16 + 6 * 8);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void shouldRoundTripAPartRequestInBothWidths(boolean wide) throws DecodeException {
+        givenAPartRequest(range(0, 184_320), range(184_320, 368_640), range(0, 0));
+        givenTheRequestIsEncoded(wide);
+
+        whenTheRequestIsDecoded();
+
+        thenTheDecodedRequestIsTheSentOne();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void shouldRoundTripAPartOfDataInBothWidths(boolean wide) {
+        givenAPartOfData(10, 13, new byte[] {1, 2, 3});
+        givenThePartIsEncoded(wide);
+
+        whenThePartIsDecoded();
+
+        thenNoExceptionOccurred();
+        thenTheDecodedPartSpans(10, 13);
+        thenTheDecodedPartCarries(1, 2, 3);
+    }
+
+    @Test
+    void shouldRefuseAPartOfDataShorterThanItsRange() {
+        givenThePacket(Protocol.EDONKEY, 0x46, "ab".repeat(16) + "0a000000" + "0d000000" + "01");
+
+        whenThePartIsDecoded();
+
+        thenExceptionOccurred(DecodeException.class);
+    }
+
+    @Test
+    void shouldEncodeANarrowCompressedChunk() {
+        givenACompressedChunk(184_320, 5, new byte[] {9, 8, 7});
+
+        whenTheChunkIsEncoded(false);
+
+        thenNoExceptionOccurred();
+        thenThePacketOpcodeIs(Opcodes.Extended.COMPRESSEDPART.code());
+        thenThePayloadIs("ab".repeat(16) + "00d00200" + "05000000" + "090807");
+    }
+
+    @Test
+    void shouldEncodeAWideCompressedChunk() {
+        givenACompressedChunk(184_320, 5, new byte[] {9, 8, 7});
+
+        whenTheChunkIsEncoded(true);
+
+        thenNoExceptionOccurred();
+        thenThePacketOpcodeIs(Opcodes.Extended.COMPRESSEDPART_I64.code());
+        thenThePacketLengthIs(16 + 8 + 4 + 3);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void shouldRoundTripACompressedChunkInBothWidths(boolean wide) {
+        givenACompressedChunk(184_320, 5, new byte[] {9, 8, 7});
+        givenTheChunkIsEncoded(wide);
+
+        whenTheChunkIsDecoded();
+
+        thenNoExceptionOccurred();
+        thenTheDecodedChunkStartsAt(184_320);
+        thenTheDecodedCompressedSizeIs(5);
+        thenTheDecodedChunkCarries(9, 8, 7);
+    }
+
+    @Test
+    void shouldRefuseACompressedChunkLargerThanTheCompressedSize() {
+        givenACompressedChunk(0, 2, new byte[] {1, 2, 3});
+        givenTheChunkIsEncoded(false);
+
+        whenTheChunkIsDecoded();
+
+        thenExceptionOccurred(DecodeException.class);
+    }
+
+    @Test
+    void shouldRefuseANarrowPartRequestBeyondFourGigabytes() {
+        givenAPartRequest(range(FOUR_GIB - 10, FOUR_GIB + 10), range(0, 0), range(0, 0));
+
+        whenTheRequestIsEncoded(false);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRefuseANarrowPartOfDataBeyondFourGigabytes() {
+        givenAPartOfData(FOUR_GIB, FOUR_GIB + 1, new byte[] {1});
+
+        whenThePartIsEncoded(false);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRefuseANarrowCompressedChunkBeyondFourGigabytes() {
+        givenACompressedChunk(FOUR_GIB, 5, new byte[] {1});
+
+        whenTheChunkIsEncoded(false);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldCarryAPartRequestBeyondFourGigabytesInTheWideForm() throws DecodeException {
+        givenAPartRequest(range(FOUR_GIB - 10, FOUR_GIB + 10), range(0, 0), range(0, 0));
+        givenTheRequestIsEncoded(true);
+
+        whenTheRequestIsDecoded();
+
+        thenTheDecodedRequestIsTheSentOne();
+    }
+
+    @Test
+    void shouldCarryAPartOfDataBeyondFourGigabytesInTheWideForm() {
+        givenAPartOfData(FOUR_GIB, FOUR_GIB + 1, new byte[] {1});
+        givenThePartIsEncoded(true);
+
+        whenThePartIsDecoded();
+
+        thenNoExceptionOccurred();
+        thenTheDecodedPartIsTheSentOne();
+    }
+
+    @Test
+    void shouldCarryACompressedChunkBeyondFourGigabytesInTheWideForm() {
+        givenACompressedChunk(FOUR_GIB, 5, new byte[] {1});
+        givenTheChunkIsEncoded(true);
+
+        whenTheChunkIsDecoded();
+
+        thenNoExceptionOccurred();
+        thenTheDecodedChunkIsTheSentOne();
+    }
+
+    @Test
+    void shouldCarryAPartOfDataEndingAtTheLastNarrowOffsetInTheNarrowForm() {
+        givenAPartOfData(0xFFFF_FFFEL, 0xFFFF_FFFFL, new byte[] {1});
+        givenThePartIsEncoded(false);
+
+        whenThePartIsDecoded();
+
+        thenNoExceptionOccurred();
+        thenTheDecodedPartIsTheSentOne();
     }
 
     @Test
@@ -169,6 +329,104 @@ class ClientMessagesTest {
         thenTheRequestedRangesAre();
     }
 
+    @Test
+    void shouldRefuseAFileStatusWhosePartCountDoesNotFitSixteenBits() {
+        givenAFileStatusOfParts(0x10000);
+
+        whenTheFileStatusIsEncoded();
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRefuseAHashSetWhosePartCountDoesNotFitSixteenBits() {
+        givenAHashSetOf(Collections.nCopies(0x10000, FILE));
+
+        whenTheHashSetIsEncoded();
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldRoundTripAFileName() throws DecodeException {
+        givenTheFileName("ubuntu.iso");
+        givenTheFileNameIsEncoded();
+
+        whenTheFileNameIsDecoded();
+
+        thenTheDecodedFileNameIsTheSentOne();
+    }
+
+    @Test
+    void shouldRoundTripAHashSet() throws DecodeException {
+        givenAHashSetOf(List.of(FILE, Hash16.ZERO));
+        givenTheHashSetIsEncoded();
+
+        whenTheHashSetIsDecoded();
+
+        thenTheDecodedHashSetIsTheSentOne();
+    }
+
+    @Test
+    void shouldDecodeAQueueRank() throws DecodeException {
+        givenThePacket(Protocol.EDONKEY, 0x5C, "2a000000");
+
+        whenTheQueueRankIsDecoded();
+
+        thenTheQueueRankIs(42);
+    }
+
+    @Test
+    void shouldDecodeAQueueRankingOfTheExtendedProtocol() throws DecodeException {
+        givenThePacket(Protocol.EMULE, 0x60, "0700" + "00".repeat(10));
+
+        whenTheQueueRankIsDecoded();
+
+        thenTheQueueRankIs(7);
+    }
+
+    @Test
+    void shouldReadTheFileOfAFileRequest() throws DecodeException {
+        givenARequestForTheFile(Opcodes.Client.SETREQFILEID, FILE);
+
+        whenTheFileIsRead();
+
+        thenTheFileIs(FILE);
+    }
+
+    @Property
+    void shouldOnlyFailWithDecodeExceptionOnGarbage(@ForAll @Size(max = 120) byte[] data) {
+        givenTheGarbage(data);
+
+        whenEveryDecoderReadsItInBothProtocols();
+
+        thenOnlyDecodeExceptionsOccurred();
+    }
+
+    private static ClientMessages.Range range(long start, long end) {
+        return new ClientMessages.Range(start, end);
+    }
+
+    private void givenAFileStatusOfParts(int partCount, int... parts) {
+        BitSet bits = new BitSet();
+        for (int part : parts) {
+            bits.set(part);
+        }
+        this.status = new ClientMessages.FileStatus(FILE, partCount, bits);
+    }
+
+    private void givenTheFileStatusIsEncoded() {
+        this.packet = this.status.encode();
+    }
+
+    private void givenAPartRequest(ClientMessages.Range... ranges) {
+        this.sentRequest = new ClientMessages.RequestParts(FILE, List.of(ranges));
+    }
+
+    private void givenTheRequestIsEncoded(boolean wide) {
+        this.packet = this.sentRequest.encode(wide);
+    }
+
     private void givenANarrowRequestOfTheRange(long start, long end) {
         this.packet = Packet.of(
                 Protocol.EDONKEY,
@@ -183,52 +441,225 @@ class ClientMessagesTest {
                         .u32(0));
     }
 
+    private void givenAPartOfData(long start, long end, byte[] data) {
+        this.part = new ClientMessages.SendingPart(FILE, start, end, data);
+    }
+
+    private void givenThePartIsEncoded(boolean wide) {
+        this.packet = this.part.encode(wide);
+    }
+
+    private void givenACompressedChunk(long blockStart, long compressedSize, byte[] data) {
+        this.chunk = new ClientMessages.CompressedPart(FILE, blockStart, compressedSize, data);
+    }
+
+    private void givenTheChunkIsEncoded(boolean wide) {
+        this.packet = this.chunk.encode(wide);
+    }
+
+    private void givenThePacket(int protocol, int opcode, String payloadHex) {
+        this.packet = Packet.of(protocol, opcode, HEX.parseHex(payloadHex));
+    }
+
+    private void givenTheFileName(String name) {
+        this.fileName = new ClientMessages.FileName(FILE, name);
+    }
+
+    private void givenTheFileNameIsEncoded() {
+        this.packet = this.fileName.encode();
+    }
+
+    private void givenAHashSetOf(List<Hash16> parts) {
+        this.hashSet = new ClientMessages.HashSet(FILE, parts);
+    }
+
+    private void givenTheHashSetIsEncoded() {
+        this.packet = this.hashSet.encode();
+    }
+
+    private void givenARequestForTheFile(Opcodes.Client opcode, Hash16 requested) {
+        this.packet = ClientMessages.forFile(opcode, requested);
+    }
+
+    private void givenTheGarbage(byte[] data) {
+        this.garbage = data;
+    }
+
+    private void whenTheFileStatusIsEncoded() {
+        this.exception = catchThrowable(() -> this.packet = this.status.encode());
+    }
+
+    private void whenTheFileStatusIsDecoded() throws DecodeException {
+        this.decodedStatus = ClientMessages.FileStatus.decode(this.packet);
+    }
+
+    private void whenItIsCheckedAgainstTheSize(long size) {
+        this.fits = this.status.fits(size);
+    }
+
+    private void whenTheRequestIsEncoded(boolean wide) {
+        this.exception = catchThrowable(() -> this.packet = this.sentRequest.encode(wide));
+    }
+
     private void whenTheRequestIsDecoded() throws DecodeException {
         this.request = ClientMessages.RequestParts.decode(this.packet);
+    }
+
+    private void whenThePartIsEncoded(boolean wide) {
+        this.exception = catchThrowable(() -> this.packet = this.part.encode(wide));
+    }
+
+    private void whenThePartIsDecoded() {
+        this.exception = catchThrowable(() -> this.decodedPart = ClientMessages.SendingPart.decode(this.packet));
+    }
+
+    private void whenTheChunkIsEncoded(boolean wide) {
+        this.exception = catchThrowable(() -> this.packet = this.chunk.encode(wide));
+    }
+
+    private void whenTheChunkIsDecoded() {
+        this.exception = catchThrowable(() -> this.decodedChunk = ClientMessages.CompressedPart.decode(this.packet));
+    }
+
+    private void whenTheFileNameIsDecoded() throws DecodeException {
+        this.decodedFileName = ClientMessages.FileName.decode(this.packet);
+    }
+
+    private void whenTheHashSetIsEncoded() {
+        this.exception = catchThrowable(() -> this.packet = this.hashSet.encode());
+    }
+
+    private void whenTheHashSetIsDecoded() throws DecodeException {
+        this.decodedHashSet = ClientMessages.HashSet.decode(this.packet);
+    }
+
+    private void whenTheQueueRankIsDecoded() throws DecodeException {
+        this.queueRank = ClientMessages.decodeQueueRank(this.packet);
+    }
+
+    private void whenTheFileIsRead() throws DecodeException {
+        this.file = ClientMessages.fileOf(this.packet);
+    }
+
+    private void whenEveryDecoderReadsItInBothProtocols() {
+        byte[] data = this.garbage;
+        this.exception = catchThrowable(() -> {
+            for (int protocol : new int[] {Protocol.EDONKEY, Protocol.EMULE}) {
+                Packet received = Packet.of(protocol, 0x50, data);
+                quietly(() -> ClientMessages.FileStatus.decode(received));
+                quietly(() -> ClientMessages.HashSet.decode(received));
+                quietly(() -> ClientMessages.RequestParts.decode(received));
+                quietly(() -> ClientMessages.SendingPart.decode(received));
+                quietly(() -> ClientMessages.CompressedPart.decode(received));
+                quietly(() -> ClientMessages.FileName.decode(received));
+                quietly(() -> ClientMessages.decodeQueueRank(received));
+            }
+        });
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
+    }
+
+    private void thenExceptionOccurred(Class<? extends Exception> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private void thenThePayloadIs(String hex) {
+        assertThat(HEX.formatHex(this.packet.payload())).isEqualTo(hex);
+    }
+
+    private void thenThePacketOpcodeIs(int opcode) {
+        assertThat(this.packet.opcode()).isEqualTo(opcode);
+    }
+
+    private void thenThePacketProtocolIs(int protocol) {
+        assertThat(this.packet.protocol()).isEqualTo(protocol);
+    }
+
+    private void thenThePacketLengthIs(int length) {
+        assertThat(this.packet.length()).isEqualTo(length);
+    }
+
+    private void thenTheDecodedStatusHasPart(int index) {
+        assertThat(this.decodedStatus.has(index)).isTrue();
+    }
+
+    private void thenTheDecodedStatusLacksPart(int index) {
+        assertThat(this.decodedStatus.has(index)).isFalse();
+    }
+
+    private void thenTheDecodedStatusHasDataPartsForTheSize(long size, int count) {
+        assertThat(this.decodedStatus.dataParts(size).cardinality()).isEqualTo(count);
+    }
+
+    private void thenItFits() {
+        assertThat(this.fits).isTrue();
+    }
+
+    private void thenItFitsAs(String description) {
+        assertThat(this.fits).as(description).isTrue();
+    }
+
+    private void thenItDoesNotFit() {
+        assertThat(this.fits).isFalse();
+    }
+
+    private void thenTheDecodedRequestIsTheSentOne() {
+        assertThat(this.request).isEqualTo(this.sentRequest);
     }
 
     private void thenTheRequestedRangesAre(ClientMessages.Range... expected) {
         assertThat(this.request.ranges().stream().filter(r -> !r.isEmpty())).containsExactly(expected);
     }
 
-    @Test
-    void partCountsMustFitSixteenBits() {
-        assertThatThrownBy(() -> new ClientMessages.FileStatus(FILE, 0x10000, new BitSet()).encode())
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(
-                        () -> new ClientMessages.HashSet(FILE, java.util.Collections.nCopies(0x10000, FILE)).encode())
-                .isInstanceOf(IllegalArgumentException.class);
+    private void thenTheDecodedPartSpans(long start, long end) {
+        assertThat(this.decodedPart.start()).isEqualTo(start);
+        assertThat(this.decodedPart.end()).isEqualTo(end);
     }
 
-    @Test
-    void namesHashSetsAndQueueRanks() throws DecodeException {
-        ClientMessages.FileName name = new ClientMessages.FileName(FILE, "ubuntu.iso");
-        assertThat(ClientMessages.FileName.decode(name.encode())).isEqualTo(name);
-
-        ClientMessages.HashSet set = new ClientMessages.HashSet(FILE, List.of(FILE, Hash16.ZERO));
-        assertThat(ClientMessages.HashSet.decode(set.encode())).isEqualTo(set);
-
-        assertThat(ClientMessages.decodeQueueRank(Packet.of(Protocol.EDONKEY, 0x5C, HEX.parseHex("2a000000"))))
-                .isEqualTo(42);
-        assertThat(ClientMessages.decodeQueueRank(
-                        Packet.of(Protocol.EMULE, 0x60, HEX.parseHex("0700" + "00".repeat(10)))))
-                .isEqualTo(7);
-        assertThat(ClientMessages.fileOf(ClientMessages.forFile(Opcodes.Client.SETREQFILEID, FILE)))
-                .isEqualTo(FILE);
+    private void thenTheDecodedPartCarries(int... data) {
+        assertThat(this.decodedPart.data()).containsExactly(data);
     }
 
-    @Property
-    void garbageOnlyFailsWithDecodeException(@ForAll @Size(max = 120) byte[] data) {
-        for (int protocol : new int[] {Protocol.EDONKEY, Protocol.EMULE}) {
-            Packet packet = Packet.of(protocol, 0x50, data);
-            quietly(() -> ClientMessages.FileStatus.decode(packet));
-            quietly(() -> ClientMessages.HashSet.decode(packet));
-            quietly(() -> ClientMessages.RequestParts.decode(packet));
-            quietly(() -> ClientMessages.SendingPart.decode(packet));
-            quietly(() -> ClientMessages.CompressedPart.decode(packet));
-            quietly(() -> ClientMessages.FileName.decode(packet));
-            quietly(() -> ClientMessages.decodeQueueRank(packet));
-        }
+    private void thenTheDecodedPartIsTheSentOne() {
+        assertThat(this.decodedPart).isEqualTo(this.part);
+    }
+
+    private void thenTheDecodedChunkStartsAt(long blockStart) {
+        assertThat(this.decodedChunk.blockStart()).isEqualTo(blockStart);
+    }
+
+    private void thenTheDecodedCompressedSizeIs(long compressedSize) {
+        assertThat(this.decodedChunk.compressedSize()).isEqualTo(compressedSize);
+    }
+
+    private void thenTheDecodedChunkCarries(int... data) {
+        assertThat(this.decodedChunk.chunk()).containsExactly(data);
+    }
+
+    private void thenTheDecodedChunkIsTheSentOne() {
+        assertThat(this.decodedChunk).isEqualTo(this.chunk);
+    }
+
+    private void thenTheDecodedFileNameIsTheSentOne() {
+        assertThat(this.decodedFileName).isEqualTo(this.fileName);
+    }
+
+    private void thenTheDecodedHashSetIsTheSentOne() {
+        assertThat(this.decodedHashSet).isEqualTo(this.hashSet);
+    }
+
+    private void thenTheQueueRankIs(long rank) {
+        assertThat(this.queueRank).isEqualTo(rank);
+    }
+
+    private void thenTheFileIs(Hash16 expected) {
+        assertThat(this.file).isEqualTo(expected);
+    }
+
+    private void thenOnlyDecodeExceptionsOccurred() {
+        assertThat(this.exception).isNull();
     }
 
     private interface Decoder {

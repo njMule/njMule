@@ -17,7 +17,7 @@
 package org.njmule.core.search;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -36,11 +36,12 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
@@ -71,6 +72,18 @@ class SearchManagerTest {
 
     private static final int LOOPBACK = Ipv4.parse("127.0.0.1");
     private static final long HIGH_ID = Ipv4.toEd2k(Ipv4.parse("198.51.100.7"));
+    private static final List<SearchResult> FIRST_KAD_ANSWER = List.of(
+            new SearchResult(hash(1), "distro.iso", 1000, 5, 1, Optional.empty()),
+            new SearchResult(hash(2), " ", 1000, 1, 1, Optional.empty()),
+            new SearchResult(hash(3), "empty.iso", 0, 1, 1, Optional.empty()));
+    private static final List<SearchResult> SECOND_KAD_ANSWER = List.of(
+            new SearchResult(hash(1), "distro.iso", 1000, 3, 4, Optional.of("Iso")),
+            new SearchResult(hash(1), "distro.iso", 2000, 9, 9, Optional.empty()));
+    private static final List<FileEntry> FIRST_SERVER_ANSWER = List.of(
+            entry(1, "linux.iso", 1000, 2),
+            new FileEntry(hash(2), 0, 0, List.of()),
+            new FileEntry(hash(4), 0, 0, List.of(new Tag.StringTag(TagName.id(FileTag.FILENAME), "nosize.iso"))),
+            entry(1, "linux.iso", 2000, 7));
 
     private final EngineLoop loop = EngineLoop.start(1024, "test-engine");
     private final ServerList servers = new ServerList();
@@ -92,6 +105,12 @@ class SearchManagerTest {
             new SecureRandom());
     private final SearchManager manager =
             new SearchManager(this.loop, this.session, this.servers, () -> this.udp, () -> this.kad, new Events());
+    private final List<String> keywords = new ArrayList<>();
+    private final List<String> stopped = new ArrayList<>();
+    private SearchId id;
+    private ScriptedServer server;
+    private String chosenKeyword;
+    private Throwable exception;
 
     @AfterEach
     void stop() throws Exception {
@@ -102,66 +121,81 @@ class SearchManagerTest {
     }
 
     @Test
-    void kadSearchesKeepTheLargestCountsUpToTheLimitAndEndWhenStopped() throws Exception {
-        assertThatThrownBy(() -> onLoop(() -> this.manager.start(kad("linux"))))
-                .hasRootCauseInstanceOf(IllegalStateException.class)
-                .hasRootCauseMessage("Kad is not running");
-        List<String> keywords = new ArrayList<>();
-        AtomicReference<Consumer<List<SearchResult>>> found = new AtomicReference<>();
-        List<String> stopped = new ArrayList<>();
-        this.kad = Optional.of((keyword, expression, results) -> {
-            keywords.add(keyword);
-            if (keyword.equals("never")) {
-                return Optional.empty();
-            }
-            found.set(results);
-            return Optional.of(() -> stopped.add(keyword));
-        });
-        assertThatThrownBy(() -> onLoop(() -> this.manager.start(kad("never"))))
-                .hasRootCauseInstanceOf(IllegalStateException.class);
+    void shouldRefuseAKadSearchWhileKadIsNotRunning() {
+        whenASearchIsStarted(kad("linux"));
 
-        SearchId id = onLoop(() -> this.manager.start(kad("rare linux distro")));
-        assertThat(keywords).last().as("the longest word").isEqualTo("distro");
-        Hash16 iso = hash(1);
-        onLoop(() -> {
-            found.get()
-                    .accept(List.of(
-                            new SearchResult(iso, "distro.iso", 1000, 5, 1, Optional.empty()),
-                            new SearchResult(hash(2), " ", 1000, 1, 1, Optional.empty()),
-                            new SearchResult(hash(3), "empty.iso", 0, 1, 1, Optional.empty())));
-            found.get()
-                    .accept(List.of(
-                            new SearchResult(iso, "distro.iso", 1000, 3, 4, Optional.of("Iso")),
-                            new SearchResult(iso, "distro.iso", 2000, 9, 9, Optional.empty())));
-            return null;
-        });
-        assertThat(next()).isEqualTo("results " + id.value() + " distro.iso 5/1");
-        assertThat(next())
-                .as("Kad nodes report the same sources: the largest count is kept")
-                .isEqualTo("results " + id.value() + " distro.iso 5/4");
+        thenExceptionOccurredWithTheRootCause(IllegalStateException.class, "Kad is not running");
+    }
 
-        List<SearchResult> many = new ArrayList<>();
-        for (int i = 0; i < SearchManager.MAX_RESULTS + 1; i++) {
-            many.add(new SearchResult(hash(1000 + i), "file" + i + ".bin", 10, 1, 0, Optional.empty()));
-        }
-        onLoop(() -> {
-            found.get().accept(many);
-            return null;
-        });
-        assertThat(next()).startsWith("results " + id.value() + " file0.bin");
-        onLoop(() -> {
-            this.manager.serverLost();
-            this.manager.stop(id);
-            this.manager.stop(id);
-            found.get().accept(List.of(new SearchResult(hash(5), "late.iso", 10, 1, 0, Optional.empty())));
-            return null;
-        });
+    @Test
+    void shouldRefuseAKadSearchForAKeywordKadCannotLookUp() {
+        givenARunningKadThatCannotLookUp("never");
 
-        assertThat(next())
-                .as("a Kad search outlives the server; once stopped it takes nothing more")
-                .isEqualTo("ended " + id.value() + " " + SearchManager.MAX_RESULTS);
-        assertThat(stopped).containsExactly("distro");
-        assertThat(this.events.poll(200, TimeUnit.MILLISECONDS)).isNull();
+        whenASearchIsStarted(kad("never"));
+
+        thenExceptionOccurredWithTheRootCause(IllegalStateException.class);
+    }
+
+    @Test
+    void shouldLookUpTheLongestWordOnKad() {
+        givenARunningKadThatCannotLookUp("never");
+
+        whenASearchIsStarted(kad("rare linux distro"));
+
+        thenNoExceptionOccurred();
+        thenKadLooksUp("distro");
+    }
+
+    @Test
+    void shouldReportTheFilesOfAKadAnswer() throws Exception {
+        givenARunningKadThatCannotLookUp("never");
+        givenASearchIsStarted(kad("rare linux distro"));
+
+        whenKadSendsTheResults(FIRST_KAD_ANSWER);
+
+        thenTheNextEventReports("distro.iso 5/1");
+    }
+
+    @Test
+    void shouldKeepTheLargestCountsKadNodesReport() throws Exception {
+        givenARunningKadThatCannotLookUp("never");
+        givenASearchIsStarted(kad("rare linux distro"));
+        givenKadAnsweredWith(FIRST_KAD_ANSWER);
+
+        whenKadSendsTheResults(SECOND_KAD_ANSWER);
+
+        thenTheNextEventReports("distro.iso 5/4", "Kad nodes report the same sources: the largest count is kept");
+    }
+
+    @Test
+    void shouldTakeKadResultsUpToTheLimit() throws Exception {
+        givenARunningKadThatCannotLookUp("never");
+        givenASearchIsStarted(kad("rare linux distro"));
+        givenKadAnsweredWith(FIRST_KAD_ANSWER);
+        givenKadAnsweredWith(SECOND_KAD_ANSWER);
+
+        whenKadSendsTheResults(moreFilesThanTheLimit());
+
+        thenTheNextEventReportsFirst("file0.bin");
+    }
+
+    @Test
+    void shouldLetAKadSearchOutliveTheServerAndTakeNothingMoreOnceStopped() throws Exception {
+        givenARunningKadThatCannotLookUp("never");
+        givenASearchIsStarted(kad("rare linux distro"));
+        givenKadAnsweredWith(FIRST_KAD_ANSWER);
+        givenKadAnsweredWith(SECOND_KAD_ANSWER);
+        givenKadAnsweredWith(moreFilesThanTheLimit());
+        givenTheServerIsLost();
+        givenTheSearchIsStopped();
+        givenTheSearchIsStopped();
+
+        whenKadSendsTheResults(List.of(new SearchResult(hash(5), "late.iso", 10, 1, 0, Optional.empty())));
+
+        thenTheNextEventIsTheEndWith(
+                SearchManager.MAX_RESULTS, "a Kad search outlives the server; once stopped it takes nothing more");
+        thenKadStoppedTheLookUpsOf("distro");
+        thenNoEventComesWithin(200);
     }
 
     @Test
@@ -223,6 +257,128 @@ class SearchManagerTest {
         thenTheResultsReportedAre("linux sources.tar.gz");
     }
 
+    @ParameterizedTest
+    @CsvSource({"'@type=video linux', linux", "'ubuntu -windows', ubuntu"})
+    void shouldLookUpOnKadTheLongestWordEveryMatchHas(String expression, String keyword) {
+        whenTheKadKeywordIsChosenFor(expression);
+
+        thenTheKadKeywordIs(keyword);
+    }
+
+    @Test
+    void shouldLookUpOnKadAWordInQuotesWhenThereAreNoOthers() {
+        whenTheKadKeywordIsChosenFor("\"free software\" go");
+
+        thenTheKadKeywordIs("software", "words in quotes when there are no others");
+    }
+
+    @Test
+    void shouldNotLookUpAnyWordOnKadForAlternatives() {
+        whenTheKadKeywordIsChosenFor("debian OR ubuntu");
+
+        thenExceptionOccurredWithAMessageContaining("OR");
+    }
+
+    @Test
+    void shouldNotLookUpOnKadAWordShorterThanThreeLetters() {
+        whenTheKadKeywordIsChosenFor("go to");
+
+        thenExceptionOccurredWithAMessageContaining("three letters");
+    }
+
+    @Test
+    void shouldRefuseAServerSearchWithoutAServer() {
+        whenASearchIsStarted(server("linux"));
+
+        thenExceptionOccurredWithTheRootCause(IllegalStateException.class);
+    }
+
+    @Test
+    void shouldIgnoreAnswersNoSearchAskedFor() throws Exception {
+        whenAnswersComeThatNoSearchAskedFor();
+
+        thenNoEventComesWithin(200, "answers no search asked for");
+    }
+
+    @Test
+    void shouldTakeMoreResultsFromTheServerOneRequestAtATimeUntilItsLastAnswer() throws Exception {
+        givenAConnectedServer();
+        givenASearchIsStarted(server("linux"));
+        givenTheServerReceivedASearchRequest();
+        givenTheServerAnswered(FIRST_SERVER_ANSWER, true);
+        givenTheSearchReported("linux.iso 2/2");
+        givenMoreResultsWereAskedFor();
+        givenAskingForMoreAgainWasRefused();
+
+        whenTheServerAnswers(List.of(entry(1, "linux.iso", 1000, 3)), false);
+
+        thenTheNextEventReports("linux.iso 5/5", "servers count their own sources: they add up");
+        thenTheNextEventIsTheEndWith(1);
+        thenNoMoreResultsCanBeAskedFor();
+    }
+
+    @Test
+    void shouldEndAServerSearchWhenTheServerIsLost() throws Exception {
+        givenAConnectedServer();
+        givenASearchIsStarted(server("lost"));
+        givenTheServerReceivedTheQuery();
+
+        whenTheServerIsLost();
+
+        thenTheNextEventIsTheEndWith(0);
+    }
+
+    @Test
+    void shouldIgnoreTheLateAnswerOfALostServer() throws Exception {
+        givenAConnectedServer();
+        givenASearchIsStarted(server("lost"));
+        givenTheServerReceivedTheQuery();
+        givenTheServerIsLost();
+        givenTheSearchEndedWith(0);
+
+        whenTheServerAnswers(List.of(entry(3, "late.iso", 10, 1)), false);
+
+        thenNoEventComesWithin(500);
+    }
+
+    @Test
+    void shouldEndAGlobalSearchWithTheServerAnswerWithoutTheUdpSocket() throws Exception {
+        givenServersWithLargeFilesWithoutThemAndWithoutAUdpPort();
+        givenAConnectedServer();
+        givenASearchIsStarted(global("alone"));
+        givenTheServerReceivedTheQuery();
+
+        whenTheServerAnswers(List.of(), false);
+
+        thenTheNextEventIsTheEndWith(0);
+    }
+
+    @Test
+    void shouldEndAGlobalSearchNoServerCanBeAskedOverUdpOnceTheTimeForAnswersIsOver() throws Exception {
+        // A query that cannot be sent, and one that cannot be made for a server without 64-bit sizes: the search
+        // still ends, once the time for answers is over.
+        givenServersWithLargeFilesWithoutThemAndWithoutAUdpPort();
+        givenAConnectedServer();
+        givenAClosedUdpSocket();
+        givenASearchIsStarted(global("@size>5g linux"));
+        givenTheServerReceivedTheQuery();
+
+        whenTheServerAnswers(List.of(), false);
+
+        thenTheSearchEndsOnceTheTimeForAnswersIsOverWith(0);
+    }
+
+    private void givenARunningKadThatCannotLookUp(String refused) {
+        this.kad = Optional.of((keyword, expression, results) -> {
+            this.keywords.add(keyword);
+            if (keyword.equals(refused)) {
+                return Optional.empty();
+            }
+            this.kadAnswers = results;
+            return Optional.of(() -> this.stopped.add(keyword));
+        });
+    }
+
     private void givenAKadSearchFor(String words) throws Exception {
         this.kad = Optional.of((keyword, expression, results) -> {
             this.kadExpression = expression;
@@ -232,8 +388,90 @@ class SearchManagerTest {
         onLoop(() -> this.manager.start(kad(words)));
     }
 
+    private void givenASearchIsStarted(SearchRequest request) throws Exception {
+        this.id = onLoop(() -> this.manager.start(request));
+    }
+
     private void givenKadAnswered(SearchResult result) throws Exception {
         whenKadAnswers(result);
+    }
+
+    private void givenKadAnsweredWith(List<SearchResult> results) throws Exception {
+        whenKadSendsTheResults(results);
+        next();
+    }
+
+    private void givenTheServerIsLost() throws Exception {
+        onLoop(() -> {
+            this.manager.serverLost();
+            return null;
+        });
+    }
+
+    private void givenTheSearchIsStopped() throws Exception {
+        onLoop(() -> {
+            this.manager.stop(this.id);
+            return null;
+        });
+    }
+
+    private void givenAConnectedServer() throws Exception {
+        this.server = connect();
+    }
+
+    private void givenTheServerReceivedASearchRequest() throws IOException {
+        assertThat(this.server.next().opcode()).isEqualTo(Opcodes.Server.SEARCHREQUEST.code());
+    }
+
+    private void givenTheServerReceivedTheQuery() throws IOException {
+        this.server.next();
+    }
+
+    private void givenTheServerAnswered(List<FileEntry> files, boolean more) throws IOException {
+        this.server.send(new ServerMessages.SearchResults(files, more).encode());
+    }
+
+    private void givenTheSearchReported(String result) throws InterruptedException {
+        assertThat(next()).isEqualTo("results " + this.id.value() + " " + result);
+    }
+
+    private void givenMoreResultsWereAskedFor() throws Exception {
+        assertThat(onLoop(() -> this.manager.more(this.id))).isTrue();
+        assertThat(this.server.next().opcode()).isEqualTo(Opcodes.Server.QUERY_MORE_RESULT.code());
+    }
+
+    private void givenAskingForMoreAgainWasRefused() throws Exception {
+        assertThat(onLoop(() -> this.manager.more(this.id)))
+                .as("one request at a time")
+                .isFalse();
+    }
+
+    private void givenTheSearchEndedWith(int results) throws InterruptedException {
+        assertThat(next()).isEqualTo("ended " + this.id.value() + " " + results);
+    }
+
+    private void givenServersWithLargeFilesWithoutThemAndWithoutAUdpPort() throws Exception {
+        ServerMet.Server wide = new ServerMet.Server(Ipv4.of(192, 0, 2, 1), 4661, List.of())
+                .with(intTag(ServerTag.UDPFLAGS, ServerDatagrams.UDP_LARGEFILES | ServerDatagrams.UDP_EXT_GETFILES));
+        ServerMet.Server narrow = new ServerMet.Server(Ipv4.of(192, 0, 2, 2), 4661, List.of());
+        ServerMet.Server noUdpPort = new ServerMet.Server(Ipv4.of(192, 0, 2, 3), 65_533, List.of());
+        onLoop(() -> {
+            this.servers.add(wide);
+            this.servers.add(narrow);
+            this.servers.add(noUdpPort);
+            this.servers.setPriority(ServerList.addressOf(wide), ServerInfo.Priority.HIGH);
+            return null;
+        });
+    }
+
+    private void givenAClosedUdpSocket() throws IOException {
+        ServerUdp closed = ServerUdp.open(0, (from, packet) -> {});
+        closed.close();
+        this.udp = Optional.of(closed);
+    }
+
+    private void whenASearchIsStarted(SearchRequest request) {
+        this.exception = catchThrowable(() -> this.id = onLoop(() -> this.manager.start(request)));
     }
 
     private void whenKadAnswers(SearchResult... results) throws Exception {
@@ -244,8 +482,115 @@ class SearchManagerTest {
         next();
     }
 
+    private void whenKadSendsTheResults(List<SearchResult> results) throws Exception {
+        onLoop(() -> {
+            this.kadAnswers.accept(results);
+            return null;
+        });
+    }
+
+    private void whenTheKadKeywordIsChosenFor(String expression) {
+        this.exception =
+                catchThrowable(() -> this.chosenKeyword = SearchManager.kadKeyword(SearchParser.parse(expression)));
+    }
+
+    private void whenAnswersComeThatNoSearchAskedFor() throws Exception {
+        onLoop(() -> {
+            this.manager.serverResults(
+                    new ServerMet.Server(LOOPBACK, 4661, List.of()),
+                    new ServerMessages.SearchResults(List.of(), false));
+            this.manager.datagramResults(
+                    new InetSocketAddress(InetAddress.getLoopbackAddress(), 4665), List.of(entry(1, "x.iso", 10, 1)));
+            return null;
+        });
+    }
+
+    private void whenTheServerAnswers(List<FileEntry> files, boolean more) throws IOException {
+        this.server.send(new ServerMessages.SearchResults(files, more).encode());
+    }
+
+    private void whenTheServerIsLost() throws Exception {
+        onLoop(() -> {
+            this.manager.serverLost();
+            return null;
+        });
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
+    }
+
+    private void thenExceptionOccurredWithTheRootCause(Class<? extends Exception> type) {
+        assertThat(this.exception).hasRootCauseInstanceOf(type);
+    }
+
+    private void thenExceptionOccurredWithTheRootCause(Class<? extends Exception> type, String message) {
+        assertThat(this.exception).hasRootCauseInstanceOf(type).hasRootCauseMessage(message);
+    }
+
+    private void thenExceptionOccurredWithAMessageContaining(String messagePart) {
+        assertThat(this.exception).hasMessageContaining(messagePart);
+    }
+
+    private void thenKadLooksUp(String expected) {
+        assertThat(this.keywords).last().as("the longest word").isEqualTo(expected);
+    }
+
+    private void thenKadStoppedTheLookUpsOf(String... expected) {
+        assertThat(this.stopped).containsExactly(expected);
+    }
+
     private void thenKadIsAskedFor(SearchExpr expected) {
         assertThat(this.kadExpression).isEqualTo(expected);
+    }
+
+    private void thenTheKadKeywordIs(String expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.chosenKeyword).isEqualTo(expected);
+    }
+
+    private void thenTheKadKeywordIs(String expected, String description) {
+        assertThat(this.exception).isNull();
+        assertThat(this.chosenKeyword).as(description).isEqualTo(expected);
+    }
+
+    private void thenTheNextEventReports(String result) throws InterruptedException {
+        assertThat(next()).isEqualTo("results " + this.id.value() + " " + result);
+    }
+
+    private void thenTheNextEventReports(String result, String description) throws InterruptedException {
+        assertThat(next()).as(description).isEqualTo("results " + this.id.value() + " " + result);
+    }
+
+    private void thenTheNextEventReportsFirst(String name) throws InterruptedException {
+        assertThat(next()).startsWith("results " + this.id.value() + " " + name);
+    }
+
+    private void thenTheNextEventIsTheEndWith(int results) throws InterruptedException {
+        assertThat(next()).isEqualTo("ended " + this.id.value() + " " + results);
+    }
+
+    private void thenTheNextEventIsTheEndWith(int results, String description) throws InterruptedException {
+        assertThat(next()).as(description).isEqualTo("ended " + this.id.value() + " " + results);
+    }
+
+    private void thenTheSearchEndsOnceTheTimeForAnswersIsOverWith(int results) throws InterruptedException {
+        assertThat(next(SearchManager.ANSWER_GRACE.plusSeconds(10).toMillis()))
+                .isEqualTo("ended " + this.id.value() + " " + results);
+    }
+
+    private void thenNoEventComesWithin(long millis) throws InterruptedException {
+        assertThat(this.events.poll(millis, TimeUnit.MILLISECONDS)).isNull();
+    }
+
+    private void thenNoEventComesWithin(long millis, String description) throws InterruptedException {
+        assertThat(this.events.poll(millis, TimeUnit.MILLISECONDS))
+                .as(description)
+                .isNull();
+    }
+
+    private void thenNoMoreResultsCanBeAskedFor() throws Exception {
+        assertThat(onLoop(() -> this.manager.more(this.id))).isFalse();
     }
 
     private void thenTheResultsReportedAre(String... names) {
@@ -264,107 +609,12 @@ class SearchManagerTest {
         return new SearchResult(hash(9), "opening song.mp3", 4_000_000, 1, 0, Optional.of("Audio"), media);
     }
 
-    @Test
-    void kadLooksUpTheLongestWordEveryMatchHas() {
-        assertThat(SearchManager.kadKeyword(SearchParser.parse("@type=video linux")))
-                .isEqualTo("linux");
-        assertThat(SearchManager.kadKeyword(SearchParser.parse("ubuntu -windows")))
-                .isEqualTo("ubuntu");
-        assertThat(SearchManager.kadKeyword(SearchParser.parse("\"free software\" go")))
-                .as("words in quotes when there are no others")
-                .isEqualTo("software");
-        assertThatThrownBy(() -> SearchManager.kadKeyword(SearchParser.parse("debian OR ubuntu")))
-                .hasMessageContaining("OR");
-        assertThatThrownBy(() -> SearchManager.kadKeyword(SearchParser.parse("go to")))
-                .hasMessageContaining("three letters");
-    }
-
-    @Test
-    void aServerSearchTakesMoreResultsAndEndsWhenTheServerIsLost() throws Exception {
-        assertThatThrownBy(() -> onLoop(() -> this.manager.start(server("linux"))))
-                .hasRootCauseInstanceOf(IllegalStateException.class);
-        onLoop(() -> {
-            this.manager.serverResults(
-                    new ServerMet.Server(LOOPBACK, 4661, List.of()),
-                    new ServerMessages.SearchResults(List.of(), false));
-            this.manager.datagramResults(
-                    new InetSocketAddress(InetAddress.getLoopbackAddress(), 4665), List.of(entry(1, "x.iso", 10, 1)));
-            return null;
-        });
-        assertThat(this.events.poll(200, TimeUnit.MILLISECONDS))
-                .as("answers no search asked for")
-                .isNull();
-        ScriptedServer server = connect();
-
-        SearchId id = onLoop(() -> this.manager.start(server("linux")));
-        assertThat(server.next().opcode()).isEqualTo(Opcodes.Server.SEARCHREQUEST.code());
-        server.send(new ServerMessages.SearchResults(
-                        List.of(
-                                entry(1, "linux.iso", 1000, 2),
-                                new FileEntry(hash(2), 0, 0, List.of()),
-                                new FileEntry(
-                                        hash(4),
-                                        0,
-                                        0,
-                                        List.of(new Tag.StringTag(TagName.id(FileTag.FILENAME), "nosize.iso"))),
-                                entry(1, "linux.iso", 2000, 7)),
-                        true)
-                .encode());
-        assertThat(next()).isEqualTo("results " + id.value() + " linux.iso 2/2");
-        assertThat(onLoop(() -> this.manager.more(id))).isTrue();
-        assertThat(server.next().opcode()).isEqualTo(Opcodes.Server.QUERY_MORE_RESULT.code());
-        assertThat(onLoop(() -> this.manager.more(id)))
-                .as("one request at a time")
-                .isFalse();
-        server.send(new ServerMessages.SearchResults(List.of(entry(1, "linux.iso", 1000, 3)), false).encode());
-        assertThat(next())
-                .as("servers count their own sources: they add up")
-                .isEqualTo("results " + id.value() + " linux.iso 5/5");
-        assertThat(next()).isEqualTo("ended " + id.value() + " 1");
-        assertThat(onLoop(() -> this.manager.more(id))).isFalse();
-
-        SearchId lost = onLoop(() -> this.manager.start(server("lost")));
-        server.next();
-        onLoop(() -> {
-            this.manager.serverLost();
-            return null;
-        });
-        assertThat(next()).isEqualTo("ended " + lost.value() + " 0");
-        server.send(new ServerMessages.SearchResults(List.of(entry(3, "late.iso", 10, 1)), false).encode());
-        assertThat(this.events.poll(500, TimeUnit.MILLISECONDS)).isNull();
-    }
-
-    @Test
-    void aGlobalSearchEndsWhereNoServerCanBeAskedOverUdp() throws Exception {
-        ServerMet.Server wide = new ServerMet.Server(Ipv4.of(192, 0, 2, 1), 4661, List.of())
-                .with(intTag(ServerTag.UDPFLAGS, ServerDatagrams.UDP_LARGEFILES | ServerDatagrams.UDP_EXT_GETFILES));
-        ServerMet.Server narrow = new ServerMet.Server(Ipv4.of(192, 0, 2, 2), 4661, List.of());
-        ServerMet.Server noUdpPort = new ServerMet.Server(Ipv4.of(192, 0, 2, 3), 65_533, List.of());
-        onLoop(() -> {
-            this.servers.add(wide);
-            this.servers.add(narrow);
-            this.servers.add(noUdpPort);
-            this.servers.setPriority(ServerList.addressOf(wide), ServerInfo.Priority.HIGH);
-            return null;
-        });
-        ScriptedServer server = connect();
-
-        // Without the UDP socket the search ends with the server's answer.
-        SearchId alone = onLoop(() -> this.manager.start(global("alone")));
-        server.next();
-        server.send(new ServerMessages.SearchResults(List.of(), false).encode());
-        assertThat(next()).isEqualTo("ended " + alone.value() + " 0");
-
-        // A query that cannot be sent, and one that cannot be made for a server without 64-bit sizes: the search
-        // still ends, once the time for answers is over.
-        ServerUdp closed = ServerUdp.open(0, (from, packet) -> {});
-        closed.close();
-        this.udp = Optional.of(closed);
-        SearchId sized = onLoop(() -> this.manager.start(global("@size>5g linux")));
-        server.next();
-        server.send(new ServerMessages.SearchResults(List.of(), false).encode());
-        assertThat(next(SearchManager.ANSWER_GRACE.plusSeconds(10).toMillis()))
-                .isEqualTo("ended " + sized.value() + " 0");
+    private static List<SearchResult> moreFilesThanTheLimit() {
+        List<SearchResult> many = new ArrayList<>();
+        for (int i = 0; i < SearchManager.MAX_RESULTS + 1; i++) {
+            many.add(new SearchResult(hash(1000 + i), "file" + i + ".bin", 10, 1, 0, Optional.empty()));
+        }
+        return many;
     }
 
     private ScriptedServer connect() throws Exception {

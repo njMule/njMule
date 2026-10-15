@@ -112,8 +112,8 @@ class MediaTagsTest {
         givenAStringTag("Artist", "Some Band");
         givenAnIntTag("length", 200);
         givenAStringTag(FileTag.MEDIA_CODEC, "flac");
+        givenTheTagsAreRead();
 
-        whenTheTagsAreRead();
         whenTheMediaIsWrittenAndReadAgain();
 
         thenTheMediaIs(new SearchResult.Media("Some Band", "", "", 200, 0, "flac"));
@@ -140,6 +140,10 @@ class MediaTagsTest {
 
     private void givenAnIntTag(int id, long value) {
         this.tags.add(Tag.of(id, value));
+    }
+
+    private void givenTheTagsAreRead() {
+        this.media = MediaTags.read(this.tags);
     }
 
     private void whenTheTagsAreRead() {

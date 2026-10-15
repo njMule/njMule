@@ -17,7 +17,7 @@
 package org.njmule.core.protocol.crypt;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -27,8 +27,12 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Map;
@@ -39,10 +43,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.constraints.Size;
+import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.crypto.Rc4;
 import org.njmule.core.protocol.crypt.DatagramObfuscation.Kind;
@@ -58,206 +67,488 @@ class ObfuscationTest {
     private static final HexFormat HEX = HexFormat.of();
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Hash16 USER_HASH = Hash16.of(HEX.parseHex("000102030405060708090a0b0c0d0e0f"));
+    private static final Hash16 KAD_ID = Hash16.of(HEX.parseHex("101112131415161718191a1b1c1d1e1f"));
+    private static final byte[] SENDER_IP = {10, 0, 0, 7};
     private static final Map<String, String> GOLDEN = golden();
 
+    private BigInteger prime;
+    private Dh768 firstParty;
+    private Dh768 secondParty;
+    private byte[] firstSecret;
+    private byte[] secondSecret;
+    private byte[] keyPart;
+    private byte[] secret;
+    private Rc4 key;
+    private byte[] request;
+    private Duplex duplex;
+    private Ciphers[] ciphers;
+    private int marker;
+    private Packet packet;
+    private byte[] plain;
+    private byte[] datagram;
+    private Received received;
+    private Throwable exception;
+
     @Test
-    void dhGroupIsA768BitPrime() {
-        assertThat(Dh768.P.bitLength()).isEqualTo(768);
-        assertThat(Dh768.P.isProbablePrime(64)).isTrue();
+    void shouldUseA768BitPrimeForTheDhGroup() {
+        whenTheDhGroupPrimeIsTaken();
+
+        thenThePrimeHasBits(768);
+        thenThePrimeIsProbablyPrimeWithCertainty(64);
     }
 
     @Test
-    void dhPartiesAgreeAndDegenerateValuesAreRejected() throws DecodeException {
-        Dh768 a = Dh768.generate(RANDOM);
-        Dh768 b = Dh768.generate(RANDOM);
+    void shouldGiveBothDhPartiesTheSameSharedSecret() throws DecodeException {
+        givenTwoDhParties();
 
-        assertThat(a.publicValue()).hasSize(Dh768.SIZE);
-        assertThat(a.sharedSecret(b.publicValue())).isEqualTo(b.sharedSecret(a.publicValue()));
-        assertThatThrownBy(() -> a.sharedSecret(new byte[Dh768.SIZE])).isInstanceOf(DecodeException.class);
+        whenEachPartyComputesTheSharedSecretWithTheOther();
+
+        thenThePublicValueOfTheFirstPartyHasSize(Dh768.SIZE);
+        thenBothSharedSecretsAreEqual();
+    }
+
+    @ParameterizedTest
+    @MethodSource("degeneratePeerValues")
+    void shouldRejectADegeneratePeerValue(byte[] peerValue) {
+        givenTwoDhParties();
+
+        whenTheFirstPartyComputesTheSharedSecretWith(peerValue);
+
+        thenExceptionOccurred(DecodeException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {34, 203})
+    void shouldDeriveTheGoldenClientKeyStream(int magic) {
+        givenTheKeyPart("01234567");
+
+        whenTheClientKeyIsDerivedWithTheMagic(magic);
+
+        thenTheKeyStreamIsTheGoldenOne("tcp-client", magic);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {34, 203})
+    void shouldDeriveTheGoldenServerKeyStream(int magic) {
+        givenTheTestSecretOfLength(96);
+
+        whenTheServerKeyIsDerivedWithTheMagic(magic);
+
+        thenTheKeyStreamIsTheGoldenOne("tcp-server", magic);
+    }
+
+    @Test
+    void shouldStartTheClientRequestInClearAndMakeItReadableWithTheReceiverKey() {
+        whenAClientConnectsToAPeerThatNeverAnswers();
+
+        thenExceptionOccurred(DecodeException.class);
+        thenTheRequestHasSize(1 + 4 + 7);
+        thenTheRequestStartsWithoutATcpProtocolMarker();
+        thenTheRequestBodyDecryptsTo("c46f5e83" + "00" + "00" + "00");
+    }
+
+    @Test
+    void shouldCompleteTheClientHandshakeAndShareTheStream() throws IOException {
+        givenTwoConnectedEndpoints();
+
+        whenTheClientsShakeHands(USER_HASH, 128);
+
+        thenNoExceptionOccurred();
+        thenTheAcceptingSideReadsNoTcpProtocolMarker();
+        thenTheConnectingSideCanSend("hello");
+        thenTheAcceptingSideCanSend("answer");
+    }
+
+    @Test
+    void shouldFailTheHandshakeWithAWrongUserHash() throws IOException {
+        givenTwoConnectedEndpoints();
+
+        whenTheClientsShakeHands(Hash16.of(new byte[16]), 0);
+
+        thenExceptionOccurredWithTheRootCause(DecodeException.class);
+    }
+
+    @Test
+    void shouldAgreeOnTheKeysInTheServerHandshake() throws Exception {
+        givenTwoConnectedEndpoints();
+
+        whenAClientShakesHandsWithAServer();
+
+        thenTheConnectingSideCanSend("login");
+        thenTheAcceptingSideCanSend("id");
+    }
+
+    @Test
+    void shouldEncryptAClientDatagramAsTheGoldenVector() {
+        givenTheGoldenPacket("udp-ed2k");
+
+        whenItIsEncryptedForTheClient(new byte[] {(byte) 192, (byte) 168, 1, 10}, 0x5B, "3412");
+
+        thenTheDatagramIsTheGoldenOne("udp-ed2k");
+    }
+
+    @Test
+    void shouldEncryptAKadDatagramKeyedByTheReceiverIdAsTheGoldenVector() {
+        givenTheGoldenPacket("udp-kad-id");
+
+        whenItIsEncryptedForKad(Optional.of(KAD_ID), 0x11223344, 0x55667788, 0x58, "7856");
+
+        thenTheDatagramIsTheGoldenOne("udp-kad-id");
+    }
+
+    @Test
+    void shouldEncryptAKadDatagramKeyedByTheVerifyKeyAsTheGoldenVector() {
+        givenTheGoldenPacket("udp-kad-verify");
+
+        whenItIsEncryptedForKad(Optional.empty(), 0xCAFEBABE, 0x55667788, 0x5A, "7856");
+
+        thenTheDatagramIsTheGoldenOne("udp-kad-verify");
+    }
+
+    @Test
+    void shouldEncryptAServerDatagramAsTheGoldenVector() {
+        givenTheGoldenPacket("udp-server");
+
+        whenItIsEncryptedForTheServer(0xDEADBEEF, 0x42, "9abc");
+
+        thenTheDatagramIsTheGoldenOne("udp-server");
+    }
+
+    @Test
+    void shouldDecodeADatagramKeyedByTheUserHash() throws DecodeException {
+        givenThePacket(Protocol.EMULE, 0x90, 16);
+        givenItIsEncryptedForTheClient();
+
+        whenTheDatagramIsDecodedByTheClientWithTheVerifyKey(7);
+
+        thenTheDatagramKindIs(Kind.ED2K);
+        thenTheDecodedPacketIsTheSentOne();
+    }
+
+    @Test
+    void shouldDecodeADatagramKeyedByTheKadId() throws DecodeException {
+        givenThePacket(Protocol.KAD, 0x11, 25);
+        givenItIsEncryptedForKad(Optional.of(KAD_ID), 5, 6);
+
+        whenTheDatagramIsDecodedByTheClientWithTheVerifyKey(7);
+
+        thenTheDatagramKindIs(Kind.KAD_ID_KEY);
+        thenTheDecodedPacketIsTheSentOne();
+        thenTheVerifyKeysAre(5, 6);
+    }
+
+    @Test
+    void shouldDecodeADatagramKeyedByTheVerifyKey() throws DecodeException {
+        givenThePacket(Protocol.KAD, 0x11, 25);
+        givenItIsEncryptedForKad(Optional.empty(), 7, 8);
+
+        whenTheDatagramIsDecodedByTheClientWithTheVerifyKey(7);
+
+        thenTheDatagramKindIs(Kind.KAD_VERIFY_KEY);
+        thenTheDecodedPacketIsTheSentOne();
+    }
+
+    @Test
+    void shouldDecodeAPlainDatagram() throws DecodeException {
+        givenThePacket(Protocol.EMULE, 0x90, 16);
+        givenItIsSentInClear();
+
+        whenTheDatagramIsDecodedByTheClientWithTheVerifyKey(7);
+
+        thenTheDatagramKindIs(Kind.PLAIN);
+        thenTheDecodedPacketIsTheSentOne();
+    }
+
+    @Test
+    void shouldAddTheObfuscationOverheadToADatagramForTheServer() {
+        givenThePacket(Protocol.EDONKEY, 0x97, 8);
+
+        whenItIsEncryptedForTheServerWithTheKey(99);
+
+        thenTheDatagramLengthIs(UdpFraming.HEADER_SIZE + 8 + DatagramObfuscation.ED2K_OVERHEAD);
+    }
+
+    @Test
+    void shouldKeyServerAnswersTheOtherWay() throws DecodeException {
+        givenThePacket(Protocol.EDONKEY, 0x97, 8);
+        givenTheServerEncryptsItWithTheKey(99);
+
+        whenTheDatagramIsDecodedFromTheServerWithTheKey(99);
+
+        thenTheDatagramKindIs(Kind.SERVER);
+        thenTheDecodedPacketIsTheSentOne();
+    }
+
+    @Property
+    void shouldDecodeRandomDatagramsOrFailCleanly(@ForAll @Size(min = 0, max = 80) byte[] data) {
+        givenTheReceivedBytes(data);
+
+        whenTheyAreDecodedFromAClientAndFromTheServer();
+
+        thenTheyAreDecodedOrRefusedAsTooShort();
+    }
+
+    private static Stream<Named<byte[]>> degeneratePeerValues() {
         byte[] one = new byte[Dh768.SIZE];
         one[Dh768.SIZE - 1] = 1;
-        assertThatThrownBy(() -> a.sharedSecret(one)).isInstanceOf(DecodeException.class);
-        byte[] pMinusOne = Dh768.toBytes(Dh768.P.subtract(java.math.BigInteger.ONE));
-        assertThatThrownBy(() -> a.sharedSecret(pMinusOne)).isInstanceOf(DecodeException.class);
         byte[] aboveP = new byte[Dh768.SIZE];
-        java.util.Arrays.fill(aboveP, (byte) 0xFF);
-        assertThatThrownBy(() -> a.sharedSecret(aboveP)).isInstanceOf(DecodeException.class);
+        Arrays.fill(aboveP, (byte) 0xFF);
+        return Stream.of(
+                Named.of("zero", new byte[Dh768.SIZE]),
+                Named.of("one", one),
+                Named.of("p - 1", Dh768.toBytes(Dh768.P.subtract(BigInteger.ONE))),
+                Named.of("above p", aboveP));
     }
 
-    @Test
-    void tcpKeysMatchTheGoldenKeyStreams() {
-        byte[] keyPart = HEX.parseHex("01234567");
-        assertThat(keyStream(StreamObfuscation.clientKey(USER_HASH, 34, keyPart)))
-                .isEqualTo(GOLDEN.get("tcp-client magic=34"));
-        assertThat(keyStream(StreamObfuscation.clientKey(USER_HASH, 203, keyPart)))
-                .isEqualTo(GOLDEN.get("tcp-client magic=203"));
+    private void givenTwoDhParties() {
+        this.firstParty = Dh768.generate(RANDOM);
+        this.secondParty = Dh768.generate(RANDOM);
+    }
 
-        byte[] secret = new byte[96];
-        for (int i = 0; i < 96; i++) {
-            secret[i] = (byte) (3 * i + 1);
+    private void givenTheKeyPart(String hex) {
+        this.keyPart = HEX.parseHex(hex);
+    }
+
+    private void givenTheTestSecretOfLength(int length) {
+        this.secret = new byte[length];
+        for (int i = 0; i < length; i++) {
+            this.secret[i] = (byte) (3 * i + 1);
         }
-        assertThat(keyStream(StreamObfuscation.serverKey(secret, 34))).isEqualTo(GOLDEN.get("tcp-server magic=34"));
-        assertThat(keyStream(StreamObfuscation.serverKey(secret, 203))).isEqualTo(GOLDEN.get("tcp-server magic=203"));
     }
 
-    @Test
-    void clientRequestStartsInClearAndIsReadableWithTheReceiverKey() throws Exception {
-        ByteArrayOutputStream sent = new ByteArrayOutputStream();
-        // The answer never comes: only the request matters here.
-        assertThatThrownBy(() -> StreamObfuscation.connectToClient(
-                        new ByteArrayInputStream(new byte[0]), sent, USER_HASH, RANDOM, 0))
-                .isInstanceOf(DecodeException.class);
-        byte[] request = sent.toByteArray();
-
-        assertThat(request).hasSize(1 + 4 + 7);
-        assertThat(Protocol.isTcp(request[0] & 0xFF)).isFalse();
-        byte[] keyPart = java.util.Arrays.copyOfRange(request, 1, 5);
-        byte[] body = java.util.Arrays.copyOfRange(request, 5, request.length);
-        StreamObfuscation.clientKey(USER_HASH, StreamObfuscation.MAGIC_REQUESTER, keyPart)
-                .apply(body, 0, body.length);
-        assertThat(HEX.formatHex(body)).isEqualTo("c46f5e83" + "00" + "00" + "00");
+    private void givenTwoConnectedEndpoints() throws IOException {
+        this.duplex = new Duplex();
     }
 
-    @Test
-    void clientsCompleteTheHandshakeAndShareTheStream() throws Exception {
-        Duplex duplex = new Duplex();
-        Ciphers[] result = duplex.run(
-                () -> StreamObfuscation.connectToClient(duplex.aIn, duplex.aOut, USER_HASH, RANDOM, 128), () -> {
-                    int marker = duplex.bIn.read();
-                    assertThat(Protocol.isTcp(marker)).isFalse();
-                    return StreamObfuscation.acceptFromClient(duplex.bIn, duplex.bOut, USER_HASH, RANDOM, 128);
-                });
-
-        assertThat(roundTrip(result[0].send(), result[1].receive(), "hello")).isEqualTo("hello");
-        assertThat(roundTrip(result[1].send(), result[0].receive(), "answer")).isEqualTo("answer");
+    private void givenTheGoldenPacket(String name) {
+        this.plain = packet(name);
     }
 
-    @Test
-    void aWrongUserHashFailsTheHandshake() throws Exception {
-        Duplex duplex = new Duplex();
-        Hash16 other = Hash16.of(new byte[16]);
-
-        assertThatThrownBy(() -> duplex.run(
-                        () -> StreamObfuscation.connectToClient(duplex.aIn, duplex.aOut, other, RANDOM, 0), () -> {
-                            duplex.bIn.read();
-                            try {
-                                return StreamObfuscation.acceptFromClient(
-                                        duplex.bIn, duplex.bOut, USER_HASH, RANDOM, 0);
-                            } finally {
-                                duplex.bOut.close();
-                            }
-                        }))
-                .hasRootCauseInstanceOf(DecodeException.class);
+    private void givenThePacket(int protocol, int opcode, int payloadSize) {
+        this.packet = Packet.of(protocol, opcode, new byte[payloadSize]);
+        this.plain = UdpFraming.encode(this.packet);
     }
 
-    @Test
-    void serverHandshakeAgreesOnKeys() throws Exception {
-        Duplex duplex = new Duplex();
-        Ciphers[] result = duplex.run(
-                () -> {
-                    Ciphers c = StreamObfuscation.connectToServer(duplex.aIn, duplex.aOut, RANDOM);
-                    duplex.aOut.flush();
-                    return c;
-                },
-                () -> {
-                    duplex.bIn.read();
-                    return StreamObfuscation.acceptAsServer(duplex.bIn, duplex.bOut, RANDOM);
-                });
-
-        assertThat(roundTrip(result[0].send(), result[1].receive(), "login")).isEqualTo("login");
-        assertThat(roundTrip(result[1].send(), result[0].receive(), "id")).isEqualTo("id");
+    private void givenItIsEncryptedForTheClient() {
+        this.datagram = DatagramObfuscation.encryptForClient(this.plain, USER_HASH, SENDER_IP, RANDOM);
     }
 
-    @Test
-    void datagramsMatchTheGoldenVectors() {
-        byte[] ip = {(byte) 192, (byte) 168, 1, 10};
-        assertThat(HEX.formatHex(DatagramObfuscation.encryptForClient(
-                        packet("udp-ed2k"), USER_HASH, ip, 0x5B, HEX.parseHex("3412"))))
-                .isEqualTo(datagram("udp-ed2k"));
-
-        Hash16 kadId = Hash16.of(HEX.parseHex("101112131415161718191a1b1c1d1e1f"));
-        assertThat(HEX.formatHex(DatagramObfuscation.encryptForKad(
-                        packet("udp-kad-id"), Optional.of(kadId), 0x11223344, 0x55667788, 0x58, HEX.parseHex("7856"))))
-                .isEqualTo(datagram("udp-kad-id"));
-        assertThat(HEX.formatHex(DatagramObfuscation.encryptForKad(
-                        packet("udp-kad-verify"),
-                        Optional.empty(),
-                        0xCAFEBABE,
-                        0x55667788,
-                        0x5A,
-                        HEX.parseHex("7856"))))
-                .isEqualTo(datagram("udp-kad-verify"));
-        assertThat(HEX.formatHex(DatagramObfuscation.encryptForServer(
-                        packet("udp-server"), 0xDEADBEEF, 0x42, HEX.parseHex("9abc"))))
-                .isEqualTo(datagram("udp-server"));
+    private void givenItIsEncryptedForKad(Optional<Hash16> receiverKadId, int receiverVerifyKey, int senderVerifyKey) {
+        this.datagram = DatagramObfuscation.encryptForKad(
+                this.plain, receiverKadId, receiverVerifyKey, senderVerifyKey, RANDOM);
     }
 
-    @Test
-    void datagramsDecodeWithEveryKeyKind() throws DecodeException {
-        byte[] ip = {10, 0, 0, 7};
-        Hash16 kadId = Hash16.of(HEX.parseHex("101112131415161718191a1b1c1d1e1f"));
-        Packet ping = Packet.of(Protocol.EMULE, 0x90, new byte[16]);
-        Packet hello = Packet.of(Protocol.KAD, 0x11, new byte[25]);
-        byte[] plainPing = UdpFraming.encode(ping);
-        byte[] plainHello = UdpFraming.encode(hello);
-
-        Received ed2k =
-                fromClient(DatagramObfuscation.encryptForClient(plainPing, USER_HASH, ip, RANDOM), ip, kadId, 7);
-        assertThat(ed2k.kind()).isEqualTo(Kind.ED2K);
-        assertThat(ed2k.packet()).isEqualTo(ping);
-
-        Received byId = fromClient(
-                DatagramObfuscation.encryptForKad(plainHello, Optional.of(kadId), 5, 6, RANDOM), ip, kadId, 7);
-        assertThat(byId.kind()).isEqualTo(Kind.KAD_ID_KEY);
-        assertThat(byId.packet()).isEqualTo(hello);
-        assertThat(byId.receiverVerifyKey()).isEqualTo(5);
-        assertThat(byId.senderVerifyKey()).isEqualTo(6);
-
-        Received byKey =
-                fromClient(DatagramObfuscation.encryptForKad(plainHello, Optional.empty(), 7, 8, RANDOM), ip, kadId, 7);
-        assertThat(byKey.kind()).isEqualTo(Kind.KAD_VERIFY_KEY);
-        assertThat(byKey.packet()).isEqualTo(hello);
-
-        Received plain = fromClient(plainPing, ip, kadId, 7);
-        assertThat(plain.kind()).isEqualTo(Kind.PLAIN);
-        assertThat(plain.packet()).isEqualTo(ping);
-
-        Packet status = Packet.of(Protocol.EDONKEY, 0x97, new byte[8]);
-        byte[] toServer = DatagramObfuscation.encryptForServer(UdpFraming.encode(status), 99, RANDOM);
-        assertThat(toServer.length).isEqualTo(UdpFraming.HEADER_SIZE + 8 + DatagramObfuscation.ED2K_OVERHEAD);
+    private void givenItIsSentInClear() {
+        this.datagram = this.plain;
     }
 
-    @Test
-    void serverAnswersAreKeyedTheOtherWay() throws DecodeException {
-        Packet status = Packet.of(Protocol.EDONKEY, 0x97, new byte[8]);
-        byte[] material = new byte[] {99, 0, 0, 0, (byte) DatagramObfuscation.MAGIC_FROM_SERVER, 1, 2};
+    private void givenTheServerEncryptsItWithTheKey(int serverKey) {
+        byte[] material = ByteBuffer.allocate(7)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .putInt(serverKey)
+                .put((byte) DatagramObfuscation.MAGIC_FROM_SERVER)
+                .put((byte) 1)
+                .put((byte) 2)
+                .array();
         Rc4 fromServer = new Rc4(StreamObfuscation.md5(material));
-        byte[] body = new byte[5 + 10];
+        byte[] body = new byte[5 + this.plain.length];
         body[0] = (byte) 0xD5;
         body[1] = 0x24;
         body[2] = (byte) 0xEF;
         body[3] = 0x13;
-        System.arraycopy(UdpFraming.encode(status), 0, body, 5, 10);
+        System.arraycopy(this.plain, 0, body, 5, this.plain.length);
         fromServer.apply(body, 0, body.length);
-        byte[] datagram = new byte[3 + body.length];
-        datagram[0] = 0x42;
-        datagram[1] = 1;
-        datagram[2] = 2;
-        System.arraycopy(body, 0, datagram, 3, body.length);
-
-        Received received = DatagramObfuscation.decodeFromServer(datagram, 0, datagram.length, 99);
-        assertThat(received.kind()).isEqualTo(Kind.SERVER);
-        assertThat(received.packet()).isEqualTo(status);
+        this.datagram = new byte[3 + body.length];
+        this.datagram[0] = 0x42;
+        this.datagram[1] = 1;
+        this.datagram[2] = 2;
+        System.arraycopy(body, 0, this.datagram, 3, body.length);
     }
 
-    @Property
-    void randomDatagramsDecodeOrFailCleanly(@ForAll @Size(min = 0, max = 80) byte[] data) {
-        try {
+    private void givenTheReceivedBytes(byte[] data) {
+        this.datagram = data;
+    }
+
+    private void whenTheDhGroupPrimeIsTaken() {
+        this.prime = Dh768.P;
+    }
+
+    private void whenEachPartyComputesTheSharedSecretWithTheOther() throws DecodeException {
+        this.firstSecret = this.firstParty.sharedSecret(this.secondParty.publicValue());
+        this.secondSecret = this.secondParty.sharedSecret(this.firstParty.publicValue());
+    }
+
+    private void whenTheFirstPartyComputesTheSharedSecretWith(byte[] peerValue) {
+        this.exception = catchThrowable(() -> this.firstParty.sharedSecret(peerValue));
+    }
+
+    private void whenTheClientKeyIsDerivedWithTheMagic(int magic) {
+        this.key = StreamObfuscation.clientKey(USER_HASH, magic, this.keyPart);
+    }
+
+    private void whenTheServerKeyIsDerivedWithTheMagic(int magic) {
+        this.key = StreamObfuscation.serverKey(this.secret, magic);
+    }
+
+    private void whenAClientConnectsToAPeerThatNeverAnswers() {
+        ByteArrayOutputStream sent = new ByteArrayOutputStream();
+        // The answer never comes: only the request matters here.
+        this.exception = catchThrowable(() ->
+                StreamObfuscation.connectToClient(new ByteArrayInputStream(new byte[0]), sent, USER_HASH, RANDOM, 0));
+        this.request = sent.toByteArray();
+    }
+
+    private void whenTheClientsShakeHands(Hash16 connectingUserHash, int padding) {
+        Duplex pipes = this.duplex;
+        this.exception = catchThrowable(() -> this.ciphers = pipes.run(
+                () -> StreamObfuscation.connectToClient(pipes.aIn, pipes.aOut, connectingUserHash, RANDOM, padding),
+                () -> {
+                    this.marker = pipes.bIn.read();
+                    try {
+                        return StreamObfuscation.acceptFromClient(pipes.bIn, pipes.bOut, USER_HASH, RANDOM, padding);
+                    } finally {
+                        // Lets the connecting side fail instead of waiting for an answer that never comes.
+                        pipes.bOut.close();
+                    }
+                }));
+    }
+
+    private void whenAClientShakesHandsWithAServer() throws Exception {
+        Duplex pipes = this.duplex;
+        this.ciphers = pipes.run(
+                () -> {
+                    Ciphers c = StreamObfuscation.connectToServer(pipes.aIn, pipes.aOut, RANDOM);
+                    pipes.aOut.flush();
+                    return c;
+                },
+                () -> {
+                    pipes.bIn.read();
+                    return StreamObfuscation.acceptAsServer(pipes.bIn, pipes.bOut, RANDOM);
+                });
+    }
+
+    private void whenItIsEncryptedForTheClient(byte[] senderIp, int marker, String keyPartHex) {
+        this.datagram =
+                DatagramObfuscation.encryptForClient(this.plain, USER_HASH, senderIp, marker, HEX.parseHex(keyPartHex));
+    }
+
+    private void whenItIsEncryptedForKad(
+            Optional<Hash16> receiverKadId, int receiverVerifyKey, int senderVerifyKey, int marker, String keyPartHex) {
+        this.datagram = DatagramObfuscation.encryptForKad(
+                this.plain, receiverKadId, receiverVerifyKey, senderVerifyKey, marker, HEX.parseHex(keyPartHex));
+    }
+
+    private void whenItIsEncryptedForTheServer(int serverKey, int marker, String keyPartHex) {
+        this.datagram = DatagramObfuscation.encryptForServer(this.plain, serverKey, marker, HEX.parseHex(keyPartHex));
+    }
+
+    private void whenItIsEncryptedForTheServerWithTheKey(int serverKey) {
+        this.datagram = DatagramObfuscation.encryptForServer(this.plain, serverKey, RANDOM);
+    }
+
+    private void whenTheDatagramIsDecodedByTheClientWithTheVerifyKey(int verifyKey) throws DecodeException {
+        this.received = fromClient(this.datagram, SENDER_IP, KAD_ID, verifyKey);
+    }
+
+    private void whenTheDatagramIsDecodedFromTheServerWithTheKey(int serverKey) throws DecodeException {
+        this.received = DatagramObfuscation.decodeFromServer(this.datagram, 0, this.datagram.length, serverKey);
+    }
+
+    private void whenTheyAreDecodedFromAClientAndFromTheServer() {
+        byte[] data = this.datagram;
+        this.exception = catchThrowable(() -> {
             DatagramObfuscation.decodeFromClient(
                     data, 0, data.length, USER_HASH, new byte[4], Optional.of(USER_HASH), 1);
             DatagramObfuscation.decodeFromServer(data, 0, data.length, 1);
-        } catch (DecodeException expected) {
-            // too short to be a packet
+        });
+    }
+
+    private void thenThePrimeHasBits(int bits) {
+        assertThat(this.prime.bitLength()).isEqualTo(bits);
+    }
+
+    private void thenThePrimeIsProbablyPrimeWithCertainty(int certainty) {
+        assertThat(this.prime.isProbablePrime(certainty)).isTrue();
+    }
+
+    private void thenThePublicValueOfTheFirstPartyHasSize(int size) {
+        assertThat(this.firstParty.publicValue()).hasSize(size);
+    }
+
+    private void thenBothSharedSecretsAreEqual() {
+        assertThat(this.firstSecret).isEqualTo(this.secondSecret);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Exception> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+
+    private void thenExceptionOccurredWithTheRootCause(Class<? extends Exception> type) {
+        assertThat(this.exception).hasRootCauseInstanceOf(type);
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
+    }
+
+    private void thenTheKeyStreamIsTheGoldenOne(String kind, int magic) {
+        assertThat(keyStream(this.key)).isEqualTo(GOLDEN.get(kind + " magic=" + magic));
+    }
+
+    private void thenTheRequestHasSize(int size) {
+        assertThat(this.request).hasSize(size);
+    }
+
+    private void thenTheRequestStartsWithoutATcpProtocolMarker() {
+        assertThat(Protocol.isTcp(this.request[0] & 0xFF)).isFalse();
+    }
+
+    private void thenTheRequestBodyDecryptsTo(String hex) {
+        byte[] requestKeyPart = Arrays.copyOfRange(this.request, 1, 5);
+        byte[] body = Arrays.copyOfRange(this.request, 5, this.request.length);
+        StreamObfuscation.clientKey(USER_HASH, StreamObfuscation.MAGIC_REQUESTER, requestKeyPart)
+                .apply(body, 0, body.length);
+        assertThat(HEX.formatHex(body)).isEqualTo(hex);
+    }
+
+    private void thenTheAcceptingSideReadsNoTcpProtocolMarker() {
+        assertThat(Protocol.isTcp(this.marker)).isFalse();
+    }
+
+    private void thenTheConnectingSideCanSend(String text) {
+        assertThat(roundTrip(this.ciphers[0].send(), this.ciphers[1].receive(), text))
+                .isEqualTo(text);
+    }
+
+    private void thenTheAcceptingSideCanSend(String text) {
+        assertThat(roundTrip(this.ciphers[1].send(), this.ciphers[0].receive(), text))
+                .isEqualTo(text);
+    }
+
+    private void thenTheDatagramIsTheGoldenOne(String name) {
+        assertThat(HEX.formatHex(this.datagram)).isEqualTo(datagram(name));
+    }
+
+    private void thenTheDatagramKindIs(Kind kind) {
+        assertThat(this.received.kind()).isEqualTo(kind);
+    }
+
+    private void thenTheDecodedPacketIsTheSentOne() {
+        assertThat(this.received.packet()).isEqualTo(this.packet);
+    }
+
+    private void thenTheVerifyKeysAre(int receiverVerifyKey, int senderVerifyKey) {
+        assertThat(this.received.receiverVerifyKey()).isEqualTo(receiverVerifyKey);
+        assertThat(this.received.senderVerifyKey()).isEqualTo(senderVerifyKey);
+    }
+
+    private void thenTheDatagramLengthIs(int length) {
+        assertThat(this.datagram.length).isEqualTo(length);
+    }
+
+    private void thenTheyAreDecodedOrRefusedAsTooShort() {
+        if (this.exception != null) {
+            assertThat(this.exception).isInstanceOf(DecodeException.class);
         }
     }
 
