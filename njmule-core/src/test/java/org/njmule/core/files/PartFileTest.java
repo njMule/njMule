@@ -239,6 +239,20 @@ class PartFileTest {
     }
 
     @Test
+    void shouldPassOverAPartWhoseMissingBytesAreAllRequested() {
+        givenAFileWithTheHashSet(1, "big.bin", 2 * P + 100, hash(1), hash(2), hash(3));
+        givenTheSourcesOfThePartsChangeBy(1, 0, 1, 2);
+        givenTheSourcesOfThePartsChangeBy(1, 0, 2);
+        givenTiesGoToTheLastEqualPartSeen();
+        givenASourceWithTheParts(0, 1, 2);
+        givenBlocksAreHandedOut(53);
+
+        whenBlocksAreAskedFor(1);
+
+        thenTheFirstBlockStartsAt(2 * P, "one of the next rarest parts, as all of the rarest is requested");
+    }
+
+    @Test
     void shouldStartWithAnyOfTheEquallyRareParts() {
         givenAFileWithTheHashSet(1, "big.bin", 2 * P + 100, hash(1), hash(2), hash(3));
         givenTiesGoToTheLastEqualPartSeen();

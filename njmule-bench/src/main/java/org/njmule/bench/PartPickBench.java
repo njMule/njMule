@@ -75,7 +75,7 @@ public class PartPickBench {
         }
     }
 
-    /** Today's code: a copy of the part's missing ranges, minus the requested ones, then an emptiness test. */
+    /** The replaced code: a copy of the part's missing ranges, minus the requested ones, then an emptiness test. */
     @Benchmark
     public int copyAndRemoveAll() {
         int wanted = 0;
@@ -88,6 +88,7 @@ public class PartPickBench {
         return wanted;
     }
 
+    /** Today's code. */
     @Benchmark
     public int enclosesAll() {
         int wanted = 0;

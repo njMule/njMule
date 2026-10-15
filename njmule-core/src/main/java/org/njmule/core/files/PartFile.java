@@ -621,9 +621,8 @@ public final class PartFile {
             }
             Range<Long> range = partRange(this.size, part);
             RangeSet<Long> missingHere = this.missing.subRangeSet(range);
-            RangeSet<Long> wanted = TreeRangeSet.create(missingHere);
-            wanted.removeAll(this.requested);
-            if (wanted.isEmpty()) {
+            // Every byte still missing here is asked from another source already.
+            if (this.requested.enclosesAll(missingHere)) {
                 continue;
             }
             boolean begun = !missingHere.encloses(range);
