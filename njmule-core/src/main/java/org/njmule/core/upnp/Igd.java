@@ -105,6 +105,7 @@ public final class Igd implements AutoCloseable {
         try {
             http.start();
         } catch (Exception e) {
+            stop(http);
             throw new IOException("cannot start the HTTP client", e);
         }
         Set<URI> seen = new LinkedHashSet<>();

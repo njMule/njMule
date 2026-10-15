@@ -114,6 +114,7 @@ public final class WebLists {
         try {
             http.start();
         } catch (Exception e) {
+            stop(http);
             throw new IOException("cannot start the HTTP client", e);
         }
         try {
@@ -146,11 +147,15 @@ public final class WebLists {
                 return unpack(data);
             }
         } finally {
-            try {
-                http.stop();
-            } catch (Exception e) {
-                // The list came, or the failure that matters is already on its way.
-            }
+            stop(http);
+        }
+    }
+
+    private static void stop(HttpClient http) {
+        try {
+            http.stop();
+        } catch (Exception e) {
+            // The list came, or the failure that matters is already on its way.
         }
     }
 

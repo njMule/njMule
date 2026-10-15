@@ -103,12 +103,8 @@ class MainTest {
 
     // A one-shot run lowers the console log to its errors: the tests that read logs must not depend on the order.
     @AfterEach
-    void restoreTheLogLevel() {
+    void closeWhatIsStillOpenAndRestoreTheLogLevel() throws IOException, InterruptedException {
         LoggingSetup.setLevel("INFO");
-    }
-
-    @AfterEach
-    void closeWhatIsStillOpen() throws IOException, InterruptedException {
         if (this.stop != null) {
             this.stop.complete(null);
         }

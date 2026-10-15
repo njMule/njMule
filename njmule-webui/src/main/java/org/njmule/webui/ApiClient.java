@@ -220,6 +220,7 @@ public final class ApiClient {
         try {
             http.start();
         } catch (Exception e) {
+            stop(http);
             throw new IOException("Cannot start the HTTP client.", e);
         }
         return http;
