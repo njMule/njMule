@@ -380,6 +380,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The native desktop app plays its notification sounds: the sound system no longer stops for want of
+  a JDK around it.
+- Results that a server sends at once are no longer lost before their search shows.
+- A download that finishes while a scan reads its file gets its AICH tree, also when it is renamed
+  meanwhile.
+- `njmule --remote servers` says so when the server list is empty.
+- Without a configuration directory, the restore of the ed2k links works in a temporary directory
+  that only its owner may enter.
 - The search parameters wrap onto a second line in a narrow window instead of cutting their labels
   short (French and other longer languages).
 - The complete parts of a download resumed after a crash are checked again.
