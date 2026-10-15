@@ -42,7 +42,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 > [GitHub release](https://github.com/njMule/njMule/releases). Features and settings may still
 > change before 1.0.0.
 
-## Why njMule?
+## Overview
 
 - 🔌 **Wire-compatible** — speaks eD2K and Kad 2, so it works with the existing eMule network.
 - 📦 **Nothing to install first** — GraalVM native executables and installers for Windows, macOS
