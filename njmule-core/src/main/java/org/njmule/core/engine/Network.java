@@ -168,6 +168,7 @@ final class Network {
     private static final Duration TOTALS_SAVE = Duration.ofMinutes(5);
     // How often the network interface of the preferences is looked for: gone, back, or with another address.
     private static final Duration BIND_CHECK = Duration.ofSeconds(10);
+    private static final Duration ADDRESS_CHECK = Duration.ofSeconds(10);
 
     // Connect options of a callback request: the client requests or requires obfuscation.
     private static final int CRYPT_REQUESTED_OR_REQUIRED = 0x02 | 0x04;
@@ -242,6 +243,7 @@ final class Network {
     private final FilePublisher publisher;
     // Replaced on the engine thread, read by the connection threads too.
     private volatile KadNode kad;
+    private final AddressWatch addresses = new AddressWatch();
     private KadSocket kadSocket;
     // Kad disconnected by the user: new ports do not start it again.
     private volatile boolean kadStoppedByHand;
@@ -545,6 +547,7 @@ final class Network {
         }
         restartForwarding();
         this.loop.scheduleRepeating("network interface", BIND_CHECK, BIND_CHECK, this::checkBinding);
+        this.loop.scheduleRepeating("public address", ADDRESS_CHECK, ADDRESS_CHECK, this::watchAddress);
         this.loop.scheduleRepeating("save totals", TOTALS_SAVE, TOTALS_SAVE, this::saveTotals);
         this.loop.scheduleRepeating(
                 "offer shared files", Duration.ofSeconds(1), Duration.ofSeconds(1), this.publisher::tick);
@@ -649,6 +652,35 @@ final class Network {
             }
         }
         restartForwarding();
+    }
+
+    // When we move, the server or Kad sees the new address first; the other one has to look again.
+    private void watchAddress() {
+        KadNode node = this.kad;
+        int kadIp = node == null ? 0 : node.publicIp();
+        int serverIp = addressSeenByServer();
+        int old = this.addresses.agreed();
+        switch (this.addresses.seen(serverIp, kadIp)) {
+            case RECHECK_KAD -> {
+                this.userLog.log(
+                        LogLine.Level.INFO,
+                        "Our public address changed from " + Ipv4.format(old) + " to " + Ipv4.format(serverIp)
+                                + ": Kad checks its firewall again");
+                if (node != null) {
+                    node.recheckFirewall();
+                }
+            }
+            case RECONNECT_SERVER -> {
+                this.userLog.log(
+                        LogLine.Level.INFO,
+                        "Our public address changed from " + Ipv4.format(old) + " to " + Ipv4.format(kadIp)
+                                + ": connecting to the server again");
+                this.session.server().ifPresent(s -> this.session.connect(Optional.of(s)));
+            }
+            case NONE -> {
+                // Nothing moved, or nothing can tell.
+            }
+        }
     }
 
     // Our address as the server we are on sees it, which server UDP keys are bound to; 0 while unknown.
@@ -2422,6 +2454,7 @@ final class Network {
             Network.this.saveServers();
             Network.this.pinger.start();
             Network.this.globalSources.start();
+            Network.this.watchAddress();
             Network.this.downloads.serverConnected();
             Network.this.publisher.connected();
             Network.this.removeDeadServers();
@@ -2452,6 +2485,7 @@ final class Network {
             Network.this.userLog.log(
                     LogLine.Level.INFO,
                     "The server gave us a new id: " + (id.isLowId() ? "LowID " : "HighID ") + id.clientId());
+            Network.this.watchAddress();
         }
 
         @Override
