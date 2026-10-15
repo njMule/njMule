@@ -1,24 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# --- Maven -------------------------------------------------------------------
-target/
-.flattened-pom.xml
-dependency-reduced-pom.xml
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-buildNumber.properties
-.mvn/timing.properties
-# The Maven Wrapper uses the "only-script" distribution: no wrapper jar is committed.
-.mvn/wrapper/maven-wrapper.jar
-
 # --- Gradle ------------------------------------------------------------------
 .gradle/
 build/
 .kotlin/
+# Output folders of the former Maven build, still present in older checkouts.
+target/
 
 # --- Java / JVM --------------------------------------------------------------
 *.class

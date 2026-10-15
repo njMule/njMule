@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Icon and version information of the Windows executable, shown by Explorer and Task Manager.
-// Maven fills in the version; rc.cmd defines its numbers NJ_MAJOR, NJ_MINOR and NJ_PATCH.
+// The build fills in the version; rc.cmd defines its numbers NJ_MAJOR, NJ_MINOR and NJ_PATCH.
 
 1 ICON "njmule.ico"
 
