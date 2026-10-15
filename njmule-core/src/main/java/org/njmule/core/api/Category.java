@@ -53,7 +53,8 @@ public record Category(
     public static final int MAX_COMMENT = 256;
     public static final int MAX_PATTERNS = 1024;
 
-    private static final Splitter PATTERNS = Splitter.on('|').trimResults().omitEmptyStrings();
+    private static final Splitter PATTERN_SPLITTER =
+            Splitter.on('|').trimResults().omitEmptyStrings();
 
     public Category {
         if (id < 1) {
@@ -91,7 +92,7 @@ public record Category(
             return !this.patterns.isEmpty()
                     && compiled(this.patterns).matcher(fileName).matches();
         }
-        for (String p : PATTERNS.split(this.patterns)) {
+        for (String p : PATTERN_SPLITTER.split(this.patterns)) {
             if (p.indexOf('*') >= 0 || p.indexOf('?') >= 0) {
                 if (glob(p).matcher(fileName).matches()) {
                     return true;

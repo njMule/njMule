@@ -52,14 +52,14 @@ final class EventStreams implements AutoCloseable {
     }
 
     private final NjMuleEngine engine;
-    private final Duration heartbeat;
+    private final Duration heartbeatInterval;
     private final Set<Stream> open = ConcurrentHashMap.newKeySet();
     private final Semaphore slots = new Semaphore(MAX_STREAMS);
     private volatile boolean closed;
 
     EventStreams(NjMuleEngine engine, Duration heartbeat) {
         this.engine = engine;
-        this.heartbeat = heartbeat;
+        this.heartbeatInterval = heartbeat;
     }
 
     /** Streams with callers now. */
@@ -170,7 +170,7 @@ final class EventStreams implements AutoCloseable {
         void pump(OutputStream out) throws IOException, InterruptedException {
             write(out, ": njMule events\n\n");
             while (!EventStreams.this.closed) {
-                Object next = this.queue.poll(EventStreams.this.heartbeat.toMillis(), TimeUnit.MILLISECONDS);
+                Object next = this.queue.poll(EventStreams.this.heartbeatInterval.toMillis(), TimeUnit.MILLISECONDS);
                 if (next == null) {
                     write(out, ": keep-alive\n\n");
                 } else if (next == Marker.END) {

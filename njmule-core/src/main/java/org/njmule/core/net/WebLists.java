@@ -63,7 +63,7 @@ public final class WebLists {
 
     private static final int MAX_REDIRECTS = 3;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
-    private static final Duration TIMEOUT = Duration.ofSeconds(90);
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(90);
     private static final String USER_AGENT = NjMuleInfo.NAME + "/" + NjMuleInfo.version();
     // What an archive holds the list as, by kind; any other file only when none of these is there.
     private static final Set<String> LIST_NAMES =
@@ -73,7 +73,7 @@ public final class WebLists {
     private final Duration timeout;
 
     WebLists(Predicate<InetAddress> reachable) {
-        this(reachable, TIMEOUT);
+        this(reachable, DEFAULT_TIMEOUT);
     }
 
     WebLists(Predicate<InetAddress> reachable, Duration timeout) {

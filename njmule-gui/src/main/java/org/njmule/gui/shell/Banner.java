@@ -55,7 +55,7 @@ final class Banner {
     private final FontIcon icon = new FontIcon();
     private final Label text = new Label();
     private final Button action = new Button();
-    private final PauseTransition settle = new PauseTransition(SETTLE);
+    private final PauseTransition settling = new PauseTransition(SETTLE);
     private final Runnable connect;
     private final Runnable options;
     private Kind wanted = Kind.NONE;
@@ -81,7 +81,7 @@ final class Banner {
         this.box.getChildren().setAll(this.icon, this.text, this.action, close);
         this.box.setAlignment(Pos.CENTER_LEFT);
         this.box.getStyleClass().add("banner");
-        this.settle.setOnFinished(e -> show(this.wanted == this.closed ? Kind.NONE : this.wanted));
+        this.settling.setOnFinished(e -> show(this.wanted == this.closed ? Kind.NONE : this.wanted));
         show(Kind.NONE);
     }
 
@@ -102,7 +102,7 @@ final class Banner {
             if (kind != this.closed) {
                 this.closed = Kind.NONE;
             }
-            this.settle.playFromStart();
+            this.settling.playFromStart();
         }
     }
 

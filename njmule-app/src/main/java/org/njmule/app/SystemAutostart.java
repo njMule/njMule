@@ -122,7 +122,7 @@ abstract sealed class SystemAutostart implements Autostart {
         @Override
         public boolean isOn() throws IOException {
             return export(KEY)
-                            .flatMap(Windows::value)
+                            .flatMap(Windows::stringValue)
                             .filter(value ->
                                     value.toLowerCase(Locale.ROOT).contains(this.program.toLowerCase(Locale.ROOT)))
                             .isPresent()
@@ -148,7 +148,7 @@ abstract sealed class SystemAutostart implements Autostart {
 
         @Override
         public void turnOff() throws IOException {
-            if (export(KEY).flatMap(Windows::value).isPresent()) {
+            if (export(KEY).flatMap(Windows::stringValue).isPresent()) {
                 check(List.of("reg", "delete", KEY, "/v", VALUE, "/f"));
             }
             logger.info("njMule no longer starts when the user logs in");
@@ -205,7 +205,7 @@ abstract sealed class SystemAutostart implements Autostart {
         }
 
         // Our string value in an exported key, without the escapes of the format.
-        static Optional<String> value(String reg) {
+        static Optional<String> stringValue(String reg) {
             String start = "\"" + VALUE + "\"=\"";
             for (String line : reg.split("\r?\n", -1)) {
                 if (line.regionMatches(true, 0, start, 0, start.length()) && line.endsWith("\"")) {

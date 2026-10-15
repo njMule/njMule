@@ -115,7 +115,7 @@ public final class MainWindow {
     private final Gui gui;
     private final Map<String, Screen> screens = new LinkedHashMap<>();
     private final Map<String, ToggleButton> rail = new LinkedHashMap<>();
-    private final NetworkPane network;
+    private final NetworkPane networkPane;
     private final ServersScreen servers;
     private final Banner banner;
     private final CommandPalette palette;
@@ -156,7 +156,7 @@ public final class MainWindow {
                 new SettingsScreen(gui))) {
             this.screens.put(screen.id(), screen);
         }
-        this.network = new NetworkPane(gui.t("IDS_NETWORK"), List.of(servers, kadScreen), this::show);
+        this.networkPane = new NetworkPane(gui.t("IDS_NETWORK"), List.of(servers, kadScreen), this::show);
         this.banner = new Banner(gui, this::connectIfOff, () -> show("settings"));
         VBox center = new VBox(this.banner.view(), this.content);
         VBox.setVgrow(this.content, Priority.ALWAYS);
@@ -292,7 +292,7 @@ public final class MainWindow {
         this.current = id;
         this.content.getChildren().setAll(viewOf(id));
         this.rail.get(placeOf(id)).setSelected(true);
-        if (this.network.holds(id)) {
+        if (this.networkPane.holds(id)) {
             this.lastNetwork = id;
         }
         if (id.equals("messages")) {
@@ -309,12 +309,12 @@ public final class MainWindow {
     }
 
     private String placeOf(String id) {
-        return this.network.holds(id) ? NETWORK : id;
+        return this.networkPane.holds(id) ? NETWORK : id;
     }
 
     private Node viewOf(String id) {
-        return this.network.holds(id)
-                ? this.network.view(id)
+        return this.networkPane.holds(id)
+                ? this.networkPane.view(id)
                 : this.screens.get(id).view();
     }
 

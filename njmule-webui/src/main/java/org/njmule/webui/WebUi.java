@@ -120,7 +120,7 @@ public final class WebUi implements AutoCloseable {
     private final String cookie;
 
     private final SearchCollector searches = new SearchCollector();
-    private final RecentLog log = new RecentLog();
+    private final RecentLog recentLog = new RecentLog();
     private final EventStreams streams;
     private volatile Flow.Subscription subscription;
 
@@ -187,7 +187,7 @@ public final class WebUi implements AutoCloseable {
         connector.open();
         WebUi ui = new WebUi(engine, settings, server, connector.getLocalPort(), passwordChecks, heartbeat);
         Optional<Api> api = settings.api()
-                ? Optional.of(new Api(engine, ui.sessions, ui.searches, ui.log, ui.streams, exit))
+                ? Optional.of(new Api(engine, ui.sessions, ui.searches, ui.recentLog, ui.streams, exit))
                 : Optional.empty();
         server.setHandler(new Handler.Abstract() {
             @Override
@@ -649,7 +649,7 @@ public final class WebUi implements AutoCloseable {
     }
 
     private String logPage(Sessions.Session session) {
-        List<RecentLog.Entry> lines = this.log.after(0);
+        List<RecentLog.Entry> lines = this.recentLog.after(0);
         StringBuilder body = new StringBuilder(256 + lines.size() * 128);
         body.append("<p><a href=\"/log\">Reload</a></p>");
         if (lines.isEmpty()) {
@@ -995,7 +995,7 @@ public final class WebUi implements AutoCloseable {
         public void onNext(EngineEvent event) {
             switch (event) {
                 case EngineEvent.SearchResults r -> WebUi.this.searches.add(r);
-                case EngineEvent.Log l -> WebUi.this.log.add(l.line());
+                case EngineEvent.Log l -> WebUi.this.recentLog.add(l.line());
                 default -> {
                     // Pages read the rest when they are asked for.
                 }

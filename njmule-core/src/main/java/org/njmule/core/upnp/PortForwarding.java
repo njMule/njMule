@@ -79,7 +79,7 @@ public final class PortForwarding implements AutoCloseable {
     private volatile Igd gateway;
     private volatile boolean closed;
     // Worker thread only.
-    private long lease = LEASE.toSeconds();
+    private long leaseSeconds = LEASE.toSeconds();
 
     private PortForwarding(InetSocketAddress ssdp, List<Mapping> wanted, Report report, Pause pause) {
         this.ssdp = Objects.requireNonNull(ssdp, "ssdp");
@@ -200,12 +200,12 @@ public final class PortForwarding implements AutoCloseable {
         this.mapped.addIfAbsent(m);
         try {
             try {
-                igd.addMapping(m.protocol(), m.port(), DESCRIPTION, this.lease);
+                igd.addMapping(m.protocol(), m.port(), DESCRIPTION, this.leaseSeconds);
             } catch (Igd.Refused e) {
-                if (this.lease == 0 || !e.getMessage().startsWith(ONLY_PERMANENT_LEASES)) {
+                if (this.leaseSeconds == 0 || !e.getMessage().startsWith(ONLY_PERMANENT_LEASES)) {
                     throw e;
                 }
-                this.lease = 0;
+                this.leaseSeconds = 0;
                 igd.addMapping(m.protocol(), m.port(), DESCRIPTION, 0);
             }
         } catch (Igd.Refused e) {

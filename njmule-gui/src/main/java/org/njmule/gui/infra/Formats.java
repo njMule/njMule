@@ -32,7 +32,7 @@ import org.njmule.gui.i18n.I18n;
 /** Sizes, rates, durations and counts as the interface shows them, in one locale. */
 public final class Formats {
 
-    private static final String[] UNITS = {"B", "KB", "MB", "GB", "TB", "PB"};
+    private static final String[] ENGLISH_UNITS = {"B", "KB", "MB", "GB", "TB", "PB"};
     // The texts that name the units in each language: none names petabytes.
     private static final String[] UNIT_KEYS = {"IDS_BYTESPERSEC", "IDS_KBYTES", "IDS_MBYTES", "IDS_GBYTES", "IDS_TBYTES"
     };
@@ -66,7 +66,7 @@ public final class Formats {
 
     // A unit the language does not name stays English; "B/s" names bytes too.
     Formats(Locale locale, UnaryOperator<String> text) {
-        this.units = UNITS.clone();
+        this.units = ENGLISH_UNITS.clone();
         for (int i = 0; i < UNIT_KEYS.length; i++) {
             String named = unit(text.apply(UNIT_KEYS[i]));
             if (named != null) {
@@ -76,7 +76,7 @@ public final class Formats {
             }
         }
         if (this.units[0].isEmpty()) {
-            this.units[0] = UNITS[0];
+            this.units[0] = ENGLISH_UNITS[0];
         }
         this.timeUnits = TIME_UNITS.clone();
         for (int i = 0; i < TIME_KEYS.length; i++) {
@@ -140,7 +140,7 @@ public final class Formats {
         }
         double value = bytes;
         int unit = 0;
-        while (value >= 1024 && unit < UNITS.length - 1) {
+        while (value >= 1024 && unit < ENGLISH_UNITS.length - 1) {
             value /= 1024;
             unit++;
         }

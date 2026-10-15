@@ -58,7 +58,7 @@ public final class NotificationArea implements AutoCloseable {
     }
 
     private static final Logger logger = LoggerFactory.getLogger(NotificationArea.class);
-    private static final String ICON = "/org/njmule/gui/icons/njmule-32.png";
+    private static final String ICON_RESOURCE = "/org/njmule/gui/icons/njmule-32.png";
     private static final int DOUBLE_CLICK_MILLIS = 500;
 
     private final Stage stage;
@@ -207,9 +207,9 @@ public final class NotificationArea implements AutoCloseable {
 
     private TrayIcon create() throws IOException {
         Image image;
-        try (InputStream in = NotificationArea.class.getResourceAsStream(ICON)) {
+        try (InputStream in = NotificationArea.class.getResourceAsStream(ICON_RESOURCE)) {
             if (in == null) {
-                throw new IOException("missing " + ICON);
+                throw new IOException("missing " + ICON_RESOURCE);
             }
             image = ImageIO.read(in);
         }
