@@ -10828,13 +10828,109 @@
       "glob": "com/sun/glass/ui/win/themes_zu_ZA.properties"
     },
     {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_ar.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_bg.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_ca.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_cs.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_da.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_el.properties"
+    },
+    {
       "glob": "com/sun/javafx/scene/control/skin/resources/controls_en.properties"
     },
     {
       "glob": "com/sun/javafx/scene/control/skin/resources/controls_en_US.properties"
     },
     {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_et.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_fa.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_fi.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_gl.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_he.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_hu.properties"
+    },
+    {
       "glob": "com/sun/javafx/scene/control/skin/resources/controls_it_IT.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_lt.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_lv.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_nb.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_nl.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_no.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_pl.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_pt.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_pt_PT.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_ro.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_ru.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_sl.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_sq.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_tr.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_uk.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_vi.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_zh.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_zh_Hans.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_zh_Hans_CN.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_zh_Hant.properties"
+    },
+    {
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_zh_Hant_TW.properties"
     },
     {
       "glob": "com/sun/javafx/tk/quantum/QuantumMessagesBundle_en.properties"
@@ -10969,6 +11065,34 @@
     },
     {
       "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_ar.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_bg.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_ca.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_cs.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_da.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_de.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_el.properties"
+    },
+    {
+      "module": "javafx.controls",
       "glob": "com/sun/javafx/scene/control/skin/resources/controls_en.properties"
     },
     {
@@ -10977,11 +11101,147 @@
     },
     {
       "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_es.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_et.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_fa.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_fi.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_fr.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_gl.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_he.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_hu.properties"
+    },
+    {
+      "module": "javafx.controls",
       "glob": "com/sun/javafx/scene/control/skin/resources/controls_it.properties"
     },
     {
       "module": "javafx.controls",
       "glob": "com/sun/javafx/scene/control/skin/resources/controls_it_IT.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_ja.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_ko.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_lt.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_lv.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_nb.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_nl.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_no.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_pl.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_pt.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_pt_BR.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_pt_PT.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_ro.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_ru.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_sl.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_sq.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_sv.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_tr.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_uk.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_vi.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_zh.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_zh_CN.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_zh_Hans.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_zh_Hans_CN.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_zh_Hant.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_zh_Hant_TW.properties"
+    },
+    {
+      "module": "javafx.controls",
+      "glob": "com/sun/javafx/scene/control/skin/resources/controls_zh_TW.properties"
     },
     {
       "module": "javafx.graphics",

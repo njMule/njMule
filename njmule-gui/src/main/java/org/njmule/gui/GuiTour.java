@@ -287,9 +287,16 @@ final class GuiTour {
         }
     }
 
+    // Also JavaFX's own texts in each language, which a language change makes the default.
     private static void languages() {
         I18n.LANGUAGES.forEach(I18n::of);
         I18n.of(Locale.ROOT);
+        Locale shown = Locale.getDefault();
+        for (Locale language : I18n.LANGUAGES) {
+            I18n.makeDefault(language);
+            logger.debug("JavaFX's Cancel in {}: {}", language, ButtonType.CANCEL.getText());
+        }
+        I18n.makeDefault(shown);
     }
 
     // The pictures of chat CAPTCHAs are BMP files read through ImageIO.

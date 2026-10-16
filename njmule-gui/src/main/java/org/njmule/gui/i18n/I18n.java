@@ -146,6 +146,16 @@ public final class I18n {
         return this.locale;
     }
 
+    /**
+     * Makes {@code language} the JVM's default, which JavaFX's own texts follow: the buttons of dialogs, the menu of
+     * text fields. The format of dates stays the system's.
+     */
+    public static void makeDefault(Locale language) {
+        Locale format = Locale.getDefault(Locale.Category.FORMAT);
+        Locale.setDefault(language);
+        Locale.setDefault(Locale.Category.FORMAT, format);
+    }
+
     /** The locale numbers are written in: this language's, with Latin digits. */
     public Locale numberLocale() {
         return this.numbers;

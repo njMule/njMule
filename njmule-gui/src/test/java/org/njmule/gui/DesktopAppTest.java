@@ -21,7 +21,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import javafx.geometry.Rectangle2D;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
@@ -51,6 +54,10 @@ class DesktopAppTest {
     private TrayMenu menu;
     private Label oldChip;
     private String oldChipText;
+    // The JVM's languages before the test, which the app changes.
+    private final Locale language = Locale.getDefault();
+    private final Locale display = Locale.getDefault(Locale.Category.DISPLAY);
+    private final Locale format = Locale.getDefault(Locale.Category.FORMAT);
 
     @BeforeAll
     static void toolkit() throws Exception {
@@ -65,6 +72,9 @@ class DesktopAppTest {
         if (this.app != null && !this.closed) {
             this.app.close();
         }
+        Locale.setDefault(this.language);
+        Locale.setDefault(Locale.Category.DISPLAY, this.display);
+        Locale.setDefault(Locale.Category.FORMAT, this.format);
     }
 
     @Test
@@ -117,6 +127,50 @@ class DesktopAppTest {
 
         thenTheConnectionChipShows("Big");
         thenTheOldConnectionChipIsNotUpdated();
+    }
+
+    @Test
+    void shouldSpeakTheSystemLanguageInJavaFxTextsOnceChosenAgain() throws Exception {
+        givenTheSystemLanguage(Locale.ITALIAN);
+        givenTheLanguageChosen("en");
+        givenAnApp();
+        givenTheAppShownWithoutTheTray();
+        givenTheCancelButtonReads("Cancel");
+        givenTheSystemLanguageChosen();
+
+        whenTheAppRelaunches();
+
+        thenTheCancelButtonReads("Annulla");
+    }
+
+    @Test
+    void shouldGiveTheJvmTheSystemLanguageBackOnClosing() throws Exception {
+        givenTheSystemLanguage(Locale.ITALIAN);
+        givenTheLanguageChosen("en");
+        givenAnApp();
+        givenTheAppShownWithoutTheTray();
+        givenTheCancelButtonReads("Cancel");
+
+        whenTheAppCloses();
+
+        thenTheLanguageOfTheJvmIs(Locale.ITALIAN);
+    }
+
+    private void givenTheSystemLanguage(Locale system) {
+        Locale.setDefault(system);
+    }
+
+    private void givenTheLanguageChosen(String tag) throws Exception {
+        Path gui = Files.createDirectories(this.dir.resolve("gui"));
+        Files.writeString(gui.resolve(GuiSettings.FILE_NAME), "language=" + tag + "\n");
+    }
+
+    private void givenTheCancelButtonReads(String text) {
+        assertThat(ButtonType.CANCEL.getText()).isEqualTo(text);
+    }
+
+    private void givenTheSystemLanguageChosen() throws Exception {
+        FxTesting.onFx(() -> this.app.gui().settings().setLanguage(Optional.empty()));
     }
 
     private void givenAnAppOnAFreeTcpPort() throws Exception {
@@ -241,6 +295,10 @@ class DesktopAppTest {
         FxTesting.onFx(this.app::relaunch);
     }
 
+    private void whenTheAppRelaunches() throws Exception {
+        FxTesting.onFx(this.app::relaunch);
+    }
+
     private void whenTheAppCloses() {
         this.closed = true;
         this.app.close();
@@ -250,6 +308,14 @@ class DesktopAppTest {
         ServerInfo server = new ServerInfo(
                 address, name, "", 10, 20, 30, 0, ServerInfo.Priority.NORMAL, 0, 0, 0, 0, "", false, false);
         FxTesting.onFx(() -> this.app.model().handle(new EngineEvent.ServerConnecting(server)));
+    }
+
+    private void thenTheCancelButtonReads(String text) {
+        assertThat(ButtonType.CANCEL.getText()).isEqualTo(text);
+    }
+
+    private void thenTheLanguageOfTheJvmIs(Locale language) {
+        assertThat(Locale.getDefault()).isEqualTo(language);
     }
 
     private void thenTheEngineIsStopped() {

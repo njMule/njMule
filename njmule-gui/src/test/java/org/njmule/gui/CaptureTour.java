@@ -162,6 +162,7 @@ class CaptureTour {
     private final List<String> missed = new ArrayList<>();
     private final Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
     private final AtomicReference<MainWindow> forMessages = new AtomicReference<>();
+    private final Locale systemLanguage = Locale.getDefault();
 
     @Test
     void shouldPictureEveryStateOfTheInterface() throws Exception {
@@ -226,6 +227,8 @@ class CaptureTour {
         NjMuleEngine shown = demo ? Engines.overriding(this.engine, CaptureDemo.commands(root)) : this.engine;
         this.model = new EngineModel(shown, Platform::runLater);
         I18n i18n = I18n.of(language);
+        // As the app does: JavaFX's own texts in the language of the set.
+        I18n.makeDefault(i18n.locale());
         Consumer<String> toWindow = text -> {
             MainWindow w = this.forMessages.get();
             if (w != null) {
@@ -328,6 +331,7 @@ class CaptureTour {
         this.forMessages.set(null);
         this.model.close();
         this.engine.close();
+        I18n.makeDefault(this.systemLanguage);
     }
 
     // ---------------------------------------------------------------- plans

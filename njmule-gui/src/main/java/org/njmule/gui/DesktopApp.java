@@ -91,6 +91,8 @@ public final class DesktopApp implements AutoCloseable {
     private final GuiSettings settings;
     private final Optional<WebUi> webUi;
     private final SoundPlayer sound;
+    // While the window is open the JVM's default language is the interface's, not the system's.
+    private final Locale systemLanguage = Locale.getDefault();
     private Optional<Autostart> autostart = Optional.empty();
     // Links from the command line or a later start, until the window is there; FX thread.
     private final List<Ed2kLink.FileLink> pending = new ArrayList<>();
@@ -550,7 +552,7 @@ public final class DesktopApp implements AutoCloseable {
         return this.engine;
     }
 
-    /** Stops the window's timer, then the engine. */
+    /** Stops the window's timer, then the engine, and gives the JVM the system's language back. */
     @Override
     public void close() {
         if (this.ticker != null) {
@@ -575,11 +577,13 @@ public final class DesktopApp implements AutoCloseable {
         this.webUi.ifPresent(WebUi::close);
         this.engine.close();
         LoggingSetup.disableFileLog();
+        I18n.makeDefault(this.systemLanguage);
     }
 
     private Parent build() {
-        Locale locale = this.settings.language().orElse(Locale.getDefault());
-        I18n i18n = I18n.of(locale);
+        I18n i18n = I18n.of(this.settings.language().orElse(this.systemLanguage));
+        // Before any control: JavaFX's own texts, as the buttons of dialogs, speak the JVM's default language.
+        I18n.makeDefault(i18n.locale());
         this.gui = new Gui(
                 i18n,
                 Formats.of(i18n),
@@ -624,6 +628,10 @@ public final class DesktopApp implements AutoCloseable {
 
     EngineModel model() {
         return this.model;
+    }
+
+    Gui gui() {
+        return this.gui;
     }
 
     // A minimised window does not report where it shows (on Windows -32000): its last place is kept.
