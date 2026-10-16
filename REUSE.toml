@@ -33,7 +33,7 @@ SPDX-FileCopyrightText = "Gradle Inc."
 SPDX-License-Identifier = "Apache-2.0"
 
 # The server list and Kad contacts a new profile starts from, downloaded unchanged on 15 October
-# 2026 from http://upd.emule-security.org/server.met and /nodes.dat: public addresses, ports and
+# 2026 from https://upd.emule-security.org/server.met and /nodes.dat: public addresses, ports and
 # server names, facts not covered by copyright.
 [[annotations]]
 path = [

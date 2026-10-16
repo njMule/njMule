@@ -32,8 +32,8 @@ import org.njmule.gui.ui.UrlBox;
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class SuggestedListsTest {
 
-    private static final String SERVER_MET = "http://upd.emule-security.org/server.met";
-    private static final String NODES_DAT = "http://upd.emule-security.org/nodes.dat";
+    private static final String SERVER_MET = "https://upd.emule-security.org/server.met";
+    private static final String NODES_DAT = "https://upd.emule-security.org/nodes.dat";
 
     @TempDir
     Path dir;

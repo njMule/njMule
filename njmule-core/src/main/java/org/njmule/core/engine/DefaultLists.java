@@ -29,7 +29,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The server list and the Kad contacts a new profile starts from, shipped with njMule: those of
- * http://upd.emule-security.org, which the fields that update them suggest as well.
+ * https://upd.emule-security.org, which the fields that update them suggest as well.
  */
 final class DefaultLists {
 

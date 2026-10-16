@@ -38,8 +38,8 @@ public final class UrlBox {
             Map.of("serverMet", "AC_ServerMetURLs.dat", "ipFilter", "AC_IPFilterUpdateURLs.dat");
     // Well-known lists filled in while none was used: fetched only when the user asks.
     static final Map<String, String> SUGGESTED = Map.of(
-            "serverMet", "http://upd.emule-security.org/server.met",
-            "nodesDat", "http://upd.emule-security.org/nodes.dat");
+            "serverMet", "https://upd.emule-security.org/server.met",
+            "nodesDat", "https://upd.emule-security.org/nodes.dat");
 
     private final GuiSettings settings;
     private final String history;
