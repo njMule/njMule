@@ -45,6 +45,7 @@ import javafx.util.Duration;
 import org.njmule.app.Autostart;
 import org.njmule.app.LaunchOptions;
 import org.njmule.app.LinkHandoff;
+import org.njmule.app.WebUiPassword;
 import org.njmule.app.logging.LoggingSetup;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
@@ -120,6 +121,11 @@ public final class DesktopApp implements AutoCloseable {
     /** Starts the engine as the command line says; any thread. */
     public static DesktopApp open(LaunchOptions cli) throws IOException {
         AppDirectories dirs = AppDirectories.resolve(cli.configDir());
+        try {
+            WebUiPassword.setFromFile(cli, dirs.config());
+        } catch (LaunchOptions.UsageException e) {
+            throw new IOException(e.getMessage(), e);
+        }
         dirs.createAll();
         LoggingSetup.enableFileLog(dirs.logs());
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs, true));

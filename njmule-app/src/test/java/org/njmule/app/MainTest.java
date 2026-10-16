@@ -68,6 +68,7 @@ import org.slf4j.LoggerFactory;
 class MainTest {
 
     private static final String HANDOFF_FILE = "config/" + LinkHandoff.FILE_NAME;
+    private static final String PASSWORD_FILE = "webui-password";
     // Lists are never fetched from this computer, and ::1 has no IPv4 address: no request leaves it.
     private static final String SERVER_LIST = "ed2k://|serverlist|http://127.0.0.1:9/server.met|/";
     private static final String NODES_LIST = "ed2k://|nodeslist|http://127.0.0.1:9/nodes.dat|/";
@@ -391,6 +392,58 @@ class MainTest {
         whenRunWith("--config-dir", this.dir.toString(), "--webui-password");
 
         thenTheExitCodeIs(Main.EXIT_USAGE);
+    }
+
+    @Test
+    void shouldSetTheWebInterfacePasswordOfAFileWithoutAsking() throws IOException {
+        givenAFreePort();
+        givenTheFile(PASSWORD_FILE, "long enough\n");
+
+        whenRunWith(
+                "--config-dir",
+                this.dir.toString(),
+                "--webui-password",
+                "--webui-password-file",
+                this.dir.resolve(PASSWORD_FILE).toString(),
+                "--webui-port",
+                String.valueOf(this.freePort));
+
+        thenTheExitCodeIs(0);
+        thenTheOutputContains("http://localhost:" + this.freePort + "/");
+        thenTheOutputDoesNotContain("Web interface password: ");
+        thenTheWebInterfacePasswordIs("long enough");
+    }
+
+    @Test
+    void shouldStartTheWebInterfaceWithThePasswordOfItsFile() throws IOException {
+        givenAFreePort();
+        givenTheFile(PASSWORD_FILE, "long enough\n");
+
+        whenRunWith(
+                "--config-dir",
+                this.dir.toString(),
+                "--webui-password-file",
+                this.dir.resolve(PASSWORD_FILE).toString(),
+                "--webui-port",
+                String.valueOf(this.freePort));
+
+        thenTheExitCodeIs(0);
+        thenTheOutputContains("Web interface on port " + this.freePort);
+        thenTheWebInterfacePasswordIs("long enough");
+        thenTheWebInterfaceFileDoesNotContain("long enough");
+    }
+
+    @Test
+    void shouldNotStartWithoutItsWebInterfacePasswordFile() {
+        whenRunWith(
+                "--config-dir",
+                this.dir.toString(),
+                "--webui-password-file",
+                this.dir.resolve(PASSWORD_FILE).toString());
+
+        thenTheExitCodeIs(Main.EXIT_USAGE);
+        thenTheErrorsContain(PASSWORD_FILE + " does not exist");
+        thenTheFileDoesNotExist("config/njmule.properties");
     }
 
     @Test
@@ -811,6 +864,14 @@ class MainTest {
     private void thenTheWebInterfaceFileDoesNotContain(String text) throws IOException {
         assertThat(Files.readString(this.dir.resolve("config").resolve(WebUiSettings.FILE_NAME)))
                 .doesNotContain(text);
+    }
+
+    private void thenTheWebInterfacePasswordIs(String password) {
+        WebUiSettings saved = WebUiSettings.load(this.dir.resolve("config"));
+        assertThat(saved.usable()).as("on, with a password").isTrue();
+        assertThat(Passwords.matches(password.toCharArray(), saved.passwordHash()))
+                .as("the password of the file")
+                .isTrue();
     }
 
     private void thenTheWebInterfaceIsOpenToOtherComputers() {

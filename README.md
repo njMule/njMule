@@ -219,6 +219,11 @@ the command line or from the options of the desktop application:
 njmule --webui-password [--webui-port <port>] [--webui-lan]
 ```
 
+Scripts and services read the password from the first line of a file instead, such as a Docker or
+systemd secret: with `--webui-password`, `--webui-password-file <file>` sets it without asking; on
+its own, it sets the password at every start, so that the file stays the reference, and runs
+njMule.
+
 It starts together with the engine, headless or with the desktop application, on
 `http://localhost:4711/`. It listens on the loopback interface only, unless `--webui-lan` makes it
 listen on all interfaces.

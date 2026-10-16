@@ -104,8 +104,10 @@ public record LaunchOptions(
      * @param port the port to listen on, the current one when empty
      * @param lan whether other computers may connect, instead of this one only
      * @param api whether the remote-control API answers too
+     * @param passwordFile where the password is read, instead of asking for it; set at each start when given without
+     *     {@code --webui-password}
      */
-    public record WebUiSetup(Optional<Integer> port, boolean lan, boolean api) {}
+    public record WebUiSetup(Optional<Integer> port, boolean lan, boolean api, Optional<Path> passwordFile) {}
 
     /**
      * A command for a running njMule, through its remote-control API.
@@ -165,6 +167,7 @@ public record LaunchOptions(
     private static final String IDENTITY_OPTION = "--adopt-emule-identity";
     private static final String IMPORT_DOWNLOADS_OPTION = "--import-downloads";
     private static final String WEBUI_PASSWORD_OPTION = "--webui-password";
+    private static final String WEBUI_PASSWORD_FILE_OPTION = "--webui-password-file";
     private static final String EXIT_OPTION = "--exit";
     private static final String RESTORE_LINKS_OPTION = "--restore-links";
     private static final String WEBUI_PORT_OPTION = "--webui-port";
@@ -174,6 +177,9 @@ public record LaunchOptions(
     private static final String REMOTE_URL_OPTION = "--remote-url";
     private static final String API_TOKEN_OPTION = "--api-token";
     private static final String NEW_API_TOKEN_OPTION = "--new-api-token";
+
+    // What --webui-port, --webui-lan and --webui-api apply to.
+    private static final String WEBUI_SETUP = WEBUI_PASSWORD_OPTION + " or " + WEBUI_PASSWORD_FILE_OPTION;
 
     // What --exit and --restore-links may come with: where and how to run, nothing to do.
     private static final Set<String> ALONG = Set.of(CONFIG_DIR_OPTION, LOG_LEVEL_OPTION, HEADLESS_OPTION);
@@ -343,7 +349,13 @@ public record LaunchOptions(
                 WEBUI_PASSWORD_OPTION,
                 "ask for a password for the web interface, turn the interface on (from" + " the next start) and exit"));
         spec.addOption(valued(
-                WEBUI_PORT_OPTION, "<port>", "with " + WEBUI_PASSWORD_OPTION + ": the port of the web interface"));
+                WEBUI_PASSWORD_FILE_OPTION,
+                "<file>",
+                "the web interface password is the first line of <file> (a Docker or systemd secret, for example):"
+                        + " set at each start, turning the interface on, or with "
+                        + WEBUI_PASSWORD_OPTION
+                        + " set without asking"));
+        spec.addOption(valued(WEBUI_PORT_OPTION, "<port>", "with " + WEBUI_SETUP + ": the port of the web interface"));
         spec.addOption(flag(
                 EXIT_OPTION,
                 "ask the njMule running on this configuration to save and exit, and wait for it (30 s at most)"));
@@ -352,11 +364,10 @@ public record LaunchOptions(
                 "give ed2k links back to what opened them before the desktop app took them, if it still has them,"
                         + " and exit (the uninstaller runs it)"));
         spec.addOption(flag(
-                WEBUI_LAN_OPTION,
-                "with " + WEBUI_PASSWORD_OPTION + ": let other computers connect (otherwise only this one)"));
+                WEBUI_LAN_OPTION, "with " + WEBUI_SETUP + ": let other computers connect (otherwise only this one)"));
         spec.addOption(flag(
                 WEBUI_API_OPTION,
-                "with " + WEBUI_PASSWORD_OPTION + ": let the remote-control API answer too, to holders of its token"));
+                "with " + WEBUI_SETUP + ": let the remote-control API answer too, to holders of its token"));
         spec.addOption(OptionSpec.builder(REMOTE_OPTION)
                 .paramLabel("<command>")
                 .type(List.class)
@@ -449,15 +460,14 @@ public record LaunchOptions(
         boolean port = result.hasMatchedOption(WEBUI_PORT_OPTION);
         boolean lan = result.hasMatchedOption(WEBUI_LAN_OPTION);
         boolean api = result.hasMatchedOption(WEBUI_API_OPTION);
-        if (!result.hasMatchedOption(WEBUI_PASSWORD_OPTION)) {
+        Optional<Path> passwordFile = Optional.empty();
+        if (result.hasMatchedOption(WEBUI_PASSWORD_FILE_OPTION)) {
+            passwordFile = Optional.of(toFile(result.matchedOptionValue(WEBUI_PASSWORD_FILE_OPTION, "")));
+        }
+        if (!result.hasMatchedOption(WEBUI_PASSWORD_OPTION) && passwordFile.isEmpty()) {
             if (port || lan || api) {
-                throw new UsageException(WEBUI_PORT_OPTION
-                        + ", "
-                        + WEBUI_LAN_OPTION
-                        + " and "
-                        + WEBUI_API_OPTION
-                        + " apply to "
-                        + WEBUI_PASSWORD_OPTION);
+                throw new UsageException(WEBUI_PORT_OPTION + ", " + WEBUI_LAN_OPTION + " and " + WEBUI_API_OPTION
+                        + " apply to " + WEBUI_SETUP);
             }
             return Optional.empty();
         }
@@ -473,7 +483,7 @@ public record LaunchOptions(
                 throw new UsageException("Invalid port for " + WEBUI_PORT_OPTION + ": " + value);
             }
         }
-        return Optional.of(new WebUiSetup(number, lan, api));
+        return Optional.of(new WebUiSetup(number, lan, api, passwordFile));
     }
 
     private static Optional<Remote> remote(ParseResult result) throws UsageException {

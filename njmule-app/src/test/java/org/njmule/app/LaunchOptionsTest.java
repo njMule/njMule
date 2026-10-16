@@ -314,14 +314,32 @@ class LaunchOptionsTest {
         whenTheArgumentsAreParsed("--webui-password", "--webui-port", "8080");
 
         thenTheActionIs(Action.WEBUI_PASSWORD);
-        thenTheWebInterfaceSetupIs(new LaunchOptions.WebUiSetup(Optional.of(8080), false, false));
+        thenTheWebInterfaceSetupIs(new LaunchOptions.WebUiSetup(Optional.of(8080), false, false, Optional.empty()));
     }
 
     @Test
     void shouldParseTheWebInterfacePasswordForTheLan() {
         whenTheArgumentsAreParsed("--webui-password", "--webui-lan");
 
-        thenTheWebInterfaceSetupIs(new LaunchOptions.WebUiSetup(Optional.empty(), true, false));
+        thenTheWebInterfaceSetupIs(new LaunchOptions.WebUiSetup(Optional.empty(), true, false, Optional.empty()));
+    }
+
+    @Test
+    void shouldParseAWebInterfacePasswordFileForEveryStart() {
+        whenTheArgumentsAreParsed("--webui-password-file", "secret", "--webui-lan", "--webui-api");
+
+        thenTheActionIs(Action.RUN);
+        thenTheWebInterfaceSetupIs(
+                new LaunchOptions.WebUiSetup(Optional.empty(), true, true, Optional.of(Path.of("secret"))));
+    }
+
+    @Test
+    void shouldParseAWebInterfacePasswordFileInsteadOfAsking() {
+        whenTheArgumentsAreParsed("--webui-password", "--webui-password-file", "secret");
+
+        thenTheActionIs(Action.WEBUI_PASSWORD);
+        thenTheWebInterfaceSetupIs(
+                new LaunchOptions.WebUiSetup(Optional.empty(), false, false, Optional.of(Path.of("secret"))));
     }
 
     @Test
@@ -351,6 +369,7 @@ class LaunchOptionsTest {
         return Stream.of(
                         new String[] {"--exit", FILE_LINK},
                         new String[] {"--webui-password", "--exit"},
+                        new String[] {"--exit", "--webui-password-file", "secret"},
                         new String[] {"--exit", "--hash", "a.iso"},
                         new String[] {"--exit", "--license"},
                         new String[] {"--exit", "--search", "linux"},

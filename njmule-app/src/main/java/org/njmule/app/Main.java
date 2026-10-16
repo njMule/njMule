@@ -292,38 +292,42 @@ public final class Main {
     }
 
     private static int webUiPassword(LaunchOptions cli, PrintStream out, PrintStream err, PasswordSource passwords) {
-        LaunchOptions.WebUiSetup setup = cli.webUi().orElseThrow();
-        AppDirectories dirs = AppDirectories.resolve(cli.configDir());
-        char[] first = null;
-        char[] second = null;
+        Path config = AppDirectories.resolve(cli.configDir()).config();
         try {
-            first = passwords.read("Web interface password: ");
-            second = passwords.read("The same password again: ");
-            if (first == null || second == null || first.length < Passwords.MIN_LENGTH) {
-                err.println("The password needs at least " + Passwords.MIN_LENGTH + " characters.");
-                return EXIT_USAGE;
-            }
-            if (!Arrays.equals(first, second)) {
-                err.println("The two passwords differ.");
-                return EXIT_USAGE;
-            }
-            WebUiSettings old = WebUiSettings.load(dirs.config());
-            WebUiSettings settings = new WebUiSettings(
-                    true,
-                    setup.port().orElse(old.port()),
-                    setup.lan(),
-                    Passwords.hash(first, new SecureRandom()),
-                    setup.api() || old.api());
-            settings.save(dirs.config());
+            WebUiSettings settings = WebUiPassword.setFromFile(cli, config)
+                    ? WebUiSettings.load(config)
+                    : setTypedWebUiPassword(cli.webUi().orElseThrow(), config, passwords);
             out.println("The web interface starts with "
                     + NjMuleInfo.NAME
                     + " on port "
                     + settings.port()
                     + (settings.lan() ? ", open to other computers." : ": http://localhost:" + settings.port() + "/"));
             return EXIT_OK;
+        } catch (LaunchOptions.UsageException e) {
+            err.println(e.getMessage());
+            return EXIT_USAGE;
         } catch (IOException e) {
             err.println("Cannot set the web interface password: " + e.getMessage());
             return EXIT_FAILURE;
+        }
+    }
+
+    private static WebUiSettings setTypedWebUiPassword(
+            LaunchOptions.WebUiSetup setup, Path config, PasswordSource passwords)
+            throws LaunchOptions.UsageException, IOException {
+        char[] first = null;
+        char[] second = null;
+        try {
+            first = passwords.read("Web interface password: ");
+            second = passwords.read("The same password again: ");
+            if (first == null || second == null || first.length < Passwords.MIN_LENGTH) {
+                throw new LaunchOptions.UsageException(
+                        "The password needs at least " + Passwords.MIN_LENGTH + " characters.");
+            }
+            if (!Arrays.equals(first, second)) {
+                throw new LaunchOptions.UsageException("The two passwords differ.");
+            }
+            return WebUiPassword.save(config, setup, first);
         } finally {
             if (first != null) {
                 Passwords.wipe(first);
@@ -378,6 +382,16 @@ public final class Main {
             return EXIT_OK;
         }
         out.println(NjMuleInfo.startupNotice("njmule --warranty", "njmule --license"));
+        // A password file (a Docker secret, say) is the password of every start.
+        try {
+            WebUiPassword.setFromFile(cli, dirs.config());
+        } catch (LaunchOptions.UsageException e) {
+            err.println(e.getMessage());
+            return EXIT_USAGE;
+        } catch (IOException e) {
+            err.println("Cannot set the web interface password: " + e.getMessage());
+            return EXIT_FAILURE;
+        }
         NjMuleEngine engine;
         try {
             dirs.createAll();

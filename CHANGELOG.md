@@ -415,6 +415,9 @@ All notable changes to this project are documented here. The format follows
   `--tests CaptureTour -Pnjmule.capture=<folder>`): every screen, tab, menu, sub-menu, context menu,
   drop-down list, column menu, dialog and message kind, with example data, in light, dark, high
   contrast, English and right-to-left sets.
+- `--webui-password-file <file>` takes the web interface password from the first line of a file,
+  such as a Docker or systemd secret, never printing or logging it: with `--webui-password` it is
+  set without asking; on its own it is set at every start, before njMule runs.
 
 ### Changed
 
