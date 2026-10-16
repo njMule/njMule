@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# njMule headless, with its web interface on port 4711. Next to this file:
+#   printf '%s\n' 'a password of 8 characters or more' > webui_password.txt
+#   mkdir -p incoming temp        # owned by UID 1000, the user njMule runs as
+#   docker compose up -d
+services:
+    njmule:
+        image: ghcr.io/njmule/njmule:latest
+        restart: unless-stopped
+        # Time to save the downloads and settings once asked to stop.
+        stop_grace_period: 30s
+        ports:
+            - "4662:4662/tcp" # eD2K
+            - "4672:4672/udp" # eD2K and Kad
+            - "4711:4711/tcp" # web interface
+        volumes:
+            - njmule:/njmule
+            # Downloads on the host, best on one disk: a finished file then moves without a copy.
+            - ./incoming:/njmule/incoming
+            - ./temp:/njmule/temp
+        secrets:
+            - njmule_webui_password
+        # The default command; add "--webui-api" for the remote-control API.
+        command: ["--webui-password-file", "/run/secrets/njmule_webui_password", "--webui-lan"]
+
+volumes:
+    njmule:
+
+secrets:
+    njmule_webui_password:
+        file: ./webui_password.txt

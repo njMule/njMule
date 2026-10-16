@@ -415,6 +415,11 @@ All notable changes to this project are documented here. The format follows
   `--tests CaptureTour -Pnjmule.capture=<folder>`): every screen, tab, menu, sub-menu, context menu,
   drop-down list, column menu, dialog and message kind, with example data, in light, dark, high
   contrast, English and right-to-left sets.
+- Docker image `ghcr.io/njmule/njmule` for `linux/amd64` and `linux/arm64`: the native headless
+  engine with its web interface on a distroless base, run as an unprivileged user, its data in the
+  `/njmule` volume, the eD2K, Kad and web interface ports exposed, stopped cleanly by `docker stop`;
+  the release workflow builds it from the Linux executables, checks it and pushes it for a tag.
+  `packaging/docker` holds the Dockerfile, which also compiles from the sources, and a Compose file.
 - `--webui-password-file <file>` takes the web interface password from the first line of a file,
   such as a Docker or systemd secret, never printing or logging it: with `--webui-password` it is
   set without asking; on its own it is set at every start, before njMule runs.

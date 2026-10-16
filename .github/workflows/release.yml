@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Native executables and installers for Windows x64 (MSI, zip; checked on arm64 too), Linux x64
-# and arm64 (deb, rpm, tar.gz) and macOS arm64 (dmg). A pushed tag vX.Y.Z that matches the
-# project version also opens a draft GitHub release with them, an SBOM and SHA-256 sums;
-# publishing stays a manual step. A manual run only builds.
+# and arm64 (deb, rpm, tar.gz), macOS arm64 (dmg) and a Docker image (linux/amd64, linux/arm64).
+# A pushed tag vX.Y.Z that matches the project version also opens a draft GitHub release with
+# them, an SBOM and SHA-256 sums, and pushes the image to ghcr.io/njmule/njmule; publishing the
+# release stays a manual step. A manual run only builds.
 name: Release
 
 on:
@@ -180,6 +181,115 @@ jobs:
                   name: linux-${{ matrix.arch }}
                   path: dist/
 
+    # The headless engine with its web interface as a Docker image for linux/amd64 and linux/arm64,
+    # made from the executables of the Linux jobs (no emulation, no second compilation). The amd64
+    # image is tried first; a tag pushes both to the GitHub Container Registry.
+    docker:
+        name: docker image
+        needs: [version, linux]
+        runs-on: ubuntu-24.04
+        permissions:
+            actions: read
+            contents: read
+            packages: write
+        env:
+            VERSION: ${{ needs.version.outputs.version }}
+            IMAGE: ghcr.io/njmule/njmule
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - name: Fetch the Linux executables
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
+                      --name linux-x64 --name linux-arm64 --dir "$RUNNER_TEMP/packages"
+                  for pair in x64:amd64 arm64:arm64; do
+                      name="njmule-${VERSION}-linux-${pair%%:*}"
+                      mkdir -p "$RUNNER_TEMP/binary/${pair##*:}"
+                      tar -xzf "$RUNNER_TEMP/packages/linux-${pair%%:*}/${name}.tar.gz" \
+                          -C "$RUNNER_TEMP/binary/${pair##*:}" --strip-components=1 "${name}/njmule"
+                  done
+                  file "$RUNNER_TEMP"/binary/*/njmule
+            - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+            - id: meta
+              uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+              env:
+                  # The description shows on the registry page of a multi-platform image.
+                  DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+              with:
+                  images: ${{ env.IMAGE }}
+                  # A pre-release gets its version only; a release also X.Y and latest.
+                  tags: |
+                      type=semver,pattern={{version}},value=v${{ env.VERSION }}
+                      type=semver,pattern={{major}}.{{minor}},value=v${{ env.VERSION }}
+                  labels: |
+                      org.opencontainers.image.title=njMule
+                      org.opencontainers.image.description=eMule-compatible eD2K and Kad client: headless engine with web interface
+                      org.opencontainers.image.licenses=GPL-3.0-or-later
+                  annotations: |
+                      org.opencontainers.image.title=njMule
+                      org.opencontainers.image.description=eMule-compatible eD2K and Kad client: headless engine with web interface
+                      org.opencontainers.image.licenses=GPL-3.0-or-later
+            - name: Build the amd64 image
+              uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+              with:
+                  context: .
+                  file: packaging/docker/Dockerfile
+                  build-contexts: binary=${{ runner.temp }}/binary
+                  platforms: linux/amd64
+                  load: true
+                  tags: njmule:smoke
+            # Started as the runner's user with all its data in one directory, networks off: the web
+            # interface takes the password of the secret and only that, and SIGTERM stops it cleanly.
+            - name: Smoke test
+              run: |
+                  docker run --rm njmule:smoke --version
+                  data="$RUNNER_TEMP/njmule"
+                  mkdir -p "$data/config"
+                  printf 'net.ed2k.enabled=false\nnet.kad.enabled=false\nnet.upnp=false\n' > "$data/config/njmule.properties"
+                  printf 'smoke-test-password\n' > "$RUNNER_TEMP/webui_password"
+                  docker run -d --name njmule --user "$(id -u):$(id -g)" -p 127.0.0.1:4711:4711 -v "$data:/njmule" \
+                      -v "$RUNNER_TEMP/webui_password:/run/secrets/njmule_webui_password:ro" njmule:smoke
+                  for _ in $(seq 60); do
+                      curl -fsS -o /dev/null http://127.0.0.1:4711/login && break
+                      sleep 1
+                  done
+                  login() {
+                      curl -s -o /dev/null -w '%{http_code}' -c "$RUNNER_TEMP/cookies" \
+                          --data-urlencode "password=$1" http://127.0.0.1:4711/login
+                  }
+                  test "$(login wrong-password)" = 401
+                  test "$(login smoke-test-password)" = 303
+                  curl -fsS -b "$RUNNER_TEMP/cookies" http://127.0.0.1:4711/ | grep -q "Status"
+                  docker stop --timeout 30 njmule
+                  docker logs njmule > "$RUNNER_TEMP/njmule.log" 2>&1
+                  cat "$RUNNER_TEMP/njmule.log"
+                  test "$(docker inspect --format '{{.State.ExitCode}}' njmule)" = 143
+                  grep -q "Stopping njMule" "$RUNNER_TEMP/njmule.log"
+                  if grep -rq "smoke-test-password" "$RUNNER_TEMP/njmule.log" "$data/logs"; then
+                      echo "The password shows in the log" >&2
+                      exit 1
+                  fi
+            - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+              if: github.ref_type == 'tag'
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ github.token }}
+            - name: Build both platforms (push for a tag)
+              uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+              with:
+                  context: .
+                  file: packaging/docker/Dockerfile
+                  build-contexts: binary=${{ runner.temp }}/binary
+                  platforms: linux/amd64,linux/arm64
+                  push: ${{ github.ref_type == 'tag' }}
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  annotations: ${{ steps.meta.outputs.annotations }}
+                  provenance: mode=max
+                  sbom: true
+
     # GraalVM and JavaFX have no Windows arm64 build yet: the x64 installer runs there under the
     # system's x64 emulation, which this job checks on an arm64 runner.
     windows-arm64:
@@ -294,7 +404,7 @@ jobs:
     release:
         name: draft release
         if: github.ref_type == 'tag'
-        needs: [version, windows-x64, windows-arm64, linux, macos-arm64]
+        needs: [version, windows-x64, windows-arm64, linux, macos-arm64, docker]
         runs-on: ubuntu-latest
         permissions:
             actions: read

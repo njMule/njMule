@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The sources the image is compiled from, without build outputs, caches or local-only files.
+.git
+.claude
+.idea
+.vscode
+**/.gradle
+**/.kotlin
+**/build
+**/out
+*.iml
+docs
+.local
+fixtures-private
+# Secrets kept beside a compose file never enter the build.
+**/.env
+**/.env.*
+**/*password*.txt

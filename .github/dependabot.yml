@@ -14,3 +14,10 @@ updates:
           interval: weekly
       commit-message:
           prefix: "ci(deps)"
+    # The base images of the Docker image, pinned by digest.
+    - package-ecosystem: docker
+      directory: /packaging/docker
+      schedule:
+          interval: weekly
+      commit-message:
+          prefix: "build(deps)"

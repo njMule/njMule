@@ -46,7 +46,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 - 🔌 **Wire-compatible** — speaks eD2K and Kad 2, so it works with the existing eMule network.
 - 📦 **Nothing to install first** — GraalVM native executables and installers for Windows, macOS
-  and Linux; no Java runtime is required.
+  and Linux, and a Docker image for servers and NAS; no Java runtime is required.
 - 🛡️ **Hardened by design** — size-limited parsers for all input from the network and from disk,
   and crash-safe persistence.
 - 🖥️ **Desktop, headless or remote** — a JavaFX app, a command-line engine, a web interface and a
@@ -81,6 +81,7 @@ Ukrainian, Arabic, Persian, Hebrew, Simplified and Traditional Chinese, Japanese
 | 🪟 Windows | x64 (arm64 through the system's x64 emulation) | `.msi` installer, `.zip` archive |
 | 🐧 Linux | x64, arm64 | `.deb`, `.rpm`, `.tar.gz` archive |
 | 🍎 macOS 13 or later | Apple silicon (arm64) | `.dmg` disk image |
+| 🐳 Docker | `linux/amd64`, `linux/arm64` | image `ghcr.io/njmule/njmule` (headless engine and web interface) |
 
 Every package contains two executables: **`njmule-gui`**, the desktop application, and
 **`njmule`**, the command-line interface, which also runs the engine headless. Each release also
@@ -151,6 +152,69 @@ xattr -dr com.apple.quarantine /Applications/njMule.app
 ```
 
 The command-line interface is `/Applications/njMule.app/Contents/MacOS/njmule`.
+
+</details>
+
+<details>
+<summary><strong>Docker</strong></summary>
+
+The image `ghcr.io/njmule/njmule` runs the headless engine with its web interface. It holds only
+the native executable on a distroless base (no shell, no package manager), runs as user and group
+1000, and keeps all its data in the volume `/njmule` (`config`, `data`, `temp`, `incoming`, …);
+incomplete (`/njmule/temp`) and completed downloads (`/njmule/incoming`) can be mounted on their
+own, preferably on the same disk. At every start the web interface takes its password (8
+characters at least) from the first line of the secret `/run/secrets/njmule_webui_password` and
+listens on port 4711 of every address of the container:
+
+```bash
+mkdir -p ~/njmule/incoming
+printf '%s\n' 'a password of 8 characters or more' > ~/njmule/webui_password
+docker run -d --name njmule --restart unless-stopped --stop-timeout 30 \
+    -p 4662:4662/tcp -p 4672:4672/udp -p 4711:4711/tcp \
+    -v njmule:/njmule -v ~/njmule/incoming:/njmule/incoming \
+    -v ~/njmule/webui_password:/run/secrets/njmule_webui_password:ro \
+    ghcr.io/njmule/njmule
+```
+
+The same with Docker Compose ([`packaging/docker/compose.yaml`](packaging/docker/compose.yaml)),
+the password in `webui_password.txt` beside it:
+
+```yaml
+services:
+    njmule:
+        image: ghcr.io/njmule/njmule:latest
+        restart: unless-stopped
+        stop_grace_period: 30s
+        ports: ["4662:4662/tcp", "4672:4672/udp", "4711:4711/tcp"]
+        volumes:
+            - njmule:/njmule
+            - ./incoming:/njmule/incoming
+            - ./temp:/njmule/temp
+        secrets: [njmule_webui_password]
+volumes:
+    njmule:
+secrets:
+    njmule_webui_password:
+        file: ./webui_password.txt
+```
+
+- Open the web interface by the address of the host, `http://192.168.1.10:4711/` for example:
+  other host names than `localhost` are refused, against DNS rebinding.
+- For a high ID, the eD2K TCP port (4662) and the client UDP port of eD2K and Kad (4672) must be
+  forwarded to the host by the router; ports changed in the options are published unchanged
+  (`-p 5000:5000/tcp`). UPnP does not cross Docker's bridge network, but works with
+  `--network host`.
+- `docker stop` asks njMule to save its state and exit (SIGTERM); `--stop-timeout 30` and
+  `stop_grace_period: 30s` give it the time.
+- Host directories mounted in the container must belong to UID 1000
+  (`sudo chown -R 1000:1000 ~/njmule/incoming`). To run as another user, add `--user <uid>:<gid>`
+  and mount a directory of that user on `/njmule` itself.
+- A changed secret is the new password from the next start. Arguments replace the default ones
+  (`--webui-password-file /run/secrets/njmule_webui_password --webui-lan`): add `--webui-api` to
+  them for the remote-control API, then `docker exec njmule njmule --config-dir /njmule --remote
+  status` drives it.
+- `docker build -f packaging/docker/Dockerfile -t njmule .` builds the image from the sources, for
+  the platform of the machine that builds it.
 
 </details>
 
