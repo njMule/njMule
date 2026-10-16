@@ -474,6 +474,14 @@ public final class DownloadQueue implements AutoCloseable {
         download.dirty = true;
     }
 
+    /** Keeps {@code sources} for the next run; the download is saved again only when they changed. */
+    public void setKnownSources(Download download, List<PartFile.KnownSource> sources) {
+        if (!download.file.knownSources().equals(sources)) {
+            download.file.setKnownSources(sources);
+            download.dirty = true;
+        }
+    }
+
     public void setPriority(Download download, DownloadPriority priority) {
         download.file.setPriority(priority);
         download.dirty = true;

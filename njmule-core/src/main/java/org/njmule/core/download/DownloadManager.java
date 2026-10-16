@@ -246,6 +246,8 @@ public final class DownloadManager implements AutoCloseable {
     public static final Duration SERVER_REQUEST_CREDIT = Duration.ofSeconds(20);
 
     private static final Duration TICK = Duration.ofSeconds(1);
+    // How often the sources that serve each download best are kept for the next run, as on shutdown.
+    private static final Duration KEEP_SOURCES_INTERVAL = Duration.ofMinutes(10);
     // The download limit is shared out in tenths of a second.
     private static final Duration BUDGET_TICK = Duration.ofMillis(100);
     private static final int MAX_COMMENTS = 100;
@@ -480,6 +482,7 @@ public final class DownloadManager implements AutoCloseable {
     // Sources found sending corrupt data (IPv4, host order), until when they are not taken.
     private final Map<Integer, Long> corruptSenders = new HashMap<>();
     private ClientUdp udp = NO_UDP;
+    private long nextSourcesKept;
 
     private DownloadManager(
             EngineLoop loop,
@@ -547,6 +550,10 @@ public final class DownloadManager implements AutoCloseable {
         for (DownloadQueue.Download download : manager.queue.all()) {
             manager.entries.put(download.hash(), new Entry(download, now));
         }
+        for (Entry entry : manager.entries.values()) {
+            manager.takeKnownSources(entry);
+        }
+        manager.nextSourcesKept = now + KEEP_SOURCES_INTERVAL.toNanos();
         manager.ticking = loop.scheduleRepeating("downloads", TICK, TICK, manager::tick);
         manager.budgeting = loop.scheduleRepeating("download budget", BUDGET_TICK, BUDGET_TICK, manager::refill);
         return manager;
@@ -769,6 +776,7 @@ public final class DownloadManager implements AutoCloseable {
         this.queue.stop(entry.download);
         closeSessions(entry, "the download is stopped");
         forget(entry);
+        this.queue.setKnownSources(entry.download, List.of());
         this.callbacks.values().removeIf(callback -> callback.file.equals(hash));
         this.kadCallbacks.values().removeIf(callback -> callback.file.equals(hash));
         this.listener.progress(info(entry));
@@ -1134,6 +1142,8 @@ public final class DownloadManager implements AutoCloseable {
         if (this.budgeting != null) {
             this.budgeting.cancel(false);
         }
+        // Kept while the sessions still tell which sources are downloading.
+        keepKnownSources();
         for (Entry entry : this.entries.values()) {
             closeSessions(entry, "shutting down");
         }
@@ -1363,6 +1373,10 @@ public final class DownloadManager implements AutoCloseable {
 
     private void tick() {
         long now = this.ticker.read();
+        if (now - this.nextSourcesKept >= 0) {
+            keepKnownSources();
+            this.nextSourcesKept = now + KEEP_SOURCES_INTERVAL.toNanos();
+        }
         int starting = 0;
         boolean preview = this.settings.get().previewFirst();
         for (Client client : List.copyOf(this.clients.values())) {
@@ -1749,6 +1763,86 @@ public final class DownloadManager implements AutoCloseable {
         for (Source source : List.copyOf(client.sources)) {
             detach(source, now);
         }
+    }
+
+    // The sources kept from the last run, while young; they were taken once, from the network or a link the user
+    // chose, so only what changed since leaves one out. A stopped download forgot its sources.
+    private void takeKnownSources(Entry entry) {
+        if (entry.download.file().status() == PartFile.Status.STOPPED) {
+            return;
+        }
+        for (PartFile.KnownSource known :
+                KnownSources.young(entry.download.file().knownSources(), wallSeconds())) {
+            int first = known.ip() >>> 24;
+            if (known.userHash().filter(this::isOurs).isPresent()
+                    || known.port() == 0
+                    || first == 0
+                    || first >= 224
+                    || this.blocked.test(known.ip())
+                    || isCorruptSender(known.ip())
+                    || isOurAddress(known.ip(), known.port())) {
+                continue;
+            }
+            Source source = addSource(entry, Ipv4.socketAddress(known.ip(), known.port()));
+            if (source != null) {
+                learn(source.client, known.userHash(), known.cryptOptions());
+            }
+        }
+    }
+
+    // The sources reached directly that served each download, best first, joined by those kept before; a LowID's id
+    // changes with its server, so it is found again instead.
+    private void keepKnownSources() {
+        long now = wallSeconds();
+        for (Entry entry : this.entries.values()) {
+            if (entry.download.file().status() == PartFile.Status.STOPPED) {
+                continue;
+            }
+            List<KnownSources.Candidate> candidates = new ArrayList<>();
+            for (Source source : entry.sources.values()) {
+                Client client = source.client;
+                Optional<KnownSources.Standing> standing = standing(source);
+                if (client.lowId != 0 || client.kad != null || standing.isEmpty()) {
+                    continue;
+                }
+                PartFile.KnownSource known = new PartFile.KnownSource(
+                        Ipv4.fromBytes(client.address.getAddress().getAddress()),
+                        client.address.getPort(),
+                        now,
+                        client.userHash,
+                        client.cryptOptions);
+                int parts = source.parts == null ? 0 : source.parts.cardinality();
+                candidates.add(new KnownSources.Candidate(known, standing.get(), rank(source), parts));
+            }
+            this.queue.setKnownSources(
+                    entry.download,
+                    KnownSources.choose(candidates, entry.download.file().knownSources(), now));
+        }
+    }
+
+    // How a source served its download: one that never answered for it is not kept.
+    private static Optional<KnownSources.Standing> standing(Source source) {
+        DownloadSession session = source.client.session(source);
+        if (session != null && session.state() == DownloadSession.State.DOWNLOADING) {
+            return Optional.of(KnownSources.Standing.DOWNLOADING);
+        }
+        if (rank(source) > 0) {
+            return Optional.of(KnownSources.Standing.QUEUED);
+        }
+        return source.parts != null || source.received > 0
+                ? Optional.of(KnownSources.Standing.ANSWERED)
+                : Optional.empty();
+    }
+
+    // Our place in the source's queue: as its open session last told, else as it told before.
+    private static int rank(Source source) {
+        DownloadSession session = source.client.session(source);
+        return session != null && session.queueRank() > 0 ? session.queueRank() : source.rank;
+    }
+
+    // Kept sources are dated by the wall clock: their age counts across runs.
+    private static long wallSeconds() {
+        return System.currentTimeMillis() / 1000;
     }
 
     // What the server or another client tells of a source; what the source showed us itself counts more.

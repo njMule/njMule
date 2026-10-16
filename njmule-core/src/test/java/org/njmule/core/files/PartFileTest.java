@@ -486,6 +486,21 @@ class PartFileTest {
     }
 
     @Test
+    void shouldKeepTheSourcesKeptForTheNextRun() throws Exception {
+        givenAFileOf(3, "a.bin", 5000);
+        givenTheKnownSources(
+                new PartFile.KnownSource(0x5511_7400, 4662, 1_760_000_000L, Optional.of(hash(7)), 0x03),
+                new PartFile.KnownSource(0x0A00_0002, 51_000, 1_760_000_100L, Optional.empty(), 0));
+        givenTheFileIsSaved();
+
+        whenTheFileIsLoaded();
+
+        thenTheKnownSourcesAre(
+                new PartFile.KnownSource(0x5511_7400, 4662, 1_760_000_000L, Optional.of(hash(7)), 0x03),
+                new PartFile.KnownSource(0x0A00_0002, 51_000, 1_760_000_100L, Optional.empty(), 0));
+    }
+
+    @Test
     void shouldKeepWhetherItIsStoppedAndItsCategory() throws Exception {
         givenAFileOf(3, "a.bin", 5000);
         givenThePriorityIs(DownloadPriority.HIGH);
@@ -638,6 +653,14 @@ class PartFileTest {
 
     private void givenThePreviewComesFirst() {
         this.file.setPreviewFirst(true);
+    }
+
+    private void givenTheKnownSources(PartFile.KnownSource... sources) {
+        this.file.setKnownSources(List.of(sources));
+    }
+
+    private void thenTheKnownSourcesAre(PartFile.KnownSource... sources) {
+        assertThat(this.file.knownSources()).containsExactly(sources);
     }
 
     private void givenTheFileIsSaved() throws IOException {

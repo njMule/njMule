@@ -222,6 +222,10 @@ All notable changes to this project are documented here. The format follows
   block, and a change applies at once.
 - Parts that passed their check are remembered in the `.part.met`: after a restart they are not
   checked again while the data file is as it was saved (its date is the date of the `.part.met`).
+- The sources that served a download best (downloading, then queued by their place, then those
+  that answered, with the most parts first), up to 100 reached directly, are kept in its
+  `.part.met` every 10 minutes and on shutdown, and taken again at the next start until a week
+  old; stopping a download forgets them, as it forgets its other sources.
 - Among equally rare parts the download goes on with one already begun, so that parts complete
   and can be shared sooner, and its blocks end on the 180 KiB boundaries of AICH.
 - AICH recovery data is sent to the clients that ask for it, and the AICH hash of a shared file

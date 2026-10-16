@@ -39,6 +39,9 @@ import org.njmule.core.api.PartMap;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.format.PartMet;
+import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.io.PacketReader;
+import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
@@ -57,10 +60,26 @@ public final class PartFile {
     private static final Logger logger = LoggerFactory.getLogger(PartFile.class);
 
     // njMule's own tags, which other clients skip: the parts that passed their check, the place of the download in the
-    // order downloads were added, and whether it takes sources asked for other files by itself.
+    // order downloads were added, whether it takes sources asked for other files by itself, and the sources kept for
+    // the next run.
     private static final TagName VERIFIED_TAG = TagName.of("njm_verified");
     private static final TagName ADDED_TAG = TagName.of("njm_added");
     private static final TagName AUTO_SWAP_TAG = TagName.of("njm_a4af_auto");
+    private static final TagName SOURCES_TAG = TagName.of("njm_sources");
+    private static final int SOURCES_VERSION = 1;
+
+    /** The most sources kept from one run to the next. */
+    public static final int MAX_KNOWN_SOURCES = 100;
+
+    /**
+     * A source of the download kept from one run to the next: its address ({@code Ipv4} form) and TCP port, when it was
+     * last found good, in seconds since the epoch, and what it told of itself.
+     */
+    public record KnownSource(int ip, int port, long seen, Optional<Hash16> userHash, int cryptOptions) {
+        public KnownSource {
+            Objects.requireNonNull(userHash, "userHash");
+        }
+    }
 
     /** Where a download stands. */
     public enum Status {
@@ -102,6 +121,7 @@ public final class PartFile {
     private boolean previewFirst;
     private boolean previewAlways;
     private boolean autoSwap;
+    private List<KnownSource> knownSources = List.of();
     private final RangeSet<Long> missing = TreeRangeSet.create();
     private final RangeSet<Long> requested = TreeRangeSet.create();
     private final int[] availability;
@@ -184,6 +204,11 @@ public final class PartFile {
         // Bit 0: first and last parts first, for a preview.
         file.previewFirst = (Tags.intValue(contents.tags(), FileTag.DL_PREVIEW).orElse(0) & 1) != 0;
         file.autoSwap = Tags.intValue(contents.tags(), AUTO_SWAP_TAG).orElse(0) != 0;
+        for (Tag tag : contents.tags()) {
+            if (tag instanceof Tag.BlobTag blob && blob.name().equals(SOURCES_TAG)) {
+                file.knownSources = readSources(blob.value().toByteArray());
+            }
+        }
         // Parts checked before are trusted only while the data file is as it was saved.
         if (dataDate(file.dataFile()).equals(OptionalLong.of(contents.mtime()))) {
             for (Tag tag : contents.tags()) {
@@ -195,6 +220,56 @@ public final class PartFile {
             file.verified.or(file.trusted);
         }
         return file;
+    }
+
+    /** The sources kept from the last run, or to keep for the next. */
+    public List<KnownSource> knownSources() {
+        return this.knownSources;
+    }
+
+    /** Keeps {@code sources}, at most {@value #MAX_KNOWN_SOURCES}, for the next run. */
+    public void setKnownSources(List<KnownSource> sources) {
+        this.knownSources = List.copyOf(sources.subList(0, Math.min(sources.size(), MAX_KNOWN_SOURCES)));
+    }
+
+    // The version, then each source: address and port, when it was last good, its crypt options, whether its user hash
+    // follows, the user hash.
+    private static byte[] writeSources(List<KnownSource> sources) {
+        PacketWriter out = new PacketWriter();
+        out.u8(SOURCES_VERSION);
+        for (KnownSource source : sources) {
+            out.u32(Integer.toUnsignedLong(source.ip()));
+            out.u16(source.port());
+            out.u64(source.seen());
+            out.u8(source.cryptOptions());
+            out.u8(source.userHash().isPresent() ? 1 : 0);
+            source.userHash().ifPresent(h -> out.bytes(h.toByteArray()));
+        }
+        return out.toByteArray();
+    }
+
+    // Sources another version wrote, or cut short, are left out rather than read wrong.
+    private static List<KnownSource> readSources(byte[] data) {
+        List<KnownSource> sources = new ArrayList<>();
+        try {
+            PacketReader in = PacketReader.of(data);
+            if (in.remaining() == 0 || in.u8() != SOURCES_VERSION) {
+                return List.of();
+            }
+            while (in.remaining() > 0 && sources.size() < MAX_KNOWN_SOURCES) {
+                int ip = (int) in.u32();
+                int port = in.u16();
+                long seen = in.u64();
+                int crypt = in.u8();
+                Optional<Hash16> userHash =
+                        in.u8() == 1 ? Optional.of(Hash16.of(in.bytes(Hash16.LENGTH))) : Optional.empty();
+                sources.add(new KnownSource(ip, port, seen, userHash, crypt));
+            }
+        } catch (DecodeException e) {
+            logger.debug("Leaving out the sources kept of a download: {}", e.getMessage());
+            return List.of();
+        }
+        return List.copyOf(sources);
     }
 
     /** Records that {@code part} passed its check, so that a restart need not check it again. */
@@ -239,6 +314,9 @@ public final class PartFile {
         }
         if (!this.verified.isEmpty()) {
             tags.add(new Tag.BlobTag(VERIFIED_TAG, Bytes.of(this.verified.toByteArray())));
+        }
+        if (!this.knownSources.isEmpty()) {
+            tags.add(new Tag.BlobTag(SOURCES_TAG, Bytes.of(writeSources(this.knownSources))));
         }
         return new PartMet.Contents(PartMet.VERSION, 0, this.hash, this.partHashes, tags).withGaps(gaps);
     }

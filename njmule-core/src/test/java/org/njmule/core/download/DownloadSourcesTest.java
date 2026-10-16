@@ -388,6 +388,31 @@ class DownloadSourcesTest {
     }
 
     @Test
+    void shouldTakeAgainAfterARestartTheSourceThatQueuedUs() throws Exception {
+        givenASource(0, 0);
+        givenTheManager();
+        givenADownloadFromTheSource("kept.bin", Hash16.parseHex("3a".repeat(16)));
+        givenTheSourceQueuedUsAt(3);
+
+        whenTheManagerStartsAgain();
+
+        thenTheSourceIsKnownAt("127.0.0.1");
+    }
+
+    @Test
+    void shouldKeepNoSourceOfAStoppedDownloadForTheNextRun() throws Exception {
+        givenASource(0, 0);
+        givenTheManager();
+        givenADownloadFromTheSource("stopped.bin", Hash16.parseHex("3b".repeat(16)));
+        givenTheSourceQueuedUsAt(3);
+        givenTheDownloadStopped();
+
+        whenTheManagerStartsAgain();
+
+        thenTheDownloadHasSources(0);
+    }
+
+    @Test
     void shouldTakeNoSourceByHandIntoAFullSourceList() throws Exception {
         givenAMaximumOfSources(1);
         givenASource(0, Hello.MISC2_SOURCE_EXCHANGE2);
@@ -1288,6 +1313,18 @@ class DownloadSourcesTest {
 
     private void thenTheSourceIsConnectedTo() throws Exception {
         assertThat(this.source.accept()).isNotNull();
+    }
+
+    private void givenTheDownloadStopped() throws Exception {
+        onLoop(() -> this.manager.stop(this.hash));
+    }
+
+    private void whenTheManagerStartsAgain() throws Exception {
+        onLoop(() -> {
+            this.manager.close();
+            return null;
+        });
+        manager();
     }
 
     private void thenTheSourceIsKnownAt(String ip) throws Exception {
