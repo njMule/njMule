@@ -81,7 +81,6 @@ import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.PortTestPane;
 import org.njmule.gui.ui.RateField;
 import org.njmule.gui.ui.Screen;
-import org.njmule.gui.ui.UrlBox;
 import org.njmule.webui.ApiToken;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUiSettings;
@@ -91,6 +90,8 @@ public final class SettingsScreen implements Screen {
 
     private static final int MAX_PROXY_USER = 255;
     private static final int MAX_PASSWORD = 1024;
+    // Room for the most lists a filter takes, each a long address.
+    private static final int MAX_IP_FILTER_LISTS_TEXT = Preferences.MAX_IP_FILTER_LISTS * 2_049;
     private static final int MAX_WEBUI_HOSTS = 4096;
 
     private final Gui gui;
@@ -126,6 +127,8 @@ public final class SettingsScreen implements Screen {
     private final TextField soundFile = new TextField();
     private final CheckBox filterLan = new CheckBox();
     private final TextArea whitelist = new TextArea();
+    private final TextArea ipFilterLists = new TextArea();
+    private final TextField ipFilterDays = new TextField();
     private final TextField messageFilter = new TextField();
     private final CheckBox friendsOnly = new CheckBox();
     private final CheckBox spamFilter = new CheckBox();
@@ -179,7 +182,6 @@ public final class SettingsScreen implements Screen {
     private final PasswordField webUiPassword = new PasswordField();
     private final PasswordField webUiAgain = new PasswordField();
     private SchedulerPane scheduler;
-    private UrlBox ipFilter;
     private Input<String> nickInput;
     private Input<Integer> tcpPortInput;
     private Input<Integer> udpPortInput;
@@ -202,6 +204,8 @@ public final class SettingsScreen implements Screen {
     private Input<Integer> backupsInput;
     private Input<Integer> filterLevelInput;
     private Input<String> whitelistInput;
+    private Input<String> ipFilterListsInput;
+    private Input<Integer> ipFilterDaysInput;
     private Input<Integer> webUiPortInput;
     private Input<List<String>> webUiHostsInput;
     private Input<String> webUiPasswordInput;
@@ -412,7 +416,9 @@ public final class SettingsScreen implements Screen {
         next.setAlignment(Pos.CENTER_LEFT);
         grid.add(next, 1, row++);
         row = section(grid, row, this.gui.t("IDS_IPFILTER"));
-        row = field(grid, row, this.gui.t("IDS_UPDATEFROM"), ipFilterRow());
+        row = field(grid, row, this.gui.t("nj.settings.ipFilterLists"), ipFilterRow());
+        this.ipFilterDays.setPrefColumnCount(4);
+        row = field(grid, row, this.gui.t("nj.settings.ipFilterUpdateDays"), this.ipFilterDays);
         this.filterLevel.setPrefColumnCount(4);
         row = field(grid, row, this.gui.t("IDS_FILTERLEVEL"), this.filterLevel);
         grid.add(this.filterLan, 1, row++);
@@ -482,6 +488,8 @@ public final class SettingsScreen implements Screen {
                 this.backupsInput,
                 this.filterLevelInput,
                 this.whitelistInput,
+                this.ipFilterListsInput,
+                this.ipFilterDaysInput,
                 this.webUiPortInput,
                 this.webUiHostsInput,
                 this.webUiPasswordInput,
@@ -563,6 +571,34 @@ public final class SettingsScreen implements Screen {
                                         + "\n"
                                         + this.gui.i18n().embed(this.gui.f("nj.settings.whitelistInvalid", entry)))
                                 .orElse(whitelistHint)));
+        String listsHint = this.gui.i18n().embed(this.gui.t("nj.settings.ipFilterListsHint"));
+        this.ipFilterListsInput = Input.of(
+                this.ipFilterLists,
+                this.gui.t("nj.settings.ipFilterLists"),
+                listsHint,
+                c -> c == '\n' || !Character.isISOControl(c),
+                MAX_IP_FILTER_LISTS_TEXT,
+                t -> {
+                    if (Preferences.invalidListEntry(t).isPresent() || !Preferences.fitsListCount(t)) {
+                        throw new IllegalArgumentException(t);
+                    }
+                    return t;
+                });
+        // The tooltip names the line to fix.
+        this.ipFilterLists
+                .textProperty()
+                .addListener((o, was, now) -> this.ipFilterLists
+                        .getTooltip()
+                        .setText(Preferences.invalidListEntry(now)
+                                .map(entry -> listsHint
+                                        + "\n"
+                                        + this.gui.i18n().embed(this.gui.f("nj.settings.ipFilterListInvalid", entry)))
+                                .orElse(listsHint)));
+        this.ipFilterDaysInput = inputs.number(
+                this.ipFilterDays,
+                this.gui.t("nj.settings.ipFilterUpdateDays"),
+                0,
+                Preferences.MAX_IP_FILTER_UPDATE_DAYS);
         this.backupsInput =
                 inputs.number(this.backups, this.gui.t("nj.settings.backups"), 0, Preferences.MAX_BACKUP_COPIES);
         this.deadRetriesInput =
@@ -614,30 +650,46 @@ public final class SettingsScreen implements Screen {
         }
     }
 
-    // An IP filter from the web, from an address typed or used before.
+    // The IP filter lists from the web, joined into one filter; Update fetches the lists typed, Apply keeps them.
     private Node ipFilterRow() {
-        this.ipFilter = new UrlBox(this.gui, "ipFilter", this.gui.t("IDS_IPFILTER"));
-        this.ipFilter.node().setPromptText("https://\u2026/ipfilter.zip");
-        this.ipFilter.node().setPrefWidth(420);
+        this.ipFilterLists.setPrefRowCount(2);
+        this.ipFilterLists.setPrefColumnCount(40);
+        this.ipFilterLists.setPromptText("https://\u2026/ipfilter.zip\nhttps://\u2026/level1.p2p.gz");
+        Fx.leftToRight(this.ipFilterLists);
         Button update = Fx.button(this.gui.t("IDS_SV_UPDATE"), Material2MZ.REFRESH, this::updateIpFilter);
-        update.disableProperty().bind(this.ipFilter.input().validProperty().not());
-        return new HBox(6, this.ipFilter.node(), update);
+        update.disableProperty()
+                .bind(this.ipFilterListsInput
+                        .validProperty()
+                        .not()
+                        .or(this.ipFilterLists.textProperty().isEmpty()));
+        HBox row = new HBox(6, this.ipFilterLists, update);
+        row.setAlignment(Pos.TOP_LEFT);
+        return row;
     }
 
     void updateIpFilter() {
-        if (!this.ipFilter.input().isValid()) {
+        List<URI> urls = this.ipFilterListsInput.isValid()
+                ? Preferences.listAddresses(this.ipFilterListsInput.value())
+                : List.of();
+        if (urls.isEmpty()) {
             return;
         }
-        URI url = this.ipFilter.input().value();
         this.gui.inform().accept(this.gui.t("IDS_DWL_IPFILTERFILE"));
-        this.gui.model().updateIpFilter(url, ranges -> {
-            this.ipFilter.worked(url);
-            this.gui.inform().accept(this.gui.f("IDS_IPFILTERLOADED", ranges));
-        });
+        this.gui
+                .model()
+                .updateIpFilter(urls, ranges -> this.gui.inform().accept(this.gui.f("IDS_IPFILTERLOADED", ranges)));
     }
 
-    UrlBox ipFilterBox() {
-        return this.ipFilter;
+    TextArea ipFilterListsArea() {
+        return this.ipFilterLists;
+    }
+
+    Input<String> ipFilterListsInput() {
+        return this.ipFilterListsInput;
+    }
+
+    TextField ipFilterDaysField() {
+        return this.ipFilterDays;
     }
 
     private SchedulerPane scheduler() {
@@ -806,6 +858,8 @@ public final class SettingsScreen implements Screen {
         this.filterLevel.setText(String.valueOf(p.ipFilterLevel()));
         this.filterLan.setSelected(p.filterLanAddresses());
         this.whitelist.setText(p.ipFilterWhitelist());
+        this.ipFilterLists.setText(p.ipFilterLists());
+        this.ipFilterDays.setText(String.valueOf(p.ipFilterUpdateDays()));
         this.messageFilter.setText(p.messageFilter());
         this.friendsOnly.setSelected(p.messagesFromFriendsOnly());
         this.spamFilter.setSelected(p.advancedSpamFilter());
@@ -1042,6 +1096,11 @@ public final class SettingsScreen implements Screen {
                         Preferences::ipFilterWhitelist,
                         Preferences.Builder::ipFilterWhitelist,
                         this.whitelistInput.value())
+                .set(Preferences::ipFilterLists, Preferences.Builder::ipFilterLists, this.ipFilterListsInput.value())
+                .set(
+                        Preferences::ipFilterUpdateDays,
+                        Preferences.Builder::ipFilterUpdateDays,
+                        this.ipFilterDaysInput.value())
                 .set(
                         Preferences::messageFilter,
                         Preferences.Builder::messageFilter,

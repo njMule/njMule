@@ -96,6 +96,8 @@ public final class PreferencesCodec {
         intKey("security.ipFilterLevel", Preferences::ipFilterLevel, Preferences.Builder::ipFilterLevel);
         boolKey("security.filterLan", Preferences::filterLanAddresses, Preferences.Builder::filterLanAddresses);
         key("security.ipFilterWhitelist", Preferences::ipFilterWhitelist, Preferences.Builder::ipFilterWhitelist);
+        key("security.ipFilterLists", Preferences::ipFilterLists, Preferences.Builder::ipFilterLists);
+        intKey("security.ipFilterUpdateDays", Preferences::ipFilterUpdateDays, Preferences.Builder::ipFilterUpdateDays);
         boolKey("chat.friendsOnly", Preferences::messagesFromFriendsOnly, Preferences.Builder::messagesFromFriendsOnly);
         boolKey("search.spamFilter", Preferences::searchSpamFilter, Preferences.Builder::searchSpamFilter);
         key("chat.filter", Preferences::messageFilter, Preferences.Builder::messageFilter);

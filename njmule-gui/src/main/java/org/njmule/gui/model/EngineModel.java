@@ -753,6 +753,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         later(this.engine.updateIpFilter(url), done::accept);
     }
 
+    /** Replaces the IP filter with the lists at {@code urls} joined; {@code done} learns how many ranges it has. */
+    public void updateIpFilter(List<URI> urls, IntConsumer done) {
+        later(this.engine.updateIpFilter(urls), done::accept);
+    }
+
     /** Adds the Kad contacts of the nodes.dat at {@code url}, then hands {@code done} how many were new. */
     public void addKadContacts(URI url, IntConsumer done) {
         later(this.engine.addKadContacts(url), done::accept);

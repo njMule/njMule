@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
@@ -56,6 +57,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import org.njmule.core.api.BanInfo;
@@ -128,6 +130,9 @@ public final class Engine implements NjMuleEngine {
     private static final int EVENT_BUFFER = 1_024;
     private static final Duration UNMAP_WAIT = Duration.ofSeconds(5);
     private static final Duration SCHEDULE_CHECK = Duration.ofSeconds(15);
+    // How often the IP filter lists are looked at, and how long after a failed update they wait.
+    private static final Duration IP_FILTER_CHECK = Duration.ofHours(1);
+    private static final Duration IP_FILTER_RETRY = Duration.ofHours(6);
 
     private final AppDirectories directories;
     private final Path preferencesFile;
@@ -142,6 +147,9 @@ public final class Engine implements NjMuleEngine {
     private volatile Preferences preferences;
     // The preferences with the scheduler's rule applied: what the network uses.
     private volatile Preferences effective;
+    // Engine thread only: an update of the IP filter lists under way, and when the last one was tried.
+    private boolean ipFilterUpdating;
+    private long ipFilterTried;
     private volatile Schedule schedule;
     private volatile Schedule.Rule activeRule;
     private final Path scheduleFile;
@@ -243,6 +251,8 @@ public final class Engine implements NjMuleEngine {
                         engine.loop.scheduleRepeating(
                                 "scheduler", SCHEDULE_CHECK, SCHEDULE_CHECK, engine::refreshSchedule);
                         engine.loop.scheduleRepeating("config backup", BACKUP_EVERY, BACKUP_EVERY, engine::backUp);
+                        engine.loop.scheduleRepeating(
+                                "IP filter lists", Duration.ofMinutes(1), IP_FILTER_CHECK, engine::updateIpFilterIfDue);
                         return null;
                     })
                     .join();
@@ -498,6 +508,101 @@ public final class Engine implements NjMuleEngine {
         Objects.requireNonNull(url, "url");
         return fetch(url, true, data -> ipRanges(data, url))
                 .thenCompose(ranges -> this.loop.submit(() -> this.network.setIpFilter(ranges)));
+    }
+
+    @Override
+    public CompletableFuture<Integer> updateIpFilter(List<URI> urls) {
+        List<URI> lists = List.copyOf(urls);
+        if (lists.isEmpty()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("no IP filter list"));
+        }
+        List<CompletableFuture<List<IpFilterDat.Range>>> fetched = lists.stream()
+                .map(url -> fetch(url, true, data -> ipRanges(data, url)))
+                .toList();
+        return CompletableFuture.allOf(fetched.toArray(CompletableFuture[]::new))
+                .handle((done, failure) -> joined(lists, fetched, text -> userLog(LogLine.Level.WARNING, text)))
+                .thenCompose(ranges -> this.loop.submit(() -> this.network.setIpFilter(ranges)));
+    }
+
+    /**
+     * The ranges of the lists that could be fetched and read, in the order of {@code lists}; each other one is told in
+     * the log.
+     *
+     * @throws CompletionException when none could
+     */
+    static List<IpFilterDat.Range> joined(
+            List<URI> lists, List<CompletableFuture<List<IpFilterDat.Range>>> fetched, Consumer<String> warn) {
+        List<IpFilterDat.Range> ranges = new ArrayList<>();
+        Throwable failure = null;
+        int read = 0;
+        for (int i = 0; i < lists.size(); i++) {
+            CompletableFuture<List<IpFilterDat.Range>> list = fetched.get(i);
+            Throwable cause = null;
+            if (list.isCompletedExceptionally()) {
+                cause = list.exceptionNow();
+            } else if (list.join().isEmpty()) {
+                cause = new IOException("no IP filter ranges");
+            }
+            if (cause == null) {
+                ranges.addAll(list.join());
+                read++;
+            } else {
+                Throwable reason =
+                        cause instanceof CompletionException && cause.getCause() != null ? cause.getCause() : cause;
+                warn.accept("IP filter list " + lists.get(i).getHost() + " left out: " + reason.getMessage());
+                failure = failure == null ? reason : failure;
+            }
+        }
+        if (read == 0) {
+            throw new CompletionException(failure);
+        }
+        return ranges;
+    }
+
+    // The lists of the preferences fetched again once the filter is as old as they say; a failed update waits.
+    private void updateIpFilterIfDue() {
+        Preferences now = this.preferences;
+        long nowMillis = System.currentTimeMillis();
+        if (this.ipFilterUpdating
+                || nowMillis - this.ipFilterTried < IP_FILTER_RETRY.toMillis()
+                || !isIpFilterDue(ipFilterDate(), nowMillis, now.ipFilterUpdateDays(), now.ipFilterListAddresses())) {
+            return;
+        }
+        this.ipFilterUpdating = true;
+        this.ipFilterTried = nowMillis;
+        this.loop.whenDone(updateIpFilter(now.ipFilterListAddresses()), (ranges, failure) -> {
+            this.ipFilterUpdating = false;
+            if (failure == null) {
+                this.ipFilterTried = 0;
+            } else {
+                Throwable reason = failure instanceof CompletionException && failure.getCause() != null
+                        ? failure.getCause()
+                        : failure;
+                userLog(LogLine.Level.WARNING, "IP filter lists not updated: " + reason.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Whether the {@code lists} are due again: the filter was last written at {@code filterDate} (milliseconds since
+     * the epoch, empty for no filter), {@code days} ago or more; never with no lists or {@code days} 0.
+     */
+    static boolean isIpFilterDue(OptionalLong filterDate, long nowMillis, int days, List<URI> lists) {
+        if (lists.isEmpty() || days == 0) {
+            return false;
+        }
+        return filterDate.isEmpty()
+                || nowMillis - filterDate.getAsLong() >= Duration.ofDays(days).toMillis();
+    }
+
+    private OptionalLong ipFilterDate() {
+        try {
+            return OptionalLong.of(
+                    Files.getLastModifiedTime(this.directories.config().resolve(Network.IPFILTER_FILE))
+                            .toMillis());
+        } catch (IOException e) {
+            return OptionalLong.empty();
+        }
     }
 
     // The text forms are told apart by the file name: the address's first, then PeerGuardian, then eMule's.

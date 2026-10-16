@@ -16,7 +16,10 @@
  */
 package org.njmule.core.config;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -40,6 +43,9 @@ import org.njmule.core.security.IpWhitelist;
  * @param eventCommands the programs run when a download ends, a chat message arrives or the disk runs short
  * @param notificationSound whether the desktop app plays {@code notificationSoundFile} with its notifications
  * @param notificationSoundFile a WAV file; empty = none
+ * @param ipFilterLists addresses (http or https) of IP filter lists, one per line, joined into one filter (see
+ *     {@link #invalidListEntry})
+ * @param ipFilterUpdateDays the lists are fetched again once the filter is this many days old; {@code 0} = by hand only
  */
 public record Preferences(
         String nick,
@@ -96,7 +102,9 @@ public record Preferences(
         String ipFilterWhitelist,
         EventCommands eventCommands,
         boolean notificationSound,
-        Optional<Path> notificationSoundFile) {
+        Optional<Path> notificationSoundFile,
+        String ipFilterLists,
+        int ipFilterUpdateDays) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -124,6 +132,10 @@ public record Preferences(
 
     public static final int MAX_IP_FILTER_LEVEL = 255;
     public static final int MAX_IP_FILTER_WHITELIST = 16_384;
+    public static final int MAX_IP_FILTER_LISTS = 16;
+    public static final int MAX_IP_FILTER_UPDATE_DAYS = 365;
+    public static final int DEFAULT_IP_FILTER_UPDATE_DAYS = 7;
+    private static final int MAX_LIST_ADDRESS = 2_048;
     /** Chat messages holding one of these words, apart by {@code |}, do not show. */
     public static final String DEFAULT_MESSAGE_FILTER = "fastest download speed|fastest eMule";
 
@@ -208,6 +220,64 @@ public record Preferences(
         Objects.requireNonNull(eventCommands, "eventCommands");
         Objects.requireNonNull(notificationSoundFile, "notificationSoundFile")
                 .ifPresent(p -> requireAbsolute("notificationSoundFile", p));
+        ipFilterLists = Objects.requireNonNull(ipFilterLists, "ipFilterLists").strip();
+        Optional<String> invalidList = invalidListEntry(ipFilterLists);
+        if (invalidList.isPresent()) {
+            throw new IllegalArgumentException("ipFilterLists: not an http or https address: " + invalidList.get());
+        }
+        if (!fitsListCount(ipFilterLists)) {
+            throw new IllegalArgumentException("ipFilterLists must hold at most " + MAX_IP_FILTER_LISTS + " addresses");
+        }
+        requireRange("ipFilterUpdateDays", ipFilterUpdateDays, 0, MAX_IP_FILTER_UPDATE_DAYS);
+    }
+
+    /** The first line of a list of IP filter lists that is not an http or https address with a host, if any. */
+    public static Optional<String> invalidListEntry(String text) {
+        for (String line : listLines(text)) {
+            if (listAddress(line).isEmpty()) {
+                return Optional.of(line);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** The addresses of the IP filter lists, in their order. */
+    public List<URI> ipFilterListAddresses() {
+        return listAddresses(this.ipFilterLists);
+    }
+
+    /** The http and https addresses of {@code text}, one per line, in their order; the other lines left out. */
+    public static List<URI> listAddresses(String text) {
+        return listLines(text).stream()
+                .map(Preferences::listAddress)
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
+    /** Whether {@code text} holds no more lists than a filter takes. */
+    public static boolean fitsListCount(String text) {
+        return listLines(text).size() <= MAX_IP_FILTER_LISTS;
+    }
+
+    private static List<String> listLines(String text) {
+        return text.lines().map(String::strip).filter(l -> !l.isEmpty()).toList();
+    }
+
+    private static Optional<URI> listAddress(String line) {
+        if (line.length() > MAX_LIST_ADDRESS) {
+            return Optional.empty();
+        }
+        try {
+            URI uri = new URI(line);
+            String scheme = uri.getScheme();
+            return scheme != null
+                            && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))
+                            && uri.getHost() != null
+                    ? Optional.of(uri)
+                    : Optional.empty();
+        } catch (URISyntaxException e) {
+            return Optional.empty();
+        }
     }
 
     /**
@@ -275,7 +345,9 @@ public record Preferences(
                 "",
                 EventCommands.NONE,
                 false,
-                Optional.empty());
+                Optional.empty(),
+                "",
+                DEFAULT_IP_FILTER_UPDATE_DAYS);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -375,6 +447,8 @@ public record Preferences(
         private EventCommands eventCommands;
         private boolean notificationSound;
         private Optional<Path> notificationSoundFile;
+        private String ipFilterLists;
+        private int ipFilterUpdateDays;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -432,6 +506,8 @@ public record Preferences(
             this.eventCommands = p.eventCommands;
             this.notificationSound = p.notificationSound;
             this.notificationSoundFile = p.notificationSoundFile;
+            this.ipFilterLists = p.ipFilterLists;
+            this.ipFilterUpdateDays = p.ipFilterUpdateDays;
         }
 
         public Builder nick(String value) {
@@ -753,6 +829,16 @@ public record Preferences(
             return this;
         }
 
+        public Builder ipFilterLists(String value) {
+            this.ipFilterLists = value;
+            return this;
+        }
+
+        public Builder ipFilterUpdateDays(int value) {
+            this.ipFilterUpdateDays = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -810,7 +896,9 @@ public record Preferences(
                     this.ipFilterWhitelist,
                     this.eventCommands,
                     this.notificationSound,
-                    this.notificationSoundFile);
+                    this.notificationSoundFile,
+                    this.ipFilterLists,
+                    this.ipFilterUpdateDays);
         }
     }
 }

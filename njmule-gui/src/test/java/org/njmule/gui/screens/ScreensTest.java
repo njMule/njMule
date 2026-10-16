@@ -1170,7 +1170,7 @@ class ScreensTest {
 
     private void whenTheIpFilterIsUpdatedFrom(String address) throws Exception {
         FxTesting.onFx(() -> {
-            this.settings.ipFilterBox().node().getEditor().setText(address);
+            this.settings.ipFilterListsArea().setText(address);
             this.settings.updateIpFilter();
         });
     }

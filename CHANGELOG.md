@@ -173,8 +173,12 @@ All notable changes to this project are documented here. The format follows
 - A server.met or a nodes.dat can be taken from an address, as in eMule: the box offers the
   addresses used before, and server list and nodes.dat links from the browser are followed. The
   lists are fetched over http or https from public addresses only, within size and redirect limits.
-- The IP filter can be updated from an address in the settings (ipfilter.dat, PeerGuardian or P2B,
-  zipped or not), with the addresses used before offered again; it applies at once.
+- The IP filter can be updated from up to 16 lists on the web (ipfilter.dat, PeerGuardian or P2B,
+  zipped or not), one address per line in the settings, joined into one filter that applies at
+  once; a list that cannot be fetched or read is left out and named in the log. The lists are
+  fetched again once the filter is as many days old as the settings say (7 by default, 0 for by
+  hand only), and six hours after a failed try (preferences `security.ipFilterLists` and
+  `security.ipFilterUpdateDays`; engine API `updateIpFilter(List<URI>)`).
 - The Windows executables, of the desktop app and of the command line, carry the njMule icon and
   version information, shown by Explorer and Task Manager; Linux desktops match the running window
   to its menu entry, icon and name, and process lists show the desktop app as njMule however it
