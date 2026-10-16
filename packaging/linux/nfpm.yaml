@@ -47,6 +47,10 @@ contents:
   - src: /usr/lib/njmule/njmule-gui
     dst: /usr/bin/njmule-gui
     type: symlink
+  # The desktop entry runs it under the name process lists show, which finds its icon.
+  - src: /usr/lib/njmule/njmule-gui
+    dst: /usr/bin/njMule
+    type: symlink
   - src: packaging/linux/org.njmule.njMule.desktop
     dst: /usr/share/applications/org.njmule.njMule.desktop
   - src: packaging/linux/org.njmule.njMule.metainfo.xml

@@ -43,7 +43,32 @@ tasks.distTar {
 }
 
 // Native executable with GraalVM (GRAALVM_HOME): ./gradlew :njmule-app:nativeCompile
-// → build/native/nativeCompile/njmule[.exe]
+// → build/native/nativeCompile/njmule[.exe]. On Windows it links its icon and version information (native/windows).
+val windows = System.getProperty("os.name").lowercase().startsWith("windows")
+val nativeResourceSources =
+    tasks.register<Sync>("nativeResourceSources") {
+        val version = project.version.toString()
+        inputs.property("version", version)
+        from("native/windows") {
+            include("njmule.rc")
+            filter { line -> line.replace("\${project.version}", version) }
+        }
+        from(layout.settingsDirectory.file("branding/generated/njmule.ico"))
+        into(layout.buildDirectory.dir("native-res"))
+    }
+val nativeResources =
+    tasks.register<Exec>("nativeResources") {
+        dependsOn(nativeResourceSources)
+        val dir = layout.buildDirectory.dir("native-res")
+        workingDir(dir)
+        val rc = layout.settingsDirectory.file("packaging/windows/rc.cmd").asFile.path
+        commandLine("cmd", "/c", rc, "njmule.rc", "njmule.res", project.version)
+        outputs.file(dir.map { it.file("njmule.res") })
+    }
+if (windows) {
+    tasks.named("nativeCompile") { dependsOn(nativeResources) }
+}
+
 graalvmNative {
     toolchainDetection = false
     testSupport = false
@@ -54,5 +79,12 @@ graalvmNative {
         mainClass = application.mainClass
         buildArgs.add("-H:+ReportExceptionStackTraces")
         buildArgs.add(providers.gradleProperty("native.optimization"))
+        if (windows) {
+            buildArgs.add(
+                layout.buildDirectory.file("native-res/njmule.res").map {
+                    "-H:NativeLinkerOption=" + it.asFile.path
+                }
+            )
+        }
     }
 }

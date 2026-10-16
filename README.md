@@ -122,7 +122,8 @@ sudo dnf install ./njmule-*.x86_64.rpm  # Fedora, RHEL (arm64: *.aarch64.rpm)
 
 The packages install `njmule` and `njmule-gui` in `/usr/bin` (the desktop application and its
 shared libraries reside in `/usr/lib/njmule`), together with a desktop entry, AppStream metadata
-and icons. They depend on GTK 3, libXtst and OpenGL. The `.tar.gz` archive contains the same
+and icons. The desktop entry starts the application as `njMule`, the name process lists show for
+it, however it was started. They depend on GTK 3, libXtst and OpenGL. The `.tar.gz` archive contains the same
 executables and runs from any directory; its `share/` directory provides the desktop entry,
 metadata and icon for manual desktop integration.
 

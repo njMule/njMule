@@ -50,6 +50,9 @@ public final class GuiMain {
         if (LinkHandoff.deliver(DesktopApp.configDir(cli), links)) {
             System.exit(0);
         }
+        if (LinuxProcessName.applies()) {
+            LinuxProcessName.nameThisThread();
+        }
         // On macOS links come as events; the handler is set first, on the thread that starts JavaFX.
         if (MacMainThread.needed()) {
             MacMainThread.run(() -> {

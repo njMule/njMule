@@ -172,8 +172,10 @@ All notable changes to this project are documented here. The format follows
   lists are fetched over http or https from public addresses only, within size and redirect limits.
 - The IP filter can be updated from an address in the settings (ipfilter.dat, PeerGuardian or P2B,
   zipped or not), with the addresses used before offered again; it applies at once.
-- The Windows executable carries the njMule icon and version information, shown by Explorer and
-  Task Manager; Linux desktops match the running window to its menu entry, icon and name.
+- The Windows executables, of the desktop app and of the command line, carry the njMule icon and
+  version information, shown by Explorer and Task Manager; Linux desktops match the running window
+  to its menu entry, icon and name, and process lists show the desktop app as njMule however it
+  was started (its desktop entry runs it as `njMule`).
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
 - The Windows installer also puts a shortcut on the desktop.
 - Searches take eMule's parameters (file type, minimum and maximum size, availability, complete

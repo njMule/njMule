@@ -133,7 +133,8 @@ val nativeResources =
         dependsOn(nativeResourceSources)
         val dir = layout.buildDirectory.dir("native-res")
         workingDir(dir)
-        commandLine("cmd", "/c", file("native/windows/rc.cmd").path, "njmule-gui.rc", "njmule-gui.res", project.version)
+        val rc = layout.settingsDirectory.file("packaging/windows/rc.cmd").asFile.path
+        commandLine("cmd", "/c", rc, "njmule-gui.rc", "njmule-gui.res", project.version)
         outputs.file(dir.map { it.file("njmule-gui.res") })
     }
 
