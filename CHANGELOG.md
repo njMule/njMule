@@ -389,6 +389,10 @@ All notable changes to this project are documented here. The format follows
   `rateSpam`, the rating in the web API's results. The desktop interface shows a result as spam by
   its rating, rates the results of every search tab again once a file is marked (or the filter is
   switched, in the options next to the IP filter), and rates the searches kept from the last run.
+- The complete sources of a search result show as a share of its sources, "?" where the network
+  does not tell (Kad, a client's shared files) and "Yes" for a file of one part, whole wherever it
+  is shared; a count not told is no longer stored as 0 in `StoredSearches.met`, and the web API
+  gives `null` for it.
 - Search results sort, once a column is chosen, with spam last in either direction, names
   by the language's rules whatever their case, complete sources by their share of the sources,
   types then extensions, missing media values last in either direction, and the columns chosen

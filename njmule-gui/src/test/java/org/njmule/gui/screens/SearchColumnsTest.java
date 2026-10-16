@@ -120,6 +120,19 @@ class SearchColumnsTest {
     }
 
     @Test
+    void shouldShowTheCompleteSourcesAsAShareAQuestionMarkWhenUntoldOrYesForOnePart() throws Exception {
+        givenASearchTab();
+
+        whenTheServerFinds(
+                complete("half.avi", 100_000_000, 10, 5),
+                complete("none.avi", 100_000_000, 3, 0),
+                complete("kad.avi", 100_000_000, 3, SearchResult.UNKNOWN),
+                complete("small kad.mp3", 4_000_000, 2, SearchResult.UNKNOWN));
+
+        thenTheColumnShows("Complete", "50%", "0%", "?", "Yes");
+    }
+
+    @Test
     void shouldSortTheBitrateAsNumbers() throws Exception {
         givenASearchTab();
         givenTheServerFound(SHORT_SONG, LONG_SONG);
@@ -203,6 +216,16 @@ class SearchColumnsTest {
         assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(this.table))).containsAll(expected);
     }
 
+    private void thenTheColumnShows(String title, String... texts) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.table.getItems().stream()
+                        .map(r -> String.valueOf(
+                                column(title).getCellObservableValue(r).getValue()))
+                        .toList()))
+                .hasSize(texts.length);
+        FxTesting.assertEventually(
+                "the cells", () -> FxTesting.cellTexts(this.table).containsAll(List.of(texts)));
+    }
+
     private void thenTheResultsAreInTheOrder(String... names) throws Exception {
         assertThat(FxTesting.onFx(() ->
                         this.table.getItems().stream().map(r -> r.get().name()).toList()))
@@ -214,6 +237,11 @@ class SearchColumnsTest {
                 .filter(c -> title.equals(c.getText()))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private static SearchResult complete(String name, long size, int sources, int complete) {
+        Hash16 hash = Hash16.parseHex("%032X".formatted(name.hashCode() & 0x7FFFFFFF));
+        return new SearchResult(hash, name, size, sources, complete, Optional.of("Video"));
     }
 
     private static SearchResult song(String hash, String name, SearchResult.Media media) {

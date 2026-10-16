@@ -25,6 +25,8 @@ import java.util.Set;
 /**
  * A file found by a search; the source counts add up over the servers that reported it.
  *
+ * @param completeSources the sources with the whole file, {@link #UNKNOWN} when the network does not tell (Kad, or a
+ *     client's list of shared files)
  * @param media what the file's publishers told of its content, {@link Media#NONE} when nothing
  * @param origin where the result came from, as its spam rating weighs it
  * @param spamRating how much it looks like spam: {@value #SPAM_THRESHOLD} and more is spam
@@ -42,6 +44,9 @@ public record SearchResult(
 
     /** The spam rating from which a result counts as spam. */
     public static final int SPAM_THRESHOLD = 60;
+
+    /** A count the network does not tell. */
+    public static final int UNKNOWN = -1;
 
     public SearchResult {
         Objects.requireNonNull(hash, "hash");

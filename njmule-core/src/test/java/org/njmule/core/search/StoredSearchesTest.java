@@ -33,6 +33,7 @@ import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.persist.format.SearchFiles;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
 
 class StoredSearchesTest {
 
@@ -109,6 +110,17 @@ class StoredSearchesTest {
     }
 
     @Test
+    void shouldStoreNoCompleteCountTheNetworkDidNotTellAndReadItBackUnknown() throws IOException {
+        givenAnOpenSearchWith(
+                new SearchResult(hash(8), "film.mkv", 5_000_000, 3, SearchResult.UNKNOWN, Optional.of("Video")));
+
+        whenTheSearchesAreSavedAndLoaded();
+
+        thenTheLoadedSearchesAreTheSaved();
+        thenTheFileHoldsNoCompleteCount();
+    }
+
+    @Test
     void shouldKeepTheMediaDetailsOfTheResults() throws IOException {
         givenAnOpenSearchWith(new SearchResult(
                 hash(7),
@@ -159,6 +171,16 @@ class StoredSearchesTest {
 
     private void thenTheLoadedSearchesAreTheSaved() {
         assertThat(this.loaded).isEqualTo(this.saved);
+    }
+
+    // Other clients read a count of 0 as told: one not told stays out.
+    private void thenTheFileHoldsNoCompleteCount() throws IOException {
+        assertThat(SearchFiles.readStored(Files.readAllBytes(storedFile()))
+                        .getFirst()
+                        .results()
+                        .getFirst()
+                        .tags())
+                .noneMatch(t -> t.name().equals(TagName.id(FileTag.COMPLETE_SOURCES)));
     }
 
     private void thenTheLoadedSearchIs(String expression) {

@@ -29,6 +29,7 @@ import javafx.collections.ListChangeListener;
 import javafx.collections.transformation.SortedList;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
+import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SearchResult;
 import org.njmule.gui.model.LiveList;
 
@@ -67,10 +68,27 @@ final class SearchOrder {
         };
     }
 
-    /** The complete sources of a result, compared as a share of its sources, and shown as their number. */
-    record Complete(int complete, int sources) implements Comparable<Complete> {
+    /**
+     * The complete sources of a result, compared and shown as a share of its sources: unknown (Kad) lowest, but a file
+     * of one part is whole wherever it is shared.
+     */
+    record Complete(int complete, int sources, long size) implements Comparable<Complete> {
         int percent() {
+            if (this.complete < 0) {
+                return this.size <= PartMap.PART_SIZE ? 100 : -1;
+            }
             return this.sources <= 0 ? 0 : (int) (100L * this.complete / this.sources);
+        }
+
+        /** The share in percent, "?" when unknown, or {@code yes} when whole without a count. */
+        String shown(String yes) {
+            if (this.complete < 0) {
+                return this.size <= PartMap.PART_SIZE ? yes : "?";
+            }
+            if (this.complete > 0) {
+                return this.sources > 0 ? percent() + "%" : yes;
+            }
+            return "0%";
         }
 
         @Override

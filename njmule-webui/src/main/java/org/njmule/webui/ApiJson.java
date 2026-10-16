@@ -287,7 +287,12 @@ final class ApiJson {
         g.writeStringProperty("name", r.name());
         g.writeNumberProperty("size", r.size());
         g.writeNumberProperty("sources", r.sources());
-        g.writeNumberProperty("completeSources", r.completeSources());
+        if (r.completeSources() < 0) {
+            // Kad does not tell it.
+            g.writeNullProperty("completeSources");
+        } else {
+            g.writeNumberProperty("completeSources", r.completeSources());
+        }
         optional(g, "type", r.type());
         g.writeNumberProperty("spamRating", r.spamRating());
         g.writeBooleanProperty("spam", r.isSpam());

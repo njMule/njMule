@@ -31,6 +31,7 @@ import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.tag.FileTag;
 import org.njmule.core.protocol.tag.MediaTags;
 import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.Tags;
 
 /** The search tabs left open at exit, in {@code StoredSearches.met}, to show again at the next start. */
 public final class StoredSearches {
@@ -98,7 +99,10 @@ public final class StoredSearches {
                         entry.name().get(),
                         entry.size().getAsLong(),
                         entry.sources(),
-                        entry.completeSources(),
+                        // Kept only when the network told it.
+                        Tags.intValue(r.tags(), FileTag.COMPLETE_SOURCES).isPresent()
+                                ? entry.completeSources()
+                                : SearchResult.UNKNOWN,
                         entry.type(),
                         entry.media()));
             }
@@ -135,7 +139,9 @@ public final class StoredSearches {
             tags.add(Tag.of(FileTag.FILENAME, r.name()));
             tags.add(Tag.of(FileTag.FILESIZE, r.size()));
             tags.add(Tag.of(FileTag.SOURCES, r.sources()));
-            tags.add(Tag.of(FileTag.COMPLETE_SOURCES, r.completeSources()));
+            if (r.completeSources() >= 0) {
+                tags.add(Tag.of(FileTag.COMPLETE_SOURCES, r.completeSources()));
+            }
             r.type().ifPresent(t -> tags.add(Tag.of(FileTag.FILETYPE, t)));
             tags.addAll(MediaTags.of(r.media()));
             results.add(new SearchFiles.Result(r.hash(), 0, 0, tags));

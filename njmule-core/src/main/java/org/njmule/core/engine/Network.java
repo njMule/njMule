@@ -2370,7 +2370,9 @@ final class Network {
         return (keyword, expression, results) -> node.searchKeyword(keyword, Optional.of(expression), found -> {
             List<SearchResult> converted = new ArrayList<>();
             for (KadNode.FileResult r : found) {
-                converted.add(new SearchResult(r.hash(), r.name(), r.size(), r.sources(), 0, r.type(), r.media()));
+                // Kad does not tell how many sources have the whole file.
+                converted.add(new SearchResult(
+                        r.hash(), r.name(), r.size(), r.sources(), SearchResult.UNKNOWN, r.type(), r.media()));
             }
             results.accept(converted);
         });

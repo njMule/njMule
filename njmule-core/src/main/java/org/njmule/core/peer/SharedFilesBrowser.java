@@ -109,7 +109,12 @@ public final class SharedFilesBrowser {
                     && SearchResult.isDownloadable(
                             entry.name().get(), entry.size().getAsLong())) {
                 files.add(new SearchResult(
-                        entry.hash(), entry.name().get(), entry.size().getAsLong(), 1, 0, entry.type()));
+                        entry.hash(),
+                        entry.name().get(),
+                        entry.size().getAsLong(),
+                        1,
+                        SearchResult.UNKNOWN,
+                        entry.type()));
             }
         }
         return files;

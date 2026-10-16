@@ -517,6 +517,7 @@ public final class SearchScreen implements Screen {
         // Offered in the column menu.
         fileId.setVisible(false);
         String kbits = this.gui.t("IDS_KBITSSEC");
+        String yes = this.gui.t("IDS_YES");
         Function<Integer, String> lengthText = s -> s == 0 ? "" : formats.playingTime(s);
         Function<Integer, String> bitrateText = b -> b == 0 ? "" : formats.count(b) + " " + kbits;
         Comparator<String> text = SearchOrder.text(this.gui.i18n().locale());
@@ -567,8 +568,9 @@ public final class SearchScreen implements Screen {
                         Fx.leftToRight(Fx.column(
                                 this.gui.t("IDS_COMPLETE"),
                                 90,
-                                (SearchResult r) -> new SearchOrder.Complete(r.completeSources(), r.sources()),
-                                c -> Integer.toString(c.complete()))),
+                                (SearchResult r) ->
+                                        new SearchOrder.Complete(r.completeSources(), r.sources(), r.size()),
+                                c -> c.shown(yes))),
                         Fx.leftToRight(Fx.column(
                                 this.gui.t("nj.search.type"),
                                 90,
@@ -612,7 +614,9 @@ public final class SearchScreen implements Screen {
         texts.put(this.gui.t("IDS_DL_FILENAME"), SearchResult::name);
         texts.put(this.gui.t("IDS_DL_SIZE"), r -> formats.size(r.size()));
         texts.put(this.gui.t("IDS_SEARCHAVAIL"), r -> Integer.toString(r.sources()));
-        texts.put(this.gui.t("IDS_COMPLETE"), r -> Integer.toString(r.completeSources()));
+        texts.put(
+                this.gui.t("IDS_COMPLETE"),
+                r -> new SearchOrder.Complete(r.completeSources(), r.sources(), r.size()).shown(yes));
         texts.put(this.gui.t("nj.search.type"), r -> r.type().orElse(""));
         texts.put(this.gui.t("nj.search.known"), r -> knownText(known(r)));
         texts.put(this.gui.t("IDS_FILEID"), r -> r.hash().toHex());
