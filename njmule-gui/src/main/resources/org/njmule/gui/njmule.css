@@ -702,13 +702,23 @@
     -fx-padding: 4px 12px 4px 12px;
 }
 
-/* Log lines, by level. */
-/* The logs: one line each, tight, as in eMule; the theme's cells are three lines tall. */
-.log-list .list-cell {
-    -fx-padding: 0 6 0 6;
+/* The logs: a line a paragraph, tight; their text is chosen with the mouse, across lines. */
+.log-area {
     -fx-font-size: 0.92em;
-    -fx-cell-size: 1.9em;
-    -fx-graphic-text-gap: 6;
+    -fx-background-color: -color-bg-default;
+    -fx-padding: 2 6 2 6;
+}
+
+.log-area .paragraph-box {
+    -fx-padding: 1 0 1 0;
+}
+
+.log-area .text {
+    -fx-fill: -color-fg-default;
+}
+
+.log-area .selection {
+    -fx-fill: -color-accent-subtle;
 }
 
 .log-icon {
@@ -716,36 +726,36 @@
     -fx-icon-color: -color-fg-muted;
 }
 
-.log-icon.blank {
-    -fx-icon-color: transparent;
+.log-icon-box {
+    -fx-padding: 0 6 0 0;
 }
 
-.log-line.warning .log-icon {
+.log-icon.warning {
     -fx-icon-color: -color-warning-fg;
 }
 
-.log-line.error .log-icon {
+.log-icon.error {
     -fx-icon-color: -color-danger-fg;
 }
 
-.log-line.success .log-icon {
+.log-icon.success {
     -fx-icon-color: -color-success-fg;
 }
 
-.log-line.warning {
-    -fx-text-fill: -color-warning-fg;
+.log-area .text.warning {
+    -fx-fill: -color-warning-fg;
 }
 
-.log-line.error {
-    -fx-text-fill: -color-danger-fg;
+.log-area .text.error {
+    -fx-fill: -color-danger-fg;
 }
 
-.log-line.success {
-    -fx-text-fill: -color-success-fg;
+.log-area .text.success {
+    -fx-fill: -color-success-fg;
 }
 
-.log-line.debug {
-    -fx-text-fill: -color-fg-subtle;
+.log-area .text.debug {
+    -fx-fill: -color-fg-subtle;
 }
 
 /* Statistics. */

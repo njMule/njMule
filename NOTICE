@@ -49,6 +49,9 @@ versions is generated at release time in THIRD-PARTY.txt.
     OpenJFX (JavaFX)            GPL-2.0 WITH Classpath-exception-2.0
     AtlantaFX                   MIT License
     Ikonli                      Apache License 2.0
+    RichTextFX, Flowless,       BSD 2-Clause License (RichTextFX also
+    ReactFX, UndoFX,            GPL-2.0 WITH Classpath-exception-2.0); used
+    WellBehavedFX               under BSD 2-Clause
     GraalVM Native Image        GPL-2.0 WITH Classpath-exception-2.0
     (Substrate VM runtime embedded in the native executables)
 

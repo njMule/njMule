@@ -24,6 +24,8 @@ module org.njmule.gui {
     requires atlantafx.base;
     requires org.kordamp.ikonli.javafx;
     requires org.kordamp.ikonli.material2;
+    requires org.fxmisc.richtext;
+    requires org.fxmisc.flowless;
 
     // javafx.graphics instantiates the Application subclass reflectively.
     exports org.njmule.gui to

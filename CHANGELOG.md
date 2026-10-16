@@ -522,6 +522,9 @@ All notable changes to this project are documented here. The format follows
 - The servers list takes the whole width: My Info moved to a tab beside the server messages and the
   log, its sections side by side, and the ways to add servers (a server.met from the web, an
   address, a server.met file) sit together in a section that is open while the list is empty.
+- The text of the server messages and of the log is chosen with the mouse, also across lines, and
+  copied with the system's shortcut or the context menu, which also chooses it all; the lines keep
+  their colours and icons.
 - The commands that act on the chosen downloads, shared files or search results are off while none
   is chosen, and More and Stop while no search is open; a line in the transfers tool row sets them
   apart from the commands on the whole list.

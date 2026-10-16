@@ -39,8 +39,6 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
-import javafx.scene.control.ListView;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.RadioMenuItem;
@@ -84,6 +82,7 @@ import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
+import org.njmule.gui.ui.LogView;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.TableLayout;
 import org.njmule.gui.ui.UrlBox;
@@ -109,6 +108,8 @@ public final class ServersScreen implements Screen {
     private Input<ServerAddress> addressInput;
     private UrlBox list;
     private TabPane logTabs;
+    private LogView<EngineModel.ServerNote> serverInfoView;
+    private LogView<LogLine> logView;
     private final Button connectButton = new Button();
     private final TextField filter = new TextField();
     private final Label count = new Label();
@@ -239,25 +240,20 @@ public final class ServersScreen implements Screen {
 
     // What the servers said and what happened, in two tabs; Reset empties the one shown.
     private Node logs() {
-        // Both logs read left to right, the lines starting on the left, in every language.
-        ListView<EngineModel.ServerNote> info =
-                Fx.leftToRight(new ListView<>(this.gui.model().serverInfo()));
-        info.getStyleClass().add("log-list");
-        info.setCellFactory(l -> new ServerNoteCell(this.gui));
-        this.gui
-                .subscriptions()
-                .onListChange(
-                        this.gui.model().serverInfo(),
-                        c -> info.scrollTo(info.getItems().size() - 1));
-        ListView<LogLine> log = Fx.leftToRight(new ListView<>(this.gui.model().log()));
-        log.getStyleClass().add("log-list");
-        log.setCellFactory(l -> new LogCell(this.gui.formats()));
-        this.gui
-                .subscriptions()
-                .onListChange(
-                        this.gui.model().log(), c -> log.scrollTo(log.getItems().size() - 1));
-        Tab infoTab = new Tab(this.gui.t("IDS_SV_SERVERINFO"), info);
-        Tab logTab = new Tab(this.gui.t("IDS_SV_LOG"), log);
+        // Both logs read left to right, the lines starting on the left, in every language; their text is chosen with
+        // the mouse.
+        String copy = this.gui.t("IDS_COPY");
+        String selectAll = this.gui.t("IDS_SELECTALL");
+        LogView<EngineModel.ServerNote> info = new LogView<>(n -> noteLine(this.gui, n), false, copy, selectAll);
+        info.setAll(this.gui.model().serverInfo());
+        this.gui.subscriptions().onListChange(this.gui.model().serverInfo(), c -> info.changed(c));
+        LogView<LogLine> log = new LogView<>(l -> logLine(this.gui.formats(), l), true, copy, selectAll);
+        log.setAll(this.gui.model().log());
+        this.gui.subscriptions().onListChange(this.gui.model().log(), c -> log.changed(c));
+        this.serverInfoView = info;
+        this.logView = log;
+        Tab infoTab = new Tab(this.gui.t("IDS_SV_SERVERINFO"), info.node());
+        Tab logTab = new Tab(this.gui.t("IDS_SV_LOG"), log.node());
         this.logTab = logTab;
         Tab mine = new Tab(this.gui.t("IDS_MYINFO"), this.myInfo.node());
         TabPane tabs = new TabPane(infoTab, logTab, mine);
@@ -677,72 +673,44 @@ public final class ServersScreen implements Screen {
         return this.address;
     }
 
-    /** An event after its date and time as the system shows them, with its level as style. */
-    static final class LogCell extends ListCell<LogLine> {
-        private final Formats formats;
-
-        LogCell(Formats formats) {
-            this.formats = formats;
-        }
-
-        @Override
-        protected void updateItem(LogLine line, boolean empty) {
-            super.updateItem(line, empty);
-            getStyleClass().removeAll("log-line", "debug", "info", "success", "warning", "error");
-            if (empty || line == null) {
-                setText(null);
-                setGraphic(null);
-                return;
-            }
-            setText(this.formats.dateTime(line.time()) + ": " + line.message());
-            setGraphic(icon(line.level()));
-            getStyleClass().addAll("log-line", line.level().name().toLowerCase(Locale.ROOT));
-        }
-
-        // Problems and successes carry an icon besides their colour; the other lines keep the same indent.
-        private static FontIcon icon(LogLine.Level level) {
-            FontIcon icon = new FontIcon(
-                    switch (level) {
-                        case ERROR -> Material2AL.ERROR_OUTLINE;
-                        case WARNING -> Material2MZ.WARNING;
-                        case SUCCESS -> Material2AL.CHECK_CIRCLE_OUTLINE;
-                        case INFO, DEBUG -> Material2AL.INFO;
-                    });
-            icon.getStyleClass().add("log-icon");
-            if (level == LogLine.Level.INFO || level == LogLine.Level.DEBUG) {
-                icon.getStyleClass().add("blank");
-            }
-            return icon;
-        }
+    /**
+     * An event after its date and time as the system shows them, with its level as style; problems and successes carry
+     * an icon besides their colour.
+     */
+    static LogView.Line logLine(Formats formats, LogLine line) {
+        Optional<Ikon> icon = switch (line.level()) {
+            case ERROR -> Optional.of(Material2AL.ERROR_OUTLINE);
+            case WARNING -> Optional.of(Material2MZ.WARNING);
+            case SUCCESS -> Optional.of(Material2AL.CHECK_CIRCLE_OUTLINE);
+            case INFO, DEBUG -> Optional.empty();
+        };
+        return new LogView.Line(
+                formats.dateTime(line.time()) + ": " + line.message(),
+                List.of(line.level().name().toLowerCase(Locale.ROOT)),
+                icon);
     }
 
     /** A session's start with its date and time, or a line the server sent as it is. */
-    static final class ServerNoteCell extends ListCell<EngineModel.ServerNote> {
-        private final Gui gui;
-
-        ServerNoteCell(Gui gui) {
-            this.gui = gui;
-        }
-
-        @Override
-        protected void updateItem(EngineModel.ServerNote note, boolean empty) {
-            super.updateItem(note, empty);
-            getStyleClass().removeAll("log-line", "success");
-            if (empty || note == null) {
-                setText(null);
-                return;
+    static LogView.Line noteLine(Gui gui, EngineModel.ServerNote note) {
+        return switch (note.kind()) {
+            case CONNECTED, CONNECTED_OBFUSCATED -> {
+                String key = note.kind() == EngineModel.ServerNote.Kind.CONNECTED
+                        ? "IDS_CONNECTEDTO"
+                        : "IDS_CONNECTEDTOOBFUSCATED";
+                yield new LogView.Line(
+                        gui.formats().dateTime(note.time()) + ": " + gui.f(key, note.text()),
+                        List.of("success"),
+                        Optional.empty());
             }
-            getStyleClass().add("log-line");
-            switch (note.kind()) {
-                case CONNECTED, CONNECTED_OBFUSCATED -> {
-                    String key = note.kind() == EngineModel.ServerNote.Kind.CONNECTED
-                            ? "IDS_CONNECTEDTO"
-                            : "IDS_CONNECTEDTOOBFUSCATED";
-                    setText(this.gui.formats().dateTime(note.time()) + ": " + this.gui.f(key, note.text()));
-                    getStyleClass().add("success");
-                }
-                default -> setText(note.text());
-            }
-        }
+            default -> new LogView.Line(note.text(), List.of(), Optional.empty());
+        };
+    }
+
+    LogView<EngineModel.ServerNote> serverInfoView() {
+        return this.serverInfoView;
+    }
+
+    LogView<LogLine> logView() {
+        return this.logView;
     }
 }

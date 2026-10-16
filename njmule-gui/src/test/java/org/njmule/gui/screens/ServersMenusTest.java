@@ -29,7 +29,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ContextMenu;
-import javafx.scene.control.ListView;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.RadioMenuItem;
@@ -361,9 +360,7 @@ class ServersMenusTest {
     }
 
     private void givenTheLogShowsTheWarning() throws Exception {
-        ListView<?> log = FxTesting.onFx(
-                () -> (ListView<?>) this.screen.logTabs().getTabs().get(1).getContent());
-        FxTesting.await("the warning", () -> log.lookupAll(".warning").size() == 1);
+        FxTesting.await("the warning", () -> this.screen.logView().count("warning") == 1);
     }
 
     private void whenConnectOrDisconnectIsPressed() throws Exception {
@@ -460,17 +457,17 @@ class ServersMenusTest {
     }
 
     private void thenTheServerInfoShowsTheSessions() throws Exception {
-        ListView<?> info = serverInfo();
-        FxTesting.assertEventually(
-                "the sessions",
-                () -> FxTesting.cellTexts(info).stream().anyMatch(t -> t.contains("Obfuscated connection established"))
-                        && FxTesting.cellTexts(info).stream().anyMatch(t -> t.contains("Connection established"))
-                        && FxTesting.cellTexts(info).contains("Welcome to Big"));
+        FxTesting.assertEventually("the sessions", () -> {
+            List<String> lines = List.of(this.screen.serverInfoView().text().split("\n"));
+            return lines.stream().anyMatch(t -> t.contains("Obfuscated connection established"))
+                    && lines.stream().anyMatch(t -> t.contains("Connection established"))
+                    && lines.contains("Welcome to Big");
+        });
     }
 
     private void thenTheServerInfoShowsSuccesses(int count) throws Exception {
-        ListView<?> info = serverInfo();
-        assertThat(FxTesting.onFx(() -> info.lookupAll(".success").size())).isEqualTo(count);
+        assertThat(FxTesting.onFx(() -> this.screen.serverInfoView().count("success")))
+                .isEqualTo(count);
     }
 
     private void thenTheServerInfoIsEmpty() throws Exception {
@@ -495,11 +492,6 @@ class ServersMenusTest {
 
     private ContextMenu menu() {
         return this.screen.table().getContextMenu();
-    }
-
-    private ListView<?> serverInfo() throws Exception {
-        return FxTesting.onFx(
-                () -> (ListView<?>) this.screen.logTabs().getTabs().getFirst().getContent());
     }
 
     private ServersScreen screen() throws Exception {

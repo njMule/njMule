@@ -16988,6 +16988,10 @@
       "glob": "org/eclipse/jetty/version/build.properties"
     },
     {
+      "module": "org.fxmisc.richtext",
+      "glob": "org/fxmisc/richtext/styled-text-area.css"
+    },
+    {
       "module": "org.kordamp.ikonli.core",
       "glob": "META-INF/resources/ikonli/0.0.0/fonts/ikonli.ttf"
     },

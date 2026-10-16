@@ -42,6 +42,7 @@ dependencies {
     implementation(libs.atlantafx.base)
     implementation(libs.ikonli.javafx)
     implementation(libs.ikonli.material2.pack)
+    implementation(libs.richtextfx)
 
     testImplementation(project(":njmule-testkit"))
     testImplementation(libs.junit.jupiter)
