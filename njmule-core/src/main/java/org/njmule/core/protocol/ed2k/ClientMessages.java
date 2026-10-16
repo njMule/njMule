@@ -97,17 +97,10 @@ public final class ClientMessages {
             return (BitSet) this.parts.clone();
         }
 
+        // BitSet's byte layout is the protocol's: lowest bit first, eight parts a byte.
         public void write(PacketWriter out) {
             out.count16(this.partCount);
-            for (int i = 0; i < this.partCount; i += 8) {
-                int bits = 0;
-                for (int b = 0; b < 8 && i + b < this.partCount; b++) {
-                    if (this.parts.get(i + b)) {
-                        bits |= 1 << b;
-                    }
-                }
-                out.u8(bits);
-            }
+            out.bytes(Arrays.copyOf(this.parts.get(0, this.partCount).toByteArray(), (this.partCount + 7) / 8));
         }
 
         public static PartStatus read(PacketReader in) throws DecodeException {
@@ -115,14 +108,10 @@ public final class ClientMessages {
             if (count > MAX_PARTS) {
                 throw new DecodeException("part count " + count + " exceeds any file size");
             }
-            BitSet parts = new BitSet(count);
-            for (int i = 0; i < count; i += 8) {
-                int bits = in.u8();
-                for (int b = 0; b < 8 && i + b < count; b++) {
-                    if ((bits & 1 << b) != 0) {
-                        parts.set(i + b);
-                    }
-                }
+            BitSet parts = BitSet.valueOf(in.bytes((count + 7) / 8));
+            // The padding bits of the last byte name no part.
+            if (parts.length() > count) {
+                parts.clear(count, parts.length());
             }
             return new PartStatus(count, parts);
         }
@@ -153,13 +142,13 @@ public final class ClientMessages {
 
         /** The data parts it has, for a file of {@code size}. */
         public BitSet dataParts(long size) {
-            BitSet result = new BitSet();
-            for (int part = 0; part < Ed2k.partCount(size); part++) {
-                if (has(part)) {
-                    result.set(part);
-                }
+            int count = Ed2k.partCount(size);
+            if (this.partCount != 0) {
+                return this.parts.get(0, count);
             }
-            return result;
+            BitSet all = new BitSet(count);
+            all.set(0, count);
+            return all;
         }
 
         @Override

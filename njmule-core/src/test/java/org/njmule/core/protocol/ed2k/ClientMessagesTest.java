@@ -23,8 +23,10 @@ import java.util.BitSet;
 import java.util.Collections;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.SplittableRandom;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
+import net.jqwik.api.constraints.IntRange;
 import net.jqwik.api.constraints.Size;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -82,6 +84,28 @@ class ClientMessagesTest {
         thenTheDecodedStatusHasPart(2);
         thenTheDecodedStatusLacksPart(1);
         thenTheDecodedStatusHasPart(9);
+    }
+
+    @Property
+    void shouldDecodeTheFileStatusItEncodes(@ForAll @IntRange(min = 1, max = 400) int partCount, @ForAll long seed)
+            throws DecodeException {
+        givenAFileStatusOfRandomParts(partCount, seed);
+        givenTheFileStatusIsEncoded();
+
+        whenTheFileStatusIsDecoded();
+
+        thenTheDecodedStatusIsTheEncodedOne();
+    }
+
+    @Test
+    void shouldIgnoreThePaddingBitsOfTheLastByte() throws DecodeException {
+        givenAFileStatusOfParts(10, 0, 2, 9);
+        givenTheFileStatusIsEncoded();
+        givenThePaddingBitsOfItsLastByteAreSet();
+
+        whenTheFileStatusIsDecoded();
+
+        thenTheDecodedStatusIsTheEncodedOne();
     }
 
     @Test
@@ -415,6 +439,23 @@ class ClientMessagesTest {
         this.status = new ClientMessages.FileStatus(FILE, partCount, bits);
     }
 
+    private void givenAFileStatusOfRandomParts(int partCount, long seed) {
+        SplittableRandom random = new SplittableRandom(seed);
+        BitSet bits = new BitSet();
+        for (int part = 0; part < partCount; part++) {
+            if (random.nextBoolean()) {
+                bits.set(part);
+            }
+        }
+        this.status = new ClientMessages.FileStatus(FILE, partCount, bits);
+    }
+
+    private void givenThePaddingBitsOfItsLastByteAreSet() {
+        byte[] payload = this.packet.payload();
+        payload[payload.length - 1] |= (byte) 0xFC;
+        this.packet = Packet.of(this.packet.protocol(), this.packet.opcode(), payload);
+    }
+
     private void givenTheFileStatusIsEncoded() {
         this.packet = this.status.encode();
     }
@@ -579,6 +620,11 @@ class ClientMessagesTest {
 
     private void thenThePacketLengthIs(int length) {
         assertThat(this.packet.length()).isEqualTo(length);
+    }
+
+    private void thenTheDecodedStatusIsTheEncodedOne() {
+        assertThat(this.decodedStatus.partCount()).isEqualTo(this.status.partCount());
+        assertThat(this.decodedStatus.parts()).isEqualTo(this.status.parts());
     }
 
     private void thenTheDecodedStatusHasPart(int index) {
