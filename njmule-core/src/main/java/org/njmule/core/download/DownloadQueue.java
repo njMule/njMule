@@ -26,7 +26,6 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -579,21 +578,27 @@ public final class DownloadQueue implements AutoCloseable {
         }
     }
 
-    // The files go once set aside, which is once the download's disk thread is done with them.
+    // The files go once set aside, which is once the download's disk thread is done with them; off the engine thread,
+    // as a file another program holds is waited for.
     private void deleteLater(Withdrawn kept) {
         PartFile file = kept.download().file;
         this.cancelled.removeIf(CompletableFuture::isDone);
-        this.cancelled.add(kept.setAside().handle((ok, failure) -> {
-            deleteFiles(file.metFile(), file.dataFile());
-            return null;
-        }));
+        this.cancelled.add(kept.setAside()
+                .handleAsync(
+                        (ok, failure) -> {
+                            deleteFiles(file.metFile(), file.dataFile());
+                            return null;
+                        },
+                        task -> Thread.ofVirtual()
+                                .name("njmule-cancelled-files")
+                                .start(task)));
     }
 
     private static void setAside(Path met) {
         for (Path file : List.of(met, AtomicFiles.bakPath(met.toAbsolutePath()))) {
             try {
                 if (Files.exists(file)) {
-                    Files.move(file, aside(file), StandardCopyOption.REPLACE_EXISTING);
+                    AtomicFiles.move(file, aside(file));
                 }
             } catch (IOException e) {
                 logger.warn("Cannot set {} aside", file, e);
@@ -604,7 +609,7 @@ public final class DownloadQueue implements AutoCloseable {
     private static void takeBack(Path met) throws IOException {
         for (Path file : List.of(met, AtomicFiles.bakPath(met.toAbsolutePath()))) {
             if (Files.exists(aside(file))) {
-                Files.move(aside(file), file, StandardCopyOption.REPLACE_EXISTING);
+                AtomicFiles.move(aside(file), file);
             }
         }
     }
@@ -613,13 +618,15 @@ public final class DownloadQueue implements AutoCloseable {
         return file.resolveSibling(file.getFileName() + SET_ASIDE);
     }
 
+    // The set-aside mets go last: while one is left, the next start deletes the rest, and the number stays taken.
     private static void deleteFiles(Path met, Path data) {
         Path bak = AtomicFiles.bakPath(met.toAbsolutePath());
-        for (Path file : List.of(met, bak, aside(met), aside(bak), data)) {
+        for (Path file : List.of(data, met, bak, aside(bak), aside(met))) {
             try {
-                Files.deleteIfExists(file);
+                AtomicFiles.delete(file);
             } catch (IOException e) {
-                logger.warn("Cannot delete {}", file, e);
+                logger.warn("Cannot delete {}; the next start tries again", file, e);
+                return;
             }
         }
     }
@@ -1029,6 +1036,8 @@ public final class DownloadQueue implements AutoCloseable {
         return Files.exists(met)
                 || Files.exists(AtomicFiles.bakPath(met))
                 || Files.exists(AtomicFiles.tmpPath(met))
+                || Files.exists(aside(met))
+                || Files.exists(aside(AtomicFiles.bakPath(met)))
                 || Files.exists(this.tempDir.resolve(base + PartFile.DATA_SUFFIX));
     }
 }

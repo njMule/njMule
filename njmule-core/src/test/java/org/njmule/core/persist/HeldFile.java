@@ -29,6 +29,7 @@ import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -74,6 +75,55 @@ final class HeldFile implements AutoCloseable {
             assumeFalse(true, "this user reads any file");
         }
         return holding;
+    }
+
+    /**
+     * Keeps a file from being deleted: on Windows by denying its deletion and that of its folder's entries, elsewhere
+     * by making its folder read-only.
+     */
+    static HeldFile holdFromDeletion(Path file) throws IOException {
+        Path folder = file.toAbsolutePath().getParent();
+        AclFileAttributeView fileAcl = Files.getFileAttributeView(file, AclFileAttributeView.class);
+        AclFileAttributeView folderAcl = Files.getFileAttributeView(folder, AclFileAttributeView.class);
+        PosixFileAttributeView posix = Files.getFileAttributeView(folder, PosixFileAttributeView.class);
+        HeldFile holding;
+        if (fileAcl != null && folderAcl != null) {
+            List<AclEntry> fileBefore = fileAcl.getAcl();
+            List<AclEntry> folderBefore = folderAcl.getAcl();
+            fileAcl.setAcl(denying(fileAcl, AclEntryPermission.DELETE, fileBefore));
+            folderAcl.setAcl(denying(folderAcl, AclEntryPermission.DELETE_CHILD, folderBefore));
+            holding = new HeldFile(() -> {
+                folderAcl.setAcl(folderBefore);
+                fileAcl.setAcl(fileBefore);
+            });
+        } else {
+            assumeTrue(posix != null, "no way to hold a file here");
+            Set<PosixFilePermission> before = posix.readAttributes().permissions();
+            Set<PosixFilePermission> readOnly = EnumSet.copyOf(before);
+            readOnly.removeAll(Set.of(
+                    PosixFilePermission.OWNER_WRITE,
+                    PosixFilePermission.GROUP_WRITE,
+                    PosixFilePermission.OTHERS_WRITE));
+            posix.setPermissions(readOnly);
+            holding = new HeldFile(() -> posix.setPermissions(before));
+        }
+        if (Files.isWritable(folder) && fileAcl == null) {
+            holding.close();
+            assumeFalse(true, "this user writes any folder");
+        }
+        return holding;
+    }
+
+    private static List<AclEntry> denying(
+            AclFileAttributeView acl, AclEntryPermission permission, List<AclEntry> before) throws IOException {
+        List<AclEntry> denied = new ArrayList<>();
+        denied.add(AclEntry.newBuilder()
+                .setType(AclEntryType.DENY)
+                .setPrincipal(acl.getOwner())
+                .setPermissions(permission)
+                .build());
+        denied.addAll(before);
+        return denied;
     }
 
     /** Lets the file be read again, from any thread; closing does the same. */

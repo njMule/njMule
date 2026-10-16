@@ -277,8 +277,51 @@ class AtomicFilesTest {
         thenALeftoverWasCleanedUp(false);
     }
 
+    @Test
+    void shouldDeleteAFileHeldForAMomentOnceItIsFree() throws IOException {
+        givenTheFileInAFolderOfItsOwn("001.part");
+        givenTheVersionsWritten("data");
+        givenTheFileHeldFromDeletion();
+        givenThePrimaryReleasedAfterMillis(60);
+
+        whenTheFileIsDeleted();
+
+        thenNoExceptionOccurred();
+        thenTheFileIsGone();
+    }
+
+    @Test
+    void shouldFailToDeleteAFileHeldLonger() throws IOException {
+        givenTheFileInAFolderOfItsOwn("001.part");
+        givenTheVersionsWritten("data");
+        givenTheFileHeldFromDeletion();
+
+        whenTheFileIsDeleted();
+
+        thenExceptionOccurred(FileSystemException.class);
+    }
+
+    @Test
+    void shouldDeleteNothingWhenTheFileIsMissing() {
+        givenTheFile("001.part");
+
+        whenTheFileIsDeleted();
+
+        thenNoExceptionOccurred();
+        thenTheFileIsGone();
+    }
+
     private void givenTheFile(String name) {
         this.file = this.dir.resolve(name);
+    }
+
+    // Held from deletion through its folder, which must hold nothing else of the test.
+    private void givenTheFileInAFolderOfItsOwn(String name) throws IOException {
+        this.file = Files.createDirectory(this.dir.resolve("held")).resolve(name);
+    }
+
+    private void givenTheFileHeldFromDeletion() throws IOException {
+        this.held = HeldFile.holdFromDeletion(this.file);
     }
 
     private void givenTheVersionsWritten(String... versions) throws IOException {
@@ -412,6 +455,14 @@ class AtomicFilesTest {
         }
     }
 
+    private void whenTheFileIsDeleted() {
+        try {
+            AtomicFiles.delete(this.file);
+        } catch (IOException e) {
+            this.exception = e;
+        }
+    }
+
     private void whenTheInterruptedWriteIsCleanedUp() {
         this.cleanedUp = AtomicFiles.cleanupInterruptedWrite(this.file);
     }
@@ -468,6 +519,14 @@ class AtomicFilesTest {
 
     private void thenALeftoverWasCleanedUp(boolean expected) {
         assertThat(this.cleanedUp).isEqualTo(expected);
+    }
+
+    private void thenTheFileIsGone() {
+        assertThat(this.file).doesNotExist();
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
     }
 
     private void thenExceptionOccurred(Class<? extends Exception> type) {

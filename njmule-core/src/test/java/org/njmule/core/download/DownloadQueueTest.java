@@ -505,6 +505,18 @@ class DownloadQueueTest {
         thenNothingIsTakenBack();
     }
 
+    // What a cancel set aside goes last: until then the next start deletes it, and no new download may take its number.
+    @Test
+    void shouldNotGiveANewDownloadTheNumberOfAMetSetAsideByACancel() throws Exception {
+        givenAQueue();
+        givenOnlyTheSetAsideMetLeftForTheNumber(1);
+
+        whenADownloadIsAdded("new.bin", 1000, Hash16.parseHex("35".repeat(16)));
+
+        thenItsNumberIs(2);
+        thenTheQueueCloses();
+    }
+
     @Test
     void shouldDeleteWhatACancelKeptWhenNjMuleStopped() throws Exception {
         givenTheFilesACancelKeptForTheNumber(7);
@@ -544,6 +556,11 @@ class DownloadQueueTest {
         Files.write(temp.resolve(base + PartFile.MET_SUFFIX + ".cancelled"), new byte[] {1});
         Files.write(temp.resolve(base + PartFile.MET_SUFFIX + ".bak.cancelled"), new byte[] {1});
         Files.write(temp.resolve(base + PartFile.DATA_SUFFIX), new byte[] {1});
+    }
+
+    private void givenOnlyTheSetAsideMetLeftForTheNumber(int number) throws IOException {
+        Path temp = Files.createDirectories(this.dir.resolve("temp"));
+        Files.write(temp.resolve(PartFile.fileName(number) + PartFile.MET_SUFFIX + ".cancelled"), new byte[] {1});
     }
 
     private void whenTheDownloadIsTakenBack() throws Exception {

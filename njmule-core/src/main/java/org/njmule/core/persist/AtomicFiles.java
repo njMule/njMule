@@ -23,6 +23,7 @@ import java.io.OutputStream;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -248,6 +249,23 @@ public final class AtomicFiles {
                 }
             }
             pause(delay, to);
+            delay *= 2;
+        }
+    }
+
+    /** Deletes {@code file} if it is there, retrying as {@link #move} does while another program holds it. */
+    public static void delete(Path file) throws IOException {
+        long delay = FIRST_RETRY_DELAY_MILLIS;
+        for (int attempt = 1; ; attempt++) {
+            try {
+                Files.deleteIfExists(file);
+                return;
+            } catch (FileSystemException e) {
+                if (attempt >= MOVE_ATTEMPTS || e instanceof DirectoryNotEmptyException) {
+                    throw e;
+                }
+            }
+            pause(delay, file);
             delay *= 2;
         }
     }
