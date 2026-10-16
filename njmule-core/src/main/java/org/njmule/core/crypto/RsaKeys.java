@@ -52,6 +52,7 @@ public final class RsaKeys {
     // Bounds the DER parser input: a 4096-bit PKCS#8 key is about 2.4 KB.
     private static final int MAX_ENCODED_SIZE = 4096;
     private static final int BASE64_LINE = 72;
+    private static final byte[] LINE_END = {'\n'};
 
     private RsaKeys() {}
 
@@ -131,12 +132,9 @@ public final class RsaKeys {
 
     /** Writes the key as Base64 in lines of 72 characters, crash-safely. */
     public static void writeKeyFile(Path file, PrivateKey key) throws IOException {
-        String base64 = Base64.getEncoder().encodeToString(encodePrivate(key));
-        StringBuilder text = new StringBuilder(base64.length() + base64.length() / BASE64_LINE + 2);
-        for (int i = 0; i < base64.length(); i += BASE64_LINE) {
-            text.append(base64, i, Math.min(base64.length(), i + BASE64_LINE)).append('\n');
-        }
-        AtomicFiles.writeSecret(file, text.toString().getBytes(StandardCharsets.US_ASCII));
+        // The MIME encoder puts the line end between lines only.
+        String text = Base64.getMimeEncoder(BASE64_LINE, LINE_END).encodeToString(encodePrivate(key)) + "\n";
+        AtomicFiles.writeSecret(file, text.getBytes(StandardCharsets.US_ASCII));
     }
 
     // The parser reads only from the array, so lengths inside the DER cannot make it allocate more.

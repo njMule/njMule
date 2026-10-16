@@ -33,6 +33,7 @@ import java.security.KeyPairGenerator;
 import java.security.SecureRandom;
 import java.security.Signature;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 import net.jqwik.api.ForAll;
@@ -149,6 +150,8 @@ class RsaTest {
         whenTheNetworkKeyIsWrittenToTheFile("cryptkey.dat");
 
         thenNoLineOfTheFileIsLongerThan(72);
+        thenEveryLineButTheLastIsExactly(72);
+        thenTheFileEndsWithALineEnd();
         thenTheFileReadsBackTheNetworkKey();
     }
 
@@ -404,6 +407,16 @@ class RsaTest {
     private void thenNoLineOfTheFileIsLongerThan(int length) throws IOException {
         assertThat(Files.readAllLines(this.keyFile))
                 .allSatisfy(line -> assertThat(line.length()).isLessThanOrEqualTo(length));
+    }
+
+    private void thenEveryLineButTheLastIsExactly(int length) throws IOException {
+        List<String> lines = Files.readAllLines(this.keyFile);
+        assertThat(lines.subList(0, lines.size() - 1))
+                .allSatisfy(line -> assertThat(line).hasSize(length));
+    }
+
+    private void thenTheFileEndsWithALineEnd() throws IOException {
+        assertThat(Files.readString(this.keyFile)).endsWith("\n").doesNotEndWith("\n\n");
     }
 
     private void thenTheFileReadsBackTheNetworkKey() throws IOException {
