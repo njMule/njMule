@@ -111,7 +111,12 @@ final class HeldFile implements AutoCloseable {
                 AclFileAttributeView acl = Files.getFileAttributeView(file, AclFileAttributeView.class);
                 List<AclEntry> before = acl.getAcl();
                 acl.setAcl(denying(acl, AclEntryPermission.DELETE, before));
-                releases.add(() -> acl.setAcl(before));
+                // A file the hold failed to keep is gone, and so is its ACL.
+                releases.add(() -> {
+                    if (Files.exists(file)) {
+                        acl.setAcl(before);
+                    }
+                });
             }
             List<AclEntry> folderBefore = folderAcl.getAcl();
             folderAcl.setAcl(denying(folderAcl, AclEntryPermission.DELETE_CHILD, folderBefore));
