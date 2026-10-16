@@ -70,6 +70,7 @@ class DesktopAppFlowsTest {
     private Path config;
     private boolean delivered;
     private boolean mayExit;
+    private final List<Double> buttonWidths = new ArrayList<>();
     private TrayMenu menu;
     private final List<Stage> trayOwners = new ArrayList<>();
     private final AtomicBoolean minimised = new AtomicBoolean();
@@ -132,6 +133,16 @@ class DesktopAppFlowsTest {
         whenTheAppIsAskedToExit();
 
         thenTheAppMayExitWithoutAsking();
+    }
+
+    @Test
+    void shouldAskToExitWithButtonsNarrowerThanThePlatformsOwn() throws Exception {
+        givenAnAppWithoutLinks();
+        givenTheWindowShowed();
+
+        whenTheUserRefusesToExitLookingAtTheButtons();
+
+        thenTheButtonsAreAsWideAsEachOtherAndNarrowerThan(75);
     }
 
     @Test
@@ -403,6 +414,17 @@ class DesktopAppFlowsTest {
         this.delivered = LinkHandoff.deliver(this.config, List.of(links));
     }
 
+    private void whenTheUserRefusesToExitLookingAtTheButtons() throws Exception {
+        FxTesting.onFx(() -> {
+            FxTesting.answer(ButtonType.NO, pane -> {
+                pane.applyCss();
+                pane.layout();
+                pane.getButtonTypes().forEach(t -> this.buttonWidths.add(((Button) pane.lookupButton(t)).getWidth()));
+            });
+            this.mayExit = this.app.mayExit(this.stage);
+        });
+    }
+
     private void whenTheAppIsAskedToExit() throws Exception {
         this.mayExit = FxTesting.onFx(() -> this.app.mayExit(this.stage));
     }
@@ -455,6 +477,14 @@ class DesktopAppFlowsTest {
 
     private void thenTheWindowStillShows() throws Exception {
         assertThat(FxTesting.onFx(this.stage::isShowing)).isTrue();
+    }
+
+    // Windows' narrowest dialog button is 75 wide, Linux's 85.
+    private void thenTheButtonsAreAsWideAsEachOtherAndNarrowerThan(double platformWidth) {
+        assertThat(this.mayExit).as("refused").isFalse();
+        assertThat(this.buttonWidths).hasSize(2);
+        assertThat(this.buttonWidths.get(0)).isPositive().isEqualTo(this.buttonWidths.get(1));
+        assertThat(this.buttonWidths.get(0)).isLessThan(platformWidth);
     }
 
     private void thenTheAppMayExitWithoutAsking() {

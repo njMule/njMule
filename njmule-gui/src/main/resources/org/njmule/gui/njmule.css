@@ -492,12 +492,93 @@
     -fx-padding: 3 12 3 12;
 }
 
+/* Tabs drawn as tabs: each outlined with rounded top corners and apart from the next, the one shown on the surface of
+   its page, open to it and marked by the accent along its top. */
+.tab-pane:top > .tab-header-area {
+    -fx-padding: 4px 0 0 0;
+}
+
+.tab-pane:top > .tab-header-area > .tab-header-background {
+    -fx-background-color: -color-border-default, -color-bg-default;
+    -fx-background-insets: 0, 0 0 1px 0;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:top {
+    -fx-background-color: -color-border-default, -color-bg-subtle;
+    -fx-background-insets: 0 3px 0 0, 1px 4px 1px 1px;
+    -fx-background-radius: 6px 6px 0 0, 5px 5px 0 0;
+    -fx-padding: 0.2em 0.8em 0.2em 0.6em;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:top:hover {
+    -fx-background-color: -color-border-default, -color-bg-default;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:top:selected {
+    -fx-background-color: -nj-accent-strong, -color-border-default, -color-bg-default;
+    -fx-background-insets: 0 3px 0 0, 2px 3px 0 0, 2px 4px 0 1px;
+    -fx-background-radius: 6px 6px 0 0, 5px 5px 0 0, 5px 5px 0 0;
+}
+
+.tab-pane.dense > .tab-header-area > .headers-region > .tab:top {
+    -fx-padding: 0.1em 0.6em 0.1em 0.4em;
+}
+
 .screen-title {
     -fx-font-size: 1.35em;
     -fx-font-weight: bold;
     -fx-border-color: -nj-brand-accent;
     -fx-border-width: 0 0 0 4;
     -fx-padding: 0 0 0 8;
+}
+
+/* Buttons and the controls drawn like them with rounded corners, in every theme: the radius of the outline, then of
+   the fill inside it. A group of buttons rounds only its ends. */
+.button,
+.toggle-button,
+.menu-button,
+.split-menu-button,
+.combo-box-base,
+.choice-box {
+    -fx-background-radius: 6px, 5px;
+}
+
+.button.left-pill,
+.toggle-button.left-pill,
+.menu-button.left-pill,
+.split-menu-button.left-pill,
+.combo-box-base.left-pill,
+.choice-box.left-pill {
+    -fx-background-radius: 6px 0 0 6px, 5px 0 0 5px;
+}
+
+.button.center-pill,
+.toggle-button.center-pill,
+.menu-button.center-pill,
+.split-menu-button.center-pill,
+.combo-box-base.center-pill,
+.choice-box.center-pill {
+    -fx-background-radius: 0;
+}
+
+.button.right-pill,
+.toggle-button.right-pill,
+.menu-button.right-pill,
+.split-menu-button.right-pill,
+.combo-box-base.right-pill,
+.choice-box.right-pill {
+    -fx-background-radius: 0 6px 6px 0, 0 5px 5px 0;
+}
+
+/* The parts drawn inside the outline follow its corners. */
+.split-menu-button > .arrow-button,
+.split-menu-button:hover > .arrow-button,
+.split-menu-button:focused:hover > .arrow-button {
+    -fx-background-radius: 0 5px 5px 0;
+}
+
+.combo-box-base > .text-field {
+    -fx-background-radius: 6px 0 0 6px, 5px 0 0 5px;
 }
 
 /* The main action of a screen, and of a dialog: the logo's orange with dark text. */
@@ -539,6 +620,15 @@
 .tool-row {
     -fx-spacing: 8;
     -fx-alignment: center-left;
+}
+
+/* Dialogs hold a few words: their buttons are no taller than those need, and close below them. */
+.dialog-pane > .button-bar > .container {
+    -fx-padding: 1.25em 1em 1em 1em;
+}
+
+.dialog-pane > .button-bar > .container > .button {
+    -fx-padding: 4px 12px 4px 12px;
 }
 
 /* Log lines, by level. */

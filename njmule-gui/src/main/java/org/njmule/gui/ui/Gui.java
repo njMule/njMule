@@ -22,6 +22,7 @@ import java.util.function.Consumer;
 import javafx.geometry.NodeOrientation;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.TextInputDialog;
 import org.njmule.app.Autostart;
@@ -59,6 +60,9 @@ public record Gui(
         Subscriptions subscriptions,
         SoundPlayer sound,
         Optional<Autostart> autostart) {
+
+    // The platform's narrowest dialog button (75 to 85) is wide beside the short words of most of ours.
+    private static final double DIALOG_BUTTON_MIN_WIDTH = 64;
 
     /** Shows {@code text} with a button labelled {@code action} that runs {@code run}, while the message shows. */
     @FunctionalInterface
@@ -134,12 +138,15 @@ public record Gui(
     /**
      * Lays {@code dialog} out in the direction of the interface (it would follow its owner's, but the windows of the
      * notification area have none to give) and in the house style: the theme of the other windows, no question-mark
-     * picture, the question is in the words, and no header repeating the kind of alert. A header or picture set
-     * afterwards stays.
+     * picture, the question is in the words, no header repeating the kind of alert, and buttons sized to their words. A
+     * header or picture set afterwards stays.
      */
     public <D extends Dialog<?>> D dialog(D dialog) {
         this.themes.attach(dialog.getDialogPane().getScene());
         dialog.getDialogPane().setNodeOrientation(orientation());
+        if (dialog.getDialogPane().lookup(".button-bar") instanceof ButtonBar bar) {
+            bar.setButtonMinWidth(DIALOG_BUTTON_MIN_WIDTH);
+        }
         if (dialog instanceof TextInputDialog
                 || (dialog instanceof Alert alert && alert.getAlertType() == Alert.AlertType.CONFIRMATION)) {
             dialog.setGraphic(null);
