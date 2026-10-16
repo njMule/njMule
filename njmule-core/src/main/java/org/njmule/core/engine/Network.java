@@ -1789,15 +1789,20 @@ final class Network {
     }
 
     /**
-     * Tests our ports, a test already running included: the router asked again through UPnP when it is on, then a new
-     * login to the server and Kad's firewall checks. The future completes when the test is over.
+     * Tests our ports, a test already running on them included: the router asked again through UPnP when it is on, then
+     * a new login to the server and Kad's firewall checks. The future completes when the test is over.
      */
     CompletableFuture<PortTest> testPorts(Duration wait) {
-        if (this.portCheck != null && !this.portCheck.isOver()) {
-            return this.portCheck.done();
-        }
         boolean upnp = this.preferences.get().upnp() && this.listener != null && this.upnp.isPresent();
         int udp = this.kadSocket == null ? 0 : this.kadSocket.port();
+        if (this.portCheck != null && !this.portCheck.isOver()) {
+            if (this.portCheck.tests(listenPort(), udp, upnp)) {
+                return this.portCheck.done();
+            }
+            // Other ports: the test of those left ends as it stands.
+            this.portCheck.stop();
+            portTestDone(this.portCheck.state());
+        }
         this.portCheck =
                 new PortCheck(listenPort(), udp, upnp, Ticker.systemTicker().read(), wait);
         this.userLog.log(

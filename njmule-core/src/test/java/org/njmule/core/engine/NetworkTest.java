@@ -162,6 +162,8 @@ class NetworkTest {
     private int kadPort;
     private int newTcpPort;
     private PortTest portTest;
+    private CompletableFuture<PortTest> firstPortTest;
+    private CompletableFuture<PortTest> nextPortTest;
     private int newUdpPort;
     private byte[] remembered;
     private EngineEvent.ServerConnected connected;
@@ -623,6 +625,30 @@ class NetworkTest {
     }
 
     @Test
+    void shouldEndTheTestOfThePortsLeftForANewOneOnTheNewPorts() throws Exception {
+        givenKadIsEnabled();
+        givenAStartedNetwork();
+        givenAPortTestRuns();
+        givenThePortsWereMovedToFreeOnes();
+
+        whenThePortsAreTestedAgain();
+
+        thenTheFirstPortTestEnded();
+        thenTheNewPortTestRunsOnTheNewPorts();
+    }
+
+    @Test
+    void shouldJoinTheTestOfThePortsThatRunsOnTheSamePorts() throws Exception {
+        givenKadIsEnabled();
+        givenAStartedNetwork();
+        givenAPortTestRuns();
+
+        whenThePortsAreTestedAgain();
+
+        thenBothAskedTheSameTest();
+    }
+
+    @Test
     void shouldTellThePortsUnknownAtOnceWithoutAServerOrKad() throws Exception {
         givenAStartedNetwork();
 
@@ -909,6 +935,32 @@ class NetworkTest {
     private void whenThePortsAreTested() throws Exception {
         CompletableFuture<PortTest> test = onLoop(() -> this.network.testPorts(Duration.ofSeconds(20)));
         this.portTest = test.get(30, TimeUnit.SECONDS);
+    }
+
+    // Kad finds no node to test the ports in tests: the test runs on.
+    private void givenAPortTestRuns() throws Exception {
+        this.firstPortTest = onLoop(() -> this.network.testPorts(Duration.ofSeconds(30)));
+        assertThat(this.firstPortTest).isNotDone();
+    }
+
+    private void whenThePortsAreTestedAgain() throws Exception {
+        this.nextPortTest = onLoop(() -> this.network.testPorts(Duration.ofSeconds(30)));
+    }
+
+    private void thenTheFirstPortTestEnded() throws Exception {
+        assertThat(this.firstPortTest.get(10, TimeUnit.SECONDS).done()).isTrue();
+    }
+
+    private void thenTheNewPortTestRunsOnTheNewPorts() throws Exception {
+        assertThat(this.nextPortTest).isNotDone();
+        PortTest running = onLoop(this.network::portTest).orElseThrow();
+        assertThat(running.tcpPort()).isEqualTo(this.newTcpPort);
+        assertThat(running.udpPort()).isEqualTo(this.newUdpPort);
+        assertThat(running.done()).isFalse();
+    }
+
+    private void thenBothAskedTheSameTest() {
+        assertThat(this.nextPortTest).isSameAs(this.firstPortTest).isNotDone();
     }
 
     private void thenTheServerGotALoginAgain() throws InterruptedException {

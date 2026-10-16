@@ -154,7 +154,8 @@ public final class FirstRunWizard {
         this.up = RateField.line(gui, gui.t("nj.settings.uploadCapacity"));
         this.downInput = this.down.input();
         this.upInput = this.up.input();
-        this.portTest = new PortTestPane(gui, () -> this::ports);
+        this.portTest = new PortTestPane(
+                gui, () -> this::ports, this.tcp.textProperty(), this.udp.textProperty(), this.upnp.selectedProperty());
         this.pages.addAll(List.of(Page.START, Page.NICK, Page.FOLDERS, Page.CONNECTION));
         if (emule.isPresent()) {
             this.pages.add(Page.EMULE);

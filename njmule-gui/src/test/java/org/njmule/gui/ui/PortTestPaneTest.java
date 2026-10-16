@@ -23,7 +23,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.StringProperty;
 import javafx.scene.control.Label;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -47,7 +50,10 @@ class PortTestPaneTest {
 
     private TestGui test;
     private PortTestPane pane;
-    private final CompletableFuture<PortTest> outcome = new CompletableFuture<>();
+    private final List<CompletableFuture<PortTest>> outcomes =
+            List.of(new CompletableFuture<>(), new CompletableFuture<>());
+    private final AtomicInteger asked = new AtomicInteger();
+    private final StringProperty port = new SimpleStringProperty(Integer.toString(TCP));
     private final AtomicReference<PortTest> progress = new AtomicReference<>();
 
     @AfterEach
@@ -96,6 +102,29 @@ class PortTestPaneTest {
     }
 
     @Test
+    void shouldOfferANewTestWhenAPortChangesDuringOne() throws Exception {
+        givenThePaneForThePorts();
+        givenTheTestStarted();
+
+        whenThePortIsChangedTo(4712);
+
+        thenTheButtonCanTestAgain();
+    }
+
+    @Test
+    void shouldNotShowTheEndOfATestLeftForANewOne() throws Exception {
+        givenThePaneForThePorts();
+        givenTheTestStarted();
+        givenThePortChangedTo(4712);
+        givenTheTestStarted();
+
+        whenTheFirstTestEnds(new PortTest(TCP, UDP, Forwarding.OFF, "", Reach.OPEN, Reach.OPEN, true));
+
+        thenTheButtonWaitsForTheTest();
+        thenNoLineReads(reach("OPEN", "TCP", TCP));
+    }
+
+    @Test
     void shouldSayKadIsOffWhenThereIsNoUdpPortToTest() throws Exception {
         givenThePaneForThePorts();
         givenTheTestStarted();
@@ -112,12 +141,16 @@ class PortTestPaneTest {
                         real,
                         Map.of(
                                 "testPorts",
-                                args -> this.outcome,
+                                args -> this.outcomes.get(this.asked.getAndIncrement()),
                                 "portTest",
                                 args -> CompletableFuture.completedFuture(Optional.ofNullable(this.progress.get())))));
         this.pane = FxTesting.onFx(() -> new PortTestPane(
                 this.test.gui,
-                () -> p -> p.toBuilder().tcpPort(TCP).udpPort(UDP).build()));
+                () -> p -> p.toBuilder()
+                        .tcpPort(Integer.parseInt(this.port.get()))
+                        .udpPort(UDP)
+                        .build(),
+                this.port));
         this.test.show(this.pane.node());
     }
 
@@ -129,15 +162,30 @@ class PortTestPaneTest {
         whenTheTestIsStarted();
     }
 
+    private void givenThePortChangedTo(int tcp) throws Exception {
+        whenThePortIsChangedTo(tcp);
+    }
+
+    private void whenThePortIsChangedTo(int tcp) throws Exception {
+        FxTesting.onFx(() -> this.port.set(Integer.toString(tcp)));
+    }
+
     private void whenTheTestIsStarted() throws Exception {
+        int before = this.asked.get();
         FxTesting.onFx(this.pane::test);
-        FxTesting.await(
-                "the test asked for", () -> this.test.engine.preferences().tcpPort() == TCP);
+        FxTesting.await("the test asked for", () -> this.asked.get() > before);
+        assertThat(this.test.engine.preferences().tcpPort()).isEqualTo(Integer.parseInt(this.port.get()));
         FxTesting.await("the progress read", () -> this.progress.get() == null || isShown(this.pane.lines()));
     }
 
+    // The end comes to the FX thread before what is asked of it next.
+    private void whenTheFirstTestEnds(PortTest last) throws Exception {
+        this.outcomes.get(0).complete(last);
+        FxTesting.onFx(() -> null);
+    }
+
     private void whenTheTestEnds(PortTest last) throws Exception {
-        this.outcome.complete(last);
+        this.outcomes.get(0).complete(last);
         FxTesting.await("the end shown", () -> !this.pane.startButton().isDisabled());
     }
 
@@ -163,6 +211,12 @@ class PortTestPaneTest {
         assertThat(FxTesting.onFx(
                         () -> this.pane.lines().stream().map(Label::getText).toList()))
                 .containsExactlyElementsOf(expected);
+    }
+
+    private void thenNoLineReads(String text) throws Exception {
+        assertThat(FxTesting.onFx(
+                        () -> this.pane.lines().stream().map(Label::getText).toList()))
+                .doesNotContain(text);
     }
 
     private String reach(String state, String protocol, int port) {

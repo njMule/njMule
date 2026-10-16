@@ -24,6 +24,7 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
+import javafx.beans.Observable;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -60,12 +61,25 @@ public final class PortTestPane {
     private final VBox lines = new VBox(4, this.forwarding, this.tcp, this.udp);
     private final VBox node;
     private final Timeline poll = new Timeline(new KeyFrame(POLL, e -> read()));
+    private boolean testing;
+    // Which test the outcomes shown come from: the end of one left for a newer one is not shown.
+    private int run;
 
-    /** {@code settings} gives the change of the preferences the fields make, applied before each test. */
-    public PortTestPane(Gui gui, Supplier<UnaryOperator<Preferences>> settings) {
+    /**
+     * {@code settings} gives the change of the preferences the fields make, applied before each test; a change of
+     * {@code fields} while a test runs lets a new one start, on the ports then chosen.
+     */
+    public PortTestPane(Gui gui, Supplier<UnaryOperator<Preferences>> settings, Observable... fields) {
         this.gui = Objects.requireNonNull(gui, "gui");
         this.settings = Objects.requireNonNull(settings, "settings");
         this.start = Fx.button(gui.t("IDS_STARTTEST"), Material2MZ.NETWORK_CHECK, this::test);
+        for (Observable field : fields) {
+            field.addListener(o -> {
+                if (this.testing) {
+                    this.start.setDisable(false);
+                }
+            });
+        }
         this.running.getStyleClass().add("tab-spinner");
         this.running.setVisible(false);
         this.poll.setCycleCount(Timeline.INDEFINITE);
@@ -83,10 +97,12 @@ public final class PortTestPane {
 
     /** Applies the ports and starts the test, whose outcomes show as they come. */
     public void test() {
+        int mine = ++this.run;
+        this.testing = true;
         this.start.setDisable(true);
         this.running.setVisible(true);
         this.gui.model().updatePreferences(this.settings.get(), p -> {
-            this.gui.model().testPorts(this::finished);
+            this.gui.model().testPorts(test -> finished(mine, test));
             this.poll.play();
             read();
         });
@@ -104,7 +120,11 @@ public final class PortTestPane {
         this.gui.model().portTest(test -> test.filter(t -> !t.done()).ifPresent(this::show));
     }
 
-    private void finished(PortTest test) {
+    private void finished(int of, PortTest test) {
+        if (of != this.run) {
+            return;
+        }
+        this.testing = false;
         this.poll.stop();
         show(test);
         this.start.setDisable(false);

@@ -45,6 +45,7 @@ final class PortCheck {
 
     private final int tcpPort;
     private final int udpPort;
+    private final boolean upnp;
     private final long started;
     private final long deadline;
     private final CompletableFuture<PortTest> done = new CompletableFuture<>();
@@ -58,10 +59,16 @@ final class PortCheck {
     PortCheck(int tcpPort, int udpPort, boolean upnp, long now, Duration wait) {
         this.tcpPort = tcpPort;
         this.udpPort = udpPort;
+        this.upnp = upnp;
         this.started = now;
         this.deadline = now + wait.toNanos();
         this.forwarding = upnp ? Forwarding.ASKING : Forwarding.OFF;
         this.state = new PortTest(tcpPort, udpPort, this.forwarding, "", Reach.TESTING, Reach.TESTING, false);
+    }
+
+    /** Whether this test is of these ports, asked through UPnP or not. */
+    boolean tests(int tcpPort, int udpPort, boolean upnp) {
+        return this.tcpPort == tcpPort && this.udpPort == udpPort && this.upnp == upnp;
     }
 
     CompletableFuture<PortTest> done() {

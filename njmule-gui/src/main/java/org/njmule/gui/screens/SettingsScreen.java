@@ -369,7 +369,12 @@ public final class SettingsScreen implements Screen {
         grid.add(this.secureIdent, 1, row++);
         grid.add(this.credits, 1, row++);
         grid.add(this.upnp, 1, row++);
-        this.portTest = new PortTestPane(this.gui, () -> this::ports);
+        this.portTest = new PortTestPane(
+                this.gui,
+                () -> this::ports,
+                this.tcpPort.textProperty(),
+                this.udpPort.textProperty(),
+                this.upnp.selectedProperty());
         grid.add(this.portTest.node(), 1, row++);
         row = section(grid, row, this.gui.t("IDS_PW_SERVER"));
         Label retries = new Label(this.gui.t("IDS_PW_RETRIES"));

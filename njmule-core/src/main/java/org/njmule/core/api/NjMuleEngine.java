@@ -285,8 +285,8 @@ public interface NjMuleEngine extends AutoCloseable {
 
     /**
      * Tests our ports as the preferences give them: the router asked again through UPnP when it is on, then whether a
-     * server and Kad nodes reach them; completes when the test is over, within a few minutes. A test already running is
-     * joined.
+     * server and Kad nodes reach them; completes when the test is over, within a few minutes. A test already running on
+     * the same ports is joined; one on other ports ends as it stands.
      */
     CompletableFuture<PortTest> testPorts();
 
