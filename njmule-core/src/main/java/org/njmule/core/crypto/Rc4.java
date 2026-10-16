@@ -43,6 +43,19 @@ public final class Rc4 {
     public Rc4(byte[] key, int offset, int length) {
         try {
             this.cipher = Cipher.getInstance(ALGORITHM);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalArgumentException("cannot set up RC4: " + e.getMessage(), e);
+        }
+        rekey(key, offset, length);
+    }
+
+    /** Starts the key stream again from {@code key}, as a new instance would, without looking the cipher up again. */
+    public void rekey(byte[] key) {
+        rekey(key, 0, key.length);
+    }
+
+    private void rekey(byte[] key, int offset, int length) {
+        try {
             this.cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, offset, length, ALGORITHM));
         } catch (GeneralSecurityException e) {
             throw new IllegalArgumentException("cannot set up RC4: " + e.getMessage(), e);

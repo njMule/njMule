@@ -58,6 +58,19 @@ class Rc4Test {
     }
 
     @Property
+    void shouldStartAgainFromANewKeyAsANewInstanceWould(
+            @ForAll @Size(min = 5, max = 32) byte[] firstKey,
+            @ForAll @Size(min = 5, max = 32) byte[] nextKey,
+            @ForAll @IntRange(max = 300) int used) {
+        givenAnRc4WithTheKey(firstKey);
+        givenItSkipped(used);
+
+        whenItIsKeyedAgainWith(nextKey);
+
+        thenTheNextBytesAreTheKeyStreamAfter(0);
+    }
+
+    @Property
     void shouldSkipAsIfTheOutputWereDiscarded(
             @ForAll @Size(min = 5, max = 32) byte[] anyKey, @ForAll @IntRange(max = 10_000) int skip) {
         givenAnRc4WithTheKey(anyKey);
@@ -83,6 +96,11 @@ class Rc4Test {
     private void whenItIsAppliedToZeroBytes(int count) {
         this.output = new byte[count];
         this.rc4.apply(this.output, 0, this.output.length);
+    }
+
+    private void whenItIsKeyedAgainWith(byte[] bytes) {
+        this.key = bytes;
+        this.rc4.rekey(bytes);
     }
 
     private void whenItSkips(int count) {

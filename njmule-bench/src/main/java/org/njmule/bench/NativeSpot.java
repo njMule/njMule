@@ -61,6 +61,12 @@ public class NativeSpot {
         k.add(new Kernel("DatagramKeyBench.bouncyCastleReusedInstances", 1, "ns/op", d::bouncyCastleReusedInstances));
         k.add(new Kernel("DatagramKeyBench.handWrittenRc4", 1, "ns/op", d::handWrittenRc4));
 
+        DatagramDecodeBench g = new DatagramDecodeBench();
+        g.setUp();
+        k.add(new Kernel("DatagramDecodeBench.decodeKeyedByTheUserHash", 1, "ns/op", g::decodeKeyedByTheUserHash));
+        k.add(new Kernel("DatagramDecodeBench.decodeKeyedByTheVerifyKey", 1, "ns/op", g::decodeKeyedByTheVerifyKey));
+        k.add(new Kernel("DatagramDecodeBench.encryptForKad", 1, "ns/op", g::encryptForKad));
+
         ObfuscatedStreamBench o = new ObfuscatedStreamBench();
         o.setUp();
         k.add(new Kernel("ObfuscatedStreamBench.readJdkCipherInputStream", 1, "ops/s", o::readJdkCipherInputStream));

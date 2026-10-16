@@ -32,9 +32,11 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -88,6 +90,10 @@ class ObfuscationTest {
     private byte[] datagram;
     private Received received;
     private Throwable exception;
+    private final List<Packet> sentPackets = new ArrayList<>();
+    private final List<Kind> sentKinds = new ArrayList<>();
+    private final List<byte[]> sentDatagrams = new ArrayList<>();
+    private final List<List<Received>> decodedByThread = new ArrayList<>();
 
     @Test
     void shouldUseA768BitPrimeForTheDhGroup() {
@@ -249,6 +255,24 @@ class ObfuscationTest {
     }
 
     @Test
+    void shouldDecodeDatagramsOfEveryKeyOneAfterTheOtherOnOneThread() throws Exception {
+        givenDatagramsOfEveryKey(5);
+
+        whenThreadsDecodeThemAtOnce(1);
+
+        thenEveryThreadDecodedEachToItsPacketAndKind();
+    }
+
+    @Test
+    void shouldDecodeDatagramsOnManyThreadsAtOnce() throws Exception {
+        givenDatagramsOfEveryKey(200);
+
+        whenThreadsDecodeThemAtOnce(8);
+
+        thenEveryThreadDecodedEachToItsPacketAndKind();
+    }
+
+    @Test
     void shouldDecodeAPlainDatagram() throws DecodeException {
         givenThePacket(Protocol.EMULE, 0x90, 16);
         givenItIsSentInClear();
@@ -336,6 +360,24 @@ class ObfuscationTest {
     private void givenItIsEncryptedForKad(Optional<Hash16> receiverKadId, int receiverVerifyKey, int senderVerifyKey) {
         this.datagram = DatagramObfuscation.encryptForKad(
                 this.plain, receiverKadId, receiverVerifyKey, senderVerifyKey, RANDOM);
+    }
+
+    // Each round has a datagram keyed by the user hash, by the Kad id, by the verify key and one in clear.
+    private void givenDatagramsOfEveryKey(int rounds) {
+        for (int round = 0; round < rounds; round++) {
+            for (Kind kind : List.of(Kind.ED2K, Kind.KAD_ID_KEY, Kind.KAD_VERIFY_KEY, Kind.PLAIN)) {
+                givenThePacket(kind == Kind.ED2K || kind == Kind.PLAIN ? Protocol.EMULE : Protocol.KAD, 0x11, round);
+                switch (kind) {
+                    case ED2K -> givenItIsEncryptedForTheClient();
+                    case KAD_ID_KEY -> givenItIsEncryptedForKad(Optional.of(KAD_ID), 5, 6);
+                    case KAD_VERIFY_KEY -> givenItIsEncryptedForKad(Optional.empty(), 7, 8);
+                    default -> givenItIsSentInClear();
+                }
+                this.sentPackets.add(this.packet);
+                this.sentKinds.add(kind);
+                this.sentDatagrams.add(this.datagram);
+            }
+        }
     }
 
     private void givenItIsSentInClear() {
@@ -450,6 +492,24 @@ class ObfuscationTest {
         this.received = fromClient(this.datagram, SENDER_IP, KAD_ID, verifyKey);
     }
 
+    private void whenThreadsDecodeThemAtOnce(int threads) throws Exception {
+        try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
+            List<Future<List<Received>>> all = new ArrayList<>();
+            for (int t = 0; t < threads; t++) {
+                all.add(pool.submit(() -> {
+                    List<Received> decoded = new ArrayList<>();
+                    for (byte[] d : this.sentDatagrams) {
+                        decoded.add(fromClient(d, SENDER_IP, KAD_ID, 7));
+                    }
+                    return decoded;
+                }));
+            }
+            for (Future<List<Received>> f : all) {
+                this.decodedByThread.add(f.get(30, TimeUnit.SECONDS));
+            }
+        }
+    }
+
     private void whenTheDatagramIsDecodedFromTheServerWithTheKey(int serverKey) throws DecodeException {
         this.received = DatagramObfuscation.decodeFromServer(this.datagram, 0, this.datagram.length, serverKey);
     }
@@ -531,6 +591,13 @@ class ObfuscationTest {
 
     private void thenTheDatagramKindIs(Kind kind) {
         assertThat(this.received.kind()).isEqualTo(kind);
+    }
+
+    private void thenEveryThreadDecodedEachToItsPacketAndKind() {
+        for (List<Received> decoded : this.decodedByThread) {
+            assertThat(decoded).extracting(Received::packet).containsExactlyElementsOf(this.sentPackets);
+            assertThat(decoded).extracting(Received::kind).containsExactlyElementsOf(this.sentKinds);
+        }
     }
 
     private void thenTheDecodedPacketIsTheSentOne() {
