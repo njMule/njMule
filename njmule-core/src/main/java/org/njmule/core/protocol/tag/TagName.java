@@ -25,6 +25,15 @@ import java.util.Objects;
  */
 public record TagName(String raw) {
 
+    // Every numeric id made once: each tag read names one.
+    private static final TagName[] IDS = new TagName[0x100];
+
+    static {
+        for (int id = 0; id < IDS.length; id++) {
+            IDS[id] = new TagName(String.valueOf((char) id));
+        }
+    }
+
     public TagName {
         Objects.requireNonNull(raw, "raw");
         if (raw.length() > 0xFFFF) {
@@ -41,7 +50,7 @@ public record TagName(String raw) {
         if (id < 0 || id > 0xFF) {
             throw new IllegalArgumentException("tag id out of range: " + id);
         }
-        return new TagName(String.valueOf((char) id));
+        return IDS[id];
     }
 
     public static TagName of(String name) {
@@ -49,6 +58,9 @@ public record TagName(String raw) {
     }
 
     static TagName ofBytes(byte[] raw) {
+        if (raw.length == 1) {
+            return IDS[raw[0] & 0xFF];
+        }
         return new TagName(new String(raw, StandardCharsets.ISO_8859_1));
     }
 
