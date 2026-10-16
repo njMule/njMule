@@ -19,7 +19,6 @@ package org.njmule.testkit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -142,10 +141,7 @@ class SourceExchangeFlowTest {
     private NjMuleEngine engine(Path root, String extra) throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(root, true);
         Files.createDirectories(dirs.config());
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
         // The fake servers and peers listen on this machine's LAN address, which must be let in.
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),

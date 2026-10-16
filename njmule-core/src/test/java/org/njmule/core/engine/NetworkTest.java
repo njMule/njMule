@@ -50,6 +50,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
@@ -174,8 +175,8 @@ class NetworkTest {
         this.dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
         Files.createDirectories(this.dirs.config());
         this.preferences = Preferences.defaults().toBuilder()
-                .tcpPort(freeTcpPort())
-                .udpPort(freeUdpPort())
+                .tcpPort(FreePorts.tcp())
+                .udpPort(FreePorts.udp())
                 .kadEnabled(false)
                 .build();
         this.loop = EngineLoop.start();
@@ -1207,7 +1208,7 @@ class NetworkTest {
     }
 
     private void givenKadIsBootstrappedFromAFreePortOfThisMachine() throws Exception {
-        int port = freeUdpPort();
+        int port = FreePorts.udp();
         onLoop(() -> {
             this.network.kadBootstrap(Ipv4.of(127, 0, 0, 1), port);
             return null;
@@ -1454,7 +1455,7 @@ class NetworkTest {
     // Straight to the network: the preferences it reads stay as they were.
     private void whenTheSettingsMoveTheTcpPort() throws Exception {
         Preferences was = this.preferences;
-        Preferences now = was.toBuilder().tcpPort(freeTcpPort()).build();
+        Preferences now = was.toBuilder().tcpPort(FreePorts.tcp()).build();
         onLoop(() -> {
             this.network.reconfigure(was, now);
             return null;
@@ -1517,8 +1518,8 @@ class NetworkTest {
     }
 
     private void whenThePortsAreMovedToFreeOnes() throws Exception {
-        this.newTcpPort = freeTcpPort();
-        this.newUdpPort = freeUdpPort();
+        this.newTcpPort = FreePorts.tcp();
+        this.newUdpPort = FreePorts.udp();
         reconfigure(this.network, p -> p.tcpPort(this.newTcpPort).udpPort(this.newUdpPort));
     }
 
@@ -1619,7 +1620,7 @@ class NetworkTest {
     }
 
     private void whenWeSayHelloToNobody() throws IOException {
-        this.answer = this.network.hello(local(freeTcpPort()));
+        this.answer = this.network.hello(local(FreePorts.tcp()));
     }
 
     private void whenTheClientAnswersOurHelloUnreadably() throws IOException {
@@ -2023,17 +2024,5 @@ class NetworkTest {
         Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
         Files.createDirectories(tmp);
         Files.writeString(tmp.resolve("keep"), "x");
-    }
-
-    private static int freeTcpPort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
-    }
-
-    private static int freeUdpPort() throws IOException {
-        try (DatagramSocket probe = new DatagramSocket(0)) {
-            return probe.getLocalPort();
-        }
     }
 }

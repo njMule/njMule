@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -108,10 +107,10 @@ class WebUiServerTest {
         Files.createDirectories(dirs.config());
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + freePort() + "\nnet.ed2k.enabled=false\nnet.kad.enabled=false\n");
+                "net.tcpPort=" + FreePorts.tcp() + "\nnet.ed2k.enabled=false\nnet.kad.enabled=false\n");
         this.engine = NjMuleEngine.start(new EngineConfig(dirs));
         String hash = Passwords.hash("correct horse".toCharArray(), new byte[16], 1000);
-        this.ui = WebUi.start(this.engine, new WebUiSettings(true, freePort(), false, hash));
+        this.ui = WebUi.start(this.engine, new WebUiSettings(true, FreePorts.tcp(), false, hash));
     }
 
     // Raw bytes, as a caller may send what no well-behaved client would.
@@ -183,11 +182,5 @@ class WebUiServerTest {
     private void thenTheAnswerNamesNoServerSoftware() {
         String lower = this.answer.toLowerCase(Locale.ROOT);
         assertThat(lower).doesNotContain("server:").doesNotContain("jetty").doesNotContain("at org.");
-    }
-
-    private static int freePort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
     }
 }

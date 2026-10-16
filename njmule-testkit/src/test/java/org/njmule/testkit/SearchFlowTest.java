@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -161,10 +160,7 @@ class SearchFlowTest {
     private void givenNjMuleRunning() throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
         Files.writeString(
                 dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nsecurity.filterLan=false\n");
         this.engine = NjMuleEngine.start(new EngineConfig(dirs));

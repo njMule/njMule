@@ -19,10 +19,8 @@ package org.njmule.core.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,6 +29,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
@@ -68,16 +67,16 @@ class LiveSettingsTest {
     private void givenAnEngineListeningOnAFreeTcpPort() throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
-        this.firstPort = freeTcpPort();
+        this.firstPort = FreePorts.tcp();
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + this.firstPort + "\nnet.udpPort=" + freeUdpPort() + "\nnet.kad.enabled=false\n");
+                "net.tcpPort=" + this.firstPort + "\nnet.udpPort=" + FreePorts.udp() + "\nnet.kad.enabled=false\n");
         this.engine = NjMuleEngine.start(new EngineConfig(dirs));
         assertThat(accepts(this.firstPort)).isTrue();
     }
 
     private void givenTheTcpPortIsMovedToAnotherFreeOne() throws Exception {
-        int second = freeTcpPort();
+        int second = FreePorts.tcp();
 
         this.engine
                 .updatePreferences(p -> p.toBuilder().tcpPort(second).build())
@@ -130,18 +129,6 @@ class LiveSettingsTest {
             return true;
         } catch (IOException e) {
             return false;
-        }
-    }
-
-    private static int freeTcpPort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
-    }
-
-    private static int freeUdpPort() throws IOException {
-        try (DatagramSocket probe = new DatagramSocket(0)) {
-            return probe.getLocalPort();
         }
     }
 }

@@ -18,8 +18,6 @@ package org.njmule.webui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -140,7 +138,7 @@ class WebUiPagesTest {
 
     private void givenALoggedInUser() throws Exception {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, hash));
+        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, FreePorts.tcp(), false, hash));
         HttpResponse<String> in = post("/login", Map.of("password", PASSWORD));
         assertThat(in.statusCode()).isEqualTo(303);
         String set = in.headers().firstValue("Set-Cookie").orElseThrow();
@@ -252,11 +250,5 @@ class WebUiPagesTest {
             b.header("Cookie", this.cookie);
         }
         return b;
-    }
-
-    private static int freePort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
     }
 }

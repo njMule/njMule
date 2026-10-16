@@ -43,6 +43,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Friend;
@@ -249,9 +250,7 @@ class ChatTest {
     }
 
     private void givenAClosedPort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            this.closedPort = probe.getLocalPort();
-        }
+        this.closedPort = FreePorts.tcp();
     }
 
     private void givenAFriend(Hash16 hash, String nick) throws Exception {
@@ -406,10 +405,7 @@ class ChatTest {
         Files.createDirectories(dirs.config());
         Path props = dirs.config().resolve("njmule.properties");
         if (!Files.exists(props)) {
-            int port;
-            try (ServerSocket probe = new ServerSocket(0)) {
-                port = probe.getLocalPort();
-            }
+            int port = FreePorts.tcp();
             Files.writeString(
                     props, "net.tcpPort=" + port + "\nnet.kad.enabled=false\nuser.nick=" + nick + "\n" + extra);
         }

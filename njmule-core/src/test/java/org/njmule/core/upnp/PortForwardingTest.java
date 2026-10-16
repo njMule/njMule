@@ -19,7 +19,6 @@ package org.njmule.core.upnp;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
@@ -36,6 +35,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.njmule.core.FreePorts;
 
 @Timeout(30)
 class PortForwardingTest {
@@ -292,10 +292,7 @@ class PortForwardingTest {
     }
 
     private void givenADeviceThatCannotBeReadAnsweringFirst() throws IOException {
-        int closed;
-        try (ServerSocket gone = new ServerSocket(0)) {
-            closed = gone.getLocalPort();
-        }
+        int closed = FreePorts.tcp();
         this.gateway.othersAnswerFirst(List.of("http://127.0.0.1:" + closed + "/desc.xml"));
     }
 

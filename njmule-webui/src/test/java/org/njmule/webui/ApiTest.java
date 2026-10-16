@@ -22,7 +22,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -288,7 +287,7 @@ class ApiTest {
         this.fake.value("directories", dirs);
         this.ui = WebUi.start(
                 this.fake.engine(),
-                new WebUiSettings(true, freePort(), false, "pbkdf2-sha512$1$AA$AA", true),
+                new WebUiSettings(true, FreePorts.tcp(), false, "pbkdf2-sha512$1$AA$AA", true),
                 Optional.of(this.exited::countDown),
                 1,
                 Duration.ofSeconds(1));
@@ -296,7 +295,8 @@ class ApiTest {
     }
 
     private void givenTheWebInterfaceRunsWithoutTheApi() throws IOException {
-        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, "pbkdf2-sha512$1$AA$AA"));
+        this.ui = WebUi.start(
+                this.fake.engine(), new WebUiSettings(true, FreePorts.tcp(), false, "pbkdf2-sha512$1$AA$AA"));
     }
 
     private void givenWrongTokensSent(int count) throws Exception {
@@ -478,11 +478,5 @@ class ApiTest {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.ui.port() + path));
         token.ifPresent(t -> builder.header("Authorization", "Bearer " + t));
         return builder;
-    }
-
-    private static int freePort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
     }
 }

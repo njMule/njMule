@@ -19,7 +19,6 @@ package org.njmule.core.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -35,6 +34,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
@@ -103,8 +103,8 @@ class UpnpTest {
     }
 
     private void givenTheTcpPortIsChangedTwiceInARow() throws Exception {
-        int first = freeTcpPort();
-        int second = freeTcpPort();
+        int first = FreePorts.tcp();
+        int second = FreePorts.tcp();
         this.secondPort = second;
         CompletableFuture<Preferences> one =
                 this.engine.updatePreferences(p -> p.toBuilder().tcpPort(first).build());
@@ -152,14 +152,8 @@ class UpnpTest {
         Files.createDirectories(dirs.config());
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + freeTcpPort() + "\nnet.kad.enabled=false\nnet.upnp=true\n");
+                "net.tcpPort=" + FreePorts.tcp() + "\nnet.kad.enabled=false\nnet.upnp=true\n");
         return dirs;
-    }
-
-    private static int freeTcpPort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
     }
 
     private static boolean await(BooleanSupplier condition) throws InterruptedException {

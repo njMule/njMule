@@ -43,6 +43,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
@@ -1199,10 +1200,7 @@ class UploadQueueTest {
             new Random(5 + i).nextBytes(data);
             Files.write(incoming.resolve(i == 0 ? "queued.bin" : "other" + i + ".bin"), data);
         }
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
         Files.writeString(dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\n" + extra);
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         this.resources.add(engine);

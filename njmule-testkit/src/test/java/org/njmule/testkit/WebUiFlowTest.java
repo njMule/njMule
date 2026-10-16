@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -114,11 +113,13 @@ class WebUiFlowTest {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
         Files.writeString(
-                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + freePort() + "\nnet.kad.enabled=false\n");
+                dirs.config().resolve("njmule.properties"),
+                "net.tcpPort=" + FreePorts.tcp() + "\nnet.kad.enabled=false\n");
         this.engine = NjMuleEngine.start(new EngineConfig(dirs));
         this.ui = WebUi.start(
                 this.engine,
-                new WebUiSettings(true, freePort(), false, Passwords.hash(password.toCharArray(), new SecureRandom())));
+                new WebUiSettings(
+                        true, FreePorts.tcp(), false, Passwords.hash(password.toCharArray(), new SecureRandom())));
         this.port = this.ui.port();
     }
 
@@ -248,12 +249,6 @@ class WebUiFlowTest {
         while (!condition.getAsBoolean()) {
             assertThat(System.nanoTime()).as("waited too long").isLessThan(end);
             Thread.sleep(50);
-        }
-    }
-
-    private static int freePort() throws Exception {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
         }
     }
 }

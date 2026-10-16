@@ -19,7 +19,6 @@ package org.njmule.gui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import atlantafx.base.controls.Notification;
-import java.net.DatagramSocket;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,6 +51,7 @@ import org.njmule.app.LinkHandoff;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.shell.TrayMenu;
+import org.njmule.testkit.FreePorts;
 import org.njmule.webui.WebUiSettings;
 
 /** The desktop app around a real engine: links handed over, exit, the web interface and the window's settings. */
@@ -328,7 +328,7 @@ class DesktopAppFlowsTest {
     }
 
     private void givenTheWebInterfaceOnAFreePort() throws Exception {
-        new WebUiSettings(true, freePort(), false, "hash")
+        new WebUiSettings(true, FreePorts.tcp(), false, "hash")
                 .save(this.dir.resolve("njmule").resolve("config"));
     }
 
@@ -561,13 +561,10 @@ class DesktopAppFlowsTest {
     // An app in its own folder, on free ports and without Kad, with these interface settings.
     private DesktopApp open(Path root, String gui, String... links) throws Exception {
         Path config = Files.createDirectories(root.resolve("config"));
-        int udp;
-        try (DatagramSocket probe = new DatagramSocket(0)) {
-            udp = probe.getLocalPort();
-        }
+        int udp = FreePorts.udp();
         Files.writeString(
                 config.resolve("njmule.properties"),
-                "net.tcpPort=" + freePort() + "\nnet.udpPort=" + udp + "\nnet.kad.enabled=false\n");
+                "net.tcpPort=" + FreePorts.tcp() + "\nnet.udpPort=" + udp + "\nnet.kad.enabled=false\n");
         if (gui != null) {
             Files.writeString(Files.createDirectories(root.resolve("gui")).resolve(GuiSettings.FILE_NAME), gui);
         }
@@ -611,11 +608,5 @@ class DesktopAppFlowsTest {
             }
         }
         throw new AssertionError("no item " + item);
-    }
-
-    private static int freePort() throws Exception {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
     }
 }

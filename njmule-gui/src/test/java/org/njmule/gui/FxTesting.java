@@ -18,8 +18,6 @@ package org.njmule.gui;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.net.DatagramSocket;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -55,6 +53,7 @@ import javax.imageio.ImageIO;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.testkit.FreePorts;
 
 /** The JavaFX toolkit on the headless platform, and helpers to drive it from tests. */
 public final class FxTesting {
@@ -270,14 +269,8 @@ public final class FxTesting {
     public static NjMuleEngine engine(Path root) throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(root, true);
         Files.createDirectories(dirs.config());
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
-        int udp;
-        try (DatagramSocket probe = new DatagramSocket(0)) {
-            udp = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
+        int udp = FreePorts.udp();
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
                 // Fake servers listen on this machine's LAN address, which must be let in.

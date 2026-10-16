@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -77,7 +76,8 @@ class WebUiTest {
         AppDirectories dirs = AppDirectories.underRoot(dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
         Files.writeString(
-                dirs.config().resolve("njmule.properties"), "net.tcpPort=" + freePort() + "\nnet.kad.enabled=false\n");
+                dirs.config().resolve("njmule.properties"),
+                "net.tcpPort=" + FreePorts.tcp() + "\nnet.kad.enabled=false\n");
         engine = NjMuleEngine.start(new EngineConfig(dirs));
     }
 
@@ -383,7 +383,7 @@ class WebUiTest {
 
     private void givenTheWebInterfaceRunsWithTheHostNames(String... names) throws IOException {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        this.ui = WebUi.start(engine, new WebUiSettings(true, freePort(), false, hash, false, List.of(names)));
+        this.ui = WebUi.start(engine, new WebUiSettings(true, FreePorts.tcp(), false, hash, false, List.of(names)));
     }
 
     private void givenALoggedInUser() throws Exception {
@@ -398,7 +398,7 @@ class WebUiTest {
     private void givenTheWebInterfaceRunsBehindTheProxies(String... proxies) throws IOException {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
         this.ui = WebUi.start(
-                engine, new WebUiSettings(true, freePort(), false, hash, false, List.of(), List.of(proxies)));
+                engine, new WebUiSettings(true, FreePorts.tcp(), false, hash, false, List.of(), List.of(proxies)));
     }
 
     // Sent as a proxy forwards them, naming its client.
@@ -634,12 +634,6 @@ class WebUiTest {
         while (!condition.getAsBoolean()) {
             assertThat(System.nanoTime()).as("waited too long").isLessThan(end);
             Thread.sleep(50);
-        }
-    }
-
-    private static int freePort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
         }
     }
 }

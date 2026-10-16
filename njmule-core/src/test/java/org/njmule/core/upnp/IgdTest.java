@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
@@ -31,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.njmule.core.FreePorts;
 
 /** A gateway found on loopback (never the real router), and what makes one unusable. */
 @Timeout(60)
@@ -270,10 +270,7 @@ class IgdTest {
     }
 
     private void givenADeviceThatCannotBeReadAnsweringFirst(int times) throws IOException {
-        int closed;
-        try (ServerSocket gone = new ServerSocket(0)) {
-            closed = gone.getLocalPort();
-        }
+        int closed = FreePorts.tcp();
         this.gateway.othersAnswerFirst(Collections.nCopies(times, "http://127.0.0.1:" + closed + "/desc.xml"));
     }
 

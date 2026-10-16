@@ -19,7 +19,6 @@ package org.njmule.core.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,6 +31,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.NjMuleEngine;
@@ -83,11 +83,9 @@ class EngineImportManifestTest {
     private void givenNjMuleRunning() throws IOException {
         this.dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
         Files.createDirectories(this.dirs.config());
-        try (ServerSocket probe = new ServerSocket(0)) {
-            Files.writeString(
-                    this.dirs.config().resolve("njmule.properties"),
-                    "net.tcpPort=" + probe.getLocalPort() + "\nnet.ed2k.enabled=false\nnet.kad.enabled=false\n");
-        }
+        Files.writeString(
+                this.dirs.config().resolve("njmule.properties"),
+                "net.tcpPort=" + FreePorts.tcp() + "\nnet.ed2k.enabled=false\nnet.kad.enabled=false\n");
         this.engine = Engine.start(new EngineConfig(this.dirs), () -> false);
     }
 

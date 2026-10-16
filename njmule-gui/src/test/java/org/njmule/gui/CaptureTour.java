@@ -25,8 +25,6 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.DatagramSocket;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -111,6 +109,7 @@ import org.njmule.gui.shell.MiniMule;
 import org.njmule.gui.shell.TrayMenu;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Subscriptions;
+import org.njmule.testkit.FreePorts;
 
 /**
  * Pictures every screen, tab, menu, sub-menu, context menu, drop-down list, column menu, icon-button tooltip and dialog
@@ -213,14 +212,8 @@ class CaptureTour {
         AppDirectories dirs = AppDirectories.underRoot(root, true);
         Files.createDirectories(dirs.config());
         Files.createDirectories(dirs.gui());
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
-        int udp;
-        try (DatagramSocket probe = new DatagramSocket(0)) {
-            udp = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
+        int udp = FreePorts.udp();
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
                 "net.tcpPort=" + port + "\nnet.udpPort=" + udp + "\nnet.kad.enabled=false\nsecurity.filterLan=false\n"

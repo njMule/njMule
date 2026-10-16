@@ -33,6 +33,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
@@ -85,10 +86,7 @@ class FilterChangeTest {
     private void givenAProfileFilteringAtLevel(int level) throws IOException {
         this.dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
         Files.createDirectories(this.dirs.config());
-        int tcpPort;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            tcpPort = probe.getLocalPort();
-        }
+        int tcpPort = FreePorts.tcp();
         Files.writeString(
                 this.dirs.config().resolve("njmule.properties"),
                 "net.tcpPort=" + tcpPort + "\nnet.kad.enabled=false\nsecurity.ipFilterLevel=" + level + "\n");

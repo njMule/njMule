@@ -18,8 +18,6 @@ package org.njmule.gui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.net.DatagramSocket;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -38,6 +36,7 @@ import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.shell.TrayMenu;
+import org.njmule.testkit.FreePorts;
 
 @Timeout(60)
 class DesktopAppTest {
@@ -122,10 +121,7 @@ class DesktopAppTest {
 
     private void givenAnAppOnAFreeTcpPort() throws Exception {
         Path config = Files.createDirectories(this.dir.resolve("config"));
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
         Files.writeString(config.resolve("njmule.properties"), "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
         this.app = DesktopApp.open(LaunchOptions.parse("--config-dir", this.dir.toString()));
     }
@@ -292,14 +288,8 @@ class DesktopAppTest {
     // An app in the test's folder, on free ports and without Kad: never on the ports of a running eMule.
     private DesktopApp open() throws Exception {
         Path config = Files.createDirectories(this.dir.resolve("config"));
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
-        int udp;
-        try (DatagramSocket probe = new DatagramSocket(0)) {
-            udp = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
+        int udp = FreePorts.udp();
         Files.writeString(
                 config.resolve("njmule.properties"),
                 "net.tcpPort=" + port + "\nnet.udpPort=" + udp + "\nnet.kad.enabled=false\n");

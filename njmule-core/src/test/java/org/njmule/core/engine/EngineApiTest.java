@@ -21,8 +21,6 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.DatagramSocket;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
@@ -44,6 +42,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
@@ -450,9 +449,7 @@ class EngineApiTest {
     // A port free when probed may be taken by a test running beside before Kad binds it: then Kad gets another.
     private void givenARunningEngineWithKad() throws Exception {
         for (int attempt = 1; ; attempt++) {
-            try (DatagramSocket probe = new DatagramSocket(0)) {
-                this.kadPort = probe.getLocalPort();
-            }
+            this.kadPort = FreePorts.udp();
             this.engine = start("net.kad.enabled=true\nnet.udpPort=" + this.kadPort + "\n");
             if (attempt == 5 || this.engine.kad().get(5, TimeUnit.SECONDS).isPresent()) {
                 return;
@@ -848,10 +845,7 @@ class EngineApiTest {
     private AppDirectories dirs(String preferences) throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
         Files.createDirectories(dirs.config());
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
         Files.writeString(
                 dirs.config().resolve(PreferencesCodec.FILE_NAME),
                 "net.tcpPort=" + port + "\nnet.kad.enabled=false\n" + preferences);

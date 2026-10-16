@@ -23,7 +23,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -222,10 +221,7 @@ class CommandLineFlowTest {
     private Path configDir() throws IOException {
         Path root = this.dir.resolve("njmule");
         Files.createDirectories(root.resolve("config"));
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
         Files.writeString(root.resolve("config/njmule.properties"), "net.tcpPort=" + port + "\n");
         this.config = root;
         return root;

@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -166,10 +165,7 @@ class ObfuscatedServerUdpFlowTest {
     private NjMuleEngine engine() throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
                 "net.tcpPort=" + port + "\nnet.kad.enabled=false\nsecurity.filterLan=false\n");

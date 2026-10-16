@@ -33,6 +33,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
@@ -106,7 +107,7 @@ class EngineRoutesTest {
     }
 
     private void givenAPortNobodyListensOn() throws IOException {
-        this.closedPort = freePort();
+        this.closedPort = FreePorts.tcp();
     }
 
     private void givenNjMuleRunning(String name, String settings) throws IOException {
@@ -114,7 +115,7 @@ class EngineRoutesTest {
         Files.createDirectories(dirs.config());
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + freePort() + "\nnet.kad.enabled=false\n" + settings + "\n");
+                "net.tcpPort=" + FreePorts.tcp() + "\nnet.kad.enabled=false\n" + settings + "\n");
         this.engines.put(name, NjMuleEngine.start(new EngineConfig(dirs)));
     }
 
@@ -160,11 +161,5 @@ class EngineRoutesTest {
 
     private String socksProxyAtTheClosedPort() {
         return "proxy.host=127.0.0.1\nproxy.port=" + this.closedPort + "\nproxy.type=SOCKS";
-    }
-
-    private static int freePort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
     }
 }

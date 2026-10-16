@@ -18,8 +18,6 @@ package org.njmule.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.net.DatagramSocket;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -30,6 +28,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.Hash16;
@@ -90,13 +89,8 @@ class KadNotesEngineTest {
     private void givenAnEngineWithKad(boolean kad) throws Exception {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
         Files.createDirectories(dirs.config());
-        int tcp;
-        int udp;
-        try (ServerSocket probe = new ServerSocket(0);
-                DatagramSocket probeUdp = new DatagramSocket(0)) {
-            tcp = probe.getLocalPort();
-            udp = probeUdp.getLocalPort();
-        }
+        int tcp = FreePorts.tcp();
+        int udp = FreePorts.udp();
         Files.writeString(
                 dirs.config().resolve(PreferencesCodec.FILE_NAME),
                 "net.tcpPort=" + tcp + "\nnet.udpPort=" + udp + "\nnet.kad.enabled=" + kad + "\n");

@@ -592,9 +592,7 @@ class MainTest {
     }
 
     private void givenAFreePort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            this.freePort = probe.getLocalPort();
-        }
+        this.freePort = FreePorts.tcp();
     }
 
     private void givenTheWebInterfacePasswordWasSetForTheFreePort(String password) {

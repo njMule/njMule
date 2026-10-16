@@ -19,7 +19,6 @@ package org.njmule.core.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.DayOfWeek;
@@ -37,6 +36,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
@@ -206,10 +206,7 @@ class EngineStartTest {
         Files.createDirectories(dirs.config());
         Path prefs = dirs.config().resolve("njmule.properties");
         if (!Files.exists(prefs)) {
-            int port;
-            try (ServerSocket probe = new ServerSocket(0)) {
-                port = probe.getLocalPort();
-            }
+            int port = FreePorts.tcp();
             Files.writeString(prefs, "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
         }
         return NjMuleEngine.start(new EngineConfig(dirs));

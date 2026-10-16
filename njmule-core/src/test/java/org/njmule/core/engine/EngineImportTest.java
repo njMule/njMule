@@ -19,7 +19,6 @@ package org.njmule.core.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -32,6 +31,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
@@ -188,7 +188,7 @@ class EngineImportTest {
     }
 
     private void givenAProfileOfOurs() throws IOException {
-        this.port = freePort();
+        this.port = FreePorts.tcp();
         this.dirs = directories(this.port);
     }
 
@@ -375,11 +375,5 @@ class EngineImportTest {
         Files.writeString(
                 dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nnet.kad.enabled=false\n");
         return dirs;
-    }
-
-    private static int freePort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
     }
 }

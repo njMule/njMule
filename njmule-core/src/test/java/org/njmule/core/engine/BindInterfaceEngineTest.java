@@ -31,6 +31,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.NjMuleEngine;
@@ -77,9 +78,7 @@ class BindInterfaceEngineTest {
     private void givenAProfileBoundTo(String choice) throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
         Files.createDirectories(dirs.config());
-        try (ServerSocket probe = new ServerSocket(0)) {
-            this.tcpPort = probe.getLocalPort();
-        }
+        this.tcpPort = FreePorts.tcp();
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
                 "net.tcpPort=" + this.tcpPort + "\nnet.kad.enabled=false\nnet.bindInterface=" + choice + "\n");

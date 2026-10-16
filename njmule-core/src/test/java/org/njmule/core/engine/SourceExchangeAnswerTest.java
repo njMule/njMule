@@ -26,7 +26,6 @@ import java.io.OutputStream;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.file.Files;
@@ -44,6 +43,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
@@ -228,10 +228,7 @@ class SourceExchangeAnswerTest {
         byte[] data = new byte[300_000];
         new Random(5).nextBytes(data);
         Files.write(Files.createDirectories(root.resolve("incoming")).resolve("asked.bin"), data);
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
         // Slow, so the first client stays in the queue; clients at LAN addresses are let in.
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),

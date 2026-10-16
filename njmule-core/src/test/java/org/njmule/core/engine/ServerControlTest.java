@@ -22,7 +22,6 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -36,6 +35,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
@@ -119,7 +119,7 @@ class ServerControlTest {
         Files.createDirectories(this.dirs.config());
         Files.writeString(
                 this.dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + freeTcpPort() + "\nnet.kad.enabled=false\n" + preferences);
+                "net.tcpPort=" + FreePorts.tcp() + "\nnet.kad.enabled=false\n" + preferences);
     }
 
     private void givenAnIpFilterBlocking(String address) throws IOException {
@@ -208,11 +208,5 @@ class ServerControlTest {
 
     private void thenNoServerIsLeft() throws Exception {
         assertThat(this.engine.servers().get(5, TimeUnit.SECONDS)).isEmpty();
-    }
-
-    private static int freeTcpPort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
     }
 }

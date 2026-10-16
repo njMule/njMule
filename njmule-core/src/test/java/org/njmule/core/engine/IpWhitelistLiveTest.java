@@ -33,6 +33,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.NjMuleEngine;
@@ -95,10 +96,7 @@ class IpWhitelistLiveTest {
     private void givenAnEngineWhoseFilterBlocksTheLoopbackServer(String whitelist) throws Exception {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
         Files.createDirectories(dirs.config());
-        int tcpPort;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            tcpPort = probe.getLocalPort();
-        }
+        int tcpPort = FreePorts.tcp();
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
                 "net.tcpPort=" + tcpPort + "\nnet.kad.enabled=false\nsecurity.ipFilterWhitelist=" + whitelist + "\n");

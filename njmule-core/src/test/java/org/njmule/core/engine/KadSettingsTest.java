@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
@@ -28,6 +27,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
@@ -87,7 +87,7 @@ class KadSettingsTest {
     }
 
     private void givenAFreeUdpPort() throws IOException {
-        this.udpPort = freeUdpPort();
+        this.udpPort = FreePorts.udp();
     }
 
     private void givenAUdpPortTakenByAnotherProgram() throws IOException {
@@ -121,7 +121,7 @@ class KadSettingsTest {
     }
 
     private void whenTheUdpPortIsChangedToAFreeOne() throws Exception {
-        int free = freeUdpPort();
+        int free = FreePorts.udp();
         this.engine.updatePreferences(p -> p.toBuilder().udpPort(free).build()).get(10, TimeUnit.SECONDS);
     }
 
@@ -144,19 +144,7 @@ class KadSettingsTest {
         Files.createDirectories(dirs.config());
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + freeTcpPort() + "\nnet.udpPort=" + udpPort + "\nnet.kad.enabled=" + kad + "\n");
+                "net.tcpPort=" + FreePorts.tcp() + "\nnet.udpPort=" + udpPort + "\nnet.kad.enabled=" + kad + "\n");
         return NjMuleEngine.start(new EngineConfig(dirs));
-    }
-
-    private static int freeTcpPort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
-    }
-
-    private static int freeUdpPort() throws IOException {
-        try (DatagramSocket probe = new DatagramSocket(0)) {
-            return probe.getLocalPort();
-        }
     }
 }

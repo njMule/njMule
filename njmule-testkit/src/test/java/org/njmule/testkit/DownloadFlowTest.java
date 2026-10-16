@@ -21,7 +21,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -263,10 +262,7 @@ class DownloadFlowTest {
     private void givenNjMuleRunning() throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), true);
         Files.createDirectories(dirs.config());
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
         // The fake servers and peers listen on this machine's LAN address, which must be let in.
         Files.writeString(
                 dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nsecurity.filterLan=false\n");
@@ -322,9 +318,7 @@ class DownloadFlowTest {
     }
 
     private void givenADownloadWithASourceOnAClosedPort(String name) throws Exception {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            this.closedPort = probe.getLocalPort();
-        }
+        this.closedPort = FreePorts.tcp();
         Ed2kLink.FileLink link = (Ed2kLink.FileLink) Ed2kLink.parse(
                 "ed2k://|file|" + name + "|5000|" + "12".repeat(16) + "|/|sources,127.0.0.1:" + this.closedPort + "|/");
         this.added = this.engine.addDownload(link).get(10, TimeUnit.SECONDS);

@@ -18,7 +18,6 @@ package org.njmule.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -28,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.ServerInfo;
@@ -76,10 +76,7 @@ class DefaultListsEngineTest {
     private void givenANewProfileWithoutNetworks() throws Exception {
         this.dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
         Files.createDirectories(this.dirs.config());
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
         Files.writeString(
                 this.dirs.config().resolve("njmule.properties"),
                 "net.tcpPort=" + port + "\nnet.ed2k.enabled=false\nnet.kad.enabled=false\n");

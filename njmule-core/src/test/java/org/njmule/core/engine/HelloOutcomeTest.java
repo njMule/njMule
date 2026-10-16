@@ -36,6 +36,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.FreePorts;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.PeerInfo;
 import org.njmule.core.config.AppDirectories;
@@ -63,10 +64,7 @@ class HelloOutcomeTest {
     void open() throws Exception {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
         Files.createDirectories(dirs.config());
-        int port;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            port = probe.getLocalPort();
-        }
+        int port = FreePorts.tcp();
         Preferences preferences = Preferences.defaults().toBuilder()
                 .tcpPort(port)
                 .kadEnabled(false)

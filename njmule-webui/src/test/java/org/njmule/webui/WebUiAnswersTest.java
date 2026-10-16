@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -651,7 +650,7 @@ class WebUiAnswersTest {
 
     private void givenTheWebInterfaceRuns() throws IOException {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, hash));
+        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, FreePorts.tcp(), false, hash));
     }
 
     private void givenALoggedInUser() throws Exception {
@@ -665,7 +664,7 @@ class WebUiAnswersTest {
     private void givenTheWebInterfaceRunsWithASlowPassword(int checksAtOnce) throws IOException {
         // Two million rounds keep the first check busy for a while.
         String slow = "pbkdf2-sha512$2000000$" + "A".repeat(22) + "$" + "A".repeat(86);
-        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, freePort(), false, slow), checksAtOnce);
+        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, FreePorts.tcp(), false, slow), checksAtOnce);
     }
 
     private void givenALoginBeingChecked(String password) throws InterruptedException {
@@ -1048,7 +1047,7 @@ class WebUiAnswersTest {
     private void startAnotherInstance() throws IOException {
         this.otherEngine = new FakeEngine();
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        this.other = WebUi.start(this.otherEngine.engine(), new WebUiSettings(true, freePort(), false, hash));
+        this.other = WebUi.start(this.otherEngine.engine(), new WebUiSettings(true, FreePorts.tcp(), false, hash));
     }
 
     private static EngineStatus status(Optional<ServerInfo> server, boolean lowId, Optional<KadInfo> kad) {
@@ -1131,11 +1130,5 @@ class WebUiAnswersTest {
                                 + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
                         .collect(Collectors.joining("&"));
         return HttpRequest.BodyPublishers.ofString(body);
-    }
-
-    private static int freePort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
     }
 }

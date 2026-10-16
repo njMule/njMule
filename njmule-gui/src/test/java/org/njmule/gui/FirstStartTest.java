@@ -18,8 +18,6 @@ package org.njmule.gui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.net.DatagramSocket;
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import javafx.stage.Stage;
@@ -30,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.app.LaunchOptions;
+import org.njmule.testkit.FreePorts;
 
 @Timeout(60)
 class FirstStartTest {
@@ -72,14 +71,8 @@ class FirstStartTest {
     // On free ports and without Kad: never on the ports of a running eMule.
     private void givenAProfile(boolean usedBefore) throws Exception {
         Path config = Files.createDirectories(this.dir.resolve("config"));
-        int tcp;
-        try (ServerSocket probe = new ServerSocket(0)) {
-            tcp = probe.getLocalPort();
-        }
-        int udp;
-        try (DatagramSocket probe = new DatagramSocket(0)) {
-            udp = probe.getLocalPort();
-        }
+        int tcp = FreePorts.tcp();
+        int udp = FreePorts.udp();
         Files.writeString(
                 config.resolve("njmule.properties"),
                 "net.tcpPort=" + tcp + "\nnet.udpPort=" + udp + "\nnet.kad.enabled=false\n");

@@ -22,7 +22,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -139,11 +138,11 @@ class RemoteControlFlowTest {
         Files.createDirectories(dirs.config());
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
-                "net.tcpPort=" + freePort() + "\nnet.kad.enabled=false\nsecurity.filterLan=false\n");
+                "net.tcpPort=" + FreePorts.tcp() + "\nnet.kad.enabled=false\nsecurity.filterLan=false\n");
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
         this.running.add(engine);
         WebUiSettings web = new WebUiSettings(
-                true, freePort(), false, Passwords.hash("flow password".toCharArray(), new SecureRandom()), true);
+                true, FreePorts.tcp(), false, Passwords.hash("flow password".toCharArray(), new SecureRandom()), true);
         web.save(dirs.config());
         this.running.add(WebUi.start(engine, web, this.exited::countDown));
     }
@@ -224,11 +223,5 @@ class RemoteControlFlowTest {
 
     private void thenNjMuleWasAskedToExit() throws InterruptedException {
         assertThat(this.exited.await(10, TimeUnit.SECONDS)).isTrue();
-    }
-
-    private static int freePort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0)) {
-            return probe.getLocalPort();
-        }
     }
 }
