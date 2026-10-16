@@ -26,6 +26,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,9 @@ public final class EngineLoop implements AutoCloseable {
 
     private final ScheduledThreadPoolExecutor executor;
     private final int capacity;
+    // Tasks posted and not run yet, which the capacity bounds; read without the lock of the executor's queue, which
+    // every reader thread would otherwise take for every packet.
+    private final AtomicInteger waiting = new AtomicInteger();
     private volatile Thread thread;
 
     private EngineLoop(int capacity, String threadName) {
@@ -74,13 +78,18 @@ public final class EngineLoop implements AutoCloseable {
     /** Queues a task; returns {@code false} if the loop is stopping or too many tasks wait. */
     public boolean post(Runnable task) {
         Objects.requireNonNull(task, "task");
-        if (this.executor.getQueue().size() >= this.capacity) {
+        if (this.waiting.incrementAndGet() > this.capacity) {
+            this.waiting.decrementAndGet();
             return false;
         }
         try {
-            this.executor.execute(() -> runTask("task", task));
+            this.executor.execute(() -> {
+                this.waiting.decrementAndGet();
+                runTask("task", task);
+            });
             return true;
         } catch (RejectedExecutionException e) {
+            this.waiting.decrementAndGet();
             return false;
         }
     }
