@@ -420,6 +420,25 @@ class WebUiPartsTest {
     }
 
     @Test
+    void shouldLoadTheTrustedProxiesSaved() throws IOException {
+        givenTheSettingsSavedBehindTheProxies("172.17.0.0/16", "::1", "10.0.0.1-10.0.0.9");
+
+        whenTheSettingsAreLoaded();
+
+        thenTheSettingsAreTheChosenOnes();
+    }
+
+    @Test
+    void shouldLoadTheDefaultsFromAFileTrustingAProxyByItsName() throws IOException {
+        givenTheSettingsFileHolds(String.join(
+                System.lineSeparator(), "enabled=true", "password=pbkdf2-sha512$1$AA$AA", "proxies=proxy.example"));
+
+        whenTheSettingsAreLoaded();
+
+        thenTheSettingsAre(WebUiSettings.DEFAULTS);
+    }
+
+    @Test
     void shouldLoadNoHostNamesFromAFileWrittenBeforeThem() throws IOException {
         givenTheSettingsFileHolds("enabled=true\nport=4711\npassword=pbkdf2-sha512$1$AA$AA\n");
 
@@ -616,6 +635,11 @@ class WebUiPartsTest {
     private void givenTheSettingsSaved(boolean enabled, int port, boolean lan, String passwordHash, String... hosts)
             throws IOException {
         this.chosen = new WebUiSettings(enabled, port, lan, passwordHash, false, List.of(hosts));
+        this.chosen.save(this.dir);
+    }
+
+    private void givenTheSettingsSavedBehindTheProxies(String... proxies) throws IOException {
+        this.chosen = new WebUiSettings(true, 4711, true, "pbkdf2-sha512$1$AA$AA", false, List.of(), List.of(proxies));
         this.chosen.save(this.dir);
     }
 

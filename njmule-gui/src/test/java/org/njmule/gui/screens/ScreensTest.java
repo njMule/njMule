@@ -683,6 +683,31 @@ class ScreensTest {
     }
 
     @Test
+    void shouldSaveTheTrustedProxiesOfTheWebInterface() throws Exception {
+        givenTheSettingsShown();
+        givenTheWebInterfaceTicked(true);
+        givenTheWebInterfacePasswords("long enough", "long enough");
+        givenTheWebInterfaceProxies("172.17.0.0/16, ::1");
+
+        whenTheSettingsAreApplied();
+
+        thenTheSavedWebInterfaceProxiesAre("172.17.0.0/16", "::1");
+    }
+
+    @Test
+    void shouldRefuseAProxyNamedByItsHostNameAndSaveNothing() throws Exception {
+        givenTheSettingsShown();
+        givenTheWebInterfaceTicked(true);
+        givenTheWebInterfacePasswords("long enough", "long enough");
+        givenTheWebInterfaceProxies("proxy.example");
+
+        whenTheSettingsAreApplied();
+
+        thenTheUserIsToldSomethingAbout("Trusted proxies");
+        thenNoWebInterfaceSettingIsSaved();
+    }
+
+    @Test
     void shouldRefuseAWebInterfaceHostNameWithAPortAndSaveNothing() throws Exception {
         givenTheSettingsShown();
         givenTheWebInterfaceTicked(true);
@@ -853,6 +878,10 @@ class ScreensTest {
 
     private void givenTheWebInterfacePort(String port) throws Exception {
         FxTesting.onFx(() -> this.settings.webUiPortField().setText(port));
+    }
+
+    private void givenTheWebInterfaceProxies(String proxies) throws Exception {
+        FxTesting.onFx(() -> this.settings.webUiProxiesField().setText(proxies));
     }
 
     private void givenTheWebInterfaceHostNames(String names) throws Exception {
@@ -1668,6 +1697,10 @@ class ScreensTest {
     private void thenTheWebInterfacePasswordBoxIsEmpty() throws Exception {
         assertThat(FxTesting.onFx(() -> this.settings.webUiPasswordField().getText()))
                 .isEmpty();
+    }
+
+    private void thenTheSavedWebInterfaceProxiesAre(String... proxies) {
+        assertThat(WebUiSettings.load(config()).proxies()).containsExactly(proxies);
     }
 
     private void thenTheSavedWebInterfaceHostNamesAre(String... names) {

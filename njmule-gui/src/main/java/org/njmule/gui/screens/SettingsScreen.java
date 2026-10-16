@@ -178,6 +178,7 @@ public final class SettingsScreen implements Screen {
     private final TextField webUiPort = new TextField();
     private final CheckBox webUiLan = new CheckBox();
     private final TextField webUiHosts = new TextField();
+    private final TextField webUiProxies = new TextField();
     private final CheckBox webUiApi = new CheckBox();
     private final PasswordField webUiPassword = new PasswordField();
     private final PasswordField webUiAgain = new PasswordField();
@@ -208,6 +209,7 @@ public final class SettingsScreen implements Screen {
     private Input<Integer> ipFilterDaysInput;
     private Input<Integer> webUiPortInput;
     private Input<List<String>> webUiHostsInput;
+    private Input<List<String>> webUiProxiesInput;
     private Input<String> webUiPasswordInput;
     private Input<String> webUiAgainInput;
     private final Map<EventCommands.Event, CheckBox> eventSwitches = new EnumMap<>(EventCommands.Event.class);
@@ -301,6 +303,7 @@ public final class SettingsScreen implements Screen {
         Fx.leftToRight(this.videoPlayerArgs);
         Fx.leftToRight(this.whitelist);
         Fx.leftToRight(this.webUiHosts);
+        Fx.leftToRight(this.webUiProxies);
         this.videoPlayerArgs.setPromptText(this.gui.t("nj.preview.args"));
         this.visibility.getItems().addAll(SharedFilesVisibility.values());
         this.visibility.setCellFactory(l -> new NamedCell<>(this::visibilityName));
@@ -445,6 +448,9 @@ public final class SettingsScreen implements Screen {
         this.webUiHosts.setPrefColumnCount(32);
         this.webUiHosts.setPromptText("nas.local, njmule.example.com");
         row = field(grid, row, this.gui.t("nj.webui.hosts"), this.webUiHosts);
+        this.webUiProxies.setPrefColumnCount(32);
+        this.webUiProxies.setPromptText("172.17.0.1, 10.0.0.0/8");
+        row = field(grid, row, this.gui.t("nj.webui.proxies"), this.webUiProxies);
         row = field(grid, row, this.gui.t("nj.webui.password"), new HBox(8, this.webUiPassword, this.webUiAgain));
         grid.add(this.webUiApi, 1, row++);
         grid.add(
@@ -492,6 +498,7 @@ public final class SettingsScreen implements Screen {
                 this.ipFilterDaysInput,
                 this.webUiPortInput,
                 this.webUiHostsInput,
+                this.webUiProxiesInput,
                 this.webUiPasswordInput,
                 this.webUiAgainInput));
         checked.addAll(this.eventInputs.values());
@@ -612,6 +619,13 @@ public final class SettingsScreen implements Screen {
                 c -> c < 0x80 && !Character.isISOControl(c),
                 MAX_WEBUI_HOSTS,
                 WebUiSettings::hostNames);
+        this.webUiProxiesInput = Input.of(
+                this.webUiProxies,
+                this.gui.t("nj.webui.proxies"),
+                this.gui.i18n().embed(this.gui.t("nj.webui.proxiesHint")),
+                c -> c < 0x80 && !Character.isISOControl(c),
+                MAX_WEBUI_HOSTS,
+                WebUiSettings::proxies);
         this.webUiPasswordInput = Input.of(
                         this.webUiPassword,
                         this.gui.t("nj.webui.password"),
@@ -895,6 +909,7 @@ public final class SettingsScreen implements Screen {
         this.webUiPort.setText(String.valueOf(web.port()));
         this.webUiLan.setSelected(web.lan());
         this.webUiHosts.setText(String.join(", ", web.hosts()));
+        this.webUiProxies.setText(String.join(", ", web.proxies()));
         this.webUiApi.setSelected(web.api());
         this.webUiPassword.clear();
         this.webUiAgain.clear();
@@ -1228,7 +1243,8 @@ public final class SettingsScreen implements Screen {
                 this.webUiLan.isSelected(),
                 hash,
                 this.webUiApi.isSelected(),
-                this.webUiHostsInput.value());
+                this.webUiHostsInput.value(),
+                this.webUiProxiesInput.value());
     }
 
     // Scrolls the page to show field a third of the way down, and puts the cursor in it.
@@ -1434,6 +1450,10 @@ public final class SettingsScreen implements Screen {
 
     TextField webUiPortField() {
         return this.webUiPort;
+    }
+
+    TextField webUiProxiesField() {
+        return this.webUiProxies;
     }
 
     TextField webUiHostsField() {

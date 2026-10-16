@@ -487,6 +487,10 @@ All notable changes to this project are documented here. The format follows
   header is trusted; the session cookie is `Secure` when the browser logged in over HTTPS. The
   pages link to one another, to their style sheet and to their forms, and redirect, relative to
   themselves, so that a proxy may also serve the interface under a path it strips (`/njmule/`).
+  Proxies named as trusted (`proxies` in `webui.properties`, `--webui-proxy <address>` with an
+  address, a CIDR block or a range, a field of the web interface settings; none by default) name
+  their client in `X-Forwarded-For`, read from the right past the trusted proxies, so that behind
+  them each client has its own login and API token attempts; no other address is believed.
 
 ### Changed
 

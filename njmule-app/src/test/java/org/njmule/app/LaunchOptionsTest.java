@@ -387,6 +387,35 @@ class LaunchOptionsTest {
     }
 
     @Test
+    void shouldParseTheTrustedProxiesOfTheWebInterfaceRepeatedOrSeparatedByCommas() {
+        whenTheArgumentsAreParsed(
+                "--webui-password-file", "secret", "--webui-proxy", "172.17.0.0/16", "--webui-proxy", "::1,10.0.0.5");
+
+        thenTheWebInterfaceSetupIs(new LaunchOptions.WebUiSetup(
+                Optional.empty(),
+                false,
+                false,
+                Optional.of(Path.of("secret")),
+                List.of(),
+                List.of("172.17.0.0/16", "::1", "10.0.0.5")));
+    }
+
+    @Test
+    void shouldRefuseAProxyNamedByItsHostName() {
+        whenTheArgumentsAreParsed("--webui-password", "--webui-proxy", "proxy.example");
+
+        thenExceptionOccurred(UsageException.class);
+        thenTheMessageIs("Invalid proxy for --webui-proxy: proxy.example");
+    }
+
+    @Test
+    void shouldRefuseTheTrustedProxiesWithoutThePassword() {
+        whenTheArgumentsAreParsed("--webui-proxy", "172.17.0.1");
+
+        thenExceptionOccurred(UsageException.class, "apply to --webui-password");
+    }
+
+    @Test
     void shouldRefuseTheWebInterfaceHostNamesWithoutThePassword() {
         whenTheArgumentsAreParsed("--webui-host", "nas.local");
 

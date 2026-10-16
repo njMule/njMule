@@ -109,11 +109,24 @@ public record LaunchOptions(
      *     {@code --webui-password}
      * @param hosts the host names the interface answers to besides localhost, as {@link WebUiSettings#hostName} keeps
      *     them
+     * @param proxies the reverse proxies trusted to name their client, as {@link WebUiSettings#proxy} keeps them
      */
     public record WebUiSetup(
-            Optional<Integer> port, boolean lan, boolean api, Optional<Path> passwordFile, List<String> hosts) {
+            Optional<Integer> port,
+            boolean lan,
+            boolean api,
+            Optional<Path> passwordFile,
+            List<String> hosts,
+            List<String> proxies) {
         public WebUiSetup {
             hosts = List.copyOf(hosts);
+            proxies = List.copyOf(proxies);
+        }
+
+        /** A setup that trusts no proxy. */
+        public WebUiSetup(
+                Optional<Integer> port, boolean lan, boolean api, Optional<Path> passwordFile, List<String> hosts) {
+            this(port, lan, api, passwordFile, hosts, List.of());
         }
     }
 
@@ -182,12 +195,13 @@ public record LaunchOptions(
     private static final String WEBUI_LAN_OPTION = "--webui-lan";
     private static final String WEBUI_API_OPTION = "--webui-api";
     private static final String WEBUI_HOST_OPTION = "--webui-host";
+    private static final String WEBUI_PROXY_OPTION = "--webui-proxy";
     private static final String REMOTE_OPTION = "--remote";
     private static final String REMOTE_URL_OPTION = "--remote-url";
     private static final String API_TOKEN_OPTION = "--api-token";
     private static final String NEW_API_TOKEN_OPTION = "--new-api-token";
 
-    // What --webui-port, --webui-lan, --webui-api and --webui-host apply to.
+    // What --webui-port, --webui-lan, --webui-api, --webui-host and --webui-proxy apply to.
     private static final String WEBUI_SETUP = WEBUI_PASSWORD_OPTION + " or " + WEBUI_PASSWORD_FILE_OPTION;
 
     // What --exit and --restore-links may come with: where and how to run, nothing to do.
@@ -389,6 +403,16 @@ public record LaunchOptions(
                         + WEBUI_LAN_OPTION
                         + ", IP addresses")
                 .build());
+        spec.addOption(OptionSpec.builder(WEBUI_PROXY_OPTION)
+                .paramLabel("<address>")
+                .type(List.class)
+                .auxiliaryTypes(String.class)
+                .splitRegex(",")
+                .description("with "
+                        + WEBUI_SETUP
+                        + ": a reverse proxy trusted to name its client in X-Forwarded-For, an address, a CIDR block or"
+                        + " a range (repeatable); otherwise every request is its own client")
+                .build());
         spec.addOption(OptionSpec.builder(REMOTE_OPTION)
                 .paramLabel("<command>")
                 .type(List.class)
@@ -482,14 +506,15 @@ public record LaunchOptions(
         boolean lan = result.hasMatchedOption(WEBUI_LAN_OPTION);
         boolean api = result.hasMatchedOption(WEBUI_API_OPTION);
         boolean host = result.hasMatchedOption(WEBUI_HOST_OPTION);
+        boolean proxy = result.hasMatchedOption(WEBUI_PROXY_OPTION);
         Optional<Path> passwordFile = Optional.empty();
         if (result.hasMatchedOption(WEBUI_PASSWORD_FILE_OPTION)) {
             passwordFile = Optional.of(toFile(result.matchedOptionValue(WEBUI_PASSWORD_FILE_OPTION, "")));
         }
         if (!result.hasMatchedOption(WEBUI_PASSWORD_OPTION) && passwordFile.isEmpty()) {
-            if (port || lan || api || host) {
-                throw new UsageException(WEBUI_PORT_OPTION + ", " + WEBUI_LAN_OPTION + ", " + WEBUI_API_OPTION + " and "
-                        + WEBUI_HOST_OPTION + " apply to " + WEBUI_SETUP);
+            if (port || lan || api || host || proxy) {
+                throw new UsageException(WEBUI_PORT_OPTION + ", " + WEBUI_LAN_OPTION + ", " + WEBUI_API_OPTION + ", "
+                        + WEBUI_HOST_OPTION + " and " + WEBUI_PROXY_OPTION + " apply to " + WEBUI_SETUP);
             }
             return Optional.empty();
         }
@@ -499,6 +524,14 @@ public record LaunchOptions(
                 hosts.add(WebUiSettings.hostName(name));
             } catch (IllegalArgumentException e) {
                 throw new UsageException("Invalid host name for " + WEBUI_HOST_OPTION + ": " + name);
+            }
+        }
+        List<String> proxies = new ArrayList<>();
+        for (String address : result.matchedOptionValue(WEBUI_PROXY_OPTION, List.<String>of())) {
+            try {
+                proxies.add(WebUiSettings.proxy(address));
+            } catch (IllegalArgumentException e) {
+                throw new UsageException("Invalid proxy for " + WEBUI_PROXY_OPTION + ": " + address);
             }
         }
         Optional<Integer> number = Optional.empty();
@@ -513,7 +546,7 @@ public record LaunchOptions(
                 throw new UsageException("Invalid port for " + WEBUI_PORT_OPTION + ": " + value);
             }
         }
-        return Optional.of(new WebUiSetup(number, lan, api, passwordFile, hosts));
+        return Optional.of(new WebUiSetup(number, lan, api, passwordFile, hosts, proxies));
     }
 
     private static Optional<Remote> remote(ParseResult result) throws UsageException {

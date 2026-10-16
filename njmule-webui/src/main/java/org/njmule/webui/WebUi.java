@@ -113,6 +113,7 @@ public final class WebUi implements AutoCloseable {
 
     private final NjMuleEngine engine;
     private final WebUiSettings settings;
+    private final TrustedProxies proxies;
     private final Server server;
     private final int port;
     private final Sessions sessions = new Sessions(new SecureRandom(), System::nanoTime);
@@ -136,6 +137,7 @@ public final class WebUi implements AutoCloseable {
             Duration heartbeat) {
         this.engine = engine;
         this.settings = settings;
+        this.proxies = new TrustedProxies(settings.proxies());
         this.server = server;
         this.port = port;
         this.passwordChecks = passwordChecks;
@@ -195,7 +197,7 @@ public final class WebUi implements AutoCloseable {
         server.setHandler(new Handler.Abstract() {
             @Override
             public boolean handle(Request request, Response response, Callback callback) {
-                Exchange exchange = new Exchange(request, response);
+                Exchange exchange = new Exchange(request, response, ui.proxies);
                 try {
                     if (api.isPresent() && exchange.path().startsWith("/api/")) {
                         api.get().handle(exchange);
@@ -384,7 +386,8 @@ public final class WebUi implements AutoCloseable {
             send(exchange, 405, TEXT, "Method not allowed.");
             return;
         }
-        String address = Sessions.clientKey(exchange.remoteAddress());
+        // Behind a trusted proxy each client has its own attempts.
+        String address = Sessions.clientKey(exchange.clientAddress());
         if (!this.sessions.mayTry(address)) {
             send(exchange, 429, HTML, loginPage("Too many attempts: wait a minute."));
             return;

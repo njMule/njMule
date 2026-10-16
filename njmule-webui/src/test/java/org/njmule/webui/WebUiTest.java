@@ -145,6 +145,26 @@ class WebUiTest {
     }
 
     @Test
+    void shouldLetAnotherClientOfATrustedProxyLogInWhileOneIsLockedOut() throws Exception {
+        givenTheWebInterfaceRunsBehindTheProxies("127.0.0.0/8");
+        givenWrongPasswordsSentFor("198.51.100.7", Sessions.MAX_FAILURES);
+
+        whenLoggedInFor("198.51.100.8");
+
+        thenTheStatusIs(303);
+    }
+
+    @Test
+    void shouldBelieveTheClientNamedByNoAddressItDoesNotTrust() throws Exception {
+        givenTheWebInterfaceRuns();
+        givenWrongPasswordsSentFor("198.51.100.7", Sessions.MAX_FAILURES);
+
+        whenLoggedInFor("198.51.100.8");
+
+        thenTheStatusIs(429);
+    }
+
+    @Test
     void shouldShowTheStatusToAUserLoggedIn() throws Exception {
         givenALoggedInUser();
 
@@ -373,6 +393,36 @@ class WebUiTest {
         String set = in.headers().firstValue("Set-Cookie").orElseThrow();
         assertThat(set).contains("HttpOnly", "SameSite=Strict");
         this.cookie = set.substring(0, set.indexOf(';'));
+    }
+
+    private void givenTheWebInterfaceRunsBehindTheProxies(String... proxies) throws IOException {
+        String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
+        this.ui = WebUi.start(
+                engine, new WebUiSettings(true, freePort(), false, hash, false, List.of(), List.of(proxies)));
+    }
+
+    // Sent as a proxy forwards them, naming its client.
+    private void givenWrongPasswordsSentFor(String client, int count) throws Exception {
+        for (int i = 0; i < count; i++) {
+            HttpResponse<String> wrong = this.http.send(
+                    request("/login")
+                            .header("X-Forwarded-For", client)
+                            .header("Content-Type", "application/x-www-form-urlencoded")
+                            .POST(form(Map.of("password", "guess " + i)))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(wrong.statusCode()).isEqualTo(401);
+        }
+    }
+
+    private void whenLoggedInFor(String client) throws Exception {
+        this.answer = this.http.send(
+                request("/login")
+                        .header("X-Forwarded-For", client)
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(form(Map.of("password", PASSWORD)))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     private void givenWrongPasswordsSent(int count) throws Exception {

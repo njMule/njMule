@@ -42,16 +42,25 @@ import org.slf4j.LoggerFactory;
  * @param api whether the remote-control API answers too, to holders of its token
  * @param hosts names besides localhost under which browsers open the interface, such as a LAN name or a reverse
  *     proxy's, as {@link #hostName} keeps them
+ * @param proxies the reverse proxies trusted to name their client in X-Forwarded-For, as {@link #proxy} keeps them;
+ *     none by default
  */
 public record WebUiSettings(
-        boolean enabled, int port, boolean lan, String passwordHash, boolean api, List<String> hosts) {
+        boolean enabled,
+        int port,
+        boolean lan,
+        String passwordHash,
+        boolean api,
+        List<String> hosts,
+        List<String> proxies) {
 
     public static final String FILE_NAME = "webui.properties";
 
     /** The port eMule's web interface uses too. */
     public static final int DEFAULT_PORT = 4711;
 
-    public static final WebUiSettings DEFAULTS = new WebUiSettings(false, DEFAULT_PORT, false, "", false, List.of());
+    public static final WebUiSettings DEFAULTS =
+            new WebUiSettings(false, DEFAULT_PORT, false, "", false, List.of(), List.of());
 
     private static final Logger logger = LoggerFactory.getLogger(WebUiSettings.class);
 
@@ -68,6 +77,15 @@ public record WebUiSettings(
                 .map(WebUiSettings::hostName)
                 .distinct()
                 .toList());
+        proxies = List.copyOf(Objects.requireNonNull(proxies, "proxies").stream()
+                .map(WebUiSettings::proxy)
+                .distinct()
+                .toList());
+    }
+
+    /** Settings that trust no proxy. */
+    public WebUiSettings(boolean enabled, int port, boolean lan, String passwordHash, boolean api, List<String> hosts) {
+        this(enabled, port, lan, passwordHash, api, hosts, List.of());
     }
 
     /** Settings without other host names. */
@@ -103,6 +121,26 @@ public record WebUiSettings(
         return ipv6 ? "[" + bare + "]" : bare;
     }
 
+    /**
+     * A reverse proxy as the interface trusts it: an address ({@code 172.17.0.1}, {@code ::1}), a CIDR block
+     * ({@code 10.0.0.0/8}) or a range ({@code 10.0.0.1-10.0.0.9}).
+     *
+     * @throws IllegalArgumentException when {@code text} is none of those, a host name included
+     */
+    public static String proxy(String text) {
+        return TrustedProxies.entry(text);
+    }
+
+    /** The proxies of a text that separates them with commas or white space. */
+    public static List<String> proxies(String text) {
+        return SEPARATORS
+                .splitAsStream(text.strip())
+                .filter(n -> !n.isEmpty())
+                .map(WebUiSettings::proxy)
+                .distinct()
+                .toList();
+    }
+
     /** The host names of a text that separates them with commas or white space. */
     public static List<String> hostNames(String text) {
         return SEPARATORS
@@ -128,7 +166,8 @@ public record WebUiSettings(
                     Boolean.parseBoolean(p.getProperty("lan", "false").strip()),
                     p.getProperty("password", "").strip(),
                     Boolean.parseBoolean(p.getProperty("api", "false").strip()),
-                    hostNames(p.getProperty("hosts", "")));
+                    hostNames(p.getProperty("hosts", "")),
+                    proxies(p.getProperty("proxies", "")));
         } catch (IOException | IllegalArgumentException e) {
             logger.warn("The web interface stays off: cannot read {}: {}", file, e.toString());
             return DEFAULTS;
@@ -144,6 +183,7 @@ public record WebUiSettings(
         values.setProperty("password", this.passwordHash);
         values.setProperty("api", String.valueOf(this.api));
         values.setProperty("hosts", String.join(",", this.hosts));
+        values.setProperty("proxies", String.join(",", this.proxies));
         StringWriter stored = new StringWriter();
         values.store(stored, null);
         StringBuilder text = new StringBuilder("# njMule web interface\n");
@@ -167,6 +207,6 @@ public record WebUiSettings(
     @Override
     public String toString() {
         return "WebUiSettings[enabled=" + this.enabled + ", port=" + this.port + ", lan=" + this.lan + ", api="
-                + this.api + ", hosts=" + this.hosts + "]";
+                + this.api + ", hosts=" + this.hosts + ", proxies=" + this.proxies + "]";
     }
 }

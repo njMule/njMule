@@ -179,7 +179,7 @@ final class Api {
         if (token.isPresent() && ApiToken.matches(token.get(), given)) {
             return;
         }
-        String address = Sessions.clientKey(exchange.remoteAddress());
+        String address = Sessions.clientKey(exchange.clientAddress());
         exchange.setHeader("WWW-Authenticate", "Bearer");
         // A wrong token counts as a failed login of its address.
         if (!this.sessions.mayTry(address)) {

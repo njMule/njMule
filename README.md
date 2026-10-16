@@ -309,10 +309,14 @@ njmule.example.com`, and serve the interface at the root of that name, or under 
 strips before passing the request on (`https://example.com/njmule/`, with its last slash): the
 pages link to one another, to their style sheet and to their forms relative to themselves. Forms
 are then taken from that origin on any port, over HTTP or HTTPS, and the session cookie is
-`Secure` when the browser comes over HTTPS; no `X-Forwarded-*` header is needed or trusted.
-Traefik and Caddy pass the browser's host name on; nginx needs `proxy_set_header Host $host;`, or
-it sends the upstream's address. All logins then come from the proxy's address, so the lockout
-after repeated wrong passwords holds for every user at once.
+`Secure` when the browser comes over HTTPS. Traefik and Caddy pass the browser's host name on;
+nginx needs `proxy_set_header Host $host;`, or it sends the upstream's address. All logins then
+come from the proxy's address, so the lockout after repeated wrong passwords holds for every user
+at once, unless the proxy is trusted to name its client: `--webui-proxy 172.17.0.1` (an address, a
+CIDR block or a range, repeated or separated by commas) or Trusted proxies in the web interface
+settings. The `X-Forwarded-For` header of a request from a trusted proxy is then read from the
+right, past the trusted proxies, and the first other address is the client; from anywhere else the
+header is never believed. Trust only the proxy in front of njMule.
 
 > [!CAUTION]
 > The interface is served over plain HTTP: enable LAN access only on a trusted network, or reach

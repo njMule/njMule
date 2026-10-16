@@ -50,13 +50,19 @@ final class Exchange {
 
     private final Request request;
     private final Response response;
+    private final TrustedProxies proxies;
     private RequestBody requestBody;
     private OutputStream body;
     private boolean started;
 
     Exchange(Request request, Response response) {
+        this(request, response, TrustedProxies.NONE);
+    }
+
+    Exchange(Request request, Response response, TrustedProxies proxies) {
         this.request = request;
         this.response = response;
+        this.proxies = proxies;
     }
 
     String method() {
@@ -128,6 +134,11 @@ final class Exchange {
     /** The first value of a request header, or null. */
     String header(String name) {
         return this.request.getHeaders().get(name);
+    }
+
+    /** The client of the request: the remote address, or the client a trusted proxy names. */
+    InetAddress clientAddress() {
+        return this.proxies.client(remoteAddress(), this.request.getHeaders().getValuesList("X-Forwarded-For"));
     }
 
     InetAddress remoteAddress() {
