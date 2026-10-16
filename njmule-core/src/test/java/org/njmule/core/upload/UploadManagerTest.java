@@ -1212,6 +1212,8 @@ class UploadManagerTest {
                 received += ClientMessages.SendingPart.decode(packet).data().length;
             }
         }
+        // The engine counts what it handed over just after: the data can reach us first.
+        onLoop(() -> null);
     }
 
     private void thenTheFileWasCounted(String... events) {
