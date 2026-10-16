@@ -54,6 +54,8 @@ public abstract sealed class LinkAssociation {
     private static final Logger logger = LoggerFactory.getLogger(LinkAssociation.class);
     // reg.exe, xdg-mime and their like answer in well under a second.
     private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(30);
+    // The last of the output of a command that has ended comes at once, unless something it started holds it open.
+    private static final Duration OUTPUT_AFTER_END = Duration.ofSeconds(2);
 
     final Path configDir;
     final Shell shell;
@@ -118,11 +120,10 @@ public abstract sealed class LinkAssociation {
     }
 
     /**
-     * Runs {@code command} with nothing on its input. Past {@code timeout} it is stopped with what it started; once it
-     * has ended, what it started may keep its output open, and only the output come by the same deadline counts.
+     * Runs {@code command} with nothing on its input. Past {@code timeout} it is stopped with what it started. Once it
+     * has ended, what it started may keep its output open: only the output come in the next two seconds counts.
      */
     static Result run(List<String> command, Duration timeout) throws IOException {
-        long deadline = System.nanoTime() + timeout.toNanos();
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
         process.getOutputStream().close();
         ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -134,7 +135,7 @@ public abstract sealed class LinkAssociation {
                 process.destroyForcibly();
                 throw new IOException(command.getFirst() + " did not finish in " + timeout.toSeconds() + " s");
             }
-            if (!reader.join(Duration.ofNanos(Math.max(0, deadline - System.nanoTime())))) {
+            if (!reader.join(OUTPUT_AFTER_END)) {
                 logger.debug("{} ended with its output still open", command.getFirst());
             }
             return new Result(process.exitValue(), output.toString(StandardCharsets.UTF_8));

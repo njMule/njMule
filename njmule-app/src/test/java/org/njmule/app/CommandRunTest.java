@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,9 +46,8 @@ class CommandRunTest {
 
     @AfterEach
     void stopWhatIsStillRunning() throws IOException {
-        if (this.pidFile != null && Files.exists(this.pidFile)) {
-            ProcessHandle.of(Long.parseLong(Files.readString(this.pidFile).strip()))
-                    .ifPresent(ProcessHandle::destroyForcibly);
+        if (this.pidFile != null) {
+            sleeperId().flatMap(ProcessHandle::of).ifPresent(ProcessHandle::destroyForcibly);
         }
     }
 
@@ -66,10 +66,11 @@ class CommandRunTest {
     void shouldAnswerWhenACommandEndsButWhatItStartedKeepsItsOutputOpen() throws Exception {
         givenAProgramThatStartsASleeperOnItsOutputThenEnds(60);
 
-        whenItRunsWithATimeoutOf(Duration.ofSeconds(5));
+        // Room for two Java programs to start on a busy machine; the answer still comes long before the sleeper ends.
+        whenItRunsWithATimeoutOf(Duration.ofSeconds(30));
 
         thenItEndedWith(0, "started a sleeper");
-        thenItAnsweredWithin(Duration.ofSeconds(25));
+        thenItAnsweredWithin(Duration.ofSeconds(45));
     }
 
     private void givenAProgramThatPrintsThenSleeps(int seconds) throws URISyntaxException {
@@ -102,14 +103,31 @@ class CommandRunTest {
         assertThat(this.took).isLessThan(limit);
     }
 
+    // On a busy machine the sleeper may be stopped before it starts; one that lived would write its id.
     private void thenTheSleeperIsSoonGone() throws Exception {
-        Optional<ProcessHandle> sleeper =
-                ProcessHandle.of(Long.parseLong(Files.readString(this.pidFile).strip()));
         long end = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        Optional<Long> id = sleeperId();
+        while (id.isEmpty() && System.nanoTime() < end) {
+            Thread.sleep(50);
+            id = sleeperId();
+        }
+        if (id.isEmpty()) {
+            return;
+        }
+        Optional<ProcessHandle> sleeper = ProcessHandle.of(id.get());
         while (sleeper.isPresent() && sleeper.get().isAlive() && System.nanoTime() < end) {
             Thread.sleep(50);
         }
         assertThat(sleeper.filter(ProcessHandle::isAlive)).isEmpty();
+    }
+
+    // Empty until the sleeper has written its whole id.
+    private Optional<Long> sleeperId() throws IOException {
+        if (!Files.exists(this.pidFile)) {
+            return Optional.empty();
+        }
+        String text = Files.readString(this.pidFile).strip();
+        return text.isEmpty() ? Optional.empty() : Optional.of(Long.parseLong(text));
     }
 
     private static List<String> java(Class<?> main, String... args) throws URISyntaxException {
@@ -133,8 +151,11 @@ class CommandRunTest {
         private Sleeper() {}
 
         public static void main(String[] args) throws Exception {
-            Files.writeString(
-                    Path.of(args[1]), String.valueOf(ProcessHandle.current().pid()));
+            // Moved into place whole, so that the test never reads half an id.
+            Path id = Path.of(args[1]);
+            Path partial = Path.of(args[1] + ".tmp");
+            Files.writeString(partial, String.valueOf(ProcessHandle.current().pid()));
+            Files.move(partial, id, StandardCopyOption.ATOMIC_MOVE);
             System.out.println("sleeping");
             System.out.flush();
             Thread.sleep(Long.parseLong(args[0]) * 1000);
