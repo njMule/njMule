@@ -17,6 +17,7 @@
 package org.njmule.core.search;
 
 import com.google.common.base.CharMatcher;
+import com.google.common.math.IntMath;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.security.SecureRandom;
@@ -449,10 +450,10 @@ public final class SearchManager {
                             known.name(),
                             known.size(),
                             addCounts
-                                    ? saturatedAdd(known.sources(), file.sources())
+                                    ? IntMath.saturatedAdd(known.sources(), file.sources())
                                     : Math.max(known.sources(), file.sources()),
                             addCounts
-                                    ? saturatedAdd(known.completeSources(), file.completeSources())
+                                    ? IntMath.saturatedAdd(known.completeSources(), file.completeSources())
                                     : Math.max(known.completeSources(), file.completeSources()),
                             known.type().or(file::type),
                             known.media().or(file.media()));
@@ -493,10 +494,6 @@ public final class SearchManager {
             search.kadStop.run();
         }
         this.listener.ended(search.id, search.results.size());
-    }
-
-    private static int saturatedAdd(int a, int b) {
-        return (int) Math.min(Integer.MAX_VALUE, (long) a + b);
     }
 
     private static final class Search {
