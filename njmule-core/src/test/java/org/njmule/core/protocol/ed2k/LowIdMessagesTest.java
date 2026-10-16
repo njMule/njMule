@@ -108,7 +108,8 @@ class LowIdMessagesTest {
                 ClientTag.EMULE_BUDDYUDP,
                 ClientTag.EMULE_MISCOPTIONS1,
                 ClientTag.EMULE_MISCOPTIONS2,
-                ClientTag.EMULE_VERSION);
+                ClientTag.EMULE_VERSION,
+                ClientTag.MOD_VERSION);
         thenTheBuddyReadIs(Ipv4.of(1, 2, 3, 4), 4672);
         thenDirectCallbacksAreTaken(true);
     }

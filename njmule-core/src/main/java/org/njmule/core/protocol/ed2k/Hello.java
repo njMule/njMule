@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
@@ -90,7 +91,9 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
                         TagName.id(ClientTag.EMULE_UDPPORTS), (long) (kadPort & 0xFFFF) << 16 | (udpPort & 0xFFFF)),
                 new Tag.IntTag(TagName.id(ClientTag.EMULE_MISCOPTIONS1), Integer.toUnsignedLong(miscOptions1)),
                 new Tag.IntTag(TagName.id(ClientTag.EMULE_MISCOPTIONS2), Integer.toUnsignedLong(miscOptions2)),
-                new Tag.IntTag(TagName.id(ClientTag.EMULE_VERSION), Integer.toUnsignedLong(ClientVersion.njMule())));
+                new Tag.IntTag(TagName.id(ClientTag.EMULE_VERSION), Integer.toUnsignedLong(ClientVersion.njMule())),
+                // Clients show it after the software their version tag names: njMule and its full version.
+                new Tag.StringTag(TagName.id(ClientTag.MOD_VERSION), NjMuleInfo.NAME + " " + NjMuleInfo.version()));
         return new Hello(userHash, clientId, tcpPort, tags, serverIp, serverPort);
     }
 
@@ -196,5 +199,10 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
     /** The extended version tag; only clients speaking the extended protocol send it. */
     public OptionalLong emuleVersion() {
         return Tags.intValue(this.tags, ClientTag.EMULE_VERSION);
+    }
+
+    /** What the client tells of its software besides its version, such as the name of a modified client. */
+    public Optional<String> modVersion() {
+        return Tags.stringValue(this.tags, ClientTag.MOD_VERSION);
     }
 }

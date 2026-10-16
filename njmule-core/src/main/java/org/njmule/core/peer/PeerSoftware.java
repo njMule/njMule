@@ -17,7 +17,9 @@
 package org.njmule.core.peer;
 
 import java.util.Locale;
+import java.util.Optional;
 import java.util.OptionalLong;
+import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.protocol.ed2k.ClientVersion;
 import org.njmule.core.protocol.ed2k.Hello;
 
@@ -26,7 +28,24 @@ public final class PeerSoftware {
 
     private PeerSoftware() {}
 
+    /** The longest mod name kept: what a peer adds beyond it is not shown. */
+    static final int MAX_MOD = 64;
+
+    /** The software its version tag names, then the mod the client names, in brackets. */
     public static String describe(Hello hello) {
+        String software = software(hello);
+        Optional<String> mod = hello.modVersion().map(PeerSoftware::shown).filter(m -> !m.isEmpty());
+        if (mod.isEmpty()) {
+            return software;
+        }
+        // Another njMule names itself with its full version, pre-release included.
+        if (software.startsWith(NjMuleInfo.NAME + " v") && mod.get().startsWith(NjMuleInfo.NAME + " ")) {
+            return mod.get();
+        }
+        return software + " [" + mod.get() + "]";
+    }
+
+    private static String software(Hello hello) {
         OptionalLong tag = hello.emuleVersion();
         if (tag.isEmpty()) {
             return "eDonkey compatible";
@@ -44,5 +63,16 @@ public final class PeerSoftware {
             default ->
                 String.format(Locale.ROOT, "eMule compatible (client %d) v%d.%d.%d", compat, major, minor, update);
         };
+    }
+
+    // A peer's text is shown and logged: no control characters or direction overrides, and no more than fits.
+    private static String shown(String mod) {
+        StringBuilder out = new StringBuilder();
+        mod.strip()
+                .codePoints()
+                .filter(c -> !Character.isISOControl(c) && Character.getType(c) != Character.FORMAT)
+                .limit(MAX_MOD)
+                .forEach(out::appendCodePoint);
+        return out.toString().strip();
     }
 }

@@ -50,6 +50,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
@@ -218,7 +219,7 @@ class ServerFlowTest {
 
         whenNjMuleSaysHelloToItself();
 
-        thenTheAnswerComesFromSoftwareStartingWith("njMule v");
+        thenTheAnswerComesFromSoftwareStartingWith("njMule " + NjMuleInfo.version());
         thenTheAnswerHasOurNick();
         thenTheAnswerIsNotObfuscated();
     }

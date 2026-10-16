@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.tag.ClientTag;
 import org.njmule.core.protocol.tag.Tag;
@@ -32,6 +33,8 @@ import org.njmule.core.protocol.tag.TagName;
 
 class PeerSoftwareTest {
 
+    private static final int RIGHT_TO_LEFT_OVERRIDE = 0x202E;
+    private static final int LINE_FEED = 0x0A;
     private static final Hash16 HASH = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
 
     private Hello hello;
@@ -61,6 +64,35 @@ class PeerSoftwareTest {
         thenTheDescriptionIs(name);
     }
 
+    @Test
+    void shouldAddTheModAModifiedClientNames() {
+        givenAHelloWithTheVersionAndTheMod(version(0, 0, 50, 0), "MorphXT v12.7");
+
+        whenTheSoftwareIsDescribed();
+
+        thenTheDescriptionIs("eMule v0.50a [MorphXT v12.7]");
+    }
+
+    @Test
+    void shouldKeepControlAndDirectionCharactersOutOfTheMod() {
+        givenAHelloWithTheVersionAndTheMod(
+                version(0, 0, 50, 0),
+                " Evil" + Character.toString(RIGHT_TO_LEFT_OVERRIDE) + "gnp.exe" + Character.toString(LINE_FEED));
+
+        whenTheSoftwareIsDescribed();
+
+        thenTheDescriptionIs("eMule v0.50a [Evilgnp.exe]");
+    }
+
+    @Test
+    void shouldNameUsByTheFullVersionOurHelloTells() {
+        givenOurHello();
+
+        whenTheSoftwareIsDescribed();
+
+        thenTheDescriptionIs("njMule " + NjMuleInfo.version());
+    }
+
     @Property
     void shouldDescribeAnyVersionTag(@ForAll int tag) {
         givenAHelloWithTheVersionTag(tag);
@@ -80,6 +112,22 @@ class PeerSoftwareTest {
 
     private void givenAHelloWithTheVersionTag(int version) {
         this.hello = hello(version);
+    }
+
+    private void givenAHelloWithTheVersionAndTheMod(int version, String mod) {
+        this.hello = new Hello(
+                HASH,
+                0,
+                4662,
+                List.of(
+                        new Tag.IntTag(TagName.id(ClientTag.EMULE_VERSION), Integer.toUnsignedLong(version)),
+                        new Tag.StringTag(TagName.id(ClientTag.MOD_VERSION), mod)),
+                0,
+                0);
+    }
+
+    private void givenOurHello() {
+        this.hello = Hello.of(HASH, 0, 4662, "njMule user", 4672, 4673, 0, 0, 0, 0);
     }
 
     private void whenTheSoftwareIsDescribed() {
