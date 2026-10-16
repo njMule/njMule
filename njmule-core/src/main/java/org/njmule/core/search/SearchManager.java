@@ -85,8 +85,14 @@ public final class SearchManager {
     /** Time left for UDP answers after the last query. */
     public static final Duration ANSWER_GRACE = Duration.ofSeconds(5);
 
-    /** A global search stops querying servers once it has this many results. */
-    public static final int MAX_RESULTS = 300;
+    /** A global search asks no further server once it holds more than this many results. */
+    public static final int GLOBAL_RESULTS = 100;
+
+    /**
+     * The results one search keeps at most, against a flood: well above what servers give, up to 300 an answer and more
+     * asked for {@link #MAX_MORE_REQUESTS} times.
+     */
+    public static final int MAX_RESULTS = 2_000;
 
     /** Requests for more results of one search, as servers allow. */
     public static final int MAX_MORE_REQUESTS = 5;
@@ -417,7 +423,7 @@ public final class SearchManager {
             return;
         }
         Optional<ServerUdp> socket = this.udp.get();
-        if (search.udpQueue.isEmpty() || search.results.size() >= MAX_RESULTS || socket.isEmpty()) {
+        if (search.udpQueue.isEmpty() || search.results.size() > GLOBAL_RESULTS || socket.isEmpty()) {
             search.udpTimer.cancel(false);
             this.loop.schedule("global search answers", ANSWER_GRACE, () -> end(search));
             return;

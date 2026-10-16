@@ -17,6 +17,7 @@
 package org.njmule.core.search;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.BufferedInputStream;
@@ -31,6 +32,7 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
@@ -211,6 +213,32 @@ class SearchManagerTest {
                 new SearchResult.Origin(
                         Set.of(Ipv4.of(192, 0, 2, 1)), false, Set.of(Ipv4.of(203, 0, 113, 5)), "pirate iso"));
         thenTheReportedResultIsRated(hash(5), 70);
+    }
+
+    @Test
+    void shouldAskNoOtherServerOnceTheConnectedOneGaveMoreThanAHundredResults() throws Exception {
+        givenAServerToAskOverUdp(Ipv4.of(192, 0, 2, 1));
+        givenAnOpenUdpSocket();
+        givenAConnectedServer();
+        givenASearchIsStarted(global("linux"));
+        givenTheServerReceivedTheQuery();
+
+        whenTheServerAnswersWith(SearchManager.GLOBAL_RESULTS + 1);
+
+        thenNoServerIsAskedOverUdp();
+    }
+
+    @Test
+    void shouldAskTheOtherServersWhileTheConnectedOneGaveAHundredResults() throws Exception {
+        givenAServerToAskOverUdp(Ipv4.of(192, 0, 2, 1));
+        givenAnOpenUdpSocket();
+        givenAConnectedServer();
+        givenASearchIsStarted(global("linux"));
+        givenTheServerReceivedTheQuery();
+
+        whenTheServerAnswersWith(SearchManager.GLOBAL_RESULTS);
+
+        thenAServerIsAskedOverUdp();
     }
 
     @Test
@@ -552,6 +580,25 @@ class SearchManagerTest {
     private void givenTheQueryWentOverUdp() throws IOException {
         this.udpServer.setSoTimeout(20_000);
         this.udpServer.receive(new DatagramPacket(new byte[2048], 2048));
+    }
+
+    private void whenTheServerAnswersWith(int results) throws IOException {
+        List<FileEntry> files = new ArrayList<>();
+        for (int i = 0; i < results; i++) {
+            files.add(entry(2000 + i, "linux " + i + ".iso", 1000, 1));
+        }
+        this.server.send(new ServerMessages.SearchResults(files, false).encode());
+    }
+
+    private void thenAServerIsAskedOverUdp() throws IOException {
+        givenTheQueryWentOverUdp();
+    }
+
+    private void thenNoServerIsAskedOverUdp() throws IOException {
+        this.udpServer.setSoTimeout(2_000);
+        assertThatThrownBy(() -> this.udpServer.receive(new DatagramPacket(new byte[2048], 2048)))
+                .as("no query over UDP")
+                .isInstanceOf(SocketTimeoutException.class);
     }
 
     private void whenTheServerAnswersOverUdp(int ip, FileEntry... files) throws Exception {

@@ -56,7 +56,8 @@ All notable changes to this project are documented here. The format follows
   list), login with HighID/LowID, server messages, status and identity, moving on through the
   known servers, challenge-checked UDP status pings and callbacks to firewalled clients.
 - Searches on the connected server and, globally, on the other known servers over UDP, with
-  results merged by hash.
+  results merged by hash; a global search asks no further server once it holds more than 100
+  results, and a search keeps up to 2000, room for every "more results" a server gives.
 - Hello exchange with other clients, answering incoming ones and greeting a given client.
 - A user hash created at the first start and kept in `preferences.dat`.
 - Command line: `--add-servers`, `--connect-server`, `--search` (with `--global`), `--hello` and
