@@ -156,8 +156,9 @@ public final class ServerUdp implements AutoCloseable {
             } catch (DecodeException e) {
                 logger.debug("Dropping a malformed datagram from {}", datagram.getSocketAddress());
             } catch (IOException e) {
+                // On Windows an ICMP error for an earlier datagram fails a receive (WSAENETRESET): harmless.
                 if (!this.socket.isClosed()) {
-                    logger.warn("Server UDP receive failed", e);
+                    logger.debug("Server UDP: {}", e.getMessage());
                 }
             }
         }
