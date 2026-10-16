@@ -322,6 +322,8 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private final Map<Integer, Long> udpHelped = new LinkedHashMap<>();
     // The contacts of a bootstrap-only nodes.dat, closest to our id first: asked, never added.
     private final List<KadMessages.Contact> bootstrapList = new ArrayList<>();
+    // The addresses of the list's contacts asked since it was last filled: their answers give contacts, not them.
+    private final Set<Integer> askedFromList = new HashSet<>();
     private long lastBootstrap;
     private Supplier<NodesDat.Contents> shipped;
     private long shippedAt;
@@ -582,6 +584,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             return;
         }
         this.shippedAt = now;
+        this.askedFromList.clear();
         int added = addContacts(this.shipped.get());
         logger.info("Kad is still not connected: asking the {} shipped contacts again", added);
     }
@@ -594,6 +597,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
         this.lastBootstrap = now;
         KadMessages.Contact c = this.bootstrapList.removeFirst();
+        this.askedFromList.add(c.ip());
         Optional<UInt128> key = c.version() >= OBFUSCATION_VERSION ? Optional.of(c.id()) : Optional.empty();
         send(c.ip(), c.udpPort(), KadMessages.bootstrapRequest(), key, 0);
         this.tracking.sent(c.ip(), Opcodes.Kad.BOOTSTRAP_REQ, nowMs());
@@ -1300,7 +1304,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         long now = this.ticker.read();
         boolean empty = this.table.size() == 0;
         // A node of a bootstrap list gives contacts but is not taken: everyone starting from that list would.
-        if (this.bootstrapList.isEmpty() && isGoodAddress(peer.ip())) {
+        if (!this.askedFromList.contains(peer.ip()) && isGoodAddress(peer.ip())) {
             KadContact sender = new KadContact(
                     answer.sender().id(),
                     peer.ip(),

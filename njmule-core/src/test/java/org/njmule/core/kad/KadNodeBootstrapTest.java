@@ -200,6 +200,17 @@ class KadNodeBootstrapTest {
     }
 
     @Test
+    void shouldTakeAnAnsweringClientAsAContactWhileShippedContactsWait() {
+        givenShippedContacts(10);
+        givenAClientSaidHello(CLIENT, PORT, 9);
+
+        whenTheClientAnswersWithContacts(CLIENT, 3);
+
+        thenTheNodeHasContacts(4);
+        thenTheContactsInclude(CLIENT);
+    }
+
+    @Test
     void shouldNotAskAnotherClientBeforeTheGap() {
         givenAClientSaidHello(CLIENT, PORT, 9);
         givenSecondsPass(CLIENT_GAP_SECONDS - 1);
@@ -249,6 +260,19 @@ class KadNodeBootstrapTest {
 
     private void whenAClientSaysHello(int ip, int kadPort, int kadVersion) {
         this.node.bootstrapVia(ip, kadPort, kadVersion);
+    }
+
+    private void whenTheClientAnswersWithContacts(int ip, int count) {
+        List<KadMessages.Contact> contacts = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            contacts.add(new KadMessages.Contact(UInt128.random(this.random), Ipv4.of(70 + i, 1, 1, 1), PORT, 4662, 8));
+        }
+        KadMessages.Self sender = new KadMessages.Self(UInt128.random(this.random), 4662, 9);
+        this.node.received(ip, PORT, new KadMessages.BootstrapAnswer(sender, contacts).encode(), false, 0, 0);
+    }
+
+    private void thenTheContactsInclude(int ip) {
+        assertThat(this.node.contactInfos()).extracting(c -> c.address()).contains(Ipv4.format(ip) + ":" + PORT);
     }
 
     private void thenBootstrapRequestsWentTo(Integer... ips) {
