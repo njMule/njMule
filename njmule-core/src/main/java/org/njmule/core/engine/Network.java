@@ -1316,14 +1316,21 @@ final class Network {
         return all;
     }
 
-    /** Adds Kad contacts to the running node, or to {@code nodes.dat}; returns how many were new. */
+    /**
+     * Adds Kad contacts to {@code nodes.dat} and to the running node, if any; returns how many were new to the node, or
+     * to the file when Kad is off. The file gets them either way: the node saves only contacts it heard from.
+     */
     int addKadContacts(NodesDat.Contents contents) throws IOException {
-        if (this.kad != null) {
-            int added = this.kad.addContacts(contents);
-            this.kad.saveNodes();
-            this.kad.lookForContacts();
-            return added;
+        int saved = addToNodesDat(contents);
+        if (this.kad == null) {
+            return saved;
         }
+        int added = this.kad.addContacts(contents);
+        this.kad.lookForContacts();
+        return added;
+    }
+
+    private int addToNodesDat(NodesDat.Contents contents) throws IOException {
         Path file = this.configDir.resolve(KadNode.NODES_FILE);
         Map<UInt128, NodesDat.Contact> merged = new LinkedHashMap<>();
         if (Files.exists(file)) {

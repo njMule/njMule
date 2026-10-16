@@ -573,6 +573,18 @@ class NetworkTest {
         thenNodesDatHolds(FIRST_CONTACT, SECOND_CONTACT);
     }
 
+    // The node saves only contacts it heard from: the file keeps the list until then.
+    @Test
+    void shouldAddTheKadContactsToNodesDatWhileKadRuns() throws Exception {
+        givenAStartedNetwork();
+        givenKadIsConnectedTwice();
+
+        whenAContactListIsAdded(LAN_CONTACT);
+
+        thenTheNetworkAnswers(0);
+        thenNodesDatHolds(LAN_CONTACT);
+    }
+
     @Test
     void shouldLogInAgainAndMoveKadWhenThePortsChange() throws Exception {
         givenKadIsEnabled();

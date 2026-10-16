@@ -48,6 +48,7 @@ final class KadContact {
     private long typeSet;
     private int inUse;
     private boolean helloReceived;
+    private boolean heard;
 
     KadContact(UInt128 id, int ip, int udpPort, int tcpPort, int version, long now) {
         this.id = Objects.requireNonNull(id, "id");
@@ -103,6 +104,15 @@ final class KadContact {
         return this.helloReceived;
     }
 
+    /** Whether a packet came from the contact itself since it entered the table: it was not only loaded or told of. */
+    boolean wasHeardFrom() {
+        return this.heard;
+    }
+
+    void heardFrom() {
+        this.heard = true;
+    }
+
     boolean inUse() {
         return this.inUse > 0;
     }
@@ -154,6 +164,7 @@ final class KadContact {
             this.expires = now + 2 * HOUR;
         }
         this.typeSet = now;
+        this.heard = true;
     }
 
     /** We are about to check the contact: its type climbs until it answers. */

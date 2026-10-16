@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.IntPredicate;
+import java.util.function.Predicate;
 import org.njmule.core.persist.format.NodesDat;
 
 /**
@@ -272,22 +273,32 @@ final class RoutingTable {
 
     /** Contacts to hand to a joining node: those of the zones near the root. */
     List<KadContact> bootstrapContacts(int count, SecureRandom random) {
+        return bootstrapContacts(count, c -> true, random);
+    }
+
+    /** Up to {@code count} contacts of the zones near the root that {@code wanted} accepts. */
+    List<KadContact> bootstrapContacts(int count, Predicate<KadContact> wanted, SecureRandom random) {
         List<KadContact> contacts = new ArrayList<>();
-        collect(this.root, 5, random, contacts);
+        collect(this.root, 5, wanted, random, contacts);
         return contacts.size() > count ? contacts.subList(0, count) : contacts;
     }
 
-    private void collect(Zone zone, int depth, SecureRandom random, List<KadContact> out) {
+    private void collect(
+            Zone zone, int depth, Predicate<KadContact> wanted, SecureRandom random, List<KadContact> out) {
         if (zone.isLeaf()) {
-            out.addAll(zone.bin);
+            for (KadContact c : zone.bin) {
+                if (wanted.test(c)) {
+                    out.add(c);
+                }
+            }
             return;
         }
         if (depth == 0) {
-            collect(random.nextBoolean() ? zone.near : zone.far, 0, random, out);
+            collect(random.nextBoolean() ? zone.near : zone.far, 0, wanted, random, out);
             return;
         }
-        collect(zone.near, depth - 1, random, out);
-        collect(zone.far, depth - 1, random, out);
+        collect(zone.near, depth - 1, wanted, random, out);
+        collect(zone.far, depth - 1, wanted, random, out);
     }
 
     List<Zone> leaves() {

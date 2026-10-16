@@ -231,7 +231,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     private static final Duration QUIET_FOR = Duration.ofMinutes(15);
 
-    // Fewer contacts than this do not replace a nodes.dat: a short outage must not lose a good one.
+    // Fewer contacts heard from than this do not replace a nodes.dat: a short outage must not lose a good one.
     static final int MIN_SAVED_CONTACTS = 25;
 
     // An index file larger than this is not read: the index holds far less within its own limits.
@@ -606,15 +606,15 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
     }
 
-    /** Writes the best contacts to {@code nodes.dat}. */
+    /** Writes the best contacts we heard from to {@code nodes.dat}. */
     public void saveNodes() {
         List<NodesDat.Contact> records = new ArrayList<>();
-        for (KadContact c : this.table.bootstrapContacts(NodesDat.MAX_WRITTEN, this.random)) {
+        for (KadContact c : this.table.bootstrapContacts(NodesDat.MAX_WRITTEN, KadNode::isWorthSaving, this.random)) {
             records.add(c.record());
         }
         Path file = this.configDir.resolve(NODES_FILE);
         if (records.isEmpty() || (records.size() < MIN_SAVED_CONTACTS && Files.exists(file))) {
-            logger.debug("Keeping {}: only {} contacts", file.getFileName(), records.size());
+            logger.debug("Keeping {}: only {} contacts heard from", file.getFileName(), records.size());
             return;
         }
         try {
@@ -622,6 +622,12 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         } catch (IOException e) {
             logger.warn("Cannot save the Kad contacts", e);
         }
+    }
+
+    // The file keeps neither types nor ages: contacts only loaded or told of by other nodes, and dead ones, would come
+    // back at the next start as good as live ones.
+    private static boolean isWorthSaving(KadContact c) {
+        return c.wasHeardFrom() && c.type() < KadContact.DEAD;
     }
 
     /** Writes what other nodes published to us. */
@@ -1281,6 +1287,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                     answer.sender().version(),
                     now);
             sender.setVerified(true);
+            sender.heardFrom();
             this.table.add(sender, true, peer.key(this.publicIp), this.publicIp, now);
         }
         for (KadMessages.Contact c : answer.contacts()) {
@@ -1309,6 +1316,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             KadContact contact = new KadContact(
                     hello.sender().id(), peer.ip(), udpPort, hello.sender().tcpPort(), version, now);
             contact.setVerified(peer.validKey());
+            contact.heardFrom();
             outcome = this.table.add(contact, true, peer.key(this.publicIp), this.publicIp, now);
             this.table.get(contact.id()).ifPresent(KadContact::setHelloReceived);
         }

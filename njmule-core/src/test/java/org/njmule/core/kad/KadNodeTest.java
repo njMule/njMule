@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -253,26 +252,6 @@ class KadNodeTest {
     }
 
     @Test
-    void shouldSaveItsContactsToNodesDat() throws Exception {
-        givenContactsAt(PEER);
-
-        whenTheContactsAreSaved();
-
-        thenTheSavedContactsAre(1);
-    }
-
-    @Test
-    void shouldNotReplaceASavedNodesDatWithAFewContacts() throws Exception {
-        givenContactsAt(PEER);
-        givenTheContactsWereSaved(1);
-        givenANodesDatWithContacts(KadNode.MIN_SAVED_CONTACTS);
-
-        whenTheContactsAreSaved();
-
-        thenTheSavedContactsAre(KadNode.MIN_SAVED_CONTACTS);
-    }
-
-    @Test
     void shouldNoLongerBeConnectedWhenNothingArrivesForTwentyMinutes() {
         givenContactsAt(PEER);
         givenANodePingedUs(PEER);
@@ -372,19 +351,6 @@ class KadNodeTest {
         this.node.tick();
     }
 
-    private void givenTheContactsWereSaved(int count) throws IOException {
-        whenTheContactsAreSaved();
-        thenTheSavedContactsAre(count);
-    }
-
-    private void givenANodesDatWithContacts(int count) throws IOException {
-        List<NodesDat.Contact> many = new ArrayList<>();
-        for (int i = 0; i < count; i++) {
-            many.add(record(Ipv4.of(70 + i, 1, 1, 1)));
-        }
-        Files.write(nodesFile(), NodesDat.write(many));
-    }
-
     private void givenANodePingedUs(int ip) {
         this.node.received(ip, PORT, Packet.of(Protocol.KAD, Opcodes.Kad.PING.code(), new byte[0]), false, 0, 0);
         assertThat(this.node.isConnected()).isTrue();
@@ -453,10 +419,6 @@ class KadNodeTest {
                 false,
                 0,
                 0);
-    }
-
-    private void whenTheContactsAreSaved() {
-        this.node.saveNodes();
     }
 
     private void whenMinutesPassInStepsOfTenSeconds(int minutes) {
@@ -534,10 +496,6 @@ class KadNodeTest {
         assertThat(this.found).extracting(KadNode.FileResult::name).containsExactly(names);
     }
 
-    private void thenTheSavedContactsAre(int count) throws IOException {
-        assertThat(NodesDat.read(Files.readAllBytes(nodesFile())).contacts()).hasSize(count);
-    }
-
     private void thenTheNodeIsNotConnected() {
         assertThat(this.node.isConnected()).isFalse();
     }
@@ -567,10 +525,6 @@ class KadNodeTest {
 
     private void answer(UInt128 lookup, KadMessages.Contact... contacts) {
         this.node.received(PEER, PORT, new KadMessages.Answer(lookup, List.of(contacts)).encode(), false, 0, 0);
-    }
-
-    private Path nodesFile() {
-        return this.dir.resolve(KadNode.NODES_FILE);
     }
 
     private KadMessages.Contact[] contacts(int... ips) {
