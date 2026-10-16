@@ -370,6 +370,13 @@ All notable changes to this project are documented here. The format follows
   in a category and paused at once.
 - The lists below the downloads (uploading, waiting, downloading from, banned) are segments with
   their counts, one list shown at a time.
+- Search results rated for spam: a file marked as spam teaches its hash, name, its name without the
+  words searched for (names a few edits away count too), its size (within 5 % and 5 MiB), the UDP
+  servers that gave it and the source the answer named, and each server's share of spam over UDP
+  is kept; the hits add up, and 60 or more is spam. Results only servers of mostly spam give count
+  more, small popular programs from them most. Kept in `SearchSpam.met` as eMule does (its file is
+  read and written), on by default (`search.spamFilter`, also from an eMule profile); engine API
+  `rateSpam`, the rating in the web API's results.
 - The name each source gives a download is kept with the source (engine API `SourceInfo`), and a
   download can be renamed (engine API `renameDownload`, web API `PUT
   /api/v1/downloads/{hash}/name`): the name, made safe for any file system, is the one its file

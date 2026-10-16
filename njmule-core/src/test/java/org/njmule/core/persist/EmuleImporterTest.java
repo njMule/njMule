@@ -220,6 +220,7 @@ class EmuleImporterTest {
         thenOnlyFriendsMaySendMessages();
         thenTheMessageFilterIs("buy now|cheap");
         thenTheNamesOfNewDownloadsAreCleanedUpOf("dvdrip|sponsored");
+        thenTheSearchSpamFilterIsOff();
         thenTheAdvancedSpamFilterIsOnAsItIsNotInTheProfile();
         thenTheConnectionLimitsAre(35, 9000);
         thenTheTcpPortIs(Preferences.DEFAULT_TCP_PORT);
@@ -1129,6 +1130,10 @@ class EmuleImporterTest {
 
     private void thenOnlyFriendsMaySendMessages() {
         assertThat(this.preferences.messagesFromFriendsOnly()).isTrue();
+    }
+
+    private void thenTheSearchSpamFilterIsOff() {
+        assertThat(this.preferences.searchSpamFilter()).isFalse();
     }
 
     private void thenTheNamesOfNewDownloadsAreCleanedUpOf(String words) {

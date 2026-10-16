@@ -83,6 +83,7 @@ public record Preferences(
         boolean messagesFromFriendsOnly,
         String messageFilter,
         boolean advancedSpamFilter,
+        boolean searchSpamFilter,
         int newConnectionsPerFiveSeconds,
         int uploadQueueSize,
         SharedFilesVisibility sharedFilesVisibility,
@@ -261,6 +262,7 @@ public record Preferences(
                 false,
                 DEFAULT_MESSAGE_FILTER,
                 true,
+                true,
                 DEFAULT_NEW_CONNECTIONS,
                 DEFAULT_UPLOAD_QUEUE,
                 SharedFilesVisibility.NOBODY,
@@ -359,6 +361,7 @@ public record Preferences(
         private boolean messagesFromFriendsOnly;
         private String messageFilter;
         private boolean advancedSpamFilter;
+        private boolean searchSpamFilter;
         private int newConnectionsPerFiveSeconds;
         private int uploadQueueSize;
         private SharedFilesVisibility sharedFilesVisibility;
@@ -415,6 +418,7 @@ public record Preferences(
             this.messagesFromFriendsOnly = p.messagesFromFriendsOnly;
             this.messageFilter = p.messageFilter;
             this.advancedSpamFilter = p.advancedSpamFilter;
+            this.searchSpamFilter = p.searchSpamFilter;
             this.newConnectionsPerFiveSeconds = p.newConnectionsPerFiveSeconds;
             this.uploadQueueSize = p.uploadQueueSize;
             this.sharedFilesVisibility = p.sharedFilesVisibility;
@@ -664,6 +668,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder searchSpamFilter(boolean value) {
+            this.searchSpamFilter = value;
+            return this;
+        }
+
         public Builder newConnectionsPerFiveSeconds(int value) {
             this.newConnectionsPerFiveSeconds = value;
             return this;
@@ -788,6 +797,7 @@ public record Preferences(
                     this.messagesFromFriendsOnly,
                     this.messageFilter,
                     this.advancedSpamFilter,
+                    this.searchSpamFilter,
                     this.newConnectionsPerFiveSeconds,
                     this.uploadQueueSize,
                     this.sharedFilesVisibility,

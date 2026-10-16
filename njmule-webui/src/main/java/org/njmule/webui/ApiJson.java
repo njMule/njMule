@@ -289,6 +289,8 @@ final class ApiJson {
         g.writeNumberProperty("sources", r.sources());
         g.writeNumberProperty("completeSources", r.completeSources());
         optional(g, "type", r.type());
+        g.writeNumberProperty("spamRating", r.spamRating());
+        g.writeBooleanProperty("spam", r.isSpam());
         g.writeEndObject();
     }
 

@@ -371,6 +371,17 @@ final class Network {
                 new SearchEvents(),
                 this::routeTo,
                 random);
+        this.searches.rateSpamWith(new SearchManager.SpamRater() {
+            @Override
+            public int rate(SearchResult result) {
+                return preferences.get().searchSpamFilter() ? Network.this.spam.rate(result) : 0;
+            }
+
+            @Override
+            public void answered(int serverIp, int results, int spamResults) {
+                Network.this.spam.answered(serverIp, results, spamResults);
+            }
+        });
         this.pinger = new ServerPinger(
                 loop,
                 this.servers,
@@ -892,7 +903,7 @@ final class Network {
 
     SpamMarks markSpam(List<SearchResult> results, boolean isSpam) {
         for (SearchResult result : results) {
-            this.spam.mark(result.hash(), result.name(), isSpam);
+            this.spam.mark(result, isSpam);
         }
         try {
             this.spam.save(this.spamFile);
@@ -900,6 +911,14 @@ final class Network {
             logger.warn("Cannot save {}", this.spamFile, e);
         }
         return this.spam.marks();
+    }
+
+    // Off in the preferences, nothing is spam.
+    List<SearchResult> rateSpam(List<SearchResult> results) {
+        boolean on = this.preferences.get().searchSpamFilter();
+        return results.stream()
+                .map(r -> r.withSpamRating(on ? this.spam.rate(r) : 0))
+                .toList();
     }
 
     List<BanInfo> bans() {
@@ -1635,6 +1654,12 @@ final class Network {
     CompletableFuture<Void> close() {
         this.closed = true;
         saveTotals();
+        // The servers' spam shares change with every UDP answer.
+        try {
+            this.spam.save(this.spamFile);
+        } catch (IOException e) {
+            logger.warn("Cannot save {}", this.spamFile, e);
+        }
         this.messaging.close();
         this.buddyLink.release();
         if (this.kad != null) {

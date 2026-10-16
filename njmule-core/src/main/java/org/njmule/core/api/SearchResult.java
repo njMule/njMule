@@ -16,27 +16,119 @@
  */
 package org.njmule.core.api;
 
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * A file found by a search; the source counts add up over the servers that reported it.
  *
  * @param media what the file's publishers told of its content, {@link Media#NONE} when nothing
+ * @param origin where the result came from, as its spam rating weighs it
+ * @param spamRating how much it looks like spam: {@value #SPAM_THRESHOLD} and more is spam
  */
 public record SearchResult(
-        Hash16 hash, String name, long size, int sources, int completeSources, Optional<String> type, Media media) {
+        Hash16 hash,
+        String name,
+        long size,
+        int sources,
+        int completeSources,
+        Optional<String> type,
+        Media media,
+        Origin origin,
+        int spamRating) {
+
+    /** The spam rating from which a result counts as spam. */
+    public static final int SPAM_THRESHOLD = 60;
 
     public SearchResult {
         Objects.requireNonNull(hash, "hash");
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(media, "media");
+        Objects.requireNonNull(origin, "origin");
     }
 
     /** A result without media details. */
     public SearchResult(Hash16 hash, String name, long size, int sources, int completeSources, Optional<String> type) {
         this(hash, name, size, sources, completeSources, type, Media.NONE);
+    }
+
+    /** A result of no known origin, not rated for spam. */
+    public SearchResult(
+            Hash16 hash, String name, long size, int sources, int completeSources, Optional<String> type, Media media) {
+        this(hash, name, size, sources, completeSources, type, media, Origin.NONE, 0);
+    }
+
+    /** Whether the result counts as spam. */
+    public boolean isSpam() {
+        return this.spamRating >= SPAM_THRESHOLD;
+    }
+
+    public SearchResult withOrigin(Origin other) {
+        return new SearchResult(
+                this.hash,
+                this.name,
+                this.size,
+                this.sources,
+                this.completeSources,
+                this.type,
+                this.media,
+                other,
+                this.spamRating);
+    }
+
+    public SearchResult withSpamRating(int rating) {
+        return new SearchResult(
+                this.hash,
+                this.name,
+                this.size,
+                this.sources,
+                this.completeSources,
+                this.type,
+                this.media,
+                this.origin,
+                rating);
+    }
+
+    /**
+     * Where a result came from: the servers that gave it over UDP, whether it also came from the connected server or
+     * from Kad, the addresses ({@code Ipv4} form) of the sources the answers named, and the name without the words
+     * searched for, in lower case with single spaces.
+     */
+    public record Origin(Set<Integer> udpServers, boolean direct, Set<Integer> sourceIps, String bareName) {
+
+        public static final Origin NONE = new Origin(Set.of(), false, Set.of(), "");
+
+        /** Servers and sources kept for one result: what a spammer adds beyond them changes nothing. */
+        public static final int MAX_ADDRESSES = 64;
+
+        public Origin {
+            udpServers = Set.copyOf(capped(udpServers));
+            sourceIps = Set.copyOf(capped(sourceIps));
+            Objects.requireNonNull(bareName, "bareName");
+        }
+
+        /** Both origins of a result, as its answers came. */
+        public Origin and(Origin other) {
+            Set<Integer> servers = new HashSet<>(this.udpServers);
+            servers.addAll(other.udpServers);
+            Set<Integer> ips = new HashSet<>(this.sourceIps);
+            ips.addAll(other.sourceIps);
+            return new Origin(
+                    servers,
+                    this.direct || other.direct,
+                    ips,
+                    this.bareName.isEmpty() ? other.bareName : this.bareName);
+        }
+
+        private static Collection<Integer> capped(Set<Integer> addresses) {
+            return addresses.size() <= MAX_ADDRESSES
+                    ? addresses
+                    : addresses.stream().sorted().limit(MAX_ADDRESSES).toList();
+        }
     }
 
     /** Whether {@code name} and {@code size} make a file that can be downloaded, as {@link #link()} needs. */

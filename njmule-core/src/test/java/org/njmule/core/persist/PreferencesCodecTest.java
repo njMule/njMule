@@ -227,6 +227,7 @@ class PreferencesCodecTest {
                 .minFreeSpaceMiB(2048)
                 .proxy(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.lan", 9050, "me", "pw"))
                 .nameCleanups("dvdrip|sponsored")
+                .searchSpamFilter(false)
                 .cleanUpNewNames(true)
                 .build();
     }

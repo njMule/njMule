@@ -125,8 +125,14 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The search results marked as spam. */
     CompletableFuture<SpamMarks> spamMarks();
 
-    /** Marks {@code results} as spam, or clears them; completes with the marks now. */
+    /**
+     * Marks {@code results} as spam, learning what they have to rate others like them, or clears them; completes with
+     * the marks now.
+     */
     CompletableFuture<SpamMarks> markSpam(List<SearchResult> results, boolean isSpam);
+
+    /** {@code results} with their spam rating now, as the files marked so far make it; all 0 with the filter off. */
+    CompletableFuture<List<SearchResult>> rateSpam(List<SearchResult> results);
 
     /** The sources of our downloads. */
     CompletableFuture<List<SourceInfo>> sources();

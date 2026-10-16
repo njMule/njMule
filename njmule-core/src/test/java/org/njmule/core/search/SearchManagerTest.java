@@ -23,14 +23,19 @@ import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -47,6 +52,7 @@ import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
+import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.persist.format.ServerMet;
@@ -62,6 +68,7 @@ import org.njmule.core.protocol.tag.ServerTag;
 import org.njmule.core.protocol.tag.Tag;
 import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.server.ServerList;
+import org.njmule.core.server.ServerRoute;
 import org.njmule.core.server.ServerSession;
 import org.njmule.core.server.ServerUdp;
 import org.njmule.core.util.Ipv4;
@@ -103,8 +110,21 @@ class SearchManagerTest {
             new Session(),
             () -> false,
             new SecureRandom());
-    private final SearchManager manager =
-            new SearchManager(this.loop, this.session, this.servers, () -> this.udp, () -> this.kad, new Events());
+    // Where the UDP queries go: here, not to the servers' own addresses.
+    private final DatagramSocket udpServer = openUdpServer();
+    private final SearchManager manager = new SearchManager(
+            this.loop,
+            this.session,
+            this.servers,
+            () -> this.udp,
+            () -> this.kad,
+            new Events(),
+            s -> ServerRoute.of(s, 0, ObfuscationMode.DISABLED)
+                    .map(r -> new ServerRoute(
+                            new InetSocketAddress(InetAddress.getLoopbackAddress(), this.udpServer.getLocalPort()),
+                            r.key())),
+            new SecureRandom());
+    private final List<String> answered = new CopyOnWriteArrayList<>();
     private final List<String> keywords = new ArrayList<>();
     private final List<String> stopped = new ArrayList<>();
     private SearchId id;
@@ -115,6 +135,7 @@ class SearchManagerTest {
     @AfterEach
     void stop() throws Exception {
         this.loop.close();
+        this.udpServer.close();
         for (AutoCloseable resource : this.resources) {
             resource.close();
         }
@@ -154,6 +175,42 @@ class SearchManagerTest {
         whenKadSendsTheResults(FIRST_KAD_ANSWER);
 
         thenTheNextEventReports("distro.iso 5/1");
+    }
+
+    @Test
+    void shouldRateAKadResultByItsNameWithoutTheWordsSearchedFor() throws Exception {
+        givenARaterThatTakesForSpamNamesWith("pirate");
+        givenARunningKadThatCannotLookUp("never");
+        givenASearchIsStarted(kad("rare linux distro"));
+
+        whenKadSendsTheResults(List.of(result(1, "Rare-Linux_Distro (pirate).iso", 1000, 5)));
+
+        thenTheReportedResultCameFrom(hash(1), new SearchResult.Origin(Set.of(), true, Set.of(), "pirate iso"));
+        thenTheReportedResultIsRated(hash(1), 70);
+    }
+
+    @Test
+    void shouldRateTheUdpAnswersOfAServerAndCountItsSpam() throws Exception {
+        givenAServerToAskOverUdp(Ipv4.of(192, 0, 2, 1));
+        givenAnOpenUdpSocket();
+        givenARaterThatTakesForSpamNamesWith("pirate");
+        givenAConnectedServer();
+        givenASearchIsStarted(global("linux"));
+        givenTheServerReceivedTheQuery();
+        givenTheServerAnswered(List.of(), false);
+        givenTheQueryWentOverUdp();
+
+        whenTheServerAnswersOverUdp(
+                Ipv4.of(192, 0, 2, 1),
+                entryFrom(5, "Linux (pirate).iso", Ipv4.of(203, 0, 113, 5)),
+                entry(6, "linux.iso", 1000, 2));
+
+        thenTheServerIsCounted("answered 192.0.2.1 2 1");
+        thenTheReportedResultCameFrom(
+                hash(5),
+                new SearchResult.Origin(
+                        Set.of(Ipv4.of(192, 0, 2, 1)), false, Set.of(Ipv4.of(203, 0, 113, 5)), "pirate iso"));
+        thenTheReportedResultIsRated(hash(5), 70);
     }
 
     @Test
@@ -464,6 +521,73 @@ class SearchManagerTest {
         });
     }
 
+    private void givenARaterThatTakesForSpamNamesWith(String word) {
+        this.manager.rateSpamWith(new SearchManager.SpamRater() {
+            @Override
+            public int rate(SearchResult result) {
+                return result.origin().bareName().contains(word) ? 70 : 0;
+            }
+
+            @Override
+            public void answered(int serverIp, int results, int spamResults) {
+                SearchManagerTest.this.answered.add(
+                        "answered " + Ipv4.format(serverIp) + " " + results + " " + spamResults);
+            }
+        });
+    }
+
+    private void givenAServerToAskOverUdp(int ip) throws Exception {
+        onLoop(() -> {
+            this.servers.add(new ServerMet.Server(ip, 4661, List.of()));
+            return null;
+        });
+    }
+
+    private void givenAnOpenUdpSocket() throws IOException {
+        ServerUdp open = ServerUdp.open(0, (from, packet) -> {});
+        this.resources.add(open);
+        this.udp = Optional.of(open);
+    }
+
+    private void givenTheQueryWentOverUdp() throws IOException {
+        this.udpServer.setSoTimeout(20_000);
+        this.udpServer.receive(new DatagramPacket(new byte[2048], 2048));
+    }
+
+    private void whenTheServerAnswersOverUdp(int ip, FileEntry... files) throws Exception {
+        onLoop(() -> {
+            this.manager.datagramResults(new InetSocketAddress(Ipv4.format(ip), 4665), List.of(files));
+            return null;
+        });
+    }
+
+    private void thenTheServerIsCounted(String counted) {
+        assertThat(this.answered).containsExactly(counted);
+    }
+
+    private void thenTheReportedResultCameFrom(Hash16 file, SearchResult.Origin origin) {
+        assertThat(lastReported(file).origin()).isEqualTo(origin);
+    }
+
+    private void thenTheReportedResultIsRated(Hash16 file, int rating) {
+        assertThat(lastReported(file).spamRating()).isEqualTo(rating);
+    }
+
+    private SearchResult lastReported(Hash16 file) {
+        return this.reported.reversed().stream()
+                .filter(r -> r.hash().equals(file))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private static DatagramSocket openUdpServer() {
+        try {
+            return new DatagramSocket(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+        } catch (SocketException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     private void givenAClosedUdpSocket() throws IOException {
         ServerUdp closed = ServerUdp.open(0, (from, packet) -> {});
         closed.close();
@@ -665,6 +789,22 @@ class SearchManagerTest {
 
     private static Tag intTag(int id, long value) {
         return new Tag.IntTag(TagName.id(id), value);
+    }
+
+    private static SearchResult result(int hash, String name, long size, int sources) {
+        return new SearchResult(hash(hash), name, size, sources, 0, Optional.empty());
+    }
+
+    // An entry naming a HighID source at sourceIp.
+    private static FileEntry entryFrom(int hash, String name, int sourceIp) {
+        return new FileEntry(
+                hash(hash),
+                Ipv4.toEd2k(sourceIp),
+                4662,
+                List.of(
+                        new Tag.StringTag(TagName.id(FileTag.FILENAME), name),
+                        new Tag.IntTag(TagName.id(FileTag.FILESIZE), 1000),
+                        new Tag.IntTag(TagName.id(FileTag.SOURCES), 3)));
     }
 
     private static Hash16 hash(int seed) {

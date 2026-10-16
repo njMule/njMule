@@ -382,6 +382,7 @@ public final class EmuleImporter {
         ini.getLong(SECTION, "StartNextFile").ifPresent(v -> b.nextDownload(nextDownload(v)));
         ini.getBoolean(SECTION, "FilterBadIPs").ifPresent(b::filterLanAddresses);
         ini.getBoolean(SECTION, "MessagesFromFriendsOnly").ifPresent(b::messagesFromFriendsOnly);
+        ini.getBoolean(SECTION, "EnableSearchResultSpamFilter").ifPresent(b::searchSpamFilter);
         ini.get(SECTION, "MessageFilter")
                 .map(v -> v.length() > Preferences.MAX_MESSAGE_FILTER
                         ? v.substring(0, Preferences.MAX_MESSAGE_FILTER)

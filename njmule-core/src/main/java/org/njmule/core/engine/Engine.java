@@ -666,6 +666,12 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<List<SearchResult>> rateSpam(List<SearchResult> results) {
+        List<SearchResult> rated = List.copyOf(results);
+        return this.loop.submit(() -> this.network.rateSpam(rated));
+    }
+
+    @Override
     public CompletableFuture<List<SourceInfo>> sources() {
         return this.loop.submit(this.network::sources);
     }

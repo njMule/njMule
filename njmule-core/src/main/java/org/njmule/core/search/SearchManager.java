@@ -17,6 +17,7 @@
 package org.njmule.core.search;
 
 import com.google.common.base.CharMatcher;
+import com.google.common.base.Splitter;
 import com.google.common.math.IntMath;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -29,9 +30,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.Consumer;
@@ -91,6 +94,26 @@ public final class SearchManager {
     /** A Kad search ends after this long. */
     public static final Duration KAD_WAIT = Duration.ofSeconds(50);
 
+    /** Rates results for spam, and keeps how many spam results each server gives over UDP. */
+    public interface SpamRater {
+        SpamRater NONE = new SpamRater() {
+            @Override
+            public int rate(SearchResult result) {
+                return 0;
+            }
+
+            @Override
+            public void answered(int serverIp, int results, int spamResults) {
+                // Nothing kept.
+            }
+        };
+
+        int rate(SearchResult result);
+
+        /** The server at {@code serverIp} ({@code Ipv4} form) gave {@code results} over UDP, some rated as spam. */
+        void answered(int serverIp, int results, int spamResults);
+    }
+
     /** Kad, when it runs. */
     public interface KadSearches {
         /**
@@ -101,6 +124,10 @@ public final class SearchManager {
     }
 
     private static final Logger logger = LoggerFactory.getLogger(SearchManager.class);
+    // What separates the words of a name, as a bare name leaves out the words searched for.
+    private static final CharMatcher NAME_SEPARATORS =
+            CharMatcher.anyOf(".[]()!-'_").or(CharMatcher.whitespace());
+    private static final Splitter WORDS = Splitter.on(NAME_SEPARATORS).omitEmptyStrings();
     // Control characters, and the embeddings, overrides and isolates that reorder text.
     private static final CharMatcher UNSHOWN = CharMatcher.javaIsoControl()
             .or(CharMatcher.inRange((char) 0x202A, (char) 0x202E))
@@ -114,6 +141,7 @@ public final class SearchManager {
     private final Listener listener;
     private final Function<ServerMet.Server, Optional<ServerRoute>> route;
     private final SecureRandom random;
+    private SpamRater spam = SpamRater.NONE;
     // Searches still running.
     private final Map<SearchId, Search> searches = new HashMap<>();
     private long nextId = 1;
@@ -164,6 +192,11 @@ public final class SearchManager {
         this.random = Objects.requireNonNull(random, "random");
     }
 
+    /** Results are rated for spam by {@code rater} from now on. */
+    public void rateSpamWith(SpamRater rater) {
+        this.spam = Objects.requireNonNull(rater, "rater");
+    }
+
     /**
      * Starts a search on the connected server; the server and global searches still open end, as server answers carry
      * no search id to tell them apart.
@@ -199,7 +232,9 @@ public final class SearchManager {
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
         Optional<Runnable> started = searches.search(keyword, SearchTreeCodec.indexedTypes(expression), results -> {
             if (!search.ended) {
-                mergeResults(search, results, false);
+                SearchResult.Origin kad = new SearchResult.Origin(Set.of(), true, Set.of(), "");
+                mergeResults(
+                        search, results.stream().map(r -> r.withOrigin(kad)).toList(), false);
             }
         });
         if (started.isEmpty()) {
@@ -308,7 +343,7 @@ public final class SearchManager {
             return;
         }
         search.moreAvailable = results.more();
-        merge(search, results.files());
+        merge(search, results.files(), OptionalInt.empty());
         afterServer(search);
     }
 
@@ -317,7 +352,10 @@ public final class SearchManager {
         int ip = Ipv4.fromBytes(from.getAddress().getAddress());
         for (Search search : this.searches.values()) {
             if (!search.ended && search.askedOverUdp.contains(ip)) {
-                merge(search, files);
+                List<SearchResult> rated = merge(search, files, OptionalInt.of(ip));
+                int spamResults =
+                        (int) rated.stream().filter(SearchResult::isSpam).count();
+                this.spam.answered(ip, rated.size(), spamResults);
                 return;
             }
         }
@@ -402,13 +440,20 @@ public final class SearchManager {
         }
     }
 
-    private void merge(Search search, List<FileEntry> files) {
+    // Answers of the connected server, or of the server at udpServer over UDP; the results they made, rated.
+    private List<SearchResult> merge(Search search, List<FileEntry> files, OptionalInt udpServer) {
         List<SearchResult> found = new ArrayList<>();
         for (FileEntry file : files) {
             Optional<String> name = file.name();
             if (name.isEmpty() || file.size().isEmpty()) {
                 continue;
             }
+            // A HighID source the answer names; a LowID is no address.
+            Set<Integer> source = file.clientId() >= ServerMessages.LOW_ID_LIMIT && file.port() != 0
+                    ? Set.of(Ipv4.fromEd2k(file.clientId()))
+                    : Set.of();
+            SearchResult.Origin origin = new SearchResult.Origin(
+                    udpServer.isPresent() ? Set.of(udpServer.getAsInt()) : Set.of(), udpServer.isEmpty(), source, "");
             found.add(new SearchResult(
                     file.hash(),
                     name.get(),
@@ -416,20 +461,28 @@ public final class SearchManager {
                     file.sources(),
                     file.completeSources(),
                     file.type(),
-                    file.media()));
+                    file.media(),
+                    origin,
+                    0));
         }
-        mergeResults(search, found, true);
+        return mergeResults(search, found, true);
     }
 
     /**
-     * Adds results to a search. Unusable ones (no name, a size of zero or beyond eD2K's limit, a known hash with
-     * another size) are left out. Servers count their own sources, so their counts add up; Kad nodes report the same
-     * sources, so the largest count is kept.
+     * Adds results to a search, rated for spam once merged; returns them as merged. Unusable ones (no name, a size of
+     * zero or beyond eD2K's limit, a known hash with another size) are left out. Servers count their own sources, so
+     * their counts add up; Kad nodes report the same sources, so the largest count is kept.
      */
-    private void mergeResults(Search search, List<SearchResult> found, boolean addCounts) {
+    private List<SearchResult> mergeResults(Search search, List<SearchResult> found, boolean addCounts) {
         List<SearchResult> changed = new ArrayList<>();
+        List<SearchResult> rated = new ArrayList<>();
         for (SearchResult reported : found) {
-            SearchResult file = asShown(reported);
+            SearchResult shown = asShown(reported);
+            SearchResult file = shown.withOrigin(new SearchResult.Origin(
+                    shown.origin().udpServers(),
+                    shown.origin().direct(),
+                    shown.origin().sourceIps(),
+                    bareName(shown.name(), search.words)));
             if (!SearchResult.isDownloadable(file.name(), file.size())) {
                 continue;
             }
@@ -456,12 +509,60 @@ public final class SearchManager {
                                     ? IntMath.saturatedAdd(known.completeSources(), file.completeSources())
                                     : Math.max(known.completeSources(), file.completeSources()),
                             known.type().or(file::type),
-                            known.media().or(file.media()));
-            search.results.put(file.hash(), merged);
-            changed.add(merged);
+                            known.media().or(file.media()),
+                            known.origin().and(file.origin()),
+                            0);
+            merged = merged.withSpamRating(this.spam.rate(merged));
+            rated.add(merged);
+            if (!merged.equals(known)) {
+                search.results.put(file.hash(), merged);
+                changed.add(merged);
+            }
         }
         if (!changed.isEmpty()) {
             this.listener.results(search.id, changed);
+        }
+        return rated;
+    }
+
+    /** {@code name} in lower case without the words searched for, its other words apart by single spaces. */
+    static String bareName(String name, Set<String> searched) {
+        List<String> kept = new ArrayList<>();
+        for (String word : WORDS.split(name.toLowerCase(Locale.ROOT))) {
+            if (!searched.contains(word)) {
+                kept.add(word);
+            }
+        }
+        return String.join(" ", kept);
+    }
+
+    // The words of the expression's keywords, as names are split, in lower case.
+    private static Set<String> searchedWords(SearchExpr expression) {
+        Set<String> words = new HashSet<>();
+        collectWords(expression, words);
+        return Set.copyOf(words);
+    }
+
+    private static void collectWords(SearchExpr expression, Set<String> words) {
+        switch (expression) {
+            case SearchExpr.And and -> {
+                collectWords(and.left(), words);
+                collectWords(and.right(), words);
+            }
+            case SearchExpr.Or or -> {
+                collectWords(or.left(), words);
+                collectWords(or.right(), words);
+            }
+            case SearchExpr.Not not -> collectWords(not.left(), words);
+            case SearchExpr.Keyword keyword ->
+                WORDS.split(keyword.text().replace("\"", "").toLowerCase(Locale.ROOT))
+                        .forEach(words::add);
+            case SearchExpr.StringAttr attr -> {
+                // Attributes are no words of a name.
+            }
+            case SearchExpr.NumericAttr attr -> {
+                // Nor are numbers.
+            }
         }
     }
 
@@ -474,7 +575,15 @@ public final class SearchManager {
         return name.equals(file.name()) && type.equals(file.type())
                 ? file
                 : new SearchResult(
-                        file.hash(), name, file.size(), file.sources(), file.completeSources(), type, file.media());
+                        file.hash(),
+                        name,
+                        file.size(),
+                        file.sources(),
+                        file.completeSources(),
+                        type,
+                        file.media(),
+                        file.origin(),
+                        file.spamRating());
     }
 
     private void end(Search search) {
@@ -503,6 +612,8 @@ public final class SearchManager {
         // An archive or disc image search, which the networks answer with every program.
         final Optional<String> kind;
         final Map<Hash16, SearchResult> results = new LinkedHashMap<>();
+        // The words searched for, which bare names leave out.
+        final Set<String> words;
         final Deque<ServerMet.Server> udpQueue = new ArrayDeque<>();
         final Set<Integer> askedOverUdp = new HashSet<>();
         ScheduledFuture<?> serverTimer;
@@ -519,6 +630,7 @@ public final class SearchManager {
             this.expression = expression;
             this.scope = scope;
             this.kind = requiredKind(expression);
+            this.words = searchedWords(expression);
         }
     }
 }

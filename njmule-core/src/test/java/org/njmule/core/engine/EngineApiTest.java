@@ -83,6 +83,7 @@ class EngineApiTest {
     Path dir;
 
     private Engine engine;
+    private List<SearchResult> rated = List.of();
     private final Ed2kLink.FileLink song = Ed2kLink.FileLink.of("song.mp3", 5000, Hash16.parseHex("f4".repeat(16)));
     private final Ed2kLink.FileLink film = Ed2kLink.FileLink.of("film.mkv", 5000, Hash16.parseHex("f3".repeat(16)));
     private List<Object> swapAnswers;
@@ -188,6 +189,28 @@ class EngineApiTest {
         whenTheSearchResultIsMarkedAsSpam(Hash16.parseHex("b2".repeat(16)), "spam.exe");
 
         thenTheSpamIs(Hash16.parseHex("b2".repeat(16)));
+    }
+
+    @Test
+    void shouldRateALookalikeOfASearchResultMarkedAsSpam() throws Exception {
+        givenARunningEngine();
+        givenTheSearchResultMarkedAsSpam(Hash16.parseHex("b2".repeat(16)), "Free movie player.exe");
+
+        whenTheResultIsRated(new SearchResult(
+                Hash16.parseHex("c3".repeat(16)), "free movie player.EXE", 10, 1, 0, Optional.empty()));
+
+        thenTheRatedResultIsSpam(true);
+    }
+
+    @Test
+    void shouldRateNothingAsSpamWithTheSpamFilterOff() throws Exception {
+        givenARunningEngineWithoutTheSpamFilter();
+        givenTheSearchResultMarkedAsSpam(Hash16.parseHex("b2".repeat(16)), "Free movie player.exe");
+
+        whenTheResultIsRated(new SearchResult(
+                Hash16.parseHex("b2".repeat(16)), "Free movie player.exe", 10, 1, 0, Optional.empty()));
+
+        thenTheRatedResultIsSpam(false);
     }
 
     @Test
@@ -404,6 +427,24 @@ class EngineApiTest {
 
     private void givenARunningEngine() throws IOException {
         this.engine = start("");
+    }
+
+    private void givenARunningEngineWithoutTheSpamFilter() throws IOException {
+        this.engine = start("search.spamFilter=false\n");
+    }
+
+    private void givenTheSearchResultMarkedAsSpam(Hash16 hash, String name) throws Exception {
+        whenTheSearchResultIsMarkedAsSpam(hash, name);
+    }
+
+    private void whenTheResultIsRated(SearchResult result) throws Exception {
+        this.rated = this.engine.rateSpam(List.of(result)).get(5, TimeUnit.SECONDS);
+    }
+
+    private void thenTheRatedResultIsSpam(boolean spam) {
+        assertThat(this.rated)
+                .singleElement()
+                .satisfies(r -> assertThat(r.isSpam()).isEqualTo(spam));
     }
 
     // A port free when probed may be taken by a test running beside before Kad binds it: then Kad gets another.
