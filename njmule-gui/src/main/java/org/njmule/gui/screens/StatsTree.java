@@ -132,7 +132,7 @@ final class StatsTree {
         all.add(clients(m.sources(), m.uploads()));
         all.add(servers(m.servers()));
         all.add(shared(m.sharedFiles()));
-        all.add(new Entry(this.gui.t("IDS_DWTOT"), disk()));
+        all.add(new Entry(this.gui.t("IDS_STATS_FREESPACE"), disk()));
         return all;
     }
 

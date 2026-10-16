@@ -514,7 +514,7 @@ class ScreensTest {
 
         thenTheDownloadedTotalReads("0 B");
         thenTheStatisticsSectionsStartWith("Transfers", "Uploads", "Downloads", "Connection", "Time Statistics");
-        thenTheStatisticsSectionsInclude("Clients (0)", "Servers", "Shared Files", "Disk Space");
+        thenTheStatisticsSectionsInclude("Clients (0)", "Servers", "Shared Files", "Free Space");
         thenTheFirstStatisticsSectionIsOpen();
         thenTheLastStatisticsSectionHoldsTempAndIncoming();
     }
