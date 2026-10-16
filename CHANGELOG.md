@@ -82,7 +82,9 @@ All notable changes to this project are documented here. The format follows
   and remembered in `known.met` and `known2_64.met`; finished downloads are shared at once.
 - Uploads: a queue scored by waiting time, credits and file priority, slots by upload limit,
   bandwidth shared between slots, about one part per slot while others wait, compressed blocks,
-  bans for clients that ask too often; the checked parts of downloads are shared too.
+  bans for clients that ask too often; the checked parts of downloads are shared too. A block
+  is compressed only when its first 16 KiB shrink, so that data compressed already, whatever the
+  name of its file, is not compressed whole only to be sent as it is.
 - Credits per user hash in `clients.met` and secure identification with our key in
   `cryptkey.dat`, on download, upload and hello connections; `--hello` reports the outcome.
 - Source exchange with other clients (versions 1 to 4), asking and answering.

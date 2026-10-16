@@ -82,7 +82,7 @@ final class Blocks {
     static List<Packet> packets(Hash16 file, long start, byte[] data, boolean compress) {
         boolean wide = start + data.length > 0xFFFF_FFFFL;
         List<Packet> packets = new ArrayList<>(data.length / CHUNK + 1);
-        if (compress) {
+        if (compress && Packing.shrinks(data, ZLIB_LEVEL)) {
             byte[] stream = Packing.deflate(data, ZLIB_LEVEL);
             if (stream.length < data.length) {
                 for (int at = 0; at < stream.length; at = next(at, stream.length)) {

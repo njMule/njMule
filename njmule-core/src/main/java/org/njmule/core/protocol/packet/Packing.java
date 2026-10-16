@@ -34,6 +34,9 @@ public final class Packing {
     /** Inflated payload cap for packets from servers (search results, source lists). */
     public static final int MAX_SERVER_UNPACKED = 250_000;
 
+    // What is compressed first to tell whether the rest is worth it.
+    static final int SAMPLE = 16 * 1024;
+
     private Packing() {}
 
     /** Packs with the best compression when that makes the packet smaller, else returns it. */
@@ -64,6 +67,25 @@ public final class Packing {
             return packet;
         }
         return Packet.adopt(Protocol.EDONKEY, packet.opcode(), inflate(packet.payloadArray(), MAX_SERVER_UNPACKED));
+    }
+
+    /**
+     * Whether compressing {@code data} at {@code level} is worth trying: its first 16 KiB shrink by a thirty-second at
+     * least. Data compressed already, as media and archives are whatever their names, does not, and is spared its whole
+     * compression.
+     */
+    public static boolean shrinks(byte[] data, int level) {
+        int length = Math.min(data.length, SAMPLE);
+        try (Deflater deflater = new Deflater(level)) {
+            deflater.setInput(data, 0, length);
+            deflater.finish();
+            byte[] out = new byte[length];
+            int written = 0;
+            while (!deflater.finished() && written < out.length) {
+                written += deflater.deflate(out, written, out.length - written);
+            }
+            return deflater.finished() && written <= length - length / 32;
+        }
     }
 
     public static byte[] deflate(byte[] data, int level) {
