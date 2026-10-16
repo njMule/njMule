@@ -115,9 +115,11 @@ public class NativeSpot {
         e.setUp();
         int values = 64 * 1024 / 4 - 1;
         k.add(new Kernel("LittleEndianBench.readShifts", values, "ns/op", e::readShifts));
+        k.add(new Kernel("LittleEndianBench.readHelper", values, "ns/op", e::readHelper));
         k.add(new Kernel("LittleEndianBench.readVarHandle", values, "ns/op", e::readVarHandle));
         k.add(new Kernel("LittleEndianBench.readByteBuffer", values, "ns/op", e::readByteBuffer));
         k.add(new Kernel("LittleEndianBench.writeShifts", values, "ns/op", e::writeShifts));
+        k.add(new Kernel("LittleEndianBench.writeHelper", values, "ns/op", e::writeHelper));
         k.add(new Kernel("LittleEndianBench.writeVarHandle", values, "ns/op", e::writeVarHandle));
 
         PartPickBench p = new PartPickBench();

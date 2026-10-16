@@ -21,8 +21,9 @@ import java.lang.invoke.VarHandle;
 import java.nio.ByteOrder;
 
 /**
- * Little-endian values in byte arrays, the byte order of the eD2K and Kad formats, at any offset. Byte-array views are
- * faster than shifting bytes, and than {@code ByteBuffer} in the native image (njmule-bench LittleEndianBench).
+ * Little-endian values in byte arrays, the byte order of the eD2K and Kad formats, at any offset, through byte-array
+ * views. The native image does not inline these calls: each costs about a nanosecond more than shifts written in place,
+ * so loops over every byte, such as MD4's, keep their own view (njmule-bench LittleEndianBench).
  */
 public final class LittleEndian {
 
