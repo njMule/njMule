@@ -79,39 +79,57 @@ final class HeldFile implements AutoCloseable {
 
     /**
      * Keeps a file from being deleted: on Windows by denying its deletion and that of its folder's entries, elsewhere
-     * by making its folder read-only.
+     * by making its folder read-only. A probe beside it, held the same way, tells whether the hold works for this user.
      */
     static HeldFile holdFromDeletion(Path file) throws IOException {
         Path folder = file.toAbsolutePath().getParent();
-        AclFileAttributeView fileAcl = Files.getFileAttributeView(file, AclFileAttributeView.class);
-        AclFileAttributeView folderAcl = Files.getFileAttributeView(folder, AclFileAttributeView.class);
-        PosixFileAttributeView posix = Files.getFileAttributeView(folder, PosixFileAttributeView.class);
-        HeldFile holding;
-        if (fileAcl != null && folderAcl != null) {
-            List<AclEntry> fileBefore = fileAcl.getAcl();
-            List<AclEntry> folderBefore = folderAcl.getAcl();
-            fileAcl.setAcl(denying(fileAcl, AclEntryPermission.DELETE, fileBefore));
-            folderAcl.setAcl(denying(folderAcl, AclEntryPermission.DELETE_CHILD, folderBefore));
-            holding = new HeldFile(() -> {
-                folderAcl.setAcl(folderBefore);
-                fileAcl.setAcl(fileBefore);
-            });
-        } else {
-            assumeTrue(posix != null, "no way to hold a file here");
-            Set<PosixFilePermission> before = posix.readAttributes().permissions();
-            Set<PosixFilePermission> readOnly = EnumSet.copyOf(before);
-            readOnly.removeAll(Set.of(
-                    PosixFilePermission.OWNER_WRITE,
-                    PosixFilePermission.GROUP_WRITE,
-                    PosixFilePermission.OTHERS_WRITE));
-            posix.setPermissions(readOnly);
-            holding = new HeldFile(() -> posix.setPermissions(before));
+        Path probe = Files.write(folder.resolve(file.getFileName() + ".probe"), new byte[] {1});
+        Release unhold = holdingFromDeletion(folder, List.of(file, probe));
+        HeldFile holding = new HeldFile(() -> {
+            unhold.run();
+            Files.deleteIfExists(probe);
+        });
+        boolean held;
+        try {
+            Files.delete(probe);
+            held = false;
+        } catch (IOException e) {
+            held = true;
         }
-        if (Files.isWritable(folder) && fileAcl == null) {
+        if (!held) {
             holding.close();
-            assumeFalse(true, "this user writes any folder");
+            assumeFalse(true, "this user deletes any file");
         }
         return holding;
+    }
+
+    private static Release holdingFromDeletion(Path folder, List<Path> files) throws IOException {
+        AclFileAttributeView folderAcl = Files.getFileAttributeView(folder, AclFileAttributeView.class);
+        if (folderAcl != null) {
+            List<Release> releases = new ArrayList<>();
+            for (Path file : files) {
+                AclFileAttributeView acl = Files.getFileAttributeView(file, AclFileAttributeView.class);
+                List<AclEntry> before = acl.getAcl();
+                acl.setAcl(denying(acl, AclEntryPermission.DELETE, before));
+                releases.add(() -> acl.setAcl(before));
+            }
+            List<AclEntry> folderBefore = folderAcl.getAcl();
+            folderAcl.setAcl(denying(folderAcl, AclEntryPermission.DELETE_CHILD, folderBefore));
+            releases.addFirst(() -> folderAcl.setAcl(folderBefore));
+            return () -> {
+                for (Release release : releases) {
+                    release.run();
+                }
+            };
+        }
+        PosixFileAttributeView posix = Files.getFileAttributeView(folder, PosixFileAttributeView.class);
+        assumeTrue(posix != null, "no way to hold a file here");
+        Set<PosixFilePermission> before = posix.readAttributes().permissions();
+        Set<PosixFilePermission> readOnly = EnumSet.copyOf(before);
+        readOnly.removeAll(Set.of(
+                PosixFilePermission.OWNER_WRITE, PosixFilePermission.GROUP_WRITE, PosixFilePermission.OTHERS_WRITE));
+        posix.setPermissions(readOnly);
+        return () -> posix.setPermissions(before);
     }
 
     private static List<AclEntry> denying(
