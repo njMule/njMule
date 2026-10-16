@@ -19,7 +19,7 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
-import javafx.event.ActionEvent;
+import javafx.scene.input.KeyCode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -97,6 +97,15 @@ class SearchScreenTest {
     }
 
     @Test
+    void shouldStartTheSearchWhenEnterIsPressedInTheBox() throws Exception {
+        givenTheSearchScreen();
+
+        whenTheExpressionIsEntered("linux");
+
+        thenTheUserIsToldOnly(this.test.gui.t("IDS_NOTCONNECTEDANY"));
+    }
+
+    @Test
     void shouldTellWhatTheBoxTakesOnEnterWithAWrongExpression() throws Exception {
         givenTheSearchScreen();
 
@@ -142,10 +151,12 @@ class SearchScreenTest {
         FxTesting.onFx(() -> this.screen.minSizeField().setText(text));
     }
 
+    // Typed into the box, which has the focus while its text field shows the caret, and Enter pressed.
     private void whenTheExpressionIsEntered(String expression) throws Exception {
         FxTesting.onFx(() -> {
+            this.screen.queryBox().requestFocus();
             this.screen.queryField().setText(expression);
-            this.screen.queryField().fireEvent(new ActionEvent());
+            this.screen.queryBox().fireEvent(FxTesting.key(KeyCode.ENTER, false));
         });
     }
 
@@ -170,7 +181,12 @@ class SearchScreenTest {
     }
 
     private void thenTheUserIsToldOnlyWhatTheBoxTakes() {
-        assertThat(this.test.told).containsExactly(this.test.gui.t("nj.input.search"));
+        thenTheUserIsToldOnly(this.test.gui.t("nj.input.search"));
+    }
+
+    // Not connected, a search started is refused with this.
+    private void thenTheUserIsToldOnly(String text) {
+        assertThat(this.test.told).containsExactly(text);
     }
 
     private void thenTheTooltipTellsWhatTheBoxTakes() throws Exception {

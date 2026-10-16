@@ -190,7 +190,7 @@ public final class KadScreen implements Screen {
     private Node ways() {
         this.nodes = new UrlBox(this.gui, "nodesDat", this.gui.t("IDS_BOOTSRAPNODESDAT"));
         this.nodes.node().setPromptText("https://\u2026/nodes.dat");
-        this.nodes.node().getEditor().setOnAction(e -> nodesFromUrl());
+        Fx.onEnter(this.nodes.node(), this::nodesFromUrl);
         this.nodes.node().setMaxWidth(Double.MAX_VALUE);
         Button take = Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::nodesFromUrl);
         take.disableProperty().bind(this.nodes.input().validProperty().not());

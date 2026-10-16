@@ -201,7 +201,7 @@ public final class SearchScreen implements Screen {
         this.query.setPromptText(this.gui.t("IDS_SEARCH_TEXT"));
         this.gui.settings().seedHistory(HISTORY, this.gui.directories().config().resolve(EMULE_HISTORY));
         this.query.getItems().setAll(this.gui.settings().history(HISTORY));
-        this.query.getEditor().setOnAction(e -> start());
+        Fx.onEnter(this.query, this::start);
         this.queryInput = inputs.searchExpression(this.query.getEditor(), this.gui.t("IDS_SEARCH_TEXT"))
                 .quietWhenEmpty();
         Fx.hintOnBox(this.query);
@@ -749,6 +749,10 @@ public final class SearchScreen implements Screen {
 
     TextField queryField() {
         return this.query.getEditor();
+    }
+
+    ComboBox<String> queryBox() {
+        return this.query;
     }
 
     Segments<Method> methodBox() {

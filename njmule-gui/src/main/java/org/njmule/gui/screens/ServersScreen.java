@@ -355,7 +355,7 @@ public final class ServersScreen implements Screen {
     private Node ways(Button connectTo) {
         this.list = new UrlBox(this.gui, "serverMet", this.gui.t("IDS_SV_MET"));
         this.list.node().setPromptText("https://\u2026/server.met");
-        this.list.node().getEditor().setOnAction(e -> updateFromUrl());
+        Fx.onEnter(this.list.node(), this::updateFromUrl);
         this.list.node().setMaxWidth(Double.MAX_VALUE);
         Button update = Fx.button(this.gui.t("IDS_SV_UPDATE"), Material2MZ.REFRESH, this::updateFromUrl);
         update.disableProperty().bind(this.list.input().validProperty().not());

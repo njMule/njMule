@@ -49,6 +49,8 @@ import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -95,6 +97,19 @@ public final class Fx {
             startWithTheLayout(labeled);
         }
         return node;
+    }
+
+    /**
+     * Runs {@code action} when Enter is pressed in an editable box whose list is closed. The box keeps the focus and
+     * its skin takes Enter to commit the text, so the action of the editor never comes.
+     */
+    public static void onEnter(ComboBox<?> box, Runnable action) {
+        box.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+            if (e.getCode() == KeyCode.ENTER && !box.isShowing()) {
+                e.consume();
+                action.run();
+            }
+        });
     }
 
     /**
