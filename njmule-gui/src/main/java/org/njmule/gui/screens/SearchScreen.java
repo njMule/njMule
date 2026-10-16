@@ -88,7 +88,6 @@ import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
-import org.njmule.core.api.ServerInfo;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
@@ -394,7 +393,7 @@ public final class SearchScreen implements Screen {
         };
     }
 
-    // Automatic: the network we are connected to, Kad when both unless the server is a static one.
+    // Automatic: the network we are connected to, Kad when both unless the server is a static or a big one.
     private Optional<SearchRequest.Scope> scope() {
         if (this.method.getValue() != Method.AUTOMATIC) {
             return Optional.of(
@@ -404,19 +403,12 @@ public final class SearchScreen implements Screen {
                         case KAD -> SearchRequest.Scope.KAD;
                     });
         }
-        boolean server = this.gui.model().connectionProperty().get() == EngineModel.Connection.CONNECTED;
         var status = this.gui.model().statusProperty().get();
-        boolean kad = status.kad().map(KadInfo::connected).orElse(false);
-        if (server && kad) {
-            return Optional.of(
-                    status.server().map(ServerInfo::isStatic).orElse(false)
-                            ? SearchRequest.Scope.SERVER
-                            : SearchRequest.Scope.KAD);
-        }
-        if (server) {
-            return Optional.of(SearchRequest.Scope.SERVER);
-        }
-        return kad ? Optional.of(SearchRequest.Scope.KAD) : Optional.empty();
+        return SearchRequest.automatic(
+                this.gui.model().connectionProperty().get() == EngineModel.Connection.CONNECTED,
+                status.kad().map(KadInfo::connected).orElse(false),
+                status.server(),
+                this.gui.model().servers().size());
     }
 
     /** Searches the network for {@code words}, as typed in the search box and started. */

@@ -188,8 +188,9 @@ All notable changes to this project are documented here. The format follows
 - The orange of the logo marks the main action of each screen, the selected screen and the top bar.
 - The Windows installer also puts a shortcut on the desktop.
 - Searches take eMule's parameters (file type, minimum and maximum size, availability, complete
-  sources, extension) and its Automatic method, which picks Kad or the server by what is connected;
-  the words searched are offered again (eMule's history is imported). Each result tab has its
+  sources, extension) and its Automatic method, which picks Kad or the server by what is connected
+  (with both, the server only when it is a static one, or a big one in a short server list); the
+  words searched are offered again (eMule's history is imported). Each result tab has its
   count, and results we download, share already show so. One filter box right of the result tabs
   filters the tab shown on a column chosen from its menu (the file name at first, its title shown in
   the empty box): the text the column shows holds every word, whatever the case, and none of the
