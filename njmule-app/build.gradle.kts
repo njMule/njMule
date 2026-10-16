@@ -79,6 +79,10 @@ graalvmNative {
         mainClass = application.mainClass
         buildArgs.add("-H:+ReportExceptionStackTraces")
         buildArgs.add(providers.gradleProperty("native.optimization"))
+        // -Pnative.static=musl: no libc of the system needed (Synology DSM's is too old), musl toolchain on PATH.
+        if (providers.gradleProperty("native.static").orNull == "musl") {
+            buildArgs.addAll("--static", "--libc=musl")
+        }
         if (windows) {
             buildArgs.add(
                 layout.buildDirectory.file("native-res/njmule.res").map {

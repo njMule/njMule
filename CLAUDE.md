@@ -137,7 +137,11 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   (Gradle on a copy of the sources inside the container, much faster than on the bind mount; its user
   home in the Docker volume `njmule-gradle`): `docker run --rm -v "$PWD:/work" -v
   njmule-gradle:/root/.gradle --entrypoint bash <image> /work/tools/native-docker.sh` (Git Bash:
-  prefix `MSYS_NO_PATHCONV=1`) → `njmule-app/build/native-linux/njmule`.
+  prefix `MSYS_NO_PATHCONV=1`) → `njmule-app/build/native-linux/njmule`. A fully static x64 build
+  linked with musl (no system libc needed: Synology DSM has glibc 2.26, our glibc build needs 2.34)
+  comes from `tools/native-static-docker.sh` in the same container, adding `-v njmule-musl:/musl`
+  for the toolchain it downloads and checks (`-Pnative.static=musl`) →
+  `njmule-app/build/native-static/njmule`.
 - Native optimization: `-O2` by default (property `native.optimization`). Checks may build faster
   with `-Pnative.optimization=-Ob`, as the CI does; releases always pass `-O2`, never `-Ob`.
 - Native desktop app (GluonFX does not support Java 25/JavaFX 27): `native-image` on the module path
