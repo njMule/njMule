@@ -10,6 +10,7 @@ description = "njMule Web UI"
 dependencies {
     api(project(":njmule-core"))
     implementation(libs.slf4j.api)
+    implementation(libs.guava)
     implementation(libs.jackson.core)
     implementation(platform(libs.jetty.bom))
     implementation(libs.jetty.client)

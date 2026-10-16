@@ -50,7 +50,7 @@ public class HtmlEscapeBench {
                 : "Tom & Jerry <Best of> \"1940\" 'remastered' & more.mkv";
     }
 
-    /** Today's code (the web interface's {@code Html.text}). */
+    /** The replaced code of the web interface's {@code Html.text}. */
     @Benchmark
     public String handWritten() {
         String value = value();
@@ -69,6 +69,7 @@ public class HtmlEscapeBench {
         return out.toString();
     }
 
+    /** Today's code. */
     @Benchmark
     public String guavaHtmlEscaper() {
         return GUAVA.escape(value());

@@ -16,11 +16,16 @@
  */
 package org.njmule.webui;
 
+import com.google.common.escape.Escaper;
+import com.google.common.html.HtmlEscapers;
 import java.util.Locale;
 import org.njmule.core.api.NjMuleInfo;
 
 /** The pages' frame and escaping: every text that is not ours goes through {@link #text}. */
 final class Html {
+
+    // & < > " ' as &amp; &lt; &gt; &quot; &#39;, and the text itself when none is there.
+    private static final Escaper ESCAPER = HtmlEscapers.htmlEscaper();
 
     static final String STYLE = """
             :root { color-scheme: light dark; --bg: #f4f6fb; --fg: #2e3440; --muted: #4c566a;
@@ -60,19 +65,7 @@ final class Html {
 
     /** {@code value} safe in element content and in quoted attributes. */
     static String text(String value) {
-        StringBuilder out = new StringBuilder(value.length() + 16);
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            switch (c) {
-                case '&' -> out.append("&amp;");
-                case '<' -> out.append("&lt;");
-                case '>' -> out.append("&gt;");
-                case '"' -> out.append("&quot;");
-                case '\'' -> out.append("&#39;");
-                default -> out.append(c);
-            }
-        }
-        return out.toString();
+        return ESCAPER.escape(value);
     }
 
     /** A whole page; {@code csrf} is empty on the login page, which has no navigation. */

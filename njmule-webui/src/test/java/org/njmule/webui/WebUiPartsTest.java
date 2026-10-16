@@ -378,6 +378,13 @@ class WebUiPartsTest {
         thenTheTextIs("&lt;a href=&#39;x&#39;&gt;&quot;&amp;&quot;&lt;/a&gt;");
     }
 
+    @Test
+    void shouldLeaveTextWithNothingToEscapeAsItIs() {
+        whenTheTextIsEscaped("Ubuntu 24.04 – 東京.iso");
+
+        thenTheTextIs("Ubuntu 24.04 – 東京.iso");
+    }
+
     @ParameterizedTest
     @MethodSource("sizes")
     void shouldShowASizeInTheLargestUnitThatFits(long bytes, String shown) {

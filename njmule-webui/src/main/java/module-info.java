@@ -18,6 +18,7 @@
 module org.njmule.webui {
     // The web interface: pages and a JSON API served by Jetty over the engine's public API.
     requires transitive org.njmule.core;
+    requires com.google.common;
     requires org.slf4j;
     requires org.eclipse.jetty.client;
     requires org.eclipse.jetty.server;
