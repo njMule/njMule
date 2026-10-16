@@ -18,6 +18,7 @@ package org.njmule.core.api;
 
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -30,6 +31,8 @@ import java.util.Set;
  * @param media what the file's publishers told of its content, {@link Media#NONE} when nothing
  * @param origin where the result came from, as its spam rating weighs it
  * @param spamRating how much it looks like spam: {@value #SPAM_THRESHOLD} and more is spam
+ * @param aichHash the root of the file's AICH tree, when publishers agree on one: its download can check and repair
+ *     parts with it
  */
 public record SearchResult(
         Hash16 hash,
@@ -40,7 +43,8 @@ public record SearchResult(
         Optional<String> type,
         Media media,
         Origin origin,
-        int spamRating) {
+        int spamRating,
+        Optional<Hash20> aichHash) {
 
     /** The spam rating from which a result counts as spam. */
     public static final int SPAM_THRESHOLD = 60;
@@ -54,6 +58,7 @@ public record SearchResult(
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(media, "media");
         Objects.requireNonNull(origin, "origin");
+        Objects.requireNonNull(aichHash, "aichHash");
     }
 
     /** A result without media details. */
@@ -64,7 +69,7 @@ public record SearchResult(
     /** A result of no known origin, not rated for spam. */
     public SearchResult(
             Hash16 hash, String name, long size, int sources, int completeSources, Optional<String> type, Media media) {
-        this(hash, name, size, sources, completeSources, type, media, Origin.NONE, 0);
+        this(hash, name, size, sources, completeSources, type, media, Origin.NONE, 0, Optional.empty());
     }
 
     /** Whether the result counts as spam. */
@@ -82,7 +87,8 @@ public record SearchResult(
                 this.type,
                 this.media,
                 other,
-                this.spamRating);
+                this.spamRating,
+                this.aichHash);
     }
 
     public SearchResult withSpamRating(int rating) {
@@ -95,7 +101,22 @@ public record SearchResult(
                 this.type,
                 this.media,
                 this.origin,
-                rating);
+                rating,
+                this.aichHash);
+    }
+
+    public SearchResult withAichHash(Optional<Hash20> root) {
+        return new SearchResult(
+                this.hash,
+                this.name,
+                this.size,
+                this.sources,
+                this.completeSources,
+                this.type,
+                this.media,
+                this.origin,
+                this.spamRating,
+                root);
     }
 
     /**
@@ -143,7 +164,7 @@ public record SearchResult(
 
     /** The ed2k link of the file; only for a {@linkplain #isDownloadable downloadable} name and size. */
     public Ed2kLink.FileLink link() {
-        return Ed2kLink.FileLink.of(this.name, this.size, this.hash);
+        return new Ed2kLink.FileLink(this.name, this.size, this.hash, this.aichHash, List.of(), List.of(), List.of());
     }
 
     /**

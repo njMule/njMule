@@ -1617,7 +1617,8 @@ class KadNodeMessagesTest {
                         5000,
                         7,
                         Optional.of("Iso"),
-                        new SearchResult.Media("", "", "Noble Numbat", 95, 0, "")));
+                        new SearchResult.Media("", "", "Noble Numbat", 95, 0, ""),
+                        Optional.empty()));
     }
 
     private void thenTheFilesFoundAre(int count) {

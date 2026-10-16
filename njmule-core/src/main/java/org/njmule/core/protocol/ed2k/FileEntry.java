@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
@@ -102,6 +103,11 @@ public record FileEntry(Hash16 hash, long clientId, int port, List<Tag> tags) {
     /** The type servers report, e.g. {@code Video} or {@code Pro}. */
     public Optional<String> type() {
         return Tags.stringValue(this.tags, FileTag.FILETYPE);
+    }
+
+    /** The root of the file's AICH tree, when the entry names a well-formed one. */
+    public Optional<Hash20> aichHash() {
+        return Tags.stringValue(this.tags, FileTag.AICH_HASH).flatMap(Hash20::tryParseBase32);
     }
 
     public SearchResult.Media media() {

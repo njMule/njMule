@@ -41,6 +41,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
@@ -469,7 +470,8 @@ public final class SearchManager {
                     file.type(),
                     file.media(),
                     origin,
-                    0));
+                    0,
+                    file.aichHash()));
         }
         return mergeResults(search, found, true);
     }
@@ -517,7 +519,8 @@ public final class SearchManager {
                             known.type().or(file::type),
                             known.media().or(file.media()),
                             known.origin().and(file.origin()),
-                            0);
+                            0,
+                            agreedAich(search, known, file));
             merged = merged.withSpamRating(this.spam.rate(merged));
             rated.add(merged);
             if (!merged.equals(known)) {
@@ -589,7 +592,23 @@ public final class SearchManager {
                         type,
                         file.media(),
                         file.origin(),
-                        file.spamRating());
+                        file.spamRating(),
+                        file.aichHash());
+    }
+
+    // Publishers that disagree on a file's AICH root leave it none for the rest of the search: a wrong one would keep
+    // its download from completing.
+    private static Optional<Hash20> agreedAich(Search search, SearchResult known, SearchResult file) {
+        if (search.aichDisputed.contains(file.hash())) {
+            return Optional.empty();
+        }
+        if (known.aichHash().isPresent()
+                && file.aichHash().isPresent()
+                && !known.aichHash().equals(file.aichHash())) {
+            search.aichDisputed.add(file.hash());
+            return Optional.empty();
+        }
+        return known.aichHash().or(file::aichHash);
     }
 
     private void end(Search search) {
@@ -618,6 +637,8 @@ public final class SearchManager {
         // An archive or disc image search, which the networks answer with every program.
         final Optional<String> kind;
         final Map<Hash16, SearchResult> results = new LinkedHashMap<>();
+        // Files given two AICH roots, which keep none.
+        final Set<Hash16> aichDisputed = new HashSet<>();
         // The words searched for, which bare names leave out.
         final Set<String> words;
         final Deque<ServerMet.Server> udpQueue = new ArrayDeque<>();

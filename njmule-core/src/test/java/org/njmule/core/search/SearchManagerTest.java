@@ -35,6 +35,7 @@ import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -50,6 +51,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
@@ -81,6 +83,8 @@ class SearchManagerTest {
 
     private static final int LOOPBACK = Ipv4.parse("127.0.0.1");
     private static final long HIGH_ID = Ipv4.toEd2k(Ipv4.parse("198.51.100.7"));
+    private static final Hash20 ROOT_A = Hash20.of(filled(20, 0x0A));
+    private static final Hash20 ROOT_B = Hash20.of(filled(20, 0x0B));
     private static final List<SearchResult> FIRST_KAD_ANSWER = List.of(
             new SearchResult(hash(1), "distro.iso", 1000, 5, 1, Optional.empty()),
             new SearchResult(hash(2), " ", 1000, 1, 1, Optional.empty()),
@@ -239,6 +243,28 @@ class SearchManagerTest {
         whenTheServerAnswersWith(SearchManager.GLOBAL_RESULTS);
 
         thenAServerIsAskedOverUdp();
+    }
+
+    @Test
+    void shouldGiveTheLinkOfAResultTheAichRootKadTold() throws Exception {
+        givenARunningKadThatCannotLookUp("never");
+        givenASearchIsStarted(kad("rare linux distro"));
+
+        whenKadSendsTheResults(List.of(distroWithAich(ROOT_A)));
+
+        thenTheLinkOfTheResultHasTheAichRoot(hash(1), Optional.of(ROOT_A));
+    }
+
+    @Test
+    void shouldKeepNoAichRootOfAFileGivenTwoEvenWhenTheFirstComesAgain() throws Exception {
+        givenARunningKadThatCannotLookUp("never");
+        givenASearchIsStarted(kad("rare linux distro"));
+        givenKadAnsweredWith(List.of(distroWithAich(ROOT_A)));
+        givenKadAnsweredWith(List.of(distroWithAich(ROOT_B)));
+
+        whenKadSendsTheResults(List.of(distroWithAich(ROOT_A)));
+
+        thenTheLinkOfTheResultHasTheAichRoot(hash(1), Optional.empty());
     }
 
     @Test
@@ -620,6 +646,15 @@ class SearchManagerTest {
         assertThat(lastReported(file).spamRating()).isEqualTo(rating);
     }
 
+    private void thenTheLinkOfTheResultHasTheAichRoot(Hash16 file, Optional<Hash20> root) {
+        assertThat(lastReported(file).link().aichHash()).isEqualTo(root);
+    }
+
+    private static SearchResult distroWithAich(Hash20 root) {
+        return new SearchResult(hash(1), "distro.iso", 1000, 5, SearchResult.UNKNOWN, Optional.empty())
+                .withAichHash(Optional.of(root));
+    }
+
     private SearchResult lastReported(Hash16 file) {
         return this.reported.reversed().stream()
                 .filter(r -> r.hash().equals(file))
@@ -852,6 +887,12 @@ class SearchManagerTest {
                         new Tag.StringTag(TagName.id(FileTag.FILENAME), name),
                         new Tag.IntTag(TagName.id(FileTag.FILESIZE), 1000),
                         new Tag.IntTag(TagName.id(FileTag.SOURCES), 3)));
+    }
+
+    private static byte[] filled(int length, int value) {
+        byte[] bytes = new byte[length];
+        Arrays.fill(bytes, (byte) value);
+        return bytes;
     }
 
     private static Hash16 hash(int seed) {

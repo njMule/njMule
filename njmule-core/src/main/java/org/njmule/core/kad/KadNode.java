@@ -41,6 +41,7 @@ import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.SearchResult;
@@ -60,6 +61,7 @@ import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.protocol.tag.Tags;
 import org.njmule.core.search.SearchExpr;
 import org.njmule.core.search.SearchTreeCodec;
+import org.njmule.core.util.Bytes;
 import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -183,7 +185,13 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     /** A file a keyword search found. */
     public record FileResult(
-            Hash16 hash, String name, long size, int sources, Optional<String> type, SearchResult.Media media) {}
+            Hash16 hash,
+            String name,
+            long size,
+            int sources,
+            Optional<String> type,
+            SearchResult.Media media,
+            Optional<Hash20> aichHash) {}
 
     /** A note a search found: what the node {@code publisher} said of a file, under the name it gave the file. */
     public record Note(UInt128 publisher, String fileName, long size, FileComment comment) {
@@ -2057,9 +2065,46 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                     size,
                     sources > MAX_AVAILABILITY ? 0 : (int) sources,
                     Tags.stringValue(e.tags(), FileTag.FILETYPE),
-                    MediaTags.read(e.tags())));
+                    MediaTags.read(e.tags()),
+                    agreedAich(e.tags())));
         }
         return results;
+    }
+
+    /**
+     * The AICH root a node tells for a file, with how many of its publishers gave each root: taken only when it is the
+     * one root, given by a third of the publishers at least, as a wrong one keeps the download from completing.
+     */
+    static Optional<Hash20> agreedAich(List<Tag> tags) {
+        Optional<Bytes> told = Optional.empty();
+        for (Tag tag : tags) {
+            if (tag instanceof Tag.BsobTag bsob && bsob.name().equals(TagName.id(FileTag.KADAICHHASHRESULT))) {
+                told = Optional.of(bsob.value());
+            }
+        }
+        if (told.isEmpty()) {
+            return Optional.empty();
+        }
+        int publishers = (int) ((Tags.intValue(tags, FileTag.PUBLISHINFO).orElse(0) >> 16) & 0xFF);
+        List<Hash20> roots = new ArrayList<>();
+        int popularity = 0;
+        try {
+            PacketReader in = PacketReader.of(told.get().toByteArray());
+            for (int n = in.u8(); n > 0; n--) {
+                int given = in.u8();
+                Hash20 root = Hash20.of(in.bytes(Hash20.LENGTH));
+                if (given > 0) {
+                    roots.add(root);
+                    popularity = given;
+                }
+            }
+        } catch (DecodeException e) {
+            return Optional.empty();
+        }
+        if (roots.size() != 1 || publishers == 0 || publishers / popularity > 3) {
+            return Optional.empty();
+        }
+        return Optional.of(roots.getFirst());
     }
 
     // A note on a file of another size, or with neither comment nor rating, says nothing of this file.

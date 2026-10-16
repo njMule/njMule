@@ -2372,7 +2372,8 @@ final class Network {
             for (KadNode.FileResult r : found) {
                 // Kad does not tell how many sources have the whole file.
                 converted.add(new SearchResult(
-                        r.hash(), r.name(), r.size(), r.sources(), SearchResult.UNKNOWN, r.type(), r.media()));
+                                r.hash(), r.name(), r.size(), r.sources(), SearchResult.UNKNOWN, r.type(), r.media())
+                        .withAichHash(r.aichHash()));
             }
             results.accept(converted);
         });

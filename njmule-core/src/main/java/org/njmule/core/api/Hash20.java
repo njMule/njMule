@@ -20,6 +20,7 @@ import com.google.common.io.BaseEncoding;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.Objects;
+import java.util.Optional;
 
 /** An immutable 20-byte SHA-1 value, used for AICH hashes (written in Base32 in links). */
 public final class Hash20 implements Comparable<Hash20> {
@@ -55,6 +56,15 @@ public final class Hash20 implements Comparable<Hash20> {
             throw new IllegalArgumentException("an AICH hash needs 32 Base32 characters, got " + base32.length());
         }
         return new Hash20(BASE32.decode(base32));
+    }
+
+    /** As {@link #parseBase32}, empty for text that is no AICH hash: other clients' files may hold anything. */
+    public static Optional<Hash20> tryParseBase32(CharSequence base32) {
+        try {
+            return Optional.of(parseBase32(base32));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
     }
 
     public byte[] toByteArray() {

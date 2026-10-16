@@ -413,7 +413,8 @@ class SpamFilterTest {
     }
 
     private static SearchResult file(String hex, String name, long size, SearchResult.Origin origin) {
-        return new SearchResult(hash(hex), name, size, 3, 0, Optional.empty(), SearchResult.Media.NONE, origin, 0);
+        return new SearchResult(
+                hash(hex), name, size, 3, 0, Optional.empty(), SearchResult.Media.NONE, origin, 0, Optional.empty());
     }
 
     private static SearchResult popular(SearchResult result) {
@@ -426,7 +427,8 @@ class SpamFilterTest {
                 result.type(),
                 result.media(),
                 result.origin(),
-                0);
+                0,
+                result.aichHash());
     }
 
     private static SearchResult.Origin bare(String name) {

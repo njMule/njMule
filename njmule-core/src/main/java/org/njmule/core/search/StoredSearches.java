@@ -95,16 +95,18 @@ public final class StoredSearches {
                     && SearchResult.isDownloadable(
                             entry.name().get(), entry.size().getAsLong())) {
                 results.add(new SearchResult(
-                        entry.hash(),
-                        entry.name().get(),
-                        entry.size().getAsLong(),
-                        entry.sources(),
-                        // Kept only when the network told it.
-                        Tags.intValue(r.tags(), FileTag.COMPLETE_SOURCES).isPresent()
-                                ? entry.completeSources()
-                                : SearchResult.UNKNOWN,
-                        entry.type(),
-                        entry.media()));
+                                entry.hash(),
+                                entry.name().get(),
+                                entry.size().getAsLong(),
+                                entry.sources(),
+                                // Kept only when the network told it.
+                                Tags.intValue(r.tags(), FileTag.COMPLETE_SOURCES)
+                                                .isPresent()
+                                        ? entry.completeSources()
+                                        : SearchResult.UNKNOWN,
+                                entry.type(),
+                                entry.media())
+                        .withAichHash(entry.aichHash()));
             }
         }
         return new SavedSearch(
@@ -143,6 +145,7 @@ public final class StoredSearches {
                 tags.add(Tag.of(FileTag.COMPLETE_SOURCES, r.completeSources()));
             }
             r.type().ifPresent(t -> tags.add(Tag.of(FileTag.FILETYPE, t)));
+            r.aichHash().ifPresent(h -> tags.add(Tag.of(FileTag.AICH_HASH, h.toBase32())));
             tags.addAll(MediaTags.of(r.media()));
             results.add(new SearchFiles.Result(r.hash(), 0, 0, tags));
         }

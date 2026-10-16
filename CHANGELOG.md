@@ -389,6 +389,10 @@ All notable changes to this project are documented here. The format follows
   `rateSpam`, the rating in the web API's results. The desktop interface shows a result as spam by
   its rating, rates the results of every search tab again once a file is marked (or the filter is
   switched, in the options next to the IP filter), and rates the searches kept from the last run.
+- Search results keep the AICH root Kad tells for a file, when it is the one root and a third of
+  the publishers at least gave it, and none for the rest of the search once two disagree; it goes
+  into the result's ed2k link, so that a download started from it checks and repairs its parts
+  with it, and into `StoredSearches.met`.
 - The complete sources of a search result show as a share of its sources, "?" where the network
   does not tell (Kad, a client's shared files) and "Yes" for a file of one part, whole wherever it
   is shared; a count not told is no longer stored as 0 in `StoredSearches.met`, and the web API

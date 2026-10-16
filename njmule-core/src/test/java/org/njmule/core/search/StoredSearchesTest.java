@@ -26,6 +26,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
@@ -118,6 +119,17 @@ class StoredSearchesTest {
 
         thenTheLoadedSearchesAreTheSaved();
         thenTheFileHoldsNoCompleteCount();
+    }
+
+    @Test
+    void shouldKeepTheAichRootOfTheResults() throws IOException {
+        givenAnOpenSearchWith(new SearchResult(hash(9), "film.mkv", 5_000_000, 3, 1, Optional.of("Video"))
+                .withAichHash(Optional.of(Hash20.of(
+                        new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}))));
+
+        whenTheSearchesAreSavedAndLoaded();
+
+        thenTheLoadedSearchesAreTheSaved();
     }
 
     @Test

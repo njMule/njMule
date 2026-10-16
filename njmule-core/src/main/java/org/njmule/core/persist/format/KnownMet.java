@@ -68,7 +68,7 @@ public final class KnownMet {
         }
 
         public Optional<Hash20> aichHash() {
-            return Tags.stringValue(this.tags, FileTag.AICH_HASH).flatMap(KnownMet::base32);
+            return Tags.stringValue(this.tags, FileTag.AICH_HASH).flatMap(Hash20::tryParseBase32);
         }
 
         /** All-time requests of the file (FT_ATREQUESTED). */
@@ -141,13 +141,5 @@ public final class KnownMet {
             MetCodecs.writeTags(out, f.tags());
         }
         return out.toByteArray();
-    }
-
-    static Optional<Hash20> base32(String text) {
-        try {
-            return Optional.of(Hash20.parseBase32(text));
-        } catch (IllegalArgumentException e) {
-            return Optional.empty();
-        }
     }
 }

@@ -77,7 +77,7 @@ public final class PartMet {
         }
 
         public Optional<Hash20> aichHash() {
-            return Tags.stringValue(this.tags, FileTag.AICH_HASH).flatMap(KnownMet::base32);
+            return Tags.stringValue(this.tags, FileTag.AICH_HASH).flatMap(Hash20::tryParseBase32);
         }
 
         /** Paused or stopped (FT_STATUS ≠ 0). */
