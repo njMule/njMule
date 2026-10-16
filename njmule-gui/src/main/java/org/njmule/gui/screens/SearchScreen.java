@@ -75,7 +75,6 @@ import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
-import org.njmule.core.api.SpamMarks;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
@@ -223,8 +222,7 @@ public final class SearchScreen implements Screen {
         var where =
                 Fx.toolRow(this.method.node(), this.parametersButton, Fx.toolGap(), more, stop, Fx.spacer(), download);
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
-        // A file downloaded, shared or marked since shows so in every list.
-        this.gui.subscriptions().onChange(this.gui.model().spamMarksProperty(), (was, now) -> refreshAll());
+        // A file downloaded or shared since shows so in every list; a spam rating comes with its result.
         this.gui.subscriptions().onChange(this.gui.model().historyProperty(), (was, now) -> refreshAll());
         this.gui.subscriptions().onListChange(this.gui.model().downloads().rows(), this::knownChanged);
         this.gui.subscriptions().onListChange(this.gui.model().sharedFiles().rows(), this::knownChanged);
@@ -564,11 +562,10 @@ public final class SearchScreen implements Screen {
         ContextMenu menu = new ContextMenu(download, copy, html, related, new SeparatorMenuItem(), spam, notSpam);
         menu.setOnShowing(e -> {
             List<SearchResult> selected = Fx.selected(table);
-            SpamMarks marks = this.gui.model().spamMarksProperty().get();
             related.setDisable(selected.isEmpty()
                     || !this.gui.model().statusProperty().get().relatedSearch());
-            spam.setDisable(selected.stream().allMatch(marks::isSpam));
-            notSpam.setDisable(selected.stream().noneMatch(marks::isSpam));
+            spam.setDisable(selected.stream().allMatch(SearchResult::isSpam));
+            notSpam.setDisable(selected.stream().noneMatch(SearchResult::isSpam));
         });
         table.setContextMenu(menu);
 
@@ -647,7 +644,7 @@ public final class SearchScreen implements Screen {
         } else if (history.cancelled(hash)) {
             return Known.CANCELLED;
         }
-        return this.gui.model().spamMarksProperty().get().isSpam(result) ? Known.SPAM : Known.NONE;
+        return result.isSpam() ? Known.SPAM : Known.NONE;
     }
 
     // Only files coming or going matter, not their progress.

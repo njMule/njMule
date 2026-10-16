@@ -376,7 +376,9 @@ All notable changes to this project are documented here. The format follows
   is kept; the hits add up, and 60 or more is spam. Results only servers of mostly spam give count
   more, small popular programs from them most. Kept in `SearchSpam.met` as eMule does (its file is
   read and written), on by default (`search.spamFilter`, also from an eMule profile); engine API
-  `rateSpam`, the rating in the web API's results.
+  `rateSpam`, the rating in the web API's results. The desktop interface shows a result as spam by
+  its rating, rates the results of every search tab again once a file is marked (or the filter is
+  switched, in the options next to the IP filter), and rates the searches kept from the last run.
 - The name each source gives a download is kept with the source (engine API `SourceInfo`), and a
   download can be renamed (engine API `renameDownload`, web API `PUT
   /api/v1/downloads/{hash}/name`): the name, made safe for any file system, is the one its file

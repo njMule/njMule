@@ -20,6 +20,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,6 +29,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
@@ -180,6 +182,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     // The hashes of the shared files, built again after the list changed.
     private Set<Hash16> sharedHashes;
     private final Map<SearchId, Search> searches = new LinkedHashMap<>();
+    // Every search whose results show, running, ended or kept from the last run: a closed one goes with its tab.
+    private final Set<Search> shown = Collections.newSetFromMap(new WeakHashMap<>());
     // What a server that answers at once sends before the FX thread hears of the search it was asked for.
     private final Map<SearchId, Early> early = new LinkedHashMap<>() {
         @Override
@@ -417,8 +421,35 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         return this.spamMarks;
     }
 
+    /** Marks results as spam, or clears them; the results of every search shown are rated again. */
     public void markSpam(List<SearchResult> results, boolean isSpam) {
-        later(this.engine.markSpam(results, isSpam), this.spamMarks::set);
+        later(this.engine.markSpam(results, isSpam), marks -> {
+            this.spamMarks.set(marks);
+            rateShown();
+        });
+    }
+
+    // Only the ratings change: what came for a result meanwhile stays.
+    private void rateShown() {
+        for (Search search : List.copyOf(this.shown)) {
+            rate(search);
+        }
+    }
+
+    private void rate(Search search) {
+        List<SearchResult> held =
+                search.results.rows().stream().map(LiveList.Row::get).toList();
+        if (held.isEmpty()) {
+            return;
+        }
+        later(this.engine.rateSpam(held), rated -> {
+            for (SearchResult r : rated) {
+                search.results
+                        .find(r.hash())
+                        .filter(now -> now.spamRating() != r.spamRating())
+                        .ifPresent(now -> search.results.put(now.withSpamRating(r.spamRating())));
+            }
+        });
     }
 
     public LiveList<String, SourceInfo> sources() {
@@ -778,6 +809,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             search.running.set(!before.ended);
         }
         this.searches.put(id, search);
+        this.shown.add(search);
         return search;
     }
 
@@ -787,6 +819,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         Search search = new Search(new SearchId(this.restoredIds), saved.request());
         search.running.set(false);
         search.results.update(saved.results());
+        this.shown.add(search);
+        rate(search);
         return search;
     }
 
@@ -815,7 +849,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     public void updatePreferences(UnaryOperator<Preferences> change, Consumer<Preferences> done) {
         later(this.engine.updatePreferences(change), p -> {
+            Preferences before = this.preferences.get();
             this.preferences.set(p);
+            if (before != null && before.searchSpamFilter() != p.searchSpamFilter()) {
+                rateShown();
+            }
             done.accept(p);
         });
     }

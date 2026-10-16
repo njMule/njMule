@@ -74,6 +74,8 @@ class SearchResultsTest {
     private static final SearchResult FILM_DVD = result("0123456789ABCDEF0123456789ABCDEF", "Film DVD rip.avi");
     private static final SearchResult FILM_HD = result("00112233445566778899AABBCCDDEEFF", "film hd.mkv");
     private static final SearchResult SONG = result("FFEEDDCCBBAA99887766554433221100", "song.mp3");
+    // Another file under the name of FILM_DVD.
+    private static final SearchResult LOOKALIKE = result("0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F", "film dvd RIP.avi");
     private static final SearchResult SHARED = result("11111111111111111111111111111111", "film shared.mkv");
     private static final SearchResult DOWNLOADED = result("22222222222222222222222222222222", "film old.mkv");
     private static final SearchResult CANCELLED = result("33333333333333333333333333333333", "film gone.mkv");
@@ -142,6 +144,29 @@ class SearchResultsTest {
         whenTheMenuItemIsFired("IDS_MARKSPAM");
 
         thenOneResultIsMarkedAsSpam();
+    }
+
+    @Test
+    void shouldShowAsSpamAResultRatedSoWithoutAMark() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+
+        whenTheResultsCome(FILM_DVD.withSpamRating(SearchResult.SPAM_THRESHOLD), FILM_HD, SONG);
+
+        thenOneResultIsMarkedAsSpam();
+    }
+
+    @Test
+    void shouldRateTheOtherResultsAgainOnceOneIsMarkedAsSpam() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD, LOOKALIKE, FILM_HD);
+        givenTheResultChosen(FILM_DVD);
+        givenTheMenuShown();
+
+        whenTheMenuItemIsFired("IDS_MARKSPAM");
+
+        thenTheResultsMarkedAsSpamAre(2);
     }
 
     @Test
@@ -733,6 +758,12 @@ class SearchResultsTest {
         FxTesting.assertEventually(
                 "marked as spam", () -> table().lookupAll(".known-spam").size() == 1);
         assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(table()))).contains("Spam");
+    }
+
+    private void thenTheResultsMarkedAsSpamAre(int count) throws Exception {
+        FxTesting.assertEventually(
+                count + " marked as spam",
+                () -> table().lookupAll(".known-spam").size() == count);
     }
 
     private void thenNoResultIsMarkedAsSpam() throws Exception {

@@ -76,6 +76,25 @@ class SettingsApplyTest {
         thenTheNamesOfNewDownloadsAreCleanedUpOf("dvdrip|sponsored");
     }
 
+    @Test
+    void shouldSaveTheSpamFilterOfSearchResultsTurnedOff() throws Exception {
+        givenTheOptionsScrolledToTheBottom();
+        givenTheSpamFilterOfSearchResultsUnticked();
+
+        whenApplyIsPressed();
+
+        thenTheSpamFilterOfSearchResultsIsOff();
+    }
+
+    private void givenTheSpamFilterOfSearchResultsUnticked() throws Exception {
+        FxTesting.onFx(() -> this.screen.searchSpamFilterBox().setSelected(false));
+    }
+
+    private void thenTheSpamFilterOfSearchResultsIsOff() throws Exception {
+        FxTesting.await(
+                "the preferences saved", () -> !this.test.engine.preferences().searchSpamFilter());
+    }
+
     private void givenTheNamesOfNewDownloadsCleanedUpOf(String words) throws Exception {
         FxTesting.onFx(() -> {
             this.screen.cleanUpNewNamesBox().setSelected(true);

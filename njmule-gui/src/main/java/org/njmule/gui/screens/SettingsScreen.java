@@ -128,6 +128,7 @@ public final class SettingsScreen implements Screen {
     private final TextField messageFilter = new TextField();
     private final CheckBox friendsOnly = new CheckBox();
     private final CheckBox spamFilter = new CheckBox();
+    private final CheckBox searchSpamFilter = new CheckBox();
     // Whether ed2k links opened in njMule when the form was loaded; empty while unknown.
     private Optional<Boolean> linksWereOurs = Optional.empty();
     private Optional<LinkAssociation> links = Optional.empty();
@@ -272,6 +273,7 @@ public final class SettingsScreen implements Screen {
         this.filterLan.setText(this.gui.t("IDS_PW_FILTER"));
         this.friendsOnly.setText(this.gui.t("IDS_MSGONLYFRIENDS"));
         this.spamFilter.setText(this.gui.t("IDS_ADVSPAMFILTER"));
+        this.searchSpamFilter.setText(this.gui.t("IDS_SEARCHSPAMFILTER"));
         this.messageFilter.setPrefColumnCount(30);
         this.links = LinkAssociation.forThisSystem(this.gui.directories().config());
         this.kad.setText(this.gui.t("nj.settings.kad"));
@@ -409,6 +411,7 @@ public final class SettingsScreen implements Screen {
         this.whitelist.setPrefColumnCount(32);
         this.whitelist.setPromptText("1.2.3.4\n10.0.0.0/8");
         row = field(grid, row, this.gui.t("nj.settings.whitelist"), this.whitelist);
+        grid.add(this.searchSpamFilter, 1, row++);
         row = section(grid, row, this.gui.t("IDS_EM_MESSAGES"));
         row = field(grid, row, this.gui.t("IDS_FILTERLABEL"), this.messageFilter);
         grid.add(this.friendsOnly, 1, row++);
@@ -797,6 +800,7 @@ public final class SettingsScreen implements Screen {
         this.messageFilter.setText(p.messageFilter());
         this.friendsOnly.setSelected(p.messagesFromFriendsOnly());
         this.spamFilter.setSelected(p.advancedSpamFilter());
+        this.searchSpamFilter.setSelected(p.searchSpamFilter());
         this.fromServer.setSelected(p.addServersFromServer());
         this.fromClients.setSelected(p.addServersFromClients());
         this.staticOnly.setSelected(p.staticServersOnly());
@@ -1029,6 +1033,10 @@ public final class SettingsScreen implements Screen {
                         Preferences::advancedSpamFilter,
                         Preferences.Builder::advancedSpamFilter,
                         this.spamFilter.isSelected())
+                .set(
+                        Preferences::searchSpamFilter,
+                        Preferences.Builder::searchSpamFilter,
+                        this.searchSpamFilter.isSelected())
                 .set(
                         Preferences::addServersFromServer,
                         Preferences.Builder::addServersFromServer,
@@ -1302,6 +1310,10 @@ public final class SettingsScreen implements Screen {
 
     TextField tcpPortField() {
         return this.tcpPort;
+    }
+
+    CheckBox searchSpamFilterBox() {
+        return this.searchSpamFilter;
     }
 
     CheckBox cleanUpNewNamesBox() {

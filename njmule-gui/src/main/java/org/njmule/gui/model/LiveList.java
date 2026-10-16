@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import javafx.beans.Observable;
@@ -99,6 +100,12 @@ public final class LiveList<K, V> {
 
     public int size() {
         return this.rows.size();
+    }
+
+    /** The value of the row of {@code k}, if there is one. */
+    public Optional<V> find(K k) {
+        Row<V> row = this.byKey.get(k);
+        return row == null ? Optional.empty() : Optional.of(row.get());
     }
 
     public boolean contains(K k) {
