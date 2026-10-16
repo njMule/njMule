@@ -393,7 +393,7 @@ final class Network {
         this.pinger = new ServerPinger(
                 loop,
                 this.servers,
-                () -> Optional.ofNullable(this.udp),
+                () -> Optional.ofNullable(this.udp).map(udp -> udp::send),
                 this::addressSeenByServer,
                 this::serverUpdated,
                 () -> this.preferences.get().deadServerRetries(),

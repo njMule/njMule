@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.security.SecureRandom;
@@ -34,6 +35,8 @@ import org.junit.jupiter.api.Test;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
+import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
@@ -48,21 +51,19 @@ class ServerPingerTest {
     private final ServerList servers = new ServerList();
     private final List<ServerMet.Server> updated = new ArrayList<>();
     private final List<ServerMet.Server> dead = new ArrayList<>();
-    private final ServerUdp udp;
+    private final List<Packet> sent = new ArrayList<>();
     private final ServerPinger pinger;
+    private boolean sending;
     private ServerDatagrams.Status status;
     private ServerMet.Server applied;
     private List<Tag> description = List.of();
     private Throwable exception;
 
-    ServerPingerTest() throws Exception {
-        // Closed: whatever the pinger tries to send never leaves this machine.
-        this.udp = ServerUdp.open(0, (from, packet) -> {});
-        this.udp.close();
+    ServerPingerTest() {
         this.pinger = new ServerPinger(
                 this.loop,
                 this.servers,
-                () -> Optional.of(this.udp),
+                () -> Optional.<ServerPinger.Sender>of((to, packet) -> send(packet)),
                 () -> Ipv4.parse("1.2.3.4"),
                 this.updated::add,
                 () -> 5,
@@ -192,6 +193,43 @@ class ServerPingerTest {
     }
 
     @Test
+    void shouldTakeTheStatusThePingedServerSendsFromItsUdpPortThenAskForItsDescription() throws DecodeException {
+        givenTheServer(server("192.0.2.1", 4661));
+        givenTheSocketSends();
+        givenTheNextServerWasPinged();
+
+        whenThePingedServerAnswersFrom("192.0.2.1", 4665);
+
+        thenNoExceptionOccurred();
+        thenTheUpdatedServerHasTheUsers(1);
+        thenTheLastPacketSentIs(Opcodes.ServerUdp.SERVER_DESC_REQ.code());
+    }
+
+    @Test
+    void shouldChangeNothingOnTheChallengeOfAPingComingFromAnotherAddress() throws DecodeException {
+        givenTheServer(server("192.0.2.1", 4661));
+        givenTheSocketSends();
+        givenTheNextServerWasPinged();
+
+        whenThePingedServerAnswersFrom("192.0.2.9", 4665);
+
+        thenNoExceptionOccurred();
+        thenNoServerIsUpdated();
+    }
+
+    @Test
+    void shouldChangeNothingOnTheChallengeOfAPingComingFromAnotherPort() throws DecodeException {
+        givenTheServer(server("192.0.2.1", 4661));
+        givenTheSocketSends();
+        givenTheNextServerWasPinged();
+
+        whenThePingedServerAnswersFrom("192.0.2.1", 4666);
+
+        thenNoExceptionOccurred();
+        thenNoServerIsUpdated();
+    }
+
+    @Test
     void shouldChangeNothingOnADescriptionThatWasNotAsked() {
         givenTheServer(server("192.0.2.1", 4661));
 
@@ -285,6 +323,10 @@ class ServerPingerTest {
         this.pinger.pingNext();
     }
 
+    private void givenTheSocketSends() {
+        this.sending = true;
+    }
+
     private void givenAPingWasTriedWithoutFailing() {
         assertThatCode(this.pinger::pingNext).doesNotThrowAnyException();
     }
@@ -311,6 +353,12 @@ class ServerPingerTest {
 
     private void whenAPacketArrivesFrom(InetSocketAddress from, Packet packet) {
         this.exception = catchThrowable(() -> this.pinger.received(from, packet));
+    }
+
+    private void whenThePingedServerAnswersFrom(String address, int port) throws DecodeException {
+        Packet answer = status(challengeOf(this.sent.getLast())).encode();
+        this.exception = catchThrowable(
+                () -> this.pinger.received(new InetSocketAddress(InetAddress.ofLiteral(address), port), answer));
     }
 
     private void whenTheStatusIsAppliedFor(ServerMet.Server server, String ourAddress) {
@@ -351,6 +399,16 @@ class ServerPingerTest {
 
     private void thenNoServerIsUpdated() {
         assertThat(this.updated).isEmpty();
+    }
+
+    private void thenTheUpdatedServerHasTheUsers(long users) {
+        assertThat(this.updated)
+                .singleElement()
+                .satisfies(s -> assertThat(s.users()).hasValue(users));
+    }
+
+    private void thenTheLastPacketSentIs(int opcode) {
+        assertThat(this.sent.getLast().opcode()).isEqualTo(opcode);
     }
 
     private void thenThatServerIsReportedDead() {
@@ -425,6 +483,18 @@ class ServerPingerTest {
                 .map(t -> ((Tag.IntTag) t).value())
                 .findFirst()
                 .orElseThrow();
+    }
+
+    // Without givenTheSocketSends() the socket fails as a closed one: nothing is ever sent.
+    private void send(Packet packet) throws IOException {
+        if (!this.sending) {
+            throw new IOException("closed");
+        }
+        this.sent.add(packet);
+    }
+
+    private static long challengeOf(Packet request) throws DecodeException {
+        return PacketReader.of(request.payload()).u32();
     }
 
     private static ServerDatagrams.Status status(long challenge) {

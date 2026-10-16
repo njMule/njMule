@@ -66,9 +66,17 @@ public final class ServerPinger {
 
     private record Pending(long challenge, long sentAt, long sentMillis) {}
 
+    private record Asked(ServerList.Address address, ServerMet.Server server) {}
+
+    /** Where the pings go: the server UDP socket. */
+    @FunctionalInterface
+    public interface Sender {
+        void send(InetSocketAddress to, Packet packet) throws IOException;
+    }
+
     private final EngineLoop loop;
     private final ServerList servers;
-    private final Supplier<Optional<ServerUdp>> udp;
+    private final Supplier<Optional<Sender>> udp;
     private final IntSupplier publicIp;
     private final Consumer<ServerMet.Server> updated;
     private final IntSupplier deadRetries;
@@ -89,7 +97,7 @@ public final class ServerPinger {
     public ServerPinger(
             EngineLoop loop,
             ServerList servers,
-            Supplier<Optional<ServerUdp>> udp,
+            Supplier<Optional<Sender>> udp,
             IntSupplier publicIp,
             Consumer<ServerMet.Server> updated,
             IntSupplier deadRetries,
@@ -140,28 +148,40 @@ public final class ServerPinger {
             logger.debug("Malformed status from {}", from, e);
             return;
         }
+        Optional<Asked> asked = asked(this.pending, from, status.challenge());
+        if (asked.isEmpty()) {
+            logger.debug("Unrequested status from {}", from);
+            return;
+        }
+        ServerList.Address address = asked.get().address();
+        Pending sent = this.pending.remove(address);
+        long ping = Math.max(0, this.clock.millis() - sent.sentMillis());
+        this.servers.update(
+                address, s -> apply(s, status, this.publicIp.getAsInt()).with(intTag(ServerTag.PING, ping)));
+        this.servers.get(address).ifPresent(this.updated);
+        askDescription(asked.get().server(), address);
+    }
+
+    // The server asked from where the answer came with its challenge: only the few waiting ones are looked at.
+    private Optional<Asked> asked(Map<ServerList.Address, Pending> waiting, InetSocketAddress from, long challenge) {
         int ip = Ipv4.fromBytes(from.getAddress().getAddress());
-        for (ServerMet.Server server : this.servers.candidates()) {
-            ServerList.Address address = ServerList.addressOf(server);
-            Pending sent = this.pending.get(address);
-            if (sent != null
-                    && server.ip() == ip
-                    && isUdpPortOf(server, from.getPort())
-                    && sent.challenge() == status.challenge()) {
-                this.pending.remove(address);
-                long ping = Math.max(0, this.clock.millis() - sent.sentMillis());
-                this.servers.update(
-                        address, s -> apply(s, status, this.publicIp.getAsInt()).with(intTag(ServerTag.PING, ping)));
-                this.servers.get(address).ifPresent(this.updated);
-                askDescription(server, address);
-                return;
+        if (!this.servers.accepts(ip)) {
+            return Optional.empty();
+        }
+        for (Map.Entry<ServerList.Address, Pending> e : waiting.entrySet()) {
+            if (e.getValue().challenge() != challenge) {
+                continue;
+            }
+            Optional<ServerMet.Server> server = this.servers.get(e.getKey());
+            if (server.isPresent() && server.get().ip() == ip && isUdpPortOf(server.get(), from.getPort())) {
+                return Optional.of(new Asked(e.getKey(), server.get()));
             }
         }
-        logger.debug("Unrequested status from {}", from);
+        return Optional.empty();
     }
 
     private void askDescription(ServerMet.Server server, ServerList.Address address) {
-        Optional<ServerUdp> socket = this.udp.get();
+        Optional<Sender> socket = this.udp.get();
         if (socket.isEmpty()) {
             return;
         }
@@ -184,28 +204,22 @@ public final class ServerPinger {
             logger.debug("Malformed description from {}", from, e);
             return;
         }
-        int ip = Ipv4.fromBytes(from.getAddress().getAddress());
-        for (ServerMet.Server server : this.servers.candidates()) {
-            ServerList.Address address = ServerList.addressOf(server);
-            Pending sent = this.descriptions.get(address);
-            if (sent != null
-                    && server.ip() == ip
-                    && isUdpPortOf(server, from.getPort())
-                    && sent.challenge() == description.challenge()) {
-                this.descriptions.remove(address);
-                this.servers.update(address, s -> describe(s, description.tags()));
-                this.servers.get(address).ifPresent(this.updated);
-                return;
-            }
+        Optional<Asked> asked = asked(this.descriptions, from, description.challenge());
+        if (asked.isEmpty()) {
+            logger.debug("Unrequested description from {}", from);
+            return;
         }
-        logger.debug("Unrequested description from {}", from);
+        ServerList.Address address = asked.get().address();
+        this.descriptions.remove(address);
+        this.servers.update(address, s -> describe(s, description.tags()));
+        this.servers.get(address).ifPresent(this.updated);
     }
 
     void pingNext() {
         long now = this.clock.instant().getEpochSecond();
         this.pending.values().removeIf(p -> now - p.sentAt() > ANSWER_TIMEOUT.toSeconds());
         this.descriptions.values().removeIf(p -> now - p.sentAt() > ANSWER_TIMEOUT.toSeconds());
-        Optional<ServerUdp> socket = this.udp.get();
+        Optional<Sender> socket = this.udp.get();
         List<ServerMet.Server> candidates = this.servers.candidates();
         if (socket.isEmpty() || candidates.isEmpty()) {
             return;
