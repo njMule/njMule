@@ -126,7 +126,6 @@ public final class Engine implements NjMuleEngine {
     private static final String ADDRESSES_FILE = "addresses.dat";
     private static final Duration BACKUP_EVERY = Duration.ofDays(1);
     private static final int EVENT_BUFFER = 1_024;
-    private static final int LOG_REPLAY = 100;
     private static final Duration UNMAP_WAIT = Duration.ofSeconds(5);
     private static final Duration SCHEDULE_CHECK = Duration.ofSeconds(15);
 
@@ -135,8 +134,8 @@ public final class Engine implements NjMuleEngine {
     private final EngineLoop loop;
     private final ExecutorService eventExecutor;
     private final SubmissionPublisher<EngineEvent> events;
-    // The latest log lines, for subscribers that come later; guarded by itself, as is publishing.
-    private final ArrayDeque<EngineEvent> recentLog = new ArrayDeque<>();
+    // What subscribers that come later are told first; guarded by itself, as is publishing.
+    private final EventReplay replay = new EventReplay();
     private final Flow.Publisher<EngineEvent> replaying = this::subscribe;
     private final AtomicBoolean closed = new AtomicBoolean();
     // Written only on the engine thread, read from anywhere.
@@ -369,10 +368,10 @@ public final class Engine implements NjMuleEngine {
         return this.replaying;
     }
 
-    // Hands a new subscriber the latest log lines first, such as those of the start that came before it.
+    // Hands a new subscriber what it missed first: the latest log lines and the server connection as it stands.
     private void subscribe(Flow.Subscriber<? super EngineEvent> subscriber) {
-        synchronized (this.recentLog) {
-            this.events.subscribe(new Replaying(subscriber, new ArrayDeque<>(this.recentLog)));
+        synchronized (this.replay) {
+            this.events.subscribe(new Replaying(subscriber, this.replay.missed()));
         }
     }
 
@@ -1304,13 +1303,8 @@ public final class Engine implements NjMuleEngine {
 
     // Slow subscribers lose events instead of stalling the engine.
     private void publish(EngineEvent event) {
-        synchronized (this.recentLog) {
-            if (event instanceof EngineEvent.Log) {
-                if (this.recentLog.size() >= LOG_REPLAY) {
-                    this.recentLog.removeFirst();
-                }
-                this.recentLog.addLast(event);
-            }
+        synchronized (this.replay) {
+            this.replay.record(event);
             if (!this.events.isClosed()) {
                 this.events.offer(event, (subscriber, dropped) -> {
                     logger.debug("Dropped {} for a slow subscriber", dropped);
