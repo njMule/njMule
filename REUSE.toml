@@ -18,6 +18,9 @@ path = [
     "packaging/**/*.png",
     "packaging/**/*.ico",
     "packaging/**/*.icns",
+    "packaging/synology/conf/*",
+    "packaging/synology/WIZARD_UIFILES/*",
+    "packaging/synology/app/*",
     "njmule-gui/native/*.args",
     "njmule-gui/native/**/*.json",
 ]

@@ -1,0 +1,22 @@
+[
+    {
+        "step_title": "njMule web interface",
+        "invalid_next_disabled": true,
+        "items": [
+            {
+                "type": "password",
+                "desc": "njMule runs without a window: you use it from its web interface, on port 4711 of this NAS. Choose the password it asks for (8 characters at least). Downloads go to the shared folder njmule.",
+                "subitems": [
+                    {
+                        "key": "wizard_webui_password",
+                        "desc": "Password",
+                        "validator": {
+                            "allowBlank": false,
+                            "minLength": 8
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+]

@@ -479,6 +479,12 @@ All notable changes to this project are documented here. The format follows
   `/njmule` volume, the eD2K, Kad and web interface ports exposed, stopped cleanly by `docker stop`;
   the release workflow builds it from the Linux executables, checks it and pushes it for a tag.
   `packaging/docker` holds the Dockerfile, which also compiles from the sources, and a Compose file.
+- Synology DSM 7 package (`.spk`, x64) built by `packaging/synology/build-spk.sh` around a fully
+  static executable of the headless engine (musl, `tools/native-static-docker.sh`), since DSM's
+  glibc is too old for the Linux one: it runs as its own unprivileged user, asks the web interface
+  password in the install wizard (keeping only its hash), downloads into the shared folder `njmule`
+  it creates, opens the web interface from Package Center and the DSM menu, accepts the NAS's name,
+  declares its ports to the DSM firewall and saves on stop.
 - `--webui-password-file <file>` takes the web interface password from the first line of a file,
   such as a Docker or systemd secret, never printing or logging it: with `--webui-password` it is
   set without asking; on its own it is set at every start, before njMule runs.

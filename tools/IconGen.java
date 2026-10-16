@@ -42,7 +42,7 @@ import javax.imageio.ImageIO;
  */
 public final class IconGen {
 
-    private static final int[] PNG_SIZES = {16, 22, 24, 32, 48, 64, 128, 256, 512, 1024};
+    private static final int[] PNG_SIZES = {16, 22, 24, 32, 48, 64, 72, 128, 256, 512, 1024};
     private static final int[] ICO_SIZES = {16, 24, 32, 48, 64, 128, 256};
     // ICNS types holding PNG data, by pixel size.
     private static final Map<String, Integer> ICNS_TYPES = new LinkedHashMap<>();

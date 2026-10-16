@@ -1,0 +1,14 @@
+{
+    ".url": {
+        "org.njmule.webui": {
+            "type": "url",
+            "icon": "images/njmule-{0}.png",
+            "title": "njMule",
+            "desc": "eD2K and Kad client",
+            "protocol": "http",
+            "port": "4711",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}

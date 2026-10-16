@@ -1,0 +1,15 @@
+{
+    "port-config": {
+        "protocol-file": "app/njmule.sc"
+    },
+    "data-share": {
+        "shares": [
+            {
+                "name": "njmule",
+                "permission": {
+                    "rw": ["njmule"]
+                }
+            }
+        ]
+    }
+}

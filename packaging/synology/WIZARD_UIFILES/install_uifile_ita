@@ -1,0 +1,22 @@
+[
+    {
+        "step_title": "Interfaccia web di njMule",
+        "invalid_next_disabled": true,
+        "items": [
+            {
+                "type": "password",
+                "desc": "njMule funziona senza finestra: lo si usa dalla sua interfaccia web, sulla porta 4711 di questo NAS. Scegli la password che chiederà (almeno 8 caratteri). I download vanno nella cartella condivisa njmule.",
+                "subitems": [
+                    {
+                        "key": "wizard_webui_password",
+                        "desc": "Password",
+                        "validator": {
+                            "allowBlank": false,
+                            "minLength": 8
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+]
