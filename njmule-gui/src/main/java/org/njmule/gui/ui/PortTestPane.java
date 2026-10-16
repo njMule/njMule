@@ -46,7 +46,8 @@ import org.njmule.core.config.Preferences;
 public final class PortTestPane {
 
     private static final Duration POLL = Duration.seconds(1);
-    private static final List<String> KINDS = List.of("open", "closed", "testing", "unknown", "warning", "off");
+    private static final List<String> KINDS =
+            List.of("port-open", "port-closed", "port-testing", "port-unknown", "port-warning", "port-off");
 
     private final Gui gui;
     private final Supplier<UnaryOperator<Preferences>> settings;
@@ -68,8 +69,8 @@ public final class PortTestPane {
         this.running.getStyleClass().add("tab-spinner");
         this.running.setVisible(false);
         this.poll.setCycleCount(Timeline.INDEFINITE);
+        // The room of the outcomes is kept from the start: the page does not grow when they come.
         this.lines.setVisible(false);
-        this.lines.setManaged(false);
         HBox row = new HBox(10, this.start, this.running);
         row.setAlignment(Pos.CENTER_LEFT);
         this.node = new VBox(8, row, this.lines);
@@ -110,9 +111,9 @@ public final class PortTestPane {
         this.running.setVisible(false);
     }
 
-    void show(PortTest test) {
+    /** Shows what {@code test} found, as far as it went. */
+    public void show(PortTest test) {
         this.lines.setVisible(true);
-        this.lines.setManaged(true);
         PortTest.Forwarding f = test.forwarding();
         set(
                 this.forwarding,
@@ -140,7 +141,7 @@ public final class PortTestPane {
     private static void set(Label line, String kind, String text) {
         line.setText(text);
         line.getStyleClass().removeAll(KINDS);
-        line.getStyleClass().add(kind);
+        line.getStyleClass().add("port-" + kind);
         Ikon icon = switch (kind) {
             case "open" -> Material2AL.CHECK_CIRCLE;
             case "closed" -> Material2AL.BLOCK;

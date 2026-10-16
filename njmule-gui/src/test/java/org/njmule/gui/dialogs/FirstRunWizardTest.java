@@ -23,11 +23,13 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import javafx.geometry.Bounds;
 import javafx.scene.layout.StackPane;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
@@ -65,6 +67,23 @@ class FirstRunWizardTest {
 
         thenTheNickBecomes("Tester");
         thenTheOutcomeIs(new FirstRunWizard.Outcome(false, false));
+    }
+
+    @Test
+    void shouldKeepTheButtonsInViewWhenThePortTestShowsItsOutcomes() throws Exception {
+        givenTheWizard();
+        givenNextPressed(3);
+
+        whenThePortTestShows(new PortTest(
+                4662,
+                4672,
+                PortTest.Forwarding.REFUSED,
+                "192.168.1.254",
+                PortTest.Reach.CLOSED,
+                PortTest.Reach.CLOSED,
+                true));
+
+        thenNextIsInTheWindow();
     }
 
     @Test
@@ -248,6 +267,25 @@ class FirstRunWizardTest {
 
     private void typeTheNick(String nick) throws Exception {
         FxTesting.onFx(() -> this.wizard.nickField().setText(nick));
+    }
+
+    private void whenThePortTestShows(PortTest test) throws Exception {
+        FxTesting.onFx(() -> {
+            this.wizard.portTest().show(test);
+            this.wizard.stage().getScene().getRoot().applyCss();
+            this.wizard.stage().getScene().getRoot().layout();
+        });
+        FxTesting.onFx(() -> {
+            FxTesting.snapshot(this.wizard.stage().getScene().getRoot(), "wizard-port-test");
+            return null;
+        });
+    }
+
+    private void thenNextIsInTheWindow() throws Exception {
+        Bounds next = FxTesting.onFx(() ->
+                this.wizard.nextButton().localToScene(this.wizard.nextButton().getLayoutBounds()));
+        double height = FxTesting.onFx(() -> this.wizard.stage().getScene().getHeight());
+        assertThat(next.getMaxY()).as("the bottom of Next").isLessThanOrEqualTo(height);
     }
 
     private void pressNext(int times) throws Exception {

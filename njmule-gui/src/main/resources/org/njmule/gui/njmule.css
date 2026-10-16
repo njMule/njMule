@@ -539,19 +539,19 @@
     -fx-icon-color: -color-fg-muted;
 }
 
-.port-test .port-line.open .ikonli-font-icon {
+.port-test .port-line.port-open .ikonli-font-icon {
     -fx-icon-color: -color-success-fg;
 }
 
-.port-test .port-line.closed .ikonli-font-icon {
+.port-test .port-line.port-closed .ikonli-font-icon {
     -fx-icon-color: -color-danger-fg;
 }
 
-.port-test .port-line.warning .ikonli-font-icon {
+.port-test .port-line.port-warning .ikonli-font-icon {
     -fx-icon-color: -color-warning-fg;
 }
 
-.port-test .port-line.testing .ikonli-font-icon {
+.port-test .port-line.port-testing .ikonli-font-icon {
     -fx-icon-color: -nj-accent-strong;
 }
 

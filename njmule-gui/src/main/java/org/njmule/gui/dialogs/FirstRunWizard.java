@@ -39,6 +39,7 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
@@ -223,11 +224,15 @@ public final class FirstRunWizard {
         HBox buttons = Fx.toolRow(skip, Fx.spacer(), this.back, this.next);
         this.steps.getStyleClass().add("wizard-steps");
         this.shown.setAlignment(Pos.TOP_LEFT);
-        VBox root = new VBox(16, this.steps, this.shown, buttons);
-        VBox.setVgrow(this.shown, Priority.ALWAYS);
+        // A page taller than the window scrolls: the buttons below always stay in view.
+        ScrollPane page = new ScrollPane(this.shown);
+        page.setFitToWidth(true);
+        page.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        VBox root = new VBox(16, this.steps, page, buttons);
+        VBox.setVgrow(page, Priority.ALWAYS);
         root.setPadding(new Insets(18));
         root.getStyleClass().add("wizard");
-        Scene scene = new Scene(root, 680, 500);
+        Scene scene = new Scene(root, 680, 600);
         this.gui.attach(scene);
         this.stage.setScene(scene);
         showPage();
