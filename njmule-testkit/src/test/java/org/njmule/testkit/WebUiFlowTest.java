@@ -89,7 +89,7 @@ class WebUiFlowTest {
         givenConnectedToTheServerThroughThePages();
         givenTheStatusSoonShows("(HighID)");
         givenThePageShows("/servers", "<h1>Servers</h1>", "Disconnect");
-        givenASearchForNothingLeadsTo("/search");
+        givenASearchForNothingLeadsTo("search");
         givenASearchStartedFor("linux", "SERVER");
         givenTheResultsSoonShow("linux.txt");
         givenTheResultsShow("2 results", "linux web.iso");
@@ -152,7 +152,10 @@ class WebUiFlowTest {
 
     private void givenASearchStartedFor(String query, String scope) throws Exception {
         HttpResponse<String> search = post("/search", Map.of("query", query, "scope", scope, "csrf", csrf()));
-        this.results = search.headers().firstValue("Location").orElseThrow();
+        // Resolved as a browser does, against the page asked.
+        this.results = URI.create("/search")
+                .resolve(search.headers().firstValue("Location").orElseThrow())
+                .toString();
         assertThat(this.results).startsWith("/search?id=");
     }
 
@@ -176,7 +179,7 @@ class WebUiFlowTest {
         this.hash = download.group(1);
         String id = this.results.substring(this.results.indexOf('=') + 1);
         HttpResponse<String> taken = post("/search", Map.of("search", id, "download", this.hash, "csrf", csrf()));
-        assertThat(taken.headers().firstValue("Location")).hasValue("/transfers");
+        assertThat(taken.headers().firstValue("Location")).hasValue("transfers");
     }
 
     private void givenTheTransfersShowTheDownloadOf(String name) {

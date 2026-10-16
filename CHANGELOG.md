@@ -484,7 +484,9 @@ All notable changes to this project are documented here. The format follows
   answers under a LAN name such as `nas.local` and behind a reverse proxy (Traefik, nginx, Caddy),
   taking forms whose origin is one of the names on any port, over HTTP or HTTPS; other names are
   still refused against DNS rebinding and other origins against cross-site requests. No forwarded
-  header is trusted; the session cookie is `Secure` when the browser logged in over HTTPS.
+  header is trusted; the session cookie is `Secure` when the browser logged in over HTTPS. The
+  pages link to one another, to their style sheet and to their forms, and redirect, relative to
+  themselves, so that a proxy may also serve the interface under a path it strips (`/njmule/`).
 
 ### Changed
 

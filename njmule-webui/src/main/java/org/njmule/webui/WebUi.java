@@ -421,7 +421,7 @@ public final class WebUi implements AutoCloseable {
                 "Log in",
                 "",
                 (error.isEmpty() ? "" : "<p class=\"error\">" + Html.text(error) + "</p>")
-                        + "<form method=\"post\" action=\"/login\">"
+                        + "<form method=\"post\" action=\"login\">"
                         + "<input type=\"password\" name=\"password\" autofocus"
                         + " autocomplete=\"current-password\"> "
                         + "<button class=\"main\">Log in</button></form>");
@@ -676,7 +676,7 @@ public final class WebUi implements AutoCloseable {
     private String logPage(Sessions.Session session) {
         List<RecentLog.Entry> lines = this.recentLog.after(0);
         StringBuilder body = new StringBuilder(256 + lines.size() * 128);
-        body.append("<p><a href=\"/log\">Reload</a></p>");
+        body.append("<p><a href=\"log\">Reload</a></p>");
         if (lines.isEmpty()) {
             return Html.page(
                     "Log",
@@ -840,7 +840,7 @@ public final class WebUi implements AutoCloseable {
         found.sort((a, b) -> Integer.compare(b.sources(), a.sources()));
         body.append("<p>")
                 .append(found.size())
-                .append(" results; <a href=\"/search?id=")
+                .append(" results; <a href=\"search?id=")
                 .append(id)
                 .append("\">reload</a> for more.</p>")
                 .append("<table><tr><th>File</th><th>Size</th><th>Sources</th><th></th></tr>");
@@ -936,7 +936,7 @@ public final class WebUi implements AutoCloseable {
     }
 
     private void redirect(Exchange exchange, String location) throws IOException {
-        exchange.setHeader("Location", location);
+        exchange.setHeader("Location", Html.relative(location));
         securityHeaders(exchange);
         exchange.sendHeaders(303, -1);
     }

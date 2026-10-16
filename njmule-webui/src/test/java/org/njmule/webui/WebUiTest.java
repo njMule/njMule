@@ -100,7 +100,7 @@ class WebUiTest {
         whenThePageIsAsked("/");
 
         thenTheStatusIs(303);
-        thenTheHeaderIs("Location", "/login");
+        thenTheHeaderIs("Location", "login");
         thenTheAnswerForbidsFramesAndForeignContent();
     }
 
@@ -404,7 +404,7 @@ class WebUiTest {
     private void givenADownloadAdded(String link) throws Exception {
         whenPosted("/transfers", Map.of("action", "add", "link", link));
         assertThat(this.answer.statusCode()).isEqualTo(303);
-        assertThat(this.answer.headers().firstValue("Location")).hasValue("/transfers");
+        assertThat(this.answer.headers().firstValue("Location")).hasValue("transfers");
     }
 
     private void givenTheActionDoneOnTheDownload(String action, String hash) throws Exception {

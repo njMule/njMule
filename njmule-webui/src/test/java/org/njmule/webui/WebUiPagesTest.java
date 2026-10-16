@@ -95,6 +95,18 @@ class WebUiPagesTest {
     }
 
     @Test
+    void shouldLinkItsPagesRelativelySoThatAProxyMayServeThemUnderAPath() throws Exception {
+        givenALoggedInUser();
+        givenKadConnectedAndFirewalled();
+
+        whenThePageIsAsked("/kad");
+
+        thenThePageShows(
+                "href=\"style.css\"", "href=\"./\"", "href=\"transfers\"", "action=\"kad\"", "action=\"logout\"");
+        thenThePageHasNoLinkFromTheTop();
+    }
+
+    @Test
     void shouldShowKad() throws Exception {
         givenALoggedInUser();
         givenKadConnectedAndFirewalled();
@@ -192,6 +204,10 @@ class WebUiPagesTest {
     private void thenThePageShows(String... parts) {
         assertThat(this.answer.statusCode()).as(this.answer.body()).isEqualTo(200);
         assertThat(this.answer.body()).contains(parts);
+    }
+
+    private void thenThePageHasNoLinkFromTheTop() {
+        assertThat(this.answer.body()).doesNotContain("href=\"/", "action=\"/", "src=\"/");
     }
 
     private void thenTheEngineWasAsked(String call) {

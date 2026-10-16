@@ -305,12 +305,14 @@ njmule --webui-password --webui-lan --webui-host nas.local
 ```
 
 Behind a reverse proxy (Traefik, nginx, Caddy) list its public name, `--webui-host
-njmule.example.com`, and serve the interface at the root of that name. Forms are then taken from
-that origin on any port, over HTTP or HTTPS, and the session cookie is `Secure` when the browser
-comes over HTTPS; no `X-Forwarded-*` header is needed or trusted. Traefik and Caddy pass the
-browser's host name on; nginx needs `proxy_set_header Host $host;`, or it sends the upstream's
-address. All logins then come from the proxy's address, so the lockout after repeated wrong
-passwords holds for every user at once.
+njmule.example.com`, and serve the interface at the root of that name, or under a path the proxy
+strips before passing the request on (`https://example.com/njmule/`, with its last slash): the
+pages link to one another, to their style sheet and to their forms relative to themselves. Forms
+are then taken from that origin on any port, over HTTP or HTTPS, and the session cookie is
+`Secure` when the browser comes over HTTPS; no `X-Forwarded-*` header is needed or trusted.
+Traefik and Caddy pass the browser's host name on; nginx needs `proxy_set_header Host $host;`, or
+it sends the upstream's address. All logins then come from the proxy's address, so the lockout
+after repeated wrong passwords holds for every user at once.
 
 > [!CAUTION]
 > The interface is served over plain HTTP: enable LAN access only on a trusted network, or reach

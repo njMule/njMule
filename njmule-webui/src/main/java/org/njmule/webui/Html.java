@@ -75,15 +75,15 @@ final class Html {
                 .append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
                 .append("<title>")
                 .append(text(title))
-                .append(" - njMule</title><link rel=\"stylesheet\"" + " href=\"/style.css\"></head><body><header>")
+                .append(" - njMule</title><link rel=\"stylesheet\"" + " href=\"style.css\"></head><body><header>")
                 .append("<strong>")
                 .append(text(NjMuleInfo.NAME + " " + NjMuleInfo.version()))
                 .append("</strong>");
         if (!csrf.isEmpty()) {
-            out.append("<nav><a href=\"/\">Status</a><a href=\"/transfers\">Transfers</a>")
-                    .append("<a href=\"/search\">Search</a><a href=\"/servers\">Servers</a>")
-                    .append("<a href=\"/kad\">Kad</a><a href=\"/shared\">Shared files</a>")
-                    .append("<a href=\"/log\">Log</a></nav>")
+            out.append("<nav><a href=\"./\">Status</a><a href=\"transfers\">Transfers</a>")
+                    .append("<a href=\"search\">Search</a><a href=\"servers\">Servers</a>")
+                    .append("<a href=\"kad\">Kad</a><a href=\"shared\">Shared files</a>")
+                    .append("<a href=\"log\">Log</a></nav>")
                     .append(form("/logout", csrf, "", "Log out", false));
         }
         out.append("</header><main><h1>").append(text(title)).append("</h1>").append(body);
@@ -92,9 +92,20 @@ final class Html {
     }
 
     /** A form posting {@code fields} (already escaped hidden inputs) with one button. */
+    /**
+     * {@code path}, a page of the interface, relative to the page that links to it: every page sits at the top, so the
+     * interface works under whatever path a reverse proxy serves it.
+     */
+    static String relative(String path) {
+        if (path.equals("/")) {
+            return "./";
+        }
+        return path.startsWith("/") ? path.substring(1) : path;
+    }
+
     static String form(String action, String csrf, String fields, String button, boolean main) {
         return "<form class=\"inline\" method=\"post\" action=\""
-                + text(action)
+                + text(relative(action))
                 + "\"><input type=\"hidden\" name=\"csrf\" value=\""
                 + text(csrf)
                 + "\">"

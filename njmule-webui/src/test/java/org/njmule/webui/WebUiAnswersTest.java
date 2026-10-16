@@ -388,7 +388,7 @@ class WebUiAnswersTest {
         whenTheFormIsPosted("/servers", Map.of("action", "connect", "address", "10.0.0.1:4661"));
 
         thenTheStatusIs(303);
-        thenTheAnswerLeadsTo("/servers");
+        thenTheAnswerLeadsTo("servers");
         thenTheEngineWasAskedToConnectTo("10.0.0.1", 4661);
     }
 
@@ -451,7 +451,7 @@ class WebUiAnswersTest {
 
         whenTheFormIsPosted("/search", Map.of("query", " "));
 
-        thenTheAnswerLeadsTo("/search", "nothing to search");
+        thenTheAnswerLeadsTo("search", "nothing to search");
     }
 
     @Test
@@ -461,7 +461,7 @@ class WebUiAnswersTest {
 
         whenTheFormIsPosted("/search", Map.of("query", "linux", "scope", "KAD"));
 
-        thenTheAnswerLeadsTo("/search?id=5");
+        thenTheAnswerLeadsTo("search?id=5");
         thenTheEngineSearched("linux", SearchRequest.Scope.KAD);
     }
 
@@ -476,7 +476,7 @@ class WebUiAnswersTest {
 
         whenTheResultIsDownloaded(5, "found.iso");
 
-        thenTheAnswerLeadsTo("/transfers");
+        thenTheAnswerLeadsTo("transfers");
         thenTheResultWasAdded("found.iso");
     }
 
@@ -729,9 +729,10 @@ class WebUiAnswersTest {
         whenTheFormIsPosted("/search", Map.of("query", query));
     }
 
-    private void givenASearchStarted(String query, String location) throws Exception {
+    // The answer leads to the page relative to the one asked.
+    private void givenASearchStarted(String query, String page) throws Exception {
         whenTheFormIsPosted("/search", Map.of("query", query));
-        thenTheAnswerLeadsTo(location);
+        thenTheAnswerLeadsTo(page.substring(1));
     }
 
     private void givenTheEngineFinds(long search, String name) {
