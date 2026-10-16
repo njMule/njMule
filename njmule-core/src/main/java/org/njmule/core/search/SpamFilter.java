@@ -17,8 +17,6 @@
 package org.njmule.core.search;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -50,6 +48,7 @@ import org.njmule.core.protocol.tag.TagCodec;
 import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.util.Bytes;
 import org.njmule.core.util.Ipv4;
+import org.njmule.core.util.LittleEndian;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -181,10 +180,10 @@ public final class SpamFilter {
             case Tag.IntTag i when id == SearchFiles.SPAM_SERVER_IP -> this.serverIps.add(Ipv4.fromEd2k(i.value()));
             case Tag.BlobTag b
             when id == SearchFiles.SPAM_UDP_SERVER_RATIO && b.value().length() == UDP_RECORD_BYTES -> {
-                ByteBuffer in = ByteBuffer.wrap(b.value().toByteArray()).order(ByteOrder.LITTLE_ENDIAN);
-                int ip = Ipv4.fromEd2k(Integer.toUnsignedLong(in.getInt()));
-                long results = Integer.toUnsignedLong(in.getInt());
-                long spamResults = Integer.toUnsignedLong(in.getInt());
+                byte[] record = b.value().toByteArray();
+                int ip = Ipv4.fromEd2k(Integer.toUnsignedLong(LittleEndian.getInt(record, 0)));
+                long results = Integer.toUnsignedLong(LittleEndian.getInt(record, 4));
+                long spamResults = Integer.toUnsignedLong(LittleEndian.getInt(record, 8));
                 this.servers.put(ip, new ServerRecord(results, Math.min(spamResults, results)));
             }
             default -> this.others.add(tag);
@@ -215,11 +214,11 @@ public final class SpamFilter {
             markers.add(new Tag.IntTag(TagName.id(SearchFiles.SPAM_SOURCE_IP), Ipv4.toEd2k(ip)));
         }
         for (Map.Entry<Integer, ServerRecord> e : this.servers.entrySet()) {
-            ByteBuffer out = ByteBuffer.allocate(UDP_RECORD_BYTES).order(ByteOrder.LITTLE_ENDIAN);
-            out.putInt((int) Ipv4.toEd2k(e.getKey()))
-                    .putInt((int) Math.min(e.getValue().results(), 0xFFFF_FFFFL))
-                    .putInt((int) Math.min(e.getValue().spam(), 0xFFFF_FFFFL));
-            markers.add(new Tag.BlobTag(TagName.id(SearchFiles.SPAM_UDP_SERVER_RATIO), Bytes.of(out.array())));
+            byte[] record = new byte[UDP_RECORD_BYTES];
+            LittleEndian.putInt(record, 0, (int) Ipv4.toEd2k(e.getKey()));
+            LittleEndian.putInt(record, 4, (int) Math.min(e.getValue().results(), 0xFFFF_FFFFL));
+            LittleEndian.putInt(record, 8, (int) Math.min(e.getValue().spam(), 0xFFFF_FFFFL));
+            markers.add(new Tag.BlobTag(TagName.id(SearchFiles.SPAM_UDP_SERVER_RATIO), Bytes.of(record)));
         }
         markers.addAll(this.others);
         markers.removeIf(marker -> !writable(marker));
