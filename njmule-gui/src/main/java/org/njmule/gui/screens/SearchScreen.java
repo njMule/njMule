@@ -16,6 +16,7 @@
  */
 package org.njmule.gui.screens;
 
+import atlantafx.base.controls.CustomTextField;
 import atlantafx.base.controls.RingProgressIndicator;
 import atlantafx.base.theme.Styles;
 import java.io.IOException;
@@ -39,8 +40,12 @@ import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleObjectProperty;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.StringProperty;
 import javafx.collections.ListChangeListener;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.geometry.Side;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
@@ -49,6 +54,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressIndicator;
+import javafx.scene.control.RadioMenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
@@ -58,12 +64,14 @@ import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.Ikon;
 import org.kordamp.ikonli.javafx.FontIcon;
@@ -166,6 +174,9 @@ public final class SearchScreen implements Screen {
     private final VBox content = new VBox(8);
     private Node parameters;
     private final Map<Tab, Results> results = new HashMap<>();
+    // One filter, right of the tabs, for the results of the tab shown, on the column chosen by its title.
+    private final CustomTextField filter = new CustomTextField();
+    private final StringProperty filterColumn = new SimpleStringProperty();
 
     // title: the tab's own, such as a kept related search's; empty = from the expression.
     private record Results(EngineModel.Search search, TableView<LiveList.Row<SearchResult>> table, String title) {}
@@ -243,8 +254,7 @@ public final class SearchScreen implements Screen {
             });
         }
         this.parameters = parameters(inputs);
-        this.content.getChildren().setAll(this.tabs);
-        VBox.setVgrow(this.tabs, Priority.ALWAYS);
+        this.content.getChildren().setAll(tabsWithFilter());
         // The parameters fold away until wanted; the button counts those in use, and they show when any is.
         this.parametersButton.setGraphic(Fx.icon(Material2MZ.TUNE));
         this.parametersButton.setId("search-parameters");
@@ -507,6 +517,8 @@ public final class SearchScreen implements Screen {
         // Offered in the column menu.
         fileId.setVisible(false);
         String kbits = this.gui.t("IDS_KBITSSEC");
+        Function<Integer, String> lengthText = s -> s == 0 ? "" : formats.playingTime(s);
+        Function<Integer, String> bitrateText = b -> b == 0 ? "" : formats.count(b) + " " + kbits;
         Comparator<String> text = SearchOrder.text(this.gui.i18n().locale());
         List<TableColumn<LiveList.Row<SearchResult>, ?>> media = List.of(
                 textLast(
@@ -531,12 +543,12 @@ public final class SearchScreen implements Screen {
                         this.gui.t("IDS_LENGTH"),
                         60,
                         (SearchResult r) -> r.media().length(),
-                        s -> s == 0 ? "" : formats.playingTime(s)))),
+                        lengthText))),
                 numberLast(Fx.leftToRight(Fx.column(
                         this.gui.t("IDS_BITRATE"),
                         80,
                         (SearchResult r) -> r.media().bitrate(),
-                        b -> b == 0 ? "" : formats.count(b) + " " + kbits))),
+                        bitrateText))),
                 textLast(
                         Fx.leftToRight(Fx.column(
                                 this.gui.t("IDS_CODEC"),
@@ -595,15 +607,25 @@ public final class SearchScreen implements Screen {
         });
         table.setContextMenu(menu);
 
-        TextField filter = new TextField();
-        filter.setPromptText(this.gui.t("nj.search.filter"));
-        filter.setPrefColumnCount(18);
-        filter.textProperty().addListener((o, was, now) -> shown.set(matching(now)));
-        filter.setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.ESCAPE) {
-                filter.clear();
-            }
-        });
+        // What the filter beside the tabs looks for: the text each column shows.
+        Map<String, Function<SearchResult, String>> texts = new HashMap<>();
+        texts.put(this.gui.t("IDS_DL_FILENAME"), SearchResult::name);
+        texts.put(this.gui.t("IDS_DL_SIZE"), r -> formats.size(r.size()));
+        texts.put(this.gui.t("IDS_SEARCHAVAIL"), r -> Integer.toString(r.sources()));
+        texts.put(this.gui.t("IDS_COMPLETE"), r -> Integer.toString(r.completeSources()));
+        texts.put(this.gui.t("nj.search.type"), r -> r.type().orElse(""));
+        texts.put(this.gui.t("nj.search.known"), r -> knownText(known(r)));
+        texts.put(this.gui.t("IDS_FILEID"), r -> r.hash().toHex());
+        texts.put(this.gui.t("IDS_ARTIST"), r -> r.media().artist());
+        texts.put(this.gui.t("IDS_ALBUM"), r -> r.media().album());
+        texts.put(this.gui.t("IDS_TITLE"), r -> r.media().title());
+        texts.put(this.gui.t("IDS_LENGTH"), r -> lengthText.apply(r.media().length()));
+        texts.put(this.gui.t("IDS_BITRATE"), r -> bitrateText.apply(r.media().bitrate()));
+        texts.put(this.gui.t("IDS_CODEC"), r -> r.media().codec());
+        shown.bind(Bindings.createObjectBinding(
+                () -> matching(this.filter.getText(), texts.getOrDefault(this.filterColumn.get(), SearchResult::name)),
+                this.filter.textProperty(),
+                this.filterColumn));
         Label count = new Label();
         count.getStyleClass().add(Styles.TEXT_BOLD);
         String title = ownTitle.isEmpty()
@@ -622,7 +644,7 @@ public final class SearchScreen implements Screen {
         table.getItems().addListener((ListChangeListener<LiveList.Row<SearchResult>>) c -> counted.run());
         this.gui.subscriptions().onListChange(search.results().rows(), c -> counted.run());
         counted.run();
-        HBox head = new HBox(8, count, Fx.spacer(), Fx.icon(Material2MZ.SEARCH), filter);
+        HBox head = new HBox(8, count);
         head.setAlignment(Pos.CENTER_LEFT);
         VBox pane = new VBox(6, head, table);
         VBox.setVgrow(table, Priority.ALWAYS);
@@ -657,18 +679,95 @@ public final class SearchScreen implements Screen {
         return column;
     }
 
-    /** Results whose name holds every word of {@code text}, in any case. */
+    /** Results whose name holds every word of {@code text}, in any case, and none of the words after a minus. */
     static Predicate<SearchResult> matching(String text) {
+        return matching(text, SearchResult::name);
+    }
+
+    /**
+     * Results whose {@code shown} text holds every word of {@code text}, in any case, and none of the words after a
+     * minus.
+     */
+    static Predicate<SearchResult> matching(String text, Function<SearchResult, String> shown) {
         List<String> words = WHITESPACE
                 .splitAsStream(text.strip().toLowerCase(Locale.ROOT))
-                .filter(w -> !w.isEmpty())
+                .filter(w -> !w.isEmpty() && !"-".equals(w))
                 .toList();
         if (words.isEmpty()) {
             return r -> true;
         }
         return r -> {
-            String name = r.name().toLowerCase(Locale.ROOT);
-            return words.stream().allMatch(name::contains);
+            String target = shown.apply(r).toLowerCase(Locale.ROOT);
+            for (String word : words) {
+                boolean without = word.startsWith("-");
+                if (target.contains(without ? word.substring(1) : word) == without) {
+                    return false;
+                }
+            }
+            return true;
+        };
+    }
+
+    // The filter sits right of the tabs, in room their row keeps free for it.
+    private Node tabsWithFilter() {
+        this.filterColumn.set(this.gui.t("IDS_DL_FILENAME"));
+        this.filter.promptTextProperty().bind(this.filterColumn);
+        this.filter.setTooltip(new Tooltip(this.gui.t("nj.search.filterHint")));
+        this.filter.getStyleClass().add("results-filter");
+        Button columns = new Button(null, Fx.icon(Material2MZ.SEARCH));
+        columns.getStyleClass().addAll(Styles.FLAT, Styles.BUTTON_ICON);
+        columns.setTooltip(new Tooltip(this.gui.t("nj.search.filterColumn")));
+        columns.disableProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
+        columns.setOnAction(e -> filterColumnsMenu().show(columns, Side.BOTTOM, 0, 0));
+        Button clear = new Button(null, Fx.icon(Material2AL.CLEAR));
+        clear.getStyleClass().addAll(Styles.FLAT, Styles.BUTTON_ICON);
+        clear.visibleProperty().bind(this.filter.textProperty().isNotEmpty());
+        clear.setOnAction(e -> this.filter.clear());
+        this.filter.setLeft(columns);
+        this.filter.setRight(clear);
+        this.filter.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.ESCAPE) {
+                this.filter.clear();
+            }
+        });
+        this.tabs.getStyleClass().add("search-tabs");
+        StackPane both = new StackPane(this.tabs, this.filter);
+        StackPane.setAlignment(this.filter, Pos.TOP_RIGHT);
+        StackPane.setMargin(this.filter, new Insets(2, 0, 0, 0));
+        VBox.setVgrow(both, Priority.ALWAYS);
+        return both;
+    }
+
+    // The columns shown in the tab shown, in their order, the one filtered on checked.
+    ContextMenu filterColumnsMenu() {
+        ContextMenu menu = new ContextMenu();
+        Results current = current();
+        if (current == null) {
+            return menu;
+        }
+        ToggleGroup group = new ToggleGroup();
+        for (TableColumn<LiveList.Row<SearchResult>, ?> column : current.table().getVisibleLeafColumns()) {
+            RadioMenuItem item = new RadioMenuItem(column.getText());
+            item.setToggleGroup(group);
+            item.setSelected(column.getText().equals(this.filterColumn.get()));
+            item.setOnAction(e -> this.filterColumn.set(column.getText()));
+            menu.getItems().add(item);
+        }
+        return menu;
+    }
+
+    CustomTextField filterField() {
+        return this.filter;
+    }
+
+    private String knownText(Known known) {
+        return switch (known) {
+            case DOWNLOADING -> this.gui.t("IDS_DOWNLOADING");
+            case SHARED -> this.gui.t("IDS_SHARED");
+            case DOWNLOADED -> this.gui.t("IDS_DOWNLOADED");
+            case CANCELLED -> this.gui.t("IDS_CANCELLED");
+            case SPAM -> this.gui.t("IDS_SPAM");
+            case NONE -> "";
         };
     }
 
@@ -912,14 +1011,7 @@ public final class SearchScreen implements Screen {
                     });
             icon.getStyleClass().add("known-icon");
             setGraphic(icon);
-            setText(SearchScreen.this.gui.t(
-                    switch (item) {
-                        case DOWNLOADING -> "IDS_DOWNLOADING";
-                        case SHARED -> "IDS_SHARED";
-                        case DOWNLOADED -> "IDS_DOWNLOADED";
-                        case CANCELLED -> "IDS_CANCELLED";
-                        case SPAM, NONE -> "IDS_SPAM";
-                    }));
+            setText(knownText(item));
             getStyleClass()
                     .add(
                             switch (item) {

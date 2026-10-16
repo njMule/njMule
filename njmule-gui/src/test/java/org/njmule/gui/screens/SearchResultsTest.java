@@ -895,7 +895,7 @@ class SearchResultsTest {
     }
 
     private TextField filter() {
-        return (TextField) this.shownTab.getContent().lookup(".text-field");
+        return this.shownScreen.filterField();
     }
 
     private Label count() {

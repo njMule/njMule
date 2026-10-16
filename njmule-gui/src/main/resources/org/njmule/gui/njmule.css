@@ -564,6 +564,17 @@
     -fx-icon-color: -color-fg-muted;
 }
 
+/* The filter of the search results sits right of the search tabs, whose row keeps room for it. */
+.tab-pane.search-tabs:top > .tab-header-area {
+    -fx-padding: 4px 268px 0 0;
+}
+
+.results-filter {
+    -fx-pref-width: 260px;
+    -fx-max-width: 260px;
+    -fx-padding: 3px 6px 3px 6px;
+}
+
 .tab-pane.dense > .tab-header-area > .headers-region > .tab:top {
     -fx-padding: 0.1em 0.6em 0.1em 0.4em;
 }

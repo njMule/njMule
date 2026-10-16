@@ -178,8 +178,11 @@ All notable changes to this project are documented here. The format follows
 - The Windows installer also puts a shortcut on the desktop.
 - Searches take eMule's parameters (file type, minimum and maximum size, availability, complete
   sources, extension) and its Automatic method, which picks Kad or the server by what is connected;
-  the words searched are offered again (eMule's history is imported). Each result tab has a filter
-  box and its count, and results we download, share already show so.
+  the words searched are offered again (eMule's history is imported). Each result tab has its
+  count, and results we download, share already show so. One filter box right of the result tabs
+  filters the tab shown on a column chosen from its menu (the file name at first, its title shown in
+  the empty box): the text the column shows holds every word, whatever the case, and none of the
+  words after a minus.
 - Search results can be marked as spam or cleared again, by file hash and full name, kept in
   eMule's `SearchSpam.met` (taken over by the import); the server's related search finds the files
   downloaded along with the selected ones, when the server supports it.
