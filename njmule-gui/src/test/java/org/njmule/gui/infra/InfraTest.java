@@ -96,6 +96,17 @@ class InfraTest {
     }
 
     @Test
+    void shouldWriteTheSettingsSortedUnderOneCommentWithoutADate() throws Exception {
+        givenTheSettings();
+        givenExitConfirmedAndStartMinimised(false, true);
+
+        whenTheSettingsAreSaved();
+
+        thenTheSettingsFileHasOnlyItsTitleAsComment();
+        thenTheSettingsFileHasItsKeysSorted();
+    }
+
+    @Test
     void shouldRememberTheExitPromptAndStartMinimised() throws Exception {
         givenTheSettings();
         givenExitConfirmedAndStartMinimised(false, true);
@@ -477,6 +488,10 @@ class InfraTest {
         this.settings = GuiSettings.load(this.dir);
     }
 
+    private void whenTheSettingsAreSaved() throws IOException {
+        this.settings.save();
+    }
+
     private void whenTheSettingsAreLoadedAgain() {
         this.loaded = GuiSettings.load(this.dir);
     }
@@ -512,6 +527,20 @@ class InfraTest {
 
     private void whenAskedWhetherThePlayerIsSet(String player) {
         this.set = Preview.isSet(player);
+    }
+
+    private void thenTheSettingsFileHasOnlyItsTitleAsComment() throws IOException {
+        List<String> lines = Files.readAllLines(this.dir.resolve(GuiSettings.FILE_NAME));
+        assertThat(lines.getFirst()).isEqualTo("# njMule desktop settings");
+        assertThat(lines.subList(1, lines.size())).isNotEmpty().noneMatch(l -> l.startsWith("#"));
+    }
+
+    private void thenTheSettingsFileHasItsKeysSorted() throws IOException {
+        List<String> lines = Files.readAllLines(this.dir.resolve(GuiSettings.FILE_NAME));
+        List<String> keys = lines.subList(1, lines.size()).stream()
+                .map(l -> l.substring(0, l.indexOf('=')))
+                .toList();
+        assertThat(keys).isSorted();
     }
 
     private void thenTheTextIs(String text) {

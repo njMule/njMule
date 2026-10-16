@@ -29,7 +29,6 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.TreeMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -288,18 +287,14 @@ public final class GuiSettings {
 
     /** Writes the settings, sorted and replacing the old file in one step. */
     public void save() throws IOException {
+        StringWriter stored = new StringWriter();
+        this.values.store(stored, null);
         StringBuilder text = new StringBuilder("# njMule desktop settings\n");
-        for (var e : new TreeMap<>(this.values).entrySet()) {
-            StringWriter line = new StringWriter();
-            Properties one = new Properties();
-            one.setProperty(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
-            one.store(line, null);
-            // store() writes a date comment first; keep only the entry.
-            line.toString()
-                    .lines()
-                    .filter(l -> !l.startsWith("#"))
-                    .forEach(l -> text.append(l).append('\n'));
-        }
+        // store() sorts the keys and escapes a leading '#', so the only comment it writes is the date, left out.
+        stored.toString()
+                .lines()
+                .filter(l -> !l.startsWith("#"))
+                .forEach(l -> text.append(l).append('\n'));
         Path dir = this.file.toAbsolutePath().getParent();
         if (dir != null) {
             Files.createDirectories(dir);

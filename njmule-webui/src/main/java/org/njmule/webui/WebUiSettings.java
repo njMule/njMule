@@ -18,6 +18,7 @@ package org.njmule.webui;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -87,22 +88,20 @@ public record WebUiSettings(boolean enabled, int port, boolean lan, String passw
 
     /** Writes the settings, replacing the old file in one step. */
     public void save(Path configDir) throws IOException {
-        String text = "# njMule web interface\n"
-                + "enabled="
-                + this.enabled
-                + "\n"
-                + "port="
-                + this.port
-                + "\n"
-                + "lan="
-                + this.lan
-                + "\n"
-                + "password="
-                + this.passwordHash
-                + "\n"
-                + "api="
-                + this.api
-                + "\n";
+        Properties values = new Properties();
+        values.setProperty("enabled", String.valueOf(this.enabled));
+        values.setProperty("port", String.valueOf(this.port));
+        values.setProperty("lan", String.valueOf(this.lan));
+        values.setProperty("password", this.passwordHash);
+        values.setProperty("api", String.valueOf(this.api));
+        StringWriter stored = new StringWriter();
+        values.store(stored, null);
+        StringBuilder text = new StringBuilder("# njMule web interface\n");
+        // store() escapes a leading '#', so the only comment it writes is the date, left out.
+        stored.toString()
+                .lines()
+                .filter(l -> !l.startsWith("#"))
+                .forEach(l -> text.append(l).append('\n'));
         Files.createDirectories(configDir);
         Path tmp = configDir.resolve(FILE_NAME + ".tmp");
         Files.deleteIfExists(tmp);

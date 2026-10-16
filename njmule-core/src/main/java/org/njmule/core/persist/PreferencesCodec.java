@@ -233,34 +233,14 @@ public final class PreferencesCodec {
     }
 
     static void format(Preferences preferences, Writer out) throws IOException {
-        out.write("# njMule preferences - edited by the application; invalid values revert to" + " defaults.\n");
+        StringBuilder text = new StringBuilder(
+                "# njMule preferences - edited by the application; invalid values revert to defaults.\n");
         for (Key key : KEYS.values().stream()
                 .sorted((a, b) -> a.name().compareTo(b.name()))
                 .toList()) {
-            out.write(key.name());
-            out.write('=');
-            out.write(escape(key.getter().apply(preferences)));
-            out.write('\n');
+            PropertyLines.append(text, key.name(), key.getter().apply(preferences));
         }
-    }
-
-    // Escapes a value for java.util.Properties#load.
-    static String escape(String value) {
-        StringBuilder sb = new StringBuilder(value.length() + 8);
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            switch (c) {
-                case '\\' -> sb.append("\\\\");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                case '\f' -> sb.append("\\f");
-                case ' ' -> sb.append(i == 0 ? "\\ " : " ");
-                case '#', '!', '=', ':' -> sb.append('\\').append(c);
-                default -> sb.append(c);
-            }
-        }
-        return sb.toString();
+        out.write(text.toString());
     }
 
     private static Optional<Path> optionalPath(String value) {

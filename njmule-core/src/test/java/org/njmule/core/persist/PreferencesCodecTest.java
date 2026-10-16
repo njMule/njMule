@@ -307,7 +307,9 @@ class PreferencesCodecTest {
     private void whenTheEscapedValueIsLoadedAsAProperty(String original) throws IOException {
         this.propertyValue = original;
         Properties props = new Properties();
-        props.load(new StringReader("k=" + PreferencesCodec.escape(original)));
+        StringBuilder line = new StringBuilder();
+        PropertyLines.append(line, "k", original);
+        props.load(new StringReader(line.toString()));
         this.loadedValue = props.getProperty("k");
     }
 
