@@ -67,7 +67,10 @@ public final class DatagramObfuscation {
     static final int MAGIC_TO_SERVER = 0x6B;
     static final int MAGIC_FROM_SERVER = 0xA5;
 
-    // Looking up MD5 and RC4 for every datagram cost more than using them (njmule-bench DatagramKeyBench).
+    // Looking up MD5 and RC4 for every datagram cost more than using them (njmule-bench DatagramKeyBench). The pair is
+    // meant to last as long as its thread, the reader of a socket or the engine's, and holds nothing of the datagrams,
+    // so it is never removed: removing it would look both up again.
+    @SuppressWarnings("java:S5164")
     private static final ThreadLocal<Keys> KEYS = ThreadLocal.withInitial(Keys::new);
 
     private DatagramObfuscation() {}
