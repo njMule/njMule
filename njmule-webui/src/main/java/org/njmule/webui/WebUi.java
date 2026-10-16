@@ -90,6 +90,8 @@ public final class WebUi implements AutoCloseable {
     private static final String KAD = "/kad";
     private static final String LOG = "/log";
     private static final String ACTION = "action";
+    // The search scope that picks the network as the desktop app does.
+    private static final String AUTOMATIC = "AUTOMATIC";
     private static final int MAX_LOGIN_BODY = 16 * 1024;
     private static final int MAX_LOGIN_FIELDS = 4;
     // Far more than any of the forms has.
@@ -551,10 +553,22 @@ public final class WebUi implements AutoCloseable {
             return SEARCH;
         }
         SearchRequest.checkExpression(expression);
-        SearchRequest.Scope scope = SearchRequest.Scope.valueOf(form.getOrDefault("scope", "SERVER"));
+        String chosen = form.getOrDefault("scope", SearchRequest.Scope.SERVER.name());
+        SearchRequest.Scope scope = chosen.equals(AUTOMATIC) ? automaticScope() : SearchRequest.Scope.valueOf(chosen);
         SearchId id = await(this.engine.search(new SearchRequest(expression, scope)));
         this.searches.started(id.value());
         return SEARCH + "?id=" + id.value();
+    }
+
+    // As in the desktop app: the network connected, Kad with both unless the server is a static or a big one.
+    private SearchRequest.Scope automaticScope() {
+        EngineStatus status = await(this.engine.status());
+        return SearchRequest.automatic(
+                        status.server().isPresent(),
+                        status.kad().map(KadInfo::connected).orElse(false),
+                        status.server(),
+                        await(this.engine.servers()).size())
+                .orElseThrow(() -> new IllegalArgumentException("Not connected to a server or to Kad."));
     }
 
     private void server(Map<String, String> form) {
@@ -829,6 +843,7 @@ public final class WebUi implements AutoCloseable {
                                 + SearchRequest.MAX_EXPRESSION_LENGTH
                                 + "\" autofocus> "
                                 + "<select name=\"scope\">"
+                                + "<option value=\"" + AUTOMATIC + "\">Automatic</option>"
                                 + "<option value=\"SERVER\">Server</option>"
                                 + "<option value=\"GLOBAL\">Global</option>"
                                 + "<option value=\"KAD\">Kad</option></select> ",

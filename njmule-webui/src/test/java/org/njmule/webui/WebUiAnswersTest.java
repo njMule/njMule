@@ -465,6 +465,42 @@ class WebUiAnswersTest {
     }
 
     @Test
+    void shouldSearchKadAutomaticallyWhenBothNetworksAreConnected() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(5);
+        givenTheEngineConnectedTo(Optional.of(server("81.2.3.4:4661", "Ordinary")), true);
+
+        whenTheFormIsPosted("/search", Map.of("query", "linux", "scope", "AUTOMATIC"));
+
+        thenTheAnswerLeadsTo("search?id=5");
+        thenTheEngineSearched("linux", SearchRequest.Scope.KAD);
+    }
+
+    @Test
+    void shouldSearchTheServerAutomaticallyWithoutKad() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(5);
+        givenTheEngineConnectedTo(Optional.of(server("81.2.3.4:4661", "Ordinary")), false);
+
+        whenTheFormIsPosted("/search", Map.of("query", "linux", "scope", "AUTOMATIC"));
+
+        thenTheAnswerLeadsTo("search?id=5");
+        thenTheEngineSearched("linux", SearchRequest.Scope.SERVER);
+    }
+
+    @Test
+    void shouldRefuseAnAutomaticSearchWithoutANetwork() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(5);
+        givenTheEngineConnectedTo(Optional.empty(), false);
+
+        whenTheFormIsPosted("/search", Map.of("query", "linux", "scope", "AUTOMATIC"));
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("Not connected");
+    }
+
+    @Test
     void shouldDownloadASearchResultWhileItIsKept() throws Exception {
         givenALoggedInUser();
         givenTheEngineSearchesAs(5);
@@ -706,6 +742,14 @@ class WebUiAnswersTest {
 
     private void givenTheLinkFieldOfTheTransfers() throws Exception {
         readTheLinkFieldOfTheTransfers();
+    }
+
+    private void givenTheEngineConnectedTo(Optional<ServerInfo> server, boolean kad) {
+        EngineStatus connected = status(server, false, Optional.of(kad(kad, false)));
+        this.fake.answer("status", args -> CompletableFuture.completedFuture(connected));
+        this.fake.answer(
+                "servers",
+                args -> CompletableFuture.completedFuture(server.stream().toList()));
     }
 
     private void givenTheEngineSearchesAs(long id) {

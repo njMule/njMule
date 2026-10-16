@@ -132,8 +132,8 @@ All notable changes to this project are documented here. The format follows
 - Totals over all sessions (bytes, sessions, time) in `statistics.properties`.
 - Messages with other clients and their CAPTCHA check, both ways, and friends kept in
   `emfriends.met`; a messages screen in the desktop interface.
-- Web interface (`njmule-webui`): status, transfers, searches and servers as plain pages served by
-  the JDK, behind a PBKDF2-hashed password, with HTTP-only same-site session cookies, form tokens,
+- Web interface (`njmule-webui`): status, transfers, searches (Automatic picks the network as the
+  desktop app does) and servers as plain pages served by the JDK, behind a PBKDF2-hashed password, with HTTP-only same-site session cookies, form tokens,
   origin and host checks, a login lockout and a strict Content-Security-Policy; on this computer
   only unless other computers are allowed. Set with `njmule --webui-password` (`--webui-port`,
   `--webui-lan`) or in the desktop options, and started with the engine.
