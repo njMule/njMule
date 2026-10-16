@@ -16,15 +16,15 @@
  */
 package org.njmule.core.api;
 
-import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
+import com.google.common.base.Utf8;
+import com.google.common.escape.Escaper;
+import com.google.common.net.PercentEscaper;
 import java.nio.charset.StandardCharsets;
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -39,6 +39,8 @@ final class Ed2kLinkCodec {
     private static final Pattern IPV4 =
             Pattern.compile("(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}");
     private static final int MAX_HOST = 255;
+    // Printable ASCII but % (the escape), space and | (the link's separator), with upper-case hex.
+    private static final Escaper LINK_TEXT = new PercentEscaper("!\"#$&'()*+,-./:;<=>?@[\\]^_`{}~", false);
 
     private Ed2kLinkCodec() {}
 
@@ -322,8 +324,11 @@ final class Ed2kLinkCodec {
         StringBuilder chars = new StringBuilder(text.length());
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
-            if (c == '%' && i + 2 < text.length() && isHex(text, i + 1) && isHex(text, i + 2)) {
-                int value = Integer.parseInt(text.substring(i + 1, i + 3), 16);
+            if (c == '%'
+                    && i + 2 < text.length()
+                    && HexFormat.isHexDigit(text.charAt(i + 1))
+                    && HexFormat.isHexDigit(text.charAt(i + 2))) {
+                int value = HexFormat.fromHexDigits(text, i + 1, i + 3);
                 i += 2;
                 if (value >= 0x20) {
                     chars.append((char) value);
@@ -339,38 +344,12 @@ final class Ed2kLinkCodec {
             }
         }
         byte[] bytes = decoded.getBytes(StandardCharsets.ISO_8859_1);
-        try {
-            return StandardCharsets.UTF_8
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes))
-                    .toString();
-        } catch (CharacterCodingException e) {
-            return decoded;
-        }
+        return Utf8.isWellFormed(bytes) ? new String(bytes, StandardCharsets.UTF_8) : decoded;
     }
 
-    private static boolean isHex(String text, int index) {
-        if (index >= text.length()) {
-            return false;
-        }
-        char c = text.charAt(index);
-        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
-    }
-
-    /** UTF-8 with {@code %}, space, {@code |} and non-ASCII bytes percent-encoded. */
+    /** UTF-8 with {@code %}, space, {@code |}, control and non-ASCII bytes percent-encoded. */
     static String encode(String text) {
-        byte[] utf8 = text.getBytes(StandardCharsets.UTF_8);
-        ByteArrayOutputStream ascii = new ByteArrayOutputStream(utf8.length + 16);
-        for (byte b : utf8) {
-            int v = b & 0xFF;
-            if (v == '%' || v == ' ' || v == '|' || v < 0x20 || v >= 0x7F) {
-                ascii.writeBytes(String.format("%%%02X", v).getBytes(StandardCharsets.US_ASCII));
-            } else {
-                ascii.write(v);
-            }
-        }
-        return ascii.toString(StandardCharsets.US_ASCII);
+        // A lone surrogate becomes '?' through UTF-8, which the escaper would refuse.
+        return LINK_TEXT.escape(new String(text.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8));
     }
 }
