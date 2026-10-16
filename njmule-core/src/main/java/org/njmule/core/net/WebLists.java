@@ -17,7 +17,6 @@
 package org.njmule.core.net;
 
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.Inet6Address;
@@ -337,16 +336,11 @@ public final class WebLists {
     }
 
     private static byte[] readAtMost(InputStream in, long limit) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[64 * 1024];
-        long total = 0;
-        for (int n = in.read(buffer); n >= 0; n = in.read(buffer)) {
-            total += n;
-            if (total > limit) {
-                throw new IOException("the list is larger than " + MAX_SIZE / (1024 * 1024) + " MiB");
-            }
-            out.write(buffer, 0, n);
+        // One byte past the limit tells a larger list from one that fills it exactly.
+        byte[] data = in.readNBytes(Math.toIntExact(limit + 1));
+        if (data.length > limit) {
+            throw new IOException("the list is larger than " + MAX_SIZE / (1024 * 1024) + " MiB");
         }
-        return out.toByteArray();
+        return data;
     }
 }

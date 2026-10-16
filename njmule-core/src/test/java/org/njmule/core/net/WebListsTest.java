@@ -455,6 +455,15 @@ class WebListsTest {
     }
 
     @Test
+    void shouldTakeAGzippedListThatFillsTheLimitExactly() throws IOException {
+        givenTheResponse("/full.gz", response(200, "", gzippedZerosOf(WebLists.MAX_SIZE)));
+
+        whenTheListIsFetchedFrom("/full.gz");
+
+        thenTheBodyHasBytes(WebLists.MAX_SIZE);
+    }
+
+    @Test
     void shouldRefuseAGzipBomb() throws IOException {
         givenTheResponse("/bomb.gz", response(200, "", gzippedZerosBeyond(WebLists.MAX_SIZE)));
 
@@ -584,6 +593,11 @@ class WebListsTest {
     private void thenTheBodyIs(byte[] expected) {
         assertThat(this.exception).isNull();
         assertThat(this.body).isEqualTo(expected);
+    }
+
+    private void thenTheBodyHasBytes(long length) {
+        assertThat(this.exception).isNull();
+        assertThat(this.body).hasSize(Math.toIntExact(length));
     }
 
     private void thenTheBodyIs(byte[] expected, String because) {
@@ -723,6 +737,17 @@ class WebListsTest {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (GZIPOutputStream gz = new GZIPOutputStream(out)) {
             gz.write(data);
+        }
+        return out.toByteArray();
+    }
+
+    private static byte[] gzippedZerosOf(long size) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (GZIPOutputStream gz = new GZIPOutputStream(out)) {
+            byte[] zeros = new byte[1024 * 1024];
+            for (long left = size; left > 0; left -= zeros.length) {
+                gz.write(zeros, 0, (int) Math.min(zeros.length, left));
+            }
         }
         return out.toByteArray();
     }
