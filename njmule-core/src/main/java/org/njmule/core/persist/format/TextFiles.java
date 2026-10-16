@@ -59,14 +59,7 @@ public final class TextFiles {
         } else {
             text = Ed2kStrings.decode(data);
         }
-        List<String> lines = new ArrayList<>();
-        for (String line : text.split("\r\n|\n|\r", -1)) {
-            lines.add(line);
-        }
-        if (!lines.isEmpty() && lines.getLast().isEmpty()) {
-            lines.removeLast();
-        }
-        return lines;
+        return text.lines().toList();
     }
 
     /** UTF-16LE with a BOM and CRLF line ends. */

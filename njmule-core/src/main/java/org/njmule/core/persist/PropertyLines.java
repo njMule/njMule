@@ -82,7 +82,7 @@ final class PropertyLines {
     private static List<String> entries(String text) {
         List<String> entries = new ArrayList<>();
         StringBuilder entry = new StringBuilder();
-        for (String line : text.split("\r\n|\r|\n", -1)) {
+        for (String line : text.lines().toList()) {
             boolean first = entry.isEmpty();
             entry.append(line).append('\n');
             String start = line.stripLeading();
