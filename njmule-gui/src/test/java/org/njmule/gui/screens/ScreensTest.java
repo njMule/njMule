@@ -670,6 +670,32 @@ class ScreensTest {
     }
 
     @Test
+    void shouldSaveAndShowAgainTheHostNamesOfTheWebInterface() throws Exception {
+        givenTheSettingsShown();
+        givenTheWebInterfaceTicked(true);
+        givenTheWebInterfacePasswords("long enough", "long enough");
+        givenTheWebInterfaceHostNames("NAS.local, njmule.example.com");
+
+        whenTheSettingsAreApplied();
+
+        thenTheSavedWebInterfaceHostNamesAre("nas.local", "njmule.example.com");
+        thenTheWebInterfaceHostNamesReadAfterReset("nas.local, njmule.example.com");
+    }
+
+    @Test
+    void shouldRefuseAWebInterfaceHostNameWithAPortAndSaveNothing() throws Exception {
+        givenTheSettingsShown();
+        givenTheWebInterfaceTicked(true);
+        givenTheWebInterfacePasswords("long enough", "long enough");
+        givenTheWebInterfaceHostNames("nas.local:4711");
+
+        whenTheSettingsAreApplied();
+
+        thenTheUserIsToldSomethingAbout("Host names");
+        thenNoWebInterfaceSettingIsSaved();
+    }
+
+    @Test
     void shouldSaveTheWebInterfaceWithAMatchingPassword() throws Exception {
         givenTheSettingsShown();
         givenTheWebInterfaceTicked(true);
@@ -827,6 +853,10 @@ class ScreensTest {
 
     private void givenTheWebInterfacePort(String port) throws Exception {
         FxTesting.onFx(() -> this.settings.webUiPortField().setText(port));
+    }
+
+    private void givenTheWebInterfaceHostNames(String names) throws Exception {
+        FxTesting.onFx(() -> this.settings.webUiHostsField().setText(names));
     }
 
     private void givenTheWebInterfaceSaved(String password, String port) throws Exception {
@@ -1638,6 +1668,16 @@ class ScreensTest {
     private void thenTheWebInterfacePasswordBoxIsEmpty() throws Exception {
         assertThat(FxTesting.onFx(() -> this.settings.webUiPasswordField().getText()))
                 .isEmpty();
+    }
+
+    private void thenTheSavedWebInterfaceHostNamesAre(String... names) {
+        assertThat(WebUiSettings.load(config()).hosts()).containsExactly(names);
+    }
+
+    private void thenTheWebInterfaceHostNamesReadAfterReset(String names) throws Exception {
+        FxTesting.onFx(this.settings::shown);
+        assertThat(FxTesting.onFx(() -> this.settings.webUiHostsField().getText()))
+                .isEqualTo(names);
     }
 
     private void thenTheWebInterfacePortReads(String port) throws Exception {

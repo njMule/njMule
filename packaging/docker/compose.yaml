@@ -22,7 +22,9 @@ services:
             - ./temp:/njmule/temp
         secrets:
             - njmule_webui_password
-        # The default command; add "--webui-api" for the remote-control API.
+        # The default command; add "--webui-api" for the remote-control API, and "--webui-host", "<name>"
+        # for each host name the web interface answers to besides the host's address (a reverse proxy's
+        # public name, for example).
         command: ["--webui-password-file", "/run/secrets/njmule_webui_password", "--webui-lan"]
 
 volumes:

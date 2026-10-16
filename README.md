@@ -198,8 +198,11 @@ secrets:
         file: ./webui_password.txt
 ```
 
-- Open the web interface by the address of the host, `http://192.168.1.10:4711/` for example:
-  other host names than `localhost` are refused, against DNS rebinding.
+- Open the web interface by the address of the host, `http://192.168.1.10:4711/` for example.
+  Against DNS rebinding other host names than `localhost` are refused unless listed with
+  `--webui-host`, such as `nas.local` or the public name of a reverse proxy (see
+  [Web interface](#web-interface)): `docker run … ghcr.io/njmule/njmule --webui-password-file
+  /run/secrets/njmule_webui_password --webui-lan --webui-host nas.local`.
 - For a high ID, the eD2K TCP port (4662) and the client UDP port of eD2K and Kad (4672) must be
   forwarded to the host by the router; ports changed in the options are published unchanged
   (`-p 5000:5000/tcp`). UPnP does not cross Docker's bridge network, but works with
@@ -292,8 +295,25 @@ It starts together with the engine, headless or with the desktop application, on
 `http://localhost:4711/`. It listens on the loopback interface only, unless `--webui-lan` makes it
 listen on all interfaces.
 
+Against DNS rebinding it answers only to `localhost`, to IP addresses with `--webui-lan`, and to
+the host names listed with `--webui-host <name>` (repeated, or separated by commas) or in the web
+interface settings of the desktop application:
+
+```bash
+njmule --webui-password --webui-lan --webui-host nas.local
+```
+
+Behind a reverse proxy (Traefik, nginx, Caddy) list its public name, `--webui-host
+njmule.example.com`, and serve the interface at the root of that name. Forms are then taken from
+that origin on any port, over HTTP or HTTPS, and the session cookie is `Secure` when the browser
+comes over HTTPS; no `X-Forwarded-*` header is needed or trusted. Traefik and Caddy pass the
+browser's host name on; nginx needs `proxy_set_header Host $host;`, or it sends the upstream's
+address. All logins then come from the proxy's address, so the lockout after repeated wrong
+passwords holds for every user at once.
+
 > [!CAUTION]
-> The interface is served over plain HTTP: enable LAN access only on a trusted network.
+> The interface is served over plain HTTP: enable LAN access only on a trusted network, or reach
+> it through a reverse proxy that serves HTTPS.
 
 ### Remote control
 

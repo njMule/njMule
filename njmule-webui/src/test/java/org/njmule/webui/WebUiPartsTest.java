@@ -27,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -53,7 +54,9 @@ class WebUiPartsTest {
     private boolean validForm;
     private boolean allowed;
     private boolean lanAllowed;
+    private List<String> trustedNames = List.of();
     private boolean trusted;
+    private List<String> hostNames;
     private WebUiSettings chosen;
     private WebUiSettings settings;
     private String text;
@@ -312,6 +315,129 @@ class WebUiPartsTest {
         thenTheHostIsTrusted(false, "an unclosed bracket");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"nas.local", "NAS.Local:4711", "njmule.example.com", "njmule.example.com:443"})
+    void shouldLetTheNamesOfTheSettingsInOnAnyPortWhileTheLanIsOff(String host) {
+        givenTheLanAllowed(false);
+        givenTheTrustedNames("nas.local", "njmule.example.com");
+
+        whenTheHostIsChecked(host);
+
+        thenTheHostIsTrusted(true);
+    }
+
+    // The rebinding name may contain or extend a trusted one.
+    @ParameterizedTest
+    @ValueSource(strings = {"nas.local.rebound.example:4711", "rebound.example", "nas.locals:4711", "local:4711"})
+    void shouldKeepOtherNamesOutBesideTheNamesOfTheSettings(String host) {
+        givenTheLanAllowed(true);
+        givenTheTrustedNames("nas.local");
+
+        whenTheHostIsChecked(host);
+
+        thenTheHostIsTrusted(false);
+    }
+
+    @Test
+    void shouldTakeAFormWithoutOrigin() {
+        whenTheOriginIsChecked(null, "127.0.0.1:4711");
+
+        thenTheOriginIsTrusted(true);
+    }
+
+    @Test
+    void shouldTakeTheOriginOfTheHostItself() {
+        whenTheOriginIsChecked("http://127.0.0.1:4711", "127.0.0.1:4711");
+
+        thenTheOriginIsTrusted(true);
+    }
+
+    // A reverse proxy may show the pages on another scheme and port, and pass its own address as Host.
+    @ParameterizedTest
+    @ValueSource(strings = {"https://njmule.example.com", "https://NJMULE.example.com:8443", "http://nas.local:4711"})
+    void shouldTakeAnOriginOfANameOfTheSettingsOnAnyPortAndWebScheme(String origin) {
+        givenTheTrustedNames("nas.local", "njmule.example.com");
+
+        whenTheOriginIsChecked(origin, "127.0.0.1:4711");
+
+        thenTheOriginIsTrusted(true);
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "https://evil.example",
+                "https://njmule.example.com.evil.example",
+                "ftp://njmule.example.com",
+                "https://user@njmule.example.com",
+                "null",
+                "https://bad host"
+            })
+    void shouldRefuseAnOriginOfAnotherNameOrScheme(String origin) {
+        givenTheTrustedNames("njmule.example.com");
+
+        whenTheOriginIsChecked(origin, "127.0.0.1:4711");
+
+        thenTheOriginIsTrusted(false);
+    }
+
+    @Test
+    void shouldRefuseTheOriginOfAProxyWhoseNameIsNotInTheSettings() {
+        whenTheOriginIsChecked("https://njmule.example.com", "127.0.0.1:4711");
+
+        thenTheOriginIsTrusted(false);
+    }
+
+    @Test
+    void shouldReadHostNamesInLowerCaseWithIpv6AddressesInBrackets() {
+        whenTheHostNamesAreRead(" NAS.local, fe80::1 [::2],,nas.local 192.168.1.10 ");
+
+        thenTheHostNamesAre("nas.local", "[fe80::1]", "[::2]", "192.168.1.10");
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "nas.local:4711",
+                "https://njmule.example.com",
+                "njmule.example.com/",
+                "[nas.local]",
+                "café.local"
+            })
+    void shouldRefuseAHostNameWithAPortASchemeOrOtherThanAscii(String name) {
+        whenTheHostNamesAreRead(name);
+
+        thenExceptionOccurred(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldLoadTheHostNamesSaved() throws IOException {
+        givenTheSettingsSaved(true, 4711, true, "pbkdf2-sha512$1$AA$AA", "nas.local", "[fe80::1]");
+
+        whenTheSettingsAreLoaded();
+
+        thenTheSettingsAreTheChosenOnes();
+    }
+
+    @Test
+    void shouldLoadNoHostNamesFromAFileWrittenBeforeThem() throws IOException {
+        givenTheSettingsFileHolds("enabled=true\nport=4711\npassword=pbkdf2-sha512$1$AA$AA\n");
+
+        whenTheSettingsAreLoaded();
+
+        thenTheSettingsAreUsable(true);
+        thenTheLoadedHostNamesAre();
+    }
+
+    @Test
+    void shouldLoadTheDefaultsFromAFileOfAHostNameWithAPort() throws IOException {
+        givenTheSettingsFileHolds("enabled=true\npassword=pbkdf2-sha512$1$AA$AA\nhosts=nas.local:4711\n");
+
+        whenTheSettingsAreLoaded();
+
+        thenTheSettingsAre(WebUiSettings.DEFAULTS);
+    }
+
     @Test
     void shouldLoadTheDefaultsWhenNothingWasSaved() throws IOException {
         whenTheSettingsAreLoaded();
@@ -483,13 +609,18 @@ class WebUiPartsTest {
         this.lanAllowed = allowed;
     }
 
-    private void givenTheSettings(boolean enabled, int port, boolean lan, String passwordHash) {
-        this.chosen = new WebUiSettings(enabled, port, lan, passwordHash);
+    private void givenTheTrustedNames(String... names) {
+        this.trustedNames = List.of(names);
     }
 
-    private void givenTheSettingsSaved(boolean enabled, int port, boolean lan, String passwordHash) throws IOException {
-        this.chosen = new WebUiSettings(enabled, port, lan, passwordHash);
+    private void givenTheSettingsSaved(boolean enabled, int port, boolean lan, String passwordHash, String... hosts)
+            throws IOException {
+        this.chosen = new WebUiSettings(enabled, port, lan, passwordHash, false, List.of(hosts));
         this.chosen.save(this.dir);
+    }
+
+    private void givenTheSettings(boolean enabled, int port, boolean lan, String passwordHash) {
+        this.chosen = new WebUiSettings(enabled, port, lan, passwordHash);
     }
 
     private void givenTheSettingsFileHolds(String content) throws IOException {
@@ -541,7 +672,15 @@ class WebUiPartsTest {
     }
 
     private void whenTheHostIsChecked(String host) {
-        this.trusted = WebUi.trustedHost(host, this.lanAllowed);
+        this.trusted = WebUi.trustedHost(host, this.lanAllowed, this.trustedNames);
+    }
+
+    private void whenTheOriginIsChecked(String origin, String host) {
+        this.trusted = WebUi.trustedOrigin(origin, host, this.trustedNames);
+    }
+
+    private void whenTheHostNamesAreRead(String text) {
+        this.exception = catchThrowable(() -> this.hostNames = WebUiSettings.hostNames(text));
     }
 
     private void whenTheSettingsAreLoaded() throws IOException {
@@ -647,6 +786,19 @@ class WebUiPartsTest {
 
     private void thenTheHostIsTrusted(boolean expected, String why) {
         assertThat(this.trusted).as(why).isEqualTo(expected);
+    }
+
+    private void thenTheOriginIsTrusted(boolean expected) {
+        assertThat(this.trusted).isEqualTo(expected);
+    }
+
+    private void thenTheHostNamesAre(String... expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.hostNames).containsExactly(expected);
+    }
+
+    private void thenTheLoadedHostNamesAre(String... expected) {
+        assertThat(this.settings.hosts()).containsExactly(expected);
     }
 
     private void thenTheSettingsAre(WebUiSettings expected) {

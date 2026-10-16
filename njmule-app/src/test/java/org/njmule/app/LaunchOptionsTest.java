@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -314,14 +315,16 @@ class LaunchOptionsTest {
         whenTheArgumentsAreParsed("--webui-password", "--webui-port", "8080");
 
         thenTheActionIs(Action.WEBUI_PASSWORD);
-        thenTheWebInterfaceSetupIs(new LaunchOptions.WebUiSetup(Optional.of(8080), false, false, Optional.empty()));
+        thenTheWebInterfaceSetupIs(
+                new LaunchOptions.WebUiSetup(Optional.of(8080), false, false, Optional.empty(), List.of()));
     }
 
     @Test
     void shouldParseTheWebInterfacePasswordForTheLan() {
         whenTheArgumentsAreParsed("--webui-password", "--webui-lan");
 
-        thenTheWebInterfaceSetupIs(new LaunchOptions.WebUiSetup(Optional.empty(), true, false, Optional.empty()));
+        thenTheWebInterfaceSetupIs(
+                new LaunchOptions.WebUiSetup(Optional.empty(), true, false, Optional.empty(), List.of()));
     }
 
     @Test
@@ -330,7 +333,7 @@ class LaunchOptionsTest {
 
         thenTheActionIs(Action.RUN);
         thenTheWebInterfaceSetupIs(
-                new LaunchOptions.WebUiSetup(Optional.empty(), true, true, Optional.of(Path.of("secret"))));
+                new LaunchOptions.WebUiSetup(Optional.empty(), true, true, Optional.of(Path.of("secret")), List.of()));
     }
 
     @Test
@@ -338,8 +341,8 @@ class LaunchOptionsTest {
         whenTheArgumentsAreParsed("--webui-password", "--webui-password-file", "secret");
 
         thenTheActionIs(Action.WEBUI_PASSWORD);
-        thenTheWebInterfaceSetupIs(
-                new LaunchOptions.WebUiSetup(Optional.empty(), false, false, Optional.of(Path.of("secret"))));
+        thenTheWebInterfaceSetupIs(new LaunchOptions.WebUiSetup(
+                Optional.empty(), false, false, Optional.of(Path.of("secret")), List.of()));
     }
 
     @Test
@@ -363,6 +366,40 @@ class LaunchOptionsTest {
 
         thenExceptionOccurred(UsageException.class);
         thenTheMessageIs("Invalid port for --webui-port: " + port);
+    }
+
+    @Test
+    void shouldParseTheHostNamesOfTheWebInterfaceRepeatedOrSeparatedByCommas() {
+        whenTheArgumentsAreParsed(
+                "--webui-password-file",
+                "secret",
+                "--webui-host",
+                "NAS.local",
+                "--webui-host",
+                "njmule.example.com,fe80::1");
+
+        thenTheWebInterfaceSetupIs(new LaunchOptions.WebUiSetup(
+                Optional.empty(),
+                false,
+                false,
+                Optional.of(Path.of("secret")),
+                List.of("nas.local", "njmule.example.com", "[fe80::1]")));
+    }
+
+    @Test
+    void shouldRefuseTheWebInterfaceHostNamesWithoutThePassword() {
+        whenTheArgumentsAreParsed("--webui-host", "nas.local");
+
+        thenExceptionOccurred(UsageException.class, "apply to --webui-password");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"nas.local:4711", "https://njmule.example.com", "[nas.local]", "bad name"})
+    void shouldRefuseAWebInterfaceHostWithAPortASchemeOrNoHostName(String name) {
+        whenTheArgumentsAreParsed("--webui-password", "--webui-host", name);
+
+        thenExceptionOccurred(UsageException.class);
+        thenTheMessageIs("Invalid host name for --webui-host: " + name);
     }
 
     static Stream<Arguments> exitWithSomethingElseToDo() {

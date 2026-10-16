@@ -29,6 +29,7 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.Preferences;
+import org.njmule.webui.WebUiSettings;
 import picocli.CommandLine;
 import picocli.CommandLine.Help;
 import picocli.CommandLine.Model.CommandSpec;
@@ -106,8 +107,15 @@ public record LaunchOptions(
      * @param api whether the remote-control API answers too
      * @param passwordFile where the password is read, instead of asking for it; set at each start when given without
      *     {@code --webui-password}
+     * @param hosts the host names the interface answers to besides localhost, as {@link WebUiSettings#hostName} keeps
+     *     them
      */
-    public record WebUiSetup(Optional<Integer> port, boolean lan, boolean api, Optional<Path> passwordFile) {}
+    public record WebUiSetup(
+            Optional<Integer> port, boolean lan, boolean api, Optional<Path> passwordFile, List<String> hosts) {
+        public WebUiSetup {
+            hosts = List.copyOf(hosts);
+        }
+    }
 
     /**
      * A command for a running njMule, through its remote-control API.
@@ -173,12 +181,13 @@ public record LaunchOptions(
     private static final String WEBUI_PORT_OPTION = "--webui-port";
     private static final String WEBUI_LAN_OPTION = "--webui-lan";
     private static final String WEBUI_API_OPTION = "--webui-api";
+    private static final String WEBUI_HOST_OPTION = "--webui-host";
     private static final String REMOTE_OPTION = "--remote";
     private static final String REMOTE_URL_OPTION = "--remote-url";
     private static final String API_TOKEN_OPTION = "--api-token";
     private static final String NEW_API_TOKEN_OPTION = "--new-api-token";
 
-    // What --webui-port, --webui-lan and --webui-api apply to.
+    // What --webui-port, --webui-lan, --webui-api and --webui-host apply to.
     private static final String WEBUI_SETUP = WEBUI_PASSWORD_OPTION + " or " + WEBUI_PASSWORD_FILE_OPTION;
 
     // What --exit and --restore-links may come with: where and how to run, nothing to do.
@@ -368,6 +377,18 @@ public record LaunchOptions(
         spec.addOption(flag(
                 WEBUI_API_OPTION,
                 "with " + WEBUI_SETUP + ": let the remote-control API answer too, to holders of its token"));
+        spec.addOption(OptionSpec.builder(WEBUI_HOST_OPTION)
+                .paramLabel("<name>")
+                .type(List.class)
+                .auxiliaryTypes(String.class)
+                .splitRegex(",")
+                .description("with "
+                        + WEBUI_SETUP
+                        + ": a host name the web interface answers to, such as a LAN name or a reverse proxy's"
+                        + " (repeatable); otherwise only localhost and, with "
+                        + WEBUI_LAN_OPTION
+                        + ", IP addresses")
+                .build());
         spec.addOption(OptionSpec.builder(REMOTE_OPTION)
                 .paramLabel("<command>")
                 .type(List.class)
@@ -460,16 +481,25 @@ public record LaunchOptions(
         boolean port = result.hasMatchedOption(WEBUI_PORT_OPTION);
         boolean lan = result.hasMatchedOption(WEBUI_LAN_OPTION);
         boolean api = result.hasMatchedOption(WEBUI_API_OPTION);
+        boolean host = result.hasMatchedOption(WEBUI_HOST_OPTION);
         Optional<Path> passwordFile = Optional.empty();
         if (result.hasMatchedOption(WEBUI_PASSWORD_FILE_OPTION)) {
             passwordFile = Optional.of(toFile(result.matchedOptionValue(WEBUI_PASSWORD_FILE_OPTION, "")));
         }
         if (!result.hasMatchedOption(WEBUI_PASSWORD_OPTION) && passwordFile.isEmpty()) {
-            if (port || lan || api) {
-                throw new UsageException(WEBUI_PORT_OPTION + ", " + WEBUI_LAN_OPTION + " and " + WEBUI_API_OPTION
-                        + " apply to " + WEBUI_SETUP);
+            if (port || lan || api || host) {
+                throw new UsageException(WEBUI_PORT_OPTION + ", " + WEBUI_LAN_OPTION + ", " + WEBUI_API_OPTION + " and "
+                        + WEBUI_HOST_OPTION + " apply to " + WEBUI_SETUP);
             }
             return Optional.empty();
+        }
+        List<String> hosts = new ArrayList<>();
+        for (String name : result.matchedOptionValue(WEBUI_HOST_OPTION, List.<String>of())) {
+            try {
+                hosts.add(WebUiSettings.hostName(name));
+            } catch (IllegalArgumentException e) {
+                throw new UsageException("Invalid host name for " + WEBUI_HOST_OPTION + ": " + name);
+            }
         }
         Optional<Integer> number = Optional.empty();
         if (port) {
@@ -483,7 +513,7 @@ public record LaunchOptions(
                 throw new UsageException("Invalid port for " + WEBUI_PORT_OPTION + ": " + value);
             }
         }
-        return Optional.of(new WebUiSetup(number, lan, api, passwordFile));
+        return Optional.of(new WebUiSetup(number, lan, api, passwordFile, hosts));
     }
 
     private static Optional<Remote> remote(ParseResult result) throws UsageException {

@@ -73,7 +73,8 @@ import org.slf4j.LoggerFactory;
 /**
  * The web interface: status, transfers, searches and servers as plain HTML pages behind a password. Every change is a
  * POST carrying the session's form token; pages run no scripts and cannot be framed, and the session cookie is
- * HTTP-only and same-site. When its settings ask for it, the remote-control API answers under {@value Api#PREFIX}.
+ * HTTP-only, same-site and, over HTTPS, secure. When its settings ask for it, the remote-control API answers under
+ * {@value Api#PREFIX}.
  */
 public final class WebUi implements AutoCloseable {
 
@@ -107,7 +108,7 @@ public final class WebUi implements AutoCloseable {
     private static final Pattern LINKS = Pattern.compile("\\s+(?=ed2k://|magnet:\\?)", Pattern.CASE_INSENSITIVE);
 
     // Names under which a browser on this computer reaches the interface; other computers use its
-    // address. Any other Host header may be a DNS-rebinding attempt.
+    // address or a name of the settings. Any other Host header may be a DNS-rebinding attempt.
     private static final Set<String> LOOPBACK_NAMES = Set.of("localhost", "127.0.0.1", "[::1]");
 
     private final NjMuleEngine engine;
@@ -220,10 +221,11 @@ public final class WebUi implements AutoCloseable {
             throw new IOException("cannot start the web interface: " + e.getMessage(), e);
         }
         logger.info(
-                "Web interface on {}:{}{}",
+                "Web interface on {}:{}{}{}",
                 settings.lan() ? "*" : InetAddress.getLoopbackAddress().getHostAddress(),
                 ui.port,
-                settings.api() ? " with the remote-control API" : "");
+                settings.hosts().isEmpty() ? "" : ", also as " + String.join(", ", settings.hosts()),
+                settings.api() ? ", with the remote-control API" : "");
         return ui;
     }
 
@@ -278,11 +280,12 @@ public final class WebUi implements AutoCloseable {
         String path = exchange.path();
         // A HEAD gets the headers of the GET; send() leaves the body out.
         String method = exchange.isHead() ? GET : exchange.method();
-        if (!trustedHost(exchange.header("Host"), this.settings.lan())) {
-            send(exchange, 421, TEXT, "Unknown host name.");
+        if (!trustedHost(exchange.header("Host"), this.settings.lan(), this.settings.hosts())) {
+            send(exchange, 421, TEXT, "Unknown host name: the web interface settings list the names it answers to.");
             return;
         }
-        if (method.equals(POST) && !sameOrigin(exchange)) {
+        if (method.equals(POST)
+                && !trustedOrigin(exchange.header("Origin"), exchange.header("Host"), this.settings.hosts())) {
             send(exchange, 403, TEXT, "Cross-site request refused.");
             return;
         }
@@ -314,13 +317,19 @@ public final class WebUi implements AutoCloseable {
         }
     }
 
-    static boolean trustedHost(String host, boolean lan) {
+    static boolean trustedHost(String host, boolean lan, List<String> names) {
         if (host == null) {
             return false;
         }
-        int colon = host.lastIndexOf(':');
-        String name = (colon > host.lastIndexOf(']') ? host.substring(0, colon) : host).toLowerCase(Locale.ROOT);
-        return LOOPBACK_NAMES.contains(name) || (lan && isAddress(name));
+        String name = withoutPort(host);
+        return LOOPBACK_NAMES.contains(name) || names.contains(name) || (lan && isAddress(name));
+    }
+
+    // The name of host[:port], in lower case.
+    private static String withoutPort(String authority) {
+        int colon = authority.lastIndexOf(':');
+        return (colon > authority.lastIndexOf(']') ? authority.substring(0, colon) : authority)
+                .toLowerCase(Locale.ROOT);
     }
 
     // An IP address literal, which no DNS answer can point elsewhere.
@@ -337,18 +346,33 @@ public final class WebUi implements AutoCloseable {
         }
     }
 
-    // Browsers send Origin with every POST; a different one is another site's form.
-    private static boolean sameOrigin(Exchange exchange) {
-        String origin = exchange.header("Origin");
+    // Browsers send Origin with every POST; a different one is another site's form. A name of the settings stands for
+    // the pages on any port and scheme: a reverse proxy shows them on its own, and may pass its own address as Host.
+    static boolean trustedOrigin(String origin, String host, List<String> names) {
         if (origin == null) {
             return true;
         }
         try {
-            String authority = new URI(origin).getRawAuthority();
-            return authority != null && authority.equalsIgnoreCase(exchange.header("Host"));
+            URI uri = new URI(origin);
+            String authority = uri.getRawAuthority();
+            if (authority == null) {
+                return false;
+            }
+            String scheme = String.valueOf(uri.getScheme());
+            return authority.equalsIgnoreCase(host)
+                    || ((scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))
+                            && authority.indexOf('@') < 0
+                            && names.contains(withoutPort(authority)));
         } catch (URISyntaxException e) {
             return false;
         }
+    }
+
+    // The browser that sent the form came over HTTPS, as through a reverse proxy that ends TLS, when its Origin says
+    // so: the cookie then travels only that way. No forwarded header is needed, nor trusted.
+    private static boolean cameOverHttps(Exchange exchange) {
+        String origin = exchange.header("Origin");
+        return origin != null && origin.regionMatches(true, 0, "https://", 0, 8);
     }
 
     private void login(Exchange exchange, String method) throws IOException {
@@ -388,7 +412,7 @@ public final class WebUi implements AutoCloseable {
         }
         this.sessions.succeeded(address);
         Sessions.Session session = this.sessions.open();
-        exchange.addCookie(sessionCookie(session.id()).build());
+        exchange.addCookie(sessionCookie(exchange, session.id()).build());
         redirect(exchange, "/");
     }
 
@@ -437,7 +461,7 @@ public final class WebUi implements AutoCloseable {
             next = switch (path) {
                 case "/logout" -> {
                     this.sessions.close(session.id());
-                    exchange.addCookie(sessionCookie("").maxAge(0).build());
+                    exchange.addCookie(sessionCookie(exchange, "").maxAge(0).build());
                     yield "/login";
                 }
                 case TRANSFERS -> {
@@ -890,8 +914,12 @@ public final class WebUi implements AutoCloseable {
         return exchange.cookie(this.cookie).flatMap(this.sessions::find);
     }
 
-    private HttpCookie.Builder sessionCookie(String value) {
-        return HttpCookie.build(this.cookie, value).path("/").httpOnly(true).sameSite(HttpCookie.SameSite.STRICT);
+    private HttpCookie.Builder sessionCookie(Exchange exchange, String value) {
+        return HttpCookie.build(this.cookie, value)
+                .path("/")
+                .httpOnly(true)
+                .sameSite(HttpCookie.SameSite.STRICT)
+                .secure(cameOverHttps(exchange));
     }
 
     private <T> T await(CompletableFuture<T> work) {

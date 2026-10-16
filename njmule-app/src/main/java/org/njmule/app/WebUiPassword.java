@@ -68,7 +68,9 @@ public final class WebUiPassword {
         }
     }
 
-    /** Turns the web interface on with {@code password} and the port, LAN and API choices of {@code setup}. */
+    /**
+     * Turns the web interface on with {@code password} and the port, LAN, API and host name choices of {@code setup}.
+     */
     static WebUiSettings save(Path config, LaunchOptions.WebUiSetup setup, char[] password) throws IOException {
         WebUiSettings old = WebUiSettings.load(config);
         WebUiSettings settings = new WebUiSettings(
@@ -76,7 +78,8 @@ public final class WebUiPassword {
                 setup.port().orElse(old.port()),
                 setup.lan(),
                 Passwords.hash(password, new SecureRandom()),
-                setup.api() || old.api());
+                setup.api() || old.api(),
+                setup.hosts());
         settings.save(config);
         return settings;
     }

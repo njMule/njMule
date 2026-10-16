@@ -423,6 +423,12 @@ All notable changes to this project are documented here. The format follows
 - `--webui-password-file <file>` takes the web interface password from the first line of a file,
   such as a Docker or systemd secret, never printing or logging it: with `--webui-password` it is
   set without asking; on its own it is set at every start, before njMule runs.
+- Host names for the web interface (`hosts` in `webui.properties`, `--webui-host <name>` beside
+  `--webui-password` or `--webui-password-file`, a field of the web interface settings): it then
+  answers under a LAN name such as `nas.local` and behind a reverse proxy (Traefik, nginx, Caddy),
+  taking forms whose origin is one of the names on any port, over HTTP or HTTPS; other names are
+  still refused against DNS rebinding and other origins against cross-site requests. No forwarded
+  header is trusted; the session cookie is `Secure` when the browser logged in over HTTPS.
 
 ### Changed
 

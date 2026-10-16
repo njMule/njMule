@@ -90,6 +90,7 @@ public final class SettingsScreen implements Screen {
 
     private static final int MAX_PROXY_USER = 255;
     private static final int MAX_PASSWORD = 1024;
+    private static final int MAX_WEBUI_HOSTS = 4096;
 
     private final Gui gui;
     private Node view;
@@ -170,6 +171,7 @@ public final class SettingsScreen implements Screen {
     private final CheckBox webUi = new CheckBox();
     private final TextField webUiPort = new TextField();
     private final CheckBox webUiLan = new CheckBox();
+    private final TextField webUiHosts = new TextField();
     private final CheckBox webUiApi = new CheckBox();
     private final PasswordField webUiPassword = new PasswordField();
     private final PasswordField webUiAgain = new PasswordField();
@@ -198,6 +200,7 @@ public final class SettingsScreen implements Screen {
     private Input<Integer> filterLevelInput;
     private Input<String> whitelistInput;
     private Input<Integer> webUiPortInput;
+    private Input<List<String>> webUiHostsInput;
     private Input<String> webUiPasswordInput;
     private Input<String> webUiAgainInput;
     private final Map<EventCommands.Event, CheckBox> eventSwitches = new EnumMap<>(EventCommands.Event.class);
@@ -289,6 +292,7 @@ public final class SettingsScreen implements Screen {
         Fx.leftToRight(this.videoPlayer);
         Fx.leftToRight(this.videoPlayerArgs);
         Fx.leftToRight(this.whitelist);
+        Fx.leftToRight(this.webUiHosts);
         this.videoPlayerArgs.setPromptText(this.gui.t("nj.preview.args"));
         this.visibility.getItems().addAll(SharedFilesVisibility.values());
         this.visibility.setCellFactory(l -> new NamedCell<>(this::visibilityName));
@@ -420,6 +424,9 @@ public final class SettingsScreen implements Screen {
         grid.add(this.webUi, 1, row++);
         row = field(grid, row, this.gui.t("nj.webui.port"), this.webUiPort);
         grid.add(this.webUiLan, 1, row++);
+        this.webUiHosts.setPrefColumnCount(32);
+        this.webUiHosts.setPromptText("nas.local, njmule.example.com");
+        row = field(grid, row, this.gui.t("nj.webui.hosts"), this.webUiHosts);
         row = field(grid, row, this.gui.t("nj.webui.password"), new HBox(8, this.webUiPassword, this.webUiAgain));
         grid.add(this.webUiApi, 1, row++);
         grid.add(
@@ -464,6 +471,7 @@ public final class SettingsScreen implements Screen {
                 this.filterLevelInput,
                 this.whitelistInput,
                 this.webUiPortInput,
+                this.webUiHostsInput,
                 this.webUiPasswordInput,
                 this.webUiAgainInput));
         checked.addAll(this.eventInputs.values());
@@ -548,6 +556,14 @@ public final class SettingsScreen implements Screen {
         this.deadRetriesInput =
                 inputs.number(this.deadRetries, this.gui.t("IDS_PW_RDEAD"), 1, Preferences.MAX_DEAD_SERVER_RETRIES);
         this.webUiPortInput = inputs.number(this.webUiPort, this.gui.t("nj.webui.port"), 1, Preferences.MAX_PORT);
+        // Browsers send host names in ASCII, an international one in its xn-- form.
+        this.webUiHostsInput = Input.of(
+                this.webUiHosts,
+                this.gui.t("nj.webui.hosts"),
+                this.gui.i18n().embed(this.gui.t("nj.webui.hostsHint")),
+                c -> c < 0x80 && !Character.isISOControl(c),
+                MAX_WEBUI_HOSTS,
+                WebUiSettings::hostNames);
         this.webUiPasswordInput = Input.of(
                         this.webUiPassword,
                         this.gui.t("nj.webui.password"),
@@ -811,6 +827,7 @@ public final class SettingsScreen implements Screen {
         this.webUi.setSelected(web.enabled());
         this.webUiPort.setText(String.valueOf(web.port()));
         this.webUiLan.setSelected(web.lan());
+        this.webUiHosts.setText(String.join(", ", web.hosts()));
         this.webUiApi.setSelected(web.api());
         this.webUiPassword.clear();
         this.webUiAgain.clear();
@@ -1118,7 +1135,12 @@ public final class SettingsScreen implements Screen {
             throw new IllegalArgumentException(this.gui.t("nj.webui.needsPassword"));
         }
         return new WebUiSettings(
-                this.webUi.isSelected(), port, this.webUiLan.isSelected(), hash, this.webUiApi.isSelected());
+                this.webUi.isSelected(),
+                port,
+                this.webUiLan.isSelected(),
+                hash,
+                this.webUiApi.isSelected(),
+                this.webUiHostsInput.value());
     }
 
     // Scrolls the page to show field a third of the way down, and puts the cursor in it.
@@ -1320,6 +1342,10 @@ public final class SettingsScreen implements Screen {
 
     TextField webUiPortField() {
         return this.webUiPort;
+    }
+
+    TextField webUiHostsField() {
+        return this.webUiHosts;
     }
 
     PasswordField webUiPasswordField() {

@@ -133,6 +133,29 @@ class WebUiPasswordTest {
     }
 
     @Test
+    void shouldTakeTheHostNamesFromTheCommandLineInPlaceOfTheSavedOnes() throws IOException {
+        givenTheWebInterfaceSettings(
+                new WebUiSettings(true, 8080, true, "pbkdf2-sha512$1$AA$AA", false, List.of("old.example")));
+        givenThePasswordFile(PASSWORD);
+
+        whenTheCommandLineSetsThePasswordFromTheFile("--webui-host", "nas.local", "--webui-host", "njmule.example.com");
+
+        thenTheSavedHostNamesAre("nas.local", "njmule.example.com");
+    }
+
+    // As LAN access, the names follow the command line: one left out is no longer trusted.
+    @Test
+    void shouldDropTheSavedHostNamesTheCommandLineDoesNotGive() throws IOException {
+        givenTheWebInterfaceSettings(
+                new WebUiSettings(true, 8080, true, "pbkdf2-sha512$1$AA$AA", false, List.of("old.example")));
+        givenThePasswordFile(PASSWORD);
+
+        whenTheCommandLineSetsThePasswordFromTheFile();
+
+        thenTheSavedHostNamesAre();
+    }
+
+    @Test
     void shouldLogTheFileNotThePassword() throws IOException {
         givenThePasswordFile(PASSWORD);
         givenTheLogIsListenedTo();
@@ -230,6 +253,11 @@ class WebUiPasswordTest {
         assertThat(settings.port()).isEqualTo(port);
         assertThat(settings.lan()).isEqualTo(lan);
         assertThat(settings.api()).isEqualTo(api);
+    }
+
+    private void thenTheSavedHostNamesAre(String... names) {
+        assertThat(this.exception).isNull();
+        assertThat(WebUiSettings.load(config()).hosts()).containsExactly(names);
     }
 
     private void thenTheLogNamesTheFileButNotThePassword() {

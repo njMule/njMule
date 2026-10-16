@@ -34,6 +34,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
@@ -256,6 +257,64 @@ class WebUiTest {
     }
 
     @Test
+    void shouldAnswerUnderANameOfTheSettings() throws Exception {
+        givenTheWebInterfaceRunsWithTheHostNames("nas.local");
+
+        whenThePageIsAskedForTheHost("/login", "nas.local");
+
+        thenTheRawAnswerStartsWith("HTTP/1.1 200");
+    }
+
+    @Test
+    void shouldRefuseOtherHostNamesBesideTheNamesOfTheSettings() throws Exception {
+        givenTheWebInterfaceRunsWithTheHostNames("nas.local");
+
+        whenThePageIsAskedForTheHost("/login", "rebound.example");
+
+        thenTheRawAnswerStartsWith("HTTP/1.1 421");
+    }
+
+    // Traefik and Caddy pass the browser's Host on; the browser came over HTTPS.
+    @Test
+    void shouldTakeALoginThroughAReverseProxyThatPassesTheHostOn() throws Exception {
+        givenTheWebInterfaceRunsWithTheHostNames("njmule.example.com");
+
+        whenLoggedInThrough("njmule.example.com", "https://njmule.example.com");
+
+        thenTheRawAnswerStartsWith("HTTP/1.1 303");
+        thenTheRawAnswerSetsACookie("Secure");
+    }
+
+    // nginx sends its own address of the upstream as Host unless told otherwise.
+    @Test
+    void shouldTakeALoginThroughAReverseProxyThatSendsItsOwnAddress() throws Exception {
+        givenTheWebInterfaceRunsWithTheHostNames("njmule.example.com");
+
+        whenLoggedInThrough("127.0.0.1:" + this.ui.port(), "https://njmule.example.com");
+
+        thenTheRawAnswerStartsWith("HTTP/1.1 303");
+    }
+
+    @Test
+    void shouldRefuseALoginThroughAReverseProxyWhoseNameIsNotInTheSettings() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenLoggedInThrough("127.0.0.1:" + this.ui.port(), "https://njmule.example.com");
+
+        thenTheRawAnswerStartsWith("HTTP/1.1 403");
+    }
+
+    @Test
+    void shouldKeepTheCookieOfAPlainHttpLoginForPlainHttp() throws Exception {
+        givenTheWebInterfaceRunsWithTheHostNames("nas.local");
+
+        whenLoggedInThrough("nas.local:" + this.ui.port(), "http://nas.local:" + this.ui.port());
+
+        thenTheRawAnswerStartsWith("HTTP/1.1 303");
+        thenTheRawAnswerSetsACookieWithout("Secure");
+    }
+
+    @Test
     void shouldAddPauseResumeAndCancelADownload() throws Exception {
         givenALoggedInUser();
         givenTheFormTokenOfThePage("/transfers");
@@ -299,8 +358,12 @@ class WebUiTest {
     }
 
     private void givenTheWebInterfaceRuns() throws IOException {
+        givenTheWebInterfaceRunsWithTheHostNames();
+    }
+
+    private void givenTheWebInterfaceRunsWithTheHostNames(String... names) throws IOException {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        this.ui = WebUi.start(engine, new WebUiSettings(true, freePort(), false, hash));
+        this.ui = WebUi.start(engine, new WebUiSettings(true, freePort(), false, hash, false, List.of(names)));
     }
 
     private void givenALoggedInUser() throws Exception {
@@ -390,15 +453,16 @@ class WebUiTest {
     }
 
     private void whenThePageIsAskedForTheHost(String path, String host) throws IOException {
-        try (Socket socket = new Socket(InetAddress.getLoopbackAddress(), this.ui.port())) {
-            OutputStream out = socket.getOutputStream();
-            out.write(("GET " + path + " HTTP/1.1\r\nHost: " + host + ":" + this.ui.port()
-                            + "\r\nConnection: close\r\n\r\n")
-                    .getBytes(StandardCharsets.US_ASCII));
-            out.flush();
-            InputStream in = socket.getInputStream();
-            this.rawAnswer = new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
-        }
+        this.rawAnswer = raw(
+                "GET " + path + " HTTP/1.1\r\nHost: " + host + ":" + this.ui.port() + "\r\nConnection: close\r\n\r\n");
+    }
+
+    // The request a reverse proxy forwards: its Host, the browser's Origin.
+    private void whenLoggedInThrough(String host, String origin) throws IOException {
+        String body = "password=" + URLEncoder.encode(PASSWORD, StandardCharsets.UTF_8);
+        this.rawAnswer = raw("POST /login HTTP/1.1\r\nHost: " + host + "\r\nOrigin: " + origin
+                + "\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: " + body.length()
+                + "\r\nConnection: close\r\n\r\n" + body);
     }
 
     private void thenTheStatusIs(int status) {
@@ -447,6 +511,32 @@ class WebUiTest {
 
     private void thenTheRawAnswerStartsWith(String start) {
         assertThat(this.rawAnswer).startsWith(start);
+    }
+
+    private void thenTheRawAnswerSetsACookie(String attribute) {
+        assertThat(rawCookie()).contains("HttpOnly", "SameSite=Strict", attribute);
+    }
+
+    private void thenTheRawAnswerSetsACookieWithout(String attribute) {
+        assertThat(rawCookie()).contains("HttpOnly").doesNotContain(attribute);
+    }
+
+    private String rawCookie() {
+        return this.rawAnswer
+                .lines()
+                .filter(line -> line.regionMatches(true, 0, "Set-Cookie:", 0, 11))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private String raw(String request) throws IOException {
+        try (Socket socket = new Socket(InetAddress.getLoopbackAddress(), this.ui.port())) {
+            OutputStream out = socket.getOutputStream();
+            out.write(request.getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+            InputStream in = socket.getInputStream();
+            return new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
+        }
     }
 
     private HttpResponse<String> get(String path) throws Exception {
