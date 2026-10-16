@@ -16,6 +16,7 @@
  */
 package org.njmule.core.kad;
 
+import com.google.common.collect.Iterators;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -426,7 +427,10 @@ final class Lookup {
     }
 
     private boolean isAmongBest(UInt128 distance) {
-        return this.possible.headMap(distance).size() < ALPHA;
+        // A head map counts by walking its range: no further than ALPHA is needed.
+        return Iterators.size(
+                        Iterators.limit(this.possible.headMap(distance).keySet().iterator(), ALPHA))
+                < ALPHA;
     }
 
     private void ask(KadMessages.Contact contact, int count, long now) {
