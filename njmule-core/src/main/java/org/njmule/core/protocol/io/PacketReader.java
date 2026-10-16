@@ -101,11 +101,25 @@ public final class PacketReader {
     }
 
     public Hash16 hash16() throws DecodeException {
-        return Hash16.of(bytes(Hash16.LENGTH));
+        int at = arrayAt(Hash16.LENGTH);
+        return at < 0 ? Hash16.of(bytes(Hash16.LENGTH)) : Hash16.of(this.buffer.array(), at);
     }
 
     public Hash20 hash20() throws DecodeException {
-        return Hash20.of(bytes(Hash20.LENGTH));
+        int at = arrayAt(Hash20.LENGTH);
+        return at < 0 ? Hash20.of(bytes(Hash20.LENGTH)) : Hash20.of(this.buffer.array(), at);
+    }
+
+    // Where the next length bytes start in the buffer's array, which they are then read from, or -1 without one; read
+    // there, a value is copied once instead of twice.
+    private int arrayAt(int length) throws DecodeException {
+        need(length);
+        if (!this.buffer.hasArray()) {
+            return -1;
+        }
+        int at = this.buffer.arrayOffset() + this.buffer.position();
+        this.buffer.position(this.buffer.position() + length);
+        return at;
     }
 
     public void skip(int length) throws DecodeException {
@@ -135,7 +149,9 @@ public final class PacketReader {
 
     /** A {@code <u16 length><bytes>} string decoded with the network's rules ({@link Ed2kStrings}). */
     public String string16() throws DecodeException {
-        return Ed2kStrings.decode(bytes(u16()));
+        int length = u16();
+        int at = arrayAt(length);
+        return at < 0 ? Ed2kStrings.decode(bytes(length)) : Ed2kStrings.decode(this.buffer.array(), at, length);
     }
 
     /** Checks that a count field is plausible for the bytes left (each item ≥ {@code minSize}). */
