@@ -30,7 +30,7 @@ COPY --from=build /out/ /
 FROM gcr.io/distroless/base-debian13:latest@sha256:389cad21f73e4c37b94ffe5b13736d5a92bd5bd3c6c6b38c2be1c881e14ba2bd AS base
 
 # The user, its directories and the notices, prepared on the build platform: no emulation.
-FROM --platform=${BUILDPLATFORM} busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e AS layout
+FROM --platform=${BUILDPLATFORM} busybox:1.38.0@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e AS layout
 COPY --from=base /etc/passwd /etc/group /out/etc/
 COPY LICENSE NOTICE /out/doc/
 RUN echo 'njmule:x:1000:1000:njMule:/njmule:/sbin/nologin' >> /out/etc/passwd \
