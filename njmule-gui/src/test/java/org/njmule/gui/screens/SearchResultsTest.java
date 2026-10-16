@@ -255,6 +255,18 @@ class SearchResultsTest {
     }
 
     @Test
+    void shouldOfferToStopOnlyWhileTheSearchShownRuns() throws Exception {
+        givenTheSearchScreen();
+        givenSearchedFor("film", FILM_DVD);
+        givenTheButtonsAreOff(false, "IDS_DL_STOP");
+
+        whenTheSearchEnds();
+
+        thenTheButtonsAreOff(true, "IDS_DL_STOP");
+        thenTheButtonsAreOff(false, "nj.search.more");
+    }
+
+    @Test
     void shouldShowWhatWasDoneWithAFileBeforeItsSpamMark() throws Exception {
         givenTheSearchScreen();
         givenASearchFor("film", SearchScreen.Method.GLOBAL);
@@ -670,6 +682,10 @@ class SearchResultsTest {
     private void whenTheRowIsDoubleClicked(SearchResult result) throws Exception {
         FxTesting.onFx(() ->
                 FxTesting.doubleClick(table(), r -> ((LiveList.Row<?>) r).get().equals(result)));
+    }
+
+    private void whenTheSearchEnds() throws Exception {
+        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.SearchEnded(new SearchId(this.ids.get()), 1)));
     }
 
     private void whenTheSearchIsStopped() throws Exception {

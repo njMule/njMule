@@ -16,6 +16,7 @@
  */
 package org.njmule.gui.screens;
 
+import atlantafx.base.controls.RingProgressIndicator;
 import atlantafx.base.theme.Styles;
 import java.io.IOException;
 import java.time.Duration;
@@ -159,6 +160,8 @@ public final class SearchScreen implements Screen {
     private final TabPane tabs = new TabPane();
     private final ToggleButton parametersButton = new ToggleButton();
     private final BooleanProperty noneChosen = new SimpleBooleanProperty(true);
+    // Whether the search shown still runs, which Stop acts on.
+    private final BooleanProperty shownRunning = new SimpleBooleanProperty();
     private final VBox content = new VBox(8);
     private Node parameters;
     private final Map<Tab, Results> results = new HashMap<>();
@@ -212,10 +215,14 @@ public final class SearchScreen implements Screen {
         Button more = Fx.button(this.gui.t("nj.search.more"), Material2AL.ADD, this::more);
         Button stop = Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stop);
         more.disableProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
-        stop.disableProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
+        stop.disableProperty().bind(this.shownRunning.not());
+        stop.getStyleClass().add("stop-search");
         Button download = Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected);
         download.disableProperty().bind(this.noneChosen);
-        this.tabs.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> followChoice());
+        this.tabs.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> {
+            followChoice();
+            followShown();
+        });
         // Two rows: what to look for, then where and with what, beside what acts on the results.
         HBox.setHgrow(this.query, Priority.ALWAYS);
         var tools = Fx.toolRow(this.query, start);
@@ -603,8 +610,9 @@ public final class SearchScreen implements Screen {
         tab.setContent(pane);
         tab.setTooltip(new Tooltip(search.request().expression()));
 
-        ProgressIndicator running = new ProgressIndicator();
-        running.setPrefSize(14, 14);
+        // A ring rather than the theme's fading dots, which hardly show at the size of a tab.
+        RingProgressIndicator running = new RingProgressIndicator(ProgressIndicator.INDETERMINATE_PROGRESS, false);
+        running.getStyleClass().add("tab-spinner");
         running.visibleProperty().bind(search.runningProperty());
         running.managedProperty().bind(search.runningProperty());
         tab.setGraphic(running);
@@ -673,6 +681,16 @@ public final class SearchScreen implements Screen {
 
     private Results current() {
         return this.results.get(this.tabs.getSelectionModel().getSelectedItem());
+    }
+
+    private void followShown() {
+        Results current = current();
+        this.shownRunning.unbind();
+        if (current == null) {
+            this.shownRunning.set(false);
+        } else {
+            this.shownRunning.bind(current.search().runningProperty());
+        }
     }
 
     private void followChoice() {

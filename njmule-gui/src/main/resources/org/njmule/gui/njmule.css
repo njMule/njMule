@@ -520,6 +520,28 @@
     -fx-background-radius: 6px 6px 0 0, 5px 5px 0 0, 5px 5px 0 0;
 }
 
+/* A search running, in its tab: a turning ring in the strong accent, which stands out on the dark themes too. */
+.tab-spinner {
+    -color-progress-indicator-fill: -nj-accent-strong;
+}
+
+.tab-spinner:indeterminate > .container {
+    -fx-min-width: 16px;
+}
+
+.tab-spinner:indeterminate > .container > .ring {
+    -fx-stroke-width: 2.5px;
+}
+
+/* What stops the search takes the ring's colour; a disabled one looks like any other. */
+.button.stop-search .ikonli-font-icon {
+    -fx-icon-color: -nj-accent-strong;
+}
+
+.button.stop-search:disabled .ikonli-font-icon {
+    -fx-icon-color: -color-fg-muted;
+}
+
 .tab-pane.dense > .tab-header-area > .headers-region > .tab:top {
     -fx-padding: 0.1em 0.6em 0.1em 0.4em;
 }
