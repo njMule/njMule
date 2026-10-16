@@ -385,6 +385,10 @@ All notable changes to this project are documented here. The format follows
   `rateSpam`, the rating in the web API's results. The desktop interface shows a result as spam by
   its rating, rates the results of every search tab again once a file is marked (or the filter is
   switched, in the options next to the IP filter), and rates the searches kept from the last run.
+- Search results sort, once a column is chosen, with spam last in either direction, names
+  by the language's rules whatever their case, complete sources by their share of the sources,
+  types then extensions, missing media values last in either direction, and the columns chosen
+  before break ties, also for results that come later.
 - The name each source gives a download is kept with the source (engine API `SourceInfo`), and a
   download can be renamed (engine API `renameDownload`, web API `PUT
   /api/v1/downloads/{hash}/name`): the name, made safe for any file system, is the one its file

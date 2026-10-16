@@ -21,6 +21,7 @@ import atlantafx.base.theme.Styles;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -506,48 +507,66 @@ public final class SearchScreen implements Screen {
         // Offered in the column menu.
         fileId.setVisible(false);
         String kbits = this.gui.t("IDS_KBITSSEC");
+        Comparator<String> text = SearchOrder.text(this.gui.i18n().locale());
         List<TableColumn<LiveList.Row<SearchResult>, ?>> media = List.of(
-                Fx.ownDirection(Fx.column(
-                        this.gui.t("IDS_ARTIST"),
-                        100,
-                        (SearchResult r) -> r.media().artist())),
-                Fx.ownDirection(Fx.column(
-                        this.gui.t("IDS_ALBUM"),
-                        100,
-                        (SearchResult r) -> r.media().album())),
-                Fx.ownDirection(Fx.column(
-                        this.gui.t("IDS_TITLE"),
-                        100,
-                        (SearchResult r) -> r.media().title())),
-                Fx.leftToRight(Fx.column(
+                textLast(
+                        Fx.ownDirection(Fx.column(
+                                this.gui.t("IDS_ARTIST"),
+                                100,
+                                (SearchResult r) -> r.media().artist())),
+                        text),
+                textLast(
+                        Fx.ownDirection(Fx.column(
+                                this.gui.t("IDS_ALBUM"),
+                                100,
+                                (SearchResult r) -> r.media().album())),
+                        text),
+                textLast(
+                        Fx.ownDirection(Fx.column(
+                                this.gui.t("IDS_TITLE"),
+                                100,
+                                (SearchResult r) -> r.media().title())),
+                        text),
+                numberLast(Fx.leftToRight(Fx.column(
                         this.gui.t("IDS_LENGTH"),
                         60,
                         (SearchResult r) -> r.media().length(),
-                        s -> s == 0 ? "" : formats.playingTime(s))),
-                Fx.leftToRight(Fx.column(
+                        s -> s == 0 ? "" : formats.playingTime(s)))),
+                numberLast(Fx.leftToRight(Fx.column(
                         this.gui.t("IDS_BITRATE"),
                         80,
                         (SearchResult r) -> r.media().bitrate(),
-                        b -> b == 0 ? "" : formats.count(b) + " " + kbits)),
-                Fx.leftToRight(Fx.column(
-                        this.gui.t("IDS_CODEC"),
-                        60,
-                        (SearchResult r) -> r.media().codec())));
+                        b -> b == 0 ? "" : formats.count(b) + " " + kbits))),
+                textLast(
+                        Fx.leftToRight(Fx.column(
+                                this.gui.t("IDS_CODEC"),
+                                60,
+                                (SearchResult r) -> r.media().codec())),
+                        text));
+        TableColumn<LiveList.Row<SearchResult>, String> name =
+                Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 380, SearchResult::name));
+        name.setComparator(text);
         // Columns are remembered by their place: new ones go last.
         table.getColumns()
                 .addAll(List.of(
-                        Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 380, SearchResult::name)),
+                        name,
                         Fx.leftToRight(Fx.column(this.gui.t("IDS_DL_SIZE"), 90, SearchResult::size, formats::size)),
                         Fx.leftToRight(Fx.column(this.gui.t("IDS_SEARCHAVAIL"), 90, SearchResult::sources)),
-                        Fx.leftToRight(Fx.column(this.gui.t("IDS_COMPLETE"), 90, SearchResult::completeSources)),
+                        Fx.leftToRight(Fx.column(
+                                this.gui.t("IDS_COMPLETE"),
+                                90,
+                                (SearchResult r) -> new SearchOrder.Complete(r.completeSources(), r.sources()),
+                                c -> Integer.toString(c.complete()))),
                         Fx.leftToRight(Fx.column(
                                 this.gui.t("nj.search.type"),
                                 90,
-                                (SearchResult r) -> r.type().orElse(""))),
+                                (SearchResult r) -> SearchOrder.Kind.of(r.type().orElse(""), r.name()),
+                                SearchOrder.Kind::type)),
                         known,
                         fileId));
         table.getColumns().addAll(media);
         TableLayout.remember(table, "search", this.gui.settings());
+        SearchOrder.apply(table);
         MediaColumns mediaColumns = new MediaColumns(media);
         mediaColumns.follow(search.results().rows());
         this.gui.subscriptions().onListChange(search.results().rows(), c -> mediaColumns.follow(c.getList()));
@@ -622,6 +641,20 @@ public final class SearchScreen implements Screen {
                 c -> followChoice());
         this.tabs.getTabs().add(tab);
         this.tabs.getSelectionModel().select(tab);
+    }
+
+    // A text a result lacks goes last, whichever way the column sorts.
+    private static TableColumn<LiveList.Row<SearchResult>, String> textLast(
+            TableColumn<LiveList.Row<SearchResult>, String> column, Comparator<String> text) {
+        column.setComparator(SearchOrder.missingLast(column, String::isEmpty, text));
+        return column;
+    }
+
+    // A number a result lacks, 0, goes last, whichever way the column sorts.
+    private static TableColumn<LiveList.Row<SearchResult>, Integer> numberLast(
+            TableColumn<LiveList.Row<SearchResult>, Integer> column) {
+        column.setComparator(SearchOrder.missingLast(column, n -> n == 0, Comparator.naturalOrder()));
+        return column;
     }
 
     /** Results whose name holds every word of {@code text}, in any case. */
