@@ -91,7 +91,7 @@ class SettingsApplyTest {
     }
 
     private void thenTheSpamFilterOfSearchResultsIsOff() throws Exception {
-        FxTesting.await(
+        FxTesting.assertEventually(
                 "the preferences saved", () -> !this.test.engine.preferences().searchSpamFilter());
     }
 

@@ -60,7 +60,7 @@ public final class PortTestPane {
     private final Label udp = line();
     private final VBox lines = new VBox(4, this.forwarding, this.tcp, this.udp);
     private final VBox node;
-    private final Timeline poll = new Timeline(new KeyFrame(POLL, e -> read()));
+    private final Timeline poller = new Timeline(new KeyFrame(POLL, e -> read()));
     private boolean testing;
     // Which test the outcomes shown come from: the end of one left for a newer one is not shown.
     private int run;
@@ -82,7 +82,7 @@ public final class PortTestPane {
         }
         this.running.getStyleClass().add("tab-spinner");
         this.running.setVisible(false);
-        this.poll.setCycleCount(Timeline.INDEFINITE);
+        this.poller.setCycleCount(Timeline.INDEFINITE);
         // The room of the outcomes is kept from the start: the page does not grow when they come.
         this.lines.setVisible(false);
         HBox row = new HBox(10, this.start, this.running);
@@ -103,7 +103,7 @@ public final class PortTestPane {
         this.running.setVisible(true);
         this.gui.model().updatePreferences(this.settings.get(), p -> {
             this.gui.model().testPorts(test -> finished(mine, test));
-            this.poll.play();
+            this.poller.play();
             read();
         });
     }
@@ -125,7 +125,7 @@ public final class PortTestPane {
             return;
         }
         this.testing = false;
-        this.poll.stop();
+        this.poller.stop();
         show(test);
         this.start.setDisable(false);
         this.running.setVisible(false);
