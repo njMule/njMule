@@ -165,19 +165,20 @@ public final class TransfersScreen implements Screen {
             this.downloads.refresh();
         });
         TableColumn<LiveList.Row<DownloadInfo>, Double> progress =
-                Fx.column(this.gui.t("IDS_DL_PROGRESS"), 170, TransfersScreen::fraction);
+                Fx.column(this.gui.t("IDS_DL_PROGRESS"), 120, TransfersScreen::fraction);
         progress.setCellFactory(c -> new ProgressCell());
         List<TableColumn<LiveList.Row<DownloadInfo>, ?>> columns = List.of(
-                Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 300, DownloadInfo::name)),
-                Fx.leftToRight(Fx.column(this.gui.t("IDS_DL_SIZE"), 90, DownloadInfo::size, formats::size)),
-                Fx.leftToRight(Fx.column(this.gui.t("IDS_DL_TRANSFCOMPL"), 90, DownloadInfo::completed, formats::size)),
-                Fx.leftToRight(Fx.column(this.gui.t("IDS_DL_SPEED"), 90, DownloadInfo::bytesPerSecond, formats::rate)),
+                Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 250, DownloadInfo::name)),
+                Fx.leftToRight(Fx.column(this.gui.t("IDS_DL_SIZE"), 80, DownloadInfo::size, formats::size)),
+                Fx.leftToRight(
+                        Fx.column(this.gui.t("IDS_DL_TRANSFCOMPL"), 100, DownloadInfo::completed, formats::size)),
+                Fx.leftToRight(Fx.column(this.gui.t("IDS_DL_SPEED"), 100, DownloadInfo::bytesPerSecond, formats::rate)),
                 progress,
                 Fx.leftToRight(
-                        Fx.column(this.gui.t("IDS_DL_SOURCES"), 80, DownloadInfo::sources, n -> String.valueOf(n))),
+                        Fx.column(this.gui.t("IDS_DL_SOURCES"), 70, DownloadInfo::sources, n -> String.valueOf(n))),
                 statusColumn(),
-                Fx.column(this.gui.t("IDS_PRIORITY"), 100, TransfersScreen::shownPriority, this::priorityText),
-                Fx.ownDirection(Fx.column(this.gui.t("IDS_CAT"), 110, DownloadInfo::category, this::categoryName)),
+                Fx.column(this.gui.t("IDS_PRIORITY"), 85, TransfersScreen::shownPriority, this::priorityText),
+                Fx.ownDirection(Fx.column(this.gui.t("IDS_CAT"), 95, DownloadInfo::category, this::categoryName)),
                 Fx.leftToRight(Fx.column(
                         this.gui.t("IDS_DL_REMAINS"),
                         90,
@@ -601,7 +602,7 @@ public final class TransfersScreen implements Screen {
 
     private TableColumn<LiveList.Row<DownloadInfo>, Shown> statusColumn() {
         TableColumn<LiveList.Row<DownloadInfo>, Shown> column =
-                Fx.column(this.gui.t("nj.transfers.status"), 150, TransfersScreen::shown, this::shownText);
+                Fx.column(this.gui.t("nj.transfers.status"), 140, TransfersScreen::shown, this::shownText);
         column.setCellFactory(c -> new StatusCell());
         return column;
     }
