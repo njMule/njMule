@@ -40,13 +40,15 @@ import org.njmule.core.util.Ipv4;
 
 /**
  * A bootstrap-only nodes.dat: its contacts are asked one at a time for contacts to start from while the node is not
- * connected, and never taken as contacts themselves.
+ * connected, and never taken as contacts themselves. Fallback contacts are asked the same way once the saved ones stay
+ * silent.
  */
 class KadNodeBootstrapTest {
 
     private static final int PORT = 4672;
     private static final long SECOND = 1_000_000_000L;
     private static final int BLOCKED = Ipv4.of(99, 1, 1, 1);
+    private static final int GRACE_SECONDS = (int) KadNode.FALLBACK_AFTER.toSeconds();
 
     /** A packet the node sent. */
     private record Sent(int ip, int port, Packet packet, Optional<UInt128> receiverId) {}
@@ -65,6 +67,9 @@ class KadNodeBootstrapTest {
     private final List<Sent> sent = new ArrayList<>();
     private final List<NodesDat.Contact> good = new ArrayList<>();
     private final List<NodesDat.Contact> bad = new ArrayList<>();
+    private final List<NodesDat.Contact> saved = new ArrayList<>();
+    private final List<NodesDat.Contact> fallback = new ArrayList<>();
+    private int fallbackReads;
     private KadNode node;
     private boolean loaded;
 
@@ -140,6 +145,59 @@ class KadNodeBootstrapTest {
         thenThereWasANodesDat();
     }
 
+    @Test
+    void shouldWaitTheGracePeriodBeforeAskingTheFallbackContacts() {
+        givenSavedContacts(5);
+        givenFallbackContacts(10);
+
+        whenSecondsPass(GRACE_SECONDS);
+
+        thenBootstrapRequestsWent(0);
+        thenTheFallbackContactsWereRead(0);
+    }
+
+    @Test
+    void shouldAskTheFallbackContactsWhenNoSavedContactAnswersInTime() {
+        givenSavedContacts(5);
+        givenFallbackContacts(10);
+
+        whenSecondsPass(GRACE_SECONDS + 1);
+
+        thenBootstrapRequestsWentToFallbackContacts(1);
+    }
+
+    @Test
+    void shouldNotAskTheFallbackContactsWhenASavedContactAnswersInTime() {
+        givenSavedContacts(5);
+        givenFallbackContacts(10);
+        givenSecondsPass(30);
+        givenASavedContactPings();
+
+        whenSecondsPass(GRACE_SECONDS);
+
+        thenBootstrapRequestsWent(0);
+        thenTheFallbackContactsWereRead(0);
+    }
+
+    @Test
+    void shouldAskTheFallbackContactsAtOnceWithoutAnyContactToAsk() {
+        givenFallbackContacts(10);
+
+        whenSecondsPass(1);
+
+        thenBootstrapRequestsWentToFallbackContacts(1);
+    }
+
+    @Test
+    void shouldReadTheFallbackContactsOnlyOnce() {
+        givenFallbackContacts(10);
+
+        whenSecondsPass(600);
+
+        thenBootstrapRequestsWentToFallbackContacts(10);
+        thenTheFallbackContactsWereRead(1);
+    }
+
     private void givenANodesDat() throws IOException {
         this.good.add(record(UInt128.random(this.random), Ipv4.of(20, 1, 1, 1), PORT, 8));
         Files.write(this.dir.resolve(KadNode.NODES_FILE), NodesDat.write(this.good));
@@ -171,6 +229,27 @@ class KadNodeBootstrapTest {
         this.node.addContacts(new NodesDat.Contents(3, true, all));
     }
 
+    private void givenSavedContacts(int count) {
+        for (int i = 0; i < count; i++) {
+            this.saved.add(record(UInt128.random(this.random), Ipv4.of(30 + i, 1, 1, 1), PORT, 8));
+        }
+        this.node.addContacts(new NodesDat.Contents(2, false, this.saved));
+    }
+
+    private void givenFallbackContacts(int count) {
+        for (int i = 0; i < count; i++) {
+            this.fallback.add(record(UInt128.random(this.random), Ipv4.of(40 + i, 1, 1, 1), PORT, 8));
+        }
+        this.node.fallBackTo(() -> {
+            this.fallbackReads++;
+            return new NodesDat.Contents(3, true, this.fallback);
+        });
+    }
+
+    private void givenASavedContactPings() {
+        this.node.received(this.saved.getFirst().ip(), PORT, KadMessages.ping(), false, 0, 0);
+    }
+
     private void givenSecondsPass(int seconds) {
         whenSecondsPass(seconds);
     }
@@ -200,6 +279,16 @@ class KadNodeBootstrapTest {
 
     private void thenBootstrapRequestsWent(int count) {
         assertThat(bootstrapRequests()).hasSize(count);
+    }
+
+    private void thenBootstrapRequestsWentToFallbackContacts(int count) {
+        List<Integer> fallbackIps =
+                this.fallback.stream().map(NodesDat.Contact::ip).toList();
+        assertThat(bootstrapRequests()).extracting(Sent::ip).hasSize(count).isSubsetOf(fallbackIps);
+    }
+
+    private void thenTheFallbackContactsWereRead(int times) {
+        assertThat(this.fallbackReads).isEqualTo(times);
     }
 
     private void thenBootstrapRequestsWentToTheClosestGoodContacts(int count) {

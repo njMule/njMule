@@ -1899,10 +1899,7 @@ final class Network {
             this.kad.useBuddies(this.buddyLink);
             this.kadSocket.deliverTo(this.kad);
             this.kadSocket.deliverClientPacketsTo(this::clientDatagram);
-            if (!this.kad.loadNodes() && DefaultLists.enabled()) {
-                int kept = this.kad.addContacts(DefaultLists.nodes());
-                logger.info("{} Kad contacts shipped with njMule to bootstrap from", kept);
-            }
+            loadKadContacts(this.kad);
             this.kad.loadIndex();
             this.kadPublisher = new KadPublisher(this.kad, this::kadShared, this.comments::get, Ticker.systemTicker());
             this.kadTicking = this.loop.scheduleRepeating("Kad", Duration.ofSeconds(1), Duration.ofSeconds(1), () -> {
@@ -1920,6 +1917,20 @@ final class Network {
             }
             this.kad = null;
             this.kadSocket = null;
+        }
+    }
+
+    // Kad starts from the saved contacts; the shipped ones are asked when there are none, or when none of them answers.
+    static void loadKadContacts(KadNode kad) {
+        boolean saved = kad.loadNodes();
+        if (!DefaultLists.enabled()) {
+            return;
+        }
+        if (saved) {
+            kad.fallBackTo(DefaultLists::nodes);
+        } else {
+            int kept = kad.addContacts(DefaultLists.nodes());
+            logger.info("{} Kad contacts shipped with njMule to bootstrap from", kept);
         }
     }
 

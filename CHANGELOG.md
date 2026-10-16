@@ -410,8 +410,9 @@ All notable changes to this project are documented here. The format follows
   answers are decrypted; with obfuscation required, servers that cannot take it are not asked.
 - A new profile starts from the server list and the Kad contacts of upd.emule-security.org,
   shipped with njMule: their servers fill a profile that never had a list (one emptied later
-  stays empty), and while there is no nodes.dat Kad asks the shipped contacts for contacts one at
-  a time, without taking them as its own.
+  stays empty), and Kad asks the shipped contacts for contacts one at a time, without taking them
+  as its own, while there is no nodes.dat or once none of the saved contacts answered in the first
+  three minutes (or none is left).
 - Sizes and rates use the units of the interface language as eMule's translations write them
   (Ko and Ko/s in French, Кб in Russian).
 - The server in use stands out in the server list (bold, with an accent bar and a tooltip), and the one

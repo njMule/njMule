@@ -284,6 +284,8 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     // A bootstrap contact is asked every so often while we are not connected, more often while we know no one.
     private static final Duration BOOTSTRAP_EVERY = Duration.ofSeconds(15);
     private static final Duration BOOTSTRAP_EVERY_ALONE = Duration.ofSeconds(2);
+    // Live saved contacts answer the lookups and hellos of the first minutes: silence this long means they are gone.
+    static final Duration FALLBACK_AFTER = Duration.ofMinutes(3);
     // Lookups for UDP test helpers in one test at most, and how far apart.
     private static final int UDP_HELPER_LOOKUPS = 3;
     private static final Duration UDP_HELPER_LOOKUP_GAP = Duration.ofMinutes(1);
@@ -319,6 +321,8 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     // The contacts of a bootstrap-only nodes.dat, closest to our id first: asked, never added.
     private final List<KadMessages.Contact> bootstrapList = new ArrayList<>();
     private long lastBootstrap;
+    private Supplier<NodesDat.Contents> fallback;
+    private long fallbackAt;
     private Buddies buddies = Buddies.NONE;
     private Buddies.State buddyState = Buddies.State.NONE;
     private boolean findBuddy;
@@ -553,6 +557,29 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             this.bootstrapList.removeLast();
         }
         return Math.max(0, this.bootstrapList.size() - before);
+    }
+
+    /**
+     * Contacts to add, once, when no packet came in the first minutes after this call or no contact is left to ask: the
+     * loaded ones may all be gone. They are read only then.
+     */
+    public void fallBackTo(Supplier<NodesDat.Contents> contacts) {
+        this.fallback = Objects.requireNonNull(contacts, "contacts");
+        this.fallbackAt = this.ticker.read() + FALLBACK_AFTER.toNanos();
+    }
+
+    private void fallBackIfAlone(long now) {
+        if (this.fallback == null) {
+            return;
+        }
+        boolean silent = this.lastPacket == 0 && now - this.fallbackAt >= 0;
+        boolean nobodyToAsk = this.table.size() == 0 && this.bootstrapList.isEmpty();
+        if (silent || nobodyToAsk) {
+            Supplier<NodesDat.Contents> contacts = this.fallback;
+            this.fallback = null;
+            int added = addContacts(contacts.get());
+            logger.info("No Kad contact answered: {} fallback contacts to bootstrap from", added);
+        }
     }
 
     // The next bootstrap contact is asked while nothing tells us we are connected.
@@ -1031,6 +1058,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                 this.nextFindBuddy = now + FIND_BUDDY_FIRST.toNanos();
             }
         }
+        fallBackIfAlone(now);
         bootstrapFromList(now);
         tickUdpTest(now);
         tickBuddies(now);
