@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
@@ -65,7 +66,17 @@ final class ScriptedDownloader implements AutoCloseable {
 
     /** Connects to us at {@code port} and greets us with {@code hello}. */
     static ScriptedDownloader connect(int port, Hello hello) throws IOException {
-        Socket socket = new Socket(InetAddress.getLoopbackAddress(), port);
+        return connect(port, hello, 0);
+    }
+
+    /** As above, with a receive buffer of {@code receiveBuffer} bytes, or the system's for 0. */
+    static ScriptedDownloader connect(int port, Hello hello, int receiveBuffer) throws IOException {
+        Socket socket = new Socket();
+        if (receiveBuffer > 0) {
+            // Before the connection, which settles the window it can offer.
+            socket.setReceiveBufferSize(receiveBuffer);
+        }
+        socket.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), port), (int) WAIT.toMillis());
         socket.setSoTimeout((int) WAIT.toMillis());
         ScriptedDownloader client = new ScriptedDownloader(hello, socket);
         client.send(hello.encode(false));

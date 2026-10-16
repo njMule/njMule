@@ -20,9 +20,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -89,6 +92,8 @@ class UploadManagerTest {
     private static final long LOW_ID = 1234;
     private static final Hash16 FAULTY = Hash16.parseHex("fa".repeat(16));
     private static final int MANY_BLOCKS = 16;
+    // Small next to the file: a loopback connection's own buffers, several MB on Linux, would hold most of it.
+    private static final int SMALL_SOCKET_BUFFER = 64 * 1024;
 
     @TempDir
     Path dir;
@@ -122,6 +127,8 @@ class UploadManagerTest {
     private Packet answer;
     private long queued;
     private long dataBeforeAnswer;
+    // The send buffer of the connections we take, 0 for the system's.
+    private int socketBuffer;
     private final Map<Integer, ScriptedDownloader> clients = new HashMap<>();
     private final Map<String, SharedFiles.SharedFile> files = new HashMap<>();
     private byte[] data;
@@ -1259,8 +1266,10 @@ class UploadManagerTest {
 
     private void givenAClientWithASlotThatAsksForManyBlocksAndReadsNothing() throws Exception {
         this.file = share("much.bin", random(MANY_BLOCKS * (int) UploadSession.MAX_BLOCK, 17));
+        this.socketBuffer = SMALL_SOCKET_BUFFER;
         start();
-        this.client = client(1, 0, 0);
+        this.client = ScriptedDownloader.connect(this.port, hello(1, 0, 0), SMALL_SOCKET_BUFFER);
+        this.resources.add(this.client);
         assertThat(ask(this.client, this.file.hash()).opcode()).isEqualTo(Opcodes.Client.ACCEPTUPLOADREQ.code());
         for (int at = 0; at < MANY_BLOCKS; at += 3) {
             List<ClientMessages.Range> ranges = new ArrayList<>();
@@ -1748,10 +1757,23 @@ class UploadManagerTest {
                         IpFilter::empty,
                         new ConnectionGuard.Limits(500, 100, 1000, Duration.ofSeconds(5)),
                         Ticker.systemTicker()),
-                greetings::accepted);
+                (socket, permit) -> {
+                    smallBuffers(socket);
+                    greetings.accepted(socket, permit);
+                });
         this.resources.add(greetings);
         this.resources.add(listener);
         this.port = listener.port();
+    }
+
+    private void smallBuffers(Socket socket) {
+        if (this.socketBuffer > 0) {
+            try {
+                socket.setSendBufferSize(this.socketBuffer);
+            } catch (SocketException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
     }
 
     private void advance(Duration duration) {
