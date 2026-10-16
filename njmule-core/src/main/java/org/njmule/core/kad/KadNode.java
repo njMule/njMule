@@ -23,7 +23,6 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -639,7 +638,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                 this.bootstrapList.add(new KadMessages.Contact(c.id(), c.ip(), c.udpPort(), c.tcpPort(), c.version()));
             }
         }
-        this.bootstrapList.sort(Comparator.comparing(c -> c.id().xor(own)));
+        this.bootstrapList.sort((a, b) -> RoutingTable.compareDistances(a.id(), b.id(), own));
         while (this.bootstrapList.size() > BOOTSTRAP_CONTACTS) {
             this.bootstrapList.removeLast();
         }
@@ -997,7 +996,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     public List<KadContactInfo> contactInfos() {
         List<KadContact> all = new ArrayList<>(this.table.all());
         UInt128 us = this.identity.id();
-        all.sort(Comparator.comparing(c -> c.id().xor(us)));
+        all.sort((a, b) -> RoutingTable.compareDistances(a.id(), b.id(), us));
         List<KadContactInfo> infos = new ArrayList<>(all.size());
         for (KadContact c : all) {
             infos.add(new KadContactInfo(

@@ -303,7 +303,7 @@ final class RoutingTable {
     }
 
     // Compares the distances of two ids to the target without building them.
-    private static int compareDistances(UInt128 a, UInt128 b, UInt128 target) {
+    static int compareDistances(UInt128 a, UInt128 b, UInt128 target) {
         int high = Long.compareUnsigned(a.high() ^ target.high(), b.high() ^ target.high());
         return high != 0 ? high : Long.compareUnsigned(a.low() ^ target.low(), b.low() ^ target.low());
     }
