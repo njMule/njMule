@@ -533,6 +533,28 @@
     -fx-stroke-width: 2.5px;
 }
 
+/* The outcomes of a test of the ports: the icon's tone tells the kind, the words say it. */
+.port-test .port-line .ikonli-font-icon {
+    -fx-icon-size: 16;
+    -fx-icon-color: -color-fg-muted;
+}
+
+.port-test .port-line.open .ikonli-font-icon {
+    -fx-icon-color: -color-success-fg;
+}
+
+.port-test .port-line.closed .ikonli-font-icon {
+    -fx-icon-color: -color-danger-fg;
+}
+
+.port-test .port-line.warning .ikonli-font-icon {
+    -fx-icon-color: -color-warning-fg;
+}
+
+.port-test .port-line.testing .ikonli-font-icon {
+    -fx-icon-color: -nj-accent-strong;
+}
+
 /* What stops the search takes the ring's colour; a disabled one looks like any other. */
 .button.stop-search .ikonli-font-icon {
     -fx-icon-color: -nj-accent-strong;

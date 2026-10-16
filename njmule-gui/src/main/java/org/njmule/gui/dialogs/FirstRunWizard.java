@@ -61,6 +61,7 @@ import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
+import org.njmule.gui.ui.PortTestPane;
 import org.njmule.gui.ui.RateField;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,6 +120,7 @@ public final class FirstRunWizard {
     private final Input<Integer> tcpInput;
     private final Input<Integer> udpInput;
     private final CheckBox upnp = new CheckBox();
+    private final PortTestPane portTest;
     private final ComboBox<Line> line = new ComboBox<>();
     private final RateField<Integer> down;
     private final RateField<Integer> up;
@@ -151,6 +153,7 @@ public final class FirstRunWizard {
         this.up = RateField.line(gui, gui.t("nj.settings.uploadCapacity"));
         this.downInput = this.down.input();
         this.upInput = this.up.input();
+        this.portTest = new PortTestPane(gui, () -> this::ports);
         this.pages.addAll(List.of(Page.START, Page.NICK, Page.FOLDERS, Page.CONNECTION));
         if (emule.isPresent()) {
             this.pages.add(Page.EMULE);
@@ -353,7 +356,8 @@ public final class FirstRunWizard {
                                 this.gui.t("nj.settings.downloadCapacity"),
                                 this.gui.t("nj.settings.uploadCapacity")),
                         List.of(ports, this.line, this.down.node(), this.up.node())),
-                this.upnp);
+                this.upnp,
+                this.portTest.node());
         return box;
     }
 
@@ -406,6 +410,22 @@ public final class FirstRunWizard {
         }
         this.stage.close();
         this.done.accept(new Outcome(languageChanged, this.emule.isPresent() && this.importEmule.isSelected()));
+    }
+
+    // The ports and UPnP as the page gives them, tried before Finish; a field that is wrong keeps the port it had.
+    private Preferences ports(Preferences was) {
+        Preferences.Builder now = was.toBuilder();
+        if (this.tcpInput.isValid()) {
+            now.tcpPort(this.tcpInput.value());
+        }
+        if (this.udpInput.isValid()) {
+            now.udpPort(this.udpInput.value());
+        }
+        return now.upnp(this.upnp.isSelected()).build();
+    }
+
+    PortTestPane portTest() {
+        return this.portTest;
     }
 
     // The settings as the pages leave them; a field that is wrong keeps the setting it had.

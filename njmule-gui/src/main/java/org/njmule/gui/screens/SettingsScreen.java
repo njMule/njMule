@@ -78,6 +78,7 @@ import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
+import org.njmule.gui.ui.PortTestPane;
 import org.njmule.gui.ui.RateField;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.UrlBox;
@@ -138,6 +139,7 @@ public final class SettingsScreen implements Screen {
     private final CheckBox secureIdent = new CheckBox();
     private final CheckBox credits = new CheckBox();
     private final CheckBox upnp = new CheckBox();
+    private PortTestPane portTest;
     private final TextField deadRetries = new TextField();
     private final TextField backups = new TextField();
     private final TextField filterLevel = new TextField();
@@ -367,6 +369,8 @@ public final class SettingsScreen implements Screen {
         grid.add(this.secureIdent, 1, row++);
         grid.add(this.credits, 1, row++);
         grid.add(this.upnp, 1, row++);
+        this.portTest = new PortTestPane(this.gui, () -> this::ports);
+        grid.add(this.portTest.node(), 1, row++);
         row = section(grid, row, this.gui.t("IDS_PW_SERVER"));
         Label retries = new Label(this.gui.t("IDS_PW_RETRIES"));
         HBox dead = new HBox(8, this.deadRetries, retries);
@@ -893,6 +897,18 @@ public final class SettingsScreen implements Screen {
     }
 
     /** Validates the form, then saves the preferences and the look; errors are shown. */
+    // The ports and UPnP as the boxes give them, tried before the rest is applied; a wrong port stays as it was.
+    private Preferences ports(Preferences was) {
+        Preferences.Builder now = was.toBuilder();
+        if (this.tcpPortInput.isValid()) {
+            now.tcpPort(this.tcpPortInput.value());
+        }
+        if (this.udpPortInput.isValid()) {
+            now.udpPort(this.udpPortInput.value());
+        }
+        return now.upnp(this.upnp.isSelected()).build();
+    }
+
     void apply() {
         Optional<Input<?>> wrong =
                 this.checked.stream().filter(i -> !i.isValid()).findFirst();

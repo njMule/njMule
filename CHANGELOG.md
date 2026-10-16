@@ -119,6 +119,10 @@ All notable changes to this project are documented here. The format follows
   in the options and kept in `scheduler.properties`.
 - Port forwarding with UPnP (on by default): the router is found on the local network, ports are
   mapped and renewed while njMule runs and removed on exit.
+- Port test, in the first-start wizard and in the connection options: the ports as chosen are
+  applied, the router asked again through UPnP, then the server checks the TCP port at a new login
+  (a HighID) and Kad nodes check both ports; the outcomes show as they come, with what to do about
+  a closed port. The engine API's `testPorts` and `portTest` run it and tell how far it went.
 - Totals over all sessions (bytes, sessions, time) in `statistics.properties`.
 - Messages with other clients and their CAPTCHA check, both ways, and friends kept in
   `emfriends.met`; a messages screen in the desktop interface.
