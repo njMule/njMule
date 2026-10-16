@@ -122,13 +122,26 @@ class KadNodeMessagesTest {
                 this.ticker);
     }
 
+    // Loaded contacts we never heard from may be gone: the asking node would take them as verified.
     @Test
-    void shouldAnswerABootstrapRequestWithOurContacts() throws Exception {
+    void shouldAnswerABootstrapRequestWithTheContactsWeHeardFrom() throws Exception {
         givenContactsAt(Ipv4.of(70, 1, 1, 1), Ipv4.of(71, 1, 1, 1));
+        givenANodeSaidHelloWithVersion(Ipv4.of(72, 1, 1, 1), 8);
+        givenANodeSaidHelloWithVersion(Ipv4.of(73, 1, 1, 1), 8);
 
         whenANodeAsksForABootstrap(PEER);
 
-        thenOurBootstrapAnswerToListsContacts(PEER, 2);
+        thenOurBootstrapAnswerToListsTheContactsAt(PEER, Ipv4.of(72, 1, 1, 1), Ipv4.of(73, 1, 1, 1));
+    }
+
+    @Test
+    void shouldLeaveADeadContactOutOfABootstrapAnswer() throws Exception {
+        givenANodeSaidHelloWithVersion(Ipv4.of(72, 1, 1, 1), 8);
+        givenTheContactLeftItsCheckUnanswered(Ipv4.of(72, 1, 1, 1));
+
+        whenANodeAsksForABootstrap(PEER);
+
+        thenOurBootstrapAnswerToListsTheContactsAt(PEER);
     }
 
     @Test
@@ -924,6 +937,14 @@ class KadNodeMessagesTest {
         thenTheContactIsAskedWhetherItIsStillThere(ip);
     }
 
+    // A new contact is checked within a minute: unanswered, it counts as dead until it is removed.
+    private void givenTheContactLeftItsCheckUnanswered(int ip) {
+        givenTheContactWasAskedWhetherItIsStillThere(ip);
+        assertThat(this.node.contactInfos())
+                .singleElement()
+                .satisfies(c -> assertThat(c.type()).isEqualTo(KadContact.DEAD));
+    }
+
     private void givenAMinutePassedWhileTheContactWasWaitedFor() {
         whenMinutesPass(1);
         thenTheContactsAre(1, "still waited for");
@@ -1370,11 +1391,11 @@ class KadNodeMessagesTest {
                         .encode());
     }
 
-    private void thenOurBootstrapAnswerToListsContacts(int ip, int contacts) throws Exception {
+    private void thenOurBootstrapAnswerToListsTheContactsAt(int ip, Integer... addresses) throws Exception {
         KadMessages.BootstrapAnswer ours = KadMessages.BootstrapAnswer.decode(last(ip, Opcodes.Kad.BOOTSTRAP_RES));
         assertThat(ours.sender().id()).isEqualTo(this.node.id());
         assertThat(ours.sender().tcpPort()).isEqualTo(4662);
-        assertThat(ours.contacts()).hasSize(contacts);
+        assertThat(ours.contacts()).extracting(KadMessages.Contact::ip).containsExactlyInAnyOrder(addresses);
     }
 
     private void thenTheContactsAre(int count) {

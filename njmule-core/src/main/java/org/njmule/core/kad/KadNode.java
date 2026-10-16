@@ -609,7 +609,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     /** Writes the best contacts we heard from to {@code nodes.dat}. */
     public void saveNodes() {
         List<NodesDat.Contact> records = new ArrayList<>();
-        for (KadContact c : this.table.bootstrapContacts(NodesDat.MAX_WRITTEN, KadNode::isWorthSaving, this.random)) {
+        for (KadContact c : this.table.bootstrapContacts(NodesDat.MAX_WRITTEN, KadNode::isKnownLive, this.random)) {
             records.add(c.record());
         }
         Path file = this.configDir.resolve(NODES_FILE);
@@ -624,9 +624,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
     }
 
-    // The file keeps neither types nor ages: contacts only loaded or told of by other nodes, and dead ones, would come
-    // back at the next start as good as live ones.
-    private static boolean isWorthSaving(KadContact c) {
+    // Contacts only loaded or told of by other nodes, and dead ones, are neither saved nor handed out: nodes.dat keeps
+    // no type or age, and a node starting from our bootstrap answer takes them as verified.
+    private static boolean isKnownLive(KadContact c) {
         return c.wasHeardFrom() && c.type() < KadContact.DEAD;
     }
 
@@ -1264,7 +1264,8 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
     private void bootstrapRequested(Peer peer) {
         List<KadMessages.Contact> contacts = new ArrayList<>();
-        for (KadContact c : this.table.bootstrapContacts(KadMessages.MAX_BOOTSTRAP_CONTACTS, this.random)) {
+        for (KadContact c :
+                this.table.bootstrapContacts(KadMessages.MAX_BOOTSTRAP_CONTACTS, KadNode::isKnownLive, this.random)) {
             contacts.add(c.message());
         }
         answer(peer, new KadMessages.BootstrapAnswer(self(), contacts).encode());

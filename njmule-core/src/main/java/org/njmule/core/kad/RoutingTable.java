@@ -271,12 +271,7 @@ final class RoutingTable {
         return high != 0 ? high : Long.compareUnsigned(a.low() ^ target.low(), b.low() ^ target.low());
     }
 
-    /** Contacts to hand to a joining node: those of the zones near the root. */
-    List<KadContact> bootstrapContacts(int count, SecureRandom random) {
-        return bootstrapContacts(count, c -> true, random);
-    }
-
-    /** Up to {@code count} contacts of the zones near the root that {@code wanted} accepts. */
+    /** Up to {@code count} contacts of the zones near the root that {@code wanted} accepts: to start a node from. */
     List<KadContact> bootstrapContacts(int count, Predicate<KadContact> wanted, SecureRandom random) {
         List<KadContact> contacts = new ArrayList<>();
         collect(this.root, 5, wanted, random, contacts);
