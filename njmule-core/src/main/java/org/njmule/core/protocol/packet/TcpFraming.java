@@ -20,6 +20,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.util.LittleEndian;
 
 /**
  * TCP framing: {@code <protocol u8><length u32><opcode u8><payload>}, where the length counts the opcode byte. Frames
@@ -35,11 +36,7 @@ public final class TcpFraming {
         int length = packet.length();
         byte[] out = new byte[HEADER_SIZE + length];
         out[0] = (byte) packet.protocol();
-        long counted = length + 1L;
-        out[1] = (byte) counted;
-        out[2] = (byte) (counted >>> 8);
-        out[3] = (byte) (counted >>> 16);
-        out[4] = (byte) (counted >>> 24);
+        LittleEndian.putInt(out, 1, length + 1);
         out[5] = (byte) packet.opcode();
         packet.copyPayload(out, HEADER_SIZE);
         return out;
@@ -61,8 +58,7 @@ public final class TcpFraming {
         if (!Protocol.isTcp(protocol)) {
             throw new DecodeException(String.format("unknown protocol byte 0x%02X", protocol));
         }
-        long counted =
-                (header[1] & 0xFFL) | (header[2] & 0xFFL) << 8 | (header[3] & 0xFFL) << 16 | (header[4] & 0xFFL) << 24;
+        long counted = Integer.toUnsignedLong(LittleEndian.getInt(header, 1));
         int opcode = header[5] & 0xFF;
         if (counted == 0) {
             throw new DecodeException("frame length 0 cannot hold the opcode");

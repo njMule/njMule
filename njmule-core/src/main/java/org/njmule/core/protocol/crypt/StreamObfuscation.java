@@ -26,6 +26,7 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.crypto.Rc4;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.util.LittleEndian;
 
 /**
  * The obfuscated TCP handshakes (protocol obfuscation, not security). Each one runs in blocking style on the
@@ -100,7 +101,7 @@ public final class StreamObfuscation {
         skipDecrypted(in, receive, request[6] & 0xFF);
 
         byte[] answer = new byte[6 + paddingLength(random, maxPadding)];
-        putInt(answer, 0, SYNC);
+        LittleEndian.putInt(answer, 0, SYNC);
         answer[4] = METHOD_OBFUSCATION;
         answer[5] = (byte) (answer.length - 6);
         fillPadding(random, answer, 6);
@@ -133,7 +134,7 @@ public final class StreamObfuscation {
         skipDecrypted(in, receive, answer[6] & 0xFF);
 
         byte[] confirm = new byte[6 + random.nextInt(MAX_SERVER_PADDING)];
-        putInt(confirm, 0, SYNC);
+        LittleEndian.putInt(confirm, 0, SYNC);
         confirm[4] = METHOD_OBFUSCATION;
         confirm[5] = (byte) (confirm.length - 6);
         fillPadding(random, confirm, 6);
@@ -207,7 +208,7 @@ public final class StreamObfuscation {
     private static byte[] negotiation(SecureRandom random, int maxPadding) {
         int header = 7;
         byte[] out = new byte[header + paddingLength(random, maxPadding)];
-        putInt(out, 0, SYNC);
+        LittleEndian.putInt(out, 0, SYNC);
         out[4] = METHOD_OBFUSCATION;
         out[5] = METHOD_OBFUSCATION;
         out[6] = (byte) (out.length - header);
@@ -229,20 +230,9 @@ public final class StreamObfuscation {
     }
 
     private static void checkSync(byte[] decrypted) throws DecodeException {
-        int sync = (decrypted[0] & 0xFF)
-                | (decrypted[1] & 0xFF) << 8
-                | (decrypted[2] & 0xFF) << 16
-                | (decrypted[3] & 0xFF) << 24;
-        if (sync != SYNC) {
+        if (LittleEndian.getInt(decrypted, 0) != SYNC) {
             throw new DecodeException("wrong obfuscation sync value: not an obfuscated stream");
         }
-    }
-
-    private static void putInt(byte[] buffer, int at, int value) {
-        buffer[at] = (byte) value;
-        buffer[at + 1] = (byte) (value >>> 8);
-        buffer[at + 2] = (byte) (value >>> 16);
-        buffer[at + 3] = (byte) (value >>> 24);
     }
 
     private static byte[] readDecrypted(InputStream in, Rc4 cipher, int length) throws IOException {

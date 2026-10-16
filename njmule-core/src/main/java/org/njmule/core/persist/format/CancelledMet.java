@@ -25,6 +25,7 @@ import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.tag.TagCodec;
+import org.njmule.core.util.LittleEndian;
 
 /**
  * Cancelled downloads, {@code cancelled.met}: {@code <0x0F><version 1><seed u32><u32 count>} then {@code <key 16><u8
@@ -79,10 +80,7 @@ public final class CancelledMet {
     /** The key of a file hash under {@code seed}. */
     public static Hash16 key(int seed, Hash16 fileHash) {
         byte[] material = new byte[4 + Hash16.LENGTH];
-        material[0] = (byte) seed;
-        material[1] = (byte) (seed >>> 8);
-        material[2] = (byte) (seed >>> 16);
-        material[3] = (byte) (seed >>> 24);
+        LittleEndian.putInt(material, 0, seed);
         fileHash.copyTo(material, 4);
         try {
             return Hash16.of(MessageDigest.getInstance("MD5").digest(material));

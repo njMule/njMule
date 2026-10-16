@@ -19,6 +19,7 @@ package org.njmule.core.protocol.io;
 import java.util.Arrays;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
+import org.njmule.core.util.LittleEndian;
 
 /** Little-endian writer into a growable buffer, with an overall size cap. */
 public final class PacketWriter {
@@ -50,22 +51,21 @@ public final class PacketWriter {
 
     public PacketWriter u16(int value) {
         ensure(2);
-        put16(this.size, value);
+        LittleEndian.putShort(this.data, this.size, value);
         this.size += 2;
         return this;
     }
 
     public PacketWriter u32(long value) {
         ensure(4);
-        put32(this.size, (int) value);
+        LittleEndian.putInt(this.data, this.size, (int) value);
         this.size += 4;
         return this;
     }
 
     public PacketWriter u64(long value) {
         ensure(8);
-        put32(this.size, (int) value);
-        put32(this.size + 4, (int) (value >>> 32));
+        LittleEndian.putLong(this.data, this.size, value);
         this.size += 8;
         return this;
     }
@@ -129,13 +129,13 @@ public final class PacketWriter {
     /** Overwrites a previously written u16, e.g. a count only known at the end. */
     public void setU16(int position, int value) {
         checkPatch(position, 2);
-        put16(position, value);
+        LittleEndian.putShort(this.data, position, value);
     }
 
     /** Overwrites a previously written u32. */
     public void setU32(int position, long value) {
         checkPatch(position, 4);
-        put32(position, (int) value);
+        LittleEndian.putInt(this.data, position, (int) value);
     }
 
     public void setU8(int position, int value) {
@@ -145,18 +145,6 @@ public final class PacketWriter {
 
     public byte[] toByteArray() {
         return Arrays.copyOf(this.data, this.size);
-    }
-
-    private void put16(int at, int value) {
-        this.data[at] = (byte) value;
-        this.data[at + 1] = (byte) (value >>> 8);
-    }
-
-    private void put32(int at, int value) {
-        this.data[at] = (byte) value;
-        this.data[at + 1] = (byte) (value >>> 8);
-        this.data[at + 2] = (byte) (value >>> 16);
-        this.data[at + 3] = (byte) (value >>> 24);
     }
 
     private static int checkCount(int count, int max) {

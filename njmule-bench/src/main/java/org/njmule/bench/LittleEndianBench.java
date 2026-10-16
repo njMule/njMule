@@ -16,12 +16,11 @@
  */
 package org.njmule.bench;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.SplittableRandom;
 import java.util.concurrent.TimeUnit;
+import org.njmule.core.util.LittleEndian;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -48,7 +47,6 @@ public class LittleEndianBench {
 
     private static final int SIZE = 64 * 1024;
     private static final int VALUES = SIZE / 4 - 1;
-    private static final VarHandle LE_INT = MethodHandles.byteArrayViewVarHandle(int[].class, ByteOrder.LITTLE_ENDIAN);
 
     private final byte[] data = new byte[SIZE];
     private final ByteBuffer buffer = ByteBuffer.wrap(this.data).order(ByteOrder.LITTLE_ENDIAN);
@@ -58,7 +56,7 @@ public class LittleEndianBench {
         new SplittableRandom(42).nextBytes(this.data);
     }
 
-    /** Today's code: shifts and masks, at unaligned offsets as in a packet. */
+    /** The replaced code: shifts and masks, at unaligned offsets as in a packet. */
     @Benchmark
     @OperationsPerInvocation(VALUES)
     public int readShifts() {
@@ -72,12 +70,13 @@ public class LittleEndianBench {
         return sum;
     }
 
+    /** Today's code: {@link LittleEndian}, on a byte-array view. */
     @Benchmark
     @OperationsPerInvocation(VALUES)
     public int readVarHandle() {
         int sum = 0;
         for (int at = 1; at + 4 <= SIZE; at += 4) {
-            sum += (int) LE_INT.get(this.data, at);
+            sum += LittleEndian.getInt(this.data, at);
         }
         return sum;
     }
@@ -108,7 +107,7 @@ public class LittleEndianBench {
     @OperationsPerInvocation(VALUES)
     public byte[] writeVarHandle() {
         for (int at = 1, v = 0; at + 4 <= SIZE; at += 4, v += 0x01010101) {
-            LE_INT.set(this.data, at, v);
+            LittleEndian.putInt(this.data, at, v);
         }
         return this.data;
     }

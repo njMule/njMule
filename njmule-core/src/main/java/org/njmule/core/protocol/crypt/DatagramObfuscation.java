@@ -27,6 +27,7 @@ import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.packet.UdpFraming;
 import org.njmule.core.util.Ipv4;
+import org.njmule.core.util.LittleEndian;
 
 /**
  * UDP obfuscation. An obfuscated datagram is {@code <marker 1><random part 2>} in clear followed by RC4-encrypted
@@ -76,15 +77,13 @@ public final class DatagramObfuscation {
      * 0xFFFFFFFE, and the same for that address until the secret changes.
      */
     public static int kadVerifyKey(int udpKey, int peerIp) {
-        byte[] material = concat(Ipv4.toBytes(peerIp), le32(udpKey));
+        byte[] material = concat(Ipv4.toBytes(peerIp), LittleEndian.ofInt(udpKey));
         byte[] digest = KEYS.get().md5(material);
-        long folded = Integer.toUnsignedLong(
-                readLe32(digest, 0) ^ readLe32(digest, 4) ^ readLe32(digest, 8) ^ readLe32(digest, 12));
+        long folded = Integer.toUnsignedLong(LittleEndian.getInt(digest, 0)
+                ^ LittleEndian.getInt(digest, 4)
+                ^ LittleEndian.getInt(digest, 8)
+                ^ LittleEndian.getInt(digest, 12));
         return (int) (folded % 0xFFFF_FFFEL + 1);
-    }
-
-    private static int readLe32(byte[] b, int at) {
-        return (b[at] & 0xFF) | (b[at + 1] & 0xFF) << 8 | (b[at + 2] & 0xFF) << 16 | (b[at + 3] & 0xFF) << 24;
     }
 
     public static byte[] encryptForClient(
@@ -131,10 +130,10 @@ public final class DatagramObfuscation {
             throw new IllegalArgumentException("a Kad id or a receiver verify key is required");
         }
         byte[] material = useVerifyKey
-                ? concat(le32(receiverVerifyKey), keyPart)
+                ? concat(LittleEndian.ofInt(receiverVerifyKey), keyPart)
                 : concat(receiverKadId.get().toByteArray(), keyPart);
         Rc4 rc4 = KEYS.get().rc4(material);
-        byte[] keys = concat(le32(receiverVerifyKey), le32(senderVerifyKey));
+        byte[] keys = concat(LittleEndian.ofInt(receiverVerifyKey), LittleEndian.ofInt(senderVerifyKey));
         return seal(datagram, marker, keyPart, SYNC_CLIENT, rc4, keys);
     }
 
@@ -188,7 +187,7 @@ public final class DatagramObfuscation {
                 }
                 default -> {
                     kind = Kind.KAD_VERIFY_KEY;
-                    material = concat(le32(ownVerifyKeyForSender), keyPart);
+                    material = concat(LittleEndian.ofInt(ownVerifyKeyForSender), keyPart);
                 }
             }
             Optional<Received> opened = open(data, offset, length, KEYS.get().rc4(material), SYNC_CLIENT, kind);
@@ -235,7 +234,7 @@ public final class DatagramObfuscation {
             throws DecodeException {
         byte[] head = new byte[5];
         rc4.apply(data, offset + 3, head, 0, 5);
-        if (readInt(head, 0) != sync) {
+        if (LittleEndian.getInt(head, 0) != sync) {
             return Optional.empty();
         }
         int padding = head[4] & 0x0F;
@@ -254,8 +253,8 @@ public final class DatagramObfuscation {
             }
             byte[] keys = new byte[8];
             rc4.apply(data, from, keys, 0, 8);
-            receiverKey = readInt(keys, 0);
-            senderKey = readInt(keys, 4);
+            receiverKey = LittleEndian.getInt(keys, 0);
+            senderKey = LittleEndian.getInt(keys, 4);
             from += 8;
             rest -= 8;
         }
@@ -270,7 +269,7 @@ public final class DatagramObfuscation {
         out[0] = (byte) marker;
         out[1] = keyPart[0];
         out[2] = keyPart[1];
-        writeInt(out, 3, sync);
+        LittleEndian.putInt(out, 3, sync);
         out[7] = 0; // no padding
         if (kadKeys != null) {
             System.arraycopy(kadKeys, 0, out, ED2K_OVERHEAD, extra);
@@ -322,7 +321,7 @@ public final class DatagramObfuscation {
 
     private static byte[] serverMaterial(int serverKey, int magic, byte[] keyPart) {
         byte[] m = new byte[7];
-        writeInt(m, 0, serverKey);
+        LittleEndian.putInt(m, 0, serverKey);
         m[4] = (byte) magic;
         m[5] = keyPart[0];
         m[6] = keyPart[1];
@@ -335,31 +334,11 @@ public final class DatagramObfuscation {
         return part;
     }
 
-    private static byte[] le32(int value) {
-        byte[] out = new byte[4];
-        writeInt(out, 0, value);
-        return out;
-    }
-
     private static byte[] concat(byte[] a, byte[] b) {
         byte[] out = new byte[a.length + b.length];
         System.arraycopy(a, 0, out, 0, a.length);
         System.arraycopy(b, 0, out, a.length, b.length);
         return out;
-    }
-
-    private static void writeInt(byte[] buffer, int at, int value) {
-        buffer[at] = (byte) value;
-        buffer[at + 1] = (byte) (value >>> 8);
-        buffer[at + 2] = (byte) (value >>> 16);
-        buffer[at + 3] = (byte) (value >>> 24);
-    }
-
-    private static int readInt(byte[] buffer, int at) {
-        return (buffer[at] & 0xFF)
-                | (buffer[at + 1] & 0xFF) << 8
-                | (buffer[at + 2] & 0xFF) << 16
-                | (buffer[at + 3] & 0xFF) << 24;
     }
 
     /** The MD5 and the RC4 cipher of one thread. Each use ends before the next one starts, so one of each is enough. */

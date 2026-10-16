@@ -22,6 +22,7 @@ import java.util.Optional;
 import org.njmule.core.crypto.Rsa;
 import org.njmule.core.crypto.Rsa.PrivateKey;
 import org.njmule.core.crypto.Rsa.PublicKey;
+import org.njmule.core.util.LittleEndian;
 
 /**
  * Secure identification of peers for the credit system. A peer proves it owns its key by signing {@code <verifier's
@@ -74,10 +75,7 @@ public final class SecureIdent {
         byte[] message = new byte[length];
         System.arraycopy(verifierPublicKey, 0, message, 0, verifierPublicKey.length);
         int at = verifierPublicKey.length;
-        message[at] = (byte) challenge;
-        message[at + 1] = (byte) (challenge >>> 8);
-        message[at + 2] = (byte) (challenge >>> 16);
-        message[at + 3] = (byte) (challenge >>> 24);
+        LittleEndian.putInt(message, at, challenge);
         if (binding.isPresent()) {
             System.arraycopy(binding.get().address().getAddress(), 0, message, at + 4, 4);
             message[at + 8] = (byte) binding.get().kind().code();
