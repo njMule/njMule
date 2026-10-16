@@ -16,11 +16,14 @@
  */
 package org.njmule.app;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -49,6 +52,8 @@ public abstract sealed class LinkAssociation {
     static final String DESKTOP_ID = "org.njmule.njMule.desktop";
 
     private static final Logger logger = LoggerFactory.getLogger(LinkAssociation.class);
+    // reg.exe, xdg-mime and their like answer in well under a second.
+    private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(30);
 
     final Path configDir;
     final Shell shell;
@@ -109,18 +114,43 @@ public abstract sealed class LinkAssociation {
     }
 
     static Result run(List<String> command) throws IOException {
+        return run(command, COMMAND_TIMEOUT);
+    }
+
+    /**
+     * Runs {@code command} with nothing on its input. Past {@code timeout} it is stopped with what it started; once it
+     * has ended, what it started may keep its output open, and only the output come by the same deadline counts.
+     */
+    static Result run(List<String> command, Duration timeout) throws IOException {
+        long deadline = System.nanoTime() + timeout.toNanos();
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        process.getOutputStream().close();
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        // Read on a thread of its own, so that an output never closed cannot hold the wait for the end.
+        Thread reader = Thread.ofVirtual().name("njmule-command-output").start(() -> copy(process, output));
         try {
-            byte[] output = process.getInputStream().readAllBytes();
-            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+            if (!process.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
                 process.destroyForcibly();
-                throw new IOException(command.getFirst() + " did not finish");
+                throw new IOException(command.getFirst() + " did not finish in " + timeout.toSeconds() + " s");
             }
-            return new Result(process.exitValue(), new String(output, StandardCharsets.UTF_8));
+            if (!reader.join(Duration.ofNanos(Math.max(0, deadline - System.nanoTime())))) {
+                logger.debug("{} ended with its output still open", command.getFirst());
+            }
+            return new Result(process.exitValue(), output.toString(StandardCharsets.UTF_8));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            process.descendants().forEach(ProcessHandle::destroyForcibly);
             process.destroyForcibly();
             throw new IOException("Interrupted while running " + command.getFirst(), e);
+        }
+    }
+
+    private static void copy(Process process, ByteArrayOutputStream output) {
+        try (InputStream in = process.getInputStream()) {
+            in.transferTo(output);
+        } catch (IOException e) {
+            // The command was stopped: its output ends here.
         }
     }
 
