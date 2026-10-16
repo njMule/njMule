@@ -16,12 +16,11 @@
  */
 package org.njmule.app;
 
+import com.google.common.net.UrlEscapers;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -393,7 +392,7 @@ final class RemoteControl {
 
     // A path segment the user typed, so that it cannot reach another call.
     private static String encode(String segment) {
-        return URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20");
+        return UrlEscapers.urlPathSegmentEscaper().escape(segment);
     }
 
     private static void none(List<String> args) throws Usage {

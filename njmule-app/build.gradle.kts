@@ -12,6 +12,7 @@ description = "njMule App"
 dependencies {
     api(project(":njmule-core"))
     implementation(project(":njmule-webui"))
+    implementation(libs.guava)
     implementation(libs.picocli)
     implementation(libs.slf4j.api)
     implementation(libs.logback.classic)

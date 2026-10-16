@@ -16,6 +16,7 @@
  */
 package org.njmule.core.upnp;
 
+import com.google.common.xml.XmlEscapers;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.Serial;
@@ -488,6 +489,6 @@ public final class Igd implements AutoCloseable {
     }
 
     private static String escape(String text) {
-        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        return XmlEscapers.xmlContentEscaper().escape(text);
     }
 }

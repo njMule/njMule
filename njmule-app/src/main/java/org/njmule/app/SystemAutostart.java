@@ -16,6 +16,7 @@
  */
 package org.njmule.app;
 
+import com.google.common.xml.XmlEscapers;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -351,7 +352,7 @@ abstract sealed class SystemAutostart implements Autostart {
         }
 
         private static String xml(String text) {
-            return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+            return XmlEscapers.xmlContentEscaper().escape(text);
         }
     }
 }
