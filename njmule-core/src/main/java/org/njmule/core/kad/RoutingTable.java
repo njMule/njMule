@@ -106,6 +106,43 @@ final class RoutingTable {
         this.lan = Objects.requireNonNull(lan, "lan");
     }
 
+    /**
+     * How many nodes the network holds, as the leaves tell: one of the first levels is taken full; a deeper one from
+     * the contacts of the zone three levels up, scaled to the whole tree and by {@code firewalled}, for the nodes no
+     * one can take as a contact. The largest estimate counts.
+     */
+    long estimatedNodes(double firewalled) {
+        return estimate(this.root, new ArrayList<>(), firewalled);
+    }
+
+    private static long estimate(Zone zone, List<Zone> above, double firewalled) {
+        if (!zone.isLeaf()) {
+            above.add(zone);
+            long most = Math.max(estimate(zone.near, above, firewalled), estimate(zone.far, above, firewalled));
+            above.removeLast();
+            return most;
+        }
+        if (zone.level < KBASE) {
+            return (1L << zone.level) * K;
+        }
+        Zone sample = above.get(zone.level - 3);
+        return (long) (Math.pow(2, zone.level - 3) * contactsUnder(sample) * firewalled);
+    }
+
+    private static int contactsUnder(Zone zone) {
+        return zone.isLeaf() ? zone.bin.size() : contactsUnder(zone.near) + contactsUnder(zone.far);
+    }
+
+    /** The share of our contacts that speak {@code version} or later, 0 without contacts. */
+    double shareFrom(int version) {
+        if (this.byId.isEmpty()) {
+            return 0;
+        }
+        long recent =
+                this.byId.values().stream().filter(c -> c.version() >= version).count();
+        return (double) recent / this.byId.size();
+    }
+
     UInt128 own() {
         return this.own;
     }

@@ -25,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.application.Platform;
 import javafx.geometry.Bounds;
@@ -40,9 +41,13 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.gui.FxTesting;
+import org.njmule.gui.Statuses;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.Formats;
 import org.njmule.gui.infra.GuiSettings;
@@ -63,6 +68,7 @@ class MainWindowTest {
     private EngineModel model;
     private Stage stage;
     private MainWindow window;
+    private String counted;
     private final List<Shown> shown = new ArrayList<>();
     private final Map<String, List<String>> cut = new LinkedHashMap<>();
 
@@ -112,6 +118,36 @@ class MainWindowTest {
         thenTheMessagesShownAre(1);
         thenConnectReads("Connect");
         thenTheEd2kChipTells("Not Connected");
+    }
+
+    @Test
+    void shouldCountTheUsersOfTheAnsweringServersBesideTheKadEstimate() throws Exception {
+        givenTheEngine();
+        givenTheWindowIn(Locale.ENGLISH, GuiSettings.Mode.LIGHT);
+
+        whenTheNetworksAreCounted(true, true);
+
+        thenTheCountsRead("Users 2,400 (5,000) | Files 68,000 (600,000)");
+    }
+
+    @Test
+    void shouldCountTheServersAloneWhileKadIsDown() throws Exception {
+        givenTheEngine();
+        givenTheWindowIn(Locale.ENGLISH, GuiSettings.Mode.LIGHT);
+
+        whenTheNetworksAreCounted(true, false);
+
+        thenTheCountsRead("Users 2,400 | Files 68,000");
+    }
+
+    @Test
+    void shouldCountTheKadEstimateAloneWithoutAServer() throws Exception {
+        givenTheEngine();
+        givenTheWindowIn(Locale.ENGLISH, GuiSettings.Mode.LIGHT);
+
+        whenTheNetworksAreCounted(false, true);
+
+        thenTheCountsRead("Users 5,000 | Files 600,000");
     }
 
     private void givenTheEngine() throws IOException {
@@ -207,6 +243,47 @@ class MainWindowTest {
 
     private void thenConnectReads(String text) throws Exception {
         assertThat(FxTesting.onFx(() -> this.window.connectButton().getText())).isEqualTo(text);
+    }
+
+    // Two servers answer and one failed; Kad estimates 5,000 users sharing 600,000 files.
+    private void whenTheNetworksAreCounted(boolean onAServer, boolean kadUp) throws Exception {
+        ServerInfo first = Statuses.server("10.0.0.1:4661", "First", false);
+        ServerInfo failed = new ServerInfo(
+                "10.0.0.3:4661",
+                "Gone",
+                "",
+                9_000,
+                900_000,
+                0,
+                2,
+                ServerInfo.Priority.NORMAL,
+                0,
+                0,
+                0,
+                0,
+                "",
+                false,
+                false);
+        Optional<KadInfo> kad = Optional.of(new KadInfo(
+                kadUp,
+                10,
+                5,
+                false,
+                "00112233445566778899AABBCCDDEEFF",
+                "",
+                4672,
+                false,
+                false,
+                KadInfo.Buddy.NONE,
+                5_000,
+                600_000));
+        EngineStatus status = Statuses.of(onAServer ? Optional.of(first) : Optional.empty(), 0, false, kad, false);
+        List<ServerInfo> servers = List.of(first, Statuses.server("10.0.0.2:4661", "Second", false), failed);
+        this.counted = FxTesting.onFx(() -> this.window.networkCounts(status, servers));
+    }
+
+    private void thenTheCountsRead(String text) {
+        assertThat(this.counted).isEqualTo(text);
     }
 
     private void thenTheEd2kChipTells(String text) throws Exception {

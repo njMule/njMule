@@ -675,6 +675,11 @@ final class KadIndex {
         return this.keywordEntries;
     }
 
+    /** The keywords files are stored under. */
+    int keywords() {
+        return this.keywords.size();
+    }
+
     int sourceEntries() {
         return this.sourceEntries;
     }

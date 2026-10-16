@@ -397,6 +397,10 @@ All notable changes to this project are documented here. The format follows
   does not tell (Kad, a client's shared files) and "Yes" for a file of one part, whole wherever it
   is shared; a count not told is no longer stored as 0 in `StoredSearches.met`, and the web API
   gives `null` for it.
+- The status bar counts the users and files of every server of the list that answers, and, with
+  Kad up, the network Kad estimates in brackets: from the routing table's leaves, made up for the
+  firewalled nodes the greeting nodes report, each node sharing what an average server user does
+  (engine API `KadInfo.users` and `files`).
 - Search results sort, once a column is chosen, with spam last in either direction, names
   by the language's rules whatever their case, complete sources by their share of the sources,
   types then extensions, missing media values last in either direction, and the columns chosen

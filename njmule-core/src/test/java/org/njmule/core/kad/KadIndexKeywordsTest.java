@@ -42,6 +42,7 @@ class KadIndexKeywordsTest {
     private final UInt128 keyword = id(1);
     private final UInt128 file = id(2);
     private List<KadMessages.Entry> found;
+    private int keywords;
 
     @Test
     void shouldForgetPublishersSilentForADaySoThatNewOnesCount() {
@@ -99,6 +100,29 @@ class KadIndexKeywordsTest {
         whenTheKeywordIsSearchedFor(new SearchExpr.Keyword("FIRST name"), NOW + 25 * HOUR);
 
         thenTheNameFoundIs("First Name.avi");
+    }
+
+    @Test
+    void shouldCountTheKeywordsFilesAreStoredUnder() {
+        givenTheFileIsPublishedUnder(id(1), id(2));
+        givenTheFileIsPublishedUnder(id(1), id(3));
+        givenTheFileIsPublishedUnder(id(4), id(2));
+
+        whenTheKeywordsAreCounted();
+
+        thenTheKeywordsCountedAre(2);
+    }
+
+    private void givenTheFileIsPublishedUnder(UInt128 keyword, UInt128 file) {
+        this.index.publishKeyword(keyword, entry(file, "file.avi", List.of()), IP, NOW);
+    }
+
+    private void whenTheKeywordsAreCounted() {
+        this.keywords = this.index.keywords();
+    }
+
+    private void thenTheKeywordsCountedAre(int expected) {
+        assertThat(this.keywords).isEqualTo(expected);
     }
 
     private void givenTheKeywordWasSearchedFor(SearchExpr expression) {

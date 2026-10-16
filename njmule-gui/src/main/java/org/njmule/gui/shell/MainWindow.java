@@ -67,13 +67,16 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.core.config.Preferences;
 import org.njmule.gui.dialogs.AboutDialog;
 import org.njmule.gui.dialogs.FirstRunWizard;
 import org.njmule.gui.dialogs.ImportDialog;
 import org.njmule.gui.infra.Folders;
+import org.njmule.gui.infra.Formats;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.model.EngineModel;
+import org.njmule.gui.model.LiveList;
 import org.njmule.gui.screens.KadScreen;
 import org.njmule.gui.screens.MessagesScreen;
 import org.njmule.gui.screens.SearchScreen;
@@ -646,14 +649,47 @@ public final class MainWindow {
                     !firewalled,
                     firewalled);
         }
-        this.server.setText(status.server()
-                .map(s -> this.gui.f("nj.status.server", formats.count(s.users()), formats.count(s.files())))
-                .orElse(""));
+        this.server.setText(networkCounts(
+                status,
+                this.gui.model().servers().rows().stream()
+                        .map(LiveList.Row::get)
+                        .toList()));
         this.counts.setText(this.gui.f(
                 "nj.status.counts", status.downloads(), status.uploads(), status.queued(), status.sharedFiles()));
         showNetwork();
         showActive();
         this.banner.update(this.gui.model().connectionProperty().get(), status);
+    }
+
+    /**
+     * The users and files of the networks we are on: on eD2K, all the {@code servers} of the list that answer; on Kad,
+     * the estimate of the network, in brackets when both are up.
+     */
+    String networkCounts(EngineStatus status, List<ServerInfo> servers) {
+        Formats formats = this.gui.formats();
+        Optional<KadInfo> kad = status.kad().filter(KadInfo::connected);
+        long users = 0;
+        long files = 0;
+        if (status.server().isPresent()) {
+            for (ServerInfo s : servers) {
+                if (s.failed() == 0) {
+                    users += s.users();
+                    files += s.files();
+                }
+            }
+            if (kad.isPresent()) {
+                return this.gui.f(
+                        "nj.status.networks",
+                        formats.count(users),
+                        formats.count(kad.get().users()),
+                        formats.count(files),
+                        formats.count(kad.get().files()));
+            }
+        } else if (kad.isPresent()) {
+            users = kad.get().users();
+            files = kad.get().files();
+        }
+        return this.gui.f("nj.status.server", formats.count(users), formats.count(files));
     }
 
     // The network's place tells at a glance whether either network is up; its tooltip says which.

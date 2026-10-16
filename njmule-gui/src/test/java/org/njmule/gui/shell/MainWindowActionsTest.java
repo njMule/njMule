@@ -119,7 +119,8 @@ class MainWindowActionsTest {
         thenTheEd2kChipSays("eD2K: Big");
         thenTheKadChipSays("Kad: Open");
         thenTheKadChipIs("connected");
-        thenTheWindowShows("Users 1,200 | Files 34,000");
+        // Both networks counted: no server in the list, no Kad estimate yet.
+        thenTheWindowShows("Users 0 (0) | Files 0 (0)");
     }
 
     @Test

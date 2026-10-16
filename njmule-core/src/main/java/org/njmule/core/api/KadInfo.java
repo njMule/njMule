@@ -27,6 +27,8 @@ import java.util.Objects;
  * @param udpFirewalled whether nodes cannot send to our UDP port; while a test runs, the last outcome
  * @param udpVerified whether a UDP test came to an outcome: an unknown UDP state counts as open
  * @param buddy the buddy relaying callbacks to us while we are firewalled, or the firewalled node we serve
+ * @param users how many nodes the network holds, as our routing table lets us estimate
+ * @param files how many files they share, as estimated from the servers' average
  */
 public record KadInfo(
         boolean connected,
@@ -38,7 +40,9 @@ public record KadInfo(
         int udpPort,
         boolean udpFirewalled,
         boolean udpVerified,
-        Buddy buddy) {
+        Buddy buddy,
+        long users,
+        long files) {
 
     /** Our Kad buddy. */
     public enum Buddy {
@@ -56,6 +60,33 @@ public record KadInfo(
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(publicIp, "publicIp");
         Objects.requireNonNull(buddy, "buddy");
+    }
+
+    /** Without estimates of the network. */
+    public KadInfo(
+            boolean connected,
+            int contacts,
+            int verifiedContacts,
+            boolean firewalled,
+            String id,
+            String publicIp,
+            int udpPort,
+            boolean udpFirewalled,
+            boolean udpVerified,
+            Buddy buddy) {
+        this(
+                connected,
+                contacts,
+                verifiedContacts,
+                firewalled,
+                id,
+                publicIp,
+                udpPort,
+                udpFirewalled,
+                udpVerified,
+                buddy,
+                0,
+                0);
     }
 
     /** Without a UDP test or a buddy. */

@@ -64,6 +64,11 @@ class RoutingTableTest {
     private Random walk;
     private RoutingTable walked;
     private List<KadContact> known;
+    // Centred on zero, so that a contact's id is its distance from us.
+    private final RoutingTable centred = new RoutingTable(UInt128.ZERO, ip -> false);
+    private int centredAdded;
+    private long estimate;
+    private double share;
 
     @Test
     void shouldLetAContactMoveInsideItsOwnFullSubnet() {
@@ -257,6 +262,76 @@ class RoutingTableTest {
         whenContactsComeAndGoForSteps(400);
 
         thenTheTableIsInShape();
+    }
+
+    @Test
+    void shouldEstimateAShallowTreeAsIfItsZonesWereFull() {
+        givenTenContactsInEachZoneOfTheLevel(3);
+
+        whenTheNodesAreEstimatedWith(1.5);
+
+        thenTheEstimateIs(80);
+    }
+
+    @Test
+    void shouldEstimateADeeperTreeFromTheZoneThreeLevelsAboveItsDeepestLeaf() {
+        givenTenContactsInEachZoneOfTheLevel(4);
+        givenOneMoreContactInOurOwnZoneOfTheLevel(4);
+
+        whenTheNodesAreEstimatedWith(1.5);
+
+        // The leaves of level 5 sample the 41 contacts of our zone of level 2.
+        thenTheEstimateIs(4 * 41 * 3 / 2);
+    }
+
+    @Test
+    void shouldTellTheShareOfContactsSpeakingAVersionOrLater() {
+        givenContactsOfTheVersions(7, 8, 8, 9);
+
+        whenTheShareFromTheVersionIsTaken(8);
+
+        thenTheShareIs(0.75);
+    }
+
+    @Test
+    void shouldTellNoShareWithoutContacts() {
+        whenTheShareFromTheVersionIsTaken(8);
+
+        thenTheShareIs(0);
+    }
+
+    private void givenTenContactsInEachZoneOfTheLevel(int level) {
+        for (int j = 0; j < RoutingTable.K; j++) {
+            for (int zone = 0; zone < 1 << level; zone++) {
+                assertThat(addCentred(zone, level, j, 8)).isEqualTo(RoutingTable.Outcome.ADDED);
+            }
+        }
+    }
+
+    private void givenOneMoreContactInOurOwnZoneOfTheLevel(int level) {
+        assertThat(addCentred(0, level, RoutingTable.K, 8)).isEqualTo(RoutingTable.Outcome.ADDED);
+    }
+
+    private void givenContactsOfTheVersions(int... versions) {
+        for (int version : versions) {
+            assertThat(addCentred(version, 4, 0, version)).isEqualTo(RoutingTable.Outcome.ADDED);
+        }
+    }
+
+    private void whenTheNodesAreEstimatedWith(double firewalled) {
+        this.estimate = this.centred.estimatedNodes(firewalled);
+    }
+
+    private void whenTheShareFromTheVersionIsTaken(int version) {
+        this.share = this.centred.shareFrom(version);
+    }
+
+    private void thenTheEstimateIs(long expected) {
+        assertThat(this.estimate).isEqualTo(expected);
+    }
+
+    private void thenTheShareIs(double expected) {
+        assertThat(this.share).isEqualTo(expected);
     }
 
     private void givenAFullSubnet(int range) {
@@ -514,6 +589,22 @@ class RoutingTableTest {
             }
         }
         return added;
+    }
+
+    // A contact in the zone of the level whose distance starts with the bits of `zone`; the next bit alternates with
+    // `j`, so that a zone splitting further shares its contacts.
+    private RoutingTable.Outcome addCentred(int zone, int level, int j, int version) {
+        long high =
+                (long) zone << (64 - level) | (long) (j & 1) << (63 - level) | this.random.nextLong() >>> (level + 1);
+        int n = this.centredAdded++;
+        KadContact c = new KadContact(
+                new UInt128(high, this.random.nextLong() | 1),
+                Ipv4.of(20 + n / 250, n % 250 + 1, 1, 1),
+                PORT,
+                4662,
+                version,
+                0);
+        return this.centred.add(c, false, NodesDat.UdpKey.NONE, 0, 0);
     }
 
     private RoutingTable.Outcome add(KadContact contact, boolean update) {

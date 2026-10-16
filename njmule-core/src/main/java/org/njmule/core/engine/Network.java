@@ -1988,7 +1988,25 @@ final class Network {
                     case CONNECTING -> KadInfo.Buddy.CONNECTING;
                     case CONNECTED -> KadInfo.Buddy.CONNECTED;
                     case SERVING -> KadInfo.Buddy.SERVING;
-                }));
+                },
+                node.estimatedNodes(),
+                node.estimatedFiles(serverFilesPerUser())));
+    }
+
+    // Files an average user of the servers shares, from the servers that tell users and files and take many files;
+    // 0 while they hold too few users, and it is made up a little for the servers that limit files.
+    private long serverFilesPerUser() {
+        long users = 0;
+        long files = 0;
+        for (ServerMet.Server s : this.servers.all()) {
+            if (s.users().orElse(0) > 0
+                    && s.files().orElse(0) > 0
+                    && s.softFiles().orElse(0) > 1000) {
+                users += s.users().getAsLong();
+                files += s.files().getAsLong();
+            }
+        }
+        return users > 500_000 ? files / users + 50 : 0;
     }
 
     private void startKad() {

@@ -269,6 +269,10 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private static final int CHALLENGE_CONTACTS = 2;
     private static final int OBFUSCATION_VERSION = 6;
     private static final int FIREWALL2_VERSION = 7;
+    // From this version nodes say whether their UDP port is firewalled.
+    private static final int UDP_FIREWALLED_VERSION = 8;
+    // Files an average node shares, when the servers tell no better.
+    private static final int FILES_PER_NODE = 108;
     private static final int MISC_UDP_FIREWALLED = 0x01;
     private static final int MISC_TCP_FIREWALLED = 0x02;
     private static final int MISC_ACK_REQUESTED = 0x04;
@@ -357,6 +361,9 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private int firewallReports;
     // How many firewall checks started, so that an outcome can be told from one of an earlier check.
     private int firewallRounds;
+    // What the nodes that greet us say of their UDP port: the share firewalled weighs the estimate of the network.
+    private int udpFirewalledNodes;
+    private int udpOpenNodes;
     private boolean selfLookupDone;
     private boolean wasOpen;
 
@@ -492,6 +499,49 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             return false;
         }
         return !open;
+    }
+
+    /**
+     * How many nodes the Kad network holds, as our routing table tells, made up for the nodes no one can take as a
+     * contact: a fifth of the older ones, and of the newer the share firewalled that greeting nodes report, or two
+     * fifths while we are UDP-firewalled ourselves and see none.
+     */
+    public long estimatedNodes() {
+        return this.table.estimatedNodes(firewalledModifier(
+                isFirewalledUdp(), udpFirewalledShare(), this.table.shareFrom(UDP_FIREWALLED_VERSION)));
+    }
+
+    /**
+     * How much to scale the nodes our table sees by, for the firewalled ones: {@code newerShare} of our contacts are
+     * recent enough to tell whether they are UDP-firewalled.
+     */
+    static double firewalledModifier(boolean firewalledUdp, double firewalledShare, double newerShare) {
+        double older = 1.20;
+        double newer = 0;
+        if (firewalledUdp) {
+            newer = 1.40;
+        } else if (firewalledShare > 0) {
+            newer = 1 + firewalledShare;
+        }
+        return newerShare > 0 && newer > 0 ? newerShare * newer + (1 - newerShare) * older : older;
+    }
+
+    /** The share of the nodes greeting us that are UDP-firewalled, 0 until more than ten open ones did. */
+    double udpFirewalledShare() {
+        if (this.udpFirewalledNodes == 0 || this.udpOpenNodes <= 10) {
+            return 0;
+        }
+        return (double) this.udpFirewalledNodes / (this.udpFirewalledNodes + this.udpOpenNodes);
+    }
+
+    /**
+     * How many files the Kad network holds: the nodes estimated, each sharing what an average user of the servers does
+     * ({@code serverAverage}, 0 when they do not tell), or as many as our index holds keywords, at least
+     * {@value #FILES_PER_NODE}.
+     */
+    public long estimatedFiles(long serverAverage) {
+        long perNode = Math.max(Math.max(serverAverage, this.index.keywords()), FILES_PER_NODE);
+        return perNode * estimatedNodes();
     }
 
     /** How many checks of our ports started; a recheck asked for starts at the node's next tick. */
@@ -1369,6 +1419,14 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         int misc = (int) Tags.intValue(hello.tags(), FileTag.KADMISCOPTIONS).orElse(0);
         int version = hello.sender().version();
         long now = this.ticker.read();
+        // A node greeting us has us in its table: counted, our table should hold no UDP-firewalled node.
+        if (!answer && version >= UDP_FIREWALLED_VERSION) {
+            if ((misc & MISC_UDP_FIREWALLED) != 0) {
+                this.udpFirewalledNodes++;
+            } else {
+                this.udpOpenNodes++;
+            }
+        }
         RoutingTable.Outcome outcome = RoutingTable.Outcome.REFUSED;
         if (!claimedOnly && isGoodAddress(peer.ip()) && (misc & MISC_UDP_FIREWALLED) == 0) {
             KadContact contact = new KadContact(
