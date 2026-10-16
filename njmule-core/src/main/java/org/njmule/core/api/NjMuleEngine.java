@@ -283,6 +283,16 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Checks again whether Kad nodes can reach our TCP port; completes with {@code false} when Kad does not run. */
     CompletableFuture<Boolean> recheckKadFirewall();
 
+    /**
+     * Tests our ports as the preferences give them: the router asked again through UPnP when it is on, then whether a
+     * server and Kad nodes reach them; completes when the test is over, within a few minutes. A test already running is
+     * joined.
+     */
+    CompletableFuture<PortTest> testPorts();
+
+    /** The test of our ports running or run last, as far as it went; empty before the first. */
+    CompletableFuture<Optional<PortTest>> portTest();
+
     /** Asks the Kad node at {@code node} (its UDP port) for contacts to join with. */
     CompletableFuture<Void> kadBootstrap(ServerAddress node);
 

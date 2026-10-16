@@ -484,6 +484,22 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         return !open;
     }
 
+    /** How the last check of our TCP port ended, open or not; empty while it runs. */
+    public Optional<Boolean> tcpCheckOpen() {
+        if (this.firewallAcks.size() >= FIREWALL_ACKS) {
+            return Optional.of(true);
+        }
+        return this.firewallReports >= FIREWALL_CHECKS ? Optional.of(false) : Optional.empty();
+    }
+
+    /** How the last UDP firewall test ended, open or not; empty while it runs or before one ended. */
+    public Optional<Boolean> udpTestOpen() {
+        if (this.udpTest.isRunning() || !this.udpTest.isVerified()) {
+            return Optional.empty();
+        }
+        return Optional.of(!this.udpTest.isFirewalled(false));
+    }
+
     /** Our address as other nodes see it, 0 until one told us. */
     public int publicIp() {
         return this.publicIp;

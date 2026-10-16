@@ -447,7 +447,8 @@ class PortForwardingTest {
     }
 
     private PortForwarding start(OptionalInt udp) {
-        return PortForwarding.start(this.gateway.ssdp(), 4662, udp, (fine, line) -> this.log.add(line), this.renewals);
+        return PortForwarding.start(
+                this.gateway.ssdp(), 4662, udp, (outcome, router, line) -> this.log.add(line), this.renewals);
     }
 
     private static boolean await(BooleanSupplier condition) throws InterruptedException {

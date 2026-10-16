@@ -37,6 +37,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -68,6 +69,7 @@ import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.PeerComment;
 import org.njmule.core.api.PeerInfo;
+import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
@@ -278,6 +280,9 @@ final class Network {
     private TcpListener listener;
     private ConnectionGuard guard;
     private ScheduledFuture<?> kadTicking;
+    // The test of our ports running or run last, and its ticks.
+    private PortCheck portCheck;
+    private ScheduledFuture<?> portCheckTicking;
     private volatile boolean closed;
     private ScheduledFuture<?> pendingSave;
     private ServerUdp udp;
@@ -1587,8 +1592,14 @@ final class Network {
                         this.upnp.orElseThrow(),
                         tcp,
                         udp,
-                        (fine, line) -> this.loop.post(
-                                () -> this.userLog.log(fine ? LogLine.Level.SUCCESS : LogLine.Level.WARNING, line)));
+                        (outcome, router, line) -> this.loop.post(() -> {
+                            this.userLog.log(
+                                    outcome == PortForwarding.Outcome.FORWARDED
+                                            ? LogLine.Level.SUCCESS
+                                            : LogLine.Level.WARNING,
+                                    line);
+                            forwardingOutcome(outcome, router);
+                        }));
             }
         });
     }
@@ -1667,6 +1678,10 @@ final class Network {
     @CanIgnoreReturnValue
     CompletableFuture<Void> close() {
         this.closed = true;
+        if (this.portCheck != null && !this.portCheck.isOver()) {
+            this.portCheck.stop();
+            portTestDone(this.portCheck.state());
+        }
         saveTotals();
         // The servers' spam shares change with every UDP answer.
         try {
@@ -1768,6 +1783,87 @@ final class Network {
             return hello.withBuddy(buddyIp, this.buddyLink.buddyUdpPort());
         }
         return hello;
+    }
+
+    /**
+     * Tests our ports, a test already running included: the router asked again through UPnP when it is on, then a new
+     * login to the server and Kad's firewall checks. The future completes when the test is over.
+     */
+    CompletableFuture<PortTest> testPorts(Duration wait) {
+        if (this.portCheck != null && !this.portCheck.isOver()) {
+            return this.portCheck.done();
+        }
+        boolean upnp = this.preferences.get().upnp() && this.listener != null && this.upnp.isPresent();
+        int udp = this.kadSocket == null ? 0 : this.kadSocket.port();
+        this.portCheck =
+                new PortCheck(listenPort(), udp, upnp, Ticker.systemTicker().read(), wait);
+        this.userLog.log(
+                LogLine.Level.INFO, "Testing the ports: TCP " + listenPort() + (udp == 0 ? "" : ", UDP " + udp));
+        if (upnp) {
+            restartForwarding();
+        }
+        this.portCheckTicking =
+                this.loop.scheduleRepeating("port test", Duration.ZERO, Duration.ofSeconds(1), this::tickPortCheck);
+        return this.portCheck.done();
+    }
+
+    /** The test of our ports running or run last, empty before the first. */
+    Optional<PortTest> portTest() {
+        return Optional.ofNullable(this.portCheck).map(PortCheck::state);
+    }
+
+    private void tickPortCheck() {
+        PortCheck check = this.portCheck;
+        long now = Ticker.systemTicker().read();
+        if (check.readyToReach(now)) {
+            startReachTests(check);
+        }
+        KadNode node = this.kad;
+        PortTest state = node == null
+                ? check.update(false, Optional.empty(), Optional.empty(), now)
+                : check.update(true, node.tcpCheckOpen(), node.udpTestOpen(), now);
+        if (state.done()) {
+            portTestDone(state);
+        }
+    }
+
+    // The server checks our TCP port at login, Kad nodes check both ports.
+    private void startReachTests(PortCheck check) {
+        Preferences prefs = this.preferences.get();
+        boolean login = prefs.ed2kEnabled()
+                && !offline()
+                && (this.session.server().isPresent()
+                        || !this.servers.connectable().isEmpty());
+        check.reachStarted(login);
+        if (login) {
+            this.session.connect(this.session.server());
+        }
+        if (this.kad != null) {
+            this.kad.recheckFirewall();
+        }
+    }
+
+    private void forwardingOutcome(PortForwarding.Outcome outcome, String router) {
+        if (this.portCheck != null && !this.portCheck.isOver()) {
+            this.portCheck.forwarded(outcome, router);
+        }
+    }
+
+    private void portTestDone(PortTest test) {
+        if (this.portCheckTicking != null) {
+            this.portCheckTicking.cancel(false);
+            this.portCheckTicking = null;
+        }
+        this.userLog.log(
+                LogLine.Level.INFO,
+                "Port test: TCP " + test.tcpPort() + " " + test.tcp().name().toLowerCase(Locale.ROOT)
+                        + (test.udpPort() == 0
+                                ? ""
+                                : ", UDP " + test.udpPort() + " "
+                                        + test.udp().name().toLowerCase(Locale.ROOT))
+                        + ", UPnP "
+                        + test.forwarding().name().toLowerCase(Locale.ROOT).replace('_', ' ')
+                        + (test.router().isEmpty() ? "" : " (" + test.router() + ")"));
     }
 
     /** Checks again whether Kad nodes can reach us; {@code false} when Kad does not run. */
@@ -2636,6 +2732,9 @@ final class Network {
                             + id.clientId()
                             + (obfuscated ? ", obfuscated" : ""));
             Network.this.publish.accept(new EngineEvent.ServerConnected(info, id.clientId(), id.isLowId(), obfuscated));
+            if (Network.this.portCheck != null) {
+                Network.this.portCheck.loggedIn(!id.isLowId());
+            }
             Network.this.saveServers();
             Network.this.pinger.start();
             Network.this.globalSources.start();

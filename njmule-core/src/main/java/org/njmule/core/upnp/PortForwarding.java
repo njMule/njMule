@@ -55,10 +55,24 @@ public final class PortForwarding implements AutoCloseable {
         void sleep(Duration duration) throws InterruptedException;
     }
 
-    /** Where the outcome goes: one line for the log, not {@code fine} when a port is left unforwarded. */
+    /** How asking the router for our ports ended. */
+    public enum Outcome {
+        /** Every port is forwarded. */
+        FORWARDED,
+        /** Some ports are forwarded, the router refused the others. */
+        PARTLY,
+        /** The router refused every port. */
+        REFUSED,
+        /** No router answered. */
+        NO_ROUTER,
+        /** The router stopped answering, or answered what cannot be read. */
+        FAILED
+    }
+
+    /** Where the outcome goes: its kind, the router's host (empty when none answered) and one line for the log. */
     @FunctionalInterface
     public interface Report {
-        void line(boolean fine, String text);
+        void line(Outcome outcome, String router, String text);
     }
 
     private record Mapping(String protocol, int port) {
@@ -123,7 +137,7 @@ public final class PortForwarding implements AutoCloseable {
         try {
             Optional<Igd> found = Igd.discover(this.ssdp, DISCOVERY);
             if (found.isEmpty()) {
-                this.report.line(false, "UPnP: no router answered");
+                this.report.line(Outcome.NO_ROUTER, "", "UPnP: no router answered");
                 return;
             }
             this.gateway = found.get();
@@ -138,7 +152,11 @@ public final class PortForwarding implements AutoCloseable {
             Thread.currentThread().interrupt();
         } catch (IOException e) {
             if (!this.closed) {
-                this.report.line(false, "UPnP failed: " + e.getMessage());
+                Igd igd = this.gateway;
+                this.report.line(
+                        Outcome.FAILED,
+                        igd == null ? "" : igd.controlUrl().getHost(),
+                        "UPnP failed: " + e.getMessage());
             }
         } finally {
             this.started.countDown();
@@ -162,11 +180,11 @@ public final class PortForwarding implements AutoCloseable {
         String forwarded = String.join(" and ", mappings()) + " forwarded by " + host;
         String denied = String.join(" and ", refused);
         if (refused.isEmpty()) {
-            this.report.line(true, "UPnP: " + forwarded);
+            this.report.line(Outcome.FORWARDED, host, "UPnP: " + forwarded);
         } else if (this.mapped.isEmpty()) {
-            this.report.line(false, "UPnP: the router at " + host + " refused " + denied);
+            this.report.line(Outcome.REFUSED, host, "UPnP: the router at " + host + " refused " + denied);
         } else {
-            this.report.line(false, "UPnP: " + forwarded + ", which refused " + denied);
+            this.report.line(Outcome.PARTLY, host, "UPnP: " + forwarded + ", which refused " + denied);
         }
     }
 

@@ -81,6 +81,7 @@ import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.PeerComment;
 import org.njmule.core.api.PeerInfo;
+import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
@@ -978,6 +979,16 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Boolean> recheckKadFirewall() {
         return this.loop.submit(this.network::recheckKadFirewall);
+    }
+
+    @Override
+    public CompletableFuture<PortTest> testPorts() {
+        return this.loop.submitAsync(() -> this.network.testPorts(PortCheck.WAIT));
+    }
+
+    @Override
+    public CompletableFuture<Optional<PortTest>> portTest() {
+        return this.loop.submit(this.network::portTest);
     }
 
     @Override

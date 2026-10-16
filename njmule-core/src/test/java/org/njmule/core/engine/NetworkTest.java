@@ -59,6 +59,7 @@ import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.PeerInfo;
+import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
@@ -160,6 +161,7 @@ class NetworkTest {
     private Throwable exception;
     private int kadPort;
     private int newTcpPort;
+    private PortTest portTest;
     private int newUdpPort;
     private byte[] remembered;
     private EngineEvent.ServerConnected connected;
@@ -600,6 +602,36 @@ class NetworkTest {
     }
 
     @Test
+    void shouldFindTheTcpPortOpenWhenTheServerTakesUsAgainWithAHighId() throws Exception {
+        givenALoginTo(ScriptedServer.start(HIGH_ID, 0));
+        givenTheServerGotALogin();
+
+        whenThePortsAreTested();
+
+        thenTheServerGotALoginAgain();
+        thenThePortTestFound(PortTest.Reach.OPEN, PortTest.Reach.UNKNOWN);
+    }
+
+    @Test
+    void shouldFindTheTcpPortClosedWhenTheServerTakesUsAgainWithALowId() throws Exception {
+        givenALoginTo(ScriptedServer.start(12_345, 0));
+        givenTheServerGotALogin();
+
+        whenThePortsAreTested();
+
+        thenThePortTestFound(PortTest.Reach.CLOSED, PortTest.Reach.UNKNOWN);
+    }
+
+    @Test
+    void shouldTellThePortsUnknownAtOnceWithoutAServerOrKad() throws Exception {
+        givenAStartedNetwork();
+
+        whenThePortsAreTested();
+
+        thenThePortTestFound(PortTest.Reach.UNKNOWN, PortTest.Reach.UNKNOWN);
+    }
+
+    @Test
     void shouldNotTakeAServerListItDidNotAskFor() throws Exception {
         givenKadIsEnabled();
         givenALoginTo(ScriptedServer.start(HIGH_ID, 0));
@@ -872,6 +904,26 @@ class NetworkTest {
         Network network = started();
         connect(network, server);
         next(EngineEvent.ServerConnected.class);
+    }
+
+    private void whenThePortsAreTested() throws Exception {
+        CompletableFuture<PortTest> test = onLoop(() -> this.network.testPorts(Duration.ofSeconds(20)));
+        this.portTest = test.get(30, TimeUnit.SECONDS);
+    }
+
+    private void thenTheServerGotALoginAgain() throws InterruptedException {
+        assertThat(this.scripted.next(Opcodes.Server.LOGINREQUEST.code(), Duration.ofSeconds(10)))
+                .as("the server checks the port at a new login")
+                .isPresent();
+    }
+
+    // UPnP is never asked in tests.
+    private void thenThePortTestFound(PortTest.Reach tcp, PortTest.Reach udp) throws Exception {
+        assertThat(this.portTest.done()).isTrue();
+        assertThat(this.portTest.forwarding()).isEqualTo(PortTest.Forwarding.OFF);
+        assertThat(this.portTest.tcp()).as("TCP").isEqualTo(tcp);
+        assertThat(this.portTest.udp()).as("UDP").isEqualTo(udp);
+        assertThat(onLoop(this.network::portTest)).contains(this.portTest);
     }
 
     private void whenTheServerGivesUsTheId(long id) throws Exception {
