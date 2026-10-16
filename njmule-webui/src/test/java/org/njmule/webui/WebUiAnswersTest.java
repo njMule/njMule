@@ -246,6 +246,35 @@ class WebUiAnswersTest {
     }
 
     @Test
+    void shouldRefuseAFormWithMoreFieldsThanAnyPageHas() throws Exception {
+        givenALoggedInUser();
+
+        whenTheFormIsPosted("/transfers", fieldsNamedUpTo(40));
+
+        thenTheStatusIs(413);
+        thenTheBodyContains("Too much text");
+    }
+
+    @Test
+    void shouldReadNoFieldsFromAPostThatIsNoForm() throws Exception {
+        givenALoggedInUser();
+
+        whenTheFieldsArePostedAsPlainText("/transfers", Map.of("action", "pause", "hash", HASH));
+
+        thenTheStatusIs(403);
+        thenTheBodyContains("Expired form");
+    }
+
+    @Test
+    void shouldAnswerBadRequestToAQueryThatIsNotUtf8() throws Exception {
+        givenALoggedInUser();
+
+        whenThePageIsAsked("/search?id=%C3");
+
+        thenTheStatusIs(400);
+    }
+
+    @Test
     void shouldLeaveTheResultsOfTheSearchesOfTheWindowOutOfThePages() throws Exception {
         givenALoggedInUser();
         givenTheEngineSearchesAs(1);
@@ -641,7 +670,10 @@ class WebUiAnswersTest {
 
     private void givenALoginBeingChecked(String password) throws InterruptedException {
         this.firstLogin = this.http.sendAsync(
-                request("/login").POST(form(Map.of("password", password))).build(),
+                request("/login")
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(form(Map.of("password", password)))
+                        .build(),
                 HttpResponse.BodyHandlers.ofString());
         long end = System.nanoTime() + Duration.ofSeconds(20).toNanos();
         while (this.ui.checkingPasswords() == 0) {
@@ -730,6 +762,7 @@ class WebUiAnswersTest {
         startAnotherInstance();
         HttpResponse<String> in = this.http.send(
                 HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.other.port() + "/login"))
+                        .header("Content-Type", "application/x-www-form-urlencoded")
                         .POST(form(Map.of("password", PASSWORD)))
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -836,12 +869,26 @@ class WebUiAnswersTest {
         this.answer = post(path, all);
     }
 
+    private void whenTheFieldsArePostedAsPlainText(String path, Map<String, String> fields) throws Exception {
+        Map<String, String> all = new LinkedHashMap<>(fields);
+        all.put("csrf", csrf());
+        HttpRequest.Builder request = request(path).header("Content-Type", "text/plain");
+        if (this.origin != null) {
+            request.header("Origin", this.origin);
+        }
+        this.answer = this.http.send(request.POST(form(all)).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
     private void whenPostedWithoutToken(String path, Map<String, String> fields) throws Exception {
         HttpRequest.Builder request = request(path);
         if (this.origin != null) {
             request.header("Origin", this.origin);
         }
-        this.answer = this.http.send(request.POST(form(fields)).build(), HttpResponse.BodyHandlers.ofString());
+        this.answer = this.http.send(
+                request.header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(form(fields))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     private void whenTheLinkFieldOfTheTransfersIsRead() throws Exception {
@@ -1050,7 +1097,12 @@ class WebUiAnswersTest {
     }
 
     private HttpResponse<String> post(String path, Map<String, String> fields) throws Exception {
-        return this.http.send(request(path).POST(form(fields)).build(), HttpResponse.BodyHandlers.ofString());
+        return this.http.send(
+                request(path)
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(form(fields))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpRequest.Builder request(String path) {
@@ -1060,6 +1112,14 @@ class WebUiAnswersTest {
             b.header("Cookie", this.cookie);
         }
         return b;
+    }
+
+    private static Map<String, String> fieldsNamedUpTo(int count) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        for (int i = 1; i <= count; i++) {
+            fields.put("field" + i, "x");
+        }
+        return fields;
     }
 
     private static HttpRequest.BodyPublisher form(Map<String, String> fields) {

@@ -26,7 +26,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -537,7 +536,7 @@ final class Api {
     private void log(Exchange exchange, String method, List<String> rest) throws IOException {
         noMore(rest);
         only(method, GET);
-        String after = query(exchange).get("after");
+        String after = exchange.query().get("after");
         long seen;
         try {
             seen = after == null ? 0 : Long.parseLong(after);
@@ -551,7 +550,7 @@ final class Api {
     private void events(Exchange exchange, String method, List<String> rest) throws IOException {
         noMore(rest);
         only(method, GET);
-        String types = query(exchange).getOrDefault("types", "");
+        String types = exchange.query().getOrDefault("types", "");
         List<String> wanted = Arrays.stream(types.split(",", -1))
                 .map(String::strip)
                 .filter(t -> !t.isEmpty())
@@ -747,23 +746,6 @@ final class Api {
             }
         }
         return parts;
-    }
-
-    private static Map<String, String> query(Exchange exchange) {
-        String raw = exchange.rawQuery();
-        Map<String, String> values = new HashMap<>();
-        if (raw == null) {
-            return values;
-        }
-        for (String pair : raw.split("&", -1)) {
-            String[] kv = pair.split("=", 2);
-            if (kv.length == 2) {
-                values.put(
-                        URLDecoder.decode(kv[0], StandardCharsets.UTF_8),
-                        URLDecoder.decode(kv[1], StandardCharsets.UTF_8));
-            }
-        }
-        return values;
     }
 
     private <T> T await(CompletableFuture<T> work) {

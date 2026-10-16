@@ -24,11 +24,19 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import org.eclipse.jetty.http.HttpCookie;
+import org.eclipse.jetty.http.HttpException;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.io.Content;
+import org.eclipse.jetty.server.FormFields;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
+import org.eclipse.jetty.util.Fields;
 
 /**
  * One request and its answer, as the pages, the API and the event streams handle them, on Jetty's blocking adapters:
@@ -69,18 +77,57 @@ final class Exchange {
         return this.request.getHttpURI().getPath();
     }
 
-    /** The query as sent, or null. */
-    String rawQuery() {
-        return this.request.getHttpURI().getQuery();
+    /**
+     * The fields of the query, decoded as UTF-8: a field given twice keeps its last value, one without a value is
+     * empty. Bad percent-encoding or UTF-8 throws {@link IllegalArgumentException}.
+     */
+    Map<String, String> query() {
+        try {
+            return lastValues(Request.extractQueryParameters(this.request, StandardCharsets.UTF_8));
+        } catch (IllegalStateException e) {
+            throw new IllegalArgumentException("bad query", e);
+        }
+    }
+
+    /**
+     * The fields of a posted {@code application/x-www-form-urlencoded} form (none for another content type), as
+     * {@link #query}; empty when there are more than {@code maxFields} fields or {@code maxBytes} bytes.
+     */
+    Optional<Map<String, String>> form(int maxFields, int maxBytes) {
+        try {
+            return Optional.of(lastValues(FormFields.getFields(this.request, maxFields, maxBytes)));
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            if (e instanceof HttpException http && http.getCode() == 413) {
+                return Optional.empty();
+            }
+            throw new IllegalArgumentException("bad form", e);
+        }
+    }
+
+    private static Map<String, String> lastValues(Fields fields) {
+        Map<String, String> values = new HashMap<>();
+        for (Fields.Field field : fields) {
+            List<String> given = field.getValues();
+            values.put(field.getName(), given.isEmpty() ? "" : given.getLast());
+        }
+        return values;
+    }
+
+    /** The value of the request's cookie {@code name}, if it sent one. */
+    Optional<String> cookie(String name) {
+        return Request.getCookies(this.request).stream()
+                .filter(c -> c.getName().equals(name))
+                .map(HttpCookie::getValue)
+                .findFirst();
+    }
+
+    void addCookie(HttpCookie cookie) {
+        Response.addCookie(this.response, cookie);
     }
 
     /** The first value of a request header, or null. */
     String header(String name) {
         return this.request.getHeaders().get(name);
-    }
-
-    List<String> headers(String name) {
-        return this.request.getHeaders().getValuesList(name);
     }
 
     InetAddress remoteAddress() {

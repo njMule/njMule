@@ -382,7 +382,11 @@ class WebUiTest {
         if (this.origin != null) {
             request.header("Origin", this.origin);
         }
-        this.answer = this.http.send(request.POST(form(all)).build(), HttpResponse.BodyHandlers.ofString());
+        this.answer = this.http.send(
+                request.header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(form(all))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     private void whenThePageIsAskedForTheHost(String path, String host) throws IOException {
@@ -425,7 +429,8 @@ class WebUiTest {
     }
 
     private void thenTheCookieExpires() {
-        assertThat(this.answer.headers().firstValue("Set-Cookie").orElseThrow()).contains("Max-Age=0");
+        assertThat(this.answer.headers().firstValue("Set-Cookie").orElseThrow())
+                .contains("Expires=Thu, 01 Jan 1970 00:00:00 GMT");
     }
 
     private void thenTheSessionIsOver() throws Exception {
@@ -457,7 +462,12 @@ class WebUiTest {
     }
 
     private HttpResponse<String> post(String path, Map<String, String> fields) throws Exception {
-        return this.http.send(request(path).POST(form(fields)).build(), HttpResponse.BodyHandlers.ofString());
+        return this.http.send(
+                request(path)
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(form(fields))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpRequest.Builder request(String path) {

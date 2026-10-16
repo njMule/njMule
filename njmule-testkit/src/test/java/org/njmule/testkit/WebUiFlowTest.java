@@ -224,7 +224,10 @@ class WebUiFlowTest {
                         + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
                 .collect(Collectors.joining("&"));
         return this.http.send(
-                request(path).POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+                request(path)
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(HttpRequest.BodyPublishers.ofString(body))
+                        .build(),
                 HttpResponse.BodyHandlers.ofString());
     }
 

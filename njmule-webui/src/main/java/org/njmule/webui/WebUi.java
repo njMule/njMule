@@ -17,14 +17,12 @@
 package org.njmule.webui;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -42,6 +40,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
+import org.eclipse.jetty.http.HttpCookie;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
@@ -91,6 +90,9 @@ public final class WebUi implements AutoCloseable {
     private static final String LOG = "/log";
     private static final String ACTION = "action";
     private static final int MAX_LOGIN_BODY = 16 * 1024;
+    private static final int MAX_LOGIN_FIELDS = 4;
+    // Far more than any of the forms has.
+    private static final int MAX_FIELDS = 32;
 
     // The longest text of the link field: percent-encoded, a character takes at most 9 bytes, so a
     // full field fits MAX_BODY.
@@ -363,7 +365,7 @@ public final class WebUi implements AutoCloseable {
             send(exchange, 429, HTML, loginPage("Too many attempts: wait a minute."));
             return;
         }
-        char[] password = form(exchange, MAX_LOGIN_BODY)
+        char[] password = exchange.form(MAX_LOGIN_FIELDS, MAX_LOGIN_BODY)
                 .orElseThrow(() -> new IllegalArgumentException("form too large"))
                 .getOrDefault("password", "")
                 .toCharArray();
@@ -386,7 +388,7 @@ public final class WebUi implements AutoCloseable {
         }
         this.sessions.succeeded(address);
         Sessions.Session session = this.sessions.open();
-        exchange.addHeader("Set-Cookie", this.cookie + "=" + session.id() + "; Path=/; HttpOnly; SameSite=Strict");
+        exchange.addCookie(sessionCookie(session.id()).build());
         redirect(exchange, "/");
     }
 
@@ -405,7 +407,7 @@ public final class WebUi implements AutoCloseable {
         String page = switch (path) {
             case "/" -> statusPage(session);
             case TRANSFERS -> transfersPage(session);
-            case SEARCH -> searchPage(session, query(exchange).get("id"));
+            case SEARCH -> searchPage(session, exchange.query().get("id"));
             case SERVERS -> serversPage(session);
             case SHARED -> sharedPage(session);
             case KAD -> kadPage(session);
@@ -420,7 +422,7 @@ public final class WebUi implements AutoCloseable {
     }
 
     private void post(Exchange exchange, String path, Sessions.Session session) throws IOException {
-        Optional<Map<String, String>> posted = form(exchange, MAX_BODY);
+        Optional<Map<String, String>> posted = exchange.form(MAX_FIELDS, MAX_BODY);
         if (posted.isEmpty()) {
             send(exchange, 413, HTML, notDone(session, path, "Too much text at once: send it in parts."));
             return;
@@ -435,8 +437,7 @@ public final class WebUi implements AutoCloseable {
             next = switch (path) {
                 case "/logout" -> {
                     this.sessions.close(session.id());
-                    exchange.addHeader(
-                            "Set-Cookie", this.cookie + "=; Path=/; Max-Age=0; HttpOnly;" + " SameSite=Strict");
+                    exchange.addCookie(sessionCookie("").maxAge(0).build());
                     yield "/login";
                 }
                 case TRANSFERS -> {
@@ -886,15 +887,11 @@ public final class WebUi implements AutoCloseable {
     }
 
     private Optional<Sessions.Session> session(Exchange exchange) {
-        for (String header : exchange.headers("Cookie")) {
-            for (String cookie : header.split(";", -1)) {
-                String[] pair = cookie.strip().split("=", 2);
-                if (pair.length == 2 && pair[0].equals(this.cookie)) {
-                    return this.sessions.find(pair[1]);
-                }
-            }
-        }
-        return Optional.empty();
+        return exchange.cookie(this.cookie).flatMap(this.sessions::find);
+    }
+
+    private HttpCookie.Builder sessionCookie(String value) {
+        return HttpCookie.build(this.cookie, value).path("/").httpOnly(true).sameSite(HttpCookie.SameSite.STRICT);
     }
 
     private <T> T await(CompletableFuture<T> work) {
@@ -908,36 +905,6 @@ public final class WebUi implements AutoCloseable {
         } catch (TimeoutException e) {
             throw new EngineFailure("The engine did not answer in time.");
         }
-    }
-
-    // The posted fields; empty when there are more than limit bytes.
-    private static Optional<Map<String, String>> form(Exchange exchange, int limit) throws IOException {
-        try (InputStream in = exchange.requestBody()) {
-            byte[] body = in.readNBytes(limit + 1);
-            if (body.length > limit) {
-                return Optional.empty();
-            }
-            return Optional.of(decode(new String(body, StandardCharsets.UTF_8)));
-        }
-    }
-
-    private static Map<String, String> query(Exchange exchange) {
-        String raw = exchange.rawQuery();
-        return raw == null ? Map.of() : decode(raw);
-    }
-
-    private static Map<String, String> decode(String encoded) {
-        Map<String, String> values = new HashMap<>();
-        for (String pair : encoded.split("&", -1)) {
-            if (pair.isEmpty()) {
-                continue;
-            }
-            String[] kv = pair.split("=", 2);
-            values.put(
-                    URLDecoder.decode(kv[0], StandardCharsets.UTF_8),
-                    kv.length == 2 ? URLDecoder.decode(kv[1], StandardCharsets.UTF_8) : "");
-        }
-        return values;
     }
 
     private void redirect(Exchange exchange, String location) throws IOException {
