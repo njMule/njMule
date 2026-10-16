@@ -148,6 +148,26 @@ class StoredSearchesTest {
         thenTheLoadedSearchesAreTheSaved();
     }
 
+    @Test
+    void shouldKeepTheNamesOfAFileFoundUnderSeveral() throws IOException {
+        givenAnOpenSearchWith(SearchRequest.Scope.SERVER, filmFoundUnderTwoNames(12, 3, 2, 1));
+
+        whenTheSearchesAreSavedAndLoaded();
+
+        thenTheLoadedSearchesAreTheSaved();
+    }
+
+    @Test
+    void shouldKeepTheNamesOfAFileKadFoundUnderSeveral() throws IOException {
+        givenAnOpenSearchWith(
+                SearchRequest.Scope.KAD,
+                filmFoundUnderTwoNames(7, SearchResult.UNKNOWN, SearchResult.UNKNOWN, SearchResult.UNKNOWN));
+
+        whenTheSearchesAreSavedAndLoaded();
+
+        thenTheLoadedSearchesAreTheSaved();
+    }
+
     private void givenNoStoredSearchesYet() throws IOException {
         assertThat(StoredSearches.load(storedFile())).as("no file yet").isEmpty();
     }
@@ -158,6 +178,10 @@ class StoredSearchesTest {
 
     private void givenAnOpenSearchWith(SearchResult result) {
         this.saved = List.of(new SavedSearch("", new SearchRequest("song", SearchRequest.Scope.KAD), List.of(result)));
+    }
+
+    private void givenAnOpenSearchWith(SearchRequest.Scope scope, SearchResult result) {
+        this.saved = List.of(new SavedSearch("", new SearchRequest("film", scope), List.of(result)));
     }
 
     private void givenAFileWithTheSearches(SearchFiles.StoredSearch... searches) throws IOException {
@@ -237,6 +261,25 @@ class StoredSearchesTest {
     private static SearchFiles.StoredSearch stored(
             int type, boolean clientShared, String expression, String fileType, List<SearchFiles.Result> results) {
         return new SearchFiles.StoredSearch(0, type, clientShared, "", expression, fileType, results);
+    }
+
+    // Seven sources name it film.mkv, five Film HD.mkv.
+    private static SearchResult filmFoundUnderTwoNames(
+            int sources, int complete, int firstComplete, int otherComplete) {
+        return new SearchResult(
+                hash(10),
+                "film.mkv",
+                5_000_000_000L,
+                sources,
+                complete,
+                Optional.of("Video"),
+                SearchResult.Media.NONE,
+                SearchResult.Origin.NONE,
+                0,
+                Optional.empty(),
+                List.of(
+                        new SearchResult.Name("film.mkv", 7, firstComplete),
+                        new SearchResult.Name("Film HD.mkv", 5, otherComplete)));
     }
 
     private static SearchFiles.Result result(int seed, String name, long size) {

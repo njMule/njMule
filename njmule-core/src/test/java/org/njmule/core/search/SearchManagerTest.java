@@ -320,6 +320,18 @@ class SearchManagerTest {
     }
 
     @Test
+    void shouldShowTheNameMostSourcesGiveAndKeepTheOthers() throws Exception {
+        givenAKadSearchFor("holiday clip");
+        givenKadAnswered(new SearchResult(hash(13), "holiday clip.avi", 1000, 2, 0, Optional.empty()));
+
+        whenKadAnswers(new SearchResult(hash(13), "Holiday Clip HD.avi", 1000, 5, 0, Optional.empty()));
+
+        thenTheResultsReportedAre("holiday clip.avi", "Holiday Clip HD.avi");
+        thenTheLastResultHasTheNames(
+                new SearchResult.Name("Holiday Clip HD.avi", 5, 0), new SearchResult.Name("holiday clip.avi", 2, 0));
+    }
+
+    @Test
     void shouldTakeTheTypeFromTheFileNameRatherThanFromThePublisher() throws Exception {
         givenAKadSearchFor("holiday clip");
 
@@ -805,6 +817,10 @@ class SearchManagerTest {
 
     private void thenTheLastResultHasTheMedia(SearchResult.Media expected) {
         assertThat(this.reported.getLast().media()).isEqualTo(expected);
+    }
+
+    private void thenTheLastResultHasTheNames(SearchResult.Name... names) {
+        assertThat(this.reported.getLast().names()).containsExactly(names);
     }
 
     private void thenTheLastResultHasTheType(Optional<String> expected) {

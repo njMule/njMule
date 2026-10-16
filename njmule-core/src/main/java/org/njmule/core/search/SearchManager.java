@@ -18,7 +18,6 @@ package org.njmule.core.search;
 
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Splitter;
-import com.google.common.math.IntMath;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.security.SecureRandom;
@@ -504,23 +503,22 @@ public final class SearchManager {
             if (known != null && known.size() != file.size()) {
                 continue;
             }
-            SearchResult merged = known == null
-                    ? file
-                    : new SearchResult(
-                            known.hash(),
-                            known.name(),
-                            known.size(),
-                            addCounts
-                                    ? IntMath.saturatedAdd(known.sources(), file.sources())
-                                    : Math.max(known.sources(), file.sources()),
-                            addCounts
-                                    ? IntMath.saturatedAdd(known.completeSources(), file.completeSources())
-                                    : Math.max(known.completeSources(), file.completeSources()),
-                            known.type().or(file::type),
-                            known.media().or(file.media()),
-                            known.origin().and(file.origin()),
-                            0,
-                            agreedAich(search, known, file));
+            SearchResult merged = file;
+            if (known != null) {
+                SearchResult counted = ResultNames.foundAgain(known, file, addCounts);
+                merged = new SearchResult(
+                        counted.hash(),
+                        counted.name(),
+                        counted.size(),
+                        counted.sources(),
+                        counted.completeSources(),
+                        counted.type(),
+                        known.media().or(file.media()),
+                        known.origin().and(file.origin()),
+                        0,
+                        agreedAich(search, known, file),
+                        counted.names());
+            }
             merged = merged.withSpamRating(this.spam.rate(merged));
             rated.add(merged);
             if (!merged.equals(known)) {

@@ -575,6 +575,22 @@
     -fx-padding: 3px 6px 3px 6px;
 }
 
+/* The arrow of a search result found under several names; its names show one step further in. */
+.names-sign {
+    -fx-min-width: 16px;
+    -fx-pref-width: 16px;
+    -fx-alignment: center;
+}
+
+.names-sign:name-row {
+    -fx-min-width: 32px;
+    -fx-pref-width: 32px;
+}
+
+.names-sign .ikonli-font-icon {
+    -fx-icon-color: -color-fg-muted;
+}
+
 .tab-pane.dense > .tab-header-area > .headers-region > .tab:top {
     -fx-padding: 0.1em 0.6em 0.1em 0.4em;
 }

@@ -33,6 +33,8 @@ import java.util.Set;
  * @param spamRating how much it looks like spam: {@value #SPAM_THRESHOLD} and more is spam
  * @param aichHash the root of the file's AICH tree, when publishers agree on one: its download can check and repair
  *     parts with it
+ * @param names the names the file was found under, with the sources that gave each, most sources first; empty while it
+ *     was found under one name only. The result has the first.
  */
 public record SearchResult(
         Hash16 hash,
@@ -44,7 +46,8 @@ public record SearchResult(
         Media media,
         Origin origin,
         int spamRating,
-        Optional<Hash20> aichHash) {
+        Optional<Hash20> aichHash,
+        List<Name> names) {
 
     /** The spam rating from which a result counts as spam. */
     public static final int SPAM_THRESHOLD = 60;
@@ -59,6 +62,22 @@ public record SearchResult(
         Objects.requireNonNull(media, "media");
         Objects.requireNonNull(origin, "origin");
         Objects.requireNonNull(aichHash, "aichHash");
+        names = List.copyOf(names);
+    }
+
+    /** A result found under one name. */
+    public SearchResult(
+            Hash16 hash,
+            String name,
+            long size,
+            int sources,
+            int completeSources,
+            Optional<String> type,
+            Media media,
+            Origin origin,
+            int spamRating,
+            Optional<Hash20> aichHash) {
+        this(hash, name, size, sources, completeSources, type, media, origin, spamRating, aichHash, List.of());
     }
 
     /** A result without media details. */
@@ -88,7 +107,8 @@ public record SearchResult(
                 this.media,
                 other,
                 this.spamRating,
-                this.aichHash);
+                this.aichHash,
+                this.names);
     }
 
     public SearchResult withSpamRating(int rating) {
@@ -102,7 +122,8 @@ public record SearchResult(
                 this.media,
                 this.origin,
                 rating,
-                this.aichHash);
+                this.aichHash,
+                this.names);
     }
 
     public SearchResult withAichHash(Optional<Hash20> root) {
@@ -116,7 +137,34 @@ public record SearchResult(
                 this.media,
                 this.origin,
                 this.spamRating,
-                root);
+                root,
+                this.names);
+    }
+
+    /** The file as found under {@code other} alone, with the sources that gave that name. */
+    public SearchResult named(Name other) {
+        return new SearchResult(
+                this.hash,
+                other.name(),
+                this.size,
+                other.sources(),
+                other.completeSources(),
+                this.type,
+                this.media,
+                this.origin,
+                this.spamRating,
+                this.aichHash);
+    }
+
+    /**
+     * One name a file was found under.
+     *
+     * @param completeSources as for the result, {@link #UNKNOWN} when the network does not tell
+     */
+    public record Name(String name, int sources, int completeSources) {
+        public Name {
+            Objects.requireNonNull(name, "name");
+        }
     }
 
     /**

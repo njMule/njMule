@@ -20,7 +20,11 @@ import java.io.IOException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
@@ -87,14 +91,15 @@ public final class StoredSearches {
             case KAD -> SearchRequest.Scope.KAD;
             default -> SearchRequest.Scope.SERVER;
         };
-        List<SearchResult> results = new ArrayList<>();
+        // A file found under several names has a record for each, which make it whole again.
+        Map<Hash16, SearchResult> results = new LinkedHashMap<>();
         for (SearchFiles.Result r : stored.results()) {
             FileEntry entry = new FileEntry(r.fileHash(), r.clientId(), r.port(), r.tags());
             if (entry.name().isPresent()
                     && entry.size().isPresent()
                     && SearchResult.isDownloadable(
                             entry.name().get(), entry.size().getAsLong())) {
-                results.add(new SearchResult(
+                SearchResult found = new SearchResult(
                                 entry.hash(),
                                 entry.name().get(),
                                 entry.size().getAsLong(),
@@ -106,13 +111,26 @@ public final class StoredSearches {
                                         : SearchResult.UNKNOWN,
                                 entry.type(),
                                 entry.media())
-                        .withAichHash(entry.aichHash()));
+                        .withAichHash(entry.aichHash());
+                results.merge(found.hash(), found, (known, again) -> again(known, again, scope));
             }
         }
         return new SavedSearch(
                 stored.title(),
                 new SearchRequest(withFileType(stored.expression(), stored.fileType()), scope),
-                results);
+                List.copyOf(results.values()));
+    }
+
+    // Kad nodes report the same sources: the larger count stands. Another size is another file, left out.
+    private static SearchResult again(SearchResult known, SearchResult again, SearchRequest.Scope scope) {
+        if (again.size() != known.size()) {
+            return known;
+        }
+        SearchResult named = ResultNames.foundAgain(known, again, scope != SearchRequest.Scope.KAD);
+        boolean disputed = known.aichHash().isPresent()
+                && again.aichHash().isPresent()
+                && !known.aichHash().equals(again.aichHash());
+        return named.withAichHash(disputed ? Optional.empty() : known.aichHash().or(again::aichHash));
     }
 
     // Other clients keep the file type apart from the expression; it becomes a type condition when it is one we know.
@@ -136,21 +154,31 @@ public final class StoredSearches {
             case KAD -> KAD;
         };
         List<SearchFiles.Result> results = new ArrayList<>();
-        for (SearchResult r : search.results()) {
-            List<Tag> tags = new ArrayList<>();
-            tags.add(Tag.of(FileTag.FILENAME, r.name()));
-            tags.add(Tag.of(FileTag.FILESIZE, r.size()));
-            tags.add(Tag.of(FileTag.SOURCES, r.sources()));
-            if (r.completeSources() >= 0) {
-                tags.add(Tag.of(FileTag.COMPLETE_SOURCES, r.completeSources()));
+        for (SearchResult file : search.results()) {
+            // A file found under several names as found under each, which make it whole when read again.
+            List<SearchResult> named = file.names().isEmpty()
+                    ? List.of(file)
+                    : file.names().stream().map(file::named).toList();
+            for (SearchResult r : named) {
+                results.add(new SearchFiles.Result(r.hash(), 0, 0, tags(r)));
             }
-            r.type().ifPresent(t -> tags.add(Tag.of(FileTag.FILETYPE, t)));
-            r.aichHash().ifPresent(h -> tags.add(Tag.of(FileTag.AICH_HASH, h.toBase32())));
-            tags.addAll(MediaTags.of(r.media()));
-            results.add(new SearchFiles.Result(r.hash(), 0, 0, tags));
         }
         // The file type stays empty (any): the expression holds the one asked for.
         return new SearchFiles.StoredSearch(
                 id, type, false, search.title(), search.request().expression(), "", results);
+    }
+
+    private static List<Tag> tags(SearchResult r) {
+        List<Tag> tags = new ArrayList<>();
+        tags.add(Tag.of(FileTag.FILENAME, r.name()));
+        tags.add(Tag.of(FileTag.FILESIZE, r.size()));
+        tags.add(Tag.of(FileTag.SOURCES, r.sources()));
+        if (r.completeSources() >= 0) {
+            tags.add(Tag.of(FileTag.COMPLETE_SOURCES, r.completeSources()));
+        }
+        r.type().ifPresent(t -> tags.add(Tag.of(FileTag.FILETYPE, t)));
+        r.aichHash().ifPresent(h -> tags.add(Tag.of(FileTag.AICH_HASH, h.toBase32())));
+        tags.addAll(MediaTags.of(r.media()));
+        return tags;
     }
 }

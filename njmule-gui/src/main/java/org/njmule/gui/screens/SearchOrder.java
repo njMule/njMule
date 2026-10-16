@@ -118,10 +118,14 @@ final class SearchOrder {
     }
 
     /**
-     * Sorts {@code table}, made by {@link org.njmule.gui.ui.Fx#table}, with spam last and the columns chosen before as
-     * tie breakers.
+     * Sorts {@code table}, made by {@link org.njmule.gui.ui.Fx#table} over {@code rows}, with spam last and the columns
+     * chosen before as tie breakers; the names of a file stay under it, sorted by {@code name} when that column sorts
+     * first, else most sources first.
      */
-    static void apply(TableView<LiveList.Row<SearchResult>> table) {
+    static void apply(
+            TableView<LiveList.Row<SearchResult>> table,
+            ResultRows rows,
+            TableColumn<LiveList.Row<SearchResult>, String> name) {
         List<Earlier> earlier = new ArrayList<>();
         // The table sorts as its order changes, before the columns chosen before are known: they sort again after.
         IntegerProperty earlierChanged = new SimpleIntegerProperty();
@@ -160,10 +164,23 @@ final class SearchOrder {
                             for (Earlier e : List.copyOf(earlier)) {
                                 order = order.thenComparing(by(e));
                             }
-                            return order;
+                            return rows.grouped(order, names(table, name));
                         },
                         table.comparatorProperty(),
                         earlierChanged));
+    }
+
+    // The names of a file by name when that column sorts first, else most sources first; turned round when the first
+    // column sorts the other way.
+    private static Comparator<LiveList.Row<SearchResult>> names(
+            TableView<LiveList.Row<SearchResult>> table, TableColumn<LiveList.Row<SearchResult>, String> name) {
+        TableColumn<LiveList.Row<SearchResult>, ?> first = table.getSortOrder().getFirst();
+        Comparator<LiveList.Row<SearchResult>> order = first.equals(name)
+                ? Comparator.comparing(r -> r.get().name(), name.getComparator())
+                : Comparator.<LiveList.Row<SearchResult>>comparingInt(
+                                r -> r.get().sources())
+                        .reversed();
+        return first.getSortType() == TableColumn.SortType.DESCENDING ? order.reversed() : order;
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"}) // a column's comparator takes the values of its own cells

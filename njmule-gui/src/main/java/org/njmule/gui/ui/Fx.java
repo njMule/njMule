@@ -67,6 +67,7 @@ public final class Fx {
 
     // Icons that point the way text runs: a right-to-left layout shows them mirrored.
     private static final Set<Ikon> DIRECTIONAL = Set.of(
+            Material2AL.CHEVRON_RIGHT,
             Material2AL.CLEAR_ALL,
             Material2AL.EXIT_TO_APP,
             Material2AL.INPUT,
@@ -314,14 +315,14 @@ public final class Fx {
     /** As above, with only the rows {@code shown} takes; a changed value can show or hide its row. */
     public static <V> TableView<LiveList.Row<V>> table(
             LiveList<?, V> rows, String empty, ObservableValue<Predicate<V>> shown) {
-        FilteredList<LiveList.Row<V>> filtered = new FilteredList<>(rows.rows());
-        filtered.predicateProperty()
-                .bind(Bindings.createObjectBinding(
-                        () -> {
-                            Predicate<V> test = shown.getValue();
-                            return row -> test.test(row.get());
-                        },
-                        shown));
+        return table(rows.rows(), empty, shown.map(test -> (Predicate<LiveList.Row<V>>) row -> test.test(row.get())));
+    }
+
+    /** A table over {@code rows}, with only the rows {@code shown} takes; a changed value can show or hide its row. */
+    public static <V> TableView<LiveList.Row<V>> table(
+            ObservableList<LiveList.Row<V>> rows, String empty, ObservableValue<Predicate<LiveList.Row<V>>> shown) {
+        FilteredList<LiveList.Row<V>> filtered = new FilteredList<>(rows);
+        filtered.predicateProperty().bind(shown);
         return table(filtered, empty);
     }
 

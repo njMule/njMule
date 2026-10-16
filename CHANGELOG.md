@@ -405,6 +405,11 @@ All notable changes to this project are documented here. The format follows
   by the language's rules whatever their case, complete sources by their share of the sources,
   types then extensions, missing media values last in either direction, and the columns chosen
   before break ties, also for results that come later.
+- A search result found under several names keeps each with the sources that gave it, in any
+  case, and shows the one most sources give (engine API `SearchResult.names`, web API `names`;
+  a record for each name in `StoredSearches.met`). The desktop interface opens such a file on its
+  arrow, or with + and −, to show its names under it, which stay there whatever the order, by
+  name or by most sources; a name chosen downloads the file under that name.
 - The name each source gives a download is kept with the source (engine API `SourceInfo`), and a
   download can be renamed (engine API `renameDownload`, web API `PUT
   /api/v1/downloads/{hash}/name`): the name, made safe for any file system, is the one its file

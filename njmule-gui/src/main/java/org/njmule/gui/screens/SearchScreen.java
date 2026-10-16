@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -43,9 +44,11 @@ import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.collections.ListChangeListener;
+import javafx.css.PseudoClass;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Side;
+import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
@@ -67,6 +70,7 @@ import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -149,6 +153,8 @@ public final class SearchScreen implements Screen {
     private static final int MAX_EXTENSION = 10;
     private static final Pattern ATTRIBUTES = Pattern.compile("\\s*@\\S+");
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    // The row of one name a file was found under.
+    private static final PseudoClass NAME_ROW = PseudoClass.getPseudoClass("name-row");
 
     private final Gui gui;
     private Node view;
@@ -179,7 +185,8 @@ public final class SearchScreen implements Screen {
     private final StringProperty filterColumn = new SimpleStringProperty();
 
     // title: the tab's own, such as a kept related search's; empty = from the expression.
-    private record Results(EngineModel.Search search, TableView<LiveList.Row<SearchResult>> table, String title) {}
+    private record Results(
+            EngineModel.Search search, TableView<LiveList.Row<SearchResult>> table, ResultRows rows, String title) {}
 
     public SearchScreen(Gui gui) {
         this.gui = gui;
@@ -507,8 +514,11 @@ public final class SearchScreen implements Screen {
     private void opened(EngineModel.Search search, String ownTitle) {
         var formats = this.gui.formats();
         ObjectProperty<Predicate<SearchResult>> shown = new SimpleObjectProperty<>(r -> true);
-        TableView<LiveList.Row<SearchResult>> table =
-                Fx.table(search.results(), this.gui.t("nj.search.waiting"), shown);
+        ResultRows rows = new ResultRows(search.results());
+        // The names of a file show with it.
+        TableView<LiveList.Row<SearchResult>> table = Fx.table(
+                rows.rows(), this.gui.t("nj.search.waiting"), shown.map(test -> (Predicate<LiveList.Row<SearchResult>>)
+                        row -> test.test(rows.fileOf(row).get())));
         TableColumn<LiveList.Row<SearchResult>, Known> known =
                 Fx.column(this.gui.t("nj.search.known"), 130, r -> known(r));
         known.setCellFactory(c -> new KnownCell());
@@ -557,7 +567,9 @@ public final class SearchScreen implements Screen {
                                 (SearchResult r) -> r.media().codec())),
                         text));
         TableColumn<LiveList.Row<SearchResult>, String> name =
-                Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 380, SearchResult::name));
+                Fx.column(this.gui.t("IDS_DL_FILENAME"), 380, SearchResult::name);
+        name.setCellFactory(c -> new NameCell(rows));
+        Fx.ownDirection(name);
         name.setComparator(text);
         // Columns are remembered by their place: new ones go last.
         table.getColumns()
@@ -580,7 +592,22 @@ public final class SearchScreen implements Screen {
                         fileId));
         table.getColumns().addAll(media);
         TableLayout.remember(table, "search", this.gui.settings());
-        SearchOrder.apply(table);
+        SearchOrder.apply(table, rows, name);
+        // + and - open and close the files chosen that were found under several names.
+        table.addEventHandler(KeyEvent.KEY_PRESSED, e -> {
+            boolean open = e.getCode() == KeyCode.ADD || e.getCode() == KeyCode.PLUS;
+            if (open || e.getCode() == KeyCode.SUBTRACT || e.getCode() == KeyCode.MINUS) {
+                for (LiveList.Row<SearchResult> row :
+                        List.copyOf(table.getSelectionModel().getSelectedItems())) {
+                    if (open) {
+                        rows.open(row);
+                    } else {
+                        rows.close(row);
+                    }
+                }
+                e.consume();
+            }
+        });
         MediaColumns mediaColumns = new MediaColumns(media);
         mediaColumns.follow(search.results().rows());
         this.gui.subscriptions().onListChange(search.results().rows(), c -> mediaColumns.follow(c.getList()));
@@ -641,7 +668,8 @@ public final class SearchScreen implements Screen {
         Tab tab = new Tab(title);
         Runnable counted = () -> {
             int all = search.results().rows().size();
-            int visible = table.getItems().size();
+            int visible =
+                    (int) table.getItems().stream().filter(r -> !rows.isName(r)).count();
             tab.setText(title + " (" + all + ")");
             count.setText(this.gui.f("nj.search.count", visible == all ? String.valueOf(all) : visible + "/" + all));
         };
@@ -662,7 +690,7 @@ public final class SearchScreen implements Screen {
         running.managedProperty().bind(search.runningProperty());
         tab.setGraphic(running);
         tab.setOnClosed(e -> closed(tab));
-        this.results.put(tab, new Results(search, table, ownTitle));
+        this.results.put(tab, new Results(search, table, rows, ownTitle));
         table.getSelectionModel().getSelectedItems().addListener((ListChangeListener<LiveList.Row<SearchResult>>)
                 c -> followChoice());
         this.tabs.getTabs().add(tab);
@@ -852,7 +880,10 @@ public final class SearchScreen implements Screen {
     void downloadSelected() {
         Results current = current();
         if (current != null) {
-            Fx.selected(current.table()).forEach(r -> this.gui.model().addDownload(r.link()));
+            // A file chosen with its names downloads once, under the first name chosen.
+            Map<Hash16, SearchResult> files = new LinkedHashMap<>();
+            Fx.selected(current.table()).forEach(r -> files.putIfAbsent(r.hash(), r));
+            files.values().forEach(r -> this.gui.model().addDownload(r.link()));
         }
     }
 
@@ -867,9 +898,10 @@ public final class SearchScreen implements Screen {
             return;
         }
         StringBuilder expression = new StringBuilder("related");
-        for (SearchResult r : selected) {
-            expression.append("::").append(r.hash().toHex());
-        }
+        selected.stream()
+                .map(SearchResult::hash)
+                .distinct()
+                .forEach(h -> expression.append("::").append(h.toHex()));
         this.gui.model().search(new SearchRequest(expression.toString(), SearchRequest.Scope.SERVER), this::opened);
     }
 
@@ -946,6 +978,11 @@ public final class SearchScreen implements Screen {
         return this.results.get(tab).table();
     }
 
+    /** The rows of the results table of {@code tab}. */
+    ResultRows rows(Tab tab) {
+        return this.results.get(tab).rows();
+    }
+
     private final class TypeCell extends ListCell<FileType> {
         @Override
         protected void updateItem(FileType item, boolean empty) {
@@ -989,6 +1026,63 @@ public final class SearchScreen implements Screen {
             } finally {
                 this.following = false;
             }
+        }
+    }
+
+    /**
+     * The name of a file; one found under several names opens to show them, and closes, on its arrow. Its names show
+     * under it, one step further in.
+     */
+    private static final class NameCell extends TableCell<LiveList.Row<SearchResult>, String> {
+        private final ResultRows rows;
+        private final Label sign = new Label();
+        private final FontIcon closed = Fx.icon(Material2AL.CHEVRON_RIGHT);
+        private final FontIcon open = Fx.icon(Material2AL.EXPAND_MORE);
+
+        NameCell(ResultRows rows) {
+            this.rows = rows;
+            this.sign.getStyleClass().add("names-sign");
+            this.sign.setOnMouseClicked(e -> {
+                LiveList.Row<SearchResult> row = row();
+                if (row != null && rows.hasNames(row)) {
+                    rows.toggle(row);
+                    e.consume();
+                }
+            });
+            rows.toggled().addListener(o -> show());
+        }
+
+        @Override
+        protected void updateItem(String item, boolean empty) {
+            super.updateItem(item, empty);
+            show();
+        }
+
+        private void show() {
+            LiveList.Row<SearchResult> row = row();
+            if (row == null) {
+                setText(null);
+                setGraphic(null);
+                return;
+            }
+            boolean opens = this.rows.hasNames(row);
+            this.sign.pseudoClassStateChanged(NAME_ROW, this.rows.isName(row));
+            this.sign.setGraphic(opens ? (this.rows.isOpen(row) ? this.open : this.closed) : null);
+            this.sign.setCursor(opens ? Cursor.HAND : Cursor.DEFAULT);
+            setText(getItem());
+            setGraphic(this.sign);
+        }
+
+        // The row of the cell's place, which its table row may not show yet while it updates.
+        private LiveList.Row<SearchResult> row() {
+            int index = getIndex();
+            TableView<LiveList.Row<SearchResult>> table = getTableView();
+            return isEmpty()
+                            || table == null
+                            || index < 0
+                            || index >= table.getItems().size()
+                    ? null
+                    : table.getItems().get(index);
         }
     }
 

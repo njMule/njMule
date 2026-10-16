@@ -287,16 +287,30 @@ final class ApiJson {
         g.writeStringProperty("name", r.name());
         g.writeNumberProperty("size", r.size());
         g.writeNumberProperty("sources", r.sources());
-        if (r.completeSources() < 0) {
-            // Kad does not tell it.
-            g.writeNullProperty("completeSources");
-        } else {
-            g.writeNumberProperty("completeSources", r.completeSources());
-        }
+        completeSources(g, r.completeSources());
         optional(g, "type", r.type());
         g.writeNumberProperty("spamRating", r.spamRating());
         g.writeBooleanProperty("spam", r.isSpam());
+        // The names the file was found under, when more than one.
+        g.writeArrayPropertyStart("names");
+        for (SearchResult.Name n : r.names()) {
+            g.writeStartObject();
+            g.writeStringProperty("name", n.name());
+            g.writeNumberProperty("sources", n.sources());
+            completeSources(g, n.completeSources());
+            g.writeEndObject();
+        }
+        g.writeEndArray();
         g.writeEndObject();
+    }
+
+    private static void completeSources(JsonGenerator g, int count) {
+        if (count < 0) {
+            // Kad does not tell it.
+            g.writeNullProperty("completeSources");
+        } else {
+            g.writeNumberProperty("completeSources", count);
+        }
     }
 
     static void category(JsonGenerator g, Category c) {

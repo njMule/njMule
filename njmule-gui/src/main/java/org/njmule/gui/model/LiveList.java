@@ -112,6 +112,11 @@ public final class LiveList<K, V> {
         return this.byKey.containsKey(k);
     }
 
+    /** The row of {@code k}, if there is one. */
+    public Optional<Row<V>> row(K k) {
+        return Optional.ofNullable(this.byKey.get(k));
+    }
+
     private void put(K k, V value) {
         Row<V> row = this.byKey.get(k);
         if (row == null) {
