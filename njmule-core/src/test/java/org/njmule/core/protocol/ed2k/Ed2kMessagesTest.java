@@ -439,6 +439,7 @@ class Ed2kMessagesTest {
         thenTheHelloNickIs("x");
         thenTheHelloPortsAre(4662, 4672, 0);
         thenTheHelloMiscOptionsAre(0x34134216, 0x2DBA);
+        thenTheHelloKadVersionIs(10);
         thenTheHelloEmuleVersionIs(0x00012000);
         thenTheHelloNamesNoServer();
     }
@@ -1154,6 +1155,10 @@ class Ed2kMessagesTest {
         assertThat(this.decodedHello.listenPort()).isEqualTo(listenPort);
         assertThat(this.decodedHello.udpPort()).isEqualTo(udpPort);
         assertThat(this.decodedHello.kadPort()).isEqualTo(kadPort);
+    }
+
+    private void thenTheHelloKadVersionIs(int version) {
+        assertThat(this.decodedHello.kadVersion()).isEqualTo(version);
     }
 
     private void thenTheHelloMiscOptionsAre(int miscOptions1, int miscOptions2) {

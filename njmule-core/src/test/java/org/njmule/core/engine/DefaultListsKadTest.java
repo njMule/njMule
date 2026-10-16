@@ -39,7 +39,7 @@ import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.util.Ipv4;
 
-/** The Kad contacts shipped with njMule: asked when the profile saved none, or when none of the saved ones answers. */
+/** The Kad contacts shipped with njMule: asked from the start, whether or not the profile saved contacts. */
 class DefaultListsKadTest {
 
     private static final long SECOND = 1_000_000_000L;
@@ -95,11 +95,11 @@ class DefaultListsKadTest {
     }
 
     @Test
-    void shouldAskTheShippedContactsWhenNoSavedContactAnswers() throws IOException {
+    void shouldAskTheShippedContactsAtOnceNextToANodesDat() throws IOException {
         givenANodesDatOfContactsThatNeverAnswer();
         givenKadLoadsItsContacts();
 
-        whenSecondsPass(240);
+        whenSecondsPass(1);
 
         thenOnlyShippedContactsWereAsked();
     }

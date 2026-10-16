@@ -160,6 +160,11 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
         return (int) (Tags.intValue(this.tags, ClientTag.EMULE_UDPPORTS).orElse(0) >>> 16 & 0xFFFF);
     }
 
+    /** The Kad version of the client's node, 0 when it runs none. */
+    public int kadVersion() {
+        return miscOptions2() & 0x0F;
+    }
+
     /** The address ({@code Ipv4} form) of the Kad buddy of a firewalled client, 0 when it names none. */
     public int buddyIp() {
         return Ipv4.fromEd2k(Tags.intValue(this.tags, ClientTag.EMULE_BUDDYIP).orElse(0));

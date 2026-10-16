@@ -399,7 +399,14 @@ final class Network {
                 this::isOurServer,
                 random);
         this.links = new PeerLinks(loop, identities, this::uploadSide);
-        this.links.onGreeted(hello -> this.loop.post(() -> serverOf(hello)));
+        this.links.onGreeted(link -> {
+            Hello hello = link.peer().orElseThrow();
+            InetAddress address = link.remoteAddress().getAddress();
+            this.loop.post(() -> {
+                serverOf(hello);
+                kadBootstrapVia(address, hello);
+            });
+        });
         this.buddyLink = new BuddyLink(
                 loop,
                 this.links,
@@ -1927,17 +1934,11 @@ final class Network {
         }
     }
 
-    // Kad starts from the saved contacts; the shipped ones are asked when there are none, or when none of them answers.
+    // Kad starts from the saved contacts and, at once, from the shipped ones: the saved ones may all be gone.
     static void loadKadContacts(KadNode kad) {
-        boolean saved = kad.loadNodes();
-        if (!DefaultLists.enabled()) {
-            return;
-        }
-        if (saved) {
-            kad.fallBackTo(DefaultLists::nodes);
-        } else {
-            int kept = kad.addContacts(DefaultLists.nodes());
-            logger.info("{} Kad contacts shipped with njMule to bootstrap from", kept);
+        kad.loadNodes();
+        if (DefaultLists.enabled()) {
+            kad.bootstrapFrom(DefaultLists::nodes);
         }
     }
 
@@ -2020,7 +2021,7 @@ final class Network {
             try {
                 Hello peer = Hello.decode(packet);
                 // Kad nodes before version 6 do not know the test.
-                if ((peer.miscOptions2() & 0x0F) < 6 || peer.kadPort() == 0) {
+                if (peer.kadVersion() < 6 || peer.kadPort() == 0) {
                     c.close();
                     return;
                 }
@@ -2480,6 +2481,14 @@ final class Network {
     private void serverOf(Hello hello) {
         if (this.preferences.get().addServersFromClients() && hello.serverIp() != 0 && hello.serverPort() != 0) {
             serversLearnt(List.of(new ServerMessages.Endpoint(hello.serverIp(), hello.serverPort())), "a client");
+        }
+    }
+
+    // A client running Kad brings Kad in when none of our contacts answers.
+    private void kadBootstrapVia(InetAddress address, Hello hello) {
+        KadNode node = this.kad;
+        if (node != null && address instanceof Inet4Address v4) {
+            node.bootstrapVia(Ipv4.fromBytes(v4.getAddress()), hello.kadPort(), hello.kadVersion());
         }
     }
 

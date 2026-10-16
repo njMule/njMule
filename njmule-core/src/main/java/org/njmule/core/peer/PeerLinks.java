@@ -62,7 +62,7 @@ public final class PeerLinks {
     private final Map<InetSocketAddress, PeerLink> open = new HashMap<>();
     private final Map<PeerLink, ConnectionGuard.Permit> ours = new HashMap<>();
 
-    private volatile Consumer<Hello> greeted = hello -> {};
+    private volatile Consumer<PeerLink> greeted = link -> {};
     private volatile ConnectionGuard guard;
 
     public PeerLinks(EngineLoop loop, Identities identities, Uploads uploads) {
@@ -112,14 +112,16 @@ public final class PeerLinks {
         return this.uploads;
     }
 
-    /** Hears every hello of a client we are linked with, on the thread that read it. */
-    public void onGreeted(Consumer<Hello> observer) {
+    /** Hears every link whose client said hello, on the thread that read it. */
+    public void onGreeted(Consumer<PeerLink> observer) {
         this.greeted = Objects.requireNonNull(observer, "observer");
     }
 
     void register(PeerLink link) {
         link.peerAddress().ifPresent(address -> this.open.put(address, link));
-        link.peer().ifPresent(this.greeted);
+        if (link.peer().isPresent()) {
+            this.greeted.accept(link);
+        }
     }
 
     // The link closed.

@@ -40,15 +40,19 @@ import org.njmule.core.util.Ipv4;
 
 /**
  * A bootstrap-only nodes.dat: its contacts are asked one at a time for contacts to start from while the node is not
- * connected, and never taken as contacts themselves. Fallback contacts are asked the same way once the saved ones stay
- * silent.
+ * connected, and never taken as contacts themselves. Shipped contacts are asked the same way from the start, next to
+ * the saved ones, and again after a pause when they ran out without a connection. Clients met over eD2K that run Kad
+ * are asked too while the node is not connected.
  */
 class KadNodeBootstrapTest {
 
     private static final int PORT = 4672;
     private static final long SECOND = 1_000_000_000L;
     private static final int BLOCKED = Ipv4.of(99, 1, 1, 1);
-    private static final int GRACE_SECONDS = (int) KadNode.FALLBACK_AFTER.toSeconds();
+    private static final int REFILL_SECONDS = (int) KadNode.BOOTSTRAP_REFILL_AFTER.toSeconds();
+    private static final int CLIENT_GAP_SECONDS = (int) KadNode.CLIENT_BOOTSTRAP_EVERY.toSeconds();
+    private static final int CLIENT = Ipv4.of(60, 1, 1, 1);
+    private static final int OTHER_CLIENT = Ipv4.of(61, 1, 1, 1);
 
     /** A packet the node sent. */
     private record Sent(int ip, int port, Packet packet, Optional<UInt128> receiverId) {}
@@ -68,8 +72,8 @@ class KadNodeBootstrapTest {
     private final List<NodesDat.Contact> good = new ArrayList<>();
     private final List<NodesDat.Contact> bad = new ArrayList<>();
     private final List<NodesDat.Contact> saved = new ArrayList<>();
-    private final List<NodesDat.Contact> fallback = new ArrayList<>();
-    private int fallbackReads;
+    private final List<NodesDat.Contact> shipped = new ArrayList<>();
+    private int shippedReads;
     private KadNode node;
     private boolean loaded;
 
@@ -146,56 +150,109 @@ class KadNodeBootstrapTest {
     }
 
     @Test
-    void shouldWaitTheGracePeriodBeforeAskingTheFallbackContacts() {
+    void shouldAskTheShippedContactsAtOnceNextToTheSavedOnes() {
         givenSavedContacts(5);
-        givenFallbackContacts(10);
-
-        whenSecondsPass(GRACE_SECONDS);
-
-        thenBootstrapRequestsWent(0);
-        thenTheFallbackContactsWereRead(0);
-    }
-
-    @Test
-    void shouldAskTheFallbackContactsWhenNoSavedContactAnswersInTime() {
-        givenSavedContacts(5);
-        givenFallbackContacts(10);
-
-        whenSecondsPass(GRACE_SECONDS + 1);
-
-        thenBootstrapRequestsWentToFallbackContacts(1);
-    }
-
-    @Test
-    void shouldNotAskTheFallbackContactsWhenASavedContactAnswersInTime() {
-        givenSavedContacts(5);
-        givenFallbackContacts(10);
-        givenSecondsPass(30);
-        givenASavedContactPings();
-
-        whenSecondsPass(GRACE_SECONDS);
-
-        thenBootstrapRequestsWent(0);
-        thenTheFallbackContactsWereRead(0);
-    }
-
-    @Test
-    void shouldAskTheFallbackContactsAtOnceWithoutAnyContactToAsk() {
-        givenFallbackContacts(10);
+        givenShippedContacts(10);
 
         whenSecondsPass(1);
 
-        thenBootstrapRequestsWentToFallbackContacts(1);
+        thenBootstrapRequestsWentToShippedContacts(1);
     }
 
     @Test
-    void shouldReadTheFallbackContactsOnlyOnce() {
-        givenFallbackContacts(10);
+    void shouldStopAskingTheShippedContactsOnceASavedContactAnswers() {
+        givenSavedContacts(5);
+        givenShippedContacts(10);
+        givenSecondsPass(1);
+        givenASavedContactPings();
 
-        whenSecondsPass(600);
+        whenSecondsPass(120);
 
-        thenBootstrapRequestsWentToFallbackContacts(10);
-        thenTheFallbackContactsWereRead(1);
+        thenBootstrapRequestsWentToShippedContacts(1);
+        thenTheShippedContactsWereRead(1);
+    }
+
+    @Test
+    void shouldNotAskTheShippedContactsAgainBeforeThePause() {
+        givenShippedContacts(10);
+
+        whenSecondsPass(REFILL_SECONDS);
+
+        thenBootstrapRequestsWentToShippedContacts(10);
+        thenTheShippedContactsWereRead(1);
+    }
+
+    @Test
+    void shouldAskTheShippedContactsAgainWhenTheyRanOutWithoutAConnection() {
+        givenShippedContacts(10);
+
+        whenSecondsPass(REFILL_SECONDS + 1);
+
+        thenBootstrapRequestsWentToShippedContacts(11);
+        thenTheShippedContactsWereRead(2);
+    }
+
+    @Test
+    void shouldAskAClientRunningKadForContactsWhileNotConnected() {
+        whenAClientSaysHello(CLIENT, PORT, 9);
+
+        thenBootstrapRequestsWentTo(CLIENT);
+    }
+
+    @Test
+    void shouldNotAskAnotherClientBeforeTheGap() {
+        givenAClientSaidHello(CLIENT, PORT, 9);
+        givenSecondsPass(CLIENT_GAP_SECONDS - 1);
+
+        whenAClientSaysHello(OTHER_CLIENT, PORT, 9);
+
+        thenBootstrapRequestsWentTo(CLIENT);
+    }
+
+    @Test
+    void shouldAskAnotherClientOnceTheGapPassed() {
+        givenAClientSaidHello(CLIENT, PORT, 9);
+        givenSecondsPass(CLIENT_GAP_SECONDS);
+
+        whenAClientSaysHello(OTHER_CLIENT, PORT, 9);
+
+        thenBootstrapRequestsWentTo(CLIENT, OTHER_CLIENT);
+    }
+
+    @Test
+    void shouldNotAskAClientOnceConnected() {
+        givenSavedContacts(5);
+        givenASavedContactPings();
+
+        whenAClientSaysHello(CLIENT, PORT, 9);
+
+        thenBootstrapRequestsWent(0);
+    }
+
+    @Test
+    void shouldNotAskAClientWithoutAKadPort() {
+        whenAClientSaysHello(CLIENT, 0, 9);
+
+        thenBootstrapRequestsWent(0);
+    }
+
+    @Test
+    void shouldNotAskAClientRunningTheFirstKad() {
+        whenAClientSaysHello(CLIENT, PORT, 1);
+
+        thenBootstrapRequestsWent(0);
+    }
+
+    private void givenAClientSaidHello(int ip, int kadPort, int kadVersion) {
+        whenAClientSaysHello(ip, kadPort, kadVersion);
+    }
+
+    private void whenAClientSaysHello(int ip, int kadPort, int kadVersion) {
+        this.node.bootstrapVia(ip, kadPort, kadVersion);
+    }
+
+    private void thenBootstrapRequestsWentTo(Integer... ips) {
+        assertThat(bootstrapRequests()).extracting(Sent::ip).containsExactly(ips);
     }
 
     private void givenANodesDat() throws IOException {
@@ -236,13 +293,13 @@ class KadNodeBootstrapTest {
         this.node.addContacts(new NodesDat.Contents(2, false, this.saved));
     }
 
-    private void givenFallbackContacts(int count) {
+    private void givenShippedContacts(int count) {
         for (int i = 0; i < count; i++) {
-            this.fallback.add(record(UInt128.random(this.random), Ipv4.of(40 + i, 1, 1, 1), PORT, 8));
+            this.shipped.add(record(UInt128.random(this.random), Ipv4.of(40 + i, 1, 1, 1), PORT, 8));
         }
-        this.node.fallBackTo(() -> {
-            this.fallbackReads++;
-            return new NodesDat.Contents(3, true, this.fallback);
+        this.node.bootstrapFrom(() -> {
+            this.shippedReads++;
+            return new NodesDat.Contents(3, true, this.shipped);
         });
     }
 
@@ -281,14 +338,14 @@ class KadNodeBootstrapTest {
         assertThat(bootstrapRequests()).hasSize(count);
     }
 
-    private void thenBootstrapRequestsWentToFallbackContacts(int count) {
-        List<Integer> fallbackIps =
-                this.fallback.stream().map(NodesDat.Contact::ip).toList();
-        assertThat(bootstrapRequests()).extracting(Sent::ip).hasSize(count).isSubsetOf(fallbackIps);
+    private void thenBootstrapRequestsWentToShippedContacts(int count) {
+        List<Integer> shippedIps =
+                this.shipped.stream().map(NodesDat.Contact::ip).toList();
+        assertThat(bootstrapRequests()).extracting(Sent::ip).hasSize(count).isSubsetOf(shippedIps);
     }
 
-    private void thenTheFallbackContactsWereRead(int times) {
-        assertThat(this.fallbackReads).isEqualTo(times);
+    private void thenTheShippedContactsWereRead(int times) {
+        assertThat(this.shippedReads).isEqualTo(times);
     }
 
     private void thenBootstrapRequestsWentToTheClosestGoodContacts(int count) {

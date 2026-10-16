@@ -410,10 +410,12 @@ All notable changes to this project are documented here. The format follows
   port, to every server that takes it and gave a UDP key for our current address, and its
   answers are decrypted; with obfuscation required, servers that cannot take it are not asked.
 - A new profile starts from the server list and the Kad contacts of upd.emule-security.org,
-  shipped with njMule: their servers fill a profile that never had a list (one emptied later
-  stays empty), and Kad asks the shipped contacts for contacts one at a time, without taking them
-  as its own, while there is no nodes.dat or once none of the saved contacts answered in the first
-  three minutes (or none is left).
+  shipped with njMule: their servers fill a profile that never had a list (one emptied later stays
+  empty), and Kad asks the shipped contacts for contacts one at a time, without taking them as its
+  own, from the start next to the saved ones, and again after a five-minute pause when they ran
+  out before Kad connected.
+- While Kad is not connected, a client met over eD2K that runs Kad 2 is asked for contacts (one
+  every ten seconds at most), so a working eD2K connection also brings Kad in.
 - Sizes and rates use the units of the interface language as eMule's translations write them
   (Ko and Ko/s in French, Кб in Russian).
 - The server in use stands out in the server list (bold, with an accent bar and a tooltip), and the one
