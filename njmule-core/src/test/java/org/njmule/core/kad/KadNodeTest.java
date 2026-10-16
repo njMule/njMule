@@ -66,6 +66,7 @@ class KadNodeTest {
     private final List<Runnable> stops = new ArrayList<>();
     private final List<KadNode.FileResult> found = new ArrayList<>();
     private KadNode node;
+    private int rounds;
     private UInt128 target;
     private Optional<Runnable> search;
     private List<KadContactInfo> contactInfos;
@@ -198,6 +199,37 @@ class KadNodeTest {
         whenTheFirewallIsRechecked();
 
         thenWeAreNotFirewalled("while the check runs");
+    }
+
+    @Test
+    void shouldTellTheTcpPortOpenOnceNodesConnectedToUs() {
+        givenNodesConnectedToUs(PEER, Ipv4.of(21, 1, 1, 1));
+
+        whenTheChecksAreCounted();
+
+        thenTheTcpCheckTells(Optional.of(true));
+    }
+
+    @Test
+    void shouldTellNoTcpOutcomeOnceARecheckStarted() {
+        givenNodesConnectedToUs(PEER, Ipv4.of(21, 1, 1, 1));
+        givenTheChecksCounted();
+
+        whenTheFirewallIsRechecked();
+
+        thenTheTcpCheckTells(Optional.empty());
+        thenTheChecksStartedSince(1);
+    }
+
+    @Test
+    void shouldStartTheRecheckAskedForAtTheNextTick() {
+        givenNodesConnectedToUs(PEER, Ipv4.of(21, 1, 1, 1));
+        givenTheChecksCounted();
+
+        whenARecheckIsAskedFor();
+
+        thenTheChecksStartedSince(0);
+        thenTheTcpCheckTells(Optional.of(true));
     }
 
     @Test
@@ -399,6 +431,26 @@ class KadNodeTest {
 
     private void whenItsConnectionIsConfirmed(int ip) {
         this.node.reachableConfirmed(ip);
+    }
+
+    private void givenTheChecksCounted() {
+        whenTheChecksAreCounted();
+    }
+
+    private void whenTheChecksAreCounted() {
+        this.rounds = this.node.firewallRounds();
+    }
+
+    private void whenARecheckIsAskedFor() {
+        this.node.recheckFirewall();
+    }
+
+    private void thenTheTcpCheckTells(Optional<Boolean> open) {
+        assertThat(this.node.tcpCheckOpen()).isEqualTo(open);
+    }
+
+    private void thenTheChecksStartedSince(int started) {
+        assertThat(this.node.firewallRounds() - this.rounds).isEqualTo(started);
     }
 
     private void whenTheFirewallIsRechecked() {

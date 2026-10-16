@@ -282,6 +282,9 @@ final class Network {
     private ScheduledFuture<?> kadTicking;
     // The test of our ports running or run last, and its ticks.
     private PortCheck portCheck;
+    // The Kad node and its checks when the test asked them again: only later checks tell.
+    private KadNode portCheckKad;
+    private int portCheckRound;
     private ScheduledFuture<?> portCheckTicking;
     private volatile boolean closed;
     private ScheduledFuture<?> pendingSave;
@@ -1819,9 +1822,15 @@ final class Network {
             startReachTests(check);
         }
         KadNode node = this.kad;
+        // Until the check asked for has started, Kad's outcomes are those of an earlier one.
+        boolean fresh = node != null && (node != this.portCheckKad || node.firewallRounds() > this.portCheckRound);
         PortTest state = node == null
                 ? check.update(false, Optional.empty(), Optional.empty(), now)
-                : check.update(true, node.tcpCheckOpen(), node.udpTestOpen(), now);
+                : check.update(
+                        true,
+                        fresh ? node.tcpCheckOpen() : Optional.empty(),
+                        fresh ? node.udpTestOpen() : Optional.empty(),
+                        now);
         if (state.done()) {
             portTestDone(state);
         }
@@ -1838,7 +1847,9 @@ final class Network {
         if (login) {
             this.session.connect(this.session.server());
         }
+        this.portCheckKad = this.kad;
         if (this.kad != null) {
+            this.portCheckRound = this.kad.firewallRounds();
             this.kad.recheckFirewall();
         }
     }

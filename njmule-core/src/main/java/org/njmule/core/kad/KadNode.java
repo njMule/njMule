@@ -347,6 +347,8 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
     private long nextFirewallCheck;
     private long nextClean;
     private int firewallReports;
+    // How many firewall checks started, so that an outcome can be told from one of an earlier check.
+    private int firewallRounds;
     private boolean selfLookupDone;
     private boolean wasOpen;
 
@@ -482,6 +484,11 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             return false;
         }
         return !open;
+    }
+
+    /** How many checks of our ports started; a recheck asked for starts at the node's next tick. */
+    public int firewallRounds() {
+        return this.firewallRounds;
     }
 
     /** How the last check of our TCP port ended, open or not; empty while it runs. */
@@ -1088,6 +1095,7 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         }
         if (now - this.nextFirewallCheck >= 0) {
             this.nextFirewallCheck = now + FIREWALL_CHECK_EVERY.toNanos();
+            this.firewallRounds++;
             // Only a check that ended gives the outcome that stands while the next one runs.
             boolean open = this.firewallAcks.size() >= FIREWALL_ACKS;
             if (open || this.firewallReports >= FIREWALL_CHECKS) {
