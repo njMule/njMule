@@ -3,6 +3,7 @@
 
 import com.github.jk1.license.render.ReportRenderer
 import com.github.jk1.license.render.TextReportRenderer
+import java.util.Locale
 
 plugins {
     id("njmule.java-conventions")
@@ -156,11 +157,21 @@ tasks.register<Exec>("nativeGui") {
     val resFile = layout.buildDirectory.file("native-res/njmule-gui.res")
     val optimization = providers.gradleProperty("native.optimization")
     inputs.property("optimization", optimization)
+    val i18n = file("src/main/resources/org/njmule/gui/i18n")
     argumentProviders.add(
         CommandLineArgumentProvider {
+            // Dates and numbers in the formats of every region of the interface's languages: all the JDK's
+            // locales would add 37 MiB, the languages alone would show en-GB dates the American way.
+            val nj = Regex("^nj_([a-z]+)")
+            val languages = i18n.list().orEmpty().mapNotNull { nj.find(it)?.groupValues?.get(1) }.toSet() + "en"
+            val locales =
+                Locale.getAvailableLocales()
+                    .filter { it.language in languages && it.variant.isEmpty() && !it.hasExtensions() }
+                    .map { it.toLanguageTag() }
+                    .sorted()
             listOf("--module-path", modulePath.asPath, "--module", module, "-o", "njmule-gui", "@$argsFile") +
                 (if (windows) listOf("-H:NativeLinkerOption=${resFile.get().asFile}") else emptyList()) +
-                optimization.get()
+                listOf("-H:IncludeLocales=" + locales.joinToString(","), optimization.get())
         }
     )
     doFirst { out.get().asFile.mkdirs() }

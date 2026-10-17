@@ -153,7 +153,9 @@ All notable changes to this project are documented here. The format follows
 - Installers: a per-user Windows MSI (no administrator rights, Start menu entry, launcher on the
   PATH), deb and rpm packages with the desktop entry, AppStream metadata and icons, a macOS disk
   image, and archives that run from any folder, portable once a `portable.flag` file is put beside
-  the programs; the release workflow builds them all and opens a draft release for a tag.
+  the programs; the release workflow builds them all and opens a draft release for a tag. The
+  desktop app holds the date and number formats of the regions of its interface languages only, not
+  every locale of the JDK.
 - ed2k links given on the command line are added as downloads; a second start hands its links to
   the njMule already running with the same configuration, as when a link is clicked in a browser,
   and a second start without links brings the running window to the front.
