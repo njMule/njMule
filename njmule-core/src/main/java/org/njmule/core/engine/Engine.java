@@ -114,7 +114,7 @@ import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.persist.format.TextFiles;
 import org.njmule.core.server.ServerList;
-import org.njmule.core.upnp.Igd;
+import org.njmule.core.upnp.Routers;
 import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -164,7 +164,7 @@ public final class Engine implements NjMuleEngine {
             Hash16 userHash,
             BooleanSupplier emuleRunning,
             InstanceLock lock,
-            Optional<InetSocketAddress> upnp,
+            Optional<Routers> upnp,
             boolean automaticConnections)
             throws IOException {
         this.directories = directories;
@@ -205,14 +205,21 @@ public final class Engine implements NjMuleEngine {
     /** As {@link #start(EngineConfig)}, telling whether an eMule runs as tests need. */
     static Engine start(EngineConfig config, BooleanSupplier emuleRunning) throws IOException {
         // Tests set the property: they must never change the mappings of the router they run behind.
-        return start(
+        return launch(
                 config,
                 emuleRunning,
-                Boolean.getBoolean(Network.NO_UPNP_PROPERTY) ? Optional.empty() : Optional.of(Igd.SSDP));
+                Boolean.getBoolean(Network.NO_UPNP_PROPERTY)
+                        ? Optional.empty()
+                        : Optional.of(Routers.OF_THIS_COMPUTER));
     }
 
-    /** As {@link #start(EngineConfig, BooleanSupplier)}, sending UPnP discovery to {@code upnp}, for tests. */
+    /** As {@link #start(EngineConfig, BooleanSupplier)}, sending UPnP discovery to {@code upnp} only, for tests. */
     static Engine start(EngineConfig config, BooleanSupplier emuleRunning, Optional<InetSocketAddress> upnp)
+            throws IOException {
+        return launch(config, emuleRunning, upnp.map(Routers::upnpOnly));
+    }
+
+    private static Engine launch(EngineConfig config, BooleanSupplier emuleRunning, Optional<Routers> upnp)
             throws IOException {
         Objects.requireNonNull(config, "config");
         AppDirectories dirs = config.directories();

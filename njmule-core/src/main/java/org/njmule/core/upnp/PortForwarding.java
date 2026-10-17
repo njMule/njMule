@@ -31,9 +31,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Our ports forwarded by the router while njMule runs: found and mapped on a virtual thread at the start, for a lease
- * renewed at half its time (which also recreates mappings the router lost), unmapped at the end. Only the mappings made
- * here are ever removed.
+ * Our ports forwarded by the router while njMule runs: found with UPnP, or else with NAT-PMP or PCP, and mapped on a
+ * virtual thread at the start, for a lease renewed at half its time (which also recreates mappings the router lost),
+ * unmapped at the end. Only the mappings made here are ever removed.
  */
 public final class PortForwarding implements AutoCloseable {
 
@@ -82,7 +82,10 @@ public final class PortForwarding implements AutoCloseable {
         }
     }
 
-    private final InetSocketAddress ssdp;
+    // The shortest wait between renewals, whatever lease a router grants.
+    private static final Duration SHORTEST_RENEWAL = Duration.ofSeconds(10);
+
+    private final Routers routers;
     private final List<Mapping> wanted;
     private final Report report;
     private final Pause pause;
@@ -90,29 +93,42 @@ public final class PortForwarding implements AutoCloseable {
     private final CopyOnWriteArrayList<Mapping> mapped = new CopyOnWriteArrayList<>();
     private final CountDownLatch started = new CountDownLatch(1);
     private final Thread worker;
-    private volatile Igd gateway;
+    private volatile Gateway gateway;
     private volatile boolean closed;
-    // Worker thread only.
+    // Worker thread only: the lease asked for, and the shortest the router granted at the last round (0: none).
     private long leaseSeconds = LEASE.toSeconds();
+    private long grantedSeconds;
 
-    private PortForwarding(InetSocketAddress ssdp, List<Mapping> wanted, Report report, Pause pause) {
-        this.ssdp = Objects.requireNonNull(ssdp, "ssdp");
+    private PortForwarding(Routers routers, List<Mapping> wanted, Report report, Pause pause) {
+        this.routers = Objects.requireNonNull(routers, "routers");
         this.wanted = List.copyOf(wanted);
         this.report = Objects.requireNonNull(report, "report");
         this.pause = Objects.requireNonNull(pause, "pause");
         this.worker = Thread.ofVirtual().name("njmule-upnp").unstarted(this::run);
     }
 
-    /** Starts forwarding {@code tcpPort} and, when present, {@code udpPort}; {@code report} gets the outcome. */
+    /**
+     * Starts forwarding {@code tcpPort} and, when present, {@code udpPort} by a router of {@code routers};
+     * {@code report} gets the outcome.
+     */
+    public static PortForwarding start(Routers routers, int tcpPort, OptionalInt udpPort, Report report) {
+        return start(routers, tcpPort, udpPort, report, Thread::sleep);
+    }
+
+    /** As above, with UPnP only, searched at {@code ssdp}. */
     public static PortForwarding start(InetSocketAddress ssdp, int tcpPort, OptionalInt udpPort, Report report) {
-        return start(ssdp, tcpPort, udpPort, report, Thread::sleep);
+        return start(Routers.upnpOnly(ssdp), tcpPort, udpPort, report);
     }
 
     static PortForwarding start(InetSocketAddress ssdp, int tcpPort, OptionalInt udpPort, Report report, Pause pause) {
+        return start(Routers.upnpOnly(ssdp), tcpPort, udpPort, report, pause);
+    }
+
+    static PortForwarding start(Routers routers, int tcpPort, OptionalInt udpPort, Report report, Pause pause) {
         List<Mapping> wanted = new ArrayList<>();
         wanted.add(new Mapping("TCP", tcpPort));
         udpPort.ifPresent(p -> wanted.add(new Mapping("UDP", p)));
-        PortForwarding forwarding = new PortForwarding(ssdp, wanted, report, pause);
+        PortForwarding forwarding = new PortForwarding(routers, wanted, report, pause);
         forwarding.worker.start();
         return forwarding;
     }
@@ -135,16 +151,16 @@ public final class PortForwarding implements AutoCloseable {
 
     private void run() {
         try {
-            Optional<Igd> found = Igd.discover(this.ssdp, DISCOVERY);
+            Optional<Gateway> found = discover();
             if (found.isEmpty()) {
-                this.report.line(Outcome.NO_ROUTER, "", "UPnP: no router answered");
+                this.report.line(Outcome.NO_ROUTER, "", "UPnP, NAT-PMP and PCP: no router answered");
                 return;
             }
             this.gateway = found.get();
             mapAll(true);
             this.started.countDown();
             while (!this.closed) {
-                this.pause.sleep(LEASE.dividedBy(2));
+                this.pause.sleep(renewal());
                 renew();
             }
         } catch (InterruptedException e) {
@@ -152,39 +168,63 @@ public final class PortForwarding implements AutoCloseable {
             Thread.currentThread().interrupt();
         } catch (IOException e) {
             if (!this.closed) {
-                Igd igd = this.gateway;
+                Gateway found = this.gateway;
                 this.report.line(
                         Outcome.FAILED,
-                        igd == null ? "" : igd.controlUrl().getHost(),
-                        "UPnP failed: " + e.getMessage());
+                        found == null ? "" : found.host(),
+                        (found == null ? "UPnP" : found.protocol()) + " failed: " + e.getMessage());
             }
         } finally {
             this.started.countDown();
         }
     }
 
+    // UPnP first, the router of most homes; else NAT-PMP or PCP at the default gateway.
+    private Optional<Gateway> discover() throws IOException {
+        Optional<Igd> upnp = Igd.discover(this.routers.ssdp(), DISCOVERY);
+        if (upnp.isPresent()) {
+            return Optional.of(upnp.get());
+        }
+        Optional<InetSocketAddress> natPmp = this.routers.natPmp().get();
+        return natPmp.isEmpty()
+                ? Optional.empty()
+                : NatPmp.discover(natPmp.get(), DISCOVERY).map(Gateway.class::cast);
+    }
+
+    // Half the shortest lease granted, as for the one asked for; a router may grant less.
+    private Duration renewal() {
+        Duration lease = this.grantedSeconds > 0 ? Duration.ofSeconds(this.grantedSeconds) : LEASE;
+        Duration half = lease.dividedBy(2);
+        return half.compareTo(SHORTEST_RENEWAL) < 0 ? SHORTEST_RENEWAL : half;
+    }
+
     // Asks for every port; refusals are reported the first time and tried again at each renewal.
     private void mapAll(boolean tell) throws IOException, InterruptedException {
         List<String> refused = new ArrayList<>();
+        this.grantedSeconds = 0;
         for (Mapping m : this.wanted) {
             try {
-                add(m);
-            } catch (Igd.Refused e) {
+                long granted = add(m);
+                if (granted > 0 && (this.grantedSeconds == 0 || granted < this.grantedSeconds)) {
+                    this.grantedSeconds = granted;
+                }
+            } catch (Gateway.Refused e) {
                 refused.add(m + " (" + e.getMessage() + ")");
             }
         }
         if (!tell) {
             return;
         }
-        String host = this.gateway.controlUrl().getHost();
+        String host = this.gateway.host();
+        String protocol = this.gateway.protocol();
         String forwarded = String.join(" and ", mappings()) + " forwarded by " + host;
         String denied = String.join(" and ", refused);
         if (refused.isEmpty()) {
-            this.report.line(Outcome.FORWARDED, host, "UPnP: " + forwarded);
+            this.report.line(Outcome.FORWARDED, host, protocol + ": " + forwarded);
         } else if (this.mapped.isEmpty()) {
-            this.report.line(Outcome.REFUSED, host, "UPnP: the router at " + host + " refused " + denied);
+            this.report.line(Outcome.REFUSED, host, protocol + ": the router at " + host + " refused " + denied);
         } else {
-            this.report.line(Outcome.PARTLY, host, "UPnP: " + forwarded + ", which refused " + denied);
+            this.report.line(Outcome.PARTLY, host, protocol + ": " + forwarded + ", which refused " + denied);
         }
     }
 
@@ -194,39 +234,41 @@ public final class PortForwarding implements AutoCloseable {
             mapAll(false);
             return;
         } catch (IOException e) {
-            logger.debug("UPnP: renewal failed, looking for the router again: {}", e.getMessage());
+            logger.debug("Port forwarding: renewal failed, looking for the router again: {}", e.getMessage());
         }
         try {
-            Optional<Igd> found = Igd.discover(this.ssdp, DISCOVERY);
+            Optional<Gateway> found = discover();
             if (found.isEmpty()) {
                 return;
             }
-            Igd old = this.gateway;
+            Gateway old = this.gateway;
             this.gateway = found.get();
             old.close();
             mapAll(true);
         } catch (IOException e) {
             // Tried again at the next renewal.
-            logger.debug("UPnP: the router is still away: {}", e.getMessage());
+            logger.debug("Port forwarding: the router is still away: {}", e.getMessage());
         }
     }
 
-    private void add(Mapping m) throws IOException, InterruptedException {
-        Igd igd = this.gateway;
+    // The lease granted, 0 for until removed.
+    private long add(Mapping m) throws IOException, InterruptedException {
+        Gateway router = this.gateway;
         boolean known = this.mapped.contains(m);
         // Ours from the request on: an answer lost to the end may still have made it.
         this.mapped.addIfAbsent(m);
+        long granted;
         try {
             try {
-                igd.addMapping(m.protocol(), m.port(), DESCRIPTION, this.leaseSeconds);
+                granted = router.addMapping(m.protocol(), m.port(), DESCRIPTION, this.leaseSeconds);
             } catch (Igd.Refused e) {
                 if (this.leaseSeconds == 0 || !e.getMessage().startsWith(ONLY_PERMANENT_LEASES)) {
                     throw e;
                 }
                 this.leaseSeconds = 0;
-                igd.addMapping(m.protocol(), m.port(), DESCRIPTION, 0);
+                granted = router.addMapping(m.protocol(), m.port(), DESCRIPTION, 0);
             }
-        } catch (Igd.Refused e) {
+        } catch (Gateway.Refused e) {
             if (!known) {
                 this.mapped.remove(m);
             }
@@ -240,6 +282,7 @@ public final class PortForwarding implements AutoCloseable {
         if (this.closed) {
             throw new InterruptedException("closing");
         }
+        return granted;
     }
 
     /** Removes the mappings made here; one asked for while closing is removed too. */
@@ -252,18 +295,18 @@ public final class PortForwarding implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        Igd igd = this.gateway;
-        if (igd == null) {
+        Gateway router = this.gateway;
+        if (router == null) {
             return;
         }
         for (Mapping m : this.mapped) {
             try {
-                igd.deleteMapping(m.protocol(), m.port());
+                router.deleteMapping(m.protocol(), m.port());
             } catch (IOException e) {
-                logger.debug("UPnP: cannot remove {}: {}", m, e.getMessage());
+                logger.debug("{}: cannot remove {}: {}", router.protocol(), m, e.getMessage());
             }
         }
         this.mapped.clear();
-        igd.close();
+        router.close();
     }
 }

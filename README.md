@@ -61,7 +61,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 | 📂 **File management** | Shared directories with recursive sharing and change monitoring; download and upload priorities, categories, preview in an external video player, comments and ratings. |
 | 🖥️ **Desktop app** | JavaFX with AtlantaFX themes (Nord light and dark by default, following the system, and the system colours under Windows high contrast), 36 languages including right-to-left ones with a mirrored layout, system tray integration and optional registration as the `ed2k://` link handler. |
 | 🌍 **Web interface** | Status, transfers, searches and servers, protected by a password. |
-| 🔧 **Networking** | SOCKS 4/5 and HTTP CONNECT proxies, binding to one network interface (such as a VPN) that keeps njMule offline while it is gone, UPnP port forwarding, IP filtering (`ipfilter.dat`, PeerGuardian, P2B) with updates from a URL, and a weekly scheduler for bandwidth limits and categories. |
+| 🔧 **Networking** | SOCKS 4/5 and HTTP CONNECT proxies, binding to one network interface (such as a VPN) that keeps njMule offline while it is gone, port forwarding with UPnP, NAT-PMP or PCP, IP filtering (`ipfilter.dat`, PeerGuardian, P2B) with updates from a URL, and a weekly scheduler for bandwidth limits and categories. |
 | 💬 **Messaging** | Chat with CAPTCHA verification, a friends list and spam filters. |
 
 <details>

@@ -130,7 +130,9 @@ All notable changes to this project are documented here. The format follows
 - Scheduler: rules by weekday and time that change the transfer limits and connections; edited
   in the options and kept in `scheduler.properties`.
 - Port forwarding with UPnP (on by default): the router is found on the local network, ports are
-  mapped and renewed while njMule runs and removed on exit.
+  mapped and renewed while njMule runs and removed on exit. A router that answers no UPnP is asked
+  with NAT-PMP or PCP at the default gateway (read from the system's routing table), renewing at
+  half the lease it grants; a mapping counts only with our own port outside.
 - Port test, in the first-start wizard and in the connection options: the ports as chosen are
   applied, the router asked again through UPnP, then the server checks the TCP port at a new login
   (a HighID) and Kad nodes check both ports; the outcomes show as they come, with what to do about

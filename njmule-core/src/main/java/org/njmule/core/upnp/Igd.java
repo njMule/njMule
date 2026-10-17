@@ -67,7 +67,7 @@ import org.xml.sax.SAXException;
  * port mappings over SOAP. Blocking; run it off the engine thread. A gateway is only believed when it describes itself
  * from its own LAN address.
  */
-public final class Igd implements AutoCloseable {
+public final class Igd implements Gateway {
 
     /** Where gateways listen for discovery. */
     public static final InetSocketAddress SSDP = new InetSocketAddress(InetAddress.ofLiteral("239.255.255.250"), 1900);
@@ -190,8 +190,18 @@ public final class Igd implements AutoCloseable {
         return this.control;
     }
 
+    @Override
+    public String protocol() {
+        return "UPnP";
+    }
+
+    @Override
+    public String host() {
+        return this.control.getHost();
+    }
+
     /** A gateway's refusal of an action, with its reason, such as "718 ConflictInMappingEntry". */
-    public static final class Refused extends IOException {
+    public static final class Refused extends Gateway.Refused {
         @Serial
         private static final long serialVersionUID = 1L;
 
@@ -200,11 +210,9 @@ public final class Igd implements AutoCloseable {
         }
     }
 
-    /**
-     * Forwards {@code port} of {@code protocol} ("TCP" or "UDP") to our address towards the router, for {@code lease}
-     * seconds (0: until removed).
-     */
-    public void addMapping(String protocol, int port, String description, long lease) throws IOException {
+    /** As {@link Gateway#addMapping}: the router keeps the lease asked for. */
+    @Override
+    public long addMapping(String protocol, int port, String description, long lease) throws IOException {
         call(
                 "AddPortMapping",
                 "<NewRemoteHost></NewRemoteHost>"
@@ -228,6 +236,7 @@ public final class Igd implements AutoCloseable {
                         + "<NewLeaseDuration>"
                         + lease
                         + "</NewLeaseDuration>");
+        return lease;
     }
 
     /** Whether the WAN connection is up; a gateway that does not say is not taken as up. */
@@ -243,7 +252,7 @@ public final class Igd implements AutoCloseable {
         }
     }
 
-    /** Removes the forwarding of {@code port}. */
+    @Override
     public void deleteMapping(String protocol, int port) throws IOException {
         call(
                 "DeletePortMapping",

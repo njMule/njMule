@@ -152,6 +152,7 @@ import org.njmule.core.social.Messaging;
 import org.njmule.core.upload.Credits;
 import org.njmule.core.upload.UploadManager;
 import org.njmule.core.upnp.PortForwarding;
+import org.njmule.core.upnp.Routers;
 import org.njmule.core.util.Bytes;
 import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
@@ -257,7 +258,7 @@ final class Network {
     // Kad disconnected by the user: new ports do not start it again.
     private volatile boolean kadStoppedByHand;
     // Where UPnP discovery goes; empty: the router is never asked.
-    private final Optional<InetSocketAddress> upnp;
+    private final Optional<Routers> upnp;
     // Whether this run connects at start and reconnects as the preferences say.
     private final boolean automaticConnections;
     // Changes of the router's mappings run one after the other, off the engine thread, so old mappings are gone before
@@ -311,7 +312,7 @@ final class Network {
             Hash16 userHash,
             Path tempDir,
             Supplier<Path> incomingDir,
-            Optional<InetSocketAddress> upnp,
+            Optional<Routers> upnp,
             boolean automaticConnections)
             throws IOException {
         this.upnp = Objects.requireNonNull(upnp, "upnp");
