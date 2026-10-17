@@ -36,7 +36,9 @@ install -m 644 "$here/app/config" "$here/app/njmule.sc" "$pkg/app/"
 for size in 16 24 32 48 64 72 256; do
     install -m 644 "$root/branding/generated/njmule-$size.png" "$pkg/app/images/njmule-$size.png"
 done
-install -m 644 "$root/LICENSE" "$root/NOTICE" "$pkg/doc/"
+# The executable holds musl and zlib, linked statically: their licenses go with it.
+install -m 644 "$root/LICENSE" "$root/NOTICE" "$here/licenses/musl-COPYRIGHT" \
+    "$here/licenses/zlib-LICENSE" "$pkg/doc/"
 tar -C "$pkg" --owner=0 --group=0 --sort=name -czf "$spk/package.tgz" bin app doc
 
 cp -r "$here/scripts" "$here/conf" "$here/WIZARD_UIFILES" "$spk/"

@@ -46,3 +46,17 @@ path = [
 precedence = "override"
 SPDX-FileCopyrightText = "NONE"
 SPDX-License-Identifier = "CC0-1.0"
+
+# The license texts of musl and zlib, linked statically into the Synology DSM executable and shipped
+# with its package: musl 1.2.5's COPYRIGHT unchanged, and the notice at the head of zlib 1.2.13's zlib.h.
+[[annotations]]
+path = "packaging/synology/licenses/musl-COPYRIGHT"
+precedence = "override"
+SPDX-FileCopyrightText = "2005-2020 Rich Felker, et al."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packaging/synology/licenses/zlib-LICENSE"
+precedence = "override"
+SPDX-FileCopyrightText = "1995-2022 Jean-loup Gailly and Mark Adler"
+SPDX-License-Identifier = "Zlib"

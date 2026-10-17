@@ -54,6 +54,10 @@ versions is generated at release time in THIRD-PARTY.txt.
     WellBehavedFX               under BSD 2-Clause
     GraalVM Native Image        GPL-2.0 WITH Classpath-exception-2.0
     (Substrate VM runtime embedded in the native executables)
+    musl libc                   MIT License
+    zlib                        zlib License
+    (both linked statically into the executable of the Synology DSM
+    package, which ships their license texts in its doc folder)
 
 Test-only dependencies (JUnit, AssertJ, jqwik, Jimfs) are not distributed.
 
