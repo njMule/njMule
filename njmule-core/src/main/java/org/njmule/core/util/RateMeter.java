@@ -18,12 +18,15 @@ package org.njmule.core.util;
 
 import java.util.Arrays;
 
-/** Bytes per second averaged over the last seconds, and the total. Not thread-safe. */
+/** Bytes per second averaged over the last whole seconds, and the total. Not thread-safe. */
 public final class RateMeter {
 
     private static final long NANOS_PER_SECOND = 1_000_000_000L;
 
+    // The seconds of the average, then the one under way: counted once it is over, else the average would dip each
+    // time a second starts.
     private final long[] perSecond;
+    private final int seconds;
     private long second = Long.MIN_VALUE;
     private long total;
 
@@ -32,7 +35,8 @@ public final class RateMeter {
         if (seconds < 1) {
             throw new IllegalArgumentException("seconds must be positive");
         }
-        this.perSecond = new long[seconds];
+        this.seconds = seconds;
+        this.perSecond = new long[seconds + 1];
     }
 
     /** Counts {@code bytes} at {@code now} (monotonic nanoseconds). */
@@ -45,10 +49,13 @@ public final class RateMeter {
     public long rate(long now) {
         advance(now);
         long sum = 0;
-        for (long bytes : this.perSecond) {
-            sum += bytes;
+        int current = Math.floorMod(this.second, this.perSecond.length);
+        for (int i = 0; i < this.perSecond.length; i++) {
+            if (i != current) {
+                sum += this.perSecond[i];
+            }
         }
-        return sum / this.perSecond.length;
+        return sum / this.seconds;
     }
 
     public long total() {

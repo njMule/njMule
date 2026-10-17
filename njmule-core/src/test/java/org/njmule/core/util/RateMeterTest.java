@@ -32,9 +32,9 @@ class RateMeterTest {
     private long rate;
     private Throwable exception;
 
-    // The first second leaves the window after four seconds, then the second one.
+    // A second counts once it is over, then for four seconds: the second under way would make the average dip.
     @ParameterizedTest
-    @CsvSource({"1, 2000", "3, 2000", "4, 1000", "5, 0"})
+    @CsvSource({"1, 1000", "2, 2000", "4, 2000", "5, 1000", "6, 0"})
     void shouldAverageTheLastSeconds(long secondsLater, long expected) {
         givenAMeterOver(4);
         givenBytesAddedAt(4_000, START);
@@ -43,6 +43,18 @@ class RateMeterTest {
         whenTheRateIsReadAt(START + secondsLater * SECOND);
 
         thenTheRateIs(expected);
+    }
+
+    @Test
+    void shouldKeepTheRateWhileASecondHasJustBegun() {
+        givenAMeterOver(2);
+        givenBytesAddedAt(1_000, 10 * SECOND);
+        givenBytesAddedAt(1_000, 11 * SECOND);
+        givenBytesAddedAt(50, 12 * SECOND);
+
+        whenTheRateIsReadAt(12 * SECOND + SECOND / 10);
+
+        thenTheRateIs(1_000);
     }
 
     @Test
@@ -62,7 +74,7 @@ class RateMeterTest {
 
         whenBytesAreAddedAt(300, 60 * SECOND);
 
-        thenTheRateAtIs(60 * SECOND, 100);
+        thenTheRateAtIs(61 * SECOND, 100);
         thenTheTotalIs(1_200);
     }
 
@@ -73,8 +85,8 @@ class RateMeterTest {
 
         whenBytesAreAddedAt(1_000, 5 * SECOND);
 
-        thenTheRateAtIs(10 * SECOND, 1_000);
-        thenTheRateAtIs(12 * SECOND, 0);
+        thenTheRateAtIs(11 * SECOND, 1_000);
+        thenTheRateAtIs(13 * SECOND, 0);
         thenTheTotalIs(2_000);
     }
 
@@ -85,7 +97,7 @@ class RateMeterTest {
 
         whenBytesAreAddedAt(600, SECOND / 2);
 
-        thenTheRateAtIs(SECOND / 2, 500);
+        thenTheRateAtIs(SECOND + SECOND / 2, 500);
         thenTheRateAtIs(Long.MAX_VALUE, 0);
     }
 
