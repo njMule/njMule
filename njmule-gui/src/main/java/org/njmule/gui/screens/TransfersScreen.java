@@ -59,10 +59,6 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
@@ -81,6 +77,8 @@ import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icon;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Navigate;
@@ -151,8 +149,8 @@ public final class TransfersScreen implements Screen {
     }
 
     @Override
-    public Ikon icon() {
-        return Material2MZ.SWAP_VERT;
+    public Icons icon() {
+        return Icons.TRANSFERS;
     }
 
     @Override
@@ -198,25 +196,25 @@ public final class TransfersScreen implements Screen {
         }
         this.downloads.getColumns().addAll(columns);
         TableLayout.remember(this.downloads, "downloads", this.gui.settings());
-        MenuItem pause = new MenuItem(this.gui.t("IDS_DL_PAUSE"), Fx.icon(Material2MZ.PAUSE));
+        MenuItem pause = new MenuItem(this.gui.t("IDS_DL_PAUSE"), Fx.icon(Icons.PAUSE));
         pause.setOnAction(e -> pauseSelected());
-        MenuItem resume = new MenuItem(this.gui.t("IDS_DL_RESUME"), Fx.icon(Material2MZ.PLAY_ARROW));
+        MenuItem resume = new MenuItem(this.gui.t("IDS_DL_RESUME"), Fx.icon(Icons.PLAY));
         resume.setOnAction(e -> resumeSelected());
-        MenuItem stop = new MenuItem(this.gui.t("IDS_DL_STOP"), Fx.icon(Material2MZ.STOP));
+        MenuItem stop = new MenuItem(this.gui.t("IDS_DL_STOP"), Fx.icon(Icons.STOP));
         stop.setOnAction(e -> stopSelected());
-        MenuItem cancel = new MenuItem(this.gui.t("IDS_CANCEL"), Fx.icon(Material2AL.DELETE));
+        MenuItem cancel = new MenuItem(this.gui.t("IDS_CANCEL"), Fx.icon(Icons.DELETE));
         cancel.setOnAction(e -> askCancelSelected());
-        MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"), Fx.icon(Material2AL.CONTENT_COPY));
+        MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"), Fx.icon(Icons.COPY));
         copy.setOnAction(e -> copyLinks());
-        MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"), Fx.icon(Material2AL.CODE));
+        MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"), Fx.icon(Icons.CODE));
         html.setOnAction(e -> copyHtml());
-        MenuItem clear = new MenuItem(this.gui.t("IDS_DL_CLEAR"), Fx.icon(Material2AL.CLEAR_ALL));
+        MenuItem clear = new MenuItem(this.gui.t("IDS_DL_CLEAR"), Fx.icon(Icons.CLEAR_ALL));
         clear.setOnAction(e -> this.gui.model().clearCompleted());
-        MenuItem addSource = new MenuItem(this.gui.t("IDS_ADDSRCMANUALLY"), Fx.icon(Material2MZ.PERSON_ADD));
+        MenuItem addSource = new MenuItem(this.gui.t("IDS_ADDSRCMANUALLY"), Fx.icon(Icons.PERSON_ADD));
         addSource.setOnAction(e -> addSourceToSelected());
-        MenuItem comments = new MenuItem(this.gui.t("IDS_CMT_ADD"), Fx.icon(Material2MZ.RATE_REVIEW));
+        MenuItem comments = new MenuItem(this.gui.t("IDS_CMT_ADD"), Fx.icon(Icons.COMMENT));
         comments.setOnAction(e -> commentSelected());
-        MenuItem preview = new MenuItem(this.gui.t("IDS_DL_PREVIEW"), Fx.icon(Material2MZ.PREVIEW));
+        MenuItem preview = new MenuItem(this.gui.t("IDS_DL_PREVIEW"), Fx.icon(Icons.PREVIEW));
         preview.setOnAction(e -> previewSelected());
         CheckMenuItem previewFirst = new CheckMenuItem(this.gui.t("IDS_DOWNLOADMOVIECHUNKS"));
         previewFirst.setOnAction(e -> Fx.selected(this.downloads)
@@ -229,9 +227,8 @@ public final class TransfersScreen implements Screen {
                 .forEach(d -> this.gui.model().setAutoSwap(d.hash(), autoSwap.isSelected())));
         MenuItem swapAway = new MenuItem(this.gui.t("nj.a4af.toOther"));
         swapAway.setOnAction(e -> swapSourcesAway());
-        Menu sourceHandling =
-                new Menu(this.gui.t("IDS_A4AF"), Fx.icon(Material2MZ.SWAP_HORIZ), swapHere, autoSwap, swapAway);
-        Menu category = new Menu(this.gui.t("IDS_CAT"), Fx.icon(Material2AL.LABEL));
+        Menu sourceHandling = new Menu(this.gui.t("IDS_A4AF"), Fx.icon(Icons.SWAP), swapHere, autoSwap, swapAway);
+        Menu category = new Menu(this.gui.t("IDS_CAT"), Fx.icon(Icons.LABEL));
         this.downloads.setContextMenu(new ContextMenu(
                 pause,
                 resume,
@@ -243,7 +240,7 @@ public final class TransfersScreen implements Screen {
                 comments,
                 addSource,
                 sourceHandling,
-                priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Material2AL.LOW_PRIORITY))),
+                priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Icons.PRIORITY))),
                 category,
                 new SeparatorMenuItem(),
                 copy,
@@ -252,29 +249,26 @@ public final class TransfersScreen implements Screen {
 
         // An empty list says how to fill it, with the two ways to.
         Button search = Fx.button(
-                this.gui.t("IDS_EM_SEARCH"),
-                Material2MZ.SEARCH,
-                () -> this.downloads.fireEvent(new Navigate("search")));
-        Button paste = Fx.button(this.gui.t("IDS_SW_DIRECTDOWNLOAD"), Material2AL.CONTENT_PASTE, () -> {
+                this.gui.t("IDS_EM_SEARCH"), Icons.SEARCH, () -> this.downloads.fireEvent(new Navigate("search")));
+        Button paste = Fx.button(this.gui.t("IDS_SW_DIRECTDOWNLOAD"), Icons.PASTE, () -> {
             this.link.requestFocus();
             this.link.paste();
         });
-        this.downloads.setPlaceholder(
-                Fx.emptyState(Material2AL.CLOUD_DOWNLOAD, this.gui.t("nj.transfers.none"), search, paste));
+        this.downloads.setPlaceholder(Fx.emptyState(Icons.DOWNLOAD, this.gui.t("nj.transfers.none"), search, paste));
         this.link.setPromptText("ed2k://|file|…|/");
         this.link.setPrefColumnCount(34);
         this.link.setOnAction(e -> addLink());
         this.linkInput = new Inputs(this.gui)
                 .fileLinks(this.link, this.gui.t("IDS_DOWNLOAD"))
                 .quietWhenEmpty();
-        Button add = Fx.primary(Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::addLink));
+        Button add = Fx.primary(Fx.button(this.gui.t("IDS_DOWNLOAD"), Icons.DOWNLOAD, this::addLink));
         add.disableProperty().bind(this.linkInput.validProperty().not());
-        Button pauseButton = Fx.button(this.gui.t("IDS_DL_PAUSE"), Material2MZ.PAUSE, this::pauseSelected);
-        Button resumeButton = Fx.button(this.gui.t("IDS_DL_RESUME"), Material2MZ.PLAY_ARROW, this::resumeSelected);
-        Button stopButton = Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stopSelected);
-        Button cancelButton = Fx.button(this.gui.t("IDS_CANCEL"), Material2AL.DELETE, this::askCancelSelected);
-        MenuButton priorityButton = priorityMenu(new MenuButton(null, Fx.icon(Material2AL.LOW_PRIORITY)));
-        Button copyButton = Fx.iconButton(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks);
+        Button pauseButton = Fx.button(this.gui.t("IDS_DL_PAUSE"), Icons.PAUSE, this::pauseSelected);
+        Button resumeButton = Fx.button(this.gui.t("IDS_DL_RESUME"), Icons.PLAY, this::resumeSelected);
+        Button stopButton = Fx.button(this.gui.t("IDS_DL_STOP"), Icons.STOP, this::stopSelected);
+        Button cancelButton = Fx.button(this.gui.t("IDS_CANCEL"), Icons.DELETE, this::askCancelSelected);
+        MenuButton priorityButton = priorityMenu(new MenuButton(null, Fx.icon(Icons.PRIORITY)));
+        Button copyButton = Fx.iconButton(this.gui.t("nj.copyLink"), Icons.COPY, this::copyLinks);
         Fx.needSelection(
                 this.downloads, pauseButton, resumeButton, stopButton, cancelButton, priorityButton, copyButton);
         var tools = Fx.toolRow(
@@ -285,8 +279,8 @@ public final class TransfersScreen implements Screen {
                 priorityButton,
                 copyButton,
                 Fx.toolGap(),
-                Fx.iconButton(this.gui.t("IDS_DL_CLEAR"), Material2AL.CLEAR_ALL, this.gui.model()::clearCompleted),
-                Fx.iconButton(this.gui.t("nj.categories.title"), Material2AL.CATEGORY, this::showCategoriesDialog),
+                Fx.iconButton(this.gui.t("IDS_DL_CLEAR"), Icons.CLEAR_ALL, this.gui.model()::clearCompleted),
+                Fx.iconButton(this.gui.t("nj.categories.title"), Icons.CATEGORY, this::showCategoriesDialog),
                 this.detailsButton,
                 Fx.spacer(),
                 this.link,
@@ -341,7 +335,7 @@ public final class TransfersScreen implements Screen {
                 this.filter.clear();
             }
         });
-        HBox head = new HBox(8, this.categoryBar, Fx.spacer(), Fx.icon(Material2MZ.SEARCH), this.filter);
+        HBox head = new HBox(8, this.categoryBar, Fx.spacer(), Fx.icon(Icons.SEARCH), this.filter);
         head.setAlignment(Pos.CENTER_LEFT);
         // The sources below are those of the download chosen, or of all when none or several are.
         this.downloads.getSelectionModel().getSelectedItems().addListener((ListChangeListener<
@@ -550,7 +544,7 @@ public final class TransfersScreen implements Screen {
                 this::copyLinks,
                 this::commentSelected);
         this.detailsButton.setText(this.gui.t("IDS_DETAILS"));
-        this.detailsButton.setGraphic(Fx.icon(Material2AL.INFO));
+        this.detailsButton.setGraphic(Fx.icon(Icons.INFO));
         this.detailsButton.setId("details");
         Fx.whole(this.detailsButton);
         this.detailsButton.setOnAction(e -> showDetails(this.detailsButton.isSelected()));
@@ -626,15 +620,15 @@ public final class TransfersScreen implements Screen {
         };
     }
 
-    private static Ikon shownIcon(Shown shown) {
+    private static Icons shownIcon(Shown shown) {
         return switch (shown) {
-            case DOWNLOADING -> Material2AL.ARROW_DOWNWARD;
-            case WAITING -> Material2MZ.SCHEDULE;
-            case NO_SOURCES -> Material2MZ.SEARCH_OFF;
-            case PAUSED -> Material2MZ.PAUSE;
-            case STOPPED -> Material2MZ.STOP;
-            case NO_SPACE, ERROR -> Material2AL.ERROR_OUTLINE;
-            case COMPLETE -> Material2AL.CHECK_CIRCLE_OUTLINE;
+            case DOWNLOADING -> Icons.ARROW_DOWN;
+            case WAITING -> Icons.CLOCK;
+            case NO_SOURCES -> Icons.NO_SOURCES;
+            case PAUSED -> Icons.PAUSE;
+            case STOPPED -> Icons.STOP;
+            case NO_SPACE, ERROR -> Icons.ERROR;
+            case COMPLETE -> Icons.CHECK_CIRCLE;
         };
     }
 
@@ -649,7 +643,7 @@ public final class TransfersScreen implements Screen {
                 return;
             }
             setText(TransfersScreen.this.shownText(shown));
-            FontIcon icon = Fx.icon(shownIcon(shown));
+            Icon icon = Fx.icon(shownIcon(shown));
             icon.getStyleClass()
                     .addAll(
                             "download-state",
@@ -943,7 +937,7 @@ public final class TransfersScreen implements Screen {
     // View Shared Files: the client's list in a window of its own.
     private <T> void browseMenu(
             TableView<LiveList.Row<T>> table, Function<T, String> address, Function<T, String> name) {
-        MenuItem view = Fx.menuItem(this.gui.t("IDS_VIEWFILES"), Material2AL.FOLDER_OPEN, () -> {
+        MenuItem view = Fx.menuItem(this.gui.t("IDS_VIEWFILES"), Icons.FOLDER_OPEN, () -> {
             List<T> selected = Fx.selected(table);
             if (selected.size() == 1) {
                 T client = selected.getFirst();
@@ -987,7 +981,7 @@ public final class TransfersScreen implements Screen {
                                 Fx.column(this.gui.t("IDS_DL_TRANSF"), 90, SourceInfo::received, formats::size))));
         TableLayout.remember(table, "sources", this.gui.settings());
         browseMenu(table, SourceInfo::address, s -> s.nick().orElse(s.address()));
-        MenuItem swap = Fx.menuItem(this.gui.t("nj.a4af.swapToThis"), Material2MZ.SWAP_HORIZ, this::swapSelectedSource);
+        MenuItem swap = Fx.menuItem(this.gui.t("nj.a4af.swapToThis"), Icons.SWAP, this::swapSelectedSource);
         ContextMenu menu = table.getContextMenu();
         menu.getItems().add(swap);
         var browsing = menu.getOnShowing();
@@ -1011,14 +1005,14 @@ public final class TransfersScreen implements Screen {
                 });
     }
 
-    private static Ikon sourceIcon(SourceInfo.State state) {
+    private static Icons sourceIcon(SourceInfo.State state) {
         return switch (state) {
-            case WAITING -> Material2MZ.SCHEDULE;
-            case CONNECTING -> Material2AL.LINK;
-            case ASKING -> Material2MZ.QUESTION_ANSWER;
-            case QUEUED -> Material2MZ.QUEUE;
-            case DOWNLOADING -> Material2AL.ARROW_DOWNWARD;
-            case A4AF -> Material2MZ.SWAP_HORIZ;
+            case WAITING -> Icons.CLOCK;
+            case CONNECTING -> Icons.LINK;
+            case ASKING -> Icons.CHATS;
+            case QUEUED -> Icons.QUEUE;
+            case DOWNLOADING -> Icons.ARROW_DOWN;
+            case A4AF -> Icons.SWAP;
         };
     }
 
@@ -1033,7 +1027,7 @@ public final class TransfersScreen implements Screen {
                                 BanInfo::secondsLeft,
                                 this.gui.formats()::duration))));
         TableLayout.remember(table, "bans", this.gui.settings());
-        MenuItem unban = Fx.menuItem(this.gui.t("IDS_UNBAN"), Material2AL.LOCK_OPEN, this::unbanSelected);
+        MenuItem unban = Fx.menuItem(this.gui.t("IDS_UNBAN"), Icons.UNLOCK, this::unbanSelected);
         table.setContextMenu(new ContextMenu(unban));
         return table;
     }
@@ -1062,7 +1056,7 @@ public final class TransfersScreen implements Screen {
                 return;
             }
             setText(TransfersScreen.this.sourceState(state));
-            FontIcon icon = Fx.icon(sourceIcon(state));
+            Icon icon = Fx.icon(sourceIcon(state));
             icon.getStyleClass().addAll("source-state", state.name().toLowerCase(Locale.ROOT));
             setGraphic(icon);
             String other = row == null ? "" : row.get().askedForName();

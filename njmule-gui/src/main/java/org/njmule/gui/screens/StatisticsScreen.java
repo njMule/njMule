@@ -28,11 +28,10 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.RateGraph;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.Segments;
@@ -73,8 +72,8 @@ public final class StatisticsScreen implements Screen {
     }
 
     @Override
-    public Ikon icon() {
-        return Material2MZ.SHOW_CHART;
+    public Icons icon() {
+        return Icons.STATISTICS;
     }
 
     @Override

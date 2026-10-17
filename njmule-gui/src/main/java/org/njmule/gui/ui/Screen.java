@@ -17,7 +17,6 @@
 package org.njmule.gui.ui;
 
 import javafx.scene.Node;
-import org.kordamp.ikonli.Ikon;
 
 /** One screen of the navigation rail. */
 public interface Screen {
@@ -28,7 +27,7 @@ public interface Screen {
     /** The label of the rail button. */
     String title();
 
-    Ikon icon();
+    Icons icon();
 
     /** The screen's content, built once. */
     Node view();

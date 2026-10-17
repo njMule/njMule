@@ -46,9 +46,6 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
 import javax.imageio.ImageIO;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ServerAddress;
@@ -57,6 +54,7 @@ import org.njmule.gui.model.Chats;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
@@ -87,8 +85,8 @@ public final class MessagesScreen implements Screen {
     }
 
     @Override
-    public Ikon icon() {
-        return Material2MZ.MESSAGE;
+    public Icons icon() {
+        return Icons.MESSAGE;
     }
 
     @Override
@@ -118,9 +116,9 @@ public final class MessagesScreen implements Screen {
                 friendsTitle,
                 this.friends,
                 Fx.toolRow(
-                        Fx.button(this.gui.t("nj.chat.open"), Material2MZ.MESSAGE, this::chatWithFriend),
-                        Fx.button(this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeFriend)),
-                Fx.toolRow(Fx.button(this.gui.t("IDS_FRIENDSLOT"), Material2MZ.STAR, this::toggleFriendSlot)));
+                        Fx.button(this.gui.t("nj.chat.open"), Icons.MESSAGE, this::chatWithFriend),
+                        Fx.button(this.gui.t("IDS_REMOVE"), Icons.DELETE, this::removeFriend)),
+                Fx.toolRow(Fx.button(this.gui.t("IDS_FRIENDSLOT"), Icons.STAR, this::toggleFriendSlot)));
         VBox.setVgrow(this.friends, Priority.ALWAYS);
         left.setPadding(new Insets(0, 8, 0, 0));
         left.setMinWidth(220);
@@ -131,7 +129,7 @@ public final class MessagesScreen implements Screen {
         this.addressInput = new Inputs(this.gui)
                 .address(this.address, this.gui.t("nj.chat.start"))
                 .quietWhenEmpty();
-        Button start = Fx.primary(Fx.button(this.gui.t("nj.chat.start"), Material2AL.ADD, this::startChat));
+        Button start = Fx.primary(Fx.button(this.gui.t("nj.chat.start"), Icons.ADD, this::startChat));
         start.disableProperty().bind(this.addressInput.validProperty().not());
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
         Chats chats = this.gui.model().chats();
@@ -351,7 +349,7 @@ public final class MessagesScreen implements Screen {
                             8,
                             this.captcha,
                             this.solution,
-                            Fx.button(MessagesScreen.this.gui.t("nj.chat.send"), Material2MZ.SEND, this::solve)));
+                            Fx.button(MessagesScreen.this.gui.t("nj.chat.send"), Icons.SEND, this::solve)));
             this.captchaBox.getStyleClass().add("stat-card");
             this.captchaBox.setMinHeight(Region.USE_PREF_SIZE);
             MessagesScreen.this.gui.subscriptions().onChange(chat.captchaProperty(), (was, now) -> showCaptcha(now));
@@ -361,8 +359,8 @@ public final class MessagesScreen implements Screen {
             HBox row = new HBox(
                     8,
                     this.input,
-                    Fx.primary(Fx.button(MessagesScreen.this.gui.t("nj.chat.send"), Material2MZ.SEND, this::send)),
-                    Fx.button(MessagesScreen.this.gui.t("nj.chat.addFriend"), Material2MZ.PERSON_ADD, this::befriend));
+                    Fx.primary(Fx.button(MessagesScreen.this.gui.t("nj.chat.send"), Icons.SEND, this::send)),
+                    Fx.button(MessagesScreen.this.gui.t("nj.chat.addFriend"), Icons.PERSON_ADD, this::befriend));
             getChildren().addAll(lines, this.captchaBox, row);
         }
 

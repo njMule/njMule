@@ -20,7 +20,6 @@ import atlantafx.base.theme.Styles;
 import java.text.Bidi;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import javafx.beans.binding.Bindings;
@@ -56,36 +55,16 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.gui.model.LiveList;
 
 /** Small builders shared by the screens. */
 public final class Fx {
 
-    // Icons that point the way text runs: a right-to-left layout shows them mirrored.
-    private static final Set<Ikon> DIRECTIONAL = Set.of(
-            Material2AL.CHEVRON_RIGHT,
-            Material2AL.CLEAR_ALL,
-            Material2AL.EXIT_TO_APP,
-            Material2AL.INPUT,
-            Material2AL.LOGIN,
-            Material2AL.LOW_PRIORITY,
-            Material2MZ.PLAYLIST_ADD,
-            Material2MZ.SEND);
-
     private Fx() {}
 
-    public static FontIcon icon(Ikon ikon) {
-        FontIcon icon = new FontIcon(ikon);
-        if (DIRECTIONAL.contains(ikon)) {
-            icon.scaleXProperty()
-                    .bind(icon.effectiveNodeOrientationProperty()
-                            .map(o -> o == NodeOrientation.RIGHT_TO_LEFT ? -1.0 : 1.0));
-        }
-        return icon;
+    /** An icon in the colour of the text beside it; a directional one is mirrored in a right-to-left layout. */
+    public static Icon icon(Icons glyph) {
+        return new Icon(glyph);
     }
 
     /**
@@ -184,8 +163,8 @@ public final class Fx {
         return column;
     }
 
-    public static Button button(String text, Ikon ikon, Runnable action) {
-        Button button = new Button(text, icon(ikon));
+    public static Button button(String text, Icons glyph, Runnable action) {
+        Button button = new Button(text, icon(glyph));
         button.setOnAction(e -> action.run());
         return whole(button);
     }
@@ -201,14 +180,14 @@ public final class Fx {
     }
 
     /** A button showing only its icon, with the text as tooltip and accessible name. */
-    public static MenuItem menuItem(String text, Ikon ikon, Runnable action) {
-        MenuItem item = new MenuItem(text, icon(ikon));
+    public static MenuItem menuItem(String text, Icons glyph, Runnable action) {
+        MenuItem item = new MenuItem(text, icon(glyph));
         item.setOnAction(e -> action.run());
         return item;
     }
 
-    public static Button iconButton(String text, Ikon ikon, Runnable action) {
-        Button button = new Button(null, icon(ikon));
+    public static Button iconButton(String text, Icons glyph, Runnable action) {
+        Button button = new Button(null, icon(glyph));
         button.setTooltip(new Tooltip(text));
         button.setAccessibleText(text);
         button.setOnAction(e -> action.run());
@@ -276,8 +255,8 @@ public final class Fx {
     }
 
     /** What an empty list shows: an icon, what is missing and how to get it, and the buttons that do it. */
-    public static VBox emptyState(Ikon ikon, String text, Node... actions) {
-        FontIcon icon = icon(ikon);
+    public static VBox emptyState(Icons glyph, String text, Node... actions) {
+        Icon icon = icon(glyph);
         icon.getStyleClass().add("empty-icon");
         Label words = new Label(text);
         words.setWrapText(true);

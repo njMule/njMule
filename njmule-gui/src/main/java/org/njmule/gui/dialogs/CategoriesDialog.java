@@ -39,12 +39,11 @@ import javafx.stage.DirectoryChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.Window;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 
@@ -133,19 +132,19 @@ public final class CategoriesDialog {
         HBox.setHgrow(this.incoming, Priority.ALWAYS);
         this.name.setPrefColumnCount(24);
 
-        Button save = Fx.primary(Fx.button(gui.t("nj.categories.save"), Material2MZ.SAVE, this::save));
+        Button save = Fx.primary(Fx.button(gui.t("nj.categories.save"), Icons.SAVE, this::save));
         save.disableProperty()
                 .bind(Input.allValid(List.of(this.nameInput, this.incomingInput, this.commentInput, this.patternsInput))
                         .not());
-        Button remove = Fx.button(gui.t("IDS_CAT_REMOVE"), Material2AL.DELETE, this::remove);
+        Button remove = Fx.button(gui.t("IDS_CAT_REMOVE"), Icons.DELETE, this::remove);
         remove.disableProperty()
                 .bind(this.list.getSelectionModel().selectedItemProperty().isNull());
         var tools = Fx.toolRow(
-                Fx.button(gui.t("IDS_NEW"), Material2AL.ADD, this::fresh),
+                Fx.button(gui.t("IDS_NEW"), Icons.ADD, this::fresh),
                 save,
                 remove,
                 Fx.spacer(),
-                Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close));
+                Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close));
         HBox body = new HBox(14, this.list, form);
         HBox.setHgrow(form, Priority.ALWAYS);
         VBox root = new VBox(12, body, tools);
@@ -232,7 +231,7 @@ public final class CategoriesDialog {
     }
 
     private Button browse() {
-        return Fx.button(this.gui.t("IDS_PW_BROWSE"), Material2AL.FOLDER_OPEN, () -> {
+        return Fx.button(this.gui.t("IDS_PW_BROWSE"), Icons.FOLDER_OPEN, () -> {
             DirectoryChooser chooser = new DirectoryChooser();
             var dir = chooser.showDialog(this.stage);
             if (dir != null) {

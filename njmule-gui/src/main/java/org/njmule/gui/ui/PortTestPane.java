@@ -33,10 +33,6 @@ import javafx.scene.control.ProgressIndicator;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.PortTest;
 import org.njmule.core.config.Preferences;
 
@@ -72,7 +68,7 @@ public final class PortTestPane {
     public PortTestPane(Gui gui, Supplier<UnaryOperator<Preferences>> settings, Observable... fields) {
         this.gui = Objects.requireNonNull(gui, "gui");
         this.settings = Objects.requireNonNull(settings, "settings");
-        this.start = Fx.button(gui.t("IDS_STARTTEST"), Material2MZ.NETWORK_CHECK, this::test);
+        this.start = Fx.button(gui.t("IDS_STARTTEST"), Icons.PORT_TEST, this::test);
         for (Observable field : fields) {
             field.addListener(o -> {
                 if (this.testing) {
@@ -162,19 +158,19 @@ public final class PortTestPane {
         line.setText(text);
         line.getStyleClass().removeAll(KINDS);
         line.getStyleClass().add("port-" + kind);
-        Ikon icon = switch (kind) {
-            case "open" -> Material2AL.CHECK_CIRCLE;
-            case "closed" -> Material2AL.BLOCK;
-            case "testing" -> Material2AL.HOURGLASS_EMPTY;
-            case "warning" -> Material2MZ.WARNING;
-            case "off" -> Material2MZ.REMOVE_CIRCLE_OUTLINE;
-            default -> Material2AL.HELP_OUTLINE;
+        Icons icon = switch (kind) {
+            case "open" -> Icons.CHECK_CIRCLE;
+            case "closed" -> Icons.BLOCK;
+            case "testing" -> Icons.HOURGLASS;
+            case "warning" -> Icons.WARNING;
+            case "off" -> Icons.REMOVE_CIRCLE;
+            default -> Icons.HELP;
         };
-        ((FontIcon) line.getGraphic()).setIconCode(icon);
+        ((Icon) line.getGraphic()).setGlyph(icon);
     }
 
     private static Label line() {
-        Label line = new Label("", new FontIcon(Material2AL.HELP_OUTLINE));
+        Label line = new Label("", new Icon(Icons.HELP));
         line.getStyleClass().add("port-line");
         line.setWrapText(true);
         line.setGraphicTextGap(8);

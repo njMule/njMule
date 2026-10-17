@@ -25,14 +25,13 @@ import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.util.Duration;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadInfo;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icon;
+import org.njmule.gui.ui.Icons;
 
 /**
  * A line above the screens for a state that lasts and wants something done: no network at all, or a network others
@@ -54,7 +53,7 @@ final class Banner {
 
     private final Gui gui;
     private final HBox box = new HBox();
-    private final FontIcon icon = new FontIcon();
+    private final Icon icon = new Icon(Icons.INFO);
     private final Label text = new Label();
     private final Button action = new Button();
     private final PauseTransition settling = new PauseTransition(SETTLE);
@@ -76,7 +75,7 @@ final class Banner {
         this.icon.getStyleClass().add("banner-icon");
         this.action.setOnAction(e -> (this.shown == Kind.OFFLINE ? this.connect : this.options).run());
         Fx.whole(this.action);
-        var close = Fx.iconButton(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, () -> {
+        var close = Fx.iconButton(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, () -> {
             this.closed = this.shown;
             show(Kind.NONE);
         });
@@ -137,19 +136,19 @@ final class Banner {
         switch (kind) {
             case INTERFACE_MISSING -> {
                 this.box.getStyleClass().add("offline");
-                this.icon.setIconCode(Material2AL.LINK_OFF);
+                this.icon.setGlyph(Icons.LINK_OFF);
                 this.text.setText(this.gui.f("nj.banner.interfaceMissing", this.missingInterface));
                 this.action.setText(this.gui.t("IDS_EM_PREFS"));
             }
             case OFFLINE -> {
                 this.box.getStyleClass().add("offline");
-                this.icon.setIconCode(Material2AL.CLOUD_OFF);
+                this.icon.setGlyph(Icons.CLOUD_OFF);
                 this.text.setText(this.gui.t("nj.banner.offline"));
                 this.action.setText(this.gui.t("IDS_MAIN_BTN_CONNECT"));
             }
             case UNREACHABLE -> {
                 this.box.getStyleClass().add("unreachable");
-                this.icon.setIconCode(Material2MZ.WARNING);
+                this.icon.setGlyph(Icons.WARNING);
                 this.text.setText(this.gui.f("nj.banner.unreachable", this.port));
                 this.action.setText(this.gui.t("IDS_EM_PREFS"));
             }

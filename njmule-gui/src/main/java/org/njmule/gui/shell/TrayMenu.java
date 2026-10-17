@@ -34,14 +34,12 @@ import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.stage.Window;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icon;
+import org.njmule.gui.ui.Icons;
 
 /**
  * The menu of the notification area icon: the speed limits with their sliders, connecting and disconnecting, the
@@ -73,32 +71,30 @@ public final class TrayMenu {
         this.stage.setAlwaysOnTop(true);
         this.stage.setResizable(false);
         this.connect = item(
-                gui.t("IDS_MAIN_BTN_CONNECT"),
-                Material2AL.LINK,
-                () -> gui.model().connect(Optional.empty()));
+                gui.t("IDS_MAIN_BTN_CONNECT"), Icons.LINK, () -> gui.model().connect(Optional.empty()));
         this.disconnect = item(
                 gui.t("IDS_MAIN_BTN_DISCONNECT"),
-                Material2AL.LINK_OFF,
+                Icons.LINK_OFF,
                 () -> gui.model().disconnect());
-        Button restore = item(gui.t("IDS_MAIN_POPUP_RESTORE"), Material2MZ.OPEN_IN_BROWSER, actions::restore);
+        Button restore = item(gui.t("IDS_MAIN_POPUP_RESTORE"), Icons.OPEN_EXTERNAL, actions::restore);
         restore.getStyleClass().add("tray-default");
         VBox items = new VBox(
                 title(),
                 this.limits.view(),
                 item(
                         gui.t("IDS_PW_UA"),
-                        Material2MZ.SPEED,
+                        Icons.SPEED,
                         () -> this.limits.set(p -> p.downloadCapacityKiBps(), p -> p.uploadCapacityKiBps())),
-                item(gui.t("IDS_PW_PA"), Material2MZ.SLOW_MOTION_VIDEO, () -> this.limits.set(p -> 1, p -> 1)),
+                item(gui.t("IDS_PW_PA"), Icons.SLOW, () -> this.limits.set(p -> 1, p -> 1)),
                 new Separator(),
                 this.connect,
                 this.disconnect,
                 new Separator(),
-                item(gui.t("IDS_EM_PREFS"), Material2MZ.SETTINGS, actions::options),
+                item(gui.t("IDS_EM_PREFS"), Icons.OPTIONS, actions::options),
                 new Separator(),
                 restore,
                 new Separator(),
-                item(gui.t("IDS_EXIT"), Material2AL.EXIT_TO_APP, actions::exit));
+                item(gui.t("IDS_EXIT"), Icons.EXIT, actions::exit));
         items.getStyleClass().add("tray-items");
         HBox root = new HBox(band(), items);
         root.getStyleClass().addAll("njmule", "tray-menu");
@@ -163,12 +159,12 @@ public final class TrayMenu {
     }
 
     private Node title() {
-        Label title = new Label(this.gui.t("nj.tray.speed"), new FontIcon(Material2MZ.SPEED));
+        Label title = new Label(this.gui.t("nj.tray.speed"), new Icon(Icons.SPEED));
         title.getStyleClass().add("tray-title");
         return title;
     }
 
-    private Button item(String text, Ikon icon, Runnable action) {
+    private Button item(String text, Icons icon, Runnable action) {
         Button button = new Button(text, Fx.icon(icon));
         button.getStyleClass().addAll("flat", "tray-item");
         button.setMaxWidth(Double.MAX_VALUE);

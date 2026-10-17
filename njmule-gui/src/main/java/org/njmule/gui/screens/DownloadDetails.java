@@ -39,8 +39,6 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.FileNames;
 import org.njmule.core.api.Hash16;
@@ -50,6 +48,7 @@ import org.njmule.core.config.Preferences;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.PartBar;
 
 /**
@@ -99,18 +98,18 @@ final class DownloadDetails {
         this.facts.getStyleClass().add("details-facts");
         HBox actions = new HBox(
                 8,
-                Fx.button(gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, copyLink),
-                Fx.button(gui.t("IDS_CMT_ADD"), Material2MZ.RATE_REVIEW, comments));
+                Fx.button(gui.t("nj.copyLink"), Icons.COPY, copyLink),
+                Fx.button(gui.t("IDS_CMT_ADD"), Icons.COMMENT, comments));
         actions.setAlignment(Pos.CENTER_LEFT);
         Label parts = new Label(gui.t("IDS_FD_PARTS"));
         parts.getStyleClass().add("details-heading");
         Label sourceNames = new Label(gui.t("IDS_SOURCENAMES"));
         sourceNames.getStyleClass().add("details-heading");
-        this.takeOver = Fx.button(gui.t("IDS_TAKEOVER"), Material2MZ.VERTICAL_ALIGN_BOTTOM, this::takeOver);
+        this.takeOver = Fx.button(gui.t("IDS_TAKEOVER"), Icons.ALIGN_BOTTOM, this::takeOver);
         this.takeOver.setId("take-over");
-        this.cleanUp = Fx.button(gui.t("IDS_CLEANUP"), Material2AL.CLEANING_SERVICES, this::cleanUp);
+        this.cleanUp = Fx.button(gui.t("IDS_CLEANUP"), Icons.CLEAN, this::cleanUp);
         this.cleanUp.setId("clean-up");
-        this.rename = Fx.button(gui.t("IDS_RENAME"), Material2AL.EDIT, this::rename);
+        this.rename = Fx.button(gui.t("IDS_RENAME"), Icons.EDIT, this::rename);
         this.rename.setId("rename");
         this.newName.setId("new-name");
         this.newName.setAccessibleText(gui.t("IDS_RENAME"));

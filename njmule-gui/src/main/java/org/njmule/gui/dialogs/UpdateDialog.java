@@ -36,14 +36,13 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.Window;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.gui.infra.WebPages;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 
 /**
  * What is known of new versions of njMule: the version found with what changed and how to install it, a check running,
@@ -116,13 +115,13 @@ public final class UpdateDialog {
             parts.add(wrapped(howToInstall(status.installation(), v), null));
             Button download = Fx.primary(Fx.button(
                     this.gui.t("nj.update.download"),
-                    Material2AL.GET_APP,
+                    Icons.DOWNLOAD,
                     () -> open(v.download().map(NewVersion.Download::uri).orElse(v.page()))));
             download.setId("update-download");
             buttons.add(download);
-            buttons.add(Fx.button(this.gui.t("nj.update.changes"), Material2MZ.OPEN_IN_NEW, () -> open(v.page())));
+            buttons.add(Fx.button(this.gui.t("nj.update.changes"), Icons.OPEN_EXTERNAL, () -> open(v.page())));
             if (!v.critical() && !status.skipped().equals(Optional.of(v.version()))) {
-                Button skip = Fx.button(this.gui.t("nj.update.skip"), Material2AL.BLOCK, () -> {
+                Button skip = Fx.button(this.gui.t("nj.update.skip"), Icons.BLOCK, () -> {
                     this.gui.model().skipUpdate(v.version());
                     this.stage.close();
                 });
@@ -150,7 +149,7 @@ public final class UpdateDialog {
         if (!status.checking() && available.isEmpty()) {
             Button check = Fx.button(
                     this.gui.t("IDS_CHECK4UPDATE"),
-                    Material2MZ.REFRESH,
+                    Icons.REFRESH,
                     () -> this.gui.model().checkForUpdate());
             check.setId("update-check");
             buttons.add(check);
@@ -159,7 +158,7 @@ public final class UpdateDialog {
         this.body.getChildren().setAll(parts);
         List<Node> row = new ArrayList<>(buttons);
         row.add(Fx.spacer());
-        row.add(Fx.button(this.gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close));
+        row.add(Fx.button(this.gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close));
         this.actions.getChildren().setAll(row);
         this.stage.sizeToScene();
     }

@@ -34,10 +34,6 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
@@ -46,6 +42,8 @@ import org.njmule.core.api.ServerAddress;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icon;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
@@ -64,7 +62,7 @@ public final class KadScreen implements Screen {
     private final Label verified = value();
     private final Label id = Fx.leftToRight(value());
     private final Label say = new Label();
-    private final FontIcon sayIcon = new FontIcon();
+    private final Icon sayIcon = new Icon(Icons.INFO);
     private final TitledPane join = new TitledPane();
     private Boolean wasConnected;
     private final TextField node = new TextField();
@@ -89,8 +87,8 @@ public final class KadScreen implements Screen {
     }
 
     @Override
-    public Ikon icon() {
-        return Material2AL.DEVICE_HUB;
+    public Icons icon() {
+        return Icons.KAD;
     }
 
     @Override
@@ -110,7 +108,7 @@ public final class KadScreen implements Screen {
                 .quietWhenEmpty();
         this.connect.setOnAction(e -> connectOrDisconnect());
         this.recheck.setText(this.gui.t("IDS_KAD_RECHECKFW"));
-        this.recheck.setGraphic(new FontIcon(Material2MZ.SECURITY));
+        this.recheck.setGraphic(new Icon(Icons.SHIELD));
         this.recheck.setOnAction(e -> this.gui.model().recheckKadFirewall());
         var tools = Fx.toolRow(this.connect, this.recheck);
         FlowPane cards = new FlowPane(
@@ -192,10 +190,10 @@ public final class KadScreen implements Screen {
         this.nodes.node().setPromptText("https://\u2026/nodes.dat");
         Fx.onEnter(this.nodes.node(), this::nodesFromUrl);
         this.nodes.node().setMaxWidth(Double.MAX_VALUE);
-        Button take = Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::nodesFromUrl);
+        Button take = Fx.button(this.gui.t("IDS_DOWNLOAD"), Icons.DOWNLOAD, this::nodesFromUrl);
         take.disableProperty().bind(this.nodes.input().validProperty().not());
         this.node.setMaxWidth(Double.MAX_VALUE);
-        Button start = Fx.button(this.gui.t("IDS_BOOTSTRAP"), Material2AL.LOGIN, this::bootstrap);
+        Button start = Fx.button(this.gui.t("IDS_BOOTSTRAP"), Icons.IMPORT, this::bootstrap);
         start.disableProperty().bind(this.nodeInput.validProperty().not());
         Label hint = new Label(this.gui.t("nj.kad.joinHint"));
         hint.setWrapText(true);
@@ -257,7 +255,7 @@ public final class KadScreen implements Screen {
         }
         this.connect.setText(this.gui.t(running ? "IDS_MAIN_BTN_DISCONNECT" : "IDS_MAIN_BTN_CONNECT"));
         this.recheck.setDisable(!running);
-        this.connect.setGraphic(new FontIcon(running ? Material2AL.LINK_OFF : Material2AL.LINK));
+        this.connect.setGraphic(new Icon(running ? Icons.LINK_OFF : Icons.LINK));
         Optional<KadInfo> kad = status.kad();
         if (kad.isEmpty()) {
             this.state.setText(this.gui.t("nj.kad.off"));
@@ -288,17 +286,17 @@ public final class KadScreen implements Screen {
         Optional<KadInfo> kad = status.kad();
         this.say.getStyleClass().removeAll("success", "warning");
         if (kad.isEmpty()) {
-            this.sayIcon.setIconCode(Material2AL.CLOUD_OFF);
+            this.sayIcon.setGlyph(Icons.CLOUD_OFF);
             this.say.setText(this.gui.t("nj.kad.sayOff"));
         } else if (!kad.get().connected()) {
-            this.sayIcon.setIconCode(Material2AL.HOURGLASS_EMPTY);
+            this.sayIcon.setGlyph(Icons.HOURGLASS);
             this.say.setText(this.gui.t("nj.kad.sayConnecting"));
         } else if (kad.get().firewalled()) {
-            this.sayIcon.setIconCode(Material2MZ.WARNING);
+            this.sayIcon.setGlyph(Icons.WARNING);
             this.say.setText(this.gui.f("nj.kad.sayFirewalled", status.tcpPort()));
             this.say.getStyleClass().add("warning");
         } else {
-            this.sayIcon.setIconCode(Material2AL.CHECK_CIRCLE);
+            this.sayIcon.setGlyph(Icons.CHECK_CIRCLE);
             this.say.setText(this.gui.t("nj.kad.sayOpen"));
             this.say.getStyleClass().add("success");
         }

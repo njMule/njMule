@@ -43,13 +43,12 @@ import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.Category;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.RateField;
@@ -159,15 +158,15 @@ final class SchedulerPane extends VBox {
         }
         form.addRow(7, new Label(gui.t("IDS_SCHED_CATSTOP")), this.stopCategory);
         form.addRow(8, new Label(gui.t("IDS_SCHED_CATRESUME")), this.resumeCategory);
-        Button add = Fx.button(gui.t("IDS_ADD"), Material2AL.ADD, this::add);
-        Button replace = Fx.button(gui.t("nj.scheduler.replace"), Material2MZ.REFRESH, this::replace);
+        Button add = Fx.button(gui.t("IDS_ADD"), Icons.ADD, this::add);
+        Button replace = Fx.button(gui.t("nj.scheduler.replace"), Icons.REFRESH, this::replace);
         add.disableProperty().bind(invalid);
         replace.disableProperty().bind(invalid);
         var tools = Fx.toolRow(
                 add,
                 replace,
-                Fx.button(gui.t("IDS_REMOVE"), Material2AL.DELETE, this::remove),
-                Fx.button(gui.t("nj.scheduler.save"), Material2MZ.SAVE, this::save),
+                Fx.button(gui.t("IDS_REMOVE"), Icons.DELETE, this::remove),
+                Fx.button(gui.t("nj.scheduler.save"), Icons.SAVE, this::save),
                 Fx.spacer(),
                 this.active);
         getChildren().addAll(this.rules, form, tools);

@@ -212,8 +212,8 @@
     -fx-text-fill: -nj-sys-highlight-text;
 }
 
-.root.high-contrast .nav-rail .toggle-button:selected .ikonli-font-icon {
-    -fx-icon-color: -nj-sys-highlight-text;
+.root.high-contrast .nav-rail .toggle-button:selected .nj-icon {
+    -nj-icon-color: -nj-sys-highlight-text;
 }
 
 /* The chat bubbles' tints are gone: an outline keeps their shape. */
@@ -224,6 +224,37 @@
 
 .root.high-contrast .chat-notice .chat-bubble {
     -fx-border-color: transparent;
+}
+
+/* Line icons take the colour of the text beside them; an icon with no text beside it falls back to this, and a
+   rule setting -nj-icon-color gives one a colour of its own. */
+.nj-icon {
+    -nj-icon-fallback: -color-fg-default;
+}
+
+.message.tile-base > .container .nj-icon {
+    -nj-icon-color: -color-message-fg-primary;
+    -nj-icon-size: 24px;
+}
+
+.notification > .container > .header > .graphic .nj-icon {
+    -nj-icon-size: 24px;
+}
+
+.notification.accent > .container > .header > .graphic .nj-icon {
+    -nj-icon-color: -color-accent-emphasis;
+}
+
+.notification.success > .container > .header > .graphic .nj-icon {
+    -nj-icon-color: -color-success-emphasis;
+}
+
+.notification.warning > .container > .header > .graphic .nj-icon {
+    -nj-icon-color: -color-warning-emphasis;
+}
+
+.notification.danger > .container > .header > .graphic .nj-icon {
+    -nj-icon-color: -color-danger-emphasis;
 }
 
 /* Navigation rail on the left. */
@@ -246,9 +277,9 @@
     -fx-font-size: 0.85em;
 }
 
-.nav-rail .toggle-button .ikonli-font-icon {
-    -fx-icon-color: -color-fg-muted;
-    -fx-icon-size: 22;
+.nav-rail .toggle-button .nj-icon {
+    -nj-icon-color: -color-fg-muted;
+    -nj-icon-size: 22;
 }
 
 .nav-rail .toggle-button:hover {
@@ -260,8 +291,8 @@
     -fx-text-fill: -color-fg-default;
 }
 
-.nav-rail .toggle-button:selected .ikonli-font-icon {
-    -fx-icon-color: -nj-accent-strong;
+.nav-rail .toggle-button:selected .nj-icon {
+    -nj-icon-color: -nj-accent-strong;
 }
 
 /* Room around the icon for a count or a dot in its corner. */
@@ -334,21 +365,21 @@
     -fx-padding: 3 10 3 8;
 }
 
-.connection-chip .ikonli-font-icon {
-    -fx-icon-size: 12;
-    -fx-icon-color: -color-fg-subtle;
+.connection-chip .nj-icon {
+    -nj-icon-size: 12;
+    -nj-icon-color: -color-fg-subtle;
 }
 
-.connection-chip.connected .ikonli-font-icon {
-    -fx-icon-color: -color-success-emphasis;
+.connection-chip.connected .nj-icon {
+    -nj-icon-color: -color-success-emphasis;
 }
 
-.connection-chip.connecting .ikonli-font-icon {
-    -fx-icon-color: -color-warning-emphasis;
+.connection-chip.connecting .nj-icon {
+    -nj-icon-color: -color-warning-emphasis;
 }
 
-.connection-chip.firewalled .ikonli-font-icon {
-    -fx-icon-color: -color-warning-emphasis;
+.connection-chip.firewalled .nj-icon {
+    -nj-icon-color: -color-warning-emphasis;
 }
 
 /* The rates are a flat button that opens the limits; it keeps the bar's look. */
@@ -385,12 +416,12 @@
 }
 
 .banner .banner-icon {
-    -fx-icon-size: 18;
-    -fx-icon-color: -color-fg-muted;
+    -nj-icon-size: 18;
+    -nj-icon-color: -color-fg-muted;
 }
 
 .banner.unreachable .banner-icon {
-    -fx-icon-color: -color-warning-fg;
+    -nj-icon-color: -color-warning-fg;
 }
 
 /* Kad's state in words, on a pastel tint of its tone; the text keeps the theme's colour. */
@@ -401,25 +432,25 @@
     -fx-background-radius: 6;
 }
 
-.kad-say .ikonli-font-icon {
-    -fx-icon-size: 18;
-    -fx-icon-color: -color-fg-muted;
+.kad-say .nj-icon {
+    -nj-icon-size: 18;
+    -nj-icon-color: -color-fg-muted;
 }
 
 .kad-say.success {
     -fx-background-color: -color-success-subtle;
 }
 
-.kad-say.success .ikonli-font-icon {
-    -fx-icon-color: -color-success-fg;
+.kad-say.success .nj-icon {
+    -nj-icon-color: -color-success-fg;
 }
 
 .kad-say.warning {
     -fx-background-color: -color-warning-subtle;
 }
 
-.kad-say.warning .ikonli-font-icon {
-    -fx-icon-color: -color-warning-fg;
+.kad-say.warning .nj-icon {
+    -nj-icon-color: -color-warning-fg;
 }
 
 /* Between the groups of a tool row. */
@@ -447,8 +478,8 @@
 
 /* An empty list: a large muted icon, the words, and the buttons that fill it. */
 .empty-state .empty-icon {
-    -fx-icon-size: 40;
-    -fx-icon-color: -color-fg-subtle;
+    -nj-icon-size: 40;
+    -nj-icon-color: -color-fg-subtle;
 }
 
 .empty-state .empty-text {
@@ -544,34 +575,34 @@
 }
 
 /* The outcomes of a test of the ports: the icon's tone tells the kind, the words say it. */
-.port-test .port-line .ikonli-font-icon {
-    -fx-icon-size: 16;
-    -fx-icon-color: -color-fg-muted;
+.port-test .port-line .nj-icon {
+    -nj-icon-size: 16;
+    -nj-icon-color: -color-fg-muted;
 }
 
-.port-test .port-line.port-open .ikonli-font-icon {
-    -fx-icon-color: -color-success-fg;
+.port-test .port-line.port-open .nj-icon {
+    -nj-icon-color: -color-success-fg;
 }
 
-.port-test .port-line.port-closed .ikonli-font-icon {
-    -fx-icon-color: -color-danger-fg;
+.port-test .port-line.port-closed .nj-icon {
+    -nj-icon-color: -color-danger-fg;
 }
 
-.port-test .port-line.port-warning .ikonli-font-icon {
-    -fx-icon-color: -color-warning-fg;
+.port-test .port-line.port-warning .nj-icon {
+    -nj-icon-color: -color-warning-fg;
 }
 
-.port-test .port-line.port-testing .ikonli-font-icon {
-    -fx-icon-color: -nj-accent-strong;
+.port-test .port-line.port-testing .nj-icon {
+    -nj-icon-color: -nj-accent-strong;
 }
 
 /* What stops the search takes the ring's colour; a disabled one looks like any other. */
-.button.stop-search .ikonli-font-icon {
-    -fx-icon-color: -nj-accent-strong;
+.button.stop-search .nj-icon {
+    -nj-icon-color: -nj-accent-strong;
 }
 
-.button.stop-search:disabled .ikonli-font-icon {
-    -fx-icon-color: -color-fg-muted;
+.button.stop-search:disabled .nj-icon {
+    -nj-icon-color: -color-fg-muted;
 }
 
 /* The filter of the search results sits right of the search tabs, whose row keeps room for it. */
@@ -597,8 +628,8 @@
     -fx-pref-width: 32px;
 }
 
-.names-sign .ikonli-font-icon {
-    -fx-icon-color: -color-fg-muted;
+.names-sign .nj-icon {
+    -nj-icon-color: -color-fg-muted;
 }
 
 .tab-pane.dense > .tab-header-area > .headers-region > .tab:top {
@@ -679,9 +710,9 @@
     -color-button-border-pressed: transparent;
 }
 
-.button.accent .ikonli-font-icon,
-.button:default .ikonli-font-icon {
-    -fx-icon-color: -nj-on-accent;
+.button.accent .nj-icon,
+.button:default .nj-icon {
+    -nj-icon-color: -nj-on-accent;
 }
 
 /* A main action that cannot run yet looks like any disabled button: a faded orange reads as a weak
@@ -693,9 +724,9 @@
     -color-button-border: -color-border-default;
 }
 
-.button.accent:disabled .ikonli-font-icon,
-.button:default:disabled .ikonli-font-icon {
-    -fx-icon-color: -color-fg-muted;
+.button.accent:disabled .nj-icon,
+.button:default:disabled .nj-icon {
+    -nj-icon-color: -color-fg-muted;
 }
 
 .tool-row {
@@ -732,8 +763,8 @@
 }
 
 .log-icon {
-    -fx-icon-size: 13;
-    -fx-icon-color: -color-fg-muted;
+    -nj-icon-size: 13;
+    -nj-icon-color: -color-fg-muted;
 }
 
 .log-icon-box {
@@ -741,15 +772,15 @@
 }
 
 .log-icon.warning {
-    -fx-icon-color: -color-warning-fg;
+    -nj-icon-color: -color-warning-fg;
 }
 
 .log-icon.error {
-    -fx-icon-color: -color-danger-fg;
+    -nj-icon-color: -color-danger-fg;
 }
 
 .log-icon.success {
-    -fx-icon-color: -color-success-fg;
+    -nj-icon-color: -color-success-fg;
 }
 
 .log-area .text.warning {
@@ -965,8 +996,8 @@
     -fx-font-size: 13px;
 }
 
-.tray-menu .ikonli-font-icon {
-    -fx-icon-size: 14px;
+.tray-menu .nj-icon {
+    -nj-icon-size: 14px;
 }
 
 .tray-menu .separator {
@@ -1004,8 +1035,8 @@
     -fx-padding: 1 5 2 5;
 }
 
-.tray-title .ikonli-font-icon {
-    -fx-icon-color: -nj-accent-strong;
+.tray-title .nj-icon {
+    -nj-icon-color: -nj-accent-strong;
 }
 
 .tray-speeds {
@@ -1015,11 +1046,11 @@
 }
 
 .tray-down {
-    -fx-icon-color: -color-success-fg;
+    -nj-icon-color: -color-success-fg;
 }
 
 .tray-up {
-    -fx-icon-color: -color-danger-fg;
+    -nj-icon-color: -color-danger-fg;
 }
 
 .tray-item {
@@ -1112,36 +1143,36 @@
 }
 
 .table-cell .known-icon {
-    -fx-icon-color: -color-fg-default;
+    -nj-icon-color: -color-fg-default;
 }
 
 /* What a download does, told by an icon beside its words: green while data comes, amber when no source is
    known, red for a problem, muted otherwise. */
 .download-state {
-    -fx-icon-color: -color-fg-muted;
+    -nj-icon-color: -color-fg-muted;
 }
 
 .download-state.downloading,
 .download-state.complete {
-    -fx-icon-color: -color-success-fg;
+    -nj-icon-color: -color-success-fg;
 }
 
 .download-state.no-sources {
-    -fx-icon-color: -color-warning-fg;
+    -nj-icon-color: -color-warning-fg;
 }
 
 .download-state.no-space,
 .download-state.error {
-    -fx-icon-color: -color-danger-fg;
+    -nj-icon-color: -color-danger-fg;
 }
 
 /* What a source does, told by an icon of its own beside its words. */
 .source-state {
-    -fx-icon-color: -color-fg-muted;
+    -nj-icon-color: -color-fg-muted;
 }
 
 .source-state.downloading {
-    -fx-icon-color: -color-success-fg;
+    -nj-icon-color: -color-success-fg;
 }
 
 /* The server in use: bold behind an accent bar; the one being tried: italic. */

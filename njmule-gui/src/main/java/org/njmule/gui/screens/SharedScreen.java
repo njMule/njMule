@@ -44,9 +44,6 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
@@ -57,6 +54,7 @@ import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.TableLayout;
 
@@ -92,8 +90,8 @@ public final class SharedScreen implements Screen {
     }
 
     @Override
-    public Ikon icon() {
-        return Material2AL.FOLDER_SHARED;
+    public Icons icon() {
+        return Icons.SHARED;
     }
 
     @Override
@@ -141,18 +139,18 @@ public final class SharedScreen implements Screen {
                                 (SharedFileInfo f) -> String.valueOf(f.path().getParent())))));
         TableLayout.remember(this.table, "shared", this.gui.settings());
         this.table.setPlaceholder(Fx.emptyState(
-                Material2AL.FOLDER_SHARED,
+                Icons.SHARED,
                 this.gui.t("nj.shared.none"),
-                Fx.button(this.gui.t("IDS_SHAREDIR"), Material2AL.FOLDER_OPEN, this::chooseDirectory)));
-        MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"), Fx.icon(Material2AL.CONTENT_COPY));
+                Fx.button(this.gui.t("IDS_SHAREDIR"), Icons.FOLDER_OPEN, this::chooseDirectory)));
+        MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"), Fx.icon(Icons.COPY));
         copy.setOnAction(e -> copyLinks());
-        MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"), Fx.icon(Material2AL.CODE));
+        MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"), Fx.icon(Icons.CODE));
         html.setOnAction(e -> copyHtml());
-        Menu priority = new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Material2AL.LOW_PRIORITY));
+        Menu priority = new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Icons.PRIORITY));
         priority.getItems().setAll(priorityItems());
-        MenuItem rename = Fx.menuItem(this.gui.t("IDS_RENAME"), Material2AL.EDIT, this::renameSelected);
-        MenuItem comment = Fx.menuItem(this.gui.t("IDS_CMT_ADD"), Material2MZ.RATE_REVIEW, this::commentSelected);
-        MenuItem folder = Fx.menuItem(this.gui.t("IDS_OPENFOLDER"), Material2AL.FOLDER_OPEN, this::openFolder);
+        MenuItem rename = Fx.menuItem(this.gui.t("IDS_RENAME"), Icons.EDIT, this::renameSelected);
+        MenuItem comment = Fx.menuItem(this.gui.t("IDS_CMT_ADD"), Icons.COMMENT, this::commentSelected);
+        MenuItem folder = Fx.menuItem(this.gui.t("IDS_OPENFOLDER"), Icons.FOLDER_OPEN, this::openFolder);
         ContextMenu menu = new ContextMenu(folder, rename, comment, new SeparatorMenuItem(), priority, copy, html);
         menu.setOnShowing(e -> {
             int selected = Fx.selected(this.table).size();
@@ -161,7 +159,7 @@ public final class SharedScreen implements Screen {
             folder.setDisable(selected != 1);
         });
         this.table.setContextMenu(menu);
-        MenuButton priorities = new MenuButton(null, Fx.icon(Material2AL.LOW_PRIORITY));
+        MenuButton priorities = new MenuButton(null, Fx.icon(Icons.PRIORITY));
         priorities.getItems().setAll(priorityItems());
         priorities.setTooltip(new Tooltip(this.gui.t("IDS_PRIORITY")));
         priorities.setAccessibleText(this.gui.t("IDS_PRIORITY"));
@@ -172,10 +170,10 @@ public final class SharedScreen implements Screen {
                                 "IDS_SHAREDFILESCOUNT",
                                 this.gui.model().sharedFiles().size()),
                         this.gui.model().sharedFiles().rows()));
-        Button copyButton = Fx.button(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks);
+        Button copyButton = Fx.button(this.gui.t("nj.copyLink"), Icons.COPY, this::copyLinks);
         Fx.needSelection(this.table, copyButton, priorities);
         var tools = Fx.toolRow(
-                Fx.primary(Fx.button(this.gui.t("IDS_SHAREDIR"), Material2AL.FOLDER_OPEN, this::chooseDirectory)),
+                Fx.primary(Fx.button(this.gui.t("IDS_SHAREDIR"), Icons.FOLDER_OPEN, this::chooseDirectory)),
                 copyButton,
                 priorities,
                 Fx.spacer(),
@@ -191,8 +189,8 @@ public final class SharedScreen implements Screen {
     private Node foldersPane() {
         this.folders.setPlaceholder(new Label(this.gui.t("nj.shared.noFolders")));
         this.folders.setCellFactory(l -> new FolderCell());
-        Button add = Fx.button(this.gui.t("IDS_SHAREDIR"), Material2AL.CREATE_NEW_FOLDER, this::chooseDirectory);
-        Button remove = Fx.button(this.gui.t("IDS_UNSHAREDIR"), Material2MZ.REMOVE_CIRCLE_OUTLINE, this::unshareFolder);
+        Button add = Fx.button(this.gui.t("IDS_SHAREDIR"), Icons.FOLDER_ADD, this::chooseDirectory);
+        Button remove = Fx.button(this.gui.t("IDS_UNSHAREDIR"), Icons.REMOVE_CIRCLE, this::unshareFolder);
         remove.disableProperty()
                 .bind(this.folders.getSelectionModel().selectedItemProperty().isNull());
         Label heading = Fx.whole(new Label(this.gui.t("IDS_SHAREDFOLDERS")));

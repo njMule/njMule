@@ -30,10 +30,6 @@ import org.fxmisc.flowless.VirtualizedScrollPane;
 import org.fxmisc.richtext.Caret;
 import org.fxmisc.richtext.StyleClassedTextArea;
 import org.fxmisc.richtext.util.UndoUtils;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 
 /**
  * A log of lines, each a paragraph with its style classes and an icon beside it if it has one. Its text reads left to
@@ -43,7 +39,7 @@ import org.kordamp.ikonli.material2.Material2MZ;
 public final class LogView<T> {
 
     /** How one line shows: its text, the style classes of the text and of its icon, the icon if any. */
-    public record Line(String text, List<String> styles, Optional<Ikon> icon) {
+    public record Line(String text, List<String> styles, Optional<Icons> icon) {
         public Line {
             Objects.requireNonNull(text, "text");
             styles = List.copyOf(styles);
@@ -69,9 +65,8 @@ public final class LogView<T> {
         // Nothing is typed, so there is nothing to undo.
         this.area.setUndoManager(UndoUtils.noOpUndoManager());
         this.area.setParagraphGraphicFactory(this::icon);
-        MenuItem copyItem = Fx.menuItem(copy, Material2AL.CONTENT_COPY, this.area::copy);
-        ContextMenu menu =
-                new ContextMenu(copyItem, Fx.menuItem(selectAll, Material2MZ.SELECT_ALL, this.area::selectAll));
+        MenuItem copyItem = Fx.menuItem(copy, Icons.COPY, this.area::copy);
+        ContextMenu menu = new ContextMenu(copyItem, Fx.menuItem(selectAll, Icons.SELECT_ALL, this.area::selectAll));
         menu.setOnShowing(e -> copyItem.setDisable(this.area.getSelection().getLength() == 0));
         this.area.setContextMenu(menu);
         this.node = Fx.leftToRight(new VirtualizedScrollPane<>(this.area));
@@ -166,10 +161,8 @@ public final class LogView<T> {
             return null;
         }
         Line line = paragraph >= 0 && paragraph < this.shown.size() ? this.shown.get(paragraph) : null;
-        FontIcon icon = new FontIcon(
-                line == null || line.icon().isEmpty()
-                        ? Material2AL.INFO
-                        : line.icon().get());
+        Icon icon = new Icon(
+                line == null || line.icon().isEmpty() ? Icons.INFO : line.icon().get());
         icon.getStyleClass().add("log-icon");
         if (line != null) {
             icon.getStyleClass().addAll(line.styles());

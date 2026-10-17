@@ -544,6 +544,9 @@ All notable changes to this project are documented here. The format follows
   problem; a manifest older than one already seen is refused. Nothing is downloaded or installed.
   Each release carries the signed `njmule-update.json` and a signed `SHA256SUMS`, with provenance
   attestations for every file.
+- The desktop app draws its own line icons, one stroke on one grid, in the colour of the text beside
+  them in every theme; in right-to-left languages only the icons that point the way text runs are
+  mirrored.
 
 ### Changed
 

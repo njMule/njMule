@@ -35,14 +35,13 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.Window;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadNote;
 import org.njmule.core.api.PeerComment;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 
 /**
  * Our comment and rating of a file, which its downloaders hear, and what others said of it: the sources of a download,
@@ -100,7 +99,7 @@ public final class CommentDialog {
         this.heard.setCellFactory(l -> new HeardCell());
         Label title = new Label(gui.t("IDS_CMT_READALL"));
         title.getStyleClass().add("settings-section");
-        this.searchKad = Fx.button(gui.t("IDS_SEARCHKAD"), Material2MZ.SEARCH, this::searchKad);
+        this.searchKad = Fx.button(gui.t("IDS_SEARCHKAD"), Icons.SEARCH, this::searchKad);
         this.kadState.getStyleClass().add(Styles.TEXT_MUTED);
         root.getChildren().addAll(title, this.heard, Fx.toolRow(this.searchKad, this.kadState));
         VBox.setVgrow(this.heard, Priority.ALWAYS);
@@ -113,9 +112,9 @@ public final class CommentDialog {
         gui.model().kadNotes(file, this::kadNotes);
         root.getChildren()
                 .add(Fx.toolRow(
-                        Fx.primary(Fx.button(gui.t("nj.categories.save"), Material2MZ.SAVE, this::save)),
+                        Fx.primary(Fx.button(gui.t("nj.categories.save"), Icons.SAVE, this::save)),
                         Fx.spacer(),
-                        Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close)));
+                        Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close)));
         root.setPadding(new Insets(14));
         Scene scene = new Scene(root, 620, 440);
         gui.attach(scene);
@@ -199,7 +198,7 @@ public final class CommentDialog {
                 return;
             }
             setText(CommentDialog.this.line(item));
-            setGraphic(item.kad() ? Fx.icon(Material2AL.DEVICE_HUB) : null);
+            setGraphic(item.kad() ? Fx.icon(Icons.KAD) : null);
             setTooltip(
                     item.fileName().isEmpty()
                             ? null

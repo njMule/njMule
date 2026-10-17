@@ -41,8 +41,6 @@ dependencies {
     implementation(libs.slf4j.api)
     implementation(libs.javafx.controls)
     implementation(libs.atlantafx.base)
-    implementation(libs.ikonli.javafx)
-    implementation(libs.ikonli.material2.pack)
     implementation(libs.richtextfx)
 
     testImplementation(project(":njmule-testkit"))

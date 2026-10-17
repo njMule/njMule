@@ -28,10 +28,10 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.Window;
-import org.kordamp.ikonli.material2.Material2AL;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 
 /** Name, version, copyright and licence. */
 public final class AboutDialog {
@@ -68,7 +68,7 @@ public final class AboutDialog {
                 copyright,
                 license,
                 emule,
-                Fx.toolRow(Fx.spacer(), Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close)));
+                Fx.toolRow(Fx.spacer(), Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close)));
         root.setPadding(new Insets(18));
         root.setPrefWidth(520);
         Scene scene = new Scene(root);

@@ -12,7 +12,6 @@ jetty = "12.1.14"
 logback = "1.6.5"
 javafx = "27"
 atlantafx = "3.0.0"
-ikonli = "12.4.0"
 richtextfx = "0.11.7"
 bouncycastle = "1.86"
 guava = "33.7.2-jre"
@@ -51,8 +50,6 @@ logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "lo
 logback-core = { module = "ch.qos.logback:logback-core", version.ref = "logback" }
 javafx-controls = { module = "org.openjfx:javafx-controls", version.ref = "javafx" }
 atlantafx-base = { module = "io.github.mkpaz:atlantafx-base", version.ref = "atlantafx" }
-ikonli-javafx = { module = "org.kordamp.ikonli:ikonli-javafx", version.ref = "ikonli" }
-ikonli-material2-pack = { module = "org.kordamp.ikonli:ikonli-material2-pack", version.ref = "ikonli" }
 richtextfx = { module = "org.fxmisc.richtext:richtextfx", version.ref = "richtextfx" }
 bouncycastle-prov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 guava = { module = "com.google.guava:guava", version.ref = "guava" }

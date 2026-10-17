@@ -53,13 +53,12 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import javafx.util.StringConverter;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.config.Preferences;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.PortTestPane;
@@ -160,8 +159,8 @@ public final class FirstRunWizard {
         if (emule.isPresent()) {
             this.pages.add(Page.EMULE);
         }
-        this.back = Fx.button(gui.t("nj.wizard.back"), Material2AL.ARROW_BACK, () -> go(-1));
-        this.next = Fx.primary(Fx.button(gui.t("nj.wizard.next"), Material2AL.ARROW_FORWARD, this::nextOrFinish));
+        this.back = Fx.button(gui.t("nj.wizard.back"), Icons.ARROW_BACK, () -> go(-1));
+        this.next = Fx.primary(Fx.button(gui.t("nj.wizard.next"), Icons.ARROW_FORWARD, this::nextOrFinish));
         load();
         build();
     }
@@ -217,7 +216,7 @@ public final class FirstRunWizard {
                 this.gui.themes().set(this.gui.themes().family(), this.modeBefore);
             }
         });
-        Button skip = Fx.button(this.gui.t("nj.wizard.skip"), Material2MZ.SKIP_NEXT, this.stage::close);
+        Button skip = Fx.button(this.gui.t("nj.wizard.skip"), Icons.SKIP, this.stage::close);
         skip.getStyleClass().add(Styles.FLAT);
         this.back.disableProperty().bind(this.at.isEqualTo(0));
         this.next.disableProperty().bind(pageValid().not());
@@ -324,18 +323,18 @@ public final class FirstRunWizard {
     private Node folders() {
         Button browse = Fx.button(
                 this.gui.t("IDS_PW_BROWSE"),
-                Material2AL.FOLDER_OPEN,
+                Icons.FOLDER_OPEN,
                 () -> choose().ifPresent(dir -> this.incoming.setText(dir.toString())));
         HBox incomingRow = new HBox(8, this.incoming, browse);
         HBox.setHgrow(this.incoming, Priority.ALWAYS);
         Button add = Fx.button(
                 this.gui.t("nj.shared.share"),
-                Material2AL.CREATE_NEW_FOLDER,
+                Icons.FOLDER_ADD,
                 () -> choose().filter(dir -> !this.shared.getItems().contains(dir))
                         .ifPresent(this.shared.getItems()::add));
         Button remove = Fx.button(
                 this.gui.t("IDS_REMOVE"),
-                Material2AL.DELETE,
+                Icons.DELETE,
                 () -> this.shared
                         .getItems()
                         .removeAll(List.copyOf(this.shared.getSelectionModel().getSelectedItems())));

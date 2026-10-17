@@ -23,11 +23,10 @@ import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.Slider;
 import javafx.scene.layout.GridPane;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2AL;
 import org.njmule.core.config.Preferences;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icon;
+import org.njmule.gui.ui.Icons;
 
 /**
  * The download and upload limits as sliders over the line's capacity, applied as they change, with the limit written
@@ -57,7 +56,7 @@ final class SpeedLimits {
         this.grid.getStyleClass().add("tray-speeds");
         speed(
                 0,
-                Material2AL.ARROW_DOWNWARD,
+                Icons.ARROW_DOWN,
                 gui.t("IDS_PW_CON_DOWNLBL"),
                 this.down,
                 this.downText,
@@ -65,7 +64,7 @@ final class SpeedLimits {
                 (p, v) -> p.toBuilder().maxDownloadKiBps(v).build());
         speed(
                 1,
-                Material2AL.ARROW_UPWARD,
+                Icons.ARROW_UP,
                 gui.t("IDS_PW_CON_UPLBL"),
                 this.up,
                 this.upText,
@@ -131,13 +130,13 @@ final class SpeedLimits {
 
     private void speed(
             int row,
-            Ikon icon,
+            Icons icon,
             String name,
             Slider slider,
             Label text,
             IntSupplier top,
             BiFunction<Preferences, Integer, Preferences> change) {
-        FontIcon arrow = new FontIcon(icon);
+        Icon arrow = new Icon(icon);
         arrow.getStyleClass().add(row == 0 ? "tray-down" : "tray-up");
         slider.setPrefWidth(140);
         slider.setAccessibleText(name);

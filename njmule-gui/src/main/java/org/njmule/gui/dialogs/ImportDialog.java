@@ -44,12 +44,11 @@ import javafx.stage.DirectoryChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.Window;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 
@@ -83,11 +82,11 @@ public final class ImportDialog {
         this.directoryInput = new Inputs(gui)
                 .existingFolder(this.directory, gui.t("nj.import.directory"))
                 .quietWhenEmpty();
-        this.check = Fx.button(gui.t("nj.import.check"), Material2MZ.SEARCH, () -> run(true));
+        this.check = Fx.button(gui.t("nj.import.check"), Icons.SEARCH, () -> run(true));
         this.check
                 .disableProperty()
                 .bind(this.directoryInput.validProperty().not().or(this.working));
-        this.take = Fx.button(gui.t("nj.import.run"), Material2AL.INPUT, () -> run(false));
+        this.take = Fx.button(gui.t("nj.import.run"), Icons.IMPORT, () -> run(false));
         this.take.setDisable(true);
 
         TableColumn<ImportReport.Item, String> file = new TableColumn<>(gui.t("IDS_DL_FILENAME"));
@@ -112,14 +111,14 @@ public final class ImportDialog {
                 8,
                 Fx.whole(new Label(gui.t("nj.import.directory"))),
                 this.directory,
-                Fx.button(gui.t("IDS_PW_BROWSE"), Material2AL.FOLDER_OPEN, this::browse));
+                Fx.button(gui.t("IDS_PW_BROWSE"), Icons.FOLDER_OPEN, this::browse));
         HBox.setHgrow(this.directory, Priority.ALWAYS);
         HBox buttons = Fx.toolRow(
                 this.check,
                 this.take,
                 Fx.spacer(),
                 this.summary,
-                Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close));
+                Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close));
         // One option a line, each wrapping: their texts are long in every language.
         for (var option : List.of(this.identity, this.downloads)) {
             option.setWrapText(true);

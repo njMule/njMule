@@ -77,10 +77,6 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Hash16;
@@ -93,6 +89,8 @@ import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icon;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.Screen;
@@ -203,8 +201,8 @@ public final class SearchScreen implements Screen {
     }
 
     @Override
-    public Ikon icon() {
-        return Material2MZ.SEARCH;
+    public Icons icon() {
+        return Icons.SEARCH;
     }
 
     @Override
@@ -227,16 +225,16 @@ public final class SearchScreen implements Screen {
         this.queryInput = inputs.searchExpression(this.query.getEditor(), this.gui.t("IDS_SEARCH_TEXT"))
                 .quietWhenEmpty();
         Fx.hintOnBox(this.query);
-        Button start = Fx.primary(Fx.button(this.gui.t("nj.search.start"), Material2MZ.SEARCH, this::start));
+        Button start = Fx.primary(Fx.button(this.gui.t("nj.search.start"), Icons.SEARCH, this::start));
         start.disableProperty().bind(this.queryInput.validProperty().not());
         this.method = new Segments<>(List.of(Method.values()), this::methodName);
         // More and Stop act on the search shown, Download on the results chosen in it.
-        Button more = Fx.button(this.gui.t("nj.search.more"), Material2AL.ADD, this::more);
-        Button stop = Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stop);
+        Button more = Fx.button(this.gui.t("nj.search.more"), Icons.ADD, this::more);
+        Button stop = Fx.button(this.gui.t("IDS_DL_STOP"), Icons.STOP, this::stop);
         more.disableProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
         stop.disableProperty().bind(this.shownRunning.not());
         stop.getStyleClass().add("stop-search");
-        Button download = Fx.button(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected);
+        Button download = Fx.button(this.gui.t("IDS_DOWNLOAD"), Icons.DOWNLOAD, this::downloadSelected);
         download.disableProperty().bind(this.noneChosen);
         this.tabs.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> {
             followChoice();
@@ -263,7 +261,7 @@ public final class SearchScreen implements Screen {
         this.parameters = parameters(inputs);
         this.content.getChildren().setAll(tabsWithFilter());
         // The parameters fold away until wanted; the button counts those in use, and they show when any is.
-        this.parametersButton.setGraphic(Fx.icon(Material2MZ.TUNE));
+        this.parametersButton.setGraphic(Fx.icon(Icons.OPTIONS));
         this.parametersButton.setId("search-parameters");
         this.parametersButton.setOnAction(e -> showParameters(this.parametersButton.isSelected()));
         for (TextField f : List.of(this.minSize, this.maxSize, this.availability, this.complete, this.extension)) {
@@ -309,7 +307,7 @@ public final class SearchScreen implements Screen {
                 labelled("IDS_SEARCHAVAIL", this.availability),
                 labelled("IDS_COMPLSOURCES", this.complete),
                 labelled("IDS_SEARCHEXTENTION", this.extension),
-                Fx.button(this.gui.t("IDS_PW_RESET"), Material2MZ.REFRESH, this::resetParameters));
+                Fx.button(this.gui.t("IDS_PW_RESET"), Icons.REFRESH, this::resetParameters));
         row.setAlignment(Pos.CENTER_LEFT);
         row.getStyleClass().add("search-parameters");
         return row;
@@ -621,12 +619,12 @@ public final class SearchScreen implements Screen {
             });
             return row;
         });
-        MenuItem download = Fx.menuItem(this.gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::downloadSelected);
-        MenuItem copy = Fx.menuItem(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks);
-        MenuItem html = Fx.menuItem(this.gui.t("IDS_DL_LINK2"), Material2AL.CODE, this::copyHtml);
-        MenuItem related = Fx.menuItem(this.gui.t("IDS_SEARCHRELATED"), Material2MZ.SEARCH, this::searchRelated);
-        MenuItem spam = Fx.menuItem(this.gui.t("IDS_MARKSPAM"), Material2AL.BLOCK, () -> markSpam(true));
-        MenuItem notSpam = Fx.menuItem(this.gui.t("IDS_MARKNOTSPAM"), Material2AL.CHECK, () -> markSpam(false));
+        MenuItem download = Fx.menuItem(this.gui.t("IDS_DOWNLOAD"), Icons.DOWNLOAD, this::downloadSelected);
+        MenuItem copy = Fx.menuItem(this.gui.t("nj.copyLink"), Icons.COPY, this::copyLinks);
+        MenuItem html = Fx.menuItem(this.gui.t("IDS_DL_LINK2"), Icons.CODE, this::copyHtml);
+        MenuItem related = Fx.menuItem(this.gui.t("IDS_SEARCHRELATED"), Icons.SEARCH, this::searchRelated);
+        MenuItem spam = Fx.menuItem(this.gui.t("IDS_MARKSPAM"), Icons.BLOCK, () -> markSpam(true));
+        MenuItem notSpam = Fx.menuItem(this.gui.t("IDS_MARKNOTSPAM"), Icons.CHECK, () -> markSpam(false));
         ContextMenu menu = new ContextMenu(download, copy, html, related, new SeparatorMenuItem(), spam, notSpam);
         menu.setOnShowing(e -> {
             List<SearchResult> selected = Fx.selected(table);
@@ -747,12 +745,12 @@ public final class SearchScreen implements Screen {
         this.filter.promptTextProperty().bind(this.filterColumn);
         this.filter.setTooltip(new Tooltip(this.gui.t("nj.search.filterHint")));
         this.filter.getStyleClass().add("results-filter");
-        Button columns = new Button(null, Fx.icon(Material2MZ.SEARCH));
+        Button columns = new Button(null, Fx.icon(Icons.SEARCH));
         columns.getStyleClass().addAll(Styles.FLAT, Styles.BUTTON_ICON);
         columns.setTooltip(new Tooltip(this.gui.t("nj.search.filterColumn")));
         columns.disableProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
         columns.setOnAction(e -> filterColumnsMenu().show(columns, Side.BOTTOM, 0, 0));
-        Button clear = new Button(null, Fx.icon(Material2AL.CLEAR));
+        Button clear = new Button(null, Fx.icon(Icons.CLOSE));
         clear.getStyleClass().addAll(Styles.FLAT, Styles.BUTTON_ICON);
         clear.visibleProperty().bind(this.filter.textProperty().isNotEmpty());
         clear.setOnAction(e -> this.filter.clear());
@@ -1037,8 +1035,8 @@ public final class SearchScreen implements Screen {
     private static final class NameCell extends TableCell<LiveList.Row<SearchResult>, String> {
         private final ResultRows rows;
         private final Label sign = new Label();
-        private final FontIcon closed = Fx.icon(Material2AL.CHEVRON_RIGHT);
-        private final FontIcon open = Fx.icon(Material2AL.EXPAND_MORE);
+        private final Icon closed = Fx.icon(Icons.CHEVRON_RIGHT);
+        private final Icon open = Fx.icon(Icons.CHEVRON_DOWN);
 
         NameCell(ResultRows rows) {
             this.rows = rows;
@@ -1100,13 +1098,13 @@ public final class SearchScreen implements Screen {
                 setGraphic(null);
                 return;
             }
-            FontIcon icon = Fx.icon(
+            Icon icon = Fx.icon(
                     switch (item) {
-                        case DOWNLOADING -> Material2AL.CLOUD_DOWNLOAD;
-                        case SHARED -> Material2AL.FOLDER_SHARED;
-                        case DOWNLOADED -> Material2AL.CHECK_CIRCLE_OUTLINE;
-                        case CANCELLED -> Material2AL.BLOCK;
-                        case SPAM, NONE -> Material2MZ.REPORT;
+                        case DOWNLOADING -> Icons.DOWNLOAD;
+                        case SHARED -> Icons.SHARED;
+                        case DOWNLOADED -> Icons.CHECK_CIRCLE;
+                        case CANCELLED -> Icons.BLOCK;
+                        case SPAM, NONE -> Icons.SPAM;
                     });
             icon.getStyleClass().add("known-icon");
             setGraphic(icon);

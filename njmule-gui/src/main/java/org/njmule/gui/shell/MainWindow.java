@@ -59,10 +59,6 @@ import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import javafx.util.Duration;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineStatus;
@@ -89,6 +85,8 @@ import org.njmule.gui.screens.TransfersScreen;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icon;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Navigate;
 import org.njmule.gui.ui.Screen;
 
@@ -136,8 +134,8 @@ public final class MainWindow {
     private final Button connect = new Button();
     private final Label ed2k = chip();
     private final Label kad = chip();
-    private final Label down = rate(Material2AL.ARROW_DOWNWARD);
-    private final Label up = rate(Material2AL.ARROW_UPWARD);
+    private final Label down = rate(Icons.ARROW_DOWN);
+    private final Label up = rate(Icons.ARROW_UP);
     private final Label lastLog = new Label();
     private final Label server = new Label();
     private final Label counts = new Label();
@@ -245,12 +243,12 @@ public final class MainWindow {
 
     /** Shows a short message for a few seconds. */
     public void message(String text) {
-        show(text, new FontIcon(Material2AL.INFO), null, true);
+        show(text, new Icon(Icons.INFO), null, true);
     }
 
     /** Shows for a few seconds that something went well, such as a finished download. */
     public void success(String text) {
-        show(text, new FontIcon(Material2AL.CHECK_CIRCLE_OUTLINE), Styles.SUCCESS, true);
+        show(text, new Icon(Icons.CHECK_CIRCLE), Styles.SUCCESS, true);
     }
 
     /**
@@ -258,7 +256,7 @@ public final class MainWindow {
      * undo has to be found in time.
      */
     public void offer(String text, String action, Runnable run) {
-        Notification note = show(text, new FontIcon(Material2AL.INFO), null, false);
+        Notification note = show(text, new Icon(Icons.INFO), null, false);
         Button button = new Button(action);
         button.setOnAction(e -> {
             this.messages.getChildren().remove(note);
@@ -272,10 +270,10 @@ public final class MainWindow {
 
     /** Shows a problem, which stays until the user closes it. */
     public void problem(String text) {
-        show(text, new FontIcon(Material2AL.ERROR_OUTLINE), Styles.DANGER, false);
+        show(text, new Icon(Icons.ERROR), Styles.DANGER, false);
     }
 
-    private Notification show(String text, FontIcon icon, String style, boolean fades) {
+    private Notification show(String text, Icon icon, String style, boolean fades) {
         this.elsewhere.accept(text);
         Notification note = new Notification(text, icon);
         note.getStyleClass().add("elevated-1");
@@ -390,35 +388,35 @@ public final class MainWindow {
     private Node topBar() {
         this.connect.setId("connect");
         this.connect.setOnAction(e -> toggleConnection());
-        Button theme = Fx.iconButton(this.gui.t("nj.top.theme"), Material2AL.BRIGHTNESS_MEDIUM, this::toggleTheme);
-        MenuItem importer = new MenuItem(this.gui.t("nj.import.title"), Fx.icon(Material2AL.INPUT));
+        Button theme = Fx.iconButton(this.gui.t("nj.top.theme"), Icons.THEME, this::toggleTheme);
+        MenuItem importer = new MenuItem(this.gui.t("nj.import.title"), Fx.icon(Icons.IMPORT));
         importer.setOnAction(
                 e -> new ImportDialog(this.gui, this.root.getScene().getWindow()).show());
-        MenuItem about = new MenuItem(this.gui.t("nj.about.title"), new FontIcon(Material2AL.INFO));
+        MenuItem about = new MenuItem(this.gui.t("nj.about.title"), new Icon(Icons.INFO));
         about.setOnAction(e -> new AboutDialog(this.gui, this.root.getScene().getWindow()).show());
         theme.setId("theme");
         importer.setId("import");
         about.setId("about");
-        MenuItem incoming = new MenuItem(this.gui.t("IDS_OPENINC"), Fx.icon(Material2AL.FOLDER_OPEN));
+        MenuItem incoming = new MenuItem(this.gui.t("IDS_OPENINC"), Fx.icon(Icons.FOLDER_OPEN));
         incoming.setOnAction(e -> openIncoming());
         incoming.setId("incoming");
-        MenuItem options = new MenuItem(this.gui.t("IDS_EM_PREFS"), Fx.icon(Material2MZ.SETTINGS));
+        MenuItem options = new MenuItem(this.gui.t("IDS_EM_PREFS"), Fx.icon(Icons.OPTIONS));
         options.setOnAction(e -> show("settings"));
         options.setId("options");
-        MenuItem shortcuts = new MenuItem(this.gui.t("nj.shortcuts.title"), Fx.icon(Material2AL.KEYBOARD));
+        MenuItem shortcuts = new MenuItem(this.gui.t("nj.shortcuts.title"), Fx.icon(Icons.KEYBOARD));
         shortcuts.setAccelerator(new KeyCodeCombination(KeyCode.F1));
         shortcuts.setOnAction(e -> showShortcuts());
         shortcuts.setId("shortcuts");
-        MenuItem wizard = new MenuItem(this.gui.t("nj.wizard.title"), Fx.icon(Material2AL.ASSISTANT));
+        MenuItem wizard = new MenuItem(this.gui.t("nj.wizard.title"), Fx.icon(Icons.WIZARD));
         wizard.setOnAction(e -> showWizard());
         wizard.setId("wizard");
-        MenuItem updates = new MenuItem(this.gui.t("IDS_CHECK4UPDATE"), Fx.icon(Material2MZ.SYSTEM_UPDATE_ALT));
+        MenuItem updates = new MenuItem(this.gui.t("IDS_CHECK4UPDATE"), Fx.icon(Icons.REFRESH));
         updates.setOnAction(
                 e -> UpdateDialog.checkNow(this.gui, this.root.getScene().getWindow()));
         updates.setId("updates");
         MenuButton tools = new MenuButton(
                 this.gui.t("nj.top.tools"),
-                new FontIcon(Material2AL.BUILD),
+                new Icon(Icons.TOOLS),
                 incoming,
                 options,
                 wizard,
@@ -468,7 +466,7 @@ public final class MainWindow {
                     : this.screens.get(place).title();
             Node icon = isNetwork
                     ? NetworkPane.icon()
-                    : new FontIcon(this.screens.get(place).icon());
+                    : new Icon(this.screens.get(place).icon());
             Node mark = switch (place) {
                 case "transfers" -> this.activeBadge;
                 case "messages" -> this.unreadBadge;
@@ -602,8 +600,7 @@ public final class MainWindow {
                     case CONNECTING -> this.gui.t("IDS_MAIN_BTN_CANCEL");
                     case CONNECTED -> this.gui.t("IDS_MAIN_BTN_DISCONNECT");
                 });
-        this.connect.setGraphic(new FontIcon(
-                state == EngineModel.Connection.DISCONNECTED ? Material2AL.LINK : Material2MZ.POWER_SETTINGS_NEW));
+        this.connect.setGraphic(new Icon(state == EngineModel.Connection.DISCONNECTED ? Icons.LINK : Icons.POWER));
         // Connecting is what to do while disconnected: only then does the button take the accent.
         this.connect.getStyleClass().remove("accent");
         if (state == EngineModel.Connection.DISCONNECTED) {
@@ -740,7 +737,7 @@ public final class MainWindow {
     }
 
     private static Label chip() {
-        Label label = new Label("", new FontIcon(Material2AL.FIBER_MANUAL_RECORD));
+        Label label = new Label("", new Icon(Icons.DOT));
         label.getStyleClass().add("connection-chip");
         return label;
     }
@@ -751,10 +748,9 @@ public final class MainWindow {
             this.limits = new SpeedLimits(this.gui);
             Button full = Fx.button(
                     this.gui.t("IDS_PW_UA"),
-                    Material2MZ.SPEED,
+                    Icons.SPEED,
                     () -> this.limits.set(p -> p.downloadCapacityKiBps(), p -> p.uploadCapacityKiBps()));
-            Button slow = Fx.button(
-                    this.gui.t("IDS_PW_PA"), Material2MZ.SLOW_MOTION_VIDEO, () -> this.limits.set(p -> 1, p -> 1));
+            Button slow = Fx.button(this.gui.t("IDS_PW_PA"), Icons.SLOW, () -> this.limits.set(p -> 1, p -> 1));
             VBox box = new VBox(10, this.limits.view(), new HBox(8, full, slow));
             box.getStyleClass().add("limits-popover");
             this.limitsPopover = new Popover(box);
@@ -896,7 +892,7 @@ public final class MainWindow {
         Stage stage = new Stage();
         stage.initOwner(this.root.getScene().getWindow());
         stage.setTitle(this.gui.t("nj.shortcuts.title"));
-        Button close = Fx.button(this.gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, stage::close);
+        Button close = Fx.button(this.gui.t("IDS_FD_CLOSE"), Icons.CLOSE, stage::close);
         close.setCancelButton(true);
         close.setDefaultButton(true);
         HBox buttons = new HBox(close);
@@ -921,8 +917,8 @@ public final class MainWindow {
         return badge;
     }
 
-    private static Label rate(Ikon arrow) {
-        Label label = new Label("", new FontIcon(arrow));
+    private static Label rate(Icons arrow) {
+        Label label = new Label("", new Icon(arrow));
         label.getStyleClass().add("rate-label");
         return label;
     }

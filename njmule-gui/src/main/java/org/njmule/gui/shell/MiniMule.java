@@ -33,15 +33,13 @@ import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.stage.Window;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icon;
+import org.njmule.gui.ui.Icons;
 
 /**
  * A small window over the others with njMule at a glance — connected, the rates, the downloads finished in this run and
@@ -78,15 +76,15 @@ public final class MiniMule {
         this.stage.setTitle(NjMuleInfo.NAME + " " + NjMuleInfo.version());
         GridPane grid = new GridPane();
         grid.getStyleClass().add("minimule-grid");
-        row(grid, 0, Material2AL.LINK, gui.t("IDS_CONNECTED"), this.connected);
-        row(grid, 1, Material2AL.ARROW_UPWARD, gui.t("IDS_PW_CON_UPLBL"), this.upload);
-        row(grid, 2, Material2AL.ARROW_DOWNWARD, gui.t("IDS_PW_CON_DOWNLBL"), this.download);
-        row(grid, 3, Material2AL.DONE_ALL, gui.t("IDS_DL_TRANSFCOMPL"), this.completed);
-        row(grid, 4, Material2MZ.STORAGE, gui.t("IDS_STATS_FREESPACE"), this.space);
+        row(grid, 0, Icons.LINK, gui.t("IDS_CONNECTED"), this.connected);
+        row(grid, 1, Icons.ARROW_UP, gui.t("IDS_PW_CON_UPLBL"), this.upload);
+        row(grid, 2, Icons.ARROW_DOWN, gui.t("IDS_PW_CON_DOWNLBL"), this.download);
+        row(grid, 3, Icons.DONE_ALL, gui.t("IDS_DL_TRANSFCOMPL"), this.completed);
+        row(grid, 4, Icons.STORAGE, gui.t("IDS_STATS_FREESPACE"), this.space);
         HBox buttons = new HBox(
-                button(gui.t("IDS_OPENINC"), Material2AL.FOLDER_OPEN, actions::openIncoming),
-                button(gui.t("IDS_EM_PREFS"), Material2MZ.SETTINGS, actions::options),
-                button(gui.t("IDS_MAIN_POPUP_RESTORE"), Material2MZ.OPEN_IN_BROWSER, actions::restore));
+                button(gui.t("IDS_OPENINC"), Icons.FOLDER_OPEN, actions::openIncoming),
+                button(gui.t("IDS_EM_PREFS"), Icons.OPTIONS, actions::options),
+                button(gui.t("IDS_MAIN_POPUP_RESTORE"), Icons.OPEN_EXTERNAL, actions::restore));
         buttons.getStyleClass().add("minimule-buttons");
         buttons.setAlignment(Pos.CENTER_RIGHT);
         VBox root = new VBox(grid, new Separator(), buttons);
@@ -150,13 +148,13 @@ public final class MiniMule {
         }
     }
 
-    private void row(GridPane grid, int row, Ikon icon, String name, Label value) {
-        Label label = new Label(name, new FontIcon(icon));
+    private void row(GridPane grid, int row, Icons icon, String name, Label value) {
+        Label label = new Label(name, new Icon(icon));
         value.getStyleClass().add("minimule-value");
         grid.addRow(row, label, value);
     }
 
-    private Button button(String text, Ikon icon, Runnable action) {
+    private Button button(String text, Icons icon, Runnable action) {
         Button button = Fx.iconButton(text, icon, action);
         button.getStyleClass().add("flat");
         return button;

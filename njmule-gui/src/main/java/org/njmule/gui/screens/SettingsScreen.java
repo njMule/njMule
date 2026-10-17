@@ -58,9 +58,6 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.app.Autostart;
 import org.njmule.app.LinkAssociation;
 import org.njmule.core.config.BindInterface;
@@ -81,6 +78,7 @@ import org.njmule.gui.shell.NotificationArea;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.PortTestPane;
@@ -243,8 +241,8 @@ public final class SettingsScreen implements Screen {
     }
 
     @Override
-    public Ikon icon() {
-        return Material2MZ.SETTINGS;
+    public Icons icon() {
+        return Icons.OPTIONS;
     }
 
     @Override
@@ -405,7 +403,7 @@ public final class SettingsScreen implements Screen {
         grid.add(this.fromClients, 1, row++);
         grid.add(this.staticOnly, 1, row++);
         grid.add(this.manualHigh, 1, row++);
-        Button addresses = Fx.button(this.gui.t("IDS_EDITLIST"), Material2AL.EDIT, this::editServerListAddresses);
+        Button addresses = Fx.button(this.gui.t("IDS_EDITLIST"), Icons.EDIT, this::editServerListAddresses);
         HBox update = new HBox(8, this.updateAtStart, addresses);
         update.setAlignment(Pos.CENTER_LEFT);
         grid.add(update, 1, row++);
@@ -460,7 +458,7 @@ public final class SettingsScreen implements Screen {
         grid.add(
                 Fx.button(
                         this.gui.t("IDS_CHECK4UPDATE"),
-                        Material2MZ.SYSTEM_UPDATE_ALT,
+                        Icons.REFRESH,
                         () -> UpdateDialog.checkNow(
                                 this.gui, this.view.getScene().getWindow())),
                 1,
@@ -484,8 +482,8 @@ public final class SettingsScreen implements Screen {
         grid.add(
                 new HBox(
                         8,
-                        Fx.button(this.gui.t("nj.webui.copyToken"), Material2AL.CONTENT_COPY, this::copyApiToken),
-                        Fx.button(this.gui.t("nj.webui.newToken"), Material2MZ.REFRESH, this::newApiToken)),
+                        Fx.button(this.gui.t("nj.webui.copyToken"), Icons.COPY, this::copyApiToken),
+                        Fx.button(this.gui.t("nj.webui.newToken"), Icons.REFRESH, this::newApiToken)),
                 1,
                 row++);
         Label webNote = new Label(this.gui.t("nj.webui.note"));
@@ -497,7 +495,7 @@ public final class SettingsScreen implements Screen {
         note.getStyleClass().add("text-muted");
         grid.add(note, 0, row, 2, 1);
 
-        Button apply = Fx.primary(Fx.button(this.gui.t("IDS_PW_APPLY"), Material2AL.DONE, this::apply));
+        Button apply = Fx.primary(Fx.button(this.gui.t("IDS_PW_APPLY"), Icons.CHECK, this::apply));
         List<Input<?>> checked = this.checked;
         checked.addAll(List.of(
                 this.nickInput,
@@ -531,7 +529,7 @@ public final class SettingsScreen implements Screen {
                 this.webUiAgainInput));
         checked.addAll(this.eventInputs.values());
         // Apply stays enabled: pressed with a wrong value, it shows that field and says what it takes.
-        var tools = Fx.toolRow(apply, Fx.button(this.gui.t("IDS_PW_RESET"), Material2MZ.REFRESH, this::shown));
+        var tools = Fx.toolRow(apply, Fx.button(this.gui.t("IDS_PW_RESET"), Icons.REFRESH, this::shown));
         this.scroll.setContent(grid);
         this.scroll.setFitToWidth(true);
         load(this.gui.model().preferencesProperty().get());
@@ -698,7 +696,7 @@ public final class SettingsScreen implements Screen {
         this.ipFilterLists.setPrefColumnCount(40);
         this.ipFilterLists.setPromptText("https://\u2026/ipfilter.zip\nhttps://\u2026/level1.p2p.gz");
         Fx.leftToRight(this.ipFilterLists);
-        Button update = Fx.button(this.gui.t("IDS_SV_UPDATE"), Material2MZ.REFRESH, this::updateIpFilter);
+        Button update = Fx.button(this.gui.t("IDS_SV_UPDATE"), Icons.REFRESH, this::updateIpFilter);
         update.disableProperty()
                 .bind(this.ipFilterListsInput
                         .validProperty()
@@ -814,8 +812,8 @@ public final class SettingsScreen implements Screen {
     // A WAV file, chosen or typed, and a button to hear it as the notifications would play it.
     private Node soundRow() {
         this.soundFile.setPrefColumnCount(32);
-        Button browse = Fx.button(this.gui.t("IDS_PW_BROWSE"), Material2AL.FOLDER_OPEN, this::chooseSound);
-        Button test = Fx.button(this.gui.t("IDS_TEST"), Material2MZ.VOLUME_UP, this::testSound);
+        Button browse = Fx.button(this.gui.t("IDS_PW_BROWSE"), Icons.FOLDER_OPEN, this::chooseSound);
+        Button test = Fx.button(this.gui.t("IDS_TEST"), Icons.VOLUME, this::testSound);
         test.disableProperty()
                 .bind(Bindings.createBooleanBinding(
                         () -> !this.soundFileInput.isValid()
@@ -853,8 +851,7 @@ public final class SettingsScreen implements Screen {
 
     // The player's program, typed or chosen, then its arguments.
     private Node videoPlayerRow() {
-        this.videoPlayerBrowse =
-                Fx.button(this.gui.t("IDS_PW_BROWSE"), Material2AL.FOLDER_OPEN, this::chooseVideoPlayer);
+        this.videoPlayerBrowse = Fx.button(this.gui.t("IDS_PW_BROWSE"), Icons.FOLDER_OPEN, this::chooseVideoPlayer);
         HBox row = new HBox(6, this.videoPlayer, this.videoPlayerBrowse, this.videoPlayerArgs);
         row.setAlignment(Pos.CENTER_LEFT);
         return row;
@@ -889,7 +886,7 @@ public final class SettingsScreen implements Screen {
     private HBox directory(TextField field) {
         field.setPrefColumnCount(32);
         field.setPromptText(this.gui.t("nj.settings.defaultDir"));
-        return new HBox(6, field, Fx.button(this.gui.t("IDS_PW_BROWSE"), Material2AL.FOLDER_OPEN, () -> {
+        return new HBox(6, field, Fx.button(this.gui.t("IDS_PW_BROWSE"), Icons.FOLDER_OPEN, () -> {
             DirectoryChooser chooser = new DirectoryChooser();
             var dir = chooser.showDialog(this.view.getScene().getWindow());
             if (dir != null) {

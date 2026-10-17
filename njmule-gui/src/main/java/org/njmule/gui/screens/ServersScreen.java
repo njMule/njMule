@@ -66,10 +66,6 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
-import org.kordamp.ikonli.Ikon;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2AL;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.ServerAddress;
@@ -80,6 +76,8 @@ import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icon;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.LogView;
@@ -131,8 +129,8 @@ public final class ServersScreen implements Screen {
     }
 
     @Override
-    public Ikon icon() {
-        return Material2AL.DNS;
+    public Icons icon() {
+        return Icons.SERVER;
     }
 
     @Override
@@ -155,9 +153,9 @@ public final class ServersScreen implements Screen {
     private Node build() {
         this.table = Fx.table(this.gui.model().servers(), this.gui.t("nj.servers.none"), this.shown);
         this.table.setPlaceholder(Fx.emptyState(
-                Material2AL.DNS,
+                Icons.SERVER,
                 this.gui.t("nj.servers.none"),
-                Fx.button(this.gui.t("IDS_SV_UPDATE"), Material2MZ.REFRESH, this::updateFromUrl)));
+                Fx.button(this.gui.t("IDS_SV_UPDATE"), Icons.REFRESH, this::updateFromUrl)));
         // The usual server columns; the hard file limit and the version start hidden.
         this.table
                 .getColumns()
@@ -205,15 +203,15 @@ public final class ServersScreen implements Screen {
         this.addressInput = new Inputs(this.gui)
                 .address(this.address, this.gui.t("nj.servers.addConnect"))
                 .quietWhenEmpty();
-        Button connectTo = Fx.button(this.gui.t("nj.servers.addConnect"), Material2AL.ADD, this::connectToAddress);
+        Button connectTo = Fx.button(this.gui.t("nj.servers.addConnect"), Icons.ADD, this::connectToAddress);
         connectTo.disableProperty().bind(this.addressInput.validProperty().not());
         this.connectButton.setOnAction(e -> connectOrDisconnect());
         this.table.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> showConnect());
         this.gui.subscriptions().onChange(this.gui.model().connectionProperty(), (was, now) -> showCurrent());
         this.gui.subscriptions().onChange(this.gui.model().serverAddressProperty(), (was, now) -> showCurrent());
         showConnect();
-        var tools = Fx.toolRow(
-                this.connectButton, Fx.button(this.gui.t("IDS_REMOVE"), Material2AL.DELETE, this::removeSelected));
+        var tools =
+                Fx.toolRow(this.connectButton, Fx.button(this.gui.t("IDS_REMOVE"), Icons.DELETE, this::removeSelected));
         this.add.setText(this.gui.t("nj.servers.add"));
         this.add.getStyleClass().add(Styles.DENSE);
         this.add.setContent(ways(connectTo));
@@ -259,7 +257,7 @@ public final class ServersScreen implements Screen {
         TabPane tabs = new TabPane(infoTab, logTab, mine);
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         this.logTabs = tabs;
-        Button clear = Fx.button(this.gui.t("IDS_PW_RESET"), Material2AL.CLEAR_ALL, () -> {
+        Button clear = Fx.button(this.gui.t("IDS_PW_RESET"), Icons.CLEAR_ALL, () -> {
             if (infoTab.isSelected()) {
                 this.gui.model().clearServerInfo();
             } else {
@@ -318,8 +316,8 @@ public final class ServersScreen implements Screen {
     private void showConnect() {
         String text = connectText();
         this.connectButton.setText(text);
-        this.connectButton.setGraphic(new FontIcon(
-                text.equals(this.gui.t("IDS_MAIN_BTN_CONNECT")) ? Material2AL.LINK : Material2AL.LINK_OFF));
+        this.connectButton.setGraphic(
+                new Icon(text.equals(this.gui.t("IDS_MAIN_BTN_CONNECT")) ? Icons.LINK : Icons.LINK_OFF));
     }
 
     /** Disconnects from the selected server when it is ours, else connects to it, leaving the current one. */
@@ -353,16 +351,13 @@ public final class ServersScreen implements Screen {
         this.list.node().setPromptText("https://\u2026/server.met");
         Fx.onEnter(this.list.node(), this::updateFromUrl);
         this.list.node().setMaxWidth(Double.MAX_VALUE);
-        Button update = Fx.button(this.gui.t("IDS_SV_UPDATE"), Material2MZ.REFRESH, this::updateFromUrl);
+        Button update = Fx.button(this.gui.t("IDS_SV_UPDATE"), Icons.REFRESH, this::updateFromUrl);
         update.disableProperty().bind(this.list.input().validProperty().not());
         this.address.setMaxWidth(Double.MAX_VALUE);
         GridPane ways = new GridPane(8, 8);
         ways.addRow(0, Fx.whole(new Label(this.gui.t("IDS_SV_MET"))), this.list.node(), Fx.whole(update));
         ways.addRow(1, Fx.whole(new Label(this.gui.t("IDS_SV_ADDRESS"))), this.address, Fx.whole(connectTo));
-        ways.add(
-                Fx.whole(Fx.button(this.gui.t("nj.servers.addMet"), Material2AL.FOLDER_OPEN, this::chooseServerMet)),
-                1,
-                2);
+        ways.add(Fx.whole(Fx.button(this.gui.t("nj.servers.addMet"), Icons.FOLDER_OPEN, this::chooseServerMet)), 1, 2);
         ColumnConstraints grows = new ColumnConstraints();
         grows.setHgrow(Priority.ALWAYS);
         ways.getColumnConstraints().addAll(new ColumnConstraints(), grows);
@@ -403,7 +398,7 @@ public final class ServersScreen implements Screen {
         this.table.getItems().addListener((ListChangeListener<LiveList.Row<ServerInfo>>) c -> showCount());
         this.gui.subscriptions().onListChange(this.gui.model().servers().rows(), c -> showCount());
         showCount();
-        HBox head = new HBox(8, this.count, Fx.spacer(), Fx.icon(Material2MZ.SEARCH), this.filter);
+        HBox head = new HBox(8, this.count, Fx.spacer(), Fx.icon(Icons.SEARCH), this.filter);
         head.setAlignment(Pos.CENTER_LEFT);
         VBox pane = new VBox(6, head, this.table);
         VBox.setVgrow(this.table, Priority.ALWAYS);
@@ -437,9 +432,9 @@ public final class ServersScreen implements Screen {
 
     // The server menu; no Find, which the box above the list does as one types.
     private ContextMenu menu() {
-        MenuItem connect = Fx.menuItem(this.gui.t("IDS_CONNECTTHIS"), Material2AL.LINK, this::connectOrDisconnect);
+        MenuItem connect = Fx.menuItem(this.gui.t("IDS_CONNECTTHIS"), Icons.LINK, this::connectOrDisconnect);
         connect.getStyleClass().add("default-item");
-        Menu priority = new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Material2AL.LOW_PRIORITY));
+        Menu priority = new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Icons.PRIORITY));
         ToggleGroup priorities = new ToggleGroup();
         for (ServerInfo.Priority p :
                 List.of(ServerInfo.Priority.LOW, ServerInfo.Priority.NORMAL, ServerInfo.Priority.HIGH)) {
@@ -449,14 +444,13 @@ public final class ServersScreen implements Screen {
             item.setOnAction(e -> setPriority(p));
             priority.getItems().add(item);
         }
-        MenuItem addStatic =
-                Fx.menuItem(this.gui.t("IDS_ADDTOSTATIC"), Material2MZ.PLAYLIST_ADD, () -> setStatic(true));
-        MenuItem removeStatic = Fx.menuItem(
-                this.gui.t("IDS_REMOVEFROMSTATIC"), Material2MZ.REMOVE_CIRCLE_OUTLINE, () -> setStatic(false));
-        MenuItem copy = Fx.menuItem(this.gui.t("IDS_DL_LINK1"), Material2AL.CONTENT_COPY, this::copyLinks);
-        MenuItem paste = Fx.menuItem(this.gui.t("IDS_SW_DIRECTDOWNLOAD"), Material2AL.CONTENT_PASTE, this::pasteLinks);
-        MenuItem remove = Fx.menuItem(this.gui.t("IDS_REMOVETHIS"), Material2AL.DELETE, this::removeSelected);
-        MenuItem removeAll = Fx.menuItem(this.gui.t("IDS_REMOVEALL"), Material2AL.DELETE_SWEEP, this::askRemoveAll);
+        MenuItem addStatic = Fx.menuItem(this.gui.t("IDS_ADDTOSTATIC"), Icons.LIST_ADD, () -> setStatic(true));
+        MenuItem removeStatic =
+                Fx.menuItem(this.gui.t("IDS_REMOVEFROMSTATIC"), Icons.REMOVE_CIRCLE, () -> setStatic(false));
+        MenuItem copy = Fx.menuItem(this.gui.t("IDS_DL_LINK1"), Icons.COPY, this::copyLinks);
+        MenuItem paste = Fx.menuItem(this.gui.t("IDS_SW_DIRECTDOWNLOAD"), Icons.PASTE, this::pasteLinks);
+        MenuItem remove = Fx.menuItem(this.gui.t("IDS_REMOVETHIS"), Icons.DELETE, this::removeSelected);
+        MenuItem removeAll = Fx.menuItem(this.gui.t("IDS_REMOVEALL"), Icons.DELETE_ALL, this::askRemoveAll);
         ContextMenu menu = new ContextMenu(
                 connect,
                 priority,
@@ -678,10 +672,10 @@ public final class ServersScreen implements Screen {
      * an icon besides their colour.
      */
     static LogView.Line logLine(Formats formats, LogLine line) {
-        Optional<Ikon> icon = switch (line.level()) {
-            case ERROR -> Optional.of(Material2AL.ERROR_OUTLINE);
-            case WARNING -> Optional.of(Material2MZ.WARNING);
-            case SUCCESS -> Optional.of(Material2AL.CHECK_CIRCLE_OUTLINE);
+        Optional<Icons> icon = switch (line.level()) {
+            case ERROR -> Optional.of(Icons.ERROR);
+            case WARNING -> Optional.of(Icons.WARNING);
+            case SUCCESS -> Optional.of(Icons.CHECK_CIRCLE);
             case INFO, DEBUG -> Optional.empty();
         };
         return new LogView.Line(

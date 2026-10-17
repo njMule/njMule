@@ -27,13 +27,13 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.Window;
-import org.kordamp.ikonli.material2.Material2AL;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icons;
 
 /** The files another client shares, as it lists them when asked; the chosen ones can be downloaded. */
 public final class ClientFilesDialog {
@@ -60,15 +60,14 @@ public final class ClientFilesDialog {
                                 gui.t("IDS_TYPE"),
                                 90,
                                 (SearchResult r) -> r.type().orElse("")))));
-        Button download = Fx.primary(Fx.button(gui.t("IDS_DOWNLOAD"), Material2AL.CLOUD_DOWNLOAD, this::download));
+        Button download = Fx.primary(Fx.button(gui.t("IDS_DOWNLOAD"), Icons.DOWNLOAD, this::download));
         download.disableProperty()
                 .bind(this.table.getSelectionModel().selectedItemProperty().isNull());
         VBox root = new VBox(
                 10,
                 this.state,
                 this.table,
-                Fx.toolRow(
-                        download, Fx.spacer(), Fx.button(gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close)));
+                Fx.toolRow(download, Fx.spacer(), Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close)));
         VBox.setVgrow(this.table, Priority.ALWAYS);
         root.setPadding(new Insets(14));
         Scene scene = new Scene(root, 680, 420);

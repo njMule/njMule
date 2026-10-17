@@ -29,9 +29,9 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import org.kordamp.ikonli.javafx.FontIcon;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.gui.ui.Fx;
+import org.njmule.gui.ui.Icon;
+import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Screen;
 
 /**
@@ -99,7 +99,7 @@ final class NetworkPane {
     }
 
     /** The icon the rail shows for the network. */
-    static FontIcon icon() {
-        return new FontIcon(Material2MZ.PUBLIC);
+    static Icon icon() {
+        return new Icon(Icons.NETWORK);
     }
 }

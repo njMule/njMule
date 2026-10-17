@@ -26,7 +26,6 @@ import javafx.collections.ObservableList;
 import org.fxmisc.richtext.StyleClassedTextArea;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.kordamp.ikonli.material2.Material2MZ;
 import org.njmule.gui.FxTesting;
 
 /** A log whose lines follow a list and whose text the mouse chooses. */
@@ -152,6 +151,6 @@ class LogViewTest {
         return new LogView.Line(
                 text,
                 warning ? List.of("warning") : List.of(),
-                warning ? Optional.of(Material2MZ.WARNING) : Optional.empty());
+                warning ? Optional.of(Icons.WARNING) : Optional.empty());
     }
 }
