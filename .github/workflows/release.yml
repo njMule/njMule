@@ -91,7 +91,7 @@ jobs:
                   # Absolute paths: WiX resolves relative ones from the .wxs file's directory.
                   $bin = (Resolve-Path "stage\$name").Path
                   $docs = (Resolve-Path .).Path
-                  wix build packaging/windows/njmule.wxs -wx -arch x64 -d "Version=$env:NUMERIC" -d "BinDir=$bin" -d "DocDir=$docs" -d Gui=yes -o "dist\$name.msi"
+                  wix build packaging/windows/njmule.wxs -wx -arch x64 -pdbtype none -d "Version=$env:NUMERIC" -d "BinDir=$bin" -d "DocDir=$docs" -d Gui=yes -o "dist\$name.msi"
                   # The installer must carry the programs: unpack it and look.
                   wix msi decompile "dist\$name.msi" -x "$env:RUNNER_TEMP\msi" -o "$env:RUNNER_TEMP\msi.wxs"
                   foreach ($exe in "njmule.exe", "njmule-gui.exe") {
