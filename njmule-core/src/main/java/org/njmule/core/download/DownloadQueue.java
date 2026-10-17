@@ -400,6 +400,7 @@ public final class DownloadQueue implements AutoCloseable {
             byte[] slice = from == start && to == end
                     ? data
                     : Arrays.copyOfRange(data, (int) (from - start), (int) (to - start));
+            download.file.arriving(from, to);
             this.loop.whenDone(
                     download.storage.write(from, slice),
                     (ok, failure) -> written(download, from, to, sourceIp, failure));

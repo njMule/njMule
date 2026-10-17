@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -70,6 +71,9 @@ public final class PartFile {
 
     /** The most sources kept from one run to the next. */
     public static final int MAX_KNOWN_SOURCES = 100;
+
+    /** The bytes still missing at most for the endgame: one part, so that the blocks asked twice stay few. */
+    public static final long ENDGAME_MISSING = Ed2k.PARTSIZE;
 
     /**
      * A source of the download kept from one run to the next: its address ({@code Ipv4} form) and TCP port, when it was
@@ -124,6 +128,10 @@ public final class PartFile {
     private List<KnownSource> knownSources = List.of();
     private final RangeSet<Long> missing = TreeRangeSet.create();
     private final RangeSet<Long> requested = TreeRangeSet.create();
+    // Requested from a second source by the endgame: never from a third.
+    private final RangeSet<Long> askedTwice = TreeRangeSet.create();
+    // Received and on its way to the disk: still missing and requested, but asked of no source again.
+    private final RangeSet<Long> arriving = TreeRangeSet.create();
     private final int[] availability;
     // Breaks ties between equally good parts, so that clients spread over the parts of a file instead of all starting
     // with the first.
@@ -550,6 +558,45 @@ public final class PartFile {
         return blocks;
     }
 
+    /**
+     * Endgame: once nothing else is left to request and at most {@link #ENDGAME_MISSING} bytes are missing, up to
+     * {@code max} blocks requested from other sources, from the parts the source has, asked of it too; the first copy
+     * to arrive is kept, so a slow source no longer holds the end of the download back. A block is asked twice at most,
+     * and never again of the source that asked it ({@code own}).
+     */
+    public List<Block> endgameBlocks(BitSet sourceParts, int max, Collection<Block> own) {
+        List<Block> blocks = new ArrayList<>(max);
+        if (missingBytes() > ENDGAME_MISSING) {
+            return blocks;
+        }
+        RangeSet<Long> mine = TreeRangeSet.create();
+        own.forEach(b -> mine.add(Range.closedOpen(b.start(), b.end())));
+        for (int part = sourceParts.nextSetBit(0);
+                part >= 0 && part < partCount() && blocks.size() < max;
+                part = sourceParts.nextSetBit(part + 1)) {
+            if (this.held.get(part)) {
+                continue;
+            }
+            RangeSet<Long> again = TreeRangeSet.create(this.missing.subRangeSet(partRange(this.size, part)));
+            again.removeAll(this.requested.complement());
+            again.removeAll(this.askedTwice);
+            again.removeAll(this.arriving);
+            again.removeAll(mine);
+            long partStart = Ed2k.partStart(part);
+            for (Range<Long> gap : again.asRanges()) {
+                long start = gap.lowerEndpoint();
+                while (start < gap.upperEndpoint() && blocks.size() < max) {
+                    long boundary = partStart + ((start - partStart) / Ed2k.EMBLOCKSIZE + 1) * Ed2k.EMBLOCKSIZE;
+                    long end = Math.min(gap.upperEndpoint(), boundary);
+                    blocks.add(new Block(start, end));
+                    this.askedTwice.add(Range.closedOpen(start, end));
+                    start = end;
+                }
+            }
+        }
+        return blocks;
+    }
+
     /** Keeps {@code part} from being downloaded until {@link #unhold}: its recovery data may save most of it. */
     public void hold(int part) {
         this.held.set(part);
@@ -571,6 +618,13 @@ public final class PartFile {
     /** Requested data in {@code [start, end)} that will not reach the disk, so it is handed out again. */
     public void release(long start, long end) {
         this.requested.remove(Range.closedOpen(start, end));
+        this.askedTwice.remove(Range.closedOpen(start, end));
+        this.arriving.remove(Range.closedOpen(start, end));
+    }
+
+    /** Data in {@code [start, end)} was received and goes to the disk. */
+    public void arriving(long start, long end) {
+        this.arriving.add(Range.closedOpen(start, end));
     }
 
     /** Data in {@code [start, end)} reached the disk. */
@@ -578,11 +632,14 @@ public final class PartFile {
         Range<Long> range = Range.closedOpen(start, end);
         this.missing.remove(range);
         this.requested.remove(range);
+        this.askedTwice.remove(range);
+        this.arriving.remove(range);
     }
 
     /** A part failed its hash check: all of it is missing again. */
     public void corrupt(int part) {
         this.missing.add(partRange(this.size, part));
+        this.askedTwice.remove(partRange(this.size, part));
         this.verified.clear(part);
         this.trusted.clear(part);
     }

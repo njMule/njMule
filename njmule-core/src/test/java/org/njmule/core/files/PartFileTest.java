@@ -108,6 +108,70 @@ class PartFileTest {
         thenThePartHashIsTheFileHash(0);
     }
 
+    @Test
+    void shouldAskTheBlocksOfAnotherSourceAgainNearTheEnd() {
+        givenASmallFileOf(500_000);
+        givenTheBlocksHandedOutAre(3, new Block(0, B), new Block(B, 2L * B), new Block(2L * B, 500_000));
+        givenNoBlockIsLeftWhenAskingFor(3);
+
+        whenTheEndgameBlocksAreAskedFor(3);
+
+        thenTheBlocksAre(new Block(0, B), new Block(B, 2L * B), new Block(2L * B, 500_000));
+    }
+
+    @Test
+    void shouldAskABlockOfTheEndgameOfTwoSourcesAtMost() {
+        givenASmallFileOf(500_000);
+        givenBlocksAreHandedOut(3);
+        givenTheEndgameBlocksWereAskedFor(3);
+
+        whenTheEndgameBlocksAreAskedFor(3);
+
+        thenNoBlockIsGiven();
+    }
+
+    @Test
+    void shouldNeverAskASourceItsOwnBlocksAgain() {
+        givenASmallFileOf(500_000);
+        givenBlocksAreHandedOut(3);
+
+        whenTheEndgameBlocksAreAskedOfTheSourceThatHasThem(3);
+
+        thenNoBlockIsGiven();
+    }
+
+    @Test
+    void shouldAskABlockAgainOnlyWhileItIsMissing() {
+        givenASmallFileOf(500_000);
+        givenBlocksAreHandedOut(3);
+        givenTheBytesAreWritten(0, B);
+
+        whenTheEndgameBlocksAreAskedFor(3);
+
+        thenTheBlocksAre(new Block(B, 2L * B), new Block(2L * B, 500_000));
+    }
+
+    @Test
+    void shouldNotAskAgainABlockOnItsWayToTheDisk() {
+        givenASmallFileOf(500_000);
+        givenBlocksAreHandedOut(3);
+        givenTheBytesArriving(0, B);
+
+        whenTheEndgameBlocksAreAskedFor(3);
+
+        thenTheBlocksAre(new Block(B, 2L * B), new Block(2L * B, 500_000));
+    }
+
+    @Test
+    void shouldKeepTheEndgameForTheLastPart() {
+        givenASmallFileOf(2 * P);
+        givenAllBlocksAreDrained(3);
+
+        whenTheEndgameBlocksAreAskedFor(3);
+
+        thenNoBlockIsGiven();
+    }
+
     @ParameterizedTest
     @ValueSource(longs = {1, B - 1, B, B + 1, P - 1, P, P + 1, 2 * P - 1, 2 * P, 2 * P + 1})
     void shouldCoverFilesOfEverySizeAroundThePartBoundariesWithBlocks(long size) {
@@ -745,6 +809,22 @@ class PartFileTest {
         this.blocks = nextBlocks(this.file, this.sourceParts, count);
     }
 
+    private void givenTheBytesArriving(long start, long end) {
+        this.file.arriving(start, end);
+    }
+
+    private void givenTheEndgameBlocksWereAskedFor(int count) {
+        assertThat(this.file.endgameBlocks(this.sourceParts, count, List.of())).isNotEmpty();
+    }
+
+    private void whenTheEndgameBlocksAreAskedFor(int count) {
+        this.blocks = this.file.endgameBlocks(this.sourceParts, count, List.of());
+    }
+
+    private void whenTheEndgameBlocksAreAskedOfTheSourceThatHasThem(int count) {
+        this.blocks = this.file.endgameBlocks(this.sourceParts, count, this.handedOut);
+    }
+
     private void whenAllBlocksAreDrained(int perCall) {
         this.blocks = drain(this.file, this.sourceParts, perCall);
     }
@@ -803,6 +883,10 @@ class PartFileTest {
 
     private void thenTheBlocksAre(Block... expected) {
         assertThat(this.blocks).containsExactly(expected);
+    }
+
+    private void thenNoBlockIsGiven() {
+        assertThat(this.blocks).isEmpty();
     }
 
     private void thenTheBlocksOfTheBegunPartAre(Block... expected) {

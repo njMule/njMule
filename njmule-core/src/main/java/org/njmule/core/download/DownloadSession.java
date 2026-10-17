@@ -671,6 +671,12 @@ final class DownloadSession implements PeerLink.Role {
         }
         List<PartFile.Block> next =
                 allowed > 0 ? this.download.file().nextBlocks(this.sourceParts, allowed) : List.of();
+        if (next.isEmpty() && allowed > 0) {
+            // Every missing block is asked of a source already: near the end, some of theirs are asked of this one too.
+            List<PartFile.Block> own =
+                    this.pending.values().stream().map(p -> p.block).toList();
+            next = this.download.file().endgameBlocks(this.sourceParts, allowed, own);
+        }
         if (next.isEmpty()) {
             if (this.pending.isEmpty() && this.idle == null) {
                 this.idle = this.loop.schedule("idle download slot", IDLE_SLOT, () -> {

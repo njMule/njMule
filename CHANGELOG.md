@@ -73,7 +73,10 @@ All notable changes to this project are documented here. The format follows
 - Download sessions with other clients: file request, part status and hash set, a place in the
   upload queue, then blocks plain or zlib-compressed (inflated with a cap at the requested size),
   32- and 64-bit offsets. Sources come from links and from the server; queued sources are asked
-  again every 29 minutes and may call back with a slot.
+  again every 29 minutes and may call back with a slot. Endgame: once a part or less is missing and
+  every missing block is asked of a source already, a source with nothing left to send is asked for
+  those blocks too (twice at most each), and the first copy to arrive is kept, so a slow or silent
+  source no longer holds the end of a download back.
 - Engine API to add, list, pause, resume and cancel downloads, with progress events, and
   `njmule --download <ed2k link>...` on the command line.
 - Test kit: a fake peer that shares a file, with queueing, short upload sessions and corrupt

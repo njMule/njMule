@@ -80,32 +80,45 @@ class DownloadRecoveryFlowTest {
         }
     }
 
+    // The endgame: the blocks a silent source holds are asked of the new one too, well before the data timeout.
     @Test
-    void shouldLetASourceWithASlotTakeTheBlocksOfOneThatLeft() throws Exception {
+    void shouldTakeFromASecondSourceTheBlocksAStalledSourceHolds() throws Exception {
         givenTheFileShared(5 * BLOCK - 1000, 21);
         givenASourceThatStalls(21);
         givenNjMuleRunning();
         givenTheDownloadOfTheSourceAdded();
         givenTheSourceWasAskedForBlocks();
-        givenASecondSourceAdded(22);
-        givenTheSecondSourceSentTheBlocksLeft();
 
-        whenTheFirstSourceDropsItsDownloaders();
+        whenASecondSourceIsAdded(22);
+
+        thenTheDownloadCompletesWithTheDataWithin(SOON);
+        thenTheSecondSourceSentTheWholeFile();
+    }
+
+    @Test
+    void shouldLetASourceTakeTheBlocksOfOneThatLeft() throws Exception {
+        givenTheFileShared(5 * BLOCK - 1000, 30);
+        givenASourceThatStalls(30);
+        givenNjMuleRunning();
+        givenTheDownloadOfTheSourceAdded();
+        givenTheSourceWasAskedForBlocks();
+        givenTheFirstSourceDroppedItsDownloaders();
+
+        whenASecondSourceIsAdded(31);
 
         thenTheDownloadCompletesWithTheDataWithin(SOON);
     }
 
     @Test
-    void shouldLetASourceWithASlotTakeTheBlocksOfOneTheIpFilterNowRefuses() throws Exception {
+    void shouldLetASourceTakeTheBlocksOfOneTheIpFilterNowRefuses() throws Exception {
         givenTheFileShared(5 * BLOCK - 1000, 28);
         givenASourceThatStallsAt("127.0.0.2", 28);
         givenNjMuleRunningWithTheIpFilterRange("127.0.0.2", 150);
         givenTheDownloadOfTheSourceAdded();
         givenTheSourceWasAskedForBlocks();
-        givenASecondSourceAdded(29);
-        givenTheSecondSourceSentTheBlocksLeft();
+        givenTheIpFilterLevelRaisedTo(200);
 
-        whenTheIpFilterLevelIsRaisedTo(200);
+        whenASecondSourceIsAdded(29);
 
         thenTheDownloadCompletesWithTheDataWithin(SOON);
     }
@@ -204,8 +217,17 @@ class DownloadRecoveryFlowTest {
         await(() -> this.source.received().contains("REQUESTPARTS"), "the first source was asked for blocks");
     }
 
-    // The second source gets the two blocks left, then has nothing to ask for.
-    private void givenASecondSourceAdded(int seed) throws Exception {
+    private void givenTheFirstSourceDroppedItsDownloaders() throws IOException {
+        this.source.dropDownloaders();
+    }
+
+    private void givenTheIpFilterLevelRaisedTo(int level) throws Exception {
+        this.engine
+                .updatePreferences(p -> p.toBuilder().ipFilterLevel(level).build())
+                .get(10, TimeUnit.SECONDS);
+    }
+
+    private void whenASecondSourceIsAdded(int seed) throws Exception {
         this.second = peer(InetAddress.getLoopbackAddress(), config(seed, Set.of()));
         assertThat(this.engine
                         .addSource(this.added.hash(), new ServerAddress("127.0.0.1", this.second.port()))
@@ -213,9 +235,9 @@ class DownloadRecoveryFlowTest {
                 .isTrue();
     }
 
-    private void givenTheSecondSourceSentTheBlocksLeft() throws Exception {
-        await(() -> this.second.bytesSent() == this.data.length - 3L * BLOCK, "the second source sent the blocks left");
-        Thread.sleep(500);
+    // Its two free blocks, then the three the first source holds.
+    private void thenTheSecondSourceSentTheWholeFile() {
+        assertThat(this.second.bytesSent()).isEqualTo(this.data.length);
     }
 
     private void givenTheFileOfTheSourceDownloadedWithin(Duration within) throws Exception {
@@ -225,16 +247,6 @@ class DownloadRecoveryFlowTest {
 
     private void givenTheSourceReceived(String message) {
         assertThat(this.source.received()).contains(message);
-    }
-
-    private void whenTheFirstSourceDropsItsDownloaders() throws IOException {
-        this.source.dropDownloaders();
-    }
-
-    private void whenTheIpFilterLevelIsRaisedTo(int level) throws Exception {
-        this.engine
-                .updatePreferences(p -> p.toBuilder().ipFilterLevel(level).build())
-                .get(10, TimeUnit.SECONDS);
     }
 
     private void whenTheFileOfTheSourceIsDownloaded() throws Exception {
