@@ -360,11 +360,12 @@ class CaptureTour {
             fx(() -> expandTrees(this.stage.getScene().getRoot()));
             shot(id, "Screen " + id + " as it opens");
             if (id.equals("search")) {
-                // The parameters fold away until wanted: open them to picture their lists too.
-                fx(() -> ((javafx.scene.control.ToggleButton)
+                // The filters show in a popup under their button.
+                fx(() -> ((javafx.scene.control.Button)
                                 this.stage.getScene().getRoot().lookup("#search-parameters"))
                         .fire());
-                shot("search-parameters", "Search with its parameters open");
+                shot("search-parameters", "Search with its filters open");
+                fx(CaptureTour::closePopups);
             }
             tabs(id, screenRoot(), true);
             menus(id, screenRoot());

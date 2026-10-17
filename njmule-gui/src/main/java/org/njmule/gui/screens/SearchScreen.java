@@ -17,8 +17,10 @@
 package org.njmule.gui.screens;
 
 import atlantafx.base.controls.CustomTextField;
+import atlantafx.base.controls.Popover;
 import atlantafx.base.controls.RingProgressIndicator;
 import atlantafx.base.theme.Styles;
+import atlantafx.base.theme.Tweaks;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -55,7 +57,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
+import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.RadioMenuItem;
@@ -67,12 +69,12 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
-import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -88,6 +90,7 @@ import org.njmule.core.api.SearchResult;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
+import org.njmule.gui.ui.FilterChips;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icon;
@@ -161,7 +164,7 @@ public final class SearchScreen implements Screen {
     private final ComboBox<String> query = new ComboBox<>();
     private Input<String> queryInput;
     private Segments<Method> method;
-    private final ComboBox<FileType> type = new ComboBox<>();
+    private FilterChips<FileType> type;
     private final TextField minSize = new TextField();
     private final TextField maxSize = new TextField();
     private final TextField availability = new TextField();
@@ -173,12 +176,17 @@ public final class SearchScreen implements Screen {
     private Input<OptionalInt> completeInput;
     private Input<String> extensionInput;
     private final TabPane tabs = new TabPane();
-    private final ToggleButton parametersButton = new ToggleButton();
+    private final Button filtersButton = new Button();
+    private Popover filters;
     private final BooleanProperty noneChosen = new SimpleBooleanProperty(true);
     // Whether the search shown still runs, which Stop acts on.
     private final BooleanProperty shownRunning = new SimpleBooleanProperty();
     private final VBox content = new VBox(8);
-    private Node parameters;
+    private VBox parameters;
+    private Node empty;
+    private Node found;
+    private final Label chosenName = new Label();
+    private final Label chosenFacts = new Label();
     private final Map<Tab, Results> results = new HashMap<>();
     // One filter, right of the tabs, for the results of the tab shown, on the column chosen by its title.
     private final CustomTextField filter = new CustomTextField();
@@ -249,17 +257,26 @@ public final class SearchScreen implements Screen {
         more.disableProperty().bind(Bindings.isEmpty(this.tabs.getTabs()));
         stop.disableProperty().bind(this.shownRunning.not());
         stop.getStyleClass().add("stop-search");
-        Button download = Fx.button(this.gui.t("IDS_DOWNLOAD"), Icons.DOWNLOAD, this::downloadSelected);
-        download.disableProperty().bind(this.noneChosen);
+        for (Button button : List.of(more, stop)) {
+            button.getStyleClass().addAll(Styles.FLAT, Styles.SMALL);
+            Fx.whole(button);
+        }
         this.tabs.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> {
             followChoice();
             followShown();
         });
-        // Two rows: what to look for, then where and with what, beside what acts on the results.
+        // What to look for, where, with which filters, in one row.
+        this.parameters = parameters(inputs);
+        this.filtersButton.setGraphic(Fx.icon(Icons.FILTER));
+        this.filtersButton.setId("search-parameters");
+        this.filtersButton.setOnAction(e -> showParameters(true));
+        for (TextField f : List.of(this.minSize, this.maxSize, this.availability, this.complete, this.extension)) {
+            f.textProperty().addListener((o, was, now) -> countParameters());
+        }
+        this.type.valueProperty().addListener((o, was, now) -> countParameters());
+        countParameters();
         HBox.setHgrow(this.query, Priority.ALWAYS);
-        var tools = Fx.toolRow(this.query, start);
-        var where =
-                Fx.toolRow(this.method.node(), this.parametersButton, Fx.toolGap(), more, stop, Fx.spacer(), download);
+        var tools = Fx.toolRow(this.query, this.method.node(), this.filtersButton, start);
         this.tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
         // A file downloaded or shared since shows so in every list; a spam rating comes with its result.
         this.gui.subscriptions().onChange(this.gui.model().historyProperty(), (was, now) -> refreshAll());
@@ -273,33 +290,102 @@ public final class SearchScreen implements Screen {
                 }
             });
         }
-        this.parameters = parameters(inputs);
-        this.content.getChildren().setAll(tabsWithFilter());
-        // The parameters fold away until wanted; the button counts those in use, and they show when any is.
-        this.parametersButton.setGraphic(Fx.icon(Icons.OPTIONS));
-        this.parametersButton.setId("search-parameters");
-        this.parametersButton.setOnAction(e -> showParameters(this.parametersButton.isSelected()));
-        for (TextField f : List.of(this.minSize, this.maxSize, this.availability, this.complete, this.extension)) {
-            f.textProperty().addListener((o, was, now) -> countParameters());
-        }
-        this.type.valueProperty().addListener((o, was, now) -> countParameters());
-        countParameters();
-        showParameters(parametersInUse() > 0);
-        VBox below = new VBox(where, this.content);
-        VBox.setVgrow(this.content, Priority.ALWAYS);
-        return Fx.screen(tools, below);
+        VBox results = new VBox(6, tabsWithFilter(more, stop), selectionBar());
+        VBox.setVgrow(results.getChildren().getFirst(), Priority.ALWAYS);
+        this.found = results;
+        this.empty = emptyState();
+        this.tabs.getTabs().addListener((ListChangeListener<Tab>) c -> showFoundOrEmpty());
+        showFoundOrEmpty();
+        return Fx.screen(tools, this.content);
     }
 
-    // The search parameters: the type and the attributes the server or Kad filter on.
-    private Node parameters(Inputs inputs) {
-        this.type.getItems().addAll(FileType.values());
-        this.type.setValue(FileType.ANY);
-        this.type.setCellFactory(l -> new TypeCell());
-        this.type.setButtonCell(new TypeCell());
+    // The tabs of results while there are some, else how to search.
+    private void showFoundOrEmpty() {
+        Node shown = this.tabs.getTabs().isEmpty() ? this.empty : this.found;
+        if (!this.content.getChildren().equals(List.of(shown))) {
+            this.content.getChildren().setAll(shown);
+            VBox.setVgrow(shown, Priority.ALWAYS);
+        }
+    }
+
+    // No search yet: what the screen does, and three ways to word a search.
+    private Node emptyState() {
+        Icon icon = Fx.icon(Icons.SEARCH);
+        icon.getStyleClass().add("empty-icon");
+        Label title = new Label(this.gui.t("nj.search.emptyTitle"));
+        title.getStyleClass().addAll("empty-title", "display");
+        Label text = new Label(this.gui.t("nj.search.emptyText"));
+        text.setWrapText(true);
+        text.getStyleClass().add("empty-text");
+        FlowPane tips = new FlowPane(
+                12,
+                12,
+                tip(Icons.LABEL, "nj.search.tipExact", "\"night of the living dead\""),
+                tip(Icons.REMOVE_CIRCLE, "nj.search.tipWithout", "debian -netinst"),
+                tip(Icons.LINK, "nj.search.tipLink", "ed2k://|file|…|/"));
+        tips.setAlignment(Pos.CENTER);
+        VBox box = new VBox(12, icon, title, text, tips);
+        box.setAlignment(Pos.CENTER);
+        box.setMaxWidth(720);
+        box.getStyleClass().addAll("empty-state", "search-empty");
+        StackPane centred = new StackPane(box);
+        centred.setId("search-empty");
+        return centred;
+    }
+
+    // A way to word a search: what to do, and an example left to right in every language.
+    private Node tip(Icons glyph, String key, String example) {
+        Label words = new Label(this.gui.t(key));
+        words.setWrapText(true);
+        words.getStyleClass().add("tip-words");
+        Label shown = Fx.leftToRight(new Label(example));
+        shown.setWrapText(true);
+        shown.getStyleClass().add("tip-example");
+        VBox text = new VBox(2, words, shown);
+        text.setMinWidth(0);
+        HBox tip = new HBox(10, Fx.icon(glyph), text);
+        tip.getStyleClass().add("search-tip");
+        tip.setPrefWidth(220);
+        return tip;
+    }
+
+    // What is chosen in the tab shown, and what to do with it: download, copy, search the related files.
+    private Node selectionBar() {
+        this.chosenName.getStyleClass().add("chosen-name");
+        this.chosenName.setMinWidth(0);
+        Fx.ownDirection(this.chosenName);
+        this.chosenFacts.getStyleClass().add("chosen-facts");
+        Fx.whole(this.chosenFacts);
+        Button download = Fx.button(this.gui.t("IDS_DOWNLOAD"), Icons.DOWNLOAD, this::downloadSelected);
+        download.disableProperty().bind(this.noneChosen);
+        Button copy = Fx.iconButton(this.gui.t("nj.copyLink"), Icons.COPY, this::copyLinks);
+        Button related = Fx.iconButton(this.gui.t("IDS_SEARCHRELATED"), Icons.SEARCH, this::searchRelated);
+        MenuItem html = Fx.menuItem(this.gui.t("IDS_DL_LINK2"), Icons.CODE, this::copyHtml);
+        MenuItem spam = Fx.menuItem(this.gui.t("IDS_MARKSPAM"), Icons.BLOCK, () -> markSpam(true));
+        MenuItem notSpam = Fx.menuItem(this.gui.t("IDS_MARKNOTSPAM"), Icons.CHECK, () -> markSpam(false));
+        MenuButton more = new MenuButton(null, Fx.icon(Icons.MORE), html, spam, notSpam);
+        more.getStyleClass().addAll(Styles.BUTTON_ICON, Tweaks.NO_ARROW);
+        more.setTooltip(new Tooltip(this.gui.t("IDS_MORE")));
+        more.setAccessibleText(this.gui.t("IDS_MORE"));
+        Fx.whole(more);
+        HBox.setHgrow(this.chosenName, Priority.SOMETIMES);
+        HBox bar = new HBox(8, this.chosenName, this.chosenFacts, Fx.spacer(), download, copy, related, more);
+        bar.setAlignment(Pos.CENTER_LEFT);
+        bar.getStyleClass().add("selection-bar");
+        bar.setId("selection-bar");
+        bar.visibleProperty().bind(this.noneChosen.not());
+        bar.managedProperty().bind(bar.visibleProperty());
+        return bar;
+    }
+
+    // The filters of the next search: the type and the attributes the server or Kad filter on, in a popup.
+    private VBox parameters(Inputs inputs) {
+        this.type = new FilterChips<>(List.of(FileType.values()), t -> this.gui.t(t.text));
+        this.type.node().setId("search-types");
         for (TextField f : List.of(this.minSize, this.maxSize, this.availability, this.complete)) {
             f.setPrefColumnCount(6);
         }
-        this.extension.setPrefColumnCount(5);
+        this.extension.setPrefColumnCount(8);
         this.minSizeInput = inputs.optionalNumber(this.minSize, this.gui.t("IDS_SEARCHMINSIZE"), 0, MAX_SIZE_MB);
         // The maximum is never below the minimum, which its hint tells.
         this.maxSizeInput =
@@ -312,30 +398,40 @@ public final class SearchScreen implements Screen {
                 inputs.optionalNumber(this.availability, this.gui.t("IDS_SEARCHAVAIL"), 1, MAX_SOURCES);
         this.completeInput = inputs.optionalNumber(this.complete, this.gui.t("IDS_COMPLSOURCES"), 1, MAX_SOURCES);
         this.extensionInput = inputs.extension(this.extension, this.gui.t("IDS_SEARCHEXTENTION"), MAX_EXTENSION);
-        // Wraps instead of squeezing: longer translations never cut a label short.
-        FlowPane row = new FlowPane(
-                14,
-                6,
-                labelled("IDS_TYPE", this.type),
-                labelled("IDS_SEARCHMINSIZE", this.minSize),
-                labelled("IDS_SEARCHMAXSIZE", this.maxSize),
-                labelled("IDS_SEARCHAVAIL", this.availability),
-                labelled("IDS_COMPLSOURCES", this.complete),
-                labelled("IDS_SEARCHEXTENTION", this.extension),
-                Fx.button(this.gui.t("IDS_PW_RESET"), Icons.REFRESH, this::resetParameters));
-        row.setAlignment(Pos.CENTER_LEFT);
-        row.getStyleClass().add("search-parameters");
-        return row;
+        Label title = new Label(this.gui.t("nj.search.filters"));
+        title.getStyleClass().add("popover-title");
+        Button reset = Fx.button(this.gui.t("IDS_PW_RESET"), Icons.REFRESH, this::resetParameters);
+        reset.getStyleClass().addAll(Styles.FLAT, Styles.SMALL);
+        HBox head = new HBox(8, title, Fx.spacer(), reset);
+        head.setAlignment(Pos.CENTER_LEFT);
+        GridPane fields = new GridPane();
+        fields.setHgap(12);
+        fields.setVgap(10);
+        fields.add(labelled("IDS_SEARCHMINSIZE", this.minSize), 0, 0);
+        fields.add(labelled("IDS_SEARCHMAXSIZE", this.maxSize), 1, 0);
+        fields.add(labelled("IDS_SEARCHAVAIL", this.availability), 0, 1);
+        fields.add(labelled("IDS_COMPLSOURCES", this.complete), 1, 1);
+        fields.add(labelled("IDS_SEARCHEXTENTION", this.extension), 0, 2, 2, 1);
+        Label note = new Label(this.gui.t("nj.search.filtersNote"));
+        note.setWrapText(true);
+        note.getStyleClass().add("text-muted");
+        Button done = Fx.button(this.gui.t("IDS_FD_CLOSE"), Icons.CHECK, () -> showParameters(false));
+        HBox foot = new HBox(12, note, done);
+        HBox.setHgrow(note, Priority.ALWAYS);
+        foot.setAlignment(Pos.CENTER_LEFT);
+        VBox box = new VBox(12, head, labelled("IDS_TYPE", this.type.node()), fields, foot);
+        box.getStyleClass().add("search-parameters");
+        box.setPrefWidth(440);
+        return box;
     }
 
-    // A label kept beside its field, at its whole width.
-    private HBox labelled(String key, Node field) {
+    // A label above its field, at its whole width.
+    private VBox labelled(String key, Node field) {
         Label label = new Label(this.gui.t(key));
         label.setMinWidth(Region.USE_PREF_SIZE);
         label.setLabelFor(field);
-        HBox pair = new HBox(6, label, field);
-        pair.setAlignment(Pos.CENTER_LEFT);
-        return pair;
+        label.getStyleClass().add("field-label");
+        return new VBox(4, label, field);
     }
 
     private int lowestMaxSize() {
@@ -344,13 +440,31 @@ public final class SearchScreen implements Screen {
                 : 1;
     }
 
+    /** Shows or hides the filters, under their button. */
     void showParameters(boolean on) {
-        this.parametersButton.setSelected(on);
-        if (on && !this.content.getChildren().contains(this.parameters)) {
-            this.content.getChildren().addFirst(this.parameters);
-        } else if (!on) {
-            this.content.getChildren().remove(this.parameters);
+        if (this.filters == null) {
+            this.filters = new Popover(this.parameters);
+            this.filters.setHeaderAlwaysVisible(false);
+            this.filters.setDetachable(false);
+            this.filters.setArrowLocation(Popover.ArrowLocation.TOP_RIGHT);
         }
+        if (on
+                && this.filtersButton.getScene() != null
+                && this.filtersButton.getScene().getWindow() != null) {
+            this.filters.show(this.filtersButton);
+        } else if (!on) {
+            this.filters.hide();
+        }
+    }
+
+    /** Whether the filters show, for tests. */
+    boolean parametersShown() {
+        return this.filters != null && this.filters.isShowing();
+    }
+
+    /** The filters' pane, for tests. */
+    VBox parametersPane() {
+        return this.parameters;
     }
 
     private int parametersInUse() {
@@ -363,8 +477,8 @@ public final class SearchScreen implements Screen {
 
     private void countParameters() {
         int used = parametersInUse();
-        String name = this.gui.t("IDS_SEARCHPARAMS");
-        this.parametersButton.setText(used == 0 ? name : name + " (" + used + ")");
+        String name = this.gui.t("nj.search.filters");
+        this.filtersButton.setText(used == 0 ? name : name + " (" + used + ")");
     }
 
     void resetParameters() {
@@ -372,6 +486,7 @@ public final class SearchScreen implements Screen {
         for (TextField f : List.of(this.minSize, this.maxSize, this.availability, this.complete, this.extension)) {
             f.clear();
         }
+        countParameters();
     }
 
     /** The expression for the search box words with the parameters as attributes. */
@@ -526,7 +641,7 @@ public final class SearchScreen implements Screen {
                 rows.rows(), this.gui.t("nj.search.waiting"), shown.map(test -> (Predicate<LiveList.Row<SearchResult>>)
                         row -> test.test(rows.fileOf(row).get())));
         TableColumn<LiveList.Row<SearchResult>, Known> known =
-                Fx.column(this.gui.t("nj.search.known"), 130, r -> known(r));
+                Fx.column(this.gui.t("nj.search.known"), 150, r -> known(r));
         known.setCellFactory(c -> new KnownCell());
         TableColumn<LiveList.Row<SearchResult>, String> fileId = Fx.leftToRight(Fx.column(
                 this.gui.t("IDS_FILEID"), 220, (SearchResult r) -> r.hash().toHex()));
@@ -757,7 +872,7 @@ public final class SearchScreen implements Screen {
     }
 
     // The filter sits right of the tabs, in room their row keeps free for it.
-    private Node tabsWithFilter() {
+    private Node tabsWithFilter(Button more, Button stop) {
         this.filterColumn.set(this.gui.t("IDS_DL_FILENAME"));
         this.filter.promptTextProperty().bind(this.filterColumn);
         this.filter.setTooltip(new Tooltip(this.gui.t("nj.search.filterHint")));
@@ -779,9 +894,13 @@ public final class SearchScreen implements Screen {
             }
         });
         this.tabs.getStyleClass().add("search-tabs");
-        StackPane both = new StackPane(this.tabs, this.filter);
-        StackPane.setAlignment(this.filter, Pos.TOP_RIGHT);
-        StackPane.setMargin(this.filter, new Insets(2, 0, 0, 0));
+        HBox overTabs = new HBox(6, more, stop, this.filter);
+        overTabs.setAlignment(Pos.CENTER_RIGHT);
+        overTabs.setPickOnBounds(false);
+        overTabs.setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
+        StackPane both = new StackPane(this.tabs, overTabs);
+        StackPane.setAlignment(overTabs, Pos.TOP_RIGHT);
+        StackPane.setMargin(overTabs, new Insets(2, 0, 0, 0));
         VBox.setVgrow(both, Priority.ALWAYS);
         return both;
     }
@@ -878,6 +997,19 @@ public final class SearchScreen implements Screen {
         Results current = current();
         this.noneChosen.set(
                 current == null || current.table().getSelectionModel().isEmpty());
+        if (current == null) {
+            return;
+        }
+        List<SearchResult> chosen = Fx.selected(current.table());
+        if (chosen.size() == 1) {
+            SearchResult r = chosen.getFirst();
+            this.chosenName.setText(r.name());
+            this.chosenFacts.setText("· " + this.gui.formats().size(r.size()) + " · " + this.gui.t("IDS_DL_SOURCES")
+                    + ": " + r.sources());
+        } else {
+            this.chosenName.setText(this.gui.f("nj.search.chosen", chosen.size()));
+            this.chosenFacts.setText("");
+        }
     }
 
     void more() {
@@ -962,7 +1094,7 @@ public final class SearchScreen implements Screen {
         return this.method;
     }
 
-    ComboBox<FileType> typeBox() {
+    FilterChips<FileType> typeChips() {
         return this.type;
     }
 
@@ -998,14 +1130,6 @@ public final class SearchScreen implements Screen {
     /** The rows of the results table of {@code tab}. */
     ResultRows rows(Tab tab) {
         return this.results.get(tab).rows();
-    }
-
-    private final class TypeCell extends ListCell<FileType> {
-        @Override
-        protected void updateItem(FileType item, boolean empty) {
-            super.updateItem(item, empty);
-            setText(empty || item == null ? null : SearchScreen.this.gui.t(item.text));
-        }
     }
 
     /** Whether a result is a song or a film: its type says so, or it has media details. */
@@ -1103,30 +1227,41 @@ public final class SearchScreen implements Screen {
         }
     }
 
-    /** What we did with the file, on a tint of its own, with an icon and the text, so colour is not the only cue. */
+    /**
+     * What we did with the file on a chip of its tone, with an icon and the words, so colour is not the only cue: the
+     * download running in the accent's blue. The cell keeps a style class of the kind.
+     */
     private final class KnownCell extends TableCell<LiveList.Row<SearchResult>, Known> {
+        private final Label chip = Fx.chip("", Icons.DOWNLOAD, "accent");
+
         @Override
         protected void updateItem(Known item, boolean empty) {
             super.updateItem(item, empty);
+            setText(null);
             getStyleClass()
                     .removeAll(
                             "known-downloading", "known-shared", "known-downloaded", "known-cancelled", "known-spam");
             if (empty || item == null || item == Known.NONE) {
-                setText(null);
                 setGraphic(null);
                 return;
             }
-            Icon icon = Fx.icon(
+            Fx.chip(
+                    this.chip,
+                    knownText(item),
                     switch (item) {
                         case DOWNLOADING -> Icons.DOWNLOAD;
                         case SHARED -> Icons.SHARED;
                         case DOWNLOADED -> Icons.CHECK_CIRCLE;
                         case CANCELLED -> Icons.BLOCK;
                         case SPAM, NONE -> Icons.SPAM;
+                    },
+                    switch (item) {
+                        case DOWNLOADING -> "accent";
+                        case SHARED -> "success";
+                        case SPAM, NONE -> "warning";
+                        case DOWNLOADED, CANCELLED -> "neutral";
                     });
-            icon.getStyleClass().add("known-icon");
-            setGraphic(icon);
-            setText(knownText(item));
+            setGraphic(this.chip);
             getStyleClass()
                     .add(
                             switch (item) {

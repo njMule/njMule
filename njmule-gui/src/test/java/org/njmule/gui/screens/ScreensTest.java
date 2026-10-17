@@ -962,7 +962,7 @@ class ScreensTest {
     }
 
     private void givenTheSearchType(SearchScreen.FileType type) throws Exception {
-        FxTesting.onFx(() -> this.search.typeBox().setValue(type));
+        FxTesting.onFx(() -> this.search.typeChips().setValue(type));
     }
 
     private void givenTheSearchMinimumSize(String text) throws Exception {

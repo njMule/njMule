@@ -48,8 +48,11 @@ public final class FilterChips<T> {
     /** The {@code choices} in order, named by {@code text}; the first is chosen. */
     public FilterChips(List<T> choices, Function<T, String> text) {
         for (T choice : choices) {
+            // No figure until one is told: some chips choose a kind rather than count rows.
             Label count = new Label("0");
             count.getStyleClass().add("chip-count");
+            count.setVisible(false);
+            count.setManaged(false);
             ToggleButton chip = Fx.whole(new ToggleButton(text.apply(choice), count));
             chip.setContentDisplay(ContentDisplay.RIGHT);
             chip.setToggleGroup(this.group);
@@ -99,6 +102,8 @@ public final class FilterChips<T> {
         Label label = this.counts.get(choice);
         if (label != null) {
             label.setText(Long.toString(count));
+            label.setVisible(true);
+            label.setManaged(true);
             this.chips.get(choice).setAccessibleText(this.names.get(choice) + ", " + count);
         }
     }

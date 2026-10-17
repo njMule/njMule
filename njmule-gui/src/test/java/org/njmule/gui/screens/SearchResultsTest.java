@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -485,8 +486,9 @@ class SearchResultsTest {
     @Test
     void shouldLetDownloadWaitForAChosenResultAndMoreAndStopForASearch() throws Exception {
         givenTheSearchScreen();
-        givenTheButtonsAreOff(true, "nj.search.more", "IDS_DL_STOP", "IDS_DOWNLOAD");
+        givenHowToSearchShows(true);
         givenSearchedFor("film", FILM_DVD, FILM_HD);
+        givenHowToSearchShows(false);
         givenTheButtonsAreOff(false, "nj.search.more", "IDS_DL_STOP");
         givenTheButtonsAreOff(true, "IDS_DOWNLOAD");
         givenTheResultChosen(FILM_HD);
@@ -494,7 +496,7 @@ class SearchResultsTest {
 
         whenTheSearchIsClosed();
 
-        thenTheButtonsAreOff(true, "nj.search.more", "IDS_DL_STOP", "IDS_DOWNLOAD");
+        thenHowToSearchShows(true);
     }
 
     @Test
@@ -672,7 +674,7 @@ class SearchResultsTest {
     }
 
     private void givenTheType(SearchScreen.FileType type) throws Exception {
-        FxTesting.onFx(() -> this.shownScreen.typeBox().setValue(type));
+        FxTesting.onFx(() -> this.shownScreen.typeChips().setValue(type));
     }
 
     private void givenTheMinimumSize(String text) throws Exception {
@@ -773,6 +775,16 @@ class SearchResultsTest {
         FxTesting.onFx(() -> this.shownScreen.tabs().getTabs().remove(this.shownTab));
     }
 
+    private void givenHowToSearchShows(boolean shown) throws Exception {
+        thenHowToSearchShows(shown);
+    }
+
+    // No search open: the screen says how to search instead of showing tabs.
+    private void thenHowToSearchShows(boolean shown) throws Exception {
+        FxTesting.assertEventually(
+                "how to search " + shown, () -> (this.shownScreen.view().lookup("#search-empty") != null) == shown);
+    }
+
     private void thenTheButtonsAreOff(boolean off, String... keys) throws Exception {
         List<String> names = Arrays.stream(keys).map(this.test.gui::t).toList();
         assertThat(FxTesting.onFx(() -> this.shownScreen.view().lookupAll(".button").stream()
@@ -819,7 +831,7 @@ class SearchResultsTest {
     private void thenOneResultIsMarkedAsSpam() throws Exception {
         FxTesting.assertEventually(
                 "marked as spam", () -> table().lookupAll(".known-spam").size() == 1);
-        assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(table()))).contains("Spam");
+        assertThat(FxTesting.onFx(() -> shownTexts(table()))).contains("Spam");
     }
 
     private void thenTheResultsMarkedAsSpamAre(int count) throws Exception {
@@ -884,7 +896,7 @@ class SearchResultsTest {
     }
 
     private void thenTheCellsShow(String... texts) throws Exception {
-        assertThat(FxTesting.onFx(() -> FxTesting.cellTexts(table()))).contains(texts);
+        assertThat(FxTesting.onFx(() -> shownTexts(table()))).contains(texts);
     }
 
     private void thenARelatedTabOpens() throws Exception {
@@ -935,7 +947,8 @@ class SearchResultsTest {
     }
 
     private void thenTheTypeIs(SearchScreen.FileType type) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.shownScreen.typeBox().getValue())).isEqualTo(type);
+        assertThat(FxTesting.onFx(() -> this.shownScreen.typeChips().getValue()))
+                .isEqualTo(type);
     }
 
     private void thenTheMinimumSizeAndTheExtensionAreEmpty() throws Exception {
@@ -1060,5 +1073,12 @@ class SearchResultsTest {
 
     private static SearchResult result(String hash, String name) {
         return new SearchResult(Hash16.parseHex(hash), name, 700_000_000, 4, 1, Optional.of("Video"));
+    }
+
+    // The texts of the cells and of the chips in them.
+    private static List<String> shownTexts(Node table) {
+        List<String> texts = new ArrayList<>(FxTesting.cellTexts(table));
+        texts.addAll(FxTesting.labelTexts(table));
+        return texts;
     }
 }

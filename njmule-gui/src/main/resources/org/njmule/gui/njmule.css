@@ -839,9 +839,67 @@
     -nj-icon-color: -color-fg-muted;
 }
 
-/* The filter of the search results sits right of the search tabs, whose row keeps room for it. */
+/* More, Stop and the filter of the search results sit right of the search tabs, whose row keeps room for them. */
 .tab-pane.search-tabs:top > .tab-header-area {
-    -fx-padding: 4px 268px 0 0;
+    -fx-padding: 4px 460px 0 0;
+}
+
+/* The filters of the next search, in a popup under their button. */
+.search-parameters {
+    -fx-padding: 4;
+}
+
+.popover-title {
+    -fx-font-weight: bold;
+    -fx-font-size: 1.05em;
+}
+
+.search-parameters .field-label {
+    -fx-text-fill: -color-fg-muted;
+    -fx-font-size: 0.92em;
+}
+
+/* What is chosen in the results and what to do with it, under them. */
+.selection-bar {
+    -fx-padding: 6 8 6 12;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 8;
+    -fx-border-color: -color-border-muted;
+    -fx-border-radius: 8;
+}
+
+.selection-bar .chosen-name {
+    -fx-font-weight: bold;
+}
+
+.selection-bar .chosen-facts {
+    -fx-text-fill: -color-fg-muted;
+}
+
+/* No search yet: what the screen does and how to word a search. */
+.search-empty .empty-title {
+    -fx-font-size: 1.55em;
+    -fx-font-weight: bold;
+}
+
+.search-empty .search-tip {
+    -fx-padding: 10 12 10 12;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 8;
+}
+
+.search-tip .nj-icon {
+    -nj-icon-color: -color-accent-fg;
+}
+
+.search-tip .tip-words {
+    -fx-font-weight: bold;
+}
+
+.search-tip .tip-example {
+    -fx-font-family: monospace;
+    -fx-font-size: 0.92em;
+    -fx-text-fill: -color-fg-muted;
 }
 
 .results-filter {
@@ -1602,36 +1660,6 @@
 /* A search result being downloaded: its whole row in bold, found again at a glance. */
 .table-row-cell:downloading .table-cell {
     -fx-font-weight: bold;
-}
-
-/* A search result we download or share already: a pastel chip with its words. */
-.table-cell.known-downloading {
-    -fx-background-color: -color-danger-subtle;
-    -fx-text-fill: -color-fg-default;
-}
-
-.table-cell.known-shared {
-    -fx-background-color: -color-success-subtle;
-    -fx-text-fill: -color-fg-default;
-}
-
-.table-cell.known-downloaded {
-    -fx-background-color: -color-accent-subtle;
-    -fx-text-fill: -color-fg-default;
-}
-
-.table-cell.known-cancelled {
-    -fx-background-color: -color-neutral-muted;
-    -fx-text-fill: -color-fg-default;
-}
-
-.table-cell.known-spam {
-    -fx-background-color: -color-warning-subtle;
-    -fx-text-fill: -color-fg-default;
-}
-
-.table-cell .known-icon {
-    -nj-icon-color: -color-fg-default;
 }
 
 /* The server in use: bold behind an accent bar; the one being tried: italic. */

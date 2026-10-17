@@ -575,6 +575,12 @@ All notable changes to this project are documented here. The format follows
   in it; Delete cancels the chosen downloads after the question and Ctrl+C copies their links. The
   download menu is shorter, the rarer commands under More, and the sources a file shares with
   other downloads are named in plain words.
+- The search of the desktop app follows the new design: the filters of the next search (the type as
+  chips, the sizes, the availability, the extension) open in a popup from a Filters button that
+  counts those in use; with no search open the screen says how to word one; a result being
+  downloaded is bold with a blue chip, one shared or downloaded already has a chip of its own; a bar
+  under the results names the chosen ones with their size and sources and offers to download them,
+  copy their links or search related files, and More, Stop and the filter sit beside the tabs.
 
 ### Changed
 

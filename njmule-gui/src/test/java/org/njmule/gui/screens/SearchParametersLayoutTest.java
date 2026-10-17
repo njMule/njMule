@@ -40,6 +40,7 @@ class SearchParametersLayoutTest {
 
     private TestGui test;
     private Node view;
+    private Node filters;
 
     @AfterEach
     void close() throws Exception {
@@ -61,9 +62,10 @@ class SearchParametersLayoutTest {
         this.test = TestGui.start(this.dir.resolve("njmule"), language);
         SearchScreen screen = FxTesting.onFx(() -> new SearchScreen(this.test.gui));
         this.view = FxTesting.onFx(screen::view);
-        // The parameters fold away until wanted: here they are.
-        FxTesting.onFx(() -> screen.showParameters(true));
         this.test.show(this.view);
+        // The filters show in a popup under their button.
+        FxTesting.onFx(() -> screen.showParameters(true));
+        this.filters = FxTesting.onFx(screen::parametersPane);
     }
 
     private void whenTheWindowIsNarrowedTo(double width) throws Exception {
@@ -75,7 +77,7 @@ class SearchParametersLayoutTest {
     }
 
     private void thenNoParameterLabelIsCut() throws Exception {
-        List<double[]> widths = FxTesting.onFx(() -> this.view.lookupAll(".search-parameters .label").stream()
+        List<double[]> widths = FxTesting.onFx(() -> this.filters.lookupAll(".field-label").stream()
                 .map(n -> (Label) n)
                 .map(l -> new double[] {l.getWidth(), l.prefWidth(-1)})
                 .toList());

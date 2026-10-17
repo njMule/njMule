@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import javafx.scene.Parent;
-import javafx.scene.control.ToggleButton;
+import javafx.scene.control.Button;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -46,30 +46,34 @@ class SearchParametersFoldTest {
     }
 
     @Test
-    void shouldFoldTheParametersAwayUntilWantedAndCountThoseInUseOnTheButton() throws Exception {
-        givenTheSearchScreenWithTheParametersFoldedAwayAndTheButtonReading("Search Parameters");
-        givenTheParametersUnfolded();
+    void shouldOfferTheFiltersInAPopupAndCountThoseInUseOnTheButton() throws Exception {
+        givenTheSearchScreenWithTheButtonReading("Filters");
         givenTheMinimumSize("100");
         givenTheExtension("mkv");
-        givenTheButtonReads("Search Parameters (2)");
+        givenTheButtonReads("Filters (2)");
 
         whenTheButtonIsPressed();
 
-        thenTheParametersShow(false);
+        thenTheFiltersShow(true);
     }
 
-    private void givenTheSearchScreenWithTheParametersFoldedAwayAndTheButtonReading(String text) throws Exception {
+    @Test
+    void shouldHideTheFiltersWhenTheirCloseIsPressed() throws Exception {
+        givenTheSearchScreenWithTheButtonReading("Filters");
+        givenTheButtonPressed();
+
+        whenTheCloseOfTheFiltersIsPressed();
+
+        thenTheFiltersShow(false);
+    }
+
+    private void givenTheSearchScreenWithTheButtonReading(String text) throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.screen = FxTesting.onFx(() -> new SearchScreen(this.test.gui));
         this.view = FxTesting.onFx(() -> (Parent) this.screen.view());
         this.test.show(this.view);
-        thenTheParametersShow(false);
+        thenTheFiltersShow(false);
         thenTheButtonReads(text);
-    }
-
-    private void givenTheParametersUnfolded() throws Exception {
-        whenTheButtonIsPressed();
-        thenTheParametersShow(true);
     }
 
     private void givenTheMinimumSize(String text) throws Exception {
@@ -84,21 +88,34 @@ class SearchParametersFoldTest {
         thenTheButtonReads(text);
     }
 
+    private void givenTheButtonPressed() throws Exception {
+        whenTheButtonIsPressed();
+        thenTheFiltersShow(true);
+    }
+
     private void whenTheButtonIsPressed() throws Exception {
         FxTesting.onFx(() -> button().fire());
     }
 
-    private void thenTheParametersShow(boolean shown) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.view.lookup(".search-parameters") != null))
-                .isEqualTo(shown);
-        assertThat(FxTesting.onFx(() -> button().isSelected())).isEqualTo(shown);
+    private void whenTheCloseOfTheFiltersIsPressed() throws Exception {
+        String close = this.test.gui.t("IDS_FD_CLOSE");
+        FxTesting.onFx(() -> this.screen.parametersPane().lookupAll(".button").stream()
+                .map(Button.class::cast)
+                .filter(b -> close.equals(b.getText()))
+                .findFirst()
+                .orElseThrow()
+                .fire());
+    }
+
+    private void thenTheFiltersShow(boolean shown) throws Exception {
+        FxTesting.assertEventually("the filters shown " + shown, () -> this.screen.parametersShown() == shown);
     }
 
     private void thenTheButtonReads(String text) throws Exception {
         assertThat(FxTesting.onFx(() -> button().getText())).isEqualTo(text);
     }
 
-    private ToggleButton button() {
-        return (ToggleButton) this.view.lookup("#search-parameters");
+    private Button button() {
+        return (Button) this.view.lookup("#search-parameters");
     }
 }
