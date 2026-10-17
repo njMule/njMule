@@ -19,10 +19,13 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -209,11 +212,23 @@ class TransfersScreenTest {
         this.test.show(FxTesting.onFx(shown::view));
     }
 
+    // An item of the menu, or of its submenus.
     private MenuItem item(ContextMenu menu, String key) {
         String text = this.test.gui.t(key);
-        return menu.getItems().stream()
+        return items(menu.getItems()).stream()
                 .filter(i -> text.equals(i.getText()))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private static List<MenuItem> items(List<MenuItem> items) {
+        List<MenuItem> all = new ArrayList<>();
+        for (MenuItem item : items) {
+            all.add(item);
+            if (item instanceof Menu menu) {
+                all.addAll(items(menu.getItems()));
+            }
+        }
+        return all;
     }
 }

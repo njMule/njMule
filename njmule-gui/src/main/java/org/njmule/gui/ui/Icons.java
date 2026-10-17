@@ -54,6 +54,20 @@ public enum Icons {
     EDIT("M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17zM14 7l3 3"),
     ERROR(Outline.CIRCLE + "M12 7.5v5.5M12 16.3v.2"),
     EXIT("M10 4.5H6A1.5 1.5 0 0 0 4.5 6v12A1.5 1.5 0 0 0 6 19.5h4M10 12h10M16.5 8.5L20 12l-3.5 3.5", Kind.DIRECTIONAL),
+    /** A file of no kind the extension tells. */
+    FILE(Outline.SHEET + "M13.5 3.5v4h4"),
+    FILE_APP(Outline.FRAME + "M3.5 9h17M7 6.8h.01M9.5 6.8h.01"),
+    FILE_ARCHIVE("M6.5 3.5h11a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2z"
+            + "M12 3.5v2M12 7.5v2M12 11.5v2M11 15h2a.5.5 0 0 1 .5.5v1.5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-1.5"
+            + "a.5.5 0 0 1 .5-.5z"),
+    FILE_AUDIO("M9 17.5V6.5l10-2v11M4 17.5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M14 15.5a2.5 2.5 0 1 0 5 0"
+            + "a2.5 2.5 0 1 0-5 0"),
+    FILE_DISC(Outline.CIRCLE + "M9.5 12a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0"),
+    FILE_DOCUMENT(Outline.SHEET + "M13.5 3.5v4h4M9 12h6M9 15.5h6"),
+    FILE_IMAGE(Outline.FRAME + "M3.5 16l5-5 4 4 2.5-2.5 5.5 5.5M14 8.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0"),
+    FILE_VIDEO("M6 5.5h12a2.5 2.5 0 0 1 2.5 2.5v8a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 16V8A2.5 2.5 0 0 1 6 5.5z"
+            + "M10.5 9.5v5l4.2-2.5z"),
+    FILTER("M4 5.5h16l-6.2 7.6v5.4l-3.6 1.8v-7.2z"),
     FOLDER_ADD(Outline.FOLDER + "M12 10.5v5M9.5 13h5"),
     FOLDER_OPEN("M3.5 8V6.5A1.5 1.5 0 0 1 5 5h4l2 2h6.5A1.5 1.5 0 0 1 19 8.5V9"
             + "M3.5 9h17l-1.6 8.6a1.8 1.8 0 0 1-1.8 1.4H5.3a1.8 1.8 0 0 1-1.8-1.8z"),
@@ -176,6 +190,9 @@ public enum Icons {
         static final String CIRCLE = "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0";
         static final String FOLDER =
                 "M3.5 7.5A2 2 0 0 1 5.5 5.5H9l2 2h7.5a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z";
+        static final String SHEET = "M6.5 3.5h7l4 4v13h-11z";
+        static final String FRAME =
+                "M6 4.5h12a2.5 2.5 0 0 1 2.5 2.5v10a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 17V7A2.5 2.5 0 0 1 6 4.5z";
 
         private Outline() {}
     }

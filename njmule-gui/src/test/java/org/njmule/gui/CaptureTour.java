@@ -671,13 +671,49 @@ class CaptureTour {
     private void transfersDetails() throws Exception {
         fx(() -> this.window.show("transfers"));
         Parent transfers = screenRoot();
-        fx(() -> ((javafx.scene.control.ToggleButton) transfers.lookup("#details")).fire());
+        javafx.scene.control.ToggleButton details =
+                FxTesting.onFx(() -> (javafx.scene.control.ToggleButton) transfers.lookup("#details"));
+        boolean was = FxTesting.onFx(details::isSelected);
+        fx(() -> details.setSelected(true));
+        fx(() -> ((TableView<?>) transfers.lookup("#downloads"))
+                .getSelectionModel()
+                .clearSelection());
         shot("transfers-details-none", "Transfers with the details open, nothing chosen");
         select(transfers, 0, 0);
         shot("transfers-details", "Transfers with the details of the download chosen");
-        fx(() -> ((ScrollPane) transfers.lookup(".download-details .scroll-pane")).setVvalue(1));
-        shot("transfers-details-names", "The details scrolled to the names the sources give, to rename by");
-        fx(() -> ((javafx.scene.control.ToggleButton) transfers.lookup("#details")).fire());
+        for (String tab : List.of("facts", "names", "comments")) {
+            fx(() -> ((javafx.scene.control.ToggleButton) transfers.lookup("#details-tab-" + tab)).fire());
+            shot("transfers-details-" + tab, "The " + tab + " tab of the details");
+        }
+        fx(() -> ((javafx.scene.control.ToggleButton) transfers.lookup("#details-tab-sources")).fire());
+        // Several chosen: how many, and what can be done to all of them.
+        fx(() -> ((TableView<?>) transfers.lookup("#downloads"))
+                .getSelectionModel()
+                .selectRange(0, 3));
+        shot("transfers-details-several", "The details of several downloads chosen");
+        // The chips narrow the list to a state.
+        fx(() -> ((javafx.scene.control.ToggleButton) ((javafx.scene.layout.Pane) transfers.lookup("#state-chips"))
+                        .getChildren()
+                        .get(1))
+                .fire());
+        shot("transfers-downloading", "Only the downloads running, chosen by their chip");
+        fx(() -> ((javafx.scene.control.ToggleButton) ((javafx.scene.layout.Pane) transfers.lookup("#state-chips"))
+                        .getChildren()
+                        .get(0))
+                .fire());
+        for (int shelf = 1; shelf < 4; shelf++) {
+            int index = shelf;
+            fx(() -> ((javafx.scene.control.ToggleButton) ((javafx.scene.layout.Pane) transfers.lookup("#shelves"))
+                            .getChildren()
+                            .get(index))
+                    .fire());
+            shot("transfers-shelf-" + shelf, "The list of the transfers shown by its segment");
+        }
+        fx(() -> ((javafx.scene.control.ToggleButton) ((javafx.scene.layout.Pane) transfers.lookup("#shelves"))
+                        .getChildren()
+                        .get(0))
+                .fire());
+        fx(() -> details.setSelected(was));
     }
 
     // ---------------------------------------------------------------- dialogs
@@ -738,6 +774,18 @@ class CaptureTour {
                 "Comments of a download",
                 () -> item(downloads.getContextMenu(), "IDS_CMT_ADD").fire(),
                 w -> {});
+        // Links on the clipboard are in the box when the dialog opens.
+        waiting("dialog-add-links", "Add downloads: the links copied and the files found in them", () -> {
+            javafx.scene.input.ClipboardContent links = new javafx.scene.input.ClipboardContent();
+            links.putString("ed2k://|file|Sintel.2010.4K.mkv|4939212800|9C4E2A07B1D35F8E61A0C2D47E93B5F1|/\n"
+                    + "ed2k://|file|ubuntu-24.04.1-desktop-amd64.iso|6217003008|E2B71C09A4F35D8E10C6A2B94D7F53E1|/");
+            javafx.scene.input.Clipboard.getSystemClipboard().setContent(links);
+            ((javafx.scene.control.Button) transfers.lookup("#add-links")).fire();
+        });
+        fx(() -> ((javafx.scene.control.ToggleButton) ((javafx.scene.layout.Pane) transfers.lookup("#shelves"))
+                        .getChildren()
+                        .get(1))
+                .fire());
         TableView<?> uploads = FxTesting.onFx(() -> (TableView<?>) transfers.lookup("#uploads"));
         fx(() -> uploads.getSelectionModel().select(0));
         window(
@@ -745,6 +793,10 @@ class CaptureTour {
                 "The files a client shares",
                 () -> item(uploads.getContextMenu(), "IDS_VIEWFILES").fire(),
                 w -> {});
+        fx(() -> ((javafx.scene.control.ToggleButton) ((javafx.scene.layout.Pane) transfers.lookup("#shelves"))
+                        .getChildren()
+                        .get(0))
+                .fire());
 
         fx(() -> this.window.show("servers"));
         TableView<?> servers = select(screenRoot(), 0, 0);
@@ -884,18 +936,6 @@ class CaptureTour {
     // ---------------------------------------------------------------- other states
 
     private void invalidInputs() throws Exception {
-        fx(() -> this.window.show("transfers"));
-        Parent transfers = screenRoot();
-        fx(() -> {
-            TextField link = find(transfers, TextField.class).stream()
-                    .filter(f -> f.getPromptText() != null && f.getPromptText().startsWith("ed2k://"))
-                    .findFirst()
-                    .orElseThrow();
-            link.requestFocus();
-            link.setText("ed2k://|file|broken|");
-        });
-        fx(() -> this.window.root().requestFocus());
-        shot("transfers-invalid-link", "The link field with a wrong link");
         fx(() -> this.window.show("settings"));
         Parent settings = screenRoot();
         fx(() -> {

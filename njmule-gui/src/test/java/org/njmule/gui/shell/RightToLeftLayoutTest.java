@@ -81,12 +81,11 @@ class RightToLeftLayoutTest {
     }
 
     @Test
-    void shouldKeepTheLinkAndAddressFieldsLeftToRightInArabic() throws Exception {
+    void shouldKeepTheAddressFieldsLeftToRightInArabic() throws Exception {
         givenTheInterfaceIn(ARABIC);
 
         whenTheMainWindowShows();
 
-        thenTheLinkFieldOfTheTransfersRunsLeftToRight();
         thenTheAddressFieldOfTheServersRunsLeftToRight();
     }
 
@@ -154,10 +153,6 @@ class RightToLeftLayoutTest {
         List<NodeOrientation> found = FxTesting.onFx(
                 () -> this.shown.stream().map(Node::getEffectiveNodeOrientation).toList());
         assertThat(found).hasSize(4).containsOnly(orientation);
-    }
-
-    private void thenTheLinkFieldOfTheTransfersRunsLeftToRight() throws Exception {
-        thenTheFieldPromptingRunsLeftToRightOnTheScreen("transfers", "ed2k://|file|…|/");
     }
 
     // The prompt is embedded in its own direction, as the field runs the other way.

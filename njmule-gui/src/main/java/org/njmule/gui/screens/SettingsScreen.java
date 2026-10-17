@@ -84,6 +84,7 @@ import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.PortTestPane;
 import org.njmule.gui.ui.RateField;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.VerticalScroll;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUiSettings;
 
@@ -221,7 +222,7 @@ public final class SettingsScreen implements Screen {
     private final Map<EventCommands.Event, Input<String>> eventInputs = new EnumMap<>(EventCommands.Event.class);
     // The inputs Apply checks, in the order of the page.
     private final List<Input<?>> checked = new ArrayList<>();
-    private final ScrollPane scroll = new ScrollPane();
+    private final ScrollPane scroll = new VerticalScroll();
     private SettingsIndex index;
     // The preferences the form shows, as loaded or last applied: what differs from them is the user's change.
     private Preferences loaded;

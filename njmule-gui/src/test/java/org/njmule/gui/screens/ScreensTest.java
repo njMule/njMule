@@ -28,7 +28,6 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -95,13 +94,12 @@ class ScreensTest {
     }
 
     @Test
-    void shouldAddADownloadFromALinkAndEmptyTheBox() throws Exception {
+    void shouldAddADownloadFromALinkInTheDialog() throws Exception {
         givenTheTransfersScreen();
 
         whenTheLinksAreAdded(LINK);
 
         thenTheDownloadRowsBecome(1);
-        thenTheLinkBoxIsEmpty();
     }
 
     @Test
@@ -151,12 +149,12 @@ class ScreensTest {
     }
 
     @Test
-    void shouldRefuseSomethingThatIsNotALink() throws Exception {
+    void shouldAddNothingFromATextWithoutLinks() throws Exception {
         givenTheTransfersScreen();
 
         whenTheLinksAreAdded("not a link");
 
-        thenTheUserIsTold("Not an eD2K file link.");
+        thenTheDownloadRowsAre(0);
     }
 
     @Test
@@ -1120,16 +1118,15 @@ class ScreensTest {
     // Several links are shown first: they are added as the dialog shows them.
     private void whenTheLinksAreAddedAsShown(String text) throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonBar.ButtonData.OK_DONE);
-            this.transfers.linkField().setText(text);
-            this.transfers.addLink();
+            this.transfers.answerAdds(dialog -> true);
+            this.transfers.addLinks(text);
         });
     }
 
     private void whenTheLinksAreAdded(String text) throws Exception {
         FxTesting.onFx(() -> {
-            this.transfers.linkField().setText(text);
-            this.transfers.addLink();
+            this.transfers.answerAdds(dialog -> true);
+            this.transfers.addLinks(text);
         });
     }
 
@@ -1342,10 +1339,6 @@ class ScreensTest {
     private void thenTheDownloadRowsAre(int count) throws Exception {
         assertThat(FxTesting.onFx(() -> this.transfers.downloads().getItems().size()))
                 .isEqualTo(count);
-    }
-
-    private void thenTheLinkBoxIsEmpty() throws Exception {
-        assertThat(FxTesting.onFx(() -> this.transfers.linkField().getText())).isEmpty();
     }
 
     private void thenTheDownloadBecomes(DownloadInfo.Status status) throws Exception {

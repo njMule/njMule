@@ -49,6 +49,7 @@ import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.Pane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
@@ -124,6 +125,17 @@ final class GuiTour {
         this.steps.add(() -> this.window.show("transfers"));
         this.steps.add(() -> click("#details"));
         this.steps.add(() -> click("#details"));
+        for (String tab : List.of("facts", "names", "comments", "sources")) {
+            this.steps.add(() -> click("#details-tab-" + tab));
+        }
+        // The lists of the transfers, one after the other, then the downloads again.
+        for (int shelf : new int[] {1, 2, 3, 0}) {
+            this.steps.add(() -> {
+                if (this.stage.getScene().lookup("#shelves") instanceof Pane shelves) {
+                    ((ButtonBase) shelves.getChildren().get(shelf)).fire();
+                }
+            });
+        }
         this.steps.add(() -> this.window.show("search"));
         this.steps.add(() -> click("#search-parameters"));
         this.steps.add(() -> click("#rates"));

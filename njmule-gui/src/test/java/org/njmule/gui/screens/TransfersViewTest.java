@@ -32,7 +32,7 @@ import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
-import javafx.scene.layout.StackPane;
+import javafx.scene.layout.HBox;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -47,7 +47,7 @@ import org.njmule.core.api.SourceInfo;
 import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
-import org.njmule.gui.ui.PartBar;
+import org.njmule.gui.ui.ThinBar;
 
 @Timeout(60)
 class TransfersViewTest {
@@ -99,9 +99,9 @@ class TransfersViewTest {
     }
 
     @Test
-    void shouldShowBelowTheSourcesOfTheDownloadChosen() throws Exception {
+    void shouldShowInTheDetailsTheSourcesOfTheDownloadChosen() throws Exception {
         givenTheDownloads("first.bin", "second.bin");
-        givenTheSourcesShownAre(3);
+        givenTheSourcesShownAre(0);
         givenTheDownloadChosen(1);
         givenTheSourcesShownAre(1);
 
@@ -111,13 +111,23 @@ class TransfersViewTest {
     }
 
     @Test
-    void shouldKeepTheCommandsOnDownloadsOffUntilOneIsChosen() throws Exception {
+    void shouldOfferWhatToDoWithADownloadOnceOneIsChosen() throws Exception {
         givenTheDownloads("first.bin", "second.bin");
-        givenTheCommandsOnTheChosenAreOff(true);
+        givenTheDetailsOfferNothingToDo();
 
         whenTheDownloadIsChosen(1);
 
-        thenTheCommandsOnTheChosenAreOff(false);
+        thenTheDetailsOffer("Pause", "Stop");
+    }
+
+    @Test
+    void shouldNarrowTheDownloadsToAStateWithItsChip() throws Exception {
+        givenTheDownloadsIn(DownloadInfo.Status.DOWNLOADING, DownloadInfo.Status.PAUSED, DownloadInfo.Status.STOPPED);
+        givenTheChipCounts(TransfersScreen.StateFilter.PAUSED, "2");
+
+        whenTheChipIsChosen(TransfersScreen.StateFilter.PAUSED);
+
+        thenTheDownloadsShownAre("1.bin", "2.bin");
     }
 
     @Test
@@ -130,17 +140,17 @@ class TransfersViewTest {
     }
 
     @Test
-    void shouldShowTheProgressRightAfterTheSpeed() throws Exception {
+    void shouldShowTheProgressRightAfterTheSize() throws Exception {
         whenTheTransfersShowTheDownloads("film.mkv");
 
-        thenTheColumnsBegin("IDS_DL_FILENAME", "IDS_DL_SIZE", "IDS_DL_TRANSFCOMPL", "IDS_DL_SPEED", "IDS_DL_PROGRESS");
+        thenTheColumnsBegin("IDS_DL_FILENAME", "IDS_DL_SIZE", "IDS_DL_PROGRESS", "IDS_DL_SPEED");
     }
 
     @Test
-    void shouldWriteThePercentageOverThePartBar() throws Exception {
+    void shouldWriteThePercentageBesideTheThinBar() throws Exception {
         whenTheTransfersShowTheDownloads("film.mkv");
 
-        thenThePercentageOverTheBarIs(this.test.gui.formats().percent(100, 1000));
+        thenThePercentageBesideTheBarIs(this.test.gui.formats().percent(100, 1000));
     }
 
     private void givenTheDownloads(String... names) throws Exception {
@@ -187,8 +197,38 @@ class TransfersViewTest {
         whenTheDownloadIsChosen(index);
     }
 
-    private void givenTheCommandsOnTheChosenAreOff(boolean off) throws Exception {
-        thenTheCommandsOnTheChosenAreOff(off);
+    private void givenTheDetailsOfferNothingToDo() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.details().stateButtons().stream()
+                        .filter(b -> b.getScene() != null && b.getParent().isVisible())
+                        .toList()))
+                .allMatch(b -> !isShown(b));
+    }
+
+    private void givenTheDownloadsIn(DownloadInfo.Status... statuses) throws Exception {
+        List<DownloadInfo> downloads = new ArrayList<>();
+        for (int i = 0; i < statuses.length; i++) {
+            downloads.add(download(Hash16.parseHex(String.format("%032X", i + 1)), i + ".bin", statuses[i], 1, 0));
+        }
+        Map<String, Engines.Command> commands =
+                Map.of("downloads", a -> CompletableFuture.completedFuture(List.copyOf(downloads)));
+        this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, commands));
+        this.screen = new TransfersScreen(this.test.gui);
+        this.test.show(FxTesting.onFx(this.screen::view));
+        FxTesting.onFx(this.test.model::tick);
+        FxTesting.await(
+                "the downloads", () -> this.test.model.downloads().rows().size() == downloads.size());
+    }
+
+    private void givenTheChipCounts(TransfersScreen.StateFilter state, String count) throws Exception {
+        FxTesting.await(
+                "the count of the chip",
+                () -> ((Label) this.screen.states().chip(state).getGraphic())
+                        .getText()
+                        .equals(count));
+    }
+
+    private void whenTheChipIsChosen(TransfersScreen.StateFilter state) throws Exception {
+        FxTesting.onFx(() -> this.screen.states().chip(state).fire());
     }
 
     private void whenADownloadIs(DownloadInfo.Status status, int sources, int transferring) {
@@ -222,24 +262,24 @@ class TransfersViewTest {
                 .isEqualTo(expected);
     }
 
-    // The bar and its figure share the cell: the figure is drawn over the bar, not beside it.
-    private void thenThePercentageOverTheBarIs(String percent) throws Exception {
+    // The bar and its figure share the cell: the figure after the bar.
+    private void thenThePercentageBesideTheBarIs(String percent) throws Exception {
         FxTesting.await("the progress cell", () -> progressCell().isPresent());
-        StackPane cell = FxTesting.onFx(() -> progressCell().orElseThrow());
+        HBox cell = FxTesting.onFx(() -> progressCell().orElseThrow());
         assertThat(FxTesting.onFx(() -> cell.getChildren().stream()
                         .map(n -> n.getClass().getSimpleName())
                         .toList()))
-                .containsExactly("PartBar", "Label");
+                .containsExactly("ThinBar", "Label");
         assertThat(FxTesting.onFx(() -> ((Label) cell.getChildren().getLast()).getText()))
                 .isEqualTo(percent);
     }
 
-    private Optional<StackPane> progressCell() {
+    private Optional<HBox> progressCell() {
         return this.screen.downloads().lookupAll(".table-cell").stream()
                 .map(n -> ((TableCell<?, ?>) n).getGraphic())
-                .filter(StackPane.class::isInstance)
-                .map(StackPane.class::cast)
-                .filter(p -> p.getChildren().stream().anyMatch(PartBar.class::isInstance))
+                .filter(HBox.class::isInstance)
+                .map(HBox.class::cast)
+                .filter(p -> p.getChildren().stream().anyMatch(ThinBar.class::isInstance))
                 .findFirst();
     }
 
@@ -259,14 +299,23 @@ class TransfersViewTest {
                 "the sources shown", () -> this.screen.sources().getItems().size() == count);
     }
 
-    private void thenTheCommandsOnTheChosenAreOff(boolean off) throws Exception {
-        List<String> names = List.of("Pause", "Resume", "Stop", "Cancel");
-        assertThat(FxTesting.onFx(() -> this.screen.view().lookupAll(".button").stream()
-                        .filter(n -> n instanceof Button b && b.getText() != null && names.contains(b.getText()))
-                        .map(Node::isDisabled)
-                        .toList()))
-                .hasSize(names.size())
-                .containsOnly(off);
+    private void thenTheDetailsOffer(String... actions) throws Exception {
+        FxTesting.assertEventually(
+                "what to do",
+                () -> this.screen.details().stateButtons().stream()
+                        .map(Button::getText)
+                        .toList()
+                        .equals(List.of(actions)));
+    }
+
+    // Shown on screen: the button and every pane above it are visible.
+    private static boolean isShown(Node node) {
+        for (Node n = node; n != null; n = n.getParent()) {
+            if (!n.isVisible()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void thenTheFilterHasTheCursor() throws Exception {

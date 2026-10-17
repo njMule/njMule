@@ -43,7 +43,6 @@ import javafx.scene.control.ComboBoxBase;
 import javafx.scene.control.Label;
 import javafx.scene.control.Labeled;
 import javafx.scene.control.MenuItem;
-import javafx.scene.control.ScrollBar;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Separator;
@@ -58,6 +57,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
+import org.njmule.core.api.FileKind;
 import org.njmule.gui.model.LiveList;
 
 /** Small builders shared by the screens. */
@@ -170,6 +170,43 @@ public final class Fx {
         Button button = new Button(text, icon(glyph));
         button.setOnAction(e -> action.run());
         return whole(button);
+    }
+
+    /**
+     * A state in words on a pastel pill of its {@code tone} (one of {@link ThinBar#TONES}), with an icon of its own:
+     * the colour is never the only cue.
+     */
+    public static Label chip(String text, Icons glyph, String tone) {
+        Label chip = new Label();
+        chip.getStyleClass().add("state-chip");
+        chip(chip, text, glyph, tone);
+        return chip;
+    }
+
+    /** Shows {@code text}, {@code glyph} and {@code tone} on {@code chip}. */
+    public static void chip(Label chip, String text, Icons glyph, String tone) {
+        chip.setText(text);
+        if (chip.getGraphic() instanceof Icon icon) {
+            icon.setGlyph(glyph);
+        } else {
+            chip.setGraphic(icon(glyph));
+        }
+        chip.getStyleClass().removeAll(ThinBar.TONES);
+        chip.getStyleClass().add(tone);
+    }
+
+    /** The icon of what a file holds. */
+    public static Icons fileIcon(FileKind kind) {
+        return switch (kind) {
+            case VIDEO -> Icons.FILE_VIDEO;
+            case AUDIO -> Icons.FILE_AUDIO;
+            case IMAGE -> Icons.FILE_IMAGE;
+            case DOCUMENT -> Icons.FILE_DOCUMENT;
+            case ARCHIVE -> Icons.FILE_ARCHIVE;
+            case DISC_IMAGE -> Icons.FILE_DISC;
+            case PROGRAM -> Icons.FILE_APP;
+            case OTHER -> Icons.FILE;
+        };
     }
 
     /** A dot of a category's tint, an outline for none; the category's name goes beside it. */
@@ -306,22 +343,8 @@ public final class Fx {
      * window may be.
      */
     public static ScrollPane scrollWhenShort(Region content) {
-        ScrollPane scroll = new ScrollPane(content) {
-            // It scrolls only up and down: as wide as its content needs, with room for the bar.
-            @Override
-            protected double computeMinWidth(double height) {
-                double bar = 0;
-                for (Node child : getChildrenUnmodifiable()) {
-                    if (child instanceof ScrollBar b && b.getOrientation() == Orientation.VERTICAL) {
-                        bar = b.prefWidth(-1);
-                    }
-                }
-                return snappedLeftInset() + content.minWidth(-1) + bar + snappedRightInset();
-            }
-        };
-        scroll.setFitToWidth(true);
+        ScrollPane scroll = new VerticalScroll(content);
         scroll.setFitToHeight(true);
-        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scroll.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
         return scroll;
     }

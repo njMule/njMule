@@ -214,6 +214,14 @@ public final class FxTesting {
                 .toList();
     }
 
+    /** The texts of every label under {@code node}, as the cells of a list draw them in their graphics. */
+    public static List<String> labelTexts(Node node) {
+        return node.lookupAll(".label").stream()
+                .map(n -> ((Labeled) n).getText())
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
     /** Double-clicks the shown row of {@code table} whose item {@code which} accepts; FX thread. */
     public static void doubleClick(TableView<?> table, Predicate<Object> which) {
         for (Node node : table.lookupAll(".table-row-cell")) {

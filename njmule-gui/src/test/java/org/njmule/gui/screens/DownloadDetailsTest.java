@@ -95,20 +95,34 @@ class DownloadDetailsTest {
     @Test
     void shouldOpenTheDetailsFromTheirButtonAndShowTheDownloadChosen() throws Exception {
         givenTheTransfersWith(FILM);
-        givenTheDetailsAre(false);
-        givenTheDetailsButtonPressed();
         givenTheDetailsAre(true);
+        givenTheDetailsButtonPressed();
+        givenTheDetailsAre(false);
+        givenTheSettingsRemember(false);
+        givenTheDetailsButtonPressed();
         givenTheDetailsTell("Choose one download");
 
         whenTheDownloadIsChosen();
 
-        thenTheDetailsTell("film.mkv", "2 / 4", "7", "High");
+        thenTheDetailsTell("film.mkv", "High", "50.0 %");
         thenTheSettingsRemember(true);
+    }
+
+    @Test
+    void shouldTellTheFactsOfTheDownloadInTheirTab() throws Exception {
+        givenTheTransfersWith(FILM);
+        givenTheDownloadChosen();
+
+        whenTheTabIsShown(DownloadDetails.Tab.FACTS);
+
+        thenTheDetailsTell("2 / 4", "7", "High");
     }
 
     @Test
     void shouldOpenTheDetailsWithAltEnter() throws Exception {
         givenTheTransfersWith(FILM);
+        givenTheDetailsButtonPressed();
+        givenTheDetailsAre(false);
 
         whenAltEnterIsPressed();
 
@@ -118,7 +132,6 @@ class DownloadDetailsTest {
     @Test
     void shouldListTheNamesTheSourcesGiveTheMostGivenFirst() throws Exception {
         givenTheTransfersWithTheSourcesNaming(FILM, "film.avi", "Film (2010).mkv", "Film (2010).mkv");
-        givenTheDetailsButtonPressed();
 
         whenTheDownloadIsChosen();
 
@@ -129,7 +142,6 @@ class DownloadDetailsTest {
     @Test
     void shouldTakeOverTheNameChosenAsTheNewName() throws Exception {
         givenTheTransfersWithTheSourcesNaming(FILM, "Film (2010).mkv", "film.avi");
-        givenTheDetailsButtonPressed();
         givenTheDownloadChosen();
         givenTheNameChosen("film.avi");
 
@@ -141,7 +153,6 @@ class DownloadDetailsTest {
     @Test
     void shouldCleanUpTheNewName() throws Exception {
         givenTheTransfersWithTheSourcesNaming(FILM);
-        givenTheDetailsButtonPressed();
         givenTheDownloadChosen();
         givenTheNewNameTyped("Film_(2010).sponsored.mkv");
 
@@ -153,7 +164,6 @@ class DownloadDetailsTest {
     @Test
     void shouldAskTheEngineToRenameTheDownloadAsWritten() throws Exception {
         givenTheTransfersWithTheSourcesNaming(FILM);
-        givenTheDetailsButtonPressed();
         givenTheDownloadChosen();
         givenTheNewNameTyped("Film (2010).mkv");
 
@@ -268,6 +278,14 @@ class DownloadDetailsTest {
         detailsTell(texts);
     }
 
+    private void givenTheSettingsRemember(boolean shown) throws Exception {
+        thenTheSettingsRemember(shown);
+    }
+
+    private void whenTheTabIsShown(DownloadDetails.Tab tab) throws Exception {
+        FxTesting.onFx(() -> this.screen.details().showTab(tab));
+    }
+
     private void whenAltEnterIsPressed() throws Exception {
         FxTesting.onFx(() -> this.screen
                 .downloads()
@@ -296,7 +314,7 @@ class DownloadDetailsTest {
     }
 
     private void detailsAre(boolean shown) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.screen.details().view().getScene() != null))
+        assertThat(FxTesting.onFx(() -> this.screen.inspector().openProperty().get()))
                 .isEqualTo(shown);
     }
 

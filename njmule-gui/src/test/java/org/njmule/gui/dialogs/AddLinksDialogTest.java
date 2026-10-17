@@ -20,8 +20,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.OptionalInt;
 import java.util.concurrent.TimeUnit;
+import javafx.geometry.NodeOrientation;
 import javafx.scene.control.CheckBox;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -63,7 +65,7 @@ class AddLinksDialogTest {
         whenTheLinksAreShown(FILM, SONG);
 
         thenTheLinkIs(FILM, true, "");
-        thenTheLinkIs(SONG, false, "  — Already downloading");
+        thenTheLinkIs(SONG, false, "Already downloading");
     }
 
     @Test
@@ -75,6 +77,20 @@ class AddLinksDialogTest {
         whenTheChosenAreAdded();
 
         thenTheOnlyDownloadIs(FILM, Category.NONE, DownloadInfo.Status.PAUSED);
+    }
+
+    @Test
+    void shouldKeepTheBoxOfTheLinksLeftToRightInArabic() throws Exception {
+        givenTheInterfaceIn(Locale.forLanguageTag("ar"));
+
+        whenTheLinksAreShown(FILM);
+
+        thenTheDialogRuns(NodeOrientation.RIGHT_TO_LEFT);
+        thenTheBoxOfTheLinksRuns(NodeOrientation.LEFT_TO_RIGHT);
+    }
+
+    private void givenTheInterfaceIn(Locale language) throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"), language);
     }
 
     private void givenTheFileDownloadingAlready(Ed2kLink.FileLink link) throws Exception {
@@ -119,12 +135,22 @@ class AddLinksDialogTest {
         });
     }
 
+    private void thenTheDialogRuns(NodeOrientation orientation) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.dialog.alert().getDialogPane().getNodeOrientation()))
+                .isEqualTo(orientation);
+    }
+
+    private void thenTheBoxOfTheLinksRuns(NodeOrientation orientation) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.dialog.text().getEffectiveNodeOrientation()))
+                .isEqualTo(orientation);
+    }
+
     // Its name and size, then what is known of it.
     private void thenTheLinkIs(Ed2kLink.FileLink link, boolean ticked, String note) throws Exception {
         CheckBox box = FxTesting.onFx(() -> this.dialog.links().get(link));
         assertThat(FxTesting.onFx(box::isSelected)).isEqualTo(ticked);
-        String size = this.test.gui.formats().size(link.size());
-        assertThat(FxTesting.onFx(box::getText)).isEqualTo(link.name() + "  (" + size + ")" + note);
+        assertThat(FxTesting.onFx(box::getText)).isEqualTo(link.name());
+        assertThat(FxTesting.onFx(() -> this.dialog.noteOf(link))).isEqualTo(note);
     }
 
     private void thenTheOnlyDownloadIs(Ed2kLink.FileLink link, int category, DownloadInfo.Status status)

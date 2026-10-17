@@ -25,6 +25,8 @@ import java.util.Objects;
 import java.util.function.Function;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
+import javafx.scene.control.ContentDisplay;
+import javafx.scene.control.Label;
 import javafx.scene.control.Toggle;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
@@ -93,9 +95,31 @@ public final class Segments<T> {
         }
     }
 
+    /** Tells how many rows {@code choice} has, in a muted figure after its name; said too, not only shown. */
+    public void count(T choice, String name, long count) {
+        ToggleButton button = this.buttons.get(choice);
+        if (button == null) {
+            return;
+        }
+        button.setText(name);
+        Label figure;
+        if (button.getGraphic() instanceof Label shown) {
+            figure = shown;
+        } else {
+            figure = new Label();
+            figure.getStyleClass().add("segment-count");
+            button.setGraphic(figure);
+            button.setContentDisplay(ContentDisplay.RIGHT);
+        }
+        figure.setText(Long.toString(count));
+        button.setAccessibleText(name + ", " + count);
+    }
+
     /** The names of the choices, in order. */
     public List<String> names() {
-        return this.buttons.values().stream().map(ToggleButton::getText).toList();
+        return this.buttons.values().stream()
+                .map(b -> b.getGraphic() instanceof Label figure ? b.getText() + " " + figure.getText() : b.getText())
+                .toList();
     }
 
     /** The button of {@code choice}, for tests. */

@@ -562,6 +562,19 @@ All notable changes to this project are documented here. The format follows
   the same one counting up instead of stacking; a status strip with the last event, the users and
   files, the speed limits and the free space where downloads go. The window works down to 900×600,
   its tools then showing only their icons.
+- The transfers of the desktop app follow the new design: segments with counts choose the list
+  (downloads, uploads, queue, banned) in place of the split below; chips with counts narrow the
+  downloads to a state, beside a list of the categories and the filter (Ctrl+F). The table is
+  compact: an icon of what each file holds and the dot of its category, a thin bar with the
+  percentage beside it, the sources sending out of those known and the state on a chip; Completed,
+  Priority and Category are in the column menu. The details of the chosen download stand beside the
+  list, or over its end in a narrow window, never squeezing it: the share done in large figures, the
+  part map with its legend, a note when no source has the file or the disk is full, what to do now,
+  and tabs for its sources, its facts, the names the sources give it and the comments heard. Add links
+  opens a dialog that finds the file links in what is pasted or typed, those on the clipboard already
+  in it; Delete cancels the chosen downloads after the question and Ctrl+C copies their links. The
+  download menu is shorter, the rarer commands under More, and the sources a file shares with
+  other downloads are named in plain words.
 
 ### Changed
 
