@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -157,6 +158,7 @@ public final class SettingsScreen implements Screen {
     private final CheckBox previewFirst = new CheckBox();
     private final TextField videoPlayer = new TextField();
     private final TextField videoPlayerArgs = new TextField();
+    private Button videoPlayerBrowse;
     private final ComboBox<SharedFilesVisibility> visibility = new ComboBox<>();
     private final CheckBox addPaused = new CheckBox();
     private final CheckBox cleanUpNewNames = new CheckBox();
@@ -410,7 +412,7 @@ public final class SettingsScreen implements Screen {
         grid.add(this.rememberCancelled, 1, row++);
         grid.add(this.storeSearches, 1, row++);
         grid.add(this.previewFirst, 1, row++);
-        row = field(grid, row, this.gui.t("IDS_PW_VIDEOPLAYER"), new HBox(8, this.videoPlayer, this.videoPlayerArgs));
+        row = field(grid, row, this.gui.t("IDS_PW_VIDEOPLAYER"), videoPlayerRow());
         row = field(grid, row, this.gui.t("IDS_PW_SHARE"), this.visibility);
         grid.add(this.addPaused, 1, row++);
         grid.add(this.cleanUpNewNames, 1, row++);
@@ -821,6 +823,41 @@ public final class SettingsScreen implements Screen {
         if (this.soundFileInput.isValid()) {
             this.soundFileInput.value().ifPresent(this.gui.sound()::play);
         }
+    }
+
+    // The player's program, typed or chosen, then its arguments.
+    private Node videoPlayerRow() {
+        this.videoPlayerBrowse =
+                Fx.button(this.gui.t("IDS_PW_BROWSE"), Material2AL.FOLDER_OPEN, this::chooseVideoPlayer);
+        HBox row = new HBox(6, this.videoPlayer, this.videoPlayerBrowse, this.videoPlayerArgs);
+        row.setAlignment(Pos.CENTER_LEFT);
+        return row;
+    }
+
+    private void chooseVideoPlayer() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(this.gui.t("IDS_PW_VIDEOPLAYER"));
+        if (System.getProperty("os.name", "").startsWith("Windows")) {
+            chooser.getExtensionFilters()
+                    .addAll(
+                            new FileChooser.ExtensionFilter("*.exe", "*.exe"),
+                            new FileChooser.ExtensionFilter("*.*", "*.*"));
+        }
+        try {
+            Optional.ofNullable(Path.of(this.videoPlayer.getText().strip()).getParent())
+                    .filter(Files::isDirectory)
+                    .ifPresent(dir -> chooser.setInitialDirectory(dir.toFile()));
+        } catch (InvalidPathException e) {
+            // A path typed wrong: the chooser starts where the system wants.
+        }
+        File chosen = chooser.showOpenDialog(this.view.getScene().getWindow());
+        if (chosen != null) {
+            videoPlayerChosen(chosen);
+        }
+    }
+
+    void videoPlayerChosen(File chosen) {
+        this.videoPlayer.setText(chosen.getAbsolutePath());
     }
 
     private HBox directory(TextField field) {
@@ -1398,6 +1435,14 @@ public final class SettingsScreen implements Screen {
         grid.add(new Label(name), 0, row);
         grid.add(control, 1, row);
         return row + 1;
+    }
+
+    TextField videoPlayerField() {
+        return this.videoPlayer;
+    }
+
+    Button videoPlayerBrowseButton() {
+        return this.videoPlayerBrowse;
     }
 
     TextField nickField() {

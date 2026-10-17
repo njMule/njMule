@@ -274,7 +274,7 @@ All notable changes to this project are documented here. The format follows
   full, and keeps its upload slot.
 - Preview: a download can fetch its first and last parts first (or every playable download, as
   set in the settings), and Preview opens what is downloaded so far in the video player of the
-  settings; eMule's PreviewPrio and video player are imported.
+  settings, typed or chosen with Browse; eMule's PreviewPrio and video player are imported.
 - File comments and ratings: a shared file or a download can be commented and rated (kept in
   `fileinfo.ini`, imported from eMule); clients downloading it hear the comment after the file name, and
   the comments of a download's sources show beside ours, those holding a filtered word left out.
