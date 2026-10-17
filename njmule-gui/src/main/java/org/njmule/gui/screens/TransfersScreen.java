@@ -26,6 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import javafx.beans.property.ObjectProperty;
@@ -36,7 +37,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
@@ -124,7 +125,7 @@ public final class TransfersScreen implements Screen {
     private final TextField link = new TextField();
     private final HBox categoryBar = new HBox();
     // How a cancel is asked: a dialog, or the answer a test gives.
-    private Predicate<String> cancelAnswer = this::askCancel;
+    private BiPredicate<String, Integer> cancelAnswer = this::askCancel;
     private final ObjectProperty<Predicate<DownloadInfo>> shown = new SimpleObjectProperty<>(d -> true);
     private final ObjectProperty<Predicate<SourceInfo>> shownSources = new SimpleObjectProperty<>(s -> true);
     private final TextField filter = new TextField();
@@ -711,22 +712,33 @@ public final class TransfersScreen implements Screen {
     // A cancel deletes what was downloaded: asked first.
     void askCancelSelected() {
         List<DownloadInfo> selected = Fx.selected(this.downloads);
-        if (!selected.isEmpty() && this.cancelAnswer.test(cancelQuestion(selected))) {
+        if (!selected.isEmpty() && this.cancelAnswer.test(cancelQuestion(selected), selected.size())) {
             cancelSelected();
         }
     }
 
-    // A modal dialog, with No the default answer.
-    private boolean askCancel(String question) {
-        Alert confirm = this.gui.dialog(new Alert(Alert.AlertType.CONFIRMATION, question));
-        ButtonType go = Fx.answers(confirm, this.gui.t("IDS_YES"), this.gui.t("IDS_NO"), true);
+    private boolean askCancel(String question, int count) {
+        Alert confirm = cancelDialog(question, count);
         confirm.initOwner(this.downloads.getScene().getWindow());
-        return confirm.showAndWait().filter(go::equals).isPresent();
+        return confirm.showAndWait()
+                .filter(b -> b.getButtonData() == ButtonBar.ButtonData.OK_DONE)
+                .isPresent();
+    }
+
+    /** The modal question before cancelling {@code count} downloads: cancelling is red, keeping them the default. */
+    Alert cancelDialog(String question, int count) {
+        Alert confirm = this.gui.dialog(new Alert(Alert.AlertType.CONFIRMATION, question));
+        Fx.answers(
+                confirm,
+                this.gui.t(count == 1 ? "nj.transfers.cancelOne" : "nj.transfers.cancelMany"),
+                this.gui.t("nj.transfers.keepDownloading"),
+                true);
+        return confirm;
     }
 
     /** Answers the cancel questions with {@code answer} instead of a dialog. */
     void answerCancels(Predicate<String> answer) {
-        this.cancelAnswer = answer;
+        this.cancelAnswer = (question, count) -> answer.test(question);
     }
 
     /** The question before a cancel: whether to delete the file, or the files, named below it. */

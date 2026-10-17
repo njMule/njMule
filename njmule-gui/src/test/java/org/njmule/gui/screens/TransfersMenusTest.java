@@ -19,6 +19,7 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import atlantafx.base.theme.Styles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.Node;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckMenuItem;
@@ -83,6 +85,7 @@ class TransfersMenusTest {
     private final AtomicBoolean sourceTaken = new AtomicBoolean(true);
     private final AtomicReference<List<DownloadInfo>> downloads = new AtomicReference<>();
     private TransfersScreen transfers;
+    private Alert cancelQuestion;
     private final List<String> asked = new CopyOnWriteArrayList<>();
     private Throwable exception;
 
@@ -132,6 +135,27 @@ class TransfersMenusTest {
 
         thenTheQuestionAskedWas("Are you sure that you want to cancel and delete this file?\n\ntest file.bin");
         thenTheDownloadsShownAre(1);
+    }
+
+    @Test
+    void shouldNameTheOutcomesOnTheButtonsOfTheCancelQuestion() throws Exception {
+        givenTheTransfersScreen();
+
+        whenTheCancelQuestionIsMadeFor(1);
+
+        thenTheAnswersAre("Cancel download", "Keep downloading");
+        thenTheDefaultAnswerIs("Keep downloading");
+        thenTheDangerousAnswerIs("Cancel download");
+    }
+
+    @Test
+    void shouldOfferToCancelTheDownloadsWhenSeveralAreChosen() throws Exception {
+        givenTheTransfersScreen();
+
+        whenTheCancelQuestionIsMadeFor(3);
+
+        thenTheAnswersAre("Cancel downloads", "Keep downloading");
+        thenTheDefaultAnswerIs("Keep downloading");
     }
 
     @Test
@@ -276,6 +300,33 @@ class TransfersMenusTest {
         whenTheCategoriesAreRemoved();
 
         thenAllTheDownloadsShowAgain(4);
+    }
+
+    private void whenTheCancelQuestionIsMadeFor(int count) throws Exception {
+        this.cancelQuestion = FxTesting.onFx(() -> this.transfers.cancelDialog("Cancel?", count));
+    }
+
+    private void thenTheAnswersAre(String... answers) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.cancelQuestion.getButtonTypes().stream()
+                        .map(ButtonType::getText)
+                        .toList()))
+                .containsExactly(answers);
+    }
+
+    private void thenTheDefaultAnswerIs(String answer) throws Exception {
+        assertThat(FxTesting.onFx(() -> answerButton(answer).isDefaultButton())).isTrue();
+    }
+
+    private void thenTheDangerousAnswerIs(String answer) throws Exception {
+        assertThat(FxTesting.onFx(() -> answerButton(answer).getStyleClass())).contains(Styles.DANGER);
+    }
+
+    private Button answerButton(String answer) {
+        ButtonType type = this.cancelQuestion.getButtonTypes().stream()
+                .filter(t -> t.getText().equals(answer))
+                .findFirst()
+                .orElseThrow();
+        return (Button) this.cancelQuestion.getDialogPane().lookupButton(type);
     }
 
     private void givenTheTransfersScreen() throws Exception {

@@ -472,8 +472,9 @@ All notable changes to this project are documented here. The format follows
   bytes went out, in this run and in all (kept in known.met under eMule's tags); the shared files
   show them in their columns, beside a pane of the shared folders where a folder is added, removed
   or switched to share its subfolders too.
-- Undo for cancelled downloads: a cancel asks first in a modal dialog naming the files (No by
-  default), and its message then offers to take the downloads back; their files are kept for 15
+- Undo for cancelled downloads: a cancel asks first in a modal dialog naming the files, whose
+  buttons say what they do (Cancel download, in red, and Keep downloading, the default), and its
+  message then offers to take the downloads back; their files are kept for 15
   seconds (engine API `restoreDownload`), set aside so that a start in between does not load them,
   then deleted.
 - A change of our public address is acted on at once: once the server and Kad saw us at the same
