@@ -3,7 +3,9 @@
 #
 # Native executables and installers for Windows x64 (MSI, zip; checked on arm64 too), Linux x64
 # and arm64 (deb, rpm, tar.gz; a static headless tar.gz for x64), macOS arm64 (dmg), Synology
-# DSM x86_64 (spk) and a Docker image (linux/amd64, linux/arm64).
+# DSM x86_64 (spk) and a Docker image (linux/amd64, linux/arm64). On Linux and macOS njmule, the
+# command line, is a script that runs the desktop executable headless (packaging/njmule.sh); Windows
+# keeps a console executable of its own, as the desktop one is a GUI program.
 # A pushed tag vX.Y.Z that matches the project version also opens a draft GitHub release with
 # them, an SBOM and SHA-256 sums, and pushes the image to ghcr.io/njmule/njmule; publishing the
 # release stays a manual step. A manual run only builds.
@@ -168,19 +170,27 @@ jobs:
             - name: Pack
               run: |
                   name="njmule-${VERSION}-linux-${{ matrix.arch }}"
-                  mkdir -p stage/gui stage/doc dist "archive/${name}/share"
-                  install -m 755 njmule-app/build/native/nativeCompile/njmule stage/njmule
+                  mkdir -p stage/gui stage/doc dist headless "archive/${name}/share"
                   cp -r njmule-gui/build/native/. stage/gui/
                   cp README.md CHANGELOG.md NOTICE stage/doc/
                   "$RUNNER_TEMP/nfpm" package -f packaging/linux/nfpm.yaml -p deb -t dist/
                   "$RUNNER_TEMP/nfpm" package -f packaging/linux/nfpm.yaml -p rpm -t dist/
-                  cp -r stage/njmule stage/gui/. LICENSE NOTICE README.md CHANGELOG.md "archive/${name}/"
+                  install -m 755 packaging/njmule.sh "archive/${name}/njmule"
+                  cp -r stage/gui/. LICENSE NOTICE README.md CHANGELOG.md "archive/${name}/"
                   cp packaging/linux/org.njmule.njMule.* branding/njmule-icon.svg "archive/${name}/share/"
+                  # The command line runs the desktop executable headless.
+                  "archive/${name}/njmule" --version
                   tar -C archive -czf "dist/${name}.tar.gz" "${name}"
+                  # The headless executable alone goes into the Docker image only.
+                  install -m 755 njmule-app/build/native/nativeCompile/njmule headless/njmule
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: linux-${{ matrix.arch }}
                   path: dist/
+            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+              with:
+                  name: headless-linux-${{ matrix.arch }}
+                  path: headless/
 
     # The Synology DSM 7 package for x86_64 models, and the same executable alone for any x64 Linux:
     # the headless engine built fully static with musl, as DSM's glibc is too old for the Linux
@@ -244,8 +254,8 @@ jobs:
                   path: dist/
 
     # The headless engine with its web interface as a Docker image for linux/amd64 and linux/arm64,
-    # made from the executables of the Linux jobs (no emulation, no second compilation). The amd64
-    # image is tried first; a tag pushes both to the GitHub Container Registry.
+    # made from the headless executables of the Linux jobs (no emulation, no second compilation).
+    # The amd64 image is tried first; a tag pushes both to the GitHub Container Registry.
     docker:
         name: docker image
         needs: [version, linux]
@@ -264,12 +274,10 @@ jobs:
                   GH_TOKEN: ${{ github.token }}
               run: |
                   gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
-                      --name linux-x64 --name linux-arm64 --dir "$RUNNER_TEMP/packages"
+                      --name headless-linux-x64 --name headless-linux-arm64 --dir "$RUNNER_TEMP/headless"
                   for pair in x64:amd64 arm64:arm64; do
-                      name="njmule-${VERSION}-linux-${pair%%:*}"
-                      mkdir -p "$RUNNER_TEMP/binary/${pair##*:}"
-                      tar -xzf "$RUNNER_TEMP/packages/linux-${pair%%:*}/${name}.tar.gz" \
-                          -C "$RUNNER_TEMP/binary/${pair##*:}" --strip-components=1 "${name}/njmule"
+                      install -D -m 755 "$RUNNER_TEMP/headless/headless-linux-${pair%%:*}/njmule" \
+                          "$RUNNER_TEMP/binary/${pair##*:}/njmule"
                   done
                   file "$RUNNER_TEMP"/binary/*/njmule
             - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -428,11 +436,11 @@ jobs:
             - name: Trace the GUI tour
               run: ./gradlew :njmule-gui:nativeTour
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
-            - name: Build the native executables
-              run: ./gradlew :njmule-app:nativeCompile :njmule-gui:nativeGui '-Pnative.optimization=-O2'
+            - name: Build the native executable
+              run: ./gradlew :njmule-gui:nativeGui '-Pnative.optimization=-O2'
             - name: Smoke test
               run: |
-                  njmule-app/build/native/nativeCompile/njmule --version
+                  njmule-gui/build/native/njmule-gui --headless --version
                   tour="$RUNNER_TEMP/tour"
                   cp -r njmule-gui/native/tour "$tour"
                   njmule-gui/build/native/njmule-gui -Dnjmule.gui.tour=true -Dprism.verbose=true \
@@ -450,11 +458,14 @@ jobs:
                   app=stage/njMule.app/Contents
                   mkdir -p "$app/MacOS" "$app/Resources" dist
                   cp -R njmule-gui/build/native/. "$app/MacOS/"
-                  cp njmule-app/build/native/nativeCompile/njmule "$app/MacOS/"
+                  install -m 755 packaging/njmule.sh "$app/MacOS/njmule"
                   cp branding/generated/njmule.icns "$app/Resources/"
                   sed "s/@VERSION@/${VERSION%%-*}/g" packaging/macos/Info.plist > "$app/Info.plist"
                   plutil -lint "$app/Info.plist"
                   codesign --force --deep --sign - stage/njMule.app
+                  codesign --verify --deep --strict stage/njMule.app
+                  # The command line runs the desktop executable headless.
+                  "$app/MacOS/njmule" --version
                   ln -s /Applications stage/Applications
                   hdiutil create -volname njMule -srcfolder stage -ov -format UDZO \
                       "dist/njmule-${VERSION}-macos-arm64.dmg"
@@ -488,7 +499,9 @@ jobs:
               env:
                   GH_TOKEN: ${{ github.token }}
               run: |
-                  gh run download "${GITHUB_RUN_ID}" --dir packages
+                  # The packages only: not the headless executables of the Docker image, nor build records.
+                  gh run download "${GITHUB_RUN_ID}" --dir packages --name windows-x64 --name linux-x64 \
+                      --name linux-arm64 --name macos-arm64 --name synology-x86_64
                   mkdir -p dist
                   find packages -type f -exec cp {} dist/ \;
                   cp build/reports/cyclonedx/bom.json "dist/njmule-${VERSION}-sbom.cdx.json"

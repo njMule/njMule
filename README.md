@@ -84,8 +84,10 @@ Ukrainian, Arabic, Persian, Hebrew, Simplified and Traditional Chinese, Japanese
 | 🐳 Docker | `linux/amd64`, `linux/arm64` | image `ghcr.io/njmule/njmule` (headless engine and web interface) |
 | 🗄️ Synology DSM 7 | x86_64 | `.spk` package (headless engine and web interface) |
 
-Every package contains two executables: **`njmule-gui`**, the desktop application, and
-**`njmule`**, the command-line interface, which also runs the engine headless. Each release also
+Every desktop package contains **`njmule-gui`**, the desktop application, and **`njmule`**, the
+command-line interface, which also runs the engine headless. On Linux and macOS `njmule` is a
+script that runs the desktop application's executable without a window; on Windows, where a
+desktop program has no console, it is an executable of its own. Each release also
 provides a `SHA256SUMS` file and a CycloneDX software bill of materials
 (`njmule-<version>-sbom.cdx.json`). Verify the downloaded files with:
 
@@ -122,14 +124,15 @@ sudo dnf install ./njmule-*.x86_64.rpm  # Fedora, RHEL (arm64: *.aarch64.rpm)
 ```
 
 The packages install `njmule` and `njmule-gui` in `/usr/bin` (the desktop application and its
-shared libraries reside in `/usr/lib/njmule`), together with a desktop entry, AppStream metadata
-and icons. The desktop entry starts the application as `njMule`, the name process lists show for
-it, however it was started. They depend on GTK 3, libXtst and OpenGL. The `.tar.gz` archive contains the same
-executables and runs from any directory; its `share/` directory provides the desktop entry,
-metadata and icon for manual desktop integration. Where those executables do not start, on a
-distribution with an older C library or with musl such as Alpine, the headless engine of
+shared libraries reside in `/usr/lib/njmule`; `njmule` runs it headless), together with a desktop
+entry, AppStream metadata and icons. The desktop entry starts the application as `njMule`, the name
+process lists show for it, however it was started. They depend on GTK 3, libXtst and OpenGL; the
+command line itself needs none of them. The `.tar.gz` archive contains the same programs and runs
+from any directory; its `share/` directory provides the desktop entry, metadata and icon for manual
+desktop integration. Where those executables do not start, on a distribution with an older C
+library or with musl such as Alpine, the headless engine of
 `njmule-<version>-linux-x64-static.tar.gz` runs alone: it is linked statically and needs no
-library of the system.
+library of the system, and it uses less memory than the desktop executable running headless.
 
 The packages also install a systemd user unit that runs the engine headless as the logged-in
 user (never as root), restarting it if it fails:
@@ -481,7 +484,6 @@ The Linux deb and rpm packages (`ARCH` is `amd64` or `arm64`):
 
 ```bash
 mkdir -p stage/gui stage/doc dist
-install -m 755 njmule-app/build/native/nativeCompile/njmule stage/njmule
 cp -r njmule-gui/build/native/. stage/gui/
 cp README.md CHANGELOG.md NOTICE stage/doc/
 VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/

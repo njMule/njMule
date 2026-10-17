@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # deb and rpm packages (nfpm), run from the repository root: VERSION and ARCH (amd64 or arm64)
-# come from the environment, the programs from stage/ (njmule, gui/ with the desktop executable
-# and its shared libraries, doc/ with the documents).
+# come from the environment, the programs from stage/ (gui/ with the desktop executable and its
+# shared libraries, doc/ with the documents). njmule, the command line, runs that same executable
+# headless (packaging/njmule.sh).
 #   VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/
 name: njmule
 arch: ${ARCH}
@@ -36,7 +37,7 @@ overrides:
       - mesa-libGL
 
 contents:
-  - src: stage/njmule
+  - src: packaging/njmule.sh
     dst: /usr/bin/njmule
     file_info:
       mode: 0755
