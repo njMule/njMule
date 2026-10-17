@@ -265,7 +265,7 @@ class Socks5UdpTest {
     }
 
     private void thenTheProxyRelaysNoUdp() {
-        assertThat(this.exception).isInstanceOf(Socks5Udp.Unsupported.class);
+        assertThat(this.exception).isInstanceOf(Socks5.Unsupported.class);
     }
 
     private void thenTheAssociationEnds() throws InterruptedException {

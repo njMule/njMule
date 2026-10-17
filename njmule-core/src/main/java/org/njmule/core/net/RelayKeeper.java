@@ -139,7 +139,7 @@ public final class RelayKeeper implements AutoCloseable {
                     this.log.line(
                             LogLine.Level.WARNING,
                             this.what + " is held: the SOCKS5 proxy ended its UDP relay, asking it again");
-                } catch (Socks5Udp.Unsupported e) {
+                } catch (Socks5.Unsupported e) {
                     if (route(UdpRoute.DIRECT, current)) {
                         this.log.line(
                                 LogLine.Level.WARNING, this.what + " goes straight to the network: " + e.getMessage());

@@ -25,8 +25,8 @@ import java.util.function.Supplier;
 import org.njmule.core.config.ProxySettings;
 
 /**
- * Sends outgoing TCP connections through the proxy of the preferences, with the JDK's own SOCKS and HTTP CONNECT
- * support; the user name and password go to the SOCKS proxy only.
+ * Sends outgoing TCP connections through the proxy of the preferences: our own SOCKS5 handshake, the JDK's for SOCKS4
+ * and HTTP CONNECT; the user name and password go to the SOCKS proxy only.
  */
 public final class ProxyRoute extends Authenticator {
 
@@ -46,7 +46,7 @@ public final class ProxyRoute extends Authenticator {
         Objects.requireNonNull(settings, "settings");
         synchronized (INSTALLING) {
             current = settings;
-            TcpConnector.useProxy(() -> proxy(settings.get()));
+            TcpConnector.useProxy(settings);
             Authenticator.setDefault(new ProxyRoute(settings));
         }
     }
@@ -61,7 +61,7 @@ public final class ProxyRoute extends Authenticator {
                 return;
             }
             current = () -> ProxySettings.NONE;
-            TcpConnector.useProxy(() -> Proxy.NO_PROXY);
+            TcpConnector.useProxy(() -> ProxySettings.NONE);
             Authenticator.setDefault(null);
         }
     }

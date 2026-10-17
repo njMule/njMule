@@ -16,18 +16,13 @@
  */
 package org.njmule.core.net;
 
-import java.io.BufferedInputStream;
-import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.Proxy;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Optional;
@@ -35,36 +30,14 @@ import java.util.concurrent.CountDownLatch;
 import org.njmule.core.config.ProxySettings;
 
 /**
- * A UDP association through a SOCKS5 proxy (RFC 1928 §7, logging in as RFC 1929 says): datagrams go to the proxy's
- * relay behind a header that names their destination and come back behind one that names their sender. It lasts as long
- * as the TCP connection that asked for it. Our own code, since the JDK and Jetty carry only TCP through SOCKS.
+ * A UDP association through a SOCKS5 proxy (RFC 1928 §7): datagrams go to the proxy's relay behind a header that names
+ * their destination and come back behind one that names their sender. It lasts as long as the TCP connection that asked
+ * for it. Our own code, since the JDK and Jetty carry only TCP through SOCKS.
  */
 public final class Socks5Udp implements AutoCloseable {
 
-    /** The proxy cannot relay our UDP: it speaks no SOCKS5, wants another login, or refuses the command. */
-    public static final class Unsupported extends IOException {
-        private static final long serialVersionUID = 1L;
-
-        Unsupported(String message) {
-            super(message);
-        }
-    }
-
     /** The header of a datagram to or from an IPv4 address. */
     static final int IPV4_HEADER = 10;
-
-    private static final int VERSION = 5;
-    private static final int NO_LOGIN = 0;
-    private static final int USER_AND_PASSWORD = 2;
-    private static final int LOGIN_VERSION = 1;
-    private static final int UDP_ASSOCIATE = 3;
-    private static final int IPV4 = 1;
-    private static final int DOMAIN = 3;
-    private static final int IPV6 = 4;
-    private static final int MAX_LOGIN_PART = 255;
-    // The replies that say the proxy will never relay UDP for us: not allowed by its rules, command not supported.
-    private static final int NOT_ALLOWED = 2;
-    private static final int COMMAND_NOT_SUPPORTED = 7;
 
     private final Socket control;
     private final InetSocketAddress relay;
@@ -79,36 +52,17 @@ public final class Socks5Udp implements AutoCloseable {
      * Asks the SOCKS proxy of {@code proxy} for a UDP association, from {@code local} (null: any address), waiting
      * {@code timeout} at most for each answer.
      *
-     * @throws Unsupported when the proxy will not relay UDP for us; other {@link IOException}s may pass
+     * @throws Socks5.Unsupported when the proxy will not relay UDP for us; other {@link IOException}s may pass
      */
     public static Socks5Udp associate(ProxySettings proxy, InetAddress local, Duration timeout) throws IOException {
-        if (proxy.type() != ProxySettings.Type.SOCKS) {
-            throw new Unsupported("not a SOCKS proxy");
-        }
-        InetSocketAddress at = new InetSocketAddress(proxy.host(), proxy.port());
-        if (at.isUnresolved()) {
-            throw new UnknownHostException(proxy.host());
-        }
-        int millis = Math.toIntExact(timeout.toMillis());
-        Socket socket = new Socket(Proxy.NO_PROXY);
+        Socket socket = Socks5.open(proxy, local, Math.toIntExact(timeout.toMillis()));
         try {
-            if (local != null) {
-                socket.bind(new InetSocketAddress(local, 0));
-            }
-            socket.connect(at, millis);
-            socket.setSoTimeout(millis);
-            DataInputStream in = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
-            OutputStream out = socket.getOutputStream();
-            logIn(in, out, proxy);
             // 0.0.0.0:0: the address our datagrams come from is not known before the first one.
-            out.write(new byte[] {VERSION, UDP_ASSOCIATE, 0, IPV4, 0, 0, 0, 0, 0, 0});
-            out.flush();
-            InetSocketAddress bound = reply(in);
-            // A relay on the proxy's every address is reached where the proxy was.
+            InetSocketAddress bound = Socks5.request(
+                    socket, Socks5.UDP_ASSOCIATE, new InetSocketAddress(InetAddress.getByAddress(new byte[4]), 0));
+            // A relay on the proxy's every address, or one it names, is reached where the proxy was.
             InetSocketAddress relay =
-                    bound.getAddress().isAnyLocalAddress() || !(bound.getAddress() instanceof Inet4Address)
-                            ? new InetSocketAddress(socket.getInetAddress(), bound.getPort())
-                            : bound;
+                    Socks5.usable(bound) ? bound : new InetSocketAddress(socket.getInetAddress(), bound.getPort());
             socket.setSoTimeout(0);
             Socks5Udp association = new Socks5Udp(socket, relay);
             Thread.ofVirtual().name("njmule-socks-udp").start(association::watch);
@@ -117,71 +71,6 @@ public final class Socks5Udp implements AutoCloseable {
             socket.close();
             throw e;
         }
-    }
-
-    private static void logIn(DataInputStream in, OutputStream out, ProxySettings proxy) throws IOException {
-        boolean login = !proxy.user().isEmpty();
-        out.write(login ? new byte[] {VERSION, 2, NO_LOGIN, USER_AND_PASSWORD} : new byte[] {VERSION, 1, NO_LOGIN});
-        out.flush();
-        int version = in.readUnsignedByte();
-        int method = in.readUnsignedByte();
-        if (version != VERSION) {
-            throw new Unsupported("the proxy speaks no SOCKS5");
-        }
-        if (method == NO_LOGIN) {
-            return;
-        }
-        if (method != USER_AND_PASSWORD || !login) {
-            throw new Unsupported(
-                    method == USER_AND_PASSWORD
-                            ? "the proxy wants a user name and password"
-                            : "the proxy takes none of our ways to log in");
-        }
-        byte[] user = proxy.user().getBytes(StandardCharsets.UTF_8);
-        byte[] password = proxy.password().getBytes(StandardCharsets.UTF_8);
-        if (user.length > MAX_LOGIN_PART || password.length > MAX_LOGIN_PART) {
-            throw new Unsupported("the user name or password is too long for SOCKS5");
-        }
-        out.write(LOGIN_VERSION);
-        out.write(user.length);
-        out.write(user);
-        out.write(password.length);
-        out.write(password);
-        out.flush();
-        in.readUnsignedByte();
-        if (in.readUnsignedByte() != 0) {
-            throw new Unsupported("the proxy refused the user name or password");
-        }
-    }
-
-    // The address the proxy binds for us, after a reply that grants the command.
-    private static InetSocketAddress reply(DataInputStream in) throws IOException {
-        if (in.readUnsignedByte() != VERSION) {
-            throw new Unsupported("the proxy speaks no SOCKS5");
-        }
-        int status = in.readUnsignedByte();
-        in.readUnsignedByte();
-        int type = in.readUnsignedByte();
-        if (status == NOT_ALLOWED || status == COMMAND_NOT_SUPPORTED) {
-            throw new Unsupported("the proxy relays no UDP (SOCKS5 reply " + status + ")");
-        }
-        if (status != 0) {
-            throw new IOException("the proxy refused the UDP relay (SOCKS5 reply " + status + ")");
-        }
-        InetAddress address = switch (type) {
-            case IPV4 -> InetAddress.getByAddress(readBytes(in, 4));
-            case IPV6 -> InetAddress.getByAddress(readBytes(in, 16));
-            case DOMAIN ->
-                InetAddress.getByName(new String(readBytes(in, in.readUnsignedByte()), StandardCharsets.US_ASCII));
-            default -> throw new IOException("unknown address type " + type + " in a SOCKS5 reply");
-        };
-        return new InetSocketAddress(address, in.readUnsignedShort());
-    }
-
-    private static byte[] readBytes(DataInputStream in, int count) throws IOException {
-        byte[] bytes = new byte[count];
-        in.readFully(bytes);
-        return bytes;
     }
 
     // The proxy ends the association by closing its connection; nothing else comes on it.
@@ -226,7 +115,7 @@ public final class Socks5Udp implements AutoCloseable {
             throw new IllegalArgumentException("not an IPv4 address: " + to);
         }
         byte[] datagram = new byte[IPV4_HEADER + data.length];
-        datagram[3] = IPV4;
+        datagram[3] = Socks5.IPV4;
         System.arraycopy(v4.getAddress(), 0, datagram, 4, 4);
         datagram[8] = (byte) (to.getPort() >>> 8);
         datagram[9] = (byte) to.getPort();
@@ -240,7 +129,7 @@ public final class Socks5Udp implements AutoCloseable {
      */
     public static Optional<UdpRoute.Received> unwrap(byte[] data, int offset, int length) {
         // RSV (2), FRAG, ATYP: only whole datagrams from IPv4 senders.
-        if (length < IPV4_HEADER || data[offset + 2] != 0 || data[offset + 3] != IPV4) {
+        if (length < IPV4_HEADER || data[offset + 2] != 0 || data[offset + 3] != Socks5.IPV4) {
             return Optional.empty();
         }
         try {

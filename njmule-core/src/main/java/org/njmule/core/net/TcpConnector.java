@@ -25,7 +25,6 @@ import java.io.OutputStream;
 import java.io.PushbackInputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.Proxy;
 import java.net.Socket;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -36,6 +35,7 @@ import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.config.BindInterface;
+import org.njmule.core.config.ProxySettings;
 import org.njmule.core.protocol.crypt.StreamObfuscation;
 import org.njmule.core.protocol.packet.FrameLimits;
 import org.njmule.core.protocol.packet.Protocol;
@@ -59,20 +59,15 @@ public final class TcpConnector {
     private static final int BUFFER = 16 * 1024;
 
     // One engine per process: the network sets where outgoing connections go, and takes it back when it closes.
-    private static volatile Supplier<Proxy> proxy = () -> Proxy.NO_PROXY;
+    private static volatile Supplier<ProxySettings> proxy = () -> ProxySettings.NONE;
     private static volatile Supplier<BindInterface.Binding> binding = BindInterface.Binding.Any::new;
     private static final Object BINDING_LOCK = new Object();
 
     private TcpConnector() {}
 
     /** Outgoing connections go through the proxy {@code supplier} gives at each connection. */
-    public static void useProxy(Supplier<Proxy> supplier) {
+    public static void useProxy(Supplier<ProxySettings> supplier) {
         proxy = Objects.requireNonNull(supplier, "supplier");
-    }
-
-    /** The proxy outgoing connections go through now. */
-    static Proxy currentProxy() {
-        return proxy.get();
     }
 
     /** Outgoing connections leave from the interface {@code supplier} gives at each connection, or not at all. */
@@ -208,7 +203,15 @@ public final class TcpConnector {
     private static Socket connect(InetSocketAddress address, Duration timeout) throws IOException {
         int millis = Math.toIntExact(timeout.toMillis());
         InetAddress local = localAddress();
-        Socket socket = new Socket(proxy.get());
+        ProxySettings settings = proxy.get();
+        if (settings.type() == ProxySettings.Type.SOCKS) {
+            try {
+                return throughSocks5(settings, address, local, millis);
+            } catch (Socks5.NotVersion5 e) {
+                // A SOCKS4 proxy, which the JDK's own client speaks.
+            }
+        }
+        Socket socket = new Socket(ProxyRoute.proxy(settings));
         try {
             if (local != null) {
                 socket.bind(new InetSocketAddress(local, 0));
@@ -216,6 +219,19 @@ public final class TcpConnector {
             socket.connect(address, millis);
             socket.setTcpNoDelay(true);
             socket.setSoTimeout(millis);
+            return socket;
+        } catch (IOException | RuntimeException e) {
+            closeQuietly(socket);
+            throw e;
+        }
+    }
+
+    private static Socket throughSocks5(
+            ProxySettings settings, InetSocketAddress address, InetAddress local, int millis) throws IOException {
+        Socket socket = Socks5.open(settings, local, millis);
+        try {
+            Socks5.request(socket, Socks5.CONNECT, address);
+            socket.setTcpNoDelay(true);
             return socket;
         } catch (IOException | RuntimeException e) {
             closeQuietly(socket);

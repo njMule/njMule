@@ -89,6 +89,31 @@ class ProxyRouteTest {
         thenTheProxyOnlyConnectedToTheTargetWith("connect");
     }
 
+    // As Dante does by default: a login is chosen whenever offered, so none is offered without a user name.
+    @Test
+    void shouldConnectThroughASocksProxyThatPrefersALoginWhenTheSettingsHaveNone() throws IOException {
+        givenATarget();
+        givenASocksProxyThatPrefersALogin();
+        givenTheProxyIsUsedWith(ProxySettings.Type.SOCKS, "", "");
+
+        whenAConnectionIsMadeToTheTarget();
+
+        thenTheTargetAcceptedTheConnection();
+        thenTheProxyOnlyConnectedToTheTargetWith("connect");
+    }
+
+    @Test
+    void shouldConnectThroughASocks4Proxy() throws IOException {
+        givenATarget();
+        givenASocks4Proxy();
+        givenTheProxyIsUsedWith(ProxySettings.Type.SOCKS, "", "");
+
+        whenAConnectionIsMadeToTheTarget();
+
+        thenTheTargetAcceptedTheConnection();
+        thenTheProxyOnlyConnectedToTheTargetWith("connect4");
+    }
+
     @Test
     void shouldConnectThroughAnHttpProxy() throws IOException {
         givenATarget();
@@ -134,7 +159,15 @@ class ProxyRouteTest {
     }
 
     private void givenASocksProxy(boolean wantsPassword) throws IOException {
-        this.proxy = socks5(wantsPassword);
+        this.proxy = socks5(wantsPassword ? Login.ALWAYS : Login.NEVER);
+    }
+
+    private void givenASocksProxyThatPrefersALogin() throws IOException {
+        this.proxy = socks5(Login.WHEN_OFFERED);
+    }
+
+    private void givenASocks4Proxy() throws IOException {
+        this.proxy = socks4();
     }
 
     private void givenAnHttpProxy() throws IOException {
@@ -215,15 +248,27 @@ class ProxyRouteTest {
         return socket;
     }
 
+    private enum Login {
+        NEVER,
+        ALWAYS,
+        WHEN_OFFERED
+    }
+
     // A SOCKS 5 proxy (RFC 1928, user name and password per RFC 1929) that relays one connection.
-    private ServerSocket socks5(boolean wantsPassword) throws IOException {
+    private ServerSocket socks5(Login login) throws IOException {
         ServerSocket server = listen();
         Thread.ofVirtual().start(() -> {
             try (Socket client = server.accept()) {
                 DataInputStream in = new DataInputStream(client.getInputStream());
                 OutputStream out = client.getOutputStream();
                 in.readUnsignedByte();
-                in.readFully(new byte[in.readUnsignedByte()]);
+                byte[] methods = new byte[in.readUnsignedByte()];
+                in.readFully(methods);
+                boolean offered = false;
+                for (byte method : methods) {
+                    offered |= method == 2;
+                }
+                boolean wantsPassword = login == Login.ALWAYS || (login == Login.WHEN_OFFERED && offered);
                 out.write(new byte[] {5, (byte) (wantsPassword ? 2 : 0)});
                 if (wantsPassword) {
                     in.readUnsignedByte();
@@ -248,6 +293,52 @@ class ProxyRouteTest {
             }
         });
         return server;
+    }
+
+    // A SOCKS 4 proxy, which answers a SOCKS 5 greeting in version 0: the client may then go on in version 4 on the
+    // same connection, as the JDK's does, or leave, as ours does before the JDK's tries.
+    private ServerSocket socks4() throws IOException {
+        ServerSocket server = listen();
+        Thread.ofVirtual().start(() -> {
+            while (!server.isClosed()) {
+                try {
+                    Socket client = server.accept();
+                    this.resources.add(client);
+                    Thread.ofVirtual().start(() -> socks4Session(client));
+                } catch (IOException e) {
+                    return;
+                }
+            }
+        });
+        return server;
+    }
+
+    private void socks4Session(Socket client) {
+        try (client) {
+            DataInputStream in = new DataInputStream(client.getInputStream());
+            OutputStream out = client.getOutputStream();
+            in.readUnsignedByte();
+            in.readFully(new byte[in.readUnsignedByte()]);
+            out.write(new byte[] {0, 91});
+            out.flush();
+            if (in.readUnsignedByte() != 4) {
+                return;
+            }
+            in.readUnsignedByte();
+            int port = in.readUnsignedShort();
+            byte[] address = in.readNBytes(4);
+            while (in.readUnsignedByte() != 0) {
+                // The user id, ended by a zero byte.
+            }
+            this.seen.add("connect4 " + InetAddress.getByAddress(address).getHostAddress() + ":" + port);
+            Socket upstream = new Socket(InetAddress.getByAddress(address), port);
+            this.resources.add(upstream);
+            out.write(new byte[] {0, 90, 0, 0, 0, 0, 0, 0});
+            out.flush();
+            relay(client.getInputStream(), upstream.getOutputStream());
+        } catch (IOException e) {
+            // Our own client leaves after the version 0 answer; the test closes the rest.
+        }
     }
 
     // An HTTP proxy that accepts one CONNECT.
