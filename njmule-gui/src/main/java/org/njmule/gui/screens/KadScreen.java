@@ -23,14 +23,15 @@ import java.util.Optional;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
 import javafx.scene.layout.ColumnConstraints;
-import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
@@ -68,7 +69,7 @@ public final class KadScreen implements Screen {
     private final TextField node = new TextField();
     private Input<ServerAddress> nodeInput;
     private UrlBox nodes;
-    private final Button recheck = new Button();
+    private DistanceChart chart;
     private int ticks;
 
     public KadScreen(Gui gui) {
@@ -105,20 +106,22 @@ public final class KadScreen implements Screen {
         this.nodeInput = new Inputs(this.gui)
                 .address(this.node, this.gui.t("IDS_BOOTSTRAP"))
                 .quietWhenEmpty();
-        this.recheck.setText(this.gui.t("IDS_KAD_RECHECKFW"));
-        this.recheck.setGraphic(new Icon(Icons.SHIELD));
-        this.recheck.setOnAction(e -> this.gui.model().recheckKadFirewall());
-        // Kad starts and stops from the network menu in the top bar.
-        var tools = Fx.toolRow(this.recheck);
-        FlowPane cards = new FlowPane(
-                12,
-                12,
-                card(this.gui.t("nj.kad.state"), this.state),
-                card(this.gui.t("nj.kad.udpState"), this.udp),
-                card(this.gui.t("IDS_BUDDY"), this.buddy),
-                card(this.gui.t("IDS_KADCONTACTLAB"), this.contacts),
-                card(this.gui.t("nj.kad.verified"), this.verified),
-                card(this.gui.t("IDS_KADID"), this.id));
+        // The contacts by distance, and our node's facts beside them.
+        this.chart = new DistanceChart(this.gui);
+        this.gui.subscriptions().onListChange(this.gui.model().kadContacts().rows(), c -> showDistances());
+        showDistances();
+        GridPane facts = new GridPane();
+        facts.getStyleClass().addAll("network-card", "details-facts");
+        int row = 0;
+        row = fact(facts, row, "nj.kad.state", this.state);
+        row = fact(facts, row, "nj.kad.udpState", this.udp);
+        row = fact(facts, row, "IDS_BUDDY", this.buddy);
+        row = fact(facts, row, "IDS_KADCONTACTLAB", this.contacts);
+        row = fact(facts, row, "nj.kad.verified", this.verified);
+        fact(facts, row, "IDS_KADID", this.id);
+        HBox.setHgrow(this.chart.view(), Priority.ALWAYS);
+        facts.setMinWidth(Region.USE_PREF_SIZE);
+        HBox cards = new HBox(12, this.chart.view(), facts);
         this.say.setGraphic(this.sayIcon);
         this.say.setWrapText(true);
         this.say.setMaxWidth(Double.MAX_VALUE);
@@ -132,8 +135,26 @@ public final class KadScreen implements Screen {
         TabPane lists = lists();
         VBox content = new VBox(16, this.say, cards, this.join, lists);
         VBox.setVgrow(lists, Priority.ALWAYS);
-        // Shown under the network, which gives the title.
-        return Fx.part(tools, Fx.scrollWhenShort(content));
+        // Shown under the network, which gives the title; Kad starts, stops and rechecks its firewall from its card.
+        ScrollPane scroll = Fx.scrollWhenShort(content);
+        VBox part = new VBox(scroll);
+        part.getStyleClass().add("screen-part");
+        VBox.setVgrow(scroll, Priority.ALWAYS);
+        return part;
+    }
+
+    private void showDistances() {
+        this.chart.show(this.gui.model().kadContacts().rows().stream()
+                .map(LiveList.Row::get)
+                .toList());
+    }
+
+    private int fact(GridPane facts, int row, String key, Label value) {
+        Label name = new Label(this.gui.t(key));
+        name.getStyleClass().add("text-muted");
+        name.setMinWidth(Region.USE_PREF_SIZE);
+        facts.addRow(row, name, value);
+        return row + 1;
     }
 
     // The contacts of the routing table and the lookups running, read again while the screen shows.
@@ -222,12 +243,7 @@ public final class KadScreen implements Screen {
         return this.nodes;
     }
 
-    Button recheckButton() {
-        return this.recheck;
-    }
-
     private void show(EngineStatus status) {
-        boolean running = status.kad().isPresent();
         say(status);
         // Open while Kad is not connected, closed once it is; in between, as the user leaves it.
         boolean connected = status.kad().map(KadInfo::connected).orElse(false);
@@ -239,7 +255,6 @@ public final class KadScreen implements Screen {
         if (this.view != null && this.view.getScene() != null && this.view.isVisible() && ++this.ticks % 3 == 0) {
             this.gui.model().refreshKadLists();
         }
-        this.recheck.setDisable(!running);
         Optional<KadInfo> kad = status.kad();
         if (kad.isEmpty()) {
             this.state.setText(this.gui.t("nj.kad.off"));
@@ -335,7 +350,7 @@ public final class KadScreen implements Screen {
 
     private static Label value() {
         Label label = new Label("-");
-        label.getStyleClass().add("stat-value");
+        label.getStyleClass().add("kad-fact");
         return label;
     }
 

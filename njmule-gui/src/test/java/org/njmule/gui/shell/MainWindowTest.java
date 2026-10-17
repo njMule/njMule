@@ -59,7 +59,7 @@ import org.njmule.gui.ui.Gui;
 class MainWindowTest {
 
     private static final List<String> SCREENS =
-            List.of("servers", "kad", "transfers", "search", "shared", "messages", "statistics", "settings");
+            List.of("servers", "kad", "log", "transfers", "search", "shared", "messages", "statistics", "settings");
 
     @TempDir
     Path dir;
@@ -202,7 +202,7 @@ class MainWindowTest {
                     // Laid out right to left, the window is mirrored about the middle of the scene.
                     Bounds area = root.localToScene(root.getLayoutBounds());
                     for (Node node : root.lookupAll(".button")) {
-                        if (!(node instanceof ButtonBase button) || !button.isVisible() || button.getScene() == null) {
+                        if (!(node instanceof ButtonBase button) || !treeVisible(button) || button.getScene() == null) {
                             continue;
                         }
                         Bounds bounds = button.localToScene(button.getBoundsInLocal());
@@ -219,6 +219,16 @@ class MainWindowTest {
                 this.cut.put(language + " " + screen, cutButtons);
             }
         }
+    }
+
+    // Visible along with every pane it is in: a button of a hidden pane is not shown.
+    private static boolean treeVisible(Node node) {
+        for (Node at = node; at != null; at = at.getParent()) {
+            if (!at.isVisible()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void whenAMessageIsShown(String text) throws Exception {

@@ -367,6 +367,14 @@ class CaptureTour {
                 shot("search-parameters", "Search with its filters open");
                 fx(CaptureTour::closePopups);
             }
+            if (id.equals("servers")) {
+                // The server in use chosen: its details and what it said beside the list.
+                select(screenRoot(), 0, 0);
+                shot("servers-panel", "Servers with the details of the one chosen");
+                fx(() -> ((Button) this.stage.getScene().getRoot().lookup("#add-servers")).fire());
+                shot("servers-add", "The ways to add servers under their button");
+                fx(CaptureTour::closePopups);
+            }
             tabs(id, screenRoot(), true);
             menus(id, screenRoot());
             tooltips(id, screenRoot());
@@ -1056,7 +1064,7 @@ class CaptureTour {
             return s;
         });
         this.stage = small;
-        for (String id : List.of("transfers", "search", "servers", "settings")) {
+        for (String id : List.of("transfers", "search", "servers", "kad", "settings")) {
             fx(() -> this.window.show(id));
             shot(id + "-small-900x600", "A 900×600 window");
         }

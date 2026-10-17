@@ -88,6 +88,7 @@ public enum Icons {
     LINK("M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"),
     LINK_OFF("M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-3.2-6.8M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 3.2 6.8M4 4l16 16"),
     LIST_ADD("M4 7h11M4 12h11M4 17h6M18 14v6M15 17h6", Kind.DIRECTIONAL),
+    LOG("M4.5 6.5h15M4.5 10.5h15M4.5 14.5h9M4.5 18.5h12", Kind.DIRECTIONAL),
     MESSAGE("M20.5 12a8 8 0 0 1-11.7 7.1L4 20l1-4.3A8 8 0 1 1 20.5 12zM8.5 11h7M8.5 14h4"),
     /** Three dots: more of the same kind, in a menu. */
     MORE(

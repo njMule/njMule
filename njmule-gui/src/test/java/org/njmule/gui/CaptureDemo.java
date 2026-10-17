@@ -486,15 +486,20 @@ final class CaptureDemo {
     static List<KadContactInfo> kadContacts() {
         Random random = new Random(7);
         List<KadContactInfo> list = new ArrayList<>();
-        for (int i = 0; i < 60; i++) {
+        // As many as the Kad state says: most far away, a few at every closer distance.
+        for (int i = 0; i < 1243; i++) {
             byte[] id = new byte[16];
             random.nextBytes(id);
             String hex = java.util.HexFormat.of().withUpperCase().formatHex(id);
+            java.math.BigInteger random128 = new java.math.BigInteger(1, id);
+            java.math.BigInteger distance = i < 1083
+                    ? random128
+                    : random128.shiftRight((i - 1083) / 10 + 6).setBit(127 - ((i - 1083) / 10 + 5));
             list.add(new KadContactInfo(
                     hex,
                     "198.51.100." + random.nextInt(250) + ":" + (4000 + random.nextInt(60000)),
                     random.nextInt(5),
-                    hex.substring(0, 8) + "…",
+                    String.format("%032X", distance),
                     8 + random.nextInt(2),
                     random.nextInt(4) != 0));
         }

@@ -89,7 +89,7 @@ class TopBarTest {
 
         whenTheLastLineOfTheLogIsClicked();
 
-        thenTheScreenIs("servers");
+        thenTheScreenIs("log");
         thenTheLogIsInFront();
     }
 

@@ -21,7 +21,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.ContentDisplay;
+import javafx.scene.control.Label;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.HBox;
@@ -32,19 +35,24 @@ import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Screen;
 
 /**
- * The network: one place for the servers and Kad, which are two ways into the same network, with a switch between them;
- * the top bar gives the title.
+ * The network: the state of both networks and our ports on cards, then one place for the servers, Kad and the log, with
+ * a switch between them; the top bar gives the title.
  */
 final class NetworkPane {
 
     private final Map<String, Screen> parts = new LinkedHashMap<>();
     private final Map<String, ToggleButton> switches = new LinkedHashMap<>();
+    private final Map<String, Label> counts = new LinkedHashMap<>();
+    private final Node cards;
     private final Consumer<String> show;
     private final StackPane shown = new StackPane();
     private VBox view;
 
-    /** {@code parts} in switch order; {@code show} opens one of them by its id, as the rail does. */
-    NetworkPane(List<Screen> parts, Consumer<String> show) {
+    /**
+     * {@code cards} above {@code parts} in switch order; {@code show} opens one of them by its id, as the rail does.
+     */
+    NetworkPane(Node cards, List<Screen> parts, Consumer<String> show) {
+        this.cards = cards;
         parts.forEach(p -> this.parts.put(p.id(), p));
         this.show = show;
     }
@@ -71,11 +79,21 @@ final class NetworkPane {
         List<Screen> all = List.copyOf(this.parts.values());
         for (int i = 0; i < all.size(); i++) {
             Screen part = all.get(i);
-            ToggleButton button = new ToggleButton(part.title(), Fx.icon(part.icon()));
+            // The name, then a muted figure once the part tells how many it holds.
+            Label count = new Label();
+            count.getStyleClass().add("segment-count");
+            count.managedProperty().bind(count.textProperty().isNotEmpty());
+            count.visibleProperty().bind(count.textProperty().isNotEmpty());
+            this.counts.put(part.id(), count);
+            HBox graphic = new HBox(6, Fx.icon(part.icon()), new Label(part.title()), count);
+            graphic.setAlignment(Pos.CENTER_LEFT);
+            ToggleButton button = new ToggleButton(null, graphic);
+            button.setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
+            button.setAccessibleText(part.title());
             button.setToggleGroup(group);
             button.getStyleClass()
                     .add(i == 0 ? Styles.LEFT_PILL : i == all.size() - 1 ? Styles.RIGHT_PILL : Styles.CENTER_PILL);
-            button.setId("network-" + part.id());
+            button.setId("part-" + part.id());
             // The chosen part stays chosen: a click on it shows it again.
             button.setOnAction(e -> {
                 button.setSelected(true);
@@ -85,9 +103,28 @@ final class NetworkPane {
             this.switches.put(part.id(), button);
             segments.getChildren().add(button);
         }
-        VBox box = new VBox(segments, this.shown);
+        VBox box = new VBox(this.cards, segments, this.shown);
         box.getStyleClass().add("screen");
         VBox.setVgrow(this.shown, Priority.ALWAYS);
         return box;
+    }
+
+    /** Tells how many the part {@code id} holds, after its name on the switch; a negative count says nothing. */
+    void count(String id, String title, long count) {
+        Label figure = this.counts.get(id);
+        if (figure != null) {
+            figure.setText(count < 0 ? "" : Long.toString(count));
+            this.switches.get(id).setAccessibleText(count < 0 ? title : title + ", " + count);
+        }
+    }
+
+    /** The names on the switch with their figures, for tests. */
+    List<String> names() {
+        return this.parts.keySet().stream()
+                .map(id -> this.parts.get(id).title()
+                        + (this.counts.get(id).getText().isEmpty()
+                                ? ""
+                                : " " + this.counts.get(id).getText()))
+                .toList();
     }
 }

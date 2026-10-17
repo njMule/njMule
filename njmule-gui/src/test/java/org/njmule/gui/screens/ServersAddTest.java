@@ -23,11 +23,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
+import javafx.scene.control.Button;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
@@ -55,83 +55,55 @@ class ServersAddTest {
     }
 
     @Test
-    void shouldOpenTheWaysToAddWithoutServers() throws Exception {
-        givenTheEngineLists(List.of());
+    void shouldOfferTheWaysToAddOnAnEmptyList() throws Exception {
+        givenTheServersScreenWith(List.of());
+        givenTheWaysToAddShow(false);
 
-        whenTheServersScreenIsShown();
+        whenTheButtonOfTheEmptyListIsPressed("Add servers");
 
-        thenTheWaysToAddAreOpen(true);
+        thenTheWaysToAddShow(true);
     }
 
     @Test
-    void shouldCloseTheWaysToAddForTheFirstServersAndOpenThemWhenTheLastIsGone() throws Exception {
-        givenTheServers(List.of());
-        givenTheServersBecome(TWO);
-        givenTheWaysToAddAreOpen(false);
-        givenTheUserOpenedTheWaysToAdd();
-        givenTheServersBecome(TWO.subList(0, 1));
-        givenTheWaysToAddAreOpen(true);
+    void shouldShowTheWaysToAddUnderTheirButton() throws Exception {
+        givenTheServersScreenWith(TWO);
+        givenTheWaysToAddShow(false);
 
-        whenTheServersBecome(List.of());
+        whenTheAddServersButtonIsPressed();
 
-        thenTheWaysToAddAreOpen(true);
+        thenTheWaysToAddShow(true);
     }
 
-    @Test
-    void shouldStartWithTheWaysToAddClosedAndMyInfoAsATabWhenThereAreServers() throws Exception {
-        givenTheEngineLists(TWO);
-
-        whenTheServersScreenIsShown();
-
-        thenTheWaysToAddAreOpen(false);
-        thenTheTabsBelowAre("Server Info", "Log", "My Info");
-    }
-
-    private void givenTheServers(List<ServerInfo> list) throws Exception {
-        givenTheEngineLists(list);
-        whenTheServersScreenIsShown();
-    }
-
-    private void givenTheEngineLists(List<ServerInfo> list) throws Exception {
+    private void givenTheServersScreenWith(List<ServerInfo> list) throws Exception {
         this.servers.set(list);
         this.test = TestGui.start(
                 this.dir.resolve("njmule"),
                 real -> Engines.overriding(
                         real, Map.of("servers", args -> CompletableFuture.completedFuture(this.servers.get()))));
         FxTesting.await("the servers", () -> this.test.model.servers().rows().size() == list.size());
-    }
-
-    private void givenTheServersBecome(List<ServerInfo> list) throws Exception {
-        whenTheServersBecome(list);
-    }
-
-    private void givenTheUserOpenedTheWaysToAdd() throws Exception {
-        FxTesting.onFx(() -> this.screen.addPane().setExpanded(true));
-    }
-
-    private void givenTheWaysToAddAreOpen(boolean open) throws Exception {
-        thenTheWaysToAddAreOpen(open);
-    }
-
-    private void whenTheServersScreenIsShown() throws Exception {
         this.screen = FxTesting.onFx(() -> new ServersScreen(this.test.gui));
         this.test.show(FxTesting.onFx(this.screen::view));
     }
 
-    private void whenTheServersBecome(List<ServerInfo> list) throws Exception {
-        this.servers.set(list);
-        FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServersChanged(list.size())));
-        FxTesting.await("the servers", () -> this.test.model.servers().rows().size() == list.size());
+    private void givenTheWaysToAddShow(boolean shown) throws Exception {
+        thenTheWaysToAddShow(shown);
     }
 
-    private void thenTheWaysToAddAreOpen(boolean open) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.screen.addPane().isExpanded())).isEqualTo(open);
+    private void whenTheButtonOfTheEmptyListIsPressed(String text) throws Exception {
+        FxTesting.onFx(() -> this.screen.table().getPlaceholder().lookupAll(".button").stream()
+                .map(Button.class::cast)
+                .filter(b -> text.equals(b.getText()))
+                .findFirst()
+                .orElseThrow()
+                .fire());
     }
 
-    private void thenTheTabsBelowAre(String... titles) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.screen.logTabs().getTabs().stream()
-                        .map(t -> t.getText())
-                        .toList()))
-                .containsExactly(titles);
+    private void whenTheAddServersButtonIsPressed() throws Exception {
+        FxTesting.onFx(() -> ((Button) this.screen.view().lookup("#add-servers")).fire());
+    }
+
+    private void thenTheWaysToAddShow(boolean shown) throws Exception {
+        FxTesting.assertEventually("the ways to add shown " + shown, () -> this.screen.waysShown() == shown);
+        assertThat(FxTesting.onFx(this.screen::waysShown)).isEqualTo(shown);
     }
 }

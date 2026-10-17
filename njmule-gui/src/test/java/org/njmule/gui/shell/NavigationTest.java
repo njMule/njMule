@@ -121,7 +121,7 @@ class NavigationTest {
     }
 
     private void givenTheNetworkSwitchedTo(String part) throws Exception {
-        FxTesting.onFx(() -> ((ToggleButton) this.window.root().lookup("#network-" + part)).fire());
+        FxTesting.onFx(() -> ((ToggleButton) this.window.root().lookup("#part-" + part)).fire());
     }
 
     private void givenTheRailShows(String title) throws Exception {

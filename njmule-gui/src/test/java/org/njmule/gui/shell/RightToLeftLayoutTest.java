@@ -25,7 +25,9 @@ import java.util.Locale;
 import javafx.geometry.NodeOrientation;
 import javafx.scene.Node;
 import javafx.scene.Parent;
+import javafx.scene.control.Button;
 import javafx.scene.control.TextField;
+import javafx.stage.PopupWindow;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.stage.Window;
@@ -87,6 +89,7 @@ class RightToLeftLayoutTest {
         whenTheMainWindowShows();
 
         thenTheAddressFieldOfTheServersRunsLeftToRight();
+        thenTheNodeFieldOfKadRunsLeftToRight();
     }
 
     private void givenTheInterfaceIn(Locale language) throws Exception {
@@ -155,10 +158,34 @@ class RightToLeftLayoutTest {
         assertThat(found).hasSize(4).containsOnly(orientation);
     }
 
-    // The prompt is embedded in its own direction, as the field runs the other way.
+    // The prompt is embedded in its own direction, as the field runs the other way; the field is among the ways to
+    // add servers, in a popup.
     private void thenTheAddressFieldOfTheServersRunsLeftToRight() throws Exception {
+        String prompt = this.test.gui.i18n().embed(this.test.gui.t("nj.servers.addressPrompt"));
+        List<NodeOrientation> found = FxTesting.onFx(() -> {
+            this.window.show("servers");
+            this.window.root().applyCss();
+            this.window.root().layout();
+            ((Button) this.window.root().lookup("#add-servers")).fire();
+            List<NodeOrientation> orientations = new ArrayList<>();
+            orientations.add(this.window.screen("servers").orElseThrow().view().getEffectiveNodeOrientation());
+            for (Window shown : List.copyOf(Window.getWindows())) {
+                if (shown instanceof PopupWindow && shown.getScene() != null) {
+                    for (Node node : shown.getScene().getRoot().lookupAll(".text-field")) {
+                        if (node instanceof TextField field && prompt.equals(field.getPromptText())) {
+                            orientations.add(field.getEffectiveNodeOrientation());
+                        }
+                    }
+                }
+            }
+            return orientations;
+        });
+        assertThat(found).containsExactly(NodeOrientation.RIGHT_TO_LEFT, NodeOrientation.LEFT_TO_RIGHT);
+    }
+
+    private void thenTheNodeFieldOfKadRunsLeftToRight() throws Exception {
         thenTheFieldPromptingRunsLeftToRightOnTheScreen(
-                "servers", this.test.gui.i18n().embed(this.test.gui.t("nj.servers.addressPrompt")));
+                "kad", this.test.gui.i18n().embed(this.test.gui.t("nj.kad.nodePrompt")));
     }
 
     private void thenTheFieldPromptingRunsLeftToRightOnTheScreen(String screen, String prompt) throws Exception {

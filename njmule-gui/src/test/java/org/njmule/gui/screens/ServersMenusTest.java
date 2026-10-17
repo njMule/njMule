@@ -19,14 +19,12 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
-import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Menu;
@@ -42,7 +40,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.njmule.core.api.EngineEvent;
-import org.njmule.core.api.LogLine;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
@@ -231,40 +228,6 @@ class ServersMenusTest {
         thenNoListWasFetched();
     }
 
-    @Test
-    void shouldShowTheSessionsInTheServerInfo() throws Exception {
-        givenTheServersScreen();
-
-        whenTwoSessionsAMessageAndAWarningCome();
-
-        thenTheServerInfoShowsTheSessions();
-        thenTheServerInfoShowsSuccesses(2);
-    }
-
-    @Test
-    void shouldResetTheServerInfoAndKeepTheLog() throws Exception {
-        givenTheServersScreen();
-        givenTwoSessionsAMessageAndAWarning();
-        givenTheServerInfoShowsTheSessions();
-
-        whenResetIsPressed();
-
-        thenTheServerInfoIsEmpty();
-        thenTheLogIsKept();
-    }
-
-    @Test
-    void shouldResetTheLog() throws Exception {
-        givenTheServersScreen();
-        givenTwoSessionsAMessageAndAWarning();
-        givenTheLogTabChosen();
-        givenTheLogShowsTheWarning();
-
-        whenResetIsPressed();
-
-        thenTheLogIsEmpty();
-    }
-
     private void givenTheServersScreen() throws Exception {
         this.screen = screen();
     }
@@ -357,22 +320,6 @@ class ServersMenusTest {
         FxTesting.onFx(() -> this.screen.listBox().node().getEditor().clear());
     }
 
-    private void givenTwoSessionsAMessageAndAWarning() throws Exception {
-        whenTwoSessionsAMessageAndAWarningCome();
-    }
-
-    private void givenTheServerInfoShowsTheSessions() throws Exception {
-        thenTheServerInfoShowsTheSessions();
-    }
-
-    private void givenTheLogTabChosen() throws Exception {
-        FxTesting.onFx(() -> this.screen.logTabs().getSelectionModel().select(1));
-    }
-
-    private void givenTheLogShowsTheWarning() throws Exception {
-        FxTesting.await("the warning", () -> this.screen.logView().count("warning") == 1);
-    }
-
     private void whenConnectOrDisconnectIsPressed() throws Exception {
         FxTesting.onFx(this.screen::connectOrDisconnect);
     }
@@ -408,19 +355,6 @@ class ServersMenusTest {
 
     private void whenTheListIsUpdatedFromTheAddress() throws Exception {
         FxTesting.onFx(this.screen::updateFromUrl);
-    }
-
-    private void whenTwoSessionsAMessageAndAWarningCome() throws Exception {
-        FxTesting.onFx(() -> {
-            this.test.model.handle(new EngineEvent.ServerConnected(BIG, 99, false, true));
-            this.test.model.handle(new EngineEvent.ServerConnected(SMALL, 99, true, false));
-            this.test.model.handle(new EngineEvent.ServerMessage(BIG, "Welcome to Big"));
-            this.test.model.handle(new EngineEvent.Log(new LogLine(Instant.now(), LogLine.Level.WARNING, "careful")));
-        });
-    }
-
-    private void whenResetIsPressed() throws Exception {
-        FxTesting.onFx(() -> reset(this.screen).fire());
     }
 
     private void thenTheEngineWasAskedFor(String... expected) {
@@ -468,33 +402,6 @@ class ServersMenusTest {
     // An empty list address is not fetched.
     private void thenNoListWasFetched() {
         assertThat(this.calls).noneMatch(c -> c.startsWith("list"));
-    }
-
-    private void thenTheServerInfoShowsTheSessions() throws Exception {
-        FxTesting.assertEventually("the sessions", () -> {
-            List<String> lines = List.of(this.screen.serverInfoView().text().split("\n"));
-            return lines.stream().anyMatch(t -> t.contains("Obfuscated connection established"))
-                    && lines.stream().anyMatch(t -> t.contains("Connection established"))
-                    && lines.contains("Welcome to Big");
-        });
-    }
-
-    private void thenTheServerInfoShowsSuccesses(int count) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.screen.serverInfoView().count("success")))
-                .isEqualTo(count);
-    }
-
-    private void thenTheServerInfoIsEmpty() throws Exception {
-        FxTesting.assertEventually(
-                "no server info", () -> this.test.model.serverInfo().isEmpty());
-    }
-
-    private void thenTheLogIsKept() {
-        assertThat(this.test.model.log()).isNotEmpty();
-    }
-
-    private void thenTheLogIsEmpty() throws Exception {
-        assertThat(FxTesting.onFx(() -> this.test.model.log().isEmpty())).isTrue();
     }
 
     private void answerRemoveAll(ButtonBar.ButtonData answer) throws Exception {
@@ -545,14 +452,6 @@ class ServersMenusTest {
         this.test.show(FxTesting.onFx(screen::view));
         FxTesting.await("the servers", () -> screen.table().getItems().size() == 2);
         return screen;
-    }
-
-    private Button reset(ServersScreen screen) {
-        return screen.logTabs().getParent().lookupAll(".button").stream()
-                .map(Button.class::cast)
-                .filter(b -> "Reset".equals(b.getText()))
-                .findFirst()
-                .orElseThrow();
     }
 
     private void select(ServersScreen screen, ServerInfo server) {

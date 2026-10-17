@@ -76,6 +76,7 @@ import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.screens.KadScreen;
+import org.njmule.gui.screens.LogScreen;
 import org.njmule.gui.screens.MessagesScreen;
 import org.njmule.gui.screens.SearchScreen;
 import org.njmule.gui.screens.ServersScreen;
@@ -121,7 +122,8 @@ public final class MainWindow {
     private final Gui gui;
     private final Map<String, Screen> screens = new LinkedHashMap<>();
     private final NetworkPane networkPane;
-    private final ServersScreen servers;
+    private final NetworkCards networkCards;
+    private final LogScreen log;
     private final Banner banner;
     private final CommandPalette palette;
     private final Sidebar sidebar;
@@ -150,8 +152,8 @@ public final class MainWindow {
     public MainWindow(Gui gui) {
         this.gui = gui;
         ServersScreen servers = new ServersScreen(gui);
-        this.servers = servers;
         KadScreen kadScreen = new KadScreen(gui);
+        this.log = new LogScreen(gui);
         for (Screen screen : List.of(
                 new TransfersScreen(gui),
                 new SearchScreen(gui),
@@ -159,11 +161,13 @@ public final class MainWindow {
                 new MessagesScreen(gui),
                 servers,
                 kadScreen,
+                this.log,
                 new StatisticsScreen(gui),
                 new SettingsScreen(gui))) {
             this.screens.put(screen.id(), screen);
         }
-        this.networkPane = new NetworkPane(List.of(servers, kadScreen), this::show);
+        this.networkCards = new NetworkCards(gui, this::show);
+        this.networkPane = new NetworkPane(this.networkCards.view(), List.of(servers, kadScreen, this.log), this::show);
         this.banner = new Banner(gui, this::connectIfOff, () -> show("settings"));
         this.network = new NetworkControl(
                 gui, this::toggleConnection, this::show, () -> open(NETWORK), shortcut(PLACES.indexOf(NETWORK)));
@@ -591,8 +595,8 @@ public final class MainWindow {
         Fx.leftToRight(this.lastLog);
         // The last line of the log opens the whole log; the version is in About and in the title.
         this.lastLog.setOnMouseClicked(e -> {
-            show("servers");
-            this.servers.showLog();
+            show("log");
+            this.log.showLog();
         });
         this.lastLog.setCursor(Cursor.HAND);
         this.lastLog.setTooltip(new Tooltip(this.gui.t("IDS_SV_LOG")));
@@ -761,6 +765,19 @@ public final class MainWindow {
         EngineModel model = this.gui.model();
         EngineModel.Connection connection = model.connectionProperty().get();
         this.network.update(connection, status, model.serverNameProperty().get());
+        this.networkCards.update(
+                connection,
+                status,
+                model.serverNameProperty().get(),
+                model.preferencesProperty().get());
+        this.networkPane.count(
+                "servers",
+                this.screens.get("servers").title(),
+                model.servers().rows().size());
+        this.networkPane.count(
+                "kad",
+                this.screens.get("kad").title(),
+                status.kad().map(k -> (long) k.contacts()).orElse(-1L));
         Optional<KadInfo> kadInfo = status.kad();
         boolean kadUp = kadInfo.isPresent() && kadInfo.get().connected();
         boolean up = connection == EngineModel.Connection.CONNECTED || kadUp;

@@ -581,6 +581,16 @@ All notable changes to this project are documented here. The format follows
   downloaded is bold with a blue chip, one shared or downloaded already has a chip of its own; a bar
   under the results names the chosen ones with their size and sources and offers to download them,
   copy their links or search related files, and More, Stop and the filter sit beside the tabs.
+- The network of the desktop app follows the new design: three cards say in plain words whether
+  others reach us on eD2K and on Kad (the technical term in a tooltip) and which ports we use, each
+  with what to do (connect, choose another server, recheck the firewall, test the ports); the switch
+  below counts the servers and the Kad contacts. The details of the chosen server stand beside the
+  list: its users, files, limits, version and ping, what it said in this session, Connect or
+  Disconnect and the static list; Add servers opens the ways to add them in a popup, also offered by
+  an empty list. Kad draws its contacts by distance, from the closest to the farthest, beside our
+  node's facts. The log, the server info and My Info have a place of their own in the network, and
+  chips with counts narrow the log to its errors, warnings or news; the last event in the status
+  strip opens it.
 
 ### Changed
 

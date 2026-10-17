@@ -16,7 +16,10 @@
  */
 package org.njmule.gui.screens;
 
+import atlantafx.base.controls.CustomTextField;
+import atlantafx.base.controls.Popover;
 import atlantafx.base.theme.Styles;
+import atlantafx.base.theme.Tweaks;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -29,9 +32,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
+import javafx.beans.value.ObservableBooleanValue;
 import javafx.collections.ListChangeListener;
 import javafx.css.PseudoClass;
-import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
@@ -40,17 +43,15 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
+import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.RadioMenuItem;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SeparatorMenuItem;
-import javafx.scene.control.SplitPane;
-import javafx.scene.control.Tab;
-import javafx.scene.control.TabPane;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
-import javafx.scene.control.TitledPane;
 import javafx.scene.control.Toggle;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
@@ -60,17 +61,17 @@ import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import org.njmule.core.api.Ed2kLink;
-import org.njmule.core.api.LogLine;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
-import org.njmule.gui.infra.Formats;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
@@ -79,41 +80,42 @@ import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
-import org.njmule.gui.ui.LogView;
+import org.njmule.gui.ui.InspectorPane;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.TableLayout;
 import org.njmule.gui.ui.UrlBox;
 
-/** The known servers, connecting to one, and the log below. */
+/** The known servers, with the details of the one chosen and what to do with it, and the ways to add more. */
 public final class ServersScreen implements Screen {
 
     private static final PseudoClass CURRENT = PseudoClass.getPseudoClass("current-server");
     private static final PseudoClass TRYING = PseudoClass.getPseudoClass("trying-server");
+
+    // The list keeps this much beside the panel, else the panel lies over its end while a server is chosen.
+    private static final double LIST_WIDTH = 520;
+    private static final double PANEL_WIDTH = 300;
+    private static final double PANEL_GAP = 12;
 
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
     private static final KeyCombination COPY = new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN);
     private static final KeyCombination PASTE = new KeyCodeCombination(KeyCode.V, KeyCombination.SHORTCUT_DOWN);
 
     private final Gui gui;
-    private final MyInfoPane myInfo;
-    private final TitledPane add = new TitledPane();
-    private Tab logTab;
-    private boolean wasEmpty;
+    private final Button add = new Button();
+    private Popover ways;
+    private ServerPanel panel;
+    private InspectorPane inspector;
     private Node view;
     private TableView<LiveList.Row<ServerInfo>> table;
     private final TextField address = new TextField();
     private Input<ServerAddress> addressInput;
     private UrlBox list;
-    private TabPane logTabs;
-    private LogView<EngineModel.ServerNote> serverInfoView;
-    private LogView<LogLine> logView;
-    private final TextField filter = new TextField();
+    private final CustomTextField filter = new CustomTextField();
     private final Label count = new Label();
     private final ObjectProperty<Predicate<ServerInfo>> shown = new SimpleObjectProperty<>(server -> true);
 
     public ServersScreen(Gui gui) {
         this.gui = gui;
-        this.myInfo = new MyInfoPane(gui);
     }
 
     @Override
@@ -132,15 +134,6 @@ public final class ServersScreen implements Screen {
     }
 
     @Override
-    public void shown() {
-        this.myInfo.readWebUi();
-    }
-
-    MyInfoPane myInfo() {
-        return this.myInfo;
-    }
-
-    @Override
     public Node view() {
         if (this.view == null) {
             this.view = build();
@@ -150,10 +143,6 @@ public final class ServersScreen implements Screen {
 
     private Node build() {
         this.table = Fx.table(this.gui.model().servers(), this.gui.t("nj.servers.none"), this.shown);
-        this.table.setPlaceholder(Fx.emptyState(
-                Icons.SERVER,
-                this.gui.t("nj.servers.none"),
-                Fx.button(this.gui.t("IDS_SV_UPDATE"), Icons.REFRESH, this::updateFromUrl)));
         // The usual server columns; the hard file limit and the version start hidden.
         this.table
                 .getColumns()
@@ -205,70 +194,70 @@ public final class ServersScreen implements Screen {
         connectTo.disableProperty().bind(this.addressInput.validProperty().not());
         this.gui.subscriptions().onChange(this.gui.model().connectionProperty(), (was, now) -> showCurrent());
         this.gui.subscriptions().onChange(this.gui.model().serverAddressProperty(), (was, now) -> showCurrent());
-        // Connecting is the network menu's in the top bar; the chosen server's is in its menu, Enter and a double
-        // click.
-        var tools = Fx.toolRow(Fx.button(this.gui.t("IDS_REMOVE"), Icons.DELETE, this::removeSelected));
+        // The ways to add servers in a popup under their button, also offered by an empty list.
+        Node wayList = ways(connectTo);
+        wayList.getStyleClass().add("server-ways");
+        this.ways = new Popover(wayList);
+        this.ways.setHeaderAlwaysVisible(true);
+        this.ways.setTitle(this.gui.t("nj.servers.add"));
+        this.ways.setDetachable(false);
+        this.ways.setArrowLocation(Popover.ArrowLocation.TOP_RIGHT);
         this.add.setText(this.gui.t("nj.servers.add"));
-        this.add.getStyleClass().add(Styles.DENSE);
-        this.add.setContent(ways(connectTo));
-        // Open while there is no server to connect to, closed once there are some; in between, as the user leaves it.
-        this.add.setExpanded(this.table.getItems().isEmpty());
-        this.gui.subscriptions().onListChange(this.gui.model().servers().rows(), c -> {
-            boolean none = this.gui.model().servers().rows().isEmpty();
-            if (none != this.add.isExpanded() && none != this.wasEmpty) {
-                this.add.setExpanded(none);
+        this.add.setGraphic(Fx.icon(Icons.ADD));
+        this.add.setId("add-servers");
+        this.add.setOnAction(e -> showWays());
+        this.table.setPlaceholder(Fx.emptyState(
+                Icons.SERVER,
+                this.gui.t("nj.servers.none"),
+                Fx.button(this.gui.t("IDS_SV_UPDATE"), Icons.REFRESH, this::updateFromUrl),
+                Fx.button(this.gui.t("nj.servers.add"), Icons.ADD, this::showWays)));
+        this.filter.setPromptText(this.gui.t("nj.servers.filter"));
+        this.filter.setPrefColumnCount(14);
+        this.filter.setLeft(Fx.icon(Icons.FILTER));
+        this.filter.textProperty().addListener((o, was, now) -> this.shown.set(matching(now)));
+        this.filter.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.ESCAPE) {
+                this.filter.clear();
             }
-            this.wasEmpty = none;
         });
-        this.wasEmpty = this.gui.model().servers().rows().isEmpty();
-
-        // The list, with the server's messages, the log and My Info below it.
-        SplitPane split = new SplitPane(listPane(), logs());
-        split.setOrientation(Orientation.VERTICAL);
-        split.setDividerPositions(0.62);
-        VBox content = new VBox(8, this.add, split);
-        VBox.setVgrow(split, Priority.ALWAYS);
+        this.count.getStyleClass().add(Styles.TEXT_BOLD);
+        this.table.getItems().addListener((ListChangeListener<LiveList.Row<ServerInfo>>) c -> showCount());
+        this.gui.subscriptions().onListChange(this.gui.model().servers().rows(), c -> showCount());
+        showCount();
+        // Connecting is the network menu's in the top bar; the chosen server's is in its details, its menu, Enter and a
+        // double click.
+        var tools = Fx.toolRow(this.count, Fx.spacer(), this.filter, this.add);
+        // The list, with the details of the server chosen beside it or over its end.
+        this.panel = new ServerPanel();
+        VBox list = new VBox(this.table);
+        VBox.setVgrow(this.table, Priority.ALWAYS);
+        this.inspector = new InspectorPane(list, this.panel.view(), LIST_WIDTH, PANEL_WIDTH, PANEL_GAP);
+        this.panel.closeShown(this.inspector.floatingProperty());
+        this.table.getSelectionModel().getSelectedItems().addListener((ListChangeListener<LiveList.Row<ServerInfo>>)
+                c -> this.panel.show());
+        this.gui.subscriptions().onListChange(this.gui.model().servers().rows(), c -> this.panel.show());
+        this.gui.subscriptions().onListChange(this.gui.model().serverInfo(), c -> this.panel.show());
+        this.inspector.widthProperty().addListener((o, was, now) -> this.panel.show());
         // Shown under the network, which gives the title.
-        return Fx.part(tools, Fx.scrollWhenShort(content));
+        return Fx.part(tools, this.inspector);
     }
 
-    // What the servers said and what happened, in two tabs; Reset empties the one shown.
-    private Node logs() {
-        // Both logs read left to right, the lines starting on the left, in every language; their text is chosen with
-        // the mouse.
-        String copy = this.gui.t("IDS_COPY");
-        String selectAll = this.gui.t("IDS_SELECTALL");
-        LogView<EngineModel.ServerNote> info = new LogView<>(n -> noteLine(this.gui, n), false, copy, selectAll);
-        info.setAll(this.gui.model().serverInfo());
-        this.gui.subscriptions().onListChange(this.gui.model().serverInfo(), c -> info.changed(c));
-        LogView<LogLine> log = new LogView<>(l -> logLine(this.gui.formats(), l), true, copy, selectAll);
-        log.setAll(this.gui.model().log());
-        this.gui.subscriptions().onListChange(this.gui.model().log(), c -> log.changed(c));
-        this.serverInfoView = info;
-        this.logView = log;
-        Tab infoTab = new Tab(this.gui.t("IDS_SV_SERVERINFO"), info.node());
-        Tab logTab = new Tab(this.gui.t("IDS_SV_LOG"), log.node());
-        this.logTab = logTab;
-        Tab mine = new Tab(this.gui.t("IDS_MYINFO"), this.myInfo.node());
-        TabPane tabs = new TabPane(infoTab, logTab, mine);
-        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        this.logTabs = tabs;
-        Button clear = Fx.button(this.gui.t("IDS_PW_RESET"), Icons.CLEAR_ALL, () -> {
-            if (infoTab.isSelected()) {
-                this.gui.model().clearServerInfo();
-            } else {
-                this.gui.model().clearLog();
-            }
-        });
-        clear.getStyleClass().add("small");
-        // My Info has nothing to reset.
-        clear.visibleProperty().bind(mine.selectedProperty().not());
-        StackPane pane = new StackPane(tabs, clear);
-        StackPane.setAlignment(clear, Pos.TOP_RIGHT);
-        return pane;
+    // The ways to add servers, under their button.
+    void showWays() {
+        if (this.add.getScene() != null && this.add.getScene().getWindow() != null) {
+            this.ways.show(this.add);
+        }
+    }
+
+    /** Whether the ways to add servers show, for tests. */
+    boolean waysShown() {
+        return this.ways != null && this.ways.isShowing();
     }
 
     private void showCurrent() {
+        if (this.panel != null) {
+            this.panel.show();
+        }
         for (Node node : this.table.lookupAll(".table-row-cell")) {
             if (node instanceof TableRow<?> row) {
                 markCurrent(row);
@@ -311,16 +300,6 @@ public final class ServersScreen implements Screen {
         }
     }
 
-    TabPane logTabs() {
-        return this.logTabs;
-    }
-
-    /** Brings the log to the front, below the server list. */
-    public void showLog() {
-        view();
-        this.logTabs.getSelectionModel().select(this.logTab);
-    }
-
     // The ways to add servers, together: a server list from the web (an address typed or used before), one server by
     // its address, or a server.met file.
     private Node ways(Button connectTo) {
@@ -341,10 +320,6 @@ public final class ServersScreen implements Screen {
         return ways;
     }
 
-    TitledPane addPane() {
-        return this.add;
-    }
-
     void updateFromUrl() {
         if (!this.list.input().isValid()) {
             return;
@@ -359,27 +334,6 @@ public final class ServersScreen implements Screen {
 
     UrlBox listBox() {
         return this.list;
-    }
-
-    // The count of servers, and the box that narrows the list as one types.
-    private Node listPane() {
-        this.filter.setPromptText(this.gui.t("nj.servers.filter"));
-        this.filter.setPrefColumnCount(18);
-        this.filter.textProperty().addListener((o, was, now) -> this.shown.set(matching(now)));
-        this.filter.setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.ESCAPE) {
-                this.filter.clear();
-            }
-        });
-        this.count.getStyleClass().add(Styles.TEXT_BOLD);
-        this.table.getItems().addListener((ListChangeListener<LiveList.Row<ServerInfo>>) c -> showCount());
-        this.gui.subscriptions().onListChange(this.gui.model().servers().rows(), c -> showCount());
-        showCount();
-        HBox head = new HBox(8, this.count, Fx.spacer(), Fx.icon(Icons.SEARCH), this.filter);
-        head.setAlignment(Pos.CENTER_LEFT);
-        VBox pane = new VBox(6, head, this.table);
-        VBox.setVgrow(this.table, Priority.ALWAYS);
-        return pane;
     }
 
     private void showCount() {
@@ -644,44 +598,195 @@ public final class ServersScreen implements Screen {
         return this.address;
     }
 
+    ServerPanel panel() {
+        return this.panel;
+    }
+
     /**
-     * An event after its date and time as the system shows them, with its level as style; problems and successes carry
-     * an icon besides their colour.
+     * The details of the server chosen: what it is, how many use it, its limits and what it said, and what to do with
+     * it; a word on choosing one when none is.
      */
-    static LogView.Line logLine(Formats formats, LogLine line) {
-        Optional<Icons> icon = switch (line.level()) {
-            case ERROR -> Optional.of(Icons.ERROR);
-            case WARNING -> Optional.of(Icons.WARNING);
-            case SUCCESS -> Optional.of(Icons.CHECK_CIRCLE);
-            case INFO, DEBUG -> Optional.empty();
-        };
-        return new LogView.Line(
-                formats.dateTime(line.time()) + ": " + line.message(),
-                List.of(line.level().name().toLowerCase(Locale.ROOT)),
-                icon);
-    }
+    final class ServerPanel {
+        private final Label name = new Label();
+        private final Label where = Fx.leftToRight(new Label());
+        private final Label description = new Label();
+        private final GridPane facts = new GridPane();
+        private final Label message = new Label();
+        private final VBox said;
+        private final Button action = new Button();
+        private final Button keep = new Button();
+        private final VBox one;
+        private final ScrollPane scroll;
+        private final Label none = new Label();
+        private final Button close;
+        private final StackPane box;
 
-    /** A session's start with its date and time, or a line the server sent as it is. */
-    static LogView.Line noteLine(Gui gui, EngineModel.ServerNote note) {
-        return switch (note.kind()) {
-            case CONNECTED, CONNECTED_OBFUSCATED -> {
-                String key = note.kind() == EngineModel.ServerNote.Kind.CONNECTED
-                        ? "IDS_CONNECTEDTO"
-                        : "IDS_CONNECTEDTOOBFUSCATED";
-                yield new LogView.Line(
-                        gui.formats().dateTime(note.time()) + ": " + gui.f(key, note.text()),
-                        List.of("success"),
-                        Optional.empty());
+        ServerPanel() {
+            StackPane kind = new StackPane(Fx.icon(Icons.SERVER));
+            kind.getStyleClass().add("details-kind");
+            this.name.getStyleClass().add("details-name");
+            this.name.setWrapText(true);
+            Fx.ownDirection(this.name);
+            this.where.getStyleClass().add("details-meta");
+            VBox title = new VBox(2, this.name, this.where);
+            title.setMinWidth(0);
+            this.close = Fx.iconButton(
+                    ServersScreen.this.gui.t("IDS_FD_CLOSE"),
+                    Icons.CLOSE,
+                    () -> ServersScreen.this.table.getSelectionModel().clearSelection());
+            this.close.getStyleClass().add(Styles.FLAT);
+            HBox.setHgrow(title, Priority.ALWAYS);
+            HBox top = new HBox(12, kind, title, this.close);
+            this.description.setWrapText(true);
+            this.description.getStyleClass().add("details-meta");
+            Fx.ownDirection(this.description);
+            this.facts.getStyleClass().add("details-facts");
+            Label saidTitle = new Label(ServersScreen.this.gui.t("IDS_SV_SERVERINFO"));
+            saidTitle.getStyleClass().add("field-label");
+            this.message.setWrapText(true);
+            this.message.getStyleClass().add("server-message");
+            Fx.leftToRight(this.message);
+            this.said = new VBox(4, saidTitle, this.message);
+            this.action.setId("server-action");
+            this.action.setOnAction(e -> connectOrDisconnect());
+            this.keep.setId("server-static");
+            this.keep.getStyleClass().add(Styles.FLAT);
+            this.keep.setOnAction(e -> {
+                LiveList.Row<ServerInfo> row =
+                        ServersScreen.this.table.getSelectionModel().getSelectedItem();
+                if (row != null) {
+                    setStatic(!row.get().isStatic());
+                }
+            });
+            Fx.whole(this.action);
+            Fx.whole(this.keep);
+            MenuItem copy =
+                    Fx.menuItem(ServersScreen.this.gui.t("IDS_DL_LINK1"), Icons.COPY, ServersScreen.this::copyLinks);
+            MenuItem remove = Fx.menuItem(
+                    ServersScreen.this.gui.t("IDS_REMOVETHIS"), Icons.DELETE, ServersScreen.this::removeSelected);
+            Menu priorities = new Menu(ServersScreen.this.gui.t("IDS_PRIORITY"), Fx.icon(Icons.PRIORITY));
+            for (ServerInfo.Priority p :
+                    List.of(ServerInfo.Priority.LOW, ServerInfo.Priority.NORMAL, ServerInfo.Priority.HIGH)) {
+                priorities.getItems().add(Fx.menuItem(priority(p), Icons.PRIORITY, () -> setPriority(p)));
             }
-            default -> new LogView.Line(note.text(), List.of(), Optional.empty());
-        };
-    }
+            MenuButton more =
+                    new MenuButton(null, Fx.icon(Icons.MORE), priorities, copy, new SeparatorMenuItem(), remove);
+            more.getStyleClass().addAll(Styles.BUTTON_ICON, Tweaks.NO_ARROW);
+            more.setTooltip(new Tooltip(ServersScreen.this.gui.t("IDS_MORE")));
+            more.setAccessibleText(ServersScreen.this.gui.t("IDS_MORE"));
+            Fx.whole(more);
+            FlowPane buttons = new FlowPane(8, 8, this.action, this.keep);
+            buttons.setMinWidth(0);
+            HBox.setHgrow(buttons, Priority.ALWAYS);
+            HBox actions = new HBox(8, buttons, more);
+            // What to do comes first, the figures below it: the panel may be short.
+            this.one = new VBox(14, top, this.description, actions, this.facts, this.said);
+            this.one.getStyleClass().add("server-panel-body");
+            this.none.setText(ServersScreen.this.gui.t("nj.servers.choose"));
+            this.none.setWrapText(true);
+            this.none.getStyleClass().add("details-none");
+            this.scroll = Fx.scrollWhenShort(this.one);
+            this.box = new StackPane(this.scroll, this.none);
+            StackPane.setAlignment(this.none, Pos.TOP_LEFT);
+            this.box.getStyleClass().addAll("download-details", "server-panel");
+            show();
+        }
 
-    LogView<EngineModel.ServerNote> serverInfoView() {
-        return this.serverInfoView;
-    }
+        Region view() {
+            return this.box;
+        }
 
-    LogView<LogLine> logView() {
-        return this.logView;
+        // Over the list, the panel has a close, which leaves no server chosen.
+        void closeShown(ObservableBooleanValue floating) {
+            this.close.visibleProperty().bind(floating);
+            this.close.managedProperty().bind(floating);
+        }
+
+        Button actionButton() {
+            return this.action;
+        }
+
+        Button staticButton() {
+            return this.keep;
+        }
+
+        /** Whether one server shows, rather than the word on choosing one. */
+        boolean showsOne() {
+            return this.scroll.isVisible();
+        }
+
+        Label message() {
+            return this.message;
+        }
+
+        // The server chosen as it is now: one shows in full, none or several leave a word.
+        void show() {
+            List<ServerInfo> chosen = Fx.selected(ServersScreen.this.table);
+            boolean shown = chosen.size() == 1;
+            this.scroll.setVisible(shown);
+            this.none.setVisible(!shown);
+            // Too narrow for both side by side, the panel covers the list only while a server is chosen.
+            InspectorPane pane = ServersScreen.this.inspector;
+            if (pane != null) {
+                pane.openProperty().set(shown || pane.getWidth() >= LIST_WIDTH + PANEL_GAP + PANEL_WIDTH);
+            }
+            if (!shown) {
+                return;
+            }
+            ServerInfo server = chosen.getFirst();
+            this.name.setText(server.name().isEmpty() ? server.address() : server.name());
+            this.where.setText(server.address());
+            this.description.setText(server.description());
+            this.description.setVisible(!server.description().isEmpty());
+            this.description.setManaged(!server.description().isEmpty());
+            this.facts.getChildren().clear();
+            int row = 0;
+            row = fact(row, "IDS_UUSERS", known(server.users()));
+            row = fact(row, "IDS_PW_FILES", known(server.files()));
+            row = fact(row, "IDS_SOFTFILES", known(server.softFiles()));
+            row = fact(row, "IDS_HARDFILES", known(server.hardFiles()));
+            row = fact(row, "IDS_IDLOW", known(server.lowIdUsers()));
+            row = fact(row, "IDS_PING", server.ping() == 0 ? "" : server.ping() + " ms");
+            row = fact(row, "IDS_VERSION", server.version());
+            row = fact(row, "IDS_UFAILED", server.failed() == 0 ? "" : String.valueOf(server.failed()));
+            fact(row, "IDS_PRIORITY", priority(server.priority()));
+            // What the server said in this session goes with the server we are on.
+            boolean ours = isCurrent(server);
+            List<String> lines = new ArrayList<>();
+            if (ours) {
+                for (EngineModel.ServerNote note :
+                        ServersScreen.this.gui.model().serverInfo()) {
+                    switch (note.kind()) {
+                        case CONNECTED, CONNECTED_OBFUSCATED -> lines.clear();
+                        case MESSAGE -> lines.add(note.text());
+                        default -> {
+                            // The title and the gaps say nothing of the server.
+                        }
+                    }
+                }
+            }
+            String last = String.join("\n", lines.subList(Math.max(0, lines.size() - 4), lines.size()));
+            this.message.setText(last);
+            this.said.setVisible(!last.isEmpty());
+            this.said.setManaged(!last.isEmpty());
+            this.action.setText(ServersScreen.this.gui.t(ours ? "IDS_MAIN_BTN_DISCONNECT" : "IDS_MAIN_BTN_CONNECT"));
+            this.action.setGraphic(Fx.icon(ours ? Icons.LINK_OFF : Icons.LINK));
+            this.keep.setText(ServersScreen.this.gui.t(server.isStatic() ? "IDS_REMOVEFROMSTATIC" : "IDS_ADDTOSTATIC"));
+            this.keep.setGraphic(Fx.icon(server.isStatic() ? Icons.REMOVE_CIRCLE : Icons.LIST_ADD));
+        }
+
+        private int fact(int row, String key, String value) {
+            if (value.isEmpty()) {
+                return row;
+            }
+            String text = ServersScreen.this.gui.t(key).strip();
+            Label name = new Label(text.endsWith(":") ? text.substring(0, text.length() - 1) : text);
+            name.getStyleClass().add("text-muted");
+            name.setMinWidth(Region.USE_PREF_SIZE);
+            Label shown = new Label(value);
+            shown.setWrapText(true);
+            this.facts.addRow(row, name, shown);
+            return row + 1;
+        }
     }
 }

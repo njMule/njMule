@@ -239,15 +239,7 @@ class ScreensTest {
 
         thenTheServerRowsBecome(2);
         thenTheServerCountReads("Servers (2)");
-        thenMyInfoReads(
-                "eD2K Network",
-                "Status: Disconnected",
-                "Kad Network",
-                "Status: Disconnected",
-                "Web Interface",
-                "Status: Disabled");
         thenTheHiddenServerColumnsAre("Hard File Limit", "Version");
-        thenTheTabsBelowTheServersAre("Server Info", "Log", "My Info");
     }
 
     @Test
@@ -429,15 +421,6 @@ class ScreensTest {
     }
 
     @Test
-    void shouldOfferNoFirewallCheckWithoutKad() throws Exception {
-        givenTheGui();
-
-        whenTheKadScreenShows();
-
-        thenTheFirewallCannotBeRechecked();
-    }
-
-    @Test
     void shouldConnectKadByHand() throws Exception {
         givenTheKadScreen();
 
@@ -450,7 +433,7 @@ class ScreensTest {
     void shouldDisconnectKadByHand() throws Exception {
         givenTheKadScreen();
         givenKadConnectedByHand();
-        givenTheFirewallRecheckPressed();
+        givenTheFirewallRechecked();
 
         whenKadIsDisconnectedByHand();
 
@@ -1044,8 +1027,8 @@ class ScreensTest {
         whenKadIsConnectedByHand();
     }
 
-    private void givenTheFirewallRecheckPressed() throws Exception {
-        FxTesting.onFx(() -> this.kadScreen.recheckButton().fire());
+    private void givenTheFirewallRechecked() throws Exception {
+        FxTesting.onFx(() -> this.test.model.recheckKadFirewall());
     }
 
     private void givenABootstrapFrom(String node) throws Exception {
@@ -1441,23 +1424,11 @@ class ScreensTest {
         assertThat(FxTesting.onFx(() -> this.servers.countLabel().getText())).isEqualTo(text);
     }
 
-    private void thenMyInfoReads(String... lines) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.servers.myInfo().lines()))
-                .extracting(l -> (l.label() + " " + l.value()).strip())
-                .containsExactly(lines);
-    }
-
     private void thenTheHiddenServerColumnsAre(String... titles) throws Exception {
         assertThat(FxTesting.onFx(() -> this.servers.table().getColumns().stream()
                         .filter(c -> !c.isVisible())
                         .map(c -> c.getText())
                         .toList()))
-                .containsExactly(titles);
-    }
-
-    private void thenTheTabsBelowTheServersAre(String... titles) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.servers.logTabs().getTabs()))
-                .extracting(t -> t.getText())
                 .containsExactly(titles);
     }
 
@@ -1513,12 +1484,6 @@ class ScreensTest {
         FxTesting.assertEventually(
                 "the " + priority + " priority",
                 () -> this.shared.table().getItems().getFirst().get().priority() == priority);
-    }
-
-    private void thenTheFirewallCannotBeRechecked() throws Exception {
-        assertThat(FxTesting.onFx(() -> this.kadScreen.recheckButton().isDisabled()))
-                .as("no firewall to check without Kad")
-                .isTrue();
     }
 
     private void thenTheEngineCanRecheckTheFirewall() throws Exception {

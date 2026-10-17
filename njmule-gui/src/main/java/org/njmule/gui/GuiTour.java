@@ -138,6 +138,10 @@ final class GuiTour {
         }
         this.steps.add(() -> this.window.show("search"));
         this.steps.add(() -> click("#search-parameters"));
+        this.steps.add(this::closePopups);
+        this.steps.add(() -> this.window.show("servers"));
+        this.steps.add(() -> click("#add-servers"));
+        this.steps.add(this::closePopups);
         this.steps.add(() -> click("#rates"));
         this.steps.add(this::closePopups);
         this.steps.add(() -> click("#network"));
