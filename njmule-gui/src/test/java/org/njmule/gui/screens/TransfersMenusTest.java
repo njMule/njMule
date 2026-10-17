@@ -83,6 +83,7 @@ class TransfersMenusTest {
     private final AtomicBoolean sourceTaken = new AtomicBoolean(true);
     private final AtomicReference<List<DownloadInfo>> downloads = new AtomicReference<>();
     private TransfersScreen transfers;
+    private final List<String> asked = new CopyOnWriteArrayList<>();
     private Throwable exception;
 
     @AfterEach
@@ -121,6 +122,19 @@ class TransfersMenusTest {
     }
 
     @Test
+    void shouldAskBeforeCancellingAndKeepTheDownloadOnNo() throws Exception {
+        givenTheTransfersScreen();
+        givenADownloadFromTheLink();
+        givenTheMenuOfTheFirstDownloadShown();
+        givenTheCancelQuestionsAnswered(false);
+
+        whenTheCancelOfTheMenuIsChosen();
+
+        thenTheQuestionAskedWas("Are you sure that you want to cancel and delete this file?\n\ntest file.bin");
+        thenTheDownloadsShownAre(1);
+    }
+
+    @Test
     void shouldActOnTheChosenDownloadsFromTheDownloadMenu() throws Exception {
         givenTheTransfersScreen();
         givenTheCategories(new Category(1, "Films", Optional.empty(), "", 1, DownloadPriority.AUTO, "*.mkv", false));
@@ -145,7 +159,8 @@ class TransfersMenusTest {
         givenTheLinkCopied("nj.copyLink", "ed2k://|file|test%20file.bin|");
         givenTheItemOfTheMenuChosen("IDS_DL_CLEAR");
         givenTheDownloadsLeftAfterTheClear(1);
-        // Cancel asks nothing first: its message offers to undo it.
+        // Cancel asks first, then its message offers to undo it.
+        givenTheCancelQuestionsAnswered(true);
         givenTheCancelOfTheMenuChosen();
         givenNoDownloadLeft();
         givenTheCancelUndone();
@@ -466,6 +481,21 @@ class TransfersMenusTest {
                 .isEqualTo(count);
     }
 
+    private void givenTheCancelQuestionsAnswered(boolean yes) throws Exception {
+        FxTesting.onFx(() -> this.transfers.answerCancels(question -> {
+            this.asked.add(question);
+            return yes;
+        }));
+    }
+
+    private void whenTheCancelOfTheMenuIsChosen() throws Exception {
+        givenTheCancelOfTheMenuChosen();
+    }
+
+    private void thenTheQuestionAskedWas(String question) {
+        assertThat(this.asked).containsExactly(question);
+    }
+
     private void givenTheCancelOfTheMenuChosen() throws Exception {
         FxTesting.onFx(() -> item(downloadMenu(), "IDS_CANCEL").fire());
     }
@@ -591,6 +621,10 @@ class TransfersMenusTest {
     }
 
     private void givenTheDownloadsShownAre(int count) throws Exception {
+        thenTheDownloadsShownAre(count);
+    }
+
+    private void thenTheDownloadsShownAre(int count) throws Exception {
         assertThat(FxTesting.onFx(() -> this.transfers.downloads().getItems().size()))
                 .isEqualTo(count);
     }

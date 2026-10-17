@@ -34,7 +34,9 @@ import javafx.collections.ListChangeListener;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
@@ -92,6 +94,8 @@ public final class TransfersScreen implements Screen {
 
     // Every download, whatever its category.
     private static final int SHOW_ALL = -1;
+    // The names a cancel question lists at most.
+    private static final int CANCEL_NAMES_SHOWN = 5;
 
     // Pasted links are separated by white space, which file names may contain too.
 
@@ -121,6 +125,8 @@ public final class TransfersScreen implements Screen {
     private Segments<Lower> lower;
     private final TextField link = new TextField();
     private final HBox categoryBar = new HBox();
+    // How a cancel is asked: a dialog, or the answer a test gives.
+    private Predicate<String> cancelAnswer = this::askCancel;
     private final ObjectProperty<Predicate<DownloadInfo>> shown = new SimpleObjectProperty<>(d -> true);
     private final ObjectProperty<Predicate<SourceInfo>> shownSources = new SimpleObjectProperty<>(s -> true);
     private final TextField filter = new TextField();
@@ -199,7 +205,7 @@ public final class TransfersScreen implements Screen {
         MenuItem stop = new MenuItem(this.gui.t("IDS_DL_STOP"), Fx.icon(Material2MZ.STOP));
         stop.setOnAction(e -> stopSelected());
         MenuItem cancel = new MenuItem(this.gui.t("IDS_CANCEL"), Fx.icon(Material2AL.DELETE));
-        cancel.setOnAction(e -> cancelSelected());
+        cancel.setOnAction(e -> askCancelSelected());
         MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"), Fx.icon(Material2AL.CONTENT_COPY));
         copy.setOnAction(e -> copyLinks());
         MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"), Fx.icon(Material2AL.CODE));
@@ -266,7 +272,7 @@ public final class TransfersScreen implements Screen {
         Button pauseButton = Fx.button(this.gui.t("IDS_DL_PAUSE"), Material2MZ.PAUSE, this::pauseSelected);
         Button resumeButton = Fx.button(this.gui.t("IDS_DL_RESUME"), Material2MZ.PLAY_ARROW, this::resumeSelected);
         Button stopButton = Fx.button(this.gui.t("IDS_DL_STOP"), Material2MZ.STOP, this::stopSelected);
-        Button cancelButton = Fx.button(this.gui.t("IDS_CANCEL"), Material2AL.DELETE, this::cancelSelected);
+        Button cancelButton = Fx.button(this.gui.t("IDS_CANCEL"), Material2AL.DELETE, this::askCancelSelected);
         MenuButton priorityButton = priorityMenu(new MenuButton(null, Fx.icon(Material2AL.LOW_PRIORITY)));
         Button copyButton = Fx.iconButton(this.gui.t("nj.copyLink"), Material2AL.CONTENT_COPY, this::copyLinks);
         Fx.needSelection(
@@ -708,7 +714,43 @@ public final class TransfersScreen implements Screen {
         Fx.selected(this.downloads).forEach(d -> this.gui.model().resume(d.hash()));
     }
 
-    // No question first: the engine keeps what was downloaded for a while, and the message offers to take it back.
+    // A cancel deletes what was downloaded: asked first.
+    void askCancelSelected() {
+        List<DownloadInfo> selected = Fx.selected(this.downloads);
+        if (!selected.isEmpty() && this.cancelAnswer.test(cancelQuestion(selected))) {
+            cancelSelected();
+        }
+    }
+
+    // A modal dialog, with No the default answer.
+    private boolean askCancel(String question) {
+        Alert confirm = this.gui.dialog(new Alert(Alert.AlertType.CONFIRMATION, question));
+        ButtonType go = Fx.answers(confirm, this.gui.t("IDS_YES"), this.gui.t("IDS_NO"), true);
+        confirm.initOwner(this.downloads.getScene().getWindow());
+        return confirm.showAndWait().filter(go::equals).isPresent();
+    }
+
+    /** Answers the cancel questions with {@code answer} instead of a dialog. */
+    void answerCancels(Predicate<String> answer) {
+        this.cancelAnswer = answer;
+    }
+
+    /** The question before a cancel: whether to delete the file, or the files, named below it. */
+    String cancelQuestion(List<DownloadInfo> selected) {
+        String question = this.gui
+                .t(selected.size() == 1 ? "IDS_Q_CANCELDL2" : "IDS_Q_CANCELDL")
+                .strip();
+        StringBuilder text = new StringBuilder(question).append('\n');
+        selected.stream()
+                .limit(CANCEL_NAMES_SHOWN)
+                .forEach(d -> text.append('\n').append(this.gui.i18n().embed(d.name())));
+        if (selected.size() > CANCEL_NAMES_SHOWN) {
+            text.append("\n…");
+        }
+        return text.toString();
+    }
+
+    // The engine keeps what was downloaded for a while, and the message offers to take it back.
     void cancelSelected() {
         List<DownloadInfo> selected = Fx.selected(this.downloads);
         if (selected.isEmpty()) {
