@@ -714,6 +714,9 @@ public final class UploadManager implements AutoCloseable {
         for (int i = 0; i < packets.size(); i++) {
             slot.out.add(new Item(packets.get(i), i == packets.size() - 1 ? length : 0));
         }
+        // At once, within what the budget of this tick has left: waiting for the next tick would cap each slot at a
+        // block every tick, about 1.8 MB/s, whatever the line.
+        send();
     }
 
     // About one part sent while others wait: the client waits again, from now.
