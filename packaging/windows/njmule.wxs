@@ -22,7 +22,7 @@
             Language="1033">
         <SummaryInformation Description="njMule $(var.Version): eD2K and Kad file sharing"/>
         <MajorUpgrade DowngradeErrorMessage="A newer version of njMule is already installed."/>
-        <MediaTemplate EmbedCab="yes"/>
+        <MediaTemplate EmbedCab="yes" CompressionLevel="high"/>
         <!-- perUserOrMachine installs for the current user by default (no UAC prompt);
              MSIINSTALLPERUSER="" installs for every user. -->
 

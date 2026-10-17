@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Native executables and installers for Windows x64 (MSI, zip; checked on arm64 too), Linux x64
-# and arm64 (deb, rpm, tar.gz; a static headless tar.gz for x64), macOS arm64 (dmg), Synology
+# and arm64 (deb, rpm, tar.xz; a static headless tar.xz for x64), macOS arm64 (dmg), Synology
 # DSM x86_64 (spk) and a Docker image (linux/amd64, linux/arm64). On Linux and macOS njmule, the
 # command line, is a script that runs the desktop executable headless (packaging/njmule.sh); Windows
 # keeps a console executable of its own, as the desktop one is a GUI program.
@@ -180,7 +180,7 @@ jobs:
                   cp packaging/linux/org.njmule.njMule.* branding/njmule-icon.svg "archive/${name}/share/"
                   # The command line runs the desktop executable headless.
                   "archive/${name}/njmule" --version
-                  tar -C archive -czf "dist/${name}.tar.gz" "${name}"
+                  tar -C archive -cJf "dist/${name}.tar.xz" "${name}"
                   # The headless executable alone goes into the Docker image only.
                   install -m 755 njmule-app/build/native/nativeCompile/njmule headless/njmule
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -247,7 +247,7 @@ jobs:
                   install -m 755 njmule-app/build/native/nativeCompile/njmule "archive/${name}/njmule"
                   cp LICENSE NOTICE README.md CHANGELOG.md packaging/synology/licenses/musl-COPYRIGHT \
                       packaging/synology/licenses/zlib-LICENSE "archive/${name}/"
-                  tar -C archive -czf "dist/${name}.tar.gz" "${name}"
+                  tar -C archive -cJf "dist/${name}.tar.xz" "${name}"
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: synology-x86_64
@@ -467,7 +467,8 @@ jobs:
                   # The command line runs the desktop executable headless.
                   "$app/MacOS/njmule" --version
                   ln -s /Applications stage/Applications
-                  hdiutil create -volname njMule -srcfolder stage -ov -format UDZO \
+                  # LZMA (ULMO): smaller than zlib (UDZO), opened by every supported macOS.
+                  hdiutil create -volname njMule -srcfolder stage -ov -format ULMO \
                       "dist/njmule-${VERSION}-macos-arm64.dmg"
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:

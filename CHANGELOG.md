@@ -156,7 +156,8 @@ All notable changes to this project are documented here. The format follows
   the programs; the release workflow builds them all and opens a draft release for a tag. The
   desktop app holds the date and number formats of the regions of its interface languages only, not
   every locale of the JDK. On Linux and macOS the command line is a script that runs the desktop
-  executable headless, so those packages carry one native executable.
+  executable headless, so those packages carry one native executable. The packages are compressed
+  with xz (LZX in the MSI, LZMA in the disk image).
 - ed2k links given on the command line are added as downloads; a second start hands its links to
   the njMule already running with the same configuration, as when a link is clicked in a browser,
   and a second start without links brings the running window to the front.
@@ -499,7 +500,7 @@ All notable changes to this project are documented here. The format follows
   password in the install wizard (keeping only its hash), downloads into the shared folder `njmule`
   it creates, opens the web interface from Package Center and the DSM menu, accepts the NAS's name,
   declares its ports to the DSM firewall and saves on stop. The same executable also ships alone,
-  `njmule-<version>-linux-x64-static.tar.gz`, for any x64 Linux whatever its C library.
+  `njmule-<version>-linux-x64-static.tar.xz`, for any x64 Linux whatever its C library.
 - `--webui-password-file <file>` takes the web interface password from the first line of a file,
   such as a Docker or systemd secret, never printing or logging it: with `--webui-password` it is
   set without asking; on its own it is set at every start, before njMule runs.

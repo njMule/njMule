@@ -79,7 +79,7 @@ Ukrainian, Arabic, Persian, Hebrew, Simplified and Traditional Chinese, Japanese
 | Operating system | Architecture | Formats |
 |---|---|---|
 | 🪟 Windows | x64 (arm64 through the system's x64 emulation) | `.msi` installer, `.zip` archive |
-| 🐧 Linux | x64, arm64 | `.deb`, `.rpm`, `.tar.gz` archive; static headless `.tar.gz` (x64) |
+| 🐧 Linux | x64, arm64 | `.deb`, `.rpm`, `.tar.xz` archive; static headless `.tar.xz` (x64) |
 | 🍎 macOS 13 or later | Apple silicon (arm64) | `.dmg` disk image |
 | 🐳 Docker | `linux/amd64`, `linux/arm64` | image `ghcr.io/njmule/njmule` (headless engine and web interface) |
 | 🗄️ Synology DSM 7 | x86_64 | `.spk` package (headless engine and web interface) |
@@ -127,11 +127,11 @@ The packages install `njmule` and `njmule-gui` in `/usr/bin` (the desktop applic
 shared libraries reside in `/usr/lib/njmule`; `njmule` runs it headless), together with a desktop
 entry, AppStream metadata and icons. The desktop entry starts the application as `njMule`, the name
 process lists show for it, however it was started. They depend on GTK 3, libXtst and OpenGL; the
-command line itself needs none of them. The `.tar.gz` archive contains the same programs and runs
+command line itself needs none of them. The `.tar.xz` archive contains the same programs and runs
 from any directory; its `share/` directory provides the desktop entry, metadata and icon for manual
 desktop integration. Where those executables do not start, on a distribution with an older C
 library or with musl such as Alpine, the headless engine of
-`njmule-<version>-linux-x64-static.tar.gz` runs alone: it is linked statically and needs no
+`njmule-<version>-linux-x64-static.tar.xz` runs alone: it is linked statically and needs no
 library of the system, and it uses less memory than the desktop executable running headless.
 
 The packages also install a systemd user unit that runs the engine headless as the logged-in
@@ -248,7 +248,7 @@ the web interface password (8 characters at least), of which only a hash is kept
   asks it to.
 - *Stop* in Package Center saves the state before njMule exits. A newer `.spk` installed the same
   way upgrades the package and keeps its settings and downloads.
-- The executable inside is the static one of `njmule-<version>-linux-x64-static.tar.gz`, since the
+- The executable inside is the static one of `njmule-<version>-linux-x64-static.tar.xz`, since the
   C library of DSM is too old for the other Linux executables.
 
 </details>
@@ -275,7 +275,7 @@ The directories for incomplete and completed downloads can be changed in the opt
 Uninstalling njMule does not remove any of these directories.
 
 **Portable mode.** An empty `portable.flag` file next to the executables extracted from the `.zip`
-or `.tar.gz` archive keeps all data in a `data` directory beside them, for example on a removable
+or `.tar.xz` archive keeps all data in a `data` directory beside them, for example on a removable
 drive. The option `--config-dir <dir>` places all data below `<dir>` instead, for example to run a
 separate profile. In both cases the root contains `config`, `data`, `temp`, `cache`, `logs`, `gui`
 and `incoming`.

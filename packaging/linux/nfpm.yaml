@@ -24,6 +24,12 @@ description: |-
   credits and secure identification, a desktop and a web interface, and the import
   of an existing eMule profile.
 
+# xz: about 30% smaller than the default gzip, for every dpkg and rpm in use.
+deb:
+  compression: xz
+rpm:
+  compression: xz
+
 overrides:
   deb:
     depends:

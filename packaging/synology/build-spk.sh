@@ -39,7 +39,8 @@ done
 # The executable holds musl and zlib, linked statically: their licenses go with it.
 install -m 644 "$root/LICENSE" "$root/NOTICE" "$here/licenses/musl-COPYRIGHT" \
     "$here/licenses/zlib-LICENSE" "$pkg/doc/"
-tar -C "$pkg" --owner=0 --group=0 --sort=name -czf "$spk/package.tgz" bin app doc
+# xz despite the name, as Synology's own package toolkit makes it: a third smaller than gzip.
+tar -C "$pkg" --owner=0 --group=0 --sort=name -cJf "$spk/package.tgz" bin app doc
 
 cp -r "$here/scripts" "$here/conf" "$here/WIZARD_UIFILES" "$spk/"
 chmod 755 "$spk"/scripts/*
