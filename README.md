@@ -79,7 +79,7 @@ Ukrainian, Arabic, Persian, Hebrew, Simplified and Traditional Chinese, Japanese
 | Operating system | Architecture | Formats |
 |---|---|---|
 | 🪟 Windows | x64 (arm64 through the system's x64 emulation) | `.msi` installer, `.zip` archive |
-| 🐧 Linux | x64, arm64 | `.deb`, `.rpm`, `.tar.gz` archive |
+| 🐧 Linux | x64, arm64 | `.deb`, `.rpm`, `.tar.gz` archive; static headless `.tar.gz` (x64) |
 | 🍎 macOS 13 or later | Apple silicon (arm64) | `.dmg` disk image |
 | 🐳 Docker | `linux/amd64`, `linux/arm64` | image `ghcr.io/njmule/njmule` (headless engine and web interface) |
 
@@ -125,7 +125,10 @@ shared libraries reside in `/usr/lib/njmule`), together with a desktop entry, Ap
 and icons. The desktop entry starts the application as `njMule`, the name process lists show for
 it, however it was started. They depend on GTK 3, libXtst and OpenGL. The `.tar.gz` archive contains the same
 executables and runs from any directory; its `share/` directory provides the desktop entry,
-metadata and icon for manual desktop integration.
+metadata and icon for manual desktop integration. Where those executables do not start, on a
+distribution with an older C library or with musl such as Alpine, the headless engine of
+`njmule-<version>-linux-x64-static.tar.gz` runs alone: it is linked statically and needs no
+library of the system.
 
 The packages also install a systemd user unit that runs the engine headless as the logged-in
 user (never as root), restarting it if it fails:

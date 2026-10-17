@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Native executables and installers for Windows x64 (MSI, zip; checked on arm64 too), Linux x64
-# and arm64 (deb, rpm, tar.gz), macOS arm64 (dmg), Synology DSM x86_64 (spk) and a Docker image
-# (linux/amd64, linux/arm64).
+# and arm64 (deb, rpm, tar.gz; a static headless tar.gz for x64), macOS arm64 (dmg), Synology
+# DSM x86_64 (spk) and a Docker image (linux/amd64, linux/arm64).
 # A pushed tag vX.Y.Z that matches the project version also opens a draft GitHub release with
 # them, an SBOM and SHA-256 sums, and pushes the image to ghcr.io/njmule/njmule; publishing the
 # release stays a manual step. A manual run only builds.
@@ -182,8 +182,9 @@ jobs:
                   name: linux-${{ matrix.arch }}
                   path: dist/
 
-    # The Synology DSM 7 package for x86_64 models: the headless engine built fully static with musl,
-    # as DSM's glibc is too old for the Linux executable, wrapped by packaging/synology/build-spk.sh.
+    # The Synology DSM 7 package for x86_64 models, and the same executable alone for any x64 Linux:
+    # the headless engine built fully static with musl, as DSM's glibc is too old for the Linux
+    # executable, wrapped by packaging/synology/build-spk.sh.
     synology:
         name: synology-x86_64
         needs: version
@@ -230,6 +231,13 @@ jobs:
                   SPK_BUILD="$(git rev-list --count HEAD)" packaging/synology/build-spk.sh \
                       njmule-app/build/native/nativeCompile/njmule x86_64 build/synology
                   mv build/synology/*.spk "dist/njmule-${VERSION}-synology-x86_64.spk"
+                  # The same executable alone, for any x64 Linux whatever its libc (old glibc, musl).
+                  name="njmule-${VERSION}-linux-x64-static"
+                  mkdir -p "archive/${name}"
+                  install -m 755 njmule-app/build/native/nativeCompile/njmule "archive/${name}/njmule"
+                  cp LICENSE NOTICE README.md CHANGELOG.md packaging/synology/licenses/musl-COPYRIGHT \
+                      packaging/synology/licenses/zlib-LICENSE "archive/${name}/"
+                  tar -C archive -czf "dist/${name}.tar.gz" "${name}"
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: synology-x86_64
