@@ -243,6 +243,32 @@ class SearchResultsTest {
     }
 
     @Test
+    void shouldKeepTheResultChosenWhenMoreSourcesOfItCome() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD, FILM_HD, SONG);
+        givenTheResultChosen(FILM_HD);
+
+        whenTheResultsCome(withSources(FILM_HD, 40), withSources(SONG, 2));
+
+        thenTheResultChosenIs(FILM_HD);
+    }
+
+    @Test
+    void shouldKeepTheResultChosenWhenItIsDownloaded() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD, FILM_HD, SONG);
+        givenTheResultChosen(FILM_HD);
+        givenTheMenuShown();
+
+        whenTheMenuItemIsFired("IDS_DOWNLOAD");
+
+        thenTheResultsDownloadingAre(1);
+        thenTheResultChosenIs(FILM_HD);
+    }
+
+    @Test
     void shouldAskForMoreResultsAndStopASearch() throws Exception {
         givenTheSearchScreen();
         givenASearchFor("film", SearchScreen.Method.SERVER);
@@ -804,6 +830,12 @@ class SearchResultsTest {
                 () -> table().lookupAll(".known-downloading").size() == count);
     }
 
+    private void thenTheResultChosenIs(SearchResult result) throws Exception {
+        assertThat(FxTesting.onFx(() -> List.copyOf(table().getSelectionModel().getSelectedItems())))
+                .extracting(r -> r.get().hash())
+                .containsExactly(result.hash());
+    }
+
     private void thenTheEngineDownloads(String... names) throws Exception {
         assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS))
                 .extracting(DownloadInfo::name)
@@ -987,6 +1019,10 @@ class SearchResultsTest {
                 .filter(i -> text.equals(i.getText()))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private static SearchResult withSources(SearchResult result, int sources) {
+        return new SearchResult(result.hash(), result.name(), result.size(), sources, 1, Optional.of("Video"));
     }
 
     private static SearchResult result(String hash, String name) {
