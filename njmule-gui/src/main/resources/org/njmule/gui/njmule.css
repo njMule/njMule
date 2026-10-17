@@ -1080,6 +1080,11 @@
     -fx-font-weight: bold;
 }
 
+/* A search result being downloaded: its whole row in bold, found again at a glance. */
+.table-row-cell:downloading .table-cell {
+    -fx-font-weight: bold;
+}
+
 /* A search result we download or share already: a pastel chip with its words. */
 .table-cell.known-downloading {
     -fx-background-color: -color-danger-subtle;

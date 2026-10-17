@@ -40,6 +40,7 @@ import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.Tab;
+import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.input.Clipboard;
@@ -240,6 +241,18 @@ class SearchResultsTest {
         whenTheRowIsDoubleClicked(SONG);
 
         thenTheResultsDownloadingAre(2);
+    }
+
+    @Test
+    void shouldShowTheRowOfAResultBeingDownloadedInBold() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+        givenTheResultsCome(FILM_DVD, FILM_HD, SONG);
+        givenTheRowsShown();
+
+        whenTheRowIsDoubleClicked(FILM_HD);
+
+        thenTheRowsInBoldAre(FILM_HD);
     }
 
     @Test
@@ -538,6 +551,13 @@ class SearchResultsTest {
         whenTheResultsCome(results);
     }
 
+    private void givenTheRowsShown() throws Exception {
+        FxTesting.await(
+                "the rows shown",
+                () -> table().lookupAll(".table-row-cell").stream()
+                        .anyMatch(node -> ((TableRow<?>) node).getItem() != null));
+    }
+
     private void givenTheFilterTyped(String text) throws Exception {
         FxTesting.onFx(() -> filter().setText(text));
     }
@@ -828,6 +848,19 @@ class SearchResultsTest {
         FxTesting.assertEventually(
                 count + " downloading",
                 () -> table().lookupAll(".known-downloading").size() == count);
+    }
+
+    private void thenTheRowsInBoldAre(SearchResult... results) throws Exception {
+        List<Hash16> expected = Arrays.stream(results).map(SearchResult::hash).toList();
+        FxTesting.assertEventually(
+                "rows in bold " + expected,
+                () -> table().lookupAll(".table-row-cell").stream()
+                        .map(node -> (TableRow<?>) node)
+                        .filter(row -> row.getPseudoClassStates().contains(SearchScreen.DOWNLOADING_ROW))
+                        .map(row -> ((LiveList.Row<?>) row.getItem()).get())
+                        .map(value -> ((SearchResult) value).hash())
+                        .toList()
+                        .equals(expected));
     }
 
     private void thenTheResultChosenIs(SearchResult result) throws Exception {

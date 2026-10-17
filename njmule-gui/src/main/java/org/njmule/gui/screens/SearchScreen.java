@@ -154,6 +154,7 @@ public final class SearchScreen implements Screen {
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
     // The row of one name a file was found under.
     private static final PseudoClass NAME_ROW = PseudoClass.getPseudoClass("name-row");
+    static final PseudoClass DOWNLOADING_ROW = PseudoClass.getPseudoClass("downloading");
 
     private final Gui gui;
     private Node view;
@@ -604,7 +605,15 @@ public final class SearchScreen implements Screen {
         mediaColumns.follow(search.results().rows());
         this.gui.subscriptions().onListChange(search.results().rows(), c -> mediaColumns.follow(c.getList()));
         table.setRowFactory(t -> {
-            TableRow<LiveList.Row<SearchResult>> row = new TableRow<>();
+            TableRow<LiveList.Row<SearchResult>> row = new TableRow<>() {
+                // A file being downloaded stands out in bold, its whole row, beside its state.
+                @Override
+                protected void updateItem(LiveList.Row<SearchResult> item, boolean empty) {
+                    super.updateItem(item, empty);
+                    pseudoClassStateChanged(
+                            DOWNLOADING_ROW, !empty && item != null && known(item.get()) == Known.DOWNLOADING);
+                }
+            };
             row.setOnMouseClicked(e -> {
                 if (e.getClickCount() == 2 && !row.isEmpty()) {
                     this.gui.model().addDownload(row.getItem().get().link());
