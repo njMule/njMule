@@ -28,7 +28,6 @@ import java.security.SecureRandom;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.njmule.core.api.Hash16;
@@ -40,12 +39,17 @@ import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Packing;
 import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.protocol.packet.UdpFraming;
+import org.njmule.core.protocol.tag.FileTag;
+import org.njmule.core.protocol.tag.Tag;
+import org.njmule.core.protocol.tag.TagName;
+import org.njmule.core.protocol.tag.Tags;
 
 /**
- * Talks Kad with an eMule on this computer, without changing anything in it: bootstrap, hello, lookup and ping. Its UDP
- * port comes from {@code -Pnjmule.interop.kadPort} (default 14897).
+ * Talks Kad with an eMule on this computer: bootstrap, hello, lookup and ping, which change nothing in it, and a
+ * keyword stored in its index and searched there. Its UDP port comes from {@code -Pnjmule.interop.kadPort} (default
+ * 14897).
  */
-@Tag("interop")
+@org.junit.jupiter.api.Tag("interop")
 @Timeout(60)
 class KadInteropTest {
 
@@ -55,6 +59,9 @@ class KadInteropTest {
     private DatagramSocket socket;
     private UInt128 emule;
     private int pongPort;
+    private String keyword;
+    private UInt128 file;
+    private KadMessages.SearchAnswer found;
 
     @AfterEach
     void closeTheSocket() {
@@ -73,6 +80,20 @@ class KadInteropTest {
         whenTheEmuleIsPinged();
 
         thenThePongGivesOurPort();
+    }
+
+    // Leaves the keyword in the eMule's index until it expires (a day at most).
+    @Test
+    void shouldFindInAnEmuleAKeywordPublishedToIt() throws Exception {
+        givenASocket();
+        givenAnEmuleThatAnswersTheBootstrap();
+        givenTheEmuleAnswersOurHello();
+        givenAKeywordWithinTheToleranceOfTheEmule();
+        givenTheEmuleStoresAFileUnderTheKeyword();
+
+        whenTheKeywordIsSearchedInTheEmule();
+
+        thenTheFileIsFound();
     }
 
     private void givenASocket() throws IOException {
@@ -114,8 +135,55 @@ class KadInteropTest {
                 ask(this.socket, KadMessages.ping(), Opcodes.Kad.PONG).orElseThrow());
     }
 
+    // A node stores only keywords close to its own id.
+    private void givenAKeywordWithinTheToleranceOfTheEmule() {
+        String prefix = "njmuleinterop" + Long.toHexString(new SecureRandom().nextLong());
+        for (int i = 0; ; i++) {
+            String word = prefix + i;
+            if (Keywords.id(word).xor(this.emule).top32() <= Lookup.TOLERANCE) {
+                this.keyword = word;
+                return;
+            }
+        }
+    }
+
+    private void givenTheEmuleStoresAFileUnderTheKeyword() throws IOException, DecodeException {
+        this.file = UInt128.random(new SecureRandom());
+        KadMessages.Entry entry = new KadMessages.Entry(
+                this.file,
+                List.of(
+                        new Tag.StringTag(TagName.id(FileTag.FILENAME), this.keyword + ".bin"),
+                        new Tag.IntTag(TagName.id(FileTag.FILESIZE), 23_456_789)));
+        Optional<Packet> stored = ask(
+                this.socket,
+                new KadMessages.KeywordPublish(Keywords.id(this.keyword), List.of(entry)).encode(),
+                Opcodes.Kad.PUBLISH_RES);
+        assertThat(stored)
+                .as("publish answer (none while the eMule's Kad UDP is firewalled)")
+                .isPresent();
+        assertThat(KadMessages.PublishAnswer.decode(stored.get()).target()).isEqualTo(Keywords.id(this.keyword));
+    }
+
+    private void whenTheKeywordIsSearchedInTheEmule() throws IOException, DecodeException {
+        KadMessages.KeywordSearch search = new KadMessages.KeywordSearch(Keywords.id(this.keyword), 0, new byte[0]);
+        this.found = KadMessages.SearchAnswer.decode(
+                ask(this.socket, search.encode(), Opcodes.Kad.SEARCH_RES).orElseThrow());
+    }
+
     private void thenThePongGivesOurPort() {
         assertThat(this.pongPort).isEqualTo(this.socket.getLocalPort());
+    }
+
+    private void thenTheFileIsFound() {
+        assertThat(this.found.sender()).isEqualTo(this.emule);
+        assertThat(this.found.target()).isEqualTo(Keywords.id(this.keyword));
+        assertThat(this.found.results())
+                .singleElement()
+                .satisfies(r -> assertThat(r.id()).isEqualTo(this.file))
+                .satisfies(r ->
+                        assertThat(Tags.stringValue(r.tags(), FileTag.FILENAME)).contains(this.keyword + ".bin"))
+                .satisfies(r ->
+                        assertThat(Tags.intValue(r.tags(), FileTag.FILESIZE)).hasValue(23_456_789));
     }
 
     // Sends a plain datagram and waits for the answer with the given opcode.
