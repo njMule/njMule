@@ -941,7 +941,8 @@ public final class WebUi implements AutoCloseable {
         List<MediaColumn> media = MediaColumn.ALL.stream()
                 .filter(c -> found.stream().anyMatch(c::has))
                 .toList();
-        body.append("<div class=\"scroll\"><table><tr><th>File</th><th>Size</th><th>Sources</th><th>Complete</th>")
+        body.append(
+                        "<div class=\"scroll\"><table class=\"results\"><tr><th>File</th><th>Size</th><th>Sources</th><th>Complete</th>")
                 .append("<th>Type</th>")
                 .append("<th>Known</th>");
         media.forEach(c -> body.append("<th>").append(c.title).append("</th>"));
@@ -959,11 +960,13 @@ public final class WebUi implements AutoCloseable {
                     .append("</td><td>")
                     .append(complete(r))
                     .append("</td><td>")
-                    .append(Html.text(type(r)))
+                    .append(Html.text(r.type().orElse("")))
                     .append("</td><td>")
                     .append(known)
                     .append("</td>");
-            media.forEach(c -> body.append("<td>").append(Html.text(c.text(r))).append("</td>"));
+            media.forEach(c -> body.append(c.words() ? "<td class=\"words\">" : "<td>")
+                    .append(Html.text(c.text(r)))
+                    .append("</td>"));
             body.append("<td>")
                     .append(Html.form(
                             SEARCH,
@@ -998,26 +1001,15 @@ public final class WebUi implements AutoCloseable {
         return r.sources() > 0 ? (100L * r.completeSources() / r.sources()) + "%" : "Yes";
     }
 
-    // The type the network gives, else the extension.
-    private static String type(SearchResult r) {
-        if (r.type().isPresent() && !r.type().get().isEmpty()) {
-            return r.type().get();
-        }
-        int dot = r.name().lastIndexOf('.');
-        return dot < 0 || dot == r.name().length() - 1
-                ? ""
-                : r.name().substring(dot + 1).toLowerCase(Locale.ROOT);
-    }
-
-    /** A column of the media details of the results. */
-    private record MediaColumn(String title, Function<SearchResult.Media, String> value) {
+    /** A column of the media details of the results; one of {@code words} may wrap. */
+    private record MediaColumn(String title, boolean words, Function<SearchResult.Media, String> value) {
         static final List<MediaColumn> ALL = List.of(
-                new MediaColumn("Artist", SearchResult.Media::artist),
-                new MediaColumn("Album", SearchResult.Media::album),
-                new MediaColumn("Title", SearchResult.Media::title),
-                new MediaColumn("Length", m -> m.length() == 0 ? "" : playingTime(m.length())),
-                new MediaColumn("Bitrate", m -> m.bitrate() == 0 ? "" : m.bitrate() + " kbit/s"),
-                new MediaColumn("Codec", SearchResult.Media::codec));
+                new MediaColumn("Artist", true, SearchResult.Media::artist),
+                new MediaColumn("Album", true, SearchResult.Media::album),
+                new MediaColumn("Title", true, SearchResult.Media::title),
+                new MediaColumn("Length", false, m -> m.length() == 0 ? "" : playingTime(m.length())),
+                new MediaColumn("Bitrate", false, m -> m.bitrate() == 0 ? "" : m.bitrate() + " kbit/s"),
+                new MediaColumn("Codec", false, SearchResult.Media::codec));
 
         boolean has(SearchResult r) {
             return !text(r).isEmpty();

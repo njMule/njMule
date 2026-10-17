@@ -43,7 +43,7 @@ final class Html {
             header strong { color: var(--accent); }
             nav a { margin-right: 14px; color: var(--fg); text-decoration: none; }
             nav a:hover { text-decoration: underline; }
-            main { padding: 18px; max-width: 1100px; }
+            main { padding: 18px; }
             table { border-collapse: collapse; width: 100%; background: var(--card); }
             th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
             th { color: var(--muted); font-weight: 600; }
@@ -65,6 +65,9 @@ final class Html {
             nav.tabs a.current { background: var(--accent); color: var(--bg); border-color: var(--accent); }
             tr.spam td { opacity: 0.6; }
             .scroll { overflow-x: auto; }
+            table.results th, table.results td { white-space: nowrap; }
+            table.results td:first-child { white-space: normal; min-width: 16em; }
+            table.results td.words { white-space: normal; }
             @media (max-width: 640px) {
               main { padding: 10px; }
               table { display: block; overflow-x: auto; white-space: nowrap; }

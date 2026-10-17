@@ -359,7 +359,7 @@ class WebUiAnswersTest {
 
         whenThePageIsAskedUntilItShows("/search?id=3", "debian.iso");
 
-        thenTheBodyContains("<th>Complete</th>", "<th>Type</th>", "<th>Known</th>", "<td>100%</td>", "<td>iso</td>");
+        thenTheBodyContains("<th>Complete</th>", "<th>Type</th>", "<th>Known</th>", "<td>100%</td>");
         thenTheBodyDoesNotContain("<th>Artist</th>");
     }
 
