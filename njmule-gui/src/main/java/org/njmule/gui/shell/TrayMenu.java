@@ -150,7 +150,7 @@ public final class TrayMenu {
     // The name runs up the left edge, as on the side of a box.
     private Node band() {
         Label name = new Label(NjMuleInfo.NAME + " " + NjMuleInfo.version());
-        name.getStyleClass().add("tray-band-text");
+        name.getStyleClass().addAll("tray-band-text", "display", "wordmark");
         name.setRotate(-90);
         StackPane band = new StackPane(new Group(name));
         band.getStyleClass().add("tray-band");

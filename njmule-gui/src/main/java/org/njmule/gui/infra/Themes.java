@@ -24,6 +24,8 @@ import atlantafx.base.theme.NordLight;
 import atlantafx.base.theme.PrimerDark;
 import atlantafx.base.theme.PrimerLight;
 import atlantafx.base.theme.Theme;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -38,6 +40,9 @@ import javafx.beans.property.ReadOnlyBooleanWrapper;
 import javafx.collections.MapChangeListener;
 import javafx.collections.ObservableMap;
 import javafx.scene.Scene;
+import javafx.scene.text.Font;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The AtlantaFX theme of the interface, light or dark (by default as the system is), with njMule's own colour tokens in
@@ -53,7 +58,13 @@ public final class Themes {
         DRACULA
     }
 
+    private static final Logger logger = LoggerFactory.getLogger(Themes.class);
     private static final String STYLESHEET = "/org/njmule/gui/njmule.css";
+    // Manrope sets titles and the wordmark (style class "display"); text keeps the system's face, which has every
+    // script of the translations.
+    private static final List<String> FACES =
+            List.of("/org/njmule/gui/fonts/Manrope-Bold.ttf", "/org/njmule/gui/fonts/Manrope-ExtraBold.ttf");
+    private static boolean facesLoaded;
     private static final String DARK_CLASS = "dark";
     private static final String CONTRAST_CLASS = "high-contrast";
 
@@ -96,6 +107,7 @@ public final class Themes {
     /** Styles {@code scene} from now on, also when the theme changes. */
     public void attach(Scene scene) {
         this.scenes.add(Objects.requireNonNull(scene, "scene"));
+        loadFaces();
         String css =
                 Objects.requireNonNull(Themes.class.getResource(STYLESHEET)).toExternalForm();
         if (!scene.getStylesheets().contains(css)) {
@@ -103,6 +115,22 @@ public final class Themes {
         }
         scene.rootProperty().addListener((o, was, now) -> apply());
         apply();
+    }
+
+    private static synchronized void loadFaces() {
+        if (facesLoaded) {
+            return;
+        }
+        facesLoaded = true;
+        for (String face : FACES) {
+            try (InputStream in = Themes.class.getResourceAsStream(face)) {
+                if (in == null || Font.loadFont(in, 0) == null) {
+                    logger.warn("Cannot load the font {}: titles fall back to the system's face", face);
+                }
+            } catch (IOException e) {
+                logger.warn("Cannot read the font {}", face, e);
+            }
+        }
     }
 
     public void set(Family family, GuiSettings.Mode mode) {

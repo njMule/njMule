@@ -51,7 +51,7 @@ public final class AboutDialog {
             logo.setFitHeight(72);
         }
         Label name = Fx.leftToRight(new Label(NjMuleInfo.NAME + " " + NjMuleInfo.version()));
-        name.getStyleClass().add(Styles.TITLE_2);
+        name.getStyleClass().addAll(Styles.TITLE_2, "display");
         Label tagline = Fx.leftToRight(new Label(NjMuleInfo.TAGLINE));
         tagline.getStyleClass().add(Styles.TEXT_MUTED);
         Label copyright = Fx.leftToRight(new Label(NjMuleInfo.COPYRIGHT));

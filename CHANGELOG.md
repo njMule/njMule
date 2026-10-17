@@ -547,6 +547,8 @@ All notable changes to this project are documented here. The format follows
 - The desktop app draws its own line icons, one stroke on one grid, in the colour of the text beside
   them in every theme; in right-to-left languages only the icons that point the way text runs are
   mirrored.
+- Titles and the wordmark of the desktop app are set in Manrope, bundled with it (SIL Open Font
+  License); text stays in the system's face, which covers every script of the translations.
 
 ### Changed
 

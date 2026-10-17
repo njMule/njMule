@@ -314,7 +314,7 @@ public final class FirstRunWizard {
 
     private VBox page(String title, String text, Node... content) {
         Label heading = new Label(title);
-        heading.getStyleClass().add(Styles.TITLE_3);
+        heading.getStyleClass().addAll(Styles.TITLE_3, "display");
         VBox box = new VBox(12, heading, wrapped(text));
         box.getChildren().addAll(content);
         return box;

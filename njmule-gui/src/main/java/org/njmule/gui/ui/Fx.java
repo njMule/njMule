@@ -225,7 +225,7 @@ public final class Fx {
 
     public static Label title(String text) {
         Label label = new Label(text);
-        label.getStyleClass().add("screen-title");
+        label.getStyleClass().addAll("screen-title", "display");
         return label;
     }
 

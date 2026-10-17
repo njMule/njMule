@@ -636,6 +636,17 @@
     -fx-padding: 0.1em 0.6em 0.1em 0.4em;
 }
 
+/* Titles and the wordmark in Manrope (loaded by Themes); text keeps the system's face. */
+.display {
+    -fx-font-family: "Manrope";
+}
+
+/* The ExtraBold face names its own family. */
+.wordmark {
+    -fx-font-family: "Manrope ExtraBold";
+    -fx-font-weight: normal;
+}
+
 .screen-title {
     -fx-font-size: 1.35em;
     -fx-font-weight: bold;
