@@ -937,6 +937,117 @@
       ]
     },
     {
+      "type": "com.sun.glass.ui.win.WinTextRangeProvider",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "AddToSelection",
+          "parameterTypes": []
+        },
+        {
+          "name": "Clone",
+          "parameterTypes": []
+        },
+        {
+          "name": "Compare",
+          "parameterTypes": [
+            "com.sun.glass.ui.win.WinTextRangeProvider"
+          ]
+        },
+        {
+          "name": "CompareEndpoints",
+          "parameterTypes": [
+            "int",
+            "com.sun.glass.ui.win.WinTextRangeProvider",
+            "int"
+          ]
+        },
+        {
+          "name": "ExpandToEnclosingUnit",
+          "parameterTypes": [
+            "int"
+          ]
+        },
+        {
+          "name": "FindAttribute",
+          "parameterTypes": [
+            "int",
+            "com.sun.glass.ui.win.WinVariant",
+            "boolean"
+          ]
+        },
+        {
+          "name": "FindText",
+          "parameterTypes": [
+            "java.lang.String",
+            "boolean",
+            "boolean"
+          ]
+        },
+        {
+          "name": "GetAttributeValue",
+          "parameterTypes": [
+            "int"
+          ]
+        },
+        {
+          "name": "GetBoundingRectangles",
+          "parameterTypes": []
+        },
+        {
+          "name": "GetChildren",
+          "parameterTypes": []
+        },
+        {
+          "name": "GetEnclosingElement",
+          "parameterTypes": []
+        },
+        {
+          "name": "GetText",
+          "parameterTypes": [
+            "int"
+          ]
+        },
+        {
+          "name": "Move",
+          "parameterTypes": [
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "MoveEndpointByRange",
+          "parameterTypes": [
+            "int",
+            "com.sun.glass.ui.win.WinTextRangeProvider",
+            "int"
+          ]
+        },
+        {
+          "name": "MoveEndpointByUnit",
+          "parameterTypes": [
+            "int",
+            "int",
+            "int"
+          ]
+        },
+        {
+          "name": "RemoveFromSelection",
+          "parameterTypes": []
+        },
+        {
+          "name": "ScrollIntoView",
+          "parameterTypes": [
+            "boolean"
+          ]
+        },
+        {
+          "name": "Select",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "com.sun.glass.ui.win.WinVariant",
       "jniAccessible": true,
       "fields": [
