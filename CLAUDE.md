@@ -156,7 +156,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   not compatible with distributing GPL binaries.
 - Installers: WiX **5** (`dotnet tool install --global wix --version 5.0.2`; v6+ need the OSMF EULA)
   builds the per-user MSI from `packaging/windows/njmule.wxs`; nfpm builds deb/rpm from
-  `packaging/linux/nfpm.yaml`; macOS gets an ad-hoc signed `.app` in a DMG. All in
+  `packaging/linux/nfpm.yaml`; macOS gets an ad-hoc signed `.app` in a DMG; Synology DSM 7 gets an
+  x86_64 `.spk` from `packaging/synology/build-spk.sh` around the static musl executable. All in
   `.github/workflows/release.yml` (manual run: packages only; tag `vX.Y.Z`: draft release).
 - Regenerate icons (JSVG renders the SVG): see `branding/README.md`.
 - Library versions are always the latest stable ones (`gradle/libs.versions.toml`); check Maven
