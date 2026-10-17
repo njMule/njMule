@@ -549,6 +549,9 @@ All notable changes to this project are documented here. The format follows
   mirrored.
 - Titles and the wordmark of the desktop app are set in Manrope, bundled with it (SIL Open Font
   License); text stays in the system's face, which covers every script of the translations.
+- A chosen toggle of the desktop app is a pastel fill in an accent outline instead of a solid accent
+  block, table rows are 32 px tall, and the lines of the rate graph keep 3:1 against the surface in
+  light and dark and stay apart for colour-blind eyes.
 
 ### Changed
 

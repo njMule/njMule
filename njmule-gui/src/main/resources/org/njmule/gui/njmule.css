@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * njMule's colour tokens and component styles. Generic colours come from the AtlantaFX theme
- * (-color-*); every -nj-* token has a light and a dark value.
+ * (-color-*); every -nj-* token has a light and a dark value. Sizes keep to a 4 px scale (4, 8, 12, 16, 24, 32),
+ * corners to 6 (controls), 8 (panels) and 10 (cards, menus), table rows to 32 px.
  */
 
 .root {
@@ -36,8 +37,9 @@
     -nj-cat-6: #A9BEE0;
     -nj-cat-7: #C7B0DB;
     -nj-cat-8: #E6B3CF;
-    -nj-graph-down: #5E81AC;
-    -nj-graph-up: #A3BE8C;
+    /* Graph lines: 3:1 or more on the surface and apart for colour-blind eyes (OKLab), fills are their pastel. */
+    -nj-graph-down: #4570AD;
+    -nj-graph-up: #5E8A4A;
     -nj-graph-grid: -color-border-muted;
     /* The veil behind a box over the window. */
     -nj-scrim: rgba(46, 52, 64, 0.18);
@@ -73,8 +75,8 @@
     -nj-cat-6: #81A1C1;
     -nj-cat-7: #B48EAD;
     -nj-cat-8: #C98BAA;
-    -nj-graph-down: #88C0D0;
-    -nj-graph-up: #A3BE8C;
+    -nj-graph-down: #5B8CC6;
+    -nj-graph-up: #7D9F57;
     -nj-scrim: rgba(0, 0, 0, 0.35);
 }
 
@@ -255,6 +257,24 @@
 
 .notification.danger > .container > .header > .graphic .nj-icon {
     -nj-icon-color: -color-danger-emphasis;
+}
+
+/* A chosen toggle (segments, chips, Details) is a pastel fill inside an accent outline, its text in the usual
+   colour, instead of the theme's solid accent block. */
+.toggle-button {
+    -color-button-bg-selected: -color-accent-muted;
+    -color-button-fg-selected: -color-fg-default;
+}
+
+.toggle-button:selected,
+.toggle-button:selected:focused {
+    -fx-background-color: -color-accent-emphasis, -color-button-bg-selected;
+    -fx-background-insets: 0, 1px;
+}
+
+/* Dense tables keep rows of 32 px, room for an icon and a chip. */
+.table-view.dense .table-row-cell {
+    -fx-cell-size: 32px;
 }
 
 /* Navigation rail on the left. */
