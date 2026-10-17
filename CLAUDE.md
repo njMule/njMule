@@ -148,9 +148,12 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   with `-Pnative.optimization=-Ob`, as the CI does; releases always pass `-O2`, never `-Ob`.
 - Native desktop app (GluonFX does not support Java 25/JavaFX 27): `native-image` on the module path
   through `./gradlew :njmule-gui:nativeGui` → `njmule-gui/build/native/` (exe plus the JDK
-  libraries it loads). Its reachability metadata comes from the GUI tour (`GuiTour`, system property
-  `njmule.gui.tour`): `./gradlew :njmule-gui:nativeTour` runs it under the tracing agent
-  (accelerated and software rendering) and merges into
+  libraries it loads). On Windows that exe is `njmule.exe`, a console program and the command line
+  too; `./gradlew :njmule-gui:nativeLauncher` builds `build/launcher/njmule-gui.exe`
+  (`native/windows/launcher.c`), the GUI program that starts it for the desktop with
+  `NJMULE_DESKTOP=1`, as `javaw.exe` stands for `java.exe`. Its reachability metadata comes from
+  the GUI tour (`GuiTour`, system property `njmule.gui.tour`): `./gradlew :njmule-gui:nativeTour`
+  runs it under the tracing agent (accelerated and software rendering) and merges into
   `src/main/resources/META-INF/native-image/org.njmule/njmule-gui/tour`; `manual/` holds the JNI
   entries the tour cannot reach (file choosers). Regenerate after GUI changes on Windows, and for
   Linux with `tools/native-gui-docker.sh` (Ubuntu container, GraalVM Linux archive mounted at

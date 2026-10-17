@@ -17,6 +17,7 @@
 package org.njmule.app;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -43,15 +44,17 @@ public interface Autostart {
      * @param configDir where the work files of the system tools go for a moment
      */
     static Optional<Autostart> forThisSystem(Path configDir, List<String> arguments) {
+        String os = System.getProperty("os.name", "");
         return ProcessHandle.current()
                 .info()
                 .command()
+                .map(command -> LinkAssociation.desktopProgram(command, os, Files::isRegularFile))
                 .flatMap(command -> SystemAutostart.forProgram(
                         configDir,
                         LinkAssociation::run,
                         command,
                         arguments,
-                        System.getProperty("os.name", ""),
+                        os,
                         System.getenv("XDG_CONFIG_HOME"),
                         System.getProperty("user.home")));
     }

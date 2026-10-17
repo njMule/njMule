@@ -85,9 +85,10 @@ Ukrainian, Arabic, Persian, Hebrew, Simplified and Traditional Chinese, Japanese
 | 🗄️ Synology DSM 7 | x86_64 | `.spk` package (headless engine and web interface) |
 
 Every desktop package contains **`njmule-gui`**, the desktop application, and **`njmule`**, the
-command-line interface, which also runs the engine headless. On Linux and macOS `njmule` is a
-script that runs the desktop application's executable without a window; on Windows, where a
-desktop program has no console, it is an executable of its own. Each release also
+command-line interface, which also runs the engine headless, around a single native executable. On
+Linux and macOS `njmule` is a script that runs the desktop application's executable without a
+window. On Windows `njmule.exe` is that executable, a console program, and `njmule-gui.exe` a small
+program that starts it for the desktop, as `javaw.exe` does for `java.exe`. Each release also
 provides a `SHA256SUMS` file and a CycloneDX software bill of materials
 (`njmule-<version>-sbom.cdx.json`). Verify the downloaded files with:
 
@@ -448,7 +449,11 @@ With a local GraalVM, for the host system:
 
 The command-line executable is `njmule-app/build/native/nativeCompile/njmule(.exe)`; the desktop
 application is in `njmule-gui/build/native/`, next to the JDK shared libraries it loads.
-`:njmule-app:nativeCompile` alone builds the command-line executable only.
+`:njmule-app:nativeCompile` alone builds the command-line executable only. On Windows the desktop
+application is `njmule.exe`, a console program that is the command line too, and
+`./gradlew :njmule-gui:nativeLauncher` builds `njmule-gui/build/launcher/njmule-gui.exe`, which
+starts it for the desktop from the same directory (with the Visual C++ tools that `native-image`
+needs).
 
 Without a local GraalVM, Docker builds the Linux x64 command-line executable in the same image as
 CI, into `njmule-app/build/native-linux/`. The script compiles a copy of the sources inside the
@@ -476,7 +481,7 @@ and is the reference for the exact steps. Locally, after the native build, the W
 
 ```powershell
 New-Item -ItemType Directory -Force stage\njmule | Out-Null
-Copy-Item njmule-app\build\native\nativeCompile\njmule.exe, njmule-gui\build\native\* stage\njmule
+Copy-Item njmule-gui\build\native\*, njmule-gui\build\launcher\njmule-gui.exe stage\njmule
 wix build packaging\windows\njmule.wxs -wx -arch x64 -d Version=1.2.3 -d Gui=yes -d "BinDir=$PWD\stage\njmule" -d "DocDir=$PWD" -o njmule.msi
 ```
 

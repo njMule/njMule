@@ -26,8 +26,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -62,6 +64,9 @@ class LinkAssociationTest {
     private Optional<String> defaultValue;
     private LinkAssociation.Result result;
     private Throwable exception;
+    // The files of the pretend system, for the desktop program next to the one running.
+    private final Set<String> files = new HashSet<>();
+    private String desktopProgram;
 
     @Test
     void shouldNotTakeTheLinksOfAnotherProgramForOursOnWindows() throws IOException {
@@ -353,6 +358,31 @@ class LinkAssociationTest {
     }
 
     @Test
+    void shouldStartTheLauncherBesideTheConsoleProgramOnWindows() {
+        givenAFile("C:\\Program Files\\njMule\\njmule-gui.exe");
+
+        whenTheDesktopProgramIsLookedFor("C:\\Program Files\\njMule\\njmule.exe", "Windows 11");
+
+        thenTheDesktopProgramIs("C:\\Program Files\\njMule\\njmule-gui.exe");
+    }
+
+    @Test
+    void shouldKeepAConsoleProgramWithoutLauncherBesideOnWindows() {
+        whenTheDesktopProgramIsLookedFor("C:\\njmule\\njmule.exe", "Windows 11");
+
+        thenTheDesktopProgramIs("C:\\njmule\\njmule.exe");
+    }
+
+    @Test
+    void shouldKeepTheDesktopProgramOnLinux() {
+        givenAFile("/usr/lib/njmule/njmule-gui");
+
+        whenTheDesktopProgramIsLookedFor("/usr/lib/njmule/njmule", "Linux");
+
+        thenTheDesktopProgramIs("/usr/lib/njmule/njmule");
+    }
+
+    @Test
     void shouldCleanTheUserListOfTheDesktopConfigurationOnLinux() throws IOException {
         givenOurEntryInTheListOfTheConfigurationDirectory();
         givenOurEntryInTheListOfTheHome();
@@ -421,6 +451,10 @@ class LinkAssociationTest {
                 arguments(Path.of("njMule", "njmule-gui.exe"), true),
                 arguments(Path.of("usr", "bin", "njmule-gui"), true),
                 arguments(Path.of("jdk", "bin", "java.exe"), false));
+    }
+
+    private void givenAFile(String path) {
+        this.files.add(path);
     }
 
     private void givenTheProgramOnWindows(Path program) {
@@ -514,6 +548,10 @@ class LinkAssociationTest {
 
     private void whenItIsAskedWhetherItIsTheDesktopProgram(Path program) {
         this.answer = LinkAssociation.isDesktopProgram(program);
+    }
+
+    private void whenTheDesktopProgramIsLookedFor(String command, String os) {
+        this.desktopProgram = LinkAssociation.desktopProgram(command, os, path -> this.files.contains(path.toString()));
     }
 
     private void whenTheAssociationOfThisSystemIsLookedFor() {
@@ -648,6 +686,10 @@ class LinkAssociationTest {
     private void thenTheListOfTheHomeIs(String expected) throws IOException {
         assertThat(Files.readString(this.dir.resolve("home/.config/mimeapps.list"), StandardCharsets.UTF_8))
                 .isEqualTo(expected);
+    }
+
+    private void thenTheDesktopProgramIs(String expected) {
+        assertThat(this.desktopProgram).isEqualTo(expected);
     }
 
     private void thenThereIsNoAssociation() {

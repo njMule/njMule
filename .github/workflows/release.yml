@@ -3,9 +3,10 @@
 #
 # Native executables and installers for Windows x64 (MSI, zip; checked on arm64 too), Linux x64
 # and arm64 (deb, rpm, tar.xz; a static headless tar.xz for x64), macOS arm64 (dmg), Synology
-# DSM x86_64 (spk) and a Docker image (linux/amd64, linux/arm64). On Linux and macOS njmule, the
-# command line, is a script that runs the desktop executable headless (packaging/njmule.sh); Windows
-# keeps a console executable of its own, as the desktop one is a GUI program.
+# DSM x86_64 (spk) and a Docker image (linux/amd64, linux/arm64). Each desktop package carries one
+# native executable: on Linux and macOS njmule, the command line, is a script that runs njmule-gui
+# headless (packaging/njmule.sh); on Windows the executable is the console program njmule.exe, which
+# njmule-gui.exe, a small GUI program, starts for the desktop (as javaw.exe stands for java.exe).
 # A pushed tag vX.Y.Z that matches the project version also opens a draft GitHub release with
 # them, an SBOM and SHA-256 sums, and pushes the image to ghcr.io/njmule/njmule; publishing the
 # release stays a manual step. A manual run only builds.
@@ -71,12 +72,13 @@ jobs:
                   "GRAALVM_HOME=$env:RUNNER_TEMP\graalvm-community-25.4.4.1.1+1.1" >> $env:GITHUB_ENV
                   dotnet tool install --global wix --version 5.0.2
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
-            - name: Build the native executables
-              run: ./gradlew :njmule-app:nativeCompile :njmule-gui:nativeGui '-Pnative.optimization=-O2'
+            - name: Build the native executable and its launcher
+              run: ./gradlew :njmule-gui:nativeGui :njmule-gui:nativeLauncher '-Pnative.optimization=-O2'
             - name: Smoke test
               shell: pwsh
               run: |
-                  njmule-app/build/native/nativeCompile/njmule.exe --version
+                  Copy-Item njmule-gui/build/launcher/njmule-gui.exe njmule-gui/build/native/
+                  njmule-gui/build/native/njmule.exe --version
                   $tour = "$env:RUNNER_TEMP\tour"
                   Copy-Item -Recurse njmule-gui/native/tour $tour
                   $gui = Start-Process njmule-gui/build/native/njmule-gui.exe -ArgumentList @("-Dnjmule.gui.tour=true", "--config-dir", $tour) -PassThru
@@ -87,7 +89,7 @@ jobs:
               run: |
                   $name = "njmule-$env:VERSION-windows-x64"
                   New-Item -ItemType Directory -Force "stage\$name", dist | Out-Null
-                  Copy-Item njmule-app/build/native/nativeCompile/njmule.exe, njmule-gui/build/native/* "stage\$name"
+                  Copy-Item njmule-gui/build/native/* "stage\$name"
                   # Absolute paths: WiX resolves relative ones from the .wxs file's directory.
                   $bin = (Resolve-Path "stage\$name").Path
                   $docs = (Resolve-Path .).Path

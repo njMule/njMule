@@ -31,6 +31,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,16 +71,34 @@ public abstract sealed class LinkAssociation {
      * where links come as system events, and when running from a development build.
      */
     public static Optional<LinkAssociation> forThisSystem(Path configDir) {
+        String os = System.getProperty("os.name", "");
         return ProcessHandle.current()
                 .info()
                 .command()
+                .map(command -> desktopProgram(command, os, Files::isRegularFile))
                 .flatMap(command -> forProgram(
                         configDir,
                         LinkAssociation::run,
                         Path.of(command),
-                        System.getProperty("os.name", ""),
+                        os,
                         System.getenv("XDG_CONFIG_HOME"),
                         System.getProperty("user.home")));
+    }
+
+    /**
+     * The program the system starts for the desktop app running as {@code command}: on Windows the app runs in
+     * njmule.exe, a console program, which njmule-gui.exe beside it starts without a console.
+     */
+    static String desktopProgram(String command, String osName, Predicate<Path> isFile) {
+        if (!osName.toLowerCase(Locale.ROOT).startsWith("windows")) {
+            return command;
+        }
+        int cut = Math.max(command.lastIndexOf('\\'), command.lastIndexOf('/'));
+        if (!command.substring(cut + 1).equalsIgnoreCase("njmule.exe")) {
+            return command;
+        }
+        String launcher = command.substring(0, cut + 1) + "njmule-gui.exe";
+        return isFile.test(Path.of(launcher)) ? launcher : command;
     }
 
     // The system's parts as arguments, so that tests choose them and never touch the real ones.

@@ -33,6 +33,12 @@ public final class GuiMain {
     private GuiMain() {}
 
     public static void main(String[] args) {
+        // On Windows the native app is njmule.exe: run from a console, not by njmule-gui.exe, it is the command line.
+        boolean windows = WindowsDesktop.applies();
+        if (windows && !WindowsDesktop.startedForDesktop(System.getenv())) {
+            Main.main(args);
+            return;
+        }
         LaunchOptions cli;
         try {
             cli = LaunchOptions.parse(args);
@@ -52,6 +58,9 @@ public final class GuiMain {
         }
         if (LinuxProcessName.applies()) {
             LinuxProcessName.nameThisThread();
+        }
+        if (windows) {
+            WindowsDesktop.useAppId();
         }
         // On macOS links come as events; the handler is set first, on the thread that starts JavaFX.
         if (MacMainThread.needed()) {

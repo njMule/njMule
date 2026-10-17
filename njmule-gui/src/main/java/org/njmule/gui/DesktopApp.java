@@ -94,6 +94,8 @@ public final class DesktopApp implements AutoCloseable {
     // While the window is open the JVM's default language is the interface's, not the system's.
     private final Locale systemLanguage = Locale.getDefault();
     private Optional<Autostart> autostart = Optional.empty();
+    // What starts the app again as this one: on Windows, from the window pinned to the taskbar too.
+    private List<String> startArguments = List.of();
     // Links from the command line or a later start, until the window is there; FX thread.
     private final List<Ed2kLink.FileLink> pending = new ArrayList<>();
     // The links of the command line, followed once the window shows.
@@ -133,12 +135,12 @@ public final class DesktopApp implements AutoCloseable {
         NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs, true));
         LoggingSetup.setLevel(cli.logLevel().orElse(engine.preferences().logLevel()));
         DesktopApp app = new DesktopApp(engine, dirs, GuiSettings.load(dirs.gui()), startWebUi(engine, dirs));
-        // A start at login keeps the configuration of this one; starting minimised follows the settings.
-        app.autostart = Autostart.forThisSystem(
-                dirs.config(),
-                cli.configDir()
-                        .map(dir -> List.of("--config-dir", dir.toAbsolutePath().toString()))
-                        .orElse(List.of()));
+        // A start at login, or from the window pinned to the taskbar, keeps the configuration of this one;
+        // starting minimised follows the settings.
+        app.startArguments = cli.configDir()
+                .map(dir -> List.of("--config-dir", dir.toAbsolutePath().toString()))
+                .orElse(List.of());
+        app.autostart = Autostart.forThisSystem(dirs.config(), app.startArguments);
         cli.links().forEach(link -> app.startLinks.add(link.toUri()));
         try {
             app.handoff = LinkHandoff.listen(dirs.config(), links -> Platform.runLater(() -> app.handedOver(links)));
@@ -318,6 +320,12 @@ public final class DesktopApp implements AutoCloseable {
                 e.consume();
             }
         });
+        if (WindowsDesktop.applies()) {
+            // Each showing gets a new system window.
+            stage.addEventHandler(
+                    WindowEvent.WINDOW_SHOWN,
+                    e -> WindowsDesktop.relaunchThroughLauncher(NjMuleInfo.NAME, this.startArguments));
+        }
         stage.show();
         this.model.start();
         this.ticker = new Timeline(new KeyFrame(Duration.seconds(1), e -> {

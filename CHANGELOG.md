@@ -155,9 +155,11 @@ All notable changes to this project are documented here. The format follows
   image, and archives that run from any folder, portable once a `portable.flag` file is put beside
   the programs; the release workflow builds them all and opens a draft release for a tag. The
   desktop app holds the date and number formats of the regions of its interface languages only, not
-  every locale of the JDK. On Linux and macOS the command line is a script that runs the desktop
-  executable headless, so those packages carry one native executable. The packages are compressed
-  with xz (LZX in the MSI, LZMA in the disk image).
+  every locale of the JDK. Each desktop package carries one native executable: on Linux and macOS
+  the command line is a script that runs it headless; on Windows it is the console program
+  njmule.exe, which njmule-gui.exe, a small GUI program, starts for the desktop, its windows grouped
+  and pinned on the taskbar with the shortcuts. The packages are compressed with xz (LZX in the MSI,
+  LZMA in the disk image).
 - ed2k links given on the command line are added as downloads; a second start hands its links to
   the njMule already running with the same configuration, as when a link is clicked in a browser,
   and a second start without links brings the running window to the front.

@@ -1,4 +1,4 @@
 -H:+ReportExceptionStackTraces
---enable-native-access=javafx.graphics
--H:NativeLinkerOption=/SUBSYSTEM:WINDOWS
--H:NativeLinkerOption=/ENTRY:mainCRTStartup
+--enable-native-access=javafx.graphics,org.njmule.gui
+-H:+ForeignAPISupport
+-H:ConfigurationFileDirectories=../../native/windows

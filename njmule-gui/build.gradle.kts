@@ -101,9 +101,10 @@ tasks.test {
 }
 
 // Native executable of the desktop app with GraalVM (GRAALVM_HOME), from the module path:
-// ./gradlew :njmule-gui:nativeGui → build/native/njmule-gui[.exe] plus the JDK libraries it loads.
-// JavaFX loads its own native libraries; the reachability metadata comes from the GUI tour (nativeTour)
-// and a few hand-written JNI entries.
+// ./gradlew :njmule-gui:nativeGui → build/native/njmule-gui plus the JDK libraries it loads; on Windows
+// build/native/njmule.exe, a console program, which build/launcher/njmule-gui.exe (nativeLauncher) starts
+// for the desktop. JavaFX loads its own native libraries; the reachability metadata comes from the GUI tour
+// (nativeTour) and a few hand-written JNI entries.
 val hostOs = System.getProperty("os.name").lowercase()
 val nativeOs =
     when {
@@ -117,7 +118,8 @@ val guiModule = "org.njmule.gui/org.njmule.gui.GuiMain"
 // The jar, not the class folders: on Windows native-image misses the metadata of an exploded module.
 val nativeModulePath = files(tasks.jar, configurations.runtimeClasspath)
 
-// Windows links the executable's icon and version information (native/windows).
+// Windows links the executables' icon and version information: njmule.exe those of the command line
+// (njmule-app/native/windows), the launcher njmule-gui.exe its own (native/windows).
 val nativeResourceSources =
     tasks.register<Sync>("nativeResourceSources") {
         val version = project.version.toString()
@@ -126,19 +128,45 @@ val nativeResourceSources =
             include("njmule-gui.rc")
             filter { line -> line.replace("\${project.version}", version) }
         }
+        from(layout.settingsDirectory.dir("njmule-app/native/windows")) {
+            include("njmule.rc")
+            filter { line -> line.replace("\${project.version}", version) }
+        }
         from(layout.settingsDirectory.file("branding/generated/njmule.ico"))
         into(layout.buildDirectory.dir("native-res"))
     }
 
-val nativeResources =
-    tasks.register<Exec>("nativeResources") {
+fun registerResources(name: String, program: String) =
+    tasks.register<Exec>(name) {
         dependsOn(nativeResourceSources)
         val dir = layout.buildDirectory.dir("native-res")
         workingDir(dir)
         val rc = layout.settingsDirectory.file("packaging/windows/rc.cmd").asFile.path
-        commandLine("cmd", "/c", rc, "njmule-gui.rc", "njmule-gui.res", project.version)
-        outputs.file(dir.map { it.file("njmule-gui.res") })
+        commandLine("cmd", "/c", rc, "$program.rc", "$program.res", project.version)
+        inputs.file(dir.map { it.file("$program.rc") })
+        outputs.file(dir.map { it.file("$program.res") })
     }
+
+val nativeResources = registerResources("nativeResources", "njmule")
+val launcherResources = registerResources("nativeLauncherResources", "njmule-gui")
+
+// ./gradlew :njmule-gui:nativeLauncher → build/launcher/njmule-gui.exe (native/windows/launcher.c), the
+// small GUI program that starts njmule.exe without a console for the desktop, as javaw.exe stands for java.exe.
+tasks.register<Exec>("nativeLauncher") {
+    group = "build"
+    description = "Builds njmule-gui.exe, the launcher of the Windows desktop app."
+    dependsOn(launcherResources)
+    val source = file("native/windows/launcher.c")
+    val dir = layout.buildDirectory.dir("native-res")
+    val exe = layout.buildDirectory.file("launcher/njmule-gui.exe")
+    val cl = layout.settingsDirectory.file("packaging/windows/cl.cmd").asFile
+    inputs.files(source, cl)
+    inputs.file(dir.map { it.file("njmule-gui.res") })
+    outputs.file(exe)
+    workingDir(dir)
+    commandLine("cmd", "/c", cl.path, exe.get().asFile.path, source.path, "njmule-gui.res")
+    doFirst { exe.get().asFile.parentFile.mkdirs() }
+}
 
 tasks.register<Exec>("nativeGui") {
     group = "build"
@@ -154,7 +182,7 @@ tasks.register<Exec>("nativeGui") {
     executable = graalvmBin.get() + "native-image" + cmdSuffix
     val argsFile = file("native/$nativeOs.args")
     inputs.file(argsFile)
-    val resFile = layout.buildDirectory.file("native-res/njmule-gui.res")
+    val resFile = layout.buildDirectory.file("native-res/njmule.res")
     val optimization = providers.gradleProperty("native.optimization")
     inputs.property("optimization", optimization)
     val i18n = file("src/main/resources/org/njmule/gui/i18n")
@@ -169,7 +197,8 @@ tasks.register<Exec>("nativeGui") {
                     .filter { it.language in languages && it.variant.isEmpty() && !it.hasExtensions() }
                     .map { it.toLanguageTag() }
                     .sorted()
-            listOf("--module-path", modulePath.asPath, "--module", module, "-o", "njmule-gui", "@$argsFile") +
+            val name = if (windows) "njmule" else "njmule-gui"
+            listOf("--module-path", modulePath.asPath, "--module", module, "-o", name, "@$argsFile") +
                 (if (windows) listOf("-H:NativeLinkerOption=${resFile.get().asFile}") else emptyList()) +
                 listOf("-H:IncludeLocales=" + locales.joinToString(","), optimization.get())
         }
