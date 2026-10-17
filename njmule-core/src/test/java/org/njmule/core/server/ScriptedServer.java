@@ -64,8 +64,7 @@ public final class ScriptedServer implements AutoCloseable {
     private final ServerSocket socket;
     private final Thread accepting;
     private final BlockingQueue<Packet> received = new LinkedBlockingQueue<>();
-    private final List<Socket> clients = new CopyOnWriteArrayList<>();
-    private final List<OutputStream> outputs = new CopyOnWriteArrayList<>();
+    private final List<Client> clients = new CopyOnWriteArrayList<>();
     private final AtomicInteger connections = new AtomicInteger();
     private final AtomicInteger obfuscatedLogins = new AtomicInteger();
     private final long clientId;
@@ -132,10 +131,10 @@ public final class ScriptedServer implements AutoCloseable {
     /** Sends {@code packets} to the client that connected last, once one did. */
     public void send(Packet... packets) throws IOException, InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (this.outputs.isEmpty() && System.nanoTime() < deadline) {
+        while (this.clients.isEmpty() && System.nanoTime() < deadline) {
             Thread.sleep(10);
         }
-        OutputStream out = this.outputs.getLast();
+        OutputStream out = this.clients.getLast().out();
         synchronized (this) {
             for (Packet packet : packets) {
                 out.write(TcpFraming.encode(packet));
@@ -161,11 +160,11 @@ public final class ScriptedServer implements AutoCloseable {
 
     /** Closes the connections of the clients, as a server that goes away. */
     public void hangUp() throws IOException {
-        for (Socket client : this.clients) {
-            client.close();
+        // Only the connections closed here go: a client may connect again meanwhile.
+        for (Client client : List.copyOf(this.clients)) {
+            client.socket().close();
+            this.clients.remove(client);
         }
-        this.clients.clear();
-        this.outputs.clear();
     }
 
     /** Stops listening and hangs up; once it returns, connections to the server are refused. */
@@ -212,8 +211,7 @@ public final class ScriptedServer implements AutoCloseable {
             } else {
                 in.reset();
             }
-            this.clients.add(client);
-            this.outputs.add(out);
+            this.clients.add(new Client(client, out));
             while (true) {
                 Packet packet = Packing.unpack(TcpFraming.read(in, FrameLimit.fixed(1 << 20)), 1 << 22);
                 this.received.add(packet);
@@ -234,4 +232,6 @@ public final class ScriptedServer implements AutoCloseable {
             // The client or the test closed the connection.
         }
     }
+
+    private record Client(Socket socket, OutputStream out) {}
 }
