@@ -117,7 +117,9 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   machines with few cores; the CI's verify and Sonar jobs use it on their four CPUs). Any
   `-Pnjmule.<name>=<value>` reaches the tests as a system property. PowerShell splits an unquoted
   option at its first dot: write `'-Ptest.forks=1'`. One class:
-  `./gradlew :njmule-core:test --tests '*TagCodecTest'`.
+  `./gradlew :njmule-core:test --tests '*TagCodecTest'`. Speed of the transfers on the loopback
+  (prints MiB/s): `./gradlew :njmule-testkit:test --tests '*ThroughputTest' '-Ptest.tags=perf'
+  '-Ptest.excludedTags=interop'`.
 - Other tasks: `:njmule-gui:generateLicenseReport` (THIRD-PARTY.txt in `build/reports/licenses`),
   `cyclonedxBom` (SBOM in `build/reports/cyclonedx`), `dependencyCheckAggregate` (OWASP
   dependency-check, needs `NVD_API_KEY`), `:njmule-app:nativeCompile` (GraalVM native image).
