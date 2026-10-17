@@ -82,6 +82,7 @@ Ukrainian, Arabic, Persian, Hebrew, Simplified and Traditional Chinese, Japanese
 | 🐧 Linux | x64, arm64 | `.deb`, `.rpm`, `.tar.gz` archive; static headless `.tar.gz` (x64) |
 | 🍎 macOS 13 or later | Apple silicon (arm64) | `.dmg` disk image |
 | 🐳 Docker | `linux/amd64`, `linux/arm64` | image `ghcr.io/njmule/njmule` (headless engine and web interface) |
+| 🗄️ Synology DSM 7 | x86_64 | `.spk` package (headless engine and web interface) |
 
 Every package contains two executables: **`njmule-gui`**, the desktop application, and
 **`njmule`**, the command-line interface, which also runs the engine headless. Each release also
@@ -222,6 +223,30 @@ secrets:
   status` drives it.
 - `docker build -f packaging/docker/Dockerfile -t njmule .` builds the image from the sources, for
   the platform of the machine that builds it.
+
+</details>
+
+<details>
+<summary><strong>Synology DSM</strong></summary>
+
+The `.spk` package runs the headless engine with its web interface on DSM 7.0 or later (x86_64
+models), as a user of its own without administrator rights. Install it from *Package Center →
+Manual Install*; DSM warns that the package is not signed by Synology. The install wizard asks for
+the web interface password (8 characters at least), of which only a hash is kept.
+
+- Completed downloads go to the shared folder `njmule` that the package creates; the settings,
+  incomplete files and logs stay in the package's own folder, `/var/packages/njmule/var`.
+- Open the interface from Package Center or the DSM main menu, or at `http://<NAS address>:4711/`.
+  It answers to the addresses of the NAS, to its name (`<name>` and `<name>.local`) and to the
+  QuickConnect name of the address DSM is opened by; other names, such as a reverse proxy's, go on
+  its *Settings* page.
+- The DSM firewall lists the ports as njMule services: 4711/tcp (web interface), 4662/tcp (eD2K)
+  and 4672/udp (eD2K and Kad). For a high ID the router forwards the last two to the NAS, or UPnP
+  asks it to.
+- *Stop* in Package Center saves the state before njMule exits. A newer `.spk` installed the same
+  way upgrades the package and keeps its settings and downloads.
+- The executable inside is the static one of `njmule-<version>-linux-x64-static.tar.gz`, since the
+  C library of DSM is too old for the other Linux executables.
 
 </details>
 
