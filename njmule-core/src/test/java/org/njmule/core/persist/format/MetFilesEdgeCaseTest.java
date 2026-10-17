@@ -38,6 +38,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.njmule.core.Mutations;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.files.hash.Ed2k;
@@ -184,6 +185,15 @@ class MetFilesEdgeCaseTest {
         thenNothingButDecodeExceptionsOccurred();
     }
 
+    @Property(tries = 3000)
+    void shouldOnlyFailCleanlyOnASampleChangedAtRandom(@ForAll("sample") Sample sample, @ForAll long seed) {
+        givenTheSampleChangedAtRandom(sample, seed);
+
+        whenTheSampleUsesTheData();
+
+        thenNothingButDecodeExceptionsOccurred();
+    }
+
     @ParameterizedTest
     @MethodSource("countedSamples")
     void shouldFailCleanlyOnEveryCutOfACountedFile(Sample sample) {
@@ -316,6 +326,11 @@ class MetFilesEdgeCaseTest {
     private void givenTheSample(Sample value) {
         this.sample = value;
         this.data = value.data().toByteArray();
+    }
+
+    private void givenTheSampleChangedAtRandom(Sample value, long seed) {
+        givenTheSample(value);
+        this.data = Mutations.changed(this.data, seed);
     }
 
     private void givenTheSampleWithAChangedByte(Sample value, int at, byte changed) {

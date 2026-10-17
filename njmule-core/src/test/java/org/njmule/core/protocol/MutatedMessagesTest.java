@@ -19,13 +19,11 @@ package org.njmule.core.protocol;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
-import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
-import java.util.SplittableRandom;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
@@ -33,6 +31,7 @@ import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.njmule.core.Mutations;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.kad.UInt128;
@@ -69,8 +68,6 @@ class MutatedMessagesTest {
     private static final UInt128 ID = UInt128.parseHex("8899aabbccddeeff0011223344556677");
     private static final UInt128 TARGET = UInt128.parseHex("ffeeddccbbaa99887766554433221100");
     private static final int IP = 0x0A00_0001;
-    private static final int[] SPECIAL_BYTES = {0x00, 0x01, 0x7F, 0x80, 0xFF};
-    private static final long[] SPECIAL_NUMBERS = {0, 1, 0xFF, 0xFFFF, 0x7FFF_FFFFL, 0x8000_0000L, 0xFFFF_FFFFL};
 
     @FunctionalInterface
     private interface Decoder {
@@ -122,7 +119,7 @@ class MutatedMessagesTest {
         this.packet = Packet.of(
                 sample.packet().protocol(),
                 sample.packet().opcode(),
-                changed(sample.packet().payload(), new SplittableRandom(seed)));
+                Mutations.changed(sample.packet().payload(), seed));
     }
 
     private void whenItsDecoderReadsIt() {
@@ -137,60 +134,6 @@ class MutatedMessagesTest {
         if (this.exception != null) {
             assertThat(this.exception).isInstanceOf(DecodeException.class);
         }
-    }
-
-    // One to three changes of the kinds that reach past the first checks of a decoder.
-    private static byte[] changed(byte[] valid, SplittableRandom random) {
-        byte[] data = valid.clone();
-        int changes = 1 + random.nextInt(3);
-        for (int i = 0; i < changes; i++) {
-            data = changedOnce(data, random);
-        }
-        return data;
-    }
-
-    private static byte[] changedOnce(byte[] data, SplittableRandom random) {
-        int at = data.length == 0 ? 0 : random.nextInt(data.length);
-        switch (random.nextInt(7)) {
-            case 0 -> {
-                if (data.length > 0) {
-                    data[at] ^= (byte) (1 << random.nextInt(8));
-                }
-            }
-            case 1 -> {
-                if (data.length > 0) {
-                    data[at] = (byte) SPECIAL_BYTES[random.nextInt(SPECIAL_BYTES.length)];
-                }
-            }
-            case 2 -> {
-                // A length or a count: two or four bytes, little endian.
-                long value = SPECIAL_NUMBERS[random.nextInt(SPECIAL_NUMBERS.length)];
-                int width = random.nextBoolean() ? 2 : 4;
-                for (int b = 0; b < width && at + b < data.length; b++) {
-                    data[at + b] = (byte) (value >>> (8 * b));
-                }
-            }
-            case 3 -> data = java.util.Arrays.copyOf(data, data.length == 0 ? 0 : random.nextInt(data.length));
-            case 4 -> {
-                byte[] junk = new byte[1 + random.nextInt(16)];
-                random.nextBytes(junk);
-                data = spliced(data, at, 0, junk);
-            }
-            case 5 -> data = spliced(data, at, Math.min(data.length - at, 1 + random.nextInt(8)), new byte[0]);
-            default -> {
-                int length = Math.min(data.length - at, 1 + random.nextInt(32));
-                data = spliced(data, at, 0, java.util.Arrays.copyOfRange(data, at, at + length));
-            }
-        }
-        return data;
-    }
-
-    private static byte[] spliced(byte[] data, int at, int removed, byte[] inserted) {
-        ByteArrayOutputStream out = new ByteArrayOutputStream(data.length + inserted.length);
-        out.write(data, 0, at);
-        out.write(inserted, 0, inserted.length);
-        out.write(data, at + removed, data.length - at - removed);
-        return out.toByteArray();
     }
 
     static List<Sample> samples() {
