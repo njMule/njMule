@@ -152,8 +152,10 @@ tasks.register<Exec>("nativeGui") {
     workingDir(out)
     executable = graalvmBin.get() + "native-image" + cmdSuffix
     val argsFile = file("native/$nativeOs.args")
+    inputs.file(argsFile)
     val resFile = layout.buildDirectory.file("native-res/njmule-gui.res")
     val optimization = providers.gradleProperty("native.optimization")
+    inputs.property("optimization", optimization)
     argumentProviders.add(
         CommandLineArgumentProvider {
             listOf("--module-path", modulePath.asPath, "--module", module, "-o", "njmule-gui", "@$argsFile") +
