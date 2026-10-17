@@ -43,6 +43,16 @@
     -nj-scrim: rgba(46, 52, 64, 0.18);
 }
 
+/* A chosen row stands out, also once its list has lost the focus: some themes give it a grey hardly
+   apart from the rows around it. The high contrast scheme sets its own below. */
+.list-view,
+.table-view,
+.tree-view,
+.tree-table-view {
+    -color-cell-bg-selected: -color-accent-muted;
+    -color-cell-bg-selected-focused: -color-accent-muted;
+}
+
 .root.dark {
     -nj-accent-strong: #F5A65B;
     -nj-accent-soft: #4B3B2E;
