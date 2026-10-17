@@ -19,11 +19,13 @@ package org.njmule.core.kad;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
@@ -32,6 +34,9 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.engine.EngineLoop;
+import org.njmule.core.net.FakeSocks5Proxy;
+import org.njmule.core.net.Socks5Udp;
+import org.njmule.core.net.UdpRoute;
 import org.njmule.core.util.Ipv4;
 
 @Timeout(30)
@@ -50,13 +55,21 @@ class KadSocketTest {
     private KadSocket socketB;
     private KadNode nodeA;
     private KadNode nodeB;
+    private FakeSocks5Proxy proxy;
+    private Socks5Udp association;
 
     @AfterEach
-    void stop() {
+    void stop() throws IOException {
         for (KadSocket socket : new KadSocket[] {this.socketA, this.socketB}) {
             if (socket != null) {
                 socket.close();
             }
+        }
+        if (this.association != null) {
+            this.association.close();
+        }
+        if (this.proxy != null) {
+            this.proxy.close();
         }
         this.loop.close();
     }
@@ -73,11 +86,40 @@ class KadSocketTest {
         thenTheSecondNodeAddsNobody();
     }
 
+    // The other node sees the relay, answers it, and the first node learns the other's own address.
+    @Test
+    void shouldLetANodeTalkThroughTheUdpRelayOfASocksProxy() throws Exception {
+        givenTwoNodesOnTheirOwnSockets();
+        givenTheFirstSocketGoesThroughTheRelayOfAProxy();
+
+        whenTheFirstNodeBootstrapsFromTheSecond();
+
+        thenTheFirstNodeLearnsAContactWithinSeconds(20);
+        thenTheSecondNodeIsAVerifiedContactOfTheFirst();
+        thenTheProxyRelayedToTheSecondSocket();
+    }
+
+    @Test
+    void shouldDropADatagramThatCameAroundTheRelay() throws Exception {
+        givenTwoNodesOnTheirOwnSockets();
+        givenTheFirstSocketGoesThroughTheRelayOfAProxy();
+
+        whenTheSecondNodeBootstrapsFromTheFirstSocketDirectly();
+
+        thenTheFirstNodeHeardNothingWithinSeconds(2);
+    }
+
     @Test
     void shouldLeaveThePortOfAClosedSocketFreeAtOnce() throws Exception {
         whenSocketsAreClosedAndTheirPortsBoundAgain(ROUNDS);
 
         thenThePortWasBusyTimes(0);
+    }
+
+    private void givenTheFirstSocketGoesThroughTheRelayOfAProxy() throws Exception {
+        this.proxy = FakeSocks5Proxy.start();
+        this.association = Socks5Udp.associate(this.proxy.settings(), null, Duration.ofSeconds(5));
+        this.socketA.route(UdpRoute.through(this.association));
     }
 
     private void givenTwoNodesOnTheirOwnSockets() throws Exception {
@@ -90,6 +132,13 @@ class KadSocketTest {
     private void whenTheFirstNodeBootstrapsFromTheSecond() throws Exception {
         onLoop(() -> {
             this.nodeA.bootstrap(Ipv4.of(127, 0, 0, 1), this.socketB.port());
+            return null;
+        });
+    }
+
+    private void whenTheSecondNodeBootstrapsFromTheFirstSocketDirectly() throws Exception {
+        onLoop(() -> {
+            this.nodeB.bootstrap(Ipv4.of(127, 0, 0, 1), this.socketA.port());
             return null;
         });
     }
@@ -130,6 +179,17 @@ class KadSocketTest {
         assertThat(onLoop(this.nodeB::contacts))
                 .as("a bootstrap request adds nobody")
                 .isZero();
+    }
+
+    private void thenTheProxyRelayedToTheSecondSocket() {
+        assertThat(this.proxy.seen()).contains("relay to 127.0.0.1:" + this.socketB.port());
+    }
+
+    // Had the first socket answered, the second node would have learnt it as a contact.
+    private void thenTheFirstNodeHeardNothingWithinSeconds(int seconds) throws Exception {
+        Thread.sleep(TimeUnit.SECONDS.toMillis(seconds));
+        assertThat(onLoop(this.nodeB::contacts)).isZero();
+        assertThat(this.proxy.seen()).noneMatch(e -> e.startsWith("relay to"));
     }
 
     private void thenThePortWasBusyTimes(int times) {

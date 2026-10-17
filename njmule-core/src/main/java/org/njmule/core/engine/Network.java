@@ -99,9 +99,11 @@ import org.njmule.core.kad.KadPublisher;
 import org.njmule.core.kad.KadSocket;
 import org.njmule.core.kad.UInt128;
 import org.njmule.core.net.ProxyRoute;
+import org.njmule.core.net.RelayKeeper;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.net.TcpListener;
+import org.njmule.core.net.UdpRoute;
 import org.njmule.core.peer.BuddyLink;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.IdentityHandshake;
@@ -289,6 +291,9 @@ final class Network {
     private volatile boolean closed;
     private ScheduledFuture<?> pendingSave;
     private ServerUdp udp;
+    // Keep the UDP sockets on the proxy's route; open with their sockets.
+    private RelayKeeper serverRelay;
+    private RelayKeeper kadRelay;
     private volatile ServerContext context = ServerContext.NONE;
 
     /** Writes a line to the front ends' log. */
@@ -631,7 +636,22 @@ final class Network {
         ServerUdp udp = ServerUdp.openBeside(
                 kadPort, boundAddress(), (from, packet) -> this.loop.post(() -> datagram(from, packet)));
         udp.decodeWith(this::serverUdpKey);
+        RelayKeeper replaced = this.serverRelay;
+        this.serverRelay = relay("Server UDP", udp::route);
+        if (replaced != null) {
+            replaced.close();
+        }
         return udp;
+    }
+
+    // Puts a UDP socket on the route of the proxy, before anything is sent through it.
+    private RelayKeeper relay(String what, Consumer<UdpRoute> socket) {
+        return RelayKeeper.start(
+                what,
+                socket,
+                this.proxyOfThePreferences.get(),
+                boundAddress(),
+                (level, text) -> this.loop.post(() -> this.userLog.log(level, text)));
     }
 
     // The socket for server queries, unless the network interface of the preferences is gone.
@@ -650,6 +670,10 @@ final class Network {
         if (this.udp != null) {
             this.udp.close();
             this.udp = null;
+        }
+        if (this.serverRelay != null) {
+            this.serverRelay.close();
+            this.serverRelay = null;
         }
     }
 
@@ -1552,6 +1576,15 @@ final class Network {
         if (was.ed2kEnabled() && !now.ed2kEnabled()) {
             this.session.disconnect();
         }
+        if (!was.proxy().equals(now.proxy())) {
+            // TCP reads the proxy at each connection; UDP keeps an association with it.
+            if (this.serverRelay != null) {
+                this.serverRelay.use(now.proxy());
+            }
+            if (this.kadRelay != null) {
+                this.kadRelay.use(now.proxy());
+            }
+        }
         if (tcp || udp || was.upnp() != now.upnp()) {
             restartForwarding();
         }
@@ -1660,8 +1693,10 @@ final class Network {
         this.buddyLink.release();
         this.kad.close();
         this.kadSocket.close();
+        this.kadRelay.close();
         this.kad = null;
         this.kadSocket = null;
+        this.kadRelay = null;
         this.kadPublisher = null;
         this.kadNotes.kadStopped();
     }
@@ -1698,6 +1733,9 @@ final class Network {
             this.kad.close();
             this.kadSocket.close();
         }
+        if (this.kadRelay != null) {
+            this.kadRelay.close();
+        }
         this.kadNotes.kadStopped();
         this.uploads.close();
         this.downloads.close();
@@ -1715,6 +1753,9 @@ final class Network {
         }
         if (this.udp != null) {
             this.udp.close();
+        }
+        if (this.serverRelay != null) {
+            this.serverRelay.close();
         }
         saveServers();
         // The next engine of the process, or test, starts from direct connections on any interface.
@@ -2026,6 +2067,7 @@ final class Network {
                     identity,
                     ip -> this.ipFilter.blocks(ip),
                     this.random);
+            this.kadRelay = relay("Kad UDP", this.kadSocket::route);
             this.kad = new KadNode(
                     identity,
                     this.kadSocket,
@@ -2299,17 +2341,19 @@ final class Network {
         }
     }
 
-    // A source in whose queue we wait is asked again over UDP when the answer can reach us: through no proxy, which
-    // would carry TCP only, and while we are reachable, as the server or Kad see it.
+    // A source in whose queue we wait is asked again over UDP when the answer can reach us: through no proxy, or the
+    // UDP relay of a SOCKS5 one, and while we are reachable, as the server or Kad see it.
     private final class ReaskUdp implements DownloadManager.ClientUdp {
         @Override
         public boolean available() {
             KadNode node = Network.this.kad;
             boolean reachable = Network.this.context.clientId() >= ServerMessages.LOW_ID_LIMIT
                     || (node != null && node.isConnected() && !node.isFirewalled());
-            return Network.this.kadSocket != null
+            KadSocket socket = Network.this.kadSocket;
+            return socket != null
                     && reachable
-                    && !Network.this.preferences.get().proxy().isEnabled()
+                    && (!Network.this.preferences.get().proxy().isEnabled()
+                            || socket.route().isRelayed())
                     && ourPublicIp() != 0;
         }
 

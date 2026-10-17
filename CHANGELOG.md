@@ -123,7 +123,10 @@ All notable changes to this project are documented here. The format follows
   Tables keep their selection and order while they refresh.
 - Proxy for outgoing TCP connections (SOCKS 4/5, with or without credentials, and HTTP CONNECT)
   and for the server, Kad and IP filter lists fetched from the web (SOCKS 5 or HTTP), also taken
-  from an eMule profile.
+  from an eMule profile. With a SOCKS5 proxy the UDP of Kad, of the clients and of the servers
+  (pings, global searches) goes through its UDP relay (UDP ASSOCIATE), asked for again when it
+  ends; meanwhile, and for datagrams that come around the relay, nothing goes or is answered. A
+  proxy that relays no UDP (HTTP, SOCKS4, a refusal) leaves UDP straight, which the log says.
 - Scheduler: rules by weekday and time that change the transfer limits and connections; edited
   in the options and kept in `scheduler.properties`.
 - Port forwarding with UPnP (on by default): the router is found on the local network, ports are

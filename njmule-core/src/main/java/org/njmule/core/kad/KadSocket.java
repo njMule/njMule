@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.function.IntPredicate;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.engine.EngineLoop;
+import org.njmule.core.net.UdpRoute;
 import org.njmule.core.protocol.crypt.DatagramObfuscation;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Packet;
@@ -60,6 +61,7 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
     private final SecureRandom random;
     private volatile KadNode node;
     private volatile ClientPackets clientPackets = (ip, port, packet) -> {};
+    private volatile UdpRoute route = UdpRoute.DIRECT;
 
     /** Client packets that share the socket with Kad, such as callback requests; on the engine thread. */
     @FunctionalInterface
@@ -140,6 +142,15 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
         return this.socket.getLocalPort();
     }
 
+    /** Sends and receives along {@code route} from now on. */
+    public void route(UdpRoute route) {
+        this.route = Objects.requireNonNull(route, "route");
+    }
+
+    public UdpRoute route() {
+        return this.route;
+    }
+
     @Override
     public void send(int ip, int port, Packet packet, Optional<UInt128> receiverId, int receiverKey, int senderKey) {
         Packet framed = packet.length() > PACK_ABOVE ? Packing.pack(packet) : packet;
@@ -153,7 +164,10 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
 
     private void transmit(int ip, int port, byte[] datagram) {
         try {
-            this.socket.send(new DatagramPacket(datagram, datagram.length, Ipv4.socketAddress(ip, port)));
+            Optional<DatagramPacket> out = this.route.outgoing(Ipv4.socketAddress(ip, port), datagram);
+            if (out.isPresent()) {
+                this.socket.send(out.get());
+            }
         } catch (IOException | IllegalArgumentException e) {
             // A bad address must not end the caller's work, a lookup or the table's upkeep.
             logger.debug("Cannot send to {}:{}: {}", Ipv4.format(ip), port, e.getMessage());
@@ -195,9 +209,11 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
 
     private void received(DatagramPacket datagram) {
         KadNode target = this.node;
-        if (target == null || !(datagram.getSocketAddress() instanceof InetSocketAddress from)) {
+        Optional<UdpRoute.Received> got = this.route.incoming(datagram);
+        if (target == null || got.isEmpty()) {
             return;
         }
+        InetSocketAddress from = got.get().from();
         byte[] address = from.getAddress().getAddress();
         if (address.length != 4 || from.getPort() == 0) {
             return;
@@ -209,8 +225,8 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
         try {
             DatagramObfuscation.Received opened = DatagramObfuscation.decodeFromClient(
                     datagram.getData(),
-                    datagram.getOffset(),
-                    datagram.getLength(),
+                    got.get().offset(),
+                    got.get().length(),
                     this.userHash,
                     address,
                     Optional.of(Hash16.of(this.identity.id().toWireBytes())),

@@ -25,7 +25,9 @@ import java.net.SocketException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.ToIntFunction;
+import org.njmule.core.net.UdpRoute;
 import org.njmule.core.protocol.crypt.DatagramObfuscation;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Packet;
@@ -59,6 +61,7 @@ public final class ServerUdp implements AutoCloseable {
     private Thread reader;
     // The UDP key of the server at an address, 0 for none: read on the receiving thread.
     private volatile ToIntFunction<InetSocketAddress> keys = from -> 0;
+    private volatile UdpRoute route = UdpRoute.DIRECT;
 
     private ServerUdp(DatagramSocket socket, Receiver receiver) {
         this.socket = socket;
@@ -99,9 +102,14 @@ public final class ServerUdp implements AutoCloseable {
         return udp;
     }
 
+    /** Sends {@code packet} to {@code to}, unless the route holds it. */
     public void send(InetSocketAddress to, Packet packet) throws IOException {
-        byte[] datagram = UdpFraming.encode(packet);
-        this.socket.send(new DatagramPacket(datagram, datagram.length, to));
+        transmit(to, UdpFraming.encode(packet));
+    }
+
+    /** Sends and receives along {@code route} from now on. */
+    public void route(UdpRoute route) {
+        this.route = Objects.requireNonNull(route, "route");
     }
 
     /** Datagrams from now on are decoded with the UDP key {@code keys} gives for their sender (0: none). */
@@ -115,7 +123,14 @@ public final class ServerUdp implements AutoCloseable {
         if (route.isObfuscated()) {
             datagram = DatagramObfuscation.encryptForServer(datagram, route.key(), random);
         }
-        this.socket.send(new DatagramPacket(datagram, datagram.length, route.target()));
+        transmit(route.target(), datagram);
+    }
+
+    private void transmit(InetSocketAddress to, byte[] datagram) throws IOException {
+        Optional<DatagramPacket> out = this.route.outgoing(to, datagram);
+        if (out.isPresent()) {
+            this.socket.send(out.get());
+        }
     }
 
     public int port() {
@@ -146,9 +161,13 @@ public final class ServerUdp implements AutoCloseable {
             try {
                 datagram.setLength(buffer.length);
                 this.socket.receive(datagram);
-                InetSocketAddress from = (InetSocketAddress) datagram.getSocketAddress();
+                Optional<UdpRoute.Received> got = this.route.incoming(datagram);
+                if (got.isEmpty()) {
+                    continue;
+                }
+                InetSocketAddress from = got.get().from();
                 Packet packet = DatagramObfuscation.decodeFromServer(
-                                buffer, 0, datagram.getLength(), this.keys.applyAsInt(from))
+                                buffer, got.get().offset(), got.get().length(), this.keys.applyAsInt(from))
                         .packet();
                 if (packet.protocol() == Protocol.EDONKEY) {
                     this.receiver.received(from, packet);
