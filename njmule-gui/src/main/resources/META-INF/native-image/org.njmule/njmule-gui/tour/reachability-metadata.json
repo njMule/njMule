@@ -17275,26 +17275,6 @@
       "glob": "org/fxmisc/richtext/styled-text-area.css"
     },
     {
-      "module": "org.kordamp.ikonli.core",
-      "glob": "META-INF/resources/ikonli/0.0.0/fonts/ikonli.ttf"
-    },
-    {
-      "module": "org.kordamp.ikonli.material2",
-      "glob": "META-INF/resources/material2/20200820/fonts/MaterialIcons-Outlined.ttf"
-    },
-    {
-      "module": "org.kordamp.ikonli.material2",
-      "glob": "META-INF/resources/material2/20200820/fonts/MaterialIcons-Round.ttf"
-    },
-    {
-      "module": "org.kordamp.ikonli.material2",
-      "glob": "META-INF/resources/material2/20200820/fonts/MaterialIcons-Sharp.ttf"
-    },
-    {
-      "module": "org.kordamp.ikonli.material2",
-      "glob": "META-INF/resources/material2/20200820/fonts/MaterialIcons.ttf"
-    },
-    {
       "module": "org.njmule.core",
       "glob": "org/njmule/core/api/build-info.properties"
     },
@@ -17305,6 +17285,14 @@
     {
       "module": "org.njmule.core",
       "glob": "org/njmule/core/remote/openapi.yaml"
+    },
+    {
+      "module": "org.njmule.gui",
+      "glob": "org/njmule/gui/fonts/Manrope-Bold.ttf"
+    },
+    {
+      "module": "org.njmule.gui",
+      "glob": "org/njmule/gui/fonts/Manrope-ExtraBold.ttf"
     },
     {
       "module": "org.njmule.gui",
