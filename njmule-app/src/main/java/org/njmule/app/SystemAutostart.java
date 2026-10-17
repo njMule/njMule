@@ -155,18 +155,9 @@ abstract sealed class SystemAutostart implements Autostart {
             logger.info("njMule no longer starts when the user logs in");
         }
 
-        /** The command line of the value: each part quoted as programs on Windows read their arguments. */
+        /** The command line of the value. */
         String commandLine() {
-            List<String> quoted = new ArrayList<>();
-            for (String part : this.command) {
-                // A backslash before the closing quote would escape it.
-                int trailing = 0;
-                while (trailing < part.length() && part.charAt(part.length() - 1 - trailing) == '\\') {
-                    trailing++;
-                }
-                quoted.add("\"" + part.replace("\"", "\\\"") + "\\".repeat(trailing) + "\"");
-            }
-            return String.join(" ", quoted);
+            return WindowsCommandLine.of(this.command);
         }
 
         String reg() {
