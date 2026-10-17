@@ -24,6 +24,7 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.HashMap;
@@ -39,7 +40,10 @@ import java.util.concurrent.Flow;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.eclipse.jetty.http.HttpCookie;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
@@ -59,6 +63,7 @@ import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
@@ -89,9 +94,12 @@ public final class WebUi implements AutoCloseable {
     private static final String SHARED = "/shared";
     private static final String KAD = "/kad";
     private static final String LOG = "/log";
+    private static final String SETTINGS = "/settings";
     private static final String ACTION = "action";
     // The search scope that picks the network as the desktop app does.
     private static final String AUTOMATIC = "AUTOMATIC";
+    // Seconds between the loads of a search page while its results may come.
+    private static final int SEARCH_REFRESH = 2;
     private static final int MAX_LOGIN_BODY = 16 * 1024;
     private static final int MAX_LOGIN_FIELDS = 4;
     // Far more than any of the forms has.
@@ -113,8 +121,15 @@ public final class WebUi implements AutoCloseable {
     // address or a name of the settings. Any other Host header may be a DNS-rebinding attempt.
     private static final Set<String> LOOPBACK_NAMES = Set.of("localhost", "127.0.0.1", "[::1]");
 
+    // Synology's QuickConnect names an address of a NAS a-b-c-d.<id>.direct.quickconnect.to, and its DNS answers with
+    // that address only: such a name of the address a request came to cannot be rebound elsewhere.
+    private static final Pattern QUICKCONNECT =
+            Pattern.compile("(\\d{1,3})-(\\d{1,3})-(\\d{1,3})-(\\d{1,3})\\.[a-z0-9-]+\\.direct\\.quickconnect\\.to");
+
     private final NjMuleEngine engine;
     private final WebUiSettings settings;
+    // The names of the settings, changed by the settings page.
+    private volatile List<String> hosts;
     private final TrustedProxies proxies;
     private final Server server;
     private final int port;
@@ -139,6 +154,7 @@ public final class WebUi implements AutoCloseable {
             Duration heartbeat) {
         this.engine = engine;
         this.settings = settings;
+        this.hosts = settings.hosts();
         this.proxies = new TrustedProxies(settings.proxies());
         this.server = server;
         this.port = port;
@@ -284,12 +300,17 @@ public final class WebUi implements AutoCloseable {
         String path = exchange.path();
         // A HEAD gets the headers of the GET; send() leaves the body out.
         String method = exchange.isHead() ? GET : exchange.method();
-        if (!trustedHost(exchange.header("Host"), this.settings.lan(), this.settings.hosts())) {
-            send(exchange, 421, TEXT, "Unknown host name: the web interface settings list the names it answers to.");
+        List<String> names = this.hosts;
+        if (!trustedHost(exchange.header("Host"), this.settings.lan(), names, exchange.localAddress())) {
+            send(
+                    exchange,
+                    421,
+                    TEXT,
+                    "Unknown host name: open the interface by this computer's address and add the name under"
+                            + " Settings.");
             return;
         }
-        if (method.equals(POST)
-                && !trustedOrigin(exchange.header("Origin"), exchange.header("Host"), this.settings.hosts())) {
+        if (method.equals(POST) && !trustedOrigin(exchange.header("Origin"), exchange.header("Host"), names)) {
             send(exchange, 403, TEXT, "Cross-site request refused.");
             return;
         }
@@ -299,6 +320,11 @@ public final class WebUi implements AutoCloseable {
         }
         if (path.equals("/style.css") && method.equals(GET)) {
             send(exchange, 200, "text/css; charset=utf-8", Html.STYLE);
+            return;
+        }
+        Optional<byte[]> icon = Html.icon(path);
+        if (icon.isPresent() && method.equals(GET)) {
+            send(exchange, 200, path.endsWith(".svg") ? "image/svg+xml" : "image/png", icon.get());
             return;
         }
         if (path.equals("/login")) {
@@ -321,12 +347,27 @@ public final class WebUi implements AutoCloseable {
         }
     }
 
-    static boolean trustedHost(String host, boolean lan, List<String> names) {
+    static boolean trustedHost(String host, boolean lan, List<String> names, InetAddress reached) {
         if (host == null) {
             return false;
         }
         String name = withoutPort(host);
-        return LOOPBACK_NAMES.contains(name) || names.contains(name) || (lan && isAddress(name));
+        return LOOPBACK_NAMES.contains(name)
+                || names.contains(name)
+                || (lan && (isAddress(name) || isQuickConnectNameOf(name, reached)));
+    }
+
+    private static boolean isQuickConnectNameOf(String name, InetAddress reached) {
+        Matcher m = QUICKCONNECT.matcher(name);
+        if (!m.matches() || !(reached instanceof Inet4Address)) {
+            return false;
+        }
+        try {
+            return Inet4Address.ofLiteral(m.group(1) + "." + m.group(2) + "." + m.group(3) + "." + m.group(4))
+                    .equals(reached);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     // The name of host[:port], in lower case.
@@ -441,6 +482,7 @@ public final class WebUi implements AutoCloseable {
             case SHARED -> sharedPage(session);
             case KAD -> kadPage(session);
             case LOG -> logPage(session);
+            case SETTINGS -> settingsPage(session);
             default -> null;
         };
         if (page == null) {
@@ -485,6 +527,10 @@ public final class WebUi implements AutoCloseable {
                 case KAD -> {
                     kad(form);
                     yield KAD;
+                }
+                case SETTINGS -> {
+                    hostNames(form, exchange.header("Host"));
+                    yield SETTINGS;
                 }
                 default -> null;
             };
@@ -556,7 +602,7 @@ public final class WebUi implements AutoCloseable {
         String chosen = form.getOrDefault("scope", SearchRequest.Scope.SERVER.name());
         SearchRequest.Scope scope = chosen.equals(AUTOMATIC) ? automaticScope() : SearchRequest.Scope.valueOf(chosen);
         SearchId id = await(this.engine.search(new SearchRequest(expression, scope)));
-        this.searches.started(id.value());
+        this.searches.started(id.value(), new SearchCollector.Asked(expression, chosen));
         return SEARCH + "?id=" + id.value();
     }
 
@@ -834,42 +880,91 @@ public final class WebUi implements AutoCloseable {
 
     private String searchPage(Sessions.Session session, String idText) {
         String csrf = session.csrf();
+        List<SearchCollector.Listed> started = this.searches.searches();
+        // Back from another page, the latest search shows again.
+        Long id = parseId(idText);
+        if (id == null && !started.isEmpty()) {
+            id = started.getLast().id();
+        }
+        List<SearchResult> found = id == null ? null : this.searches.results(id).orElse(null);
+        SearchCollector.Asked asked = id == null
+                ? new SearchCollector.Asked("", "")
+                : this.searches.asked(id).orElse(new SearchCollector.Asked("", ""));
         StringBuilder body = new StringBuilder(4096);
+        if (started.size() > 1) {
+            body.append("<nav class=\"tabs\">");
+            for (SearchCollector.Listed s : started) {
+                body.append("<a href=\"search?id=")
+                        .append(s.id())
+                        .append(s.id() == id ? "\" class=\"current\">" : "\">")
+                        .append(Html.text(
+                                s.asked().expression().isEmpty()
+                                        ? "#" + s.id()
+                                        : s.asked().expression()))
+                        .append("</a>");
+            }
+            body.append("</nav>");
+        }
         body.append("<p>")
                 .append(Html.form(
                         SEARCH,
                         csrf,
                         "<input type=\"text\" name=\"query\" size=\"40\" required maxlength=\""
                                 + SearchRequest.MAX_EXPRESSION_LENGTH
+                                + "\" value=\""
+                                + Html.text(asked.expression())
                                 + "\" autofocus> "
                                 + "<select name=\"scope\">"
-                                + "<option value=\"" + AUTOMATIC + "\">Automatic</option>"
-                                + "<option value=\"SERVER\">Server</option>"
-                                + "<option value=\"GLOBAL\">Global</option>"
-                                + "<option value=\"KAD\">Kad</option></select> ",
+                                + scopeOption(AUTOMATIC, "Automatic", asked.scope())
+                                + scopeOption("SERVER", "Server", asked.scope())
+                                + scopeOption("GLOBAL", "Global", asked.scope())
+                                + scopeOption("KAD", "Kad", asked.scope())
+                                + "</select> ",
                         "Search",
                         true))
                 .append("</p>");
-        Long id = parseId(idText);
-        List<SearchResult> found = id == null ? null : this.searches.results(id).orElse(null);
         if (found == null) {
             return Html.page("Search", csrf, body.toString());
         }
+        // The page asks for itself again while results may come: the pages run no scripts.
+        boolean running = this.searches.running(id);
         found.sort((a, b) -> Integer.compare(b.sources(), a.sources()));
         body.append("<p>")
+                .append(running ? "Searching… " : "Search finished: ")
                 .append(found.size())
-                .append(" results; <a href=\"search?id=")
-                .append(id)
-                .append("\">reload</a> for more.</p>")
-                .append("<table><tr><th>File</th><th>Size</th><th>Sources</th><th></th></tr>");
+                .append(found.size() == 1 ? " result" : " results")
+                .append(running ? " so far." : ".")
+                .append("</p>");
+        Set<Hash16> downloading = knownHashes(this.engine.downloads(), DownloadInfo::hash);
+        Set<Hash16> shared = knownHashes(this.engine.sharedFiles(), SharedFileInfo::hash);
+        // The media columns show when a result has something in them, as the files of other kinds have nothing.
+        List<MediaColumn> media = MediaColumn.ALL.stream()
+                .filter(c -> found.stream().anyMatch(c::has))
+                .toList();
+        body.append("<div class=\"scroll\"><table><tr><th>File</th><th>Size</th><th>Sources</th><th>Complete</th>")
+                .append("<th>Type</th>")
+                .append("<th>Known</th>");
+        media.forEach(c -> body.append("<th>").append(c.title).append("</th>"));
+        body.append("<th></th></tr>");
         for (SearchResult r : found) {
-            body.append("<tr><td>")
+            String known = downloading.contains(r.hash())
+                    ? "Downloading"
+                    : shared.contains(r.hash()) ? "Shared" : r.isSpam() ? "Spam" : "";
+            body.append(r.isSpam() ? "<tr class=\"spam\"><td>" : "<tr><td>")
                     .append(Html.text(r.name()))
                     .append("</td><td>")
                     .append(Html.size(r.size()))
                     .append("</td><td>")
                     .append(r.sources())
                     .append("</td><td>")
+                    .append(complete(r))
+                    .append("</td><td>")
+                    .append(Html.text(type(r)))
+                    .append("</td><td>")
+                    .append(known)
+                    .append("</td>");
+            media.forEach(c -> body.append("<td>").append(Html.text(c.text(r))).append("</td>"));
+            body.append("<td>")
                     .append(Html.form(
                             SEARCH,
                             csrf,
@@ -879,7 +974,116 @@ public final class WebUi implements AutoCloseable {
                             false))
                     .append("</td></tr>");
         }
-        return Html.page("Search", csrf, body.append("</table>").toString());
+        return Html.page("Search", csrf, body.append("</table></div>").toString(), running ? SEARCH_REFRESH : 0);
+    }
+
+    // The files a column of results marks; none when the engine cannot tell, which leaves the results shown.
+    private <T> Set<Hash16> knownHashes(CompletableFuture<List<T>> files, Function<T, Hash16> hash) {
+        try {
+            return await(files).stream().map(hash).collect(Collectors.toSet());
+        } catch (EngineFailure e) {
+            return Set.of();
+        }
+    }
+
+    // As the desktop app: the complete sources as a share of the sources, "?" when the network does not tell (Kad),
+    // but a file of one part is whole wherever it is.
+    private static String complete(SearchResult r) {
+        if (r.completeSources() < 0) {
+            return r.size() <= PartMap.PART_SIZE ? "Yes" : "?";
+        }
+        if (r.completeSources() == 0) {
+            return "0%";
+        }
+        return r.sources() > 0 ? (100L * r.completeSources() / r.sources()) + "%" : "Yes";
+    }
+
+    // The type the network gives, else the extension.
+    private static String type(SearchResult r) {
+        if (r.type().isPresent() && !r.type().get().isEmpty()) {
+            return r.type().get();
+        }
+        int dot = r.name().lastIndexOf('.');
+        return dot < 0 || dot == r.name().length() - 1
+                ? ""
+                : r.name().substring(dot + 1).toLowerCase(Locale.ROOT);
+    }
+
+    /** A column of the media details of the results. */
+    private record MediaColumn(String title, Function<SearchResult.Media, String> value) {
+        static final List<MediaColumn> ALL = List.of(
+                new MediaColumn("Artist", SearchResult.Media::artist),
+                new MediaColumn("Album", SearchResult.Media::album),
+                new MediaColumn("Title", SearchResult.Media::title),
+                new MediaColumn("Length", m -> m.length() == 0 ? "" : playingTime(m.length())),
+                new MediaColumn("Bitrate", m -> m.bitrate() == 0 ? "" : m.bitrate() + " kbit/s"),
+                new MediaColumn("Codec", SearchResult.Media::codec));
+
+        boolean has(SearchResult r) {
+            return !text(r).isEmpty();
+        }
+
+        String text(SearchResult r) {
+            return this.value.apply(r.media());
+        }
+
+        private static String playingTime(int seconds) {
+            int h = seconds / 3600;
+            int m = seconds / 60 % 60;
+            int s = seconds % 60;
+            return h > 0
+                    ? String.format(Locale.ROOT, "%d:%02d:%02d", h, m, s)
+                    : String.format(Locale.ROOT, "%d:%02d", m, s);
+        }
+    }
+
+    private String settingsPage(Sessions.Session session) {
+        String csrf = session.csrf();
+        String besides = this.settings.lan()
+                ? "localhost, this computer's addresses and their Synology QuickConnect names"
+                        + " (192-168-1-80.&lt;id&gt;.direct.quickconnect.to)"
+                : "localhost";
+        String body = "<h2>Host names</h2><p>Besides " + besides
+                + ", the interface answers only to these names, such as a name on the LAN or a reverse proxy's:"
+                + " a page of another site that reaches it under another name is refused (DNS rebinding).</p><p>"
+                + Html.form(
+                        SETTINGS,
+                        csrf,
+                        "<input type=\"text\" name=\"hosts\" size=\"60\" value=\""
+                                + Html.text(String.join(", ", this.hosts))
+                                + "\" placeholder=\"nas.local, njmule.example.com\"> ",
+                        "Save",
+                        true)
+                + "</p>";
+        return Html.page("Settings", csrf, body);
+    }
+
+    // The names of the settings, written to the file of the running settings, which the command line may have changed.
+    private void hostNames(Map<String, String> form, String host) {
+        List<String> names = WebUiSettings.hostNames(form.getOrDefault("hosts", ""));
+        String current = host == null ? "" : withoutPort(host);
+        if (this.hosts.contains(current) && !names.contains(current)) {
+            throw new IllegalArgumentException("Keep " + current + ": this page is open under that name.");
+        }
+        Path dir = this.engine.directories().config();
+        WebUiSettings file = WebUiSettings.load(dir);
+        if (!file.usable()) {
+            throw new IllegalArgumentException("Cannot read " + WebUiSettings.FILE_NAME + ": nothing was changed.");
+        }
+        WebUiSettings changed = new WebUiSettings(
+                file.enabled(), file.port(), file.lan(), file.passwordHash(), file.api(), names, file.proxies());
+        try {
+            changed.save(dir);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Cannot save the settings: " + e.getMessage(), e);
+        }
+        this.hosts = changed.hosts();
+        logger.info("Web interface host names: {}", changed.hosts().isEmpty() ? "none" : changed.hosts());
+    }
+
+    private static String scopeOption(String value, String label, String chosen) {
+        return "<option value=\"" + value + "\"" + (value.equals(chosen) ? " selected" : "") + ">" + label
+                + "</option>";
     }
 
     private static Long parseId(String text) {
@@ -960,7 +1164,10 @@ public final class WebUi implements AutoCloseable {
     }
 
     private void send(Exchange exchange, int status, String type, String body) throws IOException {
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        send(exchange, status, type, body.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void send(Exchange exchange, int status, String type, byte[] bytes) throws IOException {
         exchange.setHeader("Content-Type", type);
         securityHeaders(exchange);
         if (exchange.isHead()) {
@@ -978,7 +1185,7 @@ public final class WebUi implements AutoCloseable {
     private static void securityHeaders(Exchange exchange) {
         exchange.setHeader(
                 "Content-Security-Policy",
-                "default-src 'none'; style-src 'self'; form-action 'self'; frame-ancestors 'none';"
+                "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none';"
                         + " base-uri 'none'");
         exchange.setHeader("X-Frame-Options", "DENY");
         exchange.setHeader("X-Content-Type-Options", "nosniff");
@@ -1008,6 +1215,7 @@ public final class WebUi implements AutoCloseable {
         public void onNext(EngineEvent event) {
             switch (event) {
                 case EngineEvent.SearchResults r -> WebUi.this.searches.add(r);
+                case EngineEvent.SearchEnded e -> WebUi.this.searches.ended(e);
                 case EngineEvent.Log l -> WebUi.this.recentLog.add(l.line());
                 default -> {
                     // Pages read the rest when they are asked for.

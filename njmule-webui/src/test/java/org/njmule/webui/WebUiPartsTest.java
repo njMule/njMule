@@ -22,6 +22,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,6 +57,7 @@ class WebUiPartsTest {
     private boolean allowed;
     private boolean lanAllowed;
     private List<String> trustedNames = List.of();
+    private InetAddress reached = Inet4Address.ofLiteral("192.168.1.80");
     private boolean trusted;
     private List<String> hostNames;
     private WebUiSettings chosen;
@@ -313,6 +316,48 @@ class WebUiPartsTest {
         whenTheHostIsChecked("[fe80::1");
 
         thenTheHostIsTrusted(false, "an unclosed bracket");
+    }
+
+    // Synology's DNS gives such a name the address it spells only.
+    @ParameterizedTest
+    @ValueSource(
+            strings = {"192-168-1-80.mynas.direct.quickconnect.to:4711", "192-168-1-80.MyNas.Direct.QuickConnect.to"})
+    void shouldLetInAQuickConnectNameOfTheAddressReachedWhileTheLanIsAllowed(String host) {
+        givenTheLanAllowed(true);
+        givenTheRequestReached("192.168.1.80");
+
+        whenTheHostIsChecked(host);
+
+        thenTheHostIsTrusted(true);
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "192-168-1-81.mynas.direct.quickconnect.to",
+                "192-168-1-800.mynas.direct.quickconnect.to",
+                "192-168-1-80.direct.quickconnect.to",
+                "192-168-1-80.a.b.direct.quickconnect.to",
+                "192-168-1-80.mynas.direct.quickconnect.to.rebound.example",
+                "192-168-1-80.mynas.direct.quickconnect.example"
+            })
+    void shouldKeepOutAQuickConnectNameOfAnotherAddress(String host) {
+        givenTheLanAllowed(true);
+        givenTheRequestReached("192.168.1.80");
+
+        whenTheHostIsChecked(host);
+
+        thenTheHostIsTrusted(false);
+    }
+
+    @Test
+    void shouldKeepOutAQuickConnectNameWhileTheLanIsOff() {
+        givenTheLanAllowed(false);
+        givenTheRequestReached("192.168.1.80");
+
+        whenTheHostIsChecked("192-168-1-80.mynas.direct.quickconnect.to");
+
+        thenTheHostIsTrusted(false);
     }
 
     @ParameterizedTest
@@ -632,6 +677,10 @@ class WebUiPartsTest {
         this.trustedNames = List.of(names);
     }
 
+    private void givenTheRequestReached(String address) {
+        this.reached = InetAddress.ofLiteral(address);
+    }
+
     private void givenTheSettingsSaved(boolean enabled, int port, boolean lan, String passwordHash, String... hosts)
             throws IOException {
         this.chosen = new WebUiSettings(enabled, port, lan, passwordHash, false, List.of(hosts));
@@ -696,7 +745,7 @@ class WebUiPartsTest {
     }
 
     private void whenTheHostIsChecked(String host) {
-        this.trusted = WebUi.trustedHost(host, this.lanAllowed, this.trustedNames);
+        this.trusted = WebUi.trustedHost(host, this.lanAllowed, this.trustedNames, this.reached);
     }
 
     private void whenTheOriginIsChecked(String origin, String host) {

@@ -18,7 +18,11 @@ package org.njmule.webui;
 
 import com.google.common.escape.Escaper;
 import com.google.common.html.HtmlEscapers;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import org.njmule.core.api.NjMuleInfo;
 
 /** The pages' frame and escaping: every text that is not ours goes through {@link #text}. */
@@ -55,13 +59,36 @@ final class Html {
             .card b { display: block; font-size: 1.2em; }
             .error { color: #bf616a; }
             progress { width: 120px; height: 10px; accent-color: #a3be8c; vertical-align: middle; }
+            nav.tabs { margin: 0 0 12px; }
+            nav.tabs a { display: inline-block; padding: 4px 10px; margin: 0 6px 6px 0;
+              border: 1px solid var(--border); border-radius: 6px; background: var(--card); }
+            nav.tabs a.current { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+            tr.spam td { opacity: 0.6; }
+            .scroll { overflow-x: auto; }
             @media (max-width: 640px) {
               main { padding: 10px; }
               table { display: block; overflow-x: auto; white-space: nowrap; }
               nav a { display: inline-block; margin: 4px 12px 4px 0; } }
             """;
 
+    // The browser icons, from the branding at build time; one missing answers 404.
+    private static final Map<String, byte[]> ICONS =
+            Map.of("/favicon.svg", resource("favicon.svg"), "/favicon.png", resource("favicon.png"));
+
     private Html() {}
+
+    /** The icon at {@code path}, if it is one. */
+    static Optional<byte[]> icon(String path) {
+        return Optional.ofNullable(ICONS.get(path)).filter(b -> b.length > 0).map(byte[]::clone);
+    }
+
+    private static byte[] resource(String name) {
+        try (InputStream in = Html.class.getResourceAsStream(name)) {
+            return in == null ? new byte[0] : in.readAllBytes();
+        } catch (IOException e) {
+            return new byte[0];
+        }
+    }
 
     /** {@code value} safe in element content and in quoted attributes. */
     static String text(String value) {
@@ -70,9 +97,21 @@ final class Html {
 
     /** A whole page; {@code csrf} is empty on the login page, which has no navigation. */
     static String page(String title, String csrf, String body) {
+        return page(title, csrf, body, 0);
+    }
+
+    /** A whole page that the browser loads again every {@code refresh} seconds, if more than 0. */
+    static String page(String title, String csrf, String body, int refresh) {
         StringBuilder out = new StringBuilder(4096);
         out.append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">")
-                .append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
+                .append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+        if (refresh > 0) {
+            out.append("<meta http-equiv=\"refresh\" content=\"")
+                    .append(refresh)
+                    .append("\">");
+        }
+        out.append("<link rel=\"icon\" href=\"favicon.png\" sizes=\"32x32\">")
+                .append("<link rel=\"icon\" href=\"favicon.svg\" type=\"image/svg+xml\">")
                 .append("<title>")
                 .append(text(title))
                 .append(" - njMule</title><link rel=\"stylesheet\"" + " href=\"style.css\"></head><body><header>")
@@ -83,7 +122,7 @@ final class Html {
             out.append("<nav><a href=\"./\">Status</a><a href=\"transfers\">Transfers</a>")
                     .append("<a href=\"search\">Search</a><a href=\"servers\">Servers</a>")
                     .append("<a href=\"kad\">Kad</a><a href=\"shared\">Shared files</a>")
-                    .append("<a href=\"log\">Log</a></nav>")
+                    .append("<a href=\"log\">Log</a><a href=\"settings\">Settings</a></nav>")
                     .append(form("/logout", csrf, "", "Log out", false));
         }
         out.append("</header><main><h1>").append(text(title)).append("</h1>").append(body);
@@ -91,7 +130,6 @@ final class Html {
         return out.toString();
     }
 
-    /** A form posting {@code fields} (already escaped hidden inputs) with one button. */
     /**
      * {@code path}, a page of the interface, relative to the page that links to it: every page sits at the top, so the
      * interface works under whatever path a reverse proxy serves it.
@@ -103,6 +141,7 @@ final class Html {
         return path.startsWith("/") ? path.substring(1) : path;
     }
 
+    /** A form posting {@code fields} (already escaped hidden inputs) with one button. */
     static String form(String action, String csrf, String fields, String button, boolean main) {
         return "<form class=\"inline\" method=\"post\" action=\""
                 + text(relative(action))

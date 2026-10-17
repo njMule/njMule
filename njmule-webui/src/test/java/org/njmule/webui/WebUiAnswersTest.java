@@ -286,7 +286,7 @@ class WebUiAnswersTest {
 
         thenTheBodyContains("first.iso");
         thenTheBodyDoesNotContain("other.iso");
-        thenThePageDoesNotShow("/search?id=100", "results;");
+        thenThePageDoesNotShow("/search?id=100", "<table>");
     }
 
     @Test
@@ -298,6 +298,89 @@ class WebUiAnswersTest {
         whenThePageIsAsked("/search?id=2");
 
         thenTheBodyContains("early.iso");
+    }
+
+    @Test
+    void shouldShowTheLatestSearchAgainWhenItsPageIsOpenedWithoutOne() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(3);
+        givenASearchStarted("linux");
+        givenTheEngineFinds(3, "debian.iso");
+
+        whenThePageIsAskedUntilItShows("/search", "debian.iso");
+
+        thenTheBodyContains("value=\"linux\"");
+    }
+
+    @Test
+    void shouldShowTheSearchesStartedAsTabs() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(3);
+        givenASearchStarted("linux");
+        givenTheEngineSearchesAs(4);
+        givenASearchStarted("ubuntu");
+
+        whenThePageIsAsked("/search?id=3");
+
+        thenTheBodyContains("href=\"search?id=3\" class=\"current\">linux</a>", "href=\"search?id=4\">ubuntu</a>");
+    }
+
+    @Test
+    void shouldLoadTheSearchPageAgainWhileTheSearchRuns() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(3);
+        givenASearchStarted("linux");
+
+        whenThePageIsAsked("/search?id=3");
+
+        thenTheBodyContains("<meta http-equiv=\"refresh\" content=\"2\">", "Searching… 0 results so far.");
+    }
+
+    @Test
+    void shouldStopLoadingTheSearchPageAgainOnceTheSearchEnds() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(3);
+        givenASearchStarted("linux");
+        givenTheEngineFinds(3, "debian.iso");
+        givenTheSearchEnded(3);
+
+        whenThePageIsAskedUntilItShows("/search?id=3", "Search finished");
+
+        thenTheBodyContains("Search finished: 1 result.");
+        thenTheBodyDoesNotContain("http-equiv");
+    }
+
+    @Test
+    void shouldShowTheColumnsOfTheDesktopApp() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(3);
+        givenASearchStarted("linux");
+        givenTheEngineFinds(3, "debian.iso");
+
+        whenThePageIsAskedUntilItShows("/search?id=3", "debian.iso");
+
+        thenTheBodyContains("<th>Complete</th>", "<th>Type</th>", "<th>Known</th>", "<td>100%</td>", "<td>iso</td>");
+        thenTheBodyDoesNotContain("<th>Artist</th>");
+    }
+
+    @Test
+    void shouldGiveItsIconWithoutALogin() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenThePageIsAsked("/favicon.svg");
+
+        thenTheStatusIs(200);
+        thenTheHeaderIs("Content-Type", "image/svg+xml");
+        thenTheBodyContains("<svg");
+    }
+
+    @Test
+    void shouldLinkItsIconsFromThePages() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenThePageIsAsked("/login");
+
+        thenTheBodyContains("href=\"favicon.png\" sizes=\"32x32\"", "href=\"favicon.svg\" type=\"image/svg+xml\"");
     }
 
     @Test
@@ -551,7 +634,7 @@ class WebUiAnswersTest {
 
         whenThePageIsAskedUntilItShows("/search?id=6", "<td>99</td>");
 
-        thenTheBodyContains("1000 results;", "n0.iso", "n999.iso");
+        thenTheBodyContains("1000 results", "n0.iso", "n999.iso");
         thenTheBodyDoesNotContain("n1000.iso", "n2000.iso");
     }
 
@@ -641,7 +724,7 @@ class WebUiAnswersTest {
         whenThePageIsAsked("/search?&id&x=1");
 
         thenTheStatusIs(200);
-        thenTheBodyDoesNotContain("results;");
+        thenTheBodyDoesNotContain("<table>");
     }
 
     @Test
@@ -784,6 +867,10 @@ class WebUiAnswersTest {
 
     private void givenTheEngineFinds(long search, SearchResult... results) {
         this.fake.events.submit(new EngineEvent.SearchResults(new SearchId(search), List.of(results)));
+    }
+
+    private void givenTheSearchEnded(long search) {
+        this.fake.events.submit(new EngineEvent.SearchEnded(new SearchId(search), 1));
     }
 
     private void givenTheEngineFindsForTheSearches(long from, long to, String name) {

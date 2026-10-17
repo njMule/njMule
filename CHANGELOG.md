@@ -136,7 +136,9 @@ All notable changes to this project are documented here. The format follows
 - Messages with other clients and their CAPTCHA check, both ways, and friends kept in
   `emfriends.met`; a messages screen in the desktop interface.
 - Web interface (`njmule-webui`): status, transfers, searches (Automatic picks the network as the
-  desktop app does) and servers as plain pages served by the JDK, behind a PBKDF2-hashed password, with HTTP-only same-site session cookies, form tokens,
+  desktop app does; the latest ones stay as tabs, a page loads again by itself until its search
+  ends, with the desktop app's columns) and servers as plain pages served by the JDK, with the
+  njMule icon in the browser, behind a PBKDF2-hashed password, with HTTP-only same-site session cookies, form tokens,
   origin and host checks, a login lockout and a strict Content-Security-Policy; on this computer
   only unless other computers are allowed. Set with `njmule --webui-password` (`--webui-port`,
   `--webui-lan`) or in the desktop options, and started with the engine.
@@ -494,7 +496,10 @@ All notable changes to this project are documented here. The format follows
   such as a Docker or systemd secret, never printing or logging it: with `--webui-password` it is
   set without asking; on its own it is set at every start, before njMule runs.
 - Host names for the web interface (`hosts` in `webui.properties`, `--webui-host <name>` beside
-  `--webui-password` or `--webui-password-file`, a field of the web interface settings): it then
+  `--webui-password` or `--webui-password-file`, a field of the web interface settings of the
+  desktop app and the Settings page of the web interface itself, which keeps the name it is open
+  under; with `--webui-lan` also the Synology QuickConnect name of the address a browser reached,
+  `192-168-1-80.<id>.direct.quickconnect.to`, under which DSM opens it): it then
   answers under a LAN name such as `nas.local` and behind a reverse proxy (Traefik, nginx, Caddy),
   taking forms whose origin is one of the names on any port, over HTTP or HTTPS; other names are
   still refused against DNS rebinding and other origins against cross-site requests. No forwarded

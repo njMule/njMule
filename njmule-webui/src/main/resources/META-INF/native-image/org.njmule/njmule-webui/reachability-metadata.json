@@ -1,0 +1,18 @@
+{
+    "resources": [
+        {
+            "glob": "org/njmule/webui/favicon.svg"
+        },
+        {
+            "glob": "org/njmule/webui/favicon.png"
+        },
+        {
+            "module": "org.njmule.webui",
+            "glob": "org/njmule/webui/favicon.svg"
+        },
+        {
+            "module": "org.njmule.webui",
+            "glob": "org/njmule/webui/favicon.png"
+        }
+    ]
+}

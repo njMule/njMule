@@ -300,8 +300,11 @@ It starts together with the engine, headless or with the desktop application, on
 listen on all interfaces.
 
 Against DNS rebinding it answers only to `localhost`, to IP addresses with `--webui-lan`, and to
-the host names listed with `--webui-host <name>` (repeated, or separated by commas) or in the web
-interface settings of the desktop application:
+the host names listed with `--webui-host <name>` (repeated, or separated by commas), in the web
+interface settings of the desktop application or on the Settings page of the web interface itself.
+With `--webui-lan` it also answers to the Synology QuickConnect name of the address it was reached
+on (`192-168-1-80.<id>.direct.quickconnect.to`, which only ever points to that address), the one
+under which DSM opens it:
 
 ```bash
 njmule --webui-password --webui-lan --webui-host nas.local

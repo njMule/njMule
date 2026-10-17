@@ -19,3 +19,15 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
 }
+
+// The browser icons come straight from the branding (no copy in the sources).
+tasks.processResources {
+    from(layout.settingsDirectory.file("branding/njmule-icon.svg")) {
+        into("org/njmule/webui")
+        rename { "favicon.svg" }
+    }
+    from(layout.settingsDirectory.file("branding/generated/njmule-32.png")) {
+        into("org/njmule/webui")
+        rename { "favicon.png" }
+    }
+}

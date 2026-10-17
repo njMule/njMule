@@ -141,6 +141,12 @@ final class Exchange {
         return this.proxies.client(remoteAddress(), this.request.getHeaders().getValuesList("X-Forwarded-For"));
     }
 
+    /** The address of this computer the request came to, or null when the connection does not tell. */
+    InetAddress localAddress() {
+        SocketAddress local = this.request.getConnectionMetaData().getLocalSocketAddress();
+        return local instanceof InetSocketAddress inet ? inet.getAddress() : null;
+    }
+
     InetAddress remoteAddress() {
         SocketAddress remote = this.request.getConnectionMetaData().getRemoteSocketAddress();
         return remote instanceof InetSocketAddress inet ? inet.getAddress() : InetAddress.getLoopbackAddress();

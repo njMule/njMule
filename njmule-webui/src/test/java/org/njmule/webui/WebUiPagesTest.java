@@ -40,6 +40,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
@@ -48,6 +49,7 @@ import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadPriority;
+import org.njmule.core.config.AppDirectories;
 
 /** The shared files, Kad and log pages. */
 @Timeout(60)
@@ -60,6 +62,10 @@ class WebUiPagesTest {
     private final FakeEngine fake = new FakeEngine();
     private final HttpClient http = HttpClient.newHttpClient();
     private final List<String> calls = new CopyOnWriteArrayList<>();
+
+    @TempDir
+    Path dir;
+
     private WebUi ui;
     private String cookie;
     private HttpResponse<String> answer;
@@ -125,6 +131,28 @@ class WebUiPagesTest {
     }
 
     @Test
+    void shouldSaveTheHostNamesOfTheSettingsPage() throws Exception {
+        givenALoggedInUser();
+        givenTheSettingsInTheConfigDirectory();
+
+        whenPosted("/settings", Map.of("hosts", "NAS.local njmule.example.com"));
+
+        thenTheSavedHostNamesAre("nas.local", "njmule.example.com");
+        thenTheSettingsPageShows("value=\"nas.local, njmule.example.com\"");
+    }
+
+    @Test
+    void shouldRefuseAHostNameOfTheSettingsPageThatIsNone() throws Exception {
+        givenALoggedInUser();
+        givenTheSettingsInTheConfigDirectory();
+
+        whenPosted("/settings", Map.of("hosts", "nas.local https://njmule.example.com"));
+
+        thenTheAnswerIs(400, "not a host name or an IP address");
+        thenTheSavedHostNamesAre();
+    }
+
+    @Test
     void shouldShowTheLatestLogLinesNewestFirst() throws Exception {
         givenALoggedInUser();
         givenTheEngineLogged("first line", "second <line>");
@@ -143,6 +171,12 @@ class WebUiPagesTest {
         assertThat(in.statusCode()).isEqualTo(303);
         String set = in.headers().firstValue("Set-Cookie").orElseThrow();
         this.cookie = set.substring(0, set.indexOf(';'));
+    }
+
+    private void givenTheSettingsInTheConfigDirectory() throws Exception {
+        AppDirectories dirs = AppDirectories.resolve(Optional.of(this.dir));
+        this.fake.value("directories", dirs);
+        new WebUiSettings(true, 4711, false, "hash").save(dirs.config());
     }
 
     private void givenTheEngineShares(String name, String folder) {
@@ -202,6 +236,23 @@ class WebUiPagesTest {
     private void thenThePageShows(String... parts) {
         assertThat(this.answer.statusCode()).as(this.answer.body()).isEqualTo(200);
         assertThat(this.answer.body()).contains(parts);
+    }
+
+    private void thenTheAnswerIs(int status, String text) {
+        assertThat(this.answer.statusCode()).as(this.answer.body()).isEqualTo(status);
+        assertThat(this.answer.body()).contains(text);
+    }
+
+    private void thenTheSavedHostNamesAre(String... names) {
+        assertThat(WebUiSettings.load(
+                                AppDirectories.resolve(Optional.of(this.dir)).config())
+                        .hosts())
+                .containsExactly(names);
+    }
+
+    private void thenTheSettingsPageShows(String text) throws Exception {
+        assertThat(this.answer.statusCode()).as(this.answer.body()).isEqualTo(303);
+        assertThat(get("/settings").body()).contains(text);
     }
 
     private void thenThePageHasNoLinkFromTheTop() {
