@@ -43,6 +43,7 @@ import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.ListChangeListener;
 import javafx.css.PseudoClass;
 import javafx.geometry.Insets;
@@ -155,6 +156,7 @@ public final class SearchScreen implements Screen {
     static final PseudoClass DOWNLOADING_ROW = PseudoClass.getPseudoClass("downloading");
 
     private final Gui gui;
+    private final StringProperty summary = new SimpleStringProperty("");
     private Node view;
     private final ComboBox<String> query = new ComboBox<>();
     private Input<String> queryInput;
@@ -203,6 +205,19 @@ public final class SearchScreen implements Screen {
     @Override
     public Icons icon() {
         return Icons.SEARCH;
+    }
+
+    @Override
+    public ObservableValue<String> summary() {
+        return this.summary;
+    }
+
+    // The searches open and those still running; nothing while there are none.
+    private void showSummary() {
+        long running = this.results.values().stream()
+                .filter(r -> Boolean.TRUE.equals(r.search().runningProperty().get()))
+                .count();
+        this.summary.set(this.results.isEmpty() ? "" : this.gui.f("nj.summary.search", this.results.size(), running));
     }
 
     @Override
@@ -272,7 +287,7 @@ public final class SearchScreen implements Screen {
         showParameters(parametersInUse() > 0);
         VBox below = new VBox(where, this.content);
         VBox.setVgrow(this.content, Priority.ALWAYS);
-        return Fx.screen(title(), tools, below);
+        return Fx.screen(tools, below);
     }
 
     // The search parameters: the type and the attributes the server or Kad filter on.
@@ -690,6 +705,8 @@ public final class SearchScreen implements Screen {
         tab.setGraphic(running);
         tab.setOnClosed(e -> closed(tab));
         this.results.put(tab, new Results(search, table, rows, ownTitle));
+        search.runningProperty().addListener((o, was, now) -> showSummary());
+        showSummary();
         table.getSelectionModel().getSelectedItems().addListener((ListChangeListener<LiveList.Row<SearchResult>>)
                 c -> followChoice());
         this.tabs.getTabs().add(tab);
@@ -837,6 +854,7 @@ public final class SearchScreen implements Screen {
 
     private void closed(Tab tab) {
         Results closed = this.results.remove(tab);
+        showSummary();
         if (closed != null) {
             this.gui.model().stopSearch(closed.search());
         }

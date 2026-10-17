@@ -20,10 +20,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.util.List;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.TabPane;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.stage.Stage;
@@ -91,9 +94,9 @@ class TopBarTest {
     }
 
     @Test
-    void shouldOpenTheIncomingFolderAndTheOptionsFromTheTools() throws Exception {
+    void shouldOpenTheIncomingFolderAndTheOptionsFromTheMoreMenu() throws Exception {
         givenTheWindow();
-        givenTheToolsAre("incoming", "options", "wizard", null, "import", "shortcuts", "updates", "about");
+        givenTheToolsAre("incoming", "options", "wizard", "import", null, "theme", "shortcuts", "updates", "about");
 
         whenTheToolIsChosen("options");
 
@@ -116,6 +119,34 @@ class TopBarTest {
         whenTheRatesArePressed();
 
         thenTheLimitsOfThePreferencesShow();
+    }
+
+    @Test
+    void shouldShowTheTitleAndTheSummaryOfTheScreenShown() throws Exception {
+        givenTheWindow();
+
+        whenTheScreenIsShown("statistics");
+
+        thenTheTitleIs("Statistics");
+        thenTheSummaryStartsWith("This session: ");
+    }
+
+    @Test
+    void shouldStartThePaletteWithTheLetterTypedOnTheField() throws Exception {
+        givenTheWindow();
+
+        whenTypedOnTheField("u");
+
+        thenThePaletteShows("u");
+    }
+
+    @Test
+    void shouldTellTheLimitsInTheStatusStrip() throws Exception {
+        givenTheWindow();
+
+        whenTheLimitsAre(0, 200);
+
+        thenTheLimitsRead("Limits: ↓ No limit · ↑ " + limit(200));
     }
 
     private void givenTheWindow() throws Exception {
@@ -163,6 +194,47 @@ class TopBarTest {
                 .findFirst()
                 .orElseThrow()
                 .fire());
+    }
+
+    private void whenTheScreenIsShown(String id) throws Exception {
+        FxTesting.onFx(() -> this.window.show(id));
+    }
+
+    private void whenTypedOnTheField(String letter) throws Exception {
+        FxTesting.onFx(() -> this.window
+                .root()
+                .lookup("#find")
+                .fireEvent(
+                        new KeyEvent(KeyEvent.KEY_TYPED, letter, "", KeyCode.UNDEFINED, false, false, false, false)));
+    }
+
+    private void whenTheLimitsAre(int down, int up) throws Exception {
+        FxTesting.onFx(() ->
+                this.test.model.handle(new EngineEvent.PreferencesChanged(this.test.engine.preferences().toBuilder()
+                        .maxDownloadKiBps(down)
+                        .maxUploadKiBps(up)
+                        .build())));
+    }
+
+    private void thenTheTitleIs(String title) throws Exception {
+        assertThat(FxTesting.onFx(() -> ((Label) this.window.root().lookup(".top-bar .screen-title")).getText()))
+                .isEqualTo(title);
+    }
+
+    private void thenTheSummaryStartsWith(String start) throws Exception {
+        assertThat(FxTesting.onFx(() -> ((Label) this.window.root().lookup(".top-bar .screen-summary")).getText()))
+                .startsWith(start);
+    }
+
+    private void thenThePaletteShows(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.window.palette().isShowing())).isTrue();
+        assertThat(FxTesting.onFx(() -> this.window.palette().field().getText()))
+                .isEqualTo(text);
+    }
+
+    private void thenTheLimitsRead(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> ((Button) this.window.root().lookup("#limits")).getText()))
+                .isEqualTo(text);
     }
 
     private void thenConnectIsTheAccent(boolean accent) throws Exception {

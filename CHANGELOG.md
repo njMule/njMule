@@ -553,6 +553,15 @@ All notable changes to this project are documented here. The format follows
 - A chosen toggle of the desktop app is a pastel fill in an accent outline instead of a solid accent
   block, table rows are 32 px tall, and the lines of the rate graph keep 3:1 against the surface in
   light and dark and stay apart for colour-blind eyes.
+- The desktop app's frame follows its new design: a sidebar with the logo and labelled places, which
+  folds to its icons with Ctrl+B and by itself in a narrow window; a top bar with the screen's title
+  and a line on what it holds, a field that searches the network or takes eD2K links (Ctrl+K), the
+  rates with their last half minute drawn beside, one neutral control for both networks whose menu
+  connects or disconnects eD2K, Kad or both (the Connect buttons of the servers and of Kad are gone),
+  and a More menu with the tools, the theme and About; at most two messages, at the bottom centre,
+  the same one counting up instead of stacking; a status strip with the last event, the users and
+  files, the speed limits and the free space where downloads go. The window works down to 900×600,
+  its tools then showing only their icons.
 
 ### Changed
 

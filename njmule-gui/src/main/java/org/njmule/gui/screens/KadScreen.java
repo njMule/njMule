@@ -68,7 +68,6 @@ public final class KadScreen implements Screen {
     private final TextField node = new TextField();
     private Input<ServerAddress> nodeInput;
     private UrlBox nodes;
-    private final Button connect = new Button();
     private final Button recheck = new Button();
     private int ticks;
 
@@ -106,11 +105,11 @@ public final class KadScreen implements Screen {
         this.nodeInput = new Inputs(this.gui)
                 .address(this.node, this.gui.t("IDS_BOOTSTRAP"))
                 .quietWhenEmpty();
-        this.connect.setOnAction(e -> connectOrDisconnect());
         this.recheck.setText(this.gui.t("IDS_KAD_RECHECKFW"));
         this.recheck.setGraphic(new Icon(Icons.SHIELD));
         this.recheck.setOnAction(e -> this.gui.model().recheckKadFirewall());
-        var tools = Fx.toolRow(this.connect, this.recheck);
+        // Kad starts and stops from the network menu in the top bar.
+        var tools = Fx.toolRow(this.recheck);
         FlowPane cards = new FlowPane(
                 12,
                 12,
@@ -134,7 +133,7 @@ public final class KadScreen implements Screen {
         VBox content = new VBox(16, this.say, cards, this.join, lists);
         VBox.setVgrow(lists, Priority.ALWAYS);
         // Shown under the network, which gives the title.
-        return Fx.part(tools, content);
+        return Fx.part(tools, Fx.scrollWhenShort(content));
     }
 
     // The contacts of the routing table and the lookups running, read again while the screen shows.
@@ -223,19 +222,6 @@ public final class KadScreen implements Screen {
         return this.nodes;
     }
 
-    // Connect starts Kad from the known contacts; while it runs the button stops it.
-    void connectOrDisconnect() {
-        if (this.gui.model().statusProperty().get().kad().isPresent()) {
-            this.gui.model().disconnectKad();
-        } else {
-            this.gui.model().connectKad();
-        }
-    }
-
-    Button connectButton() {
-        return this.connect;
-    }
-
     Button recheckButton() {
         return this.recheck;
     }
@@ -253,9 +239,7 @@ public final class KadScreen implements Screen {
         if (this.view != null && this.view.getScene() != null && this.view.isVisible() && ++this.ticks % 3 == 0) {
             this.gui.model().refreshKadLists();
         }
-        this.connect.setText(this.gui.t(running ? "IDS_MAIN_BTN_DISCONNECT" : "IDS_MAIN_BTN_CONNECT"));
         this.recheck.setDisable(!running);
-        this.connect.setGraphic(new Icon(running ? Icons.LINK_OFF : Icons.LINK));
         Optional<KadInfo> kad = status.kad();
         if (kad.isEmpty()) {
             this.state.setText(this.gui.t("nj.kad.off"));

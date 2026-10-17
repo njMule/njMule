@@ -53,19 +53,41 @@ class MessageKindsTest {
     @Test
     void shouldMakeAProblemLookLikeOneAndASuccessLikeOne() throws Exception {
         givenTheWindow();
-        whenShown(List.of("saved"), List.of("finished"), List.of("refused"));
-        thenTheMessagesAre("saved", "finished", "refused");
-        thenTheStyleOf("saved", null);
+
+        whenShown(List.of(), List.of("finished"), List.of("refused"));
+
+        thenTheMessagesAre("finished", "refused");
         thenTheStyleOf("finished", Styles.SUCCESS);
         thenTheStyleOf("refused", Styles.DANGER);
     }
 
     @Test
-    void shouldStackTheMessagesInTheBottomCornerAndLetTheOldestMakeRoom() throws Exception {
+    void shouldShowAMessageWithoutTheLookOfAProblemOrASuccess() throws Exception {
         givenTheWindow();
+
+        whenShown(List.of("saved"), List.of(), List.of());
+
+        thenTheStyleOf("saved", null);
+    }
+
+    @Test
+    void shouldStackTwoMessagesAtTheBottomCentreAndLetTheOldestMakeRoom() throws Exception {
+        givenTheWindow();
+
         whenShown(List.of("one", "two", "three"), List.of(), List.of("four", "five"));
-        thenTheMessagesAre("two", "three", "four", "five");
-        thenTheyStackAt(Pos.BOTTOM_RIGHT);
+
+        thenTheMessagesAre("four", "five");
+        thenTheyStackAt(Pos.BOTTOM_CENTER);
+    }
+
+    @Test
+    void shouldCountUpTheSameMessageInsteadOfStackingIt() throws Exception {
+        givenTheWindow();
+        givenShown(List.of(), List.of(), List.of("refused", "saved"));
+
+        whenShown(List.of(), List.of(), List.of("refused", "refused"));
+
+        thenTheMessagesAre("saved", "refused  ×3");
     }
 
     @Test
@@ -101,6 +123,10 @@ class MessageKindsTest {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
         this.test.show(this.window.root());
+    }
+
+    private void givenShown(List<String> infos, List<String> successes, List<String> problems) throws Exception {
+        whenShown(infos, successes, problems);
     }
 
     private void whenShown(List<String> infos, List<String> successes, List<String> problems) throws Exception {

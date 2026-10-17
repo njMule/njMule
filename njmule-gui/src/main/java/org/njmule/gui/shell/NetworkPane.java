@@ -21,7 +21,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
-import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
@@ -30,17 +29,14 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.njmule.gui.ui.Fx;
-import org.njmule.gui.ui.Icon;
-import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Screen;
 
 /**
- * The network: one place for the servers and Kad, which are two ways into the same network, with a switch between them
- * under one title.
+ * The network: one place for the servers and Kad, which are two ways into the same network, with a switch between them;
+ * the top bar gives the title.
  */
 final class NetworkPane {
 
-    private final String title;
     private final Map<String, Screen> parts = new LinkedHashMap<>();
     private final Map<String, ToggleButton> switches = new LinkedHashMap<>();
     private final Consumer<String> show;
@@ -48,8 +44,7 @@ final class NetworkPane {
     private VBox view;
 
     /** {@code parts} in switch order; {@code show} opens one of them by its id, as the rail does. */
-    NetworkPane(String title, List<Screen> parts, Consumer<String> show) {
-        this.title = title;
+    NetworkPane(List<Screen> parts, Consumer<String> show) {
         parts.forEach(p -> this.parts.put(p.id(), p));
         this.show = show;
     }
@@ -90,16 +85,9 @@ final class NetworkPane {
             this.switches.put(part.id(), button);
             segments.getChildren().add(button);
         }
-        HBox head = new HBox(16, Fx.title(this.title), segments);
-        head.setAlignment(Pos.CENTER_LEFT);
-        VBox box = new VBox(head, this.shown);
+        VBox box = new VBox(segments, this.shown);
         box.getStyleClass().add("screen");
         VBox.setVgrow(this.shown, Priority.ALWAYS);
         return box;
-    }
-
-    /** The icon the rail shows for the network. */
-    static Icon icon() {
-        return new Icon(Icons.NETWORK);
     }
 }

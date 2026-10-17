@@ -38,7 +38,8 @@ import org.njmule.gui.ui.Fx;
 
 /**
  * A box over the window to do anything by typing: the places, the commands of the menus, a search of the network or an
- * eD2K link to download. Opened by Ctrl+K; Enter runs the command chosen, Esc closes.
+ * eD2K link to download. Opened by Ctrl+K or the field of the top bar, over which it lies; Enter runs the command
+ * chosen, Esc closes.
  */
 final class CommandPalette {
 
@@ -88,7 +89,8 @@ final class CommandPalette {
         scrim.setOnMouseClicked(e -> hide());
         this.view = new StackPane(scrim, box);
         StackPane.setAlignment(box, Pos.TOP_CENTER);
-        StackPane.setMargin(box, new Insets(64, 16, 16, 16));
+        // Over the field of the top bar, which it stands for.
+        StackPane.setMargin(box, new Insets(10, 16, 16, 16));
         this.view.setVisible(false);
     }
 
@@ -100,11 +102,13 @@ final class CommandPalette {
         return this.view.isVisible();
     }
 
-    void show() {
-        this.field.clear();
-        filter("");
+    /** Opens the box with {@code text} typed already, the caret after it. */
+    void show(String text) {
+        this.field.setText(text);
+        filter(text);
         this.view.setVisible(true);
         this.field.requestFocus();
+        this.field.end();
     }
 
     void hide() {

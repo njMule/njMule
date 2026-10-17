@@ -537,7 +537,7 @@ public final class SettingsScreen implements Screen {
         this.index = new SettingsIndex(this.gui, grid, this.scroll);
         HBox body = new HBox(12, this.index.view(), this.scroll);
         HBox.setHgrow(this.scroll, Priority.ALWAYS);
-        return Fx.screen(title(), tools, body);
+        return Fx.screen(tools, body);
     }
 
     // Each box takes only its kind of value, within the limits the engine accepts.

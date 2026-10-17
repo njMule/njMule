@@ -346,20 +346,6 @@ class ScreensTest {
     }
 
     @Test
-    void shouldOfferToConnectToAServerOtherThanTheOneWeAreOn() throws Exception {
-        givenTheServersScreen();
-        givenAServerMetWithTwoServers();
-        givenTheServersAddedFromTheFile();
-        givenConnectedToTheFirstServer();
-        givenTheServerChosen(0);
-        givenTheConnectButtonReads("Disconnect");
-
-        whenTheServerIsChosen(1);
-
-        thenTheConnectButtonReads("Connect");
-    }
-
-    @Test
     void shouldRemoveTheChosenServer() throws Exception {
         givenTheServersScreen();
         givenAServerMetWithTwoServers();
@@ -445,12 +431,11 @@ class ScreensTest {
     }
 
     @Test
-    void shouldOfferToConnectKadAndNoFirewallCheckWithoutIt() throws Exception {
+    void shouldOfferNoFirewallCheckWithoutKad() throws Exception {
         givenTheGui();
 
         whenTheKadScreenShows();
 
-        thenTheKadButtonReads("Connect");
         thenTheFirewallCannotBeRechecked();
     }
 
@@ -460,7 +445,6 @@ class ScreensTest {
 
         whenKadIsConnectedByHand();
 
-        thenTheKadButtonBecomes("Disconnect");
         thenTheEngineCanRecheckTheFirewall();
     }
 
@@ -970,10 +954,6 @@ class ScreensTest {
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.ServerDisconnected(Optional.empty(), "test")));
     }
 
-    private void givenTheConnectButtonReads(String text) throws Exception {
-        thenTheConnectButtonReads(text);
-    }
-
     private void givenTheSearchScreen() throws Exception {
         givenTheGui();
         whenTheSearchScreenShows();
@@ -1064,7 +1044,6 @@ class ScreensTest {
 
     private void givenKadConnectedByHand() throws Exception {
         whenKadIsConnectedByHand();
-        thenTheKadButtonBecomes("Disconnect");
     }
 
     private void givenTheFirewallRecheckPressed() throws Exception {
@@ -1296,12 +1275,12 @@ class ScreensTest {
     }
 
     private void whenKadIsConnectedByHand() throws Exception {
-        FxTesting.onFx(this.kadScreen::connectOrDisconnect);
+        FxTesting.onFx(this.test.model::connectKad);
         tickUntil(() -> this.test.model.statusProperty().get().kad().isPresent());
     }
 
     private void whenKadIsDisconnectedByHand() throws Exception {
-        FxTesting.onFx(this.kadScreen::connectOrDisconnect);
+        FxTesting.onFx(this.test.model::disconnectKad);
         tickUntil(() -> this.test.model.statusProperty().get().kad().isEmpty());
     }
 
@@ -1513,10 +1492,6 @@ class ScreensTest {
         assertThat(this.serverLinks).hasSize(count);
     }
 
-    private void thenTheConnectButtonReads(String text) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.servers.connectButton().getText())).isEqualTo(text);
-    }
-
     private void thenNoExceptionOccurred() {
         assertThat(this.exception).isNull();
     }
@@ -1545,17 +1520,6 @@ class ScreensTest {
         FxTesting.assertEventually(
                 "the " + priority + " priority",
                 () -> this.shared.table().getItems().getFirst().get().priority() == priority);
-    }
-
-    private void thenTheKadButtonReads(String text) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.kadScreen.connectButton().getText()))
-                .isEqualTo(text);
-    }
-
-    private void thenTheKadButtonBecomes(String text) throws Exception {
-        FxTesting.assertEventually(
-                "the button follows",
-                () -> this.kadScreen.connectButton().getText().equals(text));
     }
 
     private void thenTheFirewallCannotBeRechecked() throws Exception {

@@ -212,6 +212,8 @@
 .root.high-contrast .nav-rail .toggle-button:selected {
     -fx-background-color: -nj-sys-highlight;
     -fx-text-fill: -nj-sys-highlight-text;
+    -fx-border-color: -nj-sys-highlight-text;
+    -fx-effect: null;
 }
 
 .root.high-contrast .nav-rail .toggle-button:selected .nj-icon {
@@ -277,75 +279,125 @@
     -fx-cell-size: 32px;
 }
 
-/* Navigation rail on the left. */
+/* The sidebar of places: logo and name, a row for each place, the options at the bottom; folded, only the icons. */
 .nav-rail {
     -fx-background-color: -color-bg-subtle;
     -fx-border-color: -color-border-muted;
     -fx-border-width: 0 1 0 0;
-    -fx-padding: 8 6 8 6;
-    -fx-spacing: 4;
+    -fx-padding: 12 10 12 10;
+    -fx-spacing: 2;
+    -fx-pref-width: 200;
+    -fx-min-width: 200;
 }
 
-.nav-rail .toggle-button {
+.nav-rail:collapsed {
+    -fx-padding: 10 8 10 8;
+    -fx-pref-width: 56;
+    -fx-min-width: 56;
+    -fx-alignment: top-center;
+}
+
+.nav-rail .rail-head {
+    -fx-alignment: center-left;
+    -fx-padding: 2 0 14 6;
+}
+
+.nav-rail:collapsed .rail-head {
+    -fx-alignment: center;
+    -fx-padding: 2 0 10 0;
+}
+
+.nav-rail .rail-wordmark {
+    -fx-font-size: 1.3em;
+}
+
+.nav-rail .rail-fold .nj-icon {
+    -nj-icon-size: 16;
+    -nj-icon-color: -color-fg-muted;
+}
+
+.nav-rail .toggle-button,
+.nav-rail .toggle-button:focused {
     -fx-background-color: transparent;
+    -fx-background-insets: 0;
     -fx-background-radius: 8;
-    -fx-content-display: top;
-    -fx-graphic-text-gap: 2;
-    -fx-padding: 8 4 6 4;
-    -fx-pref-width: 84;
-    -fx-text-fill: -color-fg-muted;
-    -fx-font-size: 0.85em;
+    -fx-border-width: 0;
+    -fx-graphic-text-gap: 12;
+    -fx-padding: 0 10 0 10;
+    -fx-min-height: 36;
+    -fx-pref-height: 36;
+    -fx-text-fill: -color-fg-default;
+}
+
+/* A row with a count or a dot at its end keeps its text clear of it. */
+.nav-rail .toggle-button.marked {
+    -fx-padding: 0 40 0 10;
+}
+
+.nav-rail:collapsed .toggle-button,
+.nav-rail:collapsed .toggle-button.marked {
+    -fx-padding: 0;
+    -fx-min-width: 40;
+    -fx-pref-width: 40;
+    -fx-alignment: center;
 }
 
 .nav-rail .toggle-button .nj-icon {
     -nj-icon-color: -color-fg-muted;
-    -nj-icon-size: 22;
+    -nj-icon-size: 20;
 }
 
 .nav-rail .toggle-button:hover {
-    -fx-background-color: -color-bg-default;
+    -fx-background-color: -color-bg-inset;
 }
 
-.nav-rail .toggle-button:selected {
-    -fx-background-color: -nj-accent-soft;
-    -fx-text-fill: -color-fg-default;
+/* The place shown: a raised surface, bold, its icon in the strong orange and an orange mark along its start edge. */
+.nav-rail .toggle-button:selected,
+.nav-rail .toggle-button:selected:focused {
+    -fx-background-color: -color-bg-default;
+    -fx-background-insets: 0;
+    -fx-effect: dropshadow(gaussian, -color-shadow-default, 3, 0, 0, 1);
+    -fx-font-weight: bold;
+    -fx-border-color: -nj-brand-accent;
+    -fx-border-width: 0 0 0 3;
+    -fx-border-insets: 8 0 8 0;
+    -fx-border-radius: 0 3 3 0;
 }
 
 .nav-rail .toggle-button:selected .nj-icon {
     -nj-icon-color: -nj-accent-strong;
 }
 
-/* Room around the icon for a count or a dot in its corner. */
+/* Room around the icon for a dot in its corner, while folded. */
 .nav-rail .rail-graphic {
-    -fx-min-width: 36;
-    -fx-min-height: 24;
+    -fx-min-width: 22;
+    -fx-min-height: 22;
 }
 
 /* A count on a place: running downloads, unread messages. The number is said too (accessible help). */
 .nav-rail .rail-badge {
     -fx-background-color: -nj-brand-accent;
-    -fx-background-radius: 8;
+    -fx-background-radius: 9;
     -fx-text-fill: -nj-on-accent;
-    -fx-font-size: 0.72em;
+    -fx-font-size: 0.78em;
     -fx-font-weight: bold;
-    -fx-padding: 0 4 0 4;
-    -fx-min-width: 16;
+    -fx-padding: 0 6 0 6;
+    -fx-min-width: 20;
+    -fx-min-height: 18;
     -fx-alignment: center;
 }
 
-/* Whether a network is up, on the network's place; its tooltip says which. */
-.nav-rail .network-dot {
-    -fx-fill: -color-fg-subtle;
-    -fx-stroke: -color-bg-subtle;
-    -fx-stroke-width: 1.5;
-}
-
-.nav-rail .network-dot.connected {
-    -fx-fill: -color-success-emphasis;
-}
-
-.nav-rail .network-dot.connecting {
-    -fx-fill: -color-warning-emphasis;
+/* The count while folded: a dot, the number in the tooltip and the accessible help. */
+.nav-rail .rail-pip {
+    -fx-background-color: -nj-brand-accent;
+    -fx-background-radius: 4;
+    -fx-border-color: -color-bg-subtle;
+    -fx-border-radius: 5;
+    -fx-border-width: 1.5;
+    -fx-min-width: 9;
+    -fx-min-height: 9;
+    -fx-max-width: 9;
+    -fx-max-height: 9;
 }
 
 .nav-rail .rail-separator {
@@ -354,23 +406,191 @@
     -fx-background-color: -color-border-muted;
 }
 
-/* Bars at the top and the bottom. */
+/* Whether a network is up, on the network's place and on its control; the words say it too. */
+.network-dot {
+    -fx-fill: -color-fg-subtle;
+    -fx-stroke: -color-bg-subtle;
+    -fx-stroke-width: 1.5;
+}
+
+.network-dot.connected {
+    -fx-fill: -color-success-emphasis;
+}
+
+.network-dot.connecting {
+    -fx-fill: -color-warning-emphasis;
+}
+
+/* The brand's orange along the top of the window. */
+.brand-line {
+    -fx-background-color: -nj-brand-accent;
+    -fx-min-height: 2;
+    -fx-pref-height: 2;
+    -fx-max-height: 2;
+}
+
+/* The top bar: the screen's title and summary, the field to search or paste links, the rates, the networks, More. */
 .top-bar {
     -fx-background-color: -color-bg-default;
-    -fx-border-color: -nj-brand-accent;
-    -fx-border-width: 0 0 2 0;
-    -fx-padding: 6 10 6 10;
-    -fx-spacing: 10;
+    -fx-border-color: -color-border-muted;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 10 20 10 20;
+    -fx-spacing: 12;
     -fx-alignment: center-left;
+    -fx-min-height: 60;
+}
+
+.screen-summary {
+    -fx-text-fill: -color-fg-muted;
+    -fx-font-size: 0.92em;
+}
+
+/* A button drawn as a field: it opens the palette in its place. */
+.universal-field {
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8;
+    -fx-border-color: -color-border-subtle;
+    -fx-border-radius: 8;
+    -fx-text-fill: -color-fg-muted;
+    -fx-graphic-text-gap: 8;
+    -fx-padding: 0 72 0 10;
+    -fx-min-height: 36;
+    -fx-pref-height: 36;
+}
+
+.universal-field:hover {
+    -fx-background-color: -color-bg-inset;
+}
+
+.universal-field:narrow {
+    -fx-padding: 0 10 0 10;
+}
+
+.universal-field .nj-icon {
+    -nj-icon-size: 16;
+    -nj-icon-color: -color-fg-muted;
+}
+
+/* Keys written as keys: beside a command, in the field of the top bar. */
+.universal-box .shortcut-key,
+.network-menu .network-keys {
+    -fx-background-color: -color-bg-default;
+    -fx-background-radius: 4;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 1 1 2 1;
+    -fx-border-radius: 4;
+    -fx-padding: 0 5 0 5;
+    -fx-font-size: 0.85em;
+    -fx-text-fill: -color-fg-muted;
+}
+
+/* The rates are a flat button that opens the limits; it keeps the bar's look. */
+.top-bar .rates {
+    -fx-padding: 0 10 0 10;
+    -fx-min-height: 36;
+    -fx-pref-height: 36;
+}
+
+/* The rates in a box wide enough for 100 MB/s and aligned to its end: the bar does not shift as they change. */
+.rate-label {
+    -fx-min-width: 6.5em;
+    -fx-alignment: center-right;
+    -fx-graphic-text-gap: 2;
+}
+
+.rate-down {
+    -fx-font-weight: bold;
+}
+
+.rate-down .nj-icon {
+    -nj-icon-color: -nj-graph-down;
+    -nj-icon-size: 14;
+}
+
+.rate-up {
+    -fx-text-fill: -color-fg-muted;
+    -fx-font-size: 0.92em;
+}
+
+.rate-up .nj-icon {
+    -nj-icon-size: 14;
+}
+
+.sparkline-down,
+.sparkline-up {
+    -fx-fill: transparent;
+    -fx-stroke-width: 1.75;
+    -fx-stroke-line-join: round;
+    -fx-stroke-line-cap: round;
+}
+
+.sparkline-down {
+    -fx-stroke: -nj-graph-down;
+}
+
+.sparkline-up {
+    -fx-stroke: -nj-graph-up;
+}
+
+.limits-popover {
+    -fx-padding: 4;
+}
+
+/* The networks' control: neutral, never the accent, the state in words beside its dot. */
+.network-control {
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 0 8 0 12;
+    -fx-min-height: 36;
+    -fx-pref-height: 36;
+}
+
+.network-control .network-state {
+    -fx-font-weight: bold;
+}
+
+.network-control .network-detail {
+    -fx-text-fill: -color-fg-muted;
+    -fx-font-size: 0.85em;
+}
+
+.network-control .nj-icon {
+    -nj-icon-size: 16;
+    -nj-icon-color: -color-fg-muted;
+}
+
+.network-menu {
+    -fx-padding: 4;
+    -fx-min-width: 320;
+}
+
+.network-menu .network-row {
+    -fx-padding: 6 4 6 4;
+}
+
+.network-menu .network-note {
+    -fx-text-fill: -color-fg-muted;
+    -fx-font-size: 0.9em;
+    -fx-padding: 0 0 0 18;
+}
+
+.network-menu .network-item {
+    -fx-padding: 6 8 6 8;
+}
+
+.top-bar .menu-button.button-icon .nj-icon {
+    -nj-icon-size: 20;
 }
 
 .status-strip {
     -fx-background-color: -color-bg-subtle;
     -fx-border-color: -color-border-muted;
     -fx-border-width: 1 0 0 0;
-    -fx-padding: 3 10 3 10;
-    -fx-spacing: 16;
+    -fx-padding: 4 20 4 20;
+    -fx-spacing: 20;
     -fx-alignment: center-left;
+    -fx-min-height: 28;
 }
 
 .status-strip .label {
@@ -378,15 +598,29 @@
     -fx-font-size: 0.9em;
 }
 
-/* Connection chips: the dot carries the state, the text says it too. */
+/* The limits in the strip open the sliders: a link, underlined on hover. */
+.status-strip .status-link {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+    -fx-min-height: 0;
+    -fx-text-fill: -color-fg-muted;
+    -fx-font-size: 0.9em;
+}
+
+.status-strip .status-link:hover {
+    -fx-text-fill: -color-fg-default;
+    -fx-underline: true;
+}
+
+/* Connection chips: the dot carries the state, the text says it too. In the network's menu, the title of a row. */
 .connection-chip {
-    -fx-background-color: -color-bg-subtle;
-    -fx-background-radius: 12;
-    -fx-padding: 3 10 3 8;
+    -fx-graphic-text-gap: 8;
+    -fx-font-weight: bold;
 }
 
 .connection-chip .nj-icon {
-    -nj-icon-size: 12;
+    -nj-icon-size: 10;
     -nj-icon-color: -color-fg-subtle;
 }
 
@@ -396,26 +630,6 @@
 
 .connection-chip.connecting .nj-icon {
     -nj-icon-color: -color-warning-emphasis;
-}
-
-.connection-chip.firewalled .nj-icon {
-    -nj-icon-color: -color-warning-emphasis;
-}
-
-/* The rates are a flat button that opens the limits; it keeps the bar's look. */
-.top-bar .rates {
-    -fx-padding: 4 6 4 6;
-}
-
-.limits-popover {
-    -fx-padding: 4;
-}
-
-/* The rates in the interface's own font, whose digits are of one width, in a box wide enough for
-   100 MB/s and aligned to its end: the bar does not shift as they change. */
-.rate-label {
-    -fx-min-width: 8em;
-    -fx-alignment: center-right;
 }
 
 /* A state that lasts and wants something done, above the screens: pastel fill, text in the theme's
@@ -540,7 +754,7 @@
 
 /* Screens. */
 .screen {
-    -fx-padding: 12;
+    -fx-padding: 12 16 12 16;
     -fx-spacing: 10;
 }
 
@@ -667,12 +881,10 @@
     -fx-font-weight: normal;
 }
 
+/* The screen's title in the top bar. */
 .screen-title {
-    -fx-font-size: 1.35em;
+    -fx-font-size: 1.55em;
     -fx-font-weight: bold;
-    -fx-border-color: -nj-brand-accent;
-    -fx-border-width: 0 0 0 4;
-    -fx-padding: 0 0 0 8;
 }
 
 /* Buttons and the controls drawn like them with rounded corners, in every theme: the radius of the outline, then of
@@ -763,6 +975,11 @@
 .tool-row {
     -fx-spacing: 8;
     -fx-alignment: center-left;
+}
+
+/* In a narrow window the tools keep to their icons; the text is the tooltip and the accessible name. */
+.njmule:narrow .tool-button {
+    -fx-content-display: graphic-only;
 }
 
 /* Dialogs hold a few words: their buttons are no taller than those need, and close below them. */

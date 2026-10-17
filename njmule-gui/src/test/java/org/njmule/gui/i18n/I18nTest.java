@@ -73,8 +73,8 @@ class I18nTest {
     @CsvSource({
         "en, IDS_DL_FILENAME, File Name",
         "it, IDS_DL_FILENAME, Nome file",
-        "en, nj.top.tools, Tools",
-        "it, nj.top.tools, Strumenti"
+        "en, nj.sidebar.collapse, Collapse the sidebar",
+        "it, nj.sidebar.collapse, Comprimi la barra laterale"
     })
     void shouldLoadTheEnglishAndItalianTexts(String language, String key, String text) {
         givenTheTextsIn(Locale.forLanguageTag(language));

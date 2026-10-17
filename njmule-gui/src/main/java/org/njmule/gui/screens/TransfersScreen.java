@@ -29,8 +29,11 @@ import java.util.OptionalInt;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.StringBinding;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.ListChangeListener;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
@@ -74,6 +77,7 @@ import org.njmule.gui.dialogs.CategoriesDialog;
 import org.njmule.gui.dialogs.ClientFilesDialog;
 import org.njmule.gui.dialogs.CommentDialog;
 import org.njmule.gui.infra.Preview;
+import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
@@ -115,6 +119,7 @@ public final class TransfersScreen implements Screen {
     }
 
     private final Gui gui;
+    private StringBinding summary;
     private Node view;
     private TableView<LiveList.Row<DownloadInfo>> downloads;
     private TableView<LiveList.Row<UploadInfo>> uploads;
@@ -152,6 +157,31 @@ public final class TransfersScreen implements Screen {
     @Override
     public Icons icon() {
         return Icons.TRANSFERS;
+    }
+
+    @Override
+    public ObservableValue<String> summary() {
+        if (this.summary == null) {
+            EngineModel model = this.gui.model();
+            this.summary = Bindings.createStringBinding(
+                    this::summaryText, model.downloads().rows(), model.statusProperty());
+        }
+        return this.summary;
+    }
+
+    // The downloads running and the rate of all of them; nothing while there are none.
+    private String summaryText() {
+        EngineModel model = this.gui.model();
+        if (model.downloads().rows().isEmpty()) {
+            return "";
+        }
+        long running = model.downloads().rows().stream()
+                .filter(r -> r.get().status() == DownloadInfo.Status.DOWNLOADING)
+                .count();
+        return this.gui.f(
+                "nj.summary.transfers",
+                running,
+                this.gui.formats().rate(model.statusProperty().get().downloadBytesPerSecond()));
     }
 
     @Override
@@ -348,7 +378,7 @@ public final class TransfersScreen implements Screen {
         SplitPane split = new SplitPane(this.upperSplit, lower);
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.6);
-        VBox screen = Fx.screen(title(), tools, split);
+        VBox screen = Fx.screen(tools, split);
         // Ctrl+F (Cmd+F) narrows the downloads by name; Alt+Enter opens the details of the chosen one.
         screen.addEventHandler(KeyEvent.KEY_PRESSED, e -> {
             if (e.isShortcutDown() && e.getCode() == KeyCode.F) {

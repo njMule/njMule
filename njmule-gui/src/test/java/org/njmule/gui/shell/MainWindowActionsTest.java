@@ -172,7 +172,8 @@ class MainWindowActionsTest {
 
         whenTheFirstMessageIsClosed();
 
-        thenTheMessagesShownAre(2);
+        // Two at most: the first of the three already made room.
+        thenTheMessagesShownAre(1);
     }
 
     @Test
@@ -184,6 +185,25 @@ class MainWindowActionsTest {
         whenKadIs(new KadInfo(true, 10, 5, true, "", "1.2.3.4", 4672, true, true, KadInfo.Buddy.CONNECTED));
 
         thenTheKadChipSays("Kad: Firewalled, UDP firewalled");
+    }
+
+    @Test
+    void shouldStartOnlyKadFromItsRowOfTheNetworkMenu() throws Exception {
+        givenTheWindow();
+
+        whenTheNetworkMenuButtonIsPressed("network-kad");
+
+        thenTheCallsAre("connectKad");
+    }
+
+    @Test
+    void shouldSayTheStateOfBothNetworksInWordsOnTheirControl() throws Exception {
+        givenTheWindow();
+        givenConnectedToBig(5_000_000, false);
+
+        whenTheStatusOnBigIs(5_000_000, false, Statuses.kad(true, false, "1.2.3.4"));
+
+        thenTheNetworkControlSays("Network: Connected, High ID · Kad: Open");
     }
 
     private void givenTheWindow() throws Exception {
@@ -326,7 +346,12 @@ class MainWindowActionsTest {
     }
 
     private void whenTheThemeIsSwitched() throws Exception {
-        FxTesting.onFx(() -> ((Button) this.window.root().lookup("#theme")).fire());
+        FxTesting.onFx(() -> ((MenuButton) this.window.root().lookup(".top-bar .menu-button"))
+                .getItems().stream()
+                        .filter(i -> "theme".equals(i.getId()))
+                        .findFirst()
+                        .orElseThrow()
+                        .fire());
     }
 
     private void whenTheToolsAreChosen(String... ids) throws Exception {
@@ -351,6 +376,15 @@ class MainWindowActionsTest {
 
     private void whenKadIs(KadInfo kad) throws Exception {
         status(Statuses.of(Optional.empty(), 0, false, Optional.of(kad), false));
+    }
+
+    private void whenTheNetworkMenuButtonIsPressed(String id) throws Exception {
+        FxTesting.onFx(() -> ((Button) this.window.network().menu().lookup("#" + id)).fire());
+    }
+
+    private void thenTheNetworkControlSays(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.window.network().view().getAccessibleText()))
+                .isEqualTo(text);
     }
 
     private void thenTheCallsAre(String... calls) {

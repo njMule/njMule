@@ -108,6 +108,7 @@ class DesktopAppFlowsTest {
         givenTheWindowTold("Download added: test file.bin", "81.2.3.4:4661 added to the server list");
         givenTheDownloadsOfTheEngineAre("test file.bin");
         givenALaterStartFindsTheConfigDirectory();
+        givenWhatTheWindowTellsWhileHiddenIsNoted();
 
         whenALaterStartHandsItsLinksOver(
                 "ed2k://|serverlist|http://127.0.0.1:9/server.met|/",
@@ -466,13 +467,14 @@ class DesktopAppFlowsTest {
     }
 
     private void thenTheWindowTellsTheListsRefusedAndTheBadAddress() throws Exception {
+        // Two messages show at a time: the three are counted as told.
         FxTesting.assertEventually(
                 "the lists refused and the bad address",
-                () -> messages().stream()
+                () -> this.told.stream()
                                         .filter(m -> m.contains("local or private"))
                                         .count()
                                 == 2
-                        && messages().stream().anyMatch(m -> m.contains("Illegal character")));
+                        && this.told.stream().anyMatch(m -> m.contains("Illegal character")));
     }
 
     private void thenTheWindowStillShows() throws Exception {

@@ -116,6 +116,17 @@ class ServersMenusTest {
     }
 
     @Test
+    void shouldOfferToConnectToAServerOtherThanTheOneWeAreOn() throws Exception {
+        givenTheServersScreen();
+        givenConnectedTo(BIG);
+        givenTheServerChosen(SMALL);
+
+        whenTheMenuShows();
+
+        thenTheConnectItemReads("Connect To");
+    }
+
+    @Test
     void shouldPasteTheServerLinksOfTheClipboard() throws Exception {
         givenTheServersScreen();
         givenTheClipboardHolds("ed2k://|server|81.2.3.9|4661|/ ed2k://|serverlist|https://example.org/list.met|/");
@@ -300,8 +311,7 @@ class ServersMenusTest {
     }
 
     private void givenTheConnectItemReads(String text) throws Exception {
-        assertThat(FxTesting.onFx(() -> item(menu(), "IDS_CONNECTTHIS").getText()))
-                .isEqualTo(text);
+        thenTheConnectItemReads(text);
     }
 
     private void givenThePriorityTicked(String priority) throws Exception {
@@ -365,6 +375,10 @@ class ServersMenusTest {
 
     private void whenConnectOrDisconnectIsPressed() throws Exception {
         FxTesting.onFx(this.screen::connectOrDisconnect);
+    }
+
+    private void whenTheMenuShows() throws Exception {
+        givenTheMenuShown();
     }
 
     private void whenTheMenuItemIsFired(String key) throws Exception {
@@ -563,5 +577,10 @@ class ServersMenusTest {
                         || (key.equals("IDS_CONNECTTHIS") && i.getStyleClass().contains("default-item")))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private void thenTheConnectItemReads(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> item(menu(), "IDS_CONNECTTHIS").getText()))
+                .isEqualTo(text);
     }
 }

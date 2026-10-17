@@ -24,6 +24,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import javafx.beans.binding.Bindings;
+import javafx.beans.binding.StringBinding;
+import javafx.beans.value.ObservableValue;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -51,6 +53,7 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.model.Chats;
+import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
@@ -63,6 +66,7 @@ import org.njmule.gui.ui.Screen;
 public final class MessagesScreen implements Screen {
 
     private final Gui gui;
+    private StringBinding summary;
     private Node view;
     private final ListView<LiveList.Row<Friend>> friends = new ListView<>();
     private final TabPane tabs = new TabPane();
@@ -87,6 +91,25 @@ public final class MessagesScreen implements Screen {
     @Override
     public Icons icon() {
         return Icons.MESSAGE;
+    }
+
+    @Override
+    public ObservableValue<String> summary() {
+        if (this.summary == null) {
+            EngineModel model = this.gui.model();
+            // The conversations open and the friends; nothing while there are none.
+            this.summary = Bindings.createStringBinding(
+                    () -> model.chats().all().isEmpty()
+                                    && model.friends().rows().isEmpty()
+                            ? ""
+                            : this.gui.f(
+                                    "nj.summary.messages",
+                                    model.chats().all().size(),
+                                    model.friends().rows().size()),
+                    model.chats().all(),
+                    model.friends().rows());
+        }
+        return this.summary;
     }
 
     @Override
@@ -148,7 +171,7 @@ public final class MessagesScreen implements Screen {
         Label where = Fx.whole(new Label(this.gui.t("IDS_SV_ADDRESS")));
         where.setLabelFor(this.address);
         var tools = Fx.toolRow(where, this.address, start);
-        return Fx.screen(title(), tools, split);
+        return Fx.screen(tools, split);
     }
 
     private String friendText(Friend f) {

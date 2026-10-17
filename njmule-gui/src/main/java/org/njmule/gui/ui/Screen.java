@@ -16,18 +16,25 @@
  */
 package org.njmule.gui.ui;
 
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.value.ObservableValue;
 import javafx.scene.Node;
 
-/** One screen of the navigation rail. */
+/** One screen of the sidebar, under the top bar that shows its title and summary. */
 public interface Screen {
 
     /** A stable name, remembered between runs. */
     String id();
 
-    /** The label of the rail button. */
+    /** The label of the sidebar button and the title in the top bar. */
     String title();
 
     Icons icon();
+
+    /** A line under the title on what the screen holds now, such as the downloads running; empty for none. */
+    default ObservableValue<String> summary() {
+        return new SimpleStringProperty("");
+    }
 
     /** The screen's content, built once. */
     Node view();

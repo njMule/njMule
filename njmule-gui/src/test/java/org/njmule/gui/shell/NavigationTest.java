@@ -196,7 +196,7 @@ class NavigationTest {
 
     private void thenTheBadgeOf(String title, String count) throws Exception {
         Optional<String> shown = FxTesting.onFx(() -> {
-            Node badge = rail(title).getGraphic().lookup(".rail-badge");
+            Node badge = rail(title).getParent().lookup(".rail-badge");
             return badge != null && badge.isVisible() ? Optional.of(((Label) badge).getText()) : Optional.empty();
         });
         assertThat(shown).isEqualTo(Optional.ofNullable(count));

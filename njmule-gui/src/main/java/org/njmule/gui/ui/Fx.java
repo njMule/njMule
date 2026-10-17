@@ -17,6 +17,7 @@
 package org.njmule.gui.ui;
 
 import atlantafx.base.theme.Styles;
+import atlantafx.base.theme.Tweaks;
 import java.text.Bidi;
 import java.util.Comparator;
 import java.util.List;
@@ -42,6 +43,8 @@ import javafx.scene.control.ComboBoxBase;
 import javafx.scene.control.Label;
 import javafx.scene.control.Labeled;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.ScrollBar;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TableCell;
@@ -223,22 +226,26 @@ public final class Fx {
         return control;
     }
 
-    public static Label title(String text) {
-        Label label = new Label(text);
-        label.getStyleClass().addAll("screen-title", "display");
-        return label;
-    }
-
     public static Region spacer() {
         Region region = new Region();
         HBox.setHgrow(region, Priority.ALWAYS);
         return region;
     }
 
+    /** A row of tools; in a narrow window a button with an icon shows only the icon, its text as tooltip. */
     public static HBox toolRow(Node... nodes) {
         for (Node node : nodes) {
             if (node instanceof ButtonBase || node instanceof ComboBoxBase<?>) {
                 whole((Region) node);
+            }
+            if (node instanceof ButtonBase button
+                    && button.getGraphic() != null
+                    && button.getText() != null
+                    && !button.getText().isEmpty()) {
+                button.getStyleClass().add("tool-button");
+                if (button.getTooltip() == null) {
+                    button.setTooltip(new Tooltip(button.getText()));
+                }
             }
         }
         HBox row = new HBox(nodes);
@@ -270,9 +277,17 @@ public final class Fx {
         return box;
     }
 
-    /** A screen: a title, a tool row and a content that takes the rest. */
-    public static VBox screen(String title, HBox tools, Node content) {
-        VBox box = new VBox(title(title), tools, content);
+    /** A screen under the top bar, which gives its title: a tool row and a content that takes the rest. */
+    public static VBox screen(HBox tools, Node content) {
+        VBox box = new VBox(tools, content);
+        box.getStyleClass().add("screen");
+        VBox.setVgrow(content, Priority.ALWAYS);
+        return box;
+    }
+
+    /** A screen under the top bar with no tools of its own: a content that takes it all. */
+    public static VBox screen(Node content) {
+        VBox box = new VBox(content);
         box.getStyleClass().add("screen");
         VBox.setVgrow(content, Priority.ALWAYS);
         return box;
@@ -284,6 +299,31 @@ public final class Fx {
         box.getStyleClass().add("screen-part");
         VBox.setVgrow(content, Priority.ALWAYS);
         return box;
+    }
+
+    /**
+     * {@code content} filling the room it gets and scrolling only where the window is too short for it, as a small
+     * window may be.
+     */
+    public static ScrollPane scrollWhenShort(Region content) {
+        ScrollPane scroll = new ScrollPane(content) {
+            // It scrolls only up and down: as wide as its content needs, with room for the bar.
+            @Override
+            protected double computeMinWidth(double height) {
+                double bar = 0;
+                for (Node child : getChildrenUnmodifiable()) {
+                    if (child instanceof ScrollBar b && b.getOrientation() == Orientation.VERTICAL) {
+                        bar = b.prefWidth(-1);
+                    }
+                }
+                return snappedLeftInset() + content.minWidth(-1) + bar + snappedRightInset();
+            }
+        };
+        scroll.setFitToWidth(true);
+        scroll.setFitToHeight(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
+        return scroll;
     }
 
     /** A table over live rows, sortable by any column, with several rows selectable. */

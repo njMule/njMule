@@ -277,6 +277,15 @@ public final class GuiSettings {
         }
     }
 
+    /** Whether the sidebar shows only its icons in a wide window; a narrow one always does. */
+    public boolean sidebarCollapsed() {
+        return Boolean.parseBoolean(this.values.getProperty("sidebar.collapsed", "false"));
+    }
+
+    public void setSidebarCollapsed(boolean value) {
+        this.values.setProperty("sidebar.collapsed", String.valueOf(value));
+    }
+
     public boolean maximized() {
         return Boolean.parseBoolean(this.values.getProperty("window.maximized"));
     }

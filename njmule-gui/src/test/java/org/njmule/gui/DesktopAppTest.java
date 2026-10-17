@@ -24,8 +24,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import javafx.geometry.Rectangle2D;
+import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
-import javafx.scene.control.Label;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.Window;
@@ -52,8 +52,8 @@ class DesktopAppTest {
     private Stage stage;
     private List<Window> before;
     private TrayMenu menu;
-    private Label oldChip;
-    private String oldChipText;
+    private Button oldNetwork;
+    private String oldNetworkText;
     // The JVM's languages before the test, which the app changes.
     private final Locale language = Locale.getDefault();
     private final Locale display = Locale.getDefault(Locale.Category.DISPLAY);
@@ -120,13 +120,13 @@ class DesktopAppTest {
     void shouldStopUpdatingTheWindowLeftByALanguageChange() throws Exception {
         givenAnApp();
         givenTheAppShown();
-        givenTheConnectionChipNoted();
+        givenTheNetworkStateNoted();
         givenTheAppRelaunched();
 
         whenTheEngineConnectsTo("81.2.3.4:4661", "Big");
 
-        thenTheConnectionChipShows("Big");
-        thenTheOldConnectionChipIsNotUpdated();
+        thenTheNetworkStateTells("Big");
+        thenTheOldNetworkStateIsNotUpdated();
     }
 
     @Test
@@ -286,9 +286,9 @@ class DesktopAppTest {
         });
     }
 
-    private void givenTheConnectionChipNoted() throws Exception {
-        this.oldChip = FxTesting.onFx(() -> (Label) this.app.window().root().lookup(".connection-chip"));
-        this.oldChipText = FxTesting.onFx(() -> this.oldChip.getText());
+    private void givenTheNetworkStateNoted() throws Exception {
+        this.oldNetwork = FxTesting.onFx(() -> (Button) this.app.window().root().lookup("#network"));
+        this.oldNetworkText = FxTesting.onFx(() -> this.oldNetwork.getTooltip().getText());
     }
 
     private void givenTheAppRelaunched() throws Exception {
@@ -340,15 +340,16 @@ class DesktopAppTest {
                 .hasValueSatisfying(b -> assertThat(b[0]).isNotEqualTo(x));
     }
 
-    private void thenTheConnectionChipShows(String text) throws Exception {
-        Label newChip = FxTesting.onFx(() -> (Label) this.app.window().root().lookup(".connection-chip"));
-        assertThat(FxTesting.onFx(() -> newChip.getText())).contains(text);
+    private void thenTheNetworkStateTells(String text) throws Exception {
+        // The network control's tooltip tells each network's state.
+        Button network = FxTesting.onFx(() -> (Button) this.app.window().root().lookup("#network"));
+        assertThat(FxTesting.onFx(() -> network.getTooltip().getText())).contains(text);
     }
 
-    private void thenTheOldConnectionChipIsNotUpdated() throws Exception {
-        assertThat(FxTesting.onFx(() -> this.oldChip.getText()))
+    private void thenTheOldNetworkStateIsNotUpdated() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.oldNetwork.getTooltip().getText()))
                 .as("the old window is not updated any more")
-                .isEqualTo(this.oldChipText);
+                .isEqualTo(this.oldNetworkText);
     }
 
     // An app in the test's folder, on free ports and without Kad: never on the ports of a running eMule.

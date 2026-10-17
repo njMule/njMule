@@ -376,6 +376,12 @@ class CaptureTour {
         fx(() -> ((Button) this.stage.getScene().getRoot().lookup("#rates")).fire());
         shot("topbar-limits", "The limits under the rates of the top bar");
         fx(CaptureTour::closePopups);
+        fx(() -> ((Button) this.stage.getScene().getRoot().lookup("#network")).fire());
+        shot("topbar-network", "The menu of both networks under their control in the top bar");
+        fx(CaptureTour::closePopups);
+        fx(() -> ((Button) this.stage.getScene().getRoot().lookup("#limits")).fire());
+        shot("strip-limits", "The limits over the status strip");
+        fx(CaptureTour::closePopups);
         fx(() -> this.stage.getScene().getRoot().fireEvent(FxTesting.key(javafx.scene.input.KeyCode.K, true)));
         shot("palette", "The command palette (Ctrl+K)");
         fx(() -> ((TextField) this.stage.getScene().getRoot().lookup(".command-palette .text-field"))

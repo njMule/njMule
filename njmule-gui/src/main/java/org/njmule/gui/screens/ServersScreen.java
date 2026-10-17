@@ -76,7 +76,6 @@ import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
-import org.njmule.gui.ui.Icon;
 import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
@@ -108,7 +107,6 @@ public final class ServersScreen implements Screen {
     private TabPane logTabs;
     private LogView<EngineModel.ServerNote> serverInfoView;
     private LogView<LogLine> logView;
-    private final Button connectButton = new Button();
     private final TextField filter = new TextField();
     private final Label count = new Label();
     private final ObjectProperty<Predicate<ServerInfo>> shown = new SimpleObjectProperty<>(server -> true);
@@ -205,13 +203,11 @@ public final class ServersScreen implements Screen {
                 .quietWhenEmpty();
         Button connectTo = Fx.button(this.gui.t("nj.servers.addConnect"), Icons.ADD, this::connectToAddress);
         connectTo.disableProperty().bind(this.addressInput.validProperty().not());
-        this.connectButton.setOnAction(e -> connectOrDisconnect());
-        this.table.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> showConnect());
         this.gui.subscriptions().onChange(this.gui.model().connectionProperty(), (was, now) -> showCurrent());
         this.gui.subscriptions().onChange(this.gui.model().serverAddressProperty(), (was, now) -> showCurrent());
-        showConnect();
-        var tools =
-                Fx.toolRow(this.connectButton, Fx.button(this.gui.t("IDS_REMOVE"), Icons.DELETE, this::removeSelected));
+        // Connecting is the network menu's in the top bar; the chosen server's is in its menu, Enter and a double
+        // click.
+        var tools = Fx.toolRow(Fx.button(this.gui.t("IDS_REMOVE"), Icons.DELETE, this::removeSelected));
         this.add.setText(this.gui.t("nj.servers.add"));
         this.add.getStyleClass().add(Styles.DENSE);
         this.add.setContent(ways(connectTo));
@@ -233,7 +229,7 @@ public final class ServersScreen implements Screen {
         VBox content = new VBox(8, this.add, split);
         VBox.setVgrow(split, Priority.ALWAYS);
         // Shown under the network, which gives the title.
-        return Fx.part(tools, content);
+        return Fx.part(tools, Fx.scrollWhenShort(content));
     }
 
     // What the servers said and what happened, in two tabs; Reset empties the one shown.
@@ -273,7 +269,6 @@ public final class ServersScreen implements Screen {
     }
 
     private void showCurrent() {
-        showConnect();
         for (Node node : this.table.lookupAll(".table-row-cell")) {
             if (node instanceof TableRow<?> row) {
                 markCurrent(row);
@@ -298,26 +293,12 @@ public final class ServersScreen implements Screen {
                         : connecting ? new Tooltip(this.gui.t("nj.servers.trying")) : null);
     }
 
-    // Connect becomes Disconnect on the server we are connected to or trying.
+    // Connect to this server becomes Disconnect on the server we are connected to or trying.
     private boolean isCurrent(ServerInfo server) {
         return server != null
                 && this.gui.model().connectionProperty().get() != EngineModel.Connection.DISCONNECTED
                 && server.address()
                         .equals(this.gui.model().serverAddressProperty().get());
-    }
-
-    private String connectText() {
-        LiveList.Row<ServerInfo> row = this.table.getSelectionModel().getSelectedItem();
-        return isCurrent(row == null ? null : row.get())
-                ? this.gui.t("IDS_MAIN_BTN_DISCONNECT")
-                : this.gui.t("IDS_MAIN_BTN_CONNECT");
-    }
-
-    private void showConnect() {
-        String text = connectText();
-        this.connectButton.setText(text);
-        this.connectButton.setGraphic(
-                new Icon(text.equals(this.gui.t("IDS_MAIN_BTN_CONNECT")) ? Icons.LINK : Icons.LINK_OFF));
     }
 
     /** Disconnects from the selected server when it is ours, else connects to it, leaving the current one. */
@@ -338,10 +319,6 @@ public final class ServersScreen implements Screen {
     public void showLog() {
         view();
         this.logTabs.getSelectionModel().select(this.logTab);
-    }
-
-    Button connectButton() {
-        return this.connectButton;
     }
 
     // The ways to add servers, together: a server list from the web (an address typed or used before), one server by

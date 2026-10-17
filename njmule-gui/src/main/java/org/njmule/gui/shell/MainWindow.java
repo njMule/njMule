@@ -16,18 +16,23 @@
  */
 package org.njmule.gui.shell;
 
-import atlantafx.base.controls.Notification;
 import atlantafx.base.controls.Popover;
 import atlantafx.base.theme.Styles;
+import atlantafx.base.theme.Tweaks;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import javafx.animation.PauseTransition;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.StringProperty;
+import javafx.css.PseudoClass;
 import javafx.geometry.Dimension2D;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -40,8 +45,6 @@ import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
-import javafx.scene.control.ToggleButton;
-import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.KeyCode;
@@ -55,10 +58,8 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import javafx.scene.shape.Circle;
 import javafx.stage.Stage;
 import javafx.stage.Window;
-import javafx.util.Duration;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineStatus;
@@ -91,16 +92,11 @@ import org.njmule.gui.ui.Navigate;
 import org.njmule.gui.ui.Screen;
 
 /**
- * The window's content: the top bar with the connection and the rates, the navigation rail, the current screen, the
- * status strip, and messages floating over it all.
+ * The window's content: the sidebar of places, the top bar with the screen's title, the field to search or paste links,
+ * the rates and the networks, the current screen, the status strip, and messages floating over it all.
  */
 public final class MainWindow {
 
-    private static final Duration MESSAGE_TIME = Duration.seconds(6);
-    // Within the time the engine keeps what an undo needs.
-    private static final Duration OFFER_TIME = Duration.seconds(10);
-    // More messages at once push the oldest out: the stack never covers the screen.
-    private static final int MAX_MESSAGES = 4;
     private static final List<KeyCode> DIGITS = List.of(
             KeyCode.DIGIT1,
             KeyCode.DIGIT2,
@@ -110,35 +106,42 @@ public final class MainWindow {
             KeyCode.DIGIT6,
             KeyCode.DIGIT7);
     private static final String NETWORK = "network";
-    // The places of the rail, in its order: what one does first comes first, the network and the
-    // statistics after, the options at the bottom.
+    // The places of the sidebar in groups: what one does first comes first, the network and the statistics after, the
+    // options at the bottom.
+    private static final List<List<String>> GROUPS = List.of(
+            List.of("transfers", "search", "shared", "messages"), List.of(NETWORK, "statistics"), List.of("settings"));
     private static final List<String> PLACES =
-            List.of("transfers", "search", "shared", "messages", NETWORK, "statistics", "settings");
-    private static final int MAX_BADGE = 99;
+            GROUPS.stream().flatMap(List::stream).toList();
+    // The free space of the incoming folder is looked at again after this long.
+    private static final long SPACE_EVERY = TimeUnit.SECONDS.toNanos(10);
+    private static final double FIELD_WIDTH = 200;
+    private static final double FIELD_MAX_WIDTH = 460;
+    private static final PseudoClass NARROW = PseudoClass.getPseudoClass("narrow");
 
     private final Gui gui;
     private final Map<String, Screen> screens = new LinkedHashMap<>();
-    private final Map<String, ToggleButton> rail = new LinkedHashMap<>();
     private final NetworkPane networkPane;
     private final ServersScreen servers;
     private final Banner banner;
     private final CommandPalette palette;
+    private final Sidebar sidebar;
+    private final NetworkControl network;
+    private final Toasts toasts = new Toasts();
     private SpeedLimits limits;
     private Popover limitsPopover;
-    private final Label activeBadge = badge();
-    private final Label unreadBadge = badge();
-    private final Circle networkDot = new Circle(4);
     private final StackPane content = new StackPane();
-    private final VBox messages = new VBox(8);
     private final StackPane root;
-    private final Button connect = new Button();
-    private final Label ed2k = chip();
-    private final Label kad = chip();
-    private final Label down = rate(Icons.ARROW_DOWN);
-    private final Label up = rate(Icons.ARROW_UP);
+    private final Label title = new Label();
+    private final Label summary = new Label();
+    private final StringProperty networkSummary = new SimpleStringProperty("");
+    private final Label down = rate(Icons.ARROW_DOWN, "rate-down");
+    private final Label up = rate(Icons.ARROW_UP, "rate-up");
+    private final Button rates = new Button();
     private final Label lastLog = new Label();
     private final Label server = new Label();
-    private final Label counts = new Label();
+    private final Button limitsLink = new Button();
+    private final Label freeSpace = new Label();
+    private long spaceCheckedAt = System.nanoTime() - SPACE_EVERY;
     private String current = "";
     private String lastNetwork = "servers";
     private int unread;
@@ -160,21 +163,35 @@ public final class MainWindow {
                 new SettingsScreen(gui))) {
             this.screens.put(screen.id(), screen);
         }
-        this.networkPane = new NetworkPane(gui.t("IDS_NETWORK"), List.of(servers, kadScreen), this::show);
+        this.networkPane = new NetworkPane(List.of(servers, kadScreen), this::show);
         this.banner = new Banner(gui, this::connectIfOff, () -> show("settings"));
-        VBox center = new VBox(this.banner.view(), this.content);
+        this.network = new NetworkControl(
+                gui, this::toggleConnection, this::show, () -> open(NETWORK), shortcut(PLACES.indexOf(NETWORK)));
+        this.sidebar = new Sidebar(
+                gui,
+                GROUPS.stream()
+                        .map(group -> group.stream().map(this::place).toList())
+                        .toList(),
+                List.of("transfers", "messages"),
+                NETWORK,
+                this::open);
+        VBox center = new VBox(topBar(), this.banner.view(), this.content);
         VBox.setVgrow(this.content, Priority.ALWAYS);
-        BorderPane frame = new BorderPane(center, topBar(), null, statusStrip(), navRail());
-        // Messages stack in the bottom corner, above the status strip: never over the tool rows.
-        this.messages.setAlignment(Pos.BOTTOM_RIGHT);
-        this.messages.setPickOnBounds(false);
-        this.messages.setPadding(new Insets(16, 16, 40, 16));
-        this.messages.setMaxWidth(420);
-        this.messages.setMaxHeight(Region.USE_PREF_SIZE);
-        StackPane.setAlignment(this.messages, Pos.BOTTOM_RIGHT);
+        // The brand's orange along the top of the window, the sidebar beside the screen, the status strip under both.
+        Region brand = new Region();
+        brand.getStyleClass().add("brand-line");
+        BorderPane frame = new BorderPane(center, brand, null, statusStrip(), this.sidebar.view());
         this.palette = new CommandPalette(this::commands, this::typedCommands, gui.t("nj.palette.prompt"));
-        this.root = new StackPane(frame, this.messages, this.palette.view());
+        this.root = new StackPane(frame, this.toasts.view(), this.palette.view());
         this.root.getStyleClass().add("njmule");
+        this.sidebar.follow(this.root.widthProperty(), gui.settings());
+        this.network.compactWhile(this.sidebar.narrowProperty());
+        // Narrow, the tools keep to their icons and the top bar to its essentials.
+        this.sidebar.narrowProperty().addListener((o, was, now) -> {
+            this.root.pseudoClassStateChanged(NARROW, now);
+            showSummary();
+        });
+        this.root.pseudoClassStateChanged(NARROW, this.sidebar.narrowProperty().get());
         // A screen's button can lead to another screen, such as Search from an empty list of downloads.
         this.root.addEventHandler(Navigate.TO_SCREEN, e -> show(e.screen()));
         // eD2K links dragged from a page or a text onto the window become downloads.
@@ -189,7 +206,8 @@ public final class MainWindow {
             e.consume();
         });
         this.root.setNodeOrientation(gui.orientation());
-        // Ctrl+1 ... Ctrl+7 (Cmd on macOS) open the places in rail order; F1 lists the shortcuts.
+        // Ctrl+1 ... Ctrl+7 (Cmd on macOS) open the places in sidebar order, Ctrl+B folds the sidebar, Ctrl+K opens the
+        // palette; F1 lists the shortcuts.
         this.root.setOnKeyPressed(e -> {
             int index = DIGITS.indexOf(e.getCode());
             if (e.isShortcutDown() && index >= 0 && index < PLACES.size()) {
@@ -199,7 +217,10 @@ public final class MainWindow {
                 showShortcuts();
                 e.consume();
             } else if (e.isShortcutDown() && e.getCode() == KeyCode.K) {
-                this.palette.show();
+                this.palette.show("");
+                e.consume();
+            } else if (e.isShortcutDown() && e.getCode() == KeyCode.B) {
+                this.sidebar.toggle();
                 e.consume();
             }
         });
@@ -207,6 +228,7 @@ public final class MainWindow {
         gui.subscriptions().onChange(model.connectionProperty(), (was, now) -> showConnection());
         gui.subscriptions().onChange(model.serverNameProperty(), (was, now) -> showConnection());
         gui.subscriptions().onChange(model.statusProperty(), (was, now) -> showStatus(now));
+        gui.subscriptions().onChange(model.preferencesProperty(), (was, now) -> showLimitsText(now));
         this.lastLog.textProperty().bind(model.lastLogProperty());
         model.onCompleted(d -> {
             success(gui.f("nj.transfers.completed", d.name()));
@@ -227,8 +249,11 @@ public final class MainWindow {
                 chime();
             }
         });
+        showActive();
+        showUnread();
         showConnection();
         showStatus(model.statusProperty().get());
+        showLimitsText(model.preferencesProperty().get());
         show(this.screens.containsKey(gui.settings().screen()) ? gui.settings().screen() : "transfers");
     }
 
@@ -243,12 +268,14 @@ public final class MainWindow {
 
     /** Shows a short message for a few seconds. */
     public void message(String text) {
-        show(text, new Icon(Icons.INFO), null, true);
+        this.elsewhere.accept(text);
+        this.toasts.show(text, Icons.INFO, null, true);
     }
 
     /** Shows for a few seconds that something went well, such as a finished download. */
     public void success(String text) {
-        show(text, new Icon(Icons.CHECK_CIRCLE), Styles.SUCCESS, true);
+        this.elsewhere.accept(text);
+        this.toasts.show(text, Icons.CHECK_CIRCLE, Styles.SUCCESS, true);
     }
 
     /**
@@ -256,43 +283,14 @@ public final class MainWindow {
      * undo has to be found in time.
      */
     public void offer(String text, String action, Runnable run) {
-        Notification note = show(text, new Icon(Icons.INFO), null, false);
-        Button button = new Button(action);
-        button.setOnAction(e -> {
-            this.messages.getChildren().remove(note);
-            run.run();
-        });
-        note.setPrimaryActions(button);
-        PauseTransition later = new PauseTransition(OFFER_TIME);
-        later.setOnFinished(e -> this.messages.getChildren().remove(note));
-        later.play();
+        this.elsewhere.accept(text);
+        this.toasts.offer(text, action, run);
     }
 
     /** Shows a problem, which stays until the user closes it. */
     public void problem(String text) {
-        show(text, new Icon(Icons.ERROR), Styles.DANGER, false);
-    }
-
-    private Notification show(String text, Icon icon, String style, boolean fades) {
         this.elsewhere.accept(text);
-        Notification note = new Notification(text, icon);
-        note.getStyleClass().add("elevated-1");
-        if (style != null) {
-            note.getStyleClass().add(style);
-        }
-        note.setPrefWidth(380);
-        note.setMaxWidth(380);
-        note.setOnClose(e -> this.messages.getChildren().remove(note));
-        this.messages.getChildren().add(note);
-        if (this.messages.getChildren().size() > MAX_MESSAGES) {
-            this.messages.getChildren().removeFirst();
-        }
-        if (fades) {
-            PauseTransition later = new PauseTransition(MESSAGE_TIME);
-            later.setOnFinished(e -> this.messages.getChildren().remove(note));
-            later.play();
-        }
-        return note;
+        this.toasts.show(text, Icons.ERROR, Styles.DANGER, false);
     }
 
     // The sound of a notification of an event, when the preferences ask for one; not for the replies to the user.
@@ -316,10 +314,12 @@ public final class MainWindow {
         }
         this.current = id;
         this.content.getChildren().setAll(viewOf(id));
-        this.rail.get(placeOf(id)).setSelected(true);
-        if (this.networkPane.holds(id)) {
+        this.sidebar.select(placeOf(id));
+        boolean inNetwork = this.networkPane.holds(id);
+        if (inNetwork) {
             this.lastNetwork = id;
         }
+        showHeading(id);
         if (id.equals("messages")) {
             this.unread = 0;
             showUnread();
@@ -328,7 +328,18 @@ public final class MainWindow {
         this.gui.settings().setScreen(id);
     }
 
-    // A place of the rail: a screen, or the network at the part last shown.
+    // The title and summary of the screen {@code id}; the network's two parts share one and say both networks' state.
+    private void showHeading(String id) {
+        boolean inNetwork = this.networkPane.holds(id);
+        this.title.setText(
+                inNetwork ? this.gui.t("IDS_NETWORK") : this.screens.get(id).title());
+        this.summary
+                .textProperty()
+                .bind(inNetwork ? this.networkSummary : this.screens.get(id).summary());
+        showSummary();
+    }
+
+    // A place of the sidebar: a screen, or the network at the part last shown.
     private void open(String place) {
         show(place.equals(NETWORK) ? this.lastNetwork : place);
     }
@@ -343,31 +354,64 @@ public final class MainWindow {
                 : this.screens.get(id).view();
     }
 
+    private Sidebar.Place place(String id) {
+        int index = PLACES.indexOf(id);
+        return id.equals(NETWORK)
+                ? new Sidebar.Place(id, this.gui.t("IDS_NETWORK"), Icons.NETWORK, shortcut(index))
+                : new Sidebar.Place(
+                        id, this.screens.get(id).title(), this.screens.get(id).icon(), shortcut(index));
+    }
+
     public String current() {
         return this.current;
     }
 
     /**
-     * The smallest size of the content at which every screen still shows all its buttons, laid out once for each
-     * screen; FX thread, with the window shown.
+     * The smallest size of the content at which every screen still shows all its buttons, laid out once for each screen
+     * as in a narrow window: the sidebar folded, the tools as icons; FX thread, with the window shown. The window turns
+     * narrow below the width the wide layout needs, so that no button is ever cut.
      */
     public Dimension2D minimumSize() {
-        double width = 0;
+        this.sidebar.measureAs(false);
+        double wide = widest();
+        this.sidebar.measureAs(true);
+        double width = widest();
         double height = 0;
         for (String id : this.screens.keySet()) {
             this.content.getChildren().setAll(viewOf(id));
+            showHeading(id);
             this.root.applyCss();
             this.root.layout();
-            width = Math.max(width, this.root.minWidth(-1));
-            height = Math.max(height, this.root.minHeight(-1));
+            // At the width it has, a row that wraps takes fewer lines than at its narrowest.
+            height = Math.max(height, this.root.minHeight(width));
         }
+        // The banner comes and goes with the network: there is room for it too.
+        if (!this.banner.view().isManaged()) {
+            height += this.banner.view().prefHeight(-1);
+        }
+        this.sidebar.measureAs(null);
+        this.sidebar.foldBelow(Math.ceil(wide));
         if (this.screens.containsKey(this.current)) {
             this.content.getChildren().setAll(viewOf(this.current));
+            showHeading(this.current);
         }
         return new Dimension2D(Math.ceil(width), Math.ceil(height));
     }
 
-    /** The ids of the screens, in rail order. */
+    // The widest of the screens' smallest widths, as the window is laid out now.
+    private double widest() {
+        double width = 0;
+        for (String id : this.screens.keySet()) {
+            this.content.getChildren().setAll(viewOf(id));
+            showHeading(id);
+            this.root.applyCss();
+            this.root.layout();
+            width = Math.max(width, this.root.minWidth(-1));
+        }
+        return width;
+    }
+
+    /** The ids of the screens, in sidebar order. */
     public List<String> screenIds() {
         return List.copyOf(this.screens.keySet());
     }
@@ -378,121 +422,153 @@ public final class MainWindow {
     }
 
     List<Node> messages() {
-        return this.messages.getChildren();
+        return this.toasts.shown();
     }
 
+    /** What connects or disconnects both networks, in the network's menu. */
     Button connectButton() {
-        return this.connect;
+        return this.network.bothButton();
+    }
+
+    NetworkControl network() {
+        return this.network;
+    }
+
+    Sidebar sidebar() {
+        return this.sidebar;
     }
 
     private Node topBar() {
-        this.connect.setId("connect");
-        this.connect.setOnAction(e -> toggleConnection());
-        Button theme = Fx.iconButton(this.gui.t("nj.top.theme"), Icons.THEME, this::toggleTheme);
-        MenuItem importer = new MenuItem(this.gui.t("nj.import.title"), Fx.icon(Icons.IMPORT));
-        importer.setOnAction(
-                e -> new ImportDialog(this.gui, this.root.getScene().getWindow()).show());
-        MenuItem about = new MenuItem(this.gui.t("nj.about.title"), new Icon(Icons.INFO));
-        about.setOnAction(e -> new AboutDialog(this.gui, this.root.getScene().getWindow()).show());
-        theme.setId("theme");
+        this.title.getStyleClass().addAll("screen-title", "display");
+        this.title.setMinWidth(Region.USE_PREF_SIZE);
+        this.summary.getStyleClass().add("screen-summary");
+        // The title is never cut; the summary gives way first.
+        this.summary.setMinWidth(0);
+        this.summary.textProperty().addListener((o, was, now) -> showSummary());
+        VBox heading = new VBox(this.title, this.summary);
+        heading.setAlignment(Pos.CENTER_LEFT);
+        MenuItem importer = Fx.menuItem(
+                this.gui.t("nj.import.title"),
+                Icons.IMPORT,
+                () -> new ImportDialog(this.gui, this.root.getScene().getWindow()).show());
         importer.setId("import");
+        MenuItem about = Fx.menuItem(
+                this.gui.t("nj.about.title"),
+                Icons.INFO,
+                () -> new AboutDialog(this.gui, this.root.getScene().getWindow()).show());
         about.setId("about");
-        MenuItem incoming = new MenuItem(this.gui.t("IDS_OPENINC"), Fx.icon(Icons.FOLDER_OPEN));
-        incoming.setOnAction(e -> openIncoming());
+        MenuItem incoming = Fx.menuItem(this.gui.t("IDS_OPENINC"), Icons.FOLDER_OPEN, this::openIncoming);
         incoming.setId("incoming");
-        MenuItem options = new MenuItem(this.gui.t("IDS_EM_PREFS"), Fx.icon(Icons.OPTIONS));
-        options.setOnAction(e -> show("settings"));
+        MenuItem options = Fx.menuItem(this.gui.t("IDS_EM_PREFS"), Icons.OPTIONS, () -> show("settings"));
         options.setId("options");
-        MenuItem shortcuts = new MenuItem(this.gui.t("nj.shortcuts.title"), Fx.icon(Icons.KEYBOARD));
+        MenuItem theme = Fx.menuItem(this.gui.t("nj.top.theme"), Icons.THEME, this::toggleTheme);
+        theme.setId("theme");
+        MenuItem shortcuts = Fx.menuItem(this.gui.t("nj.shortcuts.title"), Icons.KEYBOARD, this::showShortcuts);
         shortcuts.setAccelerator(new KeyCodeCombination(KeyCode.F1));
-        shortcuts.setOnAction(e -> showShortcuts());
         shortcuts.setId("shortcuts");
-        MenuItem wizard = new MenuItem(this.gui.t("nj.wizard.title"), Fx.icon(Icons.WIZARD));
-        wizard.setOnAction(e -> showWizard());
+        MenuItem wizard = Fx.menuItem(this.gui.t("nj.wizard.title"), Icons.WIZARD, this::showWizard);
         wizard.setId("wizard");
-        MenuItem updates = new MenuItem(this.gui.t("IDS_CHECK4UPDATE"), Fx.icon(Icons.REFRESH));
-        updates.setOnAction(
-                e -> UpdateDialog.checkNow(this.gui, this.root.getScene().getWindow()));
+        MenuItem updates = Fx.menuItem(
+                this.gui.t("IDS_CHECK4UPDATE"),
+                Icons.REFRESH,
+                () -> UpdateDialog.checkNow(this.gui, this.root.getScene().getWindow()));
         updates.setId("updates");
-        MenuButton tools = new MenuButton(
-                this.gui.t("nj.top.tools"),
-                new Icon(Icons.TOOLS),
+        // What the window does besides its places, folded behind three dots.
+        MenuButton more = new MenuButton(
+                null,
+                new Icon(Icons.MORE),
                 incoming,
                 options,
                 wizard,
-                new SeparatorMenuItem(),
                 importer,
+                new SeparatorMenuItem(),
+                theme,
                 shortcuts,
                 updates,
                 about);
-        // The rates open the limits: what one wants to change on seeing them.
-        Button rates = new Button(null, new HBox(10, this.down, this.up));
-        rates.setId("rates");
-        rates.getStyleClass().addAll(Styles.FLAT, "rates");
-        rates.setTooltip(new Tooltip(this.gui.t("nj.tray.speed")));
-        rates.setAccessibleText(this.gui.t("nj.tray.speed"));
-        rates.setOnAction(e -> showLimits(rates));
-        for (Region whole : List.of(this.connect, this.ed2k, this.kad, this.down, this.up, rates, tools)) {
-            Fx.whole(whole);
-        }
-        // The chips open the network, at the part they tell of.
-        opens(this.ed2k, "servers");
-        opens(this.kad, "kad");
-        HBox bar = new HBox(this.connect, this.ed2k, this.kad, Fx.spacer(), rates, tools, theme);
+        more.setId("more");
+        more.getStyleClass().addAll(Styles.FLAT, Styles.BUTTON_ICON, Tweaks.NO_ARROW);
+        more.setTooltip(new Tooltip(this.gui.t("IDS_MORE")));
+        more.setAccessibleText(this.gui.t("IDS_MORE"));
+        HBox bar =
+                new HBox(heading, Fx.spacer(), universalField(), Fx.spacer(), ratesButton(), this.network.view(), more);
         bar.getStyleClass().add("top-bar");
+        Fx.whole(more);
         return bar;
     }
 
-    private Node navRail() {
-        ToggleGroup group = new ToggleGroup();
-        VBox box = new VBox();
-        box.getStyleClass().add("nav-rail");
-        for (String place : PLACES) {
-            if (place.equals(NETWORK)) {
-                Region line = new Region();
-                line.getStyleClass().add("rail-separator");
-                VBox.setMargin(line, new Insets(6, 10, 6, 10));
-                box.getChildren().add(line);
+    // Looks like a field and opens the palette in its place: a search of the network, eD2K links, or any command.
+    private Node universalField() {
+        String keys = new KeyCodeCombination(KeyCode.K, KeyCombination.SHORTCUT_DOWN).getDisplayText();
+        String prompt = this.gui.t("nj.palette.prompt");
+        Button field = new Button(prompt, new Icon(Icons.SEARCH));
+        field.setId("find");
+        field.getStyleClass().add("universal-field");
+        field.setAlignment(Pos.CENTER_LEFT);
+        field.setAccessibleText(prompt);
+        field.setTooltip(new Tooltip(prompt + "  " + keys));
+        field.setOnAction(e -> this.palette.show(""));
+        // A letter typed on it starts the text of the palette.
+        field.setOnKeyTyped(e -> {
+            String typed = e.getCharacter();
+            if (!typed.isBlank() && typed.codePointAt(0) >= ' ' && !e.isShortcutDown() && !e.isAltDown()) {
+                this.palette.show(typed);
+                e.consume();
             }
-            if (place.equals("settings")) {
-                // The options keep to the bottom, apart from the places of every day.
-                Region grow = new Region();
-                VBox.setVgrow(grow, Priority.ALWAYS);
-                box.getChildren().add(grow);
-            }
-            boolean isNetwork = place.equals(NETWORK);
-            String title = isNetwork
-                    ? this.gui.t("IDS_NETWORK")
-                    : this.screens.get(place).title();
-            Node icon = isNetwork
-                    ? NetworkPane.icon()
-                    : new Icon(this.screens.get(place).icon());
-            Node mark = switch (place) {
-                case "transfers" -> this.activeBadge;
-                case "messages" -> this.unreadBadge;
-                case NETWORK -> this.networkDot;
-                default -> null;
-            };
-            StackPane graphic = mark == null ? new StackPane(icon) : new StackPane(icon, mark);
-            graphic.getStyleClass().add("rail-graphic");
-            if (mark != null) {
-                StackPane.setAlignment(mark, Pos.TOP_RIGHT);
-            }
-            ToggleButton button = new ToggleButton(title, graphic);
-            // The tooltip tells the shortcut of the place, as menus show theirs.
-            button.setTooltip(new Tooltip(title + "  " + shortcut(PLACES.indexOf(place))));
-            button.setToggleGroup(group);
-            button.setId("rail-" + place);
-            // A rail button stays selected while its place shows.
-            button.setOnAction(e -> open(place));
-            button.setMaxWidth(Double.MAX_VALUE);
-            this.rail.put(place, button);
-            box.getChildren().add(button);
-        }
-        this.networkDot.getStyleClass().add("network-dot");
-        showActive();
-        showUnread();
+        });
+        Label hint = Fx.leftToRight(new Label(keys));
+        hint.getStyleClass().add("shortcut-key");
+        hint.setMouseTransparent(true);
+        StackPane box = new StackPane(field, hint);
+        box.getStyleClass().add("universal-box");
+        StackPane.setAlignment(hint, Pos.CENTER_RIGHT);
+        StackPane.setMargin(hint, new Insets(0, 8, 0, 8));
+        field.setMaxWidth(Double.MAX_VALUE);
+        // In a narrow window it keeps to its icon and keys.
+        Runnable fit = () -> {
+            boolean narrow = this.sidebar.narrowProperty().get();
+            field.setText(narrow ? keys : prompt);
+            hint.setVisible(!narrow);
+            field.pseudoClassStateChanged(NARROW, narrow);
+            // Narrow, it is whole; wide, its prompt gives way first.
+            field.setMinWidth(narrow ? Region.USE_PREF_SIZE : Region.USE_COMPUTED_SIZE);
+            box.setPrefWidth(narrow ? Region.USE_COMPUTED_SIZE : FIELD_WIDTH);
+            box.setMaxWidth(narrow ? Region.USE_PREF_SIZE : FIELD_MAX_WIDTH);
+            HBox.setHgrow(box, narrow ? Priority.NEVER : Priority.ALWAYS);
+        };
+        this.sidebar.narrowProperty().addListener((o, was, now) -> fit.run());
+        fit.run();
         return box;
+    }
+
+    // The rates with their last half minute drawn beside; they open the limits, what one wants to change on seeing
+    // them.
+    private Button ratesButton() {
+        Sparkline spark = new Sparkline(this.gui.model().rates());
+        VBox numbers = new VBox(this.down, this.up);
+        numbers.setAlignment(Pos.CENTER_RIGHT);
+        HBox graphic = new HBox(10, spark, numbers);
+        graphic.setAlignment(Pos.CENTER);
+        for (Node hidden : List.of(spark, this.up)) {
+            hidden.visibleProperty().bind(this.sidebar.narrowProperty().not());
+            hidden.managedProperty().bind(this.sidebar.narrowProperty().not());
+        }
+        this.rates.setGraphic(graphic);
+        this.rates.setId("rates");
+        this.rates.getStyleClass().addAll(Styles.FLAT, "rates");
+        this.rates.setTooltip(new Tooltip(this.gui.t("nj.tray.speed")));
+        this.rates.setOnAction(e -> showLimits(this.rates, Popover.ArrowLocation.TOP_CENTER));
+        Fx.whole(this.rates);
+        return this.rates;
+    }
+
+    // In a narrow window the title keeps to itself.
+    private void showSummary() {
+        boolean shown = !this.sidebar.narrowProperty().get()
+                && this.summary.getText() != null
+                && !this.summary.getText().isEmpty();
+        this.summary.setVisible(shown);
+        this.summary.setManaged(shown);
     }
 
     // The downloads that run now, on the transfers' place.
@@ -500,26 +576,18 @@ public final class MainWindow {
         long active = this.gui.model().downloads().rows().stream()
                 .filter(r -> r.get().status() == DownloadInfo.Status.DOWNLOADING)
                 .count();
-        count(this.activeBadge, this.rail.get("transfers"), active, "nj.rail.active");
+        this.sidebar.count("transfers", active, this.gui.f("nj.rail.active", active));
     }
 
     // The messages that came while the messages did not show, on their place.
     private void showUnread() {
-        count(this.unreadBadge, this.rail.get("messages"), this.unread, "nj.rail.unread");
-    }
-
-    private void count(Label badge, ToggleButton button, long value, String key) {
-        badge.setText(value > MAX_BADGE ? MAX_BADGE + "+" : Long.toString(value));
-        badge.setVisible(value > 0);
-        if (button != null) {
-            // The number is said too, not only shown.
-            button.setAccessibleHelp(value > 0 ? this.gui.f(key, value) : null);
-        }
+        this.sidebar.count("messages", this.unread, this.gui.f("nj.rail.unread", this.unread));
     }
 
     private Node statusStrip() {
         HBox.setHgrow(this.lastLog, Priority.ALWAYS);
         this.lastLog.setMaxWidth(Double.MAX_VALUE);
+        this.lastLog.setMinWidth(0);
         Fx.leftToRight(this.lastLog);
         // The last line of the log opens the whole log; the version is in About and in the title.
         this.lastLog.setOnMouseClicked(e -> {
@@ -528,9 +596,56 @@ public final class MainWindow {
         });
         this.lastLog.setCursor(Cursor.HAND);
         this.lastLog.setTooltip(new Tooltip(this.gui.t("IDS_SV_LOG")));
-        HBox strip = new HBox(this.lastLog, this.server, this.counts);
+        this.limitsLink.setId("limits");
+        this.limitsLink.getStyleClass().addAll(Styles.FLAT, "status-link");
+        this.limitsLink.setOnAction(e -> showLimits(this.limitsLink, Popover.ArrowLocation.BOTTOM_CENTER));
+        Fx.whole(this.limitsLink);
+        Fx.whole(this.server);
+        Fx.whole(this.freeSpace);
+        this.freeSpace.setVisible(false);
+        this.freeSpace.managedProperty().bind(this.freeSpace.visibleProperty());
+        HBox strip = new HBox(this.lastLog, this.server, this.limitsLink, this.freeSpace);
         strip.getStyleClass().add("status-strip");
         return strip;
+    }
+
+    // The limits as the preferences set them, which open the sliders.
+    private void showLimitsText(Preferences preferences) {
+        if (preferences == null) {
+            return;
+        }
+        String text = this.gui.t("IDS_PW_CON_LIMITFRM") + ": ↓ " + limitText(preferences.maxDownloadKiBps()) + " · ↑ "
+                + limitText(preferences.maxUploadKiBps());
+        this.limitsLink.setText(text);
+        this.limitsLink.setTooltip(new Tooltip(this.gui.t("IDS_SPEED_LIMITS")));
+    }
+
+    private String limitText(int kib) {
+        return kib == 0 ? this.gui.t("nj.rate.noLimit") : this.gui.formats().rate(kib * 1024L);
+    }
+
+    // The room left where downloads end up, looked at every few seconds.
+    private void showFreeSpace() {
+        long now = System.nanoTime();
+        if (now - this.spaceCheckedAt < SPACE_EVERY) {
+            return;
+        }
+        this.spaceCheckedAt = now;
+        Preferences preferences = this.gui.model().preferencesProperty().get();
+        if (preferences == null) {
+            return;
+        }
+        Path incoming = preferences.effectiveIncomingDir(this.gui.directories());
+        try {
+            long free = Files.getFileStore(incoming).getUsableSpace();
+            this.freeSpace.setText(this.gui.t("IDS_STATS_FREESPACE") + ": "
+                    + this.gui.formats().size(free));
+            this.freeSpace.setTooltip(new Tooltip(incoming.toString()));
+            this.freeSpace.setVisible(true);
+        } catch (IOException e) {
+            // A folder not made yet, or a drive gone: nothing to tell.
+            this.freeSpace.setVisible(false);
+        }
     }
 
     /** Adds the eD2K file links in {@code text} as downloads, telling each one added; returns how many it found. */
@@ -591,80 +706,23 @@ public final class MainWindow {
     }
 
     private void showConnection() {
-        EngineModel.Connection state = this.gui.model().connectionProperty().get();
-        String name =
-                this.gui.i18n().embed(this.gui.model().serverNameProperty().get());
-        this.connect.setText(
-                switch (state) {
-                    case DISCONNECTED -> this.gui.t("IDS_MAIN_BTN_CONNECT");
-                    case CONNECTING -> this.gui.t("IDS_MAIN_BTN_CANCEL");
-                    case CONNECTED -> this.gui.t("IDS_MAIN_BTN_DISCONNECT");
-                });
-        this.connect.setGraphic(new Icon(state == EngineModel.Connection.DISCONNECTED ? Icons.LINK : Icons.POWER));
-        // Connecting is what to do while disconnected: only then does the button take the accent.
-        this.connect.getStyleClass().remove("accent");
-        if (state == EngineModel.Connection.DISCONNECTED) {
-            this.connect.getStyleClass().add("accent");
-        }
-        String text = switch (state) {
-            case DISCONNECTED -> this.gui.t("IDS_NOTCONNECTED");
-            case CONNECTING -> this.gui.t("IDS_CONNECTING") + " " + name;
-            case CONNECTED -> name;
-        };
-        state(
-                this.ed2k,
-                "eD2K: " + text,
-                state == EngineModel.Connection.CONNECTED,
-                state == EngineModel.Connection.CONNECTING);
-        showNetwork();
-        this.banner.update(state, this.gui.model().statusProperty().get());
+        showNetwork(this.gui.model().statusProperty().get());
     }
 
     private void showStatus(EngineStatus status) {
-        var formats = this.gui.formats();
+        Formats formats = this.gui.formats();
         this.down.setText(formats.rate(status.downloadBytesPerSecond()));
         this.up.setText(formats.rate(status.uploadBytesPerSecond()));
-        if (this.gui.model().connectionProperty().get() == EngineModel.Connection.CONNECTED) {
-            state(
-                    this.ed2k,
-                    "eD2K: "
-                            + this.gui
-                                    .i18n()
-                                    .embed(this.gui.model().serverNameProperty().get()
-                                            + (status.lowId()
-                                                    ? " (LowID)"
-                                                    : status.clientId() != 0 ? " (HighID)" : "")),
-                    true,
-                    false);
-        }
-        Optional<KadInfo> kadInfo = status.kad();
-        if (kadInfo.isEmpty()) {
-            state(this.kad, "Kad: " + this.gui.t("nj.kad.off"), false, false);
-        } else if (!kadInfo.get().connected()) {
-            state(this.kad, "Kad: " + this.gui.t("IDS_NOTCONNECTED"), false, true);
-        } else {
-            KadInfo k = kadInfo.get();
-            boolean firewalled = k.firewalled();
-            // Behind a TCP firewall, whether UDP gets through tells if others still reach us, once tested.
-            String udp = firewalled && (k.udpVerified() || k.udpFirewalled())
-                    ? ", " + this.gui.t(k.udpFirewalled() ? "nj.kad.udpFirewalled" : "nj.kad.udpOpen")
-                    : "";
-            state(
-                    this.kad,
-                    "Kad: " + (firewalled ? this.gui.t("IDS_FIREWALLED") : this.gui.t("IDS_KADOPEN")) + udp,
-                    !firewalled,
-                    firewalled);
-        }
+        this.rates.setAccessibleText(
+                this.gui.t("nj.tray.speed") + ": ↓ " + this.down.getText() + ", ↑ " + this.up.getText());
         this.server.setText(networkCounts(
                 status,
                 this.gui.model().servers().rows().stream()
                         .map(LiveList.Row::get)
                         .toList()));
-        this.counts.setText(this.gui.f(
-                "nj.status.counts", status.downloads(), status.uploads(), status.queued(), status.sharedFiles()));
-        showNetwork();
+        showNetwork(status);
         showActive();
-        this.banner.update(this.gui.model().connectionProperty().get(), status);
+        showFreeSpace();
     }
 
     /**
@@ -698,52 +756,32 @@ public final class MainWindow {
         return this.gui.f("nj.status.server", formats.count(users), formats.count(files));
     }
 
-    // The network's place tells at a glance whether either network is up; its tooltip says which.
-    private void showNetwork() {
-        EngineModel.Connection connection =
-                this.gui.model().connectionProperty().get();
-        Optional<KadInfo> kadInfo = this.gui.model().statusProperty().get().kad();
+    // The networks' state on their control, on their place and as the network's summary; the banner tells what to do.
+    private void showNetwork(EngineStatus status) {
+        EngineModel model = this.gui.model();
+        EngineModel.Connection connection = model.connectionProperty().get();
+        this.network.update(connection, status, model.serverNameProperty().get());
+        Optional<KadInfo> kadInfo = status.kad();
         boolean kadUp = kadInfo.isPresent() && kadInfo.get().connected();
-        this.networkDot.getStyleClass().removeAll("connected", "connecting");
-        if (connection == EngineModel.Connection.CONNECTED || kadUp) {
-            this.networkDot.getStyleClass().add("connected");
-        } else if (connection == EngineModel.Connection.CONNECTING || kadInfo.isPresent()) {
-            this.networkDot.getStyleClass().add("connecting");
-        }
-        ToggleButton button = this.rail.get(NETWORK);
-        if (button != null) {
-            String state = this.ed2k.getText() + "\n" + this.kad.getText();
-            button.setTooltip(new Tooltip(state + "\n" + shortcut(PLACES.indexOf(NETWORK))));
-            button.setAccessibleHelp(state);
-        }
-    }
-
-    private void state(Label chip, String text, boolean on, boolean partly) {
-        chip.setText(text);
-        chip.getStyleClass().removeAll("connected", "connecting");
-        if (on) {
-            chip.getStyleClass().add("connected");
-        } else if (partly) {
-            chip.getStyleClass().add("connecting");
-        }
+        boolean up = connection == EngineModel.Connection.CONNECTED || kadUp;
+        boolean trying = connection == EngineModel.Connection.CONNECTING || kadInfo.isPresent();
+        String state = this.network.ed2kChip().getText() + "\n"
+                + this.network.kadChip().getText();
+        this.sidebar.network(NETWORK, up, trying, state, shortcut(PLACES.indexOf(NETWORK)));
+        this.networkSummary.set(this.network.summary());
+        this.banner.update(connection, status);
     }
 
     Label ed2kChip() {
-        return this.ed2k;
+        return this.network.ed2kChip();
     }
 
     Label kadChip() {
-        return this.kad;
+        return this.network.kadChip();
     }
 
-    private static Label chip() {
-        Label label = new Label("", new Icon(Icons.DOT));
-        label.getStyleClass().add("connection-chip");
-        return label;
-    }
-
-    // The limits under the rates, as in the notification area's menu, with the same two presets.
-    private void showLimits(Node anchor) {
+    // The limits over the rates or the status strip, as in the notification area's menu, with the same two presets.
+    private void showLimits(Node anchor, Popover.ArrowLocation arrow) {
         if (this.limitsPopover == null) {
             this.limits = new SpeedLimits(this.gui);
             Button full = Fx.button(
@@ -756,16 +794,10 @@ public final class MainWindow {
             this.limitsPopover = new Popover(box);
             this.limitsPopover.setTitle(this.gui.t("nj.tray.speed"));
             this.limitsPopover.setHeaderAlwaysVisible(true);
-            this.limitsPopover.setArrowLocation(Popover.ArrowLocation.TOP_CENTER);
         }
+        this.limitsPopover.setArrowLocation(arrow);
         this.limits.load();
         this.limitsPopover.show(anchor);
-    }
-
-    private void opens(Label chip, String screen) {
-        chip.setOnMouseClicked(e -> show(screen));
-        chip.setCursor(Cursor.HAND);
-        chip.setTooltip(new Tooltip(this.gui.t("IDS_NETWORK")));
     }
 
     // Opens the folder of finished downloads in the system's file manager.
@@ -804,12 +836,9 @@ public final class MainWindow {
         List<CommandPalette.Command> all = new ArrayList<>();
         for (int i = 0; i < PLACES.size(); i++) {
             String place = PLACES.get(i);
-            String title = place.equals(NETWORK)
-                    ? this.gui.t("IDS_NETWORK")
-                    : this.screens.get(place).title();
-            all.add(new CommandPalette.Command(title, shortcut(i), () -> open(place)));
+            all.add(new CommandPalette.Command(placeTitle(place), shortcut(i), () -> open(place)));
         }
-        all.add(new CommandPalette.Command(this.connect.getText(), "", this::toggleConnection));
+        all.add(new CommandPalette.Command(connectButton().getText(), "", this::toggleConnection));
         all.add(new CommandPalette.Command(this.gui.t("IDS_OPENINC"), "", this::openIncoming));
         all.add(new CommandPalette.Command(this.gui.t("nj.wizard.title"), "", this::showWizard));
         all.add(new CommandPalette.Command(
@@ -817,6 +846,10 @@ public final class MainWindow {
                 "",
                 () -> new ImportDialog(this.gui, this.root.getScene().getWindow()).show()));
         all.add(new CommandPalette.Command(this.gui.t("nj.top.theme"), "", this::toggleTheme));
+        all.add(new CommandPalette.Command(
+                this.gui.t(this.sidebar.collapsedProperty().get() ? "nj.sidebar.expand" : "nj.sidebar.collapse"),
+                new KeyCodeCombination(KeyCode.B, KeyCombination.SHORTCUT_DOWN).getDisplayText(),
+                this.sidebar::toggle));
         all.add(new CommandPalette.Command(
                 this.gui.t("nj.shortcuts.title"),
                 new KeyCodeCombination(KeyCode.F1).getDisplayText(),
@@ -830,6 +863,12 @@ public final class MainWindow {
                 "",
                 () -> new AboutDialog(this.gui, this.root.getScene().getWindow()).show()));
         return all;
+    }
+
+    private String placeTitle(String place) {
+        return place.equals(NETWORK)
+                ? this.gui.t("IDS_NETWORK")
+                : this.screens.get(place).title();
     }
 
     // What the text typed is itself: eD2K links to download, or else words to search the network for.
@@ -855,7 +894,7 @@ public final class MainWindow {
         return this.palette;
     }
 
-    /** The shortcut of the place at {@code index} of the rail, as the platform writes it: Ctrl+1, or ⌘1. */
+    /** The shortcut of the place at {@code index} of the sidebar, as the platform writes it: Ctrl+1, or ⌘1. */
     static String shortcut(int index) {
         return new KeyCodeCombination(DIGITS.get(index), KeyCombination.SHORTCUT_DOWN).getDisplayText();
     }
@@ -866,11 +905,7 @@ public final class MainWindow {
         grid.getStyleClass().add("shortcuts");
         int row = 0;
         for (int i = 0; i < PLACES.size(); i++) {
-            String place = PLACES.get(i);
-            String title = place.equals(NETWORK)
-                    ? this.gui.t("IDS_NETWORK")
-                    : this.screens.get(place).title();
-            row = shortcutRow(grid, row, shortcut(i), title);
+            row = shortcutRow(grid, row, shortcut(i), placeTitle(PLACES.get(i)));
         }
         String transfers = this.screens.get("transfers").title() + ": ";
         row = shortcutRow(
@@ -888,6 +923,11 @@ public final class MainWindow {
                 row,
                 new KeyCodeCombination(KeyCode.K, KeyCombination.SHORTCUT_DOWN).getDisplayText(),
                 this.gui.t("nj.palette.prompt"));
+        row = shortcutRow(
+                grid,
+                row,
+                new KeyCodeCombination(KeyCode.B, KeyCombination.SHORTCUT_DOWN).getDisplayText(),
+                this.gui.t("nj.sidebar.collapse") + " / " + this.gui.t("nj.sidebar.expand"));
         shortcutRow(grid, row, new KeyCodeCombination(KeyCode.F1).getDisplayText(), this.gui.t("nj.shortcuts.title"));
         Stage stage = new Stage();
         stage.initOwner(this.root.getScene().getWindow());
@@ -910,16 +950,9 @@ public final class MainWindow {
         return row + 1;
     }
 
-    private static Label badge() {
-        Label badge = new Label();
-        badge.getStyleClass().add("rail-badge");
-        badge.setVisible(false);
-        return badge;
-    }
-
-    private static Label rate(Icons arrow) {
+    private static Label rate(Icons arrow, String style) {
         Label label = new Label("", new Icon(arrow));
-        label.getStyleClass().add("rate-label");
+        label.getStyleClass().addAll("rate-label", style);
         return label;
     }
 }

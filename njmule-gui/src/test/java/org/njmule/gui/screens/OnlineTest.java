@@ -25,8 +25,13 @@ import java.net.NetworkInterface;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.Objects;
 import javafx.scene.control.Button;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.TableView;
+import javafx.stage.PopupWindow;
+import javafx.stage.Window;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -122,7 +127,13 @@ class OnlineTest {
     }
 
     private void givenTheConnectButtonReads(String text) throws Exception {
-        this.connect = FxTesting.onFx(() -> (Button) this.window.root().lookup("#connect"));
+        FxTesting.onFx(() -> ((Button) this.window.root().lookup("#network")).fire());
+        this.connect = FxTesting.onFx(() -> Window.getWindows().stream()
+                .filter(w -> w instanceof PopupWindow && w.isShowing() && w.getScene() != null)
+                .map(w -> (Button) w.getScene().getRoot().lookup("#connect"))
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElseThrow());
         assertThat(FxTesting.onFx(this.connect::getText)).isEqualTo(text);
     }
 
@@ -173,7 +184,11 @@ class OnlineTest {
     }
 
     private void givenTheThemeButtonSwitchesTheTheme() throws Exception {
-        Button theme = FxTesting.onFx(() -> (Button) this.window.root().lookup("#theme"));
+        MenuItem theme = FxTesting.onFx(() -> ((MenuButton) this.window.root().lookup("#more"))
+                .getItems().stream()
+                        .filter(i -> "theme".equals(i.getId()))
+                        .findFirst()
+                        .orElseThrow());
         boolean dark =
                 FxTesting.onFx(() -> this.test.gui.themes().darkProperty().get());
         FxTesting.onFx(theme::fire);

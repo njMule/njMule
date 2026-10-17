@@ -18,6 +18,9 @@ package org.njmule.gui.screens;
 
 import atlantafx.base.theme.Styles;
 import java.util.List;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.StringBinding;
+import javafx.beans.value.ObservableValue;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -29,6 +32,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icons;
@@ -40,6 +44,7 @@ import org.njmule.gui.ui.Segments;
 public final class StatisticsScreen implements Screen {
 
     private final Gui gui;
+    private StringBinding summary;
     private Segments<RateGraph.Range> range;
     private Node view;
     private final Label downRate = value();
@@ -74,6 +79,25 @@ public final class StatisticsScreen implements Screen {
     @Override
     public Icons icon() {
         return Icons.STATISTICS;
+    }
+
+    @Override
+    public ObservableValue<String> summary() {
+        if (this.summary == null) {
+            EngineModel model = this.gui.model();
+            // How long this session has run and what it moved.
+            this.summary = Bindings.createStringBinding(
+                    () -> {
+                        EngineStatus status = model.statusProperty().get();
+                        return this.gui.f(
+                                "nj.summary.statistics",
+                                this.gui.formats().duration(status.sessionSeconds()),
+                                this.gui.formats().size(status.downloaded()),
+                                this.gui.formats().size(status.uploaded()));
+                    },
+                    model.statusProperty());
+        }
+        return this.summary;
     }
 
     @Override
@@ -156,7 +180,7 @@ public final class StatisticsScreen implements Screen {
         split.setDividerPositions(0.34);
         SplitPane.setResizableWithParent(this.tree.view(), false);
         this.tree.refresh();
-        return Fx.screen(title(), Fx.toolRow(), split);
+        return Fx.screen(split);
     }
 
     // Cards of one size in a regular grid, as wide as the widest. Their names never wrap: JavaFX's text layout can

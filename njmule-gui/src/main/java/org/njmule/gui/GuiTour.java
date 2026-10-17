@@ -128,6 +128,14 @@ final class GuiTour {
         this.steps.add(() -> click("#search-parameters"));
         this.steps.add(() -> click("#rates"));
         this.steps.add(this::closePopups);
+        this.steps.add(() -> click("#network"));
+        this.steps.add(this::closePopups);
+        this.steps.add(() -> click("#limits"));
+        this.steps.add(this::closePopups);
+        this.steps.add(() -> click("#find"));
+        this.steps.add(() -> press(KeyCode.ESCAPE, false));
+        this.steps.add(() -> press(KeyCode.B, true));
+        this.steps.add(() -> press(KeyCode.B, true));
         this.steps.add(() -> press(KeyCode.K, true));
         this.steps.add(() -> press(KeyCode.ESCAPE, false));
         this.steps.add(() -> press(KeyCode.F1, false));

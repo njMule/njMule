@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import javafx.beans.binding.Bindings;
+import javafx.beans.binding.StringBinding;
+import javafx.beans.value.ObservableValue;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
@@ -50,6 +52,7 @@ import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.gui.dialogs.CommentDialog;
 import org.njmule.gui.infra.Folders;
+import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
@@ -71,6 +74,7 @@ public final class SharedScreen implements Screen {
     }
 
     private final Gui gui;
+    private StringBinding summary;
     private Node view;
     private TableView<LiveList.Row<SharedFileInfo>> table;
     private final ListView<SharedDirectory> folders = new ListView<>();
@@ -92,6 +96,24 @@ public final class SharedScreen implements Screen {
     @Override
     public Icons icon() {
         return Icons.SHARED;
+    }
+
+    @Override
+    public ObservableValue<String> summary() {
+        if (this.summary == null) {
+            EngineModel model = this.gui.model();
+            // The files shared and the uploads running; nothing while nothing is shared.
+            this.summary = Bindings.createStringBinding(
+                    () -> model.sharedFiles().rows().isEmpty()
+                            ? ""
+                            : this.gui.f(
+                                    "nj.summary.shared",
+                                    model.sharedFiles().rows().size(),
+                                    model.uploads().rows().size()),
+                    model.sharedFiles().rows(),
+                    model.uploads().rows());
+        }
+        return this.summary;
     }
 
     @Override
@@ -182,7 +204,7 @@ public final class SharedScreen implements Screen {
         SplitPane split = new SplitPane(pane, this.table);
         split.setDividerPositions(0.28);
         SplitPane.setResizableWithParent(pane, false);
-        return Fx.screen(title(), tools, split);
+        return Fx.screen(tools, split);
     }
 
     // The folders shared beside the incoming ones: each with its subfolders or alone, and a way to stop sharing it.
