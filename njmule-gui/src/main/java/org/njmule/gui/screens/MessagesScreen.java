@@ -59,6 +59,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.text.TextAlignment;
 import javax.imageio.ImageIO;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
@@ -236,7 +237,7 @@ public final class MessagesScreen implements Screen {
         this.conversations.setCellFactory(l -> new EntryCell());
         this.conversations.getStyleClass().add("conversations");
         this.conversations.setId("conversations");
-        this.conversations.setPlaceholder(new Label(this.gui.t("nj.chat.none")));
+        this.conversations.setPlaceholder(placeholder("nj.chat.none"));
         this.conversations.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> {
             if (!this.listing) {
                 showChosen();
@@ -319,7 +320,16 @@ public final class MessagesScreen implements Screen {
         this.shownEntries.setPredicate(e -> (!friends || e.friend().isPresent())
                 && words.stream().allMatch((name(e) + " " + where(e)).toLowerCase(Locale.ROOT)::contains));
         this.conversations.setPlaceholder(
-                new Label(this.gui.t(friends && words.isEmpty() ? "nj.chat.noFriends" : "nj.chat.none")));
+                placeholder(friends && words.isEmpty() ? "nj.chat.noFriends" : "nj.chat.none"));
+    }
+
+    // The words of an empty list, wrapping in its narrow column rather than cut short.
+    private Label placeholder(String key) {
+        Label words = new Label(this.gui.t(key));
+        words.setWrapText(true);
+        words.setTextAlignment(TextAlignment.CENTER);
+        words.getStyleClass().addAll(Styles.TEXT_MUTED, "list-placeholder");
+        return words;
     }
 
     // The conversations, each with its friend if it has one, the newest first; then the friends with none.
@@ -461,7 +471,7 @@ public final class MessagesScreen implements Screen {
     }
 
     private String showName(Show show) {
-        return this.gui.t(show == Show.ALL ? "IDS_ALL" : "IDS_FRIENDLIST");
+        return this.gui.t(show == Show.ALL ? "nj.all" : "IDS_FRIENDLIST");
     }
 
     // The friend chosen gets the friend slot, or loses it when it has it.

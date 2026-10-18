@@ -1506,6 +1506,10 @@
     -fx-background-radius: 8;
 }
 
+.list-placeholder {
+    -fx-padding: 16;
+}
+
 .avatar {
     -fx-min-width: 34;
     -fx-min-height: 34;

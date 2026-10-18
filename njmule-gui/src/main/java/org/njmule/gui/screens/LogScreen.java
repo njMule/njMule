@@ -44,7 +44,7 @@ public final class LogScreen implements Screen {
 
     /** The lines the chips keep. */
     enum Level {
-        ALL("IDS_ALL"),
+        ALL("nj.all"),
         ERROR("IDS_ERROR"),
         WARNING("IDS_WARNING"),
         INFO("IDS_INFO");
