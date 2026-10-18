@@ -25,9 +25,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.remote.ApiToken;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
-import org.njmule.webui.ApiToken;
 import org.njmule.webui.WebUiSettings;
 
 /** The remote-control API in the web interface settings. */

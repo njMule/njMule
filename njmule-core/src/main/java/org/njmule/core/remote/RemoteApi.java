@@ -14,16 +14,18 @@
  * You should have received a copy of the GNU General Public License along with this program. If
  * not, see <https://www.gnu.org/licenses/>.
  */
-package org.njmule.webui;
+package org.njmule.core.remote;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -55,16 +57,19 @@ import tools.jackson.core.JsonGenerator;
 /**
  * The remote-control API under {@value #PREFIX}: JSON over HTTP for callers that send the API token as a bearer token,
  * and the engine's events as server-sent events. It uses no cookie, so other sites' pages cannot act through a browser;
- * wrong tokens count as failed logins of their address.
+ * the host's {@link Guard} slows down addresses that send wrong tokens. The host serves it on its own HTTP server.
  */
-final class Api {
+public final class RemoteApi implements AutoCloseable {
 
-    static final String PREFIX = "/api/v1";
+    public static final String PREFIX = "/api/v1";
 
     /** The version of the API, which grows when calls are added and changes only with the prefix otherwise. */
-    static final int VERSION = 1;
+    public static final int VERSION = 1;
 
-    private static final Logger logger = LoggerFactory.getLogger(Api.class);
+    /** How often an idle event stream sends a comment, so that callers and proxies keep its connection. */
+    public static final Duration HEARTBEAT = EventStreams.HEARTBEAT;
+
+    private static final Logger logger = LoggerFactory.getLogger(RemoteApi.class);
     private static final String JSON = "application/json; charset=utf-8";
     private static final String GET = "GET";
     private static final String POST = "POST";
@@ -77,25 +82,36 @@ final class Api {
 
     private final NjMuleEngine engine;
     private final Path configDir;
-    private final Sessions sessions;
+    private final Guard guard;
     private final SearchCollector searches;
     private final RecentLog log;
     private final EventStreams streams;
     private final Optional<Runnable> exit;
 
-    Api(
-            NjMuleEngine engine,
-            Sessions sessions,
-            SearchCollector searches,
-            RecentLog log,
-            EventStreams streams,
-            Optional<Runnable> exit) {
+    /** Decides whether a client that sent a wrong or no token may try again now. */
+    @FunctionalInterface
+    public interface Guard {
+        /** Whether {@code client} may try now; each call counts as a failed attempt. */
+        boolean mayTry(InetAddress client);
+    }
+
+    /**
+     * An API over {@code engine}, answering searches and log lines from what {@code recent} collects; {@code exit},
+     * when given, stops njMule.
+     */
+    public RemoteApi(NjMuleEngine engine, RecentEvents recent, Guard guard, Optional<Runnable> exit) {
+        this(engine, recent, guard, exit, HEARTBEAT);
+    }
+
+    /** As the other constructor, with event streams that send a comment every {@code heartbeat} while idle. */
+    public RemoteApi(
+            NjMuleEngine engine, RecentEvents recent, Guard guard, Optional<Runnable> exit, Duration heartbeat) {
         this.engine = engine;
         this.configDir = engine.directories().config();
-        this.sessions = sessions;
-        this.searches = searches;
-        this.log = log;
-        this.streams = streams;
+        this.guard = guard;
+        this.searches = recent.searches();
+        this.log = recent.log();
+        this.streams = new EventStreams(engine, heartbeat);
         this.exit = exit;
     }
 
@@ -111,7 +127,8 @@ final class Api {
         }
     }
 
-    void handle(Exchange exchange) throws IOException {
+    /** Answers a request whose path starts with {@value #PREFIX}. */
+    public void handle(Exchange exchange) throws IOException {
         try {
             route(exchange);
         } catch (Failure e) {
@@ -179,14 +196,13 @@ final class Api {
         if (token.isPresent() && ApiToken.matches(token.get(), given)) {
             return;
         }
-        String address = Sessions.clientKey(exchange.clientAddress());
+        InetAddress client = exchange.clientAddress();
         exchange.setHeader("WWW-Authenticate", "Bearer");
-        // A wrong token counts as a failed login of its address.
-        if (!this.sessions.mayTry(address)) {
+        if (!this.guard.mayTry(client)) {
             throw new Failure(429, "Too many attempts: wait a minute.");
         }
         if (given != null) {
-            logger.warn("Wrong API token from {}", address);
+            logger.warn("Wrong API token from {}", client.getHostAddress());
         }
         throw new Failure(401, given == null ? "Send the API token as a bearer token." : "Wrong token.");
     }
@@ -274,7 +290,7 @@ final class Api {
         return await(this.engine.downloads()).stream()
                 .filter(d -> d.hash().equals(hash))
                 .findFirst()
-                .orElseThrow(Api::notFound);
+                .orElseThrow(RemoteApi::notFound);
     }
 
     private void addDownloads(Exchange exchange) throws IOException {
@@ -432,7 +448,7 @@ final class Api {
         if (rest.size() == 1) {
             switch (method) {
                 case GET -> {
-                    List<SearchResult> found = this.searches.results(id).orElseThrow(Api::notFound);
+                    List<SearchResult> found = this.searches.results(id).orElseThrow(RemoteApi::notFound);
                     found.sort((a, b) -> Integer.compare(b.sources(), a.sources()));
                     reply(exchange, 200, g -> {
                         g.writeStartObject();
@@ -568,6 +584,12 @@ final class Api {
         logger.info("Exiting as the remote-control API asked");
         // Out of the server's threads, which the exit stops.
         Thread.ofVirtual().name("njmule-api-exit").start(stop);
+    }
+
+    /** Ends the open event streams; the host stops its server afterwards. */
+    @Override
+    public void close() {
+        this.streams.close();
     }
 
     // Values of the body.

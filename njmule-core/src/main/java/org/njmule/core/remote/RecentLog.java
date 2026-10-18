@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License along with this program. If
  * not, see <https://www.gnu.org/licenses/>.
  */
-package org.njmule.webui;
+package org.njmule.core.remote;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -22,16 +22,16 @@ import java.util.List;
 import org.njmule.core.api.LogLine;
 
 /** The latest lines of the engine's log, numbered so that a caller asks only for those it has not seen. */
-final class RecentLog {
+public final class RecentLog {
 
-    static final int KEPT = 500;
+    public static final int KEPT = 500;
 
-    record Entry(long sequence, LogLine line) {}
+    public record Entry(long sequence, LogLine line) {}
 
     private final ArrayDeque<Entry> lines = new ArrayDeque<>();
     private long next = 1;
 
-    synchronized void add(LogLine line) {
+    public synchronized void add(LogLine line) {
         this.lines.addLast(new Entry(this.next++, line));
         if (this.lines.size() > KEPT) {
             this.lines.removeFirst();
@@ -39,7 +39,7 @@ final class RecentLog {
     }
 
     /** The lines numbered above {@code sequence}, oldest first. */
-    synchronized List<Entry> after(long sequence) {
+    public synchronized List<Entry> after(long sequence) {
         List<Entry> newer = new ArrayList<>();
         for (Entry e : this.lines) {
             if (e.sequence() > sequence) {

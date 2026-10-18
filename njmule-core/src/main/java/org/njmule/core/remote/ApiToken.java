@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License along with this program. If
  * not, see <https://www.gnu.org/licenses/>.
  */
-package org.njmule.webui;
+package org.njmule.core.remote;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

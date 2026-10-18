@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License along with this program. If
  * not, see <https://www.gnu.org/licenses/>.
  */
-package org.njmule.webui;
+package org.njmule.core.remote;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,6 +28,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +37,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -46,6 +48,7 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
@@ -55,7 +58,10 @@ import org.njmule.core.config.Preferences;
 
 /** The remote-control API against an engine the test controls. */
 @Timeout(60)
-class ApiTest {
+class RemoteApiTest {
+
+    // Wrong tokens the guard of the test lets through.
+    private static final int ATTEMPTS = 3;
 
     private static final String HASH = "AB".repeat(16);
     private static final String LINK = "ed2k://|file|talk.bin|5000|" + HASH + "|/";
@@ -67,19 +73,24 @@ class ApiTest {
     private final HttpClient http = HttpClient.newHttpClient();
     private final List<String> calls = new CopyOnWriteArrayList<>();
     private final CountDownLatch exited = new CountDownLatch(1);
-    private WebUi ui;
+    private final AtomicInteger attempts = new AtomicInteger();
+    private RemoteApi api;
+    private ApiServer server;
     private String token;
     private HttpResponse<String> answer;
     private Preferences preferences = Preferences.defaults();
     private BufferedReader stream;
 
     @AfterEach
-    void stop() throws IOException {
+    void stop() throws Exception {
         if (this.stream != null) {
             this.stream.close();
         }
-        if (this.ui != null) {
-            this.ui.close();
+        if (this.api != null) {
+            this.api.close();
+        }
+        if (this.server != null) {
+            this.server.close();
         }
         this.fake.events.close();
     }
@@ -95,9 +106,9 @@ class ApiTest {
     }
 
     @Test
-    void shouldLockOutAnAddressThatKeepsSendingWrongTokens() throws Exception {
+    void shouldRefuseAnAddressItsGuardStops() throws Exception {
         givenTheApiRuns();
-        givenWrongTokensSent(Sessions.MAX_FAILURES);
+        givenWrongTokensSent(ATTEMPTS);
 
         whenCalled("GET", "/api/v1/status", Optional.of("wrong"), "");
 
@@ -251,11 +262,11 @@ class ApiTest {
     }
 
     @Test
-    void shouldEndTheStreamsWhenTheInterfaceStops() throws Exception {
+    void shouldEndTheStreamsWhenItCloses() throws Exception {
         givenTheApiRuns();
         givenAnEventStreamOpen("");
 
-        whenTheInterfaceStops();
+        whenTheApiCloses();
 
         thenTheStreamEnds();
     }
@@ -270,33 +281,20 @@ class ApiTest {
         thenNjMuleWasStopped();
     }
 
-    @Test
-    void shouldAnswerNotFoundWhileTheApiIsOff() throws Exception {
-        givenTheWebInterfaceRunsWithoutTheApi();
-
-        whenCalled("GET", "/api/v1/status", Optional.of("anything"), "");
-
-        thenTheStatusIs(404);
-        thenTheBodyContains("API is off");
-    }
-
     // Given
 
-    private void givenTheApiRuns() throws IOException {
+    private void givenTheApiRuns() throws Exception {
         AppDirectories dirs = AppDirectories.underRoot(this.dir, true);
         this.fake.value("directories", dirs);
-        this.ui = WebUi.start(
-                this.fake.engine(),
-                new WebUiSettings(true, FreePorts.tcp(), false, "pbkdf2-sha512$1$AA$AA", true),
+        this.token = ApiToken.loadOrCreate(dirs.config(), new SecureRandom());
+        NjMuleEngine engine = this.fake.engine();
+        this.api = new RemoteApi(
+                engine,
+                RecentEvents.follow(engine),
+                client -> this.attempts.incrementAndGet() <= ATTEMPTS,
                 Optional.of(this.exited::countDown),
-                1,
                 Duration.ofSeconds(1));
-        this.token = ApiToken.load(dirs.config()).orElseThrow();
-    }
-
-    private void givenTheWebInterfaceRunsWithoutTheApi() throws IOException {
-        this.ui = WebUi.start(
-                this.fake.engine(), new WebUiSettings(true, FreePorts.tcp(), false, "pbkdf2-sha512$1$AA$AA"));
+        this.server = ApiServer.start(this.api);
     }
 
     private void givenWrongTokensSent(int count) throws Exception {
@@ -405,9 +403,8 @@ class ApiTest {
         this.fake.events.submit(event);
     }
 
-    private void whenTheInterfaceStops() {
-        this.ui.close();
-        this.ui = null;
+    private void whenTheApiCloses() {
+        this.api.close();
     }
 
     // Then
@@ -475,7 +472,8 @@ class ApiTest {
     }
 
     private HttpRequest.Builder request(String path, Optional<String> token) {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.ui.port() + path));
+        HttpRequest.Builder builder =
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.server.port() + path));
         token.ifPresent(t -> builder.header("Authorization", "Bearer " + t));
         return builder;
     }

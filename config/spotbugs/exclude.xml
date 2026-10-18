@@ -85,6 +85,15 @@
         </Or>
         <Class name="org.njmule.core.security.SecureIdent$IpBinding"/>
     </Match>
+    <!-- The remote-control API shares live services by design: the engine, Jetty's request and
+         response of an exchange, and the collectors that the web pages read too. -->
+    <Match>
+        <Or>
+            <Bug pattern="EI_EXPOSE_REP"/>
+            <Bug pattern="EI_EXPOSE_REP2"/>
+        </Or>
+        <Package name="org.njmule.core.remote"/>
+    </Match>
     <!-- The web interface builds its pages from fixed markup; every text that is not a literal
          goes through Html.text, which escapes it for element content and quoted attributes
          (WebUiPartsTest, WebUiTest), and the Content-Security-Policy forbids scripts. -->

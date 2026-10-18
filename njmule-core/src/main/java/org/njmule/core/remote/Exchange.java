@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License along with this program. If
  * not, see <https://www.gnu.org/licenses/>.
  */
-package org.njmule.webui;
+package org.njmule.core.remote;
 
 import java.io.FilterInputStream;
 import java.io.FilterOutputStream;
@@ -39,10 +39,10 @@ import org.eclipse.jetty.server.Response;
 import org.eclipse.jetty.util.Fields;
 
 /**
- * One request and its answer, as the pages, the API and the event streams handle them, on Jetty's blocking adapters:
- * they run on a virtual thread of their own and may wait.
+ * One request and its answer, as the web pages, the API and the event streams handle them, on Jetty's blocking
+ * adapters: they run on a virtual thread of their own and may wait.
  */
-final class Exchange {
+public final class Exchange {
 
     // The most of a request body left unread that the exchange reads anyway, as Tomcat's maxSwallowSize: past it the
     // connection closes.
@@ -50,36 +50,46 @@ final class Exchange {
 
     private final Request request;
     private final Response response;
-    private final TrustedProxies proxies;
+    private final ClientResolver clients;
     private RequestBody requestBody;
     private OutputStream body;
     private boolean started;
 
-    Exchange(Request request, Response response) {
-        this(request, response, TrustedProxies.NONE);
+    /** Names the client of a request, which proxies the host trusts may tell in {@code X-Forwarded-For}. */
+    @FunctionalInterface
+    public interface ClientResolver {
+        /** The client of a request that came from {@code remote} with these {@code X-Forwarded-For} headers. */
+        InetAddress client(InetAddress remote, List<String> forwardedFor);
     }
 
-    Exchange(Request request, Response response, TrustedProxies proxies) {
+    /** Believes no forwarding header: the client is the remote address. */
+    public static final ClientResolver DIRECT = (remote, forwardedFor) -> remote;
+
+    public Exchange(Request request, Response response) {
+        this(request, response, DIRECT);
+    }
+
+    public Exchange(Request request, Response response, ClientResolver clients) {
         this.request = request;
         this.response = response;
-        this.proxies = proxies;
+        this.clients = clients;
     }
 
-    String method() {
+    public String method() {
         return this.request.getMethod();
     }
 
-    boolean isHead() {
+    public boolean isHead() {
         return method().equals("HEAD");
     }
 
     /** The path, decoded. */
-    String path() {
+    public String path() {
         return this.request.getHttpURI().getDecodedPath();
     }
 
     /** The path as sent, still percent-encoded. */
-    String rawPath() {
+    public String rawPath() {
         return this.request.getHttpURI().getPath();
     }
 
@@ -87,7 +97,7 @@ final class Exchange {
      * The fields of the query, decoded as UTF-8: a field given twice keeps its last value, one without a value is
      * empty. Bad percent-encoding or UTF-8 throws {@link IllegalArgumentException}.
      */
-    Map<String, String> query() {
+    public Map<String, String> query() {
         try {
             return lastValues(Request.extractQueryParameters(this.request, StandardCharsets.UTF_8));
         } catch (IllegalStateException e) {
@@ -99,7 +109,7 @@ final class Exchange {
      * The fields of a posted {@code application/x-www-form-urlencoded} form (none for another content type), as
      * {@link #query}; empty when there are more than {@code maxFields} fields or {@code maxBytes} bytes.
      */
-    Optional<Map<String, String>> form(int maxFields, int maxBytes) {
+    public Optional<Map<String, String>> form(int maxFields, int maxBytes) {
         try {
             return Optional.of(lastValues(FormFields.getFields(this.request, maxFields, maxBytes)));
         } catch (IllegalStateException | IllegalArgumentException e) {
@@ -120,40 +130,40 @@ final class Exchange {
     }
 
     /** The value of the request's cookie {@code name}, if it sent one. */
-    Optional<String> cookie(String name) {
+    public Optional<String> cookie(String name) {
         return Request.getCookies(this.request).stream()
                 .filter(c -> c.getName().equals(name))
                 .map(HttpCookie::getValue)
                 .findFirst();
     }
 
-    void addCookie(HttpCookie cookie) {
+    public void addCookie(HttpCookie cookie) {
         Response.addCookie(this.response, cookie);
     }
 
     /** The first value of a request header, or null. */
-    String header(String name) {
+    public String header(String name) {
         return this.request.getHeaders().get(name);
     }
 
     /** The client of the request: the remote address, or the client a trusted proxy names. */
-    InetAddress clientAddress() {
-        return this.proxies.client(remoteAddress(), this.request.getHeaders().getValuesList("X-Forwarded-For"));
+    public InetAddress clientAddress() {
+        return this.clients.client(remoteAddress(), this.request.getHeaders().getValuesList("X-Forwarded-For"));
     }
 
     /** The address of this computer the request came to, or null when the connection does not tell. */
-    InetAddress localAddress() {
+    public InetAddress localAddress() {
         SocketAddress local = this.request.getConnectionMetaData().getLocalSocketAddress();
         return local instanceof InetSocketAddress inet ? inet.getAddress() : null;
     }
 
-    InetAddress remoteAddress() {
+    public InetAddress remoteAddress() {
         SocketAddress remote = this.request.getConnectionMetaData().getRemoteSocketAddress();
         return remote instanceof InetSocketAddress inet ? inet.getAddress() : InetAddress.getLoopbackAddress();
     }
 
     /** The body of the request; what the handler leaves unread is read when the answer ends. */
-    InputStream requestBody() {
+    public InputStream requestBody() {
         return requestStream();
     }
 
@@ -164,21 +174,21 @@ final class Exchange {
         return this.requestBody;
     }
 
-    void setHeader(String name, String value) {
+    public void setHeader(String name, String value) {
         this.response.getHeaders().put(name, value);
     }
 
-    void addHeader(String name, String value) {
+    public void addHeader(String name, String value) {
         this.response.getHeaders().add(name, value);
     }
 
     /** Whether an answer has started. */
-    boolean started() {
+    public boolean started() {
         return this.started;
     }
 
     /** Starts the answer: {@code length} is that of the body, 0 when not known ahead (it is streamed), -1 for none. */
-    void sendHeaders(int status, long length) {
+    public void sendHeaders(int status, long length) {
         this.started = true;
         this.response.setStatus(status);
         if (length > 0) {
@@ -189,7 +199,7 @@ final class Exchange {
     }
 
     /** The body of the answer; a write sends the headers first, a flush sends what was written. */
-    OutputStream responseBody() {
+    public OutputStream responseBody() {
         if (this.body == null) {
             this.body = new Body(Content.Sink.asOutputStream(this.response));
         }
@@ -245,7 +255,7 @@ final class Exchange {
 
     // The answer ends: what the body still holds goes out, then what the client still sends is read. Closing a
     // connection the client writes to makes TCP reset it, which can drop the answer unread (RFC 9112, 9.6).
-    void finish() throws IOException {
+    public void finish() throws IOException {
         if (this.body != null) {
             this.body.close();
         }

@@ -22,13 +22,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import org.eclipse.jetty.util.InetAddressSet;
+import org.njmule.core.remote.Exchange;
 
 /**
  * The reverse proxies trusted to tell who their client is: a request coming from one of them has its client read from
  * its X-Forwarded-For header, right to left past the trusted proxies. A request from anywhere else is its own client,
  * whatever it says, and no proxy is trusted unless named.
  */
-final class TrustedProxies {
+final class TrustedProxies implements Exchange.ClientResolver {
 
     static final TrustedProxies NONE = new TrustedProxies(List.of());
 
@@ -89,7 +90,8 @@ final class TrustedProxies {
     }
 
     /** The client of a request that came from {@code remote}, with these X-Forwarded-For headers. */
-    InetAddress client(InetAddress remote, List<String> forwardedFor) {
+    @Override
+    public InetAddress client(InetAddress remote, List<String> forwardedFor) {
         if (!this.any || !this.addresses.test(remote)) {
             return remote;
         }

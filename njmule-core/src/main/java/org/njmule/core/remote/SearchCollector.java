@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License along with this program. If
  * not, see <https://www.gnu.org/licenses/>.
  */
-package org.njmule.webui;
+package org.njmule.core.remote;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -33,37 +33,37 @@ import org.njmule.core.api.SearchResult;
  * Results of other searches, such as the desktop window's, which may be ours whose id is not noted yet, are kept apart
  * so that they never push ours out.
  */
-final class SearchCollector {
+public final class SearchCollector {
 
-    static final int SEARCHES_KEPT = 10;
-    static final int RESULTS_KEPT = 1000;
+    public static final int SEARCHES_KEPT = 10;
+    public static final int RESULTS_KEPT = 1000;
 
     /** How long a search counts as running at most, should its end never be told. */
-    static final Duration LONGEST_SEARCH = Duration.ofMinutes(3);
+    public static final Duration LONGEST_SEARCH = Duration.ofMinutes(3);
 
     /** What a search started here asked for. */
-    record Asked(String expression, String scope) {}
+    public record Asked(String expression, String scope) {}
 
     // By search id, oldest first.
     private final LinkedHashMap<Long, Found> ours = new LinkedHashMap<>();
     private final LinkedHashMap<Long, Found> others = new LinkedHashMap<>();
     private final LongSupplier ticker;
 
-    SearchCollector() {
+    public SearchCollector() {
         this(System::nanoTime);
     }
 
-    SearchCollector(LongSupplier ticker) {
+    public SearchCollector(LongSupplier ticker) {
         this.ticker = ticker;
     }
 
     /** Notes a search started here, with what came before its id was known. */
-    synchronized void started(long search) {
+    public synchronized void started(long search) {
         started(search, new Asked("", ""));
     }
 
     /** Notes a search started here and what it asked for, with what came before its id was known. */
-    synchronized void started(long search, Asked asked) {
+    public synchronized void started(long search, Asked asked) {
         Found early = this.others.remove(search);
         Found found = new Found(asked, this.ticker.getAsLong());
         if (early != null) {
@@ -75,44 +75,44 @@ final class SearchCollector {
     }
 
     /** Forgets a search started here. */
-    synchronized boolean forget(long search) {
+    public synchronized boolean forget(long search) {
         return this.ours.remove(search) != null;
     }
 
     /** The results of a search started here, in the order they came; empty for an unknown one. */
-    synchronized Optional<List<SearchResult>> results(long search) {
+    public synchronized Optional<List<SearchResult>> results(long search) {
         Found found = this.ours.get(search);
         return found == null ? Optional.empty() : Optional.of(new ArrayList<>(found.results.values()));
     }
 
-    synchronized Optional<SearchResult> result(long search, Hash16 hash) {
+    public synchronized Optional<SearchResult> result(long search, Hash16 hash) {
         Found found = this.ours.get(search);
         return found == null ? Optional.empty() : Optional.ofNullable(found.results.get(hash));
     }
 
     /** What a search started here asked for; empty for an unknown one. */
-    synchronized Optional<Asked> asked(long search) {
+    public synchronized Optional<Asked> asked(long search) {
         return Optional.ofNullable(this.ours.get(search)).map(f -> f.asked);
     }
 
     /** The searches started here, oldest first. */
-    synchronized List<Listed> searches() {
+    public synchronized List<Listed> searches() {
         return this.ours.entrySet().stream()
                 .map(e -> new Listed(e.getKey(), e.getValue().asked))
                 .toList();
     }
 
     /** A search started here. */
-    record Listed(long id, Asked asked) {}
+    public record Listed(long id, Asked asked) {}
 
     /** Whether a search started here may still bring results. */
-    synchronized boolean running(long search) {
+    public synchronized boolean running(long search) {
         Found found = this.ours.get(search);
         return found != null && !found.ended && this.ticker.getAsLong() - found.startedAt < LONGEST_SEARCH.toNanos();
     }
 
     // Results may arrive before the request that started the search notes its id.
-    synchronized void add(EngineEvent.SearchResults r) {
+    public synchronized void add(EngineEvent.SearchResults r) {
         Map<Hash16, SearchResult> found = find(r.search().value()).results;
         for (SearchResult result : r.results()) {
             if (found.size() < RESULTS_KEPT || found.containsKey(result.hash())) {
@@ -121,7 +121,7 @@ final class SearchCollector {
         }
     }
 
-    synchronized void ended(EngineEvent.SearchEnded e) {
+    public synchronized void ended(EngineEvent.SearchEnded e) {
         find(e.search().value()).ended = true;
     }
 

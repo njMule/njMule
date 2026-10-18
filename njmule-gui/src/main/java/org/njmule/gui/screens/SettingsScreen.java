@@ -70,6 +70,7 @@ import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
 import org.njmule.core.config.SharedFilesVisibility;
+import org.njmule.core.remote.ApiToken;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.Themes;
@@ -82,7 +83,6 @@ import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.PortTestPane;
 import org.njmule.gui.ui.RateField;
 import org.njmule.gui.ui.Screen;
-import org.njmule.webui.ApiToken;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUiSettings;
 

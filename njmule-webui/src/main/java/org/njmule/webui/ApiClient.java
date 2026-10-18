@@ -44,6 +44,8 @@ import org.eclipse.jetty.client.Request;
 import org.eclipse.jetty.client.Response;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.util.thread.VirtualThreadPool;
+import org.njmule.core.remote.ApiToken;
+import org.njmule.core.remote.RemoteApi;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.JsonEncoding;
 import tools.jackson.core.JsonGenerator;
@@ -72,7 +74,7 @@ public final class ApiClient {
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     // A stream sends a comment at each heartbeat: one silent for several is gone.
-    private static final Duration STREAM_IDLE = EventStreams.HEARTBEAT.multipliedBy(4);
+    private static final Duration STREAM_IDLE = RemoteApi.HEARTBEAT.multipliedBy(4);
 
     private final URI base;
     private final String token;
@@ -90,7 +92,8 @@ public final class ApiClient {
         if (!settings.usable() || !settings.api() || token.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(new ApiClient(URI.create("http://127.0.0.1:" + settings.port() + Api.PREFIX), token.get()));
+        return Optional.of(
+                new ApiClient(URI.create("http://127.0.0.1:" + settings.port() + RemoteApi.PREFIX), token.get()));
     }
 
     /** An answer other than a success; the message is the API's. */

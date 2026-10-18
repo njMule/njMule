@@ -523,10 +523,10 @@ java -jar njmule-bench/build/libs/benchmarks.jar
 
 | Path | Content |
 |---|---|
-| `njmule-core` | engine, protocols, persistence; no GUI dependency |
+| `njmule-core` | engine, protocols, persistence, remote-control API; no GUI dependency |
 | `njmule-app` | headless launcher, command-line interface, logging |
 | `njmule-gui` | JavaFX desktop application |
-| `njmule-webui` | web interface and remote-control API served by Jetty |
+| `njmule-webui` | web interface served by Jetty, which also serves the remote-control API |
 | `njmule-testkit` | test doubles shared by the modules |
 | `njmule-bench` | JMH benchmarks of the hot paths (not distributed) |
 | `packaging` | Windows installer (WiX), Linux packages (nfpm), macOS bundle metadata |

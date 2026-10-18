@@ -18,16 +18,20 @@
 module org.njmule.core {
     // The njMule engine: everything that is not user interface. Front ends (JavaFX GUI, command
     // line, web UI) only use the exported packages: "api" (engine facade, events, application
-    // information) and "config" (preferences and directory layout). Everything else is internal.
+    // information), "config" (preferences and directory layout) and "remote" (the remote-control
+    // API, which a front end serves on its HTTP server). Everything else is internal.
     requires com.google.common;
     requires static com.google.errorprone.annotations;
     requires java.xml;
     requires org.eclipse.jetty.client;
+    requires transitive org.eclipse.jetty.server;
     requires org.bouncycastle.provider;
     requires org.slf4j;
+    requires tools.jackson.core;
 
     exports org.njmule.core.api;
     exports org.njmule.core.config;
+    exports org.njmule.core.remote;
 
     // The test kit's fake server and peers speak the protocol through the internal codecs.
     exports org.njmule.core.files.hash to

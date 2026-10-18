@@ -36,7 +36,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Flow;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -58,7 +57,6 @@ import org.eclipse.jetty.util.thread.VirtualThreadPool;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
-import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
@@ -72,6 +70,12 @@ import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadPriority;
+import org.njmule.core.remote.ApiToken;
+import org.njmule.core.remote.Exchange;
+import org.njmule.core.remote.RecentEvents;
+import org.njmule.core.remote.RecentLog;
+import org.njmule.core.remote.RemoteApi;
+import org.njmule.core.remote.SearchCollector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,7 +83,7 @@ import org.slf4j.LoggerFactory;
  * The web interface: status, transfers, searches and servers as plain HTML pages behind a password. Every change is a
  * POST carrying the session's form token; pages run no scripts and cannot be framed, and the session cookie is
  * HTTP-only, same-site and, over HTTPS, secure. When its settings ask for it, the remote-control API answers under
- * {@value Api#PREFIX}.
+ * {@value RemoteApi#PREFIX}.
  */
 public final class WebUi implements AutoCloseable {
 
@@ -140,10 +144,10 @@ public final class WebUi implements AutoCloseable {
     // Browsers keep cookies by host, whatever the port: two instances on one computer need two names.
     private final String cookie;
 
-    private final SearchCollector searches = new SearchCollector();
-    private final RecentLog recentLog = new RecentLog();
-    private final EventStreams streams;
-    private volatile Flow.Subscription subscription;
+    private final RecentEvents recent;
+    private final SearchCollector searches;
+    private final RecentLog recentLog;
+    private final Optional<RemoteApi> api;
 
     private WebUi(
             NjMuleEngine engine,
@@ -151,6 +155,7 @@ public final class WebUi implements AutoCloseable {
             Server server,
             int port,
             int passwordChecks,
+            Optional<Runnable> exit,
             Duration heartbeat) {
         this.engine = engine;
         this.settings = settings;
@@ -161,21 +166,32 @@ public final class WebUi implements AutoCloseable {
         this.passwordChecks = passwordChecks;
         this.checking = new Semaphore(passwordChecks);
         this.cookie = "njmule-session-" + port;
-        this.streams = new EventStreams(engine, heartbeat);
+        this.recent = RecentEvents.follow(engine);
+        this.searches = this.recent.searches();
+        this.recentLog = this.recent.log();
+        // A wrong API token counts as a failed login of its address.
+        this.api = settings.api()
+                ? Optional.of(new RemoteApi(
+                        engine,
+                        this.recent,
+                        client -> this.sessions.mayTry(Sessions.clientKey(client)),
+                        exit,
+                        heartbeat))
+                : Optional.empty();
     }
 
     /** Starts the interface; it must be enabled and have a password. The API cannot stop njMule. */
     public static WebUi start(NjMuleEngine engine, WebUiSettings settings) throws IOException {
-        return start(engine, settings, Optional.empty(), PASSWORD_CHECKS, EventStreams.HEARTBEAT);
+        return start(engine, settings, Optional.empty(), PASSWORD_CHECKS, RemoteApi.HEARTBEAT);
     }
 
     /** Starts the interface, whose API may stop njMule through {@code exit}. */
     public static WebUi start(NjMuleEngine engine, WebUiSettings settings, Runnable exit) throws IOException {
-        return start(engine, settings, Optional.of(exit), PASSWORD_CHECKS, EventStreams.HEARTBEAT);
+        return start(engine, settings, Optional.of(exit), PASSWORD_CHECKS, RemoteApi.HEARTBEAT);
     }
 
     static WebUi start(NjMuleEngine engine, WebUiSettings settings, int passwordChecks) throws IOException {
-        return start(engine, settings, Optional.empty(), passwordChecks, EventStreams.HEARTBEAT);
+        return start(engine, settings, Optional.empty(), passwordChecks, RemoteApi.HEARTBEAT);
     }
 
     static WebUi start(
@@ -208,10 +224,8 @@ public final class WebUi implements AutoCloseable {
         server.setErrorHandler(errors);
         // Bound first: the session cookie is named after the port.
         connector.open();
-        WebUi ui = new WebUi(engine, settings, server, connector.getLocalPort(), passwordChecks, heartbeat);
-        Optional<Api> api = settings.api()
-                ? Optional.of(new Api(engine, ui.sessions, ui.searches, ui.recentLog, ui.streams, exit))
-                : Optional.empty();
+        WebUi ui = new WebUi(engine, settings, server, connector.getLocalPort(), passwordChecks, exit, heartbeat);
+        Optional<RemoteApi> api = ui.api;
         server.setHandler(new Handler.Abstract() {
             @Override
             public boolean handle(Request request, Response response, Callback callback) {
@@ -230,7 +244,6 @@ public final class WebUi implements AutoCloseable {
                 return true;
             }
         });
-        engine.events().subscribe(ui.new Results());
         try {
             server.start();
         } catch (IOException e) {
@@ -260,11 +273,8 @@ public final class WebUi implements AutoCloseable {
 
     @Override
     public void close() {
-        Flow.Subscription s = this.subscription;
-        if (s != null) {
-            s.cancel();
-        }
-        this.streams.close();
+        this.recent.close();
+        this.api.ifPresent(RemoteApi::close);
         stop(this.server);
     }
 
@@ -1193,37 +1203,6 @@ public final class WebUi implements AutoCloseable {
 
         EngineFailure(String message) {
             super(message);
-        }
-    }
-
-    /** Collects search results and log lines from the engine's events. */
-    private final class Results implements Flow.Subscriber<EngineEvent> {
-        @Override
-        public void onSubscribe(Flow.Subscription s) {
-            WebUi.this.subscription = s;
-            s.request(Long.MAX_VALUE);
-        }
-
-        @Override
-        public void onNext(EngineEvent event) {
-            switch (event) {
-                case EngineEvent.SearchResults r -> WebUi.this.searches.add(r);
-                case EngineEvent.SearchEnded e -> WebUi.this.searches.ended(e);
-                case EngineEvent.Log l -> WebUi.this.recentLog.add(l.line());
-                default -> {
-                    // Pages read the rest when they are asked for.
-                }
-            }
-        }
-
-        @Override
-        public void onError(Throwable throwable) {
-            logger.debug("Engine events ended", throwable);
-        }
-
-        @Override
-        public void onComplete() {
-            // The engine stopped; the next request reports it.
         }
     }
 }

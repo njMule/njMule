@@ -16,6 +16,10 @@ dependencies {
     // HTTP client: web lists (with SOCKS proxies), UPnP.
     implementation(platform(libs.jetty.bom))
     implementation(libs.jetty.client)
+    // The remote-control API: a handler that front ends serve on their Jetty server, JSON answers.
+    api(platform(libs.jetty.bom))
+    api(libs.jetty.server)
+    implementation(libs.jackson.core)
 
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)

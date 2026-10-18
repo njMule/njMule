@@ -74,10 +74,10 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 
 | Path | Content |
 |---|---|
-| `njmule-core` (`org.njmule.core`) | engine; exports only `api` and `config` |
+| `njmule-core` (`org.njmule.core`) | engine and remote-control API; exports only `api`, `config` and `remote` |
 | `njmule-app` (`org.njmule.app`) | headless launcher/CLI, Logback set-up (`logging.internal` is not exported) |
 | `njmule-gui` (`org.njmule.gui`) | JavaFX 27 + AtlantaFX + Ikonli desktop app |
-| `njmule-webui` (`org.njmule.webui`) | web interface and remote-control API on Jetty (password, sessions, CSRF) |
+| `njmule-webui` (`org.njmule.webui`) | web interface on Jetty (password, sessions, CSRF); serves the core's remote-control API |
 | `njmule-testkit` (`org.njmule.testkit`) | test doubles (fake server and peers, from M2) |
 | `njmule-bench` | JMH benchmarks; classpath build so it reaches internal core packages; not distributed |
 | `build-logic/` | Gradle convention plugin shared by the modules (`njmule.java-conventions`) |
