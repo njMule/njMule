@@ -78,6 +78,7 @@ import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.security.PathSanitizer;
 import org.njmule.core.util.Ipv4;
+import org.njmule.core.util.Ipv6;
 import org.njmule.core.util.RateMeter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -480,7 +481,8 @@ public final class DownloadManager implements AutoCloseable {
     // Sessions waiting for budget, first come first served.
     private final Set<DownloadSession> throttled = new LinkedHashSet<>();
     // Sources found sending corrupt data (IPv4, host order), until when they are not taken.
-    private final Map<Integer, Long> corruptSenders = new HashMap<>();
+    // IPv6 senders by their /64.
+    private final Map<InetAddress, Long> corruptSenders = new HashMap<>();
     private ClientUdp udp = NO_UDP;
     private long nextSourcesKept;
 
@@ -1779,7 +1781,7 @@ public final class DownloadManager implements AutoCloseable {
                     || first == 0
                     || first >= 224
                     || this.blocked.test(known.ip())
-                    || isCorruptSender(known.ip())
+                    || isCorruptSender(InetAddresses.fromInteger(known.ip()))
                     || isOurAddress(known.ip(), known.port())) {
                 continue;
             }
@@ -1926,32 +1928,36 @@ public final class DownloadManager implements AutoCloseable {
      * given by the user.
      */
     public int dropBlockedSources() {
-        return dropSources(this.blocked, "the IP filter blocks it");
+        return dropSources(
+                address -> address instanceof Inet4Address v4 && this.blocked.test(Ipv4.fromBytes(v4.getAddress())),
+                "the IP filter blocks it");
     }
 
     /**
      * Drops the sources at {@code ip}, which sent corrupt data, and keeps them out while {@link #CORRUPT_BAN} lasts.
      */
-    void banCorruptSender(int ip) {
-        logger.info("{} sent corrupt data: its sources are dropped", Ipv4.format(ip));
-        this.corruptSenders.put(ip, this.ticker.read() + CORRUPT_BAN.toNanos());
-        dropSources(i -> i == ip, "it sent corrupt data");
-        this.listener.corruptSender(InetAddresses.fromInteger(ip));
+    void banCorruptSender(InetAddress ip) {
+        logger.info("{} sent corrupt data: its sources are dropped", ip.getHostAddress());
+        InetAddress sender = Ipv6.network(ip);
+        this.corruptSenders.put(sender, this.ticker.read() + CORRUPT_BAN.toNanos());
+        dropSources(address -> Ipv6.network(address).equals(sender), "it sent corrupt data");
+        this.listener.corruptSender(ip);
     }
 
-    private boolean isCorruptSender(int ip) {
-        Long until = this.corruptSenders.get(ip);
+    private boolean isCorruptSender(InetAddress ip) {
+        InetAddress sender = Ipv6.network(ip);
+        Long until = this.corruptSenders.get(sender);
         if (until != null && this.ticker.read() - until >= 0) {
-            this.corruptSenders.remove(ip);
+            this.corruptSenders.remove(sender);
             return false;
         }
         return until != null;
     }
 
-    private int dropSources(IntPredicate refused, String reason) {
+    private int dropSources(Predicate<InetAddress> refused, String reason) {
         int dropped = 0;
         for (Client client : List.copyOf(this.clients.values())) {
-            if (!refused.test(Ipv4.fromBytes(client.address.getAddress().getAddress()))) {
+            if (!refused.test(client.address.getAddress())) {
                 continue;
             }
             dropped += client.sources.size();
@@ -1979,7 +1985,7 @@ public final class DownloadManager implements AutoCloseable {
         return port != 0
                 && Ipv4.isUnicastPublicCandidate(ip)
                 && !this.blocked.test(ip)
-                && !isCorruptSender(ip)
+                && !isCorruptSender(InetAddresses.fromInteger(ip))
                 && !isFilteredLan(ip)
                 && !isOurAddress(ip, port);
     }
@@ -2111,8 +2117,7 @@ public final class DownloadManager implements AutoCloseable {
         if (entry == null || file.aichHash().isPresent()) {
             return;
         }
-        int ip = Ipv4.fromBytes(session.address().getAddress().getAddress());
-        Optional<Hash20> trusted = entry.aichVotes.announced(ip, master);
+        Optional<Hash20> trusted = entry.aichVotes.announced(session.address().getAddress(), master);
         if (trusted.isPresent()) {
             entry.aichVotes = new AichVotes();
             file.trustAich(trusted.get());
@@ -2615,8 +2620,8 @@ public final class DownloadManager implements AutoCloseable {
         }
 
         @Override
-        public void corruptSenders(DownloadQueue.Download download, Set<Integer> ips) {
-            for (int ip : ips) {
+        public void corruptSenders(DownloadQueue.Download download, Set<InetAddress> ips) {
+            for (InetAddress ip : ips) {
                 DownloadManager.this.banCorruptSender(ip);
             }
         }

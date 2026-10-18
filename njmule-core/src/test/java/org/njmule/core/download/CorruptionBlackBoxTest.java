@@ -19,21 +19,36 @@ package org.njmule.core.download;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.collect.Range;
+import com.google.common.net.InetAddresses;
+import java.net.InetAddress;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.files.hash.Ed2k;
-import org.njmule.core.util.Ipv4;
 
 class CorruptionBlackBoxTest {
 
-    private static final int A = Ipv4.of(192, 0, 2, 1);
-    private static final int B = Ipv4.of(192, 0, 2, 2);
+    private static final InetAddress A = InetAddresses.forString("192.0.2.1");
+    private static final InetAddress B = InetAddresses.forString("192.0.2.2");
+    private static final InetAddress HOME = InetAddresses.forString("2001:db8:1:2::1");
+    private static final InetAddress SAME_HOME = InetAddresses.forString("2001:db8:1:2::99");
     private static final long PART = Ed2k.PARTSIZE;
     private static final long BLOCK = Ed2k.EMBLOCKSIZE;
 
     private final CorruptionBlackBox box = new CorruptionBlackBox();
-    private Set<Integer> guilty;
+    private Set<InetAddress> guilty;
+
+    @Test
+    void shouldTakeTheAddressesOfAnIpv6Slash64AsOneSource() {
+        givenSentAPartThatFailed(HOME, 0);
+        givenSentAPartThatFailed(SAME_HOME, 0);
+        givenSent(HOME, 0, PART / 2);
+        givenSent(SAME_HOME, PART / 2, PART);
+
+        whenThePartFails(0, PART);
+
+        thenTheGuiltyAre(InetAddresses.forString("2001:db8:1:2::"));
+    }
 
     @Test
     void shouldForgiveASourceThatAloneSentOnePartThatFailed() {
@@ -99,18 +114,18 @@ class CorruptionBlackBoxTest {
         thenTheGuiltyAre(B);
     }
 
-    private void givenSent(int ip, long start, long end) {
+    private void givenSent(InetAddress ip, long start, long end) {
         this.box.received(start, end, ip);
     }
 
-    private void givenSentPartsThatPassed(int ip, int first, int count) {
+    private void givenSentPartsThatPassed(InetAddress ip, int first, int count) {
         for (int part = first; part < first + count; part++) {
             this.box.received(part * PART, (part + 1) * PART, ip);
             this.box.passed(part * PART, (part + 1) * PART);
         }
     }
 
-    private void givenSentAPartThatFailed(int ip, int part) {
+    private void givenSentAPartThatFailed(InetAddress ip, int part) {
         givenSent(ip, part * PART, (part + 1) * PART);
         givenThePartFailed(part * PART, (part + 1) * PART);
     }
@@ -128,7 +143,7 @@ class CorruptionBlackBoxTest {
         this.guilty = this.box.recovered(good, bad);
     }
 
-    private void thenTheGuiltyAre(Integer... ips) {
+    private void thenTheGuiltyAre(InetAddress... ips) {
         assertThat(this.guilty).containsExactlyInAnyOrder(ips);
     }
 }

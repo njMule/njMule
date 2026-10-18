@@ -19,6 +19,7 @@ package org.njmule.core.download;
 import com.google.common.collect.Range;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.InetAddress;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystemException;
@@ -91,8 +92,8 @@ public final class DownloadQueue implements AutoCloseable {
         /** A part failed its check and is missing again; AICH recovery data may save its good blocks. */
         default void corrupt(Download download, int part) {}
 
-        /** The sources at {@code ips} (IPv4, host order) were found sending corrupt data. */
-        default void corruptSenders(Download download, Set<Integer> ips) {}
+        /** The sources at {@code ips}, IPv6 ones by their /64, were found sending corrupt data. */
+        default void corruptSenders(Download download, Set<InetAddress> ips) {}
     }
 
     /** Part files are saved this often while their progress changes. */
@@ -381,14 +382,18 @@ public final class DownloadQueue implements AutoCloseable {
 
     /** Data for {@code download} from a source; it is written, then the parts it ends are checked. */
     public void received(Download download, long start, byte[] data) {
-        received(download, start, data, 0);
+        receive(download, start, data, Optional.empty());
     }
 
     /**
-     * As {@link #received(Download, long, byte[])}, from the source at {@code sourceIp} (IPv4, host order; 0 when not
-     * known), which is told when its data proves corrupt.
+     * As {@link #received(Download, long, byte[])}, from the source at {@code source}, which is told when its data
+     * proves corrupt.
      */
-    public void received(Download download, long start, byte[] data, int sourceIp) {
+    public void received(Download download, long start, byte[] data, InetAddress source) {
+        receive(download, start, data, Optional.of(source));
+    }
+
+    private void receive(Download download, long start, byte[] data, Optional<InetAddress> source) {
         long end = start + data.length;
         if (!download.isActive() || end > download.file.size()) {
             return;
@@ -402,8 +407,7 @@ public final class DownloadQueue implements AutoCloseable {
                     : Arrays.copyOfRange(data, (int) (from - start), (int) (to - start));
             download.file.arriving(from, to);
             this.loop.whenDone(
-                    download.storage.write(from, slice),
-                    (ok, failure) -> written(download, from, to, sourceIp, failure));
+                    download.storage.write(from, slice), (ok, failure) -> written(download, from, to, source, failure));
         }
     }
 
@@ -684,7 +688,7 @@ public final class DownloadQueue implements AutoCloseable {
         }
     }
 
-    private void written(Download download, long start, long end, int sourceIp, Throwable failure) {
+    private void written(Download download, long start, long end, Optional<InetAddress> source, Throwable failure) {
         if (!isQueued(download)) {
             return;
         }
@@ -704,9 +708,7 @@ public final class DownloadQueue implements AutoCloseable {
         }
         download.file.written(start, end);
         download.dirty = true;
-        if (sourceIp != 0) {
-            download.blackBox.received(start, end, sourceIp);
-        }
+        source.ifPresent(from -> download.blackBox.received(start, end, from));
         int first = (int) (start / Ed2k.PARTSIZE);
         int last = (int) ((end - 1) / Ed2k.PARTSIZE);
         for (int part = first; part <= last; part++) {
@@ -860,7 +862,7 @@ public final class DownloadQueue implements AutoCloseable {
         this.listener.progress(download);
     }
 
-    private void blame(Download download, Set<Integer> guilty) {
+    private void blame(Download download, Set<InetAddress> guilty) {
         if (!guilty.isEmpty()) {
             this.listener.corruptSenders(download, guilty);
         }

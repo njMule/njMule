@@ -18,6 +18,8 @@ package org.njmule.core.download;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.common.net.InetAddresses;
+import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -37,7 +39,6 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.files.hash.Ed2k;
-import org.njmule.core.util.Ipv4;
 
 /** What becomes of a part that fails its check. */
 @Timeout(60)
@@ -46,7 +47,7 @@ class CorruptPartTest {
     private static final int SIZE = (int) Ed2k.PARTSIZE + 1000;
     // The fourth block of the first part.
     private static final int BAD_BLOCK = 3 * Ed2k.EMBLOCKSIZE;
-    private static final int SENDER = Ipv4.of(192, 0, 2, 33);
+    private static final InetAddress SENDER = InetAddresses.forString("192.0.2.33");
 
     @TempDir
     Path dir;
@@ -133,7 +134,7 @@ class CorruptPartTest {
                     }
 
                     @Override
-                    public void corruptSenders(DownloadQueue.Download d, Set<Integer> ips) {
+                    public void corruptSenders(DownloadQueue.Download d, Set<InetAddress> ips) {
                         CorruptPartTest.this.events.add("guilty " + ips);
                     }
                 }));
@@ -151,12 +152,12 @@ class CorruptPartTest {
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("corrupt 0");
     }
 
-    private void givenItsFirstPartArrivedFromWithABadByteIn(int ip, int offset) throws Exception {
+    private void givenItsFirstPartArrivedFromWithABadByteIn(InetAddress ip, int offset) throws Exception {
         whenItsFirstPartArrivesFromWithABadByteIn(ip, offset);
         assertThat(this.events.poll(30, TimeUnit.SECONDS)).isEqualTo("corrupt 0");
     }
 
-    private void whenItsFirstPartArrivesFromWithABadByteIn(int ip, int offset) throws Exception {
+    private void whenItsFirstPartArrivesFromWithABadByteIn(InetAddress ip, int offset) throws Exception {
         byte[] bad = Arrays.copyOf(this.data, (int) Ed2k.PARTSIZE);
         bad[offset] ^= 1;
         onLoop(() -> {
@@ -165,7 +166,7 @@ class CorruptPartTest {
         });
     }
 
-    private void thenTheSourceIsReportedForCorruptData(int ip) throws Exception {
+    private void thenTheSourceIsReportedForCorruptData(InetAddress ip) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         String event;
         do {

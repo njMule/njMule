@@ -19,11 +19,13 @@ package org.njmule.core.download;
 import com.google.common.collect.Range;
 import com.google.common.collect.RangeMap;
 import com.google.common.collect.TreeRangeMap;
+import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.njmule.core.util.Ipv6;
 
 /**
  * Which source sent each range of a download's data still unproven, to find the sources of corrupt data. Parts that
@@ -38,21 +40,21 @@ final class CorruptionBlackBox {
     static final int GUILTY_PERCENT = 32;
     static final int FAILED_PARTS = 3;
 
-    // IPv4 addresses in host order, by the range of the data each sent.
-    private final RangeMap<Long, Integer> senders = TreeRangeMap.create();
+    // The addresses of the sources, IPv6 ones by their /64, by the range of the data each sent.
+    private final RangeMap<Long, InetAddress> senders = TreeRangeMap.create();
     // By source: the bytes proven good, those recovery data proved corrupt, those of the parts it alone sent that
     // failed, and how many such parts.
-    private final Map<Integer, long[]> proven = new HashMap<>();
+    private final Map<InetAddress, long[]> proven = new HashMap<>();
 
-    /** {@code [start, end)} from {@code ip} reached the disk, replacing what was there. */
-    void received(long start, long end, int ip) {
-        this.senders.putCoalescing(Range.closedOpen(start, end), ip);
+    /** {@code [start, end)} from {@code from} reached the disk, replacing what was there. */
+    void received(long start, long end, InetAddress from) {
+        this.senders.putCoalescing(Range.closedOpen(start, end), Ipv6.network(from));
     }
 
     /** {@code [start, end)} passed its check. */
     void passed(long start, long end) {
         Range<Long> range = Range.closedOpen(start, end);
-        for (Map.Entry<Range<Long>, Integer> sent :
+        for (Map.Entry<Range<Long>, InetAddress> sent :
                 this.senders.subRangeMap(range).asMapOfRanges().entrySet()) {
             proven(sent.getValue())[0] += length(sent.getKey());
         }
@@ -63,10 +65,10 @@ final class CorruptionBlackBox {
      * The part {@code [start, end)} failed its check: it counts against the source that sent all of it, if one did. The
      * ranges are kept, for recovery data to tell which blocks were bad. Returns the sources now guilty.
      */
-    Set<Integer> failed(long start, long end) {
-        Map<Range<Long>, Integer> sent =
+    Set<InetAddress> failed(long start, long end) {
+        Map<Range<Long>, InetAddress> sent =
                 this.senders.subRangeMap(Range.closedOpen(start, end)).asMapOfRanges();
-        Set<Integer> ips = new HashSet<>(sent.values());
+        Set<InetAddress> ips = new HashSet<>(sent.values());
         long covered = 0;
         for (Range<Long> part : sent.keySet()) {
             covered += length(part);
@@ -84,13 +86,13 @@ final class CorruptionBlackBox {
      * Recovery data proved the blocks {@code good} and {@code bad}: each source of some of a bad block counts the whole
      * block as corrupt. Returns the sources now guilty.
      */
-    Set<Integer> recovered(List<Range<Long>> good, List<Range<Long>> bad) {
+    Set<InetAddress> recovered(List<Range<Long>> good, List<Range<Long>> bad) {
         for (Range<Long> block : good) {
             passed(block.lowerEndpoint(), block.upperEndpoint());
         }
-        Set<Integer> suspects = new HashSet<>();
+        Set<InetAddress> suspects = new HashSet<>();
         for (Range<Long> block : bad) {
-            for (int ip : new HashSet<>(
+            for (InetAddress ip : new HashSet<>(
                     this.senders.subRangeMap(block).asMapOfRanges().values())) {
                 proven(ip)[1] += length(block);
                 suspects.add(ip);
@@ -100,9 +102,9 @@ final class CorruptionBlackBox {
         return guilty(suspects);
     }
 
-    private Set<Integer> guilty(Set<Integer> suspects) {
-        Set<Integer> guilty = new HashSet<>();
-        for (int ip : suspects) {
+    private Set<InetAddress> guilty(Set<InetAddress> suspects) {
+        Set<InetAddress> guilty = new HashSet<>();
+        for (InetAddress ip : suspects) {
             long[] bytes = proven(ip);
             if (tooMuch(bytes[1], bytes[0]) || (bytes[3] >= FAILED_PARTS && tooMuch(bytes[2], bytes[0]))) {
                 guilty.add(ip);
@@ -115,7 +117,7 @@ final class CorruptionBlackBox {
         return corrupt * 100 > GUILTY_PERCENT * (good + corrupt);
     }
 
-    private long[] proven(int ip) {
+    private long[] proven(InetAddress ip) {
         return this.proven.computeIfAbsent(ip, k -> new long[4]);
     }
 

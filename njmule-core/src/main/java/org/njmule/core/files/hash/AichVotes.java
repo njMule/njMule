@@ -16,6 +16,9 @@
  */
 package org.njmule.core.files.hash;
 
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -23,23 +26,29 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import org.njmule.core.api.Hash20;
+import org.njmule.core.util.Ipv4;
 
 /**
- * The AICH master hashes sources announce for a file, trusted when at least {@value #MIN_SIGNERS} networks (/20)
- * announce the same one and it is {@value #MIN_PERCENT}% of the announcements. A network counts for the first hash it
- * announces only, so that one host cannot outvote the others.
+ * The AICH master hashes sources announce for a file, trusted when at least {@value #MIN_SIGNERS} networks (/20 for
+ * IPv4, /48 for IPv6, which one site may hold whole) announce the same one and it is {@value #MIN_PERCENT}% of the
+ * announcements. A network counts for the first hash it announces only, so that one host cannot outvote the others.
  */
 public final class AichVotes {
 
     public static final int MIN_SIGNERS = 10;
     public static final int MIN_PERCENT = 92;
 
-    private final Map<Hash20, Set<Integer>> signers = new LinkedHashMap<>();
-    private final Map<Integer, Hash20> byNetwork = new HashMap<>();
+    // Bit 62 sets IPv6 networks apart from IPv4 ones.
+    private static final long IPV6 = 1L << 62;
 
-    /** {@code ip} (in {@code Ipv4} form) announced {@code hash}; returns the hash trusted now, if any. */
-    public Optional<Hash20> announced(int ip, Hash20 hash) {
-        int network = ip >>> 12;
+    private final Map<Hash20, Set<Long>> signers = new LinkedHashMap<>();
+    private final Map<Long, Hash20> byNetwork = new HashMap<>();
+
+    /** {@code address} announced {@code hash}; returns the hash trusted now, if any. */
+    public Optional<Hash20> announced(InetAddress address, Hash20 hash) {
+        long network = address instanceof Inet4Address
+                ? Integer.toUnsignedLong(Ipv4.fromBytes(address.getAddress()) >>> 12)
+                : IPV6 | (ByteBuffer.wrap(address.getAddress()).getLong() >>> 16);
         Hash20 before = this.byNetwork.putIfAbsent(network, hash);
         if (before == null || before.equals(hash)) {
             this.signers.computeIfAbsent(hash, h -> new TreeSet<>()).add(network);
@@ -51,7 +60,7 @@ public final class AichVotes {
         int total = 0;
         Hash20 most = null;
         int mostSigners = 0;
-        for (Map.Entry<Hash20, Set<Integer>> e : this.signers.entrySet()) {
+        for (Map.Entry<Hash20, Set<Long>> e : this.signers.entrySet()) {
             int count = e.getValue().size();
             total += count;
             if (count > mostSigners) {

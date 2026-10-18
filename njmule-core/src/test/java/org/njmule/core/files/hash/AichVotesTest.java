@@ -18,6 +18,8 @@ package org.njmule.core.files.hash;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.common.net.InetAddresses;
+import java.net.InetAddress;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.api.Hash20;
@@ -52,6 +54,26 @@ class AichVotesTest {
     }
 
     @Test
+    void shouldCountTheIpv6HostsOfOneSlash48Once() {
+        givenNoVotes();
+        givenIpv6HostsOfOneSlash48Announce(20, GOOD);
+
+        whenAHostAnnounces("2001:db8:ffff:99::1", GOOD);
+
+        thenNoHashIsTrusted("all from one /48");
+    }
+
+    @Test
+    void shouldTrustAHashOnceTenIpv6NetworksAgree() {
+        givenNoVotes();
+        givenIpv6NetworksAnnounce(9, GOOD);
+
+        whenAHostAnnounces("2001:db8:9:ff::1", GOOD);
+
+        thenTheAnnouncementMakesTrusted(GOOD);
+    }
+
+    @Test
     void shouldKeepTheTrustWhileOtherHashesAreAMinority() {
         givenNoVotes();
         givenNetworksAnnounce(40, 12, GOOD);
@@ -78,29 +100,49 @@ class AichVotesTest {
 
     private void givenNetworksAnnounceWithoutMakingItTrusted(int firstNetwork, int networks, Hash20 hash) {
         for (int i = 0; i < networks; i++) {
-            assertThat(this.votes.announced(Ipv4.of(firstNetwork + i, 1, 1, 1), hash))
+            assertThat(this.votes.announced(ip(Ipv4.of(firstNetwork + i, 1, 1, 1)), hash))
                     .isEmpty();
         }
     }
 
     private void givenNetworksAnnounce(int firstNetwork, int networks, Hash20 hash) {
         for (int i = 0; i < networks; i++) {
-            this.votes.announced(Ipv4.of(firstNetwork + i, 1, 1, 1), hash);
+            this.votes.announced(ip(Ipv4.of(firstNetwork + i, 1, 1, 1)), hash);
         }
     }
 
     private void givenHostsOfOneNetworkAnnounce(int hosts, Hash20 hash) {
         for (int i = 0; i < hosts; i++) {
-            this.votes.announced(Ipv4.of(10, 1, 1, i), hash);
+            this.votes.announced(ip(Ipv4.of(10, 1, 1, i)), hash);
+        }
+    }
+
+    private void givenIpv6NetworksAnnounce(int networks, Hash20 hash) {
+        for (int i = 0; i < networks; i++) {
+            this.votes.announced(InetAddresses.forString("2001:db8:" + Integer.toHexString(i) + "::1"), hash);
+        }
+    }
+
+    private void givenIpv6HostsOfOneSlash48Announce(int hosts, Hash20 hash) {
+        for (int i = 0; i < hosts; i++) {
+            this.votes.announced(InetAddresses.forString("2001:db8:ffff:" + Integer.toHexString(i) + "::1"), hash);
         }
     }
 
     private void givenAHostAnnounces(int ip, Hash20 hash) {
-        this.votes.announced(ip, hash);
+        this.votes.announced(ip(ip), hash);
     }
 
     private void whenAHostAnnounces(int ip, Hash20 hash) {
-        this.announcement = this.votes.announced(ip, hash);
+        this.announcement = this.votes.announced(ip(ip), hash);
+    }
+
+    private void whenAHostAnnounces(String address, Hash20 hash) {
+        this.announcement = this.votes.announced(InetAddresses.forString(address), hash);
+    }
+
+    private static InetAddress ip(int ip) {
+        return InetAddresses.fromInteger(ip);
     }
 
     private void thenTheAnnouncementMakesTrusted(Hash20 hash) {

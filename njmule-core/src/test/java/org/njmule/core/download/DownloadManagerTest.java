@@ -19,6 +19,7 @@ package org.njmule.core.download;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import com.google.common.net.InetAddresses;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
@@ -149,7 +150,7 @@ class DownloadManagerTest {
 
     private void whenTheSourceIsFoundSendingCorruptData(int ip) throws Exception {
         onLoop(() -> {
-            this.manager.banCorruptSender(ip);
+            this.manager.banCorruptSender(InetAddresses.fromInteger(ip));
             return null;
         });
     }
