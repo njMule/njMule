@@ -46,6 +46,9 @@ versions is generated at release time in THIRD-PARTY.txt.
     Guava                       Apache License 2.0
     picocli                     Apache License 2.0
     semver4j                    MIT License
+    Apache Commons Compress,    Apache License 2.0
+    IO, Lang, Codec
+    XZ for Java                 0BSD (Zero-Clause BSD)
     Jackson (core, databind,    Apache License 2.0; Jackson Core bundles
     annotations, YAML format)   FastDoubleParser and Schubfach (MIT License)
     SnakeYAML Engine            Apache License 2.0

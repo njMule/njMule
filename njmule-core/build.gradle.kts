@@ -17,6 +17,9 @@ dependencies {
     implementation(libs.guava)
     // Semantic Versioning order of the versions offered as updates.
     implementation(libs.semver4j)
+    // The tar.xz packages of new versions, unpacked before they take the place of this one.
+    implementation(libs.commons.compress)
+    implementation(libs.xz)
     // HTTP client: web lists (with SOCKS proxies), UPnP.
     implementation(platform(libs.jetty.bom))
     implementation(libs.jetty.client)

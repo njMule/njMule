@@ -23,12 +23,14 @@ module org.njmule.core {
     requires com.google.common;
     requires static com.google.errorprone.annotations;
     requires java.xml;
+    requires org.apache.commons.compress;
     requires org.eclipse.jetty.client;
     requires transitive org.eclipse.jetty.server;
     requires org.bouncycastle.provider;
     requires org.semver4j;
     requires tech.kwik.core;
     requires org.slf4j;
+    requires org.tukaani.xz;
     requires tools.jackson.core;
     requires tools.jackson.databind;
     requires tools.jackson.dataformat.yaml;
