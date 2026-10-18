@@ -12,6 +12,8 @@ dependencies {
     compileOnly(libs.errorprone.annotations)
     implementation(libs.slf4j.api)
     implementation(libs.bouncycastle.prov)
+    // QUIC between firewalled clients, through their routers.
+    implementation(libs.kwik)
     implementation(libs.guava)
     // Semantic Versioning order of the versions offered as updates.
     implementation(libs.semver4j)

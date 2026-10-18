@@ -39,6 +39,10 @@ versions is generated at release time in THIRD-PARTY.txt.
 
     SLF4J API                   MIT License
     Bouncy Castle (bcprov)      MIT License (Bouncy Castle Licence)
+    Kwik (QUIC) and Agent15     LGPL-3.0
+    (TLS 1.3 handshake)
+    HKDF (at.favre.lib)         Apache License 2.0
+    SipHash (io.whitfin)        MIT License
     Guava                       Apache License 2.0
     picocli                     Apache License 2.0
     semver4j                    MIT License

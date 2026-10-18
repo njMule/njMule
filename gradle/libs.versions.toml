@@ -14,6 +14,7 @@ javafx = "27"
 atlantafx = "3.0.0"
 richtextfx = "0.11.7"
 bouncycastle = "1.86"
+kwik = "0.12.1"
 guava = "33.7.2-jre"
 picocli = "4.7.7"
 semver4j = "6.0.0"
@@ -52,6 +53,7 @@ javafx-controls = { module = "org.openjfx:javafx-controls", version.ref = "javaf
 atlantafx-base = { module = "io.github.mkpaz:atlantafx-base", version.ref = "atlantafx" }
 richtextfx = { module = "org.fxmisc.richtext:richtextfx", version.ref = "richtextfx" }
 bouncycastle-prov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+kwik = { module = "tech.kwik:kwik", version.ref = "kwik" }
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
 picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
 semver4j = { module = "org.semver4j:semver4j", version.ref = "semver4j" }
