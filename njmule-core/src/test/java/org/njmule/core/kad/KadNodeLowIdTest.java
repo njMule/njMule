@@ -710,6 +710,7 @@ class KadNodeLowIdTest {
         assertThat(findBuddy.buddyId()).isEqualTo(complement());
         assertThat(findBuddy.userHash()).isEqualTo(UInt128.of(USER));
         assertThat(findBuddy.tcpPort()).isEqualTo(TCP);
+        assertThat(findBuddy.connectOptions()).as("our connect options").hasValue(3);
     }
 
     private void thenTheOfferIsTakenFrom(int ip) {

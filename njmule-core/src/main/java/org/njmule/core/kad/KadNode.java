@@ -1980,7 +1980,10 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                             new KadMessages.FindBuddy(
                                             lookup.target(),
                                             UInt128.of(node.settings.userHash()),
-                                            node.settings.tcpPort())
+                                            node.settings.tcpPort(),
+                                            // A buddy serving one firewalled node already takes another only if it
+                                            // reaches it through the routers.
+                                            OptionalInt.of(node.settings.connectOptions()))
                                     .encode(),
                             Opcodes.Kad.FINDBUDDY_REQ);
                     lookup.valueReceived(1, node.ticker.read());

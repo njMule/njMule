@@ -520,10 +520,16 @@ public final class KadMessages {
      * KADEMLIA_FINDBUDDY_REQ: a firewalled node looks for a buddy under {@code buddyId}, the complement of its Kad id,
      * and says how to reach it: its user hash and TCP port.
      */
-    public record FindBuddy(UInt128 buddyId, UInt128 userHash, int tcpPort) {
+    public record FindBuddy(UInt128 buddyId, UInt128 userHash, int tcpPort, OptionalInt connectOptions) {
         public FindBuddy {
             Objects.requireNonNull(buddyId, "buddyId");
             Objects.requireNonNull(userHash, "userHash");
+            Objects.requireNonNull(connectOptions, "connectOptions");
+        }
+
+        /** Without connect options, as older nodes ask. */
+        public FindBuddy(UInt128 buddyId, UInt128 userHash, int tcpPort) {
+            this(buddyId, userHash, tcpPort, OptionalInt.empty());
         }
 
         public Packet encode() {
@@ -531,12 +537,17 @@ public final class KadMessages {
             this.buddyId.write(out);
             this.userHash.write(out);
             out.u16(this.tcpPort);
+            this.connectOptions.ifPresent(out::u8);
             return Packet.of(Protocol.KAD, Opcodes.Kad.FINDBUDDY_REQ.code(), out);
         }
 
         public static FindBuddy decode(Packet packet) throws DecodeException {
             PacketReader in = packet.reader();
-            return new FindBuddy(UInt128.read(in), UInt128.read(in), in.u16());
+            UInt128 buddyId = UInt128.read(in);
+            UInt128 userHash = UInt128.read(in);
+            int tcpPort = in.u16();
+            return new FindBuddy(
+                    buddyId, userHash, tcpPort, in.remaining() >= 1 ? OptionalInt.of(in.u8()) : OptionalInt.empty());
         }
     }
 
