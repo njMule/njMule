@@ -133,6 +133,13 @@ All notable changes to this project are documented here. The format follows
   mapped and renewed while njMule runs and removed on exit. A router that answers no UPnP is asked
   with NAT-PMP or PCP at the default gateway (read from the system's routing table), renewing at
   half the lease it grants; a mapping counts only with our own port outside.
+- IPv6 alongside IPv4: clients connect to us over IPv6, counted with the rest of their /64 by the
+  connection limits, bans and corruption checks. Our public IPv6 address (the one the system sends
+  from, none while njMule keeps to an interface of its own) goes in the hello, in our Kad source
+  publishes and in the extended source exchange with the clients that take it; theirs, from the
+  same places, lets us reach a firewalled source directly, with no callback, or one IPv4 failed.
+  Secure identification binds to IPv6 addresses too. Sources at IPv6 addresses can be added by
+  hand or come in links as `[2001:db8::1]:4662`; the status shows our IPv6 address.
 - Port test, in the first-start wizard and in the connection options: the ports as chosen are
   applied, the router asked again through UPnP, then the server checks the TCP port at a new login
   (a HighID) and Kad nodes check both ports; the outcomes show as they come, with what to do about
