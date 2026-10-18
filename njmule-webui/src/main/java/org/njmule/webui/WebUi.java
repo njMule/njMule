@@ -1134,7 +1134,7 @@ public final class WebUi implements AutoCloseable {
                     .append("\" rel=\"noreferrer\">What changed</a><br>")
                     .append(Html.text(UpdateHelp.howToInstall(
                             update.installation(), v.download().map(NewVersion.Download::uri), Optional.of(v.page()))));
-            if (!update.skipped().equals(Optional.of(v.version()))) {
+            if (!v.critical() && !update.skipped().equals(Optional.of(v.version()))) {
                 out.append("<br>")
                         .append(Html.form(
                                 SETTINGS_PAGE,

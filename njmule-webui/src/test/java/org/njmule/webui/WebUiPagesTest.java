@@ -189,6 +189,17 @@ class WebUiPagesTest {
     }
 
     @Test
+    void shouldNotOfferToSkipAVersionWithSecurityFixes() throws Exception {
+        givenALoggedInUser();
+        givenACriticalNewVersion();
+
+        whenThePageIsAsked("/settings");
+
+        thenThePageShows("with security fixes");
+        thenThePageDoesNotShow("Skip this version");
+    }
+
+    @Test
     void shouldSaveHowItLooksForNewVersions() throws Exception {
         givenALoggedInUser();
         givenTheEngineKeepsThePreferences();
@@ -272,6 +283,14 @@ class WebUiPagesTest {
     }
 
     private void givenANewVersion(InstallKind installation, Optional<String> skipped) {
+        givenANewVersion(installation, skipped, false);
+    }
+
+    private void givenACriticalNewVersion() {
+        givenANewVersion(InstallKind.MSI, Optional.empty(), true);
+    }
+
+    private void givenANewVersion(InstallKind installation, Optional<String> skipped, boolean critical) {
         this.fake.answer(
                 "status",
                 args -> CompletableFuture.completedFuture(new EngineStatus(
@@ -314,7 +333,7 @@ class WebUiPagesTest {
                         Optional.of(new NewVersion(
                                 "0.2.0",
                                 Instant.parse("2026-11-02T10:00:00Z"),
-                                false,
+                                critical,
                                 "",
                                 URI.create("https://github.com/njMule/njMule/releases/tag/v0.2.0"),
                                 download)),
