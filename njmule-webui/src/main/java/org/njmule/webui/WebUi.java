@@ -785,6 +785,7 @@ public final class WebUi implements AutoCloseable {
         String body = "<div class=\"cards\">"
                 + card("eD2K", ed2k)
                 + card("Kad", kad)
+                + card("IPv6", Html.text(s.publicIpv6().orElse("none")))
                 + card("Download", Html.rate(s.downloadBytesPerSecond()))
                 + card("Upload", Html.rate(s.uploadBytesPerSecond()))
                 + card("Downloaded (session)", Html.size(s.downloaded()))

@@ -84,6 +84,7 @@ class WebUiAnswersTest {
     private Optional<ServerInfo> server = Optional.empty();
     private boolean lowId;
     private Optional<KadInfo> kad = Optional.empty();
+    private Optional<String> ipv6 = Optional.empty();
     private FakeEngine otherEngine;
     private WebUi other;
     private String otherCookie;
@@ -437,6 +438,16 @@ class WebUiAnswersTest {
         whenThePageIsAsked("/");
 
         thenTheBodyContains("eD2K<b>not connected</b>", "Kad<b>open</b>");
+    }
+
+    @Test
+    void shouldShowOurIpv6AddressOrNone() throws Exception {
+        givenALoggedInUser();
+        givenOurIpv6AddressIs("2001:db8::99");
+
+        whenThePageIsAsked("/");
+
+        thenTheBodyContains("IPv6<b>2001:db8::99</b>");
     }
 
     @Test
@@ -912,6 +923,11 @@ class WebUiAnswersTest {
         answerTheStatus();
     }
 
+    private void givenOurIpv6AddressIs(String address) {
+        this.ipv6 = Optional.of(address);
+        answerTheStatus();
+    }
+
     private void givenKad(boolean connected, boolean firewalled) {
         this.kad = Optional.of(kad(connected, firewalled));
         answerTheStatus();
@@ -1155,7 +1171,8 @@ class WebUiAnswersTest {
 
     private void answerTheStatus() {
         this.fake.answer(
-                "status", args -> CompletableFuture.completedFuture(status(this.server, this.lowId, this.kad)));
+                "status",
+                args -> CompletableFuture.completedFuture(status(this.server, this.lowId, this.kad, this.ipv6)));
     }
 
     private void readTheLinkFieldOfTheTransfers() throws Exception {
@@ -1182,8 +1199,35 @@ class WebUiAnswersTest {
     }
 
     private static EngineStatus status(Optional<ServerInfo> server, boolean lowId, Optional<KadInfo> kad) {
+        return status(server, lowId, kad, Optional.empty());
+    }
+
+    private static EngineStatus status(
+            Optional<ServerInfo> server, boolean lowId, Optional<KadInfo> kad, Optional<String> ipv6) {
         return new EngineStatus(
-                server, 1234, lowId, false, kad, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 4662, false);
+                server,
+                1234,
+                lowId,
+                false,
+                kad,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                "",
+                4662,
+                false,
+                Optional.empty(),
+                ipv6);
     }
 
     private static KadInfo kad(boolean connected, boolean firewalled) {

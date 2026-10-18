@@ -930,7 +930,8 @@ final class Network {
                         .orElse(false),
                 this.binding instanceof BindInterface.Binding.Missing missing
                         ? Optional.of(missing.choice())
-                        : Optional.empty());
+                        : Optional.empty(),
+                this.ourIpv6.map(InetAddresses::toAddrString));
     }
 
     private long sessionSeconds() {
