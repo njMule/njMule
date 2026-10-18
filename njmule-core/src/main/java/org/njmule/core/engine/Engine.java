@@ -81,6 +81,7 @@ import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadNote;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
+import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.PeerComment;
@@ -96,12 +97,14 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.SpamMarks;
+import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.OsFamily;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
+import org.njmule.core.config.UpdateMode;
 import org.njmule.core.net.WebLists;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.ConfigBackup;
@@ -116,6 +119,7 @@ import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.persist.format.TextFiles;
 import org.njmule.core.server.ServerList;
+import org.njmule.core.update.Updates;
 import org.njmule.core.upnp.Routers;
 import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
@@ -135,6 +139,9 @@ public final class Engine implements NjMuleEngine {
     // How often the IP filter lists are looked at, and how long after a failed update they wait.
     private static final Duration IP_FILTER_CHECK = Duration.ofHours(1);
     private static final Duration IP_FILTER_RETRY = Duration.ofHours(6);
+    // The first look for a new version waits for the start to settle; then whether one is due is asked often.
+    private static final Duration UPDATE_FIRST = Duration.ofMinutes(2);
+    private static final Duration UPDATE_TICK = Duration.ofMinutes(10);
 
     private final AppDirectories directories;
     private final Path preferencesFile;
@@ -158,6 +165,7 @@ public final class Engine implements NjMuleEngine {
     private final Network network;
     private final BooleanSupplier emuleRunning;
     private final InstanceLock lock;
+    private final Updates updates;
 
     private Engine(
             AppDirectories directories,
@@ -187,6 +195,20 @@ public final class Engine implements NjMuleEngine {
                 EventCommandRunner::launch,
                 command -> Thread.ofVirtual().name("njmule-event-command").start(command),
                 OsFamily.current() == OsFamily.WINDOWS));
+        this.updates = Updates.create(directories.config(), this.web, new Updates.Listener() {
+            @Override
+            public void changed(UpdateStatus status) {
+                publish(new EngineEvent.UpdateStatusChanged(status));
+            }
+
+            @Override
+            public void found(NewVersion version) {
+                userLog(
+                        LogLine.Level.INFO,
+                        NjMuleInfo.NAME + " " + version.version() + " is available: " + version.page());
+                publish(new EngineEvent.UpdateAvailable(version));
+            }
+        });
         this.network = new Network(
                 loop,
                 directories.config(),
@@ -262,6 +284,8 @@ public final class Engine implements NjMuleEngine {
                         engine.loop.scheduleRepeating("config backup", BACKUP_EVERY, BACKUP_EVERY, engine::backUp);
                         engine.loop.scheduleRepeating(
                                 "IP filter lists", Duration.ofMinutes(1), IP_FILTER_CHECK, engine::updateIpFilterIfDue);
+                        engine.loop.scheduleRepeating(
+                                "updates", UPDATE_FIRST, UPDATE_TICK, engine::checkForUpdateIfDue);
                         return null;
                     })
                     .join();
@@ -625,6 +649,33 @@ public final class Engine implements NjMuleEngine {
             }
         }
         return List.of();
+    }
+
+    @Override
+    public UpdateStatus updateStatus() {
+        return this.updates.status();
+    }
+
+    @Override
+    public CompletableFuture<UpdateStatus> checkForUpdate() {
+        return this.updates.check(this.preferences.updateChannel(), false);
+    }
+
+    @Override
+    public CompletableFuture<UpdateStatus> skipUpdate(String version) {
+        Objects.requireNonNull(version, "version");
+        return CompletableFuture.supplyAsync(
+                () -> this.updates.skip(version),
+                task -> Thread.ofVirtual().name("njmule-update-skip").start(task));
+    }
+
+    // Engine thread: once at the start, then daily, unless the user looks only when asking.
+    @SuppressWarnings("FutureReturnValueIgnored") // the check tells its outcome through events
+    private void checkForUpdateIfDue() {
+        Preferences now = this.preferences;
+        if (now.updateMode() != UpdateMode.OFF && this.updates.isDue()) {
+            this.updates.check(now.updateChannel(), true);
+        }
     }
 
     @Override
@@ -1326,6 +1377,7 @@ public final class Engine implements NjMuleEngine {
         }
         publish(new EngineEvent.Stopping());
         logger.info("Stopping {}", NjMuleInfo.NAME);
+        this.updates.close();
         AtomicReference<CompletableFuture<Void>> unmapped =
                 new AtomicReference<>(CompletableFuture.completedFuture(null));
         CompletableFuture<Void> closing = this.loop.submit(() -> {

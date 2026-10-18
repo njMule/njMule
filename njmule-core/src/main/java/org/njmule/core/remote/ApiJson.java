@@ -31,11 +31,13 @@ import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
+import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
+import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadInfo;
 import tools.jackson.core.JsonEncoding;
 import tools.jackson.core.JsonGenerator;
@@ -123,6 +125,44 @@ final class ApiJson {
         g.writeStringProperty("version", s.version());
         g.writeBooleanProperty("obfuscation", s.supportsObfuscation());
         g.writeBooleanProperty("static", s.isStatic());
+        g.writeEndObject();
+    }
+
+    static void update(JsonGenerator g, UpdateStatus s) {
+        g.writeStartObject();
+        g.writeStringProperty("current", s.current());
+        g.writeStringProperty("installation", name(s.installation()));
+        g.writeBooleanProperty("checking", s.checking());
+        optional(g, "lastCheck", s.lastCheck().map(Object::toString));
+        optional(g, "failure", s.failure());
+        g.writeName("available");
+        if (s.available().isPresent()) {
+            newVersion(g, s.available().get());
+        } else {
+            g.writeNull();
+        }
+        optional(g, "skipped", s.skipped());
+        g.writeEndObject();
+    }
+
+    static void newVersion(JsonGenerator g, NewVersion v) {
+        g.writeStartObject();
+        g.writeStringProperty("version", v.version());
+        g.writeStringProperty("published", v.published().toString());
+        g.writeBooleanProperty("critical", v.critical());
+        g.writeStringProperty("notes", v.notes());
+        g.writeStringProperty("page", v.page().toString());
+        g.writeName("download");
+        if (v.download().isPresent()) {
+            NewVersion.Download d = v.download().get();
+            g.writeStartObject();
+            g.writeStringProperty("url", d.uri().toString());
+            g.writeNumberProperty("size", d.size());
+            g.writeStringProperty("sha256", d.sha256());
+            g.writeEndObject();
+        } else {
+            g.writeNull();
+        }
         g.writeEndObject();
     }
 
@@ -329,6 +369,8 @@ final class ApiJson {
             case EngineEvent.CaptchaRequested e -> "captcha.requested";
             case EngineEvent.CaptchaAnswered e -> "captcha.answered";
             case EngineEvent.MessageFailed e -> "message.failed";
+            case EngineEvent.UpdateStatusChanged e -> "update.status";
+            case EngineEvent.UpdateAvailable e -> "update.available";
         };
     }
 
@@ -409,6 +451,14 @@ final class ApiJson {
             case EngineEvent.MessageFailed e -> {
                 g.writeStringProperty("address", e.address());
                 g.writeStringProperty("reason", e.reason());
+            }
+            case EngineEvent.UpdateStatusChanged e -> {
+                g.writeName("status");
+                update(g, e.status());
+            }
+            case EngineEvent.UpdateAvailable e -> {
+                g.writeName("version");
+                newVersion(g, e.version());
             }
         }
         g.writeEndObject();

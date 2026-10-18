@@ -370,6 +370,18 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Completes with {@code false} for an unknown friend. */
     CompletableFuture<Boolean> removeFriend(Hash16 userHash);
 
+    /** What is known of new versions of njMule; never blocks. */
+    UpdateStatus updateStatus();
+
+    /**
+     * Looks for a new version of njMule now, whatever the preferences say, or joins the check running; completes with
+     * the status after it, which tells why when it failed.
+     */
+    CompletableFuture<UpdateStatus> checkForUpdate();
+
+    /** Stops telling of {@code version}, unless it fixes a security problem; completes with the status. */
+    CompletableFuture<UpdateStatus> skipUpdate(String version);
+
     boolean isRunning();
 
     /** Stops the engine and saves its state; idempotent. */

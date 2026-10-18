@@ -126,4 +126,10 @@ public sealed interface EngineEvent {
 
     /** Messages to a client could not be delivered. */
     record MessageFailed(String address, String reason) implements EngineEvent {}
+
+    /** What is known of new versions changed: a check started or ended, or the user skipped a version. */
+    record UpdateStatusChanged(UpdateStatus status) implements EngineEvent {}
+
+    /** A check njMule ran on its own found a new version worth telling the user of; once a run for each. */
+    record UpdateAvailable(NewVersion version) implements EngineEvent {}
 }

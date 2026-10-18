@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.security.IpWhitelist;
 
 /**
@@ -46,6 +47,8 @@ import org.njmule.core.security.IpWhitelist;
  * @param ipFilterLists addresses (http or https) of IP filter lists, one per line, joined into one filter (see
  *     {@link #invalidListEntry})
  * @param ipFilterUpdateDays the lists are fetched again once the filter is this many days old; {@code 0} = by hand only
+ * @param updateMode whether njMule looks for new versions of itself on its own
+ * @param updateChannel which new versions it tells of
  */
 public record Preferences(
         String nick,
@@ -104,7 +107,9 @@ public record Preferences(
         boolean notificationSound,
         Optional<Path> notificationSoundFile,
         String ipFilterLists,
-        int ipFilterUpdateDays) {
+        int ipFilterUpdateDays,
+        UpdateMode updateMode,
+        UpdateChannel updateChannel) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -229,6 +234,8 @@ public record Preferences(
             throw new IllegalArgumentException("ipFilterLists must hold at most " + MAX_IP_FILTER_LISTS + " addresses");
         }
         requireRange("ipFilterUpdateDays", ipFilterUpdateDays, 0, MAX_IP_FILTER_UPDATE_DAYS);
+        Objects.requireNonNull(updateMode, "updateMode");
+        Objects.requireNonNull(updateChannel, "updateChannel");
     }
 
     /** The first line of a list of IP filter lists that is not an http or https address with a host, if any. */
@@ -347,7 +354,9 @@ public record Preferences(
                 false,
                 Optional.empty(),
                 "",
-                DEFAULT_IP_FILTER_UPDATE_DAYS);
+                DEFAULT_IP_FILTER_UPDATE_DAYS,
+                UpdateMode.NOTIFY,
+                UpdateChannel.of(NjMuleInfo.version()));
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -449,6 +458,8 @@ public record Preferences(
         private Optional<Path> notificationSoundFile;
         private String ipFilterLists;
         private int ipFilterUpdateDays;
+        private UpdateMode updateMode;
+        private UpdateChannel updateChannel;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -508,6 +519,8 @@ public record Preferences(
             this.notificationSoundFile = p.notificationSoundFile;
             this.ipFilterLists = p.ipFilterLists;
             this.ipFilterUpdateDays = p.ipFilterUpdateDays;
+            this.updateMode = p.updateMode;
+            this.updateChannel = p.updateChannel;
         }
 
         public Builder nick(String value) {
@@ -839,6 +852,16 @@ public record Preferences(
             return this;
         }
 
+        public Builder updateMode(UpdateMode value) {
+            this.updateMode = value;
+            return this;
+        }
+
+        public Builder updateChannel(UpdateChannel value) {
+            this.updateChannel = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -898,7 +921,9 @@ public record Preferences(
                     this.notificationSound,
                     this.notificationSoundFile,
                     this.ipFilterLists,
-                    this.ipFilterUpdateDays);
+                    this.ipFilterUpdateDays,
+                    this.updateMode,
+                    this.updateChannel);
         }
     }
 }

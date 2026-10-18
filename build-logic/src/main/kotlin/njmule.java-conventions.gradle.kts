@@ -106,6 +106,7 @@ tasks.withType<Test>().configureEach {
     // UPnP stays off in every test: it would change the router's port mappings.
     systemProperty("njmule.upnp.disabled", "true")
     systemProperty("njmule.defaultlists.disabled", "true")
+    systemProperty("njmule.update.disabled", "true")
     // Test settings given on the command line, e.g. -Pnjmule.interop.kadPort=14897.
     systemProperties(testSettings.get())
 }

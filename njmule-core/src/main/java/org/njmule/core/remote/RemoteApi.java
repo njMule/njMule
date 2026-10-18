@@ -51,6 +51,7 @@ import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
+import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.Preferences;
 import org.slf4j.Logger;
@@ -224,6 +225,12 @@ public final class RemoteApi implements AutoCloseable {
                         "sendMessage",
                         c -> done(c, this.engine.sendMessage(address(text(c.body(), "to")), text(c.body(), "text")))),
                 entry("listBans", c -> list(c, this.engine::bans, ApiJson::ban)),
+                entry("getUpdate", c -> reply(c.exchange(), 200, g -> ApiJson.update(g, this.engine.updateStatus()))),
+                entry("checkForUpdate", this::checkForUpdate),
+                entry("skipUpdate", c -> {
+                    UpdateStatus after = await(this.engine.skipUpdate(text(c.body(), "version")));
+                    reply(c.exchange(), 200, g -> ApiJson.update(g, after));
+                }),
                 entry("unban", c -> known(c, this.engine.unban(text(c.parameters(), ADDRESS_KEY)))));
     }
 
@@ -405,6 +412,25 @@ public final class RemoteApi implements AutoCloseable {
                 g.writeNull();
             }
         });
+    }
+
+    // A check that takes longer than a call waits for goes on: the caller reads its outcome later.
+    private void checkForUpdate(Call c) throws IOException {
+        CompletableFuture<UpdateStatus> check = this.engine.checkForUpdate();
+        UpdateStatus status;
+        try {
+            status = check.get(ENGINE_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new Failure(503, "Interrupted.");
+        } catch (ExecutionException e) {
+            throw new Failure(
+                    503, "The engine cannot do it now: " + e.getCause().getMessage());
+        } catch (TimeoutException e) {
+            status = this.engine.updateStatus();
+        }
+        UpdateStatus answer = status;
+        reply(c.exchange(), answer.checking() ? 202 : 200, g -> ApiJson.update(g, answer));
     }
 
     private void startSearch(Call c) throws IOException {

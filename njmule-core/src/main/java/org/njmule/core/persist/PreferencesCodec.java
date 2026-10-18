@@ -38,6 +38,8 @@ import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
 import org.njmule.core.config.SharedFilesVisibility;
+import org.njmule.core.config.UpdateChannel;
+import org.njmule.core.config.UpdateMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -98,6 +100,14 @@ public final class PreferencesCodec {
         key("security.ipFilterWhitelist", Preferences::ipFilterWhitelist, Preferences.Builder::ipFilterWhitelist);
         key("security.ipFilterLists", Preferences::ipFilterLists, Preferences.Builder::ipFilterLists);
         intKey("security.ipFilterUpdateDays", Preferences::ipFilterUpdateDays, Preferences.Builder::ipFilterUpdateDays);
+        key(
+                "update.mode",
+                p -> p.updateMode().name(),
+                (b, v) -> b.updateMode(UpdateMode.valueOf(v.strip().toUpperCase(Locale.ROOT))));
+        key(
+                "update.channel",
+                p -> p.updateChannel().name(),
+                (b, v) -> b.updateChannel(UpdateChannel.valueOf(v.strip().toUpperCase(Locale.ROOT))));
         boolKey("chat.friendsOnly", Preferences::messagesFromFriendsOnly, Preferences.Builder::messagesFromFriendsOnly);
         boolKey("search.spamFilter", Preferences::searchSpamFilter, Preferences.Builder::searchSpamFilter);
         key("chat.filter", Preferences::messageFilter, Preferences.Builder::messageFilter);

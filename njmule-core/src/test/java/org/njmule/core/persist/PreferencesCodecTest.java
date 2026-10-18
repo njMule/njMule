@@ -40,6 +40,8 @@ import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
+import org.njmule.core.config.UpdateChannel;
+import org.njmule.core.config.UpdateMode;
 
 class PreferencesCodecTest {
 
@@ -77,6 +79,7 @@ class PreferencesCodecTest {
 
         thenTheFileLoadsThePreferencesBack();
         thenTheFileContains("net.tcpPort=12345");
+        thenTheFileContains("update.mode=OFF");
         thenTheFileDoesNotContain("#Mon");
     }
 
@@ -229,6 +232,11 @@ class PreferencesCodecTest {
                 .nameCleanups("dvdrip|sponsored")
                 .searchSpamFilter(false)
                 .cleanUpNewNames(true)
+                .updateMode(UpdateMode.OFF)
+                .updateChannel(
+                        Preferences.defaults().updateChannel() == UpdateChannel.STABLE
+                                ? UpdateChannel.PRERELEASE
+                                : UpdateChannel.STABLE)
                 .build();
     }
 

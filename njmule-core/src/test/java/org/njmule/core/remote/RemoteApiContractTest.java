@@ -114,7 +114,8 @@ class RemoteApiContractTest {
                 "/api/v1/kad/searches",
                 "/api/v1/categories",
                 "/api/v1/friends",
-                "/api/v1/bans");
+                "/api/v1/bans",
+                "/api/v1/update");
     }
 
     @ParameterizedTest
@@ -176,6 +177,8 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/messages", "{\"to\":\"198.51.100.9:4662\",\"text\":\"hi\"}", 200),
                 Arguments.of("DELETE", "/api/v1/bans/192.0.2.200", "", 200),
                 Arguments.of("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"global\"}", 201),
+                Arguments.of("POST", "/api/v1/update/check", "", 200),
+                Arguments.of("POST", "/api/v1/update/skip", "{\"version\":\"0.2.0\"}", 200),
                 Arguments.of("POST", "/api/v1/shutdown", "", 202));
     }
 
@@ -205,7 +208,8 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/downloads", "", 400),
                 Arguments.of("POST", "/api/v1/downloads", "{\"links\":[]}", 400),
                 Arguments.of("POST", "/api/v1/servers/import", "{\"url\":\"file:///etc/passwd\"}", 400),
-                Arguments.of("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"everywhere\"}", 400));
+                Arguments.of("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"everywhere\"}", 400),
+                Arguments.of("POST", "/api/v1/update/skip", "{}", 400));
     }
 
     @ParameterizedTest
@@ -289,6 +293,7 @@ class RemoteApiContractTest {
         answerWith("friends", List.of(ApiSamples.friend()));
         answerWith("bans", List.of(ApiSamples.ban()));
         this.fake.value("preferences", Preferences.defaults());
+        this.fake.value("updateStatus", ApiSamples.updateStatus());
     }
 
     @SuppressWarnings("unchecked")
@@ -318,6 +323,8 @@ class RemoteApiContractTest {
         }
         answerWith("addDownload", ApiSamples.download());
         answerWith("search", new SearchId(7));
+        answerWith("checkForUpdate", ApiSamples.updateStatus());
+        answerWith("skipUpdate", ApiSamples.updateStatus());
         this.fake.answer(
                 "updatePreferences",
                 args -> CompletableFuture.completedFuture(

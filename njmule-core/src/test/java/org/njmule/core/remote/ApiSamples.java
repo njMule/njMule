@@ -16,6 +16,7 @@
  */
 package org.njmule.core.remote;
 
+import java.net.URI;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -28,10 +29,12 @@ import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
+import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchResult;
@@ -40,6 +43,7 @@ import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
+import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.Preferences;
@@ -207,6 +211,31 @@ final class ApiSamples {
         return new LogLine(Instant.parse("2026-10-18T08:00:00Z"), LogLine.Level.SUCCESS, "Connected");
     }
 
+    static NewVersion newVersion() {
+        return new NewVersion(
+                "0.2.0",
+                Instant.parse("2026-11-02T10:00:00Z"),
+                true,
+                "### Added\n\n- Updates.",
+                URI.create("https://github.com/njMule/njMule/releases/tag/v0.2.0"),
+                Optional.of(new NewVersion.Download(
+                        URI.create("https://github.com/njMule/njMule/releases/download/v0.2.0/"
+                                + "njmule-0.2.0-windows-x64.msi"),
+                        31_719_424,
+                        "ab".repeat(32))));
+    }
+
+    static UpdateStatus updateStatus() {
+        return new UpdateStatus(
+                "0.1.0",
+                InstallKind.MSI,
+                false,
+                Optional.of(Instant.parse("2026-11-03T08:00:00Z")),
+                Optional.of("HTTP 503 from github.com"),
+                Optional.of(newVersion()),
+                Optional.of("0.1.5"));
+    }
+
     /** One event of every kind the engine announces. */
     static List<EngineEvent> events() {
         return List.of(
@@ -231,6 +260,8 @@ final class ApiSamples {
                 new EngineEvent.MessageReceived("198.51.100.9:4662", Hash16.parseHex(USER), Optional.empty(), "hi"),
                 new EngineEvent.CaptchaRequested("198.51.100.9:4662", Hash16.parseHex(USER), new byte[] {1, 2}),
                 new EngineEvent.CaptchaAnswered("198.51.100.9:4662", true),
-                new EngineEvent.MessageFailed("198.51.100.9:4662", "no connection"));
+                new EngineEvent.MessageFailed("198.51.100.9:4662", "no connection"),
+                new EngineEvent.UpdateStatusChanged(updateStatus()),
+                new EngineEvent.UpdateAvailable(newVersion()));
     }
 }

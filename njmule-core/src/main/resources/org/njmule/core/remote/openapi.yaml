@@ -57,6 +57,9 @@ tags:
     description: Searches started through the API and their results.
   - name: social
     summary: Friends, messages and bans
+  - name: updates
+    summary: Updates
+    description: New versions of njMule, as the signed information of its releases on GitHub tells.
 
 paths:
   /:
@@ -968,6 +971,57 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /update:
+    get:
+      operationId: getUpdate
+      tags: [updates]
+      summary: What is known of new versions of njMule.
+      responses:
+        "200":
+          $ref: "#/components/responses/Update"
+        default:
+          $ref: "#/components/responses/Error"
+  /update/check:
+    post:
+      operationId: checkForUpdate
+      tags: [updates]
+      summary: Looks for a new version now, whatever the preferences say.
+      description: |
+        Joins the check already running, if any. A check that takes longer than ten seconds goes on
+        after the answer, 202 with `checking` true: read `GET /update` again, or follow the
+        `update.status` event.
+      responses:
+        "200":
+          $ref: "#/components/responses/Update"
+        "202":
+          $ref: "#/components/responses/Update"
+        default:
+          $ref: "#/components/responses/Error"
+  /update/skip:
+    post:
+      operationId: skipUpdate
+      tags: [updates]
+      summary: Stops telling of a version, unless it fixes a security problem.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+      responses:
+        "200":
+          $ref: "#/components/responses/Update"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+
 components:
   securitySchemes:
     token:
@@ -1016,6 +1070,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Download"
+    Update:
+      description: What is known of new versions now.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Update"
     Limits:
       description: The speed limits now.
       content:
@@ -1643,6 +1703,8 @@ components:
         - $ref: "#/components/schemas/CaptchaRequestedEvent"
         - $ref: "#/components/schemas/CaptchaAnsweredEvent"
         - $ref: "#/components/schemas/MessageFailedEvent"
+        - $ref: "#/components/schemas/UpdateStatusEvent"
+        - $ref: "#/components/schemas/UpdateAvailableEvent"
         - $ref: "#/components/schemas/LostEvent"
     StartedEvent:
       properties:
@@ -1895,6 +1957,30 @@ components:
                 type: string
               reason:
                 type: string
+    UpdateStatusEvent:
+      description: A check for a new version started or ended, or a version was skipped.
+      properties:
+        event:
+          const: update.status
+        data:
+          contentSchema:
+            type: object
+            required: [status]
+            properties:
+              status:
+                $ref: "#/components/schemas/Update"
+    UpdateAvailableEvent:
+      description: A check njMule ran on its own found a new version worth telling of; once a run for each.
+      properties:
+        event:
+          const: update.available
+        data:
+          contentSchema:
+            type: object
+            required: [version]
+            properties:
+              version:
+                $ref: "#/components/schemas/NewVersion"
     LostEvent:
       description: The caller fell too far behind; the stream ends after it.
       properties:
@@ -1906,6 +1992,71 @@ components:
     NoData:
       type: object
       maxProperties: 0
+    Update:
+      type: object
+      required: [current, installation, checking, lastCheck, failure, available, skipped]
+      properties:
+        current:
+          type: string
+          description: The version running.
+        installation:
+          type: string
+          enum: [msi, windows_zip, dmg, deb, rpm, tar, static_tar, synology, docker, unknown]
+          description: How this copy was installed, which tells how to update it.
+        checking:
+          type: boolean
+          description: Whether a check runs now.
+        lastCheck:
+          type: [string, "null"]
+          format: date-time
+          description: When a check last succeeded.
+        failure:
+          type: [string, "null"]
+          description: Why the last check failed; null when it succeeded or none ran.
+        available:
+          description: The newest version, when it is newer than the one running.
+          oneOf:
+            - $ref: "#/components/schemas/NewVersion"
+            - type: "null"
+        skipped:
+          type: [string, "null"]
+          description: The version the user asked not to be told of again.
+    NewVersion:
+      type: object
+      required: [version, published, critical, notes, page, download]
+      properties:
+        version:
+          type: string
+        published:
+          type: string
+          format: date-time
+        critical:
+          type: boolean
+          description: Whether it fixes a security problem.
+        notes:
+          type: string
+          description: What changed, in Markdown.
+        page:
+          type: string
+          format: uri
+          description: The page of the release.
+        download:
+          description: The package for this installation, null when none fits.
+          oneOf:
+            - type: object
+              required: [url, size, sha256]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                size:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                sha256:
+                  type: string
+                  pattern: "^[0-9a-f]{64}$"
+            - type: "null"
     ServerData:
       type: object
       required: [server]

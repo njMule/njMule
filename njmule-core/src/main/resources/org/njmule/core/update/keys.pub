@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The minisign public keys that sign the update information of njMule releases: the signing
+# key first, then the standby key that replaces it if it is ever lost or leaked.
