@@ -43,6 +43,8 @@
     -nj-graph-grid: -color-border-muted;
     /* The veil behind a box over the window. */
     -nj-scrim: rgba(46, 52, 64, 0.18);
+    /* The plate under a CAPTCHA: light in every theme, as its letters are drawn for a light page. */
+    -nj-captcha-paper: #FFFFFF;
 }
 
 /* A chosen row stands out, also once its list has lost the focus: some themes give it a grey hardly
@@ -78,6 +80,7 @@
     -nj-graph-down: #5B8CC6;
     -nj-graph-up: #7D9F57;
     -nj-scrim: rgba(0, 0, 0, 0.35);
+    -nj-captcha-paper: #ECEFF4;
 }
 
 /* The system's high contrast scheme: while it is on, its colours (-nj-sys-*, set from the system) replace the
@@ -195,6 +198,7 @@
     -nj-graph-down: -nj-sys-link;
     -nj-graph-up: -nj-sys-highlight;
     -nj-graph-grid: -nj-sys-gray;
+    -nj-captcha-paper: -nj-sys-window;
 }
 
 /* Selected rows in the system's selection colours. */
@@ -1249,28 +1253,97 @@
     -fx-background-color: -nj-graph-down;
     -fx-min-width: 14;
     -fx-min-height: 4;
+    -fx-max-width: 14;
+    -fx-max-height: 4;
 }
 
 .legend-up {
     -fx-background-color: -nj-graph-up;
     -fx-min-width: 14;
     -fx-min-height: 4;
+    -fx-max-width: 14;
+    -fx-max-height: 4;
 }
 
-/* A conversation with news not yet seen: bold, with a dot of the accent. */
-.tab.unread .tab-label {
+/* The conversations and the friends in one list: the person's letters on a pastel disc, the name bold while it
+   has news, which a badge counts. */
+.conversations .list-cell {
+    -fx-padding: 8 10 8 10;
+    -fx-background-radius: 8;
+}
+
+.avatar {
+    -fx-min-width: 34;
+    -fx-min-height: 34;
+    -fx-max-width: 34;
+    -fx-max-height: 34;
+    -fx-alignment: center;
+    -fx-background-color: -color-accent-subtle;
+    -fx-background-radius: 17;
+    -fx-text-fill: -color-fg-default;
+    -fx-font-weight: bold;
+    -fx-font-size: 0.85em;
+}
+
+.avatar .nj-icon {
+    -nj-icon-size: 16;
+    -nj-icon-color: -color-fg-muted;
+}
+
+.conversations .has-news .who {
     -fx-font-weight: bold;
 }
 
-.unread-dot {
-    -fx-fill: -nj-brand-accent;
+.friend-star {
+    -nj-icon-size: 14;
+    -nj-icon-color: -color-warning-fg;
 }
 
-/* Friends one per dense row; chat lines as bubbles on pastel tints: ours accent (the subtle tint is too close to
-   the neutral one in Nord), theirs neutral. */
-.friends-list .list-cell {
-    -fx-cell-size: 2em;
+.news-badge {
+    -fx-padding: 0 6 0 6;
+    -fx-background-color: -nj-brand-accent;
+    -fx-background-radius: 9;
+    -fx-text-fill: -nj-on-accent;
+    -fx-font-size: 0.8em;
+    -fx-font-weight: bold;
 }
+
+.new-conversation {
+    -fx-padding: 10;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 8;
+}
+
+.person-head {
+    -fx-padding: 0 0 10 0;
+    -fx-border-color: transparent transparent -color-border-muted transparent;
+}
+
+.person-head .person-name {
+    -fx-font-size: 1.15em;
+}
+
+/* A picture asked before a message goes through: on a light plate, read in every theme. */
+.captcha-card {
+    -fx-padding: 12;
+    -fx-background-color: -color-warning-subtle;
+    -fx-background-radius: 8;
+}
+
+.captcha-card > .label .nj-icon {
+    -nj-icon-color: -color-warning-fg;
+}
+
+.captcha-plate {
+    -fx-padding: 6 10 6 10;
+    -fx-background-color: -nj-captcha-paper;
+    -fx-background-radius: 6;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 6;
+}
+
+/* Chat lines as bubbles on pastel tints: ours accent (the subtle tint is too close to the neutral one in Nord),
+   theirs neutral. */
 
 .chat-lines .list-cell {
     -fx-cell-size: -1;
@@ -1427,6 +1500,48 @@
 
 .graph-grid {
     -fx-background-color: -nj-graph-grid;
+}
+
+/* The times under the rate graph, and its word while nothing moved. */
+.graph-time {
+    -fx-font-size: 0.8em;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.graph-empty {
+    -fx-text-fill: -color-fg-muted;
+    -fx-padding: 6 10 6 10;
+    -fx-background-color: -color-bg-default;
+    -fx-background-radius: 6;
+}
+
+/* The cards of the statistics: a heading, then a graph or named figures. */
+.stats-card {
+    -fx-padding: 12 16 14 16;
+    -fx-background-color: -color-bg-default;
+    -fx-background-radius: 8;
+    -fx-border-color: -color-border-muted;
+    -fx-border-radius: 8;
+}
+
+.card-heading {
+    -fx-font-weight: bold;
+}
+
+/* The shared places in a tree beside the files, and the place chosen under it. */
+.shared-places .tree-cell .nj-icon {
+    -nj-icon-size: 16;
+    -nj-icon-color: -color-fg-muted;
+}
+
+.shared-places .place-lock {
+    -nj-icon-size: 13;
+}
+
+.shared-place {
+    -fx-padding: 12;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 8;
 }
 
 /* The scale of the rate graph: small and muted, on the plot's own background. */

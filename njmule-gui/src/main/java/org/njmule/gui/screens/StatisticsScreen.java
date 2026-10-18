@@ -16,7 +16,6 @@
  */
 package org.njmule.gui.screens;
 
-import atlantafx.base.theme.Styles;
 import java.util.List;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.StringBinding;
@@ -25,8 +24,9 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
-import javafx.scene.control.SplitPane;
+import javafx.scene.control.TitledPane;
+import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.TilePane;
@@ -39,8 +39,9 @@ import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.RateGraph;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.Segments;
+import org.njmule.gui.ui.VerticalScroll;
 
-/** The rates of the last minutes and the totals of this session. */
+/** What moves now, the rates over time, the totals of this session and of all, and every statistic below. */
 public final class StatisticsScreen implements Screen {
 
     private final Gui gui;
@@ -49,17 +50,18 @@ public final class StatisticsScreen implements Screen {
     private Node view;
     private final Label downRate = value();
     private final Label upRate = value();
-    private final Label downloaded = value();
-    private final Label uploaded = value();
+    private final Label downloaded = fact();
+    private final Label uploaded = fact();
     private final Label downloads = value();
     private final Label uploads = value();
     private final Label queued = value();
     private final Label shared = value();
-    private final Label totalDown = value();
-    private final Label totalUp = value();
-    private final Label sessions = value();
-    private final Label runtime = value();
+    private final Label totalDown = fact();
+    private final Label totalUp = fact();
+    private final Label sessions = fact();
+    private final Label runtime = fact();
     private final StatsTree tree;
+    private RateGraph graph;
 
     public StatisticsScreen(Gui gui) {
         this.gui = gui;
@@ -131,74 +133,94 @@ public final class StatisticsScreen implements Screen {
                 this.gui.subscriptions(),
                 this.gui.formats()::rate,
                 this.gui.formats()::time);
+        graph.setEmptyText(this.gui.t("nj.stats.noData"));
+        this.graph = graph;
         this.range = new Segments<>(List.of(RateGraph.Range.values()), this::rangeName);
         this.range.setValue(graph.range());
         this.range.valueProperty().addListener((o, was, now) -> graph.setRange(now));
+        Label ratesTitle = new Label(this.gui.t("nj.stats.rates"));
+        ratesTitle.getStyleClass().add("card-heading");
         HBox legend = new HBox(
                 8,
                 downSwatch,
                 new Label(this.gui.t("IDS_PW_CON_DOWNLBL")),
                 upSwatch,
-                new Label(this.gui.t("IDS_PW_CON_UPLBL")),
-                Fx.spacer(),
-                this.range.node());
+                new Label(this.gui.t("IDS_PW_CON_UPLBL")));
         legend.setAlignment(Pos.CENTER_LEFT);
-        // What happens now first, then the rates over time, then the session and all sessions.
-        TilePane present = cards(
+        FlowPane head = new FlowPane(16, 8, ratesTitle, legend, this.range.node());
+        head.setAlignment(Pos.CENTER_LEFT);
+        VBox rates = card(head, graph);
+        // What happens now first, then the rates over time, then the session and all sessions, then every figure.
+        TilePane present = tiles(
                 KadScreen.card(this.gui.t("nj.stats.downRate"), this.downRate),
                 KadScreen.card(this.gui.t("nj.stats.upRate"), this.upRate),
                 KadScreen.card(this.gui.t("nj.stats.downloads"), this.downloads),
                 KadScreen.card(this.gui.t("nj.transfers.uploading"), this.uploads),
                 KadScreen.card(this.gui.t("IDS_ONQUEUE"), this.queued),
                 KadScreen.card(this.gui.t("IDS_SHAREDFILES"), this.shared));
-        TilePane session = cards(
-                KadScreen.card(this.gui.t("IDS_CD_DOWN"), this.downloaded),
-                KadScreen.card(this.gui.t("IDS_CD_UP"), this.uploaded),
-                KadScreen.card(this.gui.t("nj.stats.runtime"), this.runtime));
-        TilePane cumulative = cards(
-                KadScreen.card(this.gui.t("IDS_CD_TDOWN"), this.totalDown),
-                KadScreen.card(this.gui.t("IDS_CD_TUP"), this.totalUp),
-                KadScreen.card(this.gui.t("nj.stats.sessions"), this.sessions));
+        VBox session = facts(
+                this.gui.t("IDS_STATS_SESSION"),
+                List.of("IDS_CD_DOWN", "IDS_CD_UP", "nj.stats.runtime"),
+                List.of(this.downloaded, this.uploaded, this.runtime));
+        VBox cumulative = facts(
+                this.gui.t("IDS_STATS_CUMULATIVE"),
+                List.of("IDS_CD_TDOWN", "IDS_CD_TUP", "nj.stats.sessions"),
+                List.of(this.totalDown, this.totalUp, this.sessions));
+        TilePane totals = new TilePane(12, 12, session, cumulative);
+        totals.setPrefColumns(2);
+        totals.setTileAlignment(Pos.TOP_LEFT);
+        for (VBox card : List.of(session, cumulative)) {
+            card.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        }
+        // Every figure in the tree, closed until wanted: the cards above say the main ones.
+        this.tree.view().getStyleClass().add("stats-tree");
+        this.tree.view().setPrefHeight(380);
+        TitledPane every = new TitledPane(this.gui.t("nj.stats.all"), this.tree.view());
+        every.setExpanded(false);
+        every.getStyleClass().add("stats-all");
+        every.setId("stats-all");
         this.gui.subscriptions().onChange(this.gui.model().statusProperty(), (was, now) -> show(now));
         show(this.gui.model().statusProperty().get());
-        // A short window scrolls the cards instead of setting a tall minimum for the whole window.
-        VBox all = new VBox(
-                10,
-                present,
-                graph,
-                legend,
-                heading(this.gui.t("IDS_STATS_SESSION")),
-                session,
-                heading(this.gui.t("IDS_STATS_CUMULATIVE")),
-                cumulative);
+        VBox all = new VBox(14, present, rates, totals, every);
         all.setPadding(new Insets(0, 4, 8, 0));
-        ScrollPane scroll = new ScrollPane(all);
+        // A short window scrolls the cards instead of setting a tall minimum for the whole window.
+        VerticalScroll scroll = new VerticalScroll(all);
         scroll.setFitToWidth(true);
-        // The tree on the left, the rates and totals beside it.
-        this.tree.view().getStyleClass().add("stats-tree");
-        SplitPane split = new SplitPane(this.tree.view(), scroll);
-        split.setDividerPositions(0.34);
-        SplitPane.setResizableWithParent(this.tree.view(), false);
         this.tree.refresh();
-        return Fx.screen(split);
+        return Fx.screen(scroll);
     }
 
-    // Cards of one size in a regular grid, as wide as the widest. Their names never wrap: JavaFX's text layout can
+    // A card of the page: its heading row, then its content.
+    private static VBox card(Node head, Node content) {
+        VBox box = new VBox(10, head, content);
+        box.getStyleClass().add("stats-card");
+        return box;
+    }
+
+    // A card of named figures, the names muted on the start side, the figures on the end side.
+    private VBox facts(String title, List<String> keys, List<Label> values) {
+        Label heading = new Label(title);
+        heading.getStyleClass().add("card-heading");
+        GridPane grid = new GridPane();
+        grid.getStyleClass().add("details-facts");
+        for (int i = 0; i < keys.size(); i++) {
+            Label name = new Label(this.gui.t(keys.get(i)));
+            name.getStyleClass().add("text-muted");
+            name.setMinWidth(Region.USE_PREF_SIZE);
+            grid.addRow(i, name, values.get(i));
+        }
+        return card(heading, grid);
+    }
+
+    // Tiles of one size in a regular grid, as wide as the widest. Their names never wrap: JavaFX's text layout can
     // fail on some wrapped texts with the Linux fonts (an index out of bounds).
-    private static TilePane cards(VBox... cards) {
+    private static TilePane tiles(VBox... cards) {
         TilePane pane = new TilePane(12, 12, cards);
         pane.setTileAlignment(Pos.TOP_LEFT);
         for (VBox card : cards) {
             card.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
         }
         return pane;
-    }
-
-    private static Label heading(String text) {
-        Label label = new Label(text);
-        label.getStyleClass().add(Styles.TEXT_BOLD);
-        VBox.setMargin(label, new Insets(6, 0, 0, 0));
-        return label;
     }
 
     private void show(EngineStatus s) {
@@ -232,5 +254,15 @@ public final class StatisticsScreen implements Screen {
         Label label = new Label("-");
         label.getStyleClass().add("stat-value");
         return label;
+    }
+
+    private static Label fact() {
+        Label label = new Label("-");
+        label.getStyleClass().add("kad-fact");
+        return label;
+    }
+
+    RateGraph graph() {
+        return this.graph;
     }
 }

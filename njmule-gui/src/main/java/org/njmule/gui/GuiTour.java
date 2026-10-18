@@ -46,6 +46,7 @@ import javafx.scene.control.Control;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.MenuButton;
+import javafx.scene.control.TitledPane;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
@@ -146,6 +147,15 @@ final class GuiTour {
         this.steps.add(() -> this.window.show("servers"));
         this.steps.add(() -> click("#add-servers"));
         this.steps.add(this::closePopups);
+        this.steps.add(() -> this.window.show("messages"));
+        this.steps.add(() -> click("#new-conversation"));
+        this.steps.add(() -> click("#new-conversation"));
+        this.steps.add(() -> this.window.show("statistics"));
+        this.steps.add(() -> {
+            if (this.stage.getScene().lookup("#stats-all") instanceof TitledPane all) {
+                all.setExpanded(true);
+            }
+        });
         // Every page of the options, each with its own controls.
         this.steps.add(() -> this.window.show("settings"));
         for (int page = 0; page < SETTINGS_PAGES; page++) {

@@ -19,14 +19,14 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
-import javafx.scene.Node;
-import javafx.scene.control.CheckBox;
 import javafx.scene.control.Labeled;
+import javafx.scene.control.TreeItem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -39,8 +39,7 @@ import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
 
-/** The folders pane of the shared files, and what was asked of each file. */
-@Timeout(120)
+@Timeout(60)
 class SharedFoldersPaneTest {
 
     @TempDir
@@ -60,21 +59,36 @@ class SharedFoldersPaneTest {
     }
 
     @Test
-    void shouldListTheSharedFoldersEachWithItsSubfoldersSwitch() throws Exception {
+    void shouldListAllFilesTheIncomingFolderAndEachSharedFolderWithItsSubfolders() throws Exception {
         givenFilmsSharedWithSubfoldersAndMusicAlone();
 
         whenTheSharedScreenShows();
 
-        thenThePaneLists(new SharedDirectory(this.films, true), new SharedDirectory(this.music, false));
-        thenTheSubfoldersSwitchesAre(true, false);
+        thenTheTreeLists(
+                "ALL ",
+                "INCOMING " + incoming(),
+                "FOLDER " + this.films,
+                "SUBFOLDER " + this.films.resolve("2026"),
+                "FOLDER " + this.music);
     }
 
     @Test
-    void shouldShareTheSubfoldersOfAFolderOnceItsSwitchIsTicked() throws Exception {
+    void shouldShowOnlyTheFilesOfThePlaceChosen() throws Exception {
         givenFilmsSharedWithSubfoldersAndMusicAlone();
         givenTheSharedScreenShown();
 
-        whenTheSubfoldersSwitchIsTicked(1);
+        whenThePlaceIsChosen(this.films.resolve("2026"));
+
+        thenTheFilesShownAre("clip.mkv");
+    }
+
+    @Test
+    void shouldShareTheSubfoldersOfAFolderOnceItsSwitchIsTurnedOn() throws Exception {
+        givenFilmsSharedWithSubfoldersAndMusicAlone();
+        givenTheSharedScreenShown();
+        givenThePlaceChosen(this.music);
+
+        whenTheSubfoldersSwitchIsTurned(true);
 
         thenTheEngineWasAsked("share " + this.music + " true");
     }
@@ -83,19 +97,30 @@ class SharedFoldersPaneTest {
     void shouldStopSharingTheChosenFolder() throws Exception {
         givenFilmsSharedWithSubfoldersAndMusicAlone();
         givenTheSharedScreenShown();
+        givenThePlaceChosen(this.films);
 
-        whenTheFolderIsUnshared(0);
+        whenTheFolderIsUnshared();
 
         thenTheEngineWasAsked("unshare " + this.films);
     }
 
     @Test
-    void shouldShowWhatWasAskedOfAFileInThisRunAndInAll() throws Exception {
+    void shouldCountWhatWasAskedOfAFileInThisRun() throws Exception {
         givenFilmsSharedWithSubfoldersAndMusicAlone();
 
         whenTheSharedScreenShows();
 
-        thenTheTableShows("2 (4)", "1 (2)");
+        thenTheTableShows("2");
+    }
+
+    @Test
+    void shouldCountWhatWasAskedOfAFileInAllRunsWhenAsked() throws Exception {
+        givenFilmsSharedWithSubfoldersAndMusicAlone();
+        givenTheSharedScreenShown();
+
+        whenTheCountersCount(SharedScreen.Counter.TOTAL);
+
+        thenTheTableShows("4");
     }
 
     private void givenFilmsSharedWithSubfoldersAndMusicAlone() throws Exception {
@@ -108,8 +133,15 @@ class SharedFoldersPaneTest {
                 this.films.resolve("film.mkv"),
                 UploadPriority.AUTO,
                 new SharedFileInfo.Statistics(2, 1, 9_000, 4, 2, 10_000));
+        SharedFileInfo clip = new SharedFileInfo(
+                Hash16.parseHex("FFEEDDCCBBAA99887766554433221100"),
+                "clip.mkv",
+                70_000_000,
+                this.films.resolve("2026").resolve("clip.mkv"),
+                UploadPriority.AUTO,
+                new SharedFileInfo.Statistics(0, 0, 0, 0, 0, 0));
         Map<String, Engines.Command> commands = new HashMap<>();
-        commands.put("sharedFiles", args -> CompletableFuture.completedFuture(List.of(film)));
+        commands.put("sharedFiles", args -> CompletableFuture.completedFuture(List.of(film, clip)));
         commands.put(
                 "sharedDirectories",
                 args -> CompletableFuture.completedFuture(
@@ -127,7 +159,11 @@ class SharedFoldersPaneTest {
 
     private void givenTheSharedScreenShown() throws Exception {
         whenTheSharedScreenShows();
-        FxTesting.await("the folders", () -> this.screen.folders().getItems().size() == 2);
+        FxTesting.await("the folders", () -> places().size() == 5);
+    }
+
+    private void givenThePlaceChosen(Path path) throws Exception {
+        whenThePlaceIsChosen(path);
     }
 
     private void whenTheSharedScreenShows() throws Exception {
@@ -135,26 +171,33 @@ class SharedFoldersPaneTest {
         this.test.show(FxTesting.onFx(this.screen::view));
     }
 
-    private void whenTheSubfoldersSwitchIsTicked(int folder) throws Exception {
-        FxTesting.onFx(() -> switches().get(folder).fire());
+    private void whenThePlaceIsChosen(Path path) throws Exception {
+        FxTesting.onFx(() -> this.screen.choosePlace(path));
     }
 
-    private void whenTheFolderIsUnshared(int folder) throws Exception {
-        FxTesting.onFx(() -> {
-            this.screen.folders().getSelectionModel().select(folder);
-            this.screen.unshareFolder();
-        });
+    private void whenTheSubfoldersSwitchIsTurned(boolean on) throws Exception {
+        FxTesting.onFx(() -> this.screen.subfoldersSwitch().setSelected(on));
     }
 
-    private void thenThePaneLists(SharedDirectory... folders) throws Exception {
+    private void whenTheFolderIsUnshared() throws Exception {
+        FxTesting.onFx(this.screen::unshareFolder);
+    }
+
+    private void whenTheCountersCount(SharedScreen.Counter counter) throws Exception {
+        FxTesting.onFx(() -> this.screen.counters().setValue(counter));
+    }
+
+    private void thenTheTreeLists(String... places) throws Exception {
+        FxTesting.assertEventually("the places " + List.of(places), () -> places().equals(List.of(places)));
+    }
+
+    private void thenTheFilesShownAre(String... names) throws Exception {
         FxTesting.assertEventually(
-                "the folders", () -> this.screen.folders().getItems().equals(List.of(folders)));
-    }
-
-    private void thenTheSubfoldersSwitchesAre(Boolean... ticked) throws Exception {
-        FxTesting.assertEventually(
-                "the switches",
-                () -> switches().stream().map(CheckBox::isSelected).toList().equals(List.of(ticked)));
+                "the files " + List.of(names),
+                () -> this.screen.table().getItems().stream()
+                        .map(r -> r.get().name())
+                        .toList()
+                        .equals(List.of(names)));
     }
 
     private void thenTheEngineWasAsked(String call) throws Exception {
@@ -167,19 +210,28 @@ class SharedFoldersPaneTest {
         assertThat(FxTesting.onFx(this::cellTexts)).contains(texts);
     }
 
+    private Path incoming() {
+        return this.test.model.preferencesProperty().get().effectiveIncomingDir(this.test.gui.directories());
+    }
+
+    // Each place of the tree as its kind and path, in the order of the tree.
+    private List<String> places() {
+        List<String> all = new ArrayList<>();
+        walk(this.screen.places().getRoot(), all);
+        return all;
+    }
+
+    private static void walk(TreeItem<SharedScreen.Place> parent, List<String> into) {
+        for (TreeItem<SharedScreen.Place> item : parent.getChildren()) {
+            into.add(item.getValue().kind() + " " + item.getValue().path());
+            walk(item, into);
+        }
+    }
+
     private List<String> cellTexts() {
         return this.screen.table().lookupAll(".table-cell").stream()
                 .map(n -> ((Labeled) n).getText())
                 .filter(t -> t != null)
-                .toList();
-    }
-
-    // The switches of the folders shown, in their order.
-    private List<CheckBox> switches() {
-        return this.screen.folders().lookupAll(".check-box").stream()
-                .filter(Node::isVisible)
-                .map(CheckBox.class::cast)
-                .filter(c -> c.getParent() != null && c.getParent().isVisible())
                 .toList();
     }
 }

@@ -135,10 +135,10 @@ class SharedMenusTest {
     }
 
     @Test
-    void shouldCountTheSharedFiles() throws Exception {
+    void shouldCountTheFilesOfThePlaceChosen() throws Exception {
         whenTheSharedScreenShows();
 
-        thenTheLabelsInclude("Number of Shared Files: 2");
+        thenThePlaceSays("2 files · ");
     }
 
     @Test
@@ -308,11 +308,13 @@ class SharedMenusTest {
         FxTesting.assertEventually("the window " + title, () -> window(title) != null);
     }
 
-    private void thenTheLabelsInclude(String text) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.shownScreen.view().lookupAll(".label").stream()
+    // All the shared files are chosen when the screen opens.
+    private void thenThePlaceSays(String start) throws Exception {
+        FxTesting.assertEventually(
+                "the place says " + start,
+                () -> this.shownScreen.placeTitle().getParent().lookupAll(".label").stream()
                         .map(n -> ((Label) n).getText())
-                        .toList()))
-                .contains(text);
+                        .anyMatch(t -> t != null && t.startsWith(start)));
     }
 
     private void thenTheEngineWasAskedToShare(String folder, boolean subfolders) {

@@ -16,16 +16,29 @@
  */
 package org.njmule.gui.screens;
 
+import atlantafx.base.controls.CustomTextField;
+import atlantafx.base.controls.ToggleSwitch;
 import atlantafx.base.theme.Styles;
+import atlantafx.base.theme.Tweaks;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.ToLongFunction;
+import java.util.regex.Pattern;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.StringBinding;
+import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.value.ObservableValue;
-import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
@@ -33,20 +46,29 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
-import javafx.scene.control.ListView;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
-import javafx.scene.control.SplitPane;
+import javafx.scene.control.TableCell;
+import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.Tooltip;
+import javafx.scene.control.TreeCell;
+import javafx.scene.control.TreeItem;
+import javafx.scene.control.TreeView;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
+import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import org.njmule.core.api.Ed2kLink;
+import org.njmule.core.api.FileKind;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UploadPriority;
@@ -57,27 +79,64 @@ import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
+import org.njmule.gui.ui.Icon;
 import org.njmule.gui.ui.Icons;
 import org.njmule.gui.ui.Screen;
+import org.njmule.gui.ui.Segments;
 import org.njmule.gui.ui.TableLayout;
 
-/** The folders we share beside the incoming ones, and the files we share with what was asked of them. */
+/**
+ * The folders we share in a tree beside the files they hold: all of them, the incoming folder, and each folder shared
+ * with the subfolders that hold files; under the tree, what to do with the folder chosen.
+ */
 public final class SharedScreen implements Screen {
 
-    // A count of this run beside the count of all runs, which orders the column.
-    private record Counted(long session, long total) implements Comparable<Counted> {
-        @Override
-        public int compareTo(Counted other) {
-            int byTotal = Long.compare(this.total, other.total);
-            return byTotal != 0 ? byTotal : Long.compare(this.session, other.session);
+    /** What the counters of the table count: this run, or every run. */
+    enum Counter {
+        SESSION,
+        TOTAL
+    }
+
+    /** A place of the tree. */
+    enum Kind {
+        ALL,
+        INCOMING,
+        FOLDER,
+        SUBFOLDER
+    }
+
+    /** A place of the tree: all files, the incoming folder, a folder shared or one of its subfolders. */
+    record Place(Kind kind, Path path, boolean subdirectories) {
+        /** Whether {@code file} lies in this place. */
+        boolean holds(Path file) {
+            return switch (this.kind) {
+                case ALL -> true;
+                case FOLDER -> this.subdirectories ? file.startsWith(this.path) : this.path.equals(file.getParent());
+                case INCOMING, SUBFOLDER -> file.startsWith(this.path);
+            };
         }
     }
+
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    private static final KeyCombination FIND_KEYS = new KeyCodeCombination(KeyCode.F, KeyCombination.SHORTCUT_DOWN);
 
     private final Gui gui;
     private StringBinding summary;
     private Node view;
     private TableView<LiveList.Row<SharedFileInfo>> table;
-    private final ListView<SharedDirectory> folders = new ListView<>();
+    private final TreeView<Place> folders = new TreeView<>(new TreeItem<>());
+    private List<SharedDirectory> directories = List.of();
+    private final ObjectProperty<Predicate<SharedFileInfo>> shown = new SimpleObjectProperty<>(f -> true);
+    private final CustomTextField filter = new CustomTextField();
+    private Segments<Counter> counters;
+    private final Label placeTitle = new Label();
+    private final Label placeFacts = new Label();
+    private final ToggleSwitch subfolders = new ToggleSwitch();
+    private final Label subfoldersName = new Label();
+    private final Button openPlace = new Button();
+    private final Button unshare = new Button();
+    private final Label incomingNote = new Label();
+    private boolean placing;
 
     public SharedScreen(Gui gui) {
         this.gui = gui;
@@ -125,49 +184,46 @@ public final class SharedScreen implements Screen {
     }
 
     private Node build() {
-        this.table = Fx.table(this.gui.model().sharedFiles(), this.gui.t("nj.shared.none"));
+        this.counters = new Segments<>(List.of(Counter.values()), this::counterName);
+        this.counters.node().setId("shared-counters");
+        this.table = Fx.table(this.gui.model().sharedFiles(), this.gui.t("nj.shared.none"), this.shown);
+        TableColumn<LiveList.Row<SharedFileInfo>, String> name =
+                Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 340, SharedFileInfo::name));
+        name.setCellFactory(c -> new NameCell());
+        TableColumn<LiveList.Row<SharedFileInfo>, Long> accepted =
+                counted("IDS_SF_ACCEPTS", 100, s -> s.accepted(), s -> s.totalAccepted(), String::valueOf);
+        TableColumn<LiveList.Row<SharedFileInfo>, String> parent = Fx.leftToRight(Fx.column(
+                this.gui.t("nj.shared.folder"),
+                260,
+                (SharedFileInfo f) -> String.valueOf(f.path().getParent())));
+        // The tree beside tells the folder; the column menu brings these back.
+        accepted.setVisible(false);
+        parent.setVisible(false);
         this.table
                 .getColumns()
                 .addAll(List.of(
-                        Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 340, SharedFileInfo::name)),
-                        Fx.leftToRight(Fx.column(
-                                this.gui.t("IDS_DL_SIZE"), 90, SharedFileInfo::size, this.gui.formats()::size)),
-                        Fx.column(this.gui.t("IDS_PRIORITY"), 100, SharedFileInfo::priority, this::priorityName),
-                        Fx.leftToRight(Fx.column(
-                                this.gui.t("IDS_SF_REQUESTS"),
-                                90,
-                                (SharedFileInfo f) -> new Counted(
-                                        f.statistics().requests(),
-                                        f.statistics().totalRequests()),
-                                c -> c.session() + " (" + c.total() + ")")),
-                        Fx.leftToRight(Fx.column(
-                                this.gui.t("IDS_SF_ACCEPTS"),
-                                90,
-                                (SharedFileInfo f) -> new Counted(
-                                        f.statistics().accepted(),
-                                        f.statistics().totalAccepted()),
-                                c -> c.session() + " (" + c.total() + ")")),
-                        Fx.leftToRight(Fx.column(
-                                this.gui.t("IDS_SF_TRANSFERRED"),
-                                140,
-                                (SharedFileInfo f) -> new Counted(
-                                        f.statistics().transferred(),
-                                        f.statistics().totalTransferred()),
-                                c -> this.gui.formats().size(c.session()) + " ("
-                                        + this.gui.formats().size(c.total()) + ")")),
-                        Fx.leftToRight(Fx.column(
-                                this.gui.t("nj.shared.folder"),
-                                360,
-                                (SharedFileInfo f) -> String.valueOf(f.path().getParent())))));
+                        name,
+                        Fx.numeric(Fx.column(
+                                this.gui.t("IDS_DL_SIZE"), 85, SharedFileInfo::size, this.gui.formats()::size)),
+                        Fx.column(this.gui.t("IDS_PRIORITY"), 95, SharedFileInfo::priority, this::priorityName),
+                        counted("IDS_SF_REQUESTS", 85, s -> s.requests(), s -> s.totalRequests(), String::valueOf),
+                        accepted,
+                        counted(
+                                "IDS_SF_TRANSFERRED",
+                                110,
+                                s -> s.transferred(),
+                                s -> s.totalTransferred(),
+                                this.gui.formats()::size),
+                        parent));
         TableLayout.remember(this.table, "shared", this.gui.settings());
         this.table.setPlaceholder(Fx.emptyState(
                 Icons.SHARED,
                 this.gui.t("nj.shared.none"),
-                Fx.button(this.gui.t("IDS_SHAREDIR"), Icons.FOLDER_OPEN, this::chooseDirectory)));
-        MenuItem copy = new MenuItem(this.gui.t("nj.copyLink"), Fx.icon(Icons.COPY));
-        copy.setOnAction(e -> copyLinks());
-        MenuItem html = new MenuItem(this.gui.t("IDS_DL_LINK2"), Fx.icon(Icons.CODE));
-        html.setOnAction(e -> copyHtml());
+                Fx.button(this.gui.t("IDS_SHAREDIR"), Icons.FOLDER_ADD, this::chooseDirectory)));
+        // The counters count this run or every run: the cells read them again.
+        this.counters.valueProperty().addListener((o, was, now) -> this.table.refresh());
+        MenuItem copy = Fx.menuItem(this.gui.t("nj.copyLink"), Icons.COPY, this::copyLinks);
+        MenuItem html = Fx.menuItem(this.gui.t("IDS_DL_LINK2"), Icons.CODE, this::copyHtml);
         Menu priority = new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Icons.PRIORITY));
         priority.getItems().setAll(priorityItems());
         MenuItem rename = Fx.menuItem(this.gui.t("IDS_RENAME"), Icons.EDIT, this::renameSelected);
@@ -181,94 +237,413 @@ public final class SharedScreen implements Screen {
             folder.setDisable(selected != 1);
         });
         this.table.setContextMenu(menu);
-        MenuButton priorities = new MenuButton(null, Fx.icon(Icons.PRIORITY));
-        priorities.getItems().setAll(priorityItems());
-        priorities.setTooltip(new Tooltip(this.gui.t("IDS_PRIORITY")));
-        priorities.setAccessibleText(this.gui.t("IDS_PRIORITY"));
-        Label count = new Label();
-        count.textProperty()
-                .bind(Bindings.createStringBinding(
-                        () -> this.gui.f(
-                                "IDS_SHAREDFILESCOUNT",
-                                this.gui.model().sharedFiles().size()),
-                        this.gui.model().sharedFiles().rows()));
-        Button copyButton = Fx.button(this.gui.t("nj.copyLink"), Icons.COPY, this::copyLinks);
-        Fx.needSelection(this.table, copyButton, priorities);
-        var tools = Fx.toolRow(
-                Fx.primary(Fx.button(this.gui.t("IDS_SHAREDIR"), Icons.FOLDER_OPEN, this::chooseDirectory)),
-                copyButton,
-                priorities,
-                Fx.spacer(),
-                count);
-        Node pane = foldersPane();
-        SplitPane split = new SplitPane(pane, this.table);
-        split.setDividerPositions(0.28);
-        SplitPane.setResizableWithParent(pane, false);
-        return Fx.screen(tools, split);
+        return Fx.screen(new HBox(16, side(), files()));
     }
 
-    // The folders shared beside the incoming ones: each with its subfolders or alone, and a way to stop sharing it.
-    private Node foldersPane() {
-        this.folders.setPlaceholder(new Label(this.gui.t("nj.shared.noFolders")));
-        this.folders.setCellFactory(l -> new FolderCell());
-        Button add = Fx.button(this.gui.t("IDS_SHAREDIR"), Icons.FOLDER_ADD, this::chooseDirectory);
-        Button remove = Fx.button(this.gui.t("IDS_UNSHAREDIR"), Icons.REMOVE_CIRCLE, this::unshareFolder);
-        remove.disableProperty()
-                .bind(this.folders.getSelectionModel().selectedItemProperty().isNull());
-        Label heading = Fx.whole(new Label(this.gui.t("IDS_SHAREDFOLDERS")));
-        heading.getStyleClass().add(Styles.TEXT_BOLD);
-        VBox pane = new VBox(8, heading, this.folders, Fx.toolRow(add, remove));
-        VBox.setVgrow(this.folders, Priority.ALWAYS);
-        pane.setPadding(new Insets(0, 8, 0, 0));
-        pane.setMinWidth(220);
+    // The filter, the counters and what to do with the files chosen, above the table.
+    private Node files() {
+        this.filter.setPromptText(this.gui.t("nj.shared.filter"));
+        this.filter.setLeft(Fx.icon(Icons.FILTER));
+        this.filter.setPrefColumnCount(16);
+        this.filter.setId("shared-filter");
+        this.filter.textProperty().addListener((o, was, now) -> narrow());
+        this.filter.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.ESCAPE) {
+                this.filter.clear();
+            }
+        });
+        MenuButton priorities = new MenuButton(this.gui.t("IDS_PRIORITY"), Fx.icon(Icons.PRIORITY));
+        priorities.getItems().setAll(priorityItems());
+        Button copy = Fx.iconButton(this.gui.t("nj.copyLink"), Icons.COPY, this::copyLinks);
+        MenuButton more = new MenuButton(
+                null,
+                Fx.icon(Icons.MORE),
+                Fx.menuItem(this.gui.t("IDS_OPENFOLDER"), Icons.FOLDER_OPEN, this::openFolder),
+                Fx.menuItem(this.gui.t("IDS_RENAME"), Icons.EDIT, this::renameSelected),
+                Fx.menuItem(this.gui.t("IDS_CMT_ADD"), Icons.COMMENT, this::commentSelected),
+                Fx.menuItem(this.gui.t("IDS_DL_LINK2"), Icons.CODE, this::copyHtml));
+        more.getStyleClass().addAll(Styles.BUTTON_ICON, Tweaks.NO_ARROW);
+        more.setTooltip(new Tooltip(this.gui.t("IDS_MORE")));
+        more.setAccessibleText(this.gui.t("IDS_MORE"));
+        Fx.needSelection(this.table, priorities, copy, more);
+        var tools = Fx.toolRow(this.filter, this.counters.node(), Fx.spacer(), priorities, copy, more);
+        VBox box = new VBox(10, tools, this.table);
+        VBox.setVgrow(this.table, Priority.ALWAYS);
+        HBox.setHgrow(box, Priority.ALWAYS);
+        // Ctrl+F finds among the files, as in the transfers.
+        box.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
+            if (FIND_KEYS.match(e)) {
+                this.filter.requestFocus();
+                e.consume();
+            }
+        });
+        return box;
+    }
+
+    // The only way to share a folder, the tree of the places, and what to do with the place chosen.
+    private Node side() {
+        Button share = Fx.primary(Fx.button(this.gui.t("IDS_SHAREDIR"), Icons.FOLDER_ADD, this::chooseDirectory));
+        share.setId("share-folder");
+        share.setMaxWidth(Double.MAX_VALUE);
+        this.folders.setShowRoot(false);
+        this.folders.setCellFactory(t -> new PlaceCell());
+        this.folders.getStyleClass().add("shared-places");
+        this.folders.setId("shared-places");
+        this.folders.getSelectionModel().selectedItemProperty().addListener((o, was, now) -> {
+            if (!this.placing) {
+                showPlace();
+                narrow();
+            }
+        });
         // Sharing or unsharing changes the files shared, wherever it was done: the folders are read again then.
         this.gui.subscriptions().onListChange(this.gui.model().sharedFiles().rows(), c -> loadFolders());
+        this.gui.subscriptions().onChange(this.gui.model().preferencesProperty(), (was, now) -> fillTree());
         loadFolders();
-        return pane;
+        VBox side = new VBox(10, share, this.folders, placePanel());
+        VBox.setVgrow(this.folders, Priority.ALWAYS);
+        side.getStyleClass().add("shared-side");
+        side.setMinWidth(220);
+        side.setPrefWidth(270);
+        side.setMaxWidth(300);
+        return side;
+    }
+
+    // The place chosen: its path, its files, and the switch and buttons that act on it.
+    private Node placePanel() {
+        this.placeTitle.getStyleClass().add(Styles.TEXT_BOLD);
+        this.placeTitle.setWrapText(true);
+        this.placeTitle.setMinHeight(Region.USE_PREF_SIZE);
+        Fx.leftToRight(this.placeTitle);
+        this.placeFacts.getStyleClass().add("text-muted");
+        this.subfoldersName.setText(this.gui.t("IDS_SHAREDIRSUB"));
+        this.subfoldersName.setWrapText(true);
+        this.subfoldersName.setMinWidth(0);
+        this.subfoldersName.setOnMouseClicked(e -> {
+            if (!this.subfolders.isDisabled()) {
+                this.subfolders.setSelected(!this.subfolders.isSelected());
+            }
+        });
+        this.subfolders.setAccessibleText(this.gui.t("IDS_SHAREDIRSUB"));
+        this.subfolders.selectedProperty().addListener((o, was, now) -> {
+            Place place = chosen();
+            if (!this.placing && place.kind() == Kind.FOLDER && now != place.subdirectories()) {
+                share(place.path(), now);
+            }
+        });
+        HBox.setHgrow(this.subfoldersName, Priority.ALWAYS);
+        HBox subRow = new HBox(8, this.subfoldersName, this.subfolders);
+        subRow.setAlignment(Pos.CENTER_LEFT);
+        subRow.managedProperty().bind(subRow.visibleProperty());
+        subRow.visibleProperty().bind(this.subfolders.disableProperty().not());
+        this.openPlace.setText(this.gui.t("IDS_OPENFOLDER"));
+        this.openPlace.setGraphic(Fx.icon(Icons.FOLDER_OPEN));
+        this.openPlace.getStyleClass().add(Styles.SMALL);
+        this.openPlace.setOnAction(e -> openPlace());
+        this.unshare.setText(this.gui.t("IDS_UNSHAREDIR"));
+        this.unshare.setGraphic(Fx.icon(Icons.REMOVE_CIRCLE));
+        this.unshare.getStyleClass().addAll(Styles.SMALL, Styles.FLAT);
+        this.unshare.setId("unshare-folder");
+        this.unshare.setOnAction(e -> unshareFolder());
+        for (Button b : List.of(this.openPlace, this.unshare)) {
+            Fx.whole(b);
+            b.managedProperty().bind(b.visibleProperty());
+        }
+        FlowPane buttons = new FlowPane(6, 6, this.openPlace, this.unshare);
+        this.incomingNote.setText(this.gui.t("nj.shared.incomingNote"));
+        this.incomingNote.setWrapText(true);
+        this.incomingNote.setMinHeight(Region.USE_PREF_SIZE);
+        this.incomingNote.getStyleClass().add("text-muted");
+        this.incomingNote.managedProperty().bind(this.incomingNote.visibleProperty());
+        VBox panel = new VBox(8, new VBox(2, this.placeTitle, this.placeFacts), subRow, buttons, this.incomingNote);
+        panel.getStyleClass().add("shared-place");
+        return panel;
     }
 
     void loadFolders() {
-        this.gui.model().sharedDirectories(dirs -> this.folders.getItems().setAll(dirs));
+        this.gui.model().sharedDirectories(dirs -> {
+            this.directories = List.copyOf(dirs);
+            fillTree();
+        });
     }
 
-    void unshareFolder() {
-        SharedDirectory selected = this.folders.getSelectionModel().getSelectedItem();
-        if (selected != null) {
-            this.gui.model().unshareDirectory(selected.path(), this::loadFolders);
+    // All files, the incoming folder, then each folder shared with the subfolders that hold files; the place chosen
+    // stays chosen.
+    private void fillTree() {
+        List<Path> files = this.gui.model().sharedFiles().rows().stream()
+                .map(r -> r.get().path())
+                .toList();
+        Place was = chosen();
+        TreeItem<Place> root = this.folders.getRoot();
+        List<TreeItem<Place>> top = new ArrayList<>();
+        top.add(new TreeItem<>(new Place(Kind.ALL, Path.of(""), true)));
+        Path incoming = incoming();
+        top.add(new TreeItem<>(new Place(Kind.INCOMING, incoming, true)));
+        this.directories.stream()
+                .filter(d -> !d.path().equals(incoming))
+                .sorted(Comparator.comparing(d -> d.path().toString()))
+                .forEach(d -> {
+                    TreeItem<Place> item = new TreeItem<>(new Place(Kind.FOLDER, d.path(), d.subdirectories()));
+                    if (d.subdirectories()) {
+                        subfoldersOf(d.path(), files)
+                                .forEach(sub ->
+                                        item.getChildren().add(new TreeItem<>(new Place(Kind.SUBFOLDER, sub, true))));
+                        item.setExpanded(true);
+                    }
+                    top.add(item);
+                });
+        this.placing = true;
+        try {
+            root.getChildren().setAll(top);
+            TreeItem<Place> again = find(root, was);
+            this.folders.getSelectionModel().select(again == null ? top.getFirst() : again);
+        } finally {
+            this.placing = false;
         }
+        this.folders.refresh();
+        showPlace();
+        narrow();
     }
 
-    // A shared folder, with the switch that shares its subfolders too.
-    private final class FolderCell extends ListCell<SharedDirectory> {
-        private final Label path = Fx.leftToRight(new Label());
-        private final CheckBox subfolders = new CheckBox(SharedScreen.this.gui.t("IDS_SHAREDIRSUB"));
-        private final VBox content = new VBox(4, this.path, this.subfolders);
-
-        FolderCell() {
-            this.path.setWrapText(true);
-            this.subfolders.setOnAction(e -> {
-                SharedDirectory folder = getItem();
-                if (folder != null) {
-                    SharedScreen.this.share(folder.path(), this.subfolders.isSelected());
-                }
-            });
+    // The folders right under a shared one that hold files, in order.
+    private static List<Path> subfoldersOf(Path folder, List<Path> files) {
+        Set<Path> found = new LinkedHashSet<>();
+        for (Path file : files) {
+            Path parent = file.getParent();
+            if (file.startsWith(folder) && parent != null && !parent.equals(folder)) {
+                found.add(folder.resolve(folder.relativize(file).getName(0)));
+            }
         }
+        return found.stream().sorted().toList();
+    }
 
-        @Override
-        protected void updateItem(SharedDirectory item, boolean empty) {
-            super.updateItem(item, empty);
-            if (empty || item == null) {
-                setGraphic(null);
-            } else {
-                this.path.setText(item.path().toString());
-                this.subfolders.setSelected(item.subdirectories());
-                setGraphic(this.content);
+    private static TreeItem<Place> find(TreeItem<Place> parent, Place place) {
+        if (place == null) {
+            return null;
+        }
+        for (TreeItem<Place> item : parent.getChildren()) {
+            Place p = item.getValue();
+            if (p.kind() == place.kind() && p.path().equals(place.path())) {
+                return item;
+            }
+            TreeItem<Place> below = find(item, place);
+            if (below != null) {
+                return below;
+            }
+        }
+        return null;
+    }
+
+    private Path incoming() {
+        return this.gui.model().preferencesProperty().get().effectiveIncomingDir(this.gui.directories());
+    }
+
+    private Place chosen() {
+        TreeItem<Place> item = this.folders.getSelectionModel().getSelectedItem();
+        return item == null ? new Place(Kind.ALL, Path.of(""), true) : item.getValue();
+    }
+
+    // The files of the place chosen whose names hold every word typed.
+    private void narrow() {
+        Place place = chosen();
+        List<String> words = WHITESPACE
+                .splitAsStream(this.filter.getText().strip().toLowerCase(Locale.ROOT))
+                .filter(w -> !w.isEmpty())
+                .toList();
+        this.shown.set(
+                f -> place.holds(f.path()) && words.stream().allMatch(f.name().toLowerCase(Locale.ROOT)::contains));
+    }
+
+    private void showPlace() {
+        Place place = chosen();
+        List<SharedFileInfo> in = this.gui.model().sharedFiles().rows().stream()
+                .map(LiveList.Row::get)
+                .filter(f -> place.holds(f.path()))
+                .toList();
+        this.placeTitle.setText(
+                switch (place.kind()) {
+                    case ALL -> this.gui.t("nj.shared.all");
+                    case INCOMING, FOLDER, SUBFOLDER -> place.path().toString();
+                });
+        this.placeFacts.setText(this.gui.f(
+                "nj.shared.files",
+                in.size(),
+                this.gui
+                        .formats()
+                        .size(in.stream().mapToLong(SharedFileInfo::size).sum())));
+        this.placing = true;
+        try {
+            this.subfolders.setSelected(place.subdirectories());
+            this.subfolders.setDisable(place.kind() != Kind.FOLDER);
+        } finally {
+            this.placing = false;
+        }
+        this.openPlace.setVisible(place.kind() != Kind.ALL);
+        this.unshare.setVisible(place.kind() == Kind.FOLDER);
+        this.incomingNote.setVisible(place.kind() == Kind.INCOMING);
+    }
+
+    private void openPlace() {
+        Place place = chosen();
+        if (place.kind() != Kind.ALL) {
+            try {
+                Folders.open(place.path());
+            } catch (IOException e) {
+                this.gui.warn().accept(e.getMessage());
             }
         }
     }
 
-    ListView<SharedDirectory> folders() {
+    void unshareFolder() {
+        Place place = chosen();
+        if (place.kind() == Kind.FOLDER) {
+            this.gui.model().unshareDirectory(place.path(), this::loadFolders);
+        }
+    }
+
+    /** A place of the tree: its icon, its name, a lock on the incoming folder, and its files. */
+    private final class PlaceCell extends TreeCell<Place> {
+        private final Icon icon = Fx.icon(Icons.FOLDER_OPEN);
+        private final Label name = new Label();
+        private final Icon lock = Fx.icon(Icons.LOCK);
+        private final Label count = new Label();
+        private final HBox box;
+
+        PlaceCell() {
+            this.name.setMinWidth(0);
+            this.count.getStyleClass().add("text-muted");
+            this.count.setMinWidth(Region.USE_PREF_SIZE);
+            Region gap = new Region();
+            HBox.setHgrow(gap, Priority.ALWAYS);
+            this.lock.getStyleClass().add("place-lock");
+            this.box = new HBox(8, this.icon, this.name, this.lock, gap, this.count);
+            this.box.setAlignment(Pos.CENTER_LEFT);
+            // As wide as the tree, never wider: a long path ends in an ellipsis instead of a scroll bar.
+            setPrefWidth(0);
+        }
+
+        @Override
+        protected void updateItem(Place place, boolean empty) {
+            super.updateItem(place, empty);
+            setText(null);
+            if (empty || place == null) {
+                setGraphic(null);
+                setTooltip(null);
+                return;
+            }
+            SharedScreen self = SharedScreen.this;
+            this.icon.setGlyph(
+                    switch (place.kind()) {
+                        case ALL -> Icons.SHARED;
+                        case INCOMING -> Icons.DOWNLOAD;
+                        case FOLDER, SUBFOLDER -> Icons.FOLDER_OPEN;
+                    });
+            this.name.setText(
+                    switch (place.kind()) {
+                        case ALL -> self.gui.t("nj.shared.all");
+                        case INCOMING -> self.gui.t("IDS_PW_INCOMING");
+                        case FOLDER -> place.path().toString();
+                        case SUBFOLDER -> String.valueOf(place.path().getFileName());
+                    });
+            this.lock.setVisible(place.kind() == Kind.INCOMING);
+            this.lock.setManaged(place.kind() == Kind.INCOMING);
+            long files = self.gui.model().sharedFiles().rows().stream()
+                    .filter(r -> place.holds(r.get().path()))
+                    .count();
+            this.count.setText(self.gui.formats().count(files));
+            setTooltip(
+                    place.kind() == Kind.ALL ? null : new Tooltip(place.path().toString()));
+            setGraphic(this.box);
+        }
+    }
+
+    /** The name with the icon of what the file holds. */
+    private static final class NameCell extends TableCell<LiveList.Row<SharedFileInfo>, String> {
+        private final Icon kind = Fx.icon(Icons.FILE);
+        private final Label name = new Label();
+        private final HBox box = new HBox(8, this.kind, this.name);
+
+        NameCell() {
+            this.kind.getStyleClass().add("file-kind");
+            this.box.setAlignment(Pos.CENTER_LEFT);
+            this.name.setMinWidth(0);
+            Fx.ownDirection(this.name);
+        }
+
+        @Override
+        protected void updateItem(String text, boolean empty) {
+            super.updateItem(text, empty);
+            setText(null);
+            if (empty || text == null) {
+                setGraphic(null);
+                setTooltip(null);
+                return;
+            }
+            this.kind.setGlyph(Fx.fileIcon(FileKind.of(text)));
+            this.name.setText(text);
+            setTooltip(new Tooltip(text));
+            setGraphic(this.box);
+        }
+    }
+
+    // A count of this run or of all runs, as the counters say; sorted by what it shows.
+    private TableColumn<LiveList.Row<SharedFileInfo>, Long> counted(
+            String title,
+            double width,
+            ToLongFunction<SharedFileInfo.Statistics> session,
+            ToLongFunction<SharedFileInfo.Statistics> total,
+            Function<Long, String> text) {
+        return Fx.numeric(Fx.column(
+                this.gui.t(title),
+                width,
+                (SharedFileInfo f) -> this.counters.getValue() == Counter.SESSION
+                        ? session.applyAsLong(f.statistics())
+                        : total.applyAsLong(f.statistics()),
+                text));
+    }
+
+    private String counterName(Counter counter) {
+        return this.gui.t(counter == Counter.SESSION ? "IDS_STATS_SESSION" : "IDS_STATS_CUMULATIVE");
+    }
+
+    TreeView<Place> places() {
         return this.folders;
+    }
+
+    Segments<Counter> counters() {
+        return this.counters;
+    }
+
+    ToggleSwitch subfoldersSwitch() {
+        return this.subfolders;
+    }
+
+    Label placeTitle() {
+        return this.placeTitle;
+    }
+
+    CustomTextField filterField() {
+        return this.filter;
+    }
+
+    /** Chooses the place of {@code path} in the tree, for tests. */
+    void choosePlace(Path path) {
+        TreeItem<Place> item = findPath(this.folders.getRoot(), path);
+        if (item != null) {
+            this.folders.getSelectionModel().select(item);
+        }
+    }
+
+    private static TreeItem<Place> findPath(TreeItem<Place> parent, Path path) {
+        for (TreeItem<Place> item : parent.getChildren()) {
+            if (Objects.equals(item.getValue().path(), path) && item.getValue().kind() != Kind.ALL) {
+                return item;
+            }
+            TreeItem<Place> below = findPath(item, path);
+            if (below != null) {
+                return below;
+            }
+        }
+        return null;
     }
 
     private void chooseDirectory() {
@@ -282,9 +657,9 @@ public final class SharedScreen implements Screen {
 
     // With its subfolders unless unticked; a folder where personal or system files may be gets a warning first.
     void confirmShare(Path directory) {
-        CheckBox subfolders = new CheckBox(this.gui.t("IDS_SHAREDIRSUB"));
-        subfolders.setSelected(true);
-        VBox content = new VBox(8, Fx.leftToRight(new Label(directory.toString())), subfolders);
+        CheckBox subs = new CheckBox(this.gui.t("IDS_SHAREDIRSUB"));
+        subs.setSelected(true);
+        VBox content = new VBox(8, Fx.leftToRight(new Label(directory.toString())), subs);
         boolean sensitive = SharedDirectory.isSensitive(directory);
         if (sensitive) {
             Label warning = new Label(this.gui.f("nj.shared.sensitive", directory));
@@ -302,7 +677,7 @@ public final class SharedScreen implements Screen {
         ask.setHeaderText(this.gui.t("IDS_SHAREDIR"));
         ask.getDialogPane().setContent(content);
         ask.initOwner(this.view.getScene().getWindow());
-        ask.showAndWait().filter(go::equals).ifPresent(b -> share(directory, subfolders.isSelected()));
+        ask.showAndWait().filter(go::equals).ifPresent(b -> share(directory, subs.isSelected()));
     }
 
     void share(Path directory, boolean subdirectories) {
@@ -349,8 +724,8 @@ public final class SharedScreen implements Screen {
         ask.initOwner(this.table.getScene().getWindow());
         ask.showAndWait()
                 .map(String::strip)
-                .filter(name -> !name.isEmpty() && !name.equals(file.name()))
-                .ifPresent(name -> this.gui.model().renameShared(file.hash(), name));
+                .filter(n -> !n.isEmpty() && !n.equals(file.name()))
+                .ifPresent(n -> this.gui.model().renameShared(file.hash(), n));
     }
 
     void commentSelected() {

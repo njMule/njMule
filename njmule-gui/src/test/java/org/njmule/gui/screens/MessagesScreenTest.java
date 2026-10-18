@@ -137,8 +137,8 @@ class MessagesScreenTest {
 
     private void givenAChatStartedWithBob() throws Exception {
         startChat("127.0.0.1:" + this.bob.preferences().tcpPort());
-        this.pane = FxTesting.onFx(() -> (MessagesScreen.ChatPane)
-                this.screen.tabs().getTabs().getFirst().getContent());
+        this.pane = FxTesting.onFx(
+                () -> this.screen.paneOf(this.test.model.chats().all().getFirst()));
     }
 
     private void givenAChatStartedWith(String address) throws Exception {
@@ -173,8 +173,10 @@ class MessagesScreenTest {
     }
 
     private void givenOneConversationNamedAfterBob() throws Exception {
-        assertThat(FxTesting.onFx(() -> this.screen.tabs().getTabs().size())).isEqualTo(1);
-        assertThat(FxTesting.onFx(() -> this.screen.tabs().getTabs().getFirst().getText()))
+        assertThat(FxTesting.onFx(() -> this.screen.conversations().getItems().size()))
+                .isEqualTo(1);
+        assertThat(FxTesting.onFx(() -> this.screen.nameOf(
+                        this.screen.conversations().getItems().getFirst())))
                 .isEqualTo(this.bob.preferences().nick());
     }
 
@@ -184,16 +186,16 @@ class MessagesScreenTest {
             this.pane.befriend();
             return null;
         });
-        FxTesting.await("a friend", () -> this.screen.friendsList().getItems().size() == 1);
+        FxTesting.await("a friend", () -> this.test.model.friends().rows().size() == 1);
     }
 
     private void givenBobChattedWithAndRemovedAsAFriend() throws Exception {
         FxTesting.onFx(() -> {
-            this.screen.friendsList().getSelectionModel().select(0);
+            this.screen.conversations().getSelectionModel().select(0);
             this.screen.chatWithFriend();
             this.screen.removeFriend();
         });
-        FxTesting.await("no friend", () -> this.screen.friendsList().getItems().isEmpty());
+        FxTesting.await("no friend", () -> this.test.model.friends().rows().isEmpty());
     }
 
     private void givenABmpPicture(int width, int height) throws Exception {
@@ -205,8 +207,7 @@ class MessagesScreenTest {
 
     private void givenAConversationWith(String address) throws Exception {
         this.chat = FxTesting.onFx(() -> this.test.model.chats().with(address));
-        this.pane = FxTesting.onFx(() -> (MessagesScreen.ChatPane)
-                this.screen.tabs().getTabs().getFirst().getContent());
+        this.pane = FxTesting.onFx(() -> this.screen.paneOf(this.chat));
     }
 
     private void givenTheCaptchaShows(boolean shows) throws Exception {
@@ -247,7 +248,8 @@ class MessagesScreenTest {
     }
 
     private void givenThereIsNoConversation() throws Exception {
-        assertThat(FxTesting.onFx(() -> this.screen.tabs().getTabs().isEmpty())).isTrue();
+        assertThat(FxTesting.onFx(() -> this.test.model.chats().all().isEmpty()))
+                .isTrue();
     }
 
     private void whenChatsAreStartedWithTheAddressAndNoFriendChosen(String address) throws Exception {
@@ -259,8 +261,7 @@ class MessagesScreenTest {
     }
 
     private void whenTheConversationIsClosed() throws Exception {
-        FxTesting.onFx(
-                () -> this.screen.tabs().getTabs().getFirst().getOnClosed().handle(null));
+        FxTesting.onFx(() -> this.screen.close(this.chat));
     }
 
     private void whenThePictureIsRead(byte[] bytes) {
@@ -277,7 +278,8 @@ class MessagesScreenTest {
     }
 
     private void thenThereIsNoConversation() throws Exception {
-        assertThat(FxTesting.onFx(() -> this.screen.tabs().getTabs().isEmpty())).isTrue();
+        assertThat(FxTesting.onFx(() -> this.test.model.chats().all().isEmpty()))
+                .isTrue();
     }
 
     private void thenThereIsNoPicture() {

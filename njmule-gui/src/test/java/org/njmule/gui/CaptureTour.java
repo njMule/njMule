@@ -101,6 +101,7 @@ import org.njmule.gui.infra.SoundPlayer;
 import org.njmule.gui.infra.Themes;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.screens.CaptureAccess;
+import org.njmule.gui.screens.MessagesScreen;
 import org.njmule.gui.screens.SettingsScreen;
 import org.njmule.gui.screens.SharedScreen;
 import org.njmule.gui.shell.MainWindow;
@@ -273,6 +274,10 @@ class CaptureTour {
         });
         if (demo) {
             feed();
+            // The conversation that asks for a CAPTCHA, for its picture; the others keep their news.
+            FxTesting.await("the chats", () -> this.model.chats().all().size() == 3);
+            FxTesting.onFx(() -> CaptureAccess.chooseConversation(
+                    (MessagesScreen) this.window.screen("messages").orElseThrow(), "192.0.2.99:4662"));
         }
         for (int i = 0; i < 31; i++) {
             FxTesting.onFx(this.model::tick);
@@ -1061,7 +1066,8 @@ class CaptureTour {
             return s;
         });
         this.stage = small;
-        for (String id : List.of("transfers", "search", "servers", "kad", "settings")) {
+        for (String id :
+                List.of("transfers", "search", "shared", "messages", "servers", "kad", "statistics", "settings")) {
             fx(() -> this.window.show(id));
             shot(id + "-small-900x600", "A 900×600 window");
         }

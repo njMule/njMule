@@ -601,6 +601,17 @@ All notable changes to this project are documented here. The format follows
   bar under the page that also offers to discard them. A wrong value is named under its option,
   with what it takes; the proxy's fields are off while there is no proxy, and the scheduler has a
   page of its own, saving each rule as it is added, replaced or removed.
+- The shared files, the messages and the statistics follow the new design. The shared files list
+  their places in a tree beside the files: all of them, the incoming folder and each shared folder
+  with the subfolders that hold files. One button shares a folder; the place chosen tells its files
+  and their size, opens or unshares the folder and turns the sharing of its subfolders on or off,
+  and a segment counts the requests and transfers of this session or of all of them. The messages
+  put the conversations and the friends in one list, the newest first, each with the person's
+  letters, a star for a friend, the last line and a count of what is new; a box finds people by
+  name or address, a segment keeps the friends only, and a CAPTCHA stands on a light plate that
+  reads in a dark theme too. The statistics open on cards of what happens now, then the rates over
+  time with their times under the lines and a word when nothing moved, the session's and all
+  sessions' figures side by side, and every statistic in a pane that opens on demand.
 
 ### Changed
 

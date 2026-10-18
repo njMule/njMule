@@ -27,6 +27,12 @@ public final class CaptureAccess {
         screen.confirmShare(directory);
     }
 
+    /** Builds the messages and chooses the conversation of {@code name}, before the newest shows. */
+    public static void chooseConversation(MessagesScreen screen, String name) {
+        screen.view();
+        screen.choose(name);
+    }
+
     public static void editServerListAddresses(SettingsScreen screen) {
         screen.editServerListAddresses();
     }

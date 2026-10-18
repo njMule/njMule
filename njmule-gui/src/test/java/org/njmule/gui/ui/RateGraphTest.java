@@ -82,6 +82,34 @@ class RateGraphTest {
         thenNothingIsPointed();
     }
 
+    @Test
+    void shouldTellTheTimesOfTheLastTenMinutesUnderTheLines() throws Exception {
+        givenAGraphOfSecondsAndMinutes();
+
+        whenTheRangeIs(RateGraph.Range.TEN_MINUTES);
+
+        thenTheTimesAre("T999", "T1149", "T1299", "T1449", "T1599");
+    }
+
+    @Test
+    void shouldSayWhenNothingMovedInTheTimeShown() throws Exception {
+        givenAGraphOfSecondsAndMinutes();
+        givenTheRatesWereNothing();
+
+        whenTheRangeIs(RateGraph.Range.TEN_MINUTES);
+
+        thenTheGraphSaysNothingMoved(true);
+    }
+
+    @Test
+    void shouldSayNothingOfAnEmptyTimeWhileRatesMoved() throws Exception {
+        givenAGraphOfSecondsAndMinutes();
+
+        whenTheRangeIs(RateGraph.Range.TEN_MINUTES);
+
+        thenTheGraphSaysNothingMoved(false);
+    }
+
     // A second's rates go up with the second; a minute's are 7000 and 70 for the last one.
     private void givenAGraphOfSecondsAndMinutes() throws Exception {
         for (int s = 1000; s < 1600; s++) {
@@ -105,6 +133,25 @@ class RateGraphTest {
             this.stage.show();
             return null;
         });
+    }
+
+    private void givenTheRatesWereNothing() throws Exception {
+        FxTesting.onFx(() -> {
+            this.seconds.replaceAll(s -> new EngineModel.RateSample(s.time(), 0, 0));
+            return null;
+        });
+    }
+
+    private void whenTheRangeIs(RateGraph.Range range) throws Exception {
+        givenTheRange(range);
+    }
+
+    private void thenTheTimesAre(String... times) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.graph.times())).containsExactly(times);
+    }
+
+    private void thenTheGraphSaysNothingMoved(boolean says) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.graph.showsEmpty())).isEqualTo(says);
     }
 
     private void givenTheRange(RateGraph.Range range) throws Exception {

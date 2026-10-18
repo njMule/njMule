@@ -36,8 +36,9 @@ import org.njmule.gui.model.EngineModel;
 
 /**
  * The download and upload rates of the last ten minutes, hour or day as two filled lines, on a scale rounded up from
- * the highest rate shown and labelled at its top and middle; under the pointer, the rates of that moment. Its colours
- * come from the theme tokens of the legend swatches, so it follows the theme.
+ * the highest rate shown and labelled at its top and middle, over the times of its width; under the pointer, the rates
+ * of that moment; a word while nothing moved. Its colours come from the theme tokens of the legend swatches, so it
+ * follows the theme.
  */
 public final class RateGraph extends Region {
 
@@ -65,6 +66,9 @@ public final class RateGraph extends Region {
     }
 
     private static final double FILL_OPACITY = 0.25;
+    // The band under the lines that holds the times, and how many times it shows.
+    private static final double AXIS = 18;
+    private static final int TICKS = 5;
     private static final long GIB = 1L << 30;
 
     private final Canvas canvas = new Canvas();
@@ -78,6 +82,8 @@ public final class RateGraph extends Region {
     private final Label top = scaleLabel();
     private final Label middle = scaleLabel();
     private final Label pointed = new Label();
+    private final List<Label> times = List.of(timeLabel(), timeLabel(), timeLabel(), timeLabel(), timeLabel());
+    private final Label empty = new Label();
     private Range range = Range.TEN_MINUTES;
     private long highest;
     // Where the pointer is over the graph, or below zero.
@@ -114,7 +120,11 @@ public final class RateGraph extends Region {
         this.pointed.getStyleClass().addAll("graph-pointed", "elevated-1");
         this.pointed.setManaged(false);
         this.pointed.setVisible(false);
-        getChildren().addAll(this.canvas, this.grid, this.top, this.middle, this.pointed);
+        this.empty.getStyleClass().add("graph-empty");
+        this.empty.setManaged(false);
+        this.empty.setVisible(false);
+        getChildren().addAll(this.canvas, this.grid, this.top, this.middle, this.empty, this.pointed);
+        getChildren().addAll(this.times);
         setMinHeight(160);
         setPrefHeight(260);
         subscriptions.onListChange(seconds, c -> draw());
@@ -134,6 +144,21 @@ public final class RateGraph extends Region {
 
     public Range range() {
         return this.range;
+    }
+
+    /** The word shown while nothing moved in the time shown. */
+    public void setEmptyText(String text) {
+        this.empty.setText(text);
+    }
+
+    /** Whether the word that nothing moved shows. */
+    public boolean showsEmpty() {
+        return this.empty.isVisible();
+    }
+
+    /** The times under the lines, from the oldest to now. */
+    public List<String> times() {
+        return this.times.stream().map(Label::getText).toList();
     }
 
     /** What the rates under the pointer read, or empty while the pointer is elsewhere. */
@@ -169,7 +194,25 @@ public final class RateGraph extends Region {
             label.autosize();
         }
         this.top.relocate(6, 2);
-        this.middle.relocate(6, Math.rint(h / 2.0) + 2);
+        this.middle.relocate(6, Math.rint((h - AXIS) / 2.0) + 2);
+        placeTimes();
+    }
+
+    // The first time at the start of the band, the last at its end, the others centred on their place.
+    private void placeTimes() {
+        double w = getWidth();
+        double y = getHeight() - AXIS + 2;
+        for (int i = 0; i < TICKS; i++) {
+            Label label = this.times.get(i);
+            label.autosize();
+            double x = w * i / (TICKS - 1);
+            double lw = label.getWidth();
+            label.relocate(Math.clamp(x - lw / 2, 0, Math.max(0, w - lw)), y);
+        }
+        this.empty.autosize();
+        this.empty.relocate(
+                Math.max(0, (w - this.empty.getWidth()) / 2),
+                Math.max(0, (getHeight() - AXIS - this.empty.getHeight()) / 2));
     }
 
     /**
@@ -203,9 +246,9 @@ public final class RateGraph extends Region {
 
     private void draw() {
         double w = this.canvas.getWidth();
-        double h = this.canvas.getHeight();
+        double h = this.canvas.getHeight() - AXIS;
         GraphicsContext g = this.canvas.getGraphicsContext2D();
-        g.clearRect(0, 0, w, h);
+        g.clearRect(0, 0, w, this.canvas.getHeight());
         if (w < 2 || h < 2) {
             this.pointed.setVisible(false);
             return;
@@ -225,19 +268,30 @@ public final class RateGraph extends Region {
         this.middle.autosize();
         g.setStroke(color(this.grid, Color.gray(0.5, 0.4)));
         g.setLineWidth(1);
-        for (int i = 1; i < 4; i++) {
+        for (int i = 1; i <= 4; i++) {
             double y = Math.round(h * i / 4.0) + 0.5;
             g.strokeLine(0, y, w, y);
         }
+        showTimes(shown);
+        this.empty.setVisible(shown.stream().allMatch(s -> s.down() == 0 && s.up() == 0));
         line(g, shown, EngineModel.RateSample::down, max, color(this.down, Color.STEELBLUE));
         line(g, shown, EngineModel.RateSample::up, max, color(this.up, Color.SEAGREEN));
         showPointed(g, shown);
     }
 
+    // The times of the band: now at its end, counted back from the newest sample.
+    private void showTimes(List<EngineModel.RateSample> shown) {
+        Instant now = shown.isEmpty() ? Instant.now() : shown.getLast().time();
+        for (int i = 0; i < TICKS; i++) {
+            long back = (long) this.range.seconds * (TICKS - 1 - i) / (TICKS - 1);
+            this.times.get(i).setText(this.time.apply(now.minusSeconds(back)));
+        }
+    }
+
     // The sample under the pointer, its time and rates beside a mark; nothing where no sample is.
     private void showPointed(GraphicsContext g, List<EngineModel.RateSample> shown) {
         double w = this.canvas.getWidth();
-        double h = this.canvas.getHeight();
+        double h = this.canvas.getHeight() - AXIS;
         int index = shown.size() - 1 - (int) Math.round((w - this.pointer) / step(w));
         if (this.pointer < 0 || index < 0 || index >= shown.size()) {
             this.pointed.setVisible(false);
@@ -272,7 +326,7 @@ public final class RateGraph extends Region {
             return;
         }
         double w = this.canvas.getWidth();
-        double h = this.canvas.getHeight();
+        double h = this.canvas.getHeight() - AXIS;
         double step = step(w);
         double x0 = w - (shown.size() - 1) * step;
         // Samples closer than a pixel are drawn as their mean, one point per pixel.
@@ -299,6 +353,13 @@ public final class RateGraph extends Region {
         g.setStroke(color);
         g.setLineWidth(1.5);
         g.strokePolyline(xs, ys, n);
+    }
+
+    private static Label timeLabel() {
+        Label label = new Label();
+        label.getStyleClass().add("graph-time");
+        label.setManaged(false);
+        return label;
     }
 
     private static Label scaleLabel() {
