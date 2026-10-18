@@ -375,6 +375,12 @@ njmule --remote help
 `--remote-url http://<host>:4711/api/v1` reaches another computer, whose token is taken from the
 `NJMULE_API_TOKEN` environment variable.
 
+The API is described by an [OpenAPI 3.2](https://spec.openapis.org/oas/v3.2.0.html) document,
+[`openapi.yaml`](njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml), which every
+njMule also serves at `/api/v1/openapi.yaml`. It is the source of the API: requests are routed by its
+paths and checked against its schemas before anything runs, and the tests hold every answer and
+event to it. Clients can be generated from it with any OpenAPI 3.2 tool.
+
 ## Building from source
 
 | Tool | Required for |

@@ -1,0 +1,1917 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The remote-control API of njMule. This document is the source of the API: the core routes every
+# request by its paths, methods and operationId, and checks parameters and bodies against its
+# schemas before an operation runs.
+openapi: 3.2.0
+info:
+  title: njMule remote-control API
+  summary: Drive a running njMule over HTTP with JSON, and follow its events.
+  description: |
+    Every call needs the API token of the njMule it reaches, sent as `Authorization: Bearer <token>`.
+    The token is kept in the `api-token` file of njMule's configuration directory; `njmule --api-token`
+    prints it and `njmule --new-api-token` replaces it. Wrong tokens count as failed logins of the
+    caller's address, which must wait a minute after five of them.
+
+    Enum values are lower case. Hashes are the 32 hexadecimal digits of an MD4 file or user hash.
+    Errors answer with an `Error` object whose message is meant for the caller.
+  version: "1"
+  license:
+    name: GNU General Public License v3.0 or later
+    identifier: GPL-3.0-or-later
+servers:
+  - url: "{scheme}://{host}:{port}/api/v1"
+    description: The web interface of njMule, with the remote-control API turned on.
+    variables:
+      scheme:
+        enum: [http, https]
+        default: http
+        description: https only through a reverse proxy; njMule itself serves plain HTTP.
+      host:
+        default: 127.0.0.1
+      port:
+        default: "4711"
+security:
+  - token: []
+tags:
+  - name: api
+    summary: API
+    description: The API itself.
+  - name: engine
+    summary: Engine
+    description: State of the engine, speed limits, log and events; stopping njMule.
+  - name: downloads
+    summary: Downloads
+    description: Files being downloaded and their sources.
+  - name: uploads
+    summary: Uploads and sharing
+    description: Clients served now or waiting, and the files shared with the network.
+  - name: servers
+    summary: eD2K servers
+  - name: kad
+    summary: Kad
+    description: The Kad network.
+  - name: searches
+    summary: Searches
+    description: Searches started through the API and their results.
+  - name: social
+    summary: Friends, messages and bans
+
+paths:
+  /:
+    get:
+      operationId: getApi
+      tags: [api]
+      summary: Name and version of njMule and of the API.
+      responses:
+        "200":
+          description: njMule and the version of the API.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiInfo"
+        default:
+          $ref: "#/components/responses/Error"
+  /openapi.yaml:
+    get:
+      operationId: getSpecification
+      tags: [api]
+      summary: This document.
+      responses:
+        "200":
+          description: The OpenAPI document of the API.
+          content:
+            application/yaml:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/Error"
+
+  /status:
+    get:
+      operationId: getStatus
+      tags: [engine]
+      summary: Connections, speeds and counters of the engine.
+      responses:
+        "200":
+          description: The state of the engine.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+        default:
+          $ref: "#/components/responses/Error"
+  /limits:
+    get:
+      operationId: getLimits
+      tags: [engine]
+      summary: The speed limits.
+      responses:
+        "200":
+          $ref: "#/components/responses/Limits"
+        default:
+          $ref: "#/components/responses/Error"
+    put:
+      operationId: setLimits
+      tags: [engine]
+      summary: Changes the speed limits; a limit left out stays as it is.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Limits"
+      responses:
+        "200":
+          $ref: "#/components/responses/Limits"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /ipfilter:
+    post:
+      operationId: updateIpFilter
+      tags: [engine]
+      summary: Replaces the IP filter with the list at an address.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebList"
+      responses:
+        "200":
+          $ref: "#/components/responses/Added"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /log:
+    get:
+      operationId: getLog
+      tags: [engine]
+      summary: The latest lines of the log, oldest first.
+      parameters:
+        - name: after
+          in: query
+          description: Only the lines numbered above this one.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Up to the last 500 lines.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LogEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /events:
+    get:
+      operationId: streamEvents
+      tags: [engine]
+      summary: The engine's events as server-sent events, until the caller leaves.
+      description: |
+        Each event's `event` field is its name, `data` its JSON and `id` its number in the stream.
+        Comments keep an idle stream alive every 15 seconds. A caller that falls too far behind
+        gets a `lost` event and is cut off: it reads the state again and reconnects. At most
+        eight streams are open at once.
+      parameters:
+        - name: types
+          in: query
+          description: Prefixes of the event names wanted, such as `download` or `server.connected`; all when empty.
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        "200":
+          description: The stream of events.
+          content:
+            text/event-stream:
+              itemSchema:
+                $ref: "#/components/schemas/EngineEvent"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+        default:
+          $ref: "#/components/responses/Error"
+  /shutdown:
+    post:
+      operationId: shutdown
+      tags: [engine]
+      summary: Stops njMule.
+      responses:
+        "202":
+          $ref: "#/components/responses/Ok"
+        "501":
+          description: This njMule cannot be stopped from the API.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /downloads:
+    get:
+      operationId: listDownloads
+      tags: [downloads]
+      summary: The downloads.
+      responses:
+        "200":
+          description: Every download.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Download"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: addDownloads
+      tags: [downloads]
+      summary: Starts downloading the files of eD2K links.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [links]
+              properties:
+                links:
+                  description: One eD2K file link, or several.
+                  oneOf:
+                    - type: string
+                      minLength: 1
+                    - type: array
+                      minItems: 1
+                      items:
+                        type: string
+                category:
+                  description: The category the downloads join.
+                  $ref: "#/components/schemas/CategoryId"
+      responses:
+        "201":
+          description: The downloads of the links, new or already known.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Download"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "413":
+          $ref: "#/components/responses/TooLarge"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    get:
+      operationId: getDownload
+      tags: [downloads]
+      summary: One download.
+      responses:
+        "200":
+          $ref: "#/components/responses/Download"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: cancelDownload
+      tags: [downloads]
+      summary: Cancels a download and deletes what it got.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}/pause:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    post:
+      operationId: pauseDownload
+      tags: [downloads]
+      summary: Pauses a download; it keeps its sources.
+      responses:
+        "200":
+          $ref: "#/components/responses/Download"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}/resume:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    post:
+      operationId: resumeDownload
+      tags: [downloads]
+      summary: Resumes a paused or stopped download.
+      responses:
+        "200":
+          $ref: "#/components/responses/Download"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}/stop:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    post:
+      operationId: stopDownload
+      tags: [downloads]
+      summary: Stops a download and forgets its sources.
+      responses:
+        "200":
+          $ref: "#/components/responses/Download"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}/priority:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    put:
+      operationId: setDownloadPriority
+      tags: [downloads]
+      summary: Sets the priority of a download.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [priority]
+              properties:
+                priority:
+                  $ref: "#/components/schemas/DownloadPriority"
+      responses:
+        "200":
+          $ref: "#/components/responses/Download"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}/category:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    put:
+      operationId: setDownloadCategory
+      tags: [downloads]
+      summary: Moves a download to a category; 0 takes it out of every category.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category]
+              properties:
+                category:
+                  $ref: "#/components/schemas/CategoryId"
+      responses:
+        "200":
+          $ref: "#/components/responses/Download"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}/name:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    put:
+      operationId: renameDownload
+      tags: [downloads]
+      summary: Renames a download; the name is made safe for any file system.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+      responses:
+        "200":
+          $ref: "#/components/responses/Download"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}/sources:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    post:
+      operationId: addDownloadSource
+      tags: [downloads]
+      summary: Adds a client known to have the file as a source of a download.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddressBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/Download"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /sources:
+    get:
+      operationId: listSources
+      tags: [downloads]
+      summary: The sources of every download.
+      responses:
+        "200":
+          description: Every source.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Source"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /uploads:
+    get:
+      operationId: listUploads
+      tags: [uploads]
+      summary: The clients served now and those waiting in the queue.
+      responses:
+        "200":
+          description: Every upload.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Upload"
+        default:
+          $ref: "#/components/responses/Error"
+  /shared:
+    get:
+      operationId: listSharedFiles
+      tags: [uploads]
+      summary: The shared files.
+      responses:
+        "200":
+          description: Every shared file.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SharedFile"
+        default:
+          $ref: "#/components/responses/Error"
+  /shared/directories:
+    get:
+      operationId: listSharedDirectories
+      tags: [uploads]
+      summary: The shared directories.
+      responses:
+        "200":
+          description: Every shared directory.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SharedDirectory"
+        default:
+          $ref: "#/components/responses/Error"
+  /shared/{hash}/priority:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    put:
+      operationId: setUploadPriority
+      tags: [uploads]
+      summary: Sets the upload priority of a shared file.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [priority]
+              properties:
+                priority:
+                  $ref: "#/components/schemas/UploadPriority"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /servers:
+    get:
+      operationId: listServers
+      tags: [servers]
+      summary: The known servers.
+      responses:
+        "200":
+          description: Every server.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Server"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: addServer
+      tags: [servers]
+      summary: Adds a server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddressBody"
+      responses:
+        "201":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/Error"
+  /servers/connect:
+    post:
+      operationId: connectServer
+      tags: [servers]
+      summary: Connects to a server, or to the best known one when none is named.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                address:
+                  $ref: "#/components/schemas/HostPort"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /servers/disconnect:
+    post:
+      operationId: disconnectServer
+      tags: [servers]
+      summary: Leaves the server.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        default:
+          $ref: "#/components/responses/Error"
+  /servers/import:
+    post:
+      operationId: importServers
+      tags: [servers]
+      summary: Adds the servers of a server.met file at an address.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebList"
+      responses:
+        "200":
+          $ref: "#/components/responses/Added"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /servers/{address}:
+    parameters:
+      - name: address
+        in: path
+        required: true
+        description: The server, as host:port.
+        schema:
+          $ref: "#/components/schemas/HostPort"
+    delete:
+      operationId: removeServer
+      tags: [servers]
+      summary: Forgets a server.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /kad:
+    get:
+      operationId: getKad
+      tags: [kad]
+      summary: The state of Kad.
+      responses:
+        "200":
+          description: The state of Kad, or null while it is off.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Kad"
+                  - type: "null"
+        default:
+          $ref: "#/components/responses/Error"
+  /kad/contacts:
+    get:
+      operationId: listKadContacts
+      tags: [kad]
+      summary: The contacts of the routing table.
+      responses:
+        "200":
+          description: Every contact.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KadContact"
+        default:
+          $ref: "#/components/responses/Error"
+  /kad/searches:
+    get:
+      operationId: listKadSearches
+      tags: [kad]
+      summary: The Kad lookups running now.
+      responses:
+        "200":
+          description: Every lookup.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KadSearch"
+        default:
+          $ref: "#/components/responses/Error"
+  /kad/connect:
+    post:
+      operationId: connectKad
+      tags: [kad]
+      summary: Joins Kad.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        default:
+          $ref: "#/components/responses/Error"
+  /kad/disconnect:
+    post:
+      operationId: disconnectKad
+      tags: [kad]
+      summary: Leaves Kad.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        default:
+          $ref: "#/components/responses/Error"
+  /kad/recheck:
+    post:
+      operationId: recheckKadFirewall
+      tags: [kad]
+      summary: Checks again whether other Kad nodes can reach us.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/Error"
+  /kad/bootstrap:
+    post:
+      operationId: bootstrapKad
+      tags: [kad]
+      summary: Joins Kad through a node.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddressBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /kad/nodes:
+    post:
+      operationId: importKadNodes
+      tags: [kad]
+      summary: Adds the contacts of a nodes.dat file at an address.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebList"
+      responses:
+        "200":
+          $ref: "#/components/responses/Added"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /searches:
+    post:
+      operationId: startSearch
+      tags: [searches]
+      summary: Starts a search; its results gather as they come.
+      description: The results of the last ten searches started through the API or the web pages are kept.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  minLength: 1
+                  description: Words, with AND, OR and NOT between them as wanted.
+                scope:
+                  $ref: "#/components/schemas/SearchScope"
+      responses:
+        "201":
+          description: The search started.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id:
+                    $ref: "#/components/schemas/SearchId"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /searches/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SearchId"
+    get:
+      operationId: getSearchResults
+      tags: [searches]
+      summary: The results of a search, those with the most sources first.
+      responses:
+        "200":
+          description: The results so far.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, results]
+                properties:
+                  id:
+                    $ref: "#/components/schemas/SearchId"
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SearchResult"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: stopSearch
+      tags: [searches]
+      summary: Stops a search and forgets its results.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /searches/{id}/more:
+    parameters:
+      - $ref: "#/components/parameters/SearchId"
+    post:
+      operationId: moreSearchResults
+      tags: [searches]
+      summary: Asks more servers for results of a server search.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/Error"
+  /searches/{id}/download:
+    parameters:
+      - $ref: "#/components/parameters/SearchId"
+    post:
+      operationId: downloadSearchResult
+      tags: [searches]
+      summary: Downloads a result of a search.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hash]
+              properties:
+                hash:
+                  $ref: "#/components/schemas/Hash"
+      responses:
+        "201":
+          $ref: "#/components/responses/Download"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /categories:
+    get:
+      operationId: listCategories
+      tags: [downloads]
+      summary: The categories of downloads.
+      responses:
+        "200":
+          description: Every category.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /friends:
+    get:
+      operationId: listFriends
+      tags: [social]
+      summary: The friends.
+      responses:
+        "200":
+          description: Every friend.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Friend"
+        default:
+          $ref: "#/components/responses/Error"
+  /messages:
+    post:
+      operationId: sendMessage
+      tags: [social]
+      summary: Sends a chat message to a client.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to, text]
+              properties:
+                to:
+                  $ref: "#/components/schemas/HostPort"
+                text:
+                  type: string
+                  minLength: 1
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /bans:
+    get:
+      operationId: listBans
+      tags: [social]
+      summary: The clients banned now.
+      responses:
+        "200":
+          description: Every ban.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Ban"
+        default:
+          $ref: "#/components/responses/Error"
+  /bans/{address}:
+    parameters:
+      - name: address
+        in: path
+        required: true
+        description: The banned client's address, as the list of bans gives it.
+        schema:
+          type: string
+    delete:
+      operationId: unban
+      tags: [social]
+      summary: Lifts a ban.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+
+components:
+  securitySchemes:
+    token:
+      type: http
+      scheme: bearer
+      bearerFormat: 43 characters of URL-safe Base64 (256 random bits)
+      description: The API token of the njMule, from the `api-token` file of its configuration directory.
+
+  parameters:
+    Hash:
+      name: hash
+      in: path
+      required: true
+      description: The file hash of the download or shared file.
+      schema:
+        $ref: "#/components/schemas/Hash"
+    SearchId:
+      name: id
+      in: path
+      required: true
+      description: The id the search was given when it started.
+      schema:
+        $ref: "#/components/schemas/SearchId"
+
+  responses:
+    Ok:
+      description: Done.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Ok"
+    Added:
+      description: How many entries of the list were added.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [added]
+            properties:
+              added:
+                type: integer
+                minimum: 0
+    Download:
+      description: The download, as it is now.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Download"
+    Limits:
+      description: The speed limits now.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Limits"
+              - required: [uploadKiBps, downloadKiBps]
+    BadRequest:
+      description: The request does not follow this document, or names something the engine refuses.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Nothing of that name is known.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: The engine's state does not allow it now.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooLarge:
+      description: The body is larger than 1 MiB.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unavailable:
+      description: Too many event streams are open.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Error:
+      description: |
+        Any other failure: 401 without the right token (with `WWW-Authenticate: Bearer`), 404 for an
+        unknown path, 405 for a method the path does not take (with `Allow`), 429 after too many wrong
+        tokens, 500 when the request failed, 503 when the engine cannot answer in time.
+      headers:
+        WWW-Authenticate:
+          description: Sent with 401 and 429.
+          schema:
+            type: string
+            const: Bearer
+        Allow:
+          description: Sent with 405, the methods the path takes.
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: What went wrong, for the caller.
+    Ok:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          const: true
+    ApiInfo:
+      type: object
+      required: [name, version, api]
+      properties:
+        name:
+          const: njMule
+        version:
+          type: string
+          description: The version of njMule.
+        api:
+          type: integer
+          description: The version of the API, which grows when calls are added.
+
+    Hash:
+      type: string
+      pattern: "^[0-9A-Fa-f]{32}$"
+    SearchId:
+      type: integer
+      format: int64
+    CategoryId:
+      type: integer
+      format: int32
+      minimum: 0
+    HostPort:
+      type: string
+      minLength: 1
+      description: A host name or IP address and a port, as `host:port` (`[address]:port` for IPv6).
+    AddressBody:
+      type: object
+      required: [address]
+      properties:
+        address:
+          $ref: "#/components/schemas/HostPort"
+    WebList:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          pattern: "^\\s*[Hh][Tt][Tt][Pp][Ss]?://"
+          description: An http or https address.
+    Limits:
+      type: object
+      description: Speed limits in KiB/s; 0 is unlimited.
+      properties:
+        uploadKiBps:
+          type: integer
+          minimum: 0
+          maximum: 10000000
+        downloadKiBps:
+          type: integer
+          minimum: 0
+          maximum: 10000000
+
+    DownloadPriority:
+      type: string
+      enum: [low, normal, high, auto]
+    UploadPriority:
+      type: string
+      enum: [very_low, low, normal, high, release, auto]
+    SearchScope:
+      type: string
+      enum: [server, global, kad]
+      default: server
+      description: The connected server, every known server, or Kad.
+
+    Status:
+      type: object
+      required:
+        - server
+        - clientId
+        - lowId
+        - obfuscated
+        - kad
+        - downloadBytesPerSecond
+        - uploadBytesPerSecond
+        - downloaded
+        - uploaded
+        - downloads
+        - uploads
+        - queued
+        - sharedFiles
+        - totalDownloaded
+        - totalUploaded
+        - sessions
+        - sessionSeconds
+        - totalSeconds
+        - publicIp
+        - tcpPort
+      properties:
+        server:
+          description: The server we are connected to, or null.
+          oneOf:
+            - $ref: "#/components/schemas/Server"
+            - type: "null"
+        clientId:
+          type: integer
+          format: int64
+        lowId:
+          type: boolean
+        obfuscated:
+          type: boolean
+        kad:
+          description: The state of Kad, or null while it is off.
+          oneOf:
+            - $ref: "#/components/schemas/Kad"
+            - type: "null"
+        downloadBytesPerSecond:
+          type: integer
+          format: int64
+        uploadBytesPerSecond:
+          type: integer
+          format: int64
+        downloaded:
+          type: integer
+          format: int64
+          description: Bytes downloaded in this session.
+        uploaded:
+          type: integer
+          format: int64
+          description: Bytes uploaded in this session.
+        downloads:
+          type: integer
+        uploads:
+          type: integer
+        queued:
+          type: integer
+        sharedFiles:
+          type: integer
+        totalDownloaded:
+          type: integer
+          format: int64
+        totalUploaded:
+          type: integer
+          format: int64
+        sessions:
+          type: integer
+          format: int64
+        sessionSeconds:
+          type: integer
+          format: int64
+        totalSeconds:
+          type: integer
+          format: int64
+        publicIp:
+          type: string
+        tcpPort:
+          type: integer
+        missingInterface:
+          type: string
+          description: Present while the network interface the preferences bind to is gone, which keeps njMule offline.
+    Server:
+      type: object
+      required:
+        - address
+        - name
+        - description
+        - users
+        - files
+        - maxUsers
+        - lowIdUsers
+        - softFiles
+        - hardFiles
+        - failed
+        - priority
+        - ping
+        - version
+        - obfuscation
+        - static
+      properties:
+        address:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        users:
+          type: integer
+          format: int64
+        files:
+          type: integer
+          format: int64
+        maxUsers:
+          type: integer
+          format: int64
+        lowIdUsers:
+          type: integer
+          format: int64
+        softFiles:
+          type: integer
+          format: int64
+        hardFiles:
+          type: integer
+          format: int64
+        failed:
+          type: integer
+        priority:
+          type: string
+          enum: [high, normal, low]
+        ping:
+          type: integer
+          format: int64
+        version:
+          type: string
+        obfuscation:
+          type: boolean
+        static:
+          type: boolean
+    Kad:
+      type: object
+      required:
+        - connected
+        - firewalled
+        - contacts
+        - verifiedContacts
+        - id
+        - publicIp
+        - udpPort
+        - udpFirewalled
+        - udpVerified
+        - buddy
+      properties:
+        connected:
+          type: boolean
+        firewalled:
+          type: boolean
+        contacts:
+          type: integer
+        verifiedContacts:
+          type: integer
+        id:
+          type: string
+        publicIp:
+          type: string
+        udpPort:
+          type: integer
+        udpFirewalled:
+          type: boolean
+        udpVerified:
+          type: boolean
+        buddy:
+          type: string
+          enum: [none, connecting, connected, serving]
+    Download:
+      type: object
+      required:
+        - hash
+        - name
+        - size
+        - completed
+        - status
+        - priority
+        - category
+        - sources
+        - transferring
+        - bytesPerSecond
+        - previewFirst
+        - link
+      properties:
+        hash:
+          $ref: "#/components/schemas/Hash"
+        name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        completed:
+          type: integer
+          format: int64
+          description: Bytes of the file already here.
+        status:
+          type: string
+          enum: [downloading, paused, stopped, no_space, error, complete]
+        priority:
+          $ref: "#/components/schemas/DownloadPriority"
+        category:
+          $ref: "#/components/schemas/CategoryId"
+        sources:
+          type: integer
+        transferring:
+          type: integer
+          description: Sources sending data now.
+        bytesPerSecond:
+          type: integer
+          format: int64
+        previewFirst:
+          type: boolean
+        link:
+          type: string
+          description: The eD2K link of the file.
+    Source:
+      type: object
+      required:
+        - file
+        - fileName
+        - address
+        - nick
+        - software
+        - state
+        - queueRank
+        - received
+        - parts
+        - partCount
+        - reportedName
+      properties:
+        file:
+          $ref: "#/components/schemas/Hash"
+        fileName:
+          type: string
+        address:
+          type: string
+        nick:
+          type: [string, "null"]
+        software:
+          type: string
+        state:
+          type: string
+          enum: [waiting, connecting, asking, queued, downloading, a4af]
+        queueRank:
+          type: integer
+        received:
+          type: integer
+          format: int64
+        parts:
+          type: integer
+          description: Parts of the file the source has.
+        partCount:
+          type: integer
+        reportedName:
+          type: [string, "null"]
+          description: The name the source gives the file, when it differs.
+    Upload:
+      type: object
+      required:
+        - address
+        - userHash
+        - nick
+        - software
+        - file
+        - state
+        - transferred
+        - bytesPerSecond
+        - waitingSeconds
+      properties:
+        address:
+          type: string
+        userHash:
+          $ref: "#/components/schemas/Hash"
+        nick:
+          type: [string, "null"]
+        software:
+          type: string
+        file:
+          type: string
+        state:
+          type: string
+          enum: [uploading, queued]
+        transferred:
+          type: integer
+          format: int64
+        bytesPerSecond:
+          type: integer
+          format: int64
+        waitingSeconds:
+          type: integer
+          format: int64
+    SharedFile:
+      type: object
+      required: [hash, name, size, path, priority, link]
+      properties:
+        hash:
+          $ref: "#/components/schemas/Hash"
+        name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        path:
+          type: string
+        priority:
+          $ref: "#/components/schemas/UploadPriority"
+        link:
+          type: string
+    SharedDirectory:
+      type: object
+      required: [path, subdirectories]
+      properties:
+        path:
+          type: string
+        subdirectories:
+          type: boolean
+    SearchResult:
+      type: object
+      required: [hash, name, size, sources, completeSources, type, spamRating, spam, names]
+      properties:
+        hash:
+          $ref: "#/components/schemas/Hash"
+        name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        sources:
+          type: integer
+        completeSources:
+          $ref: "#/components/schemas/CompleteSources"
+        type:
+          type: [string, "null"]
+          description: The file type the network gives, if any.
+        spamRating:
+          type: integer
+        spam:
+          type: boolean
+        names:
+          type: array
+          description: The names the file was found under, when more than one.
+          items:
+            type: object
+            required: [name, sources, completeSources]
+            properties:
+              name:
+                type: string
+              sources:
+                type: integer
+              completeSources:
+                $ref: "#/components/schemas/CompleteSources"
+    CompleteSources:
+      type: [integer, "null"]
+      description: Sources with the whole file; null when the network does not tell, as Kad.
+    Category:
+      type: object
+      required: [id, name, incoming, comment, priority]
+      properties:
+        id:
+          $ref: "#/components/schemas/CategoryId"
+        name:
+          type: string
+        incoming:
+          type: [string, "null"]
+          description: The directory its completed files go to, if it has its own.
+        comment:
+          type: string
+        priority:
+          $ref: "#/components/schemas/DownloadPriority"
+    Friend:
+      type: object
+      required: [userHash, name, address]
+      properties:
+        userHash:
+          $ref: "#/components/schemas/Hash"
+        name:
+          type: string
+        address:
+          type: [string, "null"]
+    Ban:
+      type: object
+      required: [address, secondsLeft]
+      properties:
+        address:
+          type: string
+        secondsLeft:
+          type: integer
+          format: int64
+    KadContact:
+      type: object
+      required: [id, address, type, distance, version, verified]
+      properties:
+        id:
+          type: string
+        address:
+          type: string
+        type:
+          type: integer
+        distance:
+          type: string
+        version:
+          type: integer
+        verified:
+          type: boolean
+    KadSearch:
+      type: object
+      required: [target, kind, answers]
+      properties:
+        target:
+          type: string
+        kind:
+          type: string
+          enum: [node, keyword, sources, notes, store_keyword, store_source, store_notes]
+        answers:
+          type: integer
+    LogLine:
+      type: object
+      required: [time, level, message]
+      properties:
+        time:
+          type: string
+          format: date-time
+        level:
+          type: string
+          enum: [debug, info, success, warning, error]
+        message:
+          type: string
+    LogEntry:
+      allOf:
+        - $ref: "#/components/schemas/LogLine"
+        - type: object
+          required: [sequence]
+          properties:
+            sequence:
+              type: integer
+              format: int64
+              description: The number of the line, for the next call's `after`.
+
+    # The events of the stream: each one's data is the JSON of its schema below.
+    EngineEvent:
+      type: object
+      required: [event, data]
+      properties:
+        event:
+          type: string
+        data:
+          type: string
+          contentMediaType: application/json
+        id:
+          type: string
+        retry:
+          type: integer
+          minimum: 0
+      oneOf:
+        - $ref: "#/components/schemas/StartedEvent"
+        - $ref: "#/components/schemas/StoppingEvent"
+        - $ref: "#/components/schemas/PreferencesChangedEvent"
+        - $ref: "#/components/schemas/LogEvent"
+        - $ref: "#/components/schemas/ServerConnectingEvent"
+        - $ref: "#/components/schemas/ServerConnectedEvent"
+        - $ref: "#/components/schemas/ServerDisconnectedEvent"
+        - $ref: "#/components/schemas/ServerMessageEvent"
+        - $ref: "#/components/schemas/ServerUpdatedEvent"
+        - $ref: "#/components/schemas/ServersChangedEvent"
+        - $ref: "#/components/schemas/SearchResultsEvent"
+        - $ref: "#/components/schemas/SearchEndedEvent"
+        - $ref: "#/components/schemas/DownloadAddedEvent"
+        - $ref: "#/components/schemas/DownloadProgressEvent"
+        - $ref: "#/components/schemas/DownloadCompletedEvent"
+        - $ref: "#/components/schemas/DownloadFailedEvent"
+        - $ref: "#/components/schemas/DownloadRemovedEvent"
+        - $ref: "#/components/schemas/DiskSpaceEvent"
+        - $ref: "#/components/schemas/MessageReceivedEvent"
+        - $ref: "#/components/schemas/CaptchaRequestedEvent"
+        - $ref: "#/components/schemas/CaptchaAnsweredEvent"
+        - $ref: "#/components/schemas/MessageFailedEvent"
+        - $ref: "#/components/schemas/LostEvent"
+    StartedEvent:
+      properties:
+        event:
+          const: started
+        data:
+          contentSchema:
+            type: object
+            required: [version]
+            properties:
+              version:
+                type: string
+    StoppingEvent:
+      properties:
+        event:
+          const: stopping
+        data:
+          contentSchema:
+            $ref: "#/components/schemas/NoData"
+    PreferencesChangedEvent:
+      description: The preferences changed; read them again through their own calls.
+      properties:
+        event:
+          const: preferences.changed
+        data:
+          contentSchema:
+            $ref: "#/components/schemas/NoData"
+    LogEvent:
+      properties:
+        event:
+          const: log
+        data:
+          contentSchema:
+            $ref: "#/components/schemas/LogLine"
+    ServerConnectingEvent:
+      properties:
+        event:
+          const: server.connecting
+        data:
+          contentSchema:
+            $ref: "#/components/schemas/ServerData"
+    ServerConnectedEvent:
+      properties:
+        event:
+          const: server.connected
+        data:
+          contentSchema:
+            allOf:
+              - $ref: "#/components/schemas/ServerData"
+              - type: object
+                required: [clientId, lowId, obfuscated]
+                properties:
+                  clientId:
+                    type: integer
+                    format: int64
+                  lowId:
+                    type: boolean
+                  obfuscated:
+                    type: boolean
+    ServerDisconnectedEvent:
+      properties:
+        event:
+          const: server.disconnected
+        data:
+          contentSchema:
+            type: object
+            required: [reason]
+            properties:
+              server:
+                $ref: "#/components/schemas/Server"
+              reason:
+                type: string
+    ServerMessageEvent:
+      properties:
+        event:
+          const: server.message
+        data:
+          contentSchema:
+            allOf:
+              - $ref: "#/components/schemas/ServerData"
+              - type: object
+                required: [text]
+                properties:
+                  text:
+                    type: string
+    ServerUpdatedEvent:
+      properties:
+        event:
+          const: server.updated
+        data:
+          contentSchema:
+            $ref: "#/components/schemas/ServerData"
+    ServersChangedEvent:
+      properties:
+        event:
+          const: servers.changed
+        data:
+          contentSchema:
+            type: object
+            required: [count]
+            properties:
+              count:
+                type: integer
+    SearchResultsEvent:
+      properties:
+        event:
+          const: search.results
+        data:
+          contentSchema:
+            type: object
+            required: [search, results]
+            properties:
+              search:
+                $ref: "#/components/schemas/SearchId"
+              results:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SearchResult"
+    SearchEndedEvent:
+      properties:
+        event:
+          const: search.ended
+        data:
+          contentSchema:
+            type: object
+            required: [search, results]
+            properties:
+              search:
+                $ref: "#/components/schemas/SearchId"
+              results:
+                type: integer
+    DownloadAddedEvent:
+      properties:
+        event:
+          const: download.added
+        data:
+          contentSchema:
+            $ref: "#/components/schemas/DownloadData"
+    DownloadProgressEvent:
+      properties:
+        event:
+          const: download.progress
+        data:
+          contentSchema:
+            $ref: "#/components/schemas/DownloadData"
+    DownloadCompletedEvent:
+      properties:
+        event:
+          const: download.completed
+        data:
+          contentSchema:
+            allOf:
+              - $ref: "#/components/schemas/DownloadData"
+              - type: object
+                required: [file]
+                properties:
+                  file:
+                    type: string
+                    description: Where the completed file is.
+    DownloadFailedEvent:
+      properties:
+        event:
+          const: download.failed
+        data:
+          contentSchema:
+            allOf:
+              - $ref: "#/components/schemas/DownloadData"
+              - type: object
+                required: [reason]
+                properties:
+                  reason:
+                    type: string
+    DownloadRemovedEvent:
+      properties:
+        event:
+          const: download.removed
+        data:
+          contentSchema:
+            type: object
+            required: [hash]
+            properties:
+              hash:
+                $ref: "#/components/schemas/Hash"
+    DiskSpaceEvent:
+      properties:
+        event:
+          const: disk.space
+        data:
+          contentSchema:
+            type: object
+            required: [directory, enough]
+            properties:
+              directory:
+                type: string
+              enough:
+                type: boolean
+    MessageReceivedEvent:
+      properties:
+        event:
+          const: message.received
+        data:
+          contentSchema:
+            type: object
+            required: [address, userHash, nick, text]
+            properties:
+              address:
+                type: string
+              userHash:
+                $ref: "#/components/schemas/Hash"
+              nick:
+                type: [string, "null"]
+              text:
+                type: string
+    CaptchaRequestedEvent:
+      properties:
+        event:
+          const: captcha.requested
+        data:
+          contentSchema:
+            type: object
+            required: [address, userHash]
+            properties:
+              address:
+                type: string
+              userHash:
+                $ref: "#/components/schemas/Hash"
+    CaptchaAnsweredEvent:
+      properties:
+        event:
+          const: captcha.answered
+        data:
+          contentSchema:
+            type: object
+            required: [address, solved]
+            properties:
+              address:
+                type: string
+              solved:
+                type: boolean
+    MessageFailedEvent:
+      properties:
+        event:
+          const: message.failed
+        data:
+          contentSchema:
+            type: object
+            required: [address, reason]
+            properties:
+              address:
+                type: string
+              reason:
+                type: string
+    LostEvent:
+      description: The caller fell too far behind; the stream ends after it.
+      properties:
+        event:
+          const: lost
+        data:
+          contentSchema:
+            $ref: "#/components/schemas/NoData"
+    NoData:
+      type: object
+      maxProperties: 0
+    ServerData:
+      type: object
+      required: [server]
+      properties:
+        server:
+          $ref: "#/components/schemas/Server"
+    DownloadData:
+      type: object
+      required: [download]
+      properties:
+        download:
+          $ref: "#/components/schemas/Download"

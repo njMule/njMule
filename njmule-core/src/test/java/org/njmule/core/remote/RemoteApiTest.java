@@ -226,6 +226,59 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldTellTheMethodsAPathTakes() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("DELETE", "/api/v1/limits", "");
+
+        thenTheStatusIs(405);
+        thenTheHeaderIs("Allow", "GET, PUT");
+    }
+
+    @Test
+    void shouldServeItsOpenApiDocument() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("GET", "/api/v1/openapi.yaml", "");
+
+        thenTheStatusIs(200);
+        thenTheHeaderIs("Content-Type", "application/yaml; charset=utf-8");
+        thenTheBodyContains("openapi: 3.2.0", "operationId: getStatus");
+    }
+
+    @Test
+    void shouldRefuseAParameterTheDocumentDoesNotAllow() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("GET", "/api/v1/downloads/talk", "");
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("Parameter hash does not follow the API");
+    }
+
+    @Test
+    void shouldRefuseABodyTheDocumentDoesNotAllow() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+
+        whenCalled("PUT", "/api/v1/limits", "{\"uploadKiBps\":\"fast\"}");
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("Body does not follow the API");
+        thenTheUploadLimitIs(Preferences.defaults().maxUploadKiBps());
+    }
+
+    @Test
+    void shouldRefuseAMissingBody() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("POST", "/api/v1/searches", "");
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("needs a JSON body");
+    }
+
+    @Test
     void shouldGiveTheResultsOfASearchItStarted() throws Exception {
         givenTheApiRuns();
         givenTheEngineSearchesAs(7);
@@ -411,6 +464,10 @@ class RemoteApiTest {
 
     private void thenTheStatusIs(int status) {
         assertThat(this.answer.statusCode()).as(this.answer.body()).isEqualTo(status);
+    }
+
+    private void thenTheHeaderIs(String name, String value) {
+        assertThat(this.answer.headers().firstValue(name)).hasValue(value);
     }
 
     private void thenTheAnswerAsksForABearerToken() {

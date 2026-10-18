@@ -4,6 +4,8 @@
 # To regenerate this file, run: ./gradlew :njmule-app:dependencies --write-locks
 ch.qos.logback:logback-classic:1.6.5=compileClasspath,nativeImageClasspath,nativeImageTestClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 ch.qos.logback:logback-core:1.6.5=compileClasspath,nativeImageClasspath,nativeImageTestClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.ethlo.time:itu:1.14.0=nativeImageClasspath,nativeImageTestClasspath,runtimeClasspath,testRuntimeClasspath
+com.fasterxml.jackson.core:jackson-annotations:2.22=nativeImageClasspath,nativeImageTestClasspath,runtimeClasspath,testRuntimeClasspath
 com.github.ben-manes.caffeine:caffeine:3.0.5=annotationProcessor,testAnnotationProcessor
 com.github.kevinstern:software-and-algorithms:1.0=annotationProcessor,testAnnotationProcessor
 com.github.spotbugs:spotbugs-annotations:4.10.5=spotbugs
@@ -28,6 +30,7 @@ com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava=anno
 com.google.j2objc:j2objc-annotations:3.1=annotationProcessor,checkstyle,compileClasspath,nativeImageClasspath,nativeImageTestClasspath,runtimeClasspath,testAnnotationProcessor,testCompileClasspath,testRuntimeClasspath
 com.google.protobuf:protobuf-java:4.33.2=annotationProcessor,testAnnotationProcessor
 com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0=spotbugsPlugins
+com.networknt:json-schema-validator:3.0.8=nativeImageClasspath,nativeImageTestClasspath,runtimeClasspath,testRuntimeClasspath
 com.puppycrawl.tools:checkstyle:14.3.0=checkstyle
 commons-beanutils:commons-beanutils:1.11.0=checkstyle
 commons-collections:commons-collections:3.2.2=checkstyle
@@ -90,7 +93,10 @@ org.slf4j:slf4j-api:2.0.17=spotbugsSlf4j
 org.slf4j:slf4j-api:2.0.20=compileClasspath,nativeImageClasspath,nativeImageTestClasspath,runtimeClasspath,spotbugs,testCompileClasspath,testRuntimeClasspath
 org.slf4j:slf4j-simple:2.0.17=spotbugsSlf4j
 org.slf4j:slf4j-simple:2.0.20=checkstyle
+org.snakeyaml:snakeyaml-engine:3.0.1=nativeImageClasspath,nativeImageTestClasspath,runtimeClasspath,testRuntimeClasspath
 org.xmlresolver:xmlresolver:5.3.3=checkstyle,spotbugs
 tools.jackson.core:jackson-core:3.2.3=nativeImageClasspath,nativeImageTestClasspath,runtimeClasspath,testRuntimeClasspath
+tools.jackson.core:jackson-databind:3.2.3=nativeImageClasspath,nativeImageTestClasspath,runtimeClasspath,testRuntimeClasspath
+tools.jackson.dataformat:jackson-dataformat-yaml:3.2.3=nativeImageClasspath,nativeImageTestClasspath,runtimeClasspath,testRuntimeClasspath
 tools.jackson:jackson-bom:3.2.3=nativeImageClasspath,nativeImageTestClasspath,runtimeClasspath,testRuntimeClasspath
 empty=

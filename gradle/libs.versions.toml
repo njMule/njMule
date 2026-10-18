@@ -7,6 +7,7 @@ java = "25"
 # Runtime dependencies
 slf4j = "2.0.20"
 jackson = "3.2.3"
+json-schema-validator = "3.0.8"
 jetty = "12.1.14"
 logback = "1.6.5"
 javafx = "27"
@@ -22,6 +23,7 @@ junit = "6.1.3"
 assertj = "3.27.7"
 jqwik = "1.10.2"
 jimfs = "1.3.2"
+openapi-parser = "2026.2"
 jmh = "1.37"
 
 # Build-time tools
@@ -38,6 +40,9 @@ jacoco = "0.8.15"
 [libraries]
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 jackson-core = { module = "tools.jackson.core:jackson-core", version.ref = "jackson" }
+jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-dataformat-yaml = { module = "tools.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
 jetty-bom = { module = "org.eclipse.jetty:jetty-bom", version.ref = "jetty" }
 jetty-client = { module = "org.eclipse.jetty:jetty-client" }
 jetty-server = { module = "org.eclipse.jetty:jetty-server" }
@@ -59,6 +64,8 @@ junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 jqwik = { module = "net.jqwik:jqwik", version.ref = "jqwik" }
 jimfs = { module = "com.google.jimfs:jimfs", version.ref = "jimfs" }
+openapi-parser = { module = "io.openapiprocessor:openapi-parser", version.ref = "openapi-parser" }
+openapi-parser-jackson = { module = "io.openapiprocessor:io-jackson3", version.ref = "openapi-parser" }
 jmh-core = { module = "org.openjdk.jmh:jmh-core", version.ref = "jmh" }
 jmh-generator = { module = "org.openjdk.jmh:jmh-generator-annprocess", version.ref = "jmh" }
 jsvg = { module = "com.github.weisj:jsvg", version.ref = "jsvg" }

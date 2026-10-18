@@ -311,6 +311,9 @@ All notable changes to this project are documented here. The format follows
   `njmule --remote <command>` drives a running njMule through it, here or on another computer
   (`--remote-url`, `NJMULE_API_TOKEN`), and `--api-token` / `--new-api-token` print or replace the
   token.
+- OpenAPI 3.2 description of the remote-control API, served at `/api/v1/openapi.yaml`: the API is
+  routed by its paths and operations, and checks every parameter and request body against its
+  schemas (JSON Schema 2020-12) before acting; the event stream is described item by item.
 - Web interface: Kad (state, connect, recheck firewall, bootstrap), shared files (with their
   upload priority) and log pages, and a layout for phones.
 - The desktop interface in German, Spanish, French, Dutch, Polish, Brazilian Portuguese, Russian

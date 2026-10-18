@@ -1,0 +1,234 @@
+/*
+ * njMule - Next generation Java Mule
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+ * the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program. If
+ * not, see <https://www.gnu.org/licenses/>.
+ */
+package org.njmule.core.remote;
+
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import org.njmule.core.api.BanInfo;
+import org.njmule.core.api.Category;
+import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.DownloadPriority;
+import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.Friend;
+import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadContactInfo;
+import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.KadSearchInfo;
+import org.njmule.core.api.LogLine;
+import org.njmule.core.api.PartMap;
+import org.njmule.core.api.SearchId;
+import org.njmule.core.api.SearchResult;
+import org.njmule.core.api.ServerAddress;
+import org.njmule.core.api.ServerInfo;
+import org.njmule.core.api.SharedDirectory;
+import org.njmule.core.api.SharedFileInfo;
+import org.njmule.core.api.SourceInfo;
+import org.njmule.core.api.UploadInfo;
+import org.njmule.core.api.UploadPriority;
+import org.njmule.core.config.Preferences;
+
+/** Records of the engine with every field set, as the API's answers and events carry them. */
+final class ApiSamples {
+
+    static final String HASH = "AB".repeat(16);
+    static final String USER = "CD".repeat(16);
+
+    private ApiSamples() {}
+
+    static ServerInfo server() {
+        return new ServerInfo(
+                "203.0.113.10:4661",
+                "Lighthouse",
+                "Stable",
+                412_345,
+                25_153_045,
+                454_300,
+                0,
+                ServerInfo.Priority.HIGH,
+                24,
+                28_864_150,
+                37_111_050,
+                82_469,
+                "17.15",
+                true,
+                false);
+    }
+
+    static KadInfo kad() {
+        return new KadInfo(
+                true,
+                1243,
+                873,
+                false,
+                "8F3C2A1D90B44E6E9A0C7E51D2B3F4A5",
+                "198.51.100.23",
+                4672,
+                false,
+                true,
+                KadInfo.Buddy.NONE);
+    }
+
+    /** A status connected to a server and to Kad, or to neither. */
+    static EngineStatus status(boolean connected) {
+        return new EngineStatus(
+                connected ? Optional.of(server()) : Optional.empty(),
+                0x17643C6AL,
+                false,
+                true,
+                connected ? Optional.of(kad()) : Optional.empty(),
+                1_322_500,
+                98_100,
+                2_576_980_378L,
+                640_942_080L,
+                11,
+                3,
+                7,
+                26,
+                442_381_959_168L,
+                308_163_100_672L,
+                214,
+                3 * 3600 + 42 * 60,
+                1_911L * 3600,
+                "198.51.100.23",
+                4662,
+                true);
+    }
+
+    static DownloadInfo download() {
+        return new DownloadInfo(
+                Hash16.parseHex(HASH),
+                "talk.bin",
+                5000,
+                1200,
+                DownloadInfo.Status.DOWNLOADING,
+                DownloadPriority.HIGH,
+                1,
+                4,
+                2,
+                30_000,
+                PartMap.EMPTY);
+    }
+
+    static SourceInfo source() {
+        return new SourceInfo(
+                Hash16.parseHex(HASH),
+                "talk.bin",
+                "198.51.100.7:4662",
+                Optional.of("someone"),
+                "eMule v0.70b",
+                SourceInfo.State.QUEUED,
+                12,
+                0,
+                3,
+                1,
+                Optional.empty(),
+                "",
+                Optional.of("talk (1).bin"));
+    }
+
+    static UploadInfo upload() {
+        return new UploadInfo(
+                "198.51.100.8:4662",
+                Hash16.parseHex(USER),
+                Optional.empty(),
+                "aMule 2.3.3",
+                "talk.bin",
+                UploadInfo.State.UPLOADING,
+                1_048_576,
+                20_000,
+                95);
+    }
+
+    static SharedFileInfo shared() {
+        return new SharedFileInfo(
+                Hash16.parseHex(HASH), "talk.bin", 5000, Path.of("shared", "talk.bin"), UploadPriority.VERY_LOW);
+    }
+
+    static SharedDirectory directory() {
+        return new SharedDirectory(Path.of("shared"), true);
+    }
+
+    static SearchResult result() {
+        return new SearchResult(
+                Hash16.parseHex(HASH),
+                "talk.bin",
+                5000,
+                3,
+                -1,
+                Optional.of("Pro"),
+                SearchResult.Media.NONE,
+                SearchResult.Origin.NONE,
+                70,
+                Optional.empty(),
+                List.of(new SearchResult.Name("talk.bin", 2, 1), new SearchResult.Name("talk (2).bin", 1, -1)));
+    }
+
+    static Category category() {
+        return new Category(
+                1, "Talks", Optional.of(Path.of("talks").toAbsolutePath()), "", 0, DownloadPriority.AUTO, "", false);
+    }
+
+    static Friend friend() {
+        return new Friend(Hash16.parseHex(USER), "Ann", Optional.of(ServerAddress.parse("198.51.100.9:4662")));
+    }
+
+    static BanInfo ban() {
+        return new BanInfo("192.0.2.200", 5400);
+    }
+
+    static KadContactInfo kadContact() {
+        return new KadContactInfo("8F3C2A1D90B44E6E9A0C7E51D2B3F4A5", "198.51.100.40:4672", 2, "8F3C2A1D…", 9, true);
+    }
+
+    static KadSearchInfo kadSearch() {
+        return new KadSearchInfo("debian", KadSearchInfo.Kind.STORE_KEYWORD, 37);
+    }
+
+    static LogLine logLine() {
+        return new LogLine(Instant.parse("2026-10-18T08:00:00Z"), LogLine.Level.SUCCESS, "Connected");
+    }
+
+    /** One event of every kind the engine announces. */
+    static List<EngineEvent> events() {
+        return List.of(
+                new EngineEvent.Started("0.1.0"),
+                new EngineEvent.Stopping(),
+                new EngineEvent.PreferencesChanged(Preferences.defaults()),
+                new EngineEvent.Log(logLine()),
+                new EngineEvent.ServerConnecting(server()),
+                new EngineEvent.ServerConnected(server(), 0x17643C6AL, false, true),
+                new EngineEvent.ServerDisconnected(Optional.of(server()), "closed"),
+                new EngineEvent.ServerMessage(server(), "Welcome"),
+                new EngineEvent.ServerUpdated(server()),
+                new EngineEvent.ServersChanged(14),
+                new EngineEvent.SearchResults(new SearchId(7), List.of(result())),
+                new EngineEvent.SearchEnded(new SearchId(7), 1),
+                new EngineEvent.DownloadAdded(download()),
+                new EngineEvent.DownloadProgress(download()),
+                new EngineEvent.DownloadCompleted(download(), Path.of("incoming", "talk.bin")),
+                new EngineEvent.DownloadFailed(download(), "disk full"),
+                new EngineEvent.DownloadRemoved(Hash16.parseHex(HASH)),
+                new EngineEvent.DiskSpace(Path.of("temp"), false),
+                new EngineEvent.MessageReceived("198.51.100.9:4662", Hash16.parseHex(USER), Optional.empty(), "hi"),
+                new EngineEvent.CaptchaRequested("198.51.100.9:4662", Hash16.parseHex(USER), new byte[] {1, 2}),
+                new EngineEvent.CaptchaAnswered("198.51.100.9:4662", true),
+                new EngineEvent.MessageFailed("198.51.100.9:4662", "no connection"));
+    }
+}

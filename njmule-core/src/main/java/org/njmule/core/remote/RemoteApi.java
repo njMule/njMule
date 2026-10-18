@@ -16,6 +16,8 @@
  */
 package org.njmule.core.remote;
 
+import static java.util.Map.entry;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -27,11 +29,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -53,11 +56,14 @@ import org.njmule.core.config.Preferences;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JsonGenerator;
+import tools.jackson.databind.JsonNode;
 
 /**
- * The remote-control API under {@value #PREFIX}: JSON over HTTP for callers that send the API token as a bearer token,
- * and the engine's events as server-sent events. It uses no cookie, so other sites' pages cannot act through a browser;
- * the host's {@link Guard} slows down addresses that send wrong tokens. The host serves it on its own HTTP server.
+ * The remote-control API under {@value #PREFIX}, as its OpenAPI document {@code openapi.yaml} describes it: JSON over
+ * HTTP for callers that send the API token as a bearer token, and the engine's events as server-sent events. Requests
+ * are routed by the document's paths to the handler of each operation, after their parameters and bodies passed the
+ * document's schemas. It uses no cookie, so other sites' pages cannot act through a browser; the host's {@link Guard}
+ * slows down addresses that send wrong tokens. The host serves it on its own HTTP server.
  */
 public final class RemoteApi implements AutoCloseable {
 
@@ -71,13 +77,12 @@ public final class RemoteApi implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(RemoteApi.class);
     private static final String JSON = "application/json; charset=utf-8";
-    private static final String GET = "GET";
-    private static final String POST = "POST";
-    private static final String PUT = "PUT";
-    private static final String DELETE = "DELETE";
+    private static final String YAML = "application/yaml; charset=utf-8";
     private static final String HASH = "hash";
     private static final String ADDRESS = "address";
     private static final String PRIORITY = "priority";
+    private static final String CATEGORY = "category";
+    private static final String URL = "url";
     private static final long ENGINE_WAIT_SECONDS = 10;
 
     private final NjMuleEngine engine;
@@ -87,6 +92,8 @@ public final class RemoteApi implements AutoCloseable {
     private final RecentLog log;
     private final EventStreams streams;
     private final Optional<Runnable> exit;
+    private final ApiSpecification specification;
+    private final Map<String, Handler> handlers;
 
     /** Decides whether a client that sent a wrong or no token may try again now. */
     @FunctionalInterface
@@ -113,6 +120,19 @@ public final class RemoteApi implements AutoCloseable {
         this.log = recent.log();
         this.streams = new EventStreams(engine, heartbeat);
         this.exit = exit;
+        this.specification = Shipped.SPECIFICATION;
+        this.handlers = handlers();
+        if (!this.handlers.keySet().equals(this.specification.operations().keySet())) {
+            throw new IllegalStateException("operations without a handler or handlers without an operation: "
+                    + difference(
+                            this.handlers.keySet(),
+                            this.specification.operations().keySet()));
+        }
+    }
+
+    // Parsed once: every instance serves the same document.
+    private static final class Shipped {
+        static final ApiSpecification SPECIFICATION = ApiSpecification.load();
     }
 
     /** A request that cannot be answered as asked; the message is meant for the caller. */
@@ -125,6 +145,84 @@ public final class RemoteApi implements AutoCloseable {
             super(message);
             this.status = status;
         }
+    }
+
+    /** A request matched to an operation, with its parameters and body checked against the document. */
+    private record Call(Exchange exchange, Map<String, JsonNode> parameters, JsonNode body) {}
+
+    @FunctionalInterface
+    private interface Handler {
+        void handle(Call call) throws IOException;
+    }
+
+    // One handler for each operationId of the document.
+    private Map<String, Handler> handlers() {
+        return Map.ofEntries(
+                entry("getApi", this::getApi),
+                entry("getSpecification", c -> send(c.exchange(), 200, YAML, this.specification.yaml())),
+                entry("getStatus", this::getStatus),
+                entry("getLimits", c -> limits(c, this.engine.preferences())),
+                entry("setLimits", this::setLimits),
+                entry("updateIpFilter", c -> count(c, this.engine.updateIpFilter(url(c)))),
+                entry("getLog", this::getLog),
+                entry("streamEvents", this::streamEvents),
+                entry("shutdown", this::shutdown),
+                entry("listDownloads", c -> list(c, this.engine::downloads, ApiJson::download)),
+                entry("addDownloads", this::addDownloads),
+                entry("getDownload", c -> download(c, 200)),
+                entry("cancelDownload", c -> known(c, this.engine.cancelDownload(hash(c)))),
+                entry("pauseDownload", c -> changed(c, this.engine.pauseDownload(hash(c)))),
+                entry("resumeDownload", c -> changed(c, this.engine.resumeDownload(hash(c)))),
+                entry("stopDownload", c -> changed(c, this.engine.stopDownload(hash(c)))),
+                entry(
+                        "setDownloadPriority",
+                        c -> changed(
+                                c,
+                                this.engine.setDownloadPriority(
+                                        hash(c), enumValue(DownloadPriority.class, text(c.body(), PRIORITY))))),
+                entry(
+                        "setDownloadCategory",
+                        c -> changed(c, this.engine.setDownloadCategory(hash(c), number(c.body(), CATEGORY)))),
+                entry("renameDownload", c -> changed(c, this.engine.renameDownload(hash(c), text(c.body(), "name")))),
+                entry(
+                        "addDownloadSource",
+                        c -> changed(c, this.engine.addSource(hash(c), address(text(c.body(), ADDRESS))))),
+                entry("listSources", c -> list(c, this.engine::sources, ApiJson::source)),
+                entry("listUploads", c -> list(c, this.engine::uploads, ApiJson::upload)),
+                entry("listSharedFiles", c -> list(c, this.engine::sharedFiles, ApiJson::shared)),
+                entry("listSharedDirectories", c -> list(c, this.engine::sharedDirectories, ApiJson::directory)),
+                entry(
+                        "setUploadPriority",
+                        c -> known(
+                                c,
+                                this.engine.setUploadPriority(
+                                        hash(c), enumValue(UploadPriority.class, text(c.body(), PRIORITY))))),
+                entry("listServers", c -> list(c, this.engine::servers, ApiJson::server)),
+                entry("addServer", this::addServer),
+                entry("connectServer", this::connectServer),
+                entry("disconnectServer", c -> done(c, this.engine.disconnect())),
+                entry("importServers", c -> count(c, this.engine.addServers(url(c)))),
+                entry("removeServer", c -> known(c, this.engine.removeServer(address(text(c.parameters(), ADDRESS))))),
+                entry("getKad", this::getKad),
+                entry("listKadContacts", c -> list(c, this.engine::kadContacts, ApiJson::kadContact)),
+                entry("listKadSearches", c -> list(c, this.engine::kadSearches, ApiJson::kadSearch)),
+                entry("connectKad", c -> done(c, this.engine.connectKad())),
+                entry("disconnectKad", c -> done(c, this.engine.disconnectKad())),
+                entry("recheckKadFirewall", c -> allowed(c, this.engine.recheckKadFirewall(), "Kad is not connected.")),
+                entry("bootstrapKad", c -> done(c, this.engine.kadBootstrap(address(text(c.body(), ADDRESS))))),
+                entry("importKadNodes", c -> count(c, this.engine.addKadContacts(url(c)))),
+                entry("startSearch", this::startSearch),
+                entry("getSearchResults", this::getSearchResults),
+                entry("stopSearch", this::stopSearch),
+                entry("moreSearchResults", this::moreSearchResults),
+                entry("downloadSearchResult", this::downloadSearchResult),
+                entry("listCategories", c -> list(c, this.engine::categories, ApiJson::category)),
+                entry("listFriends", c -> list(c, this.engine::friends, ApiJson::friend)),
+                entry(
+                        "sendMessage",
+                        c -> done(c, this.engine.sendMessage(address(text(c.body(), "to")), text(c.body(), "text")))),
+                entry("listBans", c -> list(c, this.engine::bans, ApiJson::ban)),
+                entry("unban", c -> known(c, this.engine.unban(text(c.parameters(), ADDRESS)))));
     }
 
     /** Answers a request whose path starts with {@value #PREFIX}. */
@@ -141,44 +239,26 @@ public final class RemoteApi implements AutoCloseable {
         }
     }
 
+    /** Ends the open event streams; the host stops its server afterwards. */
+    @Override
+    public void close() {
+        this.streams.close();
+    }
+
     // No Host check: browsers never send the token by themselves, so a page reaching us through DNS rebinding cannot
     // act, and other computers may use any name of this one.
     private void route(Exchange exchange) throws IOException {
         authorize(exchange);
-        String method = exchange.method();
-        List<String> path = segments(exchange.rawPath());
-        if (path.isEmpty()) {
-            only(method, GET);
-            reply(exchange, 200, g -> {
-                g.writeStartObject();
-                g.writeStringProperty("name", NjMuleInfo.NAME);
-                g.writeStringProperty("version", NjMuleInfo.version());
-                g.writeNumberProperty("api", VERSION);
-                g.writeEndObject();
-            });
-            return;
-        }
-        List<String> rest = path.subList(1, path.size());
-        switch (path.getFirst()) {
-            case "status" -> status(exchange, method, rest);
-            case "downloads" -> downloads(exchange, method, rest);
-            case "sources" -> list(exchange, method, rest, this.engine::sources, ApiJson::source);
-            case "uploads" -> list(exchange, method, rest, this.engine::uploads, ApiJson::upload);
-            case "shared" -> shared(exchange, method, rest);
-            case "servers" -> servers(exchange, method, rest);
-            case "kad" -> kad(exchange, method, rest);
-            case "searches" -> searches(exchange, method, rest);
-            case "categories" -> list(exchange, method, rest, this.engine::categories, ApiJson::category);
-            case "friends" -> list(exchange, method, rest, this.engine::friends, ApiJson::friend);
-            case "messages" -> messages(exchange, method, rest);
-            case "bans" -> bans(exchange, method, rest);
-            case "limits" -> limits(exchange, method, rest);
-            case "ipfilter" -> ipFilter(exchange, method, rest);
-            case "log" -> log(exchange, method, rest);
-            case "events" -> events(exchange, method, rest);
-            case "shutdown" -> shutdown(exchange, method, rest);
-            default -> throw notFound();
-        }
+        List<String> segments = segments(exchange.rawPath());
+        ApiSpecification.Route route = this.specification.route(segments).orElseThrow(RemoteApi::notFound);
+        ApiSpecification.Operation operation = route.operation(exchange.method())
+                .orElseThrow(() -> {
+                    exchange.setHeader("Allow", route.allowed());
+                    return new Failure(405, "Method not allowed.");
+                });
+        Map<String, JsonNode> parameters = operation.arguments(route.values(segments), exchange.query());
+        JsonNode body = operation.body().isPresent() ? operation.body(read(exchange)) : null;
+        this.handlers.get(operation.id()).handle(new Call(exchange, parameters, body));
     }
 
     private void authorize(Exchange exchange) {
@@ -207,106 +287,89 @@ public final class RemoteApi implements AutoCloseable {
         throw new Failure(401, given == null ? "Send the API token as a bearer token." : "Wrong token.");
     }
 
-    private void status(Exchange exchange, String method, List<String> rest) throws IOException {
-        noMore(rest);
-        only(method, GET);
+    // Operations.
+
+    private void getApi(Call c) throws IOException {
+        reply(c.exchange(), 200, g -> {
+            g.writeStartObject();
+            g.writeStringProperty("name", NjMuleInfo.NAME);
+            g.writeStringProperty("version", NjMuleInfo.version());
+            g.writeNumberProperty("api", VERSION);
+            g.writeEndObject();
+        });
+    }
+
+    private void getStatus(Call c) throws IOException {
         var status = await(this.engine.status());
-        reply(exchange, 200, g -> ApiJson.status(g, status));
+        reply(c.exchange(), 200, g -> ApiJson.status(g, status));
     }
 
-    private <T> void list(
-            Exchange exchange,
-            String method,
-            List<String> rest,
-            Supplier<CompletableFuture<List<T>>> items,
-            ApiJson.Writer<T> each)
-            throws IOException {
-        noMore(rest);
-        only(method, GET);
-        List<T> all = await(items.get());
-        reply(exchange, 200, g -> ApiJson.array(g, all, each));
-    }
-
-    private void downloads(Exchange exchange, String method, List<String> rest) throws IOException {
-        if (rest.isEmpty()) {
-            switch (method) {
-                case GET -> list(exchange, method, rest, this.engine::downloads, ApiJson::download);
-                case POST -> addDownloads(exchange);
-                default -> throw notAllowed();
+    private void setLimits(Call c) throws IOException {
+        JsonNode body = c.body();
+        Preferences now = await(this.engine.updatePreferences(p -> {
+            Preferences.Builder b = p.toBuilder();
+            if (body.has("uploadKiBps")) {
+                b.maxUploadKiBps(number(body, "uploadKiBps"));
             }
-            return;
+            if (body.has("downloadKiBps")) {
+                b.maxDownloadKiBps(number(body, "downloadKiBps"));
+            }
+            return b.build();
+        }));
+        limits(c, now);
+    }
+
+    private void limits(Call c, Preferences now) throws IOException {
+        reply(c.exchange(), 200, g -> {
+            g.writeStartObject();
+            g.writeNumberProperty("uploadKiBps", now.maxUploadKiBps());
+            g.writeNumberProperty("downloadKiBps", now.maxDownloadKiBps());
+            g.writeEndObject();
+        });
+    }
+
+    private void getLog(Call c) throws IOException {
+        JsonNode after = c.parameters().get("after");
+        List<RecentLog.Entry> lines = this.log.after(after == null ? 0 : after.asLong());
+        reply(c.exchange(), 200, g -> ApiJson.array(g, lines, (w, e) -> ApiJson.log(w, e.sequence(), e.line())));
+    }
+
+    private void streamEvents(Call c) throws IOException {
+        List<String> wanted = new ArrayList<>();
+        JsonNode types = c.parameters().get("types");
+        if (types != null) {
+            types.values().forEach(t -> wanted.add(t.asString()));
         }
-        Hash16 file = hash(rest.getFirst());
-        if (rest.size() == 1) {
-            switch (method) {
-                case GET -> {
-                    DownloadInfo d = download(file);
-                    reply(exchange, 200, g -> ApiJson.download(g, d));
-                }
-                case DELETE -> {
-                    known(await(this.engine.cancelDownload(file)));
-                    done(exchange);
-                }
-                default -> throw notAllowed();
-            }
-            return;
+        if (!this.streams.serve(c.exchange(), wanted)) {
+            throw new Failure(503, "Too many event streams.");
         }
-        noMore(rest.subList(2, rest.size()));
-        Map<String, Object> body = body(exchange);
-        boolean known = switch (rest.get(1)) {
-            case "pause" -> action(method, () -> this.engine.pauseDownload(file));
-            case "resume" -> action(method, () -> this.engine.resumeDownload(file));
-            case "stop" -> action(method, () -> this.engine.stopDownload(file));
-            case PRIORITY -> {
-                only(method, PUT);
-                yield await(
-                        this.engine.setDownloadPriority(file, enumValue(DownloadPriority.class, text(body, PRIORITY))));
-            }
-            case "category" -> {
-                only(method, PUT);
-                yield await(this.engine.setDownloadCategory(file, (int) number(body, "category")));
-            }
-            case "name" -> {
-                only(method, PUT);
-                yield await(this.engine.renameDownload(file, text(body, "name")));
-            }
-            case "sources" -> {
-                only(method, POST);
-                yield await(this.engine.addSource(file, address(text(body, ADDRESS))));
-            }
-            default -> throw notFound();
-        };
-        known(known);
-        DownloadInfo d = download(file);
-        reply(exchange, 200, g -> ApiJson.download(g, d));
     }
 
-    private boolean action(String method, Supplier<CompletableFuture<Boolean>> work) {
-        only(method, POST);
-        return await(work.get());
+    private void shutdown(Call c) throws IOException {
+        Runnable stop = this.exit.orElseThrow(() -> new Failure(501, "This njMule cannot be stopped from here."));
+        ok(c.exchange(), 202);
+        logger.info("Exiting as the remote-control API asked");
+        // Out of the server's threads, which the exit stops.
+        Thread.ofVirtual().name("njmule-api-exit").start(stop);
     }
 
-    private DownloadInfo download(Hash16 hash) {
-        return await(this.engine.downloads()).stream()
-                .filter(d -> d.hash().equals(hash))
-                .findFirst()
-                .orElseThrow(RemoteApi::notFound);
-    }
-
-    private void addDownloads(Exchange exchange) throws IOException {
-        Map<String, Object> body = body(exchange);
+    private void addDownloads(Call c) throws IOException {
+        JsonNode given = c.body().get("links");
+        List<String> texts = new ArrayList<>();
+        if (given.isArray()) {
+            given.values().forEach(l -> texts.add(l.asString()));
+        } else {
+            texts.add(given.asString());
+        }
         List<Ed2kLink.FileLink> links = new ArrayList<>();
-        for (String text : strings(body, "links")) {
+        for (String text : texts) {
             if (!(Ed2kLink.tryParse(text.strip()).orElse(null) instanceof Ed2kLink.FileLink link)) {
                 throw new Failure(400, "Not an eD2K file link: " + text);
             }
             links.add(link);
         }
-        if (links.isEmpty()) {
-            throw new Failure(400, "No links.");
-        }
         Optional<Integer> category =
-                body.get("category") == null ? Optional.empty() : Optional.of((int) number(body, "category"));
+                c.body().has(CATEGORY) ? Optional.of(number(c.body(), CATEGORY)) : Optional.empty();
         List<DownloadInfo> added = new ArrayList<>();
         for (Ed2kLink.FileLink link : links) {
             DownloadInfo d = await(this.engine.addDownload(link));
@@ -315,180 +378,84 @@ public final class RemoteApi implements AutoCloseable {
             }
             added.add(d);
         }
-        reply(exchange, 201, g -> ApiJson.array(g, added, ApiJson::download));
+        reply(c.exchange(), 201, g -> ApiJson.array(g, added, ApiJson::download));
     }
 
-    private void shared(Exchange exchange, String method, List<String> rest) throws IOException {
-        if (rest.isEmpty()) {
-            list(exchange, method, rest, this.engine::sharedFiles, ApiJson::shared);
-            return;
+    private void addServer(Call c) throws IOException {
+        if (!await(this.engine.addServer(address(text(c.body(), ADDRESS))))) {
+            throw new Failure(409, "That server is known already.");
         }
-        if (rest.equals(List.of("directories"))) {
-            list(exchange, method, List.of(), this.engine::sharedDirectories, ApiJson::directory);
-            return;
-        }
-        if (rest.size() != 2 || !rest.get(1).equals(PRIORITY)) {
-            throw notFound();
-        }
-        only(method, PUT);
-        Hash16 hash = hash(rest.getFirst());
-        Map<String, Object> body = body(exchange);
-        known(await(this.engine.setUploadPriority(hash, enumValue(UploadPriority.class, text(body, PRIORITY)))));
-        done(exchange);
+        ok(c.exchange(), 201);
     }
 
-    private void servers(Exchange exchange, String method, List<String> rest) throws IOException {
-        if (rest.isEmpty()) {
-            switch (method) {
-                case GET -> list(exchange, method, rest, this.engine::servers, ApiJson::server);
-                case POST -> {
-                    ServerAddress server = address(text(body(exchange), ADDRESS));
-                    if (!await(this.engine.addServer(server))) {
-                        throw new Failure(409, "That server is known already.");
-                    }
-                    done(exchange, 201);
-                }
-                default -> throw notAllowed();
-            }
-            return;
-        }
-        noMore(rest.subList(1, rest.size()));
-        switch (rest.getFirst()) {
-            case "connect" -> {
-                only(method, POST);
-                Object address = body(exchange).get(ADDRESS);
-                await(this.engine.connect(
-                        address == null ? Optional.empty() : Optional.of(address(String.valueOf(address)))));
-                done(exchange);
-            }
-            case "disconnect" -> {
-                only(method, POST);
-                await(this.engine.disconnect());
-                done(exchange);
-            }
-            case "import" -> {
-                only(method, POST);
-                int added = await(this.engine.addServers(url(text(body(exchange), "url"))));
-                count(exchange, added);
-            }
-            default -> {
-                only(method, DELETE);
-                known(await(this.engine.removeServer(address(rest.getFirst()))));
-                done(exchange);
-            }
-        }
+    private void connectServer(Call c) throws IOException {
+        Optional<ServerAddress> server =
+                c.body().has(ADDRESS) ? Optional.of(address(text(c.body(), ADDRESS))) : Optional.empty();
+        done(c, this.engine.connect(server));
     }
 
-    private void kad(Exchange exchange, String method, List<String> rest) throws IOException {
-        if (rest.isEmpty()) {
-            only(method, GET);
-            var kad = await(this.engine.kad());
-            reply(exchange, 200, g -> {
-                if (kad.isPresent()) {
-                    ApiJson.kad(g, kad.get());
-                } else {
-                    g.writeNull();
-                }
-            });
-            return;
-        }
-        noMore(rest.subList(1, rest.size()));
-        switch (rest.getFirst()) {
-            case "contacts" -> list(exchange, method, List.of(), this.engine::kadContacts, ApiJson::kadContact);
-            case "searches" -> list(exchange, method, List.of(), this.engine::kadSearches, ApiJson::kadSearch);
-            case "connect" -> {
-                only(method, POST);
-                await(this.engine.connectKad());
-                done(exchange);
+    private void getKad(Call c) throws IOException {
+        var kad = await(this.engine.kad());
+        reply(c.exchange(), 200, g -> {
+            if (kad.isPresent()) {
+                ApiJson.kad(g, kad.get());
+            } else {
+                g.writeNull();
             }
-            case "disconnect" -> {
-                only(method, POST);
-                await(this.engine.disconnectKad());
-                done(exchange);
-            }
-            case "recheck" -> {
-                only(method, POST);
-                if (!await(this.engine.recheckKadFirewall())) {
-                    throw new Failure(409, "Kad is not connected.");
-                }
-                done(exchange);
-            }
-            case "bootstrap" -> {
-                only(method, POST);
-                await(this.engine.kadBootstrap(address(text(body(exchange), ADDRESS))));
-                done(exchange);
-            }
-            case "nodes" -> {
-                only(method, POST);
-                count(exchange, await(this.engine.addKadContacts(url(text(body(exchange), "url")))));
-            }
-            default -> throw notFound();
-        }
+        });
     }
 
-    private void searches(Exchange exchange, String method, List<String> rest) throws IOException {
-        if (rest.isEmpty()) {
-            only(method, POST);
-            Map<String, Object> body = body(exchange);
-            String expression = text(body, "query").strip();
-            SearchRequest.checkExpression(expression);
-            SearchRequest.Scope scope = body.get("scope") == null
-                    ? SearchRequest.Scope.SERVER
-                    : enumValue(SearchRequest.Scope.class, text(body, "scope"));
-            SearchId id = await(this.engine.search(new SearchRequest(expression, scope)));
-            this.searches.started(id.value());
-            reply(exchange, 201, g -> {
-                g.writeStartObject();
-                g.writeNumberProperty("id", id.value());
-                g.writeEndObject();
-            });
-            return;
-        }
-        long id = searchId(rest.getFirst());
-        if (rest.size() == 1) {
-            switch (method) {
-                case GET -> {
-                    List<SearchResult> found = this.searches.results(id).orElseThrow(RemoteApi::notFound);
-                    found.sort((a, b) -> Integer.compare(b.sources(), a.sources()));
-                    reply(exchange, 200, g -> {
-                        g.writeStartObject();
-                        g.writeNumberProperty("id", id);
-                        g.writeName("results");
-                        ApiJson.array(g, found, ApiJson::result);
-                        g.writeEndObject();
-                    });
-                }
-                case DELETE -> {
-                    searchKnown(id);
-                    await(this.engine.stopSearch(new SearchId(id)));
-                    this.searches.forget(id);
-                    done(exchange);
-                }
-                default -> throw notAllowed();
-            }
-            return;
-        }
-        noMore(rest.subList(2, rest.size()));
+    private void startSearch(Call c) throws IOException {
+        String expression = text(c.body(), "query").strip();
+        SearchRequest.checkExpression(expression);
+        SearchRequest.Scope scope = c.body().has("scope")
+                ? enumValue(SearchRequest.Scope.class, text(c.body(), "scope"))
+                : SearchRequest.Scope.SERVER;
+        SearchId id = await(this.engine.search(new SearchRequest(expression, scope)));
+        this.searches.started(id.value());
+        reply(c.exchange(), 201, g -> {
+            g.writeStartObject();
+            g.writeNumberProperty("id", id.value());
+            g.writeEndObject();
+        });
+    }
+
+    private void getSearchResults(Call c) throws IOException {
+        long id = searchId(c);
+        List<SearchResult> found = this.searches.results(id).orElseThrow(RemoteApi::notFound);
+        found.sort((a, b) -> Integer.compare(b.sources(), a.sources()));
+        reply(c.exchange(), 200, g -> {
+            g.writeStartObject();
+            g.writeNumberProperty("id", id);
+            g.writeName("results");
+            ApiJson.array(g, found, ApiJson::result);
+            g.writeEndObject();
+        });
+    }
+
+    private void stopSearch(Call c) throws IOException {
+        long id = searchId(c);
         searchKnown(id);
-        switch (rest.get(1)) {
-            case "more" -> {
-                only(method, POST);
-                if (!await(this.engine.moreResults(new SearchId(id)))) {
-                    throw new Failure(409, "That search cannot get more results.");
-                }
-                done(exchange);
-            }
-            case "download" -> {
-                only(method, POST);
-                Hash16 hash = hash(text(body(exchange), HASH));
-                SearchResult result = this.searches
-                        .result(id, hash)
-                        .orElseThrow(() -> new Failure(404, "That result is gone: search again."));
-                DownloadInfo d = await(this.engine.addDownload(result.link()));
-                reply(exchange, 201, g -> ApiJson.download(g, d));
-            }
-            default -> throw notFound();
-        }
+        await(this.engine.stopSearch(new SearchId(id)));
+        this.searches.forget(id);
+        ok(c.exchange(), 200);
+    }
+
+    private void moreSearchResults(Call c) throws IOException {
+        long id = searchId(c);
+        searchKnown(id);
+        allowed(c, this.engine.moreResults(new SearchId(id)), "That search cannot get more results.");
+    }
+
+    private void downloadSearchResult(Call c) throws IOException {
+        long id = searchId(c);
+        searchKnown(id);
+        Hash16 hash = hash(text(c.body(), HASH));
+        SearchResult result = this.searches
+                .result(id, hash)
+                .orElseThrow(() -> new Failure(404, "That result is gone: search again."));
+        DownloadInfo d = await(this.engine.addDownload(result.link()));
+        reply(c.exchange(), 201, g -> ApiJson.download(g, d));
     }
 
     private void searchKnown(long id) {
@@ -497,144 +464,93 @@ public final class RemoteApi implements AutoCloseable {
         }
     }
 
-    private void messages(Exchange exchange, String method, List<String> rest) throws IOException {
-        noMore(rest);
-        only(method, POST);
-        Map<String, Object> body = body(exchange);
-        await(this.engine.sendMessage(address(text(body, "to")), text(body, "text")));
-        done(exchange);
+    // Answers shared by the operations.
+
+    private <T> void list(Call c, Supplier<CompletableFuture<List<T>>> items, ApiJson.Writer<T> each)
+            throws IOException {
+        List<T> all = await(items.get());
+        reply(c.exchange(), 200, g -> ApiJson.array(g, all, each));
     }
 
-    private void bans(Exchange exchange, String method, List<String> rest) throws IOException {
-        if (rest.isEmpty()) {
-            list(exchange, method, rest, this.engine::bans, ApiJson::ban);
-            return;
+    private void download(Call c, int status) throws IOException {
+        Hash16 hash = hash(c);
+        DownloadInfo d = await(this.engine.downloads()).stream()
+                .filter(i -> i.hash().equals(hash))
+                .findFirst()
+                .orElseThrow(RemoteApi::notFound);
+        reply(c.exchange(), status, g -> ApiJson.download(g, d));
+    }
+
+    // A change to a download: unknown ones are not found, the others are answered as they are now.
+    private void changed(Call c, CompletableFuture<Boolean> change) throws IOException {
+        if (!await(change)) {
+            throw notFound();
         }
-        noMore(rest.subList(1, rest.size()));
-        only(method, DELETE);
-        known(await(this.engine.unban(rest.getFirst())));
-        done(exchange);
+        download(c, 200);
     }
 
-    private void limits(Exchange exchange, String method, List<String> rest) throws IOException {
-        noMore(rest);
-        Preferences now = switch (method) {
-            case GET -> this.engine.preferences();
-            case PUT -> {
-                Map<String, Object> body = body(exchange);
-                yield await(this.engine.updatePreferences(p -> {
-                    Preferences.Builder b = p.toBuilder();
-                    if (body.get("uploadKiBps") != null) {
-                        b.maxUploadKiBps(rate(body, "uploadKiBps"));
-                    }
-                    if (body.get("downloadKiBps") != null) {
-                        b.maxDownloadKiBps(rate(body, "downloadKiBps"));
-                    }
-                    return b.build();
-                }));
-            }
-            default -> throw notAllowed();
-        };
-        reply(exchange, 200, g -> {
+    private void known(Call c, CompletableFuture<Boolean> work) throws IOException {
+        if (!await(work)) {
+            throw notFound();
+        }
+        ok(c.exchange(), 200);
+    }
+
+    private void allowed(Call c, CompletableFuture<Boolean> work, String refusal) throws IOException {
+        if (!await(work)) {
+            throw new Failure(409, refusal);
+        }
+        ok(c.exchange(), 200);
+    }
+
+    private void done(Call c, CompletableFuture<?> work) throws IOException {
+        await(work);
+        ok(c.exchange(), 200);
+    }
+
+    private void count(Call c, CompletableFuture<Integer> work) throws IOException {
+        int added = await(work);
+        reply(c.exchange(), 200, g -> {
             g.writeStartObject();
-            g.writeNumberProperty("uploadKiBps", now.maxUploadKiBps());
-            g.writeNumberProperty("downloadKiBps", now.maxDownloadKiBps());
+            g.writeNumberProperty("added", added);
             g.writeEndObject();
         });
     }
 
-    private void ipFilter(Exchange exchange, String method, List<String> rest) throws IOException {
-        noMore(rest);
-        only(method, POST);
-        count(exchange, await(this.engine.updateIpFilter(url(text(body(exchange), "url")))));
-    }
+    // Values of the request; the document's schemas have checked their types already.
 
-    private void log(Exchange exchange, String method, List<String> rest) throws IOException {
-        noMore(rest);
-        only(method, GET);
-        String after = exchange.query().get("after");
-        long seen;
-        try {
-            seen = after == null ? 0 : Long.parseLong(after);
-        } catch (NumberFormatException e) {
-            throw new Failure(400, "after must be a number.");
-        }
-        List<RecentLog.Entry> lines = this.log.after(seen);
-        reply(exchange, 200, g -> ApiJson.array(g, lines, (w, e) -> ApiJson.log(w, e.sequence(), e.line())));
-    }
-
-    private void events(Exchange exchange, String method, List<String> rest) throws IOException {
-        noMore(rest);
-        only(method, GET);
-        String types = exchange.query().getOrDefault("types", "");
-        List<String> wanted = Arrays.stream(types.split(",", -1))
-                .map(String::strip)
-                .filter(t -> !t.isEmpty())
-                .toList();
-        if (!this.streams.serve(exchange, wanted)) {
-            throw new Failure(503, "Too many event streams.");
-        }
-    }
-
-    private void shutdown(Exchange exchange, String method, List<String> rest) throws IOException {
-        noMore(rest);
-        only(method, POST);
-        Runnable stop = this.exit.orElseThrow(() -> new Failure(501, "This njMule cannot be stopped from here."));
-        done(exchange, 202);
-        logger.info("Exiting as the remote-control API asked");
-        // Out of the server's threads, which the exit stops.
-        Thread.ofVirtual().name("njmule-api-exit").start(stop);
-    }
-
-    /** Ends the open event streams; the host stops its server afterwards. */
-    @Override
-    public void close() {
-        this.streams.close();
-    }
-
-    // Values of the body.
-
-    private Map<String, Object> body(Exchange exchange) throws IOException {
+    private static byte[] read(Exchange exchange) throws IOException {
         try (InputStream in = exchange.requestBody()) {
-            byte[] body = in.readNBytes(ApiJson.MAX_BODY + 1);
-            if (body.length > ApiJson.MAX_BODY) {
+            byte[] body = in.readNBytes(ApiSpecification.MAX_BODY + 1);
+            if (body.length > ApiSpecification.MAX_BODY) {
                 throw new Failure(413, "The body is too large.");
             }
-            return ApiJson.read(body);
+            return body;
         }
     }
 
-    private static String text(Map<String, Object> body, String name) {
-        if (!(body.get(name) instanceof String value)) {
-            throw new Failure(400, "Missing text field: " + name);
+    private static String text(JsonNode values, String name) {
+        JsonNode value = values.get(name);
+        if (value == null || !value.isString()) {
+            throw new Failure(400, "Missing text: " + name);
         }
-        return value;
+        return value.asString();
     }
 
-    private static long number(Map<String, Object> body, String name) {
-        if (!(body.get(name) instanceof Long value) || value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
-            throw new Failure(400, "Missing number field: " + name);
+    private static String text(Map<String, JsonNode> parameters, String name) {
+        JsonNode value = parameters.get(name);
+        if (value == null) {
+            throw new Failure(400, "Missing parameter: " + name);
         }
-        return value;
+        return value.asString();
     }
 
-    private static int rate(Map<String, Object> body, String name) {
-        long value = number(body, name);
-        if (value < 0 || value > Preferences.MAX_RATE_KIBPS) {
-            throw new Failure(400, name + " must be in [0, " + Preferences.MAX_RATE_KIBPS + "] (0: unlimited).");
+    private static int number(JsonNode values, String name) {
+        JsonNode value = values.get(name);
+        if (value == null || !value.canConvertToInt()) {
+            throw new Failure(400, "Missing number: " + name);
         }
-        return (int) value;
-    }
-
-    private static List<String> strings(Map<String, Object> body, String name) {
-        Object value = body.get(name);
-        if (value instanceof String one) {
-            return List.of(one);
-        }
-        if (value instanceof List<?> many) {
-            return many.stream().map(String::valueOf).toList();
-        }
-        throw new Failure(400, "Missing list field: " + name);
+        return value.intValue();
     }
 
     private static <E extends Enum<E>> E enumValue(Class<E> type, String name) {
@@ -645,12 +561,20 @@ public final class RemoteApi implements AutoCloseable {
         }
     }
 
+    private static Hash16 hash(Call c) {
+        return hash(text(c.parameters(), HASH));
+    }
+
     private static Hash16 hash(String text) {
         try {
             return Hash16.parseHex(text);
         } catch (IllegalArgumentException e) {
             throw new Failure(400, "Not a file hash: " + text);
         }
+    }
+
+    private static long searchId(Call c) {
+        return c.parameters().get("id").asLong();
     }
 
     private static ServerAddress address(String text) {
@@ -661,7 +585,8 @@ public final class RemoteApi implements AutoCloseable {
         }
     }
 
-    private static URI url(String text) {
+    private static URI url(Call c) {
+        String text = text(c.body(), URL);
         try {
             URI uri = new URI(text.strip());
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
@@ -674,25 +599,13 @@ public final class RemoteApi implements AutoCloseable {
         }
     }
 
-    private static long searchId(String text) {
-        try {
-            return Long.parseLong(text);
-        } catch (NumberFormatException e) {
-            throw notFound();
-        }
-    }
-
     // Answers.
 
     private void reply(Exchange exchange, int status, Consumer<JsonGenerator> body) throws IOException {
-        send(exchange, status, ApiJson.write(body));
+        send(exchange, status, JSON, ApiJson.write(body));
     }
 
-    private void done(Exchange exchange) throws IOException {
-        done(exchange, 200);
-    }
-
-    private void done(Exchange exchange, int status) throws IOException {
+    private void ok(Exchange exchange, int status) throws IOException {
         reply(exchange, status, g -> {
             g.writeStartObject();
             g.writeBooleanProperty("ok", true);
@@ -700,17 +613,9 @@ public final class RemoteApi implements AutoCloseable {
         });
     }
 
-    private void count(Exchange exchange, int added) throws IOException {
-        reply(exchange, 200, g -> {
-            g.writeStartObject();
-            g.writeNumberProperty("added", added);
-            g.writeEndObject();
-        });
-    }
-
     private void error(Exchange exchange, int status, String message) throws IOException {
         if (!exchange.started()) {
-            send(exchange, status, ApiJson.write(g -> {
+            send(exchange, status, JSON, ApiJson.write(g -> {
                 g.writeStartObject();
                 g.writeStringProperty("error", message);
                 g.writeEndObject();
@@ -718,8 +623,8 @@ public final class RemoteApi implements AutoCloseable {
         }
     }
 
-    private void send(Exchange exchange, int status, byte[] body) throws IOException {
-        exchange.setHeader("Content-Type", JSON);
+    private static void send(Exchange exchange, int status, String type, byte[] body) throws IOException {
+        exchange.setHeader("Content-Type", type);
         exchange.setHeader("Cache-Control", "no-store");
         exchange.setHeader("X-Content-Type-Options", "nosniff");
         exchange.sendHeaders(status, body.length);
@@ -728,32 +633,8 @@ public final class RemoteApi implements AutoCloseable {
         }
     }
 
-    // Requests.
-
-    private void only(String method, String allowed) {
-        if (!method.equals(allowed)) {
-            throw notAllowed();
-        }
-    }
-
-    private void noMore(List<String> rest) {
-        if (!rest.isEmpty()) {
-            throw notFound();
-        }
-    }
-
-    private void known(boolean known) {
-        if (!known) {
-            throw notFound();
-        }
-    }
-
     private static Failure notFound() {
         return new Failure(404, "Not found.");
-    }
-
-    private static Failure notAllowed() {
-        return new Failure(405, "Method not allowed.");
     }
 
     // The decoded segments of the path after the prefix.
@@ -768,6 +649,13 @@ public final class RemoteApi implements AutoCloseable {
             }
         }
         return parts;
+    }
+
+    private static String difference(Set<String> a, Set<String> b) {
+        TreeSet<String> all = new TreeSet<>(a);
+        all.addAll(b);
+        all.removeIf(id -> a.contains(id) && b.contains(id));
+        return all.toString();
     }
 
     private <T> T await(CompletableFuture<T> work) {

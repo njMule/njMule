@@ -41,8 +41,12 @@ versions is generated at release time in THIRD-PARTY.txt.
     Bouncy Castle (bcprov)      MIT License (Bouncy Castle Licence)
     Guava                       Apache License 2.0
     picocli                     Apache License 2.0
-    Jackson Core (streaming)    Apache License 2.0; bundles FastDoubleParser
-                                and Schubfach (MIT License)
+    Jackson (core, databind,    Apache License 2.0; Jackson Core bundles
+    annotations, YAML format)   FastDoubleParser and Schubfach (MIT License)
+    SnakeYAML Engine            Apache License 2.0
+    networknt JSON Schema       Apache License 2.0; bundles parts of Apache
+    Validator                   Commons Validator (Apache License 2.0)
+    ethlo ITU (date and time)   Apache License 2.0
     Eclipse Jetty (HTTP client  Apache License 2.0 OR EPL-2.0; used under
     and server)                 Apache License 2.0
     Logback (classic, core)     EPL-1.0 OR LGPL-2.1; used under LGPL-2.1
@@ -59,7 +63,8 @@ versions is generated at release time in THIRD-PARTY.txt.
     (both linked statically into the executable of the Synology DSM
     package, which ships their license texts in its doc folder)
 
-Test-only dependencies (JUnit, AssertJ, jqwik, Jimfs) are not distributed.
+Test-only dependencies (JUnit, AssertJ, jqwik, Jimfs, openapi-parser) are not
+distributed.
 
 
 Shipped server list and Kad contacts

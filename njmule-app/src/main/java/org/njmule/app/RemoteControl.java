@@ -102,7 +102,9 @@ final class RemoteControl {
             case "cancel" -> each(args, h -> this.api.delete(DOWNLOADS + encode(h)));
             case "priority" -> {
                 exactly(args, 2);
-                this.api.put(DOWNLOADS + encode(args.getFirst()) + "/priority", Map.of("priority", args.get(1)));
+                this.api.put(
+                        DOWNLOADS + encode(args.getFirst()) + "/priority",
+                        Map.of("priority", args.get(1).toLowerCase(Locale.ROOT)));
                 this.out.println("Done.");
             }
             case "uploads" -> {

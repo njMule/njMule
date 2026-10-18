@@ -16,12 +16,19 @@
             "glob": "org/njmule/core/engine/nodes.dat"
         },
         {
+            "glob": "org/njmule/core/remote/openapi.yaml"
+        },
+        {
             "module": "org.njmule.core",
             "glob": "org/njmule/core/engine/server.met"
         },
         {
             "module": "org.njmule.core",
             "glob": "org/njmule/core/engine/nodes.dat"
+        },
+        {
+            "module": "org.njmule.core",
+            "glob": "org/njmule/core/remote/openapi.yaml"
         }
     ]
 }

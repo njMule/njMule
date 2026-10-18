@@ -17,11 +17,8 @@
 package org.njmule.core.remote;
 
 import java.io.ByteArrayOutputStream;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 import org.njmule.core.api.BanInfo;
@@ -40,48 +37,20 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
-import tools.jackson.core.JacksonException;
 import tools.jackson.core.JsonEncoding;
 import tools.jackson.core.JsonGenerator;
-import tools.jackson.core.JsonParser;
-import tools.jackson.core.JsonToken;
-import tools.jackson.core.ObjectReadContext;
 import tools.jackson.core.ObjectWriteContext;
-import tools.jackson.core.StreamReadConstraints;
 import tools.jackson.core.json.JsonFactory;
 
 /**
- * The JSON of the remote-control API: the engine's records written field by field, and request bodies read as flat
- * objects of strings, numbers, booleans and lists of strings. Enum values are lower case.
+ * The JSON answers of the remote-control API: the engine's records written field by field, as the schemas of the
+ * OpenAPI document describe them. Enum values are lower case.
  */
 final class ApiJson {
 
-    /** The largest request body taken. */
-    static final int MAX_BODY = 1024 * 1024;
-
-    private static final int MAX_STRING = 256 * 1024;
-    private static final int MAX_FIELDS = 64;
-
-    private static final JsonFactory FACTORY = JsonFactory.builder()
-            .streamReadConstraints(StreamReadConstraints.builder()
-                    .maxDocumentLength(MAX_BODY)
-                    .maxNestingDepth(3)
-                    .maxStringLength(MAX_STRING)
-                    .maxNameLength(64)
-                    .maxNumberLength(20)
-                    .build())
-            .build();
+    private static final JsonFactory FACTORY = new JsonFactory();
 
     private ApiJson() {}
-
-    /** A request body that is not a flat JSON object of the kinds taken. */
-    static final class BadBody extends IllegalArgumentException {
-        private static final long serialVersionUID = 1L;
-
-        BadBody(String message) {
-            super(message);
-        }
-    }
 
     static byte[] write(Consumer<JsonGenerator> body) {
         ByteArrayOutputStream out = new ByteArrayOutputStream(1024);
@@ -89,53 +58,6 @@ final class ApiJson {
             body.accept(g);
         }
         return out.toByteArray();
-    }
-
-    /** The properties of a JSON object: String, Long, Boolean or List of String values; null when absent. */
-    static Map<String, Object> read(byte[] body) {
-        if (body.length == 0) {
-            return Map.of();
-        }
-        Map<String, Object> fields = new HashMap<>();
-        try (JsonParser p = FACTORY.createParser(ObjectReadContext.empty(), body)) {
-            if (p.nextToken() != JsonToken.START_OBJECT) {
-                throw new BadBody("The body must be a JSON object.");
-            }
-            for (JsonToken t = p.nextToken(); t != JsonToken.END_OBJECT; t = p.nextToken()) {
-                String name = p.currentName();
-                if (fields.size() >= MAX_FIELDS) {
-                    throw new BadBody("Too many fields.");
-                }
-                fields.put(name, value(p, p.nextToken()));
-            }
-            if (p.nextToken() != null) {
-                throw new BadBody("Text after the JSON object.");
-            }
-        } catch (JacksonException e) {
-            throw new BadBody("Malformed JSON: " + e.getOriginalMessage());
-        }
-        return fields;
-    }
-
-    private static Object value(JsonParser p, JsonToken t) {
-        return switch (t) {
-            case VALUE_STRING -> p.getString();
-            case VALUE_NUMBER_INT -> p.getLongValue();
-            case VALUE_TRUE -> true;
-            case VALUE_FALSE -> false;
-            case VALUE_NULL -> Optional.empty();
-            case START_ARRAY -> {
-                List<String> items = new ArrayList<>();
-                for (JsonToken i = p.nextToken(); i != JsonToken.END_ARRAY; i = p.nextToken()) {
-                    if (i != JsonToken.VALUE_STRING) {
-                        throw new BadBody("Lists hold strings only.");
-                    }
-                    items.add(p.getString());
-                }
-                yield List.copyOf(items);
-            }
-            default -> throw new BadBody("Unexpected " + t + " in the body.");
-        };
     }
 
     static String name(Enum<?> value) {
