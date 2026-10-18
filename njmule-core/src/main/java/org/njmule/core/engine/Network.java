@@ -120,6 +120,7 @@ import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.persist.format.ServerMet;
+import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.ClientReasks;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.LowIdMessages;
@@ -417,6 +418,7 @@ final class Network {
                 this::isOurServer,
                 random);
         this.links = new PeerLinks(loop, identities, this::uploadSide);
+        this.links.onMoved(this::clientMoved);
         this.links.onGreeted(link -> {
             Hello hello = link.peer().orElseThrow();
             InetAddress address = link.remoteAddress().getAddress();
@@ -741,11 +743,15 @@ final class Network {
     private void watchAddress() {
         Optional<Inet6Address> ipv6 = PublicIpv6.find();
         if (!ipv6.equals(this.ourIpv6)) {
+            boolean moved = this.ourIpv6.isPresent() && ipv6.isPresent();
             this.ourIpv6 = ipv6;
             this.userLog.log(
                     LogLine.Level.INFO,
                     ipv6.map(a -> "Clients may reach us at the IPv6 address " + a.getHostAddress())
                             .orElse("No IPv6 address to be reached at any more"));
+            if (moved) {
+                tellIpv6(ipv6.get());
+            }
         }
         KadNode node = this.kad;
         int kadIp = node == null ? 0 : node.publicIp();
@@ -770,6 +776,20 @@ final class Network {
             }
             case NONE -> {
                 // Nothing moved, or nothing can tell.
+            }
+        }
+    }
+
+    private void clientMoved(Hash16 peer, Inet6Address address) {
+        this.downloads.ipv6Moved(peer, address);
+    }
+
+    // The clients connected now that reach others over IPv6 hear our new address, so that they keep reaching us.
+    private void tellIpv6(Inet6Address ours) {
+        Packet told = ClientMessages.ipv6Changed(ours);
+        for (PeerLink link : this.links.open()) {
+            if (link.peer().flatMap(Hello::ipv6).isPresent()) {
+                link.send(told);
             }
         }
     }

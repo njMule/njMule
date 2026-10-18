@@ -2128,6 +2128,16 @@ public final class DownloadManager implements AutoCloseable {
         }
     }
 
+    /** A client told its new IPv6 address: it is reached there from now on, when IPv6 is the way to it. */
+    public void ipv6Moved(Hash16 userHash, Inet6Address address) {
+        for (Client client : this.clients.values()) {
+            if (client.userHash.filter(userHash::equals).isPresent()) {
+                client.ipv6 = Optional.of(address);
+                client.ipv6Failed = false;
+            }
+        }
+    }
+
     /** The sources of every download, as the list of downloading clients shows them. */
     public List<SourceInfo> sources() {
         List<SourceInfo> all = new ArrayList<>();

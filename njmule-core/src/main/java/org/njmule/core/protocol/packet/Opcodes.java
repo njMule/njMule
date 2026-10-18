@@ -134,7 +134,9 @@ public final class Opcodes {
         ASKSHAREDFILESDIR(0x5E),
         ASKSHAREDDIRSANS(0x5F),
         ASKSHAREDFILESDIRANS(0x60),
-        ASKSHAREDDENIEDANS(0x61);
+        ASKSHAREDDENIEDANS(0x61),
+        /** A client's new IPv6 address, 16 bytes, sent by newer clients when theirs changes. */
+        CHANGE_CLIENT_IP(0xAC);
 
         private static final Client[] BY_CODE = table(values(), new Client[256]);
         private final int code;

@@ -16,11 +16,13 @@
  */
 package org.njmule.core.protocol.ed2k;
 
+import java.net.Inet6Address;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.files.hash.Ed2k;
 import org.njmule.core.protocol.io.DecodeException;
@@ -30,6 +32,7 @@ import org.njmule.core.protocol.io.StringEncoding;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.util.Ipv6;
 
 /**
  * Messages between two clients for a download, after the hello: asking for a file, its parts and hash set, a place in
@@ -43,6 +46,17 @@ public final class ClientMessages {
     private static final int MAX_PARTS = (int) (Ed2k.MAX_FILE_SIZE / Ed2k.PARTSIZE) + 2;
 
     private ClientMessages() {}
+
+    /** Tells a client our new IPv6 address. */
+    public static Packet ipv6Changed(Inet6Address ours) {
+        return Packet.of(
+                Protocol.EDONKEY, Opcodes.Client.CHANGE_CLIENT_IP.code(), new PacketWriter().bytes(ours.getAddress()));
+    }
+
+    /** The new IPv6 address a client tells, if peers on the Internet may reach it. */
+    public static Optional<Inet6Address> changedIpv6(Packet packet) throws DecodeException {
+        return Ipv6.publicOf(packet.reader().bytes(16));
+    }
 
     /** A message that names its file first. */
     public static Packet forFile(Opcodes.Client opcode, Hash16 file) {

@@ -19,10 +19,13 @@ package org.njmule.core.protocol.ed2k;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.google.common.net.InetAddresses;
+import java.net.Inet6Address;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import java.util.SplittableRandom;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
@@ -63,6 +66,38 @@ class ClientMessagesTest {
     private Hash16 file;
     private byte[] garbage;
     private Throwable exception;
+    private Optional<Inet6Address> changedIpv6;
+
+    @Test
+    void shouldTellANewIpv6AddressInSixteenBytes() {
+        givenOurNewIpv6AddressTold("2001:db8::42");
+
+        whenTheNewAddressIsRead();
+
+        thenNoExceptionOccurred();
+        thenTheNewAddressIs("2001:db8::42");
+        thenThePacketIs(Protocol.EDONKEY, 0xAC, 16);
+    }
+
+    @Test
+    void shouldIgnoreANewIpv6AddressNoPeerCanReach() {
+        givenThePacketCarrying(
+                Protocol.EDONKEY, 0xAC, InetAddresses.forString("fe80::1").getAddress());
+
+        whenTheNewAddressIsRead();
+
+        thenNoExceptionOccurred();
+        thenNoNewAddressIsTaken();
+    }
+
+    @Test
+    void shouldRefuseANewIpv6AddressCutShort() {
+        givenThePacketCarrying(Protocol.EDONKEY, 0xAC, new byte[15]);
+
+        whenTheNewAddressIsRead();
+
+        thenExceptionOccurred(DecodeException.class);
+    }
 
     @Test
     void shouldEncodeTheFileStatusBitsFromTheLowestBit() {
@@ -718,5 +753,32 @@ class ClientMessagesTest {
         } catch (DecodeException expected) {
             // malformed
         }
+    }
+
+    private void givenOurNewIpv6AddressTold(String address) {
+        this.packet = ClientMessages.ipv6Changed((Inet6Address) InetAddresses.forString(address));
+    }
+
+    private void givenThePacketCarrying(int protocol, int opcode, byte[] payload) {
+        this.packet = Packet.of(protocol, opcode, payload);
+    }
+
+    private void whenTheNewAddressIsRead() {
+        Packet received = this.packet;
+        this.exception = catchThrowable(() -> this.changedIpv6 = ClientMessages.changedIpv6(received));
+    }
+
+    private void thenTheNewAddressIs(String address) {
+        assertThat(this.changedIpv6).contains((Inet6Address) InetAddresses.forString(address));
+    }
+
+    private void thenNoNewAddressIsTaken() {
+        assertThat(this.changedIpv6).isEmpty();
+    }
+
+    private void thenThePacketIs(int protocol, int opcode, int length) {
+        assertThat(this.packet.protocol()).isEqualTo(protocol);
+        assertThat(this.packet.opcode()).isEqualTo(opcode);
+        assertThat(this.packet.payload()).hasSize(length);
     }
 }

@@ -16,12 +16,16 @@
  */
 package org.njmule.core.peer;
 
+import java.net.Inet6Address;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.protocol.ed2k.Hello;
@@ -63,6 +67,7 @@ public final class PeerLinks {
     private final Map<PeerLink, ConnectionGuard.Permit> ours = new HashMap<>();
 
     private volatile Consumer<PeerLink> greeted = link -> {};
+    private BiConsumer<Hash16, Inet6Address> moved = (hash, address) -> {};
     private volatile ConnectionGuard guard;
 
     public PeerLinks(EngineLoop loop, Identities identities, Uploads uploads) {
@@ -115,6 +120,20 @@ public final class PeerLinks {
     /** Hears every link whose client said hello, on the thread that read it. */
     public void onGreeted(Consumer<PeerLink> observer) {
         this.greeted = Objects.requireNonNull(observer, "observer");
+    }
+
+    /** Hears the clients, by user hash, that tell their new IPv6 address; on the engine thread. */
+    public void onMoved(BiConsumer<Hash16, Inet6Address> observer) {
+        this.moved = Objects.requireNonNull(observer, "observer");
+    }
+
+    /** The links open now. */
+    public List<PeerLink> open() {
+        return this.open.values().stream().filter(PeerLink::isOpen).distinct().toList();
+    }
+
+    void moved(Hash16 userHash, Inet6Address address) {
+        this.moved.accept(userHash, address);
     }
 
     void register(PeerLink link) {

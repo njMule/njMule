@@ -17,6 +17,7 @@
 package org.njmule.core.peer;
 
 import java.io.IOException;
+import java.net.Inet6Address;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.time.Duration;
@@ -29,6 +30,7 @@ import java.util.Set;
 import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.net.PeerChannel;
 import org.njmule.core.net.TcpConnection;
+import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.FrameLimits;
@@ -156,6 +158,11 @@ public final class PeerLink implements TcpConnection.Handler {
         return channel;
     }
 
+    /** Sends {@code packet} outside the sides, as a message about the connection itself. */
+    public boolean send(Packet packet) {
+        return isOpen() && this.connection.send(packet);
+    }
+
     /** Closes the connection for both sides. */
     public void disconnect() {
         this.connection.close();
@@ -194,6 +201,10 @@ public final class PeerLink implements TcpConnection.Handler {
                 greeting(packet);
                 return;
             }
+            if (packet.protocol() == Protocol.EDONKEY && packet.opcode() == Opcodes.Client.CHANGE_CLIENT_IP.code()) {
+                moved(packet);
+                return;
+            }
             boolean settled = this.identity.isSettled();
             if (this.identity.received(packet)) {
                 if (!settled && this.identity.isSettled()) {
@@ -219,6 +230,15 @@ public final class PeerLink implements TcpConnection.Handler {
             return;
         }
         role.received(packet);
+    }
+
+    // A client tells its new IPv6 address: taken only from one that proved its identity, so that nobody can send our
+    // connections for another client elsewhere.
+    private void moved(Packet packet) throws DecodeException {
+        Optional<Inet6Address> address = ClientMessages.changedIpv6(packet);
+        if (address.isPresent() && this.identity.trust() == Identities.Trust.IDENTIFIED) {
+            this.links.moved(this.peer.userHash(), address.get());
+        }
     }
 
     // On a connection of ours the hello answer comes first; nothing else counts before it.
