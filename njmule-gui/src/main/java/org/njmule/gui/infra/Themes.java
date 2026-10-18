@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -133,6 +134,10 @@ public final class Themes {
         }
     }
 
+    static String familyClass(Family family) {
+        return "theme-" + family.name().toLowerCase(Locale.ROOT);
+    }
+
     public void set(Family family, GuiSettings.Mode mode) {
         this.family = Objects.requireNonNull(family, "family");
         this.mode = Objects.requireNonNull(mode, "mode");
@@ -175,6 +180,10 @@ public final class Themes {
             if (scene.getRoot() != null) {
                 mark(scene.getRoot().getStyleClass(), DARK_CLASS, theme.isDarkMode());
                 mark(scene.getRoot().getStyleClass(), CONTRAST_CLASS, contrast.isPresent());
+                // The family, for the few tones njmule.css strengthens; the system's scheme replaces them all.
+                for (Family f : Family.values()) {
+                    mark(scene.getRoot().getStyleClass(), familyClass(f), f == this.family && contrast.isEmpty());
+                }
             }
         }
     }

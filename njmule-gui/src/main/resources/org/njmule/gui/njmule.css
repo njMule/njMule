@@ -83,6 +83,27 @@
     -nj-captcha-paper: #ECEFF4;
 }
 
+/* Where a theme's own text or marks fall short of WCAG AA on the surfaces we put them on, a stronger tone of the
+   same hue (checked by TokenContrastTest in every theme). */
+.root.dark.theme-nord {
+    -color-fg-muted: #A8B0BE;
+    -color-danger-fg: #DCA2A8;
+}
+
+.root.theme-cupertino {
+    -color-danger-fg: #D70015;
+    -color-warning-fg: #C93400;
+}
+
+.root.dark.theme-cupertino {
+    -color-danger-fg: #FF6961;
+    -color-warning-fg: rgb(255, 159, 10);
+}
+
+.root.theme-dracula {
+    -color-success-muted: rgba(138, 255, 128, 0.35);
+}
+
 /* The system's high contrast scheme: while it is on, its colours (-nj-sys-*, set from the system) replace the
    theme's and njMule's; the tokens of the theme's scales are surfaces or selections. */
 .root.high-contrast {
@@ -1366,16 +1387,16 @@
 .button.safe:default {
     -color-button-bg: -color-bg-default;
     -color-button-fg: -color-fg-default;
-    -color-button-border: -color-accent-emphasis;
+    -color-button-border: -color-accent-fg;
     -color-button-bg-hover: -color-bg-subtle;
     -color-button-fg-hover: -color-fg-default;
-    -color-button-border-hover: -color-accent-emphasis;
+    -color-button-border-hover: -color-accent-fg;
     -color-button-bg-focused: -color-bg-default;
     -color-button-fg-focused: -color-fg-default;
-    -color-button-border-focused: -color-accent-emphasis;
+    -color-button-border-focused: -color-accent-fg;
     -color-button-bg-pressed: -color-bg-subtle;
     -color-button-fg-pressed: -color-fg-default;
-    -color-button-border-pressed: -color-accent-emphasis;
+    -color-button-border-pressed: -color-accent-fg;
     -fx-background-insets: 0, 2px;
 }
 
@@ -2181,7 +2202,7 @@
 }
 
 .minimule-dot.online {
-    -fx-background-color: -color-success-emphasis;
+    -fx-background-color: -color-success-fg;
 }
 
 .minimule-state {
