@@ -576,10 +576,12 @@ public final class SharedScreen implements Screen {
             if (empty || text == null) {
                 setGraphic(null);
                 setTooltip(null);
+                setAccessibleText(null);
                 return;
             }
             this.kind.setGlyph(Fx.fileIcon(FileKind.of(text)));
             this.name.setText(text);
+            setAccessibleText(text);
             setTooltip(new Tooltip(text));
             setGraphic(this.box);
         }

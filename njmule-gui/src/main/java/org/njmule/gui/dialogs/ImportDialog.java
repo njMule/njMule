@@ -288,8 +288,10 @@ public final class ImportDialog {
             super.updateItem(item, empty);
             if (empty || item == null) {
                 setGraphic(null);
+                setAccessibleText(null);
                 return;
             }
+            setAccessibleText(outcome(item));
             switch (item) {
                 case IMPORTED, WOULD_IMPORT -> Fx.chip(this.chip, outcome(item), Icons.CHECK_CIRCLE, "success");
                 case SKIPPED, MISSING -> Fx.chip(this.chip, outcome(item), Icons.REMOVE_CIRCLE, "neutral");

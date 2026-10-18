@@ -1243,8 +1243,10 @@ public final class SearchScreen implements Screen {
                             "known-downloading", "known-shared", "known-downloaded", "known-cancelled", "known-spam");
             if (empty || item == null || item == Known.NONE) {
                 setGraphic(null);
+                setAccessibleText(null);
                 return;
             }
+            setAccessibleText(knownText(item));
             Fx.chip(
                     this.chip,
                     knownText(item),

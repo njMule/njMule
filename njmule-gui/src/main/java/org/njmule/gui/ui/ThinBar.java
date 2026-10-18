@@ -17,6 +17,8 @@
 package org.njmule.gui.ui;
 
 import java.util.List;
+import javafx.scene.AccessibleAttribute;
+import javafx.scene.AccessibleRole;
 import javafx.scene.layout.Region;
 
 /**
@@ -33,6 +35,7 @@ public final class ThinBar extends Region {
 
     public ThinBar() {
         getStyleClass().add("thin-bar");
+        setAccessibleRole(AccessibleRole.PROGRESS_INDICATOR);
         this.fill.getStyleClass().add("thin-bar-fill");
         getChildren().add(this.fill);
         // As thin in a tall cell as anywhere.
@@ -45,6 +48,18 @@ public final class ThinBar extends Region {
         this.fill.getStyleClass().removeAll(TONES);
         this.fill.getStyleClass().add(tone);
         requestLayout();
+        notifyAccessibleAttributeChanged(AccessibleAttribute.VALUE);
+    }
+
+    @Override
+    public Object queryAccessibleAttribute(AccessibleAttribute attribute, Object... parameters) {
+        return switch (attribute) {
+            case VALUE -> this.fraction;
+            case MAX_VALUE -> 1.0;
+            case MIN_VALUE -> 0.0;
+            case INDETERMINATE -> false;
+            default -> super.queryAccessibleAttribute(attribute, parameters);
+        };
     }
 
     public double fraction() {

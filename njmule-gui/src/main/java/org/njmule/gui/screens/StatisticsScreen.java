@@ -134,6 +134,12 @@ public final class StatisticsScreen implements Screen {
                 this.gui.formats()::rate,
                 this.gui.formats()::time);
         graph.setEmptyText(this.gui.t("nj.stats.noData"));
+        graph.setDescription(s -> this.gui.f(
+                "nj.stats.graphSummary",
+                rangeName(s.range()),
+                this.gui.formats().rate(s.down()),
+                this.gui.formats().rate(s.up()),
+                this.gui.formats().rate(s.highest())));
         this.graph = graph;
         this.range = new Segments<>(List.of(RateGraph.Range.values()), this::rangeName);
         this.range.setValue(graph.range());

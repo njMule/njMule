@@ -18,6 +18,8 @@ package org.njmule.gui.ui;
 
 import java.util.List;
 import javafx.geometry.NodeOrientation;
+import javafx.scene.AccessibleAttribute;
+import javafx.scene.AccessibleRole;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.layout.Background;
@@ -50,6 +52,7 @@ public final class PartBar extends Region {
 
     public PartBar() {
         getStyleClass().add("part-bar");
+        setAccessibleRole(AccessibleRole.PROGRESS_INDICATOR);
         // The start of the file stays on the left in every language.
         setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
         getChildren().add(this.canvas);
@@ -66,6 +69,18 @@ public final class PartBar extends Region {
         this.map = map;
         this.done = completed;
         draw();
+        notifyAccessibleAttributeChanged(AccessibleAttribute.VALUE);
+    }
+
+    @Override
+    public Object queryAccessibleAttribute(AccessibleAttribute attribute, Object... parameters) {
+        return switch (attribute) {
+            case VALUE -> this.map.size() > 0 ? Math.min(1.0, (double) this.done / this.map.size()) : 0.0;
+            case MAX_VALUE -> 1.0;
+            case MIN_VALUE -> 0.0;
+            case INDETERMINATE -> false;
+            default -> super.queryAccessibleAttribute(attribute, parameters);
+        };
     }
 
     @Override

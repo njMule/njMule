@@ -792,9 +792,11 @@ public final class TransfersScreen implements Screen {
             setText(null);
             if (empty || shown == null) {
                 setGraphic(null);
+                setAccessibleText(null);
                 return;
             }
             Fx.chip(this.chip, TransfersScreen.this.shownText(shown), shownIcon(shown), tone(shown));
+            setAccessibleText(this.chip.getText());
             setGraphic(this.chip);
         }
     }
@@ -822,6 +824,7 @@ public final class TransfersScreen implements Screen {
             if (empty || text == null || row == null) {
                 setGraphic(null);
                 setTooltip(null);
+                setAccessibleText(null);
                 return;
             }
             DownloadInfo d = row.get();
@@ -836,6 +839,7 @@ public final class TransfersScreen implements Screen {
             this.name.setText(text);
             String category = TransfersScreen.this.categoryName(d.category());
             setTooltip(new Tooltip(category.isEmpty() ? text : text + "\n" + category));
+            setAccessibleText(category.isEmpty() ? text : text + ", " + category);
             setGraphic(this.box);
         }
     }
@@ -1322,6 +1326,12 @@ public final class TransfersScreen implements Screen {
             this.state.setGraphic(icon);
             this.has.set(s.partCount() == 0 ? 0 : (double) s.parts() / s.partCount(), "accent");
             this.has.setAccessibleText(TransfersScreen.this.gui.formats().percent(s.parts(), s.partCount()));
+            setAccessibleText(String.join(
+                    ", ",
+                    this.name.getText(),
+                    this.state.getText(),
+                    this.figure.getText(),
+                    this.has.getAccessibleText()));
             String other = s.askedForName();
             setTooltip(
                     s.state() == SourceInfo.State.A4AF && !other.isEmpty()
@@ -1353,12 +1363,14 @@ public final class TransfersScreen implements Screen {
                     getTableRow() == null ? null : getTableRow().getItem();
             if (empty || value == null || row == null) {
                 setGraphic(null);
+                setAccessibleText(null);
                 return;
             }
             DownloadInfo d = row.get();
             this.bar.set(value, tone(shown(d)));
             this.text.setText(TransfersScreen.this.gui.formats().percent(d.completed(), d.size()));
             this.bar.setAccessibleText(this.text.getText());
+            setAccessibleText(this.text.getText());
             setGraphic(this.box);
         }
     }

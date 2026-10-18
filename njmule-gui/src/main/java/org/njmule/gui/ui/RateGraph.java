@@ -25,6 +25,7 @@ import java.util.function.LongFunction;
 import java.util.function.ToLongFunction;
 import javafx.collections.ObservableList;
 import javafx.geometry.NodeOrientation;
+import javafx.scene.AccessibleRole;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.Label;
@@ -43,6 +44,9 @@ import org.njmule.gui.model.EngineModel;
 public final class RateGraph extends Region {
 
     /** The time shown: the last ten minutes or hour second by second, or the last day minute by minute. */
+    /** What the graph shows, for those who cannot see it: the rates now and the highest of the time shown. */
+    public record Summary(Range range, long down, long up, long highest) {}
+
     public enum Range {
         TEN_MINUTES(600, 1),
         HOUR(3_600, 1),
@@ -85,6 +89,7 @@ public final class RateGraph extends Region {
     private final List<Label> times = List.of(timeLabel(), timeLabel(), timeLabel(), timeLabel(), timeLabel());
     private final Label empty = new Label();
     private Range range = Range.TEN_MINUTES;
+    private Function<Summary, String> describe = s -> "";
     private long highest;
     // Where the pointer is over the graph, or below zero.
     private double pointer = -1;
@@ -113,6 +118,7 @@ public final class RateGraph extends Region {
         this.down = down;
         this.up = up;
         getStyleClass().add("rate-graph");
+        setAccessibleRole(AccessibleRole.IMAGE_VIEW);
         // Time runs to the right in every language, as in JavaFX's charts.
         setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
         this.grid.setManaged(false);
@@ -134,6 +140,12 @@ public final class RateGraph extends Region {
         }
         setOnMouseMoved(e -> point(e.getX()));
         setOnMouseExited(e -> point(-1));
+    }
+
+    /** Puts the graph in words with {@code describe}, for a screen reader. */
+    public void setDescription(Function<Summary, String> describe) {
+        this.describe = Objects.requireNonNull(describe, "describe");
+        draw();
     }
 
     /** Shows {@code range} from now on. */
@@ -274,9 +286,23 @@ public final class RateGraph extends Region {
         }
         showTimes(shown);
         this.empty.setVisible(shown.stream().allMatch(s -> s.down() == 0 && s.up() == 0));
+        describe(shown);
         line(g, shown, EngineModel.RateSample::down, max, color(this.down, Color.STEELBLUE));
         line(g, shown, EngineModel.RateSample::up, max, color(this.up, Color.SEAGREEN));
         showPointed(g, shown);
+    }
+
+    private void describe(List<EngineModel.RateSample> shown) {
+        if (this.empty.isVisible()) {
+            setAccessibleText(this.empty.getText());
+            return;
+        }
+        long top = 0;
+        for (EngineModel.RateSample s : shown) {
+            top = Math.max(top, Math.max(s.down(), s.up()));
+        }
+        EngineModel.RateSample last = shown.getLast();
+        setAccessibleText(this.describe.apply(new Summary(this.range, last.down(), last.up(), top)));
     }
 
     // The times of the band: now at its end, counted back from the newest sample.

@@ -110,6 +110,16 @@ class RateGraphTest {
         thenTheGraphSaysNothingMoved(false);
     }
 
+    @Test
+    void shouldPutTheRatesNowAndTheHighestInWords() throws Exception {
+        givenAGraphOfSecondsAndMinutes();
+        givenADescriptionOfItsSummary();
+
+        whenTheRangeIs(RateGraph.Range.TEN_MINUTES);
+
+        thenTheGraphReads("TEN_MINUTES 1599 15 1599");
+    }
+
     // A second's rates go up with the second; a minute's are 7000 and 70 for the last one.
     private void givenAGraphOfSecondsAndMinutes() throws Exception {
         for (int s = 1000; s < 1600; s++) {
@@ -133,6 +143,17 @@ class RateGraphTest {
             this.stage.show();
             return null;
         });
+    }
+
+    private void givenADescriptionOfItsSummary() throws Exception {
+        FxTesting.onFx(() -> {
+            this.graph.setDescription(s -> s.range() + " " + s.down() + " " + s.up() + " " + s.highest());
+            return null;
+        });
+    }
+
+    private void thenTheGraphReads(String words) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.graph.getAccessibleText())).isEqualTo(words);
     }
 
     private void givenTheRatesWereNothing() throws Exception {
