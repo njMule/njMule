@@ -24,6 +24,13 @@ public final class ClientTag {
     public static final int VERSION = 0x11;
     public static final int SERVER_FLAGS = 0x20;
     public static final int MOD_VERSION = 0x55;
+    /** Feature bits of newer clients, u32; bit 0 extended source exchange, bit 2 IPv6. */
+    public static final int MOD_MISCOPTIONS = 0xAA;
+    /** The address the sender sees the receiver at: u32 for IPv4, a hash tag of 16 bytes for IPv6. */
+    public static final int MOD_YOUR_IP = 0xAD;
+    /** The sender's public IPv6 address, a hash tag of 16 bytes. */
+    public static final int MOD_IP_V6 = 0xAE;
+
     public static final int EMULECOMPAT_OPTIONS1 = 0xEF;
     public static final int EMULE_UDPPORTS = 0xF9;
     public static final int EMULE_MISCOPTIONS1 = 0xFA;

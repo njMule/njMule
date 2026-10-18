@@ -27,6 +27,7 @@ class Ipv6Test {
 
     private InetAddress address;
     private InetAddress network;
+    private boolean reachable;
 
     @ParameterizedTest
     @CsvSource({
@@ -43,12 +44,41 @@ class Ipv6Test {
         thenTheNetworkIs(expected);
     }
 
+    @ParameterizedTest
+    @CsvSource({
+        "2a01:4f8:1:2::3, true",
+        "2001:db8::1, true",
+        "3fff:ffff::1, true",
+        "fe80::1, false",
+        "fd12:3456::1, false",
+        "::1, false",
+        "ff02::1, false",
+        "2002:102:304::1, false",
+        "2001:0:4136:e378::1, false",
+        "93.184.216.34, false"
+    })
+    void shouldTellWhetherPeersOnTheInternetMayReachAnAddress(String given, boolean expected) {
+        givenTheAddress(given);
+
+        whenItIsCheckedForTheInternet();
+
+        thenItIsReachable(expected);
+    }
+
     private void givenTheAddress(String text) {
         this.address = InetAddresses.forString(text);
     }
 
     private void whenItsNetworkIsTaken() {
         this.network = Ipv6.network(this.address);
+    }
+
+    private void whenItIsCheckedForTheInternet() {
+        this.reachable = Ipv6.isPublic(this.address);
+    }
+
+    private void thenItIsReachable(boolean expected) {
+        assertThat(this.reachable).isEqualTo(expected);
     }
 
     private void thenTheNetworkIs(String expected) {

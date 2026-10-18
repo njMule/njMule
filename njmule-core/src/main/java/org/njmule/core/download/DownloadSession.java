@@ -435,7 +435,10 @@ final class DownloadSession implements PeerLink.Role {
         this.connection = this.link.attach(PeerLink.Side.DOWNLOAD, this);
         this.state = State.GREETING;
         opened.start(this.link, DownloadSession::unpack);
-        opened.send(this.ourHello.get().encode(false));
+        opened.send(this.ourHello
+                .get()
+                .toPeerAt(opened.remoteAddress().getAddress())
+                .encode(false));
     }
 
     private void greeted(PeerLink greeting) {

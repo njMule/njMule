@@ -369,7 +369,10 @@ public final class BuddyLink implements KadNode.Buddies {
             }
         });
         connection.start(link, frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
-        connection.send(this.ourHello.get().encode(false));
+        connection.send(this.ourHello
+                .get()
+                .toPeerAt(connection.remoteAddress().getAddress())
+                .encode(false));
     }
 
     // Only the node that offered, by its user hash, becomes our buddy.

@@ -26,6 +26,23 @@ public final class Ipv6 {
 
     private Ipv6() {}
 
+    /**
+     * Whether peers on the Internet may reach {@code address}: global unicast IPv6, but no 6to4 or Teredo address,
+     * which need relays.
+     */
+    public static boolean isPublic(InetAddress address) {
+        if (!(address instanceof Inet6Address)) {
+            return false;
+        }
+        byte[] bytes = address.getAddress();
+        int first = (bytes[0] & 0xFF) << 8 | (bytes[1] & 0xFF);
+        int second = (bytes[2] & 0xFF) << 8 | (bytes[3] & 0xFF);
+        boolean global = (bytes[0] & 0xE0) == 0x20;
+        boolean sixToFour = first == 0x2002;
+        boolean teredo = first == 0x2001 && second == 0;
+        return global && !sixToFour && !teredo;
+    }
+
     /** The /64 network of an IPv6 address, which bans and limits count as one address; IPv4 addresses as they are. */
     public static InetAddress network(InetAddress address) {
         if (!(address instanceof Inet6Address)) {

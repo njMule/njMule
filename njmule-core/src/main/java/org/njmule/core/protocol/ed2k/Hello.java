@@ -16,6 +16,9 @@
  */
 package org.njmule.core.protocol.ed2k;
 
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -37,6 +40,7 @@ import org.njmule.core.protocol.tag.TagCodec;
 import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.protocol.tag.Tags;
 import org.njmule.core.util.Ipv4;
+import org.njmule.core.util.Ipv6;
 
 /**
  * The greeting two clients exchange first (OP_HELLO, then OP_HELLOANSWER): {@code [<16>]<user hash 16><client id
@@ -63,6 +67,12 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
     public static final int MISC2_REQUIRES_CRYPT = 1 << 9;
     /** TCP-firewalled on Kad with an open UDP port: reached by a direct UDP callback. */
     public static final int MISC2_DIRECT_UDP_CALLBACK = 1 << 12;
+
+    // Feature bits of the newer clients' options tag.
+    public static final int MOD_MISC_IPV6 = 1 << 2;
+
+    /** The client id of a client with no IPv4 address, reached over IPv6 only. */
+    public static final long NO_IPV4 = 0xFFFFFFFFL;
 
     private static final int HASH_SIZE = 16;
     private static final int MAX_TAGS = 64;
@@ -93,8 +103,29 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
                 new Tag.IntTag(TagName.id(ClientTag.EMULE_MISCOPTIONS2), Integer.toUnsignedLong(miscOptions2)),
                 new Tag.IntTag(TagName.id(ClientTag.EMULE_VERSION), Integer.toUnsignedLong(ClientVersion.njMule())),
                 // Clients show it after the software their version tag names: njMule and its full version.
-                new Tag.StringTag(TagName.id(ClientTag.MOD_VERSION), NjMuleInfo.NAME + " " + NjMuleInfo.version()));
+                new Tag.StringTag(TagName.id(ClientTag.MOD_VERSION), NjMuleInfo.NAME + " " + NjMuleInfo.version()),
+                new Tag.IntTag(TagName.id(ClientTag.MOD_MISCOPTIONS), MOD_MISC_IPV6));
         return new Hello(userHash, clientId, tcpPort, tags, serverIp, serverPort);
+    }
+
+    /** This greeting with our public IPv6 address, at which clients may reach us. */
+    public Hello withIpv6(Inet6Address ours) {
+        return with(new Tag.HashTag(TagName.id(ClientTag.MOD_IP_V6), Hash16.of(ours.getAddress())));
+    }
+
+    /** This greeting telling the client the address we see it at, so that it learns its own. */
+    public Hello toPeerAt(InetAddress seen) {
+        Tag tag = seen instanceof Inet6Address
+                ? new Tag.HashTag(TagName.id(ClientTag.MOD_YOUR_IP), Hash16.of(seen.getAddress()))
+                : new Tag.IntTag(TagName.id(ClientTag.MOD_YOUR_IP), Ipv4.toEd2k(Ipv4.fromBytes(seen.getAddress())));
+        return with(tag);
+    }
+
+    private Hello with(Tag tag) {
+        List<Tag> more = new ArrayList<>(this.tags.size() + 1);
+        more.addAll(this.tags);
+        more.add(tag);
+        return new Hello(this.userHash, this.clientId, this.tcpPort, more, this.serverIp, this.serverPort);
     }
 
     /**
@@ -204,5 +235,31 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
     /** What the client tells of its software besides its version, such as the name of a modified client. */
     public Optional<String> modVersion() {
         return Tags.stringValue(this.tags, ClientTag.MOD_VERSION);
+    }
+
+    /** The feature bits of newer clients, 0 when it sends none. */
+    public int modMiscOptions() {
+        return (int) Tags.intValue(this.tags, ClientTag.MOD_MISCOPTIONS).orElse(0);
+    }
+
+    /** The public IPv6 address the client gives, if it gives one peers on the Internet can reach. */
+    public Optional<Inet6Address> ipv6() {
+        return Tags.hashValue(this.tags, ClientTag.MOD_IP_V6)
+                .map(Hello::address)
+                .filter(Ipv6::isPublic)
+                .map(Inet6Address.class::cast);
+    }
+
+    /** Whether the client has an IPv4 address: one reached over IPv6 only says it has none. */
+    public boolean hasIpv4() {
+        return this.clientId != NO_IPV4;
+    }
+
+    private static InetAddress address(Hash16 bytes) {
+        try {
+            return InetAddress.getByAddress(bytes.toByteArray());
+        } catch (UnknownHostException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

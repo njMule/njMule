@@ -22,6 +22,7 @@ import com.google.common.net.InetAddresses;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.IOException;
 import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
@@ -99,6 +100,7 @@ import org.njmule.core.kad.KadPublisher;
 import org.njmule.core.kad.KadSocket;
 import org.njmule.core.kad.UInt128;
 import org.njmule.core.net.ProxyRoute;
+import org.njmule.core.net.PublicIpv6;
 import org.njmule.core.net.RelayKeeper;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
@@ -254,6 +256,8 @@ final class Network {
     // Replaced on the engine thread, read by the connection threads too.
     private volatile KadNode kad;
     private final AddressWatch addresses = new AddressWatch();
+    // Our public IPv6 address, which clients may reach us at; refreshed with the IPv4 one.
+    private volatile Optional<Inet6Address> ourIpv6 = Optional.empty();
     private KadSocket kadSocket;
     // Kad disconnected by the user: new ports do not start it again.
     private volatile boolean kadStoppedByHand;
@@ -735,6 +739,14 @@ final class Network {
 
     // When we move, the server or Kad sees the new address first; the other one has to look again.
     private void watchAddress() {
+        Optional<Inet6Address> ipv6 = PublicIpv6.find();
+        if (!ipv6.equals(this.ourIpv6)) {
+            this.ourIpv6 = ipv6;
+            this.userLog.log(
+                    LogLine.Level.INFO,
+                    ipv6.map(a -> "Clients may reach us at the IPv6 address " + a.getHostAddress())
+                            .orElse("No IPv6 address to be reached at any more"));
+        }
         KadNode node = this.kad;
         int kadIp = node == null ? 0 : node.publicIp();
         int serverIp = addressSeenByServer();
@@ -1432,7 +1444,8 @@ final class Network {
     private void greet(TcpConnection connection, CompletableFuture<PeerInfo> answer) {
         Greeting greeting = new Greeting(connection, answer);
         connection.start(greeting, frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
-        connection.send(ourHello().encode(false));
+        connection.send(
+                ourHello().toPeerAt(connection.remoteAddress().getAddress()).encode(false));
         this.loop.schedule("hello identification", PeerGreetings.HELLO_TIMEOUT.plus(IDENTIFY_WAIT), greeting::settle);
     }
 
@@ -1483,7 +1496,10 @@ final class Network {
                 } else if (!this.identity.received(packet)
                         && packet.protocol() == Protocol.EDONKEY
                         && packet.opcode() == Opcodes.Client.HELLO.code()) {
-                    this.connection.send(Network.this.ourHello().encode(true));
+                    this.connection.send(Network.this
+                            .ourHello()
+                            .toPeerAt(this.connection.remoteAddress().getAddress())
+                            .encode(true));
                 }
                 if (this.identity != null && this.identity.isSettled()) {
                     settle();
@@ -1826,9 +1842,9 @@ final class Network {
         boolean firewalled = server.clientId() < ServerMessages.LOW_ID_LIMIT;
         int buddyIp = this.buddyLink.buddyIp();
         if (connected && firewalled && node.isFirewalled() && buddyIp != 0) {
-            return hello.withBuddy(buddyIp, this.buddyLink.buddyUdpPort());
+            hello = hello.withBuddy(buddyIp, this.buddyLink.buddyUdpPort());
         }
-        return hello;
+        return this.ourIpv6.map(hello::withIpv6).orElse(hello);
     }
 
     /**
@@ -2157,7 +2173,7 @@ final class Network {
                         address, Optional.empty(), PeerGreetings.HELLO_TIMEOUT, this.random);
                 UdpCheck check = new UdpCheck(node, ip, request);
                 connection.start(check, frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
-                connection.send(ourHello().encode(false));
+                connection.send(ourHello().toPeerAt(address.getAddress()).encode(false));
             } catch (IOException e) {
                 logger.debug("UDP test helper {} unreachable: {}", address, e.getMessage());
                 this.loop.post(() -> udpCheckEnded(node, ip, false));
@@ -2271,7 +2287,8 @@ final class Network {
             }
         });
         connection.start(link, frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
-        connection.send(ourHello().encode(false));
+        connection.send(
+                ourHello().toPeerAt(connection.remoteAddress().getAddress()).encode(false));
     }
 
     // Our buddy relays a client's callback request: for a file we share or download, we connect to it.
@@ -2406,7 +2423,7 @@ final class Network {
                 TcpConnection connection =
                         TcpConnector.connectToClient(address, obfuscateFor, PeerGreetings.HELLO_TIMEOUT, this.random);
                 connection.start(new ReachabilityCheck(), frame -> Packing.unpack(frame, Packing.MAX_CLIENT_UNPACKED));
-                connection.send(ourHello().encode(false));
+                connection.send(ourHello().toPeerAt(address.getAddress()).encode(false));
                 this.loop.schedule("Kad check close", PeerGreetings.HELLO_TIMEOUT, connection::close);
             } catch (IOException e) {
                 logger.debug("Kad check of {} failed: {}", address, e.getMessage());

@@ -19,6 +19,8 @@ package org.njmule.core.protocol.ed2k;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.google.common.net.InetAddresses;
+import java.net.Inet6Address;
 import java.util.Collections;
 import java.util.HexFormat;
 import java.util.List;
@@ -28,6 +30,7 @@ import net.jqwik.api.Property;
 import net.jqwik.api.constraints.Size;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.protocol.io.DecodeException;
@@ -92,6 +95,8 @@ class Ed2kMessagesTest {
     private Optional<Packet> searchRequest;
     private Hello hello;
     private Hello decodedHello;
+    private Hello addressed;
+    private Optional<Inet6Address> helloIpv6;
     private Packet answer;
     private int listenPort;
     private FileEntry entry;
@@ -522,6 +527,67 @@ class Ed2kMessagesTest {
     }
 
     @Test
+    void shouldTellInOurHelloThatWeTakeIpv6() throws DecodeException {
+        givenOurHello();
+        givenOurHelloIsEncoded(false);
+
+        whenTheHelloIsDecoded();
+
+        thenTheHelloModOptionsAre(Hello.MOD_MISC_IPV6);
+        thenTheHelloSaysItHasAnIpv4Address();
+    }
+
+    @Test
+    void shouldCarryOurIpv6AddressInTheHello() throws DecodeException {
+        givenOurHelloWithTheIpv6Address("2001:db8:1:2::1");
+        givenOurHelloIsEncoded(true);
+
+        whenTheHelloIsDecoded();
+
+        thenTheHelloIpv6AddressIs("2001:db8:1:2::1");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"fe80::1", "fd00::1", "2002:102:304::1", "2001:0:4136:e378::1", "::1"})
+    void shouldIgnoreAnIpv6AddressInTheHelloThatPeersCannotReach(String address) {
+        givenAHelloOnThePortWithTheTags(4662, ipv6Tag(address));
+
+        whenItsIpv6AddressIsRead();
+
+        thenTheHelloGivesNoIpv6Address();
+    }
+
+    @Test
+    void shouldTellThePeerTheIpv4AddressWeSeeItAt() {
+        givenOurHello();
+
+        whenItIsAddressedToThePeerAt("1.2.3.4");
+
+        thenItsLastTagIs(Tag.of(ClientTag.MOD_YOUR_IP, Ipv4.toEd2k(Ipv4.parse("1.2.3.4"))));
+    }
+
+    @Test
+    void shouldTellThePeerTheIpv6AddressWeSeeItAt() {
+        givenOurHello();
+
+        whenItIsAddressedToThePeerAt("2001:db8::7");
+
+        thenItsLastTagIs(new Tag.HashTag(
+                TagName.id(ClientTag.MOD_YOUR_IP),
+                Hash16.of(InetAddresses.forString("2001:db8::7").getAddress())));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"4294967295, false", "16777217, true", "5, true"})
+    void shouldTellWhetherAClientHasAnIpv4Address(long clientId, boolean expected) {
+        givenAHelloWithTheClientId(clientId);
+
+        whenTheHelloIsKept();
+
+        thenTheHelloHasAnIpv4Address(expected);
+    }
+
+    @Test
     void shouldRoundTripALogin() throws DecodeException {
         givenTheEncodedLogin(new ServerMessages.Login(HASH, 0x0100_0001L, 4662, "nick", 0x719));
 
@@ -784,6 +850,12 @@ class Ed2kMessagesTest {
         this.search = SearchParser.parse(expression);
     }
 
+    private static Tag ipv6Tag(String address) {
+        return new Tag.HashTag(
+                TagName.id(ClientTag.MOD_IP_V6),
+                Hash16.of(InetAddresses.forString(address).getAddress()));
+    }
+
     private void givenAFileEntryWithTheTags(Tag... tags) {
         this.entry = new FileEntry(HASH, 0, 0, List.of(tags));
     }
@@ -804,6 +876,15 @@ class Ed2kMessagesTest {
                 Hello.MISC2_SUPPORTS_CRYPT,
                 Ipv4.parse("9.8.7.6"),
                 4661);
+    }
+
+    private void givenOurHelloWithTheIpv6Address(String address) {
+        givenOurHello();
+        this.hello = this.hello.withIpv6((Inet6Address) InetAddresses.forString(address));
+    }
+
+    private void givenAHelloWithTheClientId(long clientId) {
+        this.hello = new Hello(HASH, clientId, 4662, List.of(), 0, 0);
     }
 
     private void givenOurHelloIsEncoded(boolean answer) {
@@ -934,6 +1015,18 @@ class Ed2kMessagesTest {
 
     private void whenTheHelloIsDecoded() throws DecodeException {
         this.decodedHello = Hello.decode(this.packet);
+    }
+
+    private void whenItsIpv6AddressIsRead() {
+        this.helloIpv6 = this.hello.ipv6();
+    }
+
+    private void whenItIsAddressedToThePeerAt(String address) {
+        this.addressed = this.hello.toPeerAt(InetAddresses.forString(address));
+    }
+
+    private void whenTheHelloIsKept() {
+        this.decodedHello = this.hello;
     }
 
     private void whenItsSourceCountsAreRead() {
@@ -1164,6 +1257,33 @@ class Ed2kMessagesTest {
     private void thenTheHelloMiscOptionsAre(int miscOptions1, int miscOptions2) {
         assertThat(this.decodedHello.miscOptions1()).isEqualTo(miscOptions1);
         assertThat(this.decodedHello.miscOptions2()).isEqualTo(miscOptions2);
+    }
+
+    private void thenTheHelloModOptionsAre(int options) {
+        assertThat(this.decodedHello.modMiscOptions()).isEqualTo(options);
+    }
+
+    private void thenTheHelloSaysItHasAnIpv4Address() {
+        assertThat(this.decodedHello.hasIpv4()).isTrue();
+    }
+
+    private void thenTheHelloHasAnIpv4Address(boolean expected) {
+        assertThat(this.decodedHello.hasIpv4()).isEqualTo(expected);
+    }
+
+    private void thenTheHelloIpv6AddressIs(String address) {
+        assertThat(this.decodedHello.ipv6()).contains((Inet6Address) InetAddresses.forString(address));
+    }
+
+    private void thenTheHelloGivesNoIpv6Address() {
+        assertThat(this.helloIpv6).isEmpty();
+    }
+
+    private void thenItsLastTagIs(Tag expected) {
+        assertThat(this.addressed.tags())
+                .hasSize(this.hello.tags().size() + 1)
+                .last()
+                .isEqualTo(expected);
     }
 
     private void thenTheHelloEmuleVersionIs(long emuleVersion) {

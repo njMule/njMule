@@ -148,7 +148,8 @@ public final class PeerGreetings implements AutoCloseable {
                         TcpConnector.connectToClient(address, obfuscateFor, HELLO_TIMEOUT, this.random);
                 this.open.add(connection);
                 connection.start(new Handler(Optional.of(answer)), PeerGreetings::unpack);
-                connection.send(this.ourHello.get().encode(false));
+                connection.send(
+                        this.ourHello.get().toPeerAt(address.getAddress()).encode(false));
             } catch (IOException e) {
                 answer.completeExceptionally(e);
             }
@@ -194,7 +195,11 @@ public final class PeerGreetings implements AutoCloseable {
             try {
                 Hello peer = Hello.decode(packet);
                 if (hello) {
-                    connection.send(PeerGreetings.this.ourHello.get().encode(true));
+                    connection.send(PeerGreetings.this
+                            .ourHello
+                            .get()
+                            .toPeerAt(connection.remoteAddress().getAddress())
+                            .encode(true));
                 }
                 if (!this.greeted) {
                     this.greeted = true;
