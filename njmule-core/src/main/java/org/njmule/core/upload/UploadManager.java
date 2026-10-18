@@ -19,6 +19,7 @@ package org.njmule.core.upload;
 import com.google.common.base.Ticker;
 import java.io.IOException;
 import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.security.SecureRandom;
@@ -1078,20 +1079,30 @@ public final class UploadManager implements AutoCloseable {
                 if (!c.lowId && c.ip instanceof Inet4Address ip4) {
                     sources.add(new SourceExchange.Source(
                             Ipv4.fromBytes(ip4.getAddress()), 0, c.port, 0, 0, Optional.of(c.userHash), 0));
+                } else if (!c.lowId && c.ip instanceof Inet6Address ip6 && Ipv6.isPublic(ip6)) {
+                    sources.add(SourceExchange.Source.ipv6Only(ip6, c.port, Optional.of(c.userHash)));
                 }
             }
         }
+        // Both announce the extended form, which carries IPv6 addresses; the others get none at an IPv6 address alone.
+        boolean extended = session.peer().supportsExtendedSourceExchange()
+                && this.ourHello.get().supportsExtendedSourceExchange();
+        if (!extended) {
+            sources.removeIf(SourceExchange.Source::isIpv6Only);
+        }
         sources.removeIf(s -> s.userHash().map(session.userHash()::equals).orElse(false));
         // Addresses outside the public network stay within their own: LAN and loopback ones go to no one outside.
-        sources.removeIf(
-                s -> !DownloadManager.passesOn(s.ip(), session.address().getAddress()));
+        sources.removeIf(s -> !s.isIpv6Only()
+                && !DownloadManager.passesOn(s.ip(), session.address().getAddress()));
         if (sources.isEmpty()) {
             return;
         }
         this.sourcesAnswered.put(asker, now);
         List<SourceExchange.Source> sent = sources.subList(0, Math.min(sources.size(), SourceExchange.MAX_SOURCES));
         int version = Math.min(request.version(), SourceExchange.VERSION);
-        Packet answer = new SourceExchange.Answer(version, request.file(), sent).encode();
+        Packet answer = extended
+                ? new SourceExchange.Answer(SourceExchange.EXTENDED_VERSION, request.file(), sent).encodeExtended()
+                : new SourceExchange.Answer(version, request.file(), sent).encode();
         session.send(answer.length() > SX_PACK_ABOVE ? Packing.pack(answer) : answer);
     }
 

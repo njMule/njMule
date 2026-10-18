@@ -533,7 +533,10 @@ final class DownloadSession implements PeerLink.Role {
                 }
             }
             case ANSWERSOURCES2 -> {
-                SourceExchange.Answer answer = SourceExchange.Answer.decode(packet);
+                SourceExchange.Answer answer =
+                        extendedExchange() && packet.reader().u8() == SourceExchange.EXTENDED_VERSION
+                                ? SourceExchange.Answer.decodeExtended(packet)
+                                : SourceExchange.Answer.decode(packet);
                 // Only answers we asked for, about a file we asked for.
                 if (this.sourcesAsked.remove(answer.file())) {
                     this.listener.sourcesFound(this, answer);
@@ -583,8 +586,15 @@ final class DownloadSession implements PeerLink.Role {
                 .orElse(false);
         if (exchanges && this.listener.maySourcesBeAsked(this)) {
             this.sourcesAsked.add(file);
-            this.connection.send(SourceExchange.request(file));
+            this.connection.send(SourceExchange.request(
+                    file, extendedExchange() ? SourceExchange.EXTENDED_VERSION : SourceExchange.VERSION));
         }
+    }
+
+    // Both announce the extended source exchange: the source answers in it, whatever version is asked for.
+    private boolean extendedExchange() {
+        return this.peer.map(Hello::supportsExtendedSourceExchange).orElse(false)
+                && this.ourHello.get().supportsExtendedSourceExchange();
     }
 
     // One file request at a time: the next goes out once the source answered the last, and before any upload request.

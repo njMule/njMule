@@ -20,6 +20,7 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
+import java.util.Optional;
 
 /** IPv6 addresses as the peers who hold them: one home or host gets a whole /64 and picks any address in it. */
 public final class Ipv6 {
@@ -41,6 +42,19 @@ public final class Ipv6 {
         boolean sixToFour = first == 0x2002;
         boolean teredo = first == 0x2001 && second == 0;
         return global && !sixToFour && !teredo;
+    }
+
+    /** The 16 bytes as an IPv6 address, if peers on the Internet may reach it. */
+    public static Optional<Inet6Address> publicOf(byte[] bytes) {
+        try {
+            return bytes.length == 16
+                            && InetAddress.getByAddress(bytes) instanceof Inet6Address address
+                            && isPublic(address)
+                    ? Optional.of(address)
+                    : Optional.empty();
+        } catch (UnknownHostException e) {
+            return Optional.empty();
+        }
     }
 
     /** The /64 network of an IPv6 address, which bans and limits count as one address; IPv4 addresses as they are. */

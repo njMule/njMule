@@ -30,6 +30,10 @@ public final class ClientTag {
     public static final int MOD_YOUR_IP = 0xAD;
     /** The sender's public IPv6 address, a hash tag of 16 bytes. */
     public static final int MOD_IP_V6 = 0xAE;
+    /** In an extended source exchange: the server a source is on, its address (eD2K order) and TCP port. */
+    public static final int EMULE_SERVERIP = 0xBA;
+
+    public static final int EMULE_SERVERTCP = 0xBB;
 
     public static final int EMULECOMPAT_OPTIONS1 = 0xEF;
     public static final int EMULE_UDPPORTS = 0xF9;

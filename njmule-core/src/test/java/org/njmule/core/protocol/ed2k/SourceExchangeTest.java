@@ -19,6 +19,8 @@ package org.njmule.core.protocol.ed2k;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.google.common.net.InetAddresses;
+import java.net.Inet6Address;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HexFormat;
@@ -47,6 +49,7 @@ class SourceExchangeTest {
     private static final Hash16 FILE = Hash16.parseHex("ab".repeat(16));
     private static final Hash16 USER = Hash16.parseHex("cd".repeat(16));
     private static final int IP = Ipv4.of(1, 2, 3, 4);
+    private static final Inet6Address IPV6 = (Inet6Address) InetAddresses.forString("2001:db8::1");
 
     private final List<SourceExchange.Source> sources = new ArrayList<>();
     private int version;
@@ -171,6 +174,70 @@ class SourceExchangeTest {
         thenTheFirstSourceIsALowIdOrAnAddress();
     }
 
+    @Test
+    void shouldReadAnExtendedAnswerAndSkipTheTagsItDoesNotKnow() {
+        givenTheAnswerPayload("01" + "ab".repeat(16) + "0100" + "01020304" + "3612" + "04"
+                // An address tag of a LowID, which it does not use, then the server and the IPv6 address.
+                + "83b0" + "05060708"
+                + "83ba" + "09090909"
+                + "88bb" + "3512"
+                + "81ae" + "20010db8000000000000000000000001");
+
+        whenTheExtendedAnswerIsDecoded();
+
+        thenNoExceptionOccurred();
+        thenTheSourceIsTheAddress(0, IP, 4662);
+        thenTheServerOfTheSourceIs(0, Ipv4.of(9, 9, 9, 9));
+        thenTheIpv6AddressOfTheSourceIs(0, IPV6);
+        thenTheSourceCarriesTheUserHash(0, false);
+    }
+
+    @Test
+    void shouldRoundTripAnExtendedAnswer() {
+        givenAHighIdSourceWithItsIpv6Address();
+        givenASourceAtItsIpv6AddressAlone();
+        givenLowIdSources(1);
+        givenTheAnswerIsEncodedExtended();
+
+        whenTheExtendedAnswerIsDecoded();
+
+        thenNoExceptionOccurred();
+        thenTheAnswerVersionIs(SourceExchange.EXTENDED_VERSION);
+        thenTheSourceIsTheAddress(0, IP, 4662);
+        thenTheServerOfTheSourceIs(0, Ipv4.of(9, 9, 9, 9));
+        thenTheIpv6AddressOfTheSourceIs(0, IPV6);
+        thenTheSourceIsAtItsIpv6AddressAlone(1, 4664);
+        thenTheSourceIsTheLowId(2, 1234);
+    }
+
+    @Test
+    void shouldLeaveSourcesAtAnIpv6AddressAloneOutOfAnAnswerOfTheOtherForm() {
+        givenAHighIdSource(1);
+        givenASourceAtItsIpv6AddressAlone();
+        givenTheAnswerIsEncodedInVersion(4);
+
+        whenTheAnswerIsDecoded();
+
+        thenNoExceptionOccurred();
+        thenTheAnswerCarriesSources(1);
+    }
+
+    @Test
+    void shouldAskForTheExtendedFormWithVersionOne() {
+        whenAnExtendedSourceRequestIsMade();
+
+        thenTheRequestPayloadIs("01" + "0000" + "ab".repeat(16));
+    }
+
+    @Property
+    void shouldOnlyFailWithDecodeExceptionOnGarbageReadAsAnExtendedAnswer(@ForAll @Size(max = 200) byte[] data) {
+        givenAnAnswerCarrying(data);
+
+        whenTheExtendedAnswerIsDecoded();
+
+        thenItIsReadOrRefusedAsMalformed();
+    }
+
     @Property
     void shouldOnlyFailWithDecodeExceptionOnGarbageReadAsAnAnswer(@ForAll @Size(max = 200) byte[] data) {
         givenAnAnswerCarrying(data);
@@ -197,6 +264,19 @@ class SourceExchangeTest {
     private void givenAHighIdSource(int cryptOptions) {
         this.sources.add(
                 new SourceExchange.Source(IP, 0, 4662, Ipv4.of(9, 9, 9, 9), 4661, Optional.of(USER), cryptOptions));
+    }
+
+    private void givenAHighIdSourceWithItsIpv6Address() {
+        this.sources.add(new SourceExchange.Source(
+                IP, 0, 4662, Ipv4.of(9, 9, 9, 9), 4661, Optional.empty(), 0, Optional.of(IPV6)));
+    }
+
+    private void givenASourceAtItsIpv6AddressAlone() {
+        this.sources.add(SourceExchange.Source.ipv6Only(IPV6, 4664, Optional.empty()));
+    }
+
+    private void givenTheAnswerIsEncodedExtended() {
+        this.packet = new SourceExchange.Answer(SourceExchange.EXTENDED_VERSION, FILE, this.sources).encodeExtended();
     }
 
     private void givenLowIdSources(int count) {
@@ -252,6 +332,15 @@ class SourceExchangeTest {
         this.exception = catchThrowable(() -> this.answer = SourceExchange.Answer.decode(received));
     }
 
+    private void whenTheExtendedAnswerIsDecoded() {
+        Packet received = this.packet;
+        this.exception = catchThrowable(() -> this.answer = SourceExchange.Answer.decodeExtended(received));
+    }
+
+    private void whenAnExtendedSourceRequestIsMade() {
+        this.packet = SourceExchange.request(FILE, SourceExchange.EXTENDED_VERSION);
+    }
+
     private void whenASourceRequestIsMade() {
         this.packet = SourceExchange.request(FILE);
     }
@@ -297,6 +386,18 @@ class SourceExchangeTest {
     private void thenTheSourceIsTheLowId(int index, long lowId) {
         assertThat(this.answer.sources().get(index).isLowId()).isTrue();
         assertThat(this.answer.sources().get(index).lowId()).isEqualTo(lowId);
+    }
+
+    private void thenTheIpv6AddressOfTheSourceIs(int index, Inet6Address address) {
+        assertThat(this.answer.sources().get(index).ipv6()).contains(address);
+    }
+
+    private void thenTheSourceIsAtItsIpv6AddressAlone(int index, int port) {
+        SourceExchange.Source source = this.answer.sources().get(index);
+        assertThat(source.isIpv6Only()).isTrue();
+        assertThat(source.isLowId()).isFalse();
+        assertThat(source.ipv6()).contains(IPV6);
+        assertThat(source.port()).isEqualTo(port);
     }
 
     private void thenTheSourceCarriesTheUserHash(int index, boolean carried) {

@@ -535,6 +535,7 @@ class Ed2kMessagesTest {
 
         thenTheHelloModOptionsAre(Hello.MOD_MISC_IPV6);
         thenTheHelloSaysItHasAnIpv4Address();
+        thenTheHelloTakesTheExtendedSourceExchange(false);
     }
 
     @Test
@@ -545,6 +546,8 @@ class Ed2kMessagesTest {
         whenTheHelloIsDecoded();
 
         thenTheHelloIpv6AddressIs("2001:db8:1:2::1");
+        thenTheHelloModOptionsAre(Hello.MOD_MISC_IPV6 | Hello.MOD_MISC_EXTENDED_SX);
+        thenTheHelloTakesTheExtendedSourceExchange(true);
     }
 
     @ParameterizedTest
@@ -1261,6 +1264,10 @@ class Ed2kMessagesTest {
 
     private void thenTheHelloModOptionsAre(int options) {
         assertThat(this.decodedHello.modMiscOptions()).isEqualTo(options);
+    }
+
+    private void thenTheHelloTakesTheExtendedSourceExchange(boolean expected) {
+        assertThat(this.decodedHello.supportsExtendedSourceExchange()).isEqualTo(expected);
     }
 
     private void thenTheHelloSaysItHasAnIpv4Address() {

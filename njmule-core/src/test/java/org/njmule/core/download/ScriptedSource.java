@@ -23,6 +23,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -63,6 +64,7 @@ final class ScriptedSource implements AutoCloseable {
     private final int misc2;
     private final int udpPort;
     private final BlockingQueue<Socket> accepted = new LinkedBlockingQueue<>();
+    private volatile Optional<Inet6Address> ipv6 = Optional.empty();
 
     /** A source with {@code userHash} announcing the options {@code misc1} and {@code misc2} in its hello. */
     ScriptedSource(Hash16 userHash, int misc1, int misc2) throws IOException {
@@ -81,6 +83,11 @@ final class ScriptedSource implements AutoCloseable {
 
     int port() {
         return this.server.getLocalPort();
+    }
+
+    /** From now on its hello gives {@code address} as its IPv6 address, and the extended source exchange with it. */
+    void announceIpv6(Inet6Address address) {
+        this.ipv6 = Optional.of(address);
     }
 
     InetSocketAddress address() {
@@ -105,8 +112,9 @@ final class ScriptedSource implements AutoCloseable {
 
     /** Our hello with another user hash, client id and server, as a firewalled client tells them. */
     Hello hello(Hash16 hash, long clientId, int serverIp) {
-        return Hello.of(
+        Hello hello = Hello.of(
                 hash, clientId, port(), "scripted", this.udpPort, this.udpPort, this.misc1, this.misc2, serverIp, 4661);
+        return this.ipv6.map(hello::withIpv6).orElse(hello);
     }
 
     /** Connects to the downloader listening at {@code port} with {@code hello}, as a source calling back does. */

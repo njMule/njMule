@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.google.common.base.Ticker;
 import com.google.common.net.InetAddresses;
 import java.io.IOException;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -120,6 +121,7 @@ class DownloadSourcesTest {
     private byte[] data;
     private Hash16 hash;
     private ScriptedSource source;
+    private Optional<Inet6Address> ourIpv6 = Optional.empty();
     private ScriptedSource.Link link;
     private Recovery recovery;
     private ScriptedSource.Link second;
@@ -152,6 +154,20 @@ class DownloadSourcesTest {
         for (AutoCloseable resource : this.resources) {
             resource.close();
         }
+    }
+
+    @Test
+    void shouldTakeTheIpv6SourcesOfAnExtendedAnswerWhenWeHaveIpv6() throws Exception {
+        givenWeHaveTheIpv6Address("2001:db8::99");
+        givenASourceAnnouncingTheIpv6Address(Hello.MISC2_SOURCE_EXCHANGE2, "2001:db8::50");
+        givenTheManager();
+        givenADownloadFromTheSource("six.bin", Hash16.parseHex("4e".repeat(16)));
+        givenWeAskedTheSourceForOtherSourcesTheExtendedWay();
+
+        whenTheSourceAnswersTheExtendedWayWithAHighIdALowIdAndASourceAtAnIpv6AddressAlone();
+
+        thenTheDownloadHasSources(4);
+        thenASourceIsShownAt("[2001:db8::61]:" + PORT);
     }
 
     @Test
@@ -577,6 +593,15 @@ class DownloadSourcesTest {
         this.source = source(misc1, misc2);
     }
 
+    private void givenASourceAnnouncingTheIpv6Address(int misc2, String address) throws Exception {
+        this.source = source(0, misc2);
+        this.source.announceIpv6((Inet6Address) InetAddresses.forString(address));
+    }
+
+    private void givenWeHaveTheIpv6Address(String address) {
+        this.ourIpv6 = Optional.of((Inet6Address) InetAddresses.forString(address));
+    }
+
     private void givenTheManager() throws Exception {
         manager();
     }
@@ -704,6 +729,14 @@ class DownloadSourcesTest {
         });
     }
 
+    private void givenWeAskedTheSourceForOtherSourcesTheExtendedWay() throws Exception {
+        this.link = accept(this.source);
+        List<Packet> asked = this.link.until(Opcodes.Extended.REQUESTSOURCES2);
+        assertThat(asked.getLast().payload()[0])
+                .as("version 1 asks for the extended form")
+                .isEqualTo((byte) SourceExchange.EXTENDED_VERSION);
+    }
+
     private void givenWeAskedTheSourceForTheAichHashAndOtherSources() throws Exception {
         this.link = accept(this.source);
         assertThat(names(this.link.until(Opcodes.Extended.REQUESTSOURCES2)))
@@ -743,6 +776,32 @@ class DownloadSourcesTest {
         this.link.send(new ClientMessages.FileStatus(this.hash, 0, new BitSet()).encode());
         this.link.until(Opcodes.Client.STARTUPLOADREQ);
         this.link.send(Packet.of(Protocol.EDONKEY, Opcodes.Client.QUEUERANK.code(), new PacketWriter().u32(rank)));
+    }
+
+    private void whenTheSourceAnswersTheExtendedWayWithAHighIdALowIdAndASourceAtAnIpv6AddressAlone() throws Exception {
+        this.link.send(new SourceExchange.Answer(
+                        SourceExchange.EXTENDED_VERSION,
+                        this.hash,
+                        List.of(
+                                new SourceExchange.Source(
+                                        Ipv4.of(192, 0, 2, 60),
+                                        0,
+                                        PORT,
+                                        0,
+                                        0,
+                                        Optional.empty(),
+                                        0,
+                                        ipv6("2001:db8::60")),
+                                SourceExchange.Source.ipv6Only(
+                                        (Inet6Address) InetAddresses.forString("2001:db8::61"), PORT, Optional.empty()),
+                                new SourceExchange.Source(
+                                        0, 1234, PORT, 0, 0, Optional.empty(), 0, ipv6("2001:db8::62")),
+                                // Ourselves, at our own IPv6 address.
+                                SourceExchange.Source.ipv6Only(
+                                        (Inet6Address) InetAddresses.forString("2001:db8::99"),
+                                        PORT,
+                                        Optional.empty())))
+                .encodeExtended());
     }
 
     // Queued from the upload request on; the rank comes after.
@@ -1289,6 +1348,12 @@ class DownloadSourcesTest {
         awaitSources(this.hash, count);
     }
 
+    private void thenASourceIsShownAt(String address) throws Exception {
+        assertThat(onLoop(() ->
+                        this.manager.sources().stream().map(SourceInfo::address).toList()))
+                .contains(address);
+    }
+
     private void thenTheDownloadHasCompleted(long bytes) throws Exception {
         assertThat(onLoop(() -> this.manager.download(this.hash).orElseThrow().completed()))
                 .isEqualTo(bytes);
@@ -1498,6 +1563,10 @@ class DownloadSourcesTest {
         }
     }
 
+    private static Optional<Inet6Address> ipv6(String address) {
+        return Optional.of((Inet6Address) InetAddresses.forString(address));
+    }
+
     private static SourceExchange.Source exchanged(int ip) {
         return new SourceExchange.Source(ip, 0, PORT, 0, 0, Optional.empty(), 0);
     }
@@ -1548,7 +1617,8 @@ class DownloadSourcesTest {
                 (hash, key) -> {},
                 Optional::empty,
                 random);
-        Hello hello = Hello.of(Hash16.parseHex("ab".repeat(16)), Ipv4.toEd2k(OUR_IP), PORT, "test", 0, 0, 0, 0, 0, 0);
+        Hello plain = Hello.of(Hash16.parseHex("ab".repeat(16)), Ipv4.toEd2k(OUR_IP), PORT, "test", 0, 0, 0, 0, 0, 0);
+        Hello hello = this.ourIpv6.map(plain::withIpv6).orElse(plain);
         this.incoming = this.incoming == null ? this.dir.resolve("incoming") : this.incoming;
         this.manager = onLoop(() -> DownloadManager.open(
                 this.loop,

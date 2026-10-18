@@ -22,6 +22,7 @@ import com.google.common.base.Ticker;
 import com.google.common.net.InetAddresses;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -139,6 +140,7 @@ class UploadManagerTest {
     private ClientMessages.FileStatus status;
     private ClientMessages.SendingPart block;
     private List<SourceExchange.Source> toldSources;
+    private Optional<Inet6Address> ourIpv6 = Optional.empty();
     private int dropped;
 
     @AfterEach
@@ -388,6 +390,41 @@ class UploadManagerTest {
     }
 
     @Test
+    void shouldShareIpv6SourcesTheExtendedWayWithAClientTakingIt() throws Exception {
+        givenADownloadWithOnlyItsLastPartChecked("six.bin", 1000, 11);
+        givenTheDownloadHasAnIpv4SourceAndOneAtItsIpv6AddressAlone();
+        givenWeHaveTheIpv6Address("2001:db8::99");
+        givenTheUploadsStarted();
+        givenAClientTakingTheExtendedSourceExchangeConnected(1);
+        givenTheClientToldTheDownloadHasOnlyItsLastPart();
+        givenNoBlocksSentBeforeTheSlot();
+        givenTheSlotGivenAgainWithNothingOfAnotherFile();
+        givenOnlyTheCheckedPartSent();
+
+        whenTheClientAsksForTheSourcesOfTheDownloadTheExtendedWay();
+
+        thenTheSourcesToldAre(2, "the IPv4 source with its IPv6 address, and the one at its IPv6 address alone");
+        thenOneSourceToldIsAt("2001:db8::61");
+    }
+
+    @Test
+    void shouldLeaveSourcesAtAnIpv6AddressAloneOutForAClientNotTakingTheExtendedWay() throws Exception {
+        givenADownloadWithOnlyItsLastPartChecked("six.bin", 1000, 11);
+        givenTheDownloadHasAnIpv4SourceAndOneAtItsIpv6AddressAlone();
+        givenWeHaveTheIpv6Address("2001:db8::99");
+        givenTheUploadsStarted();
+        givenAClientConnected(1);
+        givenTheClientToldTheDownloadHasOnlyItsLastPart();
+        givenNoBlocksSentBeforeTheSlot();
+        givenTheSlotGivenAgainWithNothingOfAnotherFile();
+        givenOnlyTheCheckedPartSent();
+
+        whenTheClientAsksForTheSourcesOfTheDownload();
+
+        thenTheSourcesToldAre(1, "only the IPv4 source");
+    }
+
+    @Test
     void shouldShareTheSourcesOfADownload() throws Exception {
         givenADownloadWithOnlyItsLastPartChecked("partial.bin", 1000, 11);
         givenTheDownloadHasSources(20);
@@ -552,6 +589,23 @@ class UploadManagerTest {
         Ed2kLink.FileLink link = new Ed2kLink.FileLink(
                 name, 2 * Ed2k.PARTSIZE, Ed2k.fileHash(parts), Optional.empty(), parts, List.of(), List.of());
         this.download = downloadLastPart(link, second);
+    }
+
+    private void givenTheDownloadHasAnIpv4SourceAndOneAtItsIpv6AddressAlone() {
+        this.downloadSources = List.of(
+                new SourceExchange.Source(
+                        Ipv4.of(198, 51, 100, 1), 0, 4662, 0, 0, Optional.of(hashOf(101)), 0, Optional.of((Inet6Address)
+                                InetAddresses.forString("2001:db8::60"))),
+                SourceExchange.Source.ipv6Only(
+                        (Inet6Address) InetAddresses.forString("2001:db8::61"), 4662, Optional.of(hashOf(102))));
+    }
+
+    private void givenWeHaveTheIpv6Address(String address) {
+        this.ourIpv6 = Optional.of((Inet6Address) InetAddresses.forString(address));
+    }
+
+    private void givenAClientTakingTheExtendedSourceExchangeConnected(int seed) throws IOException {
+        this.client = client(hello(seed, 0, 0).withIpv6((Inet6Address) InetAddresses.forString("2001:db8::1:1")));
     }
 
     private void givenTheDownloadHasSources(int count) {
@@ -861,6 +915,12 @@ class UploadManagerTest {
         this.block = ClientMessages.SendingPart.decode(this.client.until(Opcodes.Client.SENDINGPART));
     }
 
+    private void whenTheClientAsksForTheSourcesOfTheDownloadTheExtendedWay() throws Exception {
+        this.client.send(SourceExchange.request(this.download.hash(), SourceExchange.EXTENDED_VERSION));
+        this.toldSources = SourceExchange.Answer.decodeExtended(this.client.until(Opcodes.Extended.ANSWERSOURCES2))
+                .sources();
+    }
+
     private void whenTheClientAsksForTheSourcesOfTheDownload() throws Exception {
         this.client.send(SourceExchange.request(this.download.hash()));
         this.toldSources = SourceExchange.Answer.decode(this.client.until(Opcodes.Extended.ANSWERSOURCES2))
@@ -979,6 +1039,13 @@ class UploadManagerTest {
 
     private void thenTheSourcesToldAre(int count, String why) {
         assertThat(this.toldSources).as(why).hasSize(count);
+    }
+
+    private void thenOneSourceToldIsAt(String ipv6) {
+        assertThat(this.toldSources)
+                .filteredOn(SourceExchange.Source::isIpv6Only)
+                .singleElement()
+                .satisfies(s -> assertThat(s.ipv6()).contains((Inet6Address) InetAddresses.forString(ipv6)));
     }
 
     private void thenTheConnectionEnds() throws IOException {
@@ -1735,7 +1802,8 @@ class UploadManagerTest {
                 (hash, key) -> {},
                 Optional::empty,
                 random);
-        Hello ours = Hello.of(OURS, 0, 4662, "test", 0, 0, 0, 0, 0, 0);
+        Hello plain = Hello.of(OURS, 0, 4662, "test", 0, 0, 0, 0, 0, 0);
+        Hello ours = this.ourIpv6.map(plain::withIpv6).orElse(plain);
         PeerLinks links = new PeerLinks(this.loop, identities, link -> this.manager.attach(link));
         DownloadQueue queue = this.downloads;
         this.manager = new UploadManager(

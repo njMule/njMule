@@ -668,7 +668,7 @@ public final class DownloadManager implements AutoCloseable {
 
     /**
      * Sources of an active download that we spoke with, for other clients asking for sources: HighIDs with a known user
-     * hash.
+     * hash, with their IPv6 address when they gave one, and those at a public IPv6 address alone.
      */
     public List<SourceExchange.Source> exchangeable(Hash16 hash) {
         Entry entry = this.entries.get(hash);
@@ -679,11 +679,10 @@ public final class DownloadManager implements AutoCloseable {
         for (Source source : entry.sources.values()) {
             Client client = source.client;
             // A firewalled source passed on by its address would be tried in vain.
-            if (client.userHash.isPresent()
-                    && source.parts != null
-                    && client.lowId == 0
-                    && client.kad == null
-                    && client.address.getAddress() instanceof Inet4Address ip) {
+            if (client.userHash.isEmpty() || source.parts == null || client.lowId != 0 || client.kad != null) {
+                continue;
+            }
+            if (client.address.getAddress() instanceof Inet4Address ip) {
                 sources.add(new SourceExchange.Source(
                         Ipv4.fromBytes(ip.getAddress()),
                         0,
@@ -691,7 +690,10 @@ public final class DownloadManager implements AutoCloseable {
                         0,
                         0,
                         client.userHash,
-                        client.cryptOptions));
+                        client.cryptOptions,
+                        client.ipv6));
+            } else if (client.address.getAddress() instanceof Inet6Address ip6 && Ipv6.isPublic(ip6)) {
+                sources.add(SourceExchange.Source.ipv6Only(ip6, client.address.getPort(), client.userHash));
             }
         }
         return sources;
@@ -2370,14 +2372,32 @@ public final class DownloadManager implements AutoCloseable {
         entry.sourcesEverAnswered = true;
         entry.sourcesAnswered = this.ticker.read();
         int added = 0;
+        Optional<Inet6Address> ours = this.ourHello.get().ipv6();
         for (SourceExchange.Source s : answer.sources()) {
-            // A LowID would need a callback through its server; ours may differ.
-            if (s.isLowId()
-                    || !usable(s.ip(), s.port())
-                    || s.userHash().filter(this::isOurs).isPresent()) {
+            if (s.userHash().filter(this::isOurs).isPresent()
+                    || (s.ipv6().isPresent() && s.ipv6().equals(ours))) {
                 continue;
             }
-            Source fresh = addSource(entry, Ipv4.socketAddress(s.ip(), s.port()));
+            Source fresh;
+            if (s.isLowId() || s.isIpv6Only()) {
+                // Reached at its IPv6 address, when we have IPv6 too; a LowID would otherwise need a callback through
+                // its server, and ours may differ.
+                if (ours.isEmpty()
+                        || s.ipv6().isEmpty()
+                        || s.port() == 0
+                        || isCorruptSender(s.ipv6().get())) {
+                    continue;
+                }
+                fresh = addSource(entry, new InetSocketAddress(s.ipv6().get(), s.port()));
+            } else {
+                if (!usable(s.ip(), s.port())) {
+                    continue;
+                }
+                fresh = addSource(entry, Ipv4.socketAddress(s.ip(), s.port()));
+                if (fresh != null && s.ipv6().isPresent()) {
+                    fresh.client.ipv6 = s.ipv6();
+                }
+            }
             if (fresh != null) {
                 learn(fresh.client, s.userHash().filter(h -> !h.equals(Hash16.ZERO)), s.cryptOptions());
                 added++;

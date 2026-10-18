@@ -18,7 +18,6 @@ package org.njmule.core.protocol.ed2k;
 
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -69,6 +68,7 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
     public static final int MISC2_DIRECT_UDP_CALLBACK = 1 << 12;
 
     // Feature bits of the newer clients' options tag.
+    public static final int MOD_MISC_EXTENDED_SX = 1;
     public static final int MOD_MISC_IPV6 = 1 << 2;
 
     /** The client id of a client with no IPv4 address, reached over IPv6 only. */
@@ -108,9 +108,18 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
         return new Hello(userHash, clientId, tcpPort, tags, serverIp, serverPort);
     }
 
-    /** This greeting with our public IPv6 address, at which clients may reach us. */
+    /**
+     * This greeting with our public IPv6 address, at which clients may reach us, and the extended source exchange,
+     * which carries the IPv6 addresses of sources.
+     */
     public Hello withIpv6(Inet6Address ours) {
-        return with(new Tag.HashTag(TagName.id(ClientTag.MOD_IP_V6), Hash16.of(ours.getAddress())));
+        TagName options = TagName.id(ClientTag.MOD_MISCOPTIONS);
+        List<Tag> more = new ArrayList<>(this.tags.size() + 1);
+        for (Tag tag : this.tags) {
+            more.add(tag.name().equals(options) ? new Tag.IntTag(options, MOD_MISC_IPV6 | MOD_MISC_EXTENDED_SX) : tag);
+        }
+        more.add(new Tag.HashTag(TagName.id(ClientTag.MOD_IP_V6), Hash16.of(ours.getAddress())));
+        return new Hello(this.userHash, this.clientId, this.tcpPort, more, this.serverIp, this.serverPort);
     }
 
     /** This greeting telling the client the address we see it at, so that it learns its own. */
@@ -242,24 +251,18 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
         return (int) Tags.intValue(this.tags, ClientTag.MOD_MISCOPTIONS).orElse(0);
     }
 
+    /** Whether the client exchanges sources the extended way, IPv6 addresses included. */
+    public boolean supportsExtendedSourceExchange() {
+        return (modMiscOptions() & MOD_MISC_EXTENDED_SX) != 0;
+    }
+
     /** The public IPv6 address the client gives, if it gives one peers on the Internet can reach. */
     public Optional<Inet6Address> ipv6() {
-        return Tags.hashValue(this.tags, ClientTag.MOD_IP_V6)
-                .map(Hello::address)
-                .filter(Ipv6::isPublic)
-                .map(Inet6Address.class::cast);
+        return Tags.hashValue(this.tags, ClientTag.MOD_IP_V6).flatMap(hash -> Ipv6.publicOf(hash.toByteArray()));
     }
 
     /** Whether the client has an IPv4 address: one reached over IPv6 only says it has none. */
     public boolean hasIpv4() {
         return this.clientId != NO_IPV4;
-    }
-
-    private static InetAddress address(Hash16 bytes) {
-        try {
-            return InetAddress.getByAddress(bytes.toByteArray());
-        } catch (UnknownHostException e) {
-            throw new IllegalStateException(e);
-        }
     }
 }
