@@ -52,41 +52,4 @@ public interface StreamTransport extends AutoCloseable {
     static StreamTransport of(Socket socket) {
         return new SocketTransport(socket);
     }
-
-    /** A connected TCP socket. */
-    record SocketTransport(Socket socket) implements StreamTransport {
-        @Override
-        public InputStream input() throws IOException {
-            return this.socket.getInputStream();
-        }
-
-        @Override
-        public OutputStream output() throws IOException {
-            return this.socket.getOutputStream();
-        }
-
-        @Override
-        public InetSocketAddress remoteAddress() {
-            return (InetSocketAddress) this.socket.getRemoteSocketAddress();
-        }
-
-        @Override
-        public Optional<InetAddress> localAddress() {
-            return Optional.ofNullable(this.socket.getLocalAddress()).filter(a -> !a.isAnyLocalAddress());
-        }
-
-        @Override
-        public void setReadTimeout(Duration timeout) throws SocketException {
-            this.socket.setSoTimeout(Math.toIntExact(timeout.toMillis()));
-        }
-
-        @Override
-        public void close() {
-            try {
-                this.socket.close();
-            } catch (IOException e) {
-                // Closing anyway; nothing else to release.
-            }
-        }
-    }
 }
