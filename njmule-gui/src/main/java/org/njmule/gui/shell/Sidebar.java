@@ -67,9 +67,9 @@ final class Sidebar {
     record Place(String id, String title, Icons icon, String shortcut) {}
 
     /** Below this width of the window the sidebar shows only its icons. */
-    static final double NARROW = 1000;
+    static final double FOLD_BELOW = 1000;
 
-    private static final PseudoClass COLLAPSED = PseudoClass.getPseudoClass("collapsed");
+    private static final PseudoClass COLLAPSED_STATE = PseudoClass.getPseudoClass("collapsed");
     private static final int MAX_BADGE = 99;
     private static final double LOGO = 28;
 
@@ -78,7 +78,7 @@ final class Sidebar {
     private final Map<String, Mark> marks = new LinkedHashMap<>();
     private final BooleanProperty collapsed = new SimpleBooleanProperty();
     private final BooleanProperty narrow = new SimpleBooleanProperty();
-    private final DoubleProperty narrowBelow = new SimpleDoubleProperty(NARROW);
+    private final DoubleProperty narrowBelow = new SimpleDoubleProperty(FOLD_BELOW);
     // Narrow or wide whatever the width, while the window is measured; null otherwise.
     private final ObjectProperty<Boolean> forced = new SimpleObjectProperty<>();
     private GuiSettings settings;
@@ -212,8 +212,8 @@ final class Sidebar {
     }
 
     /**
-     * Folds the sidebar in a window narrower than {@link #NARROW} and opens it again as the user left it once wider;
-     * Ctrl+B folds or opens it, remembered in {@code settings} while the window is wide.
+     * Folds the sidebar in a window narrower than {@link #FOLD_BELOW} and opens it again as the user left it once
+     * wider; Ctrl+B folds or opens it, remembered in {@code settings} while the window is wide.
      */
     void follow(ObservableDoubleValue width, GuiSettings settings) {
         this.settings = settings;
@@ -243,9 +243,9 @@ final class Sidebar {
         return this.narrow;
     }
 
-    /** The width under which the sidebar folds by itself: never less than {@link #NARROW}. */
+    /** The width under which the sidebar folds by itself: never less than {@link #FOLD_BELOW}. */
     void foldBelow(double width) {
-        this.narrowBelow.set(Math.max(NARROW, width));
+        this.narrowBelow.set(Math.max(FOLD_BELOW, width));
     }
 
     /** Folds the sidebar or opens it again as the window's width and the user's choice say. */
@@ -267,7 +267,7 @@ final class Sidebar {
     }
 
     private void showCollapsed(boolean value) {
-        this.box.pseudoClassStateChanged(COLLAPSED, value);
+        this.box.pseudoClassStateChanged(COLLAPSED_STATE, value);
         for (ToggleButton button : this.buttons.values()) {
             button.setContentDisplay(value ? ContentDisplay.GRAPHIC_ONLY : ContentDisplay.LEFT);
         }

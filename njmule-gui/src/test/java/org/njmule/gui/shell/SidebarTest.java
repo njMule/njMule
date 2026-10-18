@@ -124,11 +124,11 @@ class SidebarTest {
     }
 
     private void whenTheWindowIsWide(boolean wide) throws Exception {
-        double width = wide ? Sidebar.NARROW + 100 : Sidebar.NARROW - 100;
+        double width = wide ? Sidebar.FOLD_BELOW + 100 : Sidebar.FOLD_BELOW - 100;
         FxTesting.onFx(() -> this.window.root().getScene().getWindow().setWidth(width));
         FxTesting.await(
                 "the window's width",
-                () -> wide == (this.window.root().getLayoutBounds().getWidth() >= Sidebar.NARROW));
+                () -> wide == (this.window.root().getLayoutBounds().getWidth() >= Sidebar.FOLD_BELOW));
     }
 
     private void thenTheSidebarIsFolded(boolean folded) throws Exception {

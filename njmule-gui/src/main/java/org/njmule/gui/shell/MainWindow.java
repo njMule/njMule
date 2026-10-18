@@ -106,11 +106,13 @@ public final class MainWindow {
             KeyCode.DIGIT5,
             KeyCode.DIGIT6,
             KeyCode.DIGIT7);
-    private static final String NETWORK = "network";
+    private static final String NETWORK_PLACE = "network";
     // The places of the sidebar in groups: what one does first comes first, the network and the statistics after, the
     // options at the bottom.
     private static final List<List<String>> GROUPS = List.of(
-            List.of("transfers", "search", "shared", "messages"), List.of(NETWORK, "statistics"), List.of("settings"));
+            List.of("transfers", "search", "shared", "messages"),
+            List.of(NETWORK_PLACE, "statistics"),
+            List.of("settings"));
     private static final List<String> PLACES =
             GROUPS.stream().flatMap(List::stream).toList();
     // The free space of the incoming folder is looked at again after this long.
@@ -170,14 +172,18 @@ public final class MainWindow {
         this.networkPane = new NetworkPane(this.networkCards.view(), List.of(servers, kadScreen, this.log), this::show);
         this.banner = new Banner(gui, this::connectIfOff, () -> show("settings"));
         this.network = new NetworkControl(
-                gui, this::toggleConnection, this::show, () -> open(NETWORK), shortcut(PLACES.indexOf(NETWORK)));
+                gui,
+                this::toggleConnection,
+                this::show,
+                () -> open(NETWORK_PLACE),
+                shortcut(PLACES.indexOf(NETWORK_PLACE)));
         this.sidebar = new Sidebar(
                 gui,
                 GROUPS.stream()
                         .map(group -> group.stream().map(this::place).toList())
                         .toList(),
                 List.of("transfers", "messages"),
-                NETWORK,
+                NETWORK_PLACE,
                 this::open);
         VBox center = new VBox(topBar(), this.banner.view(), this.content);
         VBox.setVgrow(this.content, Priority.ALWAYS);
@@ -345,11 +351,11 @@ public final class MainWindow {
 
     // A place of the sidebar: a screen, or the network at the part last shown.
     private void open(String place) {
-        show(place.equals(NETWORK) ? this.lastNetwork : place);
+        show(place.equals(NETWORK_PLACE) ? this.lastNetwork : place);
     }
 
     private String placeOf(String id) {
-        return this.networkPane.holds(id) ? NETWORK : id;
+        return this.networkPane.holds(id) ? NETWORK_PLACE : id;
     }
 
     private Node viewOf(String id) {
@@ -360,7 +366,7 @@ public final class MainWindow {
 
     private Sidebar.Place place(String id) {
         int index = PLACES.indexOf(id);
-        return id.equals(NETWORK)
+        return id.equals(NETWORK_PLACE)
                 ? new Sidebar.Place(id, this.gui.t("IDS_NETWORK"), Icons.NETWORK, shortcut(index))
                 : new Sidebar.Place(
                         id, this.screens.get(id).title(), this.screens.get(id).icon(), shortcut(index));
@@ -784,7 +790,7 @@ public final class MainWindow {
         boolean trying = connection == EngineModel.Connection.CONNECTING || kadInfo.isPresent();
         String state = this.network.ed2kChip().getText() + "\n"
                 + this.network.kadChip().getText();
-        this.sidebar.network(NETWORK, up, trying, state, shortcut(PLACES.indexOf(NETWORK)));
+        this.sidebar.network(NETWORK_PLACE, up, trying, state, shortcut(PLACES.indexOf(NETWORK_PLACE)));
         this.networkSummary.set(this.network.summary());
         this.banner.update(connection, status);
     }
@@ -883,7 +889,7 @@ public final class MainWindow {
     }
 
     private String placeTitle(String place) {
-        return place.equals(NETWORK)
+        return place.equals(NETWORK_PLACE)
                 ? this.gui.t("IDS_NETWORK")
                 : this.screens.get(place).title();
     }

@@ -43,7 +43,7 @@ final class Toasts {
     private static final Duration MESSAGE_TIME = Duration.seconds(6);
     // Within the time the engine keeps what an undo needs.
     private static final Duration OFFER_TIME = Duration.seconds(10);
-    private static final String SHOWN = "toast-shown";
+    private static final String SHOWN_STYLE = "toast-shown";
     private static final double WIDTH = 400;
 
     private final VBox stack = new VBox(8);
@@ -72,7 +72,7 @@ final class Toasts {
      */
     Notification show(String text, Icons glyph, String style, boolean fades) {
         for (Node node : this.stack.getChildren()) {
-            if (node.getProperties().get(SHOWN) instanceof Shown same
+            if (node.getProperties().get(SHOWN_STYLE) instanceof Shown same
                     && same.text.equals(text)
                     && Objects.equals(same.style, style)) {
                 Notification note = (Notification) node;
@@ -89,7 +89,7 @@ final class Toasts {
         }
         Notification note = add(text, glyph, style);
         Shown shown = new Shown(text, style);
-        note.getProperties().put(SHOWN, shown);
+        note.getProperties().put(SHOWN_STYLE, shown);
         if (fades) {
             shown.fade = fadeLater(note, MESSAGE_TIME);
         }

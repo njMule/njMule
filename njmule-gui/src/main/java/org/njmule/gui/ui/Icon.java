@@ -54,7 +54,7 @@ public final class Icon extends Region {
     private static final double STROKE = 1.75;
     private static final double DEFAULT_SIZE = 18;
 
-    private static final CssMetaData<Icon, Number> SIZE =
+    private static final CssMetaData<Icon, Number> SIZE_CSS =
             new CssMetaData<>("-nj-icon-size", StyleConverter.getSizeConverter(), DEFAULT_SIZE) {
                 @Override
                 public boolean isSettable(Icon icon) {
@@ -67,7 +67,7 @@ public final class Icon extends Region {
                 }
             };
 
-    private static final CssMetaData<Icon, Paint> COLOR =
+    private static final CssMetaData<Icon, Paint> COLOR_CSS =
             new CssMetaData<>("-nj-icon-color", StyleConverter.getPaintConverter()) {
                 @Override
                 public boolean isSettable(Icon icon) {
@@ -81,7 +81,7 @@ public final class Icon extends Region {
             };
 
     // For an icon with no text beside it, such as one alone in a row of a pane.
-    private static final CssMetaData<Icon, Paint> FALLBACK =
+    private static final CssMetaData<Icon, Paint> FALLBACK_CSS =
             new CssMetaData<>("-nj-icon-fallback", StyleConverter.getPaintConverter(), Color.GRAY) {
                 @Override
                 public boolean isSettable(Icon icon) {
@@ -98,18 +98,19 @@ public final class Icon extends Region {
 
     static {
         List<CssMetaData<? extends Styleable, ?>> all = new ArrayList<>(Region.getClassCssMetaData());
-        all.add(SIZE);
-        all.add(COLOR);
-        all.add(FALLBACK);
+        all.add(SIZE_CSS);
+        all.add(COLOR_CSS);
+        all.add(FALLBACK_CSS);
         CSS = List.copyOf(all);
     }
 
     private final SVGPath shape = new SVGPath();
     private final Scale scale = new Scale(1, 1, 0, 0);
-    private final StyleableDoubleProperty size = new SimpleStyleableDoubleProperty(SIZE, this, "size", DEFAULT_SIZE);
-    private final StyleableObjectProperty<Paint> color = new SimpleStyleableObjectProperty<>(COLOR, this, "color");
+    private final StyleableDoubleProperty size =
+            new SimpleStyleableDoubleProperty(SIZE_CSS, this, "size", DEFAULT_SIZE);
+    private final StyleableObjectProperty<Paint> color = new SimpleStyleableObjectProperty<>(COLOR_CSS, this, "color");
     private final StyleableObjectProperty<Paint> fallback =
-            new SimpleStyleableObjectProperty<>(FALLBACK, this, "fallback", Color.GRAY);
+            new SimpleStyleableObjectProperty<>(FALLBACK_CSS, this, "fallback", Color.GRAY);
     private final ObjectProperty<Paint> beside = new SimpleObjectProperty<>(this, "beside");
     private final ObjectBinding<Paint> paint;
     private Icons glyph;

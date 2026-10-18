@@ -46,7 +46,7 @@ final class DistanceChart {
     private static final double HEIGHT = 72;
 
     private final Gui gui;
-    private final List<Region> bars = new ArrayList<>();
+    private final List<Region> columns = new ArrayList<>();
     private final Label total = new Label();
     private final HBox plot = new HBox(3);
     private final VBox view;
@@ -72,7 +72,7 @@ final class DistanceChart {
             bar.setMinWidth(2);
             bar.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(bar, Priority.ALWAYS);
-            this.bars.add(bar);
+            this.columns.add(bar);
             this.plot.getChildren().add(bar);
         }
         Label close = new Label(gui.t("nj.kad.close"));
@@ -101,7 +101,7 @@ final class DistanceChart {
         }
         String contactsName = this.gui.t("IDS_KADCONTACTLAB");
         for (int i = 0; i < BARS; i++) {
-            Region bar = this.bars.get(i);
+            Region bar = this.columns.get(i);
             int count = this.counts[i];
             // An empty distance still shows a hairline, so the axis reads as a whole.
             double height = count == 0 ? 1 : Math.max(3, HEIGHT * count / fullest);

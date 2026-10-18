@@ -31,7 +31,7 @@ import javafx.scene.layout.Region;
  */
 public final class InspectorPane extends Pane {
 
-    private static final PseudoClass FLOATING = PseudoClass.getPseudoClass("floating");
+    private static final PseudoClass FLOATING_STATE = PseudoClass.getPseudoClass("floating");
 
     private final Region main;
     private final Region side;
@@ -55,7 +55,7 @@ public final class InspectorPane extends Pane {
         side.getStyleClass().add("inspector");
         getChildren().addAll(main, side);
         this.open.addListener((o, was, now) -> requestLayout());
-        this.floating.addListener((o, was, now) -> side.pseudoClassStateChanged(FLOATING, now));
+        this.floating.addListener((o, was, now) -> side.pseudoClassStateChanged(FLOATING_STATE, now));
     }
 
     /** Whether the details show. */

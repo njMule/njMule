@@ -118,7 +118,7 @@ public final class TransfersScreen implements Screen {
     private static final double LIST_WIDTH = 560;
     private static final double DETAILS_WIDTH = 320;
     private static final double DETAILS_GAP = 12;
-    private static final KeyCombination COPY = new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN);
+    private static final KeyCombination COPY_LINKS = new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN);
 
     /** The lists of the screen, one shown at a time. */
     enum Shelf {
@@ -251,7 +251,7 @@ public final class TransfersScreen implements Screen {
             if (e.getCode() == KeyCode.DELETE) {
                 askCancelSelected();
                 e.consume();
-            } else if (COPY.match(e)) {
+            } else if (COPY_LINKS.match(e)) {
                 copyLinks();
                 e.consume();
             }
