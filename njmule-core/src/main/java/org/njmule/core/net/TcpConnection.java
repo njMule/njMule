@@ -16,6 +16,8 @@
  */
 package org.njmule.core.net;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -40,9 +42,9 @@ import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.TcpFraming;
 
 /**
- * A framed eD2K TCP connection over a blocking socket, served by a reading and a writing virtual thread. Sending never
- * blocks: frames wait in a bounded queue, and a peer that does not drain it is disconnected. File data waits behind
- * every other packet.
+ * A framed eD2K connection over a blocking stream, a TCP socket or a stream over UDP, served by a reading and a writing
+ * thread. Sending never blocks: frames wait in a bounded queue, and a peer that does not drain it is disconnected. File
+ * data waits behind every other packet.
  */
 public final class TcpConnection implements PeerChannel, AutoCloseable {
 
@@ -66,8 +68,9 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     // A clean close sends what is queued, for this long at most.
     private static final Duration FLUSH_WAIT = Duration.ofSeconds(5);
     private static final long WRITER_STACK = 256 * 1024;
+    private static final int BUFFER = 16 * 1024;
 
-    private final Socket socket;
+    private final StreamTransport transport;
     private final InputStream in;
     private final OutputStream out;
     private final boolean obfuscated;
@@ -89,12 +92,27 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     private volatile Thread writer;
 
     TcpConnection(Socket socket, InputStream in, OutputStream out, boolean obfuscated, FrameLimit frameLimit) {
-        this.socket = Objects.requireNonNull(socket, "socket");
+        this(StreamTransport.of(socket), in, out, obfuscated, frameLimit);
+    }
+
+    TcpConnection(
+            StreamTransport transport, InputStream in, OutputStream out, boolean obfuscated, FrameLimit frameLimit) {
+        this.transport = Objects.requireNonNull(transport, "transport");
         this.in = Objects.requireNonNull(in, "in");
         this.out = Objects.requireNonNull(out, "out");
         this.obfuscated = obfuscated;
-        this.remote = (InetSocketAddress) socket.getRemoteSocketAddress();
+        this.remote = transport.remoteAddress();
         this.frameLimit = Objects.requireNonNull(frameLimit, "frameLimit");
+    }
+
+    /** A plain connection over {@code transport}, not started yet. */
+    public static TcpConnection over(StreamTransport transport, FrameLimit frameLimit) throws IOException {
+        return new TcpConnection(
+                transport,
+                new BufferedInputStream(transport.input(), BUFFER),
+                new BufferedOutputStream(transport.output(), BUFFER),
+                false,
+                frameLimit);
     }
 
     /** Starts the reading and writing threads; packets go to {@code handler}, told at once if already closed. */
@@ -169,7 +187,7 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     /** Fails reads that wait longer than {@code timeout}; zero waits forever. */
     @Override
     public void setReadTimeout(Duration timeout) throws SocketException {
-        this.socket.setSoTimeout(Math.toIntExact(timeout.toMillis()));
+        this.transport.setReadTimeout(timeout);
     }
 
     @Override
@@ -179,7 +197,7 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
 
     /** Our address on the connection, while the socket is open. */
     public Optional<InetAddress> localAddress() {
-        return Optional.ofNullable(this.socket.getLocalAddress()).filter(a -> !a.isAnyLocalAddress());
+        return this.transport.localAddress();
     }
 
     public boolean isObfuscated() {
@@ -241,11 +259,7 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     }
 
     private void closeSocket() {
-        try {
-            this.socket.close();
-        } catch (IOException e) {
-            // Closing anyway; nothing else to release.
-        }
+        this.transport.close();
     }
 
     private void readLoop() {
