@@ -18,6 +18,7 @@ package org.njmule.core.download;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.common.net.InetAddresses;
 import java.io.BufferedInputStream;
 import java.io.EOFException;
 import java.io.IOException;
@@ -73,11 +74,16 @@ final class ScriptedSource implements AutoCloseable {
 
     /** As above, announcing {@code udpPort} as its UDP port too. */
     ScriptedSource(Hash16 userHash, int misc1, int misc2, int udpPort) throws IOException {
+        this(userHash, misc1, misc2, udpPort, InetAddress.getLoopbackAddress());
+    }
+
+    /** As above, listening at {@code address}. */
+    ScriptedSource(Hash16 userHash, int misc1, int misc2, int udpPort, InetAddress address) throws IOException {
         this.userHash = userHash;
         this.misc1 = misc1;
         this.misc2 = misc2;
         this.udpPort = udpPort;
-        this.server = new ServerSocket(0, 16, InetAddress.getLoopbackAddress());
+        this.server = new ServerSocket(0, 16, address);
         Thread.ofVirtual().name("scripted-source").start(this::acceptLoop);
     }
 
@@ -102,7 +108,7 @@ final class ScriptedSource implements AutoCloseable {
                 hash,
                 Optional.empty(),
                 List.of(),
-                List.of(new Ed2kLink.Source("127.0.0.1", port())),
+                List.of(new Ed2kLink.Source(InetAddresses.toAddrString(this.server.getInetAddress()), port())),
                 List.of());
     }
 

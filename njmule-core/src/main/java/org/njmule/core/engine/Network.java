@@ -2124,7 +2124,7 @@ final class Network {
                     Ticker.systemTicker());
             this.kad.useBuddies(this.buddyLink);
             this.kadSocket.deliverTo(this.kad);
-            this.kadSocket.deliverClientPacketsTo(this::clientDatagram);
+            this.kadSocket.deliverClientPacketsTo(new ClientDatagrams());
             loadKadContacts(this.kad);
             this.kad.loadIndex();
             this.kadPublisher = new KadPublisher(this.kad, this::kadShared, this.comments::get, Ticker.systemTicker());
@@ -2349,6 +2349,35 @@ final class Network {
         }
     }
 
+    private final class ClientDatagrams implements KadSocket.ClientPackets {
+        @Override
+        public void received(int ip, int port, Packet packet) {
+            clientDatagram(ip, port, packet);
+        }
+
+        @Override
+        public void receivedOverIpv6(InetSocketAddress from, Packet packet) {
+            clientDatagramOverIpv6(from, packet);
+        }
+    }
+
+    // Over IPv6 only re-asks and their answers come, and go back plain unless obfuscation is required.
+    private void clientDatagramOverIpv6(InetSocketAddress from, Packet packet) {
+        int opcode = packet.opcode();
+        if (opcode == Opcodes.ClientUdp.REASKFILEPING.code()) {
+            KadSocket socket = this.kadSocket;
+            if (socket != null && this.preferences.get().obfuscation() != ObfuscationMode.REQUIRED) {
+                this.uploads
+                        .reasked(from.getAddress(), from.getPort(), packet)
+                        .ifPresent(answer -> socket.sendClient(from, answer.packet()));
+            }
+        } else if (opcode == Opcodes.ClientUdp.REASKACK.code()
+                || opcode == Opcodes.ClientUdp.QUEUEFULL.code()
+                || opcode == Opcodes.ClientUdp.FILENOTFOUND.code()) {
+            this.downloads.reaskAnswered(from.getAddress(), from.getPort(), packet);
+        }
+    }
+
     // Our buddy relays the re-ask of a client: answered straight to the client, as one it sent us.
     private void relayedReask(ClientReasks.Relayed reask) {
         if (!this.ipFilter.blocks(reask.requesterIp())) {
@@ -2398,11 +2427,21 @@ final class Network {
                     && ourPublicIp() != 0;
         }
 
+        // Over IPv6 nothing translates our address, so answers reach us; a proxy's relay carries IPv4 only.
+        @Override
+        public boolean availableOverIpv6() {
+            return Network.this.kadSocket != null
+                    && Network.this.ourIpv6.isPresent()
+                    && !Network.this.preferences.get().proxy().isEnabled();
+        }
+
         @Override
         public void send(InetSocketAddress to, Packet packet, Optional<Hash16> userHash) {
             KadSocket socket = Network.this.kadSocket;
             if (socket != null && to.getAddress() instanceof Inet4Address v4) {
                 socket.sendClient(Ipv4.fromBytes(v4.getAddress()), to.getPort(), packet, userHash, ourPublicIp());
+            } else if (socket != null && to.getAddress() instanceof Inet6Address) {
+                socket.sendClient(to, packet);
             }
         }
     }

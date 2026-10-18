@@ -19,16 +19,22 @@ package org.njmule.core.kad;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import com.google.common.net.HostAndPort;
+import com.google.common.net.InetAddresses;
 import java.io.IOException;
 import java.net.DatagramSocket;
+import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -37,6 +43,9 @@ import org.njmule.core.engine.EngineLoop;
 import org.njmule.core.net.FakeSocks5Proxy;
 import org.njmule.core.net.Socks5Udp;
 import org.njmule.core.net.UdpRoute;
+import org.njmule.core.protocol.packet.Opcodes;
+import org.njmule.core.protocol.packet.Packet;
+import org.njmule.core.protocol.packet.Protocol;
 import org.njmule.core.util.Ipv4;
 
 @Timeout(30)
@@ -57,6 +66,7 @@ class KadSocketTest {
     private KadNode nodeB;
     private FakeSocks5Proxy proxy;
     private Socks5Udp association;
+    private final BlockingQueue<String> heardOverIpv6 = new LinkedBlockingQueue<>();
 
     @AfterEach
     void stop() throws IOException {
@@ -110,10 +120,51 @@ class KadSocketTest {
     }
 
     @Test
+    void shouldPassOnAClientPacketThatCamePlainFromAnIpv6Address() throws Exception {
+        givenAnIpv6Loopback();
+        givenTwoNodesOnTheirOwnSockets();
+        givenTheSecondSocketHearsClientPackets();
+
+        whenTheFirstSocketSendsAClientPacketToTheSecondOverIpv6();
+
+        thenTheSecondSocketHearsWithinSeconds(5, "[::1]:" + this.socketA.port() + " 0x90");
+    }
+
+    @Test
     void shouldLeaveThePortOfAClosedSocketFreeAtOnce() throws Exception {
         whenSocketsAreClosedAndTheirPortsBoundAgain(ROUNDS);
 
         thenThePortWasBusyTimes(0);
+    }
+
+    private void givenAnIpv6Loopback() {
+        try (DatagramSocket probe = new DatagramSocket(new InetSocketAddress(InetAddresses.forString("::1"), 0))) {
+            assertThat(probe.getLocalPort()).isPositive();
+        } catch (IOException e) {
+            Assumptions.abort("no IPv6 loopback here");
+        }
+    }
+
+    private void givenTheSecondSocketHearsClientPackets() {
+        this.socketB.deliverClientPacketsTo(new KadSocket.ClientPackets() {
+            @Override
+            public void received(int ip, int port, Packet packet) {
+                KadSocketTest.this.heardOverIpv6.add("IPv4 " + port);
+            }
+
+            @Override
+            public void receivedOverIpv6(InetSocketAddress from, Packet packet) {
+                KadSocketTest.this.heardOverIpv6.add(
+                        HostAndPort.fromParts(InetAddresses.toAddrString(from.getAddress()), from.getPort())
+                                + String.format(" 0x%02X", packet.opcode()));
+            }
+        });
+    }
+
+    private void whenTheFirstSocketSendsAClientPacketToTheSecondOverIpv6() {
+        this.socketA.sendClient(
+                new InetSocketAddress(InetAddresses.forString("::1"), this.socketB.port()),
+                Packet.of(Protocol.EMULE, Opcodes.ClientUdp.REASKFILEPING.code(), new byte[16]));
     }
 
     private void givenTheFirstSocketGoesThroughTheRelayOfAProxy() throws Exception {
@@ -194,6 +245,10 @@ class KadSocketTest {
 
     private void thenThePortWasBusyTimes(int times) {
         assertThat(this.busy).isEqualTo(times);
+    }
+
+    private void thenTheSecondSocketHearsWithinSeconds(int seconds, String expected) throws Exception {
+        assertThat(this.heardOverIpv6.poll(seconds, TimeUnit.SECONDS)).isEqualTo(expected);
     }
 
     private KadSocket socket(String name) throws Exception {

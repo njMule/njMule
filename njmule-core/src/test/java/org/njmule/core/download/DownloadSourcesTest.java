@@ -19,6 +19,7 @@ package org.njmule.core.download;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import com.google.common.net.HostAndPort;
 import com.google.common.net.InetAddresses;
 import java.io.IOException;
 import java.net.Inet6Address;
@@ -46,6 +47,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -92,6 +94,7 @@ class DownloadSourcesTest {
     private static final Hash16 PEER = Hash16.parseHex("5e".repeat(16));
     private static final Duration WAIT = ScriptedSource.WAIT;
     private static final Hash16 UNKNOWN = Hash16.parseHex("3a".repeat(16));
+    private static final InetAddress IPV6_LOOPBACK = InetAddresses.forString("::1");
     private static final int SOURCE_UDP_PORT = 46_720;
 
     @TempDir
@@ -205,6 +208,41 @@ class DownloadSourcesTest {
         whenTimePasses(DownloadManager.REASK_INTERVAL.minusMinutes(1));
 
         thenTheSourceIsAskedAgainOverUdpForTheFile(SOURCE_UDP_PORT);
+    }
+
+    @Test
+    void shouldAskAQueuedSourceAtAnIpv6AddressAgainOverUdpPlain() throws Exception {
+        givenAnIpv6Loopback();
+        givenWeHaveTheIpv6Address("2001:db8::99");
+        givenASourceOnTheIpv6LoopbackTakingUdpReasksOnItsPort(SOURCE_UDP_PORT);
+        givenTheManagerAskingAgainOverUdpAndIpv6();
+        givenADownloadFromTheSource("udp6.bin", Hash16.parseHex("4d".repeat(16)));
+        givenTheSourceQueuedUsAt(5);
+        givenTheConnectionClosedWhileQueued();
+
+        whenTimePasses(DownloadManager.REASK_INTERVAL.minusMinutes(1));
+
+        thenTheSourceIsAskedAgainOverUdpPlainAt(new InetSocketAddress(IPV6_LOOPBACK, SOURCE_UDP_PORT));
+    }
+
+    @Test
+    void shouldTakeTheRankASourceGivesOverUdpFromItsIpv6Address() throws Exception {
+        givenAnIpv6Loopback();
+        givenWeHaveTheIpv6Address("2001:db8::99");
+        givenASourceOnTheIpv6LoopbackTakingUdpReasksOnItsPort(SOURCE_UDP_PORT);
+        givenTheManagerAskingAgainOverUdpAndIpv6();
+        givenADownloadFromTheSource("udp6.bin", Hash16.parseHex("4d".repeat(16)));
+        givenTheSourceQueuedUsAt(5);
+        givenTheConnectionClosedWhileQueued();
+        givenTimePassed(DownloadManager.REASK_INTERVAL.minusMinutes(1));
+        givenTheSourceAskedAgainOverUdpPlainAt(new InetSocketAddress(IPV6_LOOPBACK, SOURCE_UDP_PORT));
+
+        whenTheSourceAnswersOverUdpFrom(
+                IPV6_LOOPBACK,
+                new ClientReasks.Ack(Optional.of(ClientMessages.PartStatus.COMPLETE), 2)
+                        .encode(ClientReasks.UDP_VERSION));
+
+        thenTheSourceShowsTheRank(2);
     }
 
     @Test
@@ -611,6 +649,29 @@ class DownloadSourcesTest {
         this.resources.add(this.source);
     }
 
+    private void givenAnIpv6Loopback() {
+        try (ServerSocket probe = new ServerSocket(0, 1, IPV6_LOOPBACK)) {
+            assertThat(probe.getLocalPort()).isPositive();
+        } catch (IOException e) {
+            Assumptions.abort("no IPv6 loopback here");
+        }
+    }
+
+    private void givenASourceOnTheIpv6LoopbackTakingUdpReasksOnItsPort(int udpPort) throws Exception {
+        this.source = new ScriptedSource(
+                PEER, ClientReasks.UDP_VERSION << Hello.MISC1_UDP_VERSION_SHIFT, 0, udpPort, IPV6_LOOPBACK);
+        this.resources.add(this.source);
+    }
+
+    private void givenTheManagerAskingAgainOverUdpAndIpv6() throws Exception {
+        this.udp.ipv6 = true;
+        givenTheManagerAskingAgainOverUdp();
+    }
+
+    private void givenTheSourceAskedAgainOverUdpPlainAt(InetSocketAddress at) throws Exception {
+        thenTheSourceIsAskedAgainOverUdpPlainAt(at);
+    }
+
     private void givenTheManagerAskingAgainOverUdp() throws Exception {
         manager();
         onLoop(() -> {
@@ -673,6 +734,13 @@ class DownloadSourcesTest {
         thenTheSourceShowsTheRank(2);
     }
 
+    private void whenTheSourceAnswersOverUdpFrom(InetAddress from, Packet answer) throws Exception {
+        onLoop(() -> {
+            this.manager.reaskAnswered(from, SOURCE_UDP_PORT, answer);
+            return null;
+        });
+    }
+
     private void whenTheSourceAnswersOverUdp(Packet answer) throws Exception {
         onLoop(() -> {
             this.manager.reaskAnswered(Ipv4.parse("127.0.0.1"), SOURCE_UDP_PORT, answer);
@@ -688,6 +756,14 @@ class DownloadSourcesTest {
         assertThat(onLoop(() ->
                         this.manager.download(this.hash).orElseThrow().parts().sources()))
                 .containsOnly(sources);
+    }
+
+    private void thenTheSourceIsAskedAgainOverUdpPlainAt(InetSocketAddress at) throws Exception {
+        Udp.Sent sent = this.udp.sent.poll(WAIT.toSeconds(), TimeUnit.SECONDS);
+        assertThat(sent).as("a re-ask over UDP").isNotNull();
+        assertThat(sent.to()).isEqualTo(at);
+        assertThat(sent.userHash()).as("plain").isEmpty();
+        assertThat(ClientReasks.Ping.file(sent.packet())).isEqualTo(this.hash);
     }
 
     private void thenTheSourceIsAskedAgainOverUdpForTheFile(int udpPort) throws Exception {
@@ -1651,7 +1727,9 @@ class DownloadSourcesTest {
     }
 
     private SourceInfo awaitSource(ScriptedSource source, Predicate<SourceInfo> wanted) throws Exception {
-        String address = "127.0.0.1:" + source.port();
+        String address = HostAndPort.fromParts(
+                        InetAddresses.toAddrString(source.address().getAddress()), source.port())
+                .toString();
         AtomicReference<SourceInfo> seen = new AtomicReference<>();
         await("source " + address, () -> {
             for (SourceInfo info : this.manager.sources()) {
@@ -1715,10 +1793,16 @@ class DownloadSourcesTest {
         record Sent(InetSocketAddress to, Packet packet, Optional<Hash16> userHash) {}
 
         private final BlockingQueue<Sent> sent = new LinkedBlockingQueue<>();
+        private volatile boolean ipv6;
 
         @Override
         public boolean available() {
             return true;
+        }
+
+        @Override
+        public boolean availableOverIpv6() {
+            return this.ipv6;
         }
 
         @Override

@@ -136,7 +136,15 @@ public final class DownloadManager implements AutoCloseable {
         /** Whether a source can be asked over UDP now: the port is open and its answer can reach us. */
         boolean available();
 
-        /** Sends {@code packet} to a client's UDP port, obfuscated for {@code userHash} when one is given. */
+        /** Whether a source can be asked over UDP at an IPv6 address now. */
+        default boolean availableOverIpv6() {
+            return false;
+        }
+
+        /**
+         * Sends {@code packet} to a client's UDP port, obfuscated for {@code userHash} when one is given; plain to an
+         * IPv6 address.
+         */
         void send(InetSocketAddress to, Packet packet, Optional<Hash16> userHash);
     }
 
@@ -388,8 +396,9 @@ public final class DownloadManager implements AutoCloseable {
         private boolean exchangesSources;
         // Whether its last answer kept us in its queue.
         private boolean queued;
-        // The source a UDP re-ask went to, while its answer is awaited.
+        // The source a UDP re-ask went to, and the address it went to, while its answer is awaited.
         private Source pinged;
+        private InetAddress pingedAt;
         private int pings;
         private int unansweredPings;
 
@@ -976,9 +985,14 @@ public final class DownloadManager implements AutoCloseable {
      * no room, or it does not have the file. An answer nobody asked for is ignored.
      */
     public void reaskAnswered(int ip, int port, Packet packet) {
-        Client client = pingedAt(ip, port);
+        reaskAnswered(InetAddresses.fromInteger(ip), port, packet);
+    }
+
+    /** As {@link #reaskAnswered(int, int, Packet)}, from an address of either family. */
+    public void reaskAnswered(InetAddress from, int port, Packet packet) {
+        Client client = pingedAt(from, port);
         if (client == null) {
-            logger.debug("Unasked re-ask answer from {}:{}", Ipv4.format(ip), port);
+            logger.debug("Unasked re-ask answer from {}:{}", from.getHostAddress(), port);
             return;
         }
         Source source = client.pinged;
@@ -1018,12 +1032,9 @@ public final class DownloadManager implements AutoCloseable {
         entry.changed = true;
     }
 
-    private Client pingedAt(int ip, int port) {
+    private Client pingedAt(InetAddress from, int port) {
         for (Client client : this.clients.values()) {
-            if (client.pinged != null
-                    && client.udpPort == port
-                    && client.address.getAddress() instanceof Inet4Address v4
-                    && Ipv4.fromBytes(v4.getAddress()) == ip) {
+            if (client.pinged != null && client.udpPort == port && from.equals(client.pingedAt)) {
                 return client;
             }
         }
@@ -1033,7 +1044,9 @@ public final class DownloadManager implements AutoCloseable {
     // A queued source due over TCP soon is asked over UDP first; one due for its sources waits for TCP, which asks
     // for them too.
     private void pingQueued(Entry entry, long now) {
-        if (!this.udp.available()) {
+        boolean overIpv4 = this.udp.available();
+        boolean overIpv6 = this.udp.availableOverIpv6();
+        if (!overIpv4 && !overIpv6) {
             return;
         }
         ObfuscationMode obfuscation = this.settings.get().obfuscation();
@@ -1046,8 +1059,13 @@ public final class DownloadManager implements AutoCloseable {
                     || !client.queued
                     || left > UDP_REASK_LEAD.toNanos()
                     || left < UDP_REASK_LAST.toNanos()
-                    || !mayPing(client)
                     || (client.exchangesSources && sourcesDue(entry, source, now))) {
+                continue;
+            }
+            // Over IPv6 plain, which obfuscation required forbids; over IPv4 as the client can be asked.
+            Optional<InetSocketAddress> atIpv6 =
+                    overIpv6 && obfuscation != ObfuscationMode.REQUIRED ? ipv6PingTarget(client) : Optional.empty();
+            if (atIpv6.isEmpty() && !(overIpv4 && mayPing(client))) {
                 continue;
             }
             long size = entry.download.file().size();
@@ -1056,7 +1074,10 @@ public final class DownloadManager implements AutoCloseable {
                     ClientMessages.PartStatus.of(size, entry.download.verifiedParts()),
                     completeSources(entry, size));
             Optional<KadCallback> buddy = buddyOf(client);
-            if (buddy.isPresent()) {
+            client.pingedAt = atIpv6.map(InetSocketAddress::getAddress).orElse(client.address.getAddress());
+            if (atIpv6.isPresent()) {
+                this.udp.send(atIpv6.get(), ping.encode(client.udpVersion), Optional.empty());
+            } else if (buddy.isPresent()) {
                 // Plain, as the buddy's obfuscation is unknown; the source answers from its own port.
                 KadCallback route = buddy.get();
                 if (obfuscation == ObfuscationMode.REQUIRED || this.blocked.test(route.buddyIp())) {
@@ -1082,6 +1103,18 @@ public final class DownloadManager implements AutoCloseable {
             client.pinged = source;
             client.pings++;
         }
+    }
+
+    // Over IPv6 a re-ask goes where the client is reached: the IPv6 address it was added at, or its IPv6 address when
+    // that is the way to it.
+    private Optional<InetSocketAddress> ipv6PingTarget(Client client) {
+        if (client.udpPort == 0 || client.udpVersion < 3 || client.ipv6Failed) {
+            return Optional.empty();
+        }
+        Optional<InetAddress> at = client.address.getAddress() instanceof Inet6Address added
+                ? Optional.of(added)
+                : overIpv6(client).map(InetSocketAddress::getAddress);
+        return at.map(address -> new InetSocketAddress(address, client.udpPort));
     }
 
     // Re-asks over UDP need its port and a version that takes them, and go to HighIDs, or through its buddy to a source

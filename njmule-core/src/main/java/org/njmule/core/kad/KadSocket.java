@@ -67,6 +67,9 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
     @FunctionalInterface
     public interface ClientPackets {
         void received(int ip, int port, Packet packet);
+
+        /** A client packet from an IPv6 address; such datagrams come plain. */
+        default void receivedOverIpv6(InetSocketAddress from, Packet packet) {}
     }
 
     private KadSocket(
@@ -135,7 +138,12 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
             datagram = DatagramObfuscation.encryptForClient(
                     datagram, receiverUserHash.get(), Ipv4.toBytes(ourIp), this.random);
         }
-        transmit(ip, port, datagram);
+        transmit(Ipv4.socketAddress(ip, port), datagram);
+    }
+
+    /** Sends a client packet plain to an IPv6 address: clients do not obfuscate their datagrams over IPv6. */
+    public void sendClient(InetSocketAddress to, Packet packet) {
+        transmit(to, UdpFraming.encode(packet));
     }
 
     public int port() {
@@ -159,18 +167,18 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
             datagram = DatagramObfuscation.encryptForKad(
                     datagram, receiverId.map(id -> Hash16.of(id.toWireBytes())), receiverKey, senderKey, this.random);
         }
-        transmit(ip, port, datagram);
+        transmit(Ipv4.socketAddress(ip, port), datagram);
     }
 
-    private void transmit(int ip, int port, byte[] datagram) {
+    private void transmit(InetSocketAddress to, byte[] datagram) {
         try {
-            Optional<DatagramPacket> out = this.route.outgoing(Ipv4.socketAddress(ip, port), datagram);
+            Optional<DatagramPacket> out = this.route.outgoing(to, datagram);
             if (out.isPresent()) {
                 this.socket.send(out.get());
             }
         } catch (IOException | IllegalArgumentException e) {
             // A bad address must not end the caller's work, a lookup or the table's upkeep.
-            logger.debug("Cannot send to {}:{}: {}", Ipv4.format(ip), port, e.getMessage());
+            logger.debug("Cannot send to {}: {}", to, e.getMessage());
         }
     }
 
@@ -215,7 +223,11 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
         }
         InetSocketAddress from = got.get().from();
         byte[] address = from.getAddress().getAddress();
-        if (address.length != 4 || from.getPort() == 0) {
+        if (from.getPort() == 0) {
+            return;
+        }
+        if (address.length == 16) {
+            receivedOverIpv6(from, datagram, got.get());
             return;
         }
         int ip = Ipv4.fromBytes(address);
@@ -248,6 +260,18 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
             boolean obfuscated = opened.kind() != DatagramObfuscation.Kind.PLAIN;
             this.loop.post(() ->
                     target.received(ip, port, kad, obfuscated, opened.receiverVerifyKey(), opened.senderVerifyKey()));
+        } catch (DecodeException e) {
+            logger.debug("Bad datagram from {}: {}", from, e.getMessage());
+        }
+    }
+
+    // Kad stays on IPv4: over IPv6 only client packets come, plain.
+    private void receivedOverIpv6(InetSocketAddress from, DatagramPacket datagram, UdpRoute.Received got) {
+        try {
+            Packet packet = UdpFraming.decode(datagram.getData(), got.offset(), got.length());
+            if (packet.protocol() == Protocol.EMULE) {
+                this.loop.post(() -> this.clientPackets.receivedOverIpv6(from, packet));
+            }
         } catch (DecodeException e) {
             logger.debug("Bad datagram from {}: {}", from, e.getMessage());
         }
