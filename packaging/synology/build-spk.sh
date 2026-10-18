@@ -32,6 +32,8 @@ spk=$work/spk
 mkdir -p "$pkg/bin" "$pkg/app/images" "$pkg/doc" "$spk"
 
 install -m 755 "$binary" "$pkg/bin/njmule"
+# Beside the executable: the update check tells that the Package Center updates it.
+printf 'kind=spk\n' > "$pkg/bin/install.properties"
 install -m 644 "$here/app/config" "$here/app/njmule.sc" "$pkg/app/"
 for size in 16 24 32 48 64 72 256; do
     install -m 644 "$root/branding/generated/njmule-$size.png" "$pkg/app/images/njmule-$size.png"

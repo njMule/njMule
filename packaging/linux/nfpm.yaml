@@ -54,6 +54,13 @@ contents:
   - src: /usr/lib/njmule/njmule-gui
     dst: /usr/bin/njmule-gui
     type: symlink
+  # Beside the executable: tells the update check which package manager installed it.
+  - src: packaging/linux/install-deb.properties
+    dst: /usr/lib/njmule/install.properties
+    packager: deb
+  - src: packaging/linux/install-rpm.properties
+    dst: /usr/lib/njmule/install.properties
+    packager: rpm
   # The desktop entry runs it under the name process lists show, which finds its icon.
   - src: /usr/lib/njmule/njmule-gui
     dst: /usr/bin/njMule

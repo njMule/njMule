@@ -53,6 +53,8 @@ COPY --from=binary --chmod=755 /${TARGETARCH}/njmule /usr/local/bin/njmule
 USER 1000:1000
 WORKDIR /njmule
 ENV HOME=/njmule
+# The update check tells that a new image is pulled, never that njMule replaces itself.
+ENV NJMULE_INSTALL_KIND=docker
 # eD2K TCP, client UDP (eD2K and Kad), web interface.
 EXPOSE 4662/tcp 4672/udp 4711/tcp
 # One volume for everything; temp and incoming may be mounted on their own below it.

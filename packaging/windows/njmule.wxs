@@ -42,6 +42,8 @@
             <File Source="$(var.DocDir)\LICENSE" Name="LICENSE.txt"/>
             <File Source="$(var.DocDir)\NOTICE" Name="NOTICE.txt"/>
             <File Source="$(var.DocDir)\README.md"/>
+            <!-- Tells the update check that this copy came from the installer. -->
+            <File Source="$(var.DocDir)\packaging\windows\install.properties"/>
             <!-- The command-line launcher on the user's PATH. -->
             <Component Id="UserPath">
                 <Environment
