@@ -354,11 +354,10 @@ final class DownloadSession implements PeerLink.Role {
     }
 
     /** Connects to the source, obfuscated with its user hash when known, and says hello. */
-    void connect(Optional<Hash16> obfuscateFor, SecureRandom random) {
-        Thread.ofVirtual().name("njmule-download-" + this.address).start(() -> {
+    void connect(InetSocketAddress via, Optional<Hash16> obfuscateFor, SecureRandom random) {
+        Thread.ofVirtual().name("njmule-download-" + via).start(() -> {
             try {
-                TcpConnection opened =
-                        TcpConnector.connectToClient(this.address, obfuscateFor, HANDSHAKE_TIMEOUT, random);
+                TcpConnection opened = TcpConnector.connectToClient(via, obfuscateFor, HANDSHAKE_TIMEOUT, random);
                 if (!this.loop.postOutcome(() -> opened(opened))) {
                     opened.close();
                 }

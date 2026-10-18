@@ -119,6 +119,23 @@ class Ed2kLinkTest {
     }
 
     @Test
+    void shouldReadAnIpv6SourceInBrackets() {
+        whenTheLinkIsParsed("ed2k://|file|a.bin|100|" + HASH + "|/|sources,[2001:db8::1]:4662,[1.2.3.4]:4662,[x]:1|/");
+
+        thenTheSourcesAre(new Source("2001:db8::1", 4662));
+    }
+
+    @Test
+    void shouldWriteAnIpv6SourceInBracketsAndReadItBack() {
+        givenAFileLinkWithTheSource(new Source("2001:db8::1", 4662));
+
+        whenTheLinkIsWrittenAndParsedBack();
+
+        thenTheLinkParsedBackIsTheSame();
+        thenTheLinkContains("|sources,[2001:db8::1]:4662|");
+    }
+
+    @Test
     void shouldDropSourcesPastTheirExpiry() {
         whenTheLinkIsParsed("ed2k://|file|a.bin|100|" + HASH + "|/|sources@000101,1.2.3.4:4662|/");
 
@@ -425,6 +442,11 @@ class Ed2kLinkTest {
                 List.of());
     }
 
+    private void givenAFileLinkWithTheSource(Source source) {
+        this.written = new FileLink(
+                "a.bin", 100, Hash16.parseHex(HASH), Optional.empty(), List.of(), List.of(source), List.of());
+    }
+
     private void givenAServerLink(String host, int port) {
         this.written = new Ed2kLink.ServerLink(host, port);
     }
@@ -526,6 +548,10 @@ class Ed2kLinkTest {
 
     private void thenTheLinkParsedBackIsTheSame() {
         assertThat(this.parsed).isEqualTo(this.written);
+    }
+
+    private void thenTheLinkContains(String text) {
+        assertThat(this.uri).contains(text);
     }
 
     private void thenTheAnchorShowsTheEscapedName(String escapedName) {

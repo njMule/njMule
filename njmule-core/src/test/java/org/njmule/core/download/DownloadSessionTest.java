@@ -188,7 +188,7 @@ class DownloadSessionTest {
 
     private void givenTheSessionConnected() throws Exception {
         onLoop(() -> {
-            this.session.connect(Optional.empty(), new SecureRandom());
+            this.session.connect(this.session.address(), Optional.empty(), new SecureRandom());
             return null;
         });
         this.link = this.source.accept();
@@ -273,7 +273,7 @@ class DownloadSessionTest {
 
     private void whenTheSessionConnectsAndEnds(String reason) throws Exception {
         onLoop(() -> {
-            this.session.connect(Optional.empty(), new SecureRandom());
+            this.session.connect(this.session.address(), Optional.empty(), new SecureRandom());
             this.session.close(reason);
             return null;
         });

@@ -480,16 +480,28 @@ class DownloadSourcesTest {
     }
 
     @Test
-    void shouldRefuseSourcesByHandWithoutAnIpv4AddressOrAPort() throws Exception {
+    void shouldRefuseSourcesByHandWithoutAPortOrAtAnAddressNoHostHas() throws Exception {
         givenTheManager();
         givenAPausedDownload("known.bin", Hash16.parseHex("3b".repeat(16)));
 
         whenSourcesAreAddedByHand(
-                new InetSocketAddress(InetAddresses.forString("::1"), PORT),
+                new InetSocketAddress(InetAddresses.forString("ff02::1"), PORT),
+                new InetSocketAddress(InetAddresses.forString("::"), PORT),
                 new InetSocketAddress(InetAddresses.forString("127.0.0.1"), 0));
 
         thenEveryOneIsRefused();
         thenThePausedDownloadHasNoSourceToPassOn();
+    }
+
+    @Test
+    void shouldTakeAnIpv6SourceByHandAndShowItInBrackets() throws Exception {
+        givenTheManager();
+        givenAPausedDownload("six.bin", Hash16.parseHex("4f".repeat(16)));
+
+        whenSourcesAreAddedByHand(new InetSocketAddress(InetAddresses.forString("2001:db8::5"), PORT));
+
+        thenEveryOneIsTaken();
+        thenTheFirstSourceIsShownAt("[2001:db8::5]:" + PORT);
     }
 
     @Test
@@ -1309,6 +1321,14 @@ class DownloadSourcesTest {
 
     private void thenEveryOneIsRefused() {
         assertThat(this.results).containsOnly(false);
+    }
+
+    private void thenEveryOneIsTaken() {
+        assertThat(this.results).containsOnly(true);
+    }
+
+    private void thenTheFirstSourceIsShownAt(String address) throws Exception {
+        assertThat(onLoop(() -> this.manager.sources().getFirst().address())).isEqualTo(address);
     }
 
     private void thenTheSourceIsConnectedTo() throws Exception {

@@ -16,6 +16,7 @@
  */
 package org.njmule.core.engine;
 
+import com.google.common.net.InetAddresses;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.Inet4Address;
@@ -34,6 +35,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -849,7 +851,8 @@ public final class Engine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<PeerInfo> hello(ServerAddress peer) {
-        return resolve(peer.host()).thenCompose(ip -> this.network.hello(Ipv4.socketAddress(ip, peer.port())));
+        return resolveClient(peer.host())
+                .thenCompose(address -> this.network.hello(new InetSocketAddress(address, peer.port())));
     }
 
     @Override
@@ -892,9 +895,9 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<Boolean> addSource(Hash16 download, ServerAddress source) {
         Objects.requireNonNull(download, "download");
         Objects.requireNonNull(source, "source");
-        return resolve(source.host())
-                .thenCompose(ip -> this.loop.submit(
-                        () -> this.network.addSource(download, Ipv4.socketAddress(ip, source.port()))));
+        return resolveClient(source.host())
+                .thenCompose(address -> this.loop.submit(
+                        () -> this.network.addSource(download, new InetSocketAddress(address, source.port()))));
     }
 
     @Override
@@ -925,9 +928,9 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<Boolean> swapSourceToDownload(Hash16 download, ServerAddress source) {
         Objects.requireNonNull(download, "download");
         Objects.requireNonNull(source, "source");
-        return resolve(source.host())
-                .thenCompose(ip -> this.loop.submit(
-                        () -> this.network.swapSourceToDownload(download, Ipv4.socketAddress(ip, source.port()))));
+        return resolveClient(source.host())
+                .thenCompose(address -> this.loop.submit(() ->
+                        this.network.swapSourceToDownload(download, new InetSocketAddress(address, source.port()))));
     }
 
     @Override
@@ -1394,7 +1397,27 @@ public final class Engine implements NjMuleEngine {
         publish(new EngineEvent.Log(new LogLine(Instant.now(), level, message)));
     }
 
-    // Name lookups block, so they run on a virtual thread; the eD2K network is IPv4 only.
+    // A client may be at an IPv6 address too: one given as such is taken, a name gives its IPv4 address first.
+    private static CompletableFuture<InetAddress> resolveClient(String host) {
+        if (InetAddresses.isInetAddress(host)) {
+            return CompletableFuture.completedFuture(InetAddresses.forString(host));
+        }
+        CompletableFuture<InetAddress> found = new CompletableFuture<>();
+        Thread.ofVirtual().name("njmule-resolve").start(() -> {
+            try {
+                InetAddress[] all = InetAddress.getAllByName(host);
+                found.complete(Arrays.stream(all)
+                        .filter(Inet4Address.class::isInstance)
+                        .findFirst()
+                        .orElse(all[0]));
+            } catch (UnknownHostException e) {
+                found.completeExceptionally(e);
+            }
+        });
+        return found;
+    }
+
+    // Name lookups block, so they run on a virtual thread; servers and Kad nodes are at IPv4 addresses.
     private static CompletableFuture<Integer> resolve(String host) {
         CompletableFuture<Integer> ip = new CompletableFuture<>();
         Thread.ofVirtual().name("njmule-resolve").start(() -> {

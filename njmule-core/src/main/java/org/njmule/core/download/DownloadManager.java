@@ -17,9 +17,11 @@
 package org.njmule.core.download;
 
 import com.google.common.base.Ticker;
+import com.google.common.net.HostAndPort;
 import com.google.common.net.InetAddresses;
 import java.io.IOException;
 import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
@@ -360,6 +362,12 @@ public final class DownloadManager implements AutoCloseable {
         private int failures;
         // How a source firewalled on Kad is asked to call us; null for any other.
         private KadSource kad;
+        // Its public IPv6 address, from its hello; whether IPv4 failed it last, whether IPv6 ever did, and whether the
+        // session runs over IPv6.
+        private Optional<Inet6Address> ipv6 = Optional.empty();
+        private boolean ipv4Failed;
+        private boolean ipv6Failed;
+        private boolean overIpv6;
         // Its UDP port and the version of the UDP messages it takes, from its hello.
         private int udpPort;
         private int udpVersion;
@@ -1066,6 +1074,7 @@ public final class DownloadManager implements AutoCloseable {
         return client.udpPort != 0
                 && client.udpVersion >= 3
                 && client.lowId == 0
+                && client.address.getAddress() instanceof Inet4Address
                 && (client.kad == null || buddyOf(client).isPresent())
                 && (client.pings <= PINGS_BEFORE_JUDGING || client.unansweredPings * 10 <= client.pings * 3);
     }
@@ -1540,7 +1549,8 @@ public final class DownloadManager implements AutoCloseable {
                 continue;
             }
             Source source = chooseToAsk(client, now);
-            if (client.lowId != 0) {
+            Optional<InetSocketAddress> ipv6 = overIpv6(client);
+            if (client.lowId != 0 && ipv6.isEmpty()) {
                 // Firewalled: asked again through the server, while it keeps the same LowID.
                 makeCurrent(client, source);
                 client.pinned = false;
@@ -1550,7 +1560,7 @@ public final class DownloadManager implements AutoCloseable {
                 }
                 continue;
             }
-            if (client.kad != null) {
+            if (client.kad != null && ipv6.isEmpty()) {
                 // Firewalled on Kad: asked again through its buddy, or directly.
                 makeCurrent(client, source);
                 client.pinned = false;
@@ -1559,9 +1569,11 @@ public final class DownloadManager implements AutoCloseable {
                 continue;
             }
             // Our connections share the limit with those of others: the sources wait while it is reached.
-            if (!this.links.mayConnect() && this.links.find(client.address).isEmpty()) {
+            InetSocketAddress target = ipv6.orElse(client.address);
+            if (!this.links.mayConnect() && this.links.find(target).isEmpty()) {
                 break;
             }
+            client.overIpv6 = ipv6.isPresent();
             client.asked = true;
             client.lastAsk = now;
             client.nextAsk = now + REASK_INTERVAL.toNanos();
@@ -1577,17 +1589,32 @@ public final class DownloadManager implements AutoCloseable {
                     this.sessionEvents);
             client.session = session;
             // A client connected to download from us is asked over the same connection.
-            Optional<PeerLink> open = this.links.find(client.address).filter(link -> !link.has(PeerLink.Side.DOWNLOAD));
+            Optional<PeerLink> open = this.links.find(target).filter(link -> !link.has(PeerLink.Side.DOWNLOAD));
             if (open.isPresent()) {
                 session.adopt(open.get(), Optional.empty(), false);
                 continue;
             }
             // Obfuscated only towards sources known to take it, which needs their user hash.
             boolean crypt = !disabled && (client.cryptOptions & CRYPT_SUPPORTED) != 0;
-            session.connect(crypt ? client.userHash : Optional.empty(), this.random);
+            session.connect(target, crypt ? client.userHash : Optional.empty(), this.random);
             started++;
         }
         return started;
+    }
+
+    // Over IPv6 when both of us have it and IPv4 does not do: the client is firewalled there, or did not answer on it.
+    private Optional<InetSocketAddress> overIpv6(Client client) {
+        boolean ipv4Fails = client.lowId != 0 || client.kad != null || client.ipv4Failed;
+        return ipv6Route(
+                this.ourHello.get().ipv6().isPresent(),
+                client.ipv6,
+                client.address.getPort(),
+                ipv4Fails && !client.ipv6Failed);
+    }
+
+    static Optional<InetSocketAddress> ipv6Route(
+            boolean weHaveIpv6, Optional<Inet6Address> theirs, int port, boolean wanted) {
+        return weHaveIpv6 && wanted ? theirs.map(address -> new InetSocketAddress(address, port)) : Optional.empty();
     }
 
     // At its time the client is asked for the download it is best asked for: the one swapped to by hand, or the one
@@ -1804,7 +1831,10 @@ public final class DownloadManager implements AutoCloseable {
             for (Source source : entry.sources.values()) {
                 Client client = source.client;
                 Optional<KnownSources.Standing> standing = standing(source);
-                if (client.lowId != 0 || client.kad != null || standing.isEmpty()) {
+                if (client.lowId != 0
+                        || client.kad != null
+                        || standing.isEmpty()
+                        || !(client.address.getAddress() instanceof Inet4Address)) {
                     continue;
                 }
                 PartFile.KnownSource known = new PartFile.KnownSource(
@@ -1870,8 +1900,8 @@ public final class DownloadManager implements AutoCloseable {
                 if (named.size() < MAX_LINK_HOSTS) {
                     named.add(source);
                 }
-            } else if (InetAddresses.forString(source.host()) instanceof Inet4Address address) {
-                addLinkSource(entry, new InetSocketAddress(address, source.port()));
+            } else {
+                addLinkSource(entry, new InetSocketAddress(InetAddresses.forString(source.host()), source.port()));
             }
         }
         if (named.isEmpty()) {
@@ -1896,8 +1926,14 @@ public final class DownloadManager implements AutoCloseable {
         });
     }
 
-    // No client is at 0.x.x.x, at a multicast address or above.
+    // No client is at 0.x.x.x, at a multicast address or above, nor at an IPv6 address no host has.
     private void addLinkSource(Entry entry, InetSocketAddress address) {
+        if (address.getAddress() instanceof Inet6Address v6) {
+            if (address.getPort() != 0 && !v6.isMulticastAddress() && !v6.isAnyLocalAddress()) {
+                addSource(entry, address);
+            }
+            return;
+        }
         int ip = Ipv4.fromBytes(address.getAddress().getAddress());
         int first = ip >>> 24;
         if (address.getPort() != 0 && first != 0 && first < 224 && !this.blocked.test(ip)) {
@@ -1911,7 +1947,7 @@ public final class DownloadManager implements AutoCloseable {
      */
     public boolean addSourceByHand(Hash16 hash, InetSocketAddress address) {
         Entry entry = this.entries.get(hash);
-        if (entry == null || address.getPort() == 0 || !(address.getAddress() instanceof Inet4Address)) {
+        if (entry == null || address.getPort() == 0) {
             return false;
         }
         int before = entry.sources.size();
@@ -2032,6 +2068,25 @@ public final class DownloadManager implements AutoCloseable {
         }
     }
 
+    // A client IPv6 failed is asked again at once over IPv4, or its callbacks; one IPv4 failed over IPv6, if it can.
+    private void unreachable(Client client, long now) {
+        if (client.overIpv6) {
+            client.ipv6Failed = true;
+            client.nextAsk = now;
+            return;
+        }
+        client.ipv4Failed = true;
+        client.failures++;
+        if (overIpv6(client).isPresent()) {
+            client.nextAsk = now;
+            return;
+        }
+        client.nextAsk = now + MIN_REASK.toNanos();
+        if (client.failures >= MAX_FAILURES) {
+            drop(client);
+        }
+    }
+
     /** The sources of every download, as the list of downloading clients shows them. */
     public List<SourceInfo> sources() {
         List<SourceInfo> all = new ArrayList<>();
@@ -2056,7 +2111,10 @@ public final class DownloadManager implements AutoCloseable {
                 all.add(new SourceInfo(
                         file.hash(),
                         file.name(),
-                        client.address.getAddress().getHostAddress() + ":" + client.address.getPort(),
+                        HostAndPort.fromParts(
+                                        InetAddresses.toAddrString(client.address.getAddress()),
+                                        client.address.getPort())
+                                .toString(),
                         hello.flatMap(Hello::nick),
                         hello.map(PeerSoftware::describe).orElse(""),
                         state,
@@ -2575,6 +2633,7 @@ public final class DownloadManager implements AutoCloseable {
                 client.udpPort = hello.udpPort();
                 client.udpVersion = hello.udpVersion();
                 client.exchangesSources = (hello.miscOptions2() & Hello.MISC2_SOURCE_EXCHANGE2) != 0;
+                client.ipv6 = hello.ipv6();
             });
             client.queued = outcome == DownloadSession.Outcome.QUEUED;
             if (session.peerHash().isPresent()) {
@@ -2584,15 +2643,12 @@ public final class DownloadManager implements AutoCloseable {
             switch (outcome) {
                 case QUEUED, LATER -> {
                     client.failures = 0;
+                    if (!client.overIpv6) {
+                        client.ipv4Failed = false;
+                    }
                     client.nextAsk = client.lastAsk + REASK_INTERVAL.toNanos();
                 }
-                case UNREACHABLE -> {
-                    client.failures++;
-                    client.nextAsk = now + MIN_REASK.toNanos();
-                    if (client.failures >= MAX_FAILURES) {
-                        DownloadManager.this.drop(client);
-                    }
-                }
+                case UNREACHABLE -> unreachable(client, now);
                 case GONE -> {
                     client.nextAsk = client.lastAsk + REASK_INTERVAL.toNanos();
                     DownloadManager.this.detach(source, now);

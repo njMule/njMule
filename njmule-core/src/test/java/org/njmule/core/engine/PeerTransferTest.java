@@ -18,7 +18,10 @@ package org.njmule.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.common.net.InetAddresses;
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -32,6 +35,7 @@ import java.util.concurrent.Flow;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -93,6 +97,19 @@ class PeerTransferTest {
     }
 
     @Test
+    void shouldDownloadOverIpv6WithBothIdentitiesProven() throws Exception {
+        givenAnIpv6Loopback();
+        givenAnUploaderSharingRandomBytes("six.bin", 6_000_000);
+        givenADownloader();
+        givenTheDownloaderDownloadedTheWholeFileFromTheUploaderAt("[::1]");
+
+        whenBothClose();
+
+        thenTheUploaderCreditsTheDownloaderWithMoreUploadedThan(1_000_000);
+        thenTheDownloaderCreditsTheUploaderWithMoreDownloadedThan(1_000_000);
+    }
+
+    @Test
     void shouldLetAnotherNjMuleSeeOurFilesOnlyWhenThePreferencesSaySo() throws Exception {
         givenAnUploaderSharingZeros("film.mkv", 300_000);
         givenADownloader();
@@ -115,6 +132,14 @@ class PeerTransferTest {
         whenTheDownloaderWaitsToHearWhatPeersSayOfTheFile();
 
         thenTheDownloaderHeardOnlyTheUploadersComment();
+    }
+
+    private void givenAnIpv6Loopback() {
+        try (ServerSocket probe = new ServerSocket()) {
+            probe.bind(new InetSocketAddress(InetAddresses.forString("::1"), 0));
+        } catch (IOException e) {
+            Assumptions.abort("no IPv6 loopback here");
+        }
     }
 
     private void givenTheUploaderSendsAtMostKiBps(int kibps) {
@@ -162,12 +187,16 @@ class PeerTransferTest {
     }
 
     private void givenTheDownloaderAddsTheFileWithTheUploaderAsSource() throws Exception {
-        addTheFileWithTheUploaderAsSource();
+        addTheFileWithTheUploaderAsSource("127.0.0.1");
     }
 
     private void givenTheDownloaderDownloadedTheWholeFileFromTheUploader() throws Exception {
+        givenTheDownloaderDownloadedTheWholeFileFromTheUploaderAt("127.0.0.1");
+    }
+
+    private void givenTheDownloaderDownloadedTheWholeFileFromTheUploaderAt(String host) throws Exception {
         BlockingQueue<EngineEvent> events = events(this.downloader);
-        DownloadInfo added = addTheFileWithTheUploaderAsSource();
+        DownloadInfo added = addTheFileWithTheUploaderAsSource(host);
         Path file = completed(events, added, this.downloader, this.uploader).file();
         assertThat(Files.readAllBytes(file)).isEqualTo(this.data);
     }
@@ -220,10 +249,12 @@ class PeerTransferTest {
                 .satisfies(c -> assertThat(c.comment()).isEqualTo(this.comment));
     }
 
-    private DownloadInfo addTheFileWithTheUploaderAsSource() throws Exception {
+    private DownloadInfo addTheFileWithTheUploaderAsSource(String host) throws Exception {
         Ed2kLink.FileLink link =
                 (Ed2kLink.FileLink) Ed2kLink.parse(this.shared.link().toUri()
-                        + "|sources,127.0.0.1:"
+                        + "|sources,"
+                        + host
+                        + ":"
                         + this.uploader.preferences().tcpPort()
                         + "|/");
         return this.downloader.addDownload(link).get(10, TimeUnit.SECONDS);

@@ -18,7 +18,9 @@ package org.njmule.core.api;
 
 import com.google.common.base.Utf8;
 import com.google.common.escape.Escaper;
+import com.google.common.net.InetAddresses;
 import com.google.common.net.PercentEscaper;
+import java.net.Inet6Address;
 import java.nio.charset.StandardCharsets;
 import java.time.DateTimeException;
 import java.time.LocalDate;
@@ -210,6 +212,13 @@ final class Ed2kLinkCodec {
         int port = (int) Math.min(Long.parseLong(portText), Integer.MAX_VALUE);
         if (port < 1 || port > 0xFFFF) {
             return Optional.empty();
+        }
+        if (host.startsWith("[") && host.endsWith("]")) {
+            // An IPv6 address, kept without its brackets.
+            String inside = host.substring(1, host.length() - 1);
+            return InetAddresses.isInetAddress(inside) && InetAddresses.forString(inside) instanceof Inet6Address
+                    ? Optional.of(new Ed2kLink.Source(inside, port))
+                    : Optional.empty();
         }
         if (!IPV4.matcher(host).matches() && !isHostName(host)) {
             return Optional.empty();

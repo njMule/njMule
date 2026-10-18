@@ -18,6 +18,7 @@ package org.njmule.core.api;
 
 import com.google.common.escape.Escaper;
 import com.google.common.html.HtmlEscapers;
+import com.google.common.net.HostAndPort;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -121,7 +122,7 @@ public sealed interface Ed2kLink {
             if (!this.sources.isEmpty()) {
                 out.append("|sources");
                 for (Source s : this.sources) {
-                    out.append(',').append(s.host()).append(':').append(s.port());
+                    out.append(',').append(HostAndPort.fromParts(s.host(), s.port()));
                 }
                 out.append("|/");
             }
