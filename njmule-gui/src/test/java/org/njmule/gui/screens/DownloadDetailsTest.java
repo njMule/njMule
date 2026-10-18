@@ -318,18 +318,25 @@ class DownloadDetailsTest {
                 .isEqualTo(shown);
     }
 
+    // The details follow the chosen download a moment later.
     private void detailsTell(String... texts) throws Exception {
-        List<String> shown = FxTesting.onFx(() -> {
-            Node view = this.screen.details().view();
-            view.applyCss();
-            return view.lookupAll(".label").stream()
-                    .filter(Node::isVisible)
-                    .filter(n -> n.getParent() == null || n.getParent().isVisible())
-                    .map(n -> ((Label) n).getText())
-                    .toList();
-        });
+        FxTesting.assertEventually(
+                "the details tell " + List.of(texts),
+                () -> List.of(texts).stream()
+                        .allMatch(text -> shownTexts().stream().anyMatch(t -> t != null && t.contains(text))));
+        List<String> shown = FxTesting.onFx(this::shownTexts);
         for (String text : texts) {
             assertThat(shown).anyMatch(t -> t != null && t.contains(text));
         }
+    }
+
+    private List<String> shownTexts() {
+        Node view = this.screen.details().view();
+        view.applyCss();
+        return view.lookupAll(".label").stream()
+                .filter(Node::isVisible)
+                .filter(n -> n.getParent() == null || n.getParent().isVisible())
+                .map(n -> ((Label) n).getText())
+                .toList();
     }
 }

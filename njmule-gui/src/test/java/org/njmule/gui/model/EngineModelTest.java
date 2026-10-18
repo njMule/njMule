@@ -253,6 +253,7 @@ class EngineModelTest {
         givenTheServerNameIs("Big");
         givenTheModelHears(new EngineEvent.ServerConnected(BIG, 0x12345678L, false, true));
         givenTheConnectionIs(EngineModel.Connection.CONNECTED);
+        givenTheEngineAnsweredTheServerListTheModelAskedFor();
         givenTheModelHears(new EngineEvent.ServerUpdated(BIG));
         givenTheServersListed(1);
 
@@ -504,6 +505,12 @@ class EngineModelTest {
 
     private void givenTheServerNameIs(String name) {
         assertThat(this.model.serverNameProperty().get()).isEqualTo(name);
+    }
+
+    // On a connection the model asks the engine for its servers; the answer, coming later, would replace the list.
+    // The engine answers in turn: once a later question is answered, the model's is too.
+    private void givenTheEngineAnsweredTheServerListTheModelAskedFor() throws Exception {
+        this.engine.servers().get(10, TimeUnit.SECONDS);
     }
 
     private void givenTheServersListed(int count) {
