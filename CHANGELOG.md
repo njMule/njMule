@@ -531,6 +531,19 @@ All notable changes to this project are documented here. The format follows
   address, a CIDR block or a range, a field of the web interface settings; none by default) name
   their client in `X-Forwarded-For`, read from the right past the trusted proxies, so that behind
   them each client has its own login and API token attempts; no other address is believed.
+- Update check: at each start and once a day (or only when asked: `update.mode`), njMule fetches
+  the update information of the newest GitHub release (test versions too on the `prerelease`
+  channel, `update.channel`) through the proxy and network interface of the preferences, and takes
+  it only when it is signed by a key built into njMule (minisign: Ed25519 over BLAKE2b-512). A
+  newer version shows with its notes and how to install it by the way this copy was installed
+  (installer, archive, disk image, apt or dnf, Package Center, docker compose): as a notice and in
+  the Updates window of the desktop app, on the status and settings pages of the web interface,
+  through `njmule --check-update` (exit code 100 when one is out) and `njmule --remote update
+  [check|skip <version>]`, through the remote-control API (`/update`, `update.status` and
+  `update.available` events) and in the log. A version can be skipped unless it fixes a security
+  problem; a manifest older than one already seen is refused. Nothing is downloaded or installed.
+  Each release carries the signed `njmule-update.json` and a signed `SHA256SUMS`, with provenance
+  attestations for every file.
 
 ### Changed
 

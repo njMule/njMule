@@ -96,6 +96,18 @@ provides a `SHA256SUMS` file and a CycloneDX software bill of materials
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 
+`SHA256SUMS` is signed with [minisign](https://jedisct1.github.io/minisign/), with the key that
+also signs the update information (`njmule-update.json`), and GitHub attests where each file was
+built. Check the signature, then that a file comes from this repository's release workflow:
+
+```bash
+minisign -Vm SHA256SUMS -P <njMule's public key, from njmule-core/src/main/resources/org/njmule/core/update/keys.pub>
+```
+
+```bash
+gh attestation verify njmule-<version>-windows-x64.msi --repo njMule/njMule
+```
+
 <details>
 <summary><strong>Windows</strong></summary>
 
@@ -283,6 +295,23 @@ and `incoming`.
 
 </details>
 
+### Updates
+
+njMule tells when a new version is out: at each start and once a day it asks GitHub for the
+update information of the newest release, through the proxy and the network interface chosen in the
+options, and believes it only when it is signed by a key built into njMule. The request carries
+nothing but njMule's version in its `User-Agent`; GitHub sees the address it comes from. The
+desktop application then shows a notice and its *Updates* window, the web interface a notice on its
+status page, the headless engine a line in its log. Each says how to install the new version by the
+way njMule was installed: the installer, the archive or the disk image to download, `apt` or `dnf`
+for the Linux packages, the Package Center on Synology, `docker compose pull` for the image.
+njMule never downloads or installs anything by itself.
+
+In the options (or `update.mode` and `update.channel` in `njmule.properties`) the check can be left
+to the user's request, and test versions (alpha, beta, release candidates) can be included; a test
+version looks for test versions by default. `njmule --check-update` looks once and exits with 0 when
+this version is the newest, 100 when a newer one is out and 1 when the check failed.
+
 ## Usage
 
 ### Desktop application
@@ -309,6 +338,7 @@ performs a single task and exits. `njmule --help` lists all options.
 | `njmule --kad-bootstrap <host:port>` | join Kad through the given node |
 | `njmule --config-dir <dir>` | keep all data below `<dir>` |
 | `njmule --log-level DEBUG` | override the configured log level |
+| `njmule --check-update` | look for a new version, print it with how to install it and exit (100 when one is out) |
 
 ### Web interface
 
@@ -369,6 +399,7 @@ replaces it. A running njMule is driven from the command line with `--remote`:
 njmule --remote status
 njmule --remote search kad ubuntu iso
 njmule --remote get <search id> <hash>
+njmule --remote update check
 njmule --remote help
 ```
 
