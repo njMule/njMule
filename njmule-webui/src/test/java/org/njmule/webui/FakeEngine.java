@@ -41,11 +41,15 @@ final class FakeEngine {
             new UpdateStatus(
                     "0.1.0",
                     InstallKind.UNKNOWN,
+                    UpdateStatus.Installer.NONE,
                     false,
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
-                    Optional.empty())));
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    UpdateStatus.Install.ASKED)));
 
     void answer(String method, Function<Object[], CompletableFuture<?>> answer) {
         this.answers.put(method, answer);

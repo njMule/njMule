@@ -17,6 +17,7 @@
 package org.njmule.webui;
 
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.Optional;
 import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.NjMuleInfo;
@@ -48,6 +49,18 @@ public final class UpdateHelp {
             default ->
                 "Download and install "
                         + download.or(() -> page).map(URI::toString).orElse(NjMuleInfo.HOMEPAGE);
+        };
+    }
+
+    /** One sentence telling how to install the package of a new version downloaded to {@code file}. */
+    public static String howToInstallFile(InstallKind installation, Path file) {
+        String quoted = "\"" + file + "\"";
+        return switch (installation) {
+            case DEB -> "Install it: sudo apt install " + quoted;
+            case RPM -> "Install it: sudo dnf install " + quoted;
+            case SYNOLOGY -> "Install it in the Package Center with Manual Install: " + file;
+            case DMG -> "Open it and drag " + NjMuleInfo.NAME + " to Applications, replacing this one: " + file;
+            default -> "Install it as this copy was installed: " + file;
         };
     }
 

@@ -73,8 +73,10 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadPriority;
+import org.njmule.core.config.NightHours;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.UpdateChannel;
+import org.njmule.core.config.UpdateInstallTime;
 import org.njmule.core.config.UpdateMode;
 import org.njmule.core.remote.ApiToken;
 import org.njmule.core.remote.Exchange;
@@ -817,16 +819,25 @@ public final class WebUi implements AutoCloseable {
         return Html.page("Status", session.csrf(), updateNotice(this.engine.updateStatus()) + body);
     }
 
-    // A new version the user has not skipped, above the status.
+    // A new version the user has not skipped, above the status: available, downloading, ready or being installed.
     private static String updateNotice(UpdateStatus update) {
+        if (update.install() == UpdateStatus.Install.RESTART) {
+            return "<p class=\"notice\"><b>" + Html.text(NjMuleInfo.NAME)
+                    + " is installing a new version and starting again.</b> Load this page again in a minute.</p>";
+        }
         if (!update.isWorthTelling()) {
             return "";
         }
         NewVersion v = update.available().orElseThrow();
-        return "<p class=\"notice\"><b>" + Html.text(NjMuleInfo.NAME + " " + v.version()) + " is available</b>"
+        String state = update.ready().isPresent()
+                ? " is downloaded and ready to install"
+                : update.download().isPresent() ? " is downloading" : " is available";
+        return "<p class=\"notice\"><b>" + Html.text(NjMuleInfo.NAME + " " + v.version()) + state + "</b>"
                 + (v.critical() ? ", with security fixes" : "") + ". <a href=\""
                 + Html.text(v.page().toString())
-                + "\" rel=\"noreferrer\">What changed</a> &middot; <a href=\"settings\">How to update</a></p>";
+                + "\" rel=\"noreferrer\">What changed</a> &middot; <a href=\"settings\">"
+                + (update.canInstall() ? "Install it" : "How to update")
+                + "</a></p>";
     }
 
     private String transfersPage(Sessions.Session session) {
@@ -1081,7 +1092,8 @@ public final class WebUi implements AutoCloseable {
                         "Save",
                         true)
                 + "</p>";
-        return Html.page("Settings", csrf, body, update.checking() ? SEARCH_REFRESH : 0);
+        boolean moving = update.checking() || update.download().isPresent();
+        return Html.page("Settings", csrf, body, moving ? SEARCH_REFRESH : 0);
     }
 
     private static String updates(UpdateStatus update, Preferences preferences, String csrf) {
@@ -1092,16 +1104,30 @@ public final class WebUi implements AutoCloseable {
                         SETTINGS_PAGE,
                         csrf,
                         Html.hidden(ACTION, "updates")
-                                + "<select name=\"mode\">"
-                                + option(UpdateMode.NOTIFY.name(), "At each start and daily", preferences.updateMode())
-                                + option(UpdateMode.OFF.name(), "Only when asked", preferences.updateMode())
-                                + "</select> <select name=\"channel\">"
+                                + "<select name=\"mode\" aria-label=\"What to do with a new version\">"
+                                + option(UpdateMode.NOTIFY.name(), "Tell me", preferences.updateMode())
+                                + option(UpdateMode.DOWNLOAD.name(), "Download it", preferences.updateMode())
+                                + option(UpdateMode.INSTALL.name(), "Download and install it", preferences.updateMode())
+                                + option(UpdateMode.OFF.name(), "Look only when asked", preferences.updateMode())
+                                + "</select> <select name=\"channel\" aria-label=\"Which versions\">"
                                 + option(UpdateChannel.STABLE.name(), "Releases", preferences.updateChannel())
                                 + option(
                                         UpdateChannel.PRERELEASE.name(),
                                         "Test versions too",
                                         preferences.updateChannel())
-                                + "</select> ",
+                                + "</select> <select name=\"installAt\" aria-label=\"When to install\">"
+                                + option(
+                                        UpdateInstallTime.EXIT.name(),
+                                        "Install at exit",
+                                        preferences.updateInstallTime())
+                                + option(
+                                        UpdateInstallTime.EXIT_OR_NIGHT.name(),
+                                        "At exit or at night",
+                                        preferences.updateInstallTime())
+                                + "</select> <input type=\"text\" name=\"nightHours\" size=\"11\""
+                                + " aria-label=\"Night hours\" value=\""
+                                + Html.text(preferences.nightHours().toString())
+                                + "\"> ",
                         "Save",
                         false))
                 .append("</p><p>");
@@ -1115,7 +1141,7 @@ public final class WebUi implements AutoCloseable {
         }
         out.append("</p>");
         update.failure()
-                .ifPresent(f -> out.append("<p class=\"error\">The last check failed: ")
+                .ifPresent(f -> out.append("<p class=\"error\">It failed: ")
                         .append(Html.text(f))
                         .append("</p>"));
         if (update.available().isEmpty()
@@ -1131,9 +1157,8 @@ public final class WebUi implements AutoCloseable {
                     .append(v.critical() ? ", with security fixes" : "")
                     .append(". <a href=\"")
                     .append(Html.text(v.page().toString()))
-                    .append("\" rel=\"noreferrer\">What changed</a><br>")
-                    .append(Html.text(UpdateHelp.howToInstall(
-                            update.installation(), v.download().map(NewVersion.Download::uri), Optional.of(v.page()))));
+                    .append("\" rel=\"noreferrer\">What changed</a><br>");
+            out.append(installing(update, v, csrf));
             if (!v.critical() && !update.skipped().equals(Optional.of(v.version()))) {
                 out.append("<br>")
                         .append(Html.form(
@@ -1148,6 +1173,43 @@ public final class WebUi implements AutoCloseable {
         return out.toString();
     }
 
+    // What can be done with the new version here: download it, follow the download, install it, or how to.
+    private static String installing(UpdateStatus update, NewVersion v, String csrf) {
+        if (update.download().isPresent()) {
+            UpdateStatus.Progress p = update.download().get();
+            return "Downloading: " + Html.size(p.received()) + " of " + Html.size(p.size()) + " ("
+                    + Math.round(p.fraction() * 100) + "%).";
+        }
+        if (update.install() == UpdateStatus.Install.RESTART) {
+            return "Installing it now: " + Html.text(NjMuleInfo.NAME) + " starts again in a moment.";
+        }
+        if (update.canInstall()) {
+            String when = update.install() == UpdateStatus.Install.AT_EXIT
+                    ? "It is installed when " + NjMuleInfo.NAME + " exits. "
+                    : "";
+            return Html.text(when)
+                    + Html.form(SETTINGS_PAGE, csrf, Html.hidden(ACTION, "install"), "Install and restart", true)
+                    + (update.install() == UpdateStatus.Install.AT_EXIT
+                            ? ""
+                            : " "
+                                    + Html.form(
+                                            SETTINGS_PAGE,
+                                            csrf,
+                                            Html.hidden(ACTION, "install-at-exit"),
+                                            "Install at exit",
+                                            false));
+        }
+        String how = update.ready().isPresent()
+                ? UpdateHelp.howToInstallFile(
+                        update.installation(), update.ready().get())
+                : UpdateHelp.howToInstall(
+                        update.installation(), v.download().map(NewVersion.Download::uri), Optional.of(v.page()));
+        String download = v.download().isPresent() && update.ready().isEmpty()
+                ? " " + Html.form(SETTINGS_PAGE, csrf, Html.hidden(ACTION, "download"), "Download", false)
+                : "";
+        return Html.text(how) + download;
+    }
+
     private static String option(String value, String label, Enum<?> chosen) {
         return "<option value=\"" + value + "\"" + (value.equals(chosen.name()) ? " selected" : "") + ">"
                 + Html.text(label) + "</option>";
@@ -1160,11 +1222,24 @@ public final class WebUi implements AutoCloseable {
             case "updates" -> {
                 UpdateMode mode = UpdateMode.valueOf(form.getOrDefault("mode", ""));
                 UpdateChannel channel = UpdateChannel.valueOf(form.getOrDefault("channel", ""));
-                await(this.engine.updatePreferences(p ->
-                        p.toBuilder().updateMode(mode).updateChannel(channel).build()));
+                UpdateInstallTime at =
+                        UpdateInstallTime.valueOf(form.getOrDefault("installAt", UpdateInstallTime.EXIT.name()));
+                Optional<NightHours> night = Optional.ofNullable(form.get("nightHours"))
+                        .filter(h -> !h.isBlank())
+                        .map(NightHours::parse);
+                await(this.engine.updatePreferences(p -> p.toBuilder()
+                        .updateMode(mode)
+                        .updateChannel(channel)
+                        .updateInstallTime(at)
+                        .nightHours(night.orElse(p.nightHours()))
+                        .build()));
             }
             // Its outcome, a failure included, shows in the status once the page loads again.
             case "check" -> this.engine.checkForUpdate();
+            case "download" -> this.engine.downloadUpdate();
+            // A refusal (nothing to install, or not here) is shown as the engine's other failures are.
+            case "install" -> await(this.engine.installUpdate(true));
+            case "install-at-exit" -> await(this.engine.installUpdate(false));
             case "skip" -> await(this.engine.skipUpdate(form.getOrDefault("version", "")));
             default -> throw new IllegalArgumentException("Unknown action.");
         }

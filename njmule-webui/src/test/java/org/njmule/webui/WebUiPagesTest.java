@@ -17,6 +17,9 @@
 package org.njmule.webui;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.njmule.core.api.UpdateStatus.Install.ASKED;
+import static org.njmule.core.api.UpdateStatus.Install.AT_EXIT;
+import static org.njmule.core.api.UpdateStatus.Install.RESTART;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -206,7 +209,110 @@ class WebUiPagesTest {
 
         whenPosted("/settings", Map.of("action", "updates", "mode", "OFF", "channel", "PRERELEASE"));
 
-        thenTheEngineWasAsked("updates OFF PRERELEASE");
+        thenTheEngineWasAsked("updates OFF PRERELEASE EXIT 03:00-05:00");
+    }
+
+    @Test
+    void shouldSaveWhenAndInWhichHoursItInstalls() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineKeepsThePreferences();
+
+        whenPosted(
+                "/settings",
+                Map.of(
+                        "action",
+                        "updates",
+                        "mode",
+                        "INSTALL",
+                        "channel",
+                        "STABLE",
+                        "installAt",
+                        "EXIT_OR_NIGHT",
+                        "nightHours",
+                        "01:00-03:30"));
+
+        thenTheEngineWasAsked("updates INSTALL STABLE EXIT_OR_NIGHT 01:00-03:30");
+    }
+
+    @Test
+    void shouldOfferToDownloadAPackageItCannotInstall() throws Exception {
+        givenALoggedInUser();
+        givenANewVersion(InstallKind.DEB, Optional.empty());
+
+        whenThePageIsAsked("/settings");
+
+        thenThePageShows("value=\"download\"", ">Download</button>");
+        thenThePageDoesNotShow("Install and restart");
+    }
+
+    @Test
+    void shouldShowHowFarTheDownloadIs() throws Exception {
+        givenALoggedInUser();
+        givenTheUpdate(InstallKind.WINDOWS_ZIP, Optional.of(new UpdateStatus.Progress(1024, 4096)), false, ASKED);
+
+        whenThePageIsAsked("/settings");
+
+        thenThePageShows("Downloading: 1.00 KB of 4.00 KB (25%)");
+    }
+
+    @Test
+    void shouldOfferToInstallAVersionReadyWhereItReplacesItself() throws Exception {
+        givenALoggedInUser();
+        givenTheUpdate(InstallKind.WINDOWS_ZIP, Optional.empty(), true, ASKED);
+
+        whenThePageIsAsked("/settings");
+
+        thenThePageShows("Install and restart", "Install at exit");
+    }
+
+    @Test
+    void shouldTellAboveTheStatusThatAVersionIsReady() throws Exception {
+        givenALoggedInUser();
+        givenTheUpdate(InstallKind.WINDOWS_ZIP, Optional.empty(), true, AT_EXIT);
+
+        whenThePageIsAsked("/");
+
+        thenThePageShows("njMule 0.2.0 is downloaded and ready to install", "Install it");
+    }
+
+    @Test
+    void shouldTellThatItRestartsToInstall() throws Exception {
+        givenALoggedInUser();
+        givenTheUpdate(InstallKind.WINDOWS_ZIP, Optional.empty(), true, RESTART);
+
+        whenThePageIsAsked("/");
+
+        thenThePageShows("is installing a new version and starting again");
+    }
+
+    @Test
+    void shouldDownloadTheNewVersionWhenAsked() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineDoesTheUpdates();
+
+        whenPosted("/settings", Map.of("action", "download"));
+
+        thenTheEngineWasAsked("download");
+    }
+
+    @Test
+    void shouldInstallAndRestartWhenAsked() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineDoesTheUpdates();
+
+        whenPosted("/settings", Map.of("action", "install"));
+
+        thenTheEngineWasAsked("install now");
+    }
+
+    @Test
+    void shouldInstallAtExitWhenAsked() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineDoesTheUpdates();
+
+        whenPosted("/settings", Map.of("action", "install-at-exit"));
+
+        thenTheEngineWasAsked("install at exit");
     }
 
     @Test
@@ -290,6 +396,40 @@ class WebUiPagesTest {
         givenANewVersion(InstallKind.MSI, Optional.empty(), true);
     }
 
+    private void givenTheUpdate(
+            InstallKind installation,
+            Optional<UpdateStatus.Progress> download,
+            boolean ready,
+            UpdateStatus.Install install) {
+        givenANewVersion(installation, Optional.empty(), false);
+        UpdateStatus found = (UpdateStatus) this.fake.engine().updateStatus();
+        this.fake.value(
+                "updateStatus",
+                new UpdateStatus(
+                        found.current(),
+                        found.installation(),
+                        UpdateStatus.Installer.SELF,
+                        found.checking(),
+                        found.lastCheck(),
+                        found.failure(),
+                        found.available(),
+                        found.skipped(),
+                        download,
+                        ready ? Optional.of(Path.of("cache", "update", "0.2.0", "package.zip")) : Optional.empty(),
+                        install));
+    }
+
+    private void givenTheEngineDoesTheUpdates() {
+        this.fake.answer("downloadUpdate", args -> {
+            this.calls.add("download");
+            return new CompletableFuture<>();
+        });
+        this.fake.answer("installUpdate", args -> {
+            this.calls.add((Boolean) args[0] ? "install now" : "install at exit");
+            return CompletableFuture.completedFuture(this.fake.engine().updateStatus());
+        });
+    }
+
     private void givenANewVersion(InstallKind installation, Optional<String> skipped, boolean critical) {
         this.fake.answer(
                 "status",
@@ -327,6 +467,7 @@ class WebUiPagesTest {
                 new UpdateStatus(
                         "0.1.0",
                         installation,
+                        UpdateStatus.Installer.NONE,
                         false,
                         Optional.of(Instant.parse("2026-11-03T08:00:00Z")),
                         Optional.empty(),
@@ -337,14 +478,18 @@ class WebUiPagesTest {
                                 "",
                                 URI.create("https://github.com/njMule/njMule/releases/tag/v0.2.0"),
                                 download)),
-                        skipped));
+                        skipped,
+                        Optional.empty(),
+                        Optional.empty(),
+                        UpdateStatus.Install.ASKED));
     }
 
     @SuppressWarnings("unchecked")
     private void givenTheEngineKeepsThePreferences() {
         this.fake.answer("updatePreferences", args -> {
             Preferences changed = ((UnaryOperator<Preferences>) args[0]).apply(Preferences.defaults());
-            this.calls.add("updates " + changed.updateMode() + " " + changed.updateChannel());
+            this.calls.add("updates " + changed.updateMode() + " " + changed.updateChannel() + " "
+                    + changed.updateInstallTime() + " " + changed.nightHours());
             return CompletableFuture.completedFuture(changed);
         });
     }
