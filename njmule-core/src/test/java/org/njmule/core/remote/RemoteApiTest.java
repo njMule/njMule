@@ -61,7 +61,7 @@ import org.njmule.core.config.Preferences;
 class RemoteApiTest {
 
     // Wrong tokens the guard of the test lets through.
-    private static final int ATTEMPTS = 3;
+    private static final int ALLOWED_ATTEMPTS = 3;
 
     private static final String HASH = "AB".repeat(16);
     private static final String LINK = "ed2k://|file|talk.bin|5000|" + HASH + "|/";
@@ -108,7 +108,7 @@ class RemoteApiTest {
     @Test
     void shouldRefuseAnAddressItsGuardStops() throws Exception {
         givenTheApiRuns();
-        givenWrongTokensSent(ATTEMPTS);
+        givenWrongTokensSent(ALLOWED_ATTEMPTS);
 
         whenCalled("GET", "/api/v1/status", Optional.of("wrong"), "");
 
@@ -344,7 +344,7 @@ class RemoteApiTest {
         this.api = new RemoteApi(
                 engine,
                 RecentEvents.follow(engine),
-                client -> this.attempts.incrementAndGet() <= ATTEMPTS,
+                client -> this.attempts.incrementAndGet() <= ALLOWED_ATTEMPTS,
                 Optional.of(this.exited::countDown),
                 Duration.ofSeconds(1));
         this.server = ApiServer.start(this.api);

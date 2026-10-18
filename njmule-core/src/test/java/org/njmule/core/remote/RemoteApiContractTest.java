@@ -275,19 +275,19 @@ class RemoteApiContractTest {
     // Given
 
     private void givenTheEngineHolds(boolean connected) {
-        answer("status", ApiSamples.status(connected));
-        answer("kad", connected ? Optional.of(ApiSamples.kad()) : Optional.empty());
-        answer("downloads", List.of(ApiSamples.download()));
-        answer("sources", List.of(ApiSamples.source()));
-        answer("uploads", List.of(ApiSamples.upload()));
-        answer("sharedFiles", List.of(ApiSamples.shared()));
-        answer("sharedDirectories", List.of(ApiSamples.directory()));
-        answer("servers", List.of(ApiSamples.server()));
-        answer("kadContacts", List.of(ApiSamples.kadContact()));
-        answer("kadSearches", List.of(ApiSamples.kadSearch()));
-        answer("categories", List.of(ApiSamples.category()));
-        answer("friends", List.of(ApiSamples.friend()));
-        answer("bans", List.of(ApiSamples.ban()));
+        answerWith("status", ApiSamples.status(connected));
+        answerWith("kad", connected ? Optional.of(ApiSamples.kad()) : Optional.empty());
+        answerWith("downloads", List.of(ApiSamples.download()));
+        answerWith("sources", List.of(ApiSamples.source()));
+        answerWith("uploads", List.of(ApiSamples.upload()));
+        answerWith("sharedFiles", List.of(ApiSamples.shared()));
+        answerWith("sharedDirectories", List.of(ApiSamples.directory()));
+        answerWith("servers", List.of(ApiSamples.server()));
+        answerWith("kadContacts", List.of(ApiSamples.kadContact()));
+        answerWith("kadSearches", List.of(ApiSamples.kadSearch()));
+        answerWith("categories", List.of(ApiSamples.category()));
+        answerWith("friends", List.of(ApiSamples.friend()));
+        answerWith("bans", List.of(ApiSamples.ban()));
         this.fake.value("preferences", Preferences.defaults());
     }
 
@@ -307,17 +307,17 @@ class RemoteApiContractTest {
                 "removeServer",
                 "recheckKadFirewall",
                 "unban")) {
-            answer(yes, true);
+            answerWith(yes, true);
         }
         for (String done : List.of(
                 "connect", "disconnect", "connectKad", "disconnectKad", "kadBootstrap", "sendMessage", "stopSearch")) {
             this.fake.answer(done, args -> CompletableFuture.completedFuture(null));
         }
         for (String counted : List.of("addServers", "addKadContacts", "updateIpFilter")) {
-            answer(counted, 14);
+            answerWith(counted, 14);
         }
-        answer("addDownload", ApiSamples.download());
-        answer("search", new SearchId(7));
+        answerWith("addDownload", ApiSamples.download());
+        answerWith("search", new SearchId(7));
         this.fake.answer(
                 "updatePreferences",
                 args -> CompletableFuture.completedFuture(
@@ -431,7 +431,7 @@ class RemoteApiContractTest {
                 .containsExactlyInAnyOrderElementsOf(Arrays.asList(EngineEvent.class.getPermittedSubclasses()));
     }
 
-    private void answer(String method, Object value) {
+    private void answerWith(String method, Object value) {
         this.fake.answer(method, args -> CompletableFuture.completedFuture(value));
     }
 

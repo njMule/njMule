@@ -78,11 +78,11 @@ public final class RemoteApi implements AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(RemoteApi.class);
     private static final String JSON = "application/json; charset=utf-8";
     private static final String YAML = "application/yaml; charset=utf-8";
-    private static final String HASH = "hash";
-    private static final String ADDRESS = "address";
-    private static final String PRIORITY = "priority";
-    private static final String CATEGORY = "category";
-    private static final String URL = "url";
+    private static final String HASH_KEY = "hash";
+    private static final String ADDRESS_KEY = "address";
+    private static final String PRIORITY_KEY = "priority";
+    private static final String CATEGORY_KEY = "category";
+    private static final String URL_KEY = "url";
     private static final long ENGINE_WAIT_SECONDS = 10;
 
     private final NjMuleEngine engine;
@@ -120,7 +120,7 @@ public final class RemoteApi implements AutoCloseable {
         this.log = recent.log();
         this.streams = new EventStreams(engine, heartbeat);
         this.exit = exit;
-        this.specification = Shipped.SPECIFICATION;
+        this.specification = Shipped.DOCUMENT;
         this.handlers = handlers();
         if (!this.handlers.keySet().equals(this.specification.operations().keySet())) {
             throw new IllegalStateException("operations without a handler or handlers without an operation: "
@@ -132,7 +132,7 @@ public final class RemoteApi implements AutoCloseable {
 
     // Parsed once: every instance serves the same document.
     private static final class Shipped {
-        static final ApiSpecification SPECIFICATION = ApiSpecification.load();
+        static final ApiSpecification DOCUMENT = ApiSpecification.load();
     }
 
     /** A request that cannot be answered as asked; the message is meant for the caller. */
@@ -179,14 +179,14 @@ public final class RemoteApi implements AutoCloseable {
                         c -> changed(
                                 c,
                                 this.engine.setDownloadPriority(
-                                        hash(c), enumValue(DownloadPriority.class, text(c.body(), PRIORITY))))),
+                                        hash(c), enumValue(DownloadPriority.class, text(c.body(), PRIORITY_KEY))))),
                 entry(
                         "setDownloadCategory",
-                        c -> changed(c, this.engine.setDownloadCategory(hash(c), number(c.body(), CATEGORY)))),
+                        c -> changed(c, this.engine.setDownloadCategory(hash(c), number(c.body(), CATEGORY_KEY)))),
                 entry("renameDownload", c -> changed(c, this.engine.renameDownload(hash(c), text(c.body(), "name")))),
                 entry(
                         "addDownloadSource",
-                        c -> changed(c, this.engine.addSource(hash(c), address(text(c.body(), ADDRESS))))),
+                        c -> changed(c, this.engine.addSource(hash(c), address(text(c.body(), ADDRESS_KEY))))),
                 entry("listSources", c -> list(c, this.engine::sources, ApiJson::source)),
                 entry("listUploads", c -> list(c, this.engine::uploads, ApiJson::upload)),
                 entry("listSharedFiles", c -> list(c, this.engine::sharedFiles, ApiJson::shared)),
@@ -196,20 +196,22 @@ public final class RemoteApi implements AutoCloseable {
                         c -> known(
                                 c,
                                 this.engine.setUploadPriority(
-                                        hash(c), enumValue(UploadPriority.class, text(c.body(), PRIORITY))))),
+                                        hash(c), enumValue(UploadPriority.class, text(c.body(), PRIORITY_KEY))))),
                 entry("listServers", c -> list(c, this.engine::servers, ApiJson::server)),
                 entry("addServer", this::addServer),
                 entry("connectServer", this::connectServer),
                 entry("disconnectServer", c -> done(c, this.engine.disconnect())),
                 entry("importServers", c -> count(c, this.engine.addServers(url(c)))),
-                entry("removeServer", c -> known(c, this.engine.removeServer(address(text(c.parameters(), ADDRESS))))),
+                entry(
+                        "removeServer",
+                        c -> known(c, this.engine.removeServer(address(text(c.parameters(), ADDRESS_KEY))))),
                 entry("getKad", this::getKad),
                 entry("listKadContacts", c -> list(c, this.engine::kadContacts, ApiJson::kadContact)),
                 entry("listKadSearches", c -> list(c, this.engine::kadSearches, ApiJson::kadSearch)),
                 entry("connectKad", c -> done(c, this.engine.connectKad())),
                 entry("disconnectKad", c -> done(c, this.engine.disconnectKad())),
                 entry("recheckKadFirewall", c -> allowed(c, this.engine.recheckKadFirewall(), "Kad is not connected.")),
-                entry("bootstrapKad", c -> done(c, this.engine.kadBootstrap(address(text(c.body(), ADDRESS))))),
+                entry("bootstrapKad", c -> done(c, this.engine.kadBootstrap(address(text(c.body(), ADDRESS_KEY))))),
                 entry("importKadNodes", c -> count(c, this.engine.addKadContacts(url(c)))),
                 entry("startSearch", this::startSearch),
                 entry("getSearchResults", this::getSearchResults),
@@ -222,7 +224,7 @@ public final class RemoteApi implements AutoCloseable {
                         "sendMessage",
                         c -> done(c, this.engine.sendMessage(address(text(c.body(), "to")), text(c.body(), "text")))),
                 entry("listBans", c -> list(c, this.engine::bans, ApiJson::ban)),
-                entry("unban", c -> known(c, this.engine.unban(text(c.parameters(), ADDRESS)))));
+                entry("unban", c -> known(c, this.engine.unban(text(c.parameters(), ADDRESS_KEY)))));
     }
 
     /** Answers a request whose path starts with {@value #PREFIX}. */
@@ -369,7 +371,7 @@ public final class RemoteApi implements AutoCloseable {
             links.add(link);
         }
         Optional<Integer> category =
-                c.body().has(CATEGORY) ? Optional.of(number(c.body(), CATEGORY)) : Optional.empty();
+                c.body().has(CATEGORY_KEY) ? Optional.of(number(c.body(), CATEGORY_KEY)) : Optional.empty();
         List<DownloadInfo> added = new ArrayList<>();
         for (Ed2kLink.FileLink link : links) {
             DownloadInfo d = await(this.engine.addDownload(link));
@@ -382,7 +384,7 @@ public final class RemoteApi implements AutoCloseable {
     }
 
     private void addServer(Call c) throws IOException {
-        if (!await(this.engine.addServer(address(text(c.body(), ADDRESS))))) {
+        if (!await(this.engine.addServer(address(text(c.body(), ADDRESS_KEY))))) {
             throw new Failure(409, "That server is known already.");
         }
         ok(c.exchange(), 201);
@@ -390,7 +392,7 @@ public final class RemoteApi implements AutoCloseable {
 
     private void connectServer(Call c) throws IOException {
         Optional<ServerAddress> server =
-                c.body().has(ADDRESS) ? Optional.of(address(text(c.body(), ADDRESS))) : Optional.empty();
+                c.body().has(ADDRESS_KEY) ? Optional.of(address(text(c.body(), ADDRESS_KEY))) : Optional.empty();
         done(c, this.engine.connect(server));
     }
 
@@ -450,7 +452,7 @@ public final class RemoteApi implements AutoCloseable {
     private void downloadSearchResult(Call c) throws IOException {
         long id = searchId(c);
         searchKnown(id);
-        Hash16 hash = hash(text(c.body(), HASH));
+        Hash16 hash = hash(text(c.body(), HASH_KEY));
         SearchResult result = this.searches
                 .result(id, hash)
                 .orElseThrow(() -> new Failure(404, "That result is gone: search again."));
@@ -562,7 +564,7 @@ public final class RemoteApi implements AutoCloseable {
     }
 
     private static Hash16 hash(Call c) {
-        return hash(text(c.parameters(), HASH));
+        return hash(text(c.parameters(), HASH_KEY));
     }
 
     private static Hash16 hash(String text) {
@@ -586,7 +588,7 @@ public final class RemoteApi implements AutoCloseable {
     }
 
     private static URI url(Call c) {
-        String text = text(c.body(), URL);
+        String text = text(c.body(), URL_KEY);
         try {
             URI uri = new URI(text.strip());
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
