@@ -351,12 +351,16 @@ public final class UtpConnection implements StreamTransport {
         }
     }
 
+    private static boolean bit(Bytes mask, int i) {
+        return ((mask.get(i / 8) & 0xFF) >>> (i % 8) & 1) != 0;
+    }
+
     // Bit i of the mask is the packet at upTo + 2 + i; three acknowledged past one we wait for mean it was lost.
     private long selectivelyAcknowledged(int upTo, Bytes mask, long now) {
         long bytes = 0;
         int newest = -1;
         for (int i = 0; i < mask.length() * 8; i++) {
-            if ((mask.get(i / 8) & (1 << (i % 8))) != 0) {
+            if (bit(mask, i)) {
                 newest = i;
             }
         }
@@ -365,8 +369,7 @@ public final class UtpConnection implements StreamTransport {
             if (offset < 0 || offset >= mask.length() * 8) {
                 continue;
             }
-            boolean set = (mask.get(offset / 8) & (1 << (offset % 8))) != 0;
-            if (set && !out.acknowledged) {
+            if (bit(mask, offset) && !out.acknowledged) {
                 out.acknowledged = true;
                 bytes += out.payload.length;
                 this.inFlightBytes -= out.payload.length;
@@ -379,7 +382,7 @@ public final class UtpConnection implements StreamTransport {
             int offset = diff(out.seq, upTo) - 2;
             int passed = 0;
             for (int i = Math.max(offset + 1, 0); i <= newest; i++) {
-                if ((mask.get(i / 8) & (1 << (i % 8))) != 0) {
+                if (bit(mask, i)) {
                     passed++;
                 }
             }
