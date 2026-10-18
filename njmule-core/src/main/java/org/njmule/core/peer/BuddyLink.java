@@ -33,6 +33,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.IntPredicate;
 import java.util.function.Supplier;
@@ -46,6 +47,7 @@ import org.njmule.core.net.TcpConnector;
 import org.njmule.core.protocol.ed2k.ClientReasks;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.LowIdMessages;
+import org.njmule.core.protocol.ed2k.NatTraversalMessages;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
@@ -135,6 +137,7 @@ public final class BuddyLink implements KadNode.Buddies {
 
     private final EngineLoop loop;
     private final PeerLinks links;
+    private volatile BiConsumer<InetSocketAddress, NatTraversalMessages.Rendezvous> rendezvous = (from, r) -> {};
     private final Supplier<Hello> ourHello;
     private final IntPredicate obfuscate;
     private final Consumer<LowIdMessages.Callback> callbacks;
@@ -425,6 +428,11 @@ public final class BuddyLink implements KadNode.Buddies {
         this.relayed.clear();
     }
 
+    /** Takes the rendezvous our buddy passes on, with the address it saw the requester at. */
+    public void onRendezvous(BiConsumer<InetSocketAddress, NatTraversalMessages.Rendezvous> taker) {
+        this.rendezvous = Objects.requireNonNull(taker, "taker");
+    }
+
     /** The buddy side of the link. */
     private final class Role implements PeerLink.Role {
         private PeerChannel channel;
@@ -476,9 +484,17 @@ public final class BuddyLink implements KadNode.Buddies {
             }
         }
 
+        // A re-ask names its file; a zero file hash carries another packet, such as a rendezvous.
         private void reask(Packet packet) {
             try {
-                BuddyLink.this.reasks.accept(ClientReasks.Relayed.decode(packet));
+                Optional<NatTraversalMessages.Forward> forward = NatTraversalMessages.Forward.decode(packet);
+                if (forward.isEmpty()) {
+                    BuddyLink.this.reasks.accept(ClientReasks.Relayed.decode(packet));
+                } else if (forward.get().opcode() == Opcodes.ClientUdp.RENDEZVOUS.code()) {
+                    BuddyLink.this.rendezvous.accept(
+                            forward.get().requester(),
+                            NatTraversalMessages.Rendezvous.decode(forward.get().payload()));
+                }
             } catch (DecodeException e) {
                 logger.debug("Bad re-ask from our buddy: {}", e.getMessage());
             }

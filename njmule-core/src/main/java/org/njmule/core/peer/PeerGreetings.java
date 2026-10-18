@@ -32,6 +32,7 @@ import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.PeerInfo;
+import org.njmule.core.net.StreamTransport;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.protocol.ed2k.Hello;
@@ -129,6 +130,39 @@ public final class PeerGreetings implements AutoCloseable {
                     }
                 },
                 PeerGreetings::unpack);
+    }
+
+    /**
+     * Takes a connection a client opened through the routers, or one we opened that way: plain, as such connections
+     * are; the side that took it says hello first.
+     */
+    public void acceptedOver(StreamTransport stream, ConnectionGuard.Permit permit, boolean helloFirst) {
+        TcpConnection connection;
+        try {
+            connection = TcpConnection.over(stream, FrameLimits.CLIENT_HANDSHAKE);
+            connection.setReadTimeout(HELLO_TIMEOUT);
+        } catch (IOException e) {
+            logger.debug("Connection through routers with {} failed: {}", stream.remoteAddress(), e.getMessage());
+            stream.close();
+            permit.close();
+            return;
+        }
+        this.open.add(connection);
+        connection.start(
+                new Handler(Optional.empty()) {
+                    @Override
+                    public void onClosed(TcpConnection c, Optional<IOException> cause) {
+                        super.onClosed(c, cause);
+                        permit.close();
+                    }
+                },
+                PeerGreetings::unpack);
+        if (helloFirst) {
+            connection.send(this.ourHello
+                    .get()
+                    .toPeerAt(stream.remoteAddress().getAddress())
+                    .encode(false));
+        }
     }
 
     /**

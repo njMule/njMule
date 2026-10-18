@@ -34,6 +34,7 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -58,6 +59,8 @@ import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.ClientReasks;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.LowIdMessages;
+import org.njmule.core.protocol.ed2k.NatTraversalMessages;
+import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.FrameLimit;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
@@ -98,6 +101,7 @@ class BuddyLinkTest {
     private final List<AutoCloseable> resources = new ArrayList<>();
     private final List<LowIdMessages.Callback> callbacks = new CopyOnWriteArrayList<>();
     private final List<ClientReasks.Relayed> reasks = new CopyOnWriteArrayList<>();
+    private final List<String> rendezvous = new CopyOnWriteArrayList<>();
     private final UInt128 buddyId = UInt128.parseHex("00112233445566778899AABBCCDDEEFF");
     private BuddyLink buddies;
     private int listenPort;
@@ -125,6 +129,8 @@ class BuddyLinkTest {
                 this.reasks::add,
                 random,
                 this.ticker);
+        this.buddies.onRendezvous((from, r) ->
+                this.rendezvous.add(from.getAddress().getHostAddress() + ":" + from.getPort() + " " + r.requester()));
         PeerGreetings greetings = new PeerGreetings(OURS, () -> hello, () -> true, ip -> false, random);
         greetings.routeTo((connection, from) -> {
             try {
@@ -285,6 +291,17 @@ class BuddyLinkTest {
     }
 
     @Test
+    void shouldPassOnARendezvousOurBuddyRelaysWithTheRequestersAddress() throws Exception {
+        givenABuddyListening();
+        givenItIsOurBuddy();
+
+        whenTheBuddyRelaysARendezvousFrom(Ipv4.of(1, 2, 3, 4), 4672);
+
+        thenARendezvousArrivesFrom("1.2.3.4:4672 " + Hash16.parseHex("ab".repeat(16)));
+        thenNoReaskArrives();
+    }
+
+    @Test
     void shouldNotTakeAClientWeDidNotAgreeToServe() throws Exception {
         givenWeAgreedToServe(FIREWALLED);
 
@@ -397,6 +414,18 @@ class BuddyLinkTest {
         this.relayed = onLoop(() -> this.buddies.relayReask(ip, port, throughUs));
     }
 
+    private void whenTheBuddyRelaysARendezvousFrom(int ip, int port) throws IOException {
+        Packet rendezvousThroughBuddy = new NatTraversalMessages.Rendezvous(
+                        Hash16.parseHex("ab".repeat(16)), 0x80, Hash16.ZERO, 0, 0, 0)
+                .encodeThroughBuddy(Hash16.parseHex("cd".repeat(16)));
+        byte[] afterTheBuddyId =
+                Arrays.copyOfRange(rendezvousThroughBuddy.payload(), Hash16.LENGTH, rendezvousThroughBuddy.length());
+        this.peer.send(Packet.of(
+                Protocol.EMULE,
+                Opcodes.Extended.REASKCALLBACKTCP.code(),
+                new PacketWriter().u32(Ipv4.toEd2k(ip)).u16(port).bytes(afterTheBuddyId)));
+    }
+
     private void whenTheBuddyRelaysAReaskFrom(int ip, int port) throws IOException {
         this.peer.send(new ClientReasks.Relayed(ip, port, PING).encode());
     }
@@ -486,6 +515,18 @@ class BuddyLinkTest {
             Thread.sleep(20);
         }
         assertThat(this.reasks).containsExactly(new ClientReasks.Relayed(ip, port, PING));
+    }
+
+    private void thenARendezvousArrivesFrom(String expected) throws Exception {
+        long deadline = System.nanoTime() + WAIT.toNanos();
+        while (this.rendezvous.isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        assertThat(this.rendezvous).containsExactly(expected);
+    }
+
+    private void thenNoReaskArrives() {
+        assertThat(this.reasks).isEmpty();
     }
 
     private void thenTheRelayWent(boolean went) {

@@ -70,6 +70,9 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
 
         /** A client packet from an IPv6 address; such datagrams come plain. */
         default void receivedOverIpv6(InetSocketAddress from, Packet packet) {}
+
+        /** A frame of the reserved protocol 0xB2, on the socket's own thread: uTP to and from other clients. */
+        default void frame(InetSocketAddress from, Packet packet) {}
     }
 
     private KadSocket(
@@ -248,6 +251,10 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
                 packet = Packing.unpack(packet, MAX_UNPACKED);
             }
             int port = from.getPort();
+            if (packet.protocol() == Protocol.UDP_RESERVED_2) {
+                this.clientPackets.frame(from, packet);
+                return;
+            }
             if (packet.protocol() == Protocol.EMULE) {
                 Packet client = packet;
                 this.loop.post(() -> this.clientPackets.received(ip, port, client));

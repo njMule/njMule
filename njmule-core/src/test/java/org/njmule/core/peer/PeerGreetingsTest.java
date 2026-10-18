@@ -21,7 +21,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.google.common.base.Ticker;
 import java.io.BufferedInputStream;
 import java.io.EOFException;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -37,6 +41,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.net.StreamTransport;
 import org.njmule.core.net.TcpListener;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.packet.FrameLimits;
@@ -60,6 +65,8 @@ class PeerGreetingsTest {
     private Socket client;
     private InputStream in;
     private Packet answer;
+    private Packet first;
+    private OutputStream clientOut;
 
     @AfterEach
     void stop() throws Exception {
@@ -88,6 +95,51 @@ class PeerGreetingsTest {
 
         thenItGetsOurAnswer();
         thenTheConnectionIsHandedOverFor(PEER);
+    }
+
+    @Test
+    void shouldSayHelloFirstOverAConnectionThroughRoutersAndHandItOverOnTheClientsHello() throws Exception {
+        givenAConnectionThroughRoutersWeTook();
+
+        whenTheClientGreetsUsBackWith(PEER);
+
+        thenOurHelloCameFirstThenOurAnswer();
+        thenTheConnectionIsHandedOverFor(PEER);
+    }
+
+    private void givenAConnectionThroughRoutersWeTook() throws Exception {
+        SecureRandom random = new SecureRandom();
+        Hello ours = Hello.of(OURS, 0, 4662, "test", 0, 0, 0, 0, 0, 0);
+        PeerGreetings greetings = new PeerGreetings(OURS, () -> ours, () -> true, ip -> false, random);
+        greetings.routeTo((connection, peer) -> {
+            this.routed.add(peer.userHash());
+            return Optional.empty();
+        });
+        this.resources.add(greetings);
+        PipedInputStream toUs = new PipedInputStream(1 << 16);
+        PipedInputStream toClient = new PipedInputStream(1 << 16);
+        this.clientOut = new PipedOutputStream(toUs);
+        this.in = new BufferedInputStream(toClient);
+        StreamTransport ourSide = new PipeTransport(toUs, new PipedOutputStream(toClient));
+        ConnectionGuard guard = new ConnectionGuard(
+                IpFilter::empty,
+                new ConnectionGuard.Limits(500, 100, 1000, Duration.ofSeconds(5)),
+                Ticker.systemTicker());
+        greetings.acceptedOver(ourSide, guard.outgoing(), true);
+    }
+
+    private void whenTheClientGreetsUsBackWith(Hash16 userHash) throws Exception {
+        this.first = TcpFraming.read(this.in, FrameLimits.CLIENT);
+        Hello hello = Hello.of(userHash, 1, 4663, "client", 0, 0, 0, 0, 0, 0);
+        this.clientOut.write(TcpFraming.encode(hello.encode(false)));
+        this.clientOut.flush();
+        this.answer = TcpFraming.read(this.in, FrameLimits.CLIENT);
+    }
+
+    private void thenOurHelloCameFirstThenOurAnswer() throws Exception {
+        assertThat(this.first.opcode()).isEqualTo(Opcodes.Client.HELLO.code());
+        assertThat(Hello.decode(this.first).userHash()).isEqualTo(OURS);
+        thenItGetsOurAnswer();
     }
 
     private void givenWeListen() throws Exception {
@@ -145,5 +197,43 @@ class PeerGreetingsTest {
             Thread.sleep(20);
         }
         assertThat(this.routed).containsExactly(userHash);
+    }
+
+    // One end of a pipe, as a stream through the routers would be.
+    private record PipeTransport(InputStream in, OutputStream out) implements StreamTransport {
+        @Override
+        public InputStream input() {
+            return this.in;
+        }
+
+        @Override
+        public OutputStream output() {
+            return this.out;
+        }
+
+        @Override
+        public InetSocketAddress remoteAddress() {
+            return new InetSocketAddress(InetAddress.getLoopbackAddress(), 4663);
+        }
+
+        @Override
+        public Optional<InetAddress> localAddress() {
+            return Optional.empty();
+        }
+
+        @Override
+        public void setReadTimeout(Duration timeout) {
+            // Pipes wait forever.
+        }
+
+        @Override
+        public void close() {
+            try {
+                this.in.close();
+                this.out.close();
+            } catch (IOException e) {
+                // Closing anyway.
+            }
+        }
     }
 }

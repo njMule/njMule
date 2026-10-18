@@ -67,7 +67,7 @@ public final class PeerLinks {
     private final Map<PeerLink, ConnectionGuard.Permit> ours = new HashMap<>();
 
     private volatile Consumer<PeerLink> greeted = link -> {};
-    private BiConsumer<Hash16, Inet6Address> moved = (hash, address) -> {};
+    private volatile BiConsumer<Hash16, Inet6Address> moved = (hash, address) -> {};
     private volatile ConnectionGuard guard;
 
     public PeerLinks(EngineLoop loop, Identities identities, Uploads uploads) {

@@ -109,6 +109,7 @@ import org.njmule.core.net.UdpRoute;
 import org.njmule.core.peer.BuddyLink;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.IdentityHandshake;
+import org.njmule.core.peer.NatTraversal;
 import org.njmule.core.peer.PeerGreetings;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
@@ -124,6 +125,7 @@ import org.njmule.core.protocol.ed2k.ClientMessages;
 import org.njmule.core.protocol.ed2k.ClientReasks;
 import org.njmule.core.protocol.ed2k.Hello;
 import org.njmule.core.protocol.ed2k.LowIdMessages;
+import org.njmule.core.protocol.ed2k.NatTraversalMessages;
 import org.njmule.core.protocol.ed2k.ServerDatagrams;
 import org.njmule.core.protocol.ed2k.ServerMessages;
 import org.njmule.core.protocol.io.DecodeException;
@@ -158,6 +160,7 @@ import org.njmule.core.upnp.PortForwarding;
 import org.njmule.core.upnp.Routers;
 import org.njmule.core.util.Bytes;
 import org.njmule.core.util.Ipv4;
+import org.njmule.core.utp.UtpConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -257,6 +260,8 @@ final class Network {
     // Replaced on the engine thread, read by the connection threads too.
     private volatile KadNode kad;
     private final AddressWatch addresses = new AddressWatch();
+    // Connections between firewalled clients through their routers, while Kad runs.
+    private volatile NatTraversal natTraversal;
     // Our public IPv6 address, which clients may reach us at; refreshed with the IPv4 one.
     private volatile Optional<Inet6Address> ourIpv6 = Optional.empty();
     private KadSocket kadSocket;
@@ -1731,6 +1736,10 @@ final class Network {
             this.kadTicking = null;
         }
         this.buddyLink.release();
+        if (this.natTraversal != null) {
+            this.natTraversal.close();
+            this.natTraversal = null;
+        }
         this.kad.close();
         this.kadSocket.close();
         this.kadRelay.close();
@@ -1865,6 +1874,9 @@ final class Network {
         int buddyIp = this.buddyLink.buddyIp();
         if (connected && firewalled && node.isFirewalled() && buddyIp != 0) {
             hello = hello.withBuddy(buddyIp, this.buddyLink.buddyUdpPort());
+        }
+        if (this.natTraversal != null && mayTraverse()) {
+            hello = hello.withUtpTraversal();
         }
         return this.ourIpv6.map(hello::withIpv6).orElse(hello);
     }
@@ -2115,7 +2127,8 @@ final class Network {
                     new KadNode.Settings(
                             listenPort(),
                             this.userHash,
-                            cryptOptions(prefs.obfuscation()) >>> 7,
+                            cryptOptions(prefs.obfuscation()) >>> 7
+                                    | (prefs.proxy().isEnabled() ? 0 : NatTraversalMessages.OPTION_UTP),
                             ip -> Ipv4.isLan(ip) && !this.preferences.get().filterLanAddresses(),
                             ip -> this.ipFilter.blocks(ip),
                             this.kadSocket.port(),
@@ -2126,6 +2139,22 @@ final class Network {
             this.kad.useBuddies(this.buddyLink);
             this.kadSocket.deliverTo(this.kad);
             this.kadSocket.deliverClientPacketsTo(new ClientDatagrams());
+            KadSocket socket = this.kadSocket;
+            KadNode node = this.kad;
+            this.natTraversal = new NatTraversal(
+                    socket::sendClient,
+                    this::throughRouters,
+                    Ticker.systemTicker(),
+                    this.random,
+                    () -> this.userHash,
+                    () -> cryptOptions(this.preferences.get().obfuscation()) >>> 7,
+                    node::supportsDirectCallback);
+            this.buddyLink.onRendezvous((from, rendezvous) -> {
+                NatTraversal traversal = this.natTraversal;
+                if (traversal != null && mayTraverse()) {
+                    traversal.rendezvousForwarded(from, rendezvous);
+                }
+            });
             loadKadContacts(this.kad);
             this.kad.loadIndex();
             this.kadPublisher = new KadPublisher(this.kad, this::kadShared, this.comments::get, Ticker.systemTicker());
@@ -2347,6 +2376,11 @@ final class Network {
             this.downloads.reaskAnswered(ip, port, packet);
         } else if (opcode == Opcodes.ClientUdp.DIRECTCALLBACKREQ.code()) {
             directCallback(ip, packet);
+        } else if (opcode == Opcodes.ClientUdp.HOLEPUNCH.code()) {
+            NatTraversal traversal = this.natTraversal;
+            if (traversal != null) {
+                traversal.holePunched(Ipv4.socketAddress(ip, port));
+            }
         }
     }
 
@@ -2360,6 +2394,41 @@ final class Network {
         public void receivedOverIpv6(InetSocketAddress from, Packet packet) {
             clientDatagramOverIpv6(from, packet);
         }
+
+        @Override
+        public void frame(InetSocketAddress from, Packet packet) {
+            NatTraversal traversal = Network.this.natTraversal;
+            if (traversal != null) {
+                traversal.frame(from, packet);
+            }
+        }
+    }
+
+    // Plain, as such connections are: never where obfuscation is required, nor behind a proxy, whose relay shows
+    // another address.
+    private boolean mayTraverse() {
+        Preferences prefs = this.preferences.get();
+        return prefs.obfuscation() != ObfuscationMode.REQUIRED && !prefs.proxy().isEnabled();
+    }
+
+    // A connection through the routers: one a client opened counts as coming in, one we asked for as ours.
+    private void throughRouters(UtpConnection connection, boolean helloFirst) {
+        ConnectionGuard guard = this.guard;
+        if (guard == null || !mayTraverse()) {
+            connection.close();
+            return;
+        }
+        ConnectionGuard.Permit permit;
+        if (!helloFirst) {
+            permit = guard.outgoing();
+        } else if (guard.admit(connection.remoteAddress().getAddress())
+                instanceof ConnectionGuard.Admission.Admitted(ConnectionGuard.Permit admitted)) {
+            permit = admitted;
+        } else {
+            connection.close();
+            return;
+        }
+        this.greetings.acceptedOver(connection, permit, helloFirst);
     }
 
     // Over IPv6 only re-asks and their answers come, and go back plain unless obfuscation is required.
@@ -2568,8 +2637,13 @@ final class Network {
     }
 
     // Through the buddy of the source, plain; or straight to its Kad port, obfuscated when either side asks for it.
+    // When
+    // we are firewalled too, the callback could not reach us: the source is met through the routers if it can be.
     private boolean requestKadCallback(KadNode node, DownloadManager.KadSource source, Hash16 file) {
         DownloadManager.KadCallback route = source.callback().orElseThrow();
+        if (route.buddyId().isPresent() && meetsThroughRouters(node, source)) {
+            return rendezvous(node, source, file);
+        }
         if (route.buddyId().isPresent()) {
             KadNode.Buddy buddy = new KadNode.Buddy(
                     route.buddyIp(),
@@ -2594,6 +2668,45 @@ final class Network {
                 new LowIdMessages.DirectCallbackRequest(listenPort(), this.userHash, cryptOptions(mode) >>> 7).encode();
         this.kadSocket.sendClient(
                 ip, route.udpPort(), request, obfuscate ? source.userHash() : Optional.empty(), node.publicIp());
+        return true;
+    }
+
+    private boolean meetsThroughRouters(KadNode node, DownloadManager.KadSource source) {
+        return this.natTraversal != null
+                && mayTraverse()
+                && (source.cryptOptions() & NatTraversalMessages.OPTION_UTP) != 0
+                && this.context.clientId() < ServerMessages.LOW_ID_LIMIT
+                && node.isFirewalled();
+    }
+
+    // The connection, when it opens, comes as a callback would, through the greetings.
+    @SuppressWarnings("FutureReturnValueIgnored")
+    private boolean rendezvous(KadNode node, DownloadManager.KadSource source, Hash16 file) {
+        DownloadManager.KadCallback route = source.callback().orElseThrow();
+        int ip = Ipv4.fromBytes(source.address().getAddress().getAddress());
+        if (route.udpPort() == 0
+                || source.userHash().isEmpty()
+                || this.ipFilter.blocks(ip)
+                || this.uploads.isBanned(InetAddresses.fromInteger(route.buddyIp()))) {
+            return false;
+        }
+        int ourIp = node.publicIp() != 0 ? node.publicIp() : ourPublicIp();
+        int ourPort = node.announcedUdpPort() != 0 ? node.announcedUdpPort() : this.kadSocket.port();
+        this.natTraversal
+                .rendezvous(
+                        Ipv4.socketAddress(ip, route.udpPort()),
+                        source.userHash().get(),
+                        Ipv4.socketAddress(route.buddyIp(), route.buddyPort()),
+                        route.buddyId().get(),
+                        file,
+                        ourIp,
+                        ourPort)
+                .whenComplete((connection, failure) -> {
+                    if (failure != null) {
+                        logger.debug(
+                                "No connection through the routers with {}: {}", source.address(), failure.toString());
+                    }
+                });
         return true;
     }
 

@@ -93,6 +93,8 @@ public final class NatTraversal implements AutoCloseable {
     private final BooleanSupplier reachable;
     private final UtpSocket utp;
     private final List<Expected> expected = new CopyOnWriteArrayList<>();
+    // One connection at a time is opened.
+    private final Object connecting = new Object();
 
     /**
      * @param ourOptions our connect options, which a capability answer tells
@@ -208,7 +210,7 @@ public final class NatTraversal implements AutoCloseable {
     // Connects once; a connection the target opened first wins. The connection's own future is handled here.
     @SuppressWarnings("FutureReturnValueIgnored")
     private void connectTo(InetSocketAddress at, CompletableFuture<UtpConnection> result) {
-        synchronized (result) {
+        synchronized (this.connecting) {
             if (result.isDone()
                     || this.utp.connections().stream()
                             .anyMatch(c -> c.remoteAddress().equals(at))) {

@@ -69,6 +69,7 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
 
     // Feature bits of the newer clients' options tag.
     public static final int MOD_MISC_EXTENDED_SX = 1;
+    public static final int MOD_MISC_UTP_TRAVERSAL = 1 << 1;
     public static final int MOD_MISC_IPV6 = 1 << 2;
 
     /** The client id of a client with no IPv4 address, reached over IPv6 only. */
@@ -116,9 +117,25 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
         TagName options = TagName.id(ClientTag.MOD_MISCOPTIONS);
         List<Tag> more = new ArrayList<>(this.tags.size() + 1);
         for (Tag tag : this.tags) {
-            more.add(tag.name().equals(options) ? new Tag.IntTag(options, MOD_MISC_IPV6 | MOD_MISC_EXTENDED_SX) : tag);
+            more.add(
+                    tag.name().equals(options) && tag instanceof Tag.IntTag bits
+                            ? new Tag.IntTag(options, bits.value() | MOD_MISC_IPV6 | MOD_MISC_EXTENDED_SX)
+                            : tag);
         }
         more.add(new Tag.HashTag(TagName.id(ClientTag.MOD_IP_V6), Hash16.of(ours.getAddress())));
+        return new Hello(this.userHash, this.clientId, this.tcpPort, more, this.serverIp, this.serverPort);
+    }
+
+    /** This greeting saying that we reach firewalled clients, and are reached, through routers over uTP. */
+    public Hello withUtpTraversal() {
+        TagName options = TagName.id(ClientTag.MOD_MISCOPTIONS);
+        List<Tag> more = new ArrayList<>(this.tags.size());
+        for (Tag tag : this.tags) {
+            more.add(
+                    tag.name().equals(options) && tag instanceof Tag.IntTag bits
+                            ? new Tag.IntTag(options, bits.value() | MOD_MISC_UTP_TRAVERSAL)
+                            : tag);
+        }
         return new Hello(this.userHash, this.clientId, this.tcpPort, more, this.serverIp, this.serverPort);
     }
 
