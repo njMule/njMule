@@ -554,6 +554,24 @@ All notable changes to this project are documented here. The format follows
   problem; a manifest older than one already seen is refused. Nothing is downloaded or installed.
   Each release carries the signed `njmule-update.json` and a signed `SHA256SUMS`, with provenance
   attestations for every file.
+- Updates downloaded and installed: the Updates window, the web interface (settings),
+  `njmule --update` and `njmule --remote update download|install [at-exit]` (API `POST
+  /update/download` and `/update/install`, events `update.ready` and `update.restart`, and the
+  state, progress and installer in `GET /update`) download the package of the new version for this
+  installation through the proxy and the network interface, going on from where a dropped download
+  stopped, keep it only when its length and SHA-256 are those of the signed update information, and
+  unpack it. njMule installs it where it may replace itself: the per-user Windows installer through
+  a copy of its launcher that runs msiexec once njMule has stopped (a per-machine installation asks
+  for administrator rights and is never installed unattended), the Windows zip and the Linux
+  archives by swapping their files, the macOS app by swapping its bundle, after a clean stop of the
+  engine. Restart to update installs at once and starts njMule again; the new program must name its
+  version, then run its engine for 30 s, or the old files, kept as `.old` until then, come back. The
+  deb and rpm packages, Synology and Docker are only downloaded and told how to install. The
+  preference `update.mode` gains `download` and `install` (installed when njMule exits, or also in
+  the night hours: `update.installAt`, `update.nightHours`); a version whose installation failed is
+  not installed again on its own. The configuration is backed up before a version first uses it.
+  The release workflow checks on a manual run that a test build updates itself from a local server
+  (Windows installer and zip, Linux archive in a container, macOS app).
 - The desktop app draws its own line icons, one stroke on one grid, in the colour of the text beside
   them in every theme; in right-to-left languages only the icons that point the way text runs are
   mirrored.

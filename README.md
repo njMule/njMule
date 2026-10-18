@@ -302,15 +302,27 @@ update information of the newest release, through the proxy and the network inte
 options, and believes it only when it is signed by a key built into njMule. The request carries
 nothing but njMule's version in its `User-Agent`; GitHub sees the address it comes from. The
 desktop application then shows a notice and its *Updates* window, the web interface a notice on its
-status page, the headless engine a line in its log. Each says how to install the new version by the
-way njMule was installed: the installer, the archive or the disk image to download, `apt` or `dnf`
-for the Linux packages, the Package Center on Synology, `docker compose pull` for the image.
-njMule never downloads or installs anything by itself.
+status page, the headless engine a line in its log.
 
-In the options (or `update.mode` and `update.channel` in `njmule.properties`) the check can be left
-to the user's request, and test versions (alpha, beta, release candidates) can be included; a test
-version looks for test versions by default. `njmule --check-update` looks once and exits with 0 when
-this version is the newest, 100 when a newer one is out and 1 when the check failed.
+*Download and install* fetches the package of the new version for this installation and keeps it
+only when its length and SHA-256 hash are those of the signed information; a dropped download goes
+on where it stopped. Where njMule may replace its own files, *Restart to update* saves everything,
+stops, puts the new version in place and starts again: the Windows installer through msiexec
+(Windows asks for administrator rights when njMule is installed for all users), the Windows zip and
+the Linux archives file by file, the macOS app as a whole bundle. The old files stay beside the new
+ones (`*.old`) until the new version has run for 30 seconds, and come back if it does not start;
+the configuration is backed up before a new version first uses it. The Debian and RPM packages, the
+Synology package and the Docker image are updated as usual (`apt`, `dnf`, the Package Center,
+`docker compose pull`): njMule downloads the package and tells how.
+
+In the options (or `update.mode`, `update.channel`, `update.installAt` and `update.nightHours` in
+`njmule.properties`) the check can be left to the user's request, or new versions downloaded, or
+also installed when njMule exits, and optionally in the night hours for a computer left on for days;
+test versions (alpha, beta, release candidates) can be included, and a test version looks for test
+versions by default. `njmule --check-update` looks once and exits with 0 when this version is the
+newest, 100 when a newer one is out and 1 when the check failed; `njmule --update` also downloads and
+installs it (stop the running njMule first). A service under systemd installs at its stop and, when
+it restarts to update, exits with code 75: `Restart=on-failure` starts the new version.
 
 ## Usage
 
@@ -339,6 +351,7 @@ performs a single task and exits. `njmule --help` lists all options.
 | `njmule --config-dir <dir>` | keep all data below `<dir>` |
 | `njmule --log-level DEBUG` | override the configured log level |
 | `njmule --check-update` | look for a new version, print it with how to install it and exit (100 when one is out) |
+| `njmule --update` | look for a new version, download it, check it and install it where njMule may replace itself |
 
 ### Web interface
 
@@ -400,6 +413,7 @@ njmule --remote status
 njmule --remote search kad ubuntu iso
 njmule --remote get <search id> <hash>
 njmule --remote update check
+njmule --remote update install
 njmule --remote help
 ```
 
