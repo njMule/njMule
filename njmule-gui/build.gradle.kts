@@ -183,6 +183,7 @@ tasks.register<Exec>("nativeGui") {
     val argsFile = file("native/$nativeOs.args")
     inputs.file(argsFile)
     val resFile = layout.buildDirectory.file("native-res/njmule.res")
+    val generatedArgs = layout.buildDirectory.file("native-args/njmule-gui.args")
     val optimization = providers.gradleProperty("native.optimization")
     inputs.property("optimization", optimization)
     val i18n = file("src/main/resources/org/njmule/gui/i18n")
@@ -198,9 +199,18 @@ tasks.register<Exec>("nativeGui") {
                     .map { it.toLanguageTag() }
                     .sorted()
             val name = if (windows) "njmule" else "njmule-gui"
-            listOf("--module-path", modulePath.asPath, "--module", module, "-o", name, "@$argsFile") +
+            // The module path and the locales pass the 8191 characters of a cmd.exe command line (native-image is
+            // a .cmd on Windows): native-image reads them from a file of their own.
+            val long = generatedArgs.get().asFile
+            long.parentFile.mkdirs()
+            long.writeText(
+                listOf("--module-path", modulePath.asPath.replace('\\', '/'))
+                    .plus("-H:IncludeLocales=" + locales.joinToString(","))
+                    .joinToString("\n", postfix = "\n")
+            )
+            listOf("@${long.path}", "--module", module, "-o", name, "@$argsFile") +
                 (if (windows) listOf("-H:NativeLinkerOption=${resFile.get().asFile}") else emptyList()) +
-                listOf("-H:IncludeLocales=" + locales.joinToString(","), optimization.get())
+                listOf(optimization.get())
         }
     )
     doFirst { out.get().asFile.mkdirs() }
