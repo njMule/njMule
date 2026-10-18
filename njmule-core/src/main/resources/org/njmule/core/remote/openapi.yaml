@@ -1235,6 +1235,9 @@ components:
           format: int64
         publicIp:
           type: string
+        publicIpv6:
+          type: string
+          description: Our public IPv6 address, at which clients may reach us; present when we have one.
         tcpPort:
           type: integer
         missingInterface:
