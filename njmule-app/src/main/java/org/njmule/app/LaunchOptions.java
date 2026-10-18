@@ -51,11 +51,14 @@ public record LaunchOptions(
         NetworkTasks network,
         Optional<WebUiSetup> webUi,
         List<Ed2kLink> links,
-        Optional<Remote> remote) {
+        Optional<Remote> remote,
+        Optional<Path> applyUpdate,
+        List<Long> waitFor) {
 
     public LaunchOptions {
         files = List.copyOf(files);
         links = List.copyOf(links);
+        waitFor = List.copyOf(waitFor);
     }
 
     /**
@@ -159,7 +162,9 @@ public record LaunchOptions(
         API_TOKEN,
         NEW_API_TOKEN,
         RESTORE_LINKS,
-        CHECK_UPDATE
+        CHECK_UPDATE,
+        UPDATE,
+        APPLY_UPDATE
     }
 
     /** Thrown for invalid arguments; the message is meant for the user. */
@@ -202,12 +207,15 @@ public record LaunchOptions(
     private static final String API_TOKEN_OPTION = "--api-token";
     private static final String NEW_API_TOKEN_OPTION = "--new-api-token";
     private static final String CHECK_UPDATE_OPTION = "--check-update";
+    private static final String UPDATE_OPTION = "--update";
+    private static final String APPLY_UPDATE_OPTION = "--apply-update";
+    private static final String WAIT_OPTION = "--wait";
 
     // What --webui-port, --webui-lan, --webui-api, --webui-host and --webui-proxy apply to.
     private static final String WEBUI_SETUP = WEBUI_PASSWORD_OPTION + " or " + WEBUI_PASSWORD_FILE_OPTION;
 
     // What --exit and --restore-links may come with: where and how to run, nothing to do.
-    private static final Set<String> ALONG = Set.of(CONFIG_DIR_OPTION, LOG_LEVEL_OPTION, HEADLESS_OPTION);
+    private static final Set<String> ALONG = Set.of(CONFIG_DIR_OPTION, LOG_LEVEL_OPTION, HEADLESS_OPTION, WAIT_OPTION);
 
     public static LaunchOptions parse(String... args) throws UsageException {
         ParseResult result;
@@ -216,7 +224,8 @@ public record LaunchOptions(
         } catch (ParameterException e) {
             throw new UsageException(e.getMessage());
         }
-        for (String alone : List.of(EXIT_OPTION, RESTORE_LINKS_OPTION, CHECK_UPDATE_OPTION)) {
+        for (String alone :
+                List.of(EXIT_OPTION, RESTORE_LINKS_OPTION, CHECK_UPDATE_OPTION, UPDATE_OPTION, APPLY_UPDATE_OPTION)) {
             if (result.hasMatchedOption(alone) && !result.isUsageHelpRequested() && !result.isVersionHelpRequested()) {
                 alone(result, alone);
             }
@@ -275,7 +284,9 @@ public record LaunchOptions(
                 network,
                 webUi(result),
                 links(result.matchedPositionalValue(0, List.<String>of())),
-                remote(result));
+                remote(result),
+                applyUpdate(result),
+                waits(result));
     }
 
     /** The help text, without colours. */
@@ -319,6 +330,12 @@ public record LaunchOptions(
         }
         if (result.hasMatchedOption(CHECK_UPDATE_OPTION)) {
             return Action.CHECK_UPDATE;
+        }
+        if (result.hasMatchedOption(UPDATE_OPTION)) {
+            return Action.UPDATE;
+        }
+        if (result.hasMatchedOption(APPLY_UPDATE_OPTION)) {
+            return Action.APPLY_UPDATE;
         }
         return result.hasMatchedOption(HASH_OPTION) ? Action.HASH : Action.RUN;
     }
@@ -438,6 +455,24 @@ public record LaunchOptions(
                 CHECK_UPDATE_OPTION,
                 "look for a new version of njMule on GitHub, print it and exit: 0 when this one is the newest,"
                         + " 100 when a newer one is out, 1 when the check failed"));
+        spec.addOption(flag(
+                UPDATE_OPTION,
+                "look for a new version of njMule, download it, check it against its signed information and install"
+                        + " it where njMule may replace itself (the Windows installer and zip, the macOS app, the Linux"
+                        + " archives; elsewhere it tells how), then exit; stop njMule first (njmule --exit)"));
+        spec.addOption(OptionSpec.builder(APPLY_UPDATE_OPTION)
+                .paramLabel("<plan>")
+                .type(String.class)
+                .hidden(true)
+                .description("install the new version that a stopping njMule handed over in <plan>")
+                .build());
+        spec.addOption(OptionSpec.builder(WAIT_OPTION)
+                .paramLabel("<pid>")
+                .type(List.class)
+                .auxiliaryTypes(String.class)
+                .hidden(true)
+                .description("wait (60 s at most) for the process <pid> to end first, as after an update")
+                .build());
         spec.addOption(flag(API_TOKEN_OPTION, "print the token of the remote-control API, making one if needed"));
         spec.addOption(
                 flag(NEW_API_TOKEN_OPTION, "replace the token of the remote-control API, print the new one and exit"));
@@ -556,6 +591,29 @@ public record LaunchOptions(
             }
         }
         return Optional.of(new WebUiSetup(number, lan, api, passwordFile, hosts, proxies));
+    }
+
+    private static Optional<Path> applyUpdate(ParseResult result) throws UsageException {
+        if (!result.hasMatchedOption(APPLY_UPDATE_OPTION)) {
+            return Optional.empty();
+        }
+        return Optional.of(toFile(result.matchedOptionValue(APPLY_UPDATE_OPTION, "")));
+    }
+
+    private static List<Long> waits(ParseResult result) throws UsageException {
+        List<Long> pids = new ArrayList<>();
+        for (String value : result.matchedOptionValue(WAIT_OPTION, List.<String>of())) {
+            try {
+                long pid = Long.parseLong(value.strip());
+                if (pid <= 0) {
+                    throw new NumberFormatException(value);
+                }
+                pids.add(pid);
+            } catch (NumberFormatException e) {
+                throw new UsageException("Invalid process for " + WAIT_OPTION + ": " + value);
+            }
+        }
+        return pids;
     }
 
     private static Optional<Remote> remote(ParseResult result) throws UsageException {

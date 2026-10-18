@@ -48,6 +48,7 @@ class LaunchOptionsTest {
 
     private LaunchOptions options;
     private Throwable exception;
+    private String help;
 
     @Test
     void shouldRunByDefault() {
@@ -318,6 +319,53 @@ class LaunchOptionsTest {
     }
 
     @Test
+    void shouldParseTheUpdate() {
+        whenTheArgumentsAreParsed("--update", "--config-dir", this.dir.toString());
+
+        thenTheActionIs(Action.UPDATE);
+    }
+
+    @Test
+    void shouldRefuseTheUpdateWithLinks() {
+        whenTheArgumentsAreParsed("--update", "ed2k://|server|203.0.113.10|4661|/");
+
+        thenExceptionOccurred(UsageException.class, "--update cannot be combined with links");
+    }
+
+    @Test
+    void shouldParseTheInstallationHandedOverWithTheProcessesToWaitFor() {
+        whenTheArgumentsAreParsed("--apply-update", "apply.properties", "--wait", "4242", "--wait", "77");
+
+        thenTheActionIs(Action.APPLY_UPDATE);
+        thenThePlanIs(Path.of("apply.properties"));
+        thenItWaitsFor(4242L, 77L);
+    }
+
+    @Test
+    void shouldWaitForAnOldProcessBeforeARun() {
+        whenTheArgumentsAreParsed("--wait", "4242", "--config-dir", this.dir.toString());
+
+        thenTheActionIs(Action.RUN);
+        thenItWaitsFor(4242L);
+    }
+
+    @Test
+    void shouldRefuseAProcessToWaitForThatIsNone() {
+        whenTheArgumentsAreParsed("--wait", "-3");
+
+        thenExceptionOccurred(UsageException.class, "Invalid process for --wait: -3");
+    }
+
+    @Test
+    void shouldKeepTheHiddenOptionsOutOfTheHelp() {
+        whenTheHelpIsRead();
+
+        thenTheHelpTells("--update");
+        thenTheHelpDoesNotTell("--apply-update");
+        thenTheHelpDoesNotTell("--wait");
+    }
+
+    @Test
     void shouldRefuseTheCheckForANewVersionWithSomethingElseToDo() {
         whenTheArgumentsAreParsed("--check-update", "--search", "linux");
 
@@ -460,6 +508,26 @@ class LaunchOptionsTest {
 
     private void whenTheArgumentsAreParsed(String... args) {
         this.exception = catchThrowable(() -> this.options = LaunchOptions.parse(args));
+    }
+
+    private void whenTheHelpIsRead() {
+        this.help = LaunchOptions.usage();
+    }
+
+    private void thenThePlanIs(Path expected) {
+        assertThat(parsed().applyUpdate()).contains(expected);
+    }
+
+    private void thenItWaitsFor(Long... pids) {
+        assertThat(parsed().waitFor()).containsExactly(pids);
+    }
+
+    private void thenTheHelpTells(String option) {
+        assertThat(this.help).contains(option);
+    }
+
+    private void thenTheHelpDoesNotTell(String option) {
+        assertThat(this.help).doesNotContain(option);
     }
 
     private void thenTheActionIs(Action expected) {

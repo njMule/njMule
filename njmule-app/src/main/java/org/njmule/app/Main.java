@@ -47,11 +47,13 @@ import org.njmule.core.api.FileHashing;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.ServerAddress;
+import org.njmule.core.api.UpdateHandOver;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.remote.ApiToken;
 import org.njmule.webui.ApiClient;
 import org.njmule.webui.Passwords;
+import org.njmule.webui.UpdateHelp;
 import org.njmule.webui.WebUi;
 import org.njmule.webui.WebUiSettings;
 import org.slf4j.Logger;
@@ -75,6 +77,11 @@ public final class Main {
 
     /** How long --check-update waits for GitHub: both fetches, each with its own time limit. */
     private static final Duration CHECK_UPDATE_WAIT = Duration.ofMinutes(4);
+
+    /** How long --update waits for the package of a new version, on a slow line too. */
+    private static final Duration DOWNLOAD_WAIT = Duration.ofHours(2);
+
+    private static final Duration PROGRESS_EVERY = Duration.ofSeconds(1);
 
     /** Where {@code --remote-url} finds the token of the other computer's API. */
     static final String API_TOKEN_VARIABLE = "NJMULE_API_TOKEN";
@@ -149,7 +156,8 @@ public final class Main {
                         AppDirectories.resolve(cli.configDir()).config(), LinkAssociation::forThisSystem, out, err);
             }
             case RUN -> {
-                return runEngine(cli, out, err, stop);
+                Updating.awaitEnd(cli.waitFor());
+                return runEngine(cli, List.of(args), out, err, stop);
             }
             case REMOTE -> {
                 return remote(cli, out, err);
@@ -159,6 +167,13 @@ public final class Main {
             }
             case CHECK_UPDATE -> {
                 return checkUpdate(cli, out, err);
+            }
+            case UPDATE -> {
+                return update(cli, out, err);
+            }
+            case APPLY_UPDATE -> {
+                LoggingSetup.setLevel(cli.logLevel().orElse("INFO"));
+                return UpdateHandOver.install(cli.applyUpdate().orElseThrow(), cli.waitFor());
             }
         }
         return EXIT_OK;
@@ -238,6 +253,93 @@ public final class Main {
             return EXIT_UPDATE_AVAILABLE;
         }
         return status.failure().isPresent() ? EXIT_FAILURE : EXIT_OK;
+    }
+
+    // As --check-update, then the package downloaded and checked, and installed from this process once its engine has
+    // stopped: the files of an archive or a bundle are swapped now, an installer package runs once this command ends.
+    private static int update(LaunchOptions cli, PrintStream out, PrintStream err) {
+        AppDirectories dirs = AppDirectories.resolve(cli.configDir());
+        LoggingSetup.setLevel(cli.logLevel().orElse("ERROR"));
+        NjMuleEngine engine;
+        try {
+            engine = NjMuleEngine.start(new EngineConfig(dirs, false));
+        } catch (IOException | RuntimeException e) {
+            err.println("Cannot start " + NjMuleInfo.NAME + " to update it: " + e.getMessage());
+            err.println("When it runs, ask it: njmule --remote update install, or stop it first: njmule --exit");
+            return EXIT_FAILURE;
+        }
+        UpdateStatus status;
+        try (engine) {
+            status = engine.checkForUpdate().get(CHECK_UPDATE_WAIT.toSeconds(), TimeUnit.SECONDS);
+            UpdateReport report = UpdateReport.of(status);
+            if (!report.isAvailable()
+                    || status.available().orElseThrow().download().isEmpty()) {
+                report.print(out, err);
+                return status.failure().isPresent() ? EXIT_FAILURE : EXIT_OK;
+            }
+            status = download(engine, out);
+            if (status.failure().isPresent() || status.ready().isEmpty()) {
+                err.println(
+                        "Cannot download the new version: " + status.failure().orElse("it did not come"));
+                return EXIT_FAILURE;
+            }
+            if (!status.canInstall()) {
+                out.println("Downloaded and checked: " + status.ready().get());
+                out.println(UpdateHelp.howToInstallFile(
+                        status.installation(), status.ready().get()));
+                return EXIT_OK;
+            }
+            engine.installUpdate(false).get(CHECK_UPDATE_WAIT.toSeconds(), TimeUnit.SECONDS);
+        } catch (ExecutionException e) {
+            err.println("Cannot update: " + e.getCause().getMessage());
+            return EXIT_FAILURE;
+        } catch (TimeoutException e) {
+            err.println("Cannot update: " + NjMuleInfo.NAME + " did not answer in time");
+            return EXIT_FAILURE;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return EXIT_FAILURE;
+        }
+        UpdateHandOver install = engine.updateHandOver().orElseThrow();
+        try {
+            if (install.installHere()) {
+                out.println(NjMuleInfo.NAME + " " + install.version() + " is installed. Start it again to use it.");
+            } else {
+                out.println("The installer of " + NjMuleInfo.NAME + " " + install.version()
+                        + " runs once this command has ended.");
+            }
+            return EXIT_OK;
+        } catch (IOException e) {
+            err.println("Cannot install " + NjMuleInfo.NAME + " " + install.version() + ": " + e.getMessage());
+            return EXIT_FAILURE;
+        }
+    }
+
+    // The download, its progress printed every tenth.
+    private static UpdateStatus download(NjMuleEngine engine, PrintStream out)
+            throws InterruptedException, ExecutionException, TimeoutException {
+        CompletableFuture<UpdateStatus> download = engine.downloadUpdate();
+        long end = System.nanoTime() + DOWNLOAD_WAIT.toNanos();
+        int told = -1;
+        while (!download.isDone()) {
+            if (System.nanoTime() > end) {
+                throw new TimeoutException();
+            }
+            Optional<UpdateStatus.Progress> progress = engine.updateStatus().download();
+            if (progress.isPresent()) {
+                int tenth = (int) (progress.get().fraction() * 10);
+                if (tenth > told) {
+                    told = tenth;
+                    out.printf(Locale.ROOT, "Downloading %d%%%n", tenth * 10);
+                }
+            }
+            try {
+                download.get(PROGRESS_EVERY.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                // Still coming.
+            }
+        }
+        return download.get();
     }
 
     private static int apiToken(LaunchOptions cli, PrintStream out, PrintStream err) {
@@ -409,7 +511,8 @@ public final class Main {
         }
     }
 
-    private static int runEngine(LaunchOptions cli, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
+    private static int runEngine(
+            LaunchOptions cli, List<String> args, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
         AppDirectories dirs = AppDirectories.resolve(cli.configDir());
         // Links for the njMule already running go to it, instead of failing on its lock.
         if (!cli.links().isEmpty()
@@ -487,6 +590,8 @@ public final class Main {
             return EXIT_FAILURE;
         }
 
+        // A new version installed now: everything is saved and the engine stops, as on exit.
+        Updating.onRestart(engine, () -> stop.complete(null));
         Optional<WebUi> web = startWebUi(engine, dirs, out, stop);
         for (Ed2kLink link : cli.links()) {
             follow(engine, link, err);
@@ -519,13 +624,13 @@ public final class Main {
             } catch (IllegalStateException e) {
                 // Already shutting down: the hook itself stopped the engine.
             }
+            return Updating.handOver(engine, args, System.getenv());
         } finally {
             LoggingSetup.disableFileLog();
             if (interrupted) {
                 Thread.currentThread().interrupt();
             }
         }
-        return EXIT_OK;
     }
 
     // Later starts hand their links to this one, or ask it to exit.

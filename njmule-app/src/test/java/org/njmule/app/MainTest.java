@@ -457,6 +457,23 @@ class MainTest {
     }
 
     @Test
+    void shouldTellWhyItCannotUpdate() throws IOException {
+        givenAProfileWithoutNetworks();
+
+        whenRunWith("--config-dir", this.dir.toString(), "--update");
+
+        thenTheExitCodeIs(Main.EXIT_FAILURE);
+        thenTheErrorsContain("Cannot check for a new version: update checks are turned off");
+    }
+
+    @Test
+    void shouldFailAnInstallationWithoutAPlan() {
+        whenRunWith("--apply-update", this.dir.resolve("apply.properties").toString());
+
+        thenTheExitCodeIs(Main.EXIT_FAILURE);
+    }
+
+    @Test
     void shouldReportAnEngineThatCannotStart() throws IOException {
         givenAFileInPlaceOfTheConfigurationDirectory();
 

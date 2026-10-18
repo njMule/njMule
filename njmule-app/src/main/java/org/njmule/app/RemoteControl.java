@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.njmule.core.api.InstallKind;
+import org.njmule.core.api.NjMuleInfo;
 import org.njmule.webui.ApiClient;
 
 /**
@@ -57,12 +58,15 @@ final class RemoteControl {
             log                             the latest log lines
             events [<prefix>,...]           print events as they come, until interrupted
             update [check|skip <version>]   what is known of new versions; look now; stop telling of one
+            update download                 download the new version and check it
+            update install [at-exit]        install it now, njMule restarting, or when it exits
             shutdown                        save and exit
             """;
 
     private static final Set<String> SCOPES = Set.of("server", "global", "kad");
     private static final Duration POLL = Duration.ofMillis(500);
     private static final Duration UPDATE_WAIT = Duration.ofMinutes(4);
+    private static final Duration DOWNLOAD_WAIT = Duration.ofHours(2);
     private static final int SETTLED_POLLS = 2;
     private static final String DOWNLOADS = "/downloads/";
 
@@ -191,8 +195,47 @@ final class RemoteControl {
             status = this.api.post("/update/skip", Map.of("version", args.get(1)));
             this.out.println("No more word of " + args.get(1) + ", unless it fixes a security problem.");
             return;
+        } else if (args.size() == 1 && args.getFirst().equalsIgnoreCase("download")) {
+            status = this.api.post("/update/download", Map.of());
+            // A download goes on after the call: its progress is followed until it ends.
+            int told = -1;
+            long end = System.nanoTime() + DOWNLOAD_WAIT.toNanos();
+            while (field(status, "download") != null && System.nanoTime() < end) {
+                Object progress = field(status, "download");
+                long size = ((Number) field(progress, "size")).longValue();
+                long received = ((Number) field(progress, "received")).longValue();
+                int tenth = size == 0 ? 10 : (int) (received * 10 / size);
+                if (tenth > told) {
+                    told = tenth;
+                    this.out.println("Downloading " + tenth * 10 + "%");
+                }
+                Thread.sleep(POLL.toMillis());
+                status = this.api.get("/update");
+            }
+            Object failure = field(status, "failure");
+            if (Boolean.TRUE.equals(field(status, "ready"))) {
+                this.out.println("Downloaded and checked: " + text(field(status, "available"), "version")
+                        + (Boolean.TRUE.equals(field(status, "canInstall"))
+                                ? ". Install it with: njmule --remote update install"
+                                : "."));
+            } else {
+                this.out.println("The download did not end: " + (failure == null ? "it goes on" : failure));
+            }
+            return;
+        } else if (!args.isEmpty() && args.getFirst().equalsIgnoreCase("install") && args.size() <= 2) {
+            boolean atExit = args.size() == 2;
+            if (atExit && !args.get(1).equalsIgnoreCase("at-exit")) {
+                throw new Usage("update install takes nothing, or at-exit.");
+            }
+            status = this.api.post("/update/install", Map.of("restart", !atExit));
+            String version = text(field(status, "available"), "version");
+            this.out.println(
+                    atExit
+                            ? NjMuleInfo.NAME + " " + version + " is installed when njMule exits."
+                            : NjMuleInfo.NAME + " is saving, installing " + version + " and starting again.");
+            return;
         } else {
-            throw new Usage("update takes check, or skip and a version.");
+            throw new Usage("update takes check, download, install [at-exit], or skip and a version.");
         }
         Object available = field(status, "available");
         Object download = available == null ? null : field(available, "download");

@@ -124,6 +124,24 @@ class RemoteControlFlowTest {
     }
 
     @Test
+    void shouldRefuseToDownloadBeforeANewVersionIsKnown() throws Exception {
+        givenNjMuleRunningWithTheApi();
+
+        whenRunRemotely("update", "download");
+
+        thenItFailsSaying("no new version is known");
+    }
+
+    @Test
+    void shouldRefuseToInstallWhatIsNotDownloaded() throws Exception {
+        givenNjMuleRunningWithTheApi();
+
+        whenRunRemotely("update", "install");
+
+        thenItFailsSaying("no new version is downloaded");
+    }
+
+    @Test
     void shouldSayWhenTheApiIsOff() throws Exception {
         whenRunRemotely("status");
 
