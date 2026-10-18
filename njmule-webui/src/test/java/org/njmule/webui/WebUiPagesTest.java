@@ -34,6 +34,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -42,16 +43,21 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.LogLine;
+import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
+import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.config.Preferences;
 
-/** The shared files, Kad and log pages. */
+/** The shared files, Kad, log and settings pages, and the word of a new version. */
 @Timeout(60)
 class WebUiPagesTest {
 
@@ -153,6 +159,66 @@ class WebUiPagesTest {
     }
 
     @Test
+    void shouldTellOfANewVersionAboveTheStatus() throws Exception {
+        givenALoggedInUser();
+        givenANewVersion(InstallKind.MSI, Optional.empty());
+
+        whenThePageIsAsked("/");
+
+        thenThePageShows("njMule 0.2.0 is available", "What changed", "href=\"settings\"");
+    }
+
+    @Test
+    void shouldKeepQuietAboutASkippedVersionAboveTheStatus() throws Exception {
+        givenALoggedInUser();
+        givenANewVersion(InstallKind.MSI, Optional.of("0.2.0"));
+
+        whenThePageIsAsked("/");
+
+        thenThePageDoesNotShow("is available");
+    }
+
+    @Test
+    void shouldTellHowAPackageManagerUpdatesIt() throws Exception {
+        givenALoggedInUser();
+        givenANewVersion(InstallKind.DEB, Optional.empty());
+
+        whenThePageIsAsked("/settings");
+
+        thenThePageShows("sudo apt install ./njmule_0.2.0_amd64.deb", "Skip this version");
+    }
+
+    @Test
+    void shouldSaveHowItLooksForNewVersions() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineKeepsThePreferences();
+
+        whenPosted("/settings", Map.of("action", "updates", "mode", "OFF", "channel", "PRERELEASE"));
+
+        thenTheEngineWasAsked("updates OFF PRERELEASE");
+    }
+
+    @Test
+    void shouldLookForANewVersionWhenAsked() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineLooksWhenAsked();
+
+        whenPosted("/settings", Map.of("action", "check"));
+
+        thenTheEngineWasAsked("check");
+    }
+
+    @Test
+    void shouldSkipAVersionWhenAsked() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSkipsWhenAsked();
+
+        whenPosted("/settings", Map.of("action", "skip", "version", "0.2.0"));
+
+        thenTheEngineWasAsked("skip 0.2.0");
+    }
+
+    @Test
     void shouldShowTheLatestLogLinesNewestFirst() throws Exception {
         givenALoggedInUser();
         givenTheEngineLogged("first line", "second <line>");
@@ -205,6 +271,79 @@ class WebUiPagesTest {
         });
     }
 
+    private void givenANewVersion(InstallKind installation, Optional<String> skipped) {
+        this.fake.answer(
+                "status",
+                args -> CompletableFuture.completedFuture(new EngineStatus(
+                        Optional.empty(),
+                        0,
+                        false,
+                        false,
+                        Optional.empty(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        "",
+                        4662,
+                        false,
+                        Optional.empty(),
+                        Optional.empty())));
+        URI release = URI.create("https://github.com/njMule/njMule/releases/download/v0.2.0/");
+        Optional<NewVersion.Download> download = installation == InstallKind.DEB
+                ? Optional.of(new NewVersion.Download(release.resolve("njmule_0.2.0_amd64.deb"), 1, "0".repeat(64)))
+                : Optional.of(
+                        new NewVersion.Download(release.resolve("njmule-0.2.0-windows-x64.msi"), 1, "0".repeat(64)));
+        this.fake.value(
+                "updateStatus",
+                new UpdateStatus(
+                        "0.1.0",
+                        installation,
+                        false,
+                        Optional.of(Instant.parse("2026-11-03T08:00:00Z")),
+                        Optional.empty(),
+                        Optional.of(new NewVersion(
+                                "0.2.0",
+                                Instant.parse("2026-11-02T10:00:00Z"),
+                                false,
+                                "",
+                                URI.create("https://github.com/njMule/njMule/releases/tag/v0.2.0"),
+                                download)),
+                        skipped));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void givenTheEngineKeepsThePreferences() {
+        this.fake.answer("updatePreferences", args -> {
+            Preferences changed = ((UnaryOperator<Preferences>) args[0]).apply(Preferences.defaults());
+            this.calls.add("updates " + changed.updateMode() + " " + changed.updateChannel());
+            return CompletableFuture.completedFuture(changed);
+        });
+    }
+
+    private void givenTheEngineLooksWhenAsked() {
+        this.fake.answer("checkForUpdate", args -> {
+            this.calls.add("check");
+            return new CompletableFuture<>();
+        });
+    }
+
+    private void givenTheEngineSkipsWhenAsked() {
+        this.fake.answer("skipUpdate", args -> {
+            this.calls.add("skip " + args[0]);
+            return CompletableFuture.completedFuture(null);
+        });
+    }
+
     private void givenTheEngineLogged(String... messages) {
         for (String message : messages) {
             this.fake.events.submit(new EngineEvent.Log(new LogLine(Instant.now(), LogLine.Level.INFO, message)));
@@ -236,6 +375,11 @@ class WebUiPagesTest {
     private void thenThePageShows(String... parts) {
         assertThat(this.answer.statusCode()).as(this.answer.body()).isEqualTo(200);
         assertThat(this.answer.body()).contains(parts);
+    }
+
+    private void thenThePageDoesNotShow(String text) {
+        assertThat(this.answer.statusCode()).as(this.answer.body()).isEqualTo(200);
+        assertThat(this.answer.body()).doesNotContain(text);
     }
 
     private void thenTheAnswerIs(int status, String text) {

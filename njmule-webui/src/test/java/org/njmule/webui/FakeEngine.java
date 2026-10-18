@@ -18,19 +18,34 @@ package org.njmule.webui;
 
 import java.lang.reflect.Proxy;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.SubmissionPublisher;
 import java.util.function.Function;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.UpdateStatus;
+import org.njmule.core.config.Preferences;
 
 /** An engine that answers what a test sets, by method name; any other command fails. */
 final class FakeEngine {
 
     final SubmissionPublisher<EngineEvent> events = new SubmissionPublisher<>();
     private final Map<String, Function<Object[], CompletableFuture<?>>> answers = new ConcurrentHashMap<>();
-    private final Map<String, Object> values = new ConcurrentHashMap<>();
+    private final Map<String, Object> values = new ConcurrentHashMap<>(Map.of(
+            "preferences",
+            Preferences.defaults(),
+            "updateStatus",
+            new UpdateStatus(
+                    "0.1.0",
+                    InstallKind.UNKNOWN,
+                    false,
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty())));
 
     void answer(String method, Function<Object[], CompletableFuture<?>> answer) {
         this.answers.put(method, answer);

@@ -60,7 +60,9 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
@@ -69,7 +71,11 @@ import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
+import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadPriority;
+import org.njmule.core.config.Preferences;
+import org.njmule.core.config.UpdateChannel;
+import org.njmule.core.config.UpdateMode;
 import org.njmule.core.remote.ApiToken;
 import org.njmule.core.remote.Exchange;
 import org.njmule.core.remote.RecentEvents;
@@ -539,7 +545,11 @@ public final class WebUi implements AutoCloseable {
                     yield KAD;
                 }
                 case SETTINGS_PAGE -> {
-                    hostNames(form, exchange.header("Host"));
+                    if (form.containsKey(ACTION)) {
+                        updateSettings(form);
+                    } else {
+                        hostNames(form, exchange.header("Host"));
+                    }
                     yield SETTINGS_PAGE;
                 }
                 default -> null;
@@ -804,7 +814,19 @@ public final class WebUi implements AutoCloseable {
                 + card("Uploads / queue", s.uploads() + " / " + s.queued())
                 + card("Shared files", String.valueOf(s.sharedFiles()))
                 + "</div>";
-        return Html.page("Status", session.csrf(), body);
+        return Html.page("Status", session.csrf(), updateNotice(this.engine.updateStatus()) + body);
+    }
+
+    // A new version the user has not skipped, above the status.
+    private static String updateNotice(UpdateStatus update) {
+        if (!update.isWorthTelling()) {
+            return "";
+        }
+        NewVersion v = update.available().orElseThrow();
+        return "<p class=\"notice\"><b>" + Html.text(NjMuleInfo.NAME + " " + v.version()) + " is available</b>"
+                + (v.critical() ? ", with security fixes" : "") + ". <a href=\""
+                + Html.text(v.page().toString())
+                + "\" rel=\"noreferrer\">What changed</a> &middot; <a href=\"settings\">How to update</a></p>";
     }
 
     private String transfersPage(Sessions.Session session) {
@@ -1046,7 +1068,8 @@ public final class WebUi implements AutoCloseable {
                 ? "localhost, this computer's addresses and their Synology QuickConnect names"
                         + " (192-168-1-80.&lt;id&gt;.direct.quickconnect.to)"
                 : "localhost";
-        String body = "<h2>Host names</h2><p>Besides " + besides
+        UpdateStatus update = this.engine.updateStatus();
+        String body = updates(update, this.engine.preferences(), csrf) + "<h2>Host names</h2><p>Besides " + besides
                 + ", the interface answers only to these names, such as a name on the LAN or a reverse proxy's:"
                 + " a page of another site that reaches it under another name is refused (DNS rebinding).</p><p>"
                 + Html.form(
@@ -1058,7 +1081,93 @@ public final class WebUi implements AutoCloseable {
                         "Save",
                         true)
                 + "</p>";
-        return Html.page("Settings", csrf, body);
+        return Html.page("Settings", csrf, body, update.checking() ? SEARCH_REFRESH : 0);
+    }
+
+    private static String updates(UpdateStatus update, Preferences preferences, String csrf) {
+        StringBuilder out = new StringBuilder("<h2>Updates</h2><p>")
+                .append(Html.text(NjMuleInfo.NAME + " " + update.current()))
+                .append(". It asks github.com whether a new version is out, sending nothing but the request.</p><p>")
+                .append(Html.form(
+                        SETTINGS_PAGE,
+                        csrf,
+                        Html.hidden(ACTION, "updates")
+                                + "<select name=\"mode\">"
+                                + option(UpdateMode.NOTIFY.name(), "At each start and daily", preferences.updateMode())
+                                + option(UpdateMode.OFF.name(), "Only when asked", preferences.updateMode())
+                                + "</select> <select name=\"channel\">"
+                                + option(UpdateChannel.STABLE.name(), "Releases", preferences.updateChannel())
+                                + option(
+                                        UpdateChannel.PRERELEASE.name(),
+                                        "Test versions too",
+                                        preferences.updateChannel())
+                                + "</select> ",
+                        "Save",
+                        false))
+                .append("</p><p>");
+        if (update.checking()) {
+            out.append("Looking for a new version...");
+        } else {
+            out.append(update.lastCheck()
+                            .map(t -> "Last looked: " + Html.text(t.toString()) + ". ")
+                            .orElse(""))
+                    .append(Html.form(SETTINGS_PAGE, csrf, Html.hidden(ACTION, "check"), "Check now", false));
+        }
+        out.append("</p>");
+        update.failure()
+                .ifPresent(f -> out.append("<p class=\"error\">The last check failed: ")
+                        .append(Html.text(f))
+                        .append("</p>"));
+        if (update.available().isEmpty()
+                && update.lastCheck().isPresent()
+                && update.failure().isEmpty()) {
+            out.append("<p>This is the newest version.</p>");
+        }
+        if (update.available().isPresent()) {
+            NewVersion v = update.available().get();
+            out.append("<p class=\"notice\"><b>")
+                    .append(Html.text(NjMuleInfo.NAME + " " + v.version()))
+                    .append(" is available</b>")
+                    .append(v.critical() ? ", with security fixes" : "")
+                    .append(". <a href=\"")
+                    .append(Html.text(v.page().toString()))
+                    .append("\" rel=\"noreferrer\">What changed</a><br>")
+                    .append(Html.text(UpdateHelp.howToInstall(
+                            update.installation(), v.download().map(NewVersion.Download::uri), Optional.of(v.page()))));
+            if (!update.skipped().equals(Optional.of(v.version()))) {
+                out.append("<br>")
+                        .append(Html.form(
+                                SETTINGS_PAGE,
+                                csrf,
+                                Html.hidden(ACTION, "skip") + Html.hidden("version", v.version()),
+                                "Skip this version",
+                                false));
+            }
+            out.append("</p>");
+        }
+        return out.toString();
+    }
+
+    private static String option(String value, String label, Enum<?> chosen) {
+        return "<option value=\"" + value + "\"" + (value.equals(chosen.name()) ? " selected" : "") + ">"
+                + Html.text(label) + "</option>";
+    }
+
+    // The mode and channel of the updates, a check now or a version skipped.
+    @SuppressWarnings("FutureReturnValueIgnored")
+    private void updateSettings(Map<String, String> form) {
+        switch (form.getOrDefault(ACTION, "")) {
+            case "updates" -> {
+                UpdateMode mode = UpdateMode.valueOf(form.getOrDefault("mode", ""));
+                UpdateChannel channel = UpdateChannel.valueOf(form.getOrDefault("channel", ""));
+                await(this.engine.updatePreferences(p ->
+                        p.toBuilder().updateMode(mode).updateChannel(channel).build()));
+            }
+            // Its outcome, a failure included, shows in the status once the page loads again.
+            case "check" -> this.engine.checkForUpdate();
+            case "skip" -> await(this.engine.skipUpdate(form.getOrDefault("version", "")));
+            default -> throw new IllegalArgumentException("Unknown action.");
+        }
     }
 
     // The names of the settings, written to the file of the running settings, which the command line may have changed.

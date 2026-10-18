@@ -58,6 +58,8 @@ final class Html {
               padding: 10px 14px; min-width: 160px; }
             .card b { display: block; font-size: 1.2em; }
             .error { color: #bf616a; }
+            .notice { background: var(--card); border: 1px solid var(--accent); border-radius: 8px;
+              padding: 10px 14px; margin-bottom: 16px; }
             progress { width: 120px; height: 10px; accent-color: #a3be8c; vertical-align: middle; }
             nav.tabs { margin: 0 0 12px; }
             nav.tabs a { display: inline-block; padding: 4px 10px; margin: 0 6px 6px 0;
