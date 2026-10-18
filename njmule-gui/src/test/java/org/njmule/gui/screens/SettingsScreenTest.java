@@ -28,6 +28,8 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.app.Autostart;
 import org.njmule.core.config.EventCommands;
+import org.njmule.core.config.UpdateChannel;
+import org.njmule.core.config.UpdateMode;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
 
@@ -118,6 +120,16 @@ class SettingsScreenTest {
         whenTheUserApplies();
 
         thenTheEnginePlays(ding());
+    }
+
+    @Test
+    void shouldSaveHowItLooksForNewVersions() throws Exception {
+        givenTheSettingsShow();
+        givenTheUserChose(UpdateMode.OFF, UpdateChannel.PRERELEASE);
+
+        whenTheUserApplies();
+
+        thenTheEngineLooksForNewVersions(UpdateMode.OFF, UpdateChannel.PRERELEASE);
     }
 
     @Test
@@ -239,6 +251,13 @@ class SettingsScreenTest {
         });
     }
 
+    private void givenTheUserChose(UpdateMode mode, UpdateChannel channel) throws Exception {
+        FxTesting.onFx(() -> {
+            this.screen.updateModeBox().setValue(mode);
+            this.screen.updateChannelBox().setValue(channel);
+        });
+    }
+
     private void givenTheUserTurnedTheSoundOn() throws Exception {
         FxTesting.onFx(() -> this.screen.soundBox().setSelected(true));
     }
@@ -323,6 +342,13 @@ class SettingsScreenTest {
 
     private void thenThePlayedSoundsAre(Path... expected) {
         assertThat(this.test.played).containsExactly(expected);
+    }
+
+    private void thenTheEngineLooksForNewVersions(UpdateMode mode, UpdateChannel channel) throws Exception {
+        FxTesting.assertEventually(
+                "the update settings",
+                () -> this.test.engine.preferences().updateMode() == mode
+                        && this.test.engine.preferences().updateChannel() == channel);
     }
 
     private void thenTheEngineHasNoSoundFile() {

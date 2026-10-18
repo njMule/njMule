@@ -70,7 +70,10 @@ import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
 import org.njmule.core.config.SharedFilesVisibility;
+import org.njmule.core.config.UpdateChannel;
+import org.njmule.core.config.UpdateMode;
 import org.njmule.core.remote.ApiToken;
+import org.njmule.gui.dialogs.UpdateDialog;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.Themes;
@@ -166,6 +169,8 @@ public final class SettingsScreen implements Screen {
     private final CheckBox startNext = new CheckBox();
     private final ComboBox<NextDownload> nextCategory = new ComboBox<>();
     private final ComboBox<ProxySettings.Type> proxyType = new ComboBox<>();
+    private final ComboBox<UpdateMode> updateMode = new ComboBox<>();
+    private final ComboBox<UpdateChannel> updateChannel = new ComboBox<>();
     private final TextField proxyHost = new TextField();
     private final TextField proxyPort = new TextField();
     private final TextField proxyUser = new TextField();
@@ -333,6 +338,12 @@ public final class SettingsScreen implements Screen {
         this.proxyType.getItems().addAll(ProxySettings.Type.values());
         this.proxyType.setCellFactory(l -> new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
         this.proxyType.setButtonCell(new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
+        this.updateMode.getItems().addAll(UpdateMode.values());
+        this.updateMode.setCellFactory(l -> new NamedCell<>(m -> this.gui.t("nj.update.mode." + key(m))));
+        this.updateMode.setButtonCell(new NamedCell<>(m -> this.gui.t("nj.update.mode." + key(m))));
+        this.updateChannel.getItems().addAll(UpdateChannel.values());
+        this.updateChannel.setCellFactory(l -> new NamedCell<>(c -> this.gui.t("nj.update.channel." + key(c))));
+        this.updateChannel.setButtonCell(new NamedCell<>(c -> this.gui.t("nj.update.channel." + key(c))));
         inputs();
 
         GridPane grid = new GridPane();
@@ -443,6 +454,21 @@ public final class SettingsScreen implements Screen {
             grid.add(this.eventSwitches.get(event), 0, row);
             grid.add(this.eventInputs.get(event).field(), 1, row++);
         }
+        row = section(grid, row, this.gui.t("nj.update.title"));
+        row = field(grid, row, this.gui.t("nj.update.mode"), this.updateMode);
+        row = field(grid, row, this.gui.t("nj.update.channel"), this.updateChannel);
+        grid.add(
+                Fx.button(
+                        this.gui.t("IDS_CHECK4UPDATE"),
+                        Material2MZ.SYSTEM_UPDATE_ALT,
+                        () -> UpdateDialog.checkNow(
+                                this.gui, this.view.getScene().getWindow())),
+                1,
+                row++);
+        Label updateNote = new Label(this.gui.t("nj.update.note"));
+        updateNote.setWrapText(true);
+        updateNote.getStyleClass().add("text-muted");
+        grid.add(updateNote, 0, row++, 2, 1);
         row = section(grid, row, this.gui.t("IDS_PW_WS"));
         grid.add(this.webUi, 1, row++);
         row = field(grid, row, this.gui.t("nj.webui.port"), this.webUiPort);
@@ -915,6 +941,8 @@ public final class SettingsScreen implements Screen {
         this.friendsOnly.setSelected(p.messagesFromFriendsOnly());
         this.spamFilter.setSelected(p.advancedSpamFilter());
         this.searchSpamFilter.setSelected(p.searchSpamFilter());
+        this.updateMode.setValue(p.updateMode());
+        this.updateChannel.setValue(p.updateChannel());
         this.fromServer.setSelected(p.addServersFromServer());
         this.fromClients.setSelected(p.addServersFromClients());
         this.staticOnly.setSelected(p.staticServersOnly());
@@ -1169,6 +1197,8 @@ public final class SettingsScreen implements Screen {
                         Preferences::searchSpamFilter,
                         Preferences.Builder::searchSpamFilter,
                         this.searchSpamFilter.isSelected())
+                .set(Preferences::updateMode, Preferences.Builder::updateMode, this.updateMode.getValue())
+                .set(Preferences::updateChannel, Preferences.Builder::updateChannel, this.updateChannel.getValue())
                 .set(
                         Preferences::addServersFromServer,
                         Preferences.Builder::addServersFromServer,
@@ -1451,6 +1481,14 @@ public final class SettingsScreen implements Screen {
 
     TextField tcpPortField() {
         return this.tcpPort;
+    }
+
+    ComboBox<UpdateMode> updateModeBox() {
+        return this.updateMode;
+    }
+
+    ComboBox<UpdateChannel> updateChannelBox() {
+        return this.updateChannel;
     }
 
     CheckBox searchSpamFilterBox() {

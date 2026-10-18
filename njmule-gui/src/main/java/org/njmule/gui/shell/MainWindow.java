@@ -72,6 +72,7 @@ import org.njmule.core.config.Preferences;
 import org.njmule.gui.dialogs.AboutDialog;
 import org.njmule.gui.dialogs.FirstRunWizard;
 import org.njmule.gui.dialogs.ImportDialog;
+import org.njmule.gui.dialogs.UpdateDialog;
 import org.njmule.gui.infra.Folders;
 import org.njmule.gui.infra.Formats;
 import org.njmule.gui.infra.GuiSettings;
@@ -213,6 +214,9 @@ public final class MainWindow {
             success(gui.f("nj.transfers.completed", d.name()));
             chime();
         });
+        model.onNewVersion(v -> offer(gui.f("nj.update.available", v.version()), gui.t("nj.update.details"), () -> {
+            new UpdateDialog(gui, this.root.getScene().getWindow()).show();
+        }));
         gui.subscriptions().onListChange(model.downloads().rows(), c -> showActive());
         model.chats().onMessage(chat -> {
             if (!this.current.equals("messages")) {
@@ -408,6 +412,10 @@ public final class MainWindow {
         MenuItem wizard = new MenuItem(this.gui.t("nj.wizard.title"), Fx.icon(Material2AL.ASSISTANT));
         wizard.setOnAction(e -> showWizard());
         wizard.setId("wizard");
+        MenuItem updates = new MenuItem(this.gui.t("IDS_CHECK4UPDATE"), Fx.icon(Material2MZ.SYSTEM_UPDATE_ALT));
+        updates.setOnAction(
+                e -> UpdateDialog.checkNow(this.gui, this.root.getScene().getWindow()));
+        updates.setId("updates");
         MenuButton tools = new MenuButton(
                 this.gui.t("nj.top.tools"),
                 new FontIcon(Material2AL.BUILD),
@@ -417,6 +425,7 @@ public final class MainWindow {
                 new SeparatorMenuItem(),
                 importer,
                 shortcuts,
+                updates,
                 about);
         // The rates open the limits: what one wants to change on seeing them.
         Button rates = new Button(null, new HBox(10, this.down, this.up));
@@ -816,6 +825,10 @@ public final class MainWindow {
                 this.gui.t("nj.shortcuts.title"),
                 new KeyCodeCombination(KeyCode.F1).getDisplayText(),
                 this::showShortcuts));
+        all.add(new CommandPalette.Command(
+                this.gui.t("IDS_CHECK4UPDATE"),
+                "",
+                () -> UpdateDialog.checkNow(this.gui, this.root.getScene().getWindow())));
         all.add(new CommandPalette.Command(
                 this.gui.t("nj.about.title"),
                 "",

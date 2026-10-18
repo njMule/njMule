@@ -1,0 +1,211 @@
+/*
+ * njMule - Next generation Java Mule
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See
+ * the GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along with this program. If
+ * not, see <https://www.gnu.org/licenses/>.
+ */
+package org.njmule.gui.dialogs;
+
+import atlantafx.base.theme.Styles;
+import java.io.IOException;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+import javafx.beans.value.ChangeListener;
+import javafx.geometry.Insets;
+import javafx.scene.Node;
+import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.ProgressIndicator;
+import javafx.scene.control.TextArea;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
+import javafx.stage.Window;
+import org.kordamp.ikonli.material2.Material2AL;
+import org.kordamp.ikonli.material2.Material2MZ;
+import org.njmule.core.api.InstallKind;
+import org.njmule.core.api.NewVersion;
+import org.njmule.core.api.UpdateStatus;
+import org.njmule.gui.infra.WebPages;
+import org.njmule.gui.ui.Fx;
+import org.njmule.gui.ui.Gui;
+
+/**
+ * What is known of new versions of njMule: the version found with what changed and how to install it, a check running,
+ * this version being the newest, or why the check failed. It follows the status while it shows.
+ */
+public final class UpdateDialog {
+
+    private final Gui gui;
+    private final Stage stage = new Stage();
+    private final VBox body = new VBox(10);
+    private final HBox actions = Fx.toolRow();
+    private final ChangeListener<UpdateStatus> follow = (o, was, now) -> show(now);
+
+    public UpdateDialog(Gui gui, Window owner) {
+        this.gui = gui;
+        this.stage.initOwner(owner);
+        this.stage.initModality(Modality.NONE);
+        this.stage.setTitle(gui.t("nj.update.title"));
+        this.body.setFillWidth(true);
+        VBox root = new VBox(16, this.body, this.actions);
+        root.setPadding(new Insets(18));
+        root.setPrefWidth(560);
+        Scene scene = new Scene(root);
+        gui.attach(scene);
+        this.stage.setScene(scene);
+        gui.model().updateProperty().addListener(this.follow);
+        this.stage.setOnHidden(e -> gui.model().updateProperty().removeListener(this.follow));
+        show(gui.model().updateProperty().get());
+    }
+
+    /** Opens the dialog and looks for a new version at once. */
+    public static UpdateDialog checkNow(Gui gui, Window owner) {
+        UpdateDialog dialog = new UpdateDialog(gui, owner);
+        dialog.show();
+        gui.model().checkForUpdate();
+        return dialog;
+    }
+
+    public void show() {
+        this.stage.show();
+        this.stage.toFront();
+    }
+
+    Stage stage() {
+        return this.stage;
+    }
+
+    private void show(UpdateStatus status) {
+        List<Node> parts = new ArrayList<>();
+        List<Node> buttons = new ArrayList<>();
+        Optional<NewVersion> available = status.available();
+        if (available.isPresent()) {
+            NewVersion v = available.get();
+            Label title = new Label(this.gui.f("nj.update.available", v.version()));
+            title.getStyleClass().add(Styles.TITLE_3);
+            parts.add(title);
+            if (v.critical()) {
+                parts.add(wrapped(this.gui.t("nj.update.critical"), Styles.WARNING));
+            }
+            parts.add(wrapped(
+                    this.gui.f("nj.update.published", this.gui.formats().dateTime(v.published())), Styles.TEXT_MUTED));
+            if (!v.notes().isBlank()) {
+                TextArea notes = new TextArea(plain(v.notes()));
+                notes.setEditable(false);
+                notes.setWrapText(true);
+                notes.setPrefRowCount(10);
+                notes.setId("update-notes");
+                parts.add(Fx.leftToRight(notes));
+            }
+            parts.add(wrapped(howToInstall(status.installation(), v), null));
+            Button download = Fx.primary(Fx.button(
+                    this.gui.t("nj.update.download"),
+                    Material2AL.GET_APP,
+                    () -> open(v.download().map(NewVersion.Download::uri).orElse(v.page()))));
+            download.setId("update-download");
+            buttons.add(download);
+            buttons.add(Fx.button(this.gui.t("nj.update.changes"), Material2MZ.OPEN_IN_NEW, () -> open(v.page())));
+            if (!v.critical() && !status.skipped().equals(Optional.of(v.version()))) {
+                Button skip = Fx.button(this.gui.t("nj.update.skip"), Material2AL.BLOCK, () -> {
+                    this.gui.model().skipUpdate(v.version());
+                    this.stage.close();
+                });
+                skip.setId("update-skip");
+                buttons.add(skip);
+            }
+        }
+        if (status.checking()) {
+            ProgressIndicator spinning = new ProgressIndicator();
+            spinning.setPrefSize(18, 18);
+            HBox checking = new HBox(8, spinning, new Label(this.gui.t("nj.update.checking")));
+            parts.add(checking);
+        } else if (status.failure().isPresent()) {
+            parts.add(wrapped(this.gui.f("nj.update.failed", status.failure().get()), Styles.DANGER));
+        } else if (available.isEmpty() && status.lastCheck().isPresent()) {
+            Label newest = new Label(this.gui.f("nj.update.newest", status.current()));
+            newest.getStyleClass().add(Styles.TITLE_4);
+            parts.add(newest);
+        }
+        if (available.isEmpty() || status.failure().isPresent()) {
+            status.lastCheck()
+                    .ifPresent(t -> parts.add(wrapped(
+                            this.gui.f("nj.update.lastCheck", this.gui.formats().dateTime(t)), Styles.TEXT_MUTED)));
+        }
+        if (!status.checking() && available.isEmpty()) {
+            Button check = Fx.button(
+                    this.gui.t("IDS_CHECK4UPDATE"),
+                    Material2MZ.REFRESH,
+                    () -> this.gui.model().checkForUpdate());
+            check.setId("update-check");
+            buttons.add(check);
+        }
+        parts.add(wrapped(this.gui.t("nj.update.note"), Styles.TEXT_SMALL));
+        this.body.getChildren().setAll(parts);
+        List<Node> row = new ArrayList<>(buttons);
+        row.add(Fx.spacer());
+        row.add(Fx.button(this.gui.t("IDS_FD_CLOSE"), Material2AL.CLOSE, this.stage::close));
+        this.actions.getChildren().setAll(row);
+        this.stage.sizeToScene();
+    }
+
+    // The words fit how this copy was installed: a package manager's command stays as typed, in every language.
+    private String howToInstall(InstallKind installation, NewVersion v) {
+        String file = v.download().map(d -> fileName(d.uri())).orElse("");
+        return switch (installation) {
+            case MSI -> this.gui.t("nj.update.how.installer");
+            case DMG -> this.gui.t("nj.update.how.dmg");
+            case WINDOWS_ZIP, TAR, STATIC_TAR -> this.gui.t("nj.update.how.archive");
+            case DEB -> this.gui.f("nj.update.how.package", "sudo apt install ./" + file);
+            case RPM -> this.gui.f("nj.update.how.package", "sudo dnf install ./" + file);
+            default -> this.gui.t("nj.update.how.page");
+        };
+    }
+
+    private void open(URI page) {
+        try {
+            WebPages.open(page);
+        } catch (IOException | IllegalArgumentException e) {
+            this.gui.warn().accept(String.valueOf(e.getMessage()));
+        }
+    }
+
+    // The notes are the Markdown of the changelog: its headings and list marks read better as plain text.
+    static String plain(String markdown) {
+        return markdown.lines()
+                .map(line -> line.startsWith("#")
+                        ? line.replaceFirst("^#+\\s*", "")
+                        : line.replaceFirst("^(\\s*)[-*] ", "$1• "))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private static Label wrapped(String text, String style) {
+        Label label = new Label(text);
+        label.setWrapText(true);
+        label.setMaxWidth(Double.MAX_VALUE);
+        if (style != null) {
+            label.getStyleClass().add(style);
+        }
+        return label;
+    }
+
+    private static String fileName(URI uri) {
+        String path = uri.getPath() == null ? "" : uri.getPath();
+        return path.substring(path.lastIndexOf('/') + 1);
+    }
+}

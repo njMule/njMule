@@ -65,6 +65,7 @@ import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadNote;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
+import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.PeerComment;
@@ -79,6 +80,7 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.SpamMarks;
+import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.Preferences;
@@ -196,6 +198,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final LiveList<Hash16, Friend> friends = new LiveList<>(Friend::userHash);
     private Consumer<String> errors = message -> {};
     private Consumer<DownloadInfo> completed = download -> {};
+    private Consumer<NewVersion> newVersion = version -> {};
+    private final ObjectProperty<UpdateStatus> update;
     private final ReadOnlyIntegerWrapper completedCount = new ReadOnlyIntegerWrapper();
     private Flow.Subscription subscription;
     private long ticks;
@@ -213,6 +217,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.shared.rows().addListener((ListChangeListener<LiveList.Row<SharedFileInfo>>)
                 c -> this.sharedHashes = null);
         this.preferences = new SimpleObjectProperty<>(engine.preferences());
+        this.update = new SimpleObjectProperty<>(engine.updateStatus());
     }
 
     /** Subscribes to the engine's events and reads the state a first time. */
@@ -257,6 +262,26 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Where finished downloads are told; called on the FX thread. */
     public void onCompleted(Consumer<DownloadInfo> sink) {
         this.completed = Objects.requireNonNull(sink, "sink");
+    }
+
+    /** Where a new version that njMule found on its own is told, once a run; called on the FX thread. */
+    public void onNewVersion(Consumer<NewVersion> sink) {
+        this.newVersion = Objects.requireNonNull(sink, "sink");
+    }
+
+    /** What is known of new versions of njMule. */
+    public ReadOnlyObjectProperty<UpdateStatus> updateProperty() {
+        return this.update;
+    }
+
+    /** Looks for a new version now; the status tells the outcome. */
+    public void checkForUpdate() {
+        later(this.engine.checkForUpdate(), this.update::set);
+    }
+
+    /** Stops telling of {@code version}, unless it fixes a security problem. */
+    public void skipUpdate(String version) {
+        later(this.engine.skipUpdate(version), this.update::set);
     }
 
     /** Runs once a second on the FX thread: polls what events do not tell. */
@@ -987,6 +1012,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             case EngineEvent.CaptchaAnswered e ->
                 this.chats.notice(e.address(), e.solved() ? "IDS_CAPTCHASOLVED" : "IDS_CAPTCHAFAILED", "");
             case EngineEvent.MessageFailed e -> this.chats.notice(e.address(), "nj.chat.failed", e.reason());
+            case EngineEvent.UpdateStatusChanged e -> this.update.set(e.status());
+            case EngineEvent.UpdateAvailable e -> this.newVersion.accept(e.version());
             default -> {
                 // Started, stopping and server messages show through the log.
             }
