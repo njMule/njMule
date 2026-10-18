@@ -21,6 +21,7 @@ import atlantafx.base.theme.Tweaks;
 import java.text.Bidi;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import javafx.beans.binding.Bindings;
@@ -64,6 +65,11 @@ import org.njmule.gui.model.LiveList;
 
 /** Small builders shared by the screens. */
 public final class Fx {
+
+    private static final char LEFT_TO_RIGHT_MARK = '\u200E';
+    // Pango lays text out everywhere but on Windows and macOS.
+    private static final boolean MARK_WORDS =
+            !System.getProperty("os.name", "").toLowerCase(Locale.ROOT).matches("(windows|mac).*");
 
     private Fx() {}
 
@@ -128,6 +134,49 @@ public final class Fx {
         var cells = column.getCellFactory();
         column.setCellFactory(c -> ownDirection(cells.call(c)));
         return column;
+    }
+
+    /**
+     * Lets {@code labeled} wrap its text into lines. On Linux JavaFX's text layout (through Pango) fails on
+     * right-to-left text that wraps inside a run of one direction (an index out of bounds when it measures the space
+     * ending a line): there a mark before each word gives every word a run of its own, so lines break between runs.
+     */
+    public static <T extends Labeled> T wrap(T labeled) {
+        labeled.setWrapText(true);
+        if (MARK_WORDS) {
+            labeled.textProperty().addListener((o, was, now) -> markWords(labeled));
+            markWords(labeled);
+        }
+        return labeled;
+    }
+
+    private static void markWords(Labeled labeled) {
+        String text = labeled.getText();
+        if (text != null && !labeled.textProperty().isBound()) {
+            String marked = wordsMarked(text);
+            if (!marked.equals(text)) {
+                labeled.setText(marked);
+            }
+        }
+    }
+
+    /** {@code text} with a left-to-right mark before each word after a space when it holds right-to-left letters. */
+    static String wordsMarked(String text) {
+        if (!Bidi.requiresBidi(text.toCharArray(), 0, text.length())) {
+            return text;
+        }
+        StringBuilder marked = new StringBuilder(text.length() + 16);
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            marked.append(c);
+            if (Character.isWhitespace(c)
+                    && i + 1 < text.length()
+                    && !Character.isWhitespace(text.charAt(i + 1))
+                    && text.charAt(i + 1) != LEFT_TO_RIGHT_MARK) {
+                marked.append(LEFT_TO_RIGHT_MARK);
+            }
+        }
+        return marked.toString();
     }
 
     /** As {@link #ownDirection(TableColumn)}, for one label or cell. */
@@ -320,7 +369,7 @@ public final class Fx {
         Icon icon = icon(glyph);
         icon.getStyleClass().add("empty-icon");
         Label words = new Label(text);
-        words.setWrapText(true);
+        wrap(words);
         words.setMaxWidth(420);
         words.getStyleClass().add("empty-text");
         HBox buttons = new HBox(8, actions);

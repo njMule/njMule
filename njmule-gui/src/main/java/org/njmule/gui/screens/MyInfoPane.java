@@ -108,7 +108,7 @@ final class MyInfoPane {
             } else if (grid != null) {
                 // Addresses, numbers and names read in their own direction.
                 Label value = Fx.ownDirection(new Label(line.value()));
-                value.setWrapText(true);
+                Fx.wrap(value);
                 grid.addRow(row++, new Label(line.label()), value);
             }
         }

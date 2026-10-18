@@ -240,7 +240,7 @@ final class SettingsPages {
         title.getStyleClass().addAll("page-title", "display");
         Label about = new Label(page.description());
         about.getStyleClass().add("page-description");
-        about.setWrapText(true);
+        Fx.wrap(about);
         about.setMinHeight(Region.USE_PREF_SIZE);
         VBox view = new VBox(6, title, about);
         for (Section section : page.sections()) {

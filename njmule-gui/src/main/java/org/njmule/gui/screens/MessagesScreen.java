@@ -290,7 +290,7 @@ public final class MessagesScreen implements Screen {
         head.setAlignment(Pos.CENTER_LEFT);
         head.getStyleClass().add("person-head");
         // A friend with no conversation yet: a word and a box that starts one.
-        this.friendNote.setWrapText(true);
+        Fx.wrap(this.friendNote);
         this.friendNote.getStyleClass().add("text-muted");
         VBox.setVgrow(this.friendNote, Priority.ALWAYS);
         this.friendNote.setMaxHeight(Double.MAX_VALUE);
@@ -304,7 +304,7 @@ public final class MessagesScreen implements Screen {
         this.conversation.getChildren().setAll(head, this.body);
         this.conversation.getStyleClass().add("conversation");
         this.none.setText(this.gui.t("nj.chat.none"));
-        this.none.setWrapText(true);
+        Fx.wrap(this.none);
         this.none.getStyleClass().add("text-muted");
         StackPane right = new StackPane(this.none, this.conversation);
         HBox.setHgrow(right, Priority.ALWAYS);
@@ -326,7 +326,7 @@ public final class MessagesScreen implements Screen {
     // The words of an empty list, wrapping in its narrow column rather than cut short.
     private Label placeholder(String key) {
         Label words = new Label(this.gui.t(key));
-        words.setWrapText(true);
+        Fx.wrap(words);
         words.setTextAlignment(TextAlignment.CENTER);
         words.getStyleClass().addAll(Styles.TEXT_MUTED, "list-placeholder");
         return words;
@@ -789,13 +789,13 @@ public final class MessagesScreen implements Screen {
                     .subscriptions()
                     .onListChange(chat.lines(), c -> lines.scrollTo(chat.lines().size() - 1));
             this.empty.getStyleClass().add("text-muted");
-            this.empty.setWrapText(true);
+            Fx.wrap(this.empty);
             lines.setPlaceholder(this.empty);
             MessagesScreen.this.gui.subscriptions().onChange(chat.nickProperty(), (was, now) -> describe());
             describe();
             VBox.setVgrow(lines, Priority.ALWAYS);
             Label request = new Label(MessagesScreen.this.gui.t("IDS_CAPTCHAREQUEST"));
-            request.setWrapText(true);
+            Fx.wrap(request);
             // The list above gives way: the request is read whole, never cut short.
             request.setMinHeight(Region.USE_PREF_SIZE);
             request.setGraphic(Fx.icon(Icons.SHIELD));
@@ -888,7 +888,7 @@ public final class MessagesScreen implements Screen {
 
         LineCell() {
             this.meta.getStyleClass().add("chat-meta");
-            this.words.setWrapText(true);
+            Fx.wrap(this.words);
             this.bubble.getStyleClass().add("chat-bubble");
             this.bubble.setMinWidth(Region.USE_PREF_SIZE);
             // The cell takes the width of the list rather than of its text, so that long lines wrap.

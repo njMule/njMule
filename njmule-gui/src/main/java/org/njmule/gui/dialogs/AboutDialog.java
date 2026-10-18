@@ -54,9 +54,9 @@ public final class AboutDialog {
         tagline.getStyleClass().add(Styles.TEXT_MUTED);
         Label copyright = Fx.leftToRight(new Label(NjMuleInfo.COPYRIGHT));
         Label license = new Label(gui.f("nj.about.license", NjMuleInfo.LICENSE_ID));
-        license.setWrapText(true);
+        Fx.wrap(license);
         Label emule = new Label(gui.t("nj.about.emule"));
-        emule.setWrapText(true);
+        Fx.wrap(emule);
         emule.getStyleClass().addAll(Styles.TEXT_SMALL, Styles.TEXT_MUTED);
         HBox header = new HBox(16, logo, new VBox(4, name, tagline));
         header.setAlignment(Pos.CENTER_LEFT);

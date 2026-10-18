@@ -69,7 +69,7 @@ final class Banner {
         this.gui = gui;
         this.connect = connect;
         this.options = options;
-        this.text.setWrapText(true);
+        Fx.wrap(this.text);
         this.text.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(this.text, Priority.ALWAYS);
         this.icon.getStyleClass().add("banner-icon");

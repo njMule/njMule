@@ -123,7 +123,7 @@ public final class KadScreen implements Screen {
         facts.setMinWidth(Region.USE_PREF_SIZE);
         HBox cards = new HBox(12, this.chart.view(), facts);
         this.say.setGraphic(this.sayIcon);
-        this.say.setWrapText(true);
+        Fx.wrap(this.say);
         this.say.setMaxWidth(Double.MAX_VALUE);
         this.say.setMinHeight(Region.USE_PREF_SIZE);
         this.say.getStyleClass().add("kad-say");
@@ -216,7 +216,7 @@ public final class KadScreen implements Screen {
         Button start = Fx.button(this.gui.t("IDS_BOOTSTRAP"), Icons.IMPORT, this::bootstrap);
         start.disableProperty().bind(this.nodeInput.validProperty().not());
         Label hint = new Label(this.gui.t("nj.kad.joinHint"));
-        hint.setWrapText(true);
+        Fx.wrap(hint);
         hint.setMinHeight(Region.USE_PREF_SIZE);
         GridPane ways = new GridPane(8, 8);
         ways.addRow(0, Fx.whole(new Label(this.gui.t("IDS_BOOTSRAPNODESDAT"))), this.nodes.node(), Fx.whole(take));

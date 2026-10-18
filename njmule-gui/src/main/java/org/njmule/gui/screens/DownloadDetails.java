@@ -177,7 +177,7 @@ final class DownloadDetails {
         this.one = Fx.scrollWhenShort(oneDownload());
         this.many = manyDownloads();
         this.none = new Label(gui.t("nj.details.none"));
-        this.none.setWrapText(true);
+        Fx.wrap(this.none);
         this.none.getStyleClass().add("details-none");
         this.view = new StackPane(this.one, this.many, this.none);
         this.view.getStyleClass().add("download-details");
@@ -191,11 +191,11 @@ final class DownloadDetails {
         StackPane kindBox = new StackPane(this.kind);
         kindBox.getStyleClass().add("details-kind");
         this.name.getStyleClass().add("details-name");
-        this.name.setWrapText(true);
+        Fx.wrap(this.name);
         this.name.setMinHeight(Region.USE_PREF_SIZE);
         Fx.ownDirection(this.name);
         this.meta.getStyleClass().add("details-meta");
-        this.meta.setWrapText(true);
+        Fx.wrap(this.meta);
         VBox title = new VBox(2, this.name, this.meta);
         title.setMinWidth(0);
         HBox.setHgrow(title, Priority.ALWAYS);
@@ -211,7 +211,7 @@ final class DownloadDetails {
         this.bar.setPrefHeight(22);
         this.bar.setMinHeight(22);
         this.note.setGraphic(this.noteIcon);
-        this.note.setWrapText(true);
+        Fx.wrap(this.note);
         this.note.setMaxWidth(Double.MAX_VALUE);
         this.note.setMinHeight(Region.USE_PREF_SIZE);
         this.note.getStyleClass().add("details-note");
@@ -298,7 +298,7 @@ final class DownloadDetails {
 
     private Node sourcesPage() {
         Label empty = new Label(this.gui.t("nj.transfers.noSources"));
-        empty.setWrapText(true);
+        Fx.wrap(empty);
         empty.getStyleClass().add("empty-text");
         Button add = Fx.button(this.gui.t("IDS_ADDSRCMANUALLY"), Icons.PERSON_ADD, this.actions.addSource());
         VBox placeholder = new VBox(10, Fx.icon(Icons.NO_SOURCES), empty, add);
@@ -651,7 +651,7 @@ final class DownloadDetails {
 
     private int fact(int row, String key, String value) {
         Label shownValue = new Label(value);
-        shownValue.setWrapText(true);
+        Fx.wrap(shownValue);
         shownValue.getStyleClass().add("details-value");
         this.facts.add(label(key), 0, row);
         this.facts.add(shownValue, 1, row);
@@ -680,7 +680,7 @@ final class DownloadDetails {
             Region swatch = new Region();
             swatch.getStyleClass().addAll("legend-swatch", entry.get(0));
             Label label = new Label(this.gui.t(entry.get(1)), swatch);
-            label.setWrapText(true);
+            Fx.wrap(label);
             legend.getChildren().add(label);
         }
         return legend;
@@ -728,7 +728,7 @@ final class DownloadDetails {
                                 DownloadDetails.this.gui.t(RATINGS.get(rating)), Icons.STAR, RATING_TONES.get(rating)));
             }
             Label words = new Label(said.text());
-            words.setWrapText(true);
+            Fx.wrap(words);
             words.getStyleClass().add("comment-text");
             Fx.ownDirection(words);
             VBox box = new VBox(4, head, words);

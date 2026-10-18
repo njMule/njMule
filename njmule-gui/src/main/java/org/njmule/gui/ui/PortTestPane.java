@@ -172,7 +172,7 @@ public final class PortTestPane {
     private static Label line() {
         Label line = new Label("", new Icon(Icons.HELP));
         line.getStyleClass().add("port-line");
-        line.setWrapText(true);
+        Fx.wrap(line);
         line.setGraphicTextGap(8);
         return line;
     }

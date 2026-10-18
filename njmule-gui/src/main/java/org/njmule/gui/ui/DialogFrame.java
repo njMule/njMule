@@ -40,7 +40,7 @@ public final class DialogFrame {
     public static HBox header(Gui gui, String title, Runnable close) {
         Label words = new Label(title);
         words.getStyleClass().add("dialog-title");
-        words.setWrapText(true);
+        Fx.wrap(words);
         words.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(words, Priority.ALWAYS);
         Button closing = Fx.iconButton(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, close);
@@ -75,7 +75,7 @@ public final class DialogFrame {
         Label label = new Label(name);
         label.getStyleClass().add("dialog-label");
         label.setLabelFor(field);
-        label.setWrapText(true);
+        Fx.wrap(label);
         return new VBox(6, label, field);
     }
 

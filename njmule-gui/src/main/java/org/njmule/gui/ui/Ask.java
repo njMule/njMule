@@ -49,7 +49,7 @@ public final class Ask {
         this.dialog.setTitle(NjMuleInfo.NAME);
         this.title = new Label(title);
         this.title.getStyleClass().add("dialog-title");
-        this.title.setWrapText(true);
+        Fx.wrap(this.title);
         HBox.setHgrow(this.title, Priority.ALWAYS);
         this.header = new HBox(10, this.title);
         this.header.getStyleClass().add("dialog-header");
@@ -77,7 +77,7 @@ public final class Ask {
 
     public Ask says(String text) {
         Label words = new Label(text);
-        words.setWrapText(true);
+        Fx.wrap(words);
         words.getStyleClass().add("dialog-text");
         words.setMinHeight(Region.USE_PREF_SIZE);
         this.body.getChildren().add(words);
@@ -105,7 +105,7 @@ public final class Ask {
         VBox box = new VBox(6, label, field);
         if (!hint.isEmpty()) {
             Label under = new Label(hint);
-            under.setWrapText(true);
+            Fx.wrap(under);
             under.getStyleClass().add("dialog-hint");
             box.getChildren().add(under);
         }
@@ -121,7 +121,7 @@ public final class Ask {
     /** A muted line with {@code glyph} before it, for what the answer implies. */
     public Ask note(Icons glyph, String text) {
         Label note = new Label(text, Fx.icon(glyph));
-        note.setWrapText(true);
+        Fx.wrap(note);
         note.getStyleClass().add("dialog-hint");
         note.setMinHeight(Region.USE_PREF_SIZE);
         this.body.getChildren().add(note);

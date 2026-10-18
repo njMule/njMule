@@ -315,7 +315,7 @@ public final class SearchScreen implements Screen {
         Label title = new Label(this.gui.t("nj.search.emptyTitle"));
         title.getStyleClass().addAll("empty-title", "display");
         Label text = new Label(this.gui.t("nj.search.emptyText"));
-        text.setWrapText(true);
+        Fx.wrap(text);
         text.getStyleClass().add("empty-text");
         FlowPane tips = new FlowPane(
                 12,
@@ -336,10 +336,10 @@ public final class SearchScreen implements Screen {
     // A way to word a search: what to do, and an example left to right in every language.
     private Node tip(Icons glyph, String key, String example) {
         Label words = new Label(this.gui.t(key));
-        words.setWrapText(true);
+        Fx.wrap(words);
         words.getStyleClass().add("tip-words");
         Label shown = Fx.leftToRight(new Label(example));
-        shown.setWrapText(true);
+        Fx.wrap(shown);
         shown.getStyleClass().add("tip-example");
         VBox text = new VBox(2, words, shown);
         text.setMinWidth(0);
@@ -413,7 +413,7 @@ public final class SearchScreen implements Screen {
         fields.add(labelled("IDS_COMPLSOURCES", this.complete), 1, 1);
         fields.add(labelled("IDS_SEARCHEXTENTION", this.extension), 0, 2, 2, 1);
         Label note = new Label(this.gui.t("nj.search.filtersNote"));
-        note.setWrapText(true);
+        Fx.wrap(note);
         note.getStyleClass().add("text-muted");
         Button done = Fx.button(this.gui.t("IDS_FD_CLOSE"), Icons.CHECK, () -> showParameters(false));
         HBox foot = new HBox(12, note, done);

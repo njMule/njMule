@@ -114,7 +114,7 @@ public final class ImportDialog {
         Label intro = new Label(gui.t("nj.import.intro"));
         // Read whole: the report below gives way.
         intro.setMinHeight(Region.USE_PREF_SIZE);
-        intro.setWrapText(true);
+        Fx.wrap(intro);
         intro.getStyleClass().add(Styles.TEXT_MUTED);
         Label dirName = new Label(gui.t("nj.import.directory"));
         dirName.getStyleClass().add("dialog-label");
@@ -125,7 +125,7 @@ public final class ImportDialog {
         // One option a card, each wrapping: their texts are long in every language.
         GridPane options = new GridPane(8, 8);
         for (var option : List.of(this.identity, this.downloads)) {
-            option.setWrapText(true);
+            Fx.wrap(option);
             option.setMinHeight(Region.USE_PREF_SIZE);
             option.setMaxWidth(Double.MAX_VALUE);
             option.setMaxHeight(Double.MAX_VALUE);
@@ -138,7 +138,7 @@ public final class ImportDialog {
         Label happens = new Label(gui.t("nj.import.whatHappens"));
         happens.getStyleClass().add("card-heading");
         this.summary.getStyleClass().add(Styles.TEXT_MUTED);
-        this.summary.setWrapText(true);
+        Fx.wrap(this.summary);
         this.summary.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(this.summary, Priority.ALWAYS);
         Button close = Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close);

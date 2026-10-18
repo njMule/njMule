@@ -250,7 +250,7 @@ final class NetworkCards {
             Label name = new Label(title);
             name.getStyleClass().add("card-title");
             this.headline.getStyleClass().add("card-headline");
-            this.headline.setWrapText(true);
+            Fx.wrap(this.headline);
             this.headline.setMinHeight(Region.USE_PREF_SIZE);
             // The network's name over its state, beside its tile.
             VBox words = new VBox(name, this.headline);
@@ -258,7 +258,7 @@ final class NetworkCards {
             HBox head = new HBox(10, tile, words);
             head.setAlignment(Pos.CENTER_LEFT);
             this.detail.getStyleClass().add("card-detail");
-            this.detail.setWrapText(true);
+            Fx.wrap(this.detail);
             this.detail.setMinHeight(Region.USE_PREF_SIZE);
             this.detail.managedProperty().bind(this.detail.textProperty().isNotEmpty());
             this.detail.visibleProperty().bind(this.detail.textProperty().isNotEmpty());

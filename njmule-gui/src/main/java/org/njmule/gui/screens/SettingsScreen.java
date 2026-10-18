@@ -370,7 +370,7 @@ public final class SettingsScreen implements Screen {
         this.pages = new SettingsPages(this.gui, pages());
         this.rows.forEach(r -> r.inputs().forEach(i -> i.validProperty().addListener((o, was, now) -> showBar())));
         // Under the page, while something waits: what, and the two ways out.
-        this.pendingText.setWrapText(true);
+        Fx.wrap(this.pendingText);
         this.pendingText.setMinWidth(0);
         this.pendingText.setMinHeight(Region.USE_PREF_SIZE);
         this.pendingText.setGraphic(Fx.icon(Icons.INFO));

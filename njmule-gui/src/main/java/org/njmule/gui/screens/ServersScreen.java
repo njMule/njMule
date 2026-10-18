@@ -632,7 +632,7 @@ public final class ServersScreen implements Screen {
             StackPane kind = new StackPane(Fx.icon(Icons.SERVER));
             kind.getStyleClass().add("details-kind");
             this.name.getStyleClass().add("details-name");
-            this.name.setWrapText(true);
+            Fx.wrap(this.name);
             Fx.ownDirection(this.name);
             this.where.getStyleClass().add("details-meta");
             VBox title = new VBox(2, this.name, this.where);
@@ -644,13 +644,13 @@ public final class ServersScreen implements Screen {
             this.close.getStyleClass().add(Styles.FLAT);
             HBox.setHgrow(title, Priority.ALWAYS);
             HBox top = new HBox(12, kind, title, this.close);
-            this.description.setWrapText(true);
+            Fx.wrap(this.description);
             this.description.getStyleClass().add("details-meta");
             Fx.ownDirection(this.description);
             this.facts.getStyleClass().add("details-facts");
             Label saidTitle = new Label(ServersScreen.this.gui.t("IDS_SV_SERVERINFO"));
             saidTitle.getStyleClass().add("field-label");
-            this.message.setWrapText(true);
+            Fx.wrap(this.message);
             this.message.getStyleClass().add("server-message");
             Fx.leftToRight(this.message);
             this.said = new VBox(4, saidTitle, this.message);
@@ -690,7 +690,7 @@ public final class ServersScreen implements Screen {
             this.one = new VBox(14, top, this.description, actions, this.facts, this.said);
             this.one.getStyleClass().add("server-panel-body");
             this.none.setText(ServersScreen.this.gui.t("nj.servers.choose"));
-            this.none.setWrapText(true);
+            Fx.wrap(this.none);
             this.none.getStyleClass().add("details-none");
             this.scroll = Fx.scrollWhenShort(this.one);
             this.box = new StackPane(this.scroll, this.none);
@@ -791,7 +791,7 @@ public final class ServersScreen implements Screen {
             name.getStyleClass().add("text-muted");
             name.setMinWidth(Region.USE_PREF_SIZE);
             Label shown = new Label(value);
-            shown.setWrapText(true);
+            Fx.wrap(shown);
             this.facts.addRow(row, name, shown);
             return row + 1;
         }

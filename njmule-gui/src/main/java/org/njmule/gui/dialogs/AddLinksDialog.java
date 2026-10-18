@@ -91,7 +91,7 @@ public final class AddLinksDialog {
         this.text.setWrapText(false);
         this.text.setId("links-text");
         Label hint = new Label(gui.t("nj.addLinks.hint"));
-        hint.setWrapText(true);
+        Fx.wrap(hint);
         hint.getStyleClass().add("text-muted");
         this.found.getStyleClass().add("field-label");
         ScrollPane scroll = new ScrollPane(this.list);

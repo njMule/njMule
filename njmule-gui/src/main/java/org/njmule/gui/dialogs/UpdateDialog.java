@@ -202,7 +202,7 @@ public final class UpdateDialog {
 
     private static Label wrapped(String text, String style) {
         Label label = new Label(text);
-        label.setWrapText(true);
+        Fx.wrap(label);
         label.setMaxWidth(Double.MAX_VALUE);
         if (style != null) {
             label.getStyleClass().add(style);

@@ -217,7 +217,7 @@ public final class FirstRunWizard {
         });
         this.importEmule.setText(this.gui.t("nj.wizard.emuleImport"));
         this.importEmule.setSelected(true);
-        this.importEmule.setWrapText(true);
+        Fx.wrap(this.importEmule);
     }
 
     private void build() {
@@ -268,7 +268,7 @@ public final class FirstRunWizard {
         brand.setAlignment(Pos.CENTER_LEFT);
         brand.getStyleClass().add("wizard-brand");
         Label later = new Label(this.gui.t("nj.wizard.later"));
-        later.setWrapText(true);
+        Fx.wrap(later);
         later.getStyleClass().add("dialog-hint");
         Region gap = new Region();
         VBox.setVgrow(gap, Priority.ALWAYS);
@@ -371,7 +371,7 @@ public final class FirstRunWizard {
     private VBox page(String title, String text, Node... content) {
         Label heading = new Label(title);
         heading.getStyleClass().addAll("display", "wizard-heading");
-        heading.setWrapText(true);
+        Fx.wrap(heading);
         VBox head = new VBox(4, this.stepOf, heading, hint(text));
         VBox box = new VBox(16, head);
         box.getChildren().addAll(content);
@@ -396,7 +396,7 @@ public final class FirstRunWizard {
         VBox sharedBox = new VBox(this.shared, addRow);
         sharedBox.getStyleClass().add("wizard-folders");
         Label asks = new Label(this.gui.t("nj.wizard.asksFirst"), Fx.icon(Icons.SHIELD));
-        asks.setWrapText(true);
+        Fx.wrap(asks);
         asks.getStyleClass().add("dialog-hint");
         return new VBox(
                 16,
@@ -439,7 +439,7 @@ public final class FirstRunWizard {
         upnpName.setLabelFor(this.upnp);
         upnpName.setOnMouseClicked(e -> this.upnp.setSelected(!this.upnp.isSelected()));
         Label upnpHint = new Label(this.gui.t("nj.wizard.upnpHint"));
-        upnpHint.setWrapText(true);
+        Fx.wrap(upnpHint);
         upnpHint.getStyleClass().add("dialog-hint");
         VBox upnpWords = new VBox(2, upnpName, upnpHint);
         HBox.setHgrow(upnpWords, Priority.ALWAYS);
@@ -457,7 +457,7 @@ public final class FirstRunWizard {
     // What was found, and whether to open the import once done.
     private Node emulePage() {
         Label where = Fx.leftToRight(new Label(this.emule.map(Path::toString).orElse("")));
-        where.setWrapText(true);
+        Fx.wrap(where);
         where.getStyleClass().add(Styles.TEXT_MUTED);
         VBox words = new VBox(2, new Label(this.gui.t("nj.wizard.emuleFound")), where);
         HBox found = new HBox(10, Fx.icon(Icons.CHECK_CIRCLE), words);
@@ -471,7 +471,7 @@ public final class FirstRunWizard {
     private static VBox named(String name, Node field, String hint) {
         VBox box = named(name, field);
         Label under = new Label(hint);
-        under.setWrapText(true);
+        Fx.wrap(under);
         under.getStyleClass().add("dialog-hint");
         box.getChildren().add(under);
         return box;
@@ -569,7 +569,7 @@ public final class FirstRunWizard {
 
     private static Label hint(String text) {
         Label label = new Label(text);
-        label.setWrapText(true);
+        Fx.wrap(label);
         label.setMinHeight(Region.USE_PREF_SIZE);
         label.getStyleClass().add("wizard-hint");
         return label;

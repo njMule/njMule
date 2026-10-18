@@ -146,7 +146,7 @@ final class SettingRow {
     private Region build() {
         Label name = new Label(this.title);
         name.getStyleClass().add("setting-title");
-        name.setWrapText(true);
+        Fx.wrap(name);
         name.setMinHeight(Region.USE_PREF_SIZE);
         if (this.control instanceof Control target) {
             name.setLabelFor(target);
@@ -178,13 +178,13 @@ final class SettingRow {
         if (!this.description.isEmpty()) {
             Label line = new Label(this.description);
             line.getStyleClass().add("setting-description");
-            line.setWrapText(true);
+            Fx.wrap(line);
             line.setMinHeight(Region.USE_PREF_SIZE);
             words.getChildren().add(line);
         }
         this.error.setGraphic(Fx.icon(Icons.ERROR));
         this.error.getStyleClass().add("setting-error");
-        this.error.setWrapText(true);
+        Fx.wrap(this.error);
         this.error.setMinHeight(Region.USE_PREF_SIZE);
         this.error.managedProperty().bind(this.error.visibleProperty());
         words.getChildren().add(this.error);

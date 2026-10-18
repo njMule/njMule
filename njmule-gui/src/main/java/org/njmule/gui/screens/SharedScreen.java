@@ -311,12 +311,12 @@ public final class SharedScreen implements Screen {
     // The place chosen: its path, its files, and the switch and buttons that act on it.
     private Node placePanel() {
         this.placeTitle.getStyleClass().add(Styles.TEXT_BOLD);
-        this.placeTitle.setWrapText(true);
+        Fx.wrap(this.placeTitle);
         this.placeTitle.setMinHeight(Region.USE_PREF_SIZE);
         Fx.leftToRight(this.placeTitle);
         this.placeFacts.getStyleClass().add("text-muted");
         this.subfoldersName.setText(this.gui.t("IDS_SHAREDIRSUB"));
-        this.subfoldersName.setWrapText(true);
+        Fx.wrap(this.subfoldersName);
         this.subfoldersName.setMinWidth(0);
         this.subfoldersName.setOnMouseClicked(e -> {
             if (!this.subfolders.isDisabled()) {
@@ -350,7 +350,7 @@ public final class SharedScreen implements Screen {
         }
         FlowPane buttons = new FlowPane(6, 6, this.openPlace, this.unshare);
         this.incomingNote.setText(this.gui.t("nj.shared.incomingNote"));
-        this.incomingNote.setWrapText(true);
+        Fx.wrap(this.incomingNote);
         this.incomingNote.setMinHeight(Region.USE_PREF_SIZE);
         this.incomingNote.getStyleClass().add("text-muted");
         this.incomingNote.managedProperty().bind(this.incomingNote.visibleProperty());
