@@ -20,6 +20,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Flow;
+import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.NjMuleEngine;
 
 /** A real engine with some commands replaced, for failures and delays the real one cannot be made to show. */
@@ -32,6 +34,21 @@ public final class Engines {
     }
 
     private Engines() {}
+
+    /** {@code real}, telling the {@code events} given instead of its own. */
+    public static NjMuleEngine withEvents(NjMuleEngine real, Flow.Publisher<EngineEvent> events) {
+        return (NjMuleEngine) Proxy.newProxyInstance(
+                NjMuleEngine.class.getClassLoader(), new Class<?>[] {NjMuleEngine.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("events")) {
+                        return events;
+                    }
+                    try {
+                        return method.invoke(real, args);
+                    } catch (InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+    }
 
     /** {@code real}, except that the commands named in {@code commands} answer as those do. */
     @SuppressWarnings("FutureReturnValueIgnored") // a proxy returns each answer as Object; the caller checks it

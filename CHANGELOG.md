@@ -624,6 +624,14 @@ All notable changes to this project are documented here. The format follows
   its outcomes as chips. The menu of the notification area opens on njMule's name with the state
   and the rates, keeps Show njMule as its default and Quit always there, and shows only Connect or
   Disconnect; MiniMule tells the state with a dot and draws the last half minute of the rates.
+- The desktop app reads well in every theme: a test measures the contrast of the text and the marks
+  it draws against what is behind them in all the AtlantaFX themes, light and dark, and the few
+  theme tones that fell short of WCAG AA on its surfaces are a little stronger (the muted and red
+  text of Nord Dark, the red and orange of Cupertino, the green tint of Dracula). Screen readers
+  hear the progress bars as progress with their value, the state chips, file names and outcomes
+  in the tables as words, and the rate graph as a sentence with the rates now and the highest.
+  "All" reads right in the messages and the log in every language, three misspelt Arabic texts
+  taken from eMule are corrected, and the README shows the redesigned transfers.
 
 ### Changed
 

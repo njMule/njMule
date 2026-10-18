@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -224,7 +225,11 @@ class CaptureTour {
         if (demo) {
             this.engine.updateSchedule(CaptureDemo.schedule()).get(10, TimeUnit.SECONDS);
         }
-        NjMuleEngine shown = demo ? Engines.overriding(this.engine, CaptureDemo.commands(root)) : this.engine;
+        // The log is the demo's: the real engine's lines may name this computer's addresses.
+        NjMuleEngine shown = demo
+                ? Engines.withEvents(
+                        Engines.overriding(this.engine, CaptureDemo.commands(root)), withoutLog(this.engine.events()))
+                : this.engine;
         this.model = new EngineModel(shown, Platform::runLater);
         I18n i18n = I18n.of(language);
         // As the app does: JavaFX's own texts in the language of the set.
@@ -284,6 +289,38 @@ class CaptureTour {
         }
         // Long enough for the banner of a lasting state to show.
         Thread.sleep(2500);
+    }
+
+    // The engine's events but its log lines, asking again for each one left out.
+    private static Flow.Publisher<EngineEvent> withoutLog(Flow.Publisher<EngineEvent> events) {
+        return subscriber -> events.subscribe(new Flow.Subscriber<>() {
+            private Flow.Subscription subscription;
+
+            @Override
+            public void onSubscribe(Flow.Subscription s) {
+                this.subscription = s;
+                subscriber.onSubscribe(s);
+            }
+
+            @Override
+            public void onNext(EngineEvent event) {
+                if (event instanceof EngineEvent.Log) {
+                    this.subscription.request(1);
+                } else {
+                    subscriber.onNext(event);
+                }
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                subscriber.onError(error);
+            }
+
+            @Override
+            public void onComplete() {
+                subscriber.onComplete();
+            }
+        });
     }
 
     // What only events tell: the connection, the log, the chats and ten minutes of rates.
@@ -351,10 +388,15 @@ class CaptureTour {
         }
     }
 
-    // The picture of the README: no message over the lists.
+    // The picture of the README: no message over the lists, and the table at its whole width.
     private void readme() throws Exception {
         Thread.sleep(MESSAGES_GONE.toMillis());
-        fx(() -> this.window.show("transfers"));
+        fx(() -> {
+            this.window.show("transfers");
+            if (this.stage.getScene().lookup("#details") instanceof ToggleButton details && details.isSelected()) {
+                details.fire();
+            }
+        });
         shot("transfers", "The transfers, for the README");
     }
 
