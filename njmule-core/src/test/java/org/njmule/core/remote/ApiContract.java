@@ -19,13 +19,10 @@ package org.njmule.core.remote;
 import com.networknt.schema.Error;
 import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaLocation;
-import com.networknt.schema.SchemaRegistry;
-import com.networknt.schema.dialect.Dialects;
 import com.networknt.schema.path.NodePath;
 import com.networknt.schema.path.PathType;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -43,9 +40,7 @@ final class ApiContract {
     private final Schema root;
 
     ApiContract() {
-        SchemaRegistry registry = SchemaRegistry.withDefaultDialect(
-                Dialects.getOpenApi31(), b -> b.schemas(Map.of(BASE, this.document.toString())));
-        this.root = registry.loadSchema(SchemaLocation.of(BASE), false);
+        this.root = ApiSpecification.registry(BASE, this.document).loadSchema(SchemaLocation.of(BASE), false);
     }
 
     ApiSpecification specification() {

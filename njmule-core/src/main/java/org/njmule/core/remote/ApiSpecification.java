@@ -21,7 +21,9 @@ import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaLocation;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SchemaRegistryConfig;
+import com.networknt.schema.dialect.Dialect;
 import com.networknt.schema.dialect.Dialects;
+import com.networknt.schema.keyword.NonValidationKeyword;
 import com.networknt.schema.path.NodePath;
 import com.networknt.schema.path.PathType;
 import java.io.IOException;
@@ -39,6 +41,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.StreamReadConstraints;
 import tools.jackson.core.json.JsonFactory;
@@ -66,6 +69,24 @@ final class ApiSpecification {
     private static final Set<String> METHODS =
             Set.of("get", "put", "post", "delete", "options", "head", "patch", "trace", "query");
     private static final int MAX_ERRORS = 3;
+
+    // References resolve against the whole document, whose own fields are no keywords of a schema.
+    private static final Dialect DIALECT = Dialect.builder(Dialects.getOpenApi31())
+            .keywords(Stream.of(
+                            "openapi",
+                            "$self",
+                            "info",
+                            "jsonSchemaDialect",
+                            "servers",
+                            "paths",
+                            "webhooks",
+                            "components",
+                            "security",
+                            "tags",
+                            "externalDocs")
+                    .map(NonValidationKeyword::new)
+                    .toList())
+            .build();
 
     private static final JsonMapper BODIES = JsonMapper.builder(JsonFactory.builder()
                     .streamReadConstraints(StreamReadConstraints.builder()
@@ -103,13 +124,7 @@ final class ApiSpecification {
 
     static ApiSpecification parse(byte[] yaml) {
         JsonNode document = YAMLMapper.shared().readTree(yaml);
-        // Messages in English, whatever the system's language: they go to the caller.
-        SchemaRegistry registry = SchemaRegistry.withDefaultDialect(
-                Dialects.getOpenApi31(),
-                b -> b.schemas(Map.of(BASE, document.toString()))
-                        .schemaRegistryConfig(SchemaRegistryConfig.builder()
-                                .locale(Locale.ENGLISH)
-                                .build()));
+        SchemaRegistry registry = registry(BASE, document);
         Schema root = registry.loadSchema(SchemaLocation.of(BASE), false);
         Document doc = new Document(document, root);
         List<Route> routes = new ArrayList<>();
@@ -126,6 +141,19 @@ final class ApiSpecification {
             }
         }
         return new ApiSpecification(yaml.clone(), document, List.copyOf(routes));
+    }
+
+    /**
+     * The schemas of {@code document}, at {@code base}, for its references; their messages are in English whatever the
+     * system's language, since they go to the caller.
+     */
+    static SchemaRegistry registry(String base, JsonNode document) {
+        return SchemaRegistry.withDefaultDialect(
+                DIALECT,
+                b -> b.schemas(Map.of(base, document.toString()))
+                        .schemaRegistryConfig(SchemaRegistryConfig.builder()
+                                .locale(Locale.ENGLISH)
+                                .build()));
     }
 
     /** The document as it is shipped. */
