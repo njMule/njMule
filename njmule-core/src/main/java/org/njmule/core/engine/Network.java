@@ -1674,7 +1674,8 @@ final class Network {
                                             : LogLine.Level.WARNING,
                                     line);
                             forwardingOutcome(outcome, router);
-                        }));
+                        }),
+                        () -> this.ourIpv6);
             }
         });
     }

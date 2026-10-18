@@ -16,6 +16,7 @@
  */
 package org.njmule.core.upnp;
 
+import com.google.common.net.InetAddresses;
 import com.google.common.xml.XmlEscapers;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -23,6 +24,7 @@ import java.io.Serial;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
@@ -34,11 +36,15 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -84,15 +90,20 @@ public final class Igd implements Gateway {
         "urn:schemas-upnp-org:service:WANIPConnection:", "urn:schemas-upnp-org:service:WANPPPConnection:"
     };
 
+    // The service of IGD 2 routers that opens their IPv6 firewall.
+    private static final String FIREWALL = "urn:schemas-upnp-org:service:WANIPv6FirewallControl:1";
+
     private final URI location;
     private final URI control;
     private final String service;
+    private final Optional<URI> firewall;
     private final HttpClient http;
 
-    private Igd(URI location, URI control, String service, HttpClient http) {
+    private Igd(URI location, URI control, String service, Optional<URI> firewall, HttpClient http) {
         this.location = location;
         this.control = control;
         this.service = service;
+        this.firewall = firewall;
         this.http = http;
     }
 
@@ -265,23 +276,103 @@ public final class Igd implements Gateway {
                         + "</NewProtocol>");
     }
 
+    /**
+     * As {@link Gateway#openPinhole}, when the router has an IPv6 firewall that may be opened; one that is off needs no
+     * pinhole.
+     */
+    @Override
+    public OptionalInt openPinhole(String protocol, Inet6Address address, int port, long lease) throws IOException {
+        if (this.firewall.isEmpty()) {
+            return OptionalInt.empty();
+        }
+        Element status = answer(call(this.firewall.get(), FIREWALL, "GetFirewallStatus", ""));
+        if (!flag(status, "FirewallEnabled")) {
+            return OptionalInt.empty();
+        }
+        if (!flag(status, "InboundPinholeAllowed")) {
+            throw new Refused("the router opens no pinholes in its IPv6 firewall");
+        }
+        Element added = answer(call(
+                this.firewall.get(),
+                FIREWALL,
+                "AddPinhole",
+                "<RemoteHost></RemoteHost><RemotePort>0</RemotePort>"
+                        + "<InternalClient>"
+                        + InetAddresses.toAddrString(address)
+                        + "</InternalClient>"
+                        + "<InternalPort>"
+                        + port
+                        + "</InternalPort>"
+                        + "<Protocol>"
+                        + ("UDP".equals(protocol(protocol)) ? 17 : 6)
+                        + "</Protocol>"
+                        + "<LeaseTime>"
+                        + lease
+                        + "</LeaseTime>"));
+        try {
+            return OptionalInt.of(Integer.parseInt(named(added, "UniqueID")
+                    .orElseThrow(() -> new IOException("no pinhole id"))
+                    .strip()));
+        } catch (NumberFormatException e) {
+            throw new IOException("unreadable pinhole id", e);
+        }
+    }
+
+    @Override
+    public void renewPinhole(int id, long lease) throws IOException {
+        call(
+                this.firewall.orElseThrow(() -> new IOException("no IPv6 firewall")),
+                FIREWALL,
+                "UpdatePinhole",
+                "<UniqueID>" + id + "</UniqueID><NewLeaseTime>" + lease + "</NewLeaseTime>");
+    }
+
+    @Override
+    public void closePinhole(int id) throws IOException {
+        call(
+                this.firewall.orElseThrow(() -> new IOException("no IPv6 firewall")),
+                FIREWALL,
+                "DeletePinhole",
+                "<UniqueID>" + id + "</UniqueID>");
+    }
+
+    private static Element answer(byte[] xml) throws IOException {
+        try {
+            return parse(xml, true).getDocumentElement();
+        } catch (ParserConfigurationException | SAXException e) {
+            throw new IOException("unreadable answer: " + e.getMessage(), e);
+        }
+    }
+
+    // A flag the router does not give counts as set.
+    private static boolean flag(Element answer, String name) {
+        return named(answer, name)
+                .map(String::strip)
+                .map(v -> v.equals("1") || v.equalsIgnoreCase("true") || v.equalsIgnoreCase("yes"))
+                .orElse(true);
+    }
+
     private byte[] call(String action, String arguments) throws IOException {
+        return call(this.control, this.service, action, arguments);
+    }
+
+    private byte[] call(URI at, String service, String action, String arguments) throws IOException {
         String body = "<?xml version=\"1.0\"?>"
                 + "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\""
                 + " s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">"
                 + "<s:Body><u:"
                 + action
                 + " xmlns:u=\""
-                + this.service
+                + service
                 + "\">"
                 + arguments
                 + "</u:"
                 + action
                 + "></s:Body></s:Envelope>";
         Request request = this.http
-                .newRequest(this.control)
+                .newRequest(at)
                 .method(HttpMethod.POST)
-                .headers(h -> h.put("SOAPAction", "\"" + this.service + "#" + action + "\""))
+                .headers(h -> h.put("SOAPAction", "\"" + service + "#" + action + "\""))
                 .body(new StringRequestContent("text/xml; charset=\"utf-8\"", body, StandardCharsets.UTF_8));
         ContentResponse response = exchange(request);
         if (response.getStatus() != 200) {
@@ -331,25 +422,35 @@ public final class Igd implements Gateway {
             return Optional.empty();
         }
         String base = text(doc.getDocumentElement(), "URLBase").orElse(location.toString());
-        List<Igd> candidates = new ArrayList<>();
+        Map<URI, String> connections = new LinkedHashMap<>();
+        Optional<URI> firewall = Optional.empty();
         NodeList services = doc.getElementsByTagName("service");
         for (int i = 0; i < services.getLength(); i++) {
             Element s = (Element) services.item(i);
             String type = text(s, "serviceType").orElse("");
             Optional<String> controlUrl = text(s, "controlURL");
-            for (String wanted : SERVICES) {
-                if (type.startsWith(wanted) && controlUrl.isPresent()) {
-                    try {
-                        URI control = new URI(base).resolve(controlUrl.get().strip());
-                        if (!trusted(control, InetAddress.getByName(location.getHost()))) {
-                            return Optional.empty();
-                        }
-                        candidates.add(new Igd(location, control, type, http));
-                    } catch (URISyntaxException | IllegalArgumentException e) {
-                        return Optional.empty();
-                    }
-                }
+            boolean connection = Arrays.stream(SERVICES).anyMatch(type::startsWith);
+            if (controlUrl.isEmpty() || !(connection || type.equals(FIREWALL))) {
+                continue;
             }
+            URI control;
+            try {
+                control = new URI(base).resolve(controlUrl.get().strip());
+                if (!trusted(control, InetAddress.getByName(location.getHost()))) {
+                    return Optional.empty();
+                }
+            } catch (URISyntaxException | IllegalArgumentException e) {
+                return Optional.empty();
+            }
+            if (connection) {
+                connections.put(control, type);
+            } else if (firewall.isEmpty()) {
+                firewall = Optional.of(control);
+            }
+        }
+        List<Igd> candidates = new ArrayList<>();
+        for (Map.Entry<URI, String> c : connections.entrySet()) {
+            candidates.add(new Igd(location, c.getKey(), c.getValue(), firewall, http));
         }
         if (candidates.size() > 1) {
             for (Igd candidate : candidates) {

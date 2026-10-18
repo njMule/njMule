@@ -16,7 +16,9 @@
  */
 package org.njmule.core.upnp;
 
+import com.google.common.net.InetAddresses;
 import java.io.IOException;
+import java.net.Inet6Address;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -27,13 +29,15 @@ import java.util.OptionalInt;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Our ports forwarded by the router while njMule runs: found with UPnP, or else with NAT-PMP or PCP, and mapped on a
  * virtual thread at the start, for a lease renewed at half its time (which also recreates mappings the router lost),
- * unmapped at the end. Only the mappings made here are ever removed.
+ * unmapped at the end. Only the mappings made here are ever removed. With an IPv6 address of ours, which no NAT hides,
+ * the router's IPv6 firewall is opened to the same ports in the same way, when it can be.
  */
 public final class PortForwarding implements AutoCloseable {
 
@@ -42,6 +46,9 @@ public final class PortForwarding implements AutoCloseable {
 
     /** How long the router keeps a mapping we no longer renew. */
     public static final Duration LEASE = Duration.ofHours(1);
+
+    // Within the day a pinhole may last at most.
+    private static final Duration PINHOLE_LEASE = Duration.ofHours(1);
 
     private static final Logger logger = LoggerFactory.getLogger(PortForwarding.class);
     private static final String DESCRIPTION = "njMule";
@@ -82,6 +89,8 @@ public final class PortForwarding implements AutoCloseable {
         }
     }
 
+    private record Pinhole(Mapping mapping, Inet6Address address, int id) {}
+
     // The shortest wait between renewals, whatever lease a router grants.
     private static final Duration SHORTEST_RENEWAL = Duration.ofSeconds(10);
 
@@ -89,6 +98,12 @@ public final class PortForwarding implements AutoCloseable {
     private final List<Mapping> wanted;
     private final Report report;
     private final Pause pause;
+    private final Supplier<Optional<Inet6Address>> ipv6;
+    // The pinholes the router opened for us.
+    private final CopyOnWriteArrayList<Pinhole> pinholes = new CopyOnWriteArrayList<>();
+    // Worker thread only: the PCP server at the IPv6 gateway, when the router opens no pinholes itself.
+    private Gateway ipv6Firewall;
+    private boolean ipv6FirewallSought;
     // Mappings the router may hold for us: those made, and those asked for whose answer did not come.
     private final CopyOnWriteArrayList<Mapping> mapped = new CopyOnWriteArrayList<>();
     private final CountDownLatch started = new CountDownLatch(1);
@@ -99,11 +114,13 @@ public final class PortForwarding implements AutoCloseable {
     private long leaseSeconds = LEASE.toSeconds();
     private long grantedSeconds;
 
-    private PortForwarding(Routers routers, List<Mapping> wanted, Report report, Pause pause) {
+    private PortForwarding(
+            Routers routers, List<Mapping> wanted, Report report, Pause pause, Supplier<Optional<Inet6Address>> ipv6) {
         this.routers = Objects.requireNonNull(routers, "routers");
         this.wanted = List.copyOf(wanted);
         this.report = Objects.requireNonNull(report, "report");
         this.pause = Objects.requireNonNull(pause, "pause");
+        this.ipv6 = Objects.requireNonNull(ipv6, "ipv6");
         this.worker = Thread.ofVirtual().name("njmule-upnp").unstarted(this::run);
     }
 
@@ -112,7 +129,13 @@ public final class PortForwarding implements AutoCloseable {
      * {@code report} gets the outcome.
      */
     public static PortForwarding start(Routers routers, int tcpPort, OptionalInt udpPort, Report report) {
-        return start(routers, tcpPort, udpPort, report, Thread::sleep);
+        return start(routers, tcpPort, udpPort, report, Thread::sleep, Optional::empty);
+    }
+
+    /** As above, opening the router's IPv6 firewall to the same ports at {@code ipv6}, read at each renewal. */
+    public static PortForwarding start(
+            Routers routers, int tcpPort, OptionalInt udpPort, Report report, Supplier<Optional<Inet6Address>> ipv6) {
+        return start(routers, tcpPort, udpPort, report, Thread::sleep, ipv6);
     }
 
     /** As above, with UPnP only, searched at {@code ssdp}. */
@@ -125,10 +148,20 @@ public final class PortForwarding implements AutoCloseable {
     }
 
     static PortForwarding start(Routers routers, int tcpPort, OptionalInt udpPort, Report report, Pause pause) {
+        return start(routers, tcpPort, udpPort, report, pause, Optional::empty);
+    }
+
+    static PortForwarding start(
+            Routers routers,
+            int tcpPort,
+            OptionalInt udpPort,
+            Report report,
+            Pause pause,
+            Supplier<Optional<Inet6Address>> ipv6) {
         List<Mapping> wanted = new ArrayList<>();
         wanted.add(new Mapping("TCP", tcpPort));
         udpPort.ifPresent(p -> wanted.add(new Mapping("UDP", p)));
-        PortForwarding forwarding = new PortForwarding(routers, wanted, report, pause);
+        PortForwarding forwarding = new PortForwarding(routers, wanted, report, pause, ipv6);
         forwarding.worker.start();
         return forwarding;
     }
@@ -158,6 +191,7 @@ public final class PortForwarding implements AutoCloseable {
             }
             this.gateway = found.get();
             mapAll(true);
+            pinAll();
             this.started.countDown();
             while (!this.closed) {
                 this.pause.sleep(renewal());
@@ -232,6 +266,7 @@ public final class PortForwarding implements AutoCloseable {
     private void renew() throws InterruptedException {
         try {
             mapAll(false);
+            pinAll();
             return;
         } catch (IOException e) {
             logger.debug("Port forwarding: renewal failed, looking for the router again: {}", e.getMessage());
@@ -244,10 +279,95 @@ public final class PortForwarding implements AutoCloseable {
             Gateway old = this.gateway;
             this.gateway = found.get();
             old.close();
+            // The pinholes of the router that went away close at the end of their lease.
+            this.pinholes.clear();
             mapAll(true);
+            pinAll();
         } catch (IOException e) {
             // Tried again at the next renewal.
             logger.debug("Port forwarding: the router is still away: {}", e.getMessage());
+        }
+    }
+
+    // Each port gets a pinhole at our IPv6 address, renewed with the mappings; one at a former address is closed. A
+    // router that opens none is asked through PCP at the IPv6 gateway, once.
+    private void pinAll() throws InterruptedException {
+        Gateway router = this.ipv6Firewall != null ? this.ipv6Firewall : this.gateway;
+        Optional<Inet6Address> ours = this.ipv6.get();
+        int opened = pinAll(router, ours);
+        if (opened == 0 && this.pinholes.isEmpty() && ours.isPresent() && !this.ipv6FirewallSought) {
+            this.ipv6FirewallSought = true;
+            Optional<Gateway> pcp = ipv6Gateway();
+            if (pcp.isPresent()) {
+                this.ipv6Firewall = pcp.get();
+                pinAll(pcp.get(), ours);
+            }
+        }
+    }
+
+    private Optional<Gateway> ipv6Gateway() {
+        Optional<InetSocketAddress> at = this.routers.pcpIpv6().get();
+        if (at.isEmpty()) {
+            return Optional.empty();
+        }
+        try {
+            return NatPmp.discover(at.get(), DISCOVERY).map(Gateway.class::cast);
+        } catch (IOException e) {
+            logger.debug("PCP: no answer at the IPv6 gateway {}: {}", at.get(), e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    // Returns how many pinholes were opened now.
+    private int pinAll(Gateway router, Optional<Inet6Address> ours) throws InterruptedException {
+        for (Pinhole p : this.pinholes) {
+            if (ours.isEmpty() || !ours.get().equals(p.address())) {
+                this.pinholes.remove(p);
+                closePinhole(router, p);
+            }
+        }
+        if (ours.isEmpty()) {
+            return 0;
+        }
+        List<String> opened = new ArrayList<>();
+        for (Mapping m : this.wanted) {
+            Optional<Pinhole> held =
+                    this.pinholes.stream().filter(p -> p.mapping().equals(m)).findFirst();
+            try {
+                if (held.isPresent()) {
+                    router.renewPinhole(held.get().id(), PINHOLE_LEASE.toSeconds());
+                    continue;
+                }
+                OptionalInt id = router.openPinhole(m.protocol(), ours.get(), m.port(), PINHOLE_LEASE.toSeconds());
+                if (id.isPresent()) {
+                    this.pinholes.add(new Pinhole(m, ours.get(), id.getAsInt()));
+                    opened.add(m.toString());
+                }
+            } catch (IOException e) {
+                // Opened again at the next renewal.
+                held.ifPresent(this.pinholes::remove);
+                logger.debug("{}: no pinhole for {}: {}", router.protocol(), m, e.getMessage());
+            }
+            if (this.closed) {
+                throw new InterruptedException("closing");
+            }
+        }
+        if (!opened.isEmpty()) {
+            logger.info(
+                    "{}: the IPv6 firewall of {} lets clients in to {} at {}",
+                    router.protocol(),
+                    router.host(),
+                    String.join(" and ", opened),
+                    InetAddresses.toAddrString(ours.get()));
+        }
+        return opened.size();
+    }
+
+    private static void closePinhole(Gateway router, Pinhole p) {
+        try {
+            router.closePinhole(p.id());
+        } catch (IOException e) {
+            logger.debug("{}: cannot close the pinhole for {}: {}", router.protocol(), p.mapping(), e.getMessage());
         }
     }
 
@@ -307,6 +427,11 @@ public final class PortForwarding implements AutoCloseable {
             }
         }
         this.mapped.clear();
+        Gateway opener = this.ipv6Firewall != null ? this.ipv6Firewall : router;
+        for (Pinhole p : this.pinholes) {
+            closePinhole(opener, p);
+        }
+        this.pinholes.clear();
         router.close();
     }
 }

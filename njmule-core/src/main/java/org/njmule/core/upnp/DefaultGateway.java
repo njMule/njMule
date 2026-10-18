@@ -18,12 +18,14 @@ package org.njmule.core.upnp;
 
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Splitter;
+import com.google.common.net.InetAddresses;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -32,8 +34,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The IPv4 default gateway of this computer, where NAT-PMP and PCP are asked: read from the routing table as each
- * system shows it, since the JDK does not tell it.
+ * The default gateways of this computer, where NAT-PMP and PCP are asked: read from the routing table as each system
+ * shows it, since the JDK does not tell them. The IPv6 one is mostly a link-local address, written with its interface.
  */
 final class DefaultGateway {
 
@@ -61,6 +63,82 @@ final class DefaultGateway {
             Thread.currentThread().interrupt();
             return Optional.empty();
         }
+    }
+
+    /** The IPv6 default gateway, if the routing table names one. */
+    static Optional<InetAddress> findIpv6() {
+        try {
+            Optional<String> scoped = switch (OsFamily.current()) {
+                case LINUX ->
+                    fromProcNetIpv6Route(
+                            Files.readAllLines(Path.of("/proc/net/ipv6_route"), StandardCharsets.US_ASCII));
+                case WINDOWS -> fromRoutePrintIpv6(run(windowsRoute(), "print", "-6", "::/0"));
+                case MACOS -> fromRouteGet(run("/sbin/route", "-n", "get", "-inet6", "default"), "gateway:");
+            };
+            // A literal with its interface: no name is looked up.
+            return scoped.isPresent() ? Optional.of(InetAddress.getByName(scoped.get())) : Optional.empty();
+        } catch (IOException | RuntimeException e) {
+            logger.debug("No IPv6 default gateway: {}", e.toString());
+            return Optional.empty();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Linux: the route to ::/0 with a next hop, in hex, then its interface last; the lowest metric wins. Returns the
+     * next hop with its interface, as "fe80::1%eth0".
+     */
+    static Optional<String> fromProcNetIpv6Route(List<String> lines) {
+        String best = null;
+        long bestMetric = Long.MAX_VALUE;
+        for (String line : lines) {
+            List<String> fields = FIELDS.splitToList(line);
+            if (fields.size() < 10
+                    || !fields.get(0).equals("0".repeat(32))
+                    || !fields.get(1).equals("00")
+                    || fields.get(4).equals("0".repeat(32))) {
+                continue;
+            }
+            try {
+                long metric = Long.parseLong(fields.get(5), 16);
+                byte[] hop = HexFormat.of().parseHex(fields.get(4));
+                if (metric < bestMetric) {
+                    best = InetAddresses.toAddrString(InetAddress.getByAddress(hop)) + "%" + fields.get(9);
+                    bestMetric = metric;
+                }
+            } catch (IllegalArgumentException | IOException e) {
+                // Not a route line.
+            }
+        }
+        return Optional.ofNullable(best);
+    }
+
+    /**
+     * Windows: the rows of "route print -6" for ::/0, with the interface index first, the metric second and the gateway
+     * fourth; the lowest metric wins. Returns the gateway with the interface index, as "fe80::1%11".
+     */
+    static Optional<String> fromRoutePrintIpv6(String text) {
+        String best = null;
+        int bestMetric = Integer.MAX_VALUE;
+        for (String line : text.lines().toList()) {
+            List<String> fields = FIELDS.splitToList(line);
+            if (fields.size() < 4 || !fields.get(2).equals("::/0") || !InetAddresses.isInetAddress(fields.get(3))) {
+                continue;
+            }
+            try {
+                int index = Integer.parseInt(fields.get(0));
+                int metric = Integer.parseInt(fields.get(1));
+                if (metric < bestMetric && !fields.get(3).equals("::")) {
+                    best = fields.get(3) + "%" + index;
+                    bestMetric = metric;
+                }
+            } catch (NumberFormatException e) {
+                // A heading.
+            }
+        }
+        return Optional.ofNullable(best);
     }
 
     /** Linux: the route to 0.0.0.0 through a gateway, whose address the table writes in hex, lowest byte first. */
@@ -117,10 +195,15 @@ final class DefaultGateway {
 
     /** macOS: the "gateway:" line of "route -n get default". */
     static Optional<InetAddress> fromRouteGet(String text) {
+        return fromRouteGet(text, "gateway:").flatMap(DefaultGateway::ipv4);
+    }
+
+    // The value of the line of "route -n get" that starts with {@code key}; an IPv6 one keeps its "%interface".
+    static Optional<String> fromRouteGet(String text, String key) {
         for (String line : text.lines().toList()) {
             String trimmed = line.strip();
-            if (trimmed.startsWith("gateway:")) {
-                return ipv4(trimmed.substring("gateway:".length()).strip());
+            if (trimmed.startsWith(key)) {
+                return Optional.of(trimmed.substring(key.length()).strip());
             }
         }
         return Optional.empty();

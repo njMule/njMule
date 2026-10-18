@@ -23,17 +23,29 @@ import java.util.function.Supplier;
 
 /**
  * Where the router that forwards our ports is looked for: UPnP's search address, then the NAT-PMP and PCP port of the
- * default gateway, read again at each search.
+ * default gateway, read again at each search; and the PCP port of the IPv6 default gateway, which may open its IPv6
+ * firewall when UPnP does not.
  */
-public record Routers(InetSocketAddress ssdp, Supplier<Optional<InetSocketAddress>> natPmp) {
+public record Routers(
+        InetSocketAddress ssdp,
+        Supplier<Optional<InetSocketAddress>> natPmp,
+        Supplier<Optional<InetSocketAddress>> pcpIpv6) {
 
-    /** This computer's: SSDP's multicast address, and port 5351 of the default gateway. */
+    /** This computer's: SSDP's multicast address, and port 5351 of the default gateways. */
     public static final Routers OF_THIS_COMPUTER = new Routers(
-            Igd.SSDP, () -> DefaultGateway.find().map(gateway -> new InetSocketAddress(gateway, NatPmp.PORT)));
+            Igd.SSDP,
+            () -> DefaultGateway.find().map(gateway -> new InetSocketAddress(gateway, NatPmp.PORT)),
+            () -> DefaultGateway.findIpv6().map(gateway -> new InetSocketAddress(gateway, NatPmp.PORT)));
 
     public Routers {
         Objects.requireNonNull(ssdp, "ssdp");
         Objects.requireNonNull(natPmp, "natPmp");
+        Objects.requireNonNull(pcpIpv6, "pcpIpv6");
+    }
+
+    /** Without an IPv6 gateway to ask. */
+    public Routers(InetSocketAddress ssdp, Supplier<Optional<InetSocketAddress>> natPmp) {
+        this(ssdp, natPmp, Optional::empty);
     }
 
     /** UPnP's search at {@code ssdp} only. */

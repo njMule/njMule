@@ -18,6 +18,8 @@ package org.njmule.core.upnp;
 
 import java.io.IOException;
 import java.io.Serial;
+import java.net.Inet6Address;
+import java.util.OptionalInt;
 
 /** A router that forwards our ports: one found with UPnP, or one that answers NAT-PMP or PCP. */
 public interface Gateway extends AutoCloseable {
@@ -48,6 +50,26 @@ public interface Gateway extends AutoCloseable {
 
     /** Removes the forwarding of {@code port}. */
     void deleteMapping(String protocol, int port) throws IOException;
+
+    /**
+     * Opens the router's IPv6 firewall to {@code port} of {@code protocol} at {@code address} for {@code lease}
+     * seconds; returns the pinhole's id, empty when the router has no IPv6 firewall to open.
+     *
+     * @throws Refused when the router will not
+     */
+    default OptionalInt openPinhole(String protocol, Inet6Address address, int port, long lease) throws IOException {
+        return OptionalInt.empty();
+    }
+
+    /** Keeps the pinhole {@code id} open for {@code lease} seconds more. */
+    default void renewPinhole(int id, long lease) throws IOException {
+        throw new IOException("no pinholes");
+    }
+
+    /** Closes the pinhole {@code id}. */
+    default void closePinhole(int id) throws IOException {
+        throw new IOException("no pinholes");
+    }
 
     @Override
     void close();

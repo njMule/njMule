@@ -19,6 +19,7 @@ package org.njmule.core.upnp;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.InetAddress;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -61,7 +62,26 @@ class DefaultGatewayTest {
                   flags: <UP,GATEWAY,DONE,STATIC,PRCLONING,GLOBAL>
             """;
 
+    private static final List<String> PROC_NET_IPV6_ROUTE = List.of(
+            ipv6Route("00000000000000000000000000000000 00", "fe800000000000000000000000000001", "00000400", "eth0"),
+            ipv6Route("00000000000000000000000000000000 00", "fe800000000000000000000000000002", "00000064", "wlan0"),
+            ipv6Route("fe800000000000000000000000000000 40", "00000000000000000000000000000000", "00000100", "eth0"));
+
+    private static final String ROUTE_PRINT_6 = """
+            IPv6 Route Table
+            ===========================================================================
+            Active Routes:
+             If Metric Network Destination      Gateway
+             11    281 ::/0                     fe80::1
+             15    100 ::/0                     fe80::aa:bb
+              1    331 ::1/128                  On-link
+            ===========================================================================
+            Persistent Routes:
+              None
+            """;
+
     private Optional<InetAddress> gateway;
+    private Optional<String> scopedGateway;
 
     @Test
     void shouldReadTheGatewayOfTheDefaultRouteOnLinux() {
@@ -103,6 +123,61 @@ class DefaultGatewayTest {
         whenTheMacosAnswerIsRead("route: writing to routing socket: not in table\n");
 
         thenThereIsNoGateway();
+    }
+
+    @Test
+    void shouldReadTheIpv6GatewayOfTheLowestMetricOnLinuxWithItsInterface() {
+        whenTheLinuxIpv6TableIsRead(PROC_NET_IPV6_ROUTE);
+
+        thenTheIpv6GatewayIs("fe80::2%wlan0");
+    }
+
+    @Test
+    void shouldReadTheIpv6GatewayOfTheLowestMetricOnWindowsWithItsInterface() {
+        whenTheWindowsIpv6TableIsRead(ROUTE_PRINT_6);
+
+        thenTheIpv6GatewayIs("fe80::aa:bb%15");
+    }
+
+    @Test
+    void shouldReadTheIpv6GatewayOnMacosWithItsInterface() {
+        whenTheMacosIpv6AnswerIsRead("   route to: default\n    gateway: fe80::1%en0\n  interface: en0\n");
+
+        thenTheIpv6GatewayIs("fe80::1%en0");
+    }
+
+    @Test
+    void shouldFindNoIpv6GatewayWithoutADefaultRoute() {
+        whenTheWindowsIpv6TableIsRead("IPv6 Route Table\nActive Routes:\n  1    331 ::1/128   On-link\n");
+
+        thenThereIsNoIpv6Gateway();
+    }
+
+    private void whenTheLinuxIpv6TableIsRead(List<String> table) {
+        this.scopedGateway = DefaultGateway.fromProcNetIpv6Route(table);
+    }
+
+    // A line of /proc/net/ipv6_route: destination and its length, source and its length, next hop, metric, use counts,
+    // flags and interface.
+    private static String ipv6Route(String destination, String hop, String metric, String iface) {
+        return destination + " 00000000000000000000000000000000 00 " + hop + " " + metric + " 00000001 00000000 "
+                + "00000003 " + iface;
+    }
+
+    private void whenTheWindowsIpv6TableIsRead(String table) {
+        this.scopedGateway = DefaultGateway.fromRoutePrintIpv6(table);
+    }
+
+    private void whenTheMacosIpv6AnswerIsRead(String answer) {
+        this.scopedGateway = DefaultGateway.fromRouteGet(answer, "gateway:");
+    }
+
+    private void thenTheIpv6GatewayIs(String scoped) {
+        assertThat(this.scopedGateway).hasValue(scoped);
+    }
+
+    private void thenThereIsNoIpv6Gateway() {
+        assertThat(this.scopedGateway).isEmpty();
     }
 
     private void whenTheLinuxTableIsRead(String table) {

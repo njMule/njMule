@@ -16,6 +16,7 @@
  */
 package org.njmule.core.upnp;
 
+import com.google.common.net.InetAddresses;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -45,18 +46,29 @@ final class FakeNatPmp implements AutoCloseable {
     private final DatagramSocket socket;
     private final Speaks speaks;
     private final List<String> requests = new CopyOnWriteArrayList<>();
+    private final List<String> clients = new CopyOnWriteArrayList<>();
     private volatile long grants = 7200;
     private volatile int outsideOffset;
     private volatile int result;
 
     FakeNatPmp(Speaks speaks) throws IOException {
+        this(speaks, InetAddress.getLoopbackAddress());
+    }
+
+    /** Listening at {@code address}, such as the IPv6 loopback. */
+    FakeNatPmp(Speaks speaks, InetAddress address) throws IOException {
         this.speaks = speaks;
-        this.socket = new DatagramSocket(0, InetAddress.getLoopbackAddress());
+        this.socket = new DatagramSocket(0, address);
         Thread.ofVirtual().name("fake-nat-pmp").start(this::serve);
     }
 
     InetSocketAddress address() {
-        return new InetSocketAddress(InetAddress.getLoopbackAddress(), this.socket.getLocalPort());
+        return new InetSocketAddress(this.socket.getLocalAddress(), this.socket.getLocalPort());
+    }
+
+    /** The client address each PCP mapping request gave. */
+    List<String> clients() {
+        return List.copyOf(this.clients);
     }
 
     /** The longest lease it grants. */
@@ -163,6 +175,11 @@ final class FakeNatPmp implements AutoCloseable {
         ByteBuffer in = ByteBuffer.wrap(request);
         long lease = Integer.toUnsignedLong(in.getInt(4));
         byte[] nonce = Arrays.copyOfRange(request, 24, 36);
+        try {
+            this.clients.add(InetAddresses.toAddrString(InetAddress.getByAddress(Arrays.copyOfRange(request, 8, 24))));
+        } catch (IOException e) {
+            this.clients.add("?");
+        }
         int protocol = request[36] & 0xFF;
         int port = in.getShort(40) & 0xFFFF;
         this.requests.add((lease == 0 ? "delete " : "map ") + (protocol == 6 ? "TCP " : "UDP ") + port

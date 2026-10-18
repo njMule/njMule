@@ -36,6 +36,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * A UPnP router on loopback, for tests only (never the real one): it answers discovery with the address of its HTTP
@@ -73,6 +74,8 @@ public final class FakeGateway implements AutoCloseable {
     private volatile Duration deleteDelay = Duration.ZERO;
     private volatile String locationHost = "127.0.0.1";
     private volatile List<String> otherLocations = List.of();
+    private volatile boolean firewallEnabled = true;
+    private final AtomicInteger pinholeIds = new AtomicInteger(100);
 
     private FakeGateway(String description) throws IOException {
         this.description = description;
@@ -136,6 +139,11 @@ public final class FakeGateway implements AutoCloseable {
     /** What GetStatusInfo says for the service at {@code control}; "Connected" otherwise. */
     public void status(String control, String status) {
         this.statuses.put(control, status);
+    }
+
+    /** Says its IPv6 firewall is off, so that nothing needs opening. */
+    public void ipv6FirewallOff() {
+        this.firewallEnabled = false;
     }
 
     /** Answers each DeletePortMapping only after {@code delay}. */
@@ -265,7 +273,28 @@ public final class FakeGateway implements AutoCloseable {
                                 + "</NewConnectionStatus></u:GetStatusInfoResponse></s:Body></s:Envelope>");
                 return;
             }
+            if (name.equals("GetFirewallStatus")) {
+                reply(
+                        out,
+                        200,
+                        "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body>"
+                                + "<u:GetFirewallStatusResponse xmlns:u=\"" + action.substring(0, action.indexOf('#'))
+                                + "\"><FirewallEnabled>" + (this.firewallEnabled ? 1 : 0)
+                                + "</FirewallEnabled><InboundPinholeAllowed>1</InboundPinholeAllowed>"
+                                + "</u:GetFirewallStatusResponse></s:Body></s:Envelope>");
+                return;
+            }
             this.actions.add(new Action(name, control + " " + text, System.nanoTime(), Instant.now()));
+            if (name.equals("AddPinhole")) {
+                reply(
+                        out,
+                        200,
+                        "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body>"
+                                + "<u:AddPinholeResponse xmlns:u=\"" + action.substring(0, action.indexOf('#'))
+                                + "\"><UniqueID>" + this.pinholeIds.getAndIncrement()
+                                + "</UniqueID></u:AddPinholeResponse></s:Body></s:Envelope>");
+                return;
+            }
             if (name.equals("AddPortMapping")) {
                 Thread.sleep(this.mappingDelay);
             } else if (name.equals("DeletePortMapping")) {

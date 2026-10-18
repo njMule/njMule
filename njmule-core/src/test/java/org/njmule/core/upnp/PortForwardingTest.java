@@ -18,7 +18,9 @@ package org.njmule.core.upnp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.common.net.InetAddresses;
 import java.io.IOException;
+import java.net.Inet6Address;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
@@ -46,6 +48,8 @@ class PortForwardingTest {
     private static final String PPP = "urn:schemas-upnp-org:service:WANPPPConnection:1";
     private static final String ADD = "AddPortMapping";
     private static final String DELETE = "DeletePortMapping";
+    private static final String FIREWALL = "urn:schemas-upnp-org:service:WANIPv6FirewallControl:1";
+    private static final Inet6Address OURS = (Inet6Address) InetAddresses.forString("2001:db8::99");
 
     private final List<String> log = new CopyOnWriteArrayList<>();
     private final Renewals renewals = new Renewals();
@@ -53,6 +57,7 @@ class PortForwardingTest {
     private PortForwarding forwarding;
     private String answer;
     private Optional<URI> location;
+    private volatile Optional<Inet6Address> ourIpv6 = Optional.empty();
 
     @AfterEach
     void close() throws IOException {
@@ -79,6 +84,84 @@ class PortForwardingTest {
                 "<NewInternalClient>127.0.0.1</NewInternalClient>",
                 "<NewPortMappingDescription>njMule</NewPortMappingDescription>",
                 "<NewLeaseDuration>" + PortForwarding.LEASE.toSeconds() + "</NewLeaseDuration>");
+    }
+
+    @Test
+    void shouldOpenTheIpv6FirewallOfTheRouterToOurPorts() throws Exception {
+        givenAGatewayWithAnIpv6FirewallOf(IP, "/ctl", "/fw");
+        givenOurIpv6Address(OURS);
+
+        whenAForwardingStarts(OptionalInt.of(4672));
+
+        thenThePinholesOpenedAre(2);
+        thenThePinholeOpenedIs(
+                0,
+                "/fw ",
+                "<InternalClient>2001:db8::99</InternalClient>",
+                "<InternalPort>4662</InternalPort>",
+                "<Protocol>6</Protocol>",
+                "<LeaseTime>3600</LeaseTime>");
+        thenThePinholeOpenedIs(1, "<InternalPort>4672</InternalPort>", "<Protocol>17</Protocol>");
+    }
+
+    @Test
+    void shouldKeepThePinholesOpenWithTheMappings() throws Exception {
+        givenAGatewayWithAnIpv6FirewallOf(IP, "/ctl", "/fw");
+        givenOurIpv6Address(OURS);
+        givenAForwardingStarted(OptionalInt.of(4672));
+        givenAWaitForTheRenewalOf(PortForwarding.LEASE.dividedBy(2));
+
+        whenTheWaitForTheRenewalEnds();
+
+        thenTheGatewayIsAsked("UpdatePinhole", "<UniqueID>100</UniqueID>", "<UniqueID>101</UniqueID>");
+        thenThePinholesOpenedAre(2);
+    }
+
+    @Test
+    void shouldMoveThePinholesToOurNewIpv6Address() throws Exception {
+        givenAGatewayWithAnIpv6FirewallOf(IP, "/ctl", "/fw");
+        givenOurIpv6Address(OURS);
+        givenAForwardingStarted(OptionalInt.empty());
+        givenAWaitForTheRenewalOf(PortForwarding.LEASE.dividedBy(2));
+        givenOurIpv6Address((Inet6Address) InetAddresses.forString("2001:db8::77"));
+
+        whenTheWaitForTheRenewalEnds();
+
+        thenTheGatewayIsAsked("DeletePinhole", "<UniqueID>100</UniqueID>");
+        thenThePinholeOpenedIs(1, "<InternalClient>2001:db8::77</InternalClient>");
+    }
+
+    @Test
+    void shouldCloseThePinholesAtTheEnd() throws Exception {
+        givenAGatewayWithAnIpv6FirewallOf(IP, "/ctl", "/fw");
+        givenOurIpv6Address(OURS);
+        givenAForwardingStarted(OptionalInt.of(4672));
+
+        whenTheForwardingIsClosed();
+
+        thenTheGatewayIsAsked("DeletePinhole", "<UniqueID>100</UniqueID>", "<UniqueID>101</UniqueID>");
+    }
+
+    @Test
+    void shouldOpenNoPinholeWhenTheIpv6FirewallIsOff() throws Exception {
+        givenAGatewayWithAnIpv6FirewallOf(IP, "/ctl", "/fw");
+        givenTheIpv6FirewallIsOff();
+        givenOurIpv6Address(OURS);
+
+        whenAForwardingStarts(OptionalInt.of(4672));
+
+        thenTheMappingsAre("TCP 4662", "UDP 4672");
+        thenThePinholesOpenedAre(0);
+    }
+
+    @Test
+    void shouldOpenNoPinholeWithoutAnIpv6Address() throws Exception {
+        givenAGatewayWithAnIpv6FirewallOf(IP, "/ctl", "/fw");
+
+        whenAForwardingStarts(OptionalInt.of(4672));
+
+        thenTheMappingsAre("TCP 4662", "UDP 4672");
+        thenThePinholesOpenedAre(0);
     }
 
     @Test
@@ -443,9 +526,44 @@ class PortForwardingTest {
         assertThat(this.location).isEmpty();
     }
 
+    private void givenAGatewayWithAnIpv6FirewallOf(String type, String control, String firewall) throws IOException {
+        this.gateway =
+                FakeGateway.describing(FakeGateway.description(new String[] {type, control, FIREWALL, firewall}));
+    }
+
+    private void givenOurIpv6Address(Inet6Address address) {
+        this.ourIpv6 = Optional.of(address);
+    }
+
+    private void givenTheIpv6FirewallIsOff() {
+        this.gateway.ipv6FirewallOff();
+    }
+
+    private void thenThePinholesOpenedAre(int count) {
+        assertThat(this.gateway.actions("AddPinhole")).hasSize(count);
+    }
+
+    private void thenThePinholeOpenedIs(int index, String... parts) {
+        assertThat(this.gateway.actions("AddPinhole").get(index).body()).contains(parts);
+    }
+
+    private void thenTheGatewayIsAsked(String action, String... each) throws InterruptedException {
+        assertThat(await(() -> this.gateway.actions(action).size() >= each.length))
+                .as(action)
+                .isTrue();
+        for (int i = 0; i < each.length; i++) {
+            assertThat(this.gateway.actions(action).get(i).body()).contains(each[i]);
+        }
+    }
+
     private PortForwarding start(OptionalInt udp) {
         return PortForwarding.start(
-                this.gateway.ssdp(), 4662, udp, (outcome, router, line) -> this.log.add(line), this.renewals);
+                Routers.upnpOnly(this.gateway.ssdp()),
+                4662,
+                udp,
+                (outcome, router, line) -> this.log.add(line),
+                this.renewals,
+                () -> this.ourIpv6);
     }
 
     private static boolean await(BooleanSupplier condition) throws InterruptedException {

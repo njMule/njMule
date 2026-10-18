@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.PortUnreachableException;
@@ -31,13 +32,17 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
+import org.njmule.core.util.Bytes;
 
 /**
  * A router that answers NAT-PMP (RFC 6886) or PCP (RFC 6887), its successor, on port 5351 of the default gateway. Asked
  * in NAT-PMP, a router that speaks PCP only answers in PCP, and is spoken to in it from then on. A mapping counts only
- * with our own port outside: the eD2K and Kad networks are told that one.
+ * with our own port outside: the eD2K and Kad networks are told that one. At the IPv6 gateway, a PCP MAP from our IPv6
+ * address, the same outside, opens the router's IPv6 firewall to it.
  */
 public final class NatPmp implements Gateway {
 
@@ -87,6 +92,11 @@ public final class NatPmp implements Gateway {
     private final SecureRandom random;
     // PCP: the nonce of each mapping ("TCP 4662"), which renewing or removing it repeats.
     private final Map<String, byte[]> nonces = new ConcurrentHashMap<>();
+    // PCP at the IPv6 gateway: the pinholes opened, by id.
+    private final Map<Integer, Pinhole> pinholes = new ConcurrentHashMap<>();
+    private final AtomicInteger pinholeIds = new AtomicInteger(1);
+
+    private record Pinhole(String protocol, Inet6Address address, int port, Bytes nonce) {}
 
     private NatPmp(InetSocketAddress server, boolean pcp, SecureRandom random) {
         this.server = server;
@@ -100,6 +110,7 @@ public final class NatPmp implements Gateway {
         byte[] request = {NAT_PMP_VERSION, EXTERNAL_ADDRESS};
         Optional<byte[]> answer = exchange(
                 server,
+                Optional.empty(),
                 local -> request,
                 a -> a.length >= 2 && (a[0] == PCP_VERSION || (a[0] == NAT_PMP_VERSION && a[1] == (byte) RESPONSE)),
                 triesWithin(wait));
@@ -142,6 +153,74 @@ public final class NatPmp implements Gateway {
             this.nonces.remove(protocol + " " + port);
         } else {
             natPmpMap(protocol, port, 0, 0);
+        }
+    }
+
+    /** As {@link Gateway#openPinhole}: a router at an IPv6 gateway that speaks PCP opens its IPv6 firewall. */
+    @Override
+    public OptionalInt openPinhole(String protocol, Inet6Address address, int port, long lease) throws IOException {
+        if (!this.pcp || !(this.server.getAddress() instanceof Inet6Address)) {
+            return OptionalInt.empty();
+        }
+        byte[] nonce = new byte[NONCE];
+        this.random.nextBytes(nonce);
+        Pinhole pinhole = new Pinhole(protocol, address, port, Bytes.of(nonce));
+        pcpPinhole(pinhole, lease);
+        int id = this.pinholeIds.getAndIncrement();
+        this.pinholes.put(id, pinhole);
+        return OptionalInt.of(id);
+    }
+
+    @Override
+    public void renewPinhole(int id, long lease) throws IOException {
+        Pinhole pinhole = this.pinholes.get(id);
+        if (pinhole == null) {
+            throw new IOException("no pinhole " + id);
+        }
+        pcpPinhole(pinhole, lease);
+    }
+
+    @Override
+    public void closePinhole(int id) throws IOException {
+        Pinhole pinhole = this.pinholes.remove(id);
+        if (pinhole != null) {
+            pcpPinhole(pinhole, 0);
+        }
+    }
+
+    // The same address and port outside as inside: only the firewall opens.
+    private void pcpPinhole(Pinhole pinhole, long lease) throws IOException {
+        int transport = "TCP".equals(pinhole.protocol()) ? PCP_TCP : PCP_UDP;
+        byte[] ours = pinhole.address().getAddress();
+        byte[] nonce = pinhole.nonce().toByteArray();
+        ByteBuffer answer = ByteBuffer.wrap(exchange(
+                        this.server,
+                        Optional.of(pinhole.address()),
+                        local -> ByteBuffer.allocate(PCP_MAP_LENGTH)
+                                .put(PCP_VERSION)
+                                .put((byte) PCP_MAP)
+                                .putShort((short) 0)
+                                .putInt((int) lease)
+                                .put(ours)
+                                .put(nonce)
+                                .put((byte) transport)
+                                .put(new byte[3])
+                                .putShort((short) pinhole.port())
+                                .putShort((short) pinhole.port())
+                                .put(ours)
+                                .array(),
+                        a -> a.length >= PCP_MAP_LENGTH
+                                && a[0] == PCP_VERSION
+                                && (a[1] & 0xFF) == (RESPONSE | PCP_MAP)
+                                && Arrays.equals(a, 24, 24 + NONCE, nonce, 0, NONCE),
+                        TRIES)
+                .orElseThrow(() -> new SocketTimeoutException("PCP: the router at " + host() + " did not answer")));
+        int result = answer.get(3) & 0xFF;
+        if (result != 0) {
+            String reason = result < PCP_RESULTS.length ? PCP_RESULTS[result] : "result " + result;
+            throw result == 2 || (result >= 8 && result <= 11)
+                    ? new Refused(reason)
+                    : new IOException("PCP: " + reason);
         }
     }
 
@@ -237,7 +316,7 @@ public final class NatPmp implements Gateway {
     }
 
     private byte[] answer(Request request, Predicate<byte[]> fits) throws IOException {
-        return exchange(this.server, request, fits, TRIES)
+        return exchange(this.server, Optional.empty(), request, fits, TRIES)
                 .orElseThrow(
                         () -> new SocketTimeoutException(protocol() + ": the router at " + host() + " did not answer"));
     }
@@ -248,12 +327,16 @@ public final class NatPmp implements Gateway {
         byte[] bytes(InetAddress local);
     }
 
-    // Sends the request again after 250 ms, 500 ms, ...; only an answer from the router that fits counts.
+    // Sends the request again after 250 ms, 500 ms, ...; only an answer from the router that fits counts. A request
+    // about an address of ours goes from it, which PCP checks.
     private static Optional<byte[]> exchange(
-            InetSocketAddress server, Request request, Predicate<byte[]> fits, int tries) throws IOException {
-        try (DatagramSocket socket = new DatagramSocket()) {
+            InetSocketAddress server, Optional<InetAddress> from, Request request, Predicate<byte[]> fits, int tries)
+            throws IOException {
+        try (DatagramSocket socket =
+                from.isPresent() ? new DatagramSocket(new InetSocketAddress(from.get(), 0)) : new DatagramSocket()) {
             socket.connect(server);
-            if (!(socket.getLocalAddress() instanceof Inet4Address local)) {
+            InetAddress local = socket.getLocalAddress();
+            if (from.isEmpty() && !(local instanceof Inet4Address) && !(server.getAddress() instanceof Inet6Address)) {
                 throw new IOException("no IPv4 address towards " + server);
             }
             byte[] bytes = request.bytes(local);
