@@ -206,6 +206,11 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   needed to disambiguate, and call the object's own methods without it (`publish(event)`, not
   `this.publish(event)`). Checkstyle enforces both (`RequireThis` and a regexp check in
   `config/checkstyle/checkstyle.xml`).
+- **Never give two members of a type names that differ only in case**, such as a constant
+  `DIRECT` and a field `direct`, or `SETTINGS` and `settings`: SonarQube's rule `java:S1845` marks
+  it a blocker and fails the quality gate, and neither the build nor Checkstyle catches it. Before
+  adding a constant, field or method, check the type's other names, inherited ones included;
+  rename the newcomer (`SETTINGS_PAGE`, `straight`).
 - Optional pre-commit hook: `git config core.hooksPath .githooks` (runs `spotlessCheck`).
 - IDEs: install the palantir-java-format plugin (IntelliJ) and honour `.editorconfig`.
 - Markdown is wrapped at ~100 columns.
