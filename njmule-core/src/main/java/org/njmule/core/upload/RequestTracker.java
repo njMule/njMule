@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.util.Ipv6;
 
 /**
  * How each client program, by address and listening port, used our queue lately: how soon it asked again for each file
@@ -89,13 +90,14 @@ final class RequestTracker {
 
     /**
      * A connection from {@code ip} was dropped for asking for files we do not have; returns how many were within two
-     * hours, whatever the user hash.
+     * hours, whatever the user hash and wherever in its /64 for IPv6.
      */
     int unknownFiles(InetAddress ip, long now) {
-        Drops drops = this.unknownFiles.get(ip);
+        InetAddress from = Ipv6.network(ip);
+        Drops drops = this.unknownFiles.get(from);
         if (drops == null || now - drops.last >= UNKNOWN_FILES_KEPT) {
             drops = new Drops();
-            this.unknownFiles.put(ip, drops);
+            this.unknownFiles.put(from, drops);
         }
         drops.last = now;
         return ++drops.count;

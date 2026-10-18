@@ -18,7 +18,9 @@ package org.njmule.core.peer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.common.net.InetAddresses;
 import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.security.SecureRandom;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -44,6 +46,8 @@ class IdentityHandshakeTest {
     private static final Hash16 HASH_B = Hash16.parseHex("bb".repeat(16));
     private static final Inet4Address IP_A = Inet4Address.ofLiteral("10.0.0.1");
     private static final Inet4Address IP_B = Inet4Address.ofLiteral("10.0.0.2");
+    private static final InetAddress IPV6_A = InetAddresses.forString("2001:db8::a");
+    private static final InetAddress IPV6_B = InetAddresses.forString("2001:db8::b");
 
     private final IdentityHandshake.Identity a =
             IdentityHandshake.Identity.of(Rsa.generate(Rsa.NETWORK_KEY_BITS, RANDOM));
@@ -60,6 +64,9 @@ class IdentityHandshakeTest {
     // Both with HighIDs unless a test says otherwise.
     private Optional<Inet4Address> publicA = Optional.of(IP_A);
     private Optional<Inet4Address> publicB = Optional.of(IP_B);
+    // The addresses of the connection.
+    private InetAddress addressA = IP_A;
+    private InetAddress addressB = IP_B;
     private IdentityHandshake handshake;
 
     @Test
@@ -116,6 +123,18 @@ class IdentityHandshakeTest {
     void shouldBindTheSignatureToOurAddressWhenWeKnowItForPeersTakingBothVersions() throws DecodeException {
         givenPeersTakingTheVersions(3, 3);
         givenThePublicAddresses(Optional.of(IP_A), Optional.of(IP_B));
+
+        whenTheyShakeHands();
+
+        thenBothIdentifiedEachOther();
+        thenTheSignatureFromAIsBoundTo(SecureIdent.IpKind.LOCAL_CLIENT);
+        thenTheSignatureFromBIsBoundTo(SecureIdent.IpKind.LOCAL_CLIENT);
+    }
+
+    @Test
+    void shouldBindTheSignatureToTheIpv6AddressOfAnIpv6Connection() throws DecodeException {
+        givenPeersTakingTheVersions(3, 3);
+        givenAnIpv6Connection();
 
         whenTheyShakeHands();
 
@@ -185,6 +204,11 @@ class IdentityHandshakeTest {
     private void givenThePublicAddresses(Optional<Inet4Address> ofA, Optional<Inet4Address> ofB) {
         this.publicA = ofA;
         this.publicB = ofB;
+    }
+
+    private void givenAnIpv6Connection() {
+        this.addressA = IPV6_A;
+        this.addressB = IPV6_B;
     }
 
     private void givenANotKnowingItsPublicAddress() {
@@ -298,7 +322,7 @@ class IdentityHandshakeTest {
         throw new AssertionError("no signature");
     }
 
-    // A and B on local addresses 10.0.0.1 and 10.0.0.2, public as given, delivering each other's packets.
+    // A and B on the addresses of the connection, public as given, delivering each other's packets.
     private void run(
             int versionsA,
             int versionsB,
@@ -314,10 +338,10 @@ class IdentityHandshakeTest {
         IdentityHandshake atA = new IdentityHandshake(
                 this.a,
                 hello(HASH_B, versionsB),
-                IP_B,
+                this.addressB,
                 aPinsB,
                 publicA,
-                Optional.of(IP_A),
+                Optional.of(this.addressA),
                 p -> {
                     fromA.add(p);
                     toB.add(p);
@@ -326,10 +350,10 @@ class IdentityHandshakeTest {
         IdentityHandshake atB = new IdentityHandshake(
                 this.b,
                 hello(HASH_A, versionsA),
-                IP_A,
+                this.addressA,
                 bPinsA,
                 publicB,
-                Optional.of(IP_B),
+                Optional.of(this.addressB),
                 p -> {
                     fromB.add(p);
                     toA.add(p);

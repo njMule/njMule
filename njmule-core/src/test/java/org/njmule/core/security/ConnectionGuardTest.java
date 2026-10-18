@@ -19,6 +19,8 @@ package org.njmule.core.security;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import com.google.common.net.InetAddresses;
+import java.net.InetAddress;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -40,11 +42,14 @@ class ConnectionGuardTest {
     private static final int PEER = Ipv4.parse("1.2.3.4");
     private static final int OTHER = Ipv4.parse("5.6.7.8");
     private static final int SERVER = Ipv4.parse("7.7.7.7");
+    private static final InetAddress HOME = InetAddresses.forString("2001:db8:1:2::1");
+    private static final InetAddress SAME_HOME = InetAddresses.forString("2001:db8:1:2:ffff:eeee:dddd:7");
+    private static final InetAddress NEIGHBOUR = InetAddresses.forString("2001:db8:1:3::1");
 
     private final FakeTicker ticker = new FakeTicker();
     private final List<ConnectionGuard.Permit> ours = new ArrayList<>();
     private final List<ConnectionGuard.Permit> permits = new ArrayList<>();
-    private final Set<Integer> banned = new HashSet<>();
+    private final Set<InetAddress> banned = new HashSet<>();
     private final AtomicReference<Limits> settings = new AtomicReference<>();
     private ConnectionGuard guard;
     private Admission admission;
@@ -122,6 +127,45 @@ class ConnectionGuardTest {
         whenAConnectionComesFrom(PEER);
 
         thenItIsAdmitted();
+    }
+
+    @Test
+    void shouldCountTheAddressesOfAnIpv6Slash64AsOne() {
+        givenAGuard(new Limits(10, 1, 100, Duration.ofSeconds(5)));
+        givenAConnectionFrom(HOME);
+
+        whenAConnectionComesFrom(SAME_HOME);
+
+        thenItIsRefused(Refusal.TOO_MANY_FROM_ADDRESS);
+    }
+
+    @Test
+    void shouldCountTheNextIpv6Slash64Apart() {
+        givenAGuard(new Limits(10, 1, 100, Duration.ofSeconds(5)));
+        givenAConnectionFrom(HOME);
+
+        whenAConnectionComesFrom(NEIGHBOUR);
+
+        thenItIsAdmitted();
+    }
+
+    @Test
+    void shouldGiveTheSlotOfAnIpv6Slash64BackWhenItsConnectionCloses() {
+        givenAGuard(new Limits(10, 1, 100, Duration.ofSeconds(5)));
+        givenAClosedConnectionFrom(HOME);
+
+        whenAConnectionComesFrom(SAME_HOME);
+
+        thenItIsAdmitted();
+    }
+
+    @Test
+    void shouldRefuseABannedIpv6Address() {
+        givenAGuardBanning(HOME);
+
+        whenAConnectionComesFrom(HOME);
+
+        thenItIsRefused(Refusal.BANNED);
     }
 
     @Test
@@ -275,9 +319,13 @@ class ConnectionGuardTest {
     }
 
     private void givenAGuardBanning(int ip) {
-        this.banned.add(ip);
-        this.guard = new ConnectionGuard(
-                IpFilter::empty, address -> false, this.banned::contains, Limits.DEFAULT, this.ticker);
+        givenAGuardBanning(InetAddresses.fromInteger(ip));
+    }
+
+    private void givenAGuardBanning(InetAddress address) {
+        this.banned.add(address);
+        this.guard =
+                new ConnectionGuard(IpFilter::empty, ip -> false, this.banned::contains, Limits.DEFAULT, this.ticker);
     }
 
     private void givenAGuardReadingTheLimitsFromTheSettings(Limits limits) {
@@ -302,8 +350,16 @@ class ConnectionGuardTest {
         this.permits.add(permit(this.guard.admit(ip)));
     }
 
+    private void givenAConnectionFrom(InetAddress address) {
+        this.permits.add(permit(this.guard.admit(address)));
+    }
+
     private void givenAClosedConnectionFrom(int ip) {
         permit(this.guard.admit(ip)).close();
+    }
+
+    private void givenAClosedConnectionFrom(InetAddress address) {
+        permit(this.guard.admit(address)).close();
     }
 
     private void givenTheFirstConnectionIsClosedTwice() {
@@ -354,6 +410,10 @@ class ConnectionGuardTest {
 
     private void whenAConnectionComesFrom(int ip) {
         this.admission = this.guard.admit(ip);
+    }
+
+    private void whenAConnectionComesFrom(InetAddress address) {
+        this.admission = this.guard.admit(address);
     }
 
     private void whenTheLastConnectionIsClosed() {

@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PushbackInputStream;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -203,6 +204,10 @@ public final class TcpConnector {
     private static Socket connect(InetSocketAddress address, Duration timeout) throws IOException {
         int millis = Math.toIntExact(timeout.toMillis());
         InetAddress local = localAddress();
+        // The interface njMule is bound to, such as a VPN's, has an IPv4 address: IPv6 would leave around it.
+        if (local != null && address.getAddress() instanceof Inet6Address) {
+            throw new IOException("no IPv6 connections while bound to " + local.getHostAddress());
+        }
         ProxySettings settings = proxy.get();
         if (settings.type() == ProxySettings.Type.SOCKS) {
             try {

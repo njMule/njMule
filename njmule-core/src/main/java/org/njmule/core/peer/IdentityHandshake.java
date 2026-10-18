@@ -17,6 +17,8 @@
 package org.njmule.core.peer;
 
 import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.List;
@@ -100,9 +102,9 @@ public final class IdentityHandshake {
 
     private final Identity own;
     private final Hello peer;
-    private final Inet4Address peerAddress;
+    private final InetAddress peerAddress;
     private final Optional<Inet4Address> ourPublicAddress;
-    private final Optional<Inet4Address> ourLocalAddress;
+    private final Optional<InetAddress> ourLocalAddress;
     private final Consumer<Packet> send;
     private final Listener listener;
     private byte[] peerKey;
@@ -114,16 +116,16 @@ public final class IdentityHandshake {
 
     /**
      * @param pinnedKey the key this user hash proved to own before, if any
-     * @param ourPublicAddress our public address, once a server or Kad told it
-     * @param ourLocalAddress our address on the connection
+     * @param ourPublicAddress our public IPv4 address, once a server or Kad told it
+     * @param ourLocalAddress our address on the connection, IPv4 or IPv6 as the peer's
      */
     public IdentityHandshake(
             Identity own,
             Hello peer,
-            Inet4Address peerAddress,
+            InetAddress peerAddress,
             Optional<byte[]> pinnedKey,
             Optional<Inet4Address> ourPublicAddress,
-            Optional<Inet4Address> ourLocalAddress,
+            Optional<InetAddress> ourLocalAddress,
             Consumer<Packet> send,
             Listener listener) {
         this.own = Objects.requireNonNull(own, "own");
@@ -265,8 +267,7 @@ public final class IdentityHandshake {
             case LOCAL_CLIENT -> List.of(new SecureIdent.IpBinding(this.peerAddress, kind));
             // Ours as the peer sees it: the public one, or that of the connection when nothing translates it.
             case REMOTE_CLIENT ->
-                Stream.of(this.ourPublicAddress, this.ourLocalAddress)
-                        .flatMap(Optional::stream)
+                Stream.concat(this.ourPublicAddress.stream(), this.ourLocalAddress.stream())
                         .distinct()
                         .map(ip -> new SecureIdent.IpBinding(ip, kind))
                         .toList();
@@ -290,13 +291,17 @@ public final class IdentityHandshake {
         }
         this.signatureWanted = false;
         // Version 2 binds the signature to our address when we know it, else to the peer's as we see it, which a peer
-        // without a HighID cannot check: version 1 then, when the peer takes it.
+        // without a HighID cannot check: version 1 then, when the peer takes it. Over IPv6 our address is the one of
+        // the
+        // connection, which nothing translates.
         int versions = versions(this.peer);
-        boolean bound = (versions & V2) != 0 && (this.ourPublicAddress.isPresent() || (versions & V1) == 0);
+        Optional<InetAddress> ours = this.peerAddress instanceof Inet6Address
+                ? this.ourLocalAddress.filter(Inet6Address.class::isInstance)
+                : this.ourPublicAddress.map(InetAddress.class::cast);
+        boolean bound = (versions & V2) != 0 && (ours.isPresent() || (versions & V1) == 0);
         Optional<SecureIdent.IpBinding> binding = !bound
                 ? Optional.empty()
-                : Optional.of(this.ourPublicAddress
-                        .map(ip -> new SecureIdent.IpBinding(ip, SecureIdent.IpKind.LOCAL_CLIENT))
+                : Optional.of(ours.map(ip -> new SecureIdent.IpBinding(ip, SecureIdent.IpKind.LOCAL_CLIENT))
                         .orElseGet(
                                 () -> new SecureIdent.IpBinding(this.peerAddress, SecureIdent.IpKind.REMOTE_CLIENT)));
         byte[] signature = SecureIdent.sign(this.own.key(), this.peerKey, this.challengeFrom, binding);

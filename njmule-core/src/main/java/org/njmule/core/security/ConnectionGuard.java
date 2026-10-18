@@ -17,6 +17,9 @@
 package org.njmule.core.security;
 
 import com.google.common.base.Ticker;
+import com.google.common.net.InetAddresses;
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.HashMap;
@@ -24,11 +27,16 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntPredicate;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
+import org.njmule.core.util.Ipv4;
+import org.njmule.core.util.Ipv6;
 
 /**
  * Admission control for incoming TCP connections: the IP filter first, then caps on the total and per-address
- * connections and on the accept rate, in all and per address. Our own connections count in the total too. Thread-safe.
+ * connections and on the accept rate, in all and per address. Our own connections count in the total too. An IPv6
+ * address counts with the rest of its /64, which one home holds whole; the IP filter knows IPv4 ranges only.
+ * Thread-safe.
  */
 public final class ConnectionGuard {
 
@@ -70,19 +78,20 @@ public final class ConnectionGuard {
     }
 
     // Connections of ours in the rate window: no address of theirs is counted.
-    private static final int OURS = 0;
+    private static final Integer OURS = 0;
 
     private final Supplier<IpFilter> filter;
     private final IntPredicate exempt;
-    private final IntPredicate banned;
+    private final Predicate<InetAddress> banned;
     private final Supplier<Limits> limits;
     private final Ticker ticker;
-    private final Map<Integer, Integer> perAddress = new HashMap<>();
+    // By address: an Integer for IPv4, the /64 network for IPv6.
+    private final Map<Object, Integer> perAddress = new HashMap<>();
     private final ArrayDeque<Accept> recentAccepts = new ArrayDeque<>();
-    private final Map<Integer, Integer> recentFrom = new HashMap<>();
+    private final Map<Object, Integer> recentFrom = new HashMap<>();
     private int total;
 
-    private record Accept(long at, int ip) {}
+    private record Accept(long at, Object address) {}
 
     /** {@code filter} is read on every admission, so a reloaded filter applies at once. */
     public ConnectionGuard(Supplier<IpFilter> filter, Limits limits, Ticker ticker) {
@@ -103,7 +112,11 @@ public final class ConnectionGuard {
      * @param banned addresses refused for a while because they misbehaved; read on every admission
      */
     public ConnectionGuard(
-            Supplier<IpFilter> filter, IntPredicate exempt, IntPredicate banned, Limits limits, Ticker ticker) {
+            Supplier<IpFilter> filter,
+            IntPredicate exempt,
+            Predicate<InetAddress> banned,
+            Limits limits,
+            Ticker ticker) {
         this(filter, exempt, banned, constant(limits), ticker);
     }
 
@@ -111,7 +124,7 @@ public final class ConnectionGuard {
     public ConnectionGuard(
             Supplier<IpFilter> filter,
             IntPredicate exempt,
-            IntPredicate banned,
+            Predicate<InetAddress> banned,
             Supplier<Limits> limits,
             Ticker ticker) {
         this.filter = Objects.requireNonNull(filter, "filter");
@@ -126,39 +139,54 @@ public final class ConnectionGuard {
         return () -> limits;
     }
 
+    /** Decides on a connection from {@code address}, IPv4 or IPv6. */
+    public synchronized Admission admit(InetAddress address) {
+        if (address instanceof Inet4Address v4) {
+            return admit(Ipv4.fromBytes(v4.getAddress()));
+        }
+        // Never one of the IPv4 servers or Kad nodes that may be exempt.
+        if (this.banned.test(address)) {
+            return new Admission.Refused(Refusal.BANNED);
+        }
+        return admitFrom(Ipv6.network(address), false);
+    }
+
     /** Decides on a connection from {@code ip} ({@link org.njmule.core.util.Ipv4} form). */
     public synchronized Admission admit(int ip) {
-        Limits limits = this.limits.get();
         if (this.filter.get().blocks(ip)) {
             return new Admission.Refused(Refusal.FILTERED);
         }
-        if (this.banned.test(ip)) {
+        if (this.banned.test(InetAddresses.fromInteger(ip))) {
             return new Admission.Refused(Refusal.BANNED);
         }
+        return admitFrom(ip, this.exempt.test(ip));
+    }
+
+    private Admission admitFrom(Object address, boolean exempted) {
+        Limits limits = this.limits.get();
         long now = this.ticker.read();
         forgetOldAccepts(limits, now);
-        boolean exempted = this.exempt.test(ip);
         if (!exempted && this.recentAccepts.size() >= limits.maxAccepts()) {
             return new Admission.Refused(Refusal.ACCEPT_RATE);
         }
         if (!exempted && this.total >= limits.maxTotal()) {
             return new Admission.Refused(Refusal.TOO_MANY_CONNECTIONS);
         }
-        int fromAddress = this.perAddress.getOrDefault(ip, 0);
+        int fromAddress = this.perAddress.getOrDefault(address, 0);
         if (fromAddress >= limits.maxPerAddress()) {
             return new Admission.Refused(Refusal.TOO_MANY_FROM_ADDRESS);
         }
-        if (!exempted && this.recentFrom.getOrDefault(ip, 0) >= acceptsPerAddress(limits)) {
+        if (!exempted && this.recentFrom.getOrDefault(address, 0) >= acceptsPerAddress(limits)) {
             return new Admission.Refused(Refusal.ACCEPT_RATE_FROM_ADDRESS);
         }
         // Exempt connections leave the accept rate to the others.
         if (!exempted) {
-            this.recentAccepts.addLast(new Accept(now, ip));
-            this.recentFrom.merge(ip, 1, Integer::sum);
+            this.recentAccepts.addLast(new Accept(now, address));
+            this.recentFrom.merge(address, 1, Integer::sum);
         }
-        this.perAddress.put(ip, fromAddress + 1);
+        this.perAddress.put(address, fromAddress + 1);
         this.total++;
-        return new Admission.Admitted(new Permit(ip, true));
+        return new Admission.Admitted(new Permit(address, true));
     }
 
     // An address that opens and closes connections in a row could take the whole accept rate and lock everyone else
@@ -180,7 +208,7 @@ public final class ConnectionGuard {
     public synchronized Permit outgoing() {
         this.recentAccepts.addLast(new Accept(this.ticker.read(), OURS));
         this.total++;
-        return new Permit(0, false);
+        return new Permit(OURS, false);
     }
 
     private void forgetOldAccepts(Limits limits, long now) {
@@ -188,7 +216,7 @@ public final class ConnectionGuard {
         while (!this.recentAccepts.isEmpty()
                 && now - this.recentAccepts.peekFirst().at() >= window) {
             Accept old = this.recentAccepts.pollFirst();
-            this.recentFrom.computeIfPresent(old.ip(), (key, count) -> count > 1 ? count - 1 : null);
+            this.recentFrom.computeIfPresent(old.address(), (key, count) -> count > 1 ? count - 1 : null);
         }
     }
 
@@ -197,28 +225,28 @@ public final class ConnectionGuard {
         return this.total;
     }
 
-    private synchronized void release(int ip, boolean incoming) {
+    private synchronized void release(Object address, boolean incoming) {
         this.total--;
         if (incoming) {
-            this.perAddress.computeIfPresent(ip, (key, count) -> count > 1 ? count - 1 : null);
+            this.perAddress.computeIfPresent(address, (key, count) -> count > 1 ? count - 1 : null);
         }
     }
 
     /** Held while a connection is open; closing it more than once has no effect. */
     public final class Permit implements AutoCloseable {
-        private final int ip;
+        private final Object address;
         private final boolean incoming;
         private final AtomicBoolean released = new AtomicBoolean();
 
-        private Permit(int ip, boolean incoming) {
-            this.ip = ip;
+        private Permit(Object address, boolean incoming) {
+            this.address = address;
             this.incoming = incoming;
         }
 
         @Override
         public void close() {
             if (this.released.compareAndSet(false, true)) {
-                ConnectionGuard.this.release(this.ip, this.incoming);
+                ConnectionGuard.this.release(this.address, this.incoming);
             }
         }
     }

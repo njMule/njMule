@@ -77,6 +77,14 @@
             <Package name="org.njmule.core.files"/>
         </Or>
     </Match>
+    <!-- InetAddress has no mutators (IPv6 ones included): a record holding one exposes nothing. -->
+    <Match>
+        <Or>
+            <Bug pattern="EI_EXPOSE_REP"/>
+            <Bug pattern="EI_EXPOSE_REP2"/>
+        </Or>
+        <Class name="org.njmule.core.security.SecureIdent$IpBinding"/>
+    </Match>
     <!-- The web interface builds its pages from fixed markup; every text that is not a literal
          goes through Html.text, which escapes it for element content and quoted attributes
          (WebUiPartsTest, WebUiTest), and the Content-Security-Policy forbids scripts. -->

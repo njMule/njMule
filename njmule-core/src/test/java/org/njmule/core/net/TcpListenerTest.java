@@ -19,10 +19,16 @@ package org.njmule.core.net;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import com.google.common.net.InetAddresses;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.njmule.core.security.ConnectionGuard;
@@ -34,7 +40,20 @@ class TcpListenerTest {
     // On Linux a closed socket kept its port while its accepting thread still held it, most times in 200.
     private static final int ROUNDS = 50;
 
+    private static final InetAddress IPV6_LOOPBACK = InetAddresses.forString("::1");
+
+    private final ConnectionGuard guard =
+            new ConnectionGuard(IpFilter::empty, ConnectionGuard.Limits.DEFAULT, Ticker.systemTicker());
+    private final CompletableFuture<InetAddress> accepted = new CompletableFuture<>();
     private int portsStillTaken;
+    private TcpListener listener;
+
+    @AfterEach
+    void closeTheListener() throws IOException {
+        if (this.listener != null) {
+            this.listener.close();
+        }
+    }
 
     @Test
     void shouldFreeItsPortBeforeCloseReturns() throws Exception {
@@ -42,16 +61,41 @@ class TcpListenerTest {
         thenEveryPortWasFree();
     }
 
+    @Test
+    void shouldAcceptAClientOverIpv6() throws Exception {
+        givenAListenerOnTheIpv6Loopback();
+
+        whenAClientConnectsToIt();
+
+        thenTheConnectionFromIsAccepted(IPV6_LOOPBACK);
+    }
+
+    private void givenAListenerOnTheIpv6Loopback() throws IOException {
+        try (ServerSocket probe = new ServerSocket()) {
+            probe.bind(new InetSocketAddress(IPV6_LOOPBACK, 0));
+        } catch (IOException e) {
+            Assumptions.abort("no IPv6 loopback here");
+        }
+        this.listener = TcpListener.open(new InetSocketAddress(IPV6_LOOPBACK, 0), this.guard, (socket, permit) -> {
+            this.accepted.complete(socket.getInetAddress());
+            permit.close();
+        });
+    }
+
+    private void whenAClientConnectsToIt() throws IOException {
+        try (Socket client = new Socket(IPV6_LOOPBACK, this.listener.port())) {
+            client.getOutputStream().flush();
+        }
+    }
+
     private void whenListenersAreOpenedClosedAndTheirPortsBoundAgain(int rounds) throws Exception {
-        ConnectionGuard guard =
-                new ConnectionGuard(IpFilter::empty, ConnectionGuard.Limits.DEFAULT, Ticker.systemTicker());
         for (int i = 0; i < rounds; i++) {
-            TcpListener listener = TcpListener.open(
-                    new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), guard, (socket, permit) -> {});
-            int port = listener.port();
+            TcpListener opened = TcpListener.open(
+                    new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), this.guard, (socket, permit) -> {});
+            int port = opened.port();
             // Its thread waits in accept.
             Thread.sleep(5);
-            listener.close();
+            opened.close();
             try (ServerSocket again = new ServerSocket()) {
                 again.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
             } catch (IOException e) {
@@ -62,5 +106,9 @@ class TcpListenerTest {
 
     private void thenEveryPortWasFree() {
         assertThat(this.portsStillTaken).isZero();
+    }
+
+    private void thenTheConnectionFromIsAccepted(InetAddress expected) throws Exception {
+        assertThat(this.accepted.get(10, TimeUnit.SECONDS)).isEqualTo(expected);
     }
 }

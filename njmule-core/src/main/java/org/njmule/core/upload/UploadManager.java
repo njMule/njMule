@@ -73,6 +73,7 @@ import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Packing;
 import org.njmule.core.protocol.packet.TcpFraming;
 import org.njmule.core.util.Ipv4;
+import org.njmule.core.util.Ipv6;
 import org.njmule.core.util.RateMeter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -747,12 +748,12 @@ public final class UploadManager implements AutoCloseable {
 
     /** Lifts the ban on {@code ip}; false when it was not banned. */
     public boolean unban(InetAddress ip) {
-        return this.bans.remove(ip) != null;
+        return this.bans.remove(Ipv6.network(ip)) != null;
     }
 
-    /** Whether {@code ip} is banned; from any thread. */
+    /** Whether {@code ip} is banned, with the rest of its /64 for IPv6; from any thread. */
     public boolean isBanned(InetAddress ip) {
-        Long until = this.bans.get(ip);
+        Long until = this.bans.get(Ipv6.network(ip));
         return until != null && this.ticker.read() - until < 0;
     }
 
@@ -788,9 +789,10 @@ public final class UploadManager implements AutoCloseable {
     // other clients may share the address.
     private void ban(InetAddress ip, long now, String reason) {
         logger.debug("Banning {}: {}", ip, reason);
-        this.bans.put(ip, now + BAN_TIME.toNanos());
+        InetAddress banned = Ipv6.network(ip);
+        this.bans.put(banned, now + BAN_TIME.toNanos());
         this.waiting.values().removeIf(c -> {
-            if (!c.ip.equals(ip)) {
+            if (!Ipv6.network(c.ip).equals(banned)) {
                 return false;
             }
             if (c.session != null && slotOf(c.session).isEmpty()) {

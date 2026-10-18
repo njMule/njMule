@@ -16,7 +16,7 @@
  */
 package org.njmule.core.security;
 
-import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.util.Objects;
 import java.util.Optional;
 import org.njmule.core.crypto.Rsa;
@@ -60,8 +60,8 @@ public final class SecureIdent {
         }
     }
 
-    /** The address part of a version 2 signature. */
-    public record IpBinding(Inet4Address address, IpKind kind) {
+    /** The address part of a version 2 signature: 4 bytes for IPv4, 16 for IPv6. */
+    public record IpBinding(InetAddress address, IpKind kind) {
         public IpBinding {
             Objects.requireNonNull(address, "address");
             Objects.requireNonNull(kind, "kind");
@@ -71,14 +71,15 @@ public final class SecureIdent {
     private SecureIdent() {}
 
     public static byte[] message(byte[] verifierPublicKey, int challenge, Optional<IpBinding> binding) {
-        int length = verifierPublicKey.length + 4 + (binding.isPresent() ? 5 : 0);
+        byte[] address = binding.map(b -> b.address().getAddress()).orElse(new byte[0]);
+        int length = verifierPublicKey.length + 4 + (binding.isPresent() ? address.length + 1 : 0);
         byte[] message = new byte[length];
         System.arraycopy(verifierPublicKey, 0, message, 0, verifierPublicKey.length);
         int at = verifierPublicKey.length;
         LittleEndian.putInt(message, at, challenge);
         if (binding.isPresent()) {
-            System.arraycopy(binding.get().address().getAddress(), 0, message, at + 4, 4);
-            message[at + 8] = (byte) binding.get().kind().code();
+            System.arraycopy(address, 0, message, at + 4, address.length);
+            message[at + 4 + address.length] = (byte) binding.get().kind().code();
         }
         return message;
     }

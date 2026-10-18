@@ -19,6 +19,7 @@ package org.njmule.core.crypto;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.google.common.net.InetAddresses;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.net.Inet4Address;
@@ -196,6 +197,22 @@ class RsaTest {
         whenTheSecureIdentMessageIsMadeFor(new byte[] {7}, 0x01020304, boundTo(10, 0, 0, 1));
 
         thenTheMessageIs(7, 4, 3, 2, 1, 10, 0, 0, 1, 10);
+    }
+
+    @Test
+    void shouldBindAllSixteenBytesOfAnIpv6AddressInTheSecureIdentMessage() {
+        whenTheSecureIdentMessageIsMadeFor(new byte[] {7}, 0x01020304, boundToIpv6("2001:db8::1"));
+
+        thenTheMessageIs(7, 4, 3, 2, 1, 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 10);
+    }
+
+    @Test
+    void shouldRefuseASecureIdentSignatureForAnotherIpv6Address() {
+        givenAPeerThatSignedOurKeyFor(0x12345678, boundToIpv6("2001:db8::1"));
+
+        whenItsSignatureIsVerifiedFor(0x12345678, boundToIpv6("2001:db8::2"));
+
+        thenTheSignatureIsRefused();
     }
 
     @Test
@@ -448,6 +465,10 @@ class RsaTest {
 
     private static Optional<IpBinding> boundTo(int a, int b, int c, int d) {
         return Optional.of(new IpBinding(ip(a, b, c, d), IpKind.REMOTE_CLIENT));
+    }
+
+    private static Optional<IpBinding> boundToIpv6(String address) {
+        return Optional.of(new IpBinding(InetAddresses.forString(address), IpKind.REMOTE_CLIENT));
     }
 
     private static Inet4Address ip(int a, int b, int c, int d) {

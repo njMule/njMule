@@ -571,7 +571,7 @@ final class Network {
                 () -> this.ipFilter,
                 // Refusing the server or a Kad node that checks our port would leave us a LowID or firewalled.
                 ip -> isOurServer(ip) || kadAwaits(ip),
-                ip -> this.uploads.isBanned(InetAddresses.fromInteger(ip)),
+                address -> this.uploads.isBanned(address),
                 () -> new ConnectionGuard.Limits(
                         this.preferences.get().maxConnections(),
                         ConnectionGuard.Limits.DEFAULT.maxPerAddress(),
@@ -1311,7 +1311,8 @@ final class Network {
         }
         int sources = this.downloads.dropBlockedSources();
         // Clients connect to us whatever the LAN filter says, as the connection guard lets them.
-        int clients = this.uploads.dropClients(address -> this.ipFilter.blocks(Ipv4.fromBytes(address.getAddress())));
+        int clients = this.uploads.dropClients(
+                address -> address instanceof Inet4Address v4 && this.ipFilter.blocks(Ipv4.fromBytes(v4.getAddress())));
         int contacts = this.kad == null ? 0 : this.kad.filtersChanged();
         if (sources + clients + contacts > 0) {
             this.userLog.log(

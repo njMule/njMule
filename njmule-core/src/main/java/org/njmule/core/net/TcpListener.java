@@ -17,7 +17,6 @@
 package org.njmule.core.net;
 
 import java.io.IOException;
-import java.net.Inet4Address;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -25,7 +24,6 @@ import java.time.Duration;
 import java.util.Objects;
 import org.njmule.core.security.ConnectionGuard;
 import org.njmule.core.security.ConnectionGuard.Admission;
-import org.njmule.core.util.Ipv4;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -111,13 +109,9 @@ public final class TcpListener implements AutoCloseable {
         }
     }
 
+    // Clients may come over IPv6 too; servers and Kad stay on IPv4.
     private void admit(Socket socket) {
-        // The eD2K network is IPv4 only.
-        if (!(socket.getInetAddress() instanceof Inet4Address address)) {
-            closeQuietly(socket);
-            return;
-        }
-        switch (this.guard.admit(Ipv4.fromBytes(address.getAddress()))) {
+        switch (this.guard.admit(socket.getInetAddress())) {
             case Admission.Admitted(ConnectionGuard.Permit permit) ->
                 Thread.ofVirtual()
                         .name("njmule-tcp-accept-" + socket.getRemoteSocketAddress())

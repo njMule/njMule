@@ -19,6 +19,7 @@ package org.njmule.core.upload;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import com.google.common.net.InetAddresses;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetAddress;
@@ -257,6 +258,27 @@ class UploadManagerTest {
         whenTimePasses(UploadManager.PURGE_AFTER.plusSeconds(1));
 
         thenTheQueueEmpties("the silent client forgotten");
+    }
+
+    @Test
+    void shouldBanTheWholeIpv6Slash64OfAnAddress() throws Exception {
+        givenTheUploadsStarted();
+
+        whenTheAddressIsBanned("2001:db8:1:2::1");
+
+        thenTheAddressIsBanned("2001:db8:1:2:ffff:eeee:dddd:9", true);
+        thenTheAddressIsBanned("2001:db8:1:3::1", false);
+        thenTheOnlyBanIsOf("2001:db8:1:2:0:0:0:0");
+    }
+
+    @Test
+    void shouldLetTheBanOfAnIpv6Slash64BeLiftedFromAnyOfItsAddresses() throws Exception {
+        givenTheUploadsStarted();
+        givenTheAddressWasBanned("2001:db8:1:2::1");
+
+        whenTheBanIsLiftedFrom("2001:db8:1:2::77");
+
+        thenTheAddressIsBanned("2001:db8:1:2::1", false);
     }
 
     @Test
@@ -663,6 +685,10 @@ class UploadManagerTest {
         assertThat(known.closedWithin(WAIT)).isTrue();
     }
 
+    private void givenTheAddressWasBanned(String address) throws Exception {
+        whenTheAddressIsBanned(address);
+    }
+
     private void givenTheOnlyBanIsOf(String address) throws Exception {
         List<BanInfo> bans = onLoop(this.manager::bans);
         assertThat(bans).singleElement().satisfies(b -> assertThat(b.address()).isEqualTo(address));
@@ -799,6 +825,17 @@ class UploadManagerTest {
         this.answer = ask(clientOf(seed), this.files.get(name).hash());
     }
 
+    private void whenTheAddressIsBanned(String address) throws Exception {
+        onLoop(() -> {
+            this.manager.ban(InetAddresses.forString(address), "test");
+            return null;
+        });
+    }
+
+    private void whenTheBanIsLiftedFrom(String address) throws Exception {
+        onLoop(() -> this.manager.unban(InetAddresses.forString(address)));
+    }
+
     private void whenTimePasses(Duration duration) {
         advance(duration);
     }
@@ -878,6 +915,15 @@ class UploadManagerTest {
 
     private void thenTheQueueEmpties(String what) throws Exception {
         await(what, () -> this.manager.waitingCount() == 0);
+    }
+
+    private void thenTheAddressIsBanned(String address, boolean banned) {
+        assertThat(this.manager.isBanned(InetAddresses.forString(address))).isEqualTo(banned);
+    }
+
+    private void thenTheOnlyBanIsOf(String address) throws Exception {
+        List<BanInfo> bans = onLoop(this.manager::bans);
+        assertThat(bans).singleElement().satisfies(b -> assertThat(b.address()).isEqualTo(address));
     }
 
     private void thenTheBanIsOver() throws Exception {
