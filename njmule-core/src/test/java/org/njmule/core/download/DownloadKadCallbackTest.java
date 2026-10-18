@@ -19,6 +19,8 @@ package org.njmule.core.download;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import com.google.common.net.InetAddresses;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
@@ -104,6 +106,7 @@ class DownloadKadCallbackTest {
     private ScriptedSource source;
     private ScriptedSource.Link link;
     private int port;
+    private volatile Optional<Inet6Address> ourIpv6 = Optional.empty();
 
     @BeforeEach
     void start() throws Exception {
@@ -136,7 +139,7 @@ class DownloadKadCallbackTest {
                 this.loop,
                 this.dir.resolve("temp"),
                 () -> this.dir.resolve("incoming"),
-                () -> hello,
+                () -> this.ourIpv6.map(hello::withIpv6).orElse(hello),
                 () -> new DownloadManager.Settings(ObfuscationMode.SUPPORTED, 100, PORT, 0, true),
                 new NoServer(),
                 ip -> false,
@@ -203,6 +206,17 @@ class DownloadKadCallbackTest {
 
         thenTheCallIs("adopted");
         thenTheSourceIsAskedForTheFile();
+    }
+
+    @Test
+    void shouldReachAFirewalledSourceAtItsIpv6AddressWithoutACallbackWhenWeHaveIpv6() throws Exception {
+        givenWeHaveTheIpv6Address("2001:db8::99");
+        givenADownloadThatKadSearches();
+
+        whenKadFinds(behindABuddyAtTheIpv6Address(PEER, "2001:db8::5"));
+
+        thenTheSourceIsShownAt("[2001:db8::5]:" + this.source.port());
+        thenNoCallbackIsAsked();
     }
 
     @Test
@@ -332,6 +346,10 @@ class DownloadKadCallbackTest {
         assertThat(ClientReasks.Ping.file(reask.ping())).isEqualTo(FILE);
     }
 
+    private void givenWeHaveTheIpv6Address(String address) {
+        this.ourIpv6 = Optional.of((Inet6Address) InetAddresses.forString(address));
+    }
+
     private void givenADownloadThatKadSearches() throws Exception {
         onLoop(() -> this.manager.add(Ed2kLink.FileLink.of("kad.bin", 5000, FILE)));
         await("Kad searched", () -> this.search.get() != null);
@@ -392,6 +410,17 @@ class DownloadKadCallbackTest {
         assertThat(this.asked).hasSize(1);
     }
 
+    private void thenTheSourceIsShownAt(String address) throws Exception {
+        assertThat(onLoop(() ->
+                        this.manager.sources().stream().map(SourceInfo::address).toList()))
+                .containsExactly(address);
+    }
+
+    private void thenNoCallbackIsAsked() throws Exception {
+        Thread.sleep(1500);
+        assertThat(this.asked).isEmpty();
+    }
+
     private void thenNoMoreCallbacksAreAsked() throws Exception {
         Thread.sleep(1500);
         assertThat(this.asked).hasSize(1);
@@ -419,6 +448,16 @@ class DownloadKadCallbackTest {
                 Optional.of(userHash),
                 0,
                 Optional.of(new DownloadManager.KadCallback(BUDDY_IP, 4672, Optional.of(BUDDY_ID), 4672)));
+    }
+
+    private DownloadManager.KadSource behindABuddyAtTheIpv6Address(Hash16 userHash, String ipv6) {
+        DownloadManager.KadSource source = behindABuddy(userHash);
+        return new DownloadManager.KadSource(
+                source.address(),
+                source.userHash(),
+                source.cryptOptions(),
+                source.callback(),
+                Optional.of((Inet6Address) InetAddresses.forString(ipv6)));
     }
 
     private DownloadManager.KadSource takingDirectCallbacks(Hash16 userHash) {

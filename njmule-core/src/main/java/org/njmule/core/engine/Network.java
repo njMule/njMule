@@ -2096,7 +2096,8 @@ final class Network {
                             cryptOptions(prefs.obfuscation()) >>> 7,
                             ip -> Ipv4.isLan(ip) && !this.preferences.get().filterLanAddresses(),
                             ip -> this.ipFilter.blocks(ip),
-                            this.kadSocket.port()),
+                            this.kadSocket.port(),
+                            () -> this.ourIpv6),
                     this.configDir,
                     this.random,
                     Ticker.systemTicker());
@@ -2501,7 +2502,8 @@ final class Network {
         } else if (s.directCallback()) {
             callback = Optional.of(new DownloadManager.KadCallback(0, 0, Optional.empty(), s.udpPort()));
         }
-        return new DownloadManager.KadSource(address, Optional.of(s.userHash()), s.connectOptions(), callback);
+        return new DownloadManager.KadSource(
+                address, Optional.of(s.userHash()), s.connectOptions(), callback, s.ipv6());
     }
 
     // Through the buddy of the source, plain; or straight to its Kad port, obfuscated when either side asks for it.

@@ -18,6 +18,7 @@ package org.njmule.core.kad;
 
 import com.google.common.base.Ticker;
 import java.io.IOException;
+import java.net.Inet6Address;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -25,6 +26,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +64,7 @@ import org.njmule.core.search.SearchExpr;
 import org.njmule.core.search.SearchTreeCodec;
 import org.njmule.core.util.Bytes;
 import org.njmule.core.util.Ipv4;
+import org.njmule.core.util.Ipv6;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -165,10 +168,24 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
             int connectOptions,
             int udpPort,
             Optional<Buddy> buddy,
-            boolean directCallback) {
+            boolean directCallback,
+            Optional<Inet6Address> ipv6) {
         public Source {
             Objects.requireNonNull(userHash, "userHash");
             Objects.requireNonNull(buddy, "buddy");
+            Objects.requireNonNull(ipv6, "ipv6");
+        }
+
+        /** A source without an IPv6 address. */
+        public Source(
+                Hash16 userHash,
+                int ip,
+                int tcpPort,
+                int connectOptions,
+                int udpPort,
+                Optional<Buddy> buddy,
+                boolean directCallback) {
+            this(userHash, ip, tcpPort, connectOptions, udpPort, buddy, directCallback, Optional.empty());
         }
 
         /** A source reachable directly. */
@@ -210,19 +227,40 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
      * @param trusted addresses taken although they are not public (tests, LANs)
      * @param blocked addresses the IP filter refuses, never taken as contacts
      * @param udpPort the UDP port we listen on, 0 when unknown: the UDP firewall test needs it
+     * @param ipv6 our public IPv6 address, read at each publish of a source
      */
     public record Settings(
-            int tcpPort, Hash16 userHash, int connectOptions, IntPredicate trusted, IntPredicate blocked, int udpPort) {
+            int tcpPort,
+            Hash16 userHash,
+            int connectOptions,
+            IntPredicate trusted,
+            IntPredicate blocked,
+            int udpPort,
+            Supplier<Optional<Inet6Address>> ipv6) {
         public Settings {
             Objects.requireNonNull(userHash, "userHash");
             Objects.requireNonNull(trusted, "trusted");
             Objects.requireNonNull(blocked, "blocked");
+            Objects.requireNonNull(ipv6, "ipv6");
+        }
+
+        public Settings(
+                int tcpPort,
+                Hash16 userHash,
+                int connectOptions,
+                IntPredicate trusted,
+                IntPredicate blocked,
+                int udpPort) {
+            this(tcpPort, userHash, connectOptions, trusted, blocked, udpPort, Optional::empty);
         }
 
         public Settings(int tcpPort, Hash16 userHash, int connectOptions, IntPredicate trusted, IntPredicate blocked) {
             this(tcpPort, userHash, connectOptions, trusted, blocked, 0);
         }
     }
+
+    // A source's public IPv6 address, as 32 hex digits of its bytes in order.
+    static final TagName IPV6_TAG = TagName.of("ip6");
 
     public static final String NODES_FILE = "nodes.dat";
 
@@ -1994,6 +2032,11 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         tags.add(new Tag.IntTag(TagName.id(FileTag.FILESIZE), size));
         int options = this.settings.connectOptions() | (direct ? DIRECT_CALLBACK : 0);
         tags.add(new Tag.IntTag(TagName.id(FileTag.ENCRYPTION), options));
+        this.settings
+                .ipv6()
+                .get()
+                .ifPresent(ours -> tags.add(new Tag.StringTag(
+                        IPV6_TAG, HexFormat.of().withUpperCase().formatHex(ours.getAddress()))));
         return Optional.of(tags);
     }
 
@@ -2181,6 +2224,14 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
         return notes;
     }
 
+    private static Optional<Inet6Address> ipv6Of(List<Tag> tags) {
+        return Tags.find(tags, IPV6_TAG)
+                .filter(Tag.StringTag.class::isInstance)
+                .map(tag -> ((Tag.StringTag) tag).value())
+                .filter(hex -> hex.length() == 32 && hex.chars().allMatch(c -> Character.digit(c, 16) >= 0))
+                .flatMap(hex -> Ipv6.publicOf(HexFormat.of().parseHex(hex)));
+    }
+
     // Sources reachable directly, through their buddy, or by a direct callback when they say they take it.
     static List<Source> sourceResults(List<KadMessages.Entry> entries) {
         List<Source> sources = new ArrayList<>();
@@ -2195,8 +2246,10 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                 continue;
             }
             Hash16 user = e.id().toHash16();
+            Optional<Inet6Address> ipv6 = ipv6Of(tags);
             switch (type) {
-                case SOURCE_DIRECT, SOURCE_DIRECT_LARGE -> sources.add(new Source(user, ip, port, options));
+                case SOURCE_DIRECT, SOURCE_DIRECT_LARGE ->
+                    sources.add(new Source(user, ip, port, options, 0, Optional.empty(), false, ipv6));
                 case SOURCE_BUDDY, SOURCE_BUDDY_LARGE -> {
                     int buddyIp =
                             Ipv4.fromEd2k(Tags.intValue(tags, FileTag.SERVERIP).orElse(0));
@@ -2205,12 +2258,12 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
                             Tags.stringValue(tags, FileTag.BUDDYHASH).flatMap(KadNode::parseBuddyHash);
                     if (buddyIp != 0 && buddyPort != 0 && buddyId.isPresent()) {
                         Buddy buddy = new Buddy(buddyIp, buddyPort, buddyId.get());
-                        sources.add(new Source(user, ip, port, options, udp, Optional.of(buddy), false));
+                        sources.add(new Source(user, ip, port, options, udp, Optional.of(buddy), false, ipv6));
                     }
                 }
                 case SOURCE_DIRECT_CALLBACK -> {
                     if ((options & DIRECT_CALLBACK) != 0 && udp != 0) {
-                        sources.add(new Source(user, ip, port, options, udp, Optional.empty(), true));
+                        sources.add(new Source(user, ip, port, options, udp, Optional.empty(), true, ipv6));
                     }
                 }
                 default -> {

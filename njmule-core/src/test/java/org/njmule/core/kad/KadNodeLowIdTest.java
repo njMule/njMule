@@ -19,7 +19,9 @@ package org.njmule.core.kad;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.google.common.base.Ticker;
+import com.google.common.net.InetAddresses;
 import java.io.IOException;
+import java.net.Inet6Address;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -30,6 +32,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.protocol.kad.KadMessages;
@@ -94,6 +98,7 @@ class KadNodeLowIdTest {
     private boolean acceptsBuddies = true;
     private KadIdentity identity;
     private KadNode node;
+    private Optional<Inet6Address> ourIpv6 = Optional.empty();
     private boolean published;
     private boolean callbackRequested;
 
@@ -114,7 +119,7 @@ class KadNodeLowIdTest {
                                 new UdpCheck(ip, tcpPort, internalPort, externalPort, senderKey));
                     }
                 },
-                new KadNode.Settings(TCP, USER, 3, ip -> false, ip -> false, PORT),
+                new KadNode.Settings(TCP, USER, 3, ip -> false, ip -> false, PORT, () -> this.ourIpv6),
                 this.dir,
                 this.random,
                 this.ticker);
@@ -321,6 +326,50 @@ class KadNodeLowIdTest {
     }
 
     @Test
+    void shouldReadTheIpv6AddressAFirewalledSourceGives() {
+        givenASearchResultForDirectCallbacksWithTheIpv6Tag(this.direct, "20010DB8000000000000000000000007");
+
+        whenTheSearchResultsAreRead();
+
+        thenTheSourcesFoundAre(new KadNode.Source(
+                this.direct.toHash16(),
+                Ipv4.of(93, 1, 1, 1),
+                TCP,
+                0x09,
+                PORT,
+                Optional.empty(),
+                true,
+                Optional.of((Inet6Address) InetAddresses.forString("2001:db8::7"))));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "FE800000000000000000000000000001",
+                "20010DB80000000000000000000007",
+                "not hex at all, 32 characters!!"
+            })
+    void shouldLeaveOutAnIpv6TagNoPeerCanBeReachedAt(String hex) {
+        givenASearchResultForDirectCallbacksWithTheIpv6Tag(this.direct, hex);
+
+        whenTheSearchResultsAreRead();
+
+        thenTheSourceFoundGivesNoIpv6Address();
+    }
+
+    @Test
+    void shouldPublishOurIpv6AddressWhenWeHaveOne() throws Exception {
+        givenWeHaveTheIpv6Address("2001:db8::99");
+        givenAConnectedNode();
+        givenUdpIsFirewalled();
+        givenOurBuddyIsAt(Ipv4.of(44, 1, 1, 1), 4673);
+
+        whenWeArePublishedAsASource(1000);
+
+        thenTheSourcePublishGivesTheIpv6Address("20010DB8000000000000000000000099");
+    }
+
+    @Test
     void shouldPublishAFirewalledNodeWithABuddyAsASourceReachedThroughIt() throws Exception {
         givenAConnectedNode();
         givenUdpIsFirewalled();
@@ -460,6 +509,16 @@ class KadNodeLowIdTest {
 
     private void givenASearchResultForDirectCallbacks(UInt128 id, int options) {
         this.results.add(new KadMessages.Entry(id, directCallbackSource(options)));
+    }
+
+    private void givenASearchResultForDirectCallbacksWithTheIpv6Tag(UInt128 id, String hex) {
+        List<Tag> tags = new ArrayList<>(directCallbackSource(0x08 | 0x01));
+        tags.add(new Tag.StringTag(TagName.of("ip6"), hex));
+        this.results.add(new KadMessages.Entry(id, tags));
+    }
+
+    private void givenWeHaveTheIpv6Address(String address) {
+        this.ourIpv6 = Optional.of((Inet6Address) InetAddresses.forString(address));
     }
 
     private void givenASearchResultOfSourceTypeOnly(UInt128 id, int type) {
@@ -699,6 +758,18 @@ class KadNodeLowIdTest {
 
     private void thenNoNoteIsKept() {
         assertThat(this.node.indexedNotes()).isZero();
+    }
+
+    private void thenTheSourceFoundGivesNoIpv6Address() {
+        assertThat(this.found)
+                .singleElement()
+                .satisfies(s -> assertThat(s.ipv6()).isEmpty());
+    }
+
+    private void thenTheSourcePublishGivesTheIpv6Address(String hex) throws Exception {
+        assertThat(this.published).as("the publish started").isTrue();
+        assertThat(Tags.find(sourcePublish().tags(), TagName.of("ip6")))
+                .contains(new Tag.StringTag(TagName.of("ip6"), hex));
     }
 
     private void thenTheSourcesFoundAre(KadNode.Source... sources) {

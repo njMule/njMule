@@ -164,11 +164,25 @@ public final class DownloadManager implements AutoCloseable {
      * @param cryptOptions the connect options it publishes
      */
     public record KadSource(
-            InetSocketAddress address, Optional<Hash16> userHash, int cryptOptions, Optional<KadCallback> callback) {
+            InetSocketAddress address,
+            Optional<Hash16> userHash,
+            int cryptOptions,
+            Optional<KadCallback> callback,
+            Optional<Inet6Address> ipv6) {
         public KadSource {
             Objects.requireNonNull(address, "address");
             Objects.requireNonNull(userHash, "userHash");
             Objects.requireNonNull(callback, "callback");
+            Objects.requireNonNull(ipv6, "ipv6");
+        }
+
+        /** A source without an IPv6 address. */
+        public KadSource(
+                InetSocketAddress address,
+                Optional<Hash16> userHash,
+                int cryptOptions,
+                Optional<KadCallback> callback) {
+            this(address, userHash, cryptOptions, callback, Optional.empty());
         }
 
         /** A source reachable directly. */
@@ -1323,7 +1337,8 @@ public final class DownloadManager implements AutoCloseable {
                 peer.buddyUdpPort(),
                 route.get().buddyId(),
                 route.get().udpPort());
-        return new KadSource(source.address(), source.userHash(), source.cryptOptions(), Optional.of(moved));
+        return new KadSource(
+                source.address(), source.userHash(), source.cryptOptions(), Optional.of(moved), source.ipv6());
     }
 
     /**
@@ -1487,6 +1502,21 @@ public final class DownloadManager implements AutoCloseable {
     }
 
     // A few Kad searches at a time, one new a second; a file waits longer after each search.
+    private void kadSourceAt(Entry entry, InetSocketAddress address, KadSource source) {
+        Source fresh = addSource(entry, address);
+        if (fresh == null) {
+            return;
+        }
+        // A client known already keeps the user hash it told us itself.
+        if (source.userHash().isPresent() && fresh.client.userHash.isEmpty()) {
+            fresh.client.userHash = source.userHash();
+            fresh.client.cryptOptions = source.cryptOptions();
+        }
+        if (source.ipv6().isPresent() && fresh.client.ipv6.isEmpty()) {
+            fresh.client.ipv6 = source.ipv6();
+        }
+    }
+
     private void searchKad(Entry entry, long now) {
         Optional<KadSources> finder = this.kad.get();
         if (finder.isEmpty()
@@ -1503,20 +1533,29 @@ public final class DownloadManager implements AutoCloseable {
             if (current == null || current.download.file().status() == PartFile.Status.STOPPED) {
                 return;
             }
+            Optional<Inet6Address> ours = this.ourHello.get().ipv6();
             for (KadSource source : found) {
+                if (source.userHash().filter(this::isOurs).isPresent()) {
+                    continue;
+                }
                 if (source.callback().isPresent()) {
-                    askKadCallback(current, source);
+                    // Firewalled, it is reached at its IPv6 address when we have IPv6 too, with no callback.
+                    if (ours.isPresent()
+                            && source.ipv6().isPresent()
+                            && !source.ipv6().equals(ours)) {
+                        kadSourceAt(
+                                current,
+                                new InetSocketAddress(
+                                        source.ipv6().get(), source.address().getPort()),
+                                source);
+                    } else {
+                        askKadCallback(current, source);
+                    }
                     continue;
                 }
                 InetSocketAddress address = source.address();
-                if (source.userHash().filter(this::isOurs).isEmpty()
-                        && usable(Ipv4.fromBytes(address.getAddress().getAddress()), address.getPort())) {
-                    Source fresh = addSource(current, address);
-                    // A client known already keeps the user hash it told us itself.
-                    if (fresh != null && source.userHash().isPresent() && fresh.client.userHash.isEmpty()) {
-                        fresh.client.userHash = source.userHash();
-                        fresh.client.cryptOptions = source.cryptOptions();
-                    }
+                if (usable(Ipv4.fromBytes(address.getAddress().getAddress()), address.getPort())) {
+                    kadSourceAt(current, address, source);
                 }
             }
         });
