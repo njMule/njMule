@@ -89,6 +89,7 @@ org.ow2.asm:asm:9.10.1=jacocoAnt
 org.ow2.asm:asm:9.11=spotbugs
 org.pcollections:pcollections:4.0.1=annotationProcessor,testAnnotationProcessor
 org.reflections:reflections:0.10.2=checkstyle
+org.semver4j:semver4j:6.0.0=aggregateCodeCoverageReportResults,runtimeClasspath,testRuntimeClasspath
 org.slf4j:slf4j-api:2.0.17=spotbugsSlf4j
 org.slf4j:slf4j-api:2.0.20=aggregateCodeCoverageReportResults,compileClasspath,runtimeClasspath,spotbugs,testCompileClasspath,testRuntimeClasspath
 org.slf4j:slf4j-simple:2.0.17=spotbugsSlf4j

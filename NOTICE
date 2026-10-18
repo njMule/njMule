@@ -41,6 +41,7 @@ versions is generated at release time in THIRD-PARTY.txt.
     Bouncy Castle (bcprov)      MIT License (Bouncy Castle Licence)
     Guava                       Apache License 2.0
     picocli                     Apache License 2.0
+    semver4j                    MIT License
     Jackson (core, databind,    Apache License 2.0; Jackson Core bundles
     annotations, YAML format)   FastDoubleParser and Schubfach (MIT License)
     SnakeYAML Engine            Apache License 2.0

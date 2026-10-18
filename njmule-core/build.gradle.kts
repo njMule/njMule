@@ -13,6 +13,8 @@ dependencies {
     implementation(libs.slf4j.api)
     implementation(libs.bouncycastle.prov)
     implementation(libs.guava)
+    // Semantic Versioning order of the versions offered as updates.
+    implementation(libs.semver4j)
     // HTTP client: web lists (with SOCKS proxies), UPnP.
     implementation(platform(libs.jetty.bom))
     implementation(libs.jetty.client)
