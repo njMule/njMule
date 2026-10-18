@@ -26,6 +26,8 @@ import javafx.scene.control.MenuItem;
 import javafx.scene.control.TabPane;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
+import javafx.stage.Stage;
+import javafx.stage.Window;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -48,7 +50,10 @@ class TopBarTest {
     private MainWindow window;
 
     @AfterEach
-    void close() {
+    void close() throws Exception {
+        FxTesting.onFx(() -> List.copyOf(Window.getWindows()).stream()
+                .filter(w -> w instanceof Stage s && s.getOwner() != null)
+                .forEach(Window::hide));
         if (this.test != null) {
             this.test.close();
         }
@@ -88,11 +93,20 @@ class TopBarTest {
     @Test
     void shouldOpenTheIncomingFolderAndTheOptionsFromTheTools() throws Exception {
         givenTheWindow();
-        givenTheToolsAre("incoming", "options", "wizard", null, "import", "shortcuts", "about");
+        givenTheToolsAre("incoming", "options", "wizard", null, "import", "shortcuts", "updates", "about");
 
         whenTheToolIsChosen("options");
 
         thenTheScreenIs("settings");
+    }
+
+    @Test
+    void shouldOpenTheUpdatesFromTheTools() throws Exception {
+        givenTheWindow();
+
+        whenTheToolIsChosen("updates");
+
+        thenAWindowShows(this.test.gui.t("nj.update.title"));
     }
 
     @Test
@@ -155,6 +169,12 @@ class TopBarTest {
         assertThat(FxTesting.onFx(
                         () -> this.window.connectButton().getStyleClass().contains("accent")))
                 .isEqualTo(accent);
+    }
+
+    private void thenAWindowShows(String title) throws Exception {
+        assertThat(FxTesting.onFx(() -> Window.getWindows().stream()
+                        .anyMatch(w -> w instanceof Stage s && title.equals(s.getTitle()) && s.isShowing())))
+                .isTrue();
     }
 
     private void thenTheScreenIs(String id) throws Exception {
