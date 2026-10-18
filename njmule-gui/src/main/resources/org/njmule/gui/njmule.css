@@ -376,7 +376,8 @@
     -fx-background-color: -color-bg-inset;
 }
 
-/* The place shown: a raised surface, bold, its icon in the strong orange and an orange mark along its start edge. */
+/* The place shown: a raised surface, bold, its icon in the strong orange and an orange mark along the start edge of
+   the sidebar. The mark is drawn outside the row, so its icon and words stay in line with the other rows'. */
 .nav-rail .toggle-button:selected,
 .nav-rail .toggle-button:selected:focused {
     -fx-background-color: -color-bg-default;
@@ -385,8 +386,13 @@
     -fx-font-weight: bold;
     -fx-border-color: -nj-brand-accent;
     -fx-border-width: 0 0 0 3;
-    -fx-border-insets: 8 0 8 0;
+    -fx-border-insets: 8 0 8 -10;
     -fx-border-radius: 0 3 3 0;
+}
+
+.nav-rail:collapsed .toggle-button:selected,
+.nav-rail:collapsed .toggle-button:selected:focused {
+    -fx-border-insets: 8 0 8 -8;
 }
 
 .nav-rail .toggle-button:selected .nj-icon {

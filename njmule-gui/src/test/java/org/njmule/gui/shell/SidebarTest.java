@@ -17,16 +17,21 @@
 package org.njmule.gui.shell;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import javafx.scene.Node;
 import javafx.scene.control.ContentDisplay;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.input.KeyCode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.gui.FxTesting;
@@ -96,6 +101,17 @@ class SidebarTest {
         thenTheDotOfMessagesShows(true);
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void shouldKeepTheIconOfThePlaceShownInLineWithTheOthers(boolean folded) throws Exception {
+        givenTheWindow();
+        givenTheSidebarFoldedByTheShortcut(folded);
+
+        whenThePlaceIsShown("search");
+
+        thenTheIconsOfThePlacesStandInOneColumn();
+    }
+
     private void givenTheWindow() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
@@ -104,6 +120,32 @@ class SidebarTest {
 
     private void givenTheSidebarFolded(boolean folded) throws Exception {
         FxTesting.await("the sidebar as it starts", () -> folded == collapsed());
+    }
+
+    private void givenTheSidebarFoldedByTheShortcut(boolean folded) throws Exception {
+        givenTheSidebarFolded(false);
+        if (folded) {
+            whenTheShortcutIsPressed(KeyCode.B);
+            thenTheSidebarIsFolded(true);
+        }
+    }
+
+    private void whenThePlaceIsShown(String place) throws Exception {
+        FxTesting.onFx(() -> {
+            this.window.show(place);
+            this.window.root().applyCss();
+            this.window.root().layout();
+        });
+    }
+
+    // The mark of the place shown never pushes its icon out of line.
+    private void thenTheIconsOfThePlacesStandInOneColumn() throws Exception {
+        List<Double> starts = FxTesting.onFx(() -> this.window.root().lookupAll(".nav-rail .toggle-button").stream()
+                .map(b -> ((ToggleButton) b).getGraphic())
+                .map(g -> g.localToScene(g.getLayoutBounds()).getMinX())
+                .toList());
+        assertThat(starts).hasSizeGreaterThan(5);
+        assertThat(starts).allSatisfy(x -> assertThat(x).isCloseTo(starts.getFirst(), within(0.5)));
     }
 
     private void givenTheWindowWide(boolean wide) throws Exception {
