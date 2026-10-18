@@ -17401,6 +17401,10 @@
       "glob": "org/njmule/core/remote/openapi.yaml"
     },
     {
+      "module": "org.njmule.core",
+      "glob": "org/njmule/core/update/keys.pub"
+    },
+    {
       "module": "org.njmule.gui",
       "glob": "org/njmule/gui/fonts/Manrope-Bold.ttf"
     },
