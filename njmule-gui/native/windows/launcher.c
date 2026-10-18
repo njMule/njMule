@@ -5,12 +5,25 @@
 // command line must be: this GUI program starts it without a console, marked for the desktop by
 // NJMULE_DESKTOP=1, with the same arguments, then waits for it and returns its exit code, as javaw.exe
 // stands for java.exe. Shortcuts, ed2k links, the start at login and the uninstaller run this one.
+//
+// A copy of it, out of the folder Windows Installer replaces, also installs a new version: njMule runs it
+// as it stops, with
+//     --apply-update <msi> --wait <pid>... --ui passive|quiet [--all-users] --log <file> --result <file>
+//     [--relaunch <program> <arguments>...]
+// It waits for those processes to end, runs msiexec on the package, writes its exit code to the result
+// file, which the next start of njMule reads, and starts njMule again when asked.
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <wchar.h>
 #include <windows.h>
+#include <shellapi.h>
 
 #pragma comment(lib, "user32.lib")
+#pragma comment(lib, "shell32.lib")
+
+#define MAX_WAITS 8
+#define WAIT_MILLIS 60000
 
 static void fail(const wchar_t *message) {
     MessageBoxW(NULL, message, L"njMule", MB_OK | MB_ICONERROR);
@@ -49,10 +62,193 @@ static HANDLE inheritable(DWORD which) {
     return handle;
 }
 
+// Appends arg to line as the C runtime and CommandLineToArgvW read it back: quoted when it holds a blank or
+// a quote, its quotes and the backslashes before them escaped.
+static void append_argument(wchar_t *line, size_t size, const wchar_t *arg) {
+    size_t at = wcslen(line);
+    if (at > 0) {
+        line[at++] = L' ';
+    }
+    if (*arg != L'\0' && wcspbrk(arg, L" \t\"") == NULL) {
+        wcscpy_s(line + at, size - at, arg);
+        return;
+    }
+    line[at++] = L'"';
+    for (const wchar_t *c = arg;; c++) {
+        size_t backslashes = 0;
+        while (*c == L'\\') {
+            backslashes++;
+            c++;
+        }
+        if (*c == L'\0') {
+            // Doubled: the closing quote must stay a quote.
+            for (size_t i = 0; i < backslashes * 2; i++) {
+                line[at++] = L'\\';
+            }
+            break;
+        }
+        if (*c == L'"') {
+            for (size_t i = 0; i < backslashes * 2 + 1; i++) {
+                line[at++] = L'\\';
+            }
+        } else {
+            for (size_t i = 0; i < backslashes; i++) {
+                line[at++] = L'\\';
+            }
+        }
+        line[at++] = *c;
+    }
+    line[at++] = L'"';
+    line[at] = L'\0';
+}
+
+// Room for args quoted, each at worst every character escaped, a blank and two quotes.
+static wchar_t *command_line(int count, wchar_t **args) {
+    size_t size = 1;
+    for (int i = 0; i < count; i++) {
+        size += wcslen(args[i]) * 2 + 3;
+    }
+    wchar_t *line = calloc(size, sizeof *line);
+    if (line != NULL) {
+        for (int i = 0; i < count; i++) {
+            append_argument(line, size, args[i]);
+        }
+    }
+    return line;
+}
+
+static BOOL ends_with(const wchar_t *text, const wchar_t *end) {
+    size_t length = wcslen(text);
+    size_t tail = wcslen(end);
+    return length >= tail && _wcsicmp(text + length - tail, end) == 0;
+}
+
+// Installs the package as the header says; returns 0 when Windows Installer succeeded (3010: it did, and a
+// reboot would finish replacing files in use), else its exit code.
+static int apply_update(int argc, wchar_t **argv) {
+    const wchar_t *msi = NULL;
+    const wchar_t *ui = L"passive";
+    const wchar_t *log = NULL;
+    const wchar_t *result = NULL;
+    BOOL all_users = FALSE;
+    DWORD waits[MAX_WAITS];
+    int wait_count = 0;
+    int relaunch = -1;
+    for (int i = 1; i < argc; i++) {
+        if (wcscmp(argv[i], L"--apply-update") == 0 && i + 1 < argc) {
+            msi = argv[++i];
+        } else if (wcscmp(argv[i], L"--wait") == 0 && i + 1 < argc) {
+            DWORD pid = wcstoul(argv[++i], NULL, 10);
+            if (pid != 0 && wait_count < MAX_WAITS) {
+                waits[wait_count++] = pid;
+            }
+        } else if (wcscmp(argv[i], L"--ui") == 0 && i + 1 < argc) {
+            ui = argv[++i];
+        } else if (wcscmp(argv[i], L"--all-users") == 0) {
+            all_users = TRUE;
+        } else if (wcscmp(argv[i], L"--log") == 0 && i + 1 < argc) {
+            log = argv[++i];
+        } else if (wcscmp(argv[i], L"--result") == 0 && i + 1 < argc) {
+            result = argv[++i];
+        } else if (wcscmp(argv[i], L"--relaunch") == 0 && i + 1 < argc) {
+            relaunch = i + 1;
+            break;
+        } else {
+            fail(L"njMule cannot install the new version: the installer was started wrongly.");
+            return 2;
+        }
+    }
+    // The old njMule and the launcher that waits for it hold the files Windows Installer replaces.
+    for (int i = 0; i < wait_count; i++) {
+        HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, waits[i]);
+        if (process != NULL) {
+            WaitForSingleObject(process, WAIT_MILLIS);
+            CloseHandle(process);
+        }
+    }
+    static wchar_t msiexec[MAX_PATH];
+    UINT length = GetSystemDirectoryW(msiexec, MAX_PATH);
+    if (length == 0 || length + 13 >= MAX_PATH) {
+        fail(L"njMule cannot find Windows Installer.");
+        return 2;
+    }
+    wcscat_s(msiexec, MAX_PATH, L"\\msiexec.exe");
+    wchar_t *install[10];
+    int count = 0;
+    install[count++] = msiexec;
+    install[count++] = L"/i";
+    install[count++] = (wchar_t *) msi;
+    install[count++] = wcscmp(ui, L"quiet") == 0 ? L"/quiet" : L"/passive";
+    install[count++] = L"/norestart";
+    if (log != NULL) {
+        install[count++] = L"/l*v";
+        install[count++] = (wchar_t *) log;
+    }
+    wchar_t *line = command_line(count, install);
+    if (line == NULL) {
+        return 2;
+    }
+    // Installed for every user: the same installation, which Windows Installer asks the rights for.
+    if (all_users) {
+        size_t size = wcslen(line) + 24;
+        wchar_t *longer = realloc(line, size * sizeof *line);
+        if (longer == NULL) {
+            free(line);
+            return 2;
+        }
+        line = longer;
+        wcscat_s(line, size, L" MSIINSTALLPERUSER=\"\"");
+    }
+    STARTUPINFOW startup = {0};
+    startup.cb = sizeof startup;
+    PROCESS_INFORMATION process;
+    DWORD code = 1603;
+    if (CreateProcessW(msiexec, line, NULL, NULL, FALSE, 0, NULL, NULL, &startup, &process)) {
+        CloseHandle(process.hThread);
+        WaitForSingleObject(process.hProcess, INFINITE);
+        GetExitCodeProcess(process.hProcess, &code);
+        CloseHandle(process.hProcess);
+    } else {
+        code = GetLastError();
+    }
+    free(line);
+    if (result != NULL) {
+        FILE *out = NULL;
+        if (_wfopen_s(&out, result, L"w") == 0 && out != NULL) {
+            fprintf(out, "%lu\n", code);
+            fclose(out);
+        }
+    }
+    // The new version, or the old one when the installation failed, tells what happened.
+    if (relaunch > 0) {
+        wchar_t *again = command_line(argc - relaunch, argv + relaunch);
+        STARTUPINFOW started = {0};
+        started.cb = sizeof started;
+        if (again != NULL
+                && CreateProcessW(argv[relaunch], again, NULL, NULL, FALSE, 0, NULL, NULL, &started, &process)) {
+            AllowSetForegroundWindow(process.dwProcessId);
+            CloseHandle(process.hThread);
+            CloseHandle(process.hProcess);
+        }
+        free(again);
+    }
+    return code == 0 || code == ERROR_SUCCESS_REBOOT_REQUIRED ? 0 : (int) code;
+}
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR commandLine, int show) {
     (void) instance;
     (void) previous;
     (void) commandLine;
+    int argc = 0;
+    wchar_t **argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (argv != NULL && argc > 2 && wcscmp(argv[1], L"--apply-update") == 0 && ends_with(argv[2], L".msi")) {
+        int code = apply_update(argc, argv);
+        LocalFree(argv);
+        return code;
+    }
+    if (argv != NULL) {
+        LocalFree(argv);
+    }
     static wchar_t app[32768];
     DWORD length = GetModuleFileNameW(NULL, app, ARRAYSIZE(app));
     wchar_t *name = wcsrchr(app, L'\\');

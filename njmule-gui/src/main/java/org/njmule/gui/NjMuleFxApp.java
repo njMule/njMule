@@ -17,6 +17,7 @@
 package org.njmule.gui;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicReference;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.control.Alert;
@@ -26,6 +27,9 @@ import org.njmule.core.api.NjMuleInfo;
 
 /** The JavaFX application: hands over to {@link DesktopApp}. */
 public final class NjMuleFxApp extends Application {
+
+    // The app whose window closed, for the installation of a new version once the toolkit is gone.
+    private static final AtomicReference<DesktopApp> CLOSED = new AtomicReference<>();
 
     private DesktopApp app;
     private IOException failure;
@@ -58,6 +62,13 @@ public final class NjMuleFxApp extends Application {
     public void stop() {
         if (this.app != null) {
             this.app.close();
+            CLOSED.set(this.app);
         }
+    }
+
+    /** Once the window has closed: hands a new version over to its installer when one is due; the exit code. */
+    static int handOver() {
+        DesktopApp app = CLOSED.get();
+        return app == null ? 0 : app.handOver();
     }
 }

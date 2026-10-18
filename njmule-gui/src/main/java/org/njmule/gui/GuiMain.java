@@ -22,6 +22,7 @@ import javafx.application.Application;
 import org.njmule.app.LaunchOptions;
 import org.njmule.app.LinkHandoff;
 import org.njmule.app.Main;
+import org.njmule.app.Updating;
 import org.njmule.core.api.Ed2kLink;
 
 /**
@@ -51,6 +52,8 @@ public final class GuiMain {
                 || cli.network().isOneShot()) {
             System.exit(Main.run(args, System.out, System.err, new CompletableFuture<>()));
         }
+        // A start after an update waits for the njMule it replaces: its lock and its links are free only then.
+        Updating.awaitEnd(cli.waitFor());
         // A running njMule takes the links, or just shows its window, instead of failing on its lock.
         List<String> links = cli.links().stream().map(Ed2kLink::toUri).toList();
         if (LinkHandoff.deliver(DesktopApp.configDir(cli), links)) {
@@ -67,12 +70,14 @@ public final class GuiMain {
             MacMainThread.run(() -> {
                 MacLinks.install();
                 Application.launch(NjMuleFxApp.class, args);
+                NjMuleFxApp.handOver();
             });
             return;
         }
         MacLinks.install();
         Application.launch(NjMuleFxApp.class, args);
-        // The window has closed and the engine stopped; the notification area keeps AWT threads alive.
-        System.exit(0);
+        // The window has closed and the engine stopped: a new version goes in place now, if one is due. The
+        // notification area keeps AWT threads alive.
+        System.exit(NjMuleFxApp.handOver());
     }
 }

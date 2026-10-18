@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import javafx.event.ActionEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.njmule.app.Autostart;
 import org.njmule.core.config.EventCommands;
 import org.njmule.core.config.UpdateChannel;
+import org.njmule.core.config.UpdateInstallTime;
 import org.njmule.core.config.UpdateMode;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
@@ -130,6 +132,27 @@ class SettingsScreenTest {
         whenTheUserApplies();
 
         thenTheEngineLooksForNewVersions(UpdateMode.OFF, UpdateChannel.PRERELEASE);
+    }
+
+    @Test
+    void shouldSaveWhenAndInWhichHoursItInstalls() throws Exception {
+        givenTheSettingsShow();
+        givenTheUserChose(UpdateMode.INSTALL, UpdateChannel.STABLE);
+        givenTheUserChoseToInstall(UpdateInstallTime.EXIT_OR_NIGHT, "01:30-04:00");
+
+        whenTheUserApplies();
+
+        thenTheEngineInstalls(UpdateInstallTime.EXIT_OR_NIGHT, "01:30-04:00");
+    }
+
+    @Test
+    void shouldOfferTheNightHoursOnlyWhenNjMuleInstallsAtNight() throws Exception {
+        givenTheSettingsShow();
+        givenTheUserChose(UpdateMode.NOTIFY, UpdateChannel.STABLE);
+
+        whenTheUserChoseToInstall(UpdateInstallTime.EXIT_OR_NIGHT, "01:30-04:00");
+
+        thenTheNightHoursCanBeSet(false);
     }
 
     @Test
@@ -258,6 +281,22 @@ class SettingsScreenTest {
         });
     }
 
+    private void givenTheUserChoseToInstall(UpdateInstallTime when, String hours) throws Exception {
+        chooseToInstall(when, hours);
+    }
+
+    private void whenTheUserChoseToInstall(UpdateInstallTime when, String hours) throws Exception {
+        chooseToInstall(when, hours);
+    }
+
+    private void chooseToInstall(UpdateInstallTime when, String hours) throws Exception {
+        FxTesting.onFx(() -> {
+            this.screen.updateInstallTimeBox().setValue(when);
+            this.screen.nightHoursField().setText(hours);
+            this.screen.nightHoursField().fireEvent(new ActionEvent());
+        });
+    }
+
     private void givenTheUserTurnedTheSoundOn() throws Exception {
         FxTesting.onFx(() -> this.screen.soundBox().setSelected(true));
     }
@@ -349,6 +388,23 @@ class SettingsScreenTest {
                 "the update settings",
                 () -> this.test.engine.preferences().updateMode() == mode
                         && this.test.engine.preferences().updateChannel() == channel);
+    }
+
+    private void thenTheEngineInstalls(UpdateInstallTime when, String hours) throws Exception {
+        FxTesting.assertEventually(
+                "the installation settings",
+                () -> this.test.engine.preferences().updateInstallTime() == when
+                        && this.test
+                                .engine
+                                .preferences()
+                                .nightHours()
+                                .toString()
+                                .equals(hours));
+    }
+
+    private void thenTheNightHoursCanBeSet(boolean expected) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.nightHoursField().isDisabled()))
+                .isEqualTo(!expected);
     }
 
     private void thenTheEngineHasNoSoundFile() {

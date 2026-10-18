@@ -67,14 +67,17 @@ import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import org.njmule.app.Autostart;
 import org.njmule.app.LinkAssociation;
+import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.config.BindInterface;
 import org.njmule.core.config.EventCommands;
 import org.njmule.core.config.NextDownload;
+import org.njmule.core.config.NightHours;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
 import org.njmule.core.config.SharedFilesVisibility;
 import org.njmule.core.config.UpdateChannel;
+import org.njmule.core.config.UpdateInstallTime;
 import org.njmule.core.config.UpdateMode;
 import org.njmule.core.remote.ApiToken;
 import org.njmule.gui.dialogs.UpdateDialog;
@@ -102,6 +105,7 @@ import org.njmule.webui.WebUiSettings;
 public final class SettingsScreen implements Screen {
 
     private static final int MAX_PROXY_USER = 255;
+    private static final int MAX_NIGHT_HOURS = 13;
     private static final int MAX_PASSWORD = 1024;
     // Room for the most lists a filter takes, each a long address.
     private static final int MAX_IP_FILTER_LISTS_TEXT = Preferences.MAX_IP_FILTER_LISTS * 2_049;
@@ -181,6 +185,9 @@ public final class SettingsScreen implements Screen {
     private final ComboBox<ProxySettings.Type> proxyType = new ComboBox<>();
     private final ComboBox<UpdateMode> updateMode = new ComboBox<>();
     private final ComboBox<UpdateChannel> updateChannel = new ComboBox<>();
+    private final ComboBox<UpdateInstallTime> updateInstallTime = new ComboBox<>();
+    private final TextField nightHours = new TextField();
+    private Input<NightHours> nightHoursInput;
     private final TextField proxyHost = new TextField();
     private final TextField proxyPort = new TextField();
     private final TextField proxyUser = new TextField();
@@ -338,6 +345,20 @@ public final class SettingsScreen implements Screen {
         this.updateChannel.getItems().addAll(UpdateChannel.values());
         this.updateChannel.setCellFactory(l -> new NamedCell<>(c -> this.gui.t("nj.update.channel." + key(c))));
         this.updateChannel.setButtonCell(new NamedCell<>(c -> this.gui.t("nj.update.channel." + key(c))));
+        this.updateInstallTime.getItems().addAll(UpdateInstallTime.values());
+        this.updateInstallTime.setCellFactory(l -> new NamedCell<>(this::installTimeName));
+        this.updateInstallTime.setButtonCell(new NamedCell<>(this::installTimeName));
+        // When to install matters only to what installs on its own; the night hours only to the night.
+        this.updateInstallTime
+                .disableProperty()
+                .bind(this.updateMode.valueProperty().isNotEqualTo(UpdateMode.INSTALL));
+        this.nightHours
+                .disableProperty()
+                .bind(this.updateInstallTime
+                        .disableProperty()
+                        .or(this.updateInstallTime.valueProperty().isNotEqualTo(UpdateInstallTime.EXIT_OR_NIGHT)));
+        this.nightHours.setPrefColumnCount(9);
+        Fx.leftToRight(this.nightHours);
         // Without a proxy there is nothing to fill in.
         for (Control c : List.of(this.proxyHost, this.proxyPort, this.proxyUser, this.proxyPassword)) {
             c.disableProperty().bind(this.proxyType.valueProperty().isEqualTo(ProxySettings.Type.NONE));
@@ -465,7 +486,7 @@ public final class SettingsScreen implements Screen {
                                         this.updateMode::getValue,
                                         this.updateMode::setValue,
                                         m -> this.gui.t("nj.update.mode." + key(m)))
-                                .describedAs(this.gui.t("nj.update.note")),
+                                .describedAs(updateNote()),
                         engine(
                                 "nj.update.channel",
                                 this.updateChannel,
@@ -474,6 +495,24 @@ public final class SettingsScreen implements Screen {
                                 this.updateChannel::getValue,
                                 this.updateChannel::setValue,
                                 c -> this.gui.t("nj.update.channel." + key(c))),
+                        engine(
+                                "nj.update.installAt",
+                                this.updateInstallTime,
+                                Preferences::updateInstallTime,
+                                Preferences.Builder::updateInstallTime,
+                                this.updateInstallTime::getValue,
+                                this.updateInstallTime::setValue,
+                                this::installTimeName),
+                        engine(
+                                        "nj.update.nightHours",
+                                        this.nightHours,
+                                        Preferences::nightHours,
+                                        Preferences.Builder::nightHours,
+                                        this.nightHoursInput::value,
+                                        v -> this.nightHours.setText(v.toString()),
+                                        NightHours::toString)
+                                .checkedBy(this.nightHoursInput)
+                                .describedAs(this.gui.t("nj.update.nightHours.hint")),
                         checkUpdateRow()),
                 section(
                         "IDS_PW_MISC",
@@ -1293,6 +1332,18 @@ public final class SettingsScreen implements Screen {
                 v -> "");
     }
 
+    // What the check sends; where a package manager owns the files, that njMule only downloads.
+    private String updateNote() {
+        String note = this.gui.t("nj.update.note");
+        return this.gui.model().updateProperty().get().installer() == UpdateStatus.Installer.NONE
+                ? note + " " + this.gui.t("nj.update.cannotInstall")
+                : note;
+    }
+
+    private String installTimeName(UpdateInstallTime time) {
+        return this.gui.t("nj.update.installAt." + key(time));
+    }
+
     // Looks now, whatever the mode: the answer opens in its own window.
     private SettingRow checkUpdateRow() {
         Button check = Fx.button(
@@ -1630,6 +1681,13 @@ public final class SettingsScreen implements Screen {
                 inputs.number(this.minFreeSpace, this.gui.t("IDS_MINFREEDISKSPACE"), 0, Preferences.MAX_MIN_FREE_SPACE);
         this.filterLevelInput =
                 inputs.number(this.filterLevel, this.gui.t("IDS_FILTERLEVEL"), 0, Preferences.MAX_IP_FILTER_LEVEL);
+        this.nightHoursInput = Input.of(
+                this.nightHours,
+                this.gui.t("nj.update.nightHours"),
+                this.gui.t("nj.update.nightHours.hint"),
+                c -> Character.isDigit(c) || c == ':' || c == '-' || c == ' ',
+                MAX_NIGHT_HOURS,
+                NightHours::parse);
         // The area runs left to right: its hint keeps the direction of the interface's language.
         String whitelistHint = this.gui.i18n().embed(this.gui.t("nj.settings.whitelistHint"));
         this.whitelistInput = Input.of(
@@ -2173,6 +2231,14 @@ public final class SettingsScreen implements Screen {
 
     ComboBox<UpdateChannel> updateChannelBox() {
         return this.updateChannel;
+    }
+
+    ComboBox<UpdateInstallTime> updateInstallTimeBox() {
+        return this.updateInstallTime;
+    }
+
+    TextField nightHoursField() {
+        return this.nightHours;
     }
 
     ToggleSwitch searchSpamFilterBox() {

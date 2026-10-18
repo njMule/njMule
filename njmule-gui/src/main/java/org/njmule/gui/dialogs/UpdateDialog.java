@@ -19,8 +19,10 @@ package org.njmule.gui.dialogs;
 import atlantafx.base.theme.Styles;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import javafx.beans.value.ChangeListener;
@@ -29,6 +31,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.Label;
+import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.HBox;
@@ -40,6 +43,9 @@ import javafx.stage.Window;
 import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.UpdateStatus;
+import org.njmule.core.api.UpdateStatus.Install;
+import org.njmule.core.api.UpdateStatus.Installer;
+import org.njmule.gui.infra.Folders;
 import org.njmule.gui.infra.WebPages;
 import org.njmule.gui.ui.DialogFrame;
 import org.njmule.gui.ui.Fx;
@@ -47,8 +53,9 @@ import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icons;
 
 /**
- * What is known of new versions of njMule: the version found with what changed and how to install it, a check running,
- * this version being the newest, or why the check failed. It follows the status while it shows.
+ * What is known of new versions of njMule: the version found with what changed, its download and its installation, a
+ * check running, this version being the newest, or why something failed. It follows the status while it shows; while a
+ * download runs only its progress changes.
  */
 public final class UpdateDialog {
 
@@ -56,7 +63,13 @@ public final class UpdateDialog {
     private final Stage stage = new Stage();
     private final VBox body = new VBox(10);
     private final VBox root;
+    private final ProgressBar progress = new ProgressBar(0);
+    private final Label received = new Label();
     private final ChangeListener<UpdateStatus> follow = (o, was, now) -> show(now);
+    // What the body shows now: its parts are built again only when this changes.
+    private String shown = "";
+    private TextArea notes;
+    private String notesOf = "";
 
     public UpdateDialog(Gui gui, Window owner) {
         this.gui = gui;
@@ -64,6 +77,10 @@ public final class UpdateDialog {
         this.stage.initModality(Modality.NONE);
         this.stage.setTitle(gui.t("nj.update.title"));
         this.body.setFillWidth(true);
+        this.progress.setMaxWidth(Double.MAX_VALUE);
+        this.progress.setId("update-progress");
+        this.progress.setAccessibleText(gui.t("nj.update.downloadInstall"));
+        this.received.getStyleClass().add(Styles.TEXT_MUTED);
         this.root = DialogFrame.frame(
                 DialogFrame.header(gui, gui.t("nj.update.title"), this.stage::close), this.body, new Region());
         this.root.setPrefWidth(560);
@@ -93,47 +110,19 @@ public final class UpdateDialog {
     }
 
     private void show(UpdateStatus status) {
+        status.download().ifPresent(this::showProgress);
+        String key = key(status);
+        if (key.equals(this.shown)) {
+            return;
+        }
+        this.shown = key;
         List<Node> parts = new ArrayList<>();
         List<Button> buttons = new ArrayList<>();
         Optional<NewVersion> available = status.available();
-        if (available.isPresent()) {
-            NewVersion v = available.get();
-            Label title = new Label(this.gui.f("nj.update.available", v.version()));
-            title.getStyleClass().add(Styles.TITLE_3);
-            parts.add(title);
-            if (v.critical()) {
-                Label critical = wrapped(this.gui.t("nj.update.critical"), Styles.WARNING);
-                critical.setGraphic(Fx.icon(Icons.WARNING));
-                parts.add(critical);
-            }
-            parts.add(wrapped(
-                    this.gui.f("nj.update.published", this.gui.formats().dateTime(v.published())), Styles.TEXT_MUTED));
-            if (!v.notes().isBlank()) {
-                TextArea notes = new TextArea(plain(v.notes()));
-                notes.setEditable(false);
-                notes.setWrapText(true);
-                notes.setPrefRowCount(10);
-                notes.setId("update-notes");
-                parts.add(Fx.leftToRight(notes));
-            }
-            parts.add(wrapped(howToInstall(status.installation(), v), null));
-            Button download = Fx.primary(Fx.button(
-                    this.gui.t("nj.update.download"),
-                    Icons.DOWNLOAD,
-                    () -> open(v.download().map(NewVersion.Download::uri).orElse(v.page()))));
-            download.setId("update-download");
-            buttons.add(DialogFrame.role(download, ButtonBar.ButtonData.OK_DONE));
-            buttons.add(DialogFrame.role(
-                    Fx.button(this.gui.t("nj.update.changes"), Icons.OPEN_EXTERNAL, () -> open(v.page())),
-                    ButtonBar.ButtonData.OTHER));
-            if (!v.critical() && !status.skipped().equals(Optional.of(v.version()))) {
-                Button skip = Fx.button(this.gui.t("nj.update.skip"), Icons.BLOCK, () -> {
-                    this.gui.model().skipUpdate(v.version());
-                    this.stage.close();
-                });
-                skip.setId("update-skip");
-                buttons.add(DialogFrame.role(skip, ButtonBar.ButtonData.LEFT));
-            }
+        if (status.install() == Install.RESTART) {
+            parts.add(title(this.gui.t("nj.update.installing")));
+        } else if (available.isPresent()) {
+            describe(status, available.get(), parts, buttons);
         }
         if (status.checking()) {
             ProgressIndicator spinning = new ProgressIndicator();
@@ -165,9 +154,119 @@ public final class UpdateDialog {
         Button close = Fx.button(this.gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close);
         close.setCancelButton(true);
         buttons.add(DialogFrame.role(close, ButtonBar.ButtonData.CANCEL_CLOSE));
-        // The band says what the check sends, beside the buttons that the state of the check offers.
+        // The band says what the check sends, beside the buttons that the state of the update offers.
         this.root.getChildren().set(2, DialogFrame.footer(note, buttons.toArray(Button[]::new)));
         this.stage.sizeToScene();
+    }
+
+    // The version found: what changed, then where its download and installation stand, with what can be done now.
+    private void describe(UpdateStatus status, NewVersion v, List<Node> parts, List<Button> buttons) {
+        boolean ready = status.ready().isPresent();
+        parts.add(title(this.gui.f(ready ? "nj.update.ready" : "nj.update.available", v.version())));
+        if (v.critical()) {
+            Label critical = wrapped(this.gui.t("nj.update.critical"), Styles.WARNING);
+            critical.setGraphic(Fx.icon(Icons.WARNING));
+            parts.add(critical);
+        }
+        parts.add(wrapped(
+                this.gui.f("nj.update.published", this.gui.formats().dateTime(v.published())), Styles.TEXT_MUTED));
+        if (!v.notes().isBlank()) {
+            parts.add(notes(v));
+        }
+        if (status.download().isPresent()) {
+            parts.add(new VBox(4, this.progress, this.received));
+        } else if (ready && status.canInstall()) {
+            parts.add(wrapped(
+                    this.gui.t(status.install() == Install.AT_EXIT ? "nj.update.willInstall" : "nj.update.how.self"),
+                    null));
+            Button restart = Fx.primary(Fx.button(
+                    this.gui.t("nj.update.restart"),
+                    Icons.REFRESH,
+                    () -> this.gui.model().installUpdate(true)));
+            restart.setId("update-restart");
+            buttons.add(DialogFrame.role(restart, ButtonBar.ButtonData.OK_DONE));
+            if (status.install() != Install.AT_EXIT) {
+                Button atExit = Fx.button(
+                        this.gui.t("nj.update.atExit"),
+                        Icons.CLOCK,
+                        () -> this.gui.model().installUpdate(false));
+                atExit.setId("update-at-exit");
+                buttons.add(DialogFrame.role(atExit, ButtonBar.ButtonData.OTHER));
+            }
+        } else if (ready) {
+            Path file = status.ready().get();
+            parts.add(wrapped(this.gui.f("nj.update.how.file", file), null));
+            parts.add(wrapped(howToInstall(status.installation(), v), null));
+            Button folder = Fx.button(this.gui.t("IDS_OPENFOLDER"), Icons.FOLDER_OPEN, () -> reveal(file));
+            folder.setId("update-folder");
+            buttons.add(DialogFrame.role(folder, ButtonBar.ButtonData.OK_DONE));
+        } else {
+            parts.add(wrapped(
+                    status.installer() == Installer.NONE
+                            ? howToInstall(status.installation(), v)
+                            : this.gui.t(
+                                    status.installer() == Installer.ELEVATED
+                                            ? "nj.update.how.elevated"
+                                            : "nj.update.how.self"),
+                    null));
+            if (v.download().isPresent()) {
+                Button download = Fx.primary(Fx.button(
+                        this.gui.t(
+                                status.installer() == Installer.NONE
+                                        ? "nj.update.download"
+                                        : "nj.update.downloadInstall"),
+                        Icons.DOWNLOAD,
+                        () -> this.gui.model().downloadUpdate()));
+                download.setId("update-download");
+                buttons.add(DialogFrame.role(download, ButtonBar.ButtonData.OK_DONE));
+            }
+        }
+        buttons.add(DialogFrame.role(
+                Fx.button(this.gui.t("nj.update.changes"), Icons.OPEN_EXTERNAL, () -> open(v.page())),
+                ButtonBar.ButtonData.OTHER));
+        if (!v.critical() && !status.skipped().equals(Optional.of(v.version()))) {
+            Button skip = Fx.button(this.gui.t("nj.update.skip"), Icons.BLOCK, () -> {
+                this.gui.model().skipUpdate(v.version());
+                this.stage.close();
+            });
+            skip.setId("update-skip");
+            buttons.add(DialogFrame.role(skip, ButtonBar.ButtonData.LEFT));
+        }
+    }
+
+    // The parts the body is built of; the progress of a download is not one of them.
+    private static String key(UpdateStatus status) {
+        return String.join(
+                "|",
+                status.available().map(NewVersion::version).orElse(""),
+                status.phase().name(),
+                Boolean.toString(status.checking()),
+                status.failure().orElse(""),
+                status.install().name(),
+                status.skipped().orElse(""),
+                status.lastCheck().map(Object::toString).orElse(""));
+    }
+
+    private void showProgress(UpdateStatus.Progress p) {
+        this.progress.setProgress(p.fraction());
+        this.received.setText(this.gui.f(
+                "nj.update.downloading",
+                this.gui.formats().size(p.received()),
+                this.gui.formats().size(p.size())));
+    }
+
+    // Kept while the version stays: its scroll position with it.
+    private TextArea notes(NewVersion v) {
+        if (this.notes == null || !Objects.equals(this.notesOf, v.version())) {
+            this.notes = new TextArea(plain(v.notes()));
+            this.notes.setEditable(false);
+            this.notes.setWrapText(true);
+            this.notes.setPrefRowCount(10);
+            this.notes.setId("update-notes");
+            Fx.leftToRight(this.notes);
+            this.notesOf = v.version();
+        }
+        return this.notes;
     }
 
     // The words fit how this copy was installed: a package manager's command stays as typed, in every language.
@@ -191,6 +290,14 @@ public final class UpdateDialog {
         }
     }
 
+    private void reveal(Path file) {
+        try {
+            Folders.reveal(file);
+        } catch (IOException e) {
+            this.gui.warn().accept(String.valueOf(e.getMessage()));
+        }
+    }
+
     // The notes are the Markdown of the changelog: its headings and list marks read better as plain text.
     static String plain(String markdown) {
         return markdown.lines()
@@ -198,6 +305,12 @@ public final class UpdateDialog {
                         ? line.replaceFirst("^#+\\s*", "")
                         : line.replaceFirst("^(\\s*)[-*] ", "$1• "))
                 .collect(Collectors.joining("\n"));
+    }
+
+    private static Label title(String text) {
+        Label title = wrapped(text, Styles.TITLE_3);
+        title.setId("update-title");
+        return title;
     }
 
     private static Label wrapped(String text, String style) {

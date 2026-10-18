@@ -32,6 +32,7 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.Labeled;
+import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TextInputControl;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
@@ -55,6 +56,7 @@ class UpdateDialogTest {
     Path dir;
 
     private final List<String> skipped = new CopyOnWriteArrayList<>();
+    private final List<String> asked = new CopyOnWriteArrayList<>();
     private TestGui test;
     private UpdateDialog dialog;
     private UpdateStatus found;
@@ -88,8 +90,99 @@ class UpdateDialogTest {
 
         whenTheUserChecksForUpdates();
 
-        thenTheDialogShows("It fixes security problems: install it soon.", "Open the download: it installs");
+        thenTheDialogShows(
+                "It fixes security problems: install it soon.",
+                "njMule downloads it, checks it against its signed release information and installs it");
         thenTheButtonsAre("update-download");
+    }
+
+    @Test
+    void shouldTellThatWindowsAsksForRightsForAnInstallationForAllUsers() throws Exception {
+        givenTheCheckFinds(withInstaller(available(InstallKind.MSI, false), UpdateStatus.Installer.ELEVATED));
+
+        whenTheUserChecksForUpdates();
+
+        thenTheDialogShows("Windows then asks for administrator rights");
+    }
+
+    @Test
+    void shouldDownloadTheNewVersionWhenAsked() throws Exception {
+        givenTheCheckFinds(available(InstallKind.MSI, false));
+        givenTheUserCheckedForUpdates();
+
+        whenTheUserPresses("update-download");
+
+        thenTheEngineWasAskedTo("download");
+    }
+
+    @Test
+    void shouldShowHowFarTheDownloadIs() throws Exception {
+        givenTheCheckFinds(downloading(available(InstallKind.MSI, false), 1_048_576, 4_194_304));
+
+        whenTheUserChecksForUpdates();
+
+        thenTheDialogShows("of", "downloaded");
+        thenTheProgressIs(0.25);
+        thenTheButtonsAre("update-skip");
+    }
+
+    @Test
+    void shouldOfferToRestartOnceTheVersionIsReady() throws Exception {
+        givenTheCheckFinds(ready(available(InstallKind.MSI, false), UpdateStatus.Install.ASKED));
+
+        whenTheUserChecksForUpdates();
+
+        thenTheDialogShows("njMule 0.2.0 is ready to install");
+        thenTheButtonsAre("update-restart", "update-at-exit", "update-skip");
+    }
+
+    @Test
+    void shouldRestartToInstallWhenAsked() throws Exception {
+        givenTheCheckFinds(ready(available(InstallKind.MSI, false), UpdateStatus.Install.ASKED));
+        givenTheUserCheckedForUpdates();
+
+        whenTheUserPresses("update-restart");
+
+        thenTheEngineWasAskedTo("install now");
+    }
+
+    @Test
+    void shouldInstallAtExitWhenAsked() throws Exception {
+        givenTheCheckFinds(ready(available(InstallKind.MSI, false), UpdateStatus.Install.ASKED));
+        givenTheUserCheckedForUpdates();
+
+        whenTheUserPresses("update-at-exit");
+
+        thenTheEngineWasAskedTo("install at exit");
+    }
+
+    @Test
+    void shouldTellThatTheVersionReadyInstallsAtExit() throws Exception {
+        givenTheCheckFinds(ready(available(InstallKind.MSI, false), UpdateStatus.Install.AT_EXIT));
+
+        whenTheUserChecksForUpdates();
+
+        thenTheDialogShows("It is installed when you close njMule.");
+        thenTheButtonsAre("update-restart", "update-skip");
+    }
+
+    @Test
+    void shouldShowThePackageItCannotInstallItself() throws Exception {
+        givenTheCheckFinds(ready(available(InstallKind.DEB, false), UpdateStatus.Install.ASKED));
+
+        whenTheUserChecksForUpdates();
+
+        thenTheDialogShows("Downloaded and checked:", "sudo apt install ./njmule_0.2.0_amd64.deb");
+        thenTheButtonsAre("update-folder", "update-skip");
+    }
+
+    @Test
+    void shouldTellThatNjMuleRestartsToInstall() throws Exception {
+        givenTheCheckFinds(ready(available(InstallKind.MSI, false), UpdateStatus.Install.RESTART));
+
+        whenTheUserChecksForUpdates();
+
+        thenTheDialogShows("njMule is installing the new version and starts again in a moment.");
     }
 
     @Test
@@ -136,6 +229,16 @@ class UpdateDialogTest {
                                 args -> {
                                     this.skipped.add((String) args[0]);
                                     return CompletableFuture.completedFuture(found);
+                                },
+                                "downloadUpdate",
+                                args -> {
+                                    this.asked.add("download");
+                                    return CompletableFuture.completedFuture(found);
+                                },
+                                "installUpdate",
+                                args -> {
+                                    this.asked.add((Boolean) args[0] ? "install now" : "install at exit");
+                                    return CompletableFuture.completedFuture(found);
                                 })));
     }
 
@@ -153,6 +256,10 @@ class UpdateDialogTest {
 
     private void whenTheUserSkipsTheVersion() throws Exception {
         FxTesting.onFx(() -> button("update-skip").fire());
+    }
+
+    private void whenTheUserPresses(String id) throws Exception {
+        FxTesting.onFx(() -> button(id).fire());
     }
 
     private void thenTheDialogShows(String... parts) throws Exception {
@@ -176,6 +283,16 @@ class UpdateDialogTest {
 
     private void thenTheEngineWasToldToSkip(String version) throws Exception {
         FxTesting.assertEventually("the skip", () -> this.skipped.contains(version));
+    }
+
+    private void thenTheEngineWasAskedTo(String what) throws Exception {
+        FxTesting.assertEventually(what, () -> this.asked.contains(what));
+    }
+
+    private void thenTheProgressIs(double expected) throws Exception {
+        assertThat(FxTesting.onFx(
+                        () -> ((ProgressBar) this.dialog.stage().getScene().lookup("#update-progress")).getProgress()))
+                .isEqualTo(expected);
     }
 
     private void thenTheDialogIsClosed() throws Exception {
@@ -218,11 +335,76 @@ class UpdateDialogTest {
                 Optional.of(
                         new NewVersion.Download(URI.create(RELEASE + "download/v0.2.0/" + file), 1, "0".repeat(64))));
         return new UpdateStatus(
-                "0.1.0", installation, false, Optional.of(CHECKED), Optional.empty(), Optional.of(v), Optional.empty());
+                "0.1.0",
+                installation,
+                installation == InstallKind.DEB ? UpdateStatus.Installer.NONE : UpdateStatus.Installer.SELF,
+                false,
+                Optional.of(CHECKED),
+                Optional.empty(),
+                Optional.of(v),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                UpdateStatus.Install.ASKED);
+    }
+
+    private static UpdateStatus withInstaller(UpdateStatus s, UpdateStatus.Installer installer) {
+        return new UpdateStatus(
+                s.current(),
+                s.installation(),
+                installer,
+                s.checking(),
+                s.lastCheck(),
+                s.failure(),
+                s.available(),
+                s.skipped(),
+                s.download(),
+                s.ready(),
+                s.install());
+    }
+
+    private static UpdateStatus downloading(UpdateStatus s, long received, long size) {
+        return new UpdateStatus(
+                s.current(),
+                s.installation(),
+                s.installer(),
+                s.checking(),
+                s.lastCheck(),
+                s.failure(),
+                s.available(),
+                s.skipped(),
+                Optional.of(new UpdateStatus.Progress(received, size)),
+                Optional.empty(),
+                s.install());
+    }
+
+    private static UpdateStatus ready(UpdateStatus s, UpdateStatus.Install install) {
+        return new UpdateStatus(
+                s.current(),
+                s.installation(),
+                s.installer(),
+                s.checking(),
+                s.lastCheck(),
+                s.failure(),
+                s.available(),
+                s.skipped(),
+                Optional.empty(),
+                Optional.of(Path.of("cache", "update", "0.2.0", "package")),
+                install);
     }
 
     private static UpdateStatus status(Optional<NewVersion> available, Optional<String> failure) {
         return new UpdateStatus(
-                "0.1.0", InstallKind.MSI, false, Optional.of(CHECKED), failure, available, Optional.empty());
+                "0.1.0",
+                InstallKind.MSI,
+                UpdateStatus.Installer.SELF,
+                false,
+                Optional.of(CHECKED),
+                failure,
+                available,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                UpdateStatus.Install.ASKED);
     }
 }

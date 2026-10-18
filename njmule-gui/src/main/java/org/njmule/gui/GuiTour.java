@@ -46,6 +46,8 @@ import javafx.scene.control.Control;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.MenuButton;
+import javafx.scene.control.ProgressBar;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TitledPane;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
@@ -191,6 +193,7 @@ final class GuiTour {
         this.steps.add(() -> themes.set(family, mode));
         this.steps.add(() -> new AboutDialog(this.gui, this.stage).show());
         this.steps.add(() -> new UpdateDialog(this.gui, this.stage).show());
+        this.steps.add(this::progress);
         this.steps.add(() -> new ImportDialog(this.gui, this.stage).show());
         this.steps.add(() -> new CategoriesDialog(this.gui, this.stage).show());
         this.steps.add(() -> Optional.ofNullable(
@@ -283,6 +286,16 @@ final class GuiTour {
         contrast.initOwner(this.stage);
         contrast.setScene(scene);
         contrast.show();
+    }
+
+    // A download's bar, as the updates show one while a new version comes.
+    private void progress() {
+        Scene scene = new Scene(new VBox(new ProgressBar(0.4), new ProgressIndicator(-1)));
+        this.gui.themes().attach(scene);
+        Stage progress = new Stage();
+        progress.initOwner(this.stage);
+        progress.setScene(scene);
+        progress.show();
     }
 
     private void alert() {

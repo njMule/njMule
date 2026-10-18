@@ -64,7 +64,9 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.ServerInfo;
+import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.config.Preferences;
 import org.njmule.gui.dialogs.AboutDialog;
 import org.njmule.gui.dialogs.FirstRunWizard;
@@ -145,6 +147,8 @@ public final class MainWindow {
     private final Label server = new Label();
     private final Button limitsLink = new Button();
     private final Label freeSpace = new Label();
+    // A new version on its way: its download, then that it is ready; opens the updates.
+    private final Button updateLink = new Button();
     private long spaceCheckedAt = System.nanoTime() - SPACE_EVERY;
     private String current = "";
     private String lastNetwork = "servers";
@@ -247,6 +251,8 @@ public final class MainWindow {
         model.onNewVersion(v -> offer(gui.f("nj.update.available", v.version()), gui.t("nj.update.details"), () -> {
             new UpdateDialog(gui, this.root.getScene().getWindow()).show();
         }));
+        model.onUpdateReady(this::updateReady);
+        gui.subscriptions().onChange(model.updateProperty(), (was, now) -> showUpdate(now));
         gui.subscriptions().onListChange(model.downloads().rows(), c -> showActive());
         model.chats().onMessage(chat -> {
             if (!this.current.equals("messages")) {
@@ -264,6 +270,7 @@ public final class MainWindow {
         showConnection();
         showStatus(model.statusProperty().get());
         showLimitsText(model.preferencesProperty().get());
+        showUpdate(model.updateProperty().get());
         show(this.screens.containsKey(gui.settings().screen()) ? gui.settings().screen() : "transfers");
     }
 
@@ -614,9 +621,59 @@ public final class MainWindow {
         Fx.whole(this.freeSpace);
         this.freeSpace.setVisible(false);
         this.freeSpace.managedProperty().bind(this.freeSpace.visibleProperty());
-        HBox strip = new HBox(this.lastLog, this.server, this.limitsLink, this.freeSpace);
+        this.updateLink.setId("update-link");
+        this.updateLink.getStyleClass().addAll(Styles.FLAT, "status-link");
+        this.updateLink.setGraphic(Fx.icon(Icons.DOWNLOAD));
+        this.updateLink.setOnAction(
+                e -> new UpdateDialog(this.gui, this.root.getScene().getWindow()).show());
+        this.updateLink.setVisible(false);
+        this.updateLink.managedProperty().bind(this.updateLink.visibleProperty());
+        Fx.whole(this.updateLink);
+        HBox strip = new HBox(this.lastLog, this.updateLink, this.server, this.limitsLink, this.freeSpace);
         strip.getStyleClass().add("status-strip");
         return strip;
+    }
+
+    // A new version downloaded: installed when njMule closes, or now if the user wants.
+    private void updateReady(NewVersion version) {
+        UpdateStatus status = this.gui.model().updateProperty().get();
+        if (status.install() == UpdateStatus.Install.AT_EXIT) {
+            message(this.gui.f("nj.update.readyAtExit", version.version()));
+        } else if (status.canInstall()) {
+            offer(
+                    this.gui.f("nj.update.ready", version.version()),
+                    this.gui.t("nj.update.restartNow"),
+                    () -> this.gui.model().installUpdate(true));
+        } else {
+            offer(
+                    this.gui.f("nj.update.ready", version.version()),
+                    this.gui.t("nj.update.details"),
+                    () -> new UpdateDialog(this.gui, this.root.getScene().getWindow()).show());
+        }
+    }
+
+    // While a new version comes and once it is ready, the strip says so.
+    private void showUpdate(UpdateStatus status) {
+        if (status == null) {
+            return;
+        }
+        String version = status.available().map(NewVersion::version).orElse("");
+        String text = null;
+        if (status.install() == UpdateStatus.Install.RESTART) {
+            text = this.gui.t("nj.update.installing");
+        } else if (status.download().isPresent()) {
+            long percent = Math.round(status.download().get().fraction() * 100);
+            text = this.gui.f("nj.update.strip.downloading", version, percent);
+        } else if (status.ready().isPresent() && status.isWorthTelling()) {
+            text = this.gui.f(
+                    status.install() == UpdateStatus.Install.AT_EXIT
+                            ? "nj.update.readyAtExit"
+                            : "nj.update.strip.ready",
+                    version);
+        }
+        this.updateLink.setText(text == null ? "" : text);
+        this.updateLink.setAccessibleText(text);
+        this.updateLink.setVisible(text != null);
     }
 
     // The limits as the preferences set them, which open the sliders.

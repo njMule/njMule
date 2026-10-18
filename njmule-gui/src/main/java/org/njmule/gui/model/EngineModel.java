@@ -199,6 +199,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private Consumer<String> errors = message -> {};
     private Consumer<DownloadInfo> completed = download -> {};
     private Consumer<NewVersion> newVersion = version -> {};
+    private Consumer<NewVersion> updateReady = version -> {};
+    private Consumer<String> updateRestart = version -> {};
     private final ObjectProperty<UpdateStatus> update;
     private final ReadOnlyIntegerWrapper completedCount = new ReadOnlyIntegerWrapper();
     private Flow.Subscription subscription;
@@ -269,6 +271,19 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         this.newVersion = Objects.requireNonNull(sink, "sink");
     }
 
+    /** Where a new version downloaded and checked, ready to install, is told; called on the FX thread. */
+    public void onUpdateReady(Consumer<NewVersion> sink) {
+        this.updateReady = Objects.requireNonNull(sink, "sink");
+    }
+
+    /**
+     * Where the engine asks to stop and start again to install a new version, as the user or the night hours asked;
+     * called on the FX thread.
+     */
+    public void onUpdateRestart(Consumer<String> sink) {
+        this.updateRestart = Objects.requireNonNull(sink, "sink");
+    }
+
     /** What is known of new versions of njMule. */
     public ReadOnlyObjectProperty<UpdateStatus> updateProperty() {
         return this.update;
@@ -282,6 +297,19 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Stops telling of {@code version}, unless it fixes a security problem. */
     public void skipUpdate(String version) {
         later(this.engine.skipUpdate(version), this.update::set);
+    }
+
+    /** Downloads the new version and checks it; the status tells the progress and the outcome. */
+    public void downloadUpdate() {
+        later(this.engine.downloadUpdate(), this.update::set);
+    }
+
+    /**
+     * Installs the version downloaded: now, njMule stopping and starting again ({@code restart}), or when it exits. A
+     * refusal shows as an error.
+     */
+    public void installUpdate(boolean restart) {
+        later(this.engine.installUpdate(restart), this.update::set);
     }
 
     /** Runs once a second on the FX thread: polls what events do not tell. */
@@ -1014,6 +1042,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             case EngineEvent.MessageFailed e -> this.chats.notice(e.address(), "nj.chat.failed", e.reason());
             case EngineEvent.UpdateStatusChanged e -> this.update.set(e.status());
             case EngineEvent.UpdateAvailable e -> this.newVersion.accept(e.version());
+            case EngineEvent.UpdateReady e -> this.updateReady.accept(e.version());
+            case EngineEvent.UpdateRestart e -> this.updateRestart.accept(e.version());
             default -> {
                 // Started, stopping and server messages show through the log.
             }

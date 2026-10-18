@@ -18,8 +18,12 @@ package org.njmule.gui.shell;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import atlantafx.base.controls.Notification;
+import java.net.URI;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
@@ -36,7 +40,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.InstallKind;
+import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.ServerInfo;
+import org.njmule.core.api.UpdateStatus;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
 
@@ -149,6 +156,37 @@ class TopBarTest {
         thenTheLimitsRead("Limits: ↓ No limit · ↑ " + limit(200));
     }
 
+    @Test
+    void shouldTellTheDownloadOfANewVersionInTheStatusStrip() throws Exception {
+        givenTheWindow();
+
+        whenTheEngineTells(new EngineEvent.UpdateStatusChanged(
+                update(Optional.of(new UpdateStatus.Progress(1, 4)), Optional.empty(), UpdateStatus.Install.ASKED)));
+
+        thenTheUpdateInTheStripReads("Downloading njMule 0.2.0: 25%");
+    }
+
+    @Test
+    void shouldTellInTheStatusStripThatTheNewVersionInstallsAtExit() throws Exception {
+        givenTheWindow();
+
+        whenTheEngineTells(new EngineEvent.UpdateStatusChanged(
+                update(Optional.empty(), Optional.of(Path.of("package.zip")), UpdateStatus.Install.AT_EXIT)));
+
+        thenTheUpdateInTheStripReads("njMule 0.2.0 is downloaded: it is installed when you close njMule.");
+    }
+
+    @Test
+    void shouldOfferARestartOnceTheNewVersionIsReady() throws Exception {
+        givenTheWindow();
+        givenTheEngineTold(new EngineEvent.UpdateStatusChanged(
+                update(Optional.empty(), Optional.of(Path.of("package.zip")), UpdateStatus.Install.ASKED)));
+
+        whenTheEngineTells(new EngineEvent.UpdateReady(newVersion()));
+
+        thenAMessageOffers("njMule 0.2.0 is ready to install", "Restart now");
+    }
+
     private void givenTheWindow() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
@@ -230,6 +268,58 @@ class TopBarTest {
         assertThat(FxTesting.onFx(() -> this.window.palette().isShowing())).isTrue();
         assertThat(FxTesting.onFx(() -> this.window.palette().field().getText()))
                 .isEqualTo(text);
+    }
+
+    private void givenTheEngineTold(EngineEvent event) throws Exception {
+        whenTheEngineTells(event);
+    }
+
+    private void whenTheEngineTells(EngineEvent event) throws Exception {
+        this.test.model.onNext(event);
+        FxTesting.onFx(() -> {});
+    }
+
+    private void thenTheUpdateInTheStripReads(String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> {
+                    Button link = (Button) this.window.root().lookup("#update-link");
+                    return link.isVisible() ? link.getText() : "";
+                }))
+                .isEqualTo(text);
+    }
+
+    private void thenAMessageOffers(String text, String action) throws Exception {
+        FxTesting.assertEventually(
+                "the offer",
+                () -> this.window.messages().stream()
+                        .anyMatch(n -> n instanceof Notification m
+                                && m.getMessage().contains(text)
+                                && m.getPrimaryActions().stream().anyMatch(b -> action.equals(b.getText()))));
+    }
+
+    private static NewVersion newVersion() {
+        return new NewVersion(
+                "0.2.0",
+                Instant.parse("2026-11-02T10:00:00Z"),
+                false,
+                "",
+                URI.create("https://github.com/njMule/njMule/releases/tag/v0.2.0"),
+                Optional.empty());
+    }
+
+    private static UpdateStatus update(
+            Optional<UpdateStatus.Progress> download, Optional<Path> ready, UpdateStatus.Install install) {
+        return new UpdateStatus(
+                "0.1.0",
+                InstallKind.WINDOWS_ZIP,
+                UpdateStatus.Installer.SELF,
+                false,
+                Optional.of(Instant.parse("2026-11-03T08:00:00Z")),
+                Optional.empty(),
+                Optional.of(newVersion()),
+                Optional.empty(),
+                download,
+                ready,
+                install);
     }
 
     private void thenTheLimitsRead(String text) throws Exception {

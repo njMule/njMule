@@ -43,6 +43,7 @@ import javafx.util.Duration;
 import org.njmule.app.Autostart;
 import org.njmule.app.LaunchOptions;
 import org.njmule.app.LinkHandoff;
+import org.njmule.app.Updating;
 import org.njmule.app.WebUiPassword;
 import org.njmule.app.logging.LoggingSetup;
 import org.njmule.core.api.Ed2kLink;
@@ -291,6 +292,11 @@ public final class DesktopApp implements AutoCloseable {
         this.stage = stage;
         this.themes = new Themes(this.settings.theme(), this.settings.mode());
         this.model = new EngineModel(this.engine, Platform::runLater);
+        // A new version installed now, as the user or the night hours asked: no question, everything is saved.
+        this.model.onUpdateRestart(version -> {
+            logger.info("Restarting to install {} {}", NjMuleInfo.NAME, version);
+            Platform.exit();
+        });
         this.scene = new Scene(build(), 1180, 760);
         // Dialogs take the direction of their owner's scene.
         this.gui.attach(this.scene);
@@ -625,6 +631,11 @@ public final class DesktopApp implements AutoCloseable {
             trayWindows();
             this.window.whileHidden(this.tray::notify);
         }
+    }
+
+    /** Once closed: hands a new version over to its installer when one is due, to start the app again as this one. */
+    int handOver() {
+        return Updating.handOver(this.engine, this.startArguments, System.getenv());
     }
 
     TrayMenu trayMenu() {
