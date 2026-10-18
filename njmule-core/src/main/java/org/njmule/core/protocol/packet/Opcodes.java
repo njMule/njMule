@@ -221,6 +221,12 @@ public final class Opcodes {
         QUEUEFULL(0x93),
         REASKCALLBACKUDP(0x94),
         DIRECTCALLBACKREQ(0x95),
+        /** Inside a rendezvous through a buddy: a client asks a firewalled one to meet it through their routers. */
+        RENDEZVOUS(0xA0),
+        /** Empty: opens a hole in the sender's router towards the receiver. */
+        HOLEPUNCH(0xA1),
+        /** A buddy tells a rendezvous requester the address it sees the target at. */
+        NATT_ENDPOINT_HINT(0xAA),
         PORTTEST(0xFE);
 
         private static final ClientUdp[] BY_CODE = table(values(), new ClientUdp[256]);
