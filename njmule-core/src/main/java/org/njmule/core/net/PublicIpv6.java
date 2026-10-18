@@ -32,9 +32,9 @@ import org.njmule.core.util.Ipv6;
  */
 public final class PublicIpv6 {
 
-    // Only the route towards it is looked up: nothing is ever sent there.
+    // Any address on the IPv6 Internet does: only the route towards it is looked up, nothing is ever sent there.
     private static final InetSocketAddress INTERNET =
-            new InetSocketAddress(InetAddresses.forString("2001:4860:4860::8888"), 53);
+            new InetSocketAddress(InetAddresses.forString("2001:4860:4860::8888"), 53); // NOSONAR: never contacted
 
     private PublicIpv6() {}
 
