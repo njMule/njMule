@@ -45,6 +45,8 @@ class NatTraversalMessagesTest {
     private NatTraversalMessages.Caps caps;
     private Optional<NatTraversalMessages.Forward> forward;
     private NatTraversalMessages.Rendezvous rendezvous;
+    private byte[] proofBytes;
+    private NatTraversalMessages.QuicProof proof;
     private Throwable exception;
 
     @Test
@@ -109,6 +111,47 @@ class NatTraversalMessagesTest {
         thenTheCapabilitiesAre(new NatTraversalMessages.Caps(true, 0x80, B, A, Hash16.ZERO));
     }
 
+    @Test
+    void shouldCarryAQuicDatagramInFrameOne() {
+        whenAQuicDatagramIsFramed(HEX.parseHex("c0000000"));
+
+        thenThePacketIs(Protocol.UDP_RESERVED_2, NatTraversalMessages.FRAME_QUIC, "c0000000");
+    }
+
+    @Test
+    void shouldWriteAQuicProofAsItsMagicAndBothHashes() {
+        whenAQuicProofIsWritten(new NatTraversalMessages.QuicProof(A, Hash16.ZERO));
+
+        thenTheProofBytesAre("4541514e31" + "aa".repeat(16) + "00".repeat(16));
+    }
+
+    @Test
+    void shouldReadAQuicProof() {
+        givenTheProofBytes("4541514e31" + "bb".repeat(16) + "aa".repeat(16));
+
+        whenTheQuicProofIsRead();
+
+        thenTheProofIs(new NatTraversalMessages.QuicProof(B, A));
+    }
+
+    @Test
+    void shouldRejectAQuicProofWithAnotherMagic() {
+        givenTheProofBytes("4541514e32" + "bb".repeat(16) + "aa".repeat(16));
+
+        whenTheQuicProofIsRead();
+
+        thenTheProofIsRejected();
+    }
+
+    @Test
+    void shouldRejectAShortQuicProof() {
+        givenTheProofBytes("4541514e31" + "bb".repeat(16));
+
+        whenTheQuicProofIsRead();
+
+        thenTheProofIsRejected();
+    }
+
     @Property
     void shouldOnlyFailWithDecodeExceptionOnAGarbageForward(@ForAll @Size(max = 80) byte[] data) {
         givenAForward(HEX.formatHex(data));
@@ -124,6 +167,10 @@ class NatTraversalMessagesTest {
 
     private void givenThePacket(Packet p) {
         this.packet = p;
+    }
+
+    private void givenTheProofBytes(String hex) {
+        this.proofBytes = HEX.parseHex(hex);
     }
 
     private void whenARendezvousIsWrittenFor(Hash16 buddyId) {
@@ -145,6 +192,19 @@ class NatTraversalMessagesTest {
 
     private void whenCapabilitiesAreWritten(NatTraversalMessages.Caps written) {
         this.packet = written.encode();
+    }
+
+    private void whenAQuicDatagramIsFramed(byte[] datagram) {
+        this.packet = NatTraversalMessages.quicFrame(datagram);
+    }
+
+    private void whenAQuicProofIsWritten(NatTraversalMessages.QuicProof written) {
+        this.proofBytes = written.encode();
+    }
+
+    private void whenTheQuicProofIsRead() {
+        byte[] read = this.proofBytes;
+        this.exception = catchThrowable(() -> this.proof = NatTraversalMessages.QuicProof.decode(read));
     }
 
     private void whenTheCapabilitiesAreRead() throws DecodeException {
@@ -179,6 +239,19 @@ class NatTraversalMessagesTest {
 
     private void thenTheCapabilitiesAre(NatTraversalMessages.Caps expected) {
         assertThat(this.caps).isEqualTo(expected);
+    }
+
+    private void thenTheProofBytesAre(String hex) {
+        assertThat(HEX.formatHex(this.proofBytes)).isEqualTo(hex);
+    }
+
+    private void thenTheProofIs(NatTraversalMessages.QuicProof expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.proof).isEqualTo(expected);
+    }
+
+    private void thenTheProofIsRejected() {
+        assertThat(this.exception).isInstanceOf(DecodeException.class);
     }
 
     private void thenAnyFailureIsADecodeException() {

@@ -27,6 +27,7 @@ module org.njmule.core {
     requires transitive org.eclipse.jetty.server;
     requires org.bouncycastle.provider;
     requires org.semver4j;
+    requires tech.kwik.core;
     requires org.slf4j;
     requires tools.jackson.core;
     requires tools.jackson.databind;

@@ -19,6 +19,7 @@ package org.njmule.core.protocol.ed2k;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
 import org.njmule.core.api.Hash16;
@@ -35,13 +36,15 @@ import org.njmule.core.util.Ipv4;
  * Traversal of the routers of two firewalled clients, as newer clients do it. The requester asks the target's Kad buddy
  * for a rendezvous (a re-ask through the buddy whose file hash is zero, carrying OP_RENDEZVOUS); the buddy passes it on
  * over TCP with the requester's address as it sees it; both sides send hole punches to each other's address, and a uTP
- * connection opens through the holes, inside frames of the reserved UDP protocol 0xB2 on the client UDP port.
+ * connection opens through the holes, uTP or QUIC, inside frames of the reserved UDP protocol 0xB2 on the client UDP
+ * port.
  */
 public final class NatTraversalMessages {
 
     /** The frame types of protocol 0xB2. */
     public static final int FRAME_UTP = 0x00;
 
+    public static final int FRAME_QUIC = 0x01;
     public static final int FRAME_CAPS = 0x02;
     public static final int FRAME_CAPS_ACK = 0x03;
     public static final int FRAME_KEY = 0xFF;
@@ -49,11 +52,16 @@ public final class NatTraversalMessages {
     /** Connect options: the client reaches others through their routers over uTP. */
     public static final int OPTION_UTP = 0x80;
 
+    /** Connect options: the client reaches others through their routers over QUIC. */
+    public static final int OPTION_QUIC = 0x40;
+
     /** Connect options of a rendezvous request: the buddy may tell the requester the target's address. */
     public static final int OPTION_HINT_WANTED = 0x20;
 
     /** The transport a rendezvous asks for. */
     public static final int TRANSPORT_UTP = 1;
+
+    public static final int TRANSPORT_QUIC = 2;
 
     private static final int CAPS_MAGIC = 0x43514145;
     private static final int CAPS_VERSION = 1;
@@ -71,6 +79,42 @@ public final class NatTraversalMessages {
     /** A uTP packet in its frame. */
     public static Packet utpFrame(byte[] utp) {
         return Packet.of(Protocol.UDP_RESERVED_2, FRAME_UTP, utp);
+    }
+
+    /** A QUIC datagram in its frame. */
+    public static Packet quicFrame(byte[] quic) {
+        return Packet.of(Protocol.UDP_RESERVED_2, FRAME_QUIC, quic);
+    }
+
+    /**
+     * What each side of a QUIC connection writes first on its stream: "EAQN1", its user hash and the hash it expects
+     * the other side to have (zero when unknown).
+     */
+    public record QuicProof(Hash16 sender, Hash16 receiver) {
+        public static final int LENGTH = 37;
+
+        private static final byte[] MAGIC = {'E', 'A', 'Q', 'N', '1'};
+
+        public QuicProof {
+            Objects.requireNonNull(sender, "sender");
+            Objects.requireNonNull(receiver, "receiver");
+        }
+
+        public byte[] encode() {
+            return new PacketWriter()
+                    .bytes(MAGIC)
+                    .hash16(this.sender)
+                    .hash16(this.receiver)
+                    .toByteArray();
+        }
+
+        public static QuicProof decode(byte[] proof) throws DecodeException {
+            PacketReader in = PacketReader.of(proof);
+            if (proof.length != LENGTH || !Arrays.equals(in.bytes(MAGIC.length), MAGIC)) {
+                throw new DecodeException("not a QUIC proof");
+            }
+            return new QuicProof(in.hash16(), in.hash16());
+        }
     }
 
     /**
