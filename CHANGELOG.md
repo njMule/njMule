@@ -140,6 +140,15 @@ All notable changes to this project are documented here. The format follows
   same places, lets us reach a firewalled source directly, with no callback, or one IPv4 failed.
   Secure identification binds to IPv6 addresses too. Sources at IPv6 addresses can be added by
   hand or come in links as `[2001:db8::1]:4662`; the status shows our IPv6 address.
+- IPv6 follow-ups: the router's IPv6 firewall is opened to our ports (UPnP IGDv2 pinholes, else
+  PCP at the IPv6 default gateway) and closed on exit; sources are re-asked over UDP at their IPv6
+  address; connected clients hear when our IPv6 address changes, and theirs is followed.
+- Connections through routers between firewalled clients, on the client UDP port in the frames
+  newer clients use: firewalled ourselves, we meet a firewalled Kad source by a rendezvous through
+  its buddy; both sides punch holes in their routers and the connection opens over QUIC (TLS 1.3
+  with Kwik, each side first proving its user hash) when the source has it, else over uTP (LEDBAT
+  congestion control, selective acknowledgements). A host QUIC failed with is met over uTP for two
+  minutes. Our hello and Kad publishes say that we take such connections.
 - Port test, in the first-start wizard and in the connection options: the ports as chosen are
   applied, the router asked again through UPnP, then the server checks the TCP port at a new login
   (a HighID) and Kad nodes check both ports; the outcomes show as they come, with what to do about
