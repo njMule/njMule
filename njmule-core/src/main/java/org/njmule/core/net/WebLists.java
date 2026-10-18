@@ -19,11 +19,16 @@ package org.njmule.core.net;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
+import java.io.OutputStream;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Objects;
@@ -32,6 +37,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.LongConsumer;
 import java.util.function.Predicate;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
@@ -40,7 +46,9 @@ import org.eclipse.jetty.client.CompletableResponseListener;
 import org.eclipse.jetty.client.ContentResponse;
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.HttpProxy;
+import org.eclipse.jetty.client.InputStreamResponseListener;
 import org.eclipse.jetty.client.Request;
+import org.eclipse.jetty.client.Response;
 import org.eclipse.jetty.client.Socks5;
 import org.eclipse.jetty.client.Socks5Proxy;
 import org.eclipse.jetty.http.HttpField;
@@ -55,7 +63,8 @@ import org.njmule.core.config.ProxySettings;
  * http or https only, at most three redirects, each checked again and never from https to http, never to a loopback,
  * private, link-local or multicast address, at most 50 MiB and 90 seconds in all; a gzip or zip body is unpacked within
  * the same limit. The proxy of the preferences is used, HTTP or SOCKS 5 with its user name and password. The host is
- * looked up here to check its addresses, also when a proxy then connects to it.
+ * looked up here to check its addresses, also when a proxy then connects to it. A {@linkplain #download download} of a
+ * file streams to disk instead, within the length it is expected to have.
  */
 public final class WebLists {
 
@@ -64,6 +73,10 @@ public final class WebLists {
     private static final int MAX_REDIRECTS = 3;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(90);
+    // A download may take long on a slow line; it fails when nothing comes for a minute.
+    private static final Duration DOWNLOAD_IDLE = Duration.ofSeconds(60);
+    private static final Duration DOWNLOAD_TIMEOUT = Duration.ofHours(4);
+    private static final int DOWNLOAD_BUFFER = 64 * 1024;
     private static final String USER_AGENT = NjMuleInfo.NAME + "/" + NjMuleInfo.version();
     // What an archive holds the list as, by kind; any other file only when none of these is there.
     private static final Set<String> LIST_NAMES =
@@ -84,6 +97,14 @@ public final class WebLists {
     /** A fetcher that reaches public addresses only. */
     public static WebLists create() {
         return new WebLists(WebLists::isPublic);
+    }
+
+    /**
+     * A fetcher that reaches any address, for one the user set by hand as where to look for new versions: what comes
+     * from there is taken only when signed.
+     */
+    public static WebLists anyAddress() {
+        return new WebLists(address -> true);
     }
 
     /**
@@ -148,6 +169,155 @@ public final class WebLists {
             }
         } finally {
             stop(http);
+        }
+    }
+
+    /**
+     * Downloads the file at {@code uri} into {@code part}, going on from the bytes {@code part} already holds when the
+     * server allows it, until it holds {@code size} bytes; reports the bytes held to {@code progress}. A file that
+     * turns out longer is refused; one cut short leaves {@code part} for the next try.
+     *
+     * @throws IOException when the address is refused, the server fails, the file is longer or the line idle too long
+     */
+    public void download(URI uri, Path part, long size, LongConsumer progress) throws IOException {
+        Objects.requireNonNull(part, "part");
+        Objects.requireNonNull(progress, "progress");
+        if (size < 0) {
+            throw new IllegalArgumentException("size " + size);
+        }
+        URI current = Objects.requireNonNull(uri, "uri");
+        HttpClient http = client(ProxyRoute.current(), TcpConnector.localAddress());
+        try {
+            http.start();
+        } catch (Exception e) {
+            stop(http);
+            throw new IOException("cannot start the HTTP client", e);
+        }
+        try {
+            int hops = 0;
+            boolean restarted = false;
+            while (true) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new InterruptedIOException("interrupted while downloading from " + current.getHost());
+                }
+                check(current);
+                long held = held(part, size);
+                progress.accept(held);
+                if (held == size) {
+                    return;
+                }
+                Request request = http.newRequest(current)
+                        .idleTimeout(DOWNLOAD_IDLE.toMillis(), TimeUnit.MILLISECONDS)
+                        .timeout(DOWNLOAD_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+                if (held > 0) {
+                    request.headers(h -> h.put(HttpHeader.RANGE, "bytes=" + held + "-"));
+                }
+                InputStreamResponseListener listener = new InputStreamResponseListener();
+                request.send(listener);
+                Response response = headers(listener, current);
+                int status = response.getStatus();
+                if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+                    listener.getInputStream().close();
+                    if (++hops > MAX_REDIRECTS) {
+                        throw new IOException("too many redirects from " + uri.getHost());
+                    }
+                    String location = response.getHeaders().get(HttpHeader.LOCATION);
+                    if (location == null) {
+                        throw new IOException("a redirect without a location");
+                    }
+                    current = redirect(current, location);
+                    continue;
+                }
+                // The bytes held no longer fit the file: once, from the start.
+                if (status == 416 && held > 0 && !restarted) {
+                    listener.getInputStream().close();
+                    Files.deleteIfExists(part);
+                    restarted = true;
+                    continue;
+                }
+                boolean resumed = status == 206 && held > 0 && startsAt(response, held);
+                if (status != 200 && !resumed) {
+                    listener.getInputStream().close();
+                    throw new IOException("HTTP " + status + " from " + current.getHost());
+                }
+                receive(listener, response, part, resumed ? held : 0, size, progress, current);
+                return;
+            }
+        } finally {
+            stop(http);
+        }
+    }
+
+    // What part holds already, when it is no longer than the file; a longer one is dropped.
+    private static long held(Path part, long size) throws IOException {
+        if (!Files.isRegularFile(part)) {
+            return 0;
+        }
+        long held = Files.size(part);
+        if (held > size) {
+            Files.delete(part);
+            return 0;
+        }
+        return held;
+    }
+
+    private static Response headers(InputStreamResponseListener listener, URI uri) throws IOException {
+        try {
+            return listener.get(CONNECT_TIMEOUT.plus(DOWNLOAD_IDLE).toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("interrupted while downloading from " + uri.getHost());
+        } catch (TimeoutException e) {
+            throw new IOException("no answer from " + uri.getHost() + " in time", e);
+        } catch (ExecutionException e) {
+            throw failure(e.getCause(), uri);
+        }
+    }
+
+    // A partial answer counts only when it goes on from the bytes held: "bytes <held>-<last>/<length>".
+    private static boolean startsAt(Response response, long held) {
+        String range = response.getHeaders().get(HttpHeader.CONTENT_RANGE);
+        return range != null && range.strip().startsWith("bytes " + held + "-");
+    }
+
+    private static void receive(
+            InputStreamResponseListener listener,
+            Response response,
+            Path part,
+            long from,
+            long size,
+            LongConsumer progress,
+            URI uri)
+            throws IOException {
+        long length = response.getHeaders().getLongField(HttpHeader.CONTENT_LENGTH);
+        if (length > size - from) {
+            listener.getInputStream().close();
+            throw new IOException("the file at " + uri.getHost() + " is longer than " + size + " bytes");
+        }
+        StandardOpenOption[] options = from > 0
+                ? new StandardOpenOption[] {StandardOpenOption.WRITE, StandardOpenOption.APPEND}
+                : new StandardOpenOption[] {
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING
+                };
+        long held = from;
+        try (InputStream in = listener.getInputStream();
+                OutputStream out = Files.newOutputStream(part, options)) {
+            byte[] buffer = new byte[DOWNLOAD_BUFFER];
+            for (int n = in.read(buffer); n >= 0; n = in.read(buffer)) {
+                if (n > size - held) {
+                    throw new IOException("the file at " + uri.getHost() + " is longer than " + size + " bytes");
+                }
+                out.write(buffer, 0, n);
+                held += n;
+                progress.accept(held);
+            }
+        } catch (InterruptedIOException e) {
+            Thread.currentThread().interrupt();
+            throw e;
+        }
+        if (held != size) {
+            throw new IOException(
+                    "the download from " + uri.getHost() + " stopped at " + held + " of " + size + " bytes");
         }
     }
 
