@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,10 +38,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.config.NightHours;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
 import org.njmule.core.config.UpdateChannel;
+import org.njmule.core.config.UpdateInstallTime;
 import org.njmule.core.config.UpdateMode;
 
 class PreferencesCodecTest {
@@ -79,7 +82,9 @@ class PreferencesCodecTest {
 
         thenTheFileLoadsThePreferencesBack();
         thenTheFileContains("net.tcpPort=12345");
-        thenTheFileContains("update.mode=OFF");
+        thenTheFileContains("update.mode=INSTALL");
+        thenTheFileContains("update.installAt=EXIT_OR_NIGHT");
+        thenTheFileContains("update.nightHours=01\\:00-04\\:30");
         thenTheFileDoesNotContain("#Mon");
     }
 
@@ -232,7 +237,10 @@ class PreferencesCodecTest {
                 .nameCleanups("dvdrip|sponsored")
                 .searchSpamFilter(false)
                 .cleanUpNewNames(true)
-                .updateMode(UpdateMode.OFF)
+                .updateMode(UpdateMode.INSTALL)
+                .updateInstallTime(UpdateInstallTime.EXIT_OR_NIGHT)
+                .nightHours(NightHours.parse("01:00-04:30"))
+                .updateUrl(Optional.of(URI.create("http://192.168.1.2:8000/njmule")))
                 .updateChannel(
                         Preferences.defaults().updateChannel() == UpdateChannel.STABLE
                                 ? UpdateChannel.PRERELEASE

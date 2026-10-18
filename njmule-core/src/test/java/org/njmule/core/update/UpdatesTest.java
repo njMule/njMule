@@ -432,13 +432,20 @@ class UpdatesTest {
         if (this.updates == null) {
             this.updates = new Updates(
                     this.web.releases(),
+                    this.web,
                     this.signer.keys(),
                     this.installation,
                     "0.1.0",
                     this.dir.resolve(UpdateState.FILE_NAME),
+                    new UpdateFiles(this.dir.resolve("cache")),
+                    (command, timeout) -> new Commands.Result(0, ""),
+                    (command, log) -> {
+                        throw new IOException("no process in this test");
+                    },
                     this.now::get,
                     Duration.ZERO,
                     this.enabled,
+                    false,
                     new Updates.Listener() {
                         @Override
                         public void changed(UpdateStatus changed) {
@@ -448,6 +455,16 @@ class UpdatesTest {
                         @Override
                         public void found(NewVersion version) {
                             UpdatesTest.this.found.add(version);
+                        }
+
+                        @Override
+                        public void ready(NewVersion version) {
+                            // Nothing is downloaded here.
+                        }
+
+                        @Override
+                        public void restart(String version) {
+                            // Nothing is installed here.
                         }
                     });
         }

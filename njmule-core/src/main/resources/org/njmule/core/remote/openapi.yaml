@@ -59,7 +59,10 @@ tags:
     summary: Friends, messages and bans
   - name: updates
     summary: Updates
-    description: New versions of njMule, as the signed information of its releases on GitHub tells.
+    description: |
+      New versions of njMule, as the signed information of its releases on GitHub tells: looked for,
+      downloaded and checked against that information, and installed where njMule may replace
+      itself (the Windows installer and zip, the macOS app, the Linux archives).
 
 paths:
   /:
@@ -1021,6 +1024,56 @@ paths:
           $ref: "#/components/responses/BadRequest"
         default:
           $ref: "#/components/responses/Error"
+  /update/download:
+    post:
+      operationId: downloadUpdate
+      tags: [updates]
+      summary: Downloads the package of the new version for this installation, and checks it.
+      description: |
+        Joins the download already running, if any. One that takes longer than ten seconds goes on
+        after the answer, 202 with the progress in `download`: read `GET /update` again, or follow
+        the `update.status` and `update.ready` events. A download that failed tells why in
+        `failure`; it goes on from where it stopped the next time.
+      responses:
+        "200":
+          $ref: "#/components/responses/Update"
+        "202":
+          $ref: "#/components/responses/Update"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/Error"
+  /update/install:
+    post:
+      operationId: installUpdate
+      tags: [updates]
+      summary: Installs the version downloaded, now or when njMule exits.
+      description: |
+        Now (the default), njMule saves everything, stops, puts the new version in place and starts
+        again: the answer comes first, 202 with `install` set to `restart`, then the
+        `update.restart` event and the end of the event stream. Refused with 409 when no version is
+        downloaded or njMule cannot replace itself here (`canInstall` false: a package manager,
+        the Package Center or Docker updates it).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                restart:
+                  type: boolean
+                  default: true
+                  description: Whether to install now, restarting njMule, or when it exits.
+      responses:
+        "200":
+          $ref: "#/components/responses/Update"
+        "202":
+          $ref: "#/components/responses/Update"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/Error"
 
 components:
   securitySchemes:
@@ -1705,6 +1758,8 @@ components:
         - $ref: "#/components/schemas/MessageFailedEvent"
         - $ref: "#/components/schemas/UpdateStatusEvent"
         - $ref: "#/components/schemas/UpdateAvailableEvent"
+        - $ref: "#/components/schemas/UpdateReadyEvent"
+        - $ref: "#/components/schemas/UpdateRestartEvent"
         - $ref: "#/components/schemas/LostEvent"
     StartedEvent:
       properties:
@@ -1958,7 +2013,9 @@ components:
               reason:
                 type: string
     UpdateStatusEvent:
-      description: A check for a new version started or ended, or a version was skipped.
+      description: |
+        What is known of new versions changed: a check or a download started, went on or ended, a
+        version was skipped or its installation asked for.
       properties:
         event:
           const: update.status
@@ -1981,6 +2038,30 @@ components:
             properties:
               version:
                 $ref: "#/components/schemas/NewVersion"
+    UpdateReadyEvent:
+      description: The package of a new version is downloaded and checked; it can be installed.
+      properties:
+        event:
+          const: update.ready
+        data:
+          contentSchema:
+            type: object
+            required: [version]
+            properties:
+              version:
+                $ref: "#/components/schemas/NewVersion"
+    UpdateRestartEvent:
+      description: njMule stops to install a new version and starts again; the stream ends soon after.
+      properties:
+        event:
+          const: update.restart
+        data:
+          contentSchema:
+            type: object
+            required: [version]
+            properties:
+              version:
+                type: string
     LostEvent:
       description: The caller fell too far behind; the stream ends after it.
       properties:
@@ -1994,8 +2075,25 @@ components:
       maxProperties: 0
     Update:
       type: object
-      required: [current, installation, checking, lastCheck, failure, available, skipped]
+      required:
+        - state
+        - current
+        - installation
+        - installer
+        - canInstall
+        - checking
+        - lastCheck
+        - failure
+        - available
+        - skipped
+        - download
+        - ready
+        - install
       properties:
+        state:
+          type: string
+          enum: [idle, checking, up_to_date, available, downloading, ready, installing, failed]
+          description: Where the update stands, in one word.
         current:
           type: string
           description: The version running.
@@ -2003,6 +2101,15 @@ components:
           type: string
           enum: [msi, windows_zip, dmg, deb, rpm, tar, static_tar, synology, docker, unknown]
           description: How this copy was installed, which tells how to update it.
+        installer:
+          type: string
+          enum: [none, self, elevated]
+          description: |
+            Who puts a new version in place: the user or a package manager (none), njMule (self),
+            or njMule once the system has asked for administrator rights (elevated).
+        canInstall:
+          type: boolean
+          description: Whether njMule can install the version downloaded here.
         checking:
           type: boolean
           description: Whether a check runs now.
@@ -2012,7 +2119,8 @@ components:
           description: When a check last succeeded.
         failure:
           type: [string, "null"]
-          description: Why the last check failed; null when it succeeded or none ran.
+          description: |
+            Why the last check, download or installation failed; null when it succeeded or none ran.
         available:
           description: The newest version, when it is newer than the one running.
           oneOf:
@@ -2021,6 +2129,30 @@ components:
         skipped:
           type: [string, "null"]
           description: The version the user asked not to be told of again.
+        download:
+          description: How far the download of the new version is, while it runs.
+          oneOf:
+            - type: object
+              required: [received, size]
+              properties:
+                received:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                size:
+                  type: integer
+                  format: int64
+                  minimum: 0
+            - type: "null"
+        ready:
+          type: boolean
+          description: Whether the package of the new version is downloaded and checked.
+        install:
+          type: string
+          enum: [asked, at_exit, restart]
+          description: |
+            When the version downloaded is installed: when the user asks, when njMule exits, or now,
+            njMule stopping and starting again.
     NewVersion:
       type: object
       required: [version, published, critical, notes, page, download]

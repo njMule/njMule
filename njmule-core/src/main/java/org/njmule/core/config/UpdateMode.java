@@ -16,10 +16,17 @@
  */
 package org.njmule.core.config;
 
-/** Whether njMule looks for new versions of itself on its own. */
+/** Whether njMule looks for new versions of itself on its own, and what it does with one. */
 public enum UpdateMode {
     /** Only when the user asks. */
     OFF,
     /** At each start and once a day, telling the user of a new version. */
-    NOTIFY
+    NOTIFY,
+    /** As {@link #NOTIFY}, downloading a new version in the background too. */
+    DOWNLOAD,
+    /**
+     * As {@link #DOWNLOAD}, installing it when njMule exits (or in the night hours, if chosen) where njMule can replace
+     * itself; elsewhere as {@link #DOWNLOAD}.
+     */
+    INSTALL
 }

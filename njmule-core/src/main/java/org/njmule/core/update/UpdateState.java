@@ -37,38 +37,59 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * What njMule remembers of its update checks between runs, in {@value #FILE_NAME}: when one last succeeded, the highest
- * version each channel offered (an older one offered later is a replay) and the version the user skipped.
+ * What njMule remembers of its updates between runs, in {@value #FILE_NAME}: when a check last succeeded, the highest
+ * version each channel offered (an older one offered later is a replay), the version the user skipped, the version that
+ * last ran on this configuration and one whose installation failed, which is not tried again on its own.
  *
  * @param lastCheck when a check last succeeded
  * @param highest the highest version each channel offered
  * @param skipped the version the user asked not to be told of again
+ * @param ran the version that last started on this configuration
+ * @param failedInstall the version whose installation failed
  */
-record UpdateState(Optional<Instant> lastCheck, Map<UpdateChannel, Semver> highest, Optional<String> skipped) {
+record UpdateState(
+        Optional<Instant> lastCheck,
+        Map<UpdateChannel, Semver> highest,
+        Optional<String> skipped,
+        Optional<String> ran,
+        Optional<String> failedInstall) {
 
     static final String FILE_NAME = "update.properties";
-    static final UpdateState NONE = new UpdateState(Optional.empty(), Map.of(), Optional.empty());
+    static final UpdateState NONE =
+            new UpdateState(Optional.empty(), Map.of(), Optional.empty(), Optional.empty(), Optional.empty());
 
     private static final Logger logger = LoggerFactory.getLogger(UpdateState.class);
     private static final String LAST_CHECK_KEY = "lastCheck";
     private static final String HIGHEST_KEY = "highest.";
     private static final String SKIPPED_KEY = "skipped";
+    private static final String RAN_KEY = "ran";
+    private static final String FAILED_KEY = "failedInstall";
 
     UpdateState {
         Objects.requireNonNull(lastCheck, "lastCheck");
         highest = Map.copyOf(highest);
         Objects.requireNonNull(skipped, "skipped");
+        Objects.requireNonNull(ran, "ran");
+        Objects.requireNonNull(failedInstall, "failedInstall");
     }
 
     UpdateState checked(Instant when, UpdateChannel channel, Semver offered) {
         Map<UpdateChannel, Semver> next = new EnumMap<>(UpdateChannel.class);
         next.putAll(this.highest);
         next.merge(channel, offered, (was, now) -> now.isGreaterThan(was) ? now : was);
-        return new UpdateState(Optional.of(when), next, this.skipped);
+        return new UpdateState(Optional.of(when), next, this.skipped, this.ran, this.failedInstall);
     }
 
     UpdateState skipping(String version) {
-        return new UpdateState(this.lastCheck, this.highest, Optional.of(version));
+        return new UpdateState(this.lastCheck, this.highest, Optional.of(version), this.ran, this.failedInstall);
+    }
+
+    UpdateState running(String version) {
+        return new UpdateState(this.lastCheck, this.highest, this.skipped, Optional.of(version), this.failedInstall);
+    }
+
+    UpdateState failing(Optional<String> version) {
+        return new UpdateState(this.lastCheck, this.highest, this.skipped, this.ran, version);
     }
 
     /** The state kept in {@code file}; none when it is missing, and what can be read of it when it is damaged. */
@@ -103,10 +124,18 @@ record UpdateState(Optional<Instant> lastCheck, Map<UpdateChannel, Semver> highe
                 highest.put(channel, version);
             }
         }
-        Optional<String> skipped = Optional.ofNullable(properties.getProperty(SKIPPED_KEY))
+        return new UpdateState(
+                lastCheck,
+                highest,
+                version(properties, SKIPPED_KEY),
+                version(properties, RAN_KEY),
+                version(properties, FAILED_KEY));
+    }
+
+    private static Optional<String> version(Properties properties, String key) {
+        return Optional.ofNullable(properties.getProperty(key))
                 .map(String::strip)
                 .filter(v -> Semver.parse(v) != null);
-        return new UpdateState(lastCheck, highest, skipped);
     }
 
     /** Keeps the state in {@code file}, replacing it whole. */
@@ -125,6 +154,9 @@ record UpdateState(Optional<Instant> lastCheck, Map<UpdateChannel, Semver> highe
         }
         this.skipped.ifPresent(
                 v -> text.append(SKIPPED_KEY).append('=').append(v).append('\n'));
+        this.ran.ifPresent(v -> text.append(RAN_KEY).append('=').append(v).append('\n'));
+        this.failedInstall.ifPresent(
+                v -> text.append(FAILED_KEY).append('=').append(v).append('\n'));
         AtomicFiles.writeBytes(file, text.toString().getBytes(StandardCharsets.UTF_8));
     }
 

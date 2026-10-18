@@ -32,6 +32,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -97,6 +98,7 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.SpamMarks;
+import org.njmule.core.api.UpdateHandOver;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
@@ -142,6 +144,8 @@ public final class Engine implements NjMuleEngine {
     // The first look for a new version waits for the start to settle; then whether one is due is asked often.
     private static final Duration UPDATE_FIRST = Duration.ofMinutes(2);
     private static final Duration UPDATE_TICK = Duration.ofMinutes(10);
+    // A new version that ran its engine this long is kept: the installer stops watching it, the old files go.
+    private static final Duration UPDATE_PROVEN = Duration.ofSeconds(30);
 
     private final AppDirectories directories;
     private final Path preferencesFile;
@@ -195,20 +199,32 @@ public final class Engine implements NjMuleEngine {
                 EventCommandRunner::launch,
                 command -> Thread.ofVirtual().name("njmule-event-command").start(command),
                 OsFamily.current() == OsFamily.WINDOWS));
-        this.updates = Updates.create(directories.config(), this.web, new Updates.Listener() {
-            @Override
-            public void changed(UpdateStatus status) {
-                publish(new EngineEvent.UpdateStatusChanged(status));
-            }
+        this.updates = Updates.create(
+                directories.config(), directories.cache(), this.web, preferences, new Updates.Listener() {
+                    @Override
+                    public void changed(UpdateStatus status) {
+                        publish(new EngineEvent.UpdateStatusChanged(status));
+                    }
 
-            @Override
-            public void found(NewVersion version) {
-                userLog(
-                        LogLine.Level.INFO,
-                        NjMuleInfo.NAME + " " + version.version() + " is available: " + version.page());
-                publish(new EngineEvent.UpdateAvailable(version));
-            }
-        });
+                    @Override
+                    public void found(NewVersion version) {
+                        userLog(
+                                LogLine.Level.INFO,
+                                NjMuleInfo.NAME + " " + version.version() + " is available: " + version.page());
+                        publish(new EngineEvent.UpdateAvailable(version));
+                    }
+
+                    @Override
+                    public void ready(NewVersion version) {
+                        publish(new EngineEvent.UpdateReady(version));
+                    }
+
+                    @Override
+                    public void restart(String version) {
+                        userLog(LogLine.Level.INFO, NjMuleInfo.NAME + " restarts to install " + version);
+                        publish(new EngineEvent.UpdateRestart(version));
+                    }
+                });
         this.network = new Network(
                 loop,
                 directories.config(),
@@ -255,6 +271,10 @@ public final class Engine implements NjMuleEngine {
             Path prefsFile = dirs.config().resolve(PreferencesCodec.FILE_NAME);
             AtomicFiles.cleanupInterruptedWrite(prefsFile);
             Preferences prefs = PreferencesCodec.load(prefsFile);
+            // Before a version that did not run here yet changes anything: the configuration as the last one left it.
+            if (Updates.starting(dirs.config()) && prefs.backupCopies() > 0) {
+                backUp(dirs, prefs.backupCopies());
+            }
             PreferencesCodec.save(prefsFile, prefs);
             EmuleImporter.applyPendingIdentity(dirs.config(), emuleRunning);
             EmuleImporter.applyPendingFiles(dirs.config());
@@ -286,6 +306,7 @@ public final class Engine implements NjMuleEngine {
                                 "IP filter lists", Duration.ofMinutes(1), IP_FILTER_CHECK, engine::updateIpFilterIfDue);
                         engine.loop.scheduleRepeating(
                                 "updates", UPDATE_FIRST, UPDATE_TICK, engine::checkForUpdateIfDue);
+                        engine.loop.schedule("update proven", UPDATE_PROVEN, engine::provenVersion);
                         return null;
                     })
                     .join();
@@ -335,6 +356,7 @@ public final class Engine implements NjMuleEngine {
                 refreshSchedule();
                 publish(new EngineEvent.PreferencesChanged(next));
                 this.network.reconfigure(current, next);
+                this.updates.preferences(next);
             }
             return next;
         });
@@ -669,13 +691,35 @@ public final class Engine implements NjMuleEngine {
                 task -> Thread.ofVirtual().name("njmule-update-skip").start(task));
     }
 
-    // Engine thread: once at the start, then daily, unless the user looks only when asking.
+    @Override
+    public CompletableFuture<UpdateStatus> downloadUpdate() {
+        return this.updates.download();
+    }
+
+    @Override
+    public CompletableFuture<UpdateStatus> installUpdate(boolean restart) {
+        return this.updates.install(restart);
+    }
+
+    @Override
+    public Optional<UpdateHandOver> updateHandOver() {
+        return this.closed.get() ? this.updates.handOver() : Optional.empty();
+    }
+
+    // Engine thread: once at the start, then daily, unless the user looks only when asking; in the night hours a
+    // version ready is installed, when the preferences say so.
     @SuppressWarnings("FutureReturnValueIgnored") // the check tells its outcome through events
     private void checkForUpdateIfDue() {
         Preferences now = this.preferences;
         if (now.updateMode() != UpdateMode.OFF && this.updates.isDue()) {
             this.updates.check(now.updateChannel(), true);
         }
+        this.updates.installIfNight(LocalTime.now(ZoneId.systemDefault()));
+    }
+
+    // Engine thread: this version has run long enough to be kept.
+    private void provenVersion() {
+        this.updates.ranLongEnough().ifPresent(message -> userLog(LogLine.Level.SUCCESS, message));
     }
 
     @Override
@@ -1426,12 +1470,13 @@ public final class Engine implements NjMuleEngine {
         if (keep == 0) {
             return;
         }
+        backUp(this.directories, keep);
+    }
+
+    private static void backUp(AppDirectories dirs, int keep) {
         try {
             Path copy = ConfigBackup.write(
-                    this.directories.config(),
-                    this.directories.data().resolve(ConfigBackup.FOLDER),
-                    keep,
-                    Clock.systemUTC());
+                    dirs.config(), dirs.data().resolve(ConfigBackup.FOLDER), keep, Clock.systemUTC());
             logger.info("Configuration backed up to {}", copy);
         } catch (IOException e) {
             logger.warn("Cannot back up the configuration: {}", e.toString());

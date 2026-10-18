@@ -231,6 +231,11 @@ public final class RemoteApi implements AutoCloseable {
                     UpdateStatus after = await(this.engine.skipUpdate(text(c.body(), "version")));
                     reply(c.exchange(), 200, g -> ApiJson.update(g, after));
                 }),
+                entry("downloadUpdate", c -> updateWork(c, this.engine.downloadUpdate())),
+                entry("installUpdate", c -> {
+                    boolean restart = c.body().path("restart").asBoolean(true);
+                    updateWork(c, this.engine.installUpdate(restart));
+                }),
                 entry("unban", c -> known(c, this.engine.unban(text(c.parameters(), ADDRESS_KEY)))));
     }
 
@@ -412,6 +417,30 @@ public final class RemoteApi implements AutoCloseable {
                 g.writeNull();
             }
         });
+    }
+
+    // A download that takes longer than a call waits for goes on: the caller reads its outcome later. A refusal
+    // (nothing
+    // to download or install, or not here) is a conflict with the state.
+    private void updateWork(Call c, CompletableFuture<UpdateStatus> work) throws IOException {
+        UpdateStatus status;
+        try {
+            status = work.get(ENGINE_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new Failure(503, "Interrupted.");
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof IllegalStateException refused) {
+                throw new Failure(409, String.valueOf(refused.getMessage()));
+            }
+            throw new Failure(
+                    503, "The engine cannot do it now: " + e.getCause().getMessage());
+        } catch (TimeoutException e) {
+            status = this.engine.updateStatus();
+        }
+        UpdateStatus answer = status;
+        boolean goesOn = answer.download().isPresent() || answer.install() == UpdateStatus.Install.RESTART;
+        reply(c.exchange(), goesOn ? 202 : 200, g -> ApiJson.update(g, answer));
     }
 
     // A check that takes longer than a call waits for goes on: the caller reads its outcome later.

@@ -21,6 +21,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -34,11 +35,13 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 import org.njmule.core.config.EventCommands;
 import org.njmule.core.config.NextDownload;
+import org.njmule.core.config.NightHours;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
 import org.njmule.core.config.SharedFilesVisibility;
 import org.njmule.core.config.UpdateChannel;
+import org.njmule.core.config.UpdateInstallTime;
 import org.njmule.core.config.UpdateMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,6 +111,16 @@ public final class PreferencesCodec {
                 "update.channel",
                 p -> p.updateChannel().name(),
                 (b, v) -> b.updateChannel(UpdateChannel.valueOf(v.strip().toUpperCase(Locale.ROOT))));
+        key(
+                "update.installAt",
+                p -> p.updateInstallTime().name(),
+                (b, v) -> b.updateInstallTime(
+                        UpdateInstallTime.valueOf(v.strip().replace('-', '_').toUpperCase(Locale.ROOT))));
+        key("update.nightHours", p -> p.nightHours().toString(), (b, v) -> b.nightHours(NightHours.parse(v)));
+        key(
+                "update.url",
+                p -> p.updateUrl().map(URI::toString).orElse(""),
+                (b, v) -> b.updateUrl(v.isBlank() ? Optional.empty() : Optional.of(URI.create(v.strip()))));
         boolKey("chat.friendsOnly", Preferences::messagesFromFriendsOnly, Preferences.Builder::messagesFromFriendsOnly);
         boolKey("search.spamFilter", Preferences::searchSpamFilter, Preferences.Builder::searchSpamFilter);
         key("chat.filter", Preferences::messageFilter, Preferences.Builder::messageFilter);

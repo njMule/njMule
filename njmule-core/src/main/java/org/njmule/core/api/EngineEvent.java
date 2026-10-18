@@ -132,4 +132,13 @@ public sealed interface EngineEvent {
 
     /** A check njMule ran on its own found a new version worth telling the user of; once a run for each. */
     record UpdateAvailable(NewVersion version) implements EngineEvent {}
+
+    /** The package of a new version is downloaded and checked: it can be installed. */
+    record UpdateReady(NewVersion version) implements EngineEvent {}
+
+    /**
+     * njMule is to stop, install {@code version} and start again, as the user or the night hours asked: the front end
+     * that owns the process closes the engine and hands the installation over.
+     */
+    record UpdateRestart(String version) implements EngineEvent {}
 }

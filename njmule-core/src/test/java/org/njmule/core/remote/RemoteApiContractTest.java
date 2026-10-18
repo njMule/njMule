@@ -179,6 +179,9 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"global\"}", 201),
                 Arguments.of("POST", "/api/v1/update/check", "", 200),
                 Arguments.of("POST", "/api/v1/update/skip", "{\"version\":\"0.2.0\"}", 200),
+                Arguments.of("POST", "/api/v1/update/download", "", 202),
+                Arguments.of("POST", "/api/v1/update/install", "", 202),
+                Arguments.of("POST", "/api/v1/update/install", "{\"restart\":false}", 200),
                 Arguments.of("POST", "/api/v1/shutdown", "", 202));
     }
 
@@ -209,7 +212,10 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/downloads", "{\"links\":[]}", 400),
                 Arguments.of("POST", "/api/v1/servers/import", "{\"url\":\"file:///etc/passwd\"}", 400),
                 Arguments.of("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"everywhere\"}", 400),
-                Arguments.of("POST", "/api/v1/update/skip", "{}", 400));
+                Arguments.of("POST", "/api/v1/update/skip", "{}", 400),
+                Arguments.of("POST", "/api/v1/update/download", "", 409),
+                Arguments.of("POST", "/api/v1/update/install", "", 409),
+                Arguments.of("POST", "/api/v1/update/install", "{\"restart\":\"now\"}", 400));
     }
 
     @ParameterizedTest
@@ -294,6 +300,12 @@ class RemoteApiContractTest {
         answerWith("bans", List.of(ApiSamples.ban()));
         this.fake.value("preferences", Preferences.defaults());
         this.fake.value("updateStatus", ApiSamples.updateStatus());
+        // Until a test says otherwise, nothing new is known: there is nothing to download or install.
+        for (String refused : List.of("downloadUpdate", "installUpdate")) {
+            this.fake.answer(
+                    refused,
+                    args -> CompletableFuture.failedFuture(new IllegalStateException("no new version is known")));
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -325,6 +337,11 @@ class RemoteApiContractTest {
         answerWith("search", new SearchId(7));
         answerWith("checkForUpdate", ApiSamples.updateStatus());
         answerWith("skipUpdate", ApiSamples.updateStatus());
+        answerWith("downloadUpdate", ApiSamples.updateStatus());
+        this.fake.answer(
+                "installUpdate",
+                args -> CompletableFuture.completedFuture(
+                        (Boolean) args[0] ? ApiSamples.restartingUpdateStatus() : ApiSamples.atExitUpdateStatus()));
         this.fake.answer(
                 "updatePreferences",
                 args -> CompletableFuture.completedFuture(

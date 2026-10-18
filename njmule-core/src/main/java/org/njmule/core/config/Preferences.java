@@ -49,6 +49,9 @@ import org.njmule.core.security.IpWhitelist;
  * @param ipFilterUpdateDays the lists are fetched again once the filter is this many days old; {@code 0} = by hand only
  * @param updateMode whether njMule looks for new versions of itself on its own
  * @param updateChannel which new versions it tells of
+ * @param updateInstallTime when a new version downloaded is installed, in the {@link UpdateMode#INSTALL} mode
+ * @param nightHours the hours when njMule may restart to install it, with {@link UpdateInstallTime#EXIT_OR_NIGHT}
+ * @param updateUrl where the releases are looked for instead of GitHub, as for a fork or a test; empty for GitHub
  */
 public record Preferences(
         String nick,
@@ -109,7 +112,10 @@ public record Preferences(
         String ipFilterLists,
         int ipFilterUpdateDays,
         UpdateMode updateMode,
-        UpdateChannel updateChannel) {
+        UpdateChannel updateChannel,
+        UpdateInstallTime updateInstallTime,
+        NightHours nightHours,
+        Optional<URI> updateUrl) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -236,6 +242,13 @@ public record Preferences(
         requireRange("ipFilterUpdateDays", ipFilterUpdateDays, 0, MAX_IP_FILTER_UPDATE_DAYS);
         Objects.requireNonNull(updateMode, "updateMode");
         Objects.requireNonNull(updateChannel, "updateChannel");
+        Objects.requireNonNull(updateInstallTime, "updateInstallTime");
+        Objects.requireNonNull(nightHours, "nightHours");
+        Objects.requireNonNull(updateUrl, "updateUrl")
+                .filter(u -> listAddress(u.toString()).isEmpty())
+                .ifPresent(u -> {
+                    throw new IllegalArgumentException("updateUrl: not an http or https address: " + u);
+                });
     }
 
     /** The first line of a list of IP filter lists that is not an http or https address with a host, if any. */
@@ -356,7 +369,10 @@ public record Preferences(
                 "",
                 DEFAULT_IP_FILTER_UPDATE_DAYS,
                 UpdateMode.NOTIFY,
-                UpdateChannel.of(NjMuleInfo.version()));
+                UpdateChannel.of(NjMuleInfo.version()),
+                UpdateInstallTime.EXIT,
+                NightHours.DEFAULT,
+                Optional.empty());
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -460,6 +476,9 @@ public record Preferences(
         private int ipFilterUpdateDays;
         private UpdateMode updateMode;
         private UpdateChannel updateChannel;
+        private UpdateInstallTime updateInstallTime;
+        private NightHours nightHours;
+        private Optional<URI> updateUrl;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -521,6 +540,9 @@ public record Preferences(
             this.ipFilterUpdateDays = p.ipFilterUpdateDays;
             this.updateMode = p.updateMode;
             this.updateChannel = p.updateChannel;
+            this.updateInstallTime = p.updateInstallTime;
+            this.nightHours = p.nightHours;
+            this.updateUrl = p.updateUrl;
         }
 
         public Builder nick(String value) {
@@ -862,6 +884,21 @@ public record Preferences(
             return this;
         }
 
+        public Builder updateInstallTime(UpdateInstallTime value) {
+            this.updateInstallTime = value;
+            return this;
+        }
+
+        public Builder nightHours(NightHours value) {
+            this.nightHours = value;
+            return this;
+        }
+
+        public Builder updateUrl(Optional<URI> value) {
+            this.updateUrl = value;
+            return this;
+        }
+
         public Preferences build() {
             return new Preferences(
                     this.nick,
@@ -923,7 +960,10 @@ public record Preferences(
                     this.ipFilterLists,
                     this.ipFilterUpdateDays,
                     this.updateMode,
-                    this.updateChannel);
+                    this.updateChannel,
+                    this.updateInstallTime,
+                    this.nightHours,
+                    this.updateUrl);
         }
     }
 }

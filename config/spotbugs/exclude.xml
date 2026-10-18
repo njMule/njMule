@@ -154,6 +154,18 @@
         </Or>
     </Match>
 
+    <!-- The updates run fixed system tools (hdiutil, ditto, codesign, msiexec through the launcher) and
+         njMule's own programs, the installed ones or those unpacked from a package checked against its
+         signed update information, with arguments built from our own paths. The command line is a
+         list, so no shell parses it. -->
+    <Match>
+        <Bug pattern="COMMAND_INJECTION"/>
+        <Or>
+            <Class name="org.njmule.core.update.Commands"/>
+            <Class name="org.njmule.core.update.Launcher"/>
+        </Or>
+    </Match>
+
     <!-- The event commands run the program the user set in the settings. Names and messages from
          the network only fill in its arguments, which go as a list, so no shell parses them; on
          Windows, where they travel as one command line, their quotes are replaced first. -->

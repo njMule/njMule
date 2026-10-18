@@ -53,7 +53,8 @@ record UpdateManifest(Semver version, Instant published, boolean critical, Strin
     private static final Pattern PLATFORM_PATTERN = Pattern.compile("[a-z0-9_]{1,16}-[a-z0-9_]{1,16}");
     private static final Pattern KIND_PATTERN = Pattern.compile("[a-z0-9-]{1,16}");
     // Names of release assets: no path, nothing a URL would have to escape.
-    private static final Pattern NAME_PATTERN = Pattern.compile("[A-Za-z0-9._~+-]{1,128}");
+    // A file name of its own: never "." or "..", nor hidden.
+    private static final Pattern NAME_PATTERN = Pattern.compile("[A-Za-z0-9_~+-][A-Za-z0-9._~+-]{0,127}");
     private static final Pattern SHA256_PATTERN = Pattern.compile("[0-9a-f]{64}");
     private static final JsonMapper JSON = JsonMapper.builder(JsonFactory.builder()
                     .streamReadConstraints(StreamReadConstraints.builder()

@@ -382,6 +382,26 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Stops telling of {@code version}, unless it fixes a security problem; completes with the status. */
     CompletableFuture<UpdateStatus> skipUpdate(String version);
 
+    /**
+     * Downloads the package of the new version for this installation, checks it against the signed release information
+     * and prepares it, or joins the download running; completes with the status after it, which tells why when it
+     * failed.
+     */
+    CompletableFuture<UpdateStatus> downloadUpdate();
+
+    /**
+     * Asks to install the version downloaded: now, stopping and starting njMule again ({@code restart}, which an
+     * {@link EngineEvent.UpdateRestart} tells the front end owning the process), or when njMule exits. Completes with
+     * the status, which tells why when njMule cannot install it here.
+     */
+    CompletableFuture<UpdateStatus> installUpdate(boolean restart);
+
+    /**
+     * Once closed: the installation of a new version to hand over, when the user asked for one or the preferences
+     * install at exit; empty otherwise.
+     */
+    Optional<UpdateHandOver> updateHandOver();
+
     boolean isRunning();
 
     /** Stops the engine and saves its state; idempotent. */

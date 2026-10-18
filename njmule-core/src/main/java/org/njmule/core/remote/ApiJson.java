@@ -130,8 +130,11 @@ final class ApiJson {
 
     static void update(JsonGenerator g, UpdateStatus s) {
         g.writeStartObject();
+        g.writeStringProperty("state", name(s.phase()));
         g.writeStringProperty("current", s.current());
         g.writeStringProperty("installation", name(s.installation()));
+        g.writeStringProperty("installer", name(s.installer()));
+        g.writeBooleanProperty("canInstall", s.canInstall());
         g.writeBooleanProperty("checking", s.checking());
         optional(g, "lastCheck", s.lastCheck().map(Object::toString));
         optional(g, "failure", s.failure());
@@ -142,6 +145,17 @@ final class ApiJson {
             g.writeNull();
         }
         optional(g, "skipped", s.skipped());
+        g.writeName("download");
+        if (s.download().isPresent()) {
+            g.writeStartObject();
+            g.writeNumberProperty("received", s.download().get().received());
+            g.writeNumberProperty("size", s.download().get().size());
+            g.writeEndObject();
+        } else {
+            g.writeNull();
+        }
+        g.writeBooleanProperty("ready", s.ready().isPresent());
+        g.writeStringProperty("install", name(s.install()));
         g.writeEndObject();
     }
 
@@ -371,6 +385,8 @@ final class ApiJson {
             case EngineEvent.MessageFailed e -> "message.failed";
             case EngineEvent.UpdateStatusChanged e -> "update.status";
             case EngineEvent.UpdateAvailable e -> "update.available";
+            case EngineEvent.UpdateReady e -> "update.ready";
+            case EngineEvent.UpdateRestart e -> "update.restart";
         };
     }
 
@@ -460,6 +476,11 @@ final class ApiJson {
                 g.writeName("version");
                 newVersion(g, e.version());
             }
+            case EngineEvent.UpdateReady e -> {
+                g.writeName("version");
+                newVersion(g, e.version());
+            }
+            case EngineEvent.UpdateRestart e -> g.writeStringProperty("version", e.version());
         }
         g.writeEndObject();
     }

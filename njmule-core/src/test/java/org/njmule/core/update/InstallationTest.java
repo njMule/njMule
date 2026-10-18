@@ -27,6 +27,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.njmule.core.api.InstallKind;
+import org.njmule.core.api.UpdateStatus.Installer;
 import org.njmule.core.config.OsFamily;
 
 class InstallationTest {
@@ -35,8 +36,9 @@ class InstallationTest {
     Path dir;
 
     private Optional<String> variable = Optional.empty();
-    private Optional<Path> executableDir = Optional.empty();
+    private Optional<Path> executable = Optional.empty();
     private Installation installation;
+    private boolean writable;
 
     @Test
     void shouldTakeTheKindThePackageWroteBesideTheExecutable() throws IOException {
@@ -66,6 +68,50 @@ class InstallationTest {
         whenResolvedOn(OsFamily.LINUX, "amd64");
 
         thenTheKindIs(InstallKind.DOCKER);
+        thenItIsInstalledBy(Installer.NONE);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"kind=zip, SELF", "kind=tar, SELF", "kind=static-tar, SELF", "kind=msi, SELF", "kind=deb, NONE"})
+    void shouldReplaceItselfInAFolderItMayWriteTo(String text, Installer expected) throws IOException {
+        givenThePackageWrote(this.dir, text + "\n");
+
+        whenResolvedOn(OsFamily.LINUX, "amd64");
+
+        thenItIsInstalledBy(expected);
+        thenItReplaces(this.dir);
+    }
+
+    @Test
+    void shouldReplaceTheWholeBundleOfTheMacApp() throws IOException {
+        givenABundleWhosePackageWrote("kind=dmg\n");
+
+        whenResolvedOn(OsFamily.MACOS, "aarch64");
+
+        thenItIsInstalledBy(Installer.SELF);
+        thenItReplaces(this.dir.resolve("njMule.app"));
+    }
+
+    @Test
+    void shouldReplaceNothingOnTheJvm() {
+        whenResolvedOn(OsFamily.WINDOWS, "amd64");
+
+        thenItIsInstalledBy(Installer.NONE);
+        thenItReplacesNothing();
+    }
+
+    @Test
+    void shouldTellAFolderItMayWriteTo() {
+        whenAskedWhetherItMayWriteTo(this.dir);
+
+        thenTheAnswerIs(true);
+    }
+
+    @Test
+    void shouldTellAFolderThatIsNotThere() {
+        whenAskedWhetherItMayWriteTo(this.dir.resolve("gone"));
+
+        thenTheAnswerIs(false);
     }
 
     @Test
@@ -94,15 +140,16 @@ class InstallationTest {
 
     private void givenThePackageWrote(Path where, String text) throws IOException {
         Files.writeString(where.resolve(Installation.FILE_NAME), text);
-        if (this.executableDir.isEmpty()) {
-            this.executableDir = Optional.of(where);
+        if (this.executable.isEmpty()) {
+            this.executable = Optional.of(where.resolve("njmule"));
         }
     }
 
     private void givenABundleWhosePackageWrote(String text) throws IOException {
         Path contents = this.dir.resolve("njMule.app").resolve("Contents");
         Files.writeString(Files.createDirectories(contents.resolve("Resources")).resolve(Installation.FILE_NAME), text);
-        this.executableDir = Optional.of(Files.createDirectories(contents.resolve("MacOS")));
+        this.executable =
+                Optional.of(Files.createDirectories(contents.resolve("MacOS")).resolve("njmule-gui"));
     }
 
     private void givenTheVariable(String value) {
@@ -110,7 +157,27 @@ class InstallationTest {
     }
 
     private void whenResolvedOn(OsFamily os, String arch) {
-        this.installation = Installation.resolve(this.variable, this.executableDir, os, arch);
+        this.installation = Installation.resolve(this.variable, this.executable, os, arch);
+    }
+
+    private void whenAskedWhetherItMayWriteTo(Path folder) {
+        this.writable = Installation.writable(folder);
+    }
+
+    private void thenTheAnswerIs(boolean expected) {
+        assertThat(this.writable).isEqualTo(expected);
+    }
+
+    private void thenItIsInstalledBy(Installer expected) {
+        assertThat(this.installation.installer()).isEqualTo(expected);
+    }
+
+    private void thenItReplaces(Path root) {
+        assertThat(this.installation.root()).contains(root);
+    }
+
+    private void thenItReplacesNothing() {
+        assertThat(this.installation.root()).isEmpty();
     }
 
     private void thenTheKindIs(InstallKind expected) {

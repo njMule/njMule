@@ -229,11 +229,47 @@ final class ApiSamples {
         return new UpdateStatus(
                 "0.1.0",
                 InstallKind.MSI,
+                UpdateStatus.Installer.SELF,
                 false,
                 Optional.of(Instant.parse("2026-11-03T08:00:00Z")),
                 Optional.of("HTTP 503 from github.com"),
                 Optional.of(newVersion()),
-                Optional.of("0.1.5"));
+                Optional.of("0.1.5"),
+                Optional.of(new UpdateStatus.Progress(1_048_576, 31_719_424)),
+                Optional.empty(),
+                UpdateStatus.Install.ASKED);
+    }
+
+    /** A version downloaded, which the user asked to install now. */
+    static UpdateStatus restartingUpdateStatus() {
+        return new UpdateStatus(
+                "0.1.0",
+                InstallKind.WINDOWS_ZIP,
+                UpdateStatus.Installer.SELF,
+                false,
+                Optional.of(Instant.parse("2026-11-03T08:00:00Z")),
+                Optional.empty(),
+                Optional.of(newVersion()),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(Path.of("cache", "update", "0.2.0", "njmule-0.2.0-windows-x64.zip")),
+                UpdateStatus.Install.RESTART);
+    }
+
+    /** A version downloaded, to install when njMule exits. */
+    static UpdateStatus atExitUpdateStatus() {
+        return new UpdateStatus(
+                "0.1.0",
+                InstallKind.WINDOWS_ZIP,
+                UpdateStatus.Installer.SELF,
+                false,
+                Optional.of(Instant.parse("2026-11-03T08:00:00Z")),
+                Optional.empty(),
+                Optional.of(newVersion()),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(Path.of("cache", "update", "0.2.0", "njmule-0.2.0-windows-x64.zip")),
+                UpdateStatus.Install.AT_EXIT);
     }
 
     /** One event of every kind the engine announces. */
@@ -262,6 +298,8 @@ final class ApiSamples {
                 new EngineEvent.CaptchaAnswered("198.51.100.9:4662", true),
                 new EngineEvent.MessageFailed("198.51.100.9:4662", "no connection"),
                 new EngineEvent.UpdateStatusChanged(updateStatus()),
-                new EngineEvent.UpdateAvailable(newVersion()));
+                new EngineEvent.UpdateAvailable(newVersion()),
+                new EngineEvent.UpdateReady(newVersion()),
+                new EngineEvent.UpdateRestart("0.2.0"));
     }
 }
