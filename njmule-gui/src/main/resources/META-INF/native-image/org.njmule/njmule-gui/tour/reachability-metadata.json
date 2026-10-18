@@ -13,6 +13,9 @@
       "type": "char[]"
     },
     {
+      "type": "com.ethlo.time.ITU"
+    },
+    {
       "type": "com.sun.crypto.provider.AESCipher$General",
       "methods": [
         {
@@ -6585,6 +6588,18 @@
     },
     {
       "type": "sun.util.resources.cldr.TimeZoneNames_en_US"
+    },
+    {
+      "type": "tools.jackson.databind.deser.Deserializers[]"
+    },
+    {
+      "type": "tools.jackson.databind.deser.KeyDeserializers[]"
+    },
+    {
+      "type": "tools.jackson.databind.deser.ValueInstantiators[]"
+    },
+    {
+      "type": "tools.jackson.databind.ser.Serializers[]"
     }
   ],
   "resources": [
@@ -11018,6 +11033,14 @@
     {
       "module": "ch.qos.logback.core",
       "glob": "ch/qos/logback/core/logback-core-version.properties"
+    },
+    {
+      "module": "com.networknt.schema",
+      "glob": "jsv-messages.properties"
+    },
+    {
+      "module": "com.networknt.schema",
+      "glob": "jsv-messages_en.properties"
     },
     {
       "module": "java.base",
@@ -17280,6 +17303,10 @@
       "glob": "org/njmule/core/engine/server.met"
     },
     {
+      "module": "org.njmule.core",
+      "glob": "org/njmule/core/remote/openapi.yaml"
+    },
+    {
       "module": "org.njmule.gui",
       "glob": "org/njmule/gui/i18n/emule.properties"
     },
@@ -17667,6 +17694,9 @@
     },
     {
       "bundle": "com/sun/javafx/scene/control/skin/resources/controls"
+    },
+    {
+      "bundle": "jsv-messages"
     },
     {
       "bundle": "org.njmule.gui.i18n.emule"

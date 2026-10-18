@@ -280,10 +280,26 @@ final class GuiTour {
             api.get().get("/status");
             api.get().get("/downloads");
             api.get().get("/servers");
+            // What the API checks against its OpenAPI document: a query parameter, a body, a refused body.
+            api.get().get("/log?after=0");
+            if (api.get().get("/limits") instanceof Map<?, ?> limits
+                    && limits.get("uploadKiBps") instanceof Long rate) {
+                api.get().put("/limits", Map.of("uploadKiBps", rate));
+            }
+            refusedBody(api.get());
         } catch (IOException e) {
             logger.warn("The web interface of the tour did not answer: {}", e.toString());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void refusedBody(ApiClient api) throws IOException, InterruptedException {
+        try {
+            api.put("/limits", Map.of("uploadKiBps", -1));
+            logger.warn("The API of the tour took a negative speed limit");
+        } catch (ApiClient.Failure e) {
+            logger.debug("The API of the tour refused a negative speed limit: {}", e.getMessage());
         }
     }
 
