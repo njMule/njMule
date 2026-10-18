@@ -64,13 +64,17 @@ public final class Socks5Udp implements AutoCloseable {
             InetSocketAddress relay =
                     Socks5.usable(bound) ? bound : new InetSocketAddress(socket.getInetAddress(), bound.getPort());
             socket.setSoTimeout(0);
-            Socks5Udp association = new Socks5Udp(socket, relay);
-            Thread.ofVirtual().name("njmule-socks-udp").start(association::watch);
-            return association;
+            return new Socks5Udp(socket, relay).watched();
         } catch (IOException | RuntimeException e) {
             socket.close();
             throw e;
         }
+    }
+
+    // Watched from now on, on a thread of its own.
+    private Socks5Udp watched() {
+        Thread.ofVirtual().name("njmule-socks-udp").start(this::watch);
+        return this;
     }
 
     // The proxy ends the association by closing its connection; nothing else comes on it.

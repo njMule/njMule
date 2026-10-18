@@ -94,7 +94,7 @@ public final class WebUi implements AutoCloseable {
     private static final String SHARED = "/shared";
     private static final String KAD = "/kad";
     private static final String LOG = "/log";
-    private static final String SETTINGS = "/settings";
+    private static final String SETTINGS_PAGE = "/settings";
     private static final String ACTION = "action";
     // The search scope that picks the network as the desktop app does.
     private static final String AUTOMATIC = "AUTOMATIC";
@@ -482,7 +482,7 @@ public final class WebUi implements AutoCloseable {
             case SHARED -> sharedPage(session);
             case KAD -> kadPage(session);
             case LOG -> logPage(session);
-            case SETTINGS -> settingsPage(session);
+            case SETTINGS_PAGE -> settingsPage(session);
             default -> null;
         };
         if (page == null) {
@@ -528,9 +528,9 @@ public final class WebUi implements AutoCloseable {
                     kad(form);
                     yield KAD;
                 }
-                case SETTINGS -> {
+                case SETTINGS_PAGE -> {
                     hostNames(form, exchange.header("Host"));
-                    yield SETTINGS;
+                    yield SETTINGS_PAGE;
                 }
                 default -> null;
             };
@@ -1039,7 +1039,7 @@ public final class WebUi implements AutoCloseable {
                 + ", the interface answers only to these names, such as a name on the LAN or a reverse proxy's:"
                 + " a page of another site that reaches it under another name is refused (DNS rebinding).</p><p>"
                 + Html.form(
-                        SETTINGS,
+                        SETTINGS_PAGE,
                         csrf,
                         "<input type=\"text\" name=\"hosts\" size=\"60\" value=\""
                                 + Html.text(String.join(", ", this.hosts))

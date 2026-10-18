@@ -157,7 +157,8 @@ public final class RelayKeeper implements AutoCloseable {
                 wait = wait.multipliedBy(2).compareTo(LONGEST_WAIT) > 0 ? LONGEST_WAIT : wait.multipliedBy(2);
             }
         } catch (InterruptedException e) {
-            // Other settings, or closed.
+            // Other settings, or closed: the thread ends.
+            Thread.currentThread().interrupt();
         }
     }
 

@@ -37,11 +37,11 @@ public final class UdpRoute {
     public record Received(InetSocketAddress from, int offset, int length) {}
 
     private final Socks5Udp relay;
-    private final boolean direct;
+    private final boolean straight;
 
-    private UdpRoute(Socks5Udp relay, boolean direct) {
+    private UdpRoute(Socks5Udp relay, boolean straight) {
         this.relay = relay;
-        this.direct = direct;
+        this.straight = straight;
     }
 
     /** Through the relay of {@code association}; nothing goes once it has ended. */
@@ -62,7 +62,7 @@ public final class UdpRoute {
             byte[] wrapped = Socks5Udp.wrap(to, data);
             return Optional.of(new DatagramPacket(wrapped, wrapped.length, this.relay.relay()));
         }
-        return this.direct ? Optional.of(new DatagramPacket(data, data.length, to)) : Optional.empty();
+        return this.straight ? Optional.of(new DatagramPacket(data, data.length, to)) : Optional.empty();
     }
 
     /**
@@ -78,11 +78,13 @@ public final class UdpRoute {
                     ? Socks5Udp.unwrap(packet.getData(), packet.getOffset(), packet.getLength())
                     : Optional.empty();
         }
-        return this.direct ? Optional.of(new Received(from, packet.getOffset(), packet.getLength())) : Optional.empty();
+        return this.straight
+                ? Optional.of(new Received(from, packet.getOffset(), packet.getLength()))
+                : Optional.empty();
     }
 
     @Override
     public String toString() {
-        return this.relay != null ? "through " + this.relay.relay() : this.direct ? "direct" : "held";
+        return this.relay != null ? "through " + this.relay.relay() : this.straight ? "direct" : "held";
     }
 }
