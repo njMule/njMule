@@ -64,6 +64,11 @@ public final class Chats {
             return this.address;
         }
 
+        /** When it was last written to or opened, as a count that grows: newer is larger, also within a moment. */
+        public long lastActive() {
+            return this.lastActive;
+        }
+
         /** The other client's name, empty until it writes. */
         public ReadOnlyStringProperty nickProperty() {
             return this.nick;

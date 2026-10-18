@@ -340,7 +340,10 @@ public final class MessagesScreen implements Screen {
         List<Entry> list = new ArrayList<>();
         List<Friend> left = new ArrayList<>(friends);
         List<Chats.Chat> chats = new ArrayList<>(this.gui.model().chats().all());
-        chats.sort(Comparator.comparing(MessagesScreen::lastTime).reversed());
+        // Two lines may share a moment: the conversation active last comes first then.
+        chats.sort(Comparator.comparing(MessagesScreen::lastTime)
+                .thenComparingLong(Chats.Chat::lastActive)
+                .reversed());
         for (Chats.Chat chat : chats) {
             Optional<Friend> friend =
                     friends.stream().filter(f -> sameOne(f, chat)).findFirst();
