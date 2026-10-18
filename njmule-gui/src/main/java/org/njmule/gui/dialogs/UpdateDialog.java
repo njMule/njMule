@@ -24,14 +24,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import javafx.beans.value.ChangeListener;
-import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
@@ -40,6 +41,7 @@ import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.gui.infra.WebPages;
+import org.njmule.gui.ui.DialogFrame;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icons;
@@ -53,7 +55,7 @@ public final class UpdateDialog {
     private final Gui gui;
     private final Stage stage = new Stage();
     private final VBox body = new VBox(10);
-    private final HBox actions = Fx.toolRow();
+    private final VBox root;
     private final ChangeListener<UpdateStatus> follow = (o, was, now) -> show(now);
 
     public UpdateDialog(Gui gui, Window owner) {
@@ -62,10 +64,10 @@ public final class UpdateDialog {
         this.stage.initModality(Modality.NONE);
         this.stage.setTitle(gui.t("nj.update.title"));
         this.body.setFillWidth(true);
-        VBox root = new VBox(16, this.body, this.actions);
-        root.setPadding(new Insets(18));
-        root.setPrefWidth(560);
-        Scene scene = new Scene(root);
+        this.root = DialogFrame.frame(
+                DialogFrame.header(gui, gui.t("nj.update.title"), this.stage::close), this.body, new Region());
+        this.root.setPrefWidth(560);
+        Scene scene = new Scene(this.root);
         gui.attach(scene);
         this.stage.setScene(scene);
         gui.model().updateProperty().addListener(this.follow);
@@ -92,7 +94,7 @@ public final class UpdateDialog {
 
     private void show(UpdateStatus status) {
         List<Node> parts = new ArrayList<>();
-        List<Node> buttons = new ArrayList<>();
+        List<Button> buttons = new ArrayList<>();
         Optional<NewVersion> available = status.available();
         if (available.isPresent()) {
             NewVersion v = available.get();
@@ -100,7 +102,9 @@ public final class UpdateDialog {
             title.getStyleClass().add(Styles.TITLE_3);
             parts.add(title);
             if (v.critical()) {
-                parts.add(wrapped(this.gui.t("nj.update.critical"), Styles.WARNING));
+                Label critical = wrapped(this.gui.t("nj.update.critical"), Styles.WARNING);
+                critical.setGraphic(Fx.icon(Icons.WARNING));
+                parts.add(critical);
             }
             parts.add(wrapped(
                     this.gui.f("nj.update.published", this.gui.formats().dateTime(v.published())), Styles.TEXT_MUTED));
@@ -118,15 +122,17 @@ public final class UpdateDialog {
                     Icons.DOWNLOAD,
                     () -> open(v.download().map(NewVersion.Download::uri).orElse(v.page()))));
             download.setId("update-download");
-            buttons.add(download);
-            buttons.add(Fx.button(this.gui.t("nj.update.changes"), Icons.OPEN_EXTERNAL, () -> open(v.page())));
+            buttons.add(DialogFrame.role(download, ButtonBar.ButtonData.OK_DONE));
+            buttons.add(DialogFrame.role(
+                    Fx.button(this.gui.t("nj.update.changes"), Icons.OPEN_EXTERNAL, () -> open(v.page())),
+                    ButtonBar.ButtonData.OTHER));
             if (!v.critical() && !status.skipped().equals(Optional.of(v.version()))) {
                 Button skip = Fx.button(this.gui.t("nj.update.skip"), Icons.BLOCK, () -> {
                     this.gui.model().skipUpdate(v.version());
                     this.stage.close();
                 });
                 skip.setId("update-skip");
-                buttons.add(skip);
+                buttons.add(DialogFrame.role(skip, ButtonBar.ButtonData.LEFT));
             }
         }
         if (status.checking()) {
@@ -152,14 +158,15 @@ public final class UpdateDialog {
                     Icons.REFRESH,
                     () -> this.gui.model().checkForUpdate());
             check.setId("update-check");
-            buttons.add(check);
+            buttons.add(DialogFrame.role(check, ButtonBar.ButtonData.OK_DONE));
         }
-        parts.add(wrapped(this.gui.t("nj.update.note"), Styles.TEXT_SMALL));
+        Label note = wrapped(this.gui.t("nj.update.note"), "dialog-hint");
         this.body.getChildren().setAll(parts);
-        List<Node> row = new ArrayList<>(buttons);
-        row.add(Fx.spacer());
-        row.add(Fx.button(this.gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close));
-        this.actions.getChildren().setAll(row);
+        Button close = Fx.button(this.gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close);
+        close.setCancelButton(true);
+        buttons.add(DialogFrame.role(close, ButtonBar.ButtonData.CANCEL_CLOSE));
+        // The band says what the check sends, beside the buttons that the state of the check offers.
+        this.root.getChildren().set(2, DialogFrame.footer(note, buttons.toArray(Button[]::new)));
         this.stage.sizeToScene();
     }
 

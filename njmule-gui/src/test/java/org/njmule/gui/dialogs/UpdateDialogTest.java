@@ -170,7 +170,8 @@ class UpdateDialogTest {
             });
             return found;
         });
-        assertThat(shown).containsExactly(ids);
+        // In the order of the platform's dialogs.
+        assertThat(shown).containsExactlyInAnyOrder(ids);
     }
 
     private void thenTheEngineWasToldToSkip(String version) throws Exception {
