@@ -85,7 +85,7 @@ final class ApiSamples {
                 KadInfo.Buddy.NONE);
     }
 
-    /** A status connected to a server and to Kad, or to neither. */
+    /** A status connected to a server and to Kad, with every field the API may leave out, or connected to neither. */
     static EngineStatus status(boolean connected) {
         return new EngineStatus(
                 connected ? Optional.of(server()) : Optional.empty(),
@@ -108,7 +108,9 @@ final class ApiSamples {
                 1_911L * 3600,
                 "198.51.100.23",
                 4662,
-                true);
+                true,
+                connected ? Optional.of("eth9") : Optional.empty(),
+                connected ? Optional.of("2001:db8::23") : Optional.empty());
     }
 
     static DownloadInfo download() {

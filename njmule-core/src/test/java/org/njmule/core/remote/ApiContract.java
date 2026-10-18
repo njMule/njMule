@@ -21,26 +21,89 @@ import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaLocation;
 import com.networknt.schema.path.NodePath;
 import com.networknt.schema.path.PathType;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Checks the answers and events of the API against the response schemas of its OpenAPI document. */
+/**
+ * Checks the answers and events of the API against the response schemas of its OpenAPI document, strictly: every field
+ * an answer holds must be in the document, although the document itself lets clients take fields it does not name.
+ */
 final class ApiContract {
 
     private static final String BASE = "https://njmule.invalid/test/openapi.json";
     private static final NodePath ERROR = pointer("components", "responses", "Error");
 
     private final ApiSpecification specification = ApiSpecification.load();
-    private final JsonNode document = this.specification.document();
+    private final JsonNode document = strict(this.specification.document());
     private final Schema root;
 
     ApiContract() {
         this.root = ApiSpecification.registry(BASE, this.document).loadSchema(SchemaLocation.of(BASE), false);
+    }
+
+    // A copy of the document whose object schemas take no field they do not name. Parts that a schema combines with
+    // its own properties or with other parts (allOf) stay open and the whole is closed instead: in JSON Schema
+    // 2020-12 a closed part would refuse the fields the others name.
+    private static JsonNode strict(JsonNode document) {
+        JsonNode copy = document.deepCopy();
+        Set<String> parts = new HashSet<>();
+        findParts(copy, parts);
+        close(copy, "", false, parts);
+        return copy;
+    }
+
+    private static boolean combines(ObjectNode schema, String keyword) {
+        return keyword.equals("allOf")
+                || (schema.has("properties") && (keyword.equals("oneOf") || keyword.equals("anyOf")));
+    }
+
+    private static void findParts(JsonNode node, Set<String> parts) {
+        if (node instanceof ObjectNode object) {
+            for (String keyword : List.of("allOf", "oneOf", "anyOf")) {
+                if (object.has(keyword) && combines(object, keyword)) {
+                    object.get(keyword).values().forEach(part -> {
+                        if (part.has("$ref")) {
+                            parts.add(part.get("$ref").asString().substring(1));
+                        }
+                    });
+                }
+            }
+        }
+        node.values().forEach(child -> findParts(child, parts));
+    }
+
+    private static void close(JsonNode node, String at, boolean part, Set<String> parts) {
+        if (node instanceof ObjectNode object) {
+            if ((object.has("properties") || object.has("allOf")) && !part && !parts.contains(at)) {
+                object.put("unevaluatedProperties", false);
+            }
+            for (String name : List.copyOf(object.propertyNames())) {
+                JsonNode value = object.get(name);
+                if (name.equals("properties")) {
+                    // The names of the properties are no schemas; their values are.
+                    for (String property : List.copyOf(value.propertyNames())) {
+                        close(value.get(property), at + "/properties/" + property, false, parts);
+                    }
+                } else if (value.isArray() && combines(object, name)) {
+                    for (int i = 0; i < value.size(); i++) {
+                        close(value.get(i), at + "/" + name + "/" + i, true, parts);
+                    }
+                } else {
+                    close(value, at + "/" + name.replace("~", "~0").replace("/", "~1"), false, parts);
+                }
+            }
+        } else if (node.isArray()) {
+            for (int i = 0; i < node.size(); i++) {
+                close(node.get(i), at + "/" + i, false, parts);
+            }
+        }
     }
 
     ApiSpecification specification() {
