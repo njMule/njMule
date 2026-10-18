@@ -84,12 +84,13 @@ class SettingsIpFilterListsTest {
 
     private void whenTheSettingsAreApplied() throws Exception {
         FxTesting.onFx(this.screen::apply);
-        FxTesting.await("saved", () -> this.test.told.contains("Settings saved."));
     }
 
-    private void thenTheEngineFetches(String lists, int days) {
-        assertThat(this.test.engine.preferences().ipFilterLists()).isEqualTo(lists);
-        assertThat(this.test.engine.preferences().ipFilterUpdateDays()).isEqualTo(days);
+    private void thenTheEngineFetches(String lists, int days) throws Exception {
+        FxTesting.assertEventually(
+                "the lists saved",
+                () -> this.test.engine.preferences().ipFilterLists().equals(lists)
+                        && this.test.engine.preferences().ipFilterUpdateDays() == days);
     }
 
     private void thenTheListsAreMarkedInvalid() throws Exception {

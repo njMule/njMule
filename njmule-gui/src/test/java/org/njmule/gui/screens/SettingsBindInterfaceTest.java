@@ -79,8 +79,10 @@ class SettingsBindInterfaceTest {
         FxTesting.onFx(() -> this.screen.bindInterfaceBox().setValue(""));
     }
 
+    // The interface is on the page of the connection.
     private void whenTheSettingsShow() throws Exception {
         showTheSettings();
+        FxTesting.onFx(() -> this.screen.pagesView().show("connection"));
     }
 
     private void whenTheUserApplies() throws Exception {
@@ -90,9 +92,10 @@ class SettingsBindInterfaceTest {
     private void thenTheInterfaceChosenReads(String text) throws Exception {
         assertThat(FxTesting.onFx(() -> this.screen.bindInterfaceBox().getValue()))
                 .isEqualTo(GONE);
-        assertThat(FxTesting.onFx(
-                        () -> this.screen.bindInterfaceBox().getButtonCell().getText()))
-                .isEqualTo(text);
+        // The list shows its choice once its page is laid out.
+        FxTesting.assertEventually(
+                "the choice shown",
+                () -> text.equals(this.screen.bindInterfaceBox().getButtonCell().getText()));
     }
 
     private void thenTheEngineBindsToAnyInterface() throws Exception {

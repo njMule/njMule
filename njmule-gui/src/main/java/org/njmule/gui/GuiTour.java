@@ -44,6 +44,7 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Control;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListView;
 import javafx.scene.control.MenuButton;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
@@ -85,6 +86,9 @@ final class GuiTour {
 
     private static final Logger logger = LoggerFactory.getLogger(GuiTour.class);
     private static final Duration STEP = Duration.millis(250);
+
+    // The pages of the options the tour walks through.
+    private static final int SETTINGS_PAGES = 12;
 
     private final Gui gui;
     private final MainWindow window;
@@ -142,6 +146,16 @@ final class GuiTour {
         this.steps.add(() -> this.window.show("servers"));
         this.steps.add(() -> click("#add-servers"));
         this.steps.add(this::closePopups);
+        // Every page of the options, each with its own controls.
+        this.steps.add(() -> this.window.show("settings"));
+        for (int page = 0; page < SETTINGS_PAGES; page++) {
+            int at = page;
+            this.steps.add(() -> {
+                if (this.stage.getScene().lookup("#settings-pages") instanceof ListView<?> pages) {
+                    pages.getSelectionModel().select(at);
+                }
+            });
+        }
         this.steps.add(() -> click("#rates"));
         this.steps.add(this::closePopups);
         this.steps.add(() -> click("#network"));

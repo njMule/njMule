@@ -141,6 +141,11 @@ public final class Input<T> {
         return this.field;
     }
 
+    /** What the field takes, in words. */
+    public String hint() {
+        return this.hint;
+    }
+
     /** Checks the text again: for a value whose validity hangs on another control too. */
     public void check() {
         boolean ok;

@@ -591,6 +591,16 @@ All notable changes to this project are documented here. The format follows
   node's facts. The log, the server info and My Info have a place of their own in the network, and
   chips with counts narrow the log to its errors, warnings or news; the last event in the status
   strip opens it.
+- The options of the desktop app follow the new design: twelve pages chosen from a list beside them
+  (General, Connection, Bandwidth, Server, Proxy, Directories, IP filter, Messages, Scheduler,
+  events, Web interface, Extended), each option a row with its name, what it does and its control,
+  switches for the yes-or-no ones and narrow fields for numbers. A box finds options by their words
+  on every page and a chip keeps only those changed from their defaults, which carry a mark and a
+  link back to the default. Each option applies as soon as it is set; the ports, UPnP, the proxy
+  and the network interface wait for Apply and reconnect, the language for Apply and restart, in a
+  bar under the page that also offers to discard them. A wrong value is named under its option,
+  with what it takes; the proxy's fields are off while there is no proxy, and the scheduler has a
+  page of its own, saving each rule as it is added, replaced or removed.
 
 ### Changed
 

@@ -47,7 +47,6 @@ import javafx.geometry.Bounds;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
-import javafx.scene.SnapshotParameters;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
@@ -62,13 +61,13 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
-import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextInputControl;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
 import javafx.scene.image.PixelReader;
@@ -629,31 +628,26 @@ class CaptureTour {
         });
     }
 
+    // Each page of the options, then a search across them and the options changed from their defaults.
     private void settingsPage() throws Exception {
         fx(() -> this.window.show("settings"));
         Parent screen = screenRoot();
-        Optional<ScrollPane> scroll = FxTesting.onFx(() -> find(screen, ScrollPane.class).stream()
-                .filter(CaptureTour::visible)
-                .findFirst());
-        if (scroll.isEmpty()) {
-            return;
+        ListView<?> pages = FxTesting.onFx(() -> (ListView<?>) screen.lookup("#settings-pages"));
+        int count = FxTesting.onFx(() -> pages.getItems().size());
+        for (int i = 0; i < count; i++) {
+            int at = i;
+            fx(() -> pages.getSelectionModel().select(at));
+            shot(String.format(Locale.ROOT, "settings-page-%02d", i + 1), "Options, page " + (i + 1));
         }
-        for (int i = 0; i <= 10; i++) {
-            double v = i / 10.0;
-            fx(() -> scroll.get().setVvalue(v));
-            shot(String.format(Locale.ROOT, "settings-scroll-%02d", i), "Options scrolled to " + i + "/10");
-        }
-        fx(() -> scroll.get().setVvalue(0));
-        // The whole page at once: the content of the scroll pane on the screen's own background.
-        FxTesting.onFx(() -> {
-            BufferedImage base = image(this.stage.getScene());
-            Color bg = new Color(base.getRGB(base.getWidth() - 40, 72), true);
-            SnapshotParameters params = new SnapshotParameters();
-            params.setFill(javafx.scene.paint.Color.rgb(bg.getRed(), bg.getGreen(), bg.getBlue()));
-            WritableImage page = scroll.get().getContent().snapshot(params, null);
-            save("settings-full-page", toBuffered(page), "Options: the whole page");
-            return null;
-        });
+        TextField find = FxTesting.onFx(() -> (TextField) screen.lookup("#settings-find"));
+        fx(() -> find.setText("port"));
+        shot("settings-find", "Options found by a word on every page");
+        fx(find::clear);
+        ToggleButton changed = FxTesting.onFx(() -> (ToggleButton) screen.lookup("#settings-changed-only"));
+        fx(changed::fire);
+        shot("settings-changed-only", "Only the options changed from their defaults");
+        fx(changed::fire);
+        fx(() -> pages.getSelectionModel().select(0));
     }
 
     private void liveSearch() throws Exception {
@@ -947,23 +941,26 @@ class CaptureTour {
     private void invalidInputs() throws Exception {
         fx(() -> this.window.show("settings"));
         Parent settings = screenRoot();
-        fx(() -> {
-            TextField port = find(settings, TextField.class).stream()
-                    .filter(f ->
-                            f.getTooltip() != null && f.getTooltip().getText().contains("65535"))
-                    .findFirst()
-                    .orElseThrow();
-            port.requestFocus();
-            port.setText("99999");
-        });
-        fx(() -> this.window.root().requestFocus());
-        shot("settings-invalid-field", "Options with a port out of range");
-        fx(() -> find(settings, Button.class).stream()
-                .filter(b -> b.getStyleClass().contains("accent"))
+        ListView<?> pages = FxTesting.onFx(() -> (ListView<?>) settings.lookup("#settings-pages"));
+        fx(() -> pages.getSelectionModel().select(1));
+        TextField port = FxTesting.onFx(() -> find(settings, TextField.class).stream()
+                .filter(f -> f.getTooltip() != null && f.getTooltip().getText().contains("65535"))
                 .findFirst()
-                .ifPresent(Button::fire));
-        shot("settings-apply-invalid", "Options: Apply with a port out of range");
-        fx(() -> button(settings, "IDS_PW_RESET").fire());
+                .orElseThrow());
+        String before = FxTesting.onFx(() -> port.getText());
+        fx(() -> {
+            port.setText("99999");
+            port.fireEvent(new javafx.event.ActionEvent());
+        });
+        shot("settings-invalid-field", "Options with a port out of range, said under the option");
+        fx(() -> {
+            port.setText("4777");
+            port.fireEvent(new javafx.event.ActionEvent());
+        });
+        shot("settings-pending", "Options: a new port waits for Apply and reconnect");
+        fx(() -> ((Button) settings.lookup("#settings-discard")).fire());
+        fx(() -> port.setText(before));
+        fx(() -> pages.getSelectionModel().select(0));
     }
 
     private void toasts() throws Exception {

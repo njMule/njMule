@@ -118,15 +118,16 @@ class SettingsWhitelistTest {
 
     private void whenTheSettingsAreApplied() throws Exception {
         FxTesting.onFx(this.screen::apply);
-        FxTesting.await("saved", () -> this.test.told.contains("Settings saved."));
     }
 
     private void whenTheSettingsAreShown() throws Exception {
         FxTesting.onFx(this.screen::shown);
     }
 
-    private void thenTheEngineAlwaysAllows(String expected) {
-        assertThat(this.test.engine.preferences().ipFilterWhitelist()).isEqualTo(expected);
+    private void thenTheEngineAlwaysAllows(String expected) throws Exception {
+        FxTesting.assertEventually(
+                "the whitelist saved",
+                () -> this.test.engine.preferences().ipFilterWhitelist().equals(expected));
     }
 
     private void thenTheWhitelistShows(String expected) throws Exception {

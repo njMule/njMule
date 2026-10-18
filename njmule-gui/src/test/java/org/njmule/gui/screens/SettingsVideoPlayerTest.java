@@ -93,7 +93,6 @@ class SettingsVideoPlayerTest {
 
     private void whenTheSettingsAreApplied() throws Exception {
         FxTesting.onFx(this.screen::apply);
-        FxTesting.await("saved", () -> this.test.told.contains("Settings saved."));
     }
 
     private void thenBrowseFollowsThePlayersField() throws Exception {
@@ -106,7 +105,9 @@ class SettingsVideoPlayerTest {
                 .isEqualTo(1);
     }
 
-    private void thenThePlayerIs(String player) {
-        assertThat(this.test.engine.preferences().videoPlayer()).isEqualTo(player);
+    private void thenThePlayerIs(String player) throws Exception {
+        FxTesting.assertEventually(
+                "the player saved",
+                () -> this.test.engine.preferences().videoPlayer().equals(player));
     }
 }

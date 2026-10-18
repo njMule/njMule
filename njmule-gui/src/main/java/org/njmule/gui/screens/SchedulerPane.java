@@ -54,8 +54,8 @@ import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.RateField;
 
 /**
- * The scheduler's rules: a list, a form for one rule, and saving them to the engine. Empty limit fields leave the
- * preferences' value.
+ * The scheduler's rules: a list and a form for one rule, saved to the engine as each is added, replaced or removed.
+ * Empty limit fields leave the preferences' value.
  */
 final class SchedulerPane extends VBox {
 
@@ -163,12 +163,7 @@ final class SchedulerPane extends VBox {
         add.disableProperty().bind(invalid);
         replace.disableProperty().bind(invalid);
         var tools = Fx.toolRow(
-                add,
-                replace,
-                Fx.button(gui.t("IDS_REMOVE"), Icons.DELETE, this::remove),
-                Fx.button(gui.t("nj.scheduler.save"), Icons.SAVE, this::save),
-                Fx.spacer(),
-                this.active);
+                add, replace, Fx.button(gui.t("IDS_REMOVE"), Icons.DELETE, this::remove), Fx.spacer(), this.active);
         getChildren().addAll(this.rules, form, tools);
         load();
     }
@@ -189,13 +184,19 @@ final class SchedulerPane extends VBox {
     }
 
     void add() {
-        read().ifPresent(rule -> this.rules.getItems().add(rule));
+        read().ifPresent(rule -> {
+            this.rules.getItems().add(rule);
+            save();
+        });
     }
 
     void replace() {
         int index = this.rules.getSelectionModel().getSelectedIndex();
         if (index >= 0) {
-            read().ifPresent(rule -> this.rules.getItems().set(index, rule));
+            read().ifPresent(rule -> {
+                this.rules.getItems().set(index, rule);
+                save();
+            });
         }
     }
 
@@ -203,14 +204,13 @@ final class SchedulerPane extends VBox {
         int index = this.rules.getSelectionModel().getSelectedIndex();
         if (index >= 0) {
             this.rules.getItems().remove(index);
+            save();
         }
     }
 
+    // As the other options, the rules apply as soon as they change.
     void save() {
-        this.gui.model().updateSchedule(new Schedule(List.copyOf(this.rules.getItems())), s -> {
-            showActive();
-            this.gui.inform().accept(this.gui.t("nj.settings.saved"));
-        });
+        this.gui.model().updateSchedule(new Schedule(List.copyOf(this.rules.getItems())), s -> showActive());
     }
 
     private void edit(Schedule.Rule rule) {

@@ -19,7 +19,11 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.Locale;
+import java.util.Optional;
+import javafx.event.ActionEvent;
 import javafx.scene.control.Button;
+import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -46,48 +50,135 @@ class SettingsApplyTest {
     }
 
     @Test
-    void shouldShowTheWrongFieldAndSayWhatItTakesWhenApplied() throws Exception {
-        givenTheOptionsScrolledToTheBottom();
-        givenAPortOutOfRange();
+    void shouldApplyASwitchAtOnce() throws Exception {
+        givenTheOptionsShown();
 
-        whenApplyIsPressed();
+        whenTheSpamFilterOfSearchResultsIsSwitchedOff();
 
-        thenTheUserIsToldWhichFieldAndWhatItTakes("Not saved: TCP: ");
-        thenTheFieldHasTheCursorAndIsInSight(this.screen.tcpPortField());
-        thenNothingWasSaved();
+        thenTheSpamFilterOfSearchResultsIsOff();
+        thenNothingWaits();
     }
 
     @Test
-    void shouldNeverGreyOutApplyForAWrongValue() throws Exception {
-        givenTheOptionsScrolledToTheBottom();
+    void shouldApplyATypedValueWhenEnterIsPressed() throws Exception {
+        givenTheOptionsShown();
+        givenTheCleanUpOfNewNamesSwitchedOn();
+        givenTyped(this.screen.nameCleanupsField(), "dvdrip|sponsored");
 
-        whenAPortOutOfRangeIsTyped();
-
-        thenApplyCanBePressed();
-    }
-
-    @Test
-    void shouldSaveTheCleanUpOfTheNamesOfNewDownloads() throws Exception {
-        givenTheOptionsScrolledToTheBottom();
-        givenTheNamesOfNewDownloadsCleanedUpOf("dvdrip|sponsored");
-
-        whenApplyIsPressed();
+        whenEnterIsPressedIn(this.screen.nameCleanupsField());
 
         thenTheNamesOfNewDownloadsAreCleanedUpOf("dvdrip|sponsored");
     }
 
     @Test
-    void shouldSaveTheSpamFilterOfSearchResultsTurnedOff() throws Exception {
-        givenTheOptionsScrolledToTheBottom();
-        givenTheSpamFilterOfSearchResultsUnticked();
+    void shouldHoldANewPortForApplyAndReconnect() throws Exception {
+        givenTheOptionsShown();
+        givenTyped(this.screen.tcpPortField(), "4777");
 
-        whenApplyIsPressed();
+        whenEnterIsPressedIn(this.screen.tcpPortField());
 
-        thenTheSpamFilterOfSearchResultsIsOff();
+        thenTheBarOffers("Apply and reconnect");
+        thenThePortIsStill(this.portBefore);
     }
 
-    private void givenTheSpamFilterOfSearchResultsUnticked() throws Exception {
+    @Test
+    void shouldHoldAnotherLanguageForApplyAndRestart() throws Exception {
+        givenTheOptionsShown();
+
+        whenTheLanguageIsChosen(Locale.ITALIAN);
+
+        thenTheBarOffers("Apply and restart");
+        thenNoRelaunchHappened();
+    }
+
+    @Test
+    void shouldSaveAHeldPortWhenApplied() throws Exception {
+        givenTheOptionsShown();
+        givenAPortHeld("4777");
+
+        whenApplyAndReconnectIsPressed();
+
+        thenThePortBecomes(4777);
+        thenNothingWaits();
+    }
+
+    @Test
+    void shouldShowTheSavedPortAgainWhenDiscarded() throws Exception {
+        givenTheOptionsShown();
+        givenAPortHeld("4777");
+
+        whenDiscardIsPressed();
+
+        thenTheFieldShows(this.screen.tcpPortField(), String.valueOf(this.portBefore));
+        thenNothingWaits();
+    }
+
+    @Test
+    void shouldNameWhatAWrongValueTakesUnderItsOption() throws Exception {
+        givenTheOptionsShown();
+        givenTyped(this.screen.tcpPortField(), "99999");
+
+        whenEnterIsPressedIn(this.screen.tcpPortField());
+
+        thenTheErrorUnderReads("Client Port (TCP)", "A whole number from 1 to 65535");
+        thenThePortIsStill(this.portBefore);
+        thenNothingWaits();
+    }
+
+    @Test
+    void shouldKeepApplyOffAndNameTheOptionToFixFirst() throws Exception {
+        givenTheOptionsShown();
+        givenAPortHeld("4777");
+        givenTyped(this.screen.nickField(), "");
+
+        whenEnterIsPressedIn(this.screen.nickField());
+
+        thenTheBarSays("Fix “Nick” first.");
+        thenApplyIsOff(true);
+    }
+
+    private void givenTheOptionsShown() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"));
+        this.screen = FxTesting.onFx(() -> new SettingsScreen(this.test.gui));
+        this.test.show(FxTesting.onFx(this.screen::view));
+        FxTesting.onFx(this.screen::shown);
+        this.portBefore = this.test.engine.preferences().tcpPort();
+    }
+
+    private void givenTheCleanUpOfNewNamesSwitchedOn() throws Exception {
+        FxTesting.onFx(() -> this.screen.cleanUpNewNamesBox().setSelected(true));
+        FxTesting.assertEventually(
+                "the clean-up saved", () -> this.test.engine.preferences().cleanUpNewNames());
+    }
+
+    private void givenTyped(TextField field, String text) throws Exception {
+        FxTesting.onFx(() -> field.setText(text));
+    }
+
+    private void givenAPortHeld(String port) throws Exception {
+        givenTyped(this.screen.tcpPortField(), port);
+        whenEnterIsPressedIn(this.screen.tcpPortField());
+        thenTheBarOffers("Apply and reconnect");
+    }
+
+    private void whenTheSpamFilterOfSearchResultsIsSwitchedOff() throws Exception {
         FxTesting.onFx(() -> this.screen.searchSpamFilterBox().setSelected(false));
+    }
+
+    private void whenTheLanguageIsChosen(Locale language) throws Exception {
+        FxTesting.onFx(() -> this.screen.languageBox().setValue(Optional.of(language)));
+    }
+
+    private void whenEnterIsPressedIn(TextField field) throws Exception {
+        FxTesting.onFx(() -> field.fireEvent(new ActionEvent()));
+    }
+
+    private void whenApplyAndReconnectIsPressed() throws Exception {
+        FxTesting.onFx(() -> ((Button) this.screen.pendingBar().lookup("#settings-apply")).fire());
+    }
+
+    private void whenDiscardIsPressed() throws Exception {
+        FxTesting.onFx(() -> ((Button) this.screen.pendingBar().lookup("#settings-discard")).fire());
     }
 
     private void thenTheSpamFilterOfSearchResultsIsOff() throws Exception {
@@ -95,57 +186,55 @@ class SettingsApplyTest {
                 "the preferences saved", () -> !this.test.engine.preferences().searchSpamFilter());
     }
 
-    private void givenTheNamesOfNewDownloadsCleanedUpOf(String words) throws Exception {
-        FxTesting.onFx(() -> {
-            this.screen.cleanUpNewNamesBox().setSelected(true);
-            this.screen.nameCleanupsField().setText(words);
-        });
-    }
-
     private void thenTheNamesOfNewDownloadsAreCleanedUpOf(String words) throws Exception {
-        FxTesting.await(
-                "the preferences saved", () -> this.test.engine.preferences().cleanUpNewNames());
-        assertThat(this.test.engine.preferences().nameCleanups()).isEqualTo(words);
-    }
-
-    private void givenTheOptionsScrolledToTheBottom() throws Exception {
-        this.test = TestGui.start(this.dir.resolve("njmule"));
-        this.screen = new SettingsScreen(this.test.gui);
-        this.test.show(FxTesting.onFx(this.screen::view));
-        FxTesting.onFx(this.screen::shown);
-        this.portBefore = this.test.engine.preferences().tcpPort();
-        FxTesting.onFx(() -> this.screen.scrollPane().setVvalue(1));
-    }
-
-    private void givenAPortOutOfRange() throws Exception {
-        whenAPortOutOfRangeIsTyped();
-    }
-
-    private void whenAPortOutOfRangeIsTyped() throws Exception {
-        FxTesting.onFx(() -> this.screen.tcpPortField().setText("99999"));
-    }
-
-    private void whenApplyIsPressed() throws Exception {
-        FxTesting.onFx(this.screen::apply);
-    }
-
-    private void thenTheUserIsToldWhichFieldAndWhatItTakes(String start) {
-        assertThat(this.test.told).anyMatch(m -> m.startsWith(start) && m.contains("65535"));
-    }
-
-    private void thenTheFieldHasTheCursorAndIsInSight(TextField field) throws Exception {
         FxTesting.assertEventually(
-                "the cursor in the field", () -> field.equals(field.getScene().getFocusOwner()));
-        assertThat(FxTesting.onFx(() -> this.screen.scrollPane().getVvalue())).isLessThan(0.5);
+                "the preferences saved",
+                () -> words.equals(this.test.engine.preferences().nameCleanups()));
     }
 
-    private void thenNothingWasSaved() {
-        assertThat(this.test.engine.preferences().tcpPort()).isEqualTo(this.portBefore);
-        assertThat(this.test.told).doesNotContain("Settings saved.");
+    private void thenTheBarOffers(String button) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.pendingBar().isVisible())).isTrue();
+        assertThat(FxTesting.onFx(() -> ((Button) this.screen.pendingBar().lookup("#settings-apply")).getText()))
+                .isEqualTo(button);
     }
 
-    private void thenApplyCanBePressed() throws Exception {
-        Button apply = FxTesting.onFx(() -> (Button) this.screen.view().lookup(".button.accent"));
-        assertThat(FxTesting.onFx(apply::isDisabled)).isFalse();
+    private void thenTheBarSays(String words) throws Exception {
+        assertThat(FxTesting.onFx(
+                        () -> ((Label) this.screen.pendingBar().getChildren().getFirst()).getText()))
+                .contains(words);
+    }
+
+    private void thenApplyIsOff(boolean off) throws Exception {
+        assertThat(FxTesting.onFx(
+                        () -> this.screen.pendingBar().lookup("#settings-apply").isDisabled()))
+                .isEqualTo(off);
+    }
+
+    private void thenNoRelaunchHappened() {
+        assertThat(this.test.relaunches()).isZero();
+    }
+
+    private void thenNothingWaits() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.pendingBar().isVisible())).isFalse();
+    }
+
+    private void thenThePortIsStill(int port) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.test.engine.preferences().tcpPort()))
+                .isEqualTo(port);
+    }
+
+    private void thenThePortBecomes(int port) throws Exception {
+        FxTesting.assertEventually(
+                "the port saved", () -> this.test.engine.preferences().tcpPort() == port);
+    }
+
+    private void thenTheFieldShows(TextField field, String text) throws Exception {
+        assertThat(FxTesting.onFx(() -> field.getText())).isEqualTo(text);
+    }
+
+    private void thenTheErrorUnderReads(String option, String words) throws Exception {
+        Label error = FxTesting.onFx(() -> this.screen.pagesView().row(option).errorLabel());
+        assertThat(FxTesting.onFx(error::isVisible)).isTrue();
+        assertThat(FxTesting.onFx(error::getText)).isEqualTo(words);
     }
 }

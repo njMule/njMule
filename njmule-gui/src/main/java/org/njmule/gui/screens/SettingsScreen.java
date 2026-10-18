@@ -16,6 +16,7 @@
  */
 package org.njmule.gui.screens;
 
+import atlantafx.base.controls.ToggleSwitch;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -27,35 +28,43 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
-import javafx.geometry.Bounds;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.value.ObservableValue;
+import javafx.event.ActionEvent;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.Parent;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Control;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.PasswordField;
-import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextInputControl;
 import javafx.scene.control.Tooltip;
-import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import org.njmule.app.Autostart;
@@ -84,11 +93,13 @@ import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.PortTestPane;
 import org.njmule.gui.ui.RateField;
 import org.njmule.gui.ui.Screen;
-import org.njmule.gui.ui.VerticalScroll;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUiSettings;
 
-/** The engine's preferences and the look of the interface, applied together. */
+/**
+ * The engine's preferences and the look of the interface, a page per subject. Each option applies as soon as it is set;
+ * the ports, the proxy and the network interface wait for Apply and reconnect, the language for a restart.
+ */
 public final class SettingsScreen implements Screen {
 
     private static final int MAX_PROXY_USER = 255;
@@ -96,6 +107,7 @@ public final class SettingsScreen implements Screen {
     // Room for the most lists a filter takes, each a long address.
     private static final int MAX_IP_FILTER_LISTS_TEXT = Preferences.MAX_IP_FILTER_LISTS * 2_049;
     private static final int MAX_WEBUI_HOSTS = 4096;
+    private static final Preferences DEFAULTS = Preferences.defaults();
 
     private final Gui gui;
     private Node view;
@@ -115,57 +127,57 @@ public final class SettingsScreen implements Screen {
     private final ComboBox<String> bindInterface = new ComboBox<>();
     // The interfaces up when the options were read, for the names of the choices.
     private List<BindInterface.Candidate> interfaces = List.of();
-    private final CheckBox ed2k = new CheckBox();
-    private final CheckBox ed2kLinks = new CheckBox();
-    private final CheckBox tray = new CheckBox();
-    private final CheckBox confirmExit = new CheckBox();
-    private final CheckBox startMinimized = new CheckBox();
-    private final CheckBox autostart = new CheckBox();
+    private final ToggleSwitch ed2k = new ToggleSwitch();
+    private final ToggleSwitch ed2kLinks = new ToggleSwitch();
+    private final ToggleSwitch tray = new ToggleSwitch();
+    private final ToggleSwitch confirmExit = new ToggleSwitch();
+    private final ToggleSwitch startMinimized = new ToggleSwitch();
+    private final ToggleSwitch autostart = new ToggleSwitch();
     // Whether njMule started at login when the form was loaded; empty while unknown.
     private Optional<Boolean> autostartWasOn = Optional.empty();
     // The questions to the system asked so far; FX thread.
     private int autostartLoads;
-    private final CheckBox watchClipboard = new CheckBox();
-    private final CheckBox sound = new CheckBox();
+    private final ToggleSwitch watchClipboard = new ToggleSwitch();
+    private final ToggleSwitch sound = new ToggleSwitch();
     private final TextField soundFile = new TextField();
-    private final CheckBox filterLan = new CheckBox();
+    private final ToggleSwitch filterLan = new ToggleSwitch();
     private final TextArea whitelist = new TextArea();
     private final TextArea ipFilterLists = new TextArea();
     private final TextField ipFilterDays = new TextField();
     private final TextField messageFilter = new TextField();
-    private final CheckBox friendsOnly = new CheckBox();
-    private final CheckBox spamFilter = new CheckBox();
-    private final CheckBox searchSpamFilter = new CheckBox();
+    private final ToggleSwitch friendsOnly = new ToggleSwitch();
+    private final ToggleSwitch spamFilter = new ToggleSwitch();
+    private final ToggleSwitch searchSpamFilter = new ToggleSwitch();
     // Whether ed2k links opened in njMule when the form was loaded; empty while unknown.
     private Optional<Boolean> linksWereOurs = Optional.empty();
     private Optional<LinkAssociation> links = Optional.empty();
-    private final CheckBox kad = new CheckBox();
-    private final CheckBox autoConnect = new CheckBox();
-    private final CheckBox reconnect = new CheckBox();
-    private final CheckBox secureIdent = new CheckBox();
-    private final CheckBox credits = new CheckBox();
-    private final CheckBox upnp = new CheckBox();
+    private final ToggleSwitch kad = new ToggleSwitch();
+    private final ToggleSwitch autoConnect = new ToggleSwitch();
+    private final ToggleSwitch reconnect = new ToggleSwitch();
+    private final ToggleSwitch secureIdent = new ToggleSwitch();
+    private final ToggleSwitch credits = new ToggleSwitch();
+    private final ToggleSwitch upnp = new ToggleSwitch();
     private PortTestPane portTest;
     private final TextField deadRetries = new TextField();
     private final TextField backups = new TextField();
     private final TextField filterLevel = new TextField();
-    private final CheckBox fromServer = new CheckBox();
-    private final CheckBox fromClients = new CheckBox();
-    private final CheckBox staticOnly = new CheckBox();
-    private final CheckBox manualHigh = new CheckBox();
-    private final CheckBox updateAtStart = new CheckBox();
-    private final CheckBox rememberDownloaded = new CheckBox();
-    private final CheckBox rememberCancelled = new CheckBox();
-    private final CheckBox storeSearches = new CheckBox();
-    private final CheckBox previewFirst = new CheckBox();
+    private final ToggleSwitch fromServer = new ToggleSwitch();
+    private final ToggleSwitch fromClients = new ToggleSwitch();
+    private final ToggleSwitch staticOnly = new ToggleSwitch();
+    private final ToggleSwitch manualHigh = new ToggleSwitch();
+    private final ToggleSwitch updateAtStart = new ToggleSwitch();
+    private final ToggleSwitch rememberDownloaded = new ToggleSwitch();
+    private final ToggleSwitch rememberCancelled = new ToggleSwitch();
+    private final ToggleSwitch storeSearches = new ToggleSwitch();
+    private final ToggleSwitch previewFirst = new ToggleSwitch();
     private final TextField videoPlayer = new TextField();
     private final TextField videoPlayerArgs = new TextField();
     private Button videoPlayerBrowse;
     private final ComboBox<SharedFilesVisibility> visibility = new ComboBox<>();
-    private final CheckBox addPaused = new CheckBox();
-    private final CheckBox cleanUpNewNames = new CheckBox();
+    private final ToggleSwitch addPaused = new ToggleSwitch();
+    private final ToggleSwitch cleanUpNewNames = new ToggleSwitch();
     private final TextField nameCleanups = new TextField();
-    private final CheckBox startNext = new CheckBox();
+    private final ToggleSwitch startNext = new ToggleSwitch();
     private final ComboBox<NextDownload> nextCategory = new ComboBox<>();
     private final ComboBox<ProxySettings.Type> proxyType = new ComboBox<>();
     private final ComboBox<UpdateMode> updateMode = new ComboBox<>();
@@ -180,22 +192,18 @@ public final class SettingsScreen implements Screen {
     private final ComboBox<Themes.Family> theme = new ComboBox<>();
     private final ComboBox<GuiSettings.Mode> mode = new ComboBox<>();
     private final ComboBox<Optional<Locale>> language = new ComboBox<>();
-    private final CheckBox webUi = new CheckBox();
+    private final ToggleSwitch webUi = new ToggleSwitch();
     private final TextField webUiPort = new TextField();
-    private final CheckBox webUiLan = new CheckBox();
+    private final ToggleSwitch webUiLan = new ToggleSwitch();
     private final TextField webUiHosts = new TextField();
     private final TextField webUiProxies = new TextField();
-    private final CheckBox webUiApi = new CheckBox();
+    private final ToggleSwitch webUiApi = new ToggleSwitch();
     private final PasswordField webUiPassword = new PasswordField();
     private final PasswordField webUiAgain = new PasswordField();
     private SchedulerPane scheduler;
     private Input<String> nickInput;
     private Input<Integer> tcpPortInput;
     private Input<Integer> udpPortInput;
-    private Input<Integer> uploadInput;
-    private Input<Integer> downloadInput;
-    private Input<Integer> downloadCapacityInput;
-    private Input<Integer> uploadCapacityInput;
     private Input<Integer> connectionsInput;
     private Input<Integer> newConnectionsInput;
     private Input<Integer> queueSizeInput;
@@ -218,14 +226,25 @@ public final class SettingsScreen implements Screen {
     private Input<List<String>> webUiProxiesInput;
     private Input<String> webUiPasswordInput;
     private Input<String> webUiAgainInput;
-    private final Map<EventCommands.Event, CheckBox> eventSwitches = new EnumMap<>(EventCommands.Event.class);
+    private final Map<EventCommands.Event, ToggleSwitch> eventSwitches = new EnumMap<>(EventCommands.Event.class);
     private final Map<EventCommands.Event, Input<String>> eventInputs = new EnumMap<>(EventCommands.Event.class);
-    // The inputs Apply checks, in the order of the page.
-    private final List<Input<?>> checked = new ArrayList<>();
-    private final ScrollPane scroll = new VerticalScroll();
-    private SettingsIndex index;
-    // The preferences the form shows, as loaded or last applied: what differs from them is the user's change.
-    private Preferences loaded;
+    // Every option of the pages, and how each shows its saved value and saves what the user set.
+    private final List<SettingRow> rows = new ArrayList<>();
+    private final List<Shown> shows = new ArrayList<>();
+    private final List<Runnable> commits = new ArrayList<>();
+    private final List<Runnable> webCommits = new ArrayList<>();
+    // What waits for Apply and reconnect, by the preference it sets.
+    private final Map<String, Consumer<Preferences.Builder>> held = new LinkedHashMap<>();
+    private boolean languageHeld;
+    // Set while the controls show saved values: their changes are not the user's.
+    private boolean loading;
+    private SettingsPages pages;
+    private final Label pendingText = new Label();
+    private final Button applyHeld = new Button();
+    private final HBox bar = new HBox(10);
+    // The preferences as saved: an option differs from its default against them.
+    private Preferences loaded = DEFAULTS;
+    private WebUiSettings web = WebUiSettings.DEFAULTS;
 
     public SettingsScreen(Gui gui) {
         this.gui = gui;
@@ -247,6 +266,11 @@ public final class SettingsScreen implements Screen {
     }
 
     @Override
+    public ObservableValue<String> summary() {
+        return new SimpleStringProperty(this.gui.t("nj.settings.subtitle"));
+    }
+
+    @Override
     public Node view() {
         if (this.view == null) {
             this.view = build();
@@ -254,9 +278,14 @@ public final class SettingsScreen implements Screen {
         return this.view;
     }
 
+    // Options set elsewhere meanwhile show; what waits for Apply and reconnect stays as the user left it.
     @Override
     public void shown() {
-        load(this.gui.model().preferencesProperty().get());
+        if (this.held.isEmpty() && !this.languageHeld) {
+            load(this.gui.model().preferencesProperty().get());
+        } else {
+            refresh();
+        }
     }
 
     private Node build() {
@@ -265,43 +294,20 @@ public final class SettingsScreen implements Screen {
         this.obfuscation.setButtonCell(new NamedCell<>(this::obfuscationName));
         this.bindInterface.setCellFactory(l -> new NamedCell<>(this::interfaceName));
         this.bindInterface.setButtonCell(new NamedCell<>(this::interfaceName));
-        this.bindInterface.setTooltip(new Tooltip(this.gui.t("nj.settings.bindInterface.hint")));
+        this.bindInterface.setPrefWidth(260);
+        this.bindInterface.setMinWidth(140);
         this.theme.getItems().addAll(Themes.Family.values());
-        this.theme.setCellFactory(l -> new NamedCell<>(f -> this.gui.t("nj.theme." + key(f))));
-        this.theme.setButtonCell(new NamedCell<>(f -> this.gui.t("nj.theme." + key(f))));
+        this.theme.setCellFactory(l -> new NamedCell<>(this::themeName));
+        this.theme.setButtonCell(new NamedCell<>(this::themeName));
         this.mode.getItems().addAll(GuiSettings.Mode.values());
-        this.mode.setCellFactory(l -> new NamedCell<>(m -> this.gui.t("nj.mode." + key(m))));
-        this.mode.setButtonCell(new NamedCell<>(m -> this.gui.t("nj.mode." + key(m))));
+        this.mode.setCellFactory(l -> new NamedCell<>(this::modeName));
+        this.mode.setButtonCell(new NamedCell<>(this::modeName));
         this.language.getItems().add(Optional.empty());
         I18n.LANGUAGES.forEach(l -> this.language.getItems().add(Optional.of(l)));
         this.language.setCellFactory(l -> new NamedCell<>(this::languageName));
         this.language.setButtonCell(new NamedCell<>(this::languageName));
-        this.ed2k.setText(this.gui.t("nj.settings.ed2k"));
-        this.ed2kLinks.setText(this.gui.t("nj.settings.ed2kLinks"));
-        this.tray.setText(this.gui.t("nj.settings.tray"));
-        this.confirmExit.setText(this.gui.t("IDS_PW_PROMPT"));
-        this.startMinimized.setText(this.gui.t("IDS_PREF_STARTMIN"));
-        this.autostart.setText(this.gui.t("nj.settings.autostart"));
-        this.watchClipboard.setText(this.gui.t("IDS_PF_WATCHCB"));
-        this.sound.setText(this.gui.t("nj.settings.sound"));
-        this.filterLan.setText(this.gui.t("IDS_PW_FILTER"));
-        this.friendsOnly.setText(this.gui.t("IDS_MSGONLYFRIENDS"));
-        this.spamFilter.setText(this.gui.t("IDS_ADVSPAMFILTER"));
-        this.searchSpamFilter.setText(this.gui.t("IDS_SEARCHSPAMFILTER"));
-        this.messageFilter.setPrefColumnCount(30);
         this.links = LinkAssociation.forThisSystem(this.gui.directories().config());
-        this.kad.setText(this.gui.t("nj.settings.kad"));
-        this.autoConnect.setText(this.gui.t("IDS_PW_AUTOCON"));
-        this.reconnect.setText(this.gui.t("IDS_PW_RECON"));
-        this.fromServer.setText(this.gui.t("IDS_PW_USC"));
-        this.fromClients.setText(this.gui.t("IDS_PW_UCC"));
-        this.staticOnly.setText(this.gui.t("IDS_PW_AUTOCONNECTSTATICONLY"));
-        this.manualHigh.setText(this.gui.t("IDS_MANUALSERVERHIGHPRIO"));
-        this.updateAtStart.setText(this.gui.t("IDS_PW_USS"));
-        this.rememberDownloaded.setText(this.gui.t("IDS_PW_REMEMBERDOWNLOADED"));
-        this.rememberCancelled.setText(this.gui.t("IDS_PW_REMEMBERCANCELLED"));
-        this.storeSearches.setText(this.gui.t("IDS_STORESEARCHES"));
-        this.previewFirst.setText(this.gui.t("IDS_DOWNLOADMOVIECHUNKS"));
+        this.messageFilter.setPrefColumnCount(30);
         this.videoPlayer.setPrefColumnCount(26);
         this.videoPlayerArgs.setPrefColumnCount(14);
         // A program's path and arguments, and IP addresses, read left to right.
@@ -314,10 +320,7 @@ public final class SettingsScreen implements Screen {
         this.visibility.getItems().addAll(SharedFilesVisibility.values());
         this.visibility.setCellFactory(l -> new NamedCell<>(this::visibilityName));
         this.visibility.setButtonCell(new NamedCell<>(this::visibilityName));
-        this.addPaused.setText(this.gui.t("IDS_ADDNEWFILESPAUSED"));
-        this.cleanUpNewNames.setText(this.gui.t("IDS_AUTOCLEANUPFN"));
         this.nameCleanups.setPrefColumnCount(30);
-        this.startNext.setText(this.gui.t("IDS_STARTNEXTFILE"));
         // Any category, the same first, or the same only.
         this.nextCategory
                 .getItems()
@@ -327,13 +330,6 @@ public final class SettingsScreen implements Screen {
         this.nextCategory
                 .disableProperty()
                 .bind(this.startNext.selectedProperty().not());
-        this.deadRetries.setPrefColumnCount(4);
-        this.secureIdent.setText(this.gui.t("nj.settings.secureIdent"));
-        this.credits.setText(this.gui.t("nj.settings.credits"));
-        this.upnp.setText(this.gui.t("nj.settings.upnp"));
-        this.webUi.setText(this.gui.t("nj.webui.enabled"));
-        this.webUiLan.setText(this.gui.t("nj.webui.lan"));
-        this.webUiApi.setText(this.gui.t("nj.webui.api"));
         this.proxyType.getItems().addAll(ProxySettings.Type.values());
         this.proxyType.setCellFactory(l -> new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
         this.proxyType.setButtonCell(new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
@@ -343,203 +339,1261 @@ public final class SettingsScreen implements Screen {
         this.updateChannel.getItems().addAll(UpdateChannel.values());
         this.updateChannel.setCellFactory(l -> new NamedCell<>(c -> this.gui.t("nj.update.channel." + key(c))));
         this.updateChannel.setButtonCell(new NamedCell<>(c -> this.gui.t("nj.update.channel." + key(c))));
+        // Without a proxy there is nothing to fill in.
+        for (Control c : List.of(this.proxyHost, this.proxyPort, this.proxyUser, this.proxyPassword)) {
+            c.disableProperty().bind(this.proxyType.valueProperty().isEqualTo(ProxySettings.Type.NONE));
+        }
+        // Numbers keep to narrow fields.
+        for (TextField f : List.of(
+                this.tcpPort,
+                this.udpPort,
+                this.connections,
+                this.newConnections,
+                this.queueSize,
+                this.sources,
+                this.minFreeSpace,
+                this.deadRetries,
+                this.backups,
+                this.filterLevel,
+                this.ipFilterDays,
+                this.webUiPort,
+                this.proxyPort)) {
+            f.setPrefColumnCount(6);
+        }
+        this.nick.setPrefColumnCount(16);
         inputs();
-
-        GridPane grid = new GridPane();
-        grid.setHgap(12);
-        grid.setVgap(8);
-        int row = 0;
-        row = section(grid, row, this.gui.t("IDS_PW_GENERAL"));
-        row = field(grid, row, this.gui.t("IDS_PW_NICK"), this.nick);
-        row = field(grid, row, this.gui.t("IDS_PW_LANG"), this.language);
-        row = field(grid, row, this.gui.t("nj.settings.theme"), new HBox(8, this.theme, this.mode));
-        if (NotificationArea.isSupported()) {
-            grid.add(this.tray, 1, row++);
-        }
-        grid.add(this.startMinimized, 1, row++);
-        grid.add(autostartRow(), 1, row++);
-        grid.add(this.confirmExit, 1, row++);
-        grid.add(this.watchClipboard, 1, row++);
-        if (this.links.isPresent()) {
-            grid.add(this.ed2kLinks, 1, row++);
-        }
-        row = section(grid, row, this.gui.t("IDS_PW_EKDEV_OPTIONS"));
-        grid.add(this.sound, 1, row++);
-        row = field(grid, row, this.gui.t("nj.settings.soundFile"), soundRow());
-        row = section(grid, row, this.gui.t("nj.settings.connection"));
-        row = field(grid, row, this.gui.t("IDS_PW_CLIENTPORT") + " (TCP)", this.tcpPort);
-        row = field(grid, row, "UDP", this.udpPort);
-        row = field(grid, row, this.gui.t("nj.settings.upload"), this.upload.node());
-        row = field(grid, row, this.gui.t("nj.settings.download"), this.download.node());
-        row = field(grid, row, this.gui.t("nj.settings.downloadCapacity"), this.downloadCapacity.node());
-        row = field(grid, row, this.gui.t("nj.settings.uploadCapacity"), this.uploadCapacity.node());
-        row = field(grid, row, this.gui.t("IDS_PW_MAXC"), this.connections);
-        this.newConnections.setPrefColumnCount(5);
-        row = field(grid, row, this.gui.t("IDS_MAXCON5SECLABEL"), this.newConnections);
-        this.queueSize.setPrefColumnCount(7);
-        row = field(grid, row, this.gui.t("IDS_QUEUESIZE"), this.queueSize);
-        row = field(grid, row, this.gui.t("IDS_PW_MAXSOURCES"), this.sources);
-        row = field(grid, row, this.gui.t("nj.settings.obfuscation"), this.obfuscation);
-        row = field(grid, row, this.gui.t("nj.settings.bindInterface"), this.bindInterface);
-        grid.add(this.ed2k, 1, row++);
-        grid.add(this.kad, 1, row++);
-        grid.add(this.autoConnect, 1, row++);
-        grid.add(this.reconnect, 1, row++);
-        grid.add(this.secureIdent, 1, row++);
-        grid.add(this.credits, 1, row++);
-        grid.add(this.upnp, 1, row++);
         this.portTest = new PortTestPane(
                 this.gui,
                 () -> this::ports,
                 this.tcpPort.textProperty(),
                 this.udpPort.textProperty(),
                 this.upnp.selectedProperty());
-        grid.add(this.portTest.node(), 1, row++);
-        row = section(grid, row, this.gui.t("IDS_PW_SERVER"));
+        this.pages = new SettingsPages(this.gui, pages());
+        this.rows.forEach(r -> r.inputs().forEach(i -> i.validProperty().addListener((o, was, now) -> showBar())));
+        // Under the page, while something waits: what, and the two ways out.
+        this.pendingText.setWrapText(true);
+        this.pendingText.setMinWidth(0);
+        this.pendingText.setMinHeight(Region.USE_PREF_SIZE);
+        this.pendingText.setGraphic(Fx.icon(Icons.INFO));
+        HBox.setHgrow(this.pendingText, Priority.ALWAYS);
+        this.applyHeld.setOnAction(e -> apply());
+        this.applyHeld.setId("settings-apply");
+        Fx.primary(this.applyHeld);
+        Button discard = Fx.button(this.gui.t("nj.settings.discard"), Icons.CLOSE, this::discard);
+        discard.getStyleClass().add("flat");
+        discard.setId("settings-discard");
+        Fx.whole(discard);
+        Fx.whole(this.applyHeld);
+        this.bar.getChildren().setAll(this.pendingText, discard, this.applyHeld);
+        this.bar.setAlignment(Pos.CENTER_LEFT);
+        this.bar.getStyleClass().add("settings-bar");
+        this.bar.managedProperty().bind(this.bar.visibleProperty());
+        VBox right = new VBox(8, this.pages.page(), this.bar);
+        VBox.setVgrow(this.pages.page(), Priority.ALWAYS);
+        HBox body = new HBox(16, this.pages.side(), right);
+        HBox.setHgrow(right, Priority.ALWAYS);
+        this.gui.subscriptions().onChange(this.gui.model().preferencesProperty(), (was, now) -> outside(now));
+        load(this.gui.model().preferencesProperty().get());
+        return Fx.screen(body);
+    }
+
+    // The twelve pages, each option in the section it belongs to.
+    private List<SettingsPages.Page> pages() {
+        return List.of(
+                page("general", "IDS_PW_GENERAL", "nj.settings.page.general", Icons.OPTIONS, general()),
+                page("connection", "nj.settings.connection", "nj.settings.page.connection", Icons.LINK, connection()),
+                page("bandwidth", "nj.settings.bandwidth", "nj.settings.page.bandwidth", Icons.SPEED, bandwidth()),
+                page("servers", "IDS_PW_SERVER", "nj.settings.page.servers", Icons.SERVER, servers()),
+                page("proxy", "IDS_PW_PROXY", "nj.settings.page.proxy", Icons.SWAP, proxy()),
+                page("folders", "IDS_PW_DIR", "nj.settings.page.folders", Icons.FOLDER_OPEN, folders()),
+                page("ipfilter", "IDS_IPFILTER", "nj.settings.page.ipfilter", Icons.BLOCK, ipFilter()),
+                page("messages", "IDS_EM_MESSAGES", "nj.settings.page.messages", Icons.MESSAGE, messages()),
+                page("scheduler", "nj.scheduler.title", "nj.settings.page.scheduler", Icons.CLOCK, schedulerPage()),
+                page("events", "nj.settings.events", "nj.settings.page.events", Icons.PLAY, events()),
+                page("web", "IDS_PW_WS", "nj.webui.note", Icons.NETWORK, webInterface()),
+                page("advanced", "IDS_PW_TWEAK", "nj.settings.page.advanced", Icons.TOOLS, advanced()));
+    }
+
+    private SettingsPages.Page page(
+            String id, String title, String about, Icons icon, List<SettingsPages.Section> sections) {
+        return new SettingsPages.Page(id, this.gui.t(title), this.gui.t(about), icon, sections);
+    }
+
+    private SettingsPages.Section section(String title, SettingRow... rows) {
+        List<SettingRow> kept = Arrays.stream(rows).filter(Objects::nonNull).toList();
+        this.rows.addAll(kept);
+        return new SettingsPages.Section(title.isEmpty() ? "" : this.gui.t(title), kept);
+    }
+
+    private List<SettingsPages.Section> general() {
+        return List.of(
+                section(
+                        "",
+                        engine(
+                                        "IDS_PW_NICK",
+                                        this.nick,
+                                        Preferences::nick,
+                                        Preferences.Builder::nick,
+                                        this.nickInput::value,
+                                        this.nick::setText,
+                                        v -> v)
+                                .checkedBy(this.nickInput)),
+                section("IDS_PW_DISPLAY", languageRow(), themeRow()),
+                section(
+                        "IDS_STARTUP",
+                        autostartRow(),
+                        look(
+                                "IDS_PREF_STARTMIN",
+                                this.startMinimized,
+                                () -> this.gui.settings().startMinimized(),
+                                false,
+                                v -> this.gui.settings().setStartMinimized(v)),
+                        NotificationArea.isSupported()
+                                ? look(
+                                        "nj.settings.tray",
+                                        this.tray,
+                                        () -> this.gui.settings().minimizeToTray(),
+                                        true,
+                                        v -> this.gui.settings().setMinimizeToTray(v))
+                                : null),
+                section(
+                        "nj.update.title",
+                        engine(
+                                        "nj.update.mode",
+                                        this.updateMode,
+                                        Preferences::updateMode,
+                                        Preferences.Builder::updateMode,
+                                        this.updateMode::getValue,
+                                        this.updateMode::setValue,
+                                        m -> this.gui.t("nj.update.mode." + key(m)))
+                                .describedAs(this.gui.t("nj.update.note")),
+                        engine(
+                                "nj.update.channel",
+                                this.updateChannel,
+                                Preferences::updateChannel,
+                                Preferences.Builder::updateChannel,
+                                this.updateChannel::getValue,
+                                this.updateChannel::setValue,
+                                c -> this.gui.t("nj.update.channel." + key(c))),
+                        checkUpdateRow()),
+                section(
+                        "IDS_PW_MISC",
+                        look(
+                                "IDS_PW_PROMPT",
+                                this.confirmExit,
+                                () -> this.gui.settings().confirmExit(),
+                                true,
+                                v -> this.gui.settings().setConfirmExit(v)),
+                        look(
+                                "IDS_PF_WATCHCB",
+                                this.watchClipboard,
+                                () -> this.gui.settings().watchClipboard(),
+                                false,
+                                v -> this.gui.settings().setWatchClipboard(v)),
+                        this.links.isPresent() ? linksRow() : null),
+                section(
+                        "IDS_PW_EKDEV_OPTIONS",
+                        toggle(
+                                "nj.settings.sound",
+                                this.sound,
+                                Preferences::notificationSound,
+                                (b, v) -> b.notificationSound(v)),
+                        engine(
+                                        "nj.settings.soundFile",
+                                        soundRow(),
+                                        Preferences::notificationSoundFile,
+                                        Preferences.Builder::notificationSoundFile,
+                                        this.soundFileInput::value,
+                                        v -> this.soundFile.setText(
+                                                v.map(Path::toString).orElse("")),
+                                        v -> "")
+                                .checkedBy(this.soundFileInput)
+                                .wide()));
+    }
+
+    private List<SettingsPages.Section> connection() {
+        return List.of(
+                section(
+                        "nj.network.ports",
+                        held(
+                                        "tcp",
+                                        this.gui.t("IDS_PW_CLIENTPORT") + " (TCP)",
+                                        this.tcpPort,
+                                        Preferences::tcpPort,
+                                        Preferences.Builder::tcpPort,
+                                        this.tcpPortInput::value,
+                                        v -> this.tcpPort.setText(String.valueOf(v)),
+                                        String::valueOf)
+                                .checkedBy(this.tcpPortInput),
+                        held(
+                                        "udp",
+                                        "UDP",
+                                        this.udpPort,
+                                        Preferences::udpPort,
+                                        Preferences.Builder::udpPort,
+                                        this.udpPortInput::value,
+                                        v -> this.udpPort.setText(String.valueOf(v)),
+                                        String::valueOf)
+                                .checkedBy(this.udpPortInput),
+                        held(
+                                "upnp",
+                                switchTitle(this.upnp, "nj.settings.upnp"),
+                                this.upnp,
+                                Preferences::upnp,
+                                Preferences.Builder::upnp,
+                                this.upnp::isSelected,
+                                this.upnp::setSelected,
+                                this::yesNo),
+                        new SettingRow(this.gui, this.gui.t("nj.network.testPorts"), this.portTest.node()).wide()),
+                section(
+                        "IDS_NETWORK",
+                        toggle(
+                                "nj.settings.ed2k",
+                                this.ed2k,
+                                Preferences::ed2kEnabled,
+                                Preferences.Builder::ed2kEnabled),
+                        toggle("nj.settings.kad", this.kad, Preferences::kadEnabled, Preferences.Builder::kadEnabled),
+                        toggle(
+                                "IDS_PW_AUTOCON",
+                                this.autoConnect,
+                                Preferences::autoConnect,
+                                Preferences.Builder::autoConnect),
+                        toggle("IDS_PW_RECON", this.reconnect, Preferences::reconnect, Preferences.Builder::reconnect),
+                        engine(
+                                "nj.settings.obfuscation",
+                                this.obfuscation,
+                                Preferences::obfuscation,
+                                Preferences.Builder::obfuscation,
+                                this.obfuscation::getValue,
+                                this.obfuscation::setValue,
+                                this::obfuscationName),
+                        held(
+                                        "bind",
+                                        this.gui.t("nj.settings.bindInterface"),
+                                        this.bindInterface,
+                                        Preferences::bindInterface,
+                                        Preferences.Builder::bindInterface,
+                                        () -> Objects.requireNonNullElse(this.bindInterface.getValue(), ""),
+                                        this::showInterface,
+                                        this::interfaceName)
+                                .describedAs(this.gui.t("nj.settings.bindInterface.hint"))),
+                section(
+                        "IDS_PW_CON_LIMITFRM",
+                        number(
+                                "IDS_PW_MAXC",
+                                this.connections,
+                                this.connectionsInput,
+                                Preferences::maxConnections,
+                                Preferences.Builder::maxConnections),
+                        number(
+                                "IDS_MAXCON5SECLABEL",
+                                this.newConnections,
+                                this.newConnectionsInput,
+                                Preferences::newConnectionsPerFiveSeconds,
+                                Preferences.Builder::newConnectionsPerFiveSeconds),
+                        number(
+                                "IDS_PW_MAXSOURCES",
+                                this.sources,
+                                this.sourcesInput,
+                                Preferences::maxSourcesPerFile,
+                                Preferences.Builder::maxSourcesPerFile),
+                        number(
+                                "IDS_QUEUESIZE",
+                                this.queueSize,
+                                this.queueSizeInput,
+                                Preferences::uploadQueueSize,
+                                Preferences.Builder::uploadQueueSize)));
+    }
+
+    private List<SettingsPages.Section> bandwidth() {
+        return List.of(
+                section(
+                        "IDS_PW_CON_CAPFRM",
+                        rate(
+                                "nj.settings.downloadCapacity",
+                                this.downloadCapacity,
+                                Preferences::downloadCapacityKiBps,
+                                Preferences.Builder::downloadCapacityKiBps),
+                        rate(
+                                "nj.settings.uploadCapacity",
+                                this.uploadCapacity,
+                                Preferences::uploadCapacityKiBps,
+                                Preferences.Builder::uploadCapacityKiBps)),
+                section(
+                        "IDS_PW_CON_LIMITFRM",
+                        rate(
+                                "nj.settings.download",
+                                this.download,
+                                Preferences::maxDownloadKiBps,
+                                Preferences.Builder::maxDownloadKiBps),
+                        rate(
+                                "nj.settings.upload",
+                                this.upload,
+                                Preferences::maxUploadKiBps,
+                                Preferences.Builder::maxUploadKiBps)));
+    }
+
+    private List<SettingsPages.Section> servers() {
         Label retries = new Label(this.gui.t("IDS_PW_RETRIES"));
         HBox dead = new HBox(8, this.deadRetries, retries);
         dead.setAlignment(Pos.CENTER_LEFT);
-        row = field(grid, row, this.gui.t("IDS_PW_RDEAD"), dead);
-        grid.add(this.fromServer, 1, row++);
-        grid.add(this.fromClients, 1, row++);
-        grid.add(this.staticOnly, 1, row++);
-        grid.add(this.manualHigh, 1, row++);
         Button addresses = Fx.button(this.gui.t("IDS_EDITLIST"), Icons.EDIT, this::editServerListAddresses);
-        HBox update = new HBox(8, this.updateAtStart, addresses);
+        HBox update = new HBox(12, addresses, this.updateAtStart);
         update.setAlignment(Pos.CENTER_LEFT);
-        grid.add(update, 1, row++);
-        row = section(grid, row, this.gui.t("IDS_PW_PROXY"));
-        row = field(grid, row, this.gui.t("nj.proxy.type"), this.proxyType);
-        row = field(grid, row, this.gui.t("nj.proxy.host"), new HBox(8, this.proxyHost, this.proxyPort));
-        row = field(grid, row, this.gui.t("nj.proxy.user"), new HBox(8, this.proxyUser, this.proxyPassword));
-        row = section(grid, row, this.gui.t("IDS_PW_DIR"));
-        row = field(grid, row, this.gui.t("IDS_PW_INCOMING"), directory(this.incoming));
-        row = field(grid, row, this.gui.t("IDS_PW_TEMP"), directory(this.temp));
-        row = field(grid, row, this.gui.t("IDS_MINFREEDISKSPACE"), this.minFreeSpace);
-        this.backups.setPrefColumnCount(4);
-        row = field(grid, row, this.gui.t("nj.settings.backups"), this.backups);
-        grid.add(this.rememberDownloaded, 1, row++);
-        grid.add(this.rememberCancelled, 1, row++);
-        grid.add(this.storeSearches, 1, row++);
-        grid.add(this.previewFirst, 1, row++);
-        row = field(grid, row, this.gui.t("IDS_PW_VIDEOPLAYER"), videoPlayerRow());
-        row = field(grid, row, this.gui.t("IDS_PW_SHARE"), this.visibility);
-        grid.add(this.addPaused, 1, row++);
-        grid.add(this.cleanUpNewNames, 1, row++);
-        row = field(grid, row, this.gui.t("IDS_FILTERFILENAMEWORD"), this.nameCleanups);
-        HBox next = new HBox(8, this.startNext, this.nextCategory);
-        next.setAlignment(Pos.CENTER_LEFT);
-        grid.add(next, 1, row++);
-        row = section(grid, row, this.gui.t("IDS_IPFILTER"));
-        row = field(grid, row, this.gui.t("nj.settings.ipFilterLists"), ipFilterRow());
-        this.ipFilterDays.setPrefColumnCount(4);
-        row = field(grid, row, this.gui.t("nj.settings.ipFilterUpdateDays"), this.ipFilterDays);
-        this.filterLevel.setPrefColumnCount(4);
-        row = field(grid, row, this.gui.t("IDS_FILTERLEVEL"), this.filterLevel);
-        grid.add(this.filterLan, 1, row++);
-        this.whitelist.setPrefRowCount(3);
-        this.whitelist.setPrefColumnCount(32);
-        this.whitelist.setPromptText("1.2.3.4\n10.0.0.0/8");
-        row = field(grid, row, this.gui.t("nj.settings.whitelist"), this.whitelist);
-        grid.add(this.searchSpamFilter, 1, row++);
-        row = section(grid, row, this.gui.t("IDS_EM_MESSAGES"));
-        row = field(grid, row, this.gui.t("IDS_FILTERLABEL"), this.messageFilter);
-        grid.add(this.friendsOnly, 1, row++);
-        grid.add(this.spamFilter, 1, row++);
-        row = section(grid, row, this.gui.t("nj.scheduler.title"));
-        grid.add(scheduler(), 0, row++, 2, 1);
-        row = section(grid, row, this.gui.t("nj.settings.events"));
-        for (EventCommands.Event event : EventCommands.Event.values()) {
-            grid.add(this.eventSwitches.get(event), 0, row);
-            grid.add(this.eventInputs.get(event).field(), 1, row++);
-        }
-        row = section(grid, row, this.gui.t("nj.update.title"));
-        row = field(grid, row, this.gui.t("nj.update.mode"), this.updateMode);
-        row = field(grid, row, this.gui.t("nj.update.channel"), this.updateChannel);
-        grid.add(
-                Fx.button(
-                        this.gui.t("IDS_CHECK4UPDATE"),
-                        Icons.REFRESH,
-                        () -> UpdateDialog.checkNow(
-                                this.gui, this.view.getScene().getWindow())),
-                1,
-                row++);
-        Label updateNote = new Label(this.gui.t("nj.update.note"));
-        updateNote.setWrapText(true);
-        updateNote.getStyleClass().add("text-muted");
-        grid.add(updateNote, 0, row++, 2, 1);
-        row = section(grid, row, this.gui.t("IDS_PW_WS"));
-        grid.add(this.webUi, 1, row++);
-        row = field(grid, row, this.gui.t("nj.webui.port"), this.webUiPort);
-        grid.add(this.webUiLan, 1, row++);
-        this.webUiHosts.setPrefColumnCount(32);
-        this.webUiHosts.setPromptText("nas.local, njmule.example.com");
-        row = field(grid, row, this.gui.t("nj.webui.hosts"), this.webUiHosts);
-        this.webUiProxies.setPrefColumnCount(32);
-        this.webUiProxies.setPromptText("172.17.0.1, 10.0.0.0/8");
-        row = field(grid, row, this.gui.t("nj.webui.proxies"), this.webUiProxies);
-        row = field(grid, row, this.gui.t("nj.webui.password"), new HBox(8, this.webUiPassword, this.webUiAgain));
-        grid.add(this.webUiApi, 1, row++);
-        grid.add(
-                new HBox(
-                        8,
-                        Fx.button(this.gui.t("nj.webui.copyToken"), Icons.COPY, this::copyApiToken),
-                        Fx.button(this.gui.t("nj.webui.newToken"), Icons.REFRESH, this::newApiToken)),
-                1,
-                row++);
-        Label webNote = new Label(this.gui.t("nj.webui.note"));
-        webNote.setWrapText(true);
-        webNote.getStyleClass().add("text-muted");
-        grid.add(webNote, 0, row++, 2, 1);
-        Label note = new Label(this.gui.t("nj.settings.restartNote"));
-        note.setWrapText(true);
-        note.getStyleClass().add("text-muted");
-        grid.add(note, 0, row, 2, 1);
-
-        Button apply = Fx.primary(Fx.button(this.gui.t("IDS_PW_APPLY"), Icons.CHECK, this::apply));
-        List<Input<?>> checked = this.checked;
-        checked.addAll(List.of(
-                this.nickInput,
-                this.tcpPortInput,
-                this.udpPortInput,
-                this.uploadInput,
-                this.downloadInput,
-                this.downloadCapacityInput,
-                this.uploadCapacityInput,
-                this.connectionsInput,
-                this.newConnectionsInput,
-                this.queueSizeInput,
-                this.sourcesInput,
-                this.proxyHostInput,
-                this.proxyPortInput,
-                this.proxyUserInput,
-                this.incomingInput,
-                this.tempInput,
-                this.soundFileInput,
-                this.minFreeSpaceInput,
-                this.deadRetriesInput,
-                this.backupsInput,
-                this.filterLevelInput,
-                this.whitelistInput,
-                this.ipFilterListsInput,
-                this.ipFilterDaysInput,
-                this.webUiPortInput,
-                this.webUiHostsInput,
-                this.webUiProxiesInput,
-                this.webUiPasswordInput,
-                this.webUiAgainInput));
-        checked.addAll(this.eventInputs.values());
-        // Apply stays enabled: pressed with a wrong value, it shows that field and says what it takes.
-        var tools = Fx.toolRow(apply, Fx.button(this.gui.t("IDS_PW_RESET"), Icons.REFRESH, this::shown));
-        this.scroll.setContent(grid);
-        this.scroll.setFitToWidth(true);
-        load(this.gui.model().preferencesProperty().get());
-        // Beside the long page, its sections and a box that finds an option by its words.
-        this.index = new SettingsIndex(this.gui, grid, this.scroll);
-        HBox body = new HBox(12, this.index.view(), this.scroll);
-        HBox.setHgrow(this.scroll, Priority.ALWAYS);
-        return Fx.screen(tools, body);
+        return List.of(section(
+                "",
+                engine(
+                                "IDS_PW_RDEAD",
+                                dead,
+                                Preferences::deadServerRetries,
+                                Preferences.Builder::deadServerRetries,
+                                this.deadRetriesInput::value,
+                                v -> this.deadRetries.setText(String.valueOf(v)),
+                                String::valueOf)
+                        .checkedBy(this.deadRetriesInput),
+                toggle(
+                        "IDS_PW_USC",
+                        this.fromServer,
+                        Preferences::addServersFromServer,
+                        Preferences.Builder::addServersFromServer),
+                toggle(
+                        "IDS_PW_UCC",
+                        this.fromClients,
+                        Preferences::addServersFromClients,
+                        Preferences.Builder::addServersFromClients),
+                toggle(
+                        "IDS_PW_AUTOCONNECTSTATICONLY",
+                        this.staticOnly,
+                        Preferences::staticServersOnly,
+                        Preferences.Builder::staticServersOnly),
+                toggle(
+                        "IDS_MANUALSERVERHIGHPRIO",
+                        this.manualHigh,
+                        Preferences::manualServersHighPriority,
+                        Preferences.Builder::manualServersHighPriority),
+                engine(
+                        "IDS_PW_USS",
+                        update,
+                        Preferences::updateServersAtStart,
+                        Preferences.Builder::updateServersAtStart,
+                        this.updateAtStart::isSelected,
+                        this.updateAtStart::setSelected,
+                        this::yesNo)));
     }
+
+    // The proxy is one preference: each of its rows sets all of it.
+    private List<SettingsPages.Section> proxy() {
+        Supplier<ProxySettings> read = () -> new ProxySettings(
+                this.proxyType.getValue(),
+                this.proxyHostInput.value(),
+                this.proxyPortInput.value(),
+                this.proxyUserInput.value(),
+                this.proxyPassword.getText());
+        Consumer<ProxySettings> show = p -> {
+            this.proxyType.setValue(p.type());
+            this.proxyHost.setText(p.host());
+            this.proxyPort.setText(String.valueOf(p.port()));
+            this.proxyUser.setText(p.user());
+            this.proxyPassword.setText(p.password());
+        };
+        HBox where = new HBox(8, this.proxyHost, this.proxyPort);
+        HBox who = new HBox(8, this.proxyUser, this.proxyPassword);
+        SettingRow type = held(
+                "proxy",
+                this.gui.t("nj.proxy.type"),
+                this.proxyType,
+                Preferences::proxy,
+                Preferences.Builder::proxy,
+                read,
+                show,
+                p -> this.gui.t("nj.proxy." + key(p.type())));
+        SettingRow host = held(
+                        "proxy",
+                        this.gui.t("nj.proxy.host"),
+                        where,
+                        Preferences::proxy,
+                        Preferences.Builder::proxy,
+                        read,
+                        show,
+                        p -> "")
+                .checkedBy(this.proxyHostInput)
+                .defaultIs(() -> false, () -> {}, () -> "");
+        SettingRow user = held(
+                        "proxy",
+                        this.gui.t("nj.proxy.user"),
+                        who,
+                        Preferences::proxy,
+                        Preferences.Builder::proxy,
+                        read,
+                        show,
+                        p -> "")
+                .checkedBy(this.proxyUserInput)
+                .defaultIs(() -> false, () -> {}, () -> "");
+        return List.of(section("", type, host, user));
+    }
+
+    private List<SettingsPages.Section> folders() {
+        return List.of(
+                section(
+                        "",
+                        folder(
+                                "IDS_PW_INCOMING",
+                                this.incoming,
+                                this.incomingInput,
+                                Preferences::incomingDir,
+                                (b, v) -> b.incomingDir(v)),
+                        folder("IDS_PW_TEMP", this.temp, this.tempInput, Preferences::tempDir, (b, v) -> b.tempDir(v))
+                                .describedAs(this.gui.t("nj.settings.nextStart")),
+                        number(
+                                "IDS_MINFREEDISKSPACE",
+                                this.minFreeSpace,
+                                this.minFreeSpaceInput,
+                                Preferences::minFreeSpaceMiB,
+                                Preferences.Builder::minFreeSpaceMiB)),
+                section(
+                        "IDS_TW_DOWNLOADS",
+                        toggle(
+                                "IDS_ADDNEWFILESPAUSED",
+                                this.addPaused,
+                                Preferences::addDownloadsPaused,
+                                Preferences.Builder::addDownloadsPaused),
+                        nextRow(),
+                        toggle(
+                                "IDS_AUTOCLEANUPFN",
+                                this.cleanUpNewNames,
+                                Preferences::cleanUpNewNames,
+                                Preferences.Builder::cleanUpNewNames),
+                        engine(
+                                        "IDS_FILTERFILENAMEWORD",
+                                        this.nameCleanups,
+                                        Preferences::nameCleanups,
+                                        Preferences.Builder::nameCleanups,
+                                        () -> this.nameCleanups.getText().strip(),
+                                        this.nameCleanups::setText,
+                                        v -> "")
+                                .wide(),
+                        toggle(
+                                "IDS_PW_REMEMBERDOWNLOADED",
+                                this.rememberDownloaded,
+                                Preferences::rememberDownloadedFiles,
+                                Preferences.Builder::rememberDownloadedFiles),
+                        toggle(
+                                "IDS_PW_REMEMBERCANCELLED",
+                                this.rememberCancelled,
+                                Preferences::rememberCancelledFiles,
+                                Preferences.Builder::rememberCancelledFiles)),
+                section(
+                        "IDS_DL_PREVIEW",
+                        toggle(
+                                "IDS_DOWNLOADMOVIECHUNKS",
+                                this.previewFirst,
+                                Preferences::previewFirst,
+                                Preferences.Builder::previewFirst),
+                        engine(
+                                        "IDS_PW_VIDEOPLAYER",
+                                        videoPlayerRow(),
+                                        p -> List.of(p.videoPlayer(), p.videoPlayerArgs()),
+                                        (b, v) -> b.videoPlayer(v.get(0)).videoPlayerArgs(v.get(1)),
+                                        () -> List.of(this.videoPlayer.getText(), this.videoPlayerArgs.getText()),
+                                        v -> {
+                                            this.videoPlayer.setText(v.get(0));
+                                            this.videoPlayerArgs.setText(v.get(1));
+                                        },
+                                        v -> "")
+                                .wide()),
+                section(
+                        "IDS_SHAREDFILES",
+                        engine(
+                                "IDS_PW_SHARE",
+                                this.visibility,
+                                Preferences::sharedFilesVisibility,
+                                Preferences.Builder::sharedFilesVisibility,
+                                this.visibility::getValue,
+                                this.visibility::setValue,
+                                this::visibilityName)));
+    }
+
+    private List<SettingsPages.Section> ipFilter() {
+        return List.of(
+                section(
+                        "",
+                        engine(
+                                        "nj.settings.ipFilterLists",
+                                        ipFilterRow(),
+                                        Preferences::ipFilterLists,
+                                        Preferences.Builder::ipFilterLists,
+                                        this.ipFilterListsInput::value,
+                                        this.ipFilterLists::setText,
+                                        v -> "")
+                                .checkedBy(this.ipFilterListsInput)
+                                .describedAs(this.gui.t("nj.settings.ipFilterListsHint"))
+                                .wide(),
+                        number(
+                                "nj.settings.ipFilterUpdateDays",
+                                this.ipFilterDays,
+                                this.ipFilterDaysInput,
+                                Preferences::ipFilterUpdateDays,
+                                Preferences.Builder::ipFilterUpdateDays),
+                        number(
+                                "IDS_FILTERLEVEL",
+                                this.filterLevel,
+                                this.filterLevelInput,
+                                Preferences::ipFilterLevel,
+                                Preferences.Builder::ipFilterLevel),
+                        toggle(
+                                "IDS_PW_FILTER",
+                                this.filterLan,
+                                Preferences::filterLanAddresses,
+                                Preferences.Builder::filterLanAddresses),
+                        engine(
+                                        "nj.settings.whitelist",
+                                        this.whitelist,
+                                        Preferences::ipFilterWhitelist,
+                                        Preferences.Builder::ipFilterWhitelist,
+                                        this.whitelistInput::value,
+                                        this.whitelist::setText,
+                                        v -> "")
+                                .checkedBy(this.whitelistInput)
+                                .describedAs(this.gui.t("nj.settings.whitelistHint"))
+                                .wide()),
+                section(
+                        "IDS_SPAM",
+                        toggle(
+                                "IDS_SEARCHSPAMFILTER",
+                                this.searchSpamFilter,
+                                Preferences::searchSpamFilter,
+                                Preferences.Builder::searchSpamFilter)));
+    }
+
+    private List<SettingsPages.Section> messages() {
+        return List.of(section(
+                "",
+                engine(
+                                "IDS_FILTERLABEL",
+                                this.messageFilter,
+                                Preferences::messageFilter,
+                                Preferences.Builder::messageFilter,
+                                () -> this.messageFilter.getText().strip(),
+                                this.messageFilter::setText,
+                                v -> "")
+                        .wide(),
+                toggle(
+                        "IDS_MSGONLYFRIENDS",
+                        this.friendsOnly,
+                        Preferences::messagesFromFriendsOnly,
+                        Preferences.Builder::messagesFromFriendsOnly),
+                toggle(
+                        "IDS_ADVSPAMFILTER",
+                        this.spamFilter,
+                        Preferences::advancedSpamFilter,
+                        Preferences.Builder::advancedSpamFilter)));
+    }
+
+    private List<SettingsPages.Section> schedulerPage() {
+        return List.of(section("", new SettingRow(this.gui, "", scheduler()).wide()));
+    }
+
+    private List<SettingsPages.Section> events() {
+        List<SettingRow> rows = new ArrayList<>();
+        for (EventCommands.Event event : EventCommands.Event.values()) {
+            ToggleSwitch on = this.eventSwitches.get(event);
+            Input<String> line = this.eventInputs.get(event);
+            HBox control = new HBox(12, on, line.field());
+            control.setAlignment(Pos.CENTER_LEFT);
+            HBox.setHgrow(line.field(), Priority.ALWAYS);
+            rows.add(engine(
+                            this.gui.t("nj.events." + event.id()),
+                            control,
+                            p -> p.eventCommands().get(event),
+                            (b, command) -> b.eventEnabled(event, command.enabled())
+                                    .eventCommandLine(event, command.commandLine()),
+                            () -> new EventCommands.Command(on.isSelected(), line.value()),
+                            command -> {
+                                on.setSelected(command.enabled());
+                                line.field().setText(command.commandLine());
+                            },
+                            command -> "")
+                    .checkedBy(line)
+                    .wide());
+        }
+        return List.of(section("", rows.toArray(SettingRow[]::new)));
+    }
+
+    private List<SettingsPages.Section> webInterface() {
+        HBox tokens = new HBox(
+                8,
+                Fx.button(this.gui.t("nj.webui.copyToken"), Icons.COPY, this::copyApiToken),
+                Fx.button(this.gui.t("nj.webui.newToken"), Icons.REFRESH, this::newApiToken));
+        this.webUiHosts.setPromptText("nas.local, njmule.example.com");
+        this.webUiProxies.setPromptText("172.17.0.1, 10.0.0.0/8");
+        HBox passwords = new HBox(8, this.webUiPassword, this.webUiAgain);
+        SettingRow password = new SettingRow(this.gui, this.gui.t("nj.webui.password"), passwords)
+                .checkedBy(this.webUiPasswordInput, this.webUiAgainInput);
+        watch(passwords, this::savePassword);
+        this.commits.add(this::savePassword);
+        return List.of(section(
+                "",
+                web(
+                        switchTitle(this.webUi, "nj.webui.enabled"),
+                        this.webUi,
+                        WebUiSettings::enabled,
+                        (w, v) -> new WebUiSettings(
+                                v, w.port(), w.lan(), w.passwordHash(), w.api(), w.hosts(), w.proxies()),
+                        this.webUi::isSelected,
+                        this.webUi::setSelected,
+                        this::yesNo),
+                web(
+                                this.gui.t("nj.webui.port"),
+                                this.webUiPort,
+                                WebUiSettings::port,
+                                (w, v) -> new WebUiSettings(
+                                        w.enabled(), v, w.lan(), w.passwordHash(), w.api(), w.hosts(), w.proxies()),
+                                this.webUiPortInput::value,
+                                v -> this.webUiPort.setText(String.valueOf(v)),
+                                String::valueOf)
+                        .checkedBy(this.webUiPortInput),
+                web(
+                        switchTitle(this.webUiLan, "nj.webui.lan"),
+                        this.webUiLan,
+                        WebUiSettings::lan,
+                        (w, v) -> new WebUiSettings(
+                                w.enabled(), w.port(), v, w.passwordHash(), w.api(), w.hosts(), w.proxies()),
+                        this.webUiLan::isSelected,
+                        this.webUiLan::setSelected,
+                        this::yesNo),
+                web(
+                                this.gui.t("nj.webui.hosts"),
+                                this.webUiHosts,
+                                WebUiSettings::hosts,
+                                (w, v) -> new WebUiSettings(
+                                        w.enabled(), w.port(), w.lan(), w.passwordHash(), w.api(), v, w.proxies()),
+                                this.webUiHostsInput::value,
+                                v -> this.webUiHosts.setText(String.join(", ", v)),
+                                v -> "")
+                        .checkedBy(this.webUiHostsInput)
+                        .describedAs(this.gui.t("nj.webui.hostsHint"))
+                        .wide(),
+                web(
+                                this.gui.t("nj.webui.proxies"),
+                                this.webUiProxies,
+                                WebUiSettings::proxies,
+                                (w, v) -> new WebUiSettings(
+                                        w.enabled(), w.port(), w.lan(), w.passwordHash(), w.api(), w.hosts(), v),
+                                this.webUiProxiesInput::value,
+                                v -> this.webUiProxies.setText(String.join(", ", v)),
+                                v -> "")
+                        .checkedBy(this.webUiProxiesInput)
+                        .describedAs(this.gui.t("nj.webui.proxiesHint"))
+                        .wide(),
+                password,
+                web(
+                        switchTitle(this.webUiApi, "nj.webui.api"),
+                        this.webUiApi,
+                        WebUiSettings::api,
+                        (w, v) -> new WebUiSettings(
+                                w.enabled(), w.port(), w.lan(), w.passwordHash(), v, w.hosts(), w.proxies()),
+                        this.webUiApi::isSelected,
+                        this.webUiApi::setSelected,
+                        this::yesNo),
+                new SettingRow(this.gui, "", tokens)));
+    }
+
+    private List<SettingsPages.Section> advanced() {
+        return List.of(
+                section(
+                        "IDS_SECURITY",
+                        toggle(
+                                "nj.settings.secureIdent",
+                                this.secureIdent,
+                                Preferences::secureIdent,
+                                Preferences.Builder::secureIdent),
+                        toggle(
+                                "nj.settings.credits",
+                                this.credits,
+                                Preferences::creditSystem,
+                                Preferences.Builder::creditSystem)),
+                section(
+                        "IDS_PW_MISC",
+                        toggle(
+                                "IDS_STORESEARCHES",
+                                this.storeSearches,
+                                Preferences::storeSearches,
+                                Preferences.Builder::storeSearches),
+                        number(
+                                "nj.settings.backups",
+                                this.backups,
+                                this.backupsInput,
+                                Preferences::backupCopies,
+                                Preferences.Builder::backupCopies)));
+    }
+
+    // ------------------------------------------------------------------ the kinds of option
+
+    // An engine preference saved as soon as it is set.
+    private <T> SettingRow engine(
+            String title,
+            Node control,
+            Function<Preferences, T> get,
+            BiConsumer<Preferences.Builder, T> set,
+            Supplier<T> read,
+            Consumer<T> show,
+            Function<T, String> name) {
+        return option(Optional.empty(), text(title), control, get, set, read, show, name);
+    }
+
+    // An engine preference that waits for Apply and reconnect, by the key of what it sets.
+    private <T> SettingRow held(
+            String key,
+            String title,
+            Node control,
+            Function<Preferences, T> get,
+            BiConsumer<Preferences.Builder, T> set,
+            Supplier<T> read,
+            Consumer<T> show,
+            Function<T, String> name) {
+        return option(Optional.of(key), title, control, get, set, read, show, name);
+    }
+
+    private <T> SettingRow option(
+            Optional<String> key,
+            String title,
+            Node control,
+            Function<Preferences, T> get,
+            BiConsumer<Preferences.Builder, T> set,
+            Supplier<T> read,
+            Consumer<T> show,
+            Function<T, String> name) {
+        SettingRow row = new SettingRow(this.gui, title, control);
+        Runnable commit = () -> {
+            if (this.loading) {
+                return;
+            }
+            T value;
+            try {
+                value = read.get();
+            } catch (IllegalArgumentException e) {
+                return;
+            }
+            boolean differs = !Objects.equals(get.apply(this.loaded), value);
+            if (key.isPresent()) {
+                if (differs) {
+                    this.held.put(key.get(), b -> set.accept(b, value));
+                } else {
+                    this.held.remove(key.get());
+                }
+                showBar();
+            } else if (differs) {
+                save(b -> set.accept(b, value));
+            }
+        };
+        watch(control, commit);
+        this.commits.add(commit);
+        this.shows.add(new Shown(row, key, p -> show.accept(get.apply(p))));
+        return row.defaultIs(
+                () -> !Objects.equals(get.apply(this.loaded), get.apply(DEFAULTS)),
+                () -> {
+                    quietly(() -> show.accept(get.apply(DEFAULTS)));
+                    commit.run();
+                },
+                () -> name.apply(get.apply(DEFAULTS)));
+    }
+
+    private SettingRow toggle(
+            String title,
+            ToggleSwitch box,
+            Function<Preferences, Boolean> get,
+            BiConsumer<Preferences.Builder, Boolean> set) {
+        return option(
+                Optional.empty(),
+                switchTitle(box, title),
+                box,
+                get,
+                set,
+                box::isSelected,
+                box::setSelected,
+                this::yesNo);
+    }
+
+    private SettingRow number(
+            String title,
+            TextField field,
+            Input<Integer> input,
+            Function<Preferences, Integer> get,
+            BiConsumer<Preferences.Builder, Integer> set) {
+        return engine(title, field, get, set, input::value, v -> field.setText(String.valueOf(v)), String::valueOf)
+                .checkedBy(input);
+    }
+
+    private SettingRow rate(
+            String title,
+            RateField<Integer> field,
+            Function<Preferences, Integer> get,
+            BiConsumer<Preferences.Builder, Integer> set) {
+        return engine(title, field.node(), get, set, field.input()::value, field::show, this::rateName)
+                .checkedBy(field.input());
+    }
+
+    private SettingRow folder(
+            String title,
+            TextField field,
+            Input<Optional<Path>> input,
+            Function<Preferences, Optional<Path>> get,
+            BiConsumer<Preferences.Builder, Optional<Path>> set) {
+        return engine(
+                        title,
+                        directory(field),
+                        get,
+                        set,
+                        input::value,
+                        v -> field.setText(v.map(Path::toString).orElse("")),
+                        v -> this.gui.t("nj.settings.defaultDir"))
+                .checkedBy(input)
+                .wide();
+    }
+
+    // A setting of the interface, kept in its own file.
+    private SettingRow look(
+            String title, ToggleSwitch box, Supplier<Boolean> saved, boolean byDefault, Consumer<Boolean> store) {
+        SettingRow row = new SettingRow(this.gui, switchTitle(box, title), box);
+        Runnable commit = () -> {
+            if (!this.loading && box.isSelected() != saved.get()) {
+                store.accept(box.isSelected());
+                saveLook();
+            }
+        };
+        watch(box, commit);
+        this.commits.add(commit);
+        this.shows.add(new Shown(row, Optional.empty(), p -> box.setSelected(saved.get())));
+        return row.defaultIs(
+                () -> saved.get() != byDefault,
+                () -> {
+                    quietly(() -> box.setSelected(byDefault));
+                    commit.run();
+                },
+                () -> yesNo(byDefault));
+    }
+
+    // A setting of the web interface, kept in its own file and followed from the next start.
+    private <T> SettingRow web(
+            String title,
+            Node control,
+            Function<WebUiSettings, T> get,
+            BiFunction<WebUiSettings, T, WebUiSettings> with,
+            Supplier<T> read,
+            Consumer<T> show,
+            Function<T, String> name) {
+        SettingRow row = new SettingRow(this.gui, title, control);
+        Runnable commit = () -> {
+            if (this.loading) {
+                return;
+            }
+            T value;
+            try {
+                value = read.get();
+            } catch (IllegalArgumentException e) {
+                return;
+            }
+            WebUiSettings now = WebUiSettings.load(this.gui.directories().config());
+            if (Objects.equals(get.apply(now), value)) {
+                return;
+            }
+            WebUiSettings next = with.apply(now, value);
+            // Turned on before it has a password: it stays on screen, and is saved once a password is.
+            if (next.enabled() && next.passwordHash().isEmpty()) {
+                this.gui.warn().accept(this.gui.f("nj.settings.invalid", this.gui.t("nj.webui.needsPassword")));
+                return;
+            }
+            saveWeb(next);
+        };
+        watch(control, commit);
+        this.commits.add(commit);
+        this.webCommits.add(commit);
+        this.shows.add(new Shown(row, Optional.empty(), p -> show.accept(get.apply(this.web))));
+        return row.defaultIs(
+                () -> !Objects.equals(get.apply(this.web), get.apply(WebUiSettings.DEFAULTS)),
+                () -> {
+                    quietly(() -> show.accept(get.apply(WebUiSettings.DEFAULTS)));
+                    commit.run();
+                },
+                () -> name.apply(get.apply(WebUiSettings.DEFAULTS)));
+    }
+
+    // The language takes effect at a restart: it waits for Apply and restart.
+    private SettingRow languageRow() {
+        SettingRow row = new SettingRow(this.gui, this.gui.t("IDS_PW_LANG"), this.language);
+        Runnable commit = () -> {
+            if (!this.loading) {
+                this.languageHeld = !Objects.equals(
+                        this.language.getValue(), this.gui.settings().language());
+                showBar();
+            }
+        };
+        watch(this.language, commit);
+        this.commits.add(commit);
+        this.shows.add(new Shown(
+                row,
+                Optional.of("language"),
+                p -> this.language.setValue(this.gui.settings().language())));
+        return row.defaultIs(
+                () -> this.gui.settings().language().isPresent(),
+                () -> {
+                    quietly(() -> this.language.setValue(Optional.empty()));
+                    commit.run();
+                },
+                () -> languageName(Optional.empty()));
+    }
+
+    private SettingRow themeRow() {
+        HBox both = new HBox(8, this.theme, this.mode);
+        SettingRow row = new SettingRow(this.gui, this.gui.t("nj.settings.theme"), both);
+        Runnable commit = () -> {
+            if (this.loading || this.theme.getValue() == null || this.mode.getValue() == null) {
+                return;
+            }
+            if (this.theme.getValue() != this.gui.themes().family()
+                    || this.mode.getValue() != this.gui.themes().mode()) {
+                this.gui.themes().set(this.theme.getValue(), this.mode.getValue());
+                this.gui.settings().setTheme(this.theme.getValue());
+                this.gui.settings().setMode(this.mode.getValue());
+                saveLook();
+            }
+        };
+        watch(both, commit);
+        this.commits.add(commit);
+        this.shows.add(new Shown(row, Optional.empty(), p -> {
+            this.theme.setValue(this.gui.themes().family());
+            this.mode.setValue(this.gui.themes().mode());
+        }));
+        return row.defaultIs(
+                () -> this.gui.themes().family() != Themes.Family.NORD
+                        || this.gui.themes().mode() != GuiSettings.Mode.SYSTEM,
+                () -> {
+                    quietly(() -> {
+                        this.theme.setValue(Themes.Family.NORD);
+                        this.mode.setValue(GuiSettings.Mode.SYSTEM);
+                    });
+                    commit.run();
+                },
+                () -> themeName(Themes.Family.NORD) + ", " + modeName(GuiSettings.Mode.SYSTEM));
+    }
+
+    // Start the next download: none, or one of any category, of the same first, or of the same only.
+    private SettingRow nextRow() {
+        HBox control = new HBox(12, this.nextCategory, this.startNext);
+        control.setAlignment(Pos.CENTER_LEFT);
+        return engine(
+                switchTitle(this.startNext, "IDS_STARTNEXTFILE"),
+                control,
+                Preferences::nextDownload,
+                Preferences.Builder::nextDownload,
+                () -> this.startNext.isSelected() ? this.nextCategory.getValue() : NextDownload.NONE,
+                v -> {
+                    this.startNext.setSelected(v != NextDownload.NONE);
+                    this.nextCategory.setValue(v == NextDownload.NONE ? NextDownload.ANY : v);
+                },
+                v -> "");
+    }
+
+    // Looks now, whatever the mode: the answer opens in its own window.
+    private SettingRow checkUpdateRow() {
+        Button check = Fx.button(
+                this.gui.t("nj.import.check"),
+                Icons.REFRESH,
+                () -> UpdateDialog.checkNow(this.gui, this.view.getScene().getWindow()));
+        return new SettingRow(this.gui, this.gui.t("IDS_CHECK4UPDATE"), check);
+    }
+
+    // Only the installed program can start at login; elsewhere the switch says why it is off. A disabled control shows
+    // no tooltip, so its row carries it.
+    private SettingRow autostartRow() {
+        HBox box = new HBox(this.autostart);
+        box.setAlignment(Pos.CENTER_RIGHT);
+        if (this.gui.autostart().isEmpty()) {
+            this.autostart.setDisable(true);
+            Tooltip why = new Tooltip(this.gui.t("nj.settings.autostartUnavailable"));
+            this.autostart.setTooltip(why);
+            Tooltip.install(box, why);
+        }
+        SettingRow row = new SettingRow(this.gui, switchTitle(this.autostart, "nj.settings.autostart"), box);
+        watch(box, () -> {
+            if (!this.loading) {
+                applyAutostart();
+            }
+        });
+        return row;
+    }
+
+    private SettingRow linksRow() {
+        SettingRow row = new SettingRow(this.gui, switchTitle(this.ed2kLinks, "nj.settings.ed2kLinks"), this.ed2kLinks);
+        watch(this.ed2kLinks, () -> {
+            if (!this.loading) {
+                applyLinks();
+            }
+        });
+        return row;
+    }
+
+    // A key of the translations, or a text already translated.
+    private String text(String keyOrText) {
+        return keyOrText.startsWith("nj.") || keyOrText.startsWith("IDS_") ? this.gui.t(keyOrText) : keyOrText;
+    }
+
+    // The name of a switch is its row's; the switch keeps it for screen readers.
+    private String switchTitle(ToggleSwitch box, String key) {
+        String title = text(key);
+        box.setText(null);
+        box.setAccessibleText(title);
+        return title;
+    }
+
+    // Applies when a control is set: a switch or a list at once, a field when left or on Enter.
+    private void watch(Node node, Runnable commit) {
+        switch (node) {
+            case ButtonBase b when !(b instanceof CheckBox) -> {
+                // Buttons act; they set nothing.
+            }
+            case ToggleSwitch box -> box.selectedProperty().addListener((o, was, now) -> commit.run());
+            case CheckBox box -> box.selectedProperty().addListener((o, was, now) -> commit.run());
+            case ComboBox<?> box -> box.valueProperty().addListener((o, was, now) -> commit.run());
+            case TextInputControl field -> {
+                field.focusedProperty().addListener((o, was, now) -> {
+                    if (!now) {
+                        commit.run();
+                    }
+                });
+                if (field instanceof TextField) {
+                    field.addEventHandler(ActionEvent.ACTION, e -> commit.run());
+                }
+            }
+            case Control c -> {
+                // A label or a list sets nothing here.
+            }
+            case Parent parent -> parent.getChildrenUnmodifiable().forEach(child -> watch(child, commit));
+            default -> {
+                // Nothing to set.
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ saving
+
+    private void save(Consumer<Preferences.Builder> edit) {
+        Preferences.Builder local = this.loaded.toBuilder();
+        edit.accept(local);
+        this.loaded = local.build();
+        refresh();
+        // Only this option: a limit the tray or the scheduler set meanwhile stays.
+        this.gui
+                .model()
+                .updatePreferences(
+                        p -> {
+                            Preferences.Builder b = p.toBuilder();
+                            edit.accept(b);
+                            return b.build();
+                        },
+                        p -> {
+                            this.loaded = p;
+                            refresh();
+                        });
+    }
+
+    private void saveLook() {
+        try {
+            this.gui.settings().save();
+        } catch (IOException e) {
+            this.gui.warn().accept(e.getMessage());
+        }
+        refresh();
+    }
+
+    private void saveWeb(WebUiSettings next) {
+        try {
+            next.save(this.gui.directories().config());
+            this.web = next;
+        } catch (IOException e) {
+            this.gui.warn().accept(e.getMessage());
+        }
+        refresh();
+    }
+
+    // A new password replaces the stored hash once both fields agree; they empty then.
+    private void savePassword() {
+        if (this.loading
+                || this.webUiPassword.getText().isEmpty()
+                || !this.webUiPasswordInput.isValid()
+                || !this.webUiAgainInput.isValid()) {
+            return;
+        }
+        char[] password = this.webUiPassword.getText().toCharArray();
+        try {
+            if (password.length < Passwords.MIN_LENGTH) {
+                return;
+            }
+            WebUiSettings now = WebUiSettings.load(this.gui.directories().config());
+            saveWeb(new WebUiSettings(
+                    now.enabled(),
+                    now.port(),
+                    now.lan(),
+                    Passwords.hash(password, new SecureRandom()),
+                    now.api(),
+                    now.hosts(),
+                    now.proxies()));
+        } finally {
+            Passwords.wipe(password);
+        }
+        quietly(() -> {
+            this.webUiPassword.clear();
+            this.webUiAgain.clear();
+        });
+        this.gui.inform().accept(this.gui.t("nj.settings.saved"));
+        this.webCommits.forEach(Runnable::run);
+    }
+
+    /** Sets every option as the controls give it, then applies what waits; a wrong value is shown instead. */
+    void apply() {
+        this.commits.forEach(Runnable::run);
+        Optional<SettingRow> wrong = wrongRow();
+        if (wrong.isPresent()) {
+            reveal(wrong.get());
+            wrong.get().input().ifPresent(i -> {
+                try {
+                    i.value();
+                } catch (IllegalArgumentException e) {
+                    this.gui.warn().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
+                }
+            });
+            return;
+        }
+        if (!this.held.isEmpty()) {
+            List<Consumer<Preferences.Builder>> edits = List.copyOf(this.held.values());
+            this.held.clear();
+            save(b -> edits.forEach(e -> e.accept(b)));
+            this.gui.inform().accept(this.gui.t("nj.settings.saved"));
+        }
+        if (this.languageHeld) {
+            this.languageHeld = false;
+            this.gui.settings().setLanguage(this.language.getValue());
+            saveLook();
+            this.gui.relaunch().run();
+        }
+        showBar();
+    }
+
+    // Back to what is saved, for the options that wait.
+    void discard() {
+        load(this.loaded);
+    }
+
+    private Optional<SettingRow> wrongRow() {
+        return this.rows.stream().filter(SettingRow::isWrong).findFirst();
+    }
+
+    // The page of the option, and the cursor in it.
+    private void reveal(SettingRow row) {
+        this.pages.reveal(row);
+        row.control().requestFocus();
+        row.input().ifPresent(i -> i.field().requestFocus());
+    }
+
+    // What waits, with the button that applies it: reconnecting for the network, restarting for the language.
+    private void showBar() {
+        if (this.pages == null) {
+            return;
+        }
+        boolean network = !this.held.isEmpty();
+        List<String> words = new ArrayList<>();
+        if (network) {
+            words.add(this.gui.t("nj.settings.pendingReconnect"));
+        }
+        if (this.languageHeld) {
+            words.add(this.gui.t("nj.settings.pendingRestart"));
+        }
+        Optional<SettingRow> wrong = wrongRow();
+        wrong.ifPresent(r -> words.add(this.gui.f("nj.settings.fixFirst", r.title())));
+        this.pendingText.setText(String.join(" ", words));
+        this.applyHeld.setText(
+                this.gui.t(this.languageHeld ? "nj.settings.applyRestart" : "nj.settings.applyReconnect"));
+        this.applyHeld.setDisable(wrong.isPresent());
+        this.bar.setVisible(network || this.languageHeld);
+    }
+
+    private void refresh() {
+        if (this.pages != null) {
+            this.pages.refresh();
+        }
+        showBar();
+    }
+
+    private void quietly(Runnable change) {
+        boolean was = this.loading;
+        this.loading = true;
+        try {
+            change.run();
+        } finally {
+            this.loading = was;
+        }
+    }
+
+    /** Shows {@code p} and the settings of the interface and of the web interface, dropping what waited. */
+    void load(Preferences p) {
+        this.loaded = p;
+        this.web = WebUiSettings.load(this.gui.directories().config());
+        quietly(() -> {
+            this.interfaces = BindInterface.choices();
+            this.bindInterface.getItems().setAll(interfaceChoices(p.bindInterface()));
+            this.shows.forEach(s -> s.show().accept(p));
+            this.webUiPassword.clear();
+            this.webUiAgain.clear();
+        });
+        this.held.clear();
+        this.languageHeld = false;
+        loadLinks();
+        loadAutostart();
+        refresh();
+    }
+
+    // Preferences changed elsewhere, as by the tray: the options show them, except one being edited or waiting.
+    private void outside(Preferences now) {
+        if (now == null || now.equals(this.loaded)) {
+            return;
+        }
+        this.loaded = now;
+        Node focused = this.view == null || this.view.getScene() == null
+                ? null
+                : this.view.getScene().getFocusOwner();
+        quietly(() -> {
+            for (Shown s : this.shows) {
+                boolean waiting = s.key()
+                        .map(k -> this.held.containsKey(k) || k.equals("language"))
+                        .orElse(false);
+                if (!waiting && !holds(s.row().control(), focused)) {
+                    s.show().accept(now);
+                }
+            }
+        });
+        refresh();
+    }
+
+    private static boolean holds(Node node, Node focused) {
+        for (Node at = focused; at != null; at = at.getParent()) {
+            if (node.equals(at)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void showInterface(String chosen) {
+        if (!this.bindInterface.getItems().contains(chosen)) {
+            this.bindInterface.getItems().setAll(interfaceChoices(chosen));
+        }
+        this.bindInterface.setValue(chosen);
+    }
+
+    /** An option and how it shows a saved value; {@code key} names what it waits for, if it waits. */
+    private record Shown(SettingRow row, Optional<String> key, Consumer<Preferences> show) {}
+
+    // ------------------------------------------------------------------ the inputs
 
     // Each box takes only its kind of value, within the limits the engine accepts.
     private void inputs() {
@@ -552,10 +1606,6 @@ public final class SettingsScreen implements Screen {
         this.download = RateField.limit(this.gui, this.gui.t("nj.settings.download"));
         this.downloadCapacity = RateField.line(this.gui, this.gui.t("nj.settings.downloadCapacity"));
         this.uploadCapacity = RateField.line(this.gui, this.gui.t("nj.settings.uploadCapacity"));
-        this.uploadInput = this.upload.input();
-        this.downloadInput = this.download.input();
-        this.downloadCapacityInput = this.downloadCapacity.input();
-        this.uploadCapacityInput = this.uploadCapacity.input();
         this.connectionsInput =
                 inputs.number(this.connections, this.gui.t("IDS_PW_MAXC"), 1, Preferences.MAX_CONNECTIONS);
         this.newConnectionsInput = inputs.number(
@@ -595,6 +1645,9 @@ public final class SettingsScreen implements Screen {
                     }
                     return t;
                 });
+        this.whitelist.setPrefRowCount(3);
+        this.whitelist.setPrefColumnCount(32);
+        this.whitelist.setPromptText("1.2.3.4\n10.0.0.0/8");
         // The tooltip names the line to fix.
         this.whitelist
                 .textProperty()
@@ -682,20 +1735,24 @@ public final class SettingsScreen implements Screen {
         this.webUiPassword.textProperty().addListener((o, was, now) -> this.webUiAgainInput.check());
         for (EventCommands.Event event : EventCommands.Event.values()) {
             String name = this.gui.t("nj.events." + event.id());
-            this.eventSwitches.put(event, new CheckBox(name));
+            ToggleSwitch on = new ToggleSwitch();
+            on.setAccessibleText(name);
+            this.eventSwitches.put(event, on);
             TextField line = new TextField();
-            line.setPrefColumnCount(40);
+            line.setPrefColumnCount(30);
             line.setPromptText(String.join(" ", event.placeholders()));
             line.setAccessibleText(name);
             this.eventInputs.put(event, inputs.commandLine(line, name, event.placeholders()));
         }
     }
 
-    // The IP filter lists from the web, joined into one filter; Update fetches the lists typed, Apply keeps them.
+    // ------------------------------------------------------------------ the rows with buttons
+
+    // The IP filter lists from the web, joined into one filter; Update fetches the lists typed.
     private Node ipFilterRow() {
         this.ipFilterLists.setPrefRowCount(2);
         this.ipFilterLists.setPrefColumnCount(40);
-        this.ipFilterLists.setPromptText("https://\u2026/ipfilter.zip\nhttps://\u2026/level1.p2p.gz");
+        this.ipFilterLists.setPromptText("https://…/ipfilter.zip\nhttps://…/level1.p2p.gz");
         Fx.leftToRight(this.ipFilterLists);
         Button update = Fx.button(this.gui.t("IDS_SV_UPDATE"), Icons.REFRESH, this::updateIpFilter);
         update.disableProperty()
@@ -703,6 +1760,7 @@ public final class SettingsScreen implements Screen {
                         .validProperty()
                         .not()
                         .or(this.ipFilterLists.textProperty().isEmpty()));
+        HBox.setHgrow(this.ipFilterLists, Priority.ALWAYS);
         HBox row = new HBox(6, this.ipFilterLists, update);
         row.setAlignment(Pos.TOP_LEFT);
         return row;
@@ -744,21 +1802,8 @@ public final class SettingsScreen implements Screen {
         return scheduler();
     }
 
-    // Only the installed program can start at login; elsewhere the box says why it is off. A disabled control shows
-    // no tooltip, so its row carries it.
-    private Node autostartRow() {
-        HBox row = new HBox(this.autostart);
-        if (this.gui.autostart().isEmpty()) {
-            this.autostart.setDisable(true);
-            Tooltip why = new Tooltip(this.gui.t("nj.settings.autostartUnavailable"));
-            this.autostart.setTooltip(why);
-            Tooltip.install(row, why);
-        }
-        return row;
-    }
-
-    // Asking the system takes a moment: off the FX thread, and the box waits disabled meanwhile. Only the latest
-    // answer counts, so that an older one never undoes what the user ticked since.
+    // Asking the system takes a moment: off the FX thread, and the switch waits disabled meanwhile. Only the latest
+    // answer counts, so that an older one never undoes what the user set since.
     private void loadAutostart() {
         this.gui.autostart().ifPresent(system -> {
             this.autostart.setDisable(true);
@@ -776,14 +1821,14 @@ public final class SettingsScreen implements Screen {
                         return;
                     }
                     this.autostartWasOn = Optional.of(now);
-                    this.autostart.setSelected(now);
+                    quietly(() -> this.autostart.setSelected(now));
                     this.autostart.setDisable(false);
                 });
             });
         });
     }
 
-    // Starting at login is a change to the system, made only when the box changed.
+    // Starting at login is a change to the system, made only when the switch changed.
     private void applyAutostart() {
         if (this.gui.autostart().isEmpty() || this.autostartWasOn.isEmpty()) {
             return;
@@ -821,6 +1866,7 @@ public final class SettingsScreen implements Screen {
                                 || this.soundFile.getText().isBlank(),
                         this.soundFileInput.validProperty(),
                         this.soundFile.textProperty()));
+        HBox.setHgrow(this.soundFile, Priority.ALWAYS);
         HBox row = new HBox(6, this.soundFile, browse, test);
         row.setAlignment(Pos.CENTER_LEFT);
         return row;
@@ -840,6 +1886,7 @@ public final class SettingsScreen implements Screen {
         File chosen = chooser.showOpenDialog(this.view.getScene().getWindow());
         if (chosen != null) {
             this.soundFile.setText(chosen.getAbsolutePath());
+            this.soundFile.fireEvent(new ActionEvent());
         }
     }
 
@@ -853,6 +1900,7 @@ public final class SettingsScreen implements Screen {
     // The player's program, typed or chosen, then its arguments.
     private Node videoPlayerRow() {
         this.videoPlayerBrowse = Fx.button(this.gui.t("IDS_PW_BROWSE"), Icons.FOLDER_OPEN, this::chooseVideoPlayer);
+        HBox.setHgrow(this.videoPlayer, Priority.ALWAYS);
         HBox row = new HBox(6, this.videoPlayer, this.videoPlayerBrowse, this.videoPlayerArgs);
         row.setAlignment(Pos.CENTER_LEFT);
         return row;
@@ -880,112 +1928,27 @@ public final class SettingsScreen implements Screen {
         }
     }
 
+    // A program chosen applies as one typed and confirmed.
     void videoPlayerChosen(File chosen) {
         this.videoPlayer.setText(chosen.getAbsolutePath());
+        this.videoPlayer.fireEvent(new ActionEvent());
     }
 
     private HBox directory(TextField field) {
         field.setPrefColumnCount(32);
         field.setPromptText(this.gui.t("nj.settings.defaultDir"));
+        HBox.setHgrow(field, Priority.ALWAYS);
         return new HBox(6, field, Fx.button(this.gui.t("IDS_PW_BROWSE"), Icons.FOLDER_OPEN, () -> {
             DirectoryChooser chooser = new DirectoryChooser();
             var dir = chooser.showDialog(this.view.getScene().getWindow());
             if (dir != null) {
                 field.setText(dir.getAbsolutePath());
+                field.fireEvent(new ActionEvent());
             }
         }));
     }
 
-    void load(Preferences p) {
-        this.loaded = p;
-        this.nick.setText(p.nick());
-        this.tcpPort.setText(String.valueOf(p.tcpPort()));
-        this.udpPort.setText(String.valueOf(p.udpPort()));
-        this.upload.show(p.maxUploadKiBps());
-        this.download.show(p.maxDownloadKiBps());
-        this.downloadCapacity.show(p.downloadCapacityKiBps());
-        this.uploadCapacity.show(p.uploadCapacityKiBps());
-        this.connections.setText(String.valueOf(p.maxConnections()));
-        this.newConnections.setText(String.valueOf(p.newConnectionsPerFiveSeconds()));
-        this.queueSize.setText(String.valueOf(p.uploadQueueSize()));
-        this.sources.setText(String.valueOf(p.maxSourcesPerFile()));
-        this.obfuscation.setValue(p.obfuscation());
-        this.interfaces = BindInterface.choices();
-        this.bindInterface.getItems().setAll(interfaceChoices(p.bindInterface()));
-        this.bindInterface.setValue(p.bindInterface());
-        this.ed2k.setSelected(p.ed2kEnabled());
-        this.kad.setSelected(p.kadEnabled());
-        this.autoConnect.setSelected(p.autoConnect());
-        this.reconnect.setSelected(p.reconnect());
-        this.secureIdent.setSelected(p.secureIdent());
-        this.credits.setSelected(p.creditSystem());
-        this.upnp.setSelected(p.upnp());
-        this.proxyType.setValue(p.proxy().type());
-        this.proxyHost.setText(p.proxy().host());
-        this.proxyPort.setText(String.valueOf(p.proxy().port()));
-        this.proxyUser.setText(p.proxy().user());
-        this.proxyPassword.setText(p.proxy().password());
-        this.incoming.setText(p.incomingDir().map(Path::toString).orElse(""));
-        this.temp.setText(p.tempDir().map(Path::toString).orElse(""));
-        this.minFreeSpace.setText(String.valueOf(p.minFreeSpaceMiB()));
-        this.deadRetries.setText(String.valueOf(p.deadServerRetries()));
-        this.backups.setText(String.valueOf(p.backupCopies()));
-        this.filterLevel.setText(String.valueOf(p.ipFilterLevel()));
-        this.filterLan.setSelected(p.filterLanAddresses());
-        this.whitelist.setText(p.ipFilterWhitelist());
-        this.ipFilterLists.setText(p.ipFilterLists());
-        this.ipFilterDays.setText(String.valueOf(p.ipFilterUpdateDays()));
-        this.messageFilter.setText(p.messageFilter());
-        this.friendsOnly.setSelected(p.messagesFromFriendsOnly());
-        this.spamFilter.setSelected(p.advancedSpamFilter());
-        this.searchSpamFilter.setSelected(p.searchSpamFilter());
-        this.updateMode.setValue(p.updateMode());
-        this.updateChannel.setValue(p.updateChannel());
-        this.fromServer.setSelected(p.addServersFromServer());
-        this.fromClients.setSelected(p.addServersFromClients());
-        this.staticOnly.setSelected(p.staticServersOnly());
-        this.manualHigh.setSelected(p.manualServersHighPriority());
-        this.updateAtStart.setSelected(p.updateServersAtStart());
-        this.rememberDownloaded.setSelected(p.rememberDownloadedFiles());
-        this.rememberCancelled.setSelected(p.rememberCancelledFiles());
-        this.storeSearches.setSelected(p.storeSearches());
-        this.previewFirst.setSelected(p.previewFirst());
-        this.videoPlayer.setText(p.videoPlayer());
-        this.videoPlayerArgs.setText(p.videoPlayerArgs());
-        this.visibility.setValue(p.sharedFilesVisibility());
-        this.addPaused.setSelected(p.addDownloadsPaused());
-        this.cleanUpNewNames.setSelected(p.cleanUpNewNames());
-        this.nameCleanups.setText(p.nameCleanups());
-        this.startNext.setSelected(p.nextDownload() != NextDownload.NONE);
-        this.nextCategory.setValue(p.nextDownload() == NextDownload.NONE ? NextDownload.ANY : p.nextDownload());
-        this.theme.setValue(this.gui.themes().family());
-        this.mode.setValue(this.gui.themes().mode());
-        this.language.setValue(this.gui.settings().language());
-        this.tray.setSelected(this.gui.settings().minimizeToTray());
-        this.confirmExit.setSelected(this.gui.settings().confirmExit());
-        this.startMinimized.setSelected(this.gui.settings().startMinimized());
-        this.watchClipboard.setSelected(this.gui.settings().watchClipboard());
-        this.sound.setSelected(p.notificationSound());
-        this.soundFile.setText(p.notificationSoundFile().map(Path::toString).orElse(""));
-        WebUiSettings web = WebUiSettings.load(this.gui.directories().config());
-        this.webUi.setSelected(web.enabled());
-        this.webUiPort.setText(String.valueOf(web.port()));
-        this.webUiLan.setSelected(web.lan());
-        this.webUiHosts.setText(String.join(", ", web.hosts()));
-        this.webUiProxies.setText(String.join(", ", web.proxies()));
-        this.webUiApi.setSelected(web.api());
-        this.webUiPassword.clear();
-        this.webUiAgain.clear();
-        for (EventCommands.Event event : EventCommands.Event.values()) {
-            EventCommands.Command command = p.eventCommands().get(event);
-            this.eventSwitches.get(event).setSelected(command.enabled());
-            this.eventInputs.get(event).field().setText(command.commandLine());
-        }
-        loadLinks();
-        loadAutostart();
-    }
-
-    // Asking the system takes a moment: off the FX thread, and the box waits disabled meanwhile.
+    // Asking the system takes a moment: off the FX thread, and the switch waits disabled meanwhile.
     private void loadLinks() {
         this.links.ifPresent(association -> {
             this.ed2kLinks.setDisable(true);
@@ -999,14 +1962,14 @@ public final class SettingsScreen implements Screen {
                 boolean now = ours;
                 Platform.runLater(() -> {
                     this.linksWereOurs = Optional.of(now);
-                    this.ed2kLinks.setSelected(now);
+                    quietly(() -> this.ed2kLinks.setSelected(now));
                     this.ed2kLinks.setDisable(false);
                 });
             });
         });
     }
 
-    // Taking or giving back the links is a change to the system, done only when the box changed.
+    // Taking or giving back the links is a change to the system, done only when the switch changed.
     private void applyLinks() {
         if (this.links.isEmpty() || this.linksWereOurs.isEmpty()) {
             return;
@@ -1033,8 +1996,7 @@ public final class SettingsScreen implements Screen {
         });
     }
 
-    /** Validates the form, then saves the preferences and the look; errors are shown. */
-    // The ports and UPnP as the boxes give them, tried before the rest is applied; a wrong port stays as it was.
+    // The ports and UPnP as the boxes give them, tried before they are applied; a wrong port stays as it was.
     private Preferences ports(Preferences was) {
         Preferences.Builder now = was.toBuilder();
         if (this.tcpPortInput.isValid()) {
@@ -1046,292 +2008,14 @@ public final class SettingsScreen implements Screen {
         return now.upnp(this.upnp.isSelected()).build();
     }
 
-    void apply() {
-        Optional<Input<?>> wrong =
-                this.checked.stream().filter(i -> !i.isValid()).findFirst();
-        wrong.ifPresent(i -> reveal(i.field()));
-        Changes changes;
-        Preferences shown;
-        WebUiSettings web;
-        try {
-            changes = read();
-            shown = changes.over(this.loaded);
-            web = readWebUi(WebUiSettings.load(this.gui.directories().config()));
-        } catch (IllegalArgumentException e) {
-            this.gui.warn().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
-            return;
-        }
-        if (wrong.isPresent()) {
-            try {
-                wrong.get().value();
-            } catch (IllegalArgumentException e) {
-                this.gui.warn().accept(this.gui.f("nj.settings.invalid", e.getMessage()));
-            }
-            return;
-        }
-        // Only what the user changed: a limit the tray or the scheduler set meanwhile stays.
-        this.gui
-                .model()
-                .updatePreferences(changes::over, p -> this.gui.inform().accept(this.gui.t("nj.settings.saved")));
-        this.loaded = shown;
-        boolean relaunch =
-                !Objects.equals(this.language.getValue(), this.gui.settings().language());
-        this.gui.themes().set(this.theme.getValue(), this.mode.getValue());
-        this.gui.settings().setTheme(this.theme.getValue());
-        this.gui.settings().setMode(this.mode.getValue());
-        this.gui.settings().setLanguage(this.language.getValue());
-        this.gui.settings().setMinimizeToTray(this.tray.isSelected());
-        this.gui.settings().setConfirmExit(this.confirmExit.isSelected());
-        this.gui.settings().setStartMinimized(this.startMinimized.isSelected());
-        this.gui.settings().setWatchClipboard(this.watchClipboard.isSelected());
-        try {
-            this.gui.settings().save();
-            web.save(this.gui.directories().config());
-            this.webUiPassword.clear();
-            this.webUiAgain.clear();
-        } catch (IOException e) {
-            this.gui.warn().accept(e.getMessage());
-        }
-        applyLinks();
-        applyAutostart();
-        if (relaunch) {
-            this.gui.relaunch().run();
-        }
+    /** The pages, for tests. */
+    SettingsPages pagesView() {
+        return this.pages;
     }
 
-    // Each field of the form, against the preferences it was loaded from.
-    private Changes read() {
-        Changes changes = readEngine();
-        for (EventCommands.Event event : EventCommands.Event.values()) {
-            changes.set(
-                    p -> p.eventCommands().get(event),
-                    (b, command) ->
-                            b.eventEnabled(event, command.enabled()).eventCommandLine(event, command.commandLine()),
-                    new EventCommands.Command(
-                            this.eventSwitches.get(event).isSelected(),
-                            this.eventInputs.get(event).value()));
-        }
-        return changes;
-    }
-
-    private Changes readEngine() {
-        return new Changes(this.loaded)
-                .set(Preferences::nick, Preferences.Builder::nick, this.nickInput.value())
-                .set(Preferences::tcpPort, Preferences.Builder::tcpPort, this.tcpPortInput.value())
-                .set(Preferences::udpPort, Preferences.Builder::udpPort, this.udpPortInput.value())
-                .set(Preferences::maxUploadKiBps, Preferences.Builder::maxUploadKiBps, this.uploadInput.value())
-                .set(Preferences::maxDownloadKiBps, Preferences.Builder::maxDownloadKiBps, this.downloadInput.value())
-                .set(
-                        Preferences::downloadCapacityKiBps,
-                        Preferences.Builder::downloadCapacityKiBps,
-                        this.downloadCapacityInput.value())
-                .set(
-                        Preferences::uploadCapacityKiBps,
-                        Preferences.Builder::uploadCapacityKiBps,
-                        this.uploadCapacityInput.value())
-                .set(Preferences::maxConnections, Preferences.Builder::maxConnections, this.connectionsInput.value())
-                .set(
-                        Preferences::newConnectionsPerFiveSeconds,
-                        Preferences.Builder::newConnectionsPerFiveSeconds,
-                        this.newConnectionsInput.value())
-                .set(Preferences::uploadQueueSize, Preferences.Builder::uploadQueueSize, this.queueSizeInput.value())
-                .set(Preferences::maxSourcesPerFile, Preferences.Builder::maxSourcesPerFile, this.sourcesInput.value())
-                .set(Preferences::obfuscation, Preferences.Builder::obfuscation, this.obfuscation.getValue())
-                .set(
-                        Preferences::bindInterface,
-                        Preferences.Builder::bindInterface,
-                        Objects.requireNonNullElse(this.bindInterface.getValue(), ""))
-                .set(Preferences::ed2kEnabled, Preferences.Builder::ed2kEnabled, this.ed2k.isSelected())
-                .set(Preferences::kadEnabled, Preferences.Builder::kadEnabled, this.kad.isSelected())
-                .set(Preferences::autoConnect, Preferences.Builder::autoConnect, this.autoConnect.isSelected())
-                .set(Preferences::reconnect, Preferences.Builder::reconnect, this.reconnect.isSelected())
-                .set(Preferences::secureIdent, Preferences.Builder::secureIdent, this.secureIdent.isSelected())
-                .set(Preferences::creditSystem, Preferences.Builder::creditSystem, this.credits.isSelected())
-                .set(Preferences::upnp, Preferences.Builder::upnp, this.upnp.isSelected())
-                .set(
-                        Preferences::proxy,
-                        Preferences.Builder::proxy,
-                        new ProxySettings(
-                                this.proxyType.getValue(),
-                                this.proxyHostInput.value(),
-                                this.proxyPortInput.value(),
-                                this.proxyUserInput.value(),
-                                this.proxyPassword.getText()))
-                .set(Preferences::incomingDir, Preferences.Builder::incomingDir, this.incomingInput.value())
-                .set(Preferences::tempDir, Preferences.Builder::tempDir, this.tempInput.value())
-                .set(Preferences::minFreeSpaceMiB, Preferences.Builder::minFreeSpaceMiB, this.minFreeSpaceInput.value())
-                .set(
-                        Preferences::deadServerRetries,
-                        Preferences.Builder::deadServerRetries,
-                        this.deadRetriesInput.value())
-                .set(Preferences::backupCopies, Preferences.Builder::backupCopies, this.backupsInput.value())
-                .set(Preferences::ipFilterLevel, Preferences.Builder::ipFilterLevel, this.filterLevelInput.value())
-                .set(
-                        Preferences::filterLanAddresses,
-                        Preferences.Builder::filterLanAddresses,
-                        this.filterLan.isSelected())
-                .set(
-                        Preferences::ipFilterWhitelist,
-                        Preferences.Builder::ipFilterWhitelist,
-                        this.whitelistInput.value())
-                .set(Preferences::ipFilterLists, Preferences.Builder::ipFilterLists, this.ipFilterListsInput.value())
-                .set(
-                        Preferences::ipFilterUpdateDays,
-                        Preferences.Builder::ipFilterUpdateDays,
-                        this.ipFilterDaysInput.value())
-                .set(
-                        Preferences::messageFilter,
-                        Preferences.Builder::messageFilter,
-                        this.messageFilter.getText().strip())
-                .set(
-                        Preferences::messagesFromFriendsOnly,
-                        Preferences.Builder::messagesFromFriendsOnly,
-                        this.friendsOnly.isSelected())
-                .set(
-                        Preferences::advancedSpamFilter,
-                        Preferences.Builder::advancedSpamFilter,
-                        this.spamFilter.isSelected())
-                .set(
-                        Preferences::searchSpamFilter,
-                        Preferences.Builder::searchSpamFilter,
-                        this.searchSpamFilter.isSelected())
-                .set(Preferences::updateMode, Preferences.Builder::updateMode, this.updateMode.getValue())
-                .set(Preferences::updateChannel, Preferences.Builder::updateChannel, this.updateChannel.getValue())
-                .set(
-                        Preferences::addServersFromServer,
-                        Preferences.Builder::addServersFromServer,
-                        this.fromServer.isSelected())
-                .set(
-                        Preferences::addServersFromClients,
-                        Preferences.Builder::addServersFromClients,
-                        this.fromClients.isSelected())
-                .set(
-                        Preferences::staticServersOnly,
-                        Preferences.Builder::staticServersOnly,
-                        this.staticOnly.isSelected())
-                .set(
-                        Preferences::manualServersHighPriority,
-                        Preferences.Builder::manualServersHighPriority,
-                        this.manualHigh.isSelected())
-                .set(
-                        Preferences::updateServersAtStart,
-                        Preferences.Builder::updateServersAtStart,
-                        this.updateAtStart.isSelected())
-                .set(
-                        Preferences::rememberDownloadedFiles,
-                        Preferences.Builder::rememberDownloadedFiles,
-                        this.rememberDownloaded.isSelected())
-                .set(
-                        Preferences::rememberCancelledFiles,
-                        Preferences.Builder::rememberCancelledFiles,
-                        this.rememberCancelled.isSelected())
-                .set(Preferences::storeSearches, Preferences.Builder::storeSearches, this.storeSearches.isSelected())
-                .set(Preferences::previewFirst, Preferences.Builder::previewFirst, this.previewFirst.isSelected())
-                .set(Preferences::videoPlayer, Preferences.Builder::videoPlayer, this.videoPlayer.getText())
-                .set(Preferences::videoPlayerArgs, Preferences.Builder::videoPlayerArgs, this.videoPlayerArgs.getText())
-                .set(
-                        Preferences::sharedFilesVisibility,
-                        Preferences.Builder::sharedFilesVisibility,
-                        this.visibility.getValue())
-                .set(
-                        Preferences::addDownloadsPaused,
-                        Preferences.Builder::addDownloadsPaused,
-                        this.addPaused.isSelected())
-                .set(
-                        Preferences::cleanUpNewNames,
-                        Preferences.Builder::cleanUpNewNames,
-                        this.cleanUpNewNames.isSelected())
-                .set(
-                        Preferences::nameCleanups,
-                        Preferences.Builder::nameCleanups,
-                        this.nameCleanups.getText().strip())
-                .set(
-                        Preferences::nextDownload,
-                        Preferences.Builder::nextDownload,
-                        this.startNext.isSelected() ? this.nextCategory.getValue() : NextDownload.NONE)
-                .set(Preferences::notificationSound, Preferences.Builder::notificationSound, this.sound.isSelected())
-                .set(
-                        Preferences::notificationSoundFile,
-                        Preferences.Builder::notificationSoundFile,
-                        this.soundFileInput.value());
-    }
-
-    /** What the form changed, set on whichever preferences are current when they are written. */
-    private static final class Changes {
-        private final Preferences loaded;
-        private final List<Consumer<Preferences.Builder>> edits = new ArrayList<>();
-
-        Changes(Preferences loaded) {
-            this.loaded = loaded;
-        }
-
-        <T> Changes set(Function<Preferences, T> field, BiConsumer<Preferences.Builder, T> setter, T value) {
-            if (!Objects.equals(field.apply(this.loaded), value)) {
-                this.edits.add(b -> setter.accept(b, value));
-            }
-            return this;
-        }
-
-        Preferences over(Preferences current) {
-            Preferences.Builder builder = current.toBuilder();
-            this.edits.forEach(e -> e.accept(builder));
-            return builder.build();
-        }
-    }
-
-    // A new password replaces the stored hash; an empty one keeps it.
-    private WebUiSettings readWebUi(WebUiSettings current) {
-        int port = this.webUiPortInput.value();
-        String hash = current.passwordHash();
-        char[] password = this.webUiPassword.getText().toCharArray();
-        char[] again = this.webUiAgain.getText().toCharArray();
-        try {
-            if (password.length > 0 || again.length > 0) {
-                if (password.length < Passwords.MIN_LENGTH) {
-                    throw new IllegalArgumentException(this.gui.f("nj.webui.passwordShort", Passwords.MIN_LENGTH));
-                }
-                if (!Arrays.equals(password, again)) {
-                    throw new IllegalArgumentException(this.gui.t("nj.webui.passwordsDiffer"));
-                }
-                hash = Passwords.hash(password, new SecureRandom());
-            }
-        } finally {
-            Passwords.wipe(password);
-            Passwords.wipe(again);
-        }
-        if (this.webUi.isSelected() && hash.isEmpty()) {
-            throw new IllegalArgumentException(this.gui.t("nj.webui.needsPassword"));
-        }
-        return new WebUiSettings(
-                this.webUi.isSelected(),
-                port,
-                this.webUiLan.isSelected(),
-                hash,
-                this.webUiApi.isSelected(),
-                this.webUiHostsInput.value(),
-                this.webUiProxiesInput.value());
-    }
-
-    // Scrolls the page to show field a third of the way down, and puts the cursor in it.
-    private void reveal(Node field) {
-        Node content = this.scroll.getContent();
-        Bounds at = content.sceneToLocal(field.localToScene(field.getBoundsInLocal()));
-        double view = this.scroll.getViewportBounds().getHeight();
-        double free = content.getLayoutBounds().getHeight() - view;
-        if (free > 0) {
-            this.scroll.setVvalue(Math.clamp((at.getMinY() - view / 3) / free, 0.0, 1.0));
-        }
-        field.requestFocus();
-    }
-
-    /** The index beside the page, for tests. */
-    SettingsIndex index() {
-        return this.index;
-    }
-
-    /** The scroll pane of the page, for tests. */
-    ScrollPane scrollPane() {
-        return this.scroll;
+    /** The bar of what waits, for tests. */
+    HBox pendingBar() {
+        return this.bar;
     }
 
     // The token callers of the remote-control API need, made on first use.
@@ -1389,6 +2073,22 @@ public final class SettingsScreen implements Screen {
         return this.gui.t("nj.obfuscation." + key(m));
     }
 
+    private String themeName(Themes.Family f) {
+        return this.gui.t("nj.theme." + key(f));
+    }
+
+    private String modeName(GuiSettings.Mode m) {
+        return this.gui.t("nj.mode." + key(m));
+    }
+
+    private String yesNo(boolean on) {
+        return this.gui.t(on ? "IDS_YES" : "IDS_NO");
+    }
+
+    private String rateName(int kib) {
+        return kib == 0 ? this.gui.t("nj.rate.noLimit") : this.gui.formats().rate(kib * 1024L);
+    }
+
     private String visibilityName(SharedFilesVisibility v) {
         return this.gui.t(
                 switch (v) {
@@ -1421,7 +2121,7 @@ public final class SettingsScreen implements Screen {
                     String.join("\n", addresses.stream().map(URI::toString).toList())));
             text.setPrefRowCount(8);
             text.setPrefColumnCount(50);
-            text.setPromptText("https://\u2026/server.met");
+            text.setPromptText("https://…/server.met");
             Dialog<ButtonType> dialog = this.gui.dialog(new Dialog<>());
             dialog.setTitle(this.gui.t("IDS_PW_USS"));
             dialog.setHeaderText(this.gui.t("nj.settings.serverListAddresses"));
@@ -1452,19 +2152,6 @@ public final class SettingsScreen implements Screen {
         return addresses;
     }
 
-    private static int section(GridPane grid, int row, String text) {
-        Label label = new Label(text);
-        label.getStyleClass().add("settings-section");
-        grid.add(label, 0, row, 2, 1);
-        return row + 1;
-    }
-
-    private static int field(GridPane grid, int row, String name, Node control) {
-        grid.add(new Label(name), 0, row);
-        grid.add(control, 1, row);
-        return row + 1;
-    }
-
     TextField videoPlayerField() {
         return this.videoPlayer;
     }
@@ -1489,11 +2176,11 @@ public final class SettingsScreen implements Screen {
         return this.updateChannel;
     }
 
-    CheckBox searchSpamFilterBox() {
+    ToggleSwitch searchSpamFilterBox() {
         return this.searchSpamFilter;
     }
 
-    CheckBox cleanUpNewNamesBox() {
+    ToggleSwitch cleanUpNewNamesBox() {
         return this.cleanUpNewNames;
     }
 
@@ -1521,11 +2208,11 @@ public final class SettingsScreen implements Screen {
         return this.language;
     }
 
-    CheckBox webUiBox() {
+    ToggleSwitch webUiBox() {
         return this.webUi;
     }
 
-    CheckBox webUiApiBox() {
+    ToggleSwitch webUiApiBox() {
         return this.webUiApi;
     }
 
@@ -1557,11 +2244,11 @@ public final class SettingsScreen implements Screen {
         return this.whitelistInput;
     }
 
-    CheckBox autostartBox() {
+    ToggleSwitch autostartBox() {
         return this.autostart;
     }
 
-    CheckBox soundBox() {
+    ToggleSwitch soundBox() {
         return this.sound;
     }
 
@@ -1569,7 +2256,7 @@ public final class SettingsScreen implements Screen {
         return this.soundFile;
     }
 
-    CheckBox eventSwitch(EventCommands.Event event) {
+    ToggleSwitch eventSwitch(EventCommands.Event event) {
         return this.eventSwitches.get(event);
     }
 

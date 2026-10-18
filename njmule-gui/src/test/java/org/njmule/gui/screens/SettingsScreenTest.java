@@ -97,7 +97,7 @@ class SettingsScreenTest {
         whenTheUserApplies();
 
         thenTheUserIsToldItWasNotSaved();
-        thenTheEngineHasNoCommandFor(EventCommands.Event.CHAT_MESSAGE);
+        thenTheEngineRunsNoCommandFor(EventCommands.Event.CHAT_MESSAGE);
     }
 
     @Test
@@ -213,7 +213,7 @@ class SettingsScreenTest {
             this.screen.nickField().setText(nick);
             this.screen.apply();
         });
-        FxTesting.await("saved", () -> this.test.told.contains("Settings saved."));
+        FxTesting.await("saved", () -> this.test.engine.preferences().nick().equals(nick));
     }
 
     private void givenTheEngineHasTheNick(String nick) {
@@ -395,7 +395,9 @@ class SettingsScreenTest {
         assertThat(this.test.told).anyMatch(m -> m.startsWith("Not saved"));
     }
 
-    private void thenTheEngineHasNoCommandFor(EventCommands.Event event) {
-        assertThat(this.test.engine.preferences().eventCommands().get(event)).isEqualTo(EventCommands.Command.NONE);
+    // The switch applies at once; the command with its quote left open is never saved.
+    private void thenTheEngineRunsNoCommandFor(EventCommands.Event event) {
+        assertThat(this.test.engine.preferences().eventCommands().get(event).commandLine())
+                .isEmpty();
     }
 }

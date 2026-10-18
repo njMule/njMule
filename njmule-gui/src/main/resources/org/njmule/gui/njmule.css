@@ -1302,17 +1302,118 @@
     -fx-font-style: italic;
 }
 
-/* The index beside the options: the sections in bold, the options found indented below them. */
-.settings-index .list-cell {
-    -fx-cell-size: 2.2em;
+/* The options: the pages in a list beside the one shown, its sections on cards, each option a row. */
+.settings-side {
+    -fx-spacing: 8;
 }
 
-.settings-index .list-cell.index-section {
+.settings-pages {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.settings-pages .list-cell {
+    -fx-cell-size: 2.4em;
+    -fx-padding: 0 10 0 10;
+    -fx-background-radius: 6;
+    -fx-background-color: transparent;
+}
+
+.settings-pages .list-cell .nj-icon {
+    -nj-icon-size: 18;
+    -nj-icon-color: -color-fg-muted;
+}
+
+.settings-pages .list-cell:selected {
+    -fx-background-color: -color-accent-muted;
+}
+
+.settings-pages .list-cell:selected .label {
     -fx-font-weight: bold;
 }
 
-.settings-index .list-cell.index-option {
-    -fx-padding: 0 8 0 20;
+.settings-pages .page-dot {
+    -nj-icon-size: 10;
+    -nj-icon-color: -color-accent-emphasis;
+}
+
+.settings-page {
+    -fx-spacing: 6;
+    -fx-padding: 2 8 16 0;
+}
+
+.settings-page .page-title {
+    -fx-font-size: 1.4em;
+}
+
+.settings-page .page-description {
+    -fx-text-fill: -color-fg-muted;
+    -fx-padding: 0 0 8 0;
+}
+
+.settings-card {
+    -fx-padding: 4 16 4 16;
+    -fx-background-color: -color-bg-default;
+    -fx-background-radius: 8;
+    -fx-border-color: -color-border-muted;
+    -fx-border-radius: 8;
+}
+
+.settings-card-title {
+    -fx-font-weight: bold;
+    -fx-padding: 10 0 2 0;
+}
+
+.setting-row {
+    -fx-padding: 10 0 10 0;
+    -fx-border-color: -color-border-muted transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+.setting-row.first {
+    -fx-border-width: 0;
+}
+
+.setting-description {
+    -fx-text-fill: -color-fg-muted;
+    -fx-font-size: 0.92em;
+}
+
+.setting-error {
+    -fx-text-fill: -color-danger-fg;
+    -fx-font-size: 0.92em;
+    -fx-graphic-text-gap: 6;
+}
+
+.setting-error .nj-icon {
+    -nj-icon-size: 14;
+    -nj-icon-color: -color-danger-fg;
+}
+
+/* An option set apart from its default: a small chip, and the way back to the default. */
+.changed-mark {
+    -fx-padding: 0 6 0 6;
+    -fx-background-color: -color-accent-subtle;
+    -fx-background-radius: 4;
+    -fx-font-size: 0.85em;
+}
+
+.reset-link {
+    -fx-padding: 0;
+    -fx-font-size: 0.92em;
+}
+
+/* What waits for Apply and reconnect, under the page. */
+.settings-bar {
+    -fx-padding: 10 12 10 12;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 8;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 8;
+}
+
+.settings-bar .nj-icon {
+    -nj-icon-color: -color-accent-fg;
 }
 
 .settings-section {

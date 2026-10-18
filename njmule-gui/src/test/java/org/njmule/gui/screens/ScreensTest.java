@@ -618,7 +618,7 @@ class ScreensTest {
 
         whenTheSettingsAreApplied();
 
-        thenTheUserIsToldSomethingAbout("differ");
+        thenTheUserIsToldSomethingAbout("The same password again");
     }
 
     @Test
@@ -660,7 +660,7 @@ class ScreensTest {
     }
 
     @Test
-    void shouldRefuseAProxyNamedByItsHostNameAndSaveNothing() throws Exception {
+    void shouldRefuseAProxyNamedByItsHostNameAndKeepItOut() throws Exception {
         givenTheSettingsShown();
         givenTheWebInterfaceTicked(true);
         givenTheWebInterfacePasswords("long enough", "long enough");
@@ -669,11 +669,11 @@ class ScreensTest {
         whenTheSettingsAreApplied();
 
         thenTheUserIsToldSomethingAbout("Trusted proxies");
-        thenNoWebInterfaceSettingIsSaved();
+        thenTheWebInterfaceTrustsNoProxy();
     }
 
     @Test
-    void shouldRefuseAWebInterfaceHostNameWithAPortAndSaveNothing() throws Exception {
+    void shouldRefuseAWebInterfaceHostNameWithAPortAndKeepItOut() throws Exception {
         givenTheSettingsShown();
         givenTheWebInterfaceTicked(true);
         givenTheWebInterfacePasswords("long enough", "long enough");
@@ -682,7 +682,7 @@ class ScreensTest {
         whenTheSettingsAreApplied();
 
         thenTheUserIsToldSomethingAbout("Host names");
-        thenNoWebInterfaceSettingIsSaved();
+        thenTheWebInterfaceKnowsNoHostName();
     }
 
     @Test
@@ -1560,8 +1560,11 @@ class ScreensTest {
                 "the rule applies", () -> this.test.engine.activeRule().isPresent());
     }
 
-    private void thenTheFirstRuleIsNamed(String name) {
-        assertThat(this.test.engine.schedule().rules().getFirst().name()).isEqualTo(name);
+    // Each change of the rules is saved as it is made, the last one last.
+    private void thenTheFirstRuleIsNamed(String name) throws Exception {
+        FxTesting.assertEventually(
+                "the first rule named " + name,
+                () -> this.test.engine.schedule().rules().getFirst().name().equals(name));
     }
 
     private void thenTheActiveRuleShows(String text) throws Exception {
@@ -1574,8 +1577,15 @@ class ScreensTest {
                 .isTrue();
     }
 
+    // Each option applies as it is set: the nick typed is the engine's.
     private void thenTheSettingsAreSaved() throws Exception {
-        FxTesting.assertEventually("saved", () -> this.test.told.contains("Settings saved."));
+        FxTesting.assertEventually(
+                "saved",
+                () -> this.test
+                        .engine
+                        .preferences()
+                        .nick()
+                        .equals(this.settings.nickField().getText()));
     }
 
     private void thenTheNickIs(String nick) {
@@ -1604,6 +1614,14 @@ class ScreensTest {
 
     private void thenTheRelaunchesAre(int count) {
         assertThat(this.test.relaunches()).isEqualTo(count);
+    }
+
+    private void thenTheWebInterfaceTrustsNoProxy() {
+        assertThat(WebUiSettings.load(config()).proxies()).isEmpty();
+    }
+
+    private void thenTheWebInterfaceKnowsNoHostName() {
+        assertThat(WebUiSettings.load(config()).hosts()).isEmpty();
     }
 
     private void thenNoWebInterfaceSettingIsSaved() {
