@@ -36,6 +36,8 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import org.njmule.app.logging.LoggingSetup;
 import org.njmule.core.api.DownloadInfo;
@@ -45,6 +47,7 @@ import org.njmule.core.api.FileHashing;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.ServerAddress;
+import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.remote.ApiToken;
 import org.njmule.webui.ApiClient;
@@ -60,6 +63,8 @@ public final class Main {
     public static final int EXIT_OK = 0;
     public static final int EXIT_USAGE = 2;
     public static final int EXIT_FAILURE = 1;
+    /** What {@code --check-update} returns when a newer version is out, as package managers do. */
+    public static final int EXIT_UPDATE_AVAILABLE = 100;
 
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
 
@@ -67,6 +72,9 @@ public final class Main {
     private static final Duration EXIT_WAIT = Duration.ofSeconds(30);
 
     private static final Duration REMOTE_SEARCH_WAIT = Duration.ofSeconds(10);
+
+    /** How long --check-update waits for GitHub: both fetches, each with its own time limit. */
+    private static final Duration CHECK_UPDATE_WAIT = Duration.ofMinutes(4);
 
     /** Where {@code --remote-url} finds the token of the other computer's API. */
     static final String API_TOKEN_VARIABLE = "NJMULE_API_TOKEN";
@@ -149,6 +157,9 @@ public final class Main {
             case API_TOKEN, NEW_API_TOKEN -> {
                 return apiToken(cli, out, err);
             }
+            case CHECK_UPDATE -> {
+                return checkUpdate(cli, out, err);
+            }
         }
         return EXIT_OK;
     }
@@ -200,6 +211,33 @@ public final class Main {
             Thread.currentThread().interrupt();
             return EXIT_FAILURE;
         }
+    }
+
+    // An engine that connects to nothing on its own, so that the check follows the proxy and the network interface
+    // of the preferences as every other request does.
+    private static int checkUpdate(LaunchOptions cli, PrintStream out, PrintStream err) {
+        AppDirectories dirs = AppDirectories.resolve(cli.configDir());
+        LoggingSetup.setLevel(cli.logLevel().orElse("ERROR"));
+        UpdateStatus status;
+        try (NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs, false))) {
+            status = engine.checkForUpdate().get(CHECK_UPDATE_WAIT.toSeconds(), TimeUnit.SECONDS);
+        } catch (IOException | RuntimeException e) {
+            err.println("Cannot start " + NjMuleInfo.NAME + " to check: " + e.getMessage());
+            err.println("When it runs, ask it: njmule --remote update check");
+            return EXIT_FAILURE;
+        } catch (ExecutionException | TimeoutException e) {
+            err.println("Cannot check for a new version: " + e);
+            return EXIT_FAILURE;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return EXIT_FAILURE;
+        }
+        UpdateReport report = UpdateReport.of(status);
+        report.print(out, err);
+        if (report.isAvailable()) {
+            return EXIT_UPDATE_AVAILABLE;
+        }
+        return status.failure().isPresent() ? EXIT_FAILURE : EXIT_OK;
     }
 
     private static int apiToken(LaunchOptions cli, PrintStream out, PrintStream err) {

@@ -158,7 +158,8 @@ public record LaunchOptions(
         REMOTE,
         API_TOKEN,
         NEW_API_TOKEN,
-        RESTORE_LINKS
+        RESTORE_LINKS,
+        CHECK_UPDATE
     }
 
     /** Thrown for invalid arguments; the message is meant for the user. */
@@ -200,6 +201,7 @@ public record LaunchOptions(
     private static final String REMOTE_URL_OPTION = "--remote-url";
     private static final String API_TOKEN_OPTION = "--api-token";
     private static final String NEW_API_TOKEN_OPTION = "--new-api-token";
+    private static final String CHECK_UPDATE_OPTION = "--check-update";
 
     // What --webui-port, --webui-lan, --webui-api, --webui-host and --webui-proxy apply to.
     private static final String WEBUI_SETUP = WEBUI_PASSWORD_OPTION + " or " + WEBUI_PASSWORD_FILE_OPTION;
@@ -214,7 +216,7 @@ public record LaunchOptions(
         } catch (ParameterException e) {
             throw new UsageException(e.getMessage());
         }
-        for (String alone : List.of(EXIT_OPTION, RESTORE_LINKS_OPTION)) {
+        for (String alone : List.of(EXIT_OPTION, RESTORE_LINKS_OPTION, CHECK_UPDATE_OPTION)) {
             if (result.hasMatchedOption(alone) && !result.isUsageHelpRequested() && !result.isVersionHelpRequested()) {
                 alone(result, alone);
             }
@@ -314,6 +316,9 @@ public record LaunchOptions(
         }
         if (result.hasMatchedOption(RESTORE_LINKS_OPTION)) {
             return Action.RESTORE_LINKS;
+        }
+        if (result.hasMatchedOption(CHECK_UPDATE_OPTION)) {
+            return Action.CHECK_UPDATE;
         }
         return result.hasMatchedOption(HASH_OPTION) ? Action.HASH : Action.RUN;
     }
@@ -429,6 +434,10 @@ public record LaunchOptions(
                 "<url>",
                 "with " + REMOTE_OPTION + ": the API of another computer, as http://host:4711/api/v1; the token"
                         + " comes from the NJMULE_API_TOKEN environment variable"));
+        spec.addOption(flag(
+                CHECK_UPDATE_OPTION,
+                "look for a new version of njMule on GitHub, print it and exit: 0 when this one is the newest,"
+                        + " 100 when a newer one is out, 1 when the check failed"));
         spec.addOption(flag(API_TOKEN_OPTION, "print the token of the remote-control API, making one if needed"));
         spec.addOption(
                 flag(NEW_API_TOKEN_OPTION, "replace the token of the remote-control API, print the new one and exit"));

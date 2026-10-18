@@ -311,6 +311,20 @@ class LaunchOptionsTest {
     }
 
     @Test
+    void shouldParseTheCheckForANewVersion() {
+        whenTheArgumentsAreParsed("--check-update", "--config-dir", this.dir.toString());
+
+        thenTheActionIs(Action.CHECK_UPDATE);
+    }
+
+    @Test
+    void shouldRefuseTheCheckForANewVersionWithSomethingElseToDo() {
+        whenTheArgumentsAreParsed("--check-update", "--search", "linux");
+
+        thenExceptionOccurred(UsageException.class, "--check-update");
+    }
+
+    @Test
     void shouldParseTheWebInterfacePasswordAndItsPort() {
         whenTheArgumentsAreParsed("--webui-password", "--webui-port", "8080");
 

@@ -106,6 +106,24 @@ class RemoteControlFlowTest {
     }
 
     @Test
+    void shouldTellWhatIsKnownOfNewVersions() throws Exception {
+        givenNjMuleRunningWithTheApi();
+
+        whenRunRemotely("update");
+
+        thenItPrints("has not looked for a new version yet.");
+    }
+
+    @Test
+    void shouldTellWhyItCannotLookForANewVersion() throws Exception {
+        givenNjMuleRunningWithTheApi();
+
+        whenRunRemotely("update", "check");
+
+        thenItPrints("Cannot check for a new version: update checks are turned off");
+    }
+
+    @Test
     void shouldSayWhenTheApiIsOff() throws Exception {
         whenRunRemotely("status");
 

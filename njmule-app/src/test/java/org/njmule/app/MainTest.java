@@ -447,6 +447,16 @@ class MainTest {
     }
 
     @Test
+    void shouldTellWhyItCannotLookForANewVersion() throws IOException {
+        givenAProfileWithoutNetworks();
+
+        whenRunWith("--config-dir", this.dir.toString(), "--check-update");
+
+        thenTheExitCodeIs(Main.EXIT_FAILURE);
+        thenTheErrorsContain("Cannot check for a new version: update checks are turned off");
+    }
+
+    @Test
     void shouldReportAnEngineThatCannotStart() throws IOException {
         givenAFileInPlaceOfTheConfigurationDirectory();
 
@@ -559,6 +569,12 @@ class MainTest {
         Path file = this.dir.resolve(path);
         Files.createDirectories(file.getParent());
         Files.writeString(file, content, UTF_8);
+    }
+
+    private void givenAProfileWithoutNetworks() throws IOException {
+        givenTheFile(
+                "config/njmule.properties",
+                "net.tcpPort=" + FreePorts.tcp() + "\nnet.ed2k.enabled=false\nnet.kad.enabled=false\n");
     }
 
     private void givenTheFolder(String path) throws IOException {

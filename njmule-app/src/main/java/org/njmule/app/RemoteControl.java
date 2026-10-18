@@ -21,12 +21,15 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URI;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import org.njmule.core.api.InstallKind;
 import org.njmule.webui.ApiClient;
 
 /**
@@ -53,11 +56,13 @@ final class RemoteControl {
             limits [<upload> <download>]    in KiB/s, or with K, M or G (1.5M); 0: unlimited
             log                             the latest log lines
             events [<prefix>,...]           print events as they come, until interrupted
+            update [check|skip <version>]   what is known of new versions; look now; stop telling of one
             shutdown                        save and exit
             """;
 
     private static final Set<String> SCOPES = Set.of("server", "global", "kad");
     private static final Duration POLL = Duration.ofMillis(500);
+    private static final Duration UPDATE_WAIT = Duration.ofMinutes(4);
     private static final int SETTLED_POLLS = 2;
     private static final String DOWNLOADS = "/downloads/";
 
@@ -160,12 +165,53 @@ final class RemoteControl {
                     return !this.out.checkError();
                 });
             }
+            case "update" -> update(args);
             case "shutdown" -> {
                 none(args);
                 this.api.post("/shutdown", Map.of());
                 this.out.println("njMule is saving and exiting.");
             }
             default -> throw new Usage("Unknown command: " + words.getFirst());
+        }
+    }
+
+    private void update(List<String> args) throws IOException, InterruptedException, Usage {
+        Object status;
+        if (args.isEmpty()) {
+            status = this.api.get("/update");
+        } else if (args.size() == 1 && args.getFirst().equalsIgnoreCase("check")) {
+            status = this.api.post("/update/check", Map.of());
+            // A check that outlasts the call goes on: its outcome comes a little later.
+            long end = System.nanoTime() + UPDATE_WAIT.toNanos();
+            while (Boolean.TRUE.equals(field(status, "checking")) && System.nanoTime() < end) {
+                Thread.sleep(POLL.toMillis());
+                status = this.api.get("/update");
+            }
+        } else if (args.size() == 2 && args.getFirst().equalsIgnoreCase("skip")) {
+            status = this.api.post("/update/skip", Map.of("version", args.get(1)));
+            this.out.println("No more word of " + args.get(1) + ", unless it fixes a security problem.");
+            return;
+        } else {
+            throw new Usage("update takes check, or skip and a version.");
+        }
+        Object available = field(status, "available");
+        Object download = available == null ? null : field(available, "download");
+        new UpdateReport(
+                        text(status, "current"),
+                        installation(text(status, "installation")),
+                        field(status, "lastCheck") != null,
+                        Optional.ofNullable((String) field(status, "failure")),
+                        Optional.ofNullable(available).map(v -> text(v, "version")),
+                        Optional.ofNullable(available).map(v -> URI.create(text(v, "page"))),
+                        Optional.ofNullable(download).map(d -> URI.create(text(d, "url"))))
+                .print(this.out, this.out);
+    }
+
+    private static InstallKind installation(String name) {
+        try {
+            return InstallKind.valueOf(name.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return InstallKind.UNKNOWN;
         }
     }
 
