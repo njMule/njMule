@@ -41,11 +41,12 @@ public final class Socks5Udp implements AutoCloseable {
 
     private final Socket control;
     private final InetSocketAddress relay;
-    private final CountDownLatch ended = new CountDownLatch(1);
+    private final CountDownLatch ended;
 
-    private Socks5Udp(Socket control, InetSocketAddress relay) {
+    private Socks5Udp(Socket control, InetSocketAddress relay, CountDownLatch ended) {
         this.control = control;
         this.relay = relay;
+        this.ended = ended;
     }
 
     /**
@@ -64,29 +65,25 @@ public final class Socks5Udp implements AutoCloseable {
             InetSocketAddress relay =
                     Socks5.usable(bound) ? bound : new InetSocketAddress(socket.getInetAddress(), bound.getPort());
             socket.setSoTimeout(0);
-            return new Socks5Udp(socket, relay).watched();
+            CountDownLatch ended = new CountDownLatch(1);
+            Thread.ofVirtual().name("njmule-socks-udp").start(() -> watch(socket, ended));
+            return new Socks5Udp(socket, relay, ended);
         } catch (IOException | RuntimeException e) {
             socket.close();
             throw e;
         }
     }
 
-    // Watched from now on, on a thread of its own.
-    private Socks5Udp watched() {
-        Thread.ofVirtual().name("njmule-socks-udp").start(this::watch);
-        return this;
-    }
-
     // The proxy ends the association by closing its connection; nothing else comes on it.
-    private void watch() {
-        try (InputStream in = this.control.getInputStream()) {
+    private static void watch(Socket control, CountDownLatch ended) {
+        try (InputStream in = control.getInputStream()) {
             while (in.read() >= 0) {
                 // Ignored.
             }
         } catch (IOException e) {
             // Closed, here or by the proxy.
         } finally {
-            this.ended.countDown();
+            ended.countDown();
         }
     }
 
