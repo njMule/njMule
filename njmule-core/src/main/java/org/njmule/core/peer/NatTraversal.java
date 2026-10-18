@@ -17,6 +17,8 @@
 package org.njmule.core.peer;
 
 import com.google.common.base.Ticker;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.security.SecureRandom;
@@ -32,24 +34,26 @@ import java.util.function.BooleanSupplier;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.net.StreamTransport;
 import org.njmule.core.protocol.ed2k.NatTraversalMessages;
 import org.njmule.core.protocol.ed2k.NatTraversalMessages.Caps;
 import org.njmule.core.protocol.ed2k.NatTraversalMessages.Rendezvous;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.quic.QuicLink;
+import org.njmule.core.quic.QuicTransport;
 import org.njmule.core.util.Ipv4;
-import org.njmule.core.utp.UtpConnection;
 import org.njmule.core.utp.UtpSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Connections between firewalled clients through their routers, over uTP on the client UDP port. As requester we ask
- * the target's Kad buddy for a rendezvous, punch holes towards the target and open the connection once its holes come;
- * as target we hear the rendezvous from our buddy, punch holes back and take the connection from the address the
- * requester was seen at, or from near it. A client whose UDP port is reachable takes connections from anyone too.
- * Thread-safe.
+ * Connections between firewalled clients through their routers, over uTP or QUIC on the client UDP port. As requester
+ * we ask the target's Kad buddy for a rendezvous, punch holes towards the target and open the connection once its holes
+ * come, over QUIC when the target has it; as target we hear the rendezvous from our buddy, punch holes back and take
+ * the connection from the address the requester was seen at, or from near it. A client whose UDP port is reachable
+ * takes connections from anyone too. Thread-safe.
  */
 public final class NatTraversal implements AutoCloseable {
 
@@ -62,7 +66,7 @@ public final class NatTraversal implements AutoCloseable {
     /** Where a connection through the routers goes, and whether this side speaks first. */
     @FunctionalInterface
     public interface Connections {
-        void opened(UtpConnection connection, boolean helloFirst);
+        void opened(StreamTransport connection, boolean helloFirst);
     }
 
     /** How long a rendezvous partner may take to open the connection. */
@@ -70,6 +74,9 @@ public final class NatTraversal implements AutoCloseable {
 
     /** How long a requester waits for the connection. */
     static final Duration ATTEMPT = Duration.ofSeconds(25);
+
+    /** How long a host QUIC failed with is met over uTP instead. */
+    static final Duration QUIC_COOLDOWN = Duration.ofMinutes(2);
 
     // The ports around a punched one that a router may have chosen instead.
     private static final int SWEEP = 16;
@@ -81,9 +88,14 @@ public final class NatTraversal implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(NatTraversal.class);
 
-    // A host whose connection we wait for, near a port; with the requester's future, when we asked for it.
+    // A host whose connection we wait for, near a port; with the requester's future and transport, when we asked for
+    // it.
     private record Expected(
-            InetSocketAddress at, long until, Hash16 peer, Optional<CompletableFuture<UtpConnection>> waiting) {}
+            InetSocketAddress at,
+            long until,
+            Hash16 peer,
+            Optional<CompletableFuture<StreamTransport>> waiting,
+            boolean overQuic) {}
 
     private final Datagrams datagrams;
     private final Connections connections;
@@ -92,6 +104,8 @@ public final class NatTraversal implements AutoCloseable {
     private final IntSupplier ourOptions;
     private final BooleanSupplier reachable;
     private final UtpSocket utp;
+    private final QuicLink quic;
+    private final Cache<InetSocketAddress, Boolean> quicFailed;
     private final List<Expected> expected = new CopyOnWriteArrayList<>();
     // One connection at a time is opened.
     private final Object connecting = new Object();
@@ -118,6 +132,15 @@ public final class NatTraversal implements AutoCloseable {
         this.utp = new UtpSocket(
                 (to, packet) -> this.datagrams.send(to, NatTraversalMessages.utpFrame(packet)), ticker, random);
         this.utp.accept(this::mayConnect, this::accepted);
+        this.quic = new QuicLink(
+                (to, datagram) -> this.datagrams.send(to, NatTraversalMessages.quicFrame(datagram)),
+                ourHash,
+                new QuicPeers(),
+                random);
+        this.quicFailed = CacheBuilder.newBuilder()
+                .ticker(ticker)
+                .expireAfterWrite(QUIC_COOLDOWN)
+                .build();
     }
 
     /** A frame of protocol 0xB2 from {@code from}. */
@@ -130,9 +153,10 @@ public final class NatTraversal implements AutoCloseable {
                 byte[] utp = packet.payload();
                 this.utp.received(from, utp, 0, utp.length);
             }
+            case NatTraversalMessages.FRAME_QUIC -> this.quic.received(from, packet.payload());
             case NatTraversalMessages.FRAME_CAPS -> answerCaps(from, packet);
             default -> {
-                // Capability answers, keys and QUIC: nothing we need.
+                // Capability answers and keys: nothing we need.
             }
         }
     }
@@ -143,7 +167,7 @@ public final class NatTraversal implements AutoCloseable {
             if (e.waiting().isPresent()
                     && e.at().getAddress().equals(from.getAddress())
                     && !e.waiting().get().isDone()) {
-                connectTo(from, e.waiting().get());
+                connectTo(from, e);
             }
         }
     }
@@ -153,8 +177,8 @@ public final class NatTraversal implements AutoCloseable {
      * awaited from there or from the address it gave, and holes are punched towards both.
      */
     public void rendezvousForwarded(InetSocketAddress observed, Rendezvous rendezvous) {
-        if ((rendezvous.options() & NatTraversalMessages.OPTION_UTP) == 0) {
-            logger.debug("A rendezvous from {} without uTP", observed);
+        if ((rendezvous.options() & (NatTraversalMessages.OPTION_UTP | NatTraversalMessages.OPTION_QUIC)) == 0) {
+            logger.debug("A rendezvous from {} without uTP or QUIC", observed);
             return;
         }
         List<InetSocketAddress> ats = new ArrayList<>();
@@ -169,7 +193,7 @@ public final class NatTraversal implements AutoCloseable {
         }
         long until = this.ticker.read() + EXPECTED_FOR.toNanos();
         for (InetSocketAddress at : ats) {
-            this.expected.add(new Expected(at, until, rendezvous.requester(), Optional.empty()));
+            this.expected.add(new Expected(at, until, rendezvous.requester(), Optional.empty(), false));
             punch(at, TARGET_PUNCHES);
         }
         logger.debug("Rendezvous with {} at {}", rendezvous.requester(), ats);
@@ -177,56 +201,81 @@ public final class NatTraversal implements AutoCloseable {
 
     /**
      * As requester: asks {@code target}'s buddy at {@code buddy} for a rendezvous about {@code file}, telling our
-     * public address when we know it ({@code ourIp} in {@code Ipv4} form, 0 otherwise); the future completes with the
-     * connection, or fails when none opens in time.
+     * public address when we know it ({@code ourIp} in {@code Ipv4} form, 0 otherwise); the connection is QUIC when the
+     * target {@code hasQuic} and QUIC did not fail with it lately, else uTP. The future completes with the connection,
+     * or fails when none opens in time.
      */
-    public CompletableFuture<UtpConnection> rendezvous(
+    public CompletableFuture<StreamTransport> rendezvous(
             InetSocketAddress target,
             Hash16 targetHash,
             InetSocketAddress buddy,
             Hash16 buddyId,
             Hash16 file,
             int ourIp,
-            int ourPort) {
-        CompletableFuture<UtpConnection> result = new CompletableFuture<>();
-        this.expected.add(
-                new Expected(target, this.ticker.read() + EXPECTED_FOR.toNanos(), targetHash, Optional.of(result)));
+            int ourPort,
+            boolean hasQuic) {
+        CompletableFuture<StreamTransport> result = new CompletableFuture<>();
+        boolean overQuic = hasQuic && this.quicFailed.getIfPresent(target) == null;
+        Expected awaited = new Expected(
+                target, this.ticker.read() + EXPECTED_FOR.toNanos(), targetHash, Optional.of(result), overQuic);
+        this.expected.add(awaited);
         // Our router lets the target's holes and connection in once ours went out towards it.
         punch(target, REQUESTER_PUNCHES);
         Rendezvous asked = new Rendezvous(
                 this.ourHash.get(),
-                this.ourOptions.getAsInt() | NatTraversalMessages.OPTION_UTP,
+                ourTraversalOptions(),
                 file,
                 ourIp,
                 ourPort,
-                NatTraversalMessages.TRANSPORT_UTP);
+                overQuic ? NatTraversalMessages.TRANSPORT_QUIC : NatTraversalMessages.TRANSPORT_UTP);
         this.datagrams.send(buddy, asked.encodeThroughBuddy(buddyId));
         this.datagrams.send(target, NatTraversalMessages.holePunch());
         CompletableFuture.delayedExecutor(CONNECT_AFTER.toMillis(), TimeUnit.MILLISECONDS)
-                .execute(() -> connectTo(target, result));
+                .execute(() -> connectTo(target, awaited));
         return result.orTimeout(ATTEMPT.toSeconds(), TimeUnit.SECONDS).whenComplete((c, failure) -> forget(result));
     }
 
-    // Connects once; a connection the target opened first wins. The connection's own future is handled here.
+    // Connects once over the transport chosen; a connection the target opened first wins. The connections' own
+    // futures are handled here.
     @SuppressWarnings("FutureReturnValueIgnored")
-    private void connectTo(InetSocketAddress at, CompletableFuture<UtpConnection> result) {
+    private void connectTo(InetSocketAddress at, Expected awaited) {
+        CompletableFuture<StreamTransport> result = awaited.waiting().orElseThrow();
         synchronized (this.connecting) {
-            if (result.isDone()
-                    || this.utp.connections().stream()
-                            .anyMatch(c -> c.remoteAddress().equals(at))) {
+            if (result.isDone()) {
                 return;
             }
-            this.utp.connect(at).whenComplete((connection, failure) -> {
-                if (connection == null) {
-                    return;
+            if (awaited.overQuic()) {
+                if (!this.quic.connecting(at)) {
+                    this.quic.connect(at, Optional.of(awaited.peer())).whenComplete((connection, failure) -> {
+                        if (connection == null) {
+                            logger.debug("No QUIC connection with {}: {}", at, String.valueOf(failure));
+                            this.quicFailed.put(awaited.at(), Boolean.TRUE);
+                        } else {
+                            opened(connection, result);
+                        }
+                    });
                 }
-                if (result.complete(connection)) {
-                    this.connections.opened(connection, false);
-                } else {
-                    connection.close();
-                }
-            });
+            } else if (this.utp.connections().stream()
+                    .noneMatch(c -> c.remoteAddress().equals(at))) {
+                this.utp.connect(at).whenComplete((connection, failure) -> {
+                    if (connection != null) {
+                        opened(connection, result);
+                    }
+                });
+            }
         }
+    }
+
+    private void opened(StreamTransport connection, CompletableFuture<StreamTransport> result) {
+        if (result.complete(connection)) {
+            this.connections.opened(connection, false);
+        } else {
+            connection.close();
+        }
+    }
+
+    private int ourTraversalOptions() {
+        return this.ourOptions.getAsInt() | NatTraversalMessages.OPTION_UTP | NatTraversalMessages.OPTION_QUIC;
     }
 
     // A connection from an expected host, near the port awaited, or from anyone when our port is reachable.
@@ -235,7 +284,7 @@ public final class NatTraversal implements AutoCloseable {
     }
 
     // The side that takes a connection says hello first; the side that opened it answers.
-    private void accepted(UtpConnection connection) {
+    private void accepted(StreamTransport connection) {
         Optional<Expected> by = find(connection.remoteAddress());
         if (by.isPresent()
                 && by.get().waiting().isPresent()
@@ -270,11 +319,11 @@ public final class NatTraversal implements AutoCloseable {
         return this.expected;
     }
 
-    private void forget(CompletableFuture<UtpConnection> result) {
+    private void forget(CompletableFuture<StreamTransport> result) {
         this.expected.removeIf(e -> e.waiting().filter(result::equals).isPresent());
     }
 
-    // A capability frame from a host we wait for gets our answer: uTP, without QUIC.
+    // A capability frame from a host we wait for, or that knows us, gets our answer: uTP and QUIC.
     private void answerCaps(InetSocketAddress from, Packet packet) {
         Caps caps;
         try {
@@ -283,19 +332,11 @@ public final class NatTraversal implements AutoCloseable {
             logger.debug("Bad capabilities from {}: {}", from, e.getMessage());
             return;
         }
-        if (!caps.expected().isZero() && !caps.expected().equals(this.ourHash.get())) {
+        boolean forUs = caps.expected().equals(this.ourHash.get());
+        if (!forUs && (!caps.expected().isZero() || find(from).isEmpty())) {
             return;
         }
-        Optional<Expected> by = find(from);
-        if (by.isEmpty()) {
-            return;
-        }
-        Caps answer = new Caps(
-                true,
-                this.ourOptions.getAsInt() | NatTraversalMessages.OPTION_UTP,
-                this.ourHash.get(),
-                caps.sender(),
-                caps.file());
+        Caps answer = new Caps(true, ourTraversalOptions(), this.ourHash.get(), caps.sender(), caps.file());
         this.datagrams.send(from, answer.encode());
     }
 
@@ -315,13 +356,34 @@ public final class NatTraversal implements AutoCloseable {
     }
 
     /** The connections open now through routers. */
-    public List<UtpConnection> connections() {
-        return this.utp.connections();
+    public List<StreamTransport> connections() {
+        List<StreamTransport> all = new ArrayList<>(this.utp.connections());
+        all.addAll(this.quic.connections());
+        return all;
     }
 
     @Override
     public void close() {
         this.utp.close();
+        this.quic.close();
         this.expected.clear();
+    }
+
+    // QUIC takes the connections uTP would.
+    private final class QuicPeers implements QuicLink.Peers {
+        @Override
+        public boolean mayConnect(InetSocketAddress from) {
+            return NatTraversal.this.mayConnect(from);
+        }
+
+        @Override
+        public Optional<Hash16> expected(InetSocketAddress from) {
+            return find(from).map(Expected::peer);
+        }
+
+        @Override
+        public void accepted(QuicTransport connection) {
+            NatTraversal.this.accepted(connection);
+        }
     }
 }

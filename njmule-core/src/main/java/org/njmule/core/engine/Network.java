@@ -102,6 +102,7 @@ import org.njmule.core.kad.UInt128;
 import org.njmule.core.net.ProxyRoute;
 import org.njmule.core.net.PublicIpv6;
 import org.njmule.core.net.RelayKeeper;
+import org.njmule.core.net.StreamTransport;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.net.TcpListener;
@@ -160,7 +161,6 @@ import org.njmule.core.upnp.PortForwarding;
 import org.njmule.core.upnp.Routers;
 import org.njmule.core.util.Bytes;
 import org.njmule.core.util.Ipv4;
-import org.njmule.core.utp.UtpConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1876,7 +1876,7 @@ final class Network {
             hello = hello.withBuddy(buddyIp, this.buddyLink.buddyUdpPort());
         }
         if (this.natTraversal != null && mayTraverse()) {
-            hello = hello.withUtpTraversal();
+            hello = hello.withRouterTraversal();
         }
         return this.ourIpv6.map(hello::withIpv6).orElse(hello);
     }
@@ -2128,7 +2128,9 @@ final class Network {
                             listenPort(),
                             this.userHash,
                             cryptOptions(prefs.obfuscation()) >>> 7
-                                    | (prefs.proxy().isEnabled() ? 0 : NatTraversalMessages.OPTION_UTP),
+                                    | (prefs.proxy().isEnabled()
+                                            ? 0
+                                            : NatTraversalMessages.OPTION_UTP | NatTraversalMessages.OPTION_QUIC),
                             ip -> Ipv4.isLan(ip) && !this.preferences.get().filterLanAddresses(),
                             ip -> this.ipFilter.blocks(ip),
                             this.kadSocket.port(),
@@ -2412,7 +2414,7 @@ final class Network {
     }
 
     // A connection through the routers: one a client opened counts as coming in, one we asked for as ours.
-    private void throughRouters(UtpConnection connection, boolean helloFirst) {
+    private void throughRouters(StreamTransport connection, boolean helloFirst) {
         ConnectionGuard guard = this.guard;
         if (guard == null || !mayTraverse()) {
             connection.close();
@@ -2700,7 +2702,8 @@ final class Network {
                         route.buddyId().get(),
                         file,
                         ourIp,
-                        ourPort)
+                        ourPort,
+                        (source.cryptOptions() & NatTraversalMessages.OPTION_QUIC) != 0)
                 .whenComplete((connection, failure) -> {
                     if (failure != null) {
                         logger.debug(

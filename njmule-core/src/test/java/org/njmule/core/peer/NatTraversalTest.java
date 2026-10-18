@@ -38,6 +38,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.net.StreamTransport;
 import org.njmule.core.protocol.ed2k.NatTraversalMessages;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
@@ -45,6 +46,7 @@ import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.packet.Opcodes;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.packet.Protocol;
+import org.njmule.core.quic.QuicTransport;
 import org.njmule.core.util.Ipv4;
 import org.njmule.core.utp.UtpConnection;
 
@@ -68,9 +70,10 @@ class NatTraversalTest {
     private volatile boolean targetTakesPart = true;
     private NatTraversal requester;
     private NatTraversal target;
-    private CompletableFuture<UtpConnection> asked;
-    private UtpConnection requesterSide;
-    private UtpConnection targetSide;
+    private volatile NatTraversalMessages.Rendezvous relayed;
+    private CompletableFuture<StreamTransport> asked;
+    private StreamTransport requesterSide;
+    private StreamTransport targetSide;
 
     @AfterEach
     void stop() {
@@ -81,12 +84,25 @@ class NatTraversalTest {
     }
 
     @Test
-    void shouldOpenAConnectionThroughBothRoutersByARendezvousThroughTheTargetsBuddy() throws Exception {
+    void shouldOpenAUtpConnectionThroughBothRoutersByARendezvousThroughTheTargetsBuddy() throws Exception {
         givenTwoFirewalledClients();
 
-        whenTheRequesterAsksForARendezvous();
+        whenTheRequesterAsksForARendezvous(false);
 
-        thenTheRequesterGetsAConnection();
+        thenTheRequesterGetsAConnection(UtpConnection.class);
+        thenTheRendezvousAskedFor(NatTraversalMessages.TRANSPORT_UTP);
+        thenTheTargetSaysHelloFirstAndTheRequesterWaits();
+        thenBytesCrossTheConnection();
+    }
+
+    @Test
+    void shouldOpenAQuicConnectionThroughBothRoutersWhenTheTargetHasQuic() throws Exception {
+        givenTwoFirewalledClients();
+
+        whenTheRequesterAsksForARendezvous(true);
+
+        thenTheRequesterGetsAConnection(QuicTransport.class);
+        thenTheRendezvousAskedFor(NatTraversalMessages.TRANSPORT_QUIC);
         thenTheTargetSaysHelloFirstAndTheRequesterWaits();
         thenBytesCrossTheConnection();
     }
@@ -96,7 +112,7 @@ class NatTraversalTest {
         givenTwoFirewalledClients();
         givenTheTargetIgnoresRendezvous();
 
-        whenTheRequesterAsksForARendezvous();
+        whenTheRequesterAsksForARendezvous(false);
 
         thenNothingOpensWithinSeconds(3);
     }
@@ -110,7 +126,7 @@ class NatTraversalTest {
         this.targetTakesPart = false;
     }
 
-    private void whenTheRequesterAsksForARendezvous() {
+    private void whenTheRequesterAsksForARendezvous(boolean targetHasQuic) {
         this.asked = this.requester.rendezvous(
                 TARGET,
                 TARGET_HASH,
@@ -118,12 +134,20 @@ class NatTraversalTest {
                 BUDDY_ID,
                 FILE,
                 Ipv4.fromBytes(REQUESTER.getAddress().getAddress()),
-                REQUESTER.getPort());
+                REQUESTER.getPort(),
+                targetHasQuic);
     }
 
-    private void thenTheRequesterGetsAConnection() throws Exception {
+    private void thenTheRequesterGetsAConnection(Class<? extends StreamTransport> kind) throws Exception {
         this.requesterSide = this.asked.get(30, TimeUnit.SECONDS);
+        assertThat(this.requesterSide).isInstanceOf(kind);
         assertThat(this.requesterSide.remoteAddress().getAddress()).isEqualTo(TARGET.getAddress());
+    }
+
+    private void thenTheRendezvousAskedFor(int transport) {
+        assertThat(this.relayed.transport()).isEqualTo(transport);
+        assertThat(this.relayed.options() & NatTraversalMessages.OPTION_UTP).isNotZero();
+        assertThat(this.relayed.options() & NatTraversalMessages.OPTION_QUIC).isNotZero();
     }
 
     private void thenTheTargetSaysHelloFirstAndTheRequesterWaits() throws Exception {
@@ -201,9 +225,8 @@ class NatTraversalTest {
             Optional<NatTraversalMessages.Forward> passed = NatTraversalMessages.Forward.decode(forward);
             assertThat(passed)
                     .hasValueSatisfying(f -> assertThat(f.opcode()).isEqualTo(Opcodes.ClientUdp.RENDEZVOUS.code()));
-            this.target.rendezvousForwarded(
-                    passed.get().requester(),
-                    NatTraversalMessages.Rendezvous.decode(passed.get().payload()));
+            this.relayed = NatTraversalMessages.Rendezvous.decode(passed.get().payload());
+            this.target.rendezvousForwarded(passed.get().requester(), this.relayed);
         } catch (DecodeException e) {
             throw new AssertionError(e);
         }

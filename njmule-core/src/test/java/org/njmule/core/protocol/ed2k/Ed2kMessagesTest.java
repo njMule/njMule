@@ -539,13 +539,16 @@ class Ed2kMessagesTest {
     }
 
     @Test
-    void shouldTellUtpTraversalInTheHelloAlongsideIpv6() throws DecodeException {
-        givenOurHelloWithUtpTraversalAndTheIpv6Address("2001:db8:1:2::1");
+    void shouldTellRouterTraversalInTheHelloAlongsideIpv6() throws DecodeException {
+        givenOurHelloWithRouterTraversalAndTheIpv6Address("2001:db8:1:2::1");
         givenOurHelloIsEncoded(false);
 
         whenTheHelloIsDecoded();
 
-        thenTheHelloModOptionsAre(Hello.MOD_MISC_UTP_TRAVERSAL | Hello.MOD_MISC_IPV6 | Hello.MOD_MISC_EXTENDED_SX);
+        thenTheHelloModOptionsAre(Hello.MOD_MISC_UTP_TRAVERSAL
+                | Hello.MOD_MISC_QUIC_TRAVERSAL
+                | Hello.MOD_MISC_IPV6
+                | Hello.MOD_MISC_EXTENDED_SX);
     }
 
     @Test
@@ -896,9 +899,9 @@ class Ed2kMessagesTest {
         this.hello = this.hello.withIpv6((Inet6Address) InetAddresses.forString(address));
     }
 
-    private void givenOurHelloWithUtpTraversalAndTheIpv6Address(String address) {
+    private void givenOurHelloWithRouterTraversalAndTheIpv6Address(String address) {
         givenOurHello();
-        this.hello = this.hello.withUtpTraversal().withIpv6((Inet6Address) InetAddresses.forString(address));
+        this.hello = this.hello.withRouterTraversal().withIpv6((Inet6Address) InetAddresses.forString(address));
     }
 
     private void givenAHelloWithTheClientId(long clientId) {

@@ -71,6 +71,7 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
     public static final int MOD_MISC_EXTENDED_SX = 1;
     public static final int MOD_MISC_UTP_TRAVERSAL = 1 << 1;
     public static final int MOD_MISC_IPV6 = 1 << 2;
+    public static final int MOD_MISC_QUIC_TRAVERSAL = 1 << 4;
 
     /** The client id of a client with no IPv4 address, reached over IPv6 only. */
     public static final long NO_IPV4 = 0xFFFFFFFFL;
@@ -126,14 +127,14 @@ public record Hello(Hash16 userHash, long clientId, int tcpPort, List<Tag> tags,
         return new Hello(this.userHash, this.clientId, this.tcpPort, more, this.serverIp, this.serverPort);
     }
 
-    /** This greeting saying that we reach firewalled clients, and are reached, through routers over uTP. */
-    public Hello withUtpTraversal() {
+    /** This greeting saying that we reach firewalled clients, and are reached, through routers over uTP and QUIC. */
+    public Hello withRouterTraversal() {
         TagName options = TagName.id(ClientTag.MOD_MISCOPTIONS);
         List<Tag> more = new ArrayList<>(this.tags.size());
         for (Tag tag : this.tags) {
             more.add(
                     tag.name().equals(options) && tag instanceof Tag.IntTag bits
-                            ? new Tag.IntTag(options, bits.value() | MOD_MISC_UTP_TRAVERSAL)
+                            ? new Tag.IntTag(options, bits.value() | MOD_MISC_UTP_TRAVERSAL | MOD_MISC_QUIC_TRAVERSAL)
                             : tag);
         }
         return new Hello(this.userHash, this.clientId, this.tcpPort, more, this.serverIp, this.serverPort);
