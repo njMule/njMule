@@ -33,6 +33,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.ToLongFunction;
 import java.util.regex.Pattern;
+import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.StringBinding;
 import javafx.beans.property.ObjectProperty;
@@ -40,9 +41,7 @@ import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.value.ObservableValue;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
@@ -53,7 +52,7 @@ import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
-import javafx.scene.control.TextInputDialog;
+import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
@@ -76,6 +75,7 @@ import org.njmule.gui.dialogs.CommentDialog;
 import org.njmule.gui.infra.Folders;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
+import org.njmule.gui.ui.Ask;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
@@ -650,34 +650,38 @@ public final class SharedScreen implements Screen {
         DirectoryChooser chooser = new DirectoryChooser();
         chooser.setTitle(this.gui.t("IDS_SHAREDIR"));
         var dir = chooser.showDialog(this.view.getScene().getWindow());
-        if (dir != null) {
-            confirmShare(dir.toPath());
+        if (dir != null && !confirmShare(dir.toPath()) && SharedDirectory.isSensitive(dir.toPath())) {
+            // The safe answer to sharing a whole drive or a personal folder is choosing another one.
+            chooseDirectory();
         }
     }
 
-    // With its subfolders unless unticked; a folder where personal or system files may be gets a warning first.
-    void confirmShare(Path directory) {
+    /**
+     * Asks to share {@code directory}, with its subfolders unless unticked; a folder where personal or system files may
+     * be gets a warning whose default is not sharing it. Whether it was shared.
+     */
+    boolean confirmShare(Path directory) {
         CheckBox subs = new CheckBox(this.gui.t("IDS_SHAREDIRSUB"));
         subs.setSelected(true);
-        VBox content = new VBox(8, Fx.leftToRight(new Label(directory.toString())), subs);
         boolean sensitive = SharedDirectory.isSensitive(directory);
+        Ask ask = Ask.about(this.gui, this.gui.t(sensitive ? "nj.shared.shareAllTitle" : "nj.shared.shareTitle"))
+                .names(List.of(directory.toString()));
         if (sensitive) {
-            Label warning = new Label(this.gui.f("nj.shared.sensitive", directory));
-            warning.setWrapText(true);
-            warning.getStyleClass().add(Styles.DANGER);
-            content.getChildren().add(warning);
+            ask.warning()
+                    .says(this.gui.t("nj.shared.sensitiveText"))
+                    .with(subs)
+                    .note(Icons.SHIELD, this.gui.t("nj.shared.asksAlso"))
+                    .risky(this.gui.t("nj.shared.shareAll"), this.gui.t("nj.shared.chooseOther"));
+        } else {
+            ask.says(this.gui.t("nj.shared.shareText"))
+                    .with(subs)
+                    .answers(this.gui.t("nj.shared.share"), this.gui.t("IDS_CANCEL"));
         }
-        Alert ask =
-                this.gui.dialog(new Alert(sensitive ? Alert.AlertType.WARNING : Alert.AlertType.CONFIRMATION, null));
-        ButtonType go = Fx.answers(
-                ask,
-                this.gui.t(sensitive ? "nj.shared.shareAnyway" : "nj.shared.share"),
-                this.gui.t("IDS_CANCEL"),
-                sensitive);
-        ask.setHeaderText(this.gui.t("IDS_SHAREDIR"));
-        ask.getDialogPane().setContent(content);
-        ask.initOwner(this.view.getScene().getWindow());
-        ask.showAndWait().filter(go::equals).ifPresent(b -> share(directory, subs.isSelected()));
+        boolean yes = ask.owner(this.view.getScene().getWindow()).ask();
+        if (yes) {
+            share(directory, subs.isSelected());
+        }
+        return yes;
     }
 
     void share(Path directory, boolean subdirectories) {
@@ -717,15 +721,21 @@ public final class SharedScreen implements Screen {
             return;
         }
         SharedFileInfo file = selected.getFirst();
-        TextInputDialog ask = this.gui.dialog(new TextInputDialog(file.name()));
-        ask.setTitle(this.gui.t("IDS_RENAME"));
-        ask.setHeaderText(this.gui.i18n().embed(file.name()));
-        Fx.leftToRight(ask.getEditor());
-        ask.initOwner(this.table.getScene().getWindow());
-        ask.showAndWait()
-                .map(String::strip)
-                .filter(n -> !n.isEmpty() && !n.equals(file.name()))
-                .ifPresent(n -> this.gui.model().renameShared(file.hash(), n));
+        TextField name = Fx.leftToRight(new TextField(file.name()));
+        Ask ask = Ask.about(this.gui, this.gui.t("nj.shared.renameTitle"))
+                .field(this.gui.t("nj.shared.newName"), name, this.gui.t("nj.shared.renameHint"))
+                .answers(this.gui.t("IDS_RENAME"), this.gui.t("IDS_CANCEL"))
+                .owner(this.table.getScene().getWindow());
+        Platform.runLater(() -> {
+            name.requestFocus();
+            name.selectAll();
+        });
+        if (ask.ask()) {
+            String typed = name.getText().strip();
+            if (!typed.isEmpty() && !typed.equals(file.name())) {
+                this.gui.model().renameShared(file.hash(), typed);
+            }
+        }
     }
 
     void commentSelected() {

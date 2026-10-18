@@ -33,13 +33,13 @@ import javafx.geometry.NodeOrientation;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ComboBoxBase;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.Labeled;
 import javafx.scene.control.MenuItem;
@@ -50,6 +50,8 @@ import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.Tooltip;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
@@ -235,20 +237,35 @@ public final class Fx {
     }
 
     /**
-     * Gives {@code alert} two answers named by their outcome, {@code go} and {@code stay}, and returns the type of
-     * {@code go}. A {@code risky} go is marked as dangerous and never the default: Enter keeps things as they are.
+     * Gives {@code dialog} two answers named by their outcome, {@code go} and {@code stay}, and returns the type of
+     * {@code go}. A {@code risky} go is marked as dangerous and never the default: Enter keeps things as they are, and
+     * the safe answer is ringed rather than filled.
      */
-    public static ButtonType answers(Alert alert, String go, String stay, boolean risky) {
+    public static ButtonType answers(Dialog<?> dialog, String go, String stay, boolean risky) {
         ButtonType yes = new ButtonType(go, ButtonBar.ButtonData.OK_DONE);
         ButtonType no = new ButtonType(stay, ButtonBar.ButtonData.CANCEL_CLOSE);
-        alert.getButtonTypes().setAll(yes, no);
+        dialog.getDialogPane().getButtonTypes().setAll(yes, no);
         if (risky) {
-            Button goButton = (Button) alert.getDialogPane().lookupButton(yes);
+            Button goButton = (Button) dialog.getDialogPane().lookupButton(yes);
             goButton.setDefaultButton(false);
-            goButton.getStyleClass().add(Styles.DANGER);
-            ((Button) alert.getDialogPane().lookupButton(no)).setDefaultButton(true);
+            goButton.getStyleClass().addAll(Styles.DANGER, Styles.BUTTON_OUTLINED);
+            Button stayButton = (Button) dialog.getDialogPane().lookupButton(no);
+            stayButton.setDefaultButton(true);
+            stayButton.getStyleClass().add("safe");
         }
         return yes;
+    }
+
+    /** The logo at {@code size} pixels, from a picture twice as large so that it stays sharp; never mirrored. */
+    public static ImageView logo(double size) {
+        ImageView logo = leftToRight(new ImageView());
+        var picture = Fx.class.getResource("/org/njmule/gui/icons/njmule-" + (size > 32 ? 128 : 64) + ".png");
+        if (picture != null) {
+            logo.setImage(new Image(picture.toExternalForm(), size * 2, size * 2, true, true));
+        }
+        logo.setFitWidth(size);
+        logo.setFitHeight(size);
+        return logo;
     }
 
     /** Marks {@code button} as the main action of its screen, shown in the brand colour. */

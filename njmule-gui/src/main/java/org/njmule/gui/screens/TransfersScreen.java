@@ -26,6 +26,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
@@ -41,9 +42,7 @@ import javafx.collections.transformation.FilteredList;
 import javafx.geometry.HPos;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
-import javafx.scene.control.ButtonBar;
 import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
@@ -57,7 +56,7 @@ import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
-import javafx.scene.control.TextInputDialog;
+import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.Clipboard;
@@ -91,6 +90,7 @@ import org.njmule.gui.infra.Folders;
 import org.njmule.gui.infra.Preview;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
+import org.njmule.gui.ui.Ask;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.FilterChips;
 import org.njmule.gui.ui.Fx;
@@ -926,22 +926,23 @@ public final class TransfersScreen implements Screen {
     }
 
     private boolean askCancel(String question, int count) {
-        Alert confirm = cancelDialog(question, count);
-        confirm.initOwner(this.downloads.getScene().getWindow());
-        return confirm.showAndWait()
-                .filter(b -> b.getButtonData() == ButtonBar.ButtonData.OK_DONE)
-                .isPresent();
+        return cancelDialog(question, count)
+                .owner(this.downloads.getScene().getWindow())
+                .ask();
     }
 
-    /** The modal question before cancelling {@code count} downloads: cancelling is red, keeping them the default. */
-    Alert cancelDialog(String question, int count) {
-        Alert confirm = this.gui.dialog(new Alert(Alert.AlertType.CONFIRMATION, question));
-        Fx.answers(
-                confirm,
-                this.gui.t(count == 1 ? "nj.transfers.cancelOne" : "nj.transfers.cancelMany"),
-                this.gui.t("nj.transfers.keepDownloading"),
-                true);
-        return confirm;
+    /**
+     * The modal question before cancelling {@code count} downloads, whose title and names are {@code question}:
+     * cancelling is red, keeping them the default.
+     */
+    Ask cancelDialog(String question, int count) {
+        List<String> lines = question.lines().toList();
+        return Ask.about(this.gui, lines.getFirst())
+                .says(this.gui.t("nj.transfers.cancelText"))
+                .names(lines.stream().skip(1).filter(l -> !l.isEmpty()).toList())
+                .risky(
+                        this.gui.t(count == 1 ? "nj.transfers.cancelOne" : "nj.transfers.cancelMany"),
+                        this.gui.t("nj.transfers.keepDownloading"));
     }
 
     /** Answers the cancel questions with {@code answer} instead of a dialog. */
@@ -949,11 +950,11 @@ public final class TransfersScreen implements Screen {
         this.cancelAnswer = (question, count) -> answer.test(question);
     }
 
-    /** The question before a cancel: whether to delete the file, or the files, named below it. */
+    /** The question before a cancel: whether to cancel the download, or the downloads, named below it. */
     String cancelQuestion(List<DownloadInfo> selected) {
-        String question = this.gui
-                .t(selected.size() == 1 ? "IDS_Q_CANCELDL2" : "IDS_Q_CANCELDL")
-                .strip();
+        String question = selected.size() == 1
+                ? this.gui.t("nj.transfers.cancelTitleOne")
+                : this.gui.f("nj.transfers.cancelTitleMany", selected.size());
         StringBuilder text = new StringBuilder(question).append('\n');
         selected.stream()
                 .limit(CANCEL_NAMES_SHOWN)
@@ -987,13 +988,15 @@ public final class TransfersScreen implements Screen {
             return;
         }
         DownloadInfo d = selected.getFirst();
-        TextInputDialog ask = this.gui.dialog(new TextInputDialog());
-        ask.setTitle(this.gui.t("IDS_ADDSRCMANUALLY"));
-        ask.setHeaderText(this.gui.i18n().embed(d.name()));
-        ask.setContentText(this.gui.t("nj.input.address"));
-        Fx.leftToRight(ask.getEditor());
-        ask.initOwner(this.downloads.getScene().getWindow());
-        ask.showAndWait().map(String::strip).filter(t -> !t.isEmpty()).ifPresent(text -> {
+        TextField where = Fx.leftToRight(new TextField());
+        where.setPromptText("192.0.2.10:4662");
+        boolean yes = Ask.about(this.gui, this.gui.t("nj.transfers.addSourceTitle"))
+                .says(this.gui.f("nj.transfers.sourceFor", this.gui.i18n().embed(d.name())))
+                .field(this.gui.t("nj.transfers.sourceAddress"), where, this.gui.t("nj.transfers.sourceHint"))
+                .answers(this.gui.t("nj.transfers.addSource"), this.gui.t("IDS_CANCEL"))
+                .owner(this.downloads.getScene().getWindow())
+                .ask();
+        Optional.of(where.getText().strip()).filter(t -> yes && !t.isEmpty()).ifPresent(text -> {
             ServerAddress address;
             try {
                 address = ServerAddress.parse(text);

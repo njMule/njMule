@@ -612,6 +612,18 @@ All notable changes to this project are documented here. The format follows
   reads in a dark theme too. The statistics open on cards of what happens now, then the rates over
   time with their times under the lines and a word when nothing moved, the session's and all
   sessions' figures side by side, and every statistic in a pane that opens on demand.
+- The dialogs follow the new design, in one style: what is decided as the title, the words and the
+  fields below with their names above them, and the answers on a band in the platform's order,
+  named by their outcome; the safe answer is the default, ringed, and a risky one is outlined in
+  red. Quitting, links copied in another program, removing all servers, sharing a folder (a whole
+  drive or a personal folder with a warning whose default is choosing another), renaming a shared
+  file, adding a source and cancelling downloads ask this way, and the windows of their own
+  (About, categories, comments, a client's files, the import) share its header and band. The
+  first start shows its steps beside the pages, with a check on each one done that leads back to
+  it, in a shorter window; the import checks first and then makes Import the main action, with
+  its outcomes as chips. The menu of the notification area opens on njMule's name with the state
+  and the rates, keeps Show njMule as its default and Quit always there, and shows only Connect or
+  Disconnect; MiniMule tells the state with a dot and draws the last half minute of the rates.
 
 ### Changed
 

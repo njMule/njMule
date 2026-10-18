@@ -33,12 +33,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
@@ -86,7 +87,7 @@ class TransfersMenusTest {
     private final AtomicBoolean sourceTaken = new AtomicBoolean(true);
     private final AtomicReference<List<DownloadInfo>> downloads = new AtomicReference<>();
     private TransfersScreen transfers;
-    private Alert cancelQuestion;
+    private Dialog<ButtonType> cancelQuestion;
     private final List<String> asked = new CopyOnWriteArrayList<>();
     private Throwable exception;
 
@@ -140,7 +141,7 @@ class TransfersMenusTest {
 
         whenTheCancelOfTheMenuIsChosen();
 
-        thenTheQuestionAskedWas("Are you sure that you want to cancel and delete this file?\n\ntest file.bin");
+        thenTheQuestionAskedWas("Cancel this download?\n\ntest file.bin");
         thenTheDownloadsShownAre(1);
     }
 
@@ -304,11 +305,12 @@ class TransfersMenusTest {
     }
 
     private void whenTheCancelQuestionIsMadeFor(int count) throws Exception {
-        this.cancelQuestion = FxTesting.onFx(() -> this.transfers.cancelDialog("Cancel?", count));
+        this.cancelQuestion = FxTesting.onFx(
+                () -> this.transfers.cancelDialog("Cancel?", count).dialog());
     }
 
     private void thenTheAnswersAre(String... answers) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.cancelQuestion.getButtonTypes().stream()
+        assertThat(FxTesting.onFx(() -> this.cancelQuestion.getDialogPane().getButtonTypes().stream()
                         .map(ButtonType::getText)
                         .toList()))
                 .containsExactly(answers);
@@ -323,7 +325,7 @@ class TransfersMenusTest {
     }
 
     private Button answerButton(String answer) {
-        ButtonType type = this.cancelQuestion.getButtonTypes().stream()
+        ButtonType type = this.cancelQuestion.getDialogPane().getButtonTypes().stream()
                 .filter(t -> t.getText().equals(answer))
                 .findFirst()
                 .orElseThrow();
@@ -593,7 +595,7 @@ class TransfersMenusTest {
 
     private void givenASourceTyped(String address) throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.OK, pane -> type(pane, address));
+            FxTesting.answer(ButtonBar.ButtonData.OK_DONE, pane -> type(pane, address));
             this.transfers.addSourceToSelected();
         });
     }
@@ -612,7 +614,7 @@ class TransfersMenusTest {
 
     private void givenTheSourceDialogCancelled() throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.CANCEL);
+            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE);
             this.transfers.addSourceToSelected();
         });
     }

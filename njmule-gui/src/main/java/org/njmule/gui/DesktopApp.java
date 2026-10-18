@@ -31,8 +31,6 @@ import javafx.collections.ListChangeListener;
 import javafx.geometry.Dimension2D;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
-import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.image.Image;
 import javafx.stage.PopupWindow;
@@ -68,6 +66,7 @@ import org.njmule.gui.shell.MainWindow;
 import org.njmule.gui.shell.MiniMule;
 import org.njmule.gui.shell.NotificationArea;
 import org.njmule.gui.shell.TrayMenu;
+import org.njmule.gui.ui.Ask;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Subscriptions;
@@ -163,11 +162,12 @@ public final class DesktopApp implements AutoCloseable {
             return true;
         }
         CheckBox again = new CheckBox(this.gui.t("IDS_DONOTASKAGAIN"));
-        Alert ask = this.gui.dialog(new Alert(Alert.AlertType.CONFIRMATION, null, ButtonType.YES, ButtonType.NO));
-        ask.setHeaderText(this.gui.t("nj.exit.confirm"));
-        ask.getDialogPane().setContent(again);
-        ask.initOwner(owner);
-        boolean yes = ask.showAndWait().filter(b -> b == ButtonType.YES).isPresent();
+        boolean yes = Ask.about(this.gui, this.gui.t("nj.exit.title"))
+                .says(this.gui.t("nj.exit.text"))
+                .with(again)
+                .answers(this.gui.t("nj.exit.quit"), this.gui.t("nj.exit.stay"))
+                .owner(owner)
+                .ask();
         if (yes && again.isSelected()) {
             this.settings.setConfirmExit(false);
             try {
@@ -248,17 +248,18 @@ public final class DesktopApp implements AutoCloseable {
 
     // Links copied in another program are taken only when the user says so, as they may be old or unwanted.
     private boolean confirmCopied(List<Ed2kLink.FileLink> links) {
-        List<String> names =
-                links.stream().map(link -> this.gui.i18n().embed(link.name())).toList();
-        String shown = String.join("\n", names.subList(0, Math.min(names.size(), MAX_NAMES_ASKED)))
-                + (names.size() > MAX_NAMES_ASKED ? "\n…" : "");
-        Alert ask = this.gui.dialog(new Alert(Alert.AlertType.CONFIRMATION, shown, ButtonType.YES, ButtonType.NO));
-        ask.setHeaderText(this.gui.t("IDS_ADDDOWNLOADSFROMCB").strip());
-        Window owner = this.stage.isShowing() ? this.stage : this.trayOwner;
-        if (owner != null) {
-            ask.initOwner(owner);
+        List<String> names = new ArrayList<>(links.stream()
+                .map(link -> this.gui.i18n().embed(link.name()))
+                .limit(MAX_NAMES_ASKED)
+                .toList());
+        if (links.size() > MAX_NAMES_ASKED) {
+            names.add("…");
         }
-        return ask.showAndWait().filter(b -> b == ButtonType.YES).isPresent();
+        return Ask.about(this.gui, this.gui.t("IDS_ADDDOWNLOADSFROMCB").strip())
+                .names(names)
+                .answers(this.gui.t("IDS_DOWNLOAD"), this.gui.t("nj.links.leave"))
+                .owner(this.stage.isShowing() ? this.stage : this.trayOwner)
+                .ask();
     }
 
     // The web interface runs beside the window when its settings ask for it.

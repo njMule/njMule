@@ -16,10 +16,10 @@
  */
 package org.njmule.gui.shell;
 
+import java.util.List;
 import java.util.Optional;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
-import javafx.scene.Group;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -28,23 +28,23 @@ import javafx.scene.control.Separator;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.StackPane;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.stage.Window;
+import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
-import org.njmule.gui.ui.Icon;
 import org.njmule.gui.ui.Icons;
 
 /**
- * The menu of the notification area icon: the speed limits with their sliders, connecting and disconnecting, the
- * options, the window and exit, beside njMule's name and version. A window of its own, as a plain menu cannot hold
- * sliders; it closes when it loses the focus. FX thread only.
+ * The menu of the notification area icon: njMule's name with its state and rates, the speed limits with their sliders,
+ * the window (its default), connecting or disconnecting, the options and quitting, always there. A window of its own,
+ * as a plain menu cannot hold sliders; it closes when it loses the focus. FX thread only.
  */
 public final class TrayMenu {
 
@@ -62,6 +62,7 @@ public final class TrayMenu {
     private final SpeedLimits limits;
     private final Button connect;
     private final Button disconnect;
+    private final Label state = new Label();
 
     public TrayMenu(Gui gui, Window owner, Actions actions) {
         this.gui = gui;
@@ -76,27 +77,22 @@ public final class TrayMenu {
                 gui.t("IDS_MAIN_BTN_DISCONNECT"),
                 Icons.LINK_OFF,
                 () -> gui.model().disconnect());
-        Button restore = item(gui.t("IDS_MAIN_POPUP_RESTORE"), Icons.OPEN_EXTERNAL, actions::restore);
+        // Only the one that applies shows.
+        for (Button button : List.of(this.connect, this.disconnect)) {
+            button.visibleProperty().bind(button.disabledProperty().not());
+            button.managedProperty().bind(button.visibleProperty());
+        }
+        Button restore = item(gui.t("nj.tray.show"), Icons.OPEN_EXTERNAL, actions::restore);
         restore.getStyleClass().add("tray-default");
         VBox items = new VBox(
-                title(),
-                this.limits.view(),
-                item(
-                        gui.t("IDS_PW_UA"),
-                        Icons.SPEED,
-                        () -> this.limits.set(p -> p.downloadCapacityKiBps(), p -> p.uploadCapacityKiBps())),
-                item(gui.t("IDS_PW_PA"), Icons.SLOW, () -> this.limits.set(p -> 1, p -> 1)),
-                new Separator(),
+                restore,
                 this.connect,
                 this.disconnect,
-                new Separator(),
                 item(gui.t("IDS_EM_PREFS"), Icons.OPTIONS, actions::options),
                 new Separator(),
-                restore,
-                new Separator(),
-                item(gui.t("IDS_EXIT"), Icons.EXIT, actions::exit));
+                item(gui.t("nj.exit.quit"), Icons.POWER, actions::exit));
         items.getStyleClass().add("tray-items");
-        HBox root = new HBox(band(), items);
+        VBox root = new VBox(head(), limits(), items);
         root.getStyleClass().addAll("njmule", "tray-menu");
         Scene scene = new Scene(root);
         gui.attach(scene);
@@ -119,6 +115,7 @@ public final class TrayMenu {
         EngineModel.Connection state = this.gui.model().connectionProperty().get();
         this.connect.setDisable(state != EngineModel.Connection.DISCONNECTED);
         this.disconnect.setDisable(state == EngineModel.Connection.DISCONNECTED);
+        this.state.setText(stateText());
         this.stage.sizeToScene();
         this.stage.show();
         Rectangle2D bounds = Screen.getScreensForRectangle(x, y, 1, 1).stream()
@@ -147,21 +144,52 @@ public final class TrayMenu {
         this.stage.hide();
     }
 
-    // The name runs up the left edge, as on the side of a box.
-    private Node band() {
-        Label name = new Label(NjMuleInfo.NAME + " " + NjMuleInfo.version());
-        name.getStyleClass().addAll("tray-band-text", "display", "wordmark");
-        name.setRotate(-90);
-        StackPane band = new StackPane(new Group(name));
-        band.getStyleClass().add("tray-band");
-        band.setAlignment(Pos.BOTTOM_CENTER);
-        return band;
+    // The mark and the name on the brand's blue, with the state and the rates under the name.
+    private Node head() {
+        Label name = Fx.leftToRight(new Label(NjMuleInfo.NAME));
+        name.getStyleClass().addAll("tray-name", "wordmark");
+        this.state.getStyleClass().add("tray-state");
+        HBox head = new HBox(10, Fx.logo(28), new VBox(name, this.state));
+        head.setAlignment(Pos.CENTER_LEFT);
+        head.getStyleClass().add("tray-head");
+        return head;
     }
 
-    private Node title() {
-        Label title = new Label(this.gui.t("nj.tray.speed"), new Icon(Icons.SPEED));
-        title.getStyleClass().add("tray-title");
-        return title;
+    // The sliders of the limits, then the two settings one reaches for.
+    private Node limits() {
+        Label title = new Label(this.gui.t("nj.tray.limits"));
+        title.getStyleClass().add("dialog-label");
+        Button full = item(
+                this.gui.t("nj.tray.fullSpeed"),
+                Icons.SPEED,
+                () -> this.limits.set(p -> p.downloadCapacityKiBps(), p -> p.uploadCapacityKiBps()));
+        Button slow = item(this.gui.t("nj.tray.slowDown"), Icons.SLOW, () -> this.limits.set(p -> 1, p -> 1));
+        for (Button preset : List.of(full, slow)) {
+            preset.getStyleClass().remove("flat");
+            preset.getStyleClass().add("tray-preset");
+            preset.setMaxWidth(Region.USE_PREF_SIZE);
+        }
+        VBox box = new VBox(8, title, this.limits.view(), new HBox(6, full, slow));
+        box.getStyleClass().add("tray-limits");
+        return box;
+    }
+
+    // Connected, connecting or not, then the rates as the status bar tells them.
+    private String stateText() {
+        EngineModel model = this.gui.model();
+        EngineStatus status = model.statusProperty().get();
+        boolean online = model.connectionProperty().get() == EngineModel.Connection.CONNECTED
+                || (status != null && status.kad().map(k -> k.connected()).orElse(false));
+        String word = this.gui.t(
+                online
+                        ? "IDS_CONNECTED"
+                        : model.connectionProperty().get() == EngineModel.Connection.CONNECTING
+                                ? "IDS_CONNECTING"
+                                : "IDS_NOTCONNECTED");
+        long down = status == null ? 0 : status.downloadBytesPerSecond();
+        long up = status == null ? 0 : status.uploadBytesPerSecond();
+        return word + " · ↓ " + this.gui.i18n().embed(this.gui.formats().rate(down)) + " · ↑ "
+                + this.gui.i18n().embed(this.gui.formats().rate(up));
     }
 
     private Button item(String text, Icons icon, Runnable action) {

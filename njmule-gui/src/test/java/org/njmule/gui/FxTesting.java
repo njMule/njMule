@@ -169,6 +169,21 @@ public final class FxTesting {
      * of the FX thread: given from an animation, the headless platform may never leave the dialog's event loop.
      */
     public static void answerLater(ButtonType button, Consumer<DialogPane> fill) {
+        answerLater(pane -> (Button) pane.lookupButton(button), fill);
+    }
+
+    /** As {@link #answerLater(ButtonType, Consumer)}, with the button whose role is {@code role}. */
+    public static void answerLater(ButtonBar.ButtonData role, Consumer<DialogPane> fill) {
+        answerLater(
+                pane -> pane.getButtonTypes().stream()
+                        .filter(t -> t.getButtonData() == role)
+                        .map(t -> (Button) pane.lookupButton(t))
+                        .findFirst()
+                        .orElseThrow(() -> new AssertionError("no button for " + role)),
+                fill);
+    }
+
+    private static void answerLater(Function<DialogPane, Button> button, Consumer<DialogPane> fill) {
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         Thread.ofVirtual().name("answer-later").start(() -> {
             try {
@@ -178,7 +193,7 @@ public final class FxTesting {
                         Optional<DialogPane> pane = dialog();
                         pane.ifPresent(p -> {
                             fill.accept(p);
-                            ((Button) p.lookupButton(button)).fire();
+                            button.apply(p).fire();
                         });
                         answered.complete(pane.isPresent());
                     });

@@ -696,22 +696,158 @@
     -fx-padding: 4 2 4 2;
 }
 
-/* The first start: its steps as a row of chips, the one shown on the accent tint and in bold. */
-.wizard-steps .wizard-step {
-    -fx-padding: 3 10 3 10;
-    -fx-background-radius: 12;
+/* The first start: the steps down a tinted side, a number in a ring or a check once done, the one shown lifted;
+   the page beside them with its fields named above. */
+.wizard-side {
+    -fx-padding: 20 12 20 12;
     -fx-background-color: -color-bg-subtle;
+    -fx-border-color: transparent -color-border-muted transparent transparent;
+}
+
+.wizard-brand {
+    -fx-padding: 0 6 18 6;
+}
+
+.wizard-title {
+    -fx-font-size: 1.15em;
+    -fx-font-weight: bold;
+}
+
+.wizard-side > .dialog-hint {
+    -fx-padding: 0 8 0 8;
+}
+
+.wizard-step {
+    -fx-padding: 8 10 8 10;
+    -fx-background-radius: 8;
+    -fx-graphic-text-gap: 10;
     -fx-text-fill: -color-fg-muted;
 }
 
-.wizard-steps .wizard-step.current {
-    -fx-background-color: -color-accent-muted;
+.wizard-step.done {
     -fx-text-fill: -color-fg-default;
+}
+
+.wizard-step.current {
+    -fx-background-color: -color-bg-default;
+    -fx-text-fill: -color-fg-default;
+    -fx-font-weight: bold;
+    -fx-effect: dropshadow(gaussian, -nj-scrim, 3, 0, 0, 1);
+}
+
+.wizard-step .step-mark {
+    -fx-min-width: 24;
+    -fx-min-height: 24;
+    -fx-max-width: 24;
+    -fx-max-height: 24;
+    -fx-background-color: -color-bg-default;
+    -fx-background-radius: 12;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 1.5;
+    -fx-border-radius: 12;
+}
+
+.wizard-step .step-mark > .label {
+    -fx-font-size: 0.9em;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.wizard-step.done .step-mark {
+    -fx-background-color: -color-success-muted;
+    -fx-border-color: -color-success-muted;
+}
+
+.wizard-step.done .step-mark .nj-icon {
+    -nj-icon-size: 14;
+    -nj-icon-color: -color-success-fg;
+}
+
+.wizard-step.current .step-mark {
+    -fx-border-color: -color-accent-emphasis;
+}
+
+.wizard-step.current .step-mark > .label {
+    -fx-text-fill: -color-accent-fg;
+}
+
+.wizard-page {
+    -fx-padding: 28 28 16 28;
+}
+
+.wizard-heading {
+    -fx-font-size: 1.6em;
     -fx-font-weight: bold;
 }
 
 .wizard .wizard-hint {
     -fx-text-fill: -color-fg-muted;
+}
+
+.wizard-folders {
+    -fx-border-color: -color-border-muted;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+
+.wizard-folders > .list-view {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent -color-border-muted transparent;
+}
+
+.wizard-folders-add {
+    -fx-padding: 8 10 8 10;
+}
+
+.wizard-switch-name {
+    -fx-font-weight: bold;
+}
+
+.wizard-found {
+    -fx-padding: 10 12 10 12;
+    -fx-background-color: -color-success-subtle;
+    -fx-background-radius: 8;
+    -fx-graphic-text-gap: 10;
+}
+
+.wizard-found .nj-icon {
+    -nj-icon-size: 16;
+    -nj-icon-color: -color-success-fg;
+}
+
+.wizard-option {
+    -fx-padding: 10 12 10 12;
+    -fx-border-color: -color-border-muted;
+    -fx-border-radius: 8;
+}
+
+/* The band under a dialog built on its own window: its buttons, as under every other dialog. */
+.dialog-footer {
+    -fx-padding: 12 18 12 18;
+    -fx-spacing: 8;
+    -fx-alignment: center-left;
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-muted transparent transparent transparent;
+}
+
+.wizard .dialog-footer {
+    -fx-padding: 14 28 14 28;
+}
+
+/* The body of a dialog built on its own window, under its header. */
+.dialog-body-own {
+    -fx-padding: 4 18 14 18;
+}
+
+.about-body {
+    -fx-padding: 18 18 16 18;
+}
+
+.import-option {
+    -fx-padding: 10;
+    -fx-border-color: -color-border-muted;
+    -fx-border-radius: 8;
+    -fx-alignment: top-left;
 }
 
 /* An empty list: a large muted icon, the words, and the buttons that fill it. */
@@ -1168,6 +1304,83 @@
 
 .dialog-pane > .button-bar > .container > .button {
     -fx-padding: 4px 12px 4px 12px;
+}
+
+/* One style for every dialog: what is decided as the title, the words and fields below, the answers on a band
+   under them in the platform's order. */
+.nj-dialog > .header-panel,
+.dialog-header {
+    -fx-padding: 16 18 6 18;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.nj-dialog > .header-panel > .label,
+.dialog-title {
+    -fx-font-size: 1.15em;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.nj-icon.dialog-warning {
+    -nj-icon-size: 20;
+    -nj-icon-color: -color-warning-fg;
+}
+
+.nj-dialog > .content {
+    -fx-padding: 6 18 16 18;
+}
+
+.dialog-label {
+    -fx-font-size: 0.92em;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.dialog-hint {
+    -fx-font-size: 0.92em;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.dialog-hint .nj-icon {
+    -nj-icon-size: 14;
+    -nj-icon-color: -color-fg-muted;
+}
+
+.dialog-names {
+    -fx-padding: 8 10 8 10;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 6;
+}
+
+.nj-dialog > .button-bar {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-muted transparent transparent transparent;
+}
+
+.nj-dialog > .button-bar > .container {
+    -fx-padding: 12 18 12 18;
+}
+
+/* The safe answer to a risky question is the default, ringed rather than filled: the fill would call for it. */
+.button.safe:default {
+    -color-button-bg: -color-bg-default;
+    -color-button-fg: -color-fg-default;
+    -color-button-border: -color-accent-emphasis;
+    -color-button-bg-hover: -color-bg-subtle;
+    -color-button-fg-hover: -color-fg-default;
+    -color-button-border-hover: -color-accent-emphasis;
+    -color-button-bg-focused: -color-bg-default;
+    -color-button-fg-focused: -color-fg-default;
+    -color-button-border-focused: -color-accent-emphasis;
+    -color-button-bg-pressed: -color-bg-subtle;
+    -color-button-fg-pressed: -color-fg-default;
+    -color-button-border-pressed: -color-accent-emphasis;
+    -fx-background-insets: 0, 2px;
+}
+
+.button.safe:default .nj-icon {
+    -nj-icon-color: -color-fg-default;
 }
 
 /* The logs: a line a paragraph, tight; their text is chosen with the mouse, across lines. */
@@ -1871,21 +2084,23 @@
 .bar-requested { -fx-background-color: -nj-bar-requested; }
 .bar-complete { -fx-background-color: -nj-bar-complete; }
 
-/* The menu of the notification area icon: the name up the left edge, as on eMule's. */
-/* Compact like a system menu: smaller text, tight rows and separators. */
+/* The menu of the notification area icon: the name and the state on the brand's blue, the limits, then items as
+   compact as a system menu's. */
 .tray-menu {
     -fx-background-color: -color-bg-default;
     -fx-border-color: -color-border-default;
     -fx-border-width: 1;
     -fx-font-size: 13px;
+    -fx-pref-width: 320;
 }
 
 .tray-menu .nj-icon {
-    -nj-icon-size: 14px;
+    -nj-icon-size: 16px;
+    -nj-icon-color: -color-fg-muted;
 }
 
 .tray-menu .separator {
-    -fx-padding: 1 0 1 0;
+    -fx-padding: 4 8 4 8;
 }
 
 .tray-menu .slider {
@@ -1897,72 +2112,103 @@
     -fx-pref-width: 4.5em;
 }
 
-.tray-band {
+.tray-head {
+    -fx-padding: 12 14 12 14;
     -fx-background-color: -nj-brand;
-    -fx-padding: 5 2 5 2;
-    -fx-border-color: -nj-brand-accent;
-    -fx-border-width: 0 2 0 0;
 }
 
-.tray-band-text {
+.tray-name {
     -fx-text-fill: -nj-brand-mark;
     -fx-font-weight: bold;
 }
 
+.tray-state {
+    -fx-text-fill: -nj-brand-mark;
+    -fx-font-size: 12px;
+}
+
+.tray-limits {
+    -fx-padding: 12 14 12 14;
+    -fx-border-color: transparent transparent -color-border-muted transparent;
+}
+
 .tray-items {
-    -fx-padding: 4;
+    -fx-padding: 6;
     -fx-spacing: 0;
 }
 
-.tray-title {
-    -fx-font-weight: bold;
-    -fx-padding: 1 5 2 5;
-}
-
-.tray-title .nj-icon {
-    -nj-icon-color: -nj-accent-strong;
-}
-
 .tray-speeds {
-    -fx-hgap: 5;
-    -fx-vgap: 2;
-    -fx-padding: 0 5 2 5;
+    -fx-hgap: 8;
+    -fx-vgap: 6;
 }
 
 .tray-down {
-    -nj-icon-color: -color-success-fg;
+    -nj-icon-color: -nj-graph-down;
 }
 
 .tray-up {
-    -nj-icon-color: -color-danger-fg;
+    -nj-icon-color: -nj-graph-up;
 }
 
 .tray-item {
-    -fx-padding: 2 7 2 7;
-    -fx-graphic-text-gap: 7;
+    -fx-padding: 7 12 7 12;
+    -fx-graphic-text-gap: 10;
+    -fx-background-radius: 6;
+}
+
+.tray-preset {
+    -fx-padding: 4 10 4 10;
+    -fx-font-size: 12px;
 }
 
 .tray-default {
     -fx-font-weight: bold;
 }
 
-/* The small status window. */
+/* The small status window: the state with its dot, the rates with their last half minute, then the buttons. */
 .minimule {
-    -fx-padding: 8;
-    -fx-spacing: 6;
+    -fx-padding: 12;
+    -fx-spacing: 10;
+}
+
+.minimule-dot {
+    -fx-min-width: 8;
+    -fx-min-height: 8;
+    -fx-max-width: 8;
+    -fx-max-height: 8;
+    -fx-background-radius: 4;
+    -fx-background-color: -color-fg-subtle;
+}
+
+.minimule-dot.online {
+    -fx-background-color: -color-success-emphasis;
+}
+
+.minimule-state {
+    -fx-font-weight: bold;
 }
 
 .minimule-grid {
     -fx-hgap: 12;
-    -fx-vgap: 4;
+    -fx-vgap: 6;
+}
+
+.minimule-grid .sparkline {
+    -fx-max-width: Infinity;
+}
+
+.minimule-down .nj-icon {
+    -nj-icon-size: 14;
+    -nj-icon-color: -nj-graph-down;
+}
+
+.minimule-up .nj-icon {
+    -nj-icon-size: 14;
+    -nj-icon-color: -nj-graph-up;
 }
 
 .minimule-value {
     -fx-font-weight: bold;
-}
-
-.minimule-buttons {
-    -fx-spacing: 2;
 }
 
 /* Download categories: a dot of the category's tint beside its name. */

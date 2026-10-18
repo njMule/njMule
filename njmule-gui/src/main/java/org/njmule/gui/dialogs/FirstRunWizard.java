@@ -16,7 +16,9 @@
  */
 package org.njmule.gui.dialogs;
 
+import atlantafx.base.controls.ToggleSwitch;
 import atlantafx.base.theme.Styles;
+import atlantafx.base.theme.Tweaks;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -30,19 +32,19 @@ import javafx.beans.binding.Bindings;
 import javafx.beans.binding.BooleanBinding;
 import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.SimpleIntegerProperty;
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
-import javafx.scene.layout.ColumnConstraints;
-import javafx.scene.layout.GridPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -53,9 +55,12 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import javafx.util.StringConverter;
+import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.config.Preferences;
 import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
+import org.njmule.gui.ui.Ask;
+import org.njmule.gui.ui.DialogFrame;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icons;
@@ -63,12 +68,14 @@ import org.njmule.gui.ui.Input;
 import org.njmule.gui.ui.Inputs;
 import org.njmule.gui.ui.PortTestPane;
 import org.njmule.gui.ui.RateField;
+import org.njmule.gui.ui.Segments;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * The first start: the language and the look, the nick, the folders, the connection and an eMule to take over, one page
- * each. Every page starts from the current settings, so Next leaves them as they are; Skip changes nothing.
+ * each beside the list of steps. Every page starts from the current settings, so Next leaves them as they are; Skip
+ * changes nothing.
  */
 public final class FirstRunWizard {
 
@@ -95,6 +102,10 @@ public final class FirstRunWizard {
     }
 
     private static final Logger logger = LoggerFactory.getLogger(FirstRunWizard.class);
+    private static final double WIDTH = 800;
+    private static final double HEIGHT = 560;
+    private static final double STEPS_WIDTH = 220;
+    private static final double FIELD_WIDTH = 340;
 
     private final Gui gui;
     private final Window owner;
@@ -105,11 +116,12 @@ public final class FirstRunWizard {
     private final List<Page> pages = new ArrayList<>();
     private final IntegerProperty at = new SimpleIntegerProperty();
     private final StackPane shown = new StackPane();
-    private final HBox steps = new HBox(6);
+    private final VBox steps = new VBox(4);
+    private final Label stepOf = new Label();
     private final GuiSettings.Mode modeBefore;
 
     private final ComboBox<Optional<Locale>> language = new ComboBox<>();
-    private final ComboBox<GuiSettings.Mode> mode = new ComboBox<>();
+    private final Segments<GuiSettings.Mode> mode;
     private final TextField nick = new TextField();
     private final Input<String> nickInput;
     private final TextField incoming = new TextField();
@@ -119,7 +131,7 @@ public final class FirstRunWizard {
     private final TextField udp = new TextField();
     private final Input<Integer> tcpInput;
     private final Input<Integer> udpInput;
-    private final CheckBox upnp = new CheckBox();
+    private final ToggleSwitch upnp = new ToggleSwitch();
     private final PortTestPane portTest;
     private final ComboBox<Line> line = new ComboBox<>();
     private final RateField<Integer> down;
@@ -144,6 +156,9 @@ public final class FirstRunWizard {
         this.emule = emule;
         this.done = done;
         this.modeBefore = gui.themes().mode();
+        this.mode = new Segments<>(
+                List.of(GuiSettings.Mode.values()),
+                m -> gui.t("nj.mode." + m.name().toLowerCase(Locale.ROOT)));
         Inputs inputs = new Inputs(gui);
         this.nickInput = inputs.nick(this.nick, gui.t("IDS_PW_NICK"), Preferences.MAX_NICK_LENGTH);
         this.incomingInput = inputs.folder(this.incoming, gui.t("IDS_PW_INCOMING"));
@@ -161,6 +176,7 @@ public final class FirstRunWizard {
         }
         this.back = Fx.button(gui.t("nj.wizard.back"), Icons.ARROW_BACK, () -> go(-1));
         this.next = Fx.primary(Fx.button(gui.t("nj.wizard.next"), Icons.ARROW_FORWARD, this::nextOrFinish));
+        this.next.setContentDisplay(ContentDisplay.RIGHT);
         load();
         build();
     }
@@ -175,9 +191,7 @@ public final class FirstRunWizard {
         I18n.LANGUAGES.forEach(l -> this.language.getItems().add(Optional.of(l)));
         this.language.setValue(this.gui.settings().language());
         this.language.setConverter(named(l -> l.map(I18n::nameOf).orElse(this.gui.t("nj.settings.systemLanguage"))));
-        this.mode.getItems().addAll(GuiSettings.Mode.values());
         this.mode.setValue(this.modeBefore);
-        this.mode.setConverter(named(m -> this.gui.t("nj.mode." + m.name().toLowerCase(Locale.ROOT))));
         // The look shows at once, on this window too.
         this.mode
                 .valueProperty()
@@ -188,11 +202,11 @@ public final class FirstRunWizard {
                 this.preferences.effectiveIncomingDir(this.gui.directories()).toString());
         this.tcp.setText(Integer.toString(this.preferences.tcpPort()));
         this.udp.setText(Integer.toString(this.preferences.udpPort()));
-        this.upnp.setText(this.gui.t("nj.settings.upnp"));
         this.upnp.setSelected(this.preferences.upnp());
         this.down.show(this.preferences.downloadCapacityKiBps());
         this.up.show(this.preferences.uploadCapacityKiBps());
         this.line.getItems().addAll(LINES);
+        this.line.setPromptText(this.gui.t("nj.wizard.linePick"));
         this.line.setConverter(named(
                 l -> this.gui.f("nj.wizard.mbits", Integer.toString(l.downMbits()), Integer.toString(l.upMbits()))));
         this.line.valueProperty().addListener((o, was, now) -> {
@@ -216,26 +230,54 @@ public final class FirstRunWizard {
                 this.gui.themes().set(this.gui.themes().family(), this.modeBefore);
             }
         });
+        this.next.disableProperty().bind(pageValid().not());
+        this.back.visibleProperty().bind(this.at.greaterThan(0));
+        this.back.managedProperty().bind(this.back.visibleProperty());
+        this.at.addListener((o, was, now) -> showPage());
         Button skip = Fx.button(this.gui.t("nj.wizard.skip"), Icons.SKIP, this.stage::close);
         skip.getStyleClass().add(Styles.FLAT);
-        this.back.disableProperty().bind(this.at.isEqualTo(0));
-        this.next.disableProperty().bind(pageValid().not());
-        this.at.addListener((o, was, now) -> showPage());
+        skip.visibleProperty().bind(this.at.lessThan(this.pages.size() - 1));
         HBox buttons = Fx.toolRow(skip, Fx.spacer(), this.back, this.next);
-        this.steps.getStyleClass().add("wizard-steps");
+        buttons.getStyleClass().add("dialog-footer");
+        this.stepOf.getStyleClass().add("dialog-label");
         this.shown.setAlignment(Pos.TOP_LEFT);
+        this.shown.getStyleClass().add("wizard-page");
         // A page taller than the window scrolls: the buttons below always stay in view.
         ScrollPane page = new ScrollPane(this.shown);
         page.setFitToWidth(true);
         page.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        VBox root = new VBox(16, this.steps, page, buttons);
+        page.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
+        VBox main = new VBox(page, buttons);
         VBox.setVgrow(page, Priority.ALWAYS);
-        root.setPadding(new Insets(18));
+        HBox.setHgrow(main, Priority.ALWAYS);
+        HBox root = new HBox(side(), main);
         root.getStyleClass().add("wizard");
-        Scene scene = new Scene(root, 680, 600);
+        Scene scene = new Scene(root, WIDTH, HEIGHT);
         this.gui.attach(scene);
         this.stage.setScene(scene);
         showPage();
+    }
+
+    // The logo and what this is, the steps with a check on those done, and that all of it can change later.
+    private Node side() {
+        Label title = new Label(this.gui.t("nj.wizard.title"));
+        title.getStyleClass().addAll("display", "wizard-title");
+        Label duration = new Label(this.gui.t("nj.wizard.duration"));
+        duration.getStyleClass().add(Styles.TEXT_MUTED);
+        HBox brand = new HBox(10, Fx.logo(32), new VBox(title, duration));
+        brand.setAlignment(Pos.CENTER_LEFT);
+        brand.getStyleClass().add("wizard-brand");
+        Label later = new Label(this.gui.t("nj.wizard.later"));
+        later.setWrapText(true);
+        later.getStyleClass().add("dialog-hint");
+        Region gap = new Region();
+        VBox.setVgrow(gap, Priority.ALWAYS);
+        VBox side = new VBox(4, brand, this.steps, gap, later);
+        side.getStyleClass().add("wizard-side");
+        side.setMinWidth(STEPS_WIDTH);
+        side.setPrefWidth(STEPS_WIDTH);
+        side.setMaxWidth(STEPS_WIDTH);
+        return side;
     }
 
     // Next works when the fields of the page shown are right; the other pages keep theirs.
@@ -264,16 +306,36 @@ public final class FirstRunWizard {
         Page page = this.pages.get(this.at.get());
         this.steps.getChildren().clear();
         for (int i = 0; i < this.pages.size(); i++) {
-            Label step = new Label((i + 1) + "  " + stepName(this.pages.get(i)));
-            step.getStyleClass().add("wizard-step");
-            if (i == this.at.get()) {
-                step.getStyleClass().add("current");
-            }
-            this.steps.getChildren().add(step);
+            this.steps.getChildren().add(step(i));
         }
+        this.stepOf.setText(this.gui.f("nj.wizard.stepOf", this.at.get() + 1, this.pages.size()));
         this.shown.getChildren().setAll(page(page));
         boolean last = this.at.get() == this.pages.size() - 1;
         this.next.setText(this.gui.t(last ? "nj.wizard.finish" : "nj.wizard.next"));
+        this.next.setGraphic(last ? null : Fx.icon(Icons.ARROW_FORWARD));
+    }
+
+    // A step done shows a check and can be gone back to; the one shown stands out.
+    private Button step(int index) {
+        boolean doneStep = index < this.at.get();
+        Node mark = doneStep ? Fx.icon(Icons.CHECK) : new Label(Integer.toString(index + 1));
+        StackPane circle = new StackPane(mark);
+        circle.getStyleClass().add("step-mark");
+        Button step = new Button(stepName(this.pages.get(index)), circle);
+        step.getStyleClass().addAll("wizard-step", Styles.FLAT);
+        step.setMaxWidth(Double.MAX_VALUE);
+        step.setAlignment(Pos.CENTER_LEFT);
+        if (doneStep) {
+            step.getStyleClass().add("done");
+            step.setOnAction(e -> this.at.set(index));
+        } else if (index == this.at.get()) {
+            step.getStyleClass().add("current");
+        } else {
+            step.setFocusTraversable(false);
+        }
+        step.setAccessibleText(
+                this.gui.f("nj.wizard.stepOf", index + 1, this.pages.size()) + ", " + stepName(this.pages.get(index)));
+        return step;
     }
 
     private String stepName(Page page) {
@@ -292,30 +354,26 @@ public final class FirstRunWizard {
                 page(
                         this.gui.t("nj.wizard.welcome"),
                         this.gui.t("nj.wizard.intro"),
-                        grid(
-                                List.of(this.gui.t("IDS_PW_LANG"), this.gui.t("nj.settings.theme")),
-                                List.of(this.language, this.mode)),
+                        named(this.gui.t("IDS_PW_LANG"), narrow(this.language)),
+                        named(this.gui.t("nj.settings.theme"), this.mode.node()),
                         hint(this.gui.t("nj.wizard.languageHint")));
             case NICK ->
                 page(
                         stepName(page),
                         this.gui.t("nj.wizard.nickHint"),
-                        grid(List.of(this.gui.t("IDS_PW_NICK")), List.of(this.nick)));
+                        named(this.gui.t("IDS_PW_NICK"), narrow(this.nick)));
             case FOLDERS -> page(stepName(page), this.gui.t("nj.wizard.foldersHint"), folders());
             case CONNECTION -> page(stepName(page), this.gui.t("nj.wizard.portsHint"), connection());
-            case EMULE ->
-                page(
-                        stepName(page),
-                        this.gui.t("nj.wizard.emuleHint"),
-                        new Label(this.emule.map(Path::toString).orElse("")),
-                        this.importEmule);
+            case EMULE -> page(stepName(page), this.gui.t("nj.wizard.emuleHint"), emulePage());
         };
     }
 
     private VBox page(String title, String text, Node... content) {
         Label heading = new Label(title);
-        heading.getStyleClass().addAll(Styles.TITLE_3, "display");
-        VBox box = new VBox(12, heading, wrapped(text));
+        heading.getStyleClass().addAll("display", "wizard-heading");
+        heading.setWrapText(true);
+        VBox head = new VBox(4, this.stepOf, heading, hint(text));
+        VBox box = new VBox(16, head);
         box.getChildren().addAll(content);
         return box;
     }
@@ -325,58 +383,108 @@ public final class FirstRunWizard {
                 this.gui.t("IDS_PW_BROWSE"),
                 Icons.FOLDER_OPEN,
                 () -> choose().ifPresent(dir -> this.incoming.setText(dir.toString())));
+        Fx.leftToRight(this.incoming);
         HBox incomingRow = new HBox(8, this.incoming, browse);
         HBox.setHgrow(this.incoming, Priority.ALWAYS);
-        Button add = Fx.button(
-                this.gui.t("nj.shared.share"),
-                Icons.FOLDER_ADD,
-                () -> choose().filter(dir -> !this.shared.getItems().contains(dir))
-                        .ifPresent(this.shared.getItems()::add));
-        Button remove = Fx.button(
-                this.gui.t("IDS_REMOVE"),
-                Icons.DELETE,
-                () -> this.shared
-                        .getItems()
-                        .removeAll(List.copyOf(this.shared.getSelectionModel().getSelectedItems())));
-        remove.disableProperty()
-                .bind(Bindings.isEmpty(this.shared.getSelectionModel().getSelectedItems()));
-        this.shared.setPrefHeight(120);
-        VBox sharedBox = new VBox(6, this.shared, new HBox(8, add, remove));
-        return grid(
-                List.of(this.gui.t("IDS_PW_INCOMING"), this.gui.t("IDS_SHAREDFOLDERS")),
-                List.of(incomingRow, sharedBox));
+        Button add = Fx.button(this.gui.t("IDS_SHAREDIR"), Icons.FOLDER_ADD, this::addShared);
+        this.shared.setCellFactory(l -> new FolderCell());
+        this.shared.setPrefHeight(112);
+        this.shared.setPlaceholder(new Label(this.gui.t("nj.wizard.noFolders")));
+        this.shared.getStyleClass().add(Styles.DENSE);
+        HBox addRow = new HBox(add);
+        addRow.getStyleClass().add("wizard-folders-add");
+        VBox sharedBox = new VBox(this.shared, addRow);
+        sharedBox.getStyleClass().add("wizard-folders");
+        Label asks = new Label(this.gui.t("nj.wizard.asksFirst"), Fx.icon(Icons.SHIELD));
+        asks.setWrapText(true);
+        asks.getStyleClass().add("dialog-hint");
+        return new VBox(
+                16,
+                named(this.gui.t("IDS_PW_INCOMING"), incomingRow, this.gui.t("nj.wizard.incomingHint")),
+                named(this.gui.t("IDS_SHAREDFOLDERS"), sharedBox),
+                asks);
+    }
+
+    // A folder where personal or system files may be is asked about first, as in the shared files.
+    private void addShared() {
+        choose().filter(dir -> !this.shared.getItems().contains(dir))
+                .filter(dir -> !SharedDirectory.isSensitive(dir) || shareSensitive(dir))
+                .ifPresent(this.shared.getItems()::add);
+    }
+
+    private boolean shareSensitive(Path dir) {
+        return Ask.about(this.gui, this.gui.t("nj.shared.shareAllTitle"))
+                .warning()
+                .names(List.of(dir.toString()))
+                .says(this.gui.t("nj.shared.sensitiveText"))
+                .risky(this.gui.t("nj.shared.shareAll"), this.gui.t("nj.shared.chooseOther"))
+                .owner(this.stage)
+                .ask();
     }
 
     private Node connection() {
         this.tcp.setPrefColumnCount(6);
         this.udp.setPrefColumnCount(6);
-        HBox ports = new HBox(8, this.tcp, Fx.whole(new Label("UDP")), this.udp);
-        ports.setAlignment(Pos.CENTER_LEFT);
-        VBox box = new VBox(
-                12,
-                grid(
-                        List.of(
-                                this.gui.t("IDS_PW_CLIENTPORT") + " (TCP)",
-                                this.gui.t("nj.wizard.line"),
-                                this.gui.t("nj.settings.downloadCapacity"),
-                                this.gui.t("nj.settings.uploadCapacity")),
-                        List.of(ports, this.line, this.down.node(), this.up.node())),
-                this.upnp,
+        // Both capacities side by side, the page then fits without scrolling.
+        this.down.field().setPrefColumnCount(5);
+        this.up.field().setPrefColumnCount(5);
+        FlowPane capacities = new FlowPane(
+                24,
+                16,
+                named(this.gui.t("nj.settings.downloadCapacity"), this.down.node()),
+                named(this.gui.t("nj.settings.uploadCapacity"), this.up.node()));
+        HBox ports = new HBox(16, named(this.gui.t("IDS_PW_CLIENTPORT") + " (TCP)", this.tcp), named("UDP", this.udp));
+        Label upnpName = new Label(this.gui.t("nj.settings.upnp"));
+        upnpName.getStyleClass().add("wizard-switch-name");
+        upnpName.setLabelFor(this.upnp);
+        upnpName.setOnMouseClicked(e -> this.upnp.setSelected(!this.upnp.isSelected()));
+        Label upnpHint = new Label(this.gui.t("nj.wizard.upnpHint"));
+        upnpHint.setWrapText(true);
+        upnpHint.getStyleClass().add("dialog-hint");
+        VBox upnpWords = new VBox(2, upnpName, upnpHint);
+        HBox.setHgrow(upnpWords, Priority.ALWAYS);
+        HBox upnpRow = new HBox(12, this.upnp, upnpWords);
+        upnpRow.setAlignment(Pos.CENTER_LEFT);
+        return new VBox(
+                16,
+                named(this.gui.t("nj.wizard.line"), narrow(this.line)),
+                capacities,
+                ports,
+                upnpRow,
                 this.portTest.node());
+    }
+
+    // What was found, and whether to open the import once done.
+    private Node emulePage() {
+        Label where = Fx.leftToRight(new Label(this.emule.map(Path::toString).orElse("")));
+        where.setWrapText(true);
+        where.getStyleClass().add(Styles.TEXT_MUTED);
+        VBox words = new VBox(2, new Label(this.gui.t("nj.wizard.emuleFound")), where);
+        HBox found = new HBox(10, Fx.icon(Icons.CHECK_CIRCLE), words);
+        found.getStyleClass().add("wizard-found");
+        this.importEmule.getStyleClass().add("wizard-option");
+        this.importEmule.setMaxWidth(Double.MAX_VALUE);
+        return new VBox(12, found, this.importEmule, hint(this.gui.t("nj.wizard.emuleNote")));
+    }
+
+    // A field with its name above it and, if any, a hint under it.
+    private static VBox named(String name, Node field, String hint) {
+        VBox box = named(name, field);
+        Label under = new Label(hint);
+        under.setWrapText(true);
+        under.getStyleClass().add("dialog-hint");
+        box.getChildren().add(under);
         return box;
     }
 
-    private GridPane grid(List<String> names, List<? extends Node> fields) {
-        GridPane grid = new GridPane(12, 10);
-        for (int i = 0; i < names.size(); i++) {
-            Label name = Fx.whole(new Label(names.get(i)));
-            name.setLabelFor(fields.get(i));
-            grid.addRow(i, name, fields.get(i));
-        }
-        ColumnConstraints grows = new ColumnConstraints();
-        grows.setHgrow(Priority.ALWAYS);
-        grid.getColumnConstraints().addAll(new ColumnConstraints(), grows);
-        return grid;
+    private static VBox named(String name, Node field) {
+        return DialogFrame.named(name, field);
+    }
+
+    private static <T extends Region> T narrow(T field) {
+        field.setMaxWidth(FIELD_WIDTH);
+        field.setPrefWidth(FIELD_WIDTH);
+        return field;
     }
 
     private Optional<Path> choose() {
@@ -459,15 +567,10 @@ public final class FirstRunWizard {
         return now.upnp(this.upnp.isSelected()).build();
     }
 
-    private static Label wrapped(String text) {
+    private static Label hint(String text) {
         Label label = new Label(text);
         label.setWrapText(true);
         label.setMinHeight(Region.USE_PREF_SIZE);
-        return label;
-    }
-
-    private static Label hint(String text) {
-        Label label = wrapped(text);
         label.getStyleClass().add("wizard-hint");
         return label;
     }
@@ -486,6 +589,33 @@ public final class FirstRunWizard {
         };
     }
 
+    /** A shared folder with its icon and a button that takes it off the list. */
+    private final class FolderCell extends ListCell<Path> {
+
+        @Override
+        protected void updateItem(Path dir, boolean empty) {
+            super.updateItem(dir, empty);
+            if (empty || dir == null) {
+                setGraphic(null);
+                setText(null);
+                return;
+            }
+            Label path = Fx.leftToRight(new Label(dir.toString(), Fx.icon(Icons.FOLDER_OPEN)));
+            path.setMinWidth(0);
+            HBox.setHgrow(path, Priority.ALWAYS);
+            path.setMaxWidth(Double.MAX_VALUE);
+            Button remove = Fx.iconButton(
+                    FirstRunWizard.this.gui.f("nj.wizard.unshare", dir.toString()),
+                    Icons.CLOSE,
+                    () -> FirstRunWizard.this.shared.getItems().remove(dir));
+            remove.getStyleClass().addAll(Styles.FLAT, Styles.SMALL);
+            HBox row = new HBox(8, path, remove);
+            row.setAlignment(Pos.CENTER_LEFT);
+            setText(null);
+            setGraphic(row);
+        }
+    }
+
     /** The place of the page shown among the pages, for tests. */
     int shownPage() {
         return this.at.get();
@@ -493,6 +623,11 @@ public final class FirstRunWizard {
 
     int pages() {
         return this.pages.size();
+    }
+
+    /** The buttons of the steps, in order. */
+    List<Button> stepButtons() {
+        return this.steps.getChildren().stream().map(Button.class::cast).toList();
     }
 
     Button nextButton() {

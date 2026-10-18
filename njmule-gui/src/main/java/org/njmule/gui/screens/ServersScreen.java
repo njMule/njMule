@@ -37,9 +37,7 @@ import javafx.collections.ListChangeListener;
 import javafx.css.PseudoClass;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
@@ -74,6 +72,7 @@ import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
+import org.njmule.gui.ui.Ask;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
@@ -495,10 +494,18 @@ public final class ServersScreen implements Screen {
     }
 
     private void askRemoveAll() {
-        Alert confirm = this.gui.dialog(new Alert(Alert.AlertType.CONFIRMATION, this.gui.t("IDS_REMOVEALLSERVERS")));
-        ButtonType go = Fx.answers(confirm, this.gui.t("IDS_REMOVEALL"), this.gui.t("IDS_CANCEL"), true);
-        confirm.initOwner(this.view.getScene().getWindow());
-        confirm.showAndWait().filter(go::equals).ifPresent(b -> removeAll());
+        boolean yes = Ask.about(
+                        this.gui,
+                        this.gui.f(
+                                "nj.servers.removeAllTitle",
+                                this.gui.model().servers().rows().size()))
+                .says(this.gui.t("nj.servers.removeAllText"))
+                .risky(this.gui.t("IDS_REMOVEALL"), this.gui.t("nj.servers.keepAll"))
+                .owner(this.view.getScene().getWindow())
+                .ask();
+        if (yes) {
+            removeAll();
+        }
     }
 
     void removeAll() {

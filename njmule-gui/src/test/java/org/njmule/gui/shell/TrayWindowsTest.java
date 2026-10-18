@@ -107,10 +107,10 @@ class TrayWindowsTest {
         givenAStartedGui();
         givenATrayMenuThatRecordsItsActions();
         givenTheMenuShown();
-        givenTheItemPressed("IDS_PW_PA");
+        givenTheItemPressed("nj.tray.slowDown");
         givenBothLimitsBecame(1);
 
-        whenTheItemIsPressed("IDS_PW_UA");
+        whenTheItemIsPressed("nj.tray.fullSpeed");
 
         thenBothLimitsBecomeTheLineCapacities();
     }
@@ -120,7 +120,7 @@ class TrayWindowsTest {
         givenAStartedGui();
         givenATrayMenuThatRecordsItsActions();
 
-        whenTheItemsArePressedInTurn("IDS_EM_PREFS", "IDS_MAIN_POPUP_RESTORE", "IDS_EXIT");
+        whenTheItemsArePressedInTurn("IDS_EM_PREFS", "nj.tray.show", "nj.exit.quit");
 
         thenTheActionsCalledAre("options", "restore", "exit");
         thenTheMenuIsShowing(false, "an item closes the menu");
@@ -150,7 +150,7 @@ class TrayWindowsTest {
         whenTheStatusWindowIsShownAsPictured("minimule");
 
         thenTheStatusShowsValues(5);
-        thenTheFirstValueReadsTheText("IDS_NO", "not connected");
+        thenTheFirstValueReadsTheText("IDS_NOTCONNECTED", "not connected");
         thenTheValueReads(3, "0");
         thenTheLastValueIsKnown("the free space of the incoming folder");
     }
@@ -177,6 +177,17 @@ class TrayWindowsTest {
         whenTheItemIsPressed("IDS_MAIN_BTN_DISCONNECT");
 
         thenTheCommandsSentAre("connect", "disconnect");
+    }
+
+    @Test
+    void shouldShowOnlyTheConnectionItemThatApplies() throws Exception {
+        givenAGuiRecordingItsCommandsAndPreferenceWrites();
+        givenATrayMenu();
+
+        whenTheMenuIsShown();
+
+        thenTheItemShows("IDS_MAIN_BTN_CONNECT", true);
+        thenTheItemShows("IDS_MAIN_BTN_DISCONNECT", false);
     }
 
     @Test
@@ -214,7 +225,7 @@ class TrayWindowsTest {
         whenTheStatusWindowIsShown();
 
         thenTheStatusWindowIsShowing(true);
-        thenTheFirstValueReadsTheText("IDS_YES", "connected to Kad");
+        thenTheFirstValueReadsTheText("IDS_CONNECTED", "connected to Kad");
         thenTheLastValueIsKnown("the free space of the disk it will be on");
     }
 
@@ -320,6 +331,13 @@ class TrayWindowsTest {
     private void givenTheMenuShownAndHidden() throws Exception {
         FxTesting.onFx(() -> this.menu.show(600, 500));
         FxTesting.onFx(this.menu::hide);
+    }
+
+    private void thenTheItemShows(String item, boolean shows) throws Exception {
+        assertThat(FxTesting.onFx(
+                        () -> item(this.menu.scene(), this.gui.t(item)).isVisible()))
+                .as(item)
+                .isEqualTo(shows);
     }
 
     private void givenTheMenuShownWithTheItemOff(String item, String why) throws Exception {

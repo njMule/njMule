@@ -20,17 +20,18 @@ import atlantafx.base.theme.Styles;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.IntStream;
-import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
-import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
@@ -39,6 +40,7 @@ import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadNote;
 import org.njmule.core.api.PeerComment;
+import org.njmule.gui.ui.DialogFrame;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icons;
@@ -88,20 +90,23 @@ public final class CommentDialog {
                 this.text.setText(now.substring(0, FileComment.MAX_LENGTH));
             }
         });
-        GridPane form = new GridPane();
-        form.setHgap(10);
-        form.setVgap(6);
-        // The names keep their whole width: the fields give way.
-        form.addRow(0, Fx.whole(new Label(gui.t("IDS_CMT_RATEQUEST"))), this.rating);
-        form.addRow(1, Fx.whole(new Label(gui.t("IDS_CMT_READ"))), this.text);
-        VBox root = new VBox(10, form);
+        Label fileName = Fx.ownDirection(new Label(name, Fx.icon(Icons.FILE)));
+        fileName.getStyleClass().add(Styles.TEXT_MUTED);
+        this.text.setMaxWidth(Double.MAX_VALUE);
+        VBox root = new VBox(
+                12,
+                fileName,
+                DialogFrame.named(gui.t("IDS_CMT_RATEQUEST"), this.rating),
+                DialogFrame.named(gui.t("IDS_CMT_READ"), this.text));
         this.heard.setPlaceholder(new Label(gui.t("IDS_CMT_NONE")));
         this.heard.setCellFactory(l -> new HeardCell());
         Label title = new Label(gui.t("IDS_CMT_READALL"));
-        title.getStyleClass().add("settings-section");
+        title.getStyleClass().add("card-heading");
         this.searchKad = Fx.button(gui.t("IDS_SEARCHKAD"), Icons.SEARCH, this::searchKad);
+        this.searchKad.getStyleClass().add(Styles.FLAT);
         this.kadState.getStyleClass().add(Styles.TEXT_MUTED);
-        root.getChildren().addAll(title, this.heard, Fx.toolRow(this.searchKad, this.kadState));
+        HBox heardHead = Fx.toolRow(title, Fx.spacer(), this.kadState, this.searchKad);
+        root.getChildren().addAll(heardHead, this.heard);
         VBox.setVgrow(this.heard, Priority.ALWAYS);
         if (download) {
             gui.model().peerComments(file, found -> {
@@ -110,13 +115,18 @@ public final class CommentDialog {
             });
         }
         gui.model().kadNotes(file, this::kadNotes);
-        root.getChildren()
-                .add(Fx.toolRow(
-                        Fx.primary(Fx.button(gui.t("nj.categories.save"), Icons.SAVE, this::save)),
-                        Fx.spacer(),
-                        Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close)));
-        root.setPadding(new Insets(14));
-        Scene scene = new Scene(root, 620, 440);
+        Button close = Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close);
+        close.setCancelButton(true);
+        VBox frame = DialogFrame.frame(
+                DialogFrame.header(gui, gui.t("nj.comments.title"), this.stage::close),
+                root,
+                DialogFrame.footer(
+                        new Region(),
+                        DialogFrame.role(close, ButtonBar.ButtonData.CANCEL_CLOSE),
+                        DialogFrame.role(
+                                Fx.primary(Fx.button(gui.t("nj.categories.save"), Icons.SAVE, this::save)),
+                                ButtonBar.ButtonData.OK_DONE)));
+        Scene scene = new Scene(frame, 620, 520);
         gui.attach(scene);
         this.stage.setScene(scene);
         // The stored comment may come after the user began to type: what the user changed stays.

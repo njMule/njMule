@@ -47,6 +47,16 @@ class AnswersTest {
     }
 
     @Test
+    void shouldRingTheSafeAnswerOfARiskyQuestionAndOutlineTheRiskyOne() throws Exception {
+        givenAQuestion();
+
+        whenItIsAnswered("Remove all", "Keep the servers", true);
+
+        thenTheButtonHasTheStyles("Keep the servers", "safe");
+        thenTheButtonHasTheStyles("Remove all", Styles.DANGER, Styles.BUTTON_OUTLINED);
+    }
+
+    @Test
     void shouldMakeASafeAnswerTheDefaultAndMarkNothing() throws Exception {
         givenAQuestion();
         whenItIsAnswered("Share", "Cancel", false);
@@ -83,6 +93,15 @@ class AnswersTest {
                         .map(Button::getText)
                         .toList()))
                 .containsExactly(text);
+    }
+
+    private void thenTheButtonHasTheStyles(String text, String... styles) throws Exception {
+        assertThat(FxTesting.onFx(() -> buttons().stream()
+                        .filter(b -> b.getText().equals(text))
+                        .findFirst()
+                        .orElseThrow()
+                        .getStyleClass()))
+                .contains(styles);
     }
 
     private void thenNoButtonIsMarkedAsDangerous() throws Exception {

@@ -808,14 +808,14 @@ public final class MainWindow {
         if (this.limitsPopover == null) {
             this.limits = new SpeedLimits(this.gui);
             Button full = Fx.button(
-                    this.gui.t("IDS_PW_UA"),
+                    this.gui.t("nj.tray.fullSpeed"),
                     Icons.SPEED,
                     () -> this.limits.set(p -> p.downloadCapacityKiBps(), p -> p.uploadCapacityKiBps()));
-            Button slow = Fx.button(this.gui.t("IDS_PW_PA"), Icons.SLOW, () -> this.limits.set(p -> 1, p -> 1));
+            Button slow = Fx.button(this.gui.t("nj.tray.slowDown"), Icons.SLOW, () -> this.limits.set(p -> 1, p -> 1));
             VBox box = new VBox(10, this.limits.view(), new HBox(8, full, slow));
             box.getStyleClass().add("limits-popover");
             this.limitsPopover = new Popover(box);
-            this.limitsPopover.setTitle(this.gui.t("nj.tray.speed"));
+            this.limitsPopover.setTitle(this.gui.t("nj.tray.limits"));
             this.limitsPopover.setHeaderAlwaysVisible(true);
         }
         this.limitsPopover.setArrowLocation(arrow);

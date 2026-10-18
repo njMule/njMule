@@ -17,6 +17,7 @@
 package org.njmule.gui;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import atlantafx.base.controls.Notification;
 import java.net.ServerSocket;
@@ -28,13 +29,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
@@ -71,6 +74,7 @@ class DesktopAppFlowsTest {
     private boolean delivered;
     private boolean mayExit;
     private final List<Double> buttonWidths = new ArrayList<>();
+    private double wordsWidth;
     private TrayMenu menu;
     private final List<Stage> trayOwners = new ArrayList<>();
     private final AtomicBoolean minimised = new AtomicBoolean();
@@ -137,13 +141,13 @@ class DesktopAppFlowsTest {
     }
 
     @Test
-    void shouldAskToExitWithButtonsNarrowerThanThePlatformsOwn() throws Exception {
+    void shouldAskToExitWithButtonsAsWideAsTheirWords() throws Exception {
         givenAnAppWithoutLinks();
         givenTheWindowShowed();
 
         whenTheUserRefusesToExitLookingAtTheButtons();
 
-        thenTheButtonsAreAsWideAsEachOtherAndNarrowerThan(75);
+        thenTheButtonsAreAsWideAsEachOtherAndAsTheLongerWords();
     }
 
     @Test
@@ -190,7 +194,7 @@ class DesktopAppFlowsTest {
         givenTheTrayMenu();
         givenTheTrayItemPressed("Options");
         givenTheCurrentScreenIs("settings");
-        givenTheTrayItemPressed("Restore");
+        givenTheTrayItemPressed("Show njMule");
         givenTheUserRefusedToExitFromTheTray();
         givenTheEngineRuns();
         givenTheWindowStillShows();
@@ -299,7 +303,7 @@ class DesktopAppFlowsTest {
 
     private void givenTheUserRefusedToExit() throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.NO);
+            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE);
             assertThat(this.app.mayExit(this.stage)).isFalse();
         });
     }
@@ -307,7 +311,7 @@ class DesktopAppFlowsTest {
     // The window's close button asks too.
     private void givenTheUserRefusedToCloseTheWindow() throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.NO);
+            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE);
             this.stage.fireEvent(new WindowEvent(this.stage, WindowEvent.WINDOW_CLOSE_REQUEST));
         });
     }
@@ -318,7 +322,8 @@ class DesktopAppFlowsTest {
 
     private void givenTheUserExitedSayingNotToAskAgain() throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.YES, pane -> ((CheckBox) pane.lookup(".check-box")).setSelected(true));
+            FxTesting.answer(
+                    ButtonBar.ButtonData.OK_DONE, pane -> ((CheckBox) pane.lookup(".check-box")).setSelected(true));
             assertThat(this.app.mayExit(this.stage)).isTrue();
         });
     }
@@ -362,8 +367,8 @@ class DesktopAppFlowsTest {
 
     private void givenTheUserRefusedToExitFromTheTray() throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.NO);
-            pressNow(this.menu, "Exit");
+            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE);
+            pressNow(this.menu, "Quit njMule");
         });
     }
 
@@ -394,7 +399,11 @@ class DesktopAppFlowsTest {
     }
 
     private void givenTheUserWillSayYes() {
-        FxTesting.answerLater(ButtonType.YES, pane -> this.asked.set(pane.getContentText()));
+        FxTesting.answerLater(
+                ButtonBar.ButtonData.OK_DONE,
+                pane -> this.asked.set(pane.lookupAll(".dialog-names .label").stream()
+                        .map(n -> ((Label) n).getText())
+                        .collect(Collectors.joining("\n"))));
     }
 
     private void givenAMenuOfTheWindowShows() throws Exception {
@@ -417,10 +426,14 @@ class DesktopAppFlowsTest {
 
     private void whenTheUserRefusesToExitLookingAtTheButtons() throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.NO, pane -> {
+            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE, pane -> {
                 pane.applyCss();
                 pane.layout();
-                pane.getButtonTypes().forEach(t -> this.buttonWidths.add(((Button) pane.lookupButton(t)).getWidth()));
+                pane.getButtonTypes().forEach(t -> {
+                    Button button = (Button) pane.lookupButton(t);
+                    this.buttonWidths.add(button.getWidth());
+                    this.wordsWidth = Math.max(this.wordsWidth, button.prefWidth(-1));
+                });
             });
             this.mayExit = this.app.mayExit(this.stage);
         });
@@ -481,12 +494,12 @@ class DesktopAppFlowsTest {
         assertThat(FxTesting.onFx(this.stage::isShowing)).isTrue();
     }
 
-    // Windows' narrowest dialog button is 75 wide, Linux's 85.
-    private void thenTheButtonsAreAsWideAsEachOtherAndNarrowerThan(double platformWidth) {
+    // Not stretched to the platform's narrowest dialog button (75 wide on Windows, 85 on Linux).
+    private void thenTheButtonsAreAsWideAsEachOtherAndAsTheLongerWords() {
         assertThat(this.mayExit).as("refused").isFalse();
         assertThat(this.buttonWidths).hasSize(2);
         assertThat(this.buttonWidths.get(0)).isPositive().isEqualTo(this.buttonWidths.get(1));
-        assertThat(this.buttonWidths.get(0)).isLessThan(platformWidth);
+        assertThat(this.buttonWidths.get(0)).isCloseTo(this.wordsWidth, within(1.0));
     }
 
     private void thenTheAppMayExitWithoutAsking() {

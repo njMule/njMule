@@ -16,13 +16,15 @@
  */
 package org.njmule.gui.dialogs;
 
+import atlantafx.base.theme.Styles;
 import java.util.List;
-import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
@@ -31,6 +33,7 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.gui.model.LiveList;
+import org.njmule.gui.ui.DialogFrame;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icons;
@@ -63,14 +66,19 @@ public final class ClientFilesDialog {
         Button download = Fx.primary(Fx.button(gui.t("IDS_DOWNLOAD"), Icons.DOWNLOAD, this::download));
         download.disableProperty()
                 .bind(this.table.getSelectionModel().selectedItemProperty().isNull());
-        VBox root = new VBox(
-                10,
-                this.state,
-                this.table,
-                Fx.toolRow(download, Fx.spacer(), Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close)));
+        this.state.getStyleClass().add(Styles.TEXT_MUTED);
+        Button close = Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close);
+        close.setCancelButton(true);
+        VBox body = new VBox(10, this.state, this.table);
         VBox.setVgrow(this.table, Priority.ALWAYS);
-        root.setPadding(new Insets(14));
-        Scene scene = new Scene(root, 680, 420);
+        VBox root = DialogFrame.frame(
+                DialogFrame.header(gui, this.stage.getTitle(), this.stage::close),
+                body,
+                DialogFrame.footer(
+                        new Region(),
+                        DialogFrame.role(close, ButtonBar.ButtonData.CANCEL_CLOSE),
+                        DialogFrame.role(download, ButtonBar.ButtonData.OK_DONE)));
+        Scene scene = new Scene(root, 680, 460);
         gui.attach(scene);
         this.stage.setScene(scene);
     }
@@ -99,5 +107,9 @@ public final class ClientFilesDialog {
 
     Stage stage() {
         return this.stage;
+    }
+
+    Label stateLabel() {
+        return this.state;
     }
 }

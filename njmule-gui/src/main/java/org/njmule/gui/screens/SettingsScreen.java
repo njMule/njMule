@@ -49,11 +49,9 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBase;
-import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Control;
-import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.PasswordField;
@@ -84,6 +82,7 @@ import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.GuiSettings;
 import org.njmule.gui.infra.Themes;
 import org.njmule.gui.shell.NotificationArea;
+import org.njmule.gui.ui.Ask;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
@@ -2122,15 +2121,15 @@ public final class SettingsScreen implements Screen {
             text.setPrefRowCount(8);
             text.setPrefColumnCount(50);
             text.setPromptText("https://…/server.met");
-            Dialog<ButtonType> dialog = this.gui.dialog(new Dialog<>());
-            dialog.setTitle(this.gui.t("IDS_PW_USS"));
-            dialog.setHeaderText(this.gui.t("nj.settings.serverListAddresses"));
-            dialog.getDialogPane().setContent(text);
-            dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
-            dialog.initOwner(this.view.getScene().getWindow());
-            dialog.showAndWait()
-                    .filter(b -> b == ButtonType.OK)
-                    .ifPresent(b -> this.gui.model().setServerListAddresses(addresses(text.getText())));
+            boolean yes = Ask.about(this.gui, this.gui.t("nj.settings.addressesTitle"))
+                    .says(this.gui.t("nj.settings.serverListAddresses"))
+                    .with(text)
+                    .answers(this.gui.t("IDS_SAVE"), this.gui.t("IDS_CANCEL"))
+                    .owner(this.view.getScene().getWindow())
+                    .ask();
+            if (yes) {
+                this.gui.model().setServerListAddresses(addresses(text.getText()));
+            }
         });
     }
 

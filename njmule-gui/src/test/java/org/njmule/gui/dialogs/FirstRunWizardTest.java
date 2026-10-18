@@ -99,6 +99,25 @@ class FirstRunWizardTest {
     }
 
     @Test
+    void shouldMarkTheStepsDoneAndTheOneShown() throws Exception {
+        givenTheWizard();
+
+        whenNextIsPressed(2);
+
+        thenTheStepsAre("done", "done", "current", "");
+    }
+
+    @Test
+    void shouldGoBackToAStepDoneFromTheListOfSteps() throws Exception {
+        givenTheWizard();
+        givenNextPressed(2);
+
+        whenTheStepIsChosen(0);
+
+        thenThePageShownIs(0);
+    }
+
+    @Test
     void shouldChangeNothingWhenSkipped() throws Exception {
         givenTheWizard();
         givenTheNick("Tester");
@@ -189,6 +208,24 @@ class FirstRunWizardTest {
 
     private void whenNextIsPressed(int times) throws Exception {
         pressNext(times);
+    }
+
+    private void whenTheStepIsChosen(int step) throws Exception {
+        FxTesting.onFx(() -> this.wizard.stepButtons().get(step).fire());
+    }
+
+    // Each step as "done", "current" or nothing.
+    private void thenTheStepsAre(String... states) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.wizard.stepButtons().stream()
+                        .map(b -> b.getStyleClass().contains("done")
+                                ? "done"
+                                : b.getStyleClass().contains("current") ? "current" : "")
+                        .toList()))
+                .containsExactly(states);
+    }
+
+    private void thenThePageShownIs(int page) throws Exception {
+        assertThat(FxTesting.onFx(this.wizard::shownPage)).isEqualTo(page);
     }
 
     private void whenTheWindowIsClosed() throws Exception {

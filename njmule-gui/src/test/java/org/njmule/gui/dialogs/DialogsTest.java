@@ -21,10 +21,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportReport;
+import org.njmule.core.api.NjMuleInfo;
 import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
@@ -51,6 +54,7 @@ class DialogsTest {
     private ImportDialog importDialog;
     private CommentDialog comment;
     private AboutDialog about;
+    private String versions;
     private final CompletableFuture<Optional<FileComment>> stored = new CompletableFuture<>();
     private Path folder;
     private Optional<Path> guess;
@@ -95,6 +99,34 @@ class DialogsTest {
         whenAFolderThatDoesNotExistIsChecked();
 
         thenTheUserWasToldSomethingStartingWith("Not a folder");
+    }
+
+    @Test
+    void shouldMakeCheckTheMainActionBeforeACheck() throws Exception {
+        givenTheGui();
+        givenAnEmuleConfigFolderWith("preferences.ini", "[eMule]\r\nNick=FromEmule\r\n");
+
+        whenTheImportDialogShows();
+
+        thenTheMainActionIs("Check");
+    }
+
+    @Test
+    void shouldMakeImportTheMainActionOnceChecked() throws Exception {
+        givenTheGui();
+        givenAnEmuleConfigFolderWith("preferences.ini", "[eMule]\r\nNick=FromEmule\r\n");
+        givenTheImportDialogShown();
+
+        whenTheFolderIsChecked();
+
+        thenTheMainActionIs("Import");
+    }
+
+    @Test
+    void shouldNameTheVersionsAReportOfAProblemNeeds() {
+        whenTheVersionDetailsAreCopied();
+
+        thenTheyName(NjMuleInfo.version(), System.getProperty("java.version"), System.getProperty("os.name"));
     }
 
     @Test
@@ -218,6 +250,31 @@ class DialogsTest {
             this.importDialog.show();
             this.stage = this.importDialog.stage();
         });
+    }
+
+    private void whenTheImportDialogShows() throws Exception {
+        givenTheImportDialogShown();
+    }
+
+    private void whenTheVersionDetailsAreCopied() {
+        this.versions = AboutDialog.versions();
+    }
+
+    // The main action is filled with the accent and answers Enter.
+    private void thenTheMainActionIs(String text) throws Exception {
+        FxTesting.assertEventually(
+                "the main action " + text, () -> mainActions().equals(List.of(text)));
+    }
+
+    private void thenTheyName(String... parts) {
+        assertThat(this.versions).contains(parts);
+    }
+
+    private List<String> mainActions() {
+        return Stream.of(this.importDialog.checkButton(), this.importDialog.importButton())
+                .filter(b -> b.getStyleClass().contains("accent") && b.isDefaultButton())
+                .map(b -> b.getText())
+                .toList();
     }
 
     private void givenTheFolderChecked() throws Exception {

@@ -24,6 +24,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Slider;
 import javafx.scene.layout.GridPane;
 import org.njmule.core.config.Preferences;
+import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icon;
 import org.njmule.gui.ui.Icons;
@@ -154,7 +155,7 @@ final class SpeedLimits {
                 apply(change, kib);
             }
         });
-        this.grid.addRow(row, arrow, new Label(name), slider, text);
+        this.grid.addRow(row, arrow, Fx.whole(new Label(name)), slider, Fx.whole(text));
     }
 
     private String limitText(int kib) {

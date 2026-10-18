@@ -16,24 +16,23 @@
  */
 package org.njmule.gui.dialogs;
 
+import atlantafx.base.theme.Styles;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
-import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
-import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Modality;
@@ -41,6 +40,7 @@ import javafx.stage.Stage;
 import javafx.stage.Window;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadPriority;
+import org.njmule.gui.ui.DialogFrame;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icons;
@@ -113,23 +113,23 @@ public final class CategoriesDialog {
         this.list.setPrefWidth(200);
         this.list.setMinWidth(180);
 
-        GridPane form = new GridPane();
-        form.setHgap(10);
-        form.setVgap(8);
-        int row = 0;
-        // The names keep their whole width; the long one wraps rather than being cut.
-        form.addRow(row++, Fx.whole(new Label(gui.t("IDS_TITLE"))), this.name);
-        form.addRow(row++, Fx.whole(new Label(gui.t("IDS_PW_INCOMING"))), new HBox(6, this.incoming, browse()));
-        form.addRow(row++, Fx.whole(new Label(gui.t("IDS_COMMENT"))), this.comment);
-        form.addRow(row++, Fx.whole(new Label(gui.t("IDS_COLOR"))), this.color);
-        form.addRow(row++, Fx.whole(new Label(gui.t("IDS_PRIORITY"))), this.priority);
-        Label patternsName = new Label(gui.t("IDS_AUTOCAT_LABEL"));
-        patternsName.setWrapText(true);
-        patternsName.setMaxWidth(220);
-        patternsName.setMinHeight(Region.USE_PREF_SIZE);
-        form.addRow(row++, patternsName, this.patterns);
-        form.add(this.regex, 1, row);
+        // The names stand above their fields: the long ones wrap rather than being cut.
+        HBox incomingRow = new HBox(6, this.incoming, browse());
         HBox.setHgrow(this.incoming, Priority.ALWAYS);
+        this.color.setMaxWidth(Double.MAX_VALUE);
+        this.priority.setMaxWidth(Double.MAX_VALUE);
+        VBox colorBox = DialogFrame.named(gui.t("IDS_COLOR"), this.color);
+        VBox priorityBox = DialogFrame.named(gui.t("IDS_PRIORITY"), this.priority);
+        HBox.setHgrow(colorBox, Priority.ALWAYS);
+        HBox.setHgrow(priorityBox, Priority.ALWAYS);
+        VBox form = new VBox(
+                12,
+                DialogFrame.named(gui.t("IDS_TITLE"), this.name),
+                DialogFrame.named(gui.t("IDS_PW_INCOMING"), incomingRow),
+                DialogFrame.named(gui.t("IDS_COMMENT"), this.comment),
+                new HBox(12, colorBox, priorityBox),
+                DialogFrame.named(gui.t("IDS_AUTOCAT_LABEL"), this.patterns),
+                this.regex);
         this.name.setPrefColumnCount(24);
 
         Button save = Fx.primary(Fx.button(gui.t("nj.categories.save"), Icons.SAVE, this::save));
@@ -137,20 +137,26 @@ public final class CategoriesDialog {
                 .bind(Input.allValid(List.of(this.nameInput, this.incomingInput, this.commentInput, this.patternsInput))
                         .not());
         Button remove = Fx.button(gui.t("IDS_CAT_REMOVE"), Icons.DELETE, this::remove);
+        remove.getStyleClass().addAll(Styles.DANGER, Styles.BUTTON_OUTLINED);
         remove.disableProperty()
                 .bind(this.list.getSelectionModel().selectedItemProperty().isNull());
-        var tools = Fx.toolRow(
-                Fx.button(gui.t("IDS_NEW"), Icons.ADD, this::fresh),
-                save,
-                remove,
-                Fx.spacer(),
-                Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close));
-        HBox body = new HBox(14, this.list, form);
+        Button fresh = Fx.button(gui.t("IDS_NEW"), Icons.ADD, this::fresh);
+        fresh.getStyleClass().add(Styles.FLAT);
+        VBox listBox = new VBox(6, this.list, fresh);
+        VBox.setVgrow(this.list, Priority.ALWAYS);
+        Button close = Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close);
+        close.setCancelButton(true);
+        HBox body = new HBox(16, listBox, form);
         HBox.setHgrow(form, Priority.ALWAYS);
-        VBox root = new VBox(12, body, tools);
-        VBox.setVgrow(body, Priority.ALWAYS);
-        root.setPadding(new Insets(14));
-        Scene scene = new Scene(root, 760, 380);
+        HBox removeBox = new HBox(remove);
+        VBox root = DialogFrame.frame(
+                DialogFrame.header(gui, gui.t("nj.categories.title"), this.stage::close),
+                body,
+                DialogFrame.footer(
+                        removeBox,
+                        DialogFrame.role(close, ButtonBar.ButtonData.CANCEL_CLOSE),
+                        DialogFrame.role(save, ButtonBar.ButtonData.OK_DONE)));
+        Scene scene = new Scene(root, 760, 520);
         gui.attach(scene);
         this.stage.setScene(scene);
         fresh();

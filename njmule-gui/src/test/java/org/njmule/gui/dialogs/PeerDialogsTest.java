@@ -28,7 +28,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.control.Button;
-import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TableView;
 import javafx.stage.Stage;
@@ -211,12 +210,7 @@ class PeerDialogsTest {
             this.comment.show();
             this.stages.add(this.comment.stage());
         });
-        // The list of the dialog, not the one of the rating box.
-        this.heard = FxTesting.onFx(() -> this.comment.stage().getScene().getRoot().getChildrenUnmodifiable().stream()
-                .filter(ListView.class::isInstance)
-                .map(ListView.class::cast)
-                .findFirst()
-                .orElseThrow());
+        this.heard = FxTesting.onFx(() -> this.comment.heardList());
     }
 
     private void givenTheCommentsHeardShow(String... lines) throws Exception {
@@ -293,12 +287,7 @@ class PeerDialogsTest {
 
     // The line above the list.
     private String state(ClientFilesDialog dialog) {
-        return ((Label) dialog.stage()
-                        .getScene()
-                        .getRoot()
-                        .getChildrenUnmodifiable()
-                        .getFirst())
-                .getText();
+        return dialog.stateLabel().getText();
     }
 
     private Button button(ClientFilesDialog dialog, String text) {

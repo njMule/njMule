@@ -16,6 +16,7 @@
  */
 package org.njmule.gui.dialogs;
 
+import atlantafx.base.theme.Styles;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -26,16 +27,20 @@ import java.util.Locale;
 import java.util.Optional;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.beans.property.SimpleBooleanProperty;
-import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -46,6 +51,7 @@ import javafx.stage.Stage;
 import javafx.stage.Window;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
+import org.njmule.gui.ui.DialogFrame;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icons;
@@ -91,15 +97,17 @@ public final class ImportDialog {
 
         TableColumn<ImportReport.Item, String> file = new TableColumn<>(gui.t("IDS_DL_FILENAME"));
         file.setCellValueFactory(c -> new ReadOnlyStringWrapper(c.getValue().file()));
-        file.setPrefWidth(170);
-        TableColumn<ImportReport.Item, String> outcome = new TableColumn<>(gui.t("nj.import.outcome"));
-        outcome.setCellValueFactory(
-                c -> new ReadOnlyStringWrapper(outcome(c.getValue().outcome())));
-        outcome.setPrefWidth(130);
+        file.setPrefWidth(150);
         TableColumn<ImportReport.Item, String> detail = new TableColumn<>(gui.t("nj.import.detail"));
         detail.setCellValueFactory(c -> new ReadOnlyStringWrapper(c.getValue().detail()));
-        detail.setPrefWidth(420);
-        this.report.getColumns().addAll(List.of(Fx.leftToRight(file), outcome, Fx.leftToRight(detail)));
+        detail.setPrefWidth(400);
+        TableColumn<ImportReport.Item, ImportReport.Outcome> outcome = new TableColumn<>(gui.t("nj.import.outcome"));
+        outcome.setCellValueFactory(
+                c -> new ReadOnlyObjectWrapper<>(c.getValue().outcome()));
+        outcome.setCellFactory(c -> new OutcomeCell());
+        outcome.setPrefWidth(170);
+        this.report.getColumns().addAll(List.of(Fx.leftToRight(file), Fx.leftToRight(detail), outcome));
+        this.report.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         this.report.setPlaceholder(new Label(gui.t("nj.import.empty")));
         this.report.getStyleClass().add("import-report");
 
@@ -107,29 +115,61 @@ public final class ImportDialog {
         // Read whole: the report below gives way.
         intro.setMinHeight(Region.USE_PREF_SIZE);
         intro.setWrapText(true);
-        HBox dir = new HBox(
-                8,
-                Fx.whole(new Label(gui.t("nj.import.directory"))),
-                this.directory,
-                Fx.button(gui.t("IDS_PW_BROWSE"), Icons.FOLDER_OPEN, this::browse));
+        intro.getStyleClass().add(Styles.TEXT_MUTED);
+        Label dirName = new Label(gui.t("nj.import.directory"));
+        dirName.getStyleClass().add("dialog-label");
+        dirName.setLabelFor(this.directory);
+        Fx.leftToRight(this.directory);
+        HBox dirRow = new HBox(8, this.directory, Fx.button(gui.t("IDS_PW_BROWSE"), Icons.FOLDER_OPEN, this::browse));
         HBox.setHgrow(this.directory, Priority.ALWAYS);
-        HBox buttons = Fx.toolRow(
-                this.check,
-                this.take,
-                Fx.spacer(),
-                this.summary,
-                Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close));
-        // One option a line, each wrapping: their texts are long in every language.
+        // One option a card, each wrapping: their texts are long in every language.
+        GridPane options = new GridPane(8, 8);
         for (var option : List.of(this.identity, this.downloads)) {
             option.setWrapText(true);
             option.setMinHeight(Region.USE_PREF_SIZE);
+            option.setMaxWidth(Double.MAX_VALUE);
+            option.setMaxHeight(Double.MAX_VALUE);
+            option.getStyleClass().add("import-option");
+            ColumnConstraints half = new ColumnConstraints();
+            half.setPercentWidth(50);
+            options.getColumnConstraints().add(half);
+            options.add(option, options.getChildren().size(), 0);
         }
-        VBox root = new VBox(10, intro, dir, new VBox(6, this.identity, this.downloads), this.report, buttons);
+        Label happens = new Label(gui.t("nj.import.whatHappens"));
+        happens.getStyleClass().add("card-heading");
+        this.summary.getStyleClass().add(Styles.TEXT_MUTED);
+        this.summary.setWrapText(true);
+        this.summary.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(this.summary, Priority.ALWAYS);
+        Button close = Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close);
+        close.setCancelButton(true);
+        // Its words change once checked: a width shared with the others would be measured on the first ones.
+        ButtonBar.setButtonUniformSize(this.check, false);
+        VBox body = new VBox(12, intro, new VBox(6, dirName, dirRow), options, happens, this.report);
         VBox.setVgrow(this.report, Priority.ALWAYS);
-        root.setPadding(new Insets(14));
-        Scene scene = new Scene(root, 820, 520);
+        VBox root = DialogFrame.frame(
+                DialogFrame.header(gui, gui.t("nj.import.heading"), this.stage::close),
+                body,
+                DialogFrame.footer(
+                        this.summary,
+                        DialogFrame.role(close, ButtonBar.ButtonData.CANCEL_CLOSE),
+                        DialogFrame.role(this.check, ButtonBar.ButtonData.OTHER),
+                        DialogFrame.role(this.take, ButtonBar.ButtonData.OK_DONE)));
+        Scene scene = new Scene(root, 800, 580);
         gui.attach(scene);
         this.stage.setScene(scene);
+        showChecked(false);
+    }
+
+    // Before a check, Check is the main action; once it has shown what would happen, Import is.
+    private void showChecked(boolean checked) {
+        this.check.setText(this.gui.t(checked ? "nj.import.checkAgain" : "nj.import.check"));
+        this.check.setGraphic(Fx.icon(checked ? Icons.REFRESH : Icons.SEARCH));
+        this.check.getStyleClass().remove("accent");
+        this.take.getStyleClass().remove("accent");
+        (checked ? this.take : this.check).getStyleClass().add("accent");
+        (checked ? this.take : this.check).setDefaultButton(true);
+        (checked ? this.check : this.take).setDefaultButton(false);
     }
 
     public void show() {
@@ -199,6 +239,12 @@ public final class ImportDialog {
                                     failed));
                             this.working.set(false);
                             this.take.setDisable(!dryRun);
+                            showChecked(true);
+                            if (!dryRun) {
+                                // Taken: nothing is left to do here but to close.
+                                this.take.getStyleClass().remove("accent");
+                                this.take.setDefaultButton(false);
+                            }
                             if (!dryRun && result.startAtLogin()) {
                                 startAtLogin();
                             }
@@ -232,6 +278,27 @@ public final class ImportDialog {
         return this.gui.t("nj.import.outcome." + outcome.name().toLowerCase(Locale.ROOT));
     }
 
+    /** What happens to a file, as a chip: taken in the success tone, left out neutral, unreadable in danger. */
+    private final class OutcomeCell extends TableCell<ImportReport.Item, ImportReport.Outcome> {
+
+        private final Label chip = Fx.chip("", Icons.CHECK_CIRCLE, "neutral");
+
+        @Override
+        protected void updateItem(ImportReport.Outcome item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setGraphic(null);
+                return;
+            }
+            switch (item) {
+                case IMPORTED, WOULD_IMPORT -> Fx.chip(this.chip, outcome(item), Icons.CHECK_CIRCLE, "success");
+                case SKIPPED, MISSING -> Fx.chip(this.chip, outcome(item), Icons.REMOVE_CIRCLE, "neutral");
+                case FAILED -> Fx.chip(this.chip, outcome(item), Icons.ERROR, "danger");
+            }
+            setGraphic(this.chip);
+        }
+    }
+
     TextField directoryField() {
         return this.directory;
     }
@@ -242,6 +309,10 @@ public final class ImportDialog {
 
     Button checkButton() {
         return this.check;
+    }
+
+    Button importButton() {
+        return this.take;
     }
 
     Label summaryLabel() {

@@ -17,18 +17,22 @@
 package org.njmule.gui.dialogs;
 
 import atlantafx.base.theme.Styles;
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.Label;
-import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.gui.ui.DialogFrame;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icons;
@@ -43,13 +47,7 @@ public final class AboutDialog {
         this.stage.initModality(Modality.WINDOW_MODAL);
         this.stage.setTitle(gui.t("nj.about.title"));
         // The logo is never mirrored; the name, the tagline and the copyright are English.
-        ImageView logo = Fx.leftToRight(new ImageView());
-        var icon = AboutDialog.class.getResource("/org/njmule/gui/icons/njmule-128.png");
-        if (icon != null) {
-            logo.setImage(new Image(icon.toExternalForm()));
-            logo.setFitWidth(72);
-            logo.setFitHeight(72);
-        }
+        ImageView logo = Fx.logo(72);
         Label name = Fx.leftToRight(new Label(NjMuleInfo.NAME + " " + NjMuleInfo.version()));
         name.getStyleClass().addAll(Styles.TITLE_2, "display");
         Label tagline = Fx.leftToRight(new Label(NjMuleInfo.TAGLINE));
@@ -59,17 +57,17 @@ public final class AboutDialog {
         license.setWrapText(true);
         Label emule = new Label(gui.t("nj.about.emule"));
         emule.setWrapText(true);
-        emule.getStyleClass().add(Styles.TEXT_SMALL);
+        emule.getStyleClass().addAll(Styles.TEXT_SMALL, Styles.TEXT_MUTED);
         HBox header = new HBox(16, logo, new VBox(4, name, tagline));
         header.setAlignment(Pos.CENTER_LEFT);
+        Button copy = Fx.button(gui.t("nj.about.copyVersion"), Icons.COPY, () -> copyVersion(gui));
+        copy.getStyleClass().add(Styles.FLAT);
+        VBox body = new VBox(12, header, copyright, license, new HBox(copy), emule);
+        body.getStyleClass().add("about-body");
+        Button close = Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close);
+        close.setCancelButton(true);
         VBox root = new VBox(
-                12,
-                header,
-                copyright,
-                license,
-                emule,
-                Fx.toolRow(Fx.spacer(), Fx.button(gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close)));
-        root.setPadding(new Insets(18));
+                body, DialogFrame.footer(new Region(), DialogFrame.role(close, ButtonBar.ButtonData.CANCEL_CLOSE)));
         root.setPrefWidth(520);
         Scene scene = new Scene(root);
         gui.attach(scene);
@@ -78,6 +76,20 @@ public final class AboutDialog {
 
     public void show() {
         this.stage.show();
+    }
+
+    // What a report of a problem needs: njMule's version, Java's and the system's.
+    private static void copyVersion(Gui gui) {
+        ClipboardContent content = new ClipboardContent();
+        content.putString(versions());
+        Clipboard.getSystemClipboard().setContent(content);
+        gui.inform().accept(gui.t("nj.about.copied"));
+    }
+
+    static String versions() {
+        return NjMuleInfo.NAME + " " + NjMuleInfo.version() + " · Java " + System.getProperty("java.version") + " · "
+                + System.getProperty("os.name") + " " + System.getProperty("os.version") + " "
+                + System.getProperty("os.arch");
     }
 
     Stage stage() {

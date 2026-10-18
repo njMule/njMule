@@ -144,6 +144,7 @@ public record Gui(
     public <D extends Dialog<?>> D dialog(D dialog) {
         this.themes.attach(dialog.getDialogPane().getScene());
         dialog.getDialogPane().setNodeOrientation(orientation());
+        dialog.getDialogPane().getStyleClass().add("nj-dialog");
         if (dialog.getDialogPane().lookup(".button-bar") instanceof ButtonBar bar) {
             bar.setButtonMinWidth(DIALOG_BUTTON_MIN_WIDTH);
         }

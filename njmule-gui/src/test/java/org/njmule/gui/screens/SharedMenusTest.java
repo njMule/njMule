@@ -27,7 +27,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.Node;
 import javafx.scene.control.ButtonBar;
-import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.DialogPane;
@@ -202,14 +201,14 @@ class SharedMenusTest {
 
     private void givenTheFileRenamedFromTheMenuTo(String typed) throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.OK, pane -> type(pane, typed));
+            FxTesting.answer(ButtonBar.ButtonData.OK_DONE, pane -> type(pane, typed));
             item(menu(), "IDS_RENAME").fire();
         });
     }
 
     private void givenTheRenameCancelledAfterTyping(String typed) throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.CANCEL, pane -> type(pane, typed));
+            FxTesting.answer(ButtonBar.ButtonData.CANCEL_CLOSE, pane -> type(pane, typed));
             this.shownScreen.renameSelected();
         });
     }
@@ -237,7 +236,7 @@ class SharedMenusTest {
 
     private void whenTheFileIsRenamedTo(String typed) throws Exception {
         FxTesting.onFx(() -> {
-            FxTesting.answer(ButtonType.OK, pane -> type(pane, typed));
+            FxTesting.answer(ButtonBar.ButtonData.OK_DONE, pane -> type(pane, typed));
             this.shownScreen.renameSelected();
         });
     }
@@ -377,12 +376,14 @@ class SharedMenusTest {
         return hash.equals(this.notes.hash()) ? this.notes.name() : this.film.name();
     }
 
-    // The warning under the folder, or nothing.
+    // The folder the warning names, then its words, or nothing.
     private String warning(DialogPane pane) {
+        String folder = ((Label) pane.getContent().lookup(".dialog-names .label")).getText();
         return pane.getContent().lookupAll(".label").stream()
                 .map(n -> ((Label) n).getText())
                 .filter(t -> t.contains("personal"))
                 .findFirst()
+                .map(t -> folder + " " + t)
                 .orElse("");
     }
 
