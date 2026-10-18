@@ -91,7 +91,7 @@ public final class Igd implements Gateway {
     };
 
     // The service of IGD 2 routers that opens their IPv6 firewall.
-    private static final String FIREWALL = "urn:schemas-upnp-org:service:WANIPv6FirewallControl:1";
+    private static final String FIREWALL_SERVICE = "urn:schemas-upnp-org:service:WANIPv6FirewallControl:1";
 
     private final URI location;
     private final URI control;
@@ -285,7 +285,7 @@ public final class Igd implements Gateway {
         if (this.firewall.isEmpty()) {
             return OptionalInt.empty();
         }
-        Element status = answer(call(this.firewall.get(), FIREWALL, "GetFirewallStatus", ""));
+        Element status = answer(call(this.firewall.get(), FIREWALL_SERVICE, "GetFirewallStatus", ""));
         if (!flag(status, "FirewallEnabled")) {
             return OptionalInt.empty();
         }
@@ -294,7 +294,7 @@ public final class Igd implements Gateway {
         }
         Element added = answer(call(
                 this.firewall.get(),
-                FIREWALL,
+                FIREWALL_SERVICE,
                 "AddPinhole",
                 "<RemoteHost></RemoteHost><RemotePort>0</RemotePort>"
                         + "<InternalClient>"
@@ -322,7 +322,7 @@ public final class Igd implements Gateway {
     public void renewPinhole(int id, long lease) throws IOException {
         call(
                 this.firewall.orElseThrow(() -> new IOException("no IPv6 firewall")),
-                FIREWALL,
+                FIREWALL_SERVICE,
                 "UpdatePinhole",
                 "<UniqueID>" + id + "</UniqueID><NewLeaseTime>" + lease + "</NewLeaseTime>");
     }
@@ -331,7 +331,7 @@ public final class Igd implements Gateway {
     public void closePinhole(int id) throws IOException {
         call(
                 this.firewall.orElseThrow(() -> new IOException("no IPv6 firewall")),
-                FIREWALL,
+                FIREWALL_SERVICE,
                 "DeletePinhole",
                 "<UniqueID>" + id + "</UniqueID>");
     }
@@ -430,7 +430,7 @@ public final class Igd implements Gateway {
             String type = text(s, "serviceType").orElse("");
             Optional<String> controlUrl = text(s, "controlURL");
             boolean connection = Arrays.stream(SERVICES).anyMatch(type::startsWith);
-            if (controlUrl.isEmpty() || !(connection || type.equals(FIREWALL))) {
+            if (controlUrl.isEmpty() || !(connection || type.equals(FIREWALL_SERVICE))) {
                 continue;
             }
             URI control;
