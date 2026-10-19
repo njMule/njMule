@@ -329,7 +329,7 @@
 
 .nav-rail:collapsed .rail-head {
     -fx-alignment: center;
-    -fx-padding: 2 0 10 0;
+    -fx-padding: 2 0 6 0;
 }
 
 .nav-rail .rail-wordmark {
@@ -347,6 +347,8 @@
     -fx-background-insets: 0;
     -fx-background-radius: 8;
     -fx-border-width: 0;
+    /* Set here, not in code: the folded rule's centre would otherwise outlast the fold. */
+    -fx-alignment: center-left;
     -fx-graphic-text-gap: 12;
     -fx-padding: 0 10 0 10;
     -fx-min-height: 36;

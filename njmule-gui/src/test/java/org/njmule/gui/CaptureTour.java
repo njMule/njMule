@@ -437,6 +437,10 @@ class CaptureTour {
         fx(() -> ((Button) this.stage.getScene().getRoot().lookup("#limits")).fire());
         shot("strip-limits", "The limits over the status strip");
         fx(CaptureTour::closePopups);
+        fx(() -> this.stage.getScene().getRoot().fireEvent(FxTesting.key(javafx.scene.input.KeyCode.B, true)));
+        shot("sidebar-folded", "The sidebar folded to its icons (Ctrl+B)");
+        fx(() -> this.stage.getScene().getRoot().fireEvent(FxTesting.key(javafx.scene.input.KeyCode.B, true)));
+        shot("sidebar-reopened", "The sidebar open again after being folded");
         fx(() -> this.stage.getScene().getRoot().fireEvent(FxTesting.key(javafx.scene.input.KeyCode.K, true)));
         shot("palette", "The command palette (Ctrl+K)");
         fx(() -> ((TextField) this.stage.getScene().getRoot().lookup(".command-palette .text-field"))

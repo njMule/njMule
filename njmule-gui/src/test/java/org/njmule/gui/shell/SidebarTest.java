@@ -112,6 +112,28 @@ class SidebarTest {
         thenTheIconsOfThePlacesStandInOneColumn();
     }
 
+    @Test
+    void shouldLineTheIconsUpAgainOnceOpenedAfterBeingFolded() throws Exception {
+        givenTheWindow();
+        givenTheSidebarFoldedByTheShortcut(true);
+
+        whenTheShortcutIsPressed(KeyCode.B);
+
+        thenTheSidebarIsFolded(false);
+        thenTheIconsOfThePlacesStandInOneColumn();
+    }
+
+    @Test
+    void shouldKeepTheButtonThatOpensTheSidebarAtTheTopWhenFolded() throws Exception {
+        givenTheWindow();
+        givenTheSidebarFolded(false);
+
+        whenTheShortcutIsPressed(KeyCode.B);
+
+        thenTheSidebarIsFolded(true);
+        thenTheButtonThatOpensTheSidebarStandsAboveThePlaces();
+    }
+
     private void givenTheWindow() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
@@ -140,12 +162,30 @@ class SidebarTest {
 
     // The mark of the place shown never pushes its icon out of line.
     private void thenTheIconsOfThePlacesStandInOneColumn() throws Exception {
-        List<Double> starts = FxTesting.onFx(() -> this.window.root().lookupAll(".nav-rail .toggle-button").stream()
-                .map(b -> ((ToggleButton) b).getGraphic())
-                .map(g -> g.localToScene(g.getLayoutBounds()).getMinX())
-                .toList());
+        List<Double> starts = FxTesting.onFx(() -> {
+            this.window.root().applyCss();
+            this.window.root().layout();
+            return this.window.root().lookupAll(".nav-rail .toggle-button").stream()
+                    .map(b -> ((ToggleButton) b).getGraphic())
+                    .map(g -> g.localToScene(g.getLayoutBounds()).getMinX())
+                    .toList();
+        });
         assertThat(starts).hasSizeGreaterThan(5);
         assertThat(starts).allSatisfy(x -> assertThat(x).isCloseTo(starts.getFirst(), within(0.5)));
+    }
+
+    private void thenTheButtonThatOpensTheSidebarStandsAboveThePlaces() throws Exception {
+        double[] tops = FxTesting.onFx(() -> {
+            this.window.root().applyCss();
+            this.window.root().layout();
+            Node expand = this.window.root().lookup("#sidebar-expand");
+            Node first = this.window.sidebar().button("transfers");
+            return new double[] {
+                expand.localToScene(expand.getLayoutBounds()).getMaxY(),
+                first.localToScene(first.getLayoutBounds()).getMinY()
+            };
+        });
+        assertThat(tops[0]).isLessThanOrEqualTo(tops[1]);
     }
 
     private void givenTheWindowWide(boolean wide) throws Exception {

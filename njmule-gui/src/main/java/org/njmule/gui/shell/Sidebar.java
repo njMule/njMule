@@ -109,7 +109,14 @@ final class Sidebar {
         head.getStyleClass().add("rail-head");
         hideWhenCollapsed(name);
         hideWhenCollapsed(collapse);
-        this.box.getChildren().add(head);
+        // Folded, the button that opens the sidebar again stays at the top, under the logo.
+        Button expand = Fx.iconButton(gui.t("nj.sidebar.expand") + "  " + keys, Icons.SIDEBAR, this::toggle);
+        expand.setId("sidebar-expand");
+        expand.getStyleClass().addAll(Styles.FLAT, "rail-fold");
+        expand.visibleProperty().bind(this.collapsed);
+        expand.managedProperty().bind(this.collapsed);
+        VBox.setMargin(expand, new Insets(0, 0, 8, 0));
+        this.box.getChildren().addAll(head, expand);
         ToggleGroup group = new ToggleGroup();
         for (int g = 0; g < groups.size(); g++) {
             if (g == groups.size() - 1) {
@@ -130,12 +137,6 @@ final class Sidebar {
                 this.box.getChildren().add(item(place, mark, group, open));
             }
         }
-        Button expand = Fx.iconButton(gui.t("nj.sidebar.expand") + "  " + keys, Icons.SIDEBAR, this::toggle);
-        expand.setId("sidebar-expand");
-        expand.getStyleClass().addAll(Styles.FLAT, "rail-fold");
-        expand.visibleProperty().bind(this.collapsed);
-        expand.managedProperty().bind(this.collapsed);
-        this.box.getChildren().add(expand);
         this.collapsed.addListener((o, was, now) -> showCollapsed(now));
         showCollapsed(false);
     }
@@ -150,7 +151,6 @@ final class Sidebar {
         button.setToggleGroup(group);
         button.setId("rail-" + place.id());
         button.setMaxWidth(Double.MAX_VALUE);
-        button.setAlignment(Pos.CENTER_LEFT);
         // A button stays selected while its place shows.
         button.setOnAction(e -> open.accept(place.id()));
         // The count or the dot at the end of the row, where the text leaves it room; clicks go through it.
