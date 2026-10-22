@@ -18,6 +18,7 @@ package org.njmule.core.net;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.common.base.Splitter;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -252,7 +253,7 @@ class WebListsDownloadTest {
     private void answer(Socket client) throws IOException {
         BufferedReader in =
                 new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.ISO_8859_1));
-        String path = in.readLine().split(" ")[1];
+        String path = Splitter.on(' ').splitToList(in.readLine()).get(1);
         long from = 0;
         for (String line = in.readLine(); line != null && !line.isEmpty(); line = in.readLine()) {
             if (line.toLowerCase(Locale.ROOT).startsWith("range:")) {
@@ -263,7 +264,7 @@ class WebListsDownloadTest {
         }
         OutputStream out = client.getOutputStream();
         if (path.equals("/old")) {
-            out.write(("HTTP/1.1 302 Found\r\nLocation: /file\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            out.write("HTTP/1.1 302 Found\r\nLocation: /file\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                     .getBytes(StandardCharsets.US_ASCII));
             return;
         }

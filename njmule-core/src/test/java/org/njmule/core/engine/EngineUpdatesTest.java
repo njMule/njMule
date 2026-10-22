@@ -155,9 +155,12 @@ class EngineUpdatesTest {
 
     // The copies counted while it runs: closing makes one of its own.
     private void whenTheEngineStarts() throws Exception {
-        try (NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(this.dirs))) {
+        NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(this.dirs));
+        try {
             this.backups = ConfigBackup.copies(this.dirs.data().resolve(ConfigBackup.FOLDER))
                     .size();
+        } finally {
+            engine.close();
         }
     }
 
