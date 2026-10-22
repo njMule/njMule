@@ -39,8 +39,8 @@ import org.slf4j.LoggerFactory;
 final class UpdateFiles {
 
     static final String FOLDER = "update";
-    static final String PLAN = "apply.properties";
-    static final String UNPACKED = "files";
+    static final String PLAN_FILE = "apply.properties";
+    static final String UNPACKED_DIR = "files";
     static final String PART = ".part";
 
     private static final Logger logger = LoggerFactory.getLogger(UpdateFiles.class);
@@ -76,11 +76,11 @@ final class UpdateFiles {
     }
 
     Path unpacked(String version) {
-        return version(version).resolve(UNPACKED);
+        return version(version).resolve(UNPACKED_DIR);
     }
 
     Path plan() {
-        return this.root.resolve(PLAN);
+        return this.root.resolve(PLAN_FILE);
     }
 
     /** The mark that {@code version} ran its engine long enough to be kept. */
@@ -104,7 +104,7 @@ final class UpdateFiles {
                         || (name.startsWith(STARTED)
                                 && (versions.contains(name.substring(STARTED.length()))
                                         || name.equals(STARTED + running)));
-                if (kept || name.equals(PLAN)) {
+                if (kept || name.equals(PLAN_FILE)) {
                     continue;
                 }
                 if (Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)) {

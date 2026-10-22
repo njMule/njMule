@@ -43,11 +43,11 @@ class UpdateFilesTest {
         givenTheFolder("0.3.0-beta.1/files/njmule.exe");
         givenTheFile("started-0.1.5");
         givenTheFile("started-0.2.0");
-        givenTheFile(UpdateFiles.PLAN);
+        givenTheFile(UpdateFiles.PLAN_FILE);
 
         whenKeepingOnly("0.2.0");
 
-        thenWhatIsLeftIs("0.2.0", "started-0.2.0", UpdateFiles.PLAN);
+        thenWhatIsLeftIs("0.2.0", "started-0.2.0", UpdateFiles.PLAN_FILE);
     }
 
     @Test

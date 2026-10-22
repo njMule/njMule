@@ -43,7 +43,7 @@ public final class Updating {
     public static final int EXIT_RESTART = 75;
 
     /** How long a start waits for the njMule it replaces. */
-    public static final Duration WAIT = Duration.ofSeconds(60);
+    public static final Duration EXIT_WAIT = Duration.ofSeconds(60);
 
     private static final Logger logger = LoggerFactory.getLogger(Updating.class);
     private static final String WAIT_OPTION = "--wait";
@@ -51,11 +51,11 @@ public final class Updating {
     private Updating() {}
 
     /**
-     * Waits until the processes {@code pids} have ended, {@link #WAIT} at most in all: a start after an update finds
-     * the files and the configuration of the njMule it replaces free only then.
+     * Waits until the processes {@code pids} have ended, {@link #EXIT_WAIT} at most in all: a start after an update
+     * finds the files and the configuration of the njMule it replaces free only then.
      */
     public static void awaitEnd(List<Long> pids) {
-        long end = System.nanoTime() + WAIT.toNanos();
+        long end = System.nanoTime() + EXIT_WAIT.toNanos();
         for (long pid : pids) {
             Optional<ProcessHandle> process = ProcessHandle.of(pid);
             if (process.isEmpty()) {
@@ -64,7 +64,7 @@ public final class Updating {
             try {
                 process.get().onExit().get(Math.max(0, end - System.nanoTime()), TimeUnit.NANOSECONDS);
             } catch (TimeoutException | ExecutionException e) {
-                logger.warn("Process {} still runs after {} s: starting anyway", pid, WAIT.toSeconds());
+                logger.warn("Process {} still runs after {} s: starting anyway", pid, EXIT_WAIT.toSeconds());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;

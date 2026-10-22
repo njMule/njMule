@@ -305,11 +305,11 @@ class HandOverTest {
     }
 
     private Path launcher() {
-        return this.dir.resolve("installed").resolve(HandOver.LAUNCHER);
+        return this.dir.resolve("installed").resolve(HandOver.LAUNCHER_FILE);
     }
 
     private Path copiedLauncher() {
-        return version().resolve(HandOver.LAUNCHER);
+        return version().resolve(HandOver.LAUNCHER_FILE);
     }
 
     private Path packageFile() {

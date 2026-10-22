@@ -50,7 +50,7 @@ final class Swap {
     private static final String REPLACED = "replaced ";
     private static final String ADDED = "added ";
     private static final String FOLDER = "folder ";
-    private static final String BUNDLE = "bundle";
+    private static final String BUNDLE_STEP = "bundle";
 
     private final Path staged;
     private final Path target;
@@ -131,7 +131,7 @@ final class Swap {
         UpdateFiles.deleteTree(fresh);
         this.copier.copy(this.staged, fresh);
         Files.move(this.target, old);
-        done(done, steps, BUNDLE);
+        done(done, steps, BUNDLE_STEP);
         Files.move(fresh, this.target);
     }
 
@@ -187,10 +187,10 @@ final class Swap {
     void cleanUp() throws IOException {
         IOException first = null;
         for (String step : readJournal()) {
-            if (!step.startsWith(REPLACED) && !step.equals(BUNDLE)) {
+            if (!step.startsWith(REPLACED) && !step.equals(BUNDLE_STEP)) {
                 continue;
             }
-            Path old = sibling(step.equals(BUNDLE) ? this.target : place(step.substring(REPLACED.length())), OLD);
+            Path old = sibling(step.equals(BUNDLE_STEP) ? this.target : place(step.substring(REPLACED.length())), OLD);
             try {
                 UpdateFiles.deleteTree(old);
             } catch (IOException e) {
@@ -211,8 +211,8 @@ final class Swap {
         IOException first = null;
         for (String step : done.reversed()) {
             try {
-                if (step.startsWith(REPLACED) || step.equals(BUNDLE)) {
-                    Path place = step.equals(BUNDLE) ? this.target : place(step.substring(REPLACED.length()));
+                if (step.startsWith(REPLACED) || step.equals(BUNDLE_STEP)) {
+                    Path place = step.equals(BUNDLE_STEP) ? this.target : place(step.substring(REPLACED.length()));
                     Path old = sibling(place, OLD);
                     if (Files.exists(old, LinkOption.NOFOLLOW_LINKS)) {
                         UpdateFiles.deleteTree(place);
@@ -251,7 +251,7 @@ final class Swap {
         List<String> steps = new ArrayList<>();
         for (String line : Files.readAllLines(this.journal, StandardCharsets.UTF_8)) {
             String step = line.strip();
-            if (step.equals(BUNDLE)) {
+            if (step.equals(BUNDLE_STEP)) {
                 steps.add(step);
                 continue;
             }

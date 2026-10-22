@@ -147,6 +147,6 @@ class ApplyPlanTest {
     }
 
     private Path file() {
-        return this.dir.resolve(UpdateFiles.PLAN);
+        return this.dir.resolve(UpdateFiles.PLAN_FILE);
     }
 }

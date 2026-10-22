@@ -45,7 +45,7 @@ import org.slf4j.LoggerFactory;
  */
 final class HandOver implements UpdateHandOver {
 
-    static final String LAUNCHER = "njmule-gui.exe";
+    static final String LAUNCHER_FILE = "njmule-gui.exe";
     static final String INSTALLER_LOG = "install.log";
     static final String INSTALLER_RESULT = "msiexec.txt";
     static final String HELPER_LOG = "helper.log";
@@ -160,7 +160,7 @@ final class HandOver implements UpdateHandOver {
             return Optional.empty();
         }
         if (this.desktop) {
-            Path launcher = executable.get().resolveSibling(LAUNCHER);
+            Path launcher = executable.get().resolveSibling(LAUNCHER_FILE);
             if (Files.isRegularFile(launcher)) {
                 return Optional.of(launcher);
             }
@@ -170,9 +170,9 @@ final class HandOver implements UpdateHandOver {
 
     // The launcher runs msiexec once this process and its own parent launcher have ended, then starts njMule again.
     private void startInstaller(ApplyPlan full) throws IOException {
-        Path installed = this.installation.executable().orElseThrow().resolveSibling(LAUNCHER);
+        Path installed = this.installation.executable().orElseThrow().resolveSibling(LAUNCHER_FILE);
         Path folder = this.files.version(full.version());
-        Path copy = folder.resolve(LAUNCHER);
+        Path copy = folder.resolve(LAUNCHER_FILE);
         Files.createDirectories(folder);
         Files.copy(installed, copy, StandardCopyOption.REPLACE_EXISTING);
         Files.deleteIfExists(folder.resolve(INSTALLER_RESULT));
@@ -246,7 +246,7 @@ final class HandOver implements UpdateHandOver {
                         .map(Path::of)
                         .filter(c -> String.valueOf(c.getFileName())
                                 .toLowerCase(Locale.ROOT)
-                                .equals(LAUNCHER))
+                                .equals(LAUNCHER_FILE))
                         .filter(c -> folder.isPresent() && folder.get().equals(c.getParent()))
                         .isPresent())
                 .ifPresent(parent -> pids.add(parent.pid()));

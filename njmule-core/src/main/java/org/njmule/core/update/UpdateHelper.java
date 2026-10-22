@@ -44,12 +44,12 @@ import org.slf4j.LoggerFactory;
 public final class UpdateHelper {
 
     static final String JOURNAL = "swap.journal";
-    static final Duration WAIT = Duration.ofSeconds(60);
-    static final Duration WATCH = Duration.ofMinutes(10);
+    static final Duration DEFAULT_WAIT = Duration.ofSeconds(60);
+    static final Duration DEFAULT_WATCH = Duration.ofMinutes(10);
 
     private static final Logger logger = LoggerFactory.getLogger(UpdateHelper.class);
     private static final Duration PROBE_TIME = Duration.ofSeconds(60);
-    private static final Duration POLL = Duration.ofMillis(500);
+    private static final Duration DEFAULT_POLL = Duration.ofMillis(500);
 
     private final Path planFile;
     private final UpdateFiles files;
@@ -80,7 +80,14 @@ public final class UpdateHelper {
 
     /** The installer of the plan in {@code planFile}, with the real programs and processes of this computer. */
     static UpdateHelper of(Path planFile) {
-        return new UpdateHelper(planFile, Commands.SYSTEM, Launcher.SYSTEM, InstantSource.system(), WAIT, WATCH, POLL);
+        return new UpdateHelper(
+                planFile,
+                Commands.SYSTEM,
+                Launcher.SYSTEM,
+                InstantSource.system(),
+                DEFAULT_WAIT,
+                DEFAULT_WATCH,
+                DEFAULT_POLL);
     }
 
     /** As {@link org.njmule.core.api.UpdateHandOver#install}. */
