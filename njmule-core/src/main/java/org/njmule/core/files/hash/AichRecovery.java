@@ -41,6 +41,9 @@ public final class AichRecovery {
     // A path longer than this does not exist in a file of at most 2^38 bytes.
     private static final int MAX_LEVELS = 22;
     private static final long MAX_IDENT = 0x400000L;
+    // A digest is not thread-safe: one per thread, kept as long as the thread as it holds nothing of the files.
+    @SuppressWarnings("java:S5164")
+    private static final ThreadLocal<MessageDigest> SHA1 = ThreadLocal.withInitial(AichTree::sha1);
 
     private record Node(long ident, Hash20 hash) {}
 
@@ -143,17 +146,17 @@ public final class AichRecovery {
         return Math.toIntExact(start / Ed2k.PARTSIZE * perPart + start % Ed2k.PARTSIZE / Ed2k.EMBLOCKSIZE);
     }
 
-    private static Hash20 combine(MessageDigest sha1, Hash20 left, Hash20 right) {
+    private static Hash20 combine(Hash20 left, Hash20 right) {
         byte[] both = new byte[2 * Hash20.LENGTH];
         left.copyTo(both, 0);
         right.copyTo(both, Hash20.LENGTH);
+        MessageDigest sha1 = SHA1.get();
         return Hash20.of(sha1.digest(both));
     }
 
     /** Writes the recovery data from the leaves of a complete tree. */
     private static final class Walker {
         private final List<Hash20> leaves;
-        private final MessageDigest sha1 = AichTree.sha1();
 
         Walker(List<Hash20> leaves) {
             this.leaves = leaves;
@@ -201,14 +204,13 @@ public final class AichRecovery {
                 return this.leaves.get(leaf(start));
             }
             long leftSize = leftSize(dataSize, left, base);
-            return combine(this.sha1, hash(leftSize, true, start), hash(dataSize - leftSize, false, start + leftSize));
+            return combine(hash(leftSize, true, start), hash(dataSize - leftSize, false, start + leftSize));
         }
     }
 
     /** Rebuilds the way up from the part to the root with the hashes received. */
     private static final class Checker {
         private final Map<Long, Hash20> byIdent;
-        private final MessageDigest sha1 = AichTree.sha1();
         private final List<Hash20> blocks = new ArrayList<>();
 
         Checker(Map<Long, Hash20> byIdent) {
@@ -237,7 +239,7 @@ public final class AichRecovery {
                 Hash20 right = this.byIdent.get(id << 1);
                 Optional<Hash20> below =
                         up(leftSize, true, AichTree.baseSize(leftSize), start, id, partStart, partSize, level + 1);
-                return right == null ? Optional.empty() : below.map(l -> combine(this.sha1, l, right));
+                return right == null ? Optional.empty() : below.map(l -> combine(l, right));
             }
             Hash20 leftHash = this.byIdent.get(id << 1 | 1);
             Optional<Hash20> below = up(
@@ -249,7 +251,7 @@ public final class AichRecovery {
                     partStart,
                     partSize,
                     level + 1);
-            return leftHash == null ? Optional.empty() : below.map(r -> combine(this.sha1, leftHash, r));
+            return leftHash == null ? Optional.empty() : below.map(r -> combine(leftHash, r));
         }
 
         // The part's subtree from its blocks, which are kept in order for the caller.
@@ -266,9 +268,7 @@ public final class AichRecovery {
             Optional<Hash20> l = part(leftSize, true, AichTree.baseSize(leftSize), start, id);
             Optional<Hash20> r =
                     part(dataSize - leftSize, false, AichTree.baseSize(dataSize - leftSize), start + leftSize, id);
-            return l.isPresent() && r.isPresent()
-                    ? Optional.of(combine(this.sha1, l.get(), r.get()))
-                    : Optional.empty();
+            return l.isPresent() && r.isPresent() ? Optional.of(combine(l.get(), r.get())) : Optional.empty();
         }
     }
 }

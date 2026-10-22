@@ -67,11 +67,14 @@ public final class DatagramObfuscation {
     static final int MAGIC_TO_SERVER = 0x6B;
     static final int MAGIC_FROM_SERVER = 0xA5;
 
-    // Looking up MD5 and RC4 for every datagram cost more than using them (njmule-bench DatagramKeyBench). The pair is
-    // meant to last as long as its thread, the reader of a socket or the engine's, and holds nothing of the datagrams,
-    // so it is never removed: removing it would look both up again.
+    // Each thread keeps its MD5 and RC4, as looking them up for every datagram cost more than using them (njmule-bench
+    // DatagramKeyBench). They last as long as their thread, the reader of a socket or the engine's, and hold nothing of
+    // the datagrams, so they are never removed: removing them would look both up again.
     @SuppressWarnings("java:S5164")
-    private static final ThreadLocal<Keys> KEYS = ThreadLocal.withInitial(Keys::new);
+    private static final ThreadLocal<MessageDigest> DIGESTS = ThreadLocal.withInitial(DatagramObfuscation::newMd5);
+
+    @SuppressWarnings("java:S5164")
+    private static final ThreadLocal<Rc4> CIPHERS = ThreadLocal.withInitial(() -> new Rc4(new byte[16]));
 
     private DatagramObfuscation() {}
 
@@ -81,7 +84,7 @@ public final class DatagramObfuscation {
      */
     public static int kadVerifyKey(int udpKey, int peerIp) {
         byte[] material = concat(Ipv4.toBytes(peerIp), LittleEndian.ofInt(udpKey));
-        byte[] digest = KEYS.get().md5(material);
+        byte[] digest = md5(material);
         long folded = Integer.toUnsignedLong(LittleEndian.getInt(digest, 0)
                 ^ LittleEndian.getInt(digest, 4)
                 ^ LittleEndian.getInt(digest, 8)
@@ -97,7 +100,7 @@ public final class DatagramObfuscation {
 
     static byte[] encryptForClient(
             byte[] datagram, Hash16 receiverUserHash, byte[] ownPublicIpv4, int marker, byte[] keyPart) {
-        Rc4 rc4 = KEYS.get().rc4(ed2kMaterial(receiverUserHash, ownPublicIpv4, keyPart));
+        Rc4 rc4 = rc4(ed2kMaterial(receiverUserHash, ownPublicIpv4, keyPart));
         return seal(datagram, marker, keyPart, SYNC_CLIENT, rc4, null);
     }
 
@@ -135,7 +138,7 @@ public final class DatagramObfuscation {
         byte[] material = useVerifyKey
                 ? concat(LittleEndian.ofInt(receiverVerifyKey), keyPart)
                 : concat(receiverKadId.get().toByteArray(), keyPart);
-        Rc4 rc4 = KEYS.get().rc4(material);
+        Rc4 rc4 = rc4(material);
         byte[] keys = concat(LittleEndian.ofInt(receiverVerifyKey), LittleEndian.ofInt(senderVerifyKey));
         return seal(datagram, marker, keyPart, SYNC_CLIENT, rc4, keys);
     }
@@ -149,7 +152,7 @@ public final class DatagramObfuscation {
     }
 
     static byte[] encryptForServer(byte[] datagram, int serverKey, int marker, byte[] keyPart) {
-        Rc4 rc4 = KEYS.get().rc4(serverMaterial(serverKey, MAGIC_TO_SERVER, keyPart));
+        Rc4 rc4 = rc4(serverMaterial(serverKey, MAGIC_TO_SERVER, keyPart));
         return seal(datagram, marker, keyPart, SYNC_SERVER, rc4, null);
     }
 
@@ -193,7 +196,7 @@ public final class DatagramObfuscation {
                     material = concat(LittleEndian.ofInt(ownVerifyKeyForSender), keyPart);
                 }
             }
-            Optional<Received> opened = open(data, offset, length, KEYS.get().rc4(material), SYNC_CLIENT, kind);
+            Optional<Received> opened = open(data, offset, length, rc4(material), SYNC_CLIENT, kind);
             if (opened.isPresent()) {
                 return opened.get();
             }
@@ -218,7 +221,7 @@ public final class DatagramObfuscation {
             marker = random.nextInt(256);
         } while (marker == Protocol.EDONKEY);
         byte[] keyPart = keyPart(random);
-        Rc4 rc4 = KEYS.get().rc4(serverMaterial(serverKey, MAGIC_FROM_SERVER, keyPart));
+        Rc4 rc4 = rc4(serverMaterial(serverKey, MAGIC_FROM_SERVER, keyPart));
         return seal(datagram, marker, keyPart, SYNC_SERVER, rc4, null);
     }
 
@@ -228,7 +231,7 @@ public final class DatagramObfuscation {
             return plain(data, offset, length);
         }
         byte[] keyPart = {data[offset + 1], data[offset + 2]};
-        Rc4 rc4 = KEYS.get().rc4(serverMaterial(serverKey, magic, keyPart));
+        Rc4 rc4 = rc4(serverMaterial(serverKey, magic, keyPart));
         Optional<Received> opened = open(data, offset, length, rc4, SYNC_SERVER, Kind.SERVER);
         return opened.isPresent() ? opened.get() : plain(data, offset, length);
     }
@@ -344,28 +347,23 @@ public final class DatagramObfuscation {
         return out;
     }
 
-    /** The MD5 and the RC4 cipher of one thread. Each use ends before the next one starts, so one of each is enough. */
-    private static final class Keys {
-
-        private final MessageDigest md5;
-        private final Rc4 rc4 = new Rc4(new byte[16]);
-
-        Keys() {
-            try {
-                this.md5 = MessageDigest.getInstance("MD5");
-            } catch (NoSuchAlgorithmException e) {
-                throw new IllegalStateException("MD5 is required by the Java platform", e);
-            }
+    private static MessageDigest newMd5() {
+        try {
+            return MessageDigest.getInstance("MD5");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("MD5 is required by the Java platform", e);
         }
+    }
 
-        byte[] md5(byte[] material) {
-            return this.md5.digest(material);
-        }
+    private static byte[] md5(byte[] material) {
+        MessageDigest md5 = DIGESTS.get();
+        return md5.digest(material);
+    }
 
-        /** The RC4 key stream keyed with the MD5 of {@code material}. */
-        Rc4 rc4(byte[] material) {
-            this.rc4.rekey(this.md5.digest(material));
-            return this.rc4;
-        }
+    /** This thread's RC4 key stream, keyed with the MD5 of {@code material}; each use ends before the next starts. */
+    private static Rc4 rc4(byte[] material) {
+        Rc4 rc4 = CIPHERS.get();
+        rc4.rekey(md5(material));
+        return rc4;
     }
 }
