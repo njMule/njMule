@@ -76,18 +76,15 @@ interface Commands {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("interrupted while " + command.getFirst() + " ran");
         }
-        synchronized (output) {
-            return new Result(process.exitValue(), output.toString(StandardCharsets.UTF_8));
-        }
+        return new Result(process.exitValue(), output.toString(StandardCharsets.UTF_8));
     }
 
+    // Only this thread writes; ByteArrayOutputStream synchronizes each call, the final read included.
     private static void keep(Process process, ByteArrayOutputStream output) {
         try (InputStream in = process.getInputStream()) {
             byte[] buffer = new byte[8192];
             for (int n = in.read(buffer); n >= 0; n = in.read(buffer)) {
-                synchronized (output) {
-                    output.write(buffer, 0, Math.min(n, Math.max(0, MAX_OUTPUT - output.size())));
-                }
+                output.write(buffer, 0, Math.min(n, Math.max(0, MAX_OUTPUT - output.size())));
             }
         } catch (IOException e) {
             // The program ended or was stopped: what it said so far is kept.

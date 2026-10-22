@@ -104,7 +104,9 @@ class GitHubReleasesTest {
     }
 
     private void thenTheManifestOfIs(String version) throws IOException {
-        assertThat(UpdateManifest.parse(this.fetched.manifest()).version().getVersion())
+        assertThat(UpdateManifest.parse(this.fetched.manifest().toByteArray())
+                        .version()
+                        .getVersion())
                 .isEqualTo(version);
     }
 

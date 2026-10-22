@@ -16,6 +16,7 @@
  */
 package org.njmule.core.update;
 
+import com.google.common.base.CharMatcher;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -189,7 +190,7 @@ public final class Updates implements AutoCloseable {
         WebLists reach = elsewhere.isPresent() ? WebLists.anyAddress() : web;
         URI repository = elsewhere.orElse(REPOSITORY);
         URI api = elsewhere
-                .map(u -> URI.create(u.toString().replaceAll("/+$", "") + "/api"))
+                .map(u -> URI.create(CharMatcher.is('/').trimTrailingFrom(u.toString()) + "/api"))
                 .orElse(API);
         Updates updates = new Updates(
                 new GitHubReleases(reach::fetch, repository, api),
@@ -576,11 +577,12 @@ public final class Updates implements AutoCloseable {
     }
 
     private UpdateManifest verified(GitHubReleases.Signed signed) throws IOException, SignatureException {
-        if (signed.manifest().length > UpdateManifest.MAX_SIZE) {
+        if (signed.manifest().length() > UpdateManifest.MAX_SIZE) {
             throw new IOException("the update information is too large");
         }
-        Minisign.verify(signed.manifest(), Minisign.signature(signed.signature()), this.keys);
-        return UpdateManifest.parse(signed.manifest());
+        byte[] manifest = signed.manifest().toByteArray();
+        Minisign.verify(manifest, Minisign.signature(signed.signature()), this.keys);
+        return UpdateManifest.parse(manifest);
     }
 
     // Newer than this version, and a test version only to those who want them.

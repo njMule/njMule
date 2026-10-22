@@ -25,6 +25,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.njmule.core.config.UpdateChannel;
+import org.njmule.core.util.Bytes;
 import org.semver4j.Semver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,9 +66,7 @@ final class GitHubReleases {
     }
 
     /** A manifest as fetched and its signature file, both unchecked. */
-    // Handed from the fetch to the check, never compared.
-    @SuppressWarnings("ArrayRecordComponent")
-    record Signed(byte[] manifest, String signature) {
+    record Signed(Bytes manifest, String signature) {
         Signed {
             Objects.requireNonNull(manifest, "manifest");
             Objects.requireNonNull(signature, "signature");
@@ -114,7 +113,7 @@ final class GitHubReleases {
     private Signed fetch(String base) throws IOException {
         byte[] manifest = this.fetcher.fetch(URI.create(base + UpdateManifest.FILE_NAME));
         byte[] signature = this.fetcher.fetch(URI.create(base + UpdateManifest.FILE_NAME + SIGNATURE_SUFFIX));
-        return new Signed(manifest, new String(signature, StandardCharsets.UTF_8));
+        return new Signed(Bytes.of(manifest), new String(signature, StandardCharsets.UTF_8));
     }
 
     // The tag of the newest release, test versions included, that has a signed manifest.
