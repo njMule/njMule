@@ -798,10 +798,13 @@ jobs:
                   # Signed with one of the keys built into this version, before anything is published.
                   for file in dist/njmule-update.json dist/SHA256SUMS; do
                       ok=false
-                      for public in $(grep -v -e '^#' -e '^untrusted comment' -e '^$' \
-                              njmule-core/src/main/resources/org/njmule/core/update/keys.pub); do
-                          minisign -V -q -P "$public" -m "$file" && ok=true && break
-                      done
+                      while read -r public; do
+                          if minisign -V -q -P "$public" -m "$file"; then
+                              ok=true
+                              break
+                          fi
+                      done < <(grep -v -e '^#' -e '^untrusted comment' -e '^$' \
+                          njmule-core/src/main/resources/org/njmule/core/update/keys.pub)
                       $ok || { echo "$file is not signed by a key of njMule" >&2; exit 1; }
                   done
             - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
