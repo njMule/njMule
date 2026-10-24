@@ -112,6 +112,27 @@ class NetworkCardsTest {
         thenTheDetailHolds("ports", "UPnP: No");
     }
 
+    @Test
+    void shouldShowOurIpv6AddressAndThatFirewalledClientsAreMetThroughRouters() throws Exception {
+        givenTheCards();
+
+        whenTheStateIs(
+                EngineModel.Connection.DISCONNECTED,
+                Statuses.kadOnlyWithIpv6(Optional.of(Statuses.kad(true, true, "198.51.100.7")), 4662, "2001:db8::1"));
+
+        thenTheDetailHolds("ports", "2001:db8::1");
+        thenTheDetailHolds("ports", "NAT traversal: Yes");
+    }
+
+    @Test
+    void shouldSayFirewalledClientsAreNotMetThroughRoutersWithoutKad() throws Exception {
+        givenTheCards();
+
+        whenTheStateIs(EngineModel.Connection.DISCONNECTED, Statuses.kadOnly(Optional.empty(), 4662));
+
+        thenTheDetailHolds("ports", "NAT traversal: No");
+    }
+
     private void givenTheCards() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.cards = FxTesting.onFx(() -> new NetworkCards(this.test.gui, this.shown::add));

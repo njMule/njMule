@@ -179,7 +179,19 @@ final class NetworkCards {
                 "TCP " + preferences.tcpPort() + (preferences.udpEnabled() ? " · UDP " + preferences.udpPort() : "");
         this.ports.state(numbers, "", null, "");
         this.ports.headline.setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
-        this.ports.detail(this.gui.t("IDS_UPNP") + ": " + this.gui.t(preferences.upnp() ? "IDS_YES" : "IDS_NO"));
+        // Then our IPv6 address, and whether firewalled clients are met through the routers, which needs Kad.
+        StringBuilder ports = new StringBuilder(this.gui.t("IDS_UPNP") + ": " + yesNo(preferences.upnp()));
+        status.publicIpv6()
+                .ifPresent(ip -> ports.append("\nIPv6: ").append(this.gui.i18n().embed(ip)));
+        ports.append('\n')
+                .append(this.gui.t("nj.network.natTraversal"))
+                .append(": ")
+                .append(yesNo(preferences.routerTraversal() && this.kadRuns));
+        this.ports.detail(ports.toString());
+    }
+
+    private String yesNo(boolean yes) {
+        return this.gui.t(yes ? "IDS_YES" : "IDS_NO");
     }
 
     // The test of the ports in a popup under its button, its outcomes coming in as they are known.
