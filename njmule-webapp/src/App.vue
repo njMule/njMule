@@ -25,11 +25,11 @@ const groups: Place[][] = [
     [
         { title: 'IDS_EM_TRANS', icon: 'DOWNLOAD', route: '/transfers' },
         { title: 'IDS_EM_SEARCH', icon: 'SEARCH', route: '/search' },
-        { title: 'IDS_EM_FILES', icon: 'SHARED', page: 'shared' },
+        { title: 'IDS_EM_FILES', icon: 'SHARED', route: '/shared' },
     ],
     [
-        { title: 'IDS_NETWORK', icon: 'NETWORK', page: 'servers' },
-        { title: 'IDS_EM_STATISTIC', icon: 'STATISTICS', page: 'statistics' },
+        { title: 'IDS_NETWORK', icon: 'NETWORK', route: '/network' },
+        { title: 'IDS_EM_STATISTIC', icon: 'STATISTICS', route: '/statistics' },
     ],
     [{ title: 'IDS_EM_PREFS', icon: 'OPTIONS', page: 'settings' }],
 ];

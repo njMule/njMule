@@ -21,8 +21,10 @@ function decimals(value: number, digits: number): string {
 
 /** {@code bytes} with a binary unit: 999 B, 1.00 KB, 12.3 MB, 1.21 GB. */
 export function size(bytes: number): string {
+    // The language's "B/s" names bytes too.
+    const byteUnit = unit('IDS_BYTESPERSEC', 'B').split('/')[0]?.trim() || 'B';
     const units = [
-        unit('IDS_BYTESPERSEC', 'B'),
+        byteUnit,
         unit('IDS_KBYTES', 'KB'),
         unit('IDS_MBYTES', 'MB'),
         unit('IDS_GBYTES', 'GB'),
