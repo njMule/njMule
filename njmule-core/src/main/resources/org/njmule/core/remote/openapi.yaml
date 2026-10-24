@@ -516,6 +516,91 @@ paths:
                   $ref: "#/components/schemas/SharedDirectory"
         default:
           $ref: "#/components/responses/Error"
+    post:
+      operationId: shareDirectory
+      tags: [uploads]
+      summary: Shares a folder of this computer, with its subfolders or not.
+      description: >-
+        A whole drive, the user's home folder, Documents, the desktop or a system folder may hold
+        personal or system files: it is shared only when `everything` is true. Asked without it, the
+        call is a conflict, so that a caller can ask its user first.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+                  minLength: 1
+                  maxLength: 4096
+                  description: The absolute path of an existing folder.
+                subdirectories:
+                  type: boolean
+                  default: true
+                everything:
+                  type: boolean
+                  default: false
+                  description: Shares a folder that may hold personal or system files all the same.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: unshareDirectory
+      tags: [uploads]
+      summary: Stops sharing a folder; the incoming folder stays shared.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: The path of the shared folder, as the list gives it.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 4096
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /shared/{hash}/name:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    put:
+      operationId: renameSharedFile
+      tags: [uploads]
+      summary: Renames a shared file; others find it under the new name once it is published again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
   /shared/{hash}/priority:
     parameters:
       - $ref: "#/components/parameters/Hash"

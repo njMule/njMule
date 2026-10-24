@@ -26,6 +26,9 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,6 +55,7 @@ import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
+import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.Preferences;
@@ -191,6 +195,9 @@ public final class RemoteApi implements AutoCloseable {
                 entry("listUploads", c -> list(c, this.engine::uploads, ApiJson::upload)),
                 entry("listSharedFiles", c -> list(c, this.engine::sharedFiles, ApiJson::shared)),
                 entry("listSharedDirectories", c -> list(c, this.engine::sharedDirectories, ApiJson::directory)),
+                entry("shareDirectory", this::shareDirectory),
+                entry("unshareDirectory", this::unshareDirectory),
+                entry("renameSharedFile", c -> known(c, this.engine.renameSharedFile(hash(c), text(c.body(), "name")))),
                 entry(
                         "setUploadPriority",
                         c -> known(
@@ -419,6 +426,38 @@ public final class RemoteApi implements AutoCloseable {
         Optional<ServerAddress> server =
                 c.body().has(ADDRESS_KEY) ? Optional.of(address(text(c.body(), ADDRESS_KEY))) : Optional.empty();
         done(c, this.engine.connect(server));
+    }
+
+    private void shareDirectory(Call c) throws IOException {
+        Path dir = folder(text(c.body(), "path"));
+        if (SharedDirectory.isSensitive(dir) && !c.body().path("everything").asBoolean(false)) {
+            throw new Failure(
+                    409, "This folder may hold personal or system files: share it with everything set to true.");
+        }
+        done(c, this.engine.shareDirectory(dir, c.body().path("subdirectories").asBoolean(true)));
+    }
+
+    private void unshareDirectory(Call c) throws IOException {
+        String path = text(c.parameters(), "path");
+        Path dir = await(this.engine.sharedDirectories()).stream()
+                .map(SharedDirectory::path)
+                .filter(p -> p.toString().equals(path))
+                .findFirst()
+                .orElseThrow(RemoteApi::notFound);
+        done(c, this.engine.unshareDirectory(dir));
+    }
+
+    // An existing folder of this computer, by its absolute path.
+    private static Path folder(String text) {
+        try {
+            Path dir = Path.of(text.strip());
+            if (dir.isAbsolute() && Files.isDirectory(dir)) {
+                return dir.normalize();
+            }
+        } catch (InvalidPathException e) {
+            // Answered below.
+        }
+        throw new Failure(400, "Not a folder of this computer: " + text);
     }
 
     private void getKad(Call c) throws IOException {

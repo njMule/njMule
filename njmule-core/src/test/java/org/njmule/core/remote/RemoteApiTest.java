@@ -17,12 +17,14 @@
 package org.njmule.core.remote;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -31,6 +33,7 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -54,6 +57,7 @@ import org.njmule.core.api.PartMap;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
+import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 
@@ -333,6 +337,72 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldShareAFolderWithItsSubfolders() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineShares();
+        givenTheTemporaryFolderHoldsNothingPersonal();
+
+        whenCalled("POST", "/api/v1/shared/directories", folderBody(this.dir, false));
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("share " + this.dir + " true");
+    }
+
+    @Test
+    void shouldAskFirstBeforeSharingAWholeDrive() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineShares();
+
+        whenCalled("POST", "/api/v1/shared/directories", folderBody(this.dir.getRoot(), false));
+
+        thenTheStatusIs(409);
+        thenTheEngineWasNotAsked();
+    }
+
+    @Test
+    void shouldShareAWholeDriveWhenToldEverything() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineShares();
+
+        whenCalled("POST", "/api/v1/shared/directories", folderBody(this.dir.getRoot(), true));
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("share " + this.dir.getRoot() + " true");
+    }
+
+    @Test
+    void shouldRefuseToShareWhatIsNoFolder() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineShares();
+
+        whenCalled("POST", "/api/v1/shared/directories", folderBody(this.dir.resolve("missing"), false));
+
+        thenTheStatusIs(400);
+        thenTheEngineWasNotAsked();
+    }
+
+    @Test
+    void shouldStopSharingASharedFolder() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineShares(this.dir);
+
+        whenCalled("DELETE", "/api/v1/shared/directories?path=" + encoded(this.dir.toString()), "");
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("unshare " + this.dir);
+    }
+
+    @Test
+    void shouldNotFindAFolderThatIsNotShared() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineShares();
+
+        whenCalled("DELETE", "/api/v1/shared/directories?path=" + encoded(this.dir.toString()), "");
+
+        thenTheStatusIs(404);
+    }
+
+    @Test
     void shouldSetTheSpeedLimits() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -433,6 +503,39 @@ class RemoteApiTest {
     private void givenTheEngineKnowsServers(int count) {
         this.fake.answer(
                 "servers", args -> CompletableFuture.completedFuture(Collections.nCopies(count, ApiSamples.server())));
+    }
+
+    private void givenTheEngineShares(Path... shared) {
+        this.fake.answer(
+                "sharedDirectories",
+                args -> CompletableFuture.completedFuture(Arrays.stream(shared)
+                        .map(p -> new SharedDirectory(p, true))
+                        .toList()));
+        this.fake.answer("shareDirectory", args -> {
+            this.calls.add("share " + args[0] + " " + args[1]);
+            return CompletableFuture.completedFuture(null);
+        });
+        this.fake.answer("unshareDirectory", args -> {
+            this.calls.add("unshare " + args[0]);
+            return CompletableFuture.completedFuture(null);
+        });
+    }
+
+    // Where the system keeps temporary folders inside the user's own, such a folder is shared only on request.
+    private void givenTheTemporaryFolderHoldsNothingPersonal() {
+        assumeFalse(SharedDirectory.isSensitive(this.dir), "the temporary folder lies in a personal folder");
+    }
+
+    private static String folderBody(Path folder, boolean everything) {
+        return "{\"path\":\"" + folder.toString().replace("\\", "\\\\") + "\",\"everything\":" + everything + "}";
+    }
+
+    private static String encoded(String text) {
+        return URLEncoder.encode(text, StandardCharsets.UTF_8);
+    }
+
+    private void thenTheEngineWasNotAsked() {
+        assertThat(this.calls).isEmpty();
     }
 
     private void givenTheEngineSearchesAs(long id) {
