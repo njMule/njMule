@@ -53,10 +53,10 @@ class WebListsDownloadTest {
     private final List<String> ranges = new CopyOnWriteArrayList<>();
     private final List<Long> progress = new CopyOnWriteArrayList<>();
     private ServerSocket server;
-    private Behaviour behaviour = Behaviour.RANGES;
-    private long announced = FILE.length;
+    private volatile Behaviour behaviour = Behaviour.RANGES;
+    private volatile long announced = FILE.length;
     private long expected = FILE.length;
-    private int sent = FILE.length;
+    private volatile int sent = FILE.length;
     private boolean redirect;
     private Path part;
     private Exception failure;
@@ -76,8 +76,8 @@ class WebListsDownloadTest {
             while (!this.server.isClosed()) {
                 try (Socket client = this.server.accept()) {
                     answer(client);
-                } catch (IOException e) {
-                    // Closed by the test.
+                } catch (IOException | RuntimeException e) {
+                    // Closed by the test, or a connection with no request: the next one is served all the same.
                 }
             }
         });
@@ -253,7 +253,12 @@ class WebListsDownloadTest {
     private void answer(Socket client) throws IOException {
         BufferedReader in =
                 new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.ISO_8859_1));
-        String path = Splitter.on(' ').splitToList(in.readLine()).get(1);
+        String request = in.readLine();
+        if (request == null) {
+            // The client opened the connection and closed it unused.
+            return;
+        }
+        String path = Splitter.on(' ').splitToList(request).get(1);
         long from = 0;
         for (String line = in.readLine(); line != null && !line.isEmpty(); line = in.readLine()) {
             if (line.toLowerCase(Locale.ROOT).startsWith("range:")) {
