@@ -351,7 +351,7 @@ public final class RemoteApi implements AutoCloseable {
                 entry("setServerLists", this::setServerLists),
                 entry("listFriends", c -> list(c, this.engine::friends, ApiJson::friend)),
                 entry("addFriend", this::addFriend),
-                entry("removeFriend", c -> known(c, this.engine.removeFriend(hash(text(c.parameters(), HASH_KEY))))),
+                entry("removeFriend", c -> known(c, this.engine.removeFriend(hash(text(c.parameters(), "userHash"))))),
                 entry("getFriendSlot", this::getFriendSlot),
                 entry("setFriendSlot", this::setFriendSlot),
                 entry("sendMessage", this::sendMessage),

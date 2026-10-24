@@ -484,7 +484,9 @@ final class ApiJson {
             g.writeStringProperty("time", l.time().toString());
             g.writeStringProperty("author", name(l.author()));
             g.writeStringProperty("text", l.text());
-            optional(g, "notice", l.notice().map(ApiJson::name));
+            if (l.notice().isPresent()) {
+                g.writeStringProperty("notice", name(l.notice().get()));
+            }
             g.writeEndObject();
         }
         g.writeEndArray();

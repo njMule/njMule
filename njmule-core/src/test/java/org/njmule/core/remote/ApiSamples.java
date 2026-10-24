@@ -18,24 +18,32 @@ package org.njmule.core.remote;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.LocalTime;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.KadNote;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.PartMap;
+import org.njmule.core.api.PeerComment;
+import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
@@ -47,6 +55,7 @@ import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.Schedule;
 
 /** Records of the engine with every field set, as the API's answers and events carry them. */
 final class ApiSamples {
@@ -179,7 +188,7 @@ final class ApiSamples {
                 3,
                 -1,
                 Optional.of("Pro"),
-                SearchResult.Media.NONE,
+                new SearchResult.Media("Ann", "Talks", "Opening", 3725, 192, "mp3"),
                 SearchResult.Origin.NONE,
                 70,
                 Optional.empty(),
@@ -193,6 +202,40 @@ final class ApiSamples {
 
     static Friend friend() {
         return new Friend(Hash16.parseHex(USER), "Ann", Optional.of(ServerAddress.parse("198.51.100.9:4662")));
+    }
+
+    static Schedule schedule() {
+        return new Schedule(List.of(new Schedule.Rule(
+                "Night",
+                true,
+                EnumSet.of(DayOfWeek.MONDAY, DayOfWeek.SUNDAY),
+                LocalTime.of(23, 0),
+                LocalTime.of(6, 0),
+                OptionalInt.empty(),
+                OptionalInt.of(0),
+                OptionalInt.of(300),
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                OptionalInt.of(1))));
+    }
+
+    static PortTest portTest() {
+        return new PortTest(
+                4662,
+                4672,
+                PortTest.Forwarding.FORWARDED,
+                "192.0.2.1",
+                PortTest.Reach.OPEN,
+                PortTest.Reach.TESTING,
+                false);
+    }
+
+    static PeerComment peerComment() {
+        return new PeerComment("Ann", "talk.bin", FileComment.of("clean copy", 4));
+    }
+
+    static KadNote kadNote() {
+        return new KadNote("Bob", "talk (2).bin", FileComment.of("fake", 1));
     }
 
     static BanInfo ban() {

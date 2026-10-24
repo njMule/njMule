@@ -51,6 +51,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.FileComment;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.config.AppDirectories;
@@ -115,7 +117,19 @@ class RemoteApiContractTest {
                 "/api/v1/categories",
                 "/api/v1/friends",
                 "/api/v1/bans",
-                "/api/v1/update");
+                "/api/v1/update",
+                "/api/v1/preferences",
+                "/api/v1/schedule",
+                "/api/v1/rates",
+                "/api/v1/rates?span=86400",
+                "/api/v1/conversations",
+                "/api/v1/friends/slot",
+                "/api/v1/ports/test",
+                "/api/v1/servers/lists",
+                "/api/v1/downloads/" + HASH + "/parts",
+                "/api/v1/downloads/" + HASH + "/comments",
+                "/api/v1/files/" + HASH + "/comment",
+                "/api/v1/files/" + HASH + "/notes");
     }
 
     @ParameterizedTest
@@ -124,6 +138,7 @@ class RemoteApiContractTest {
         givenTheEngineHolds(true);
         givenTheApiRuns();
         givenTheEngineLogged();
+        givenAChatWithACaptcha();
 
         whenCalled("GET", read, "");
 
@@ -182,7 +197,35 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/update/download", "", 202),
                 Arguments.of("POST", "/api/v1/update/install", "", 202),
                 Arguments.of("POST", "/api/v1/update/install", "{\"restart\":false}", 200),
-                Arguments.of("POST", "/api/v1/shutdown", "", 202));
+                Arguments.of("POST", "/api/v1/shutdown", "", 202),
+                Arguments.of("PATCH", "/api/v1/preferences", "{\"user.nick\":\"Night Owl\"}", 200),
+                Arguments.of(
+                        "PUT",
+                        "/api/v1/schedule",
+                        "{\"rules\":[{\"name\":\"Night\",\"days\":[\"monday\"],\"start\":\"23:00\","
+                                + "\"end\":\"06:00\",\"downloadKiBps\":0}]}",
+                        200),
+                Arguments.of(
+                        "PUT",
+                        "/api/v1/categories",
+                        "[{\"id\":1,\"name\":\"Talks\",\"color\":3,\"patterns\":\"*.mp3\",\"regex\":false}]",
+                        200),
+                Arguments.of(
+                        "PUT", "/api/v1/servers/lists", "{\"addresses\":[\"https://example.org/server.met\"]}", 200),
+                Arguments.of("PUT", "/api/v1/servers/203.0.113.10:4661/priority", "{\"priority\":\"high\"}", 200),
+                Arguments.of("PUT", "/api/v1/servers/203.0.113.10:4661/static", "{\"static\":true}", 200),
+                Arguments.of("POST", "/api/v1/ports/test", "", 202),
+                Arguments.of("POST", download + "/restore", "", 200),
+                Arguments.of("PUT", download + "/preview", "{\"previewFirst\":true}", 200),
+                Arguments.of("PUT", download + "/autoswap", "{\"autoSwap\":true}", 200),
+                Arguments.of("POST", download + "/swap", "{\"direction\":\"here\"}", 200),
+                Arguments.of("PUT", "/api/v1/files/" + HASH + "/comment", "{\"rating\":4,\"text\":\"good\"}", 200),
+                Arguments.of("POST", "/api/v1/files/" + HASH + "/notes", "", 200),
+                Arguments.of("PUT", "/api/v1/shared/" + HASH + "/name", "{\"name\":\"talk 2.bin\"}", 200),
+                Arguments.of("POST", "/api/v1/friends", "{\"userHash\":\"" + HASH + "\",\"name\":\"Ann\"}", 200),
+                Arguments.of("DELETE", "/api/v1/friends/" + HASH, "", 200),
+                Arguments.of("PUT", "/api/v1/friends/slot", "{\"userHash\":null}", 200),
+                Arguments.of("POST", "/api/v1/clients/198.51.100.9:4662/files", "", 200));
     }
 
     @ParameterizedTest
@@ -215,7 +258,17 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/update/skip", "{}", 400),
                 Arguments.of("POST", "/api/v1/update/download", "", 409),
                 Arguments.of("POST", "/api/v1/update/install", "", 409),
-                Arguments.of("POST", "/api/v1/update/install", "{\"restart\":\"now\"}", 400));
+                Arguments.of("POST", "/api/v1/update/install", "{\"restart\":\"now\"}", 400),
+                Arguments.of("PATCH", "/api/v1/preferences", "{\"net.tcpPort\":\"99999\"}", 400),
+                Arguments.of("PATCH", "/api/v1/preferences", "{\"no.such.key\":\"1\"}", 400),
+                Arguments.of("PUT", "/api/v1/schedule", "{\"rules\":[{\"start\":\"late\",\"end\":\"06:00\"}]}", 400),
+                Arguments.of("PUT", "/api/v1/files/" + HASH + "/comment", "{\"rating\":6}", 400),
+                Arguments.of("POST", "/api/v1/shared/directories", "{\"path\":\"relative\"}", 400),
+                Arguments.of("DELETE", "/api/v1/shared/directories?path=%2Fnowhere", "", 404),
+                Arguments.of("DELETE", "/api/v1/conversations/198.51.100.99:4662", "", 404),
+                Arguments.of("POST", "/api/v1/searches/7/spam", "{\"hashes\":[\"" + HASH + "\"]}", 404),
+                Arguments.of("POST", "/api/v1/ipfilter/lists", "", 409),
+                Arguments.of("POST", "/api/v1/import/emule", "{\"path\":\"relative\"}", 400));
     }
 
     @ParameterizedTest
@@ -298,6 +351,14 @@ class RemoteApiContractTest {
         answerWith("categories", List.of(ApiSamples.category()));
         answerWith("friends", List.of(ApiSamples.friend()));
         answerWith("bans", List.of(ApiSamples.ban()));
+        answerWith("friendSlot", Optional.of(Hash16.parseHex(HASH)));
+        answerWith("portTest", Optional.of(ApiSamples.portTest()));
+        answerWith("serverListAddresses", List.of(URI.create("https://example.org/server.met")));
+        answerWith("peerComments", List.of(ApiSamples.peerComment()));
+        answerWith("fileComment", Optional.of(FileComment.of("clean copy", 4)));
+        answerWith("kadNotes", List.of(ApiSamples.kadNote()));
+        this.fake.value("schedule", ApiSamples.schedule());
+        this.fake.value("activeRule", ApiSamples.schedule().rules().stream().findFirst());
         this.fake.value("preferences", Preferences.defaults());
         this.fake.value("updateStatus", ApiSamples.updateStatus());
         // Until a test says otherwise, nothing new is known: there is nothing to download or install.
@@ -323,17 +384,40 @@ class RemoteApiContractTest {
                 "addServer",
                 "removeServer",
                 "recheckKadFirewall",
-                "unban")) {
+                "unban",
+                "setServerPriority",
+                "setStaticServer",
+                "restoreDownload",
+                "setDownloadPreview",
+                "setDownloadAutoSwap",
+                "renameSharedFile",
+                "removeFriend",
+                "setFriendSlot")) {
             answerWith(yes, true);
         }
         for (String done : List.of(
-                "connect", "disconnect", "connectKad", "disconnectKad", "kadBootstrap", "sendMessage", "stopSearch")) {
+                "connect",
+                "disconnect",
+                "connectKad",
+                "disconnectKad",
+                "kadBootstrap",
+                "sendMessage",
+                "stopSearch",
+                "setCategories",
+                "setServerListAddresses",
+                "setFileComment",
+                "addFriend")) {
             this.fake.answer(done, args -> CompletableFuture.completedFuture(null));
         }
         for (String counted : List.of("addServers", "addKadContacts", "updateIpFilter")) {
             answerWith(counted, 14);
         }
         answerWith("addDownload", ApiSamples.download());
+        answerWith("swapSourcesToDownload", 3);
+        answerWith("testPorts", ApiSamples.portTest());
+        answerWith("searchKadNotes", List.of(ApiSamples.kadNote()));
+        answerWith("browseSharedFiles", List.of(ApiSamples.result()));
+        answerWith("updateSchedule", ApiSamples.schedule());
         answerWith("search", new SearchId(7));
         answerWith("checkForUpdate", ApiSamples.updateStatus());
         answerWith("skipUpdate", ApiSamples.updateStatus());
@@ -356,6 +440,18 @@ class RemoteApiContractTest {
         this.recent = RecentEvents.follow(engine);
         this.api = new RemoteApi(engine, this.recent, client -> true, Optional.of(() -> {}), Duration.ofSeconds(1));
         this.server = ApiServer.start(this.api);
+    }
+
+    // A chat comes through the engine's events: a message, a CAPTCHA to solve and a message not delivered.
+    private void givenAChatWithACaptcha() throws InterruptedException {
+        String address = "198.51.100.9:4662";
+        this.fake.events.submit(new EngineEvent.MessageReceived(
+                address, Hash16.parseHex(ApiSamples.USER), Optional.of("Ann"), "hello"));
+        this.fake.events.submit(
+                new EngineEvent.CaptchaRequested(address, Hash16.parseHex(ApiSamples.USER), new byte[] {'B', 'M'}));
+        this.fake.events.submit(new EngineEvent.MessageFailed(address, "offline"));
+        waitFor(() -> this.recent.conversations().all().stream()
+                .anyMatch(c -> c.lines().size() == 2 && c.captcha().isPresent()));
     }
 
     // Log lines and results come through the engine's events, delivered on the publisher's threads.
