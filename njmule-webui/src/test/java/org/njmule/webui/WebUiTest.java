@@ -35,7 +35,6 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -54,10 +53,8 @@ import org.njmule.core.config.AppDirectories;
 class WebUiTest {
 
     private static final String PASSWORD = "correct horse";
-    private static final Pattern CSRF = Pattern.compile("name=\"csrf\" value=\"([^\"]+)\"");
-    private static final String HASH = "0123456789ABCDEF0123456789ABCDEF";
-    private static final String ASKED_HASH = "FEDCBA9876543210FEDCBA9876543210";
-    private static final String REFUSED_LINK = "ed2k://|file|refused.bin|1000|" + "AB".repeat(16) + "|/";
+    // The session's token, as the app's page carries it.
+    private static final Pattern CSRF = Pattern.compile("name=\"njmule-csrf\" content=\"([^\"]+)\"");
 
     @TempDir
     static Path dir;
@@ -129,7 +126,7 @@ class WebUiTest {
     void shouldRefuseTheFormsOfVisitors() throws Exception {
         givenTheWebInterfaceRuns();
 
-        whenPosted("/transfers", Map.of("action", "add"));
+        whenPosted("/logout", Map.of());
 
         thenTheStatusIs(403);
     }
@@ -166,13 +163,13 @@ class WebUiTest {
     }
 
     @Test
-    void shouldShowTheTransfersToAUserLoggedIn() throws Exception {
+    void shouldServeTheAppToAUserLoggedIn() throws Exception {
         givenALoggedInUser();
 
-        whenThePageIsAsked("/transfers");
+        whenThePageIsAsked("/");
 
         thenTheStatusIs(200);
-        thenTheBodyContains("<h1>Transfers</h1>", "eD2K not connected", "Log out");
+        thenTheBodyContains("<div id=\"app\"></div>", "name=\"njmule-csrf\"");
     }
 
     @Test
@@ -196,7 +193,7 @@ class WebUiTest {
     @Test
     void shouldEndTheSessionOnLogout() throws Exception {
         givenALoggedInUser();
-        givenTheFormTokenOfThePage("/transfers");
+        givenTheFormTokenOfThePage("/");
 
         whenPosted("/logout", Map.of());
 
@@ -209,10 +206,10 @@ class WebUiTest {
     void shouldRefuseAFormWithoutToken() throws Exception {
         givenALoggedInUser();
 
-        whenPosted("/transfers", Map.of("action", "add", "link", REFUSED_LINK));
+        whenPosted("/logout", Map.of());
 
         thenTheStatusIs(403);
-        thenTheDownloadsDoNotShow("refused.bin");
+        thenTheSessionGoesOn();
     }
 
     @Test
@@ -220,22 +217,22 @@ class WebUiTest {
         givenALoggedInUser();
         givenTheFormToken("not-the-token");
 
-        whenPosted("/transfers", Map.of("action", "add", "link", REFUSED_LINK));
+        whenPosted("/logout", Map.of());
 
         thenTheStatusIs(403);
-        thenTheDownloadsDoNotShow("refused.bin");
+        thenTheSessionGoesOn();
     }
 
     @Test
     void shouldRefuseAFormFromAnotherSite() throws Exception {
         givenALoggedInUser();
-        givenTheFormTokenOfThePage("/transfers");
+        givenTheFormTokenOfThePage("/");
         givenTheOrigin("http://evil.example");
 
-        whenPosted("/transfers", Map.of("action", "add", "link", REFUSED_LINK));
+        whenPosted("/logout", Map.of());
 
         thenTheStatusIs(403);
-        thenTheDownloadsDoNotShow("refused.bin");
+        thenTheSessionGoesOn();
     }
 
     // With no-referrer a browser sends "Origin: null" even to the page's own origin.
@@ -335,61 +332,6 @@ class WebUiTest {
         thenTheRawAnswerSetsACookieWithout("Secure");
     }
 
-    @Test
-    void shouldAddPauseResumeAndCancelADownload() throws Exception {
-        givenALoggedInUser();
-        givenTheFormTokenOfThePage("/transfers");
-        givenADownloadAdded("ed2k://|file|web & test.bin|1000|" + HASH + "|/");
-        givenTheDownloadsShow("web &amp; test.bin", "Pause");
-        givenTheDownloadsDoNotShow("web & test");
-        givenTheActionDoneOnTheDownload("pause", HASH);
-        givenTheDownloadsShow("Paused", "Resume");
-        givenTheActionDoneOnTheDownload("resume", HASH);
-        givenTheDownloadsShow("Pause");
-        givenTheActionDoneOnTheDownload("stop", HASH);
-        givenTheDownloadsShow("Stopped", "Resume");
-        givenThePriorityOfTheDownloadSet(HASH, "high");
-        givenTheDownloadsShow("value=\"high\" selected");
-
-        whenPosted("/transfers", Map.of("action", "cancel", "hash", HASH, "confirmed", "yes"));
-
-        thenTheStatusIs(303);
-        thenTheDownloadsSoonDoNotShow("web &amp; test.bin");
-    }
-
-    @Test
-    void shouldAskBeforeCancellingADownload() throws Exception {
-        givenALoggedInUser();
-        givenTheFormTokenOfThePage("/transfers");
-        givenADownloadAdded("ed2k://|file|ask.bin|1000|" + ASKED_HASH + "|/");
-
-        whenPosted("/transfers", Map.of("action", "cancel", "hash", ASKED_HASH));
-
-        thenTheStatusIs(200);
-        thenTheBodyContains("Cancel <b>ask.bin</b>?", "name=\"confirmed\" value=\"yes\"", "Keep downloading");
-    }
-
-    @Test
-    void shouldRefuseALinkThatIsNoFileLink() throws Exception {
-        givenALoggedInUser();
-        givenTheFormTokenOfThePage("/transfers");
-
-        whenPosted("/transfers", Map.of("action", "add", "link", "ed2k://|server|1.2.3.4|4661|/"));
-
-        thenTheStatusIs(400);
-        thenTheBodyContains("Not an eD2K file link");
-    }
-
-    @Test
-    void shouldRefuseAnUnknownAction() throws Exception {
-        givenALoggedInUser();
-        givenTheFormTokenOfThePage("/transfers");
-
-        whenPosted("/transfers", Map.of("action", "explode", "hash", HASH));
-
-        thenTheStatusIs(400);
-    }
-
     private void givenTheWebInterfaceRuns() throws IOException {
         givenTheWebInterfaceRunsWithTheHostNames();
     }
@@ -462,29 +404,6 @@ class WebUiTest {
 
     private void givenTheOriginOfThePages() {
         this.origin = "http://127.0.0.1:" + this.ui.port();
-    }
-
-    private void givenADownloadAdded(String link) throws Exception {
-        whenPosted("/transfers", Map.of("action", "add", "link", link));
-        assertThat(this.answer.statusCode()).isEqualTo(303);
-        assertThat(this.answer.headers().firstValue("Location")).hasValue("transfers");
-    }
-
-    private void givenTheActionDoneOnTheDownload(String action, String hash) throws Exception {
-        whenPosted("/transfers", Map.of("action", action, "hash", hash));
-        assertThat(this.answer.statusCode()).isEqualTo(303);
-    }
-
-    private void givenThePriorityOfTheDownloadSet(String hash, String priority) throws Exception {
-        whenPosted("/transfers", Map.of("action", "priority", "hash", hash, "priority", priority));
-    }
-
-    private void givenTheDownloadsShow(String... parts) throws Exception {
-        assertThat(get("/transfers").body()).contains(parts);
-    }
-
-    private void givenTheDownloadsDoNotShow(String part) throws Exception {
-        thenTheDownloadsDoNotShow(part);
     }
 
     private void whenThePageIsAsked(String path) throws Exception {
@@ -564,12 +483,8 @@ class WebUiTest {
         assertThat(get("/").statusCode()).isEqualTo(303);
     }
 
-    private void thenTheDownloadsDoNotShow(String part) throws Exception {
-        assertThat(get("/transfers").body()).doesNotContain(part);
-    }
-
-    private void thenTheDownloadsSoonDoNotShow(String part) throws InterruptedException {
-        await(() -> !uncheckedGet("/transfers").contains(part));
+    private void thenTheSessionGoesOn() throws Exception {
+        assertThat(get("/").statusCode()).isEqualTo(200);
     }
 
     private void thenTheRawAnswerStartsWith(String start) {
@@ -606,14 +521,6 @@ class WebUiTest {
         return this.http.send(request(path).GET().build(), HttpResponse.BodyHandlers.ofString());
     }
 
-    private String uncheckedGet(String path) {
-        try {
-            return get(path).body();
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
     private HttpResponse<String> post(String path, Map<String, String> fields) throws Exception {
         return this.http.send(
                 request(path)
@@ -640,13 +547,5 @@ class WebUiTest {
                                 + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
                         .collect(Collectors.joining("&"));
         return HttpRequest.BodyPublishers.ofString(body);
-    }
-
-    private static void await(BooleanSupplier condition) throws InterruptedException {
-        long end = System.nanoTime() + Duration.ofSeconds(30).toNanos();
-        while (!condition.getAsBoolean()) {
-            assertThat(System.nanoTime()).as("waited too long").isLessThan(end);
-            Thread.sleep(50);
-        }
     }
 }

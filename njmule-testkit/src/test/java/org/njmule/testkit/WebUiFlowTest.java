@@ -31,11 +31,9 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -49,11 +47,13 @@ import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUi;
 import org.njmule.webui.WebUiSettings;
 
-/** The web interface driving an engine against a fake server: connect, search, download. */
+/** The web interface's app calls driving an engine against a fake server: log in, connect, search, download. */
 @Timeout(120)
 class WebUiFlowTest {
 
-    private static final Pattern CSRF = Pattern.compile("name=\"csrf\" value=\"([^\"]+)\"");
+    // The session's token, as the app's page carries it.
+    private static final Pattern CSRF = Pattern.compile("name=\"njmule-csrf\" content=\"([^\"]+)\"");
+    private static final String API = "/api/v1";
 
     @TempDir
     Path dir;
@@ -64,7 +64,8 @@ class WebUiFlowTest {
     private WebUi ui;
     private int port;
     private String cookie;
-    private String results;
+    private String token;
+    private String search;
     private String hash;
 
     @AfterEach
@@ -85,22 +86,18 @@ class WebUiFlowTest {
         givenAServerFinding(FakeServer.file("linux web.iso", 700_000_000L, 40), FakeServer.file("linux.txt", 10, 2));
         givenNjMuleRunningWithTheWebInterfaceAndThePassword("flow password");
         givenLoggedInWith("flow password");
-        givenConnectedToTheServerThroughThePages();
-        givenTheStatusSoonShows("Connected · High ID");
-        givenThePageShows("/servers", "<h1>Network</h1>", "Disconnect");
-        givenASearchForNothingLeadsTo("search");
-        givenASearchStartedFor("linux", "SERVER");
+        givenConnectedToTheServer();
+        givenTheStatusSoonShows("\"server\":{");
+        givenASearchStartedFor("linux", "server");
         givenTheResultsSoonShow("linux.txt");
-        givenTheResultsShow("2 results", "linux web.iso");
         givenTheResultsListBefore("linux web.iso", "linux.txt");
         givenTheFirstResultDownloaded();
-        givenTheTransfersShowTheDownloadOf("linux web.iso");
-        givenADownloadFromTheUnknownSearchRefused("424242");
-        givenThePageShowsNoResults("/search?id=nonsense");
+        givenTheDownloadsShow("linux web.iso");
+        givenADownloadFromAnUnknownSearchNotFound("424242");
 
-        whenDisconnectedThroughThePages();
+        whenDisconnected();
 
-        thenTheStatusSoonShows("eD2K not connected");
+        thenTheStatusSoonShows("\"server\":null");
     }
 
     private void givenAServerFinding(FileEntry... files) throws IOException {
@@ -124,97 +121,89 @@ class WebUiFlowTest {
     }
 
     private void givenLoggedInWith(String password) throws Exception {
-        HttpResponse<String> login = post("/login", Map.of("password", password));
+        HttpResponse<String> login = this.http.send(
+                request("/login")
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(HttpRequest.BodyPublishers.ofString(
+                                "password=" + URLEncoder.encode(password, StandardCharsets.UTF_8)))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
         String set = login.headers().firstValue("Set-Cookie").orElseThrow();
         this.cookie = set.substring(0, set.indexOf(';'));
+        Matcher m = CSRF.matcher(get("/"));
+        assertThat(m.find()).isTrue();
+        this.token = m.group(1);
     }
 
-    private void givenConnectedToTheServerThroughThePages() throws Exception {
+    private void givenConnectedToTheServer() throws Exception {
         String address = "127.0.0.1:" + this.server.port();
-        HttpResponse<String> connect =
-                post("/servers", Map.of("action", "connect", "address", address, "csrf", csrf()));
-        assertThat(connect.statusCode()).isEqualTo(303);
+        assertThat(call("POST", "/servers/connect", "{\"address\":\"" + address + "\"}")
+                        .statusCode())
+                .isEqualTo(200);
     }
 
     private void givenTheStatusSoonShows(String text) throws InterruptedException {
         thenTheStatusSoonShows(text);
     }
 
-    private void givenThePageShows(String path, String... parts) {
-        assertThat(page(path)).contains(parts);
-    }
-
-    private void givenASearchForNothingLeadsTo(String location) throws Exception {
-        assertThat(post("/search", Map.of("query", " ", "csrf", csrf()))
-                        .headers()
-                        .firstValue("Location"))
-                .hasValue(location);
-    }
-
     private void givenASearchStartedFor(String query, String scope) throws Exception {
-        HttpResponse<String> search = post("/search", Map.of("query", query, "scope", scope, "csrf", csrf()));
-        // Resolved as a browser does, against the page asked.
-        this.results = URI.create("/search")
-                .resolve(search.headers().firstValue("Location").orElseThrow())
-                .toString();
-        assertThat(this.results).startsWith("/search?id=");
+        HttpResponse<String> started =
+                call("POST", "/searches", "{\"query\":\"" + query + "\",\"scope\":\"" + scope + "\"}");
+        assertThat(started.statusCode()).isEqualTo(201);
+        Matcher id = Pattern.compile("\"id\":([0-9]+)").matcher(started.body());
+        assertThat(id.find()).isTrue();
+        this.search = id.group(1);
     }
 
     private void givenTheResultsSoonShow(String text) throws InterruptedException {
-        await(() -> page(this.results).contains(text));
+        await(() -> get(API + "/searches/" + this.search).contains(text));
     }
 
-    private void givenTheResultsShow(String... parts) {
-        givenThePageShows(this.results, parts);
-    }
-
+    // The results come with the most sources first.
     private void givenTheResultsListBefore(String first, String second) {
-        String found = page(this.results);
+        String found = get(API + "/searches/" + this.search);
         assertThat(found.indexOf(first)).isLessThan(found.indexOf(second));
     }
 
     private void givenTheFirstResultDownloaded() throws Exception {
-        Matcher download = Pattern.compile("name=\"action\" value=\"download\"><input type=\"hidden\" name=\"search\""
-                        + " value=\"[0-9]+\"><input type=\"hidden\" name=\"hash\" value=\"([0-9A-F]{32})\"")
-                .matcher(page(this.results));
-        assertThat(download.find()).isTrue();
-        this.hash = download.group(1);
-        String id = this.results.substring(this.results.indexOf('=') + 1);
+        Matcher first = Pattern.compile("\"hash\":\"([0-9A-F]{32})\"").matcher(get(API + "/searches/" + this.search));
+        assertThat(first.find()).isTrue();
+        this.hash = first.group(1);
         HttpResponse<String> taken =
-                post("/search", Map.of("action", "download", "search", id, "hash", this.hash, "csrf", csrf()));
-        assertThat(taken.headers().firstValue("Location")).hasValue("transfers");
+                call("POST", "/searches/" + this.search + "/download", "{\"hash\":\"" + this.hash + "\"}");
+        assertThat(taken.statusCode()).isEqualTo(201);
     }
 
-    private void givenTheTransfersShowTheDownloadOf(String name) {
-        givenThePageShows("/transfers", name, this.hash);
+    private void givenTheDownloadsShow(String name) {
+        assertThat(get(API + "/downloads")).contains(name, this.hash);
     }
 
-    private void givenADownloadFromTheUnknownSearchRefused(String search) throws Exception {
+    private void givenADownloadFromAnUnknownSearchNotFound(String unknown) throws Exception {
         HttpResponse<String> gone =
-                post("/search", Map.of("action", "download", "search", search, "hash", this.hash, "csrf", csrf()));
-        assertThat(gone.statusCode()).isEqualTo(400);
-        assertThat(gone.body()).contains("search again");
+                call("POST", "/searches/" + unknown + "/download", "{\"hash\":\"" + this.hash + "\"}");
+        assertThat(gone.statusCode()).isEqualTo(404);
     }
 
-    private void givenThePageShowsNoResults(String path) {
-        assertThat(page(path)).doesNotContain("results;");
-    }
-
-    private void whenDisconnectedThroughThePages() throws Exception {
-        post("/servers", Map.of("action", "disconnect", "csrf", csrf()));
+    private void whenDisconnected() throws Exception {
+        assertThat(call("POST", "/servers/disconnect", "{}").statusCode()).isEqualTo(200);
     }
 
     private void thenTheStatusSoonShows(String text) throws InterruptedException {
-        await(() -> page("/transfers").contains(text));
+        await(() -> get(API + "/status").contains(text));
     }
 
-    private String csrf() throws Exception {
-        Matcher m = CSRF.matcher(page("/transfers"));
-        assertThat(m.find()).isTrue();
-        return m.group(1);
+    // A change, as the app makes it: JSON with the session's token in its header.
+    private HttpResponse<String> call(String method, String path, String json) throws Exception {
+        return this.http.send(
+                request(API + path)
+                        .header("Content-Type", "application/json")
+                        .header("X-NjMule-CSRF", this.token)
+                        .method(method, HttpRequest.BodyPublishers.ofString(json))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
-    private String page(String path) {
+    private String get(String path) {
         try {
             return this.http
                     .send(request(path).GET().build(), HttpResponse.BodyHandlers.ofString())
@@ -222,20 +211,6 @@ class WebUiFlowTest {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
-    }
-
-    private HttpResponse<String> post(String path, Map<String, String> fields) throws Exception {
-        String body = fields.entrySet().stream()
-                .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8)
-                        + "="
-                        + URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
-                .collect(Collectors.joining("&"));
-        return this.http.send(
-                request(path)
-                        .header("Content-Type", "application/x-www-form-urlencoded")
-                        .POST(HttpRequest.BodyPublishers.ofString(body))
-                        .build(),
-                HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpRequest.Builder request(String path) {

@@ -19,7 +19,6 @@ package org.njmule.webui;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
-import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import java.io.IOException;
 import java.net.Inet4Address;
@@ -30,21 +29,12 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.njmule.core.api.EngineStatus;
-import org.njmule.core.api.KadInfo;
-import org.njmule.core.api.PartMap;
 
 /** Password hashes, sessions, settings and page building. */
 class WebUiPartsTest {
@@ -581,107 +571,12 @@ class WebUiPartsTest {
         thenTheTextIs("Ubuntu 24.04 – 東京.iso");
     }
 
-    @ParameterizedTest
-    @MethodSource("sizes")
-    void shouldShowASizeInTheLargestUnitThatFits(long bytes, String shown) {
-        whenTheSizeIsShown(bytes);
-
-        thenTheTextIs(shown);
-    }
-
-    @Test
-    void shouldShowASizePastTerabytesStillInTerabytes() {
-        whenTheSizeIsShown(2048L << 40);
-
-        thenTheTextIs("2048.00 TB", "no unit past TB");
-    }
-
-    @ParameterizedTest
-    @MethodSource("rates")
-    void shouldShowARateInTheLargestUnitThatFits(long bytesPerSecond, String shown) {
-        whenTheRateIsShown(bytesPerSecond);
-
-        thenTheTextIs(shown);
-    }
-
-    @Test
-    void shouldEscapeTheNameAndValueOfAHiddenField() {
-        whenAHiddenFieldIsMade("a\"", "<b>");
-
-        thenTheTextIs("<input type=\"hidden\" name=\"a&quot;\" value=\"&lt;b&gt;\">");
-    }
-
     @Test
     void shouldMakeAPageWithoutNavigationOutsideASession() {
         whenAPageOutsideASessionIsMade("T<", "body");
 
         thenTheTextContains("<h1>T&lt;</h1>");
         thenTheTextDoesNotContain("<nav");
-    }
-
-    @Test
-    void shouldMakeAPageWithThePlacesAndTheFormTokenInASession() {
-        whenAPageIsMade("T", "tok", "body");
-
-        thenTheTextContains(
-                "<nav aria-label=\"Places\">",
-                "value=\"tok\"",
-                "<a class=\"place\" href=\"transfers\" aria-current=\"page\">",
-                "href=\"servers\"",
-                "<span>Log out</span>");
-    }
-
-    @Test
-    void shouldTellTheNetworksInTheTopBarOfASessionsPage() {
-        whenAPageIsMadeWithTheStatus(Optional.of(new KadInfo(
-                true,
-                10,
-                5,
-                true,
-                "00112233445566778899AABBCCDDEEFF",
-                "198.51.100.7",
-                4672,
-                false,
-                false,
-                KadInfo.Buddy.NONE,
-                0,
-                0)));
-
-        thenTheTextContains("eD2K not connected · Kad firewalled", "class=\"chip warn\"");
-    }
-
-    @Test
-    void shouldMarkTheCurrentSegment() {
-        whenSegmentsAreMade("kad");
-
-        thenTheTextContains("<a href=\"kad\" aria-current=\"page\">Kad</a>", "<a href=\"log\">Log</a>");
-    }
-
-    @Test
-    void shouldDrawTheMissingBytesOverTheBarOfParts() {
-        whenThePartsAreDrawn(new PartMap(1000, List.of(new PartMap.Span(250, 500)), List.of(), List.of()), 1000);
-
-        thenTheTextContains("<rect class=\"have\"", "<rect class=\"missing\" x=\"250.00\" width=\"250.00\"");
-    }
-
-    @ParameterizedTest
-    @CsvSource({"45, 45 s", "725, 12 min 5 s", "12000, 3 h 20 min", "187200, 2 d 4 h"})
-    void shouldTellATimeInItsTwoLargestUnits(long seconds, String expected) {
-        whenATimeIsWritten(seconds);
-
-        thenTheTextIs(expected);
-    }
-
-    private static Stream<Arguments> sizes() {
-        return Stream.of(arguments(512L, "512 B"), arguments(1536L, "1.50 KB"), arguments(5L << 40, "5.00 TB"));
-    }
-
-    private static Stream<Arguments> rates() {
-        return Stream.of(
-                arguments(2048L, "2.0 KB/s"),
-                arguments(1_355_000L, "1.29 MB/s"),
-                arguments(100L << 20, "100.0 MB/s"),
-                arguments(1_181_116_006L, "1.10 GB/s"));
     }
 
     private void givenAStoredHashOf(String plain) {
@@ -829,45 +724,8 @@ class WebUiPartsTest {
         this.text = Html.text(value);
     }
 
-    private void whenTheSizeIsShown(long bytes) {
-        this.text = Html.size(bytes);
-    }
-
-    private void whenTheRateIsShown(long bytesPerSecond) {
-        this.text = Html.rate(bytesPerSecond);
-    }
-
-    private void whenAHiddenFieldIsMade(String name, String value) {
-        this.text = Html.hidden(name, value);
-    }
-
     private void whenAPageOutsideASessionIsMade(String title, String content) {
         this.text = Html.bare(title, content);
-    }
-
-    private void whenAPageIsMade(String title, String csrf, String content) {
-        this.text = Html.page(new Html.Frame(csrf, Html.Place.TRANSFERS, Optional.empty(), ""), title, "", content, 0);
-    }
-
-    private void whenAPageIsMadeWithTheStatus(Optional<KadInfo> kad) {
-        EngineStatus status = new EngineStatus(
-                Optional.empty(), 0, false, false, kad, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, "", 4662, false);
-        this.text = Html.page(new Html.Frame("tok", Html.Place.NETWORK, Optional.of(status), ""), "T", "", "", 0);
-    }
-
-    private void whenSegmentsAreMade(String current) {
-        this.text = Html.segments(
-                "Network",
-                List.of(Map.entry("servers", "Servers"), Map.entry("kad", "Kad"), Map.entry("log", "Log")),
-                current);
-    }
-
-    private void whenThePartsAreDrawn(PartMap parts, long size) {
-        this.text = TransfersPages.parts(parts, size);
-    }
-
-    private void whenATimeIsWritten(long seconds) {
-        this.text = Html.duration(seconds);
     }
 
     private void thenTheHashStartsWith(String prefix) {
@@ -976,10 +834,6 @@ class WebUiPartsTest {
 
     private void thenTheTextIs(String expected) {
         assertThat(this.text).isEqualTo(expected);
-    }
-
-    private void thenTheTextIs(String expected, String why) {
-        assertThat(this.text).as(why).isEqualTo(expected);
     }
 
     private void thenTheTextContains(String... parts) {

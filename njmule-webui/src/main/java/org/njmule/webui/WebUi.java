@@ -47,30 +47,19 @@ import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.handler.ErrorHandler;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.thread.VirtualThreadPool;
-import org.njmule.core.api.Hash16;
-import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NjMuleEngine;
-import org.njmule.core.api.NjMuleInfo;
-import org.njmule.core.api.UpdateStatus;
-import org.njmule.core.config.NightHours;
-import org.njmule.core.config.Preferences;
-import org.njmule.core.config.UpdateChannel;
-import org.njmule.core.config.UpdateInstallTime;
-import org.njmule.core.config.UpdateMode;
 import org.njmule.core.remote.ApiToken;
 import org.njmule.core.remote.Exchange;
 import org.njmule.core.remote.RecentEvents;
-import org.njmule.core.remote.RecentLog;
 import org.njmule.core.remote.RemoteApi;
-import org.njmule.core.remote.SearchCollector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The web interface: transfers, searches, shared files, the network and the statistics as plain HTML pages behind a
- * password, laid out as the desktop app. Every change is a POST carrying the session's form token; pages run no scripts
- * and cannot be framed, and the session cookie is HTTP-only, same-site and, over HTTPS, secure. When its settings ask
- * for it, the remote-control API answers under {@value RemoteApi#PREFIX}.
+ * The web interface: the browser app of njmule-webapp behind a password, and the remote-control API it calls with the
+ * login session, every change carrying the session's token in a header. The login page runs no script; no page can be
+ * framed, and the session cookie is HTTP-only, same-site and, over HTTPS, secure. When its settings ask for it, the API
+ * also answers callers with the API token, under {@value RemoteApi#PREFIX}.
  */
 public final class WebUi implements AutoCloseable {
 
@@ -79,7 +68,6 @@ public final class WebUi implements AutoCloseable {
     private static final String TEXT = "text/plain; charset=utf-8";
     private static final String GET = "GET";
     private static final String POST = "POST";
-    private static final String SETTINGS_PAGE = "/settings";
     private static final String API_PATH = "/api/";
     // The web interface's own settings the app changes: the host names it answers to.
     private static final String HOSTS_PATH = "/webui/hosts";
@@ -91,7 +79,6 @@ public final class WebUi implements AutoCloseable {
     private static final String APP_POLICY = "default-src 'none'; script-src 'self'; style-src 'self';"
             + " img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none';"
             + " base-uri 'none'";
-    private static final String ACTION = "action";
     private static final int MAX_LOGIN_BODY = 16 * 1024;
     private static final int MAX_LOGIN_FIELDS = 4;
     // Far more than any of the forms has.
@@ -111,11 +98,6 @@ public final class WebUi implements AutoCloseable {
             Pattern.compile("(\\d{1,3})-(\\d{1,3})-(\\d{1,3})-(\\d{1,3})\\.[a-z0-9-]+\\.direct\\.quickconnect\\.to");
 
     private final NjMuleEngine engine;
-    private final EngineCalls calls;
-    private final TransfersPages transfers;
-    private final SearchPages searchPages;
-    private final NetworkPages network;
-    private final LibraryPages library;
     private final WebUiSettings settings;
     // The names of the settings, changed by the settings page.
     private volatile List<String> hosts;
@@ -130,8 +112,6 @@ public final class WebUi implements AutoCloseable {
     private final String cookie;
 
     private final RecentEvents recent;
-    private final SearchCollector searches;
-    private final RecentLog recentLog;
     private final RemoteApi api;
     private final WebApp app = new WebApp();
 
@@ -144,7 +124,6 @@ public final class WebUi implements AutoCloseable {
             Optional<Runnable> exit,
             Duration heartbeat) {
         this.engine = engine;
-        this.calls = new EngineCalls(engine);
         this.settings = settings;
         this.hosts = settings.hosts();
         this.proxies = new TrustedProxies(settings.proxies());
@@ -154,12 +133,6 @@ public final class WebUi implements AutoCloseable {
         this.checking = new Semaphore(passwordChecks);
         this.cookie = "njmule-session-" + port;
         this.recent = RecentEvents.follow(engine);
-        this.searches = this.recent.searches();
-        this.recentLog = this.recent.log();
-        this.transfers = new TransfersPages(this.calls);
-        this.searchPages = new SearchPages(this.calls, this.searches);
-        this.network = new NetworkPages(this.calls, this.recentLog);
-        this.library = new LibraryPages(this.calls);
         // The app calls it with the login session; callers with the API token too when the settings allow them. A
         // wrong API token counts as a failed login of its address.
         this.api = new RemoteApi(
@@ -276,8 +249,6 @@ public final class WebUi implements AutoCloseable {
     private void handle(Exchange exchange) throws IOException {
         try {
             route(exchange);
-        } catch (EngineCalls.Failure e) {
-            fail(exchange, 503, "The engine cannot answer now: " + e.getMessage());
         } catch (IllegalArgumentException e) {
             fail(exchange, 400, "Bad request.");
         } catch (RuntimeException e) {
@@ -525,318 +496,28 @@ public final class WebUi implements AutoCloseable {
                         + "<button class=\"main\">Log in</button></form>");
     }
 
-    // The frame of a page: its place, the engine's state for the top bar, the word of a new version.
-    private Html.Frame frame(Sessions.Session session, Html.Place place) {
-        return new Html.Frame(
-                session.csrf(),
-                place,
-                this.calls.maybe(this.engine.status()),
-                updateNotice(this.engine.updateStatus()));
-    }
-
     private void get(Exchange exchange, String path, Sessions.Session session) throws IOException {
         if (path.equals("/")) {
             send(exchange, 200, HTML, this.app.page(session.csrf()).getBytes(StandardCharsets.UTF_8), APP_POLICY);
-            return;
-        }
-        Map<String, String> query = exchange.query();
-        String page = switch (path) {
-            case TransfersPages.PATH -> this.transfers.page(frame(session, Html.Place.TRANSFERS), query);
-            case SearchPages.PATH -> this.searchPages.page(frame(session, Html.Place.SEARCH), query);
-            case NetworkPages.SERVERS -> this.network.servers(frame(session, Html.Place.NETWORK));
-            case NetworkPages.KAD -> this.network.kad(frame(session, Html.Place.NETWORK));
-            case NetworkPages.LOG -> this.network.log(frame(session, Html.Place.NETWORK), query);
-            case LibraryPages.SHARED -> this.library.shared(frame(session, Html.Place.SHARED), query);
-            case LibraryPages.STATISTICS -> this.library.statistics(frame(session, Html.Place.STATISTICS));
-            case SETTINGS_PAGE -> settingsPage(session);
-            default -> null;
-        };
-        if (page == null) {
-            send(exchange, 404, TEXT, "Not found.");
         } else {
-            send(exchange, 200, HTML, page);
+            send(exchange, 404, TEXT, "Not found.");
         }
     }
 
+    // The one form left besides the login: logging out, with the session's form token.
     private void post(Exchange exchange, String path, Sessions.Session session) throws IOException {
-        Optional<Map<String, String>> posted = exchange.form(MAX_FIELDS, MAX_BODY);
-        if (posted.isEmpty()) {
-            send(exchange, 413, HTML, notDone(session, path, "Too much text at once: send it in parts."));
-            return;
-        }
-        Map<String, String> form = posted.get();
-        if (!Sessions.validForm(session, form.get("csrf"))) {
+        Optional<Map<String, String>> form = exchange.form(MAX_FIELDS, MAX_BODY);
+        if (form.isEmpty() || !Sessions.validForm(session, form.get().get("csrf"))) {
             send(exchange, 403, TEXT, "Expired form: reload the page.");
             return;
         }
-        if (path.equals(TransfersPages.PATH) && TransfersPages.asksFirst(form)) {
-            confirmCancel(exchange, session, form);
-            return;
-        }
-        String next;
-        try {
-            next = switch (path) {
-                case "/logout" -> {
-                    this.sessions.close(session.id());
-                    exchange.addCookie(sessionCookie(exchange, "").maxAge(0).build());
-                    yield "/login";
-                }
-                case TransfersPages.PATH -> this.transfers.act(form);
-                case SearchPages.PATH -> this.searchPages.act(form, Optional.empty(), this.transfers);
-                case NetworkPages.SERVERS -> this.network.actOnServers(form);
-                case NetworkPages.KAD -> this.network.actOnKad(form);
-                case LibraryPages.SHARED -> this.library.actOnShared(form);
-                case SETTINGS_PAGE -> {
-                    if (form.containsKey(ACTION)) {
-                        updateSettings(form);
-                    } else {
-                        hostNames(form, exchange.header("Host"));
-                    }
-                    yield SETTINGS_PAGE;
-                }
-                default -> null;
-            };
-        } catch (IllegalArgumentException | EngineCalls.Failure e) {
-            send(exchange, 400, HTML, notDone(session, path, String.valueOf(e.getMessage())));
-            return;
-        }
-        if (next == null) {
+        if (!path.equals("/logout")) {
             send(exchange, 404, TEXT, "Not found.");
-        } else {
-            redirect(exchange, next);
-        }
-    }
-
-    // A cancel names both outcomes first, as the desktop app's question does.
-    private void confirmCancel(Exchange exchange, Sessions.Session session, Map<String, String> form)
-            throws IOException {
-        String page;
-        try {
-            page = this.transfers.confirmCancel(
-                    frame(session, Html.Place.TRANSFERS), Hash16.parseHex(form.getOrDefault("hash", "")));
-        } catch (IllegalArgumentException | EngineCalls.Failure e) {
-            send(exchange, 400, HTML, notDone(session, TransfersPages.PATH, String.valueOf(e.getMessage())));
             return;
         }
-        send(exchange, 200, HTML, page);
-    }
-
-    private String notDone(Sessions.Session session, String path, String message) {
-        Html.Place place = switch (path) {
-            case SearchPages.PATH -> Html.Place.SEARCH;
-            case NetworkPages.SERVERS, NetworkPages.KAD, NetworkPages.LOG -> Html.Place.NETWORK;
-            case LibraryPages.SHARED -> Html.Place.SHARED;
-            case SETTINGS_PAGE -> Html.Place.SETTINGS;
-            default -> Html.Place.TRANSFERS;
-        };
-        return Html.page(
-                frame(session, place),
-                "Not done",
-                "",
-                "<p class=\"error\">" + Html.text(message) + "</p><p><a href=\"" + Html.text(Html.relative(path))
-                        + "\">Back</a></p>",
-                0);
-    }
-
-    // A new version the user has not skipped, above every page: available, downloading, ready or being installed.
-    private static String updateNotice(UpdateStatus update) {
-        if (update.install() == UpdateStatus.Install.RESTART) {
-            return "<p class=\"notice\"><b>" + Html.text(NjMuleInfo.NAME)
-                    + " is installing a new version and starting again.</b> Load this page again in a minute.</p>";
-        }
-        if (!update.isWorthTelling()) {
-            return "";
-        }
-        NewVersion v = update.available().orElseThrow();
-        String state = update.ready().isPresent()
-                ? " is downloaded and ready to install"
-                : update.download().isPresent() ? " is downloading" : " is available";
-        return "<p class=\"notice\"><b>" + Html.text(NjMuleInfo.NAME + " " + v.version()) + state + "</b>"
-                + (v.critical() ? ", with security fixes" : "") + ". <a href=\""
-                + Html.text(v.page().toString())
-                + "\" rel=\"noreferrer\">What changed</a> &middot; <a href=\"settings\">"
-                + (update.canInstall() ? "Install it" : "How to update")
-                + "</a></p>";
-    }
-
-    private String settingsPage(Sessions.Session session) {
-        String csrf = session.csrf();
-        String besides = this.settings.lan()
-                ? "localhost, this computer's addresses and their Synology QuickConnect names"
-                        + " (192-168-1-80.&lt;id&gt;.direct.quickconnect.to)"
-                : "localhost";
-        UpdateStatus update = this.calls.engine().updateStatus();
-        String body =
-                updates(update, this.calls.engine().preferences(), csrf) + "<h2>Host names</h2><p>Besides " + besides
-                        + ", the interface answers only to these names, such as a name on the LAN or a reverse proxy's:"
-                        + " a page of another site that reaches it under another name is refused (DNS rebinding).</p><p>"
-                        + Html.form(
-                                SETTINGS_PAGE,
-                                csrf,
-                                "<input type=\"text\" name=\"hosts\" size=\"60\" value=\""
-                                        + Html.text(String.join(", ", this.hosts))
-                                        + "\" placeholder=\"nas.local, njmule.example.com\"> ",
-                                "Save",
-                                true)
-                        + "</p>";
-        boolean moving = update.checking() || update.download().isPresent();
-        return Html.page(
-                frame(session, Html.Place.SETTINGS),
-                "Settings",
-                "Updates and host names",
-                body,
-                moving ? SearchPages.REFRESH : 0);
-    }
-
-    private static String updates(UpdateStatus update, Preferences preferences, String csrf) {
-        StringBuilder out = new StringBuilder("<h2>Updates</h2><p>")
-                .append(Html.text(NjMuleInfo.NAME + " " + update.current()))
-                .append(". It asks github.com whether a new version is out, sending nothing but the request.</p><p>")
-                .append(Html.form(
-                        SETTINGS_PAGE,
-                        csrf,
-                        Html.hidden(ACTION, "updates")
-                                + "<select name=\"mode\" aria-label=\"What to do with a new version\">"
-                                + option(UpdateMode.NOTIFY.name(), "Tell me", preferences.updateMode())
-                                + option(UpdateMode.DOWNLOAD.name(), "Download it", preferences.updateMode())
-                                + option(UpdateMode.INSTALL.name(), "Download and install it", preferences.updateMode())
-                                + option(UpdateMode.OFF.name(), "Look only when asked", preferences.updateMode())
-                                + "</select> <select name=\"channel\" aria-label=\"Which versions\">"
-                                + option(UpdateChannel.STABLE.name(), "Releases", preferences.updateChannel())
-                                + option(
-                                        UpdateChannel.PRERELEASE.name(),
-                                        "Test versions too",
-                                        preferences.updateChannel())
-                                + "</select> <select name=\"installAt\" aria-label=\"When to install\">"
-                                + option(
-                                        UpdateInstallTime.EXIT.name(),
-                                        "Install at exit",
-                                        preferences.updateInstallTime())
-                                + option(
-                                        UpdateInstallTime.EXIT_OR_NIGHT.name(),
-                                        "At exit or at night",
-                                        preferences.updateInstallTime())
-                                + "</select> <input type=\"text\" name=\"nightHours\" size=\"11\""
-                                + " aria-label=\"Night hours\" value=\""
-                                + Html.text(preferences.nightHours().toString())
-                                + "\"> ",
-                        "Save",
-                        false))
-                .append("</p><p>");
-        if (update.checking()) {
-            out.append("Looking for a new version...");
-        } else {
-            out.append(update.lastCheck()
-                            .map(t -> "Last looked: " + Html.text(t.toString()) + ". ")
-                            .orElse(""))
-                    .append(Html.form(SETTINGS_PAGE, csrf, Html.hidden(ACTION, "check"), "Check now", false));
-        }
-        out.append("</p>");
-        update.failure()
-                .ifPresent(f -> out.append("<p class=\"error\">It failed: ")
-                        .append(Html.text(f))
-                        .append("</p>"));
-        if (update.available().isEmpty()
-                && update.lastCheck().isPresent()
-                && update.failure().isEmpty()) {
-            out.append("<p>This is the newest version.</p>");
-        }
-        if (update.available().isPresent()) {
-            NewVersion v = update.available().get();
-            out.append("<p class=\"notice\"><b>")
-                    .append(Html.text(NjMuleInfo.NAME + " " + v.version()))
-                    .append(" is available</b>")
-                    .append(v.critical() ? ", with security fixes" : "")
-                    .append(". <a href=\"")
-                    .append(Html.text(v.page().toString()))
-                    .append("\" rel=\"noreferrer\">What changed</a><br>");
-            out.append(installing(update, v, csrf));
-            if (!v.critical() && !update.skipped().equals(Optional.of(v.version()))) {
-                out.append("<br>")
-                        .append(Html.form(
-                                SETTINGS_PAGE,
-                                csrf,
-                                Html.hidden(ACTION, "skip") + Html.hidden("version", v.version()),
-                                "Skip this version",
-                                false));
-            }
-            out.append("</p>");
-        }
-        return out.toString();
-    }
-
-    // What can be done with the new version here: download it, follow the download, install it, or how to.
-    private static String installing(UpdateStatus update, NewVersion v, String csrf) {
-        if (update.download().isPresent()) {
-            UpdateStatus.Progress p = update.download().get();
-            return "Downloading: " + Html.size(p.received()) + " of " + Html.size(p.size()) + " ("
-                    + Math.round(p.fraction() * 100) + "%).";
-        }
-        if (update.install() == UpdateStatus.Install.RESTART) {
-            return "Installing it now: " + Html.text(NjMuleInfo.NAME) + " starts again in a moment.";
-        }
-        if (update.canInstall()) {
-            String when = update.install() == UpdateStatus.Install.AT_EXIT
-                    ? "It is installed when " + NjMuleInfo.NAME + " exits. "
-                    : "";
-            return Html.text(when)
-                    + Html.form(SETTINGS_PAGE, csrf, Html.hidden(ACTION, "install"), "Install and restart", true)
-                    + (update.install() == UpdateStatus.Install.AT_EXIT
-                            ? ""
-                            : " "
-                                    + Html.form(
-                                            SETTINGS_PAGE,
-                                            csrf,
-                                            Html.hidden(ACTION, "install-at-exit"),
-                                            "Install at exit",
-                                            false));
-        }
-        String how = update.ready().isPresent()
-                ? UpdateHelp.howToInstallFile(
-                        update.installation(), update.ready().get())
-                : UpdateHelp.howToInstall(
-                        update.installation(), v.download().map(NewVersion.Download::uri), Optional.of(v.page()));
-        String download = v.download().isPresent() && update.ready().isEmpty()
-                ? " " + Html.form(SETTINGS_PAGE, csrf, Html.hidden(ACTION, "download"), "Download", false)
-                : "";
-        return Html.text(how) + download;
-    }
-
-    private static String option(String value, String label, Enum<?> chosen) {
-        return "<option value=\"" + value + "\"" + (value.equals(chosen.name()) ? " selected" : "") + ">"
-                + Html.text(label) + "</option>";
-    }
-
-    // The mode and channel of the updates, a check now or a version skipped.
-    @SuppressWarnings("FutureReturnValueIgnored")
-    private void updateSettings(Map<String, String> form) {
-        switch (form.getOrDefault(ACTION, "")) {
-            case "updates" -> {
-                UpdateMode mode = UpdateMode.valueOf(form.getOrDefault("mode", ""));
-                UpdateChannel channel = UpdateChannel.valueOf(form.getOrDefault("channel", ""));
-                UpdateInstallTime at =
-                        UpdateInstallTime.valueOf(form.getOrDefault("installAt", UpdateInstallTime.EXIT.name()));
-                Optional<NightHours> night = Optional.ofNullable(form.get("nightHours"))
-                        .filter(h -> !h.isBlank())
-                        .map(NightHours::parse);
-                this.calls.await(this.calls
-                        .engine()
-                        .updatePreferences(p -> p.toBuilder()
-                                .updateMode(mode)
-                                .updateChannel(channel)
-                                .updateInstallTime(at)
-                                .nightHours(night.orElse(p.nightHours()))
-                                .build()));
-            }
-            // Its outcome, a failure included, shows in the status once the page loads again.
-            case "check" -> this.calls.engine().checkForUpdate();
-            case "download" -> this.calls.engine().downloadUpdate();
-            // A refusal (nothing to install, or not here) is shown as the engine's other failures are.
-            case "install" -> this.calls.await(this.calls.engine().installUpdate(true));
-            case "install-at-exit" -> this.calls.await(this.calls.engine().installUpdate(false));
-            case "skip" -> this.calls.await(this.calls.engine().skipUpdate(form.getOrDefault("version", "")));
-            default -> throw new IllegalArgumentException("Unknown action.");
-        }
+        this.sessions.close(session.id());
+        exchange.addCookie(sessionCookie(exchange, "").maxAge(0).build());
+        redirect(exchange, "/login");
     }
 
     // The names of the settings, written to the file of the running settings, which the command line may have changed.
