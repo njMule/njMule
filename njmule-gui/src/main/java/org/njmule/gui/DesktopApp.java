@@ -53,6 +53,7 @@ import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.gui.dialogs.AboutDialog;
 import org.njmule.gui.dialogs.FirstRunWizard;
 import org.njmule.gui.dialogs.ImportDialog;
 import org.njmule.gui.i18n.I18n;
@@ -367,6 +368,15 @@ public final class DesktopApp implements AutoCloseable {
         this.startLinks.clear();
         // Links opened on macOS, those that started the app first.
         MacLinks.SYSTEM.attach(links -> Platform.runLater(() -> handedOver(links)));
+        // The application menu of macOS: About, Settings, and Quit asking first as closing the window does.
+        MacMenu.install(new MacMenu.Actions(
+                () -> Platform.runLater(() -> new AboutDialog(this.gui, stage).show()),
+                () -> Platform.runLater(() -> this.window.show("settings")),
+                () -> Platform.runLater(() -> {
+                    if (mayExit(stage)) {
+                        Platform.exit();
+                    }
+                })));
         if (GuiTour.requested()) {
             GuiTour.start(this.gui, this.window, stage, appTour(stage), Platform::exit);
         } else if (!this.settings.existed()) {
