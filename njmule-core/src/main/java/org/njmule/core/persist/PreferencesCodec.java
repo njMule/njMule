@@ -30,6 +30,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -192,6 +194,40 @@ public final class PreferencesCodec {
     }
 
     private PreferencesCodec() {}
+
+    /** Every preference as the file writes it, by key. */
+    public static SortedMap<String, String> values(Preferences preferences) {
+        SortedMap<String, String> all = new TreeMap<>();
+        KEYS.values().forEach(k -> all.put(k.name(), k.getter().apply(preferences)));
+        return all;
+    }
+
+    /**
+     * {@code preferences} with {@code changes} applied as the file's values are read, in the order the keys are
+     * declared; an unknown key or a wrong value is refused, naming its key.
+     */
+    public static Preferences apply(Preferences preferences, Map<String, String> changes) {
+        for (String name : changes.keySet()) {
+            if (!KEYS.containsKey(name)) {
+                throw new IllegalArgumentException("Unknown preference: " + name);
+            }
+        }
+        Preferences.Builder builder = preferences.toBuilder();
+        for (Key key : KEYS.values()) {
+            String value = changes.get(key.name());
+            if (value == null) {
+                continue;
+            }
+            Preferences.Builder candidate = builder.build().toBuilder();
+            try {
+                key.setter().accept(candidate, value);
+                builder = candidate.build().toBuilder();
+            } catch (RuntimeException e) {
+                throw new IllegalArgumentException(key.name() + ": " + e.getMessage(), e);
+            }
+        }
+        return builder.build();
+    }
 
     /** Loads the preferences, or returns the defaults if the file and its backup are missing. */
     public static Preferences load(Path file) throws IOException {

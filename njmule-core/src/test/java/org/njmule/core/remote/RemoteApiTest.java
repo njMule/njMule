@@ -450,6 +450,52 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldGiveThePreferencesByTheirKeysButNotTheProxyPassword() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+
+        whenCalled("GET", "/api/v1/preferences", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"user.nick\":\"njMule\"", "\"net.tcpPort\":\"4662\"");
+        thenTheBodyDoesNotContain("proxy.password");
+    }
+
+    @Test
+    void shouldChangeOnlyThePreferencesNamed() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+
+        whenCalled("PATCH", "/api/v1/preferences", "{\"user.nick\":\"Night Owl\"}");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"user.nick\":\"Night Owl\"", "\"net.tcpPort\":\"4662\"");
+    }
+
+    @Test
+    void shouldRefuseAWrongPreferenceNamingIt() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+
+        whenCalled("PATCH", "/api/v1/preferences", "{\"user.nick\":\"ok\",\"net.tcpPort\":\"99999\"}");
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("net.tcpPort");
+        thenTheNickIsStill("njMule");
+    }
+
+    @Test
+    void shouldRefuseAnUnknownPreference() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+
+        whenCalled("PATCH", "/api/v1/preferences", "{\"no.such.key\":\"1\"}");
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("Unknown preference: no.such.key");
+    }
+
+    @Test
     void shouldSetTheSpeedLimits() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -610,6 +656,11 @@ class RemoteApiTest {
         assertThat(this.answer.body()).isEqualTo(body);
     }
 
+    private void thenTheNickIsStill(String nick) throws Exception {
+        whenCalled("GET", "/api/v1/preferences", "");
+        thenTheBodyContains("\"user.nick\":\"" + nick + "\"");
+    }
+
     private void givenTheEngineSearchesAs(long id) {
         this.fake.answer("search", args -> {
             SearchRequest request = (SearchRequest) args[0];
@@ -632,8 +683,10 @@ class RemoteApiTest {
 
     @SuppressWarnings("unchecked")
     private void givenTheEngineKeepsPreferences() {
+        this.fake.value("preferences", this.preferences);
         this.fake.answer("updatePreferences", args -> {
             this.preferences = ((UnaryOperator<Preferences>) args[0]).apply(this.preferences);
+            this.fake.value("preferences", this.preferences);
             return CompletableFuture.completedFuture(this.preferences);
         });
     }
@@ -697,6 +750,10 @@ class RemoteApiTest {
     private void thenTheAnswerAsksForABearerToken() {
         assertThat(this.answer.headers().firstValue("WWW-Authenticate")).hasValue("Bearer");
         assertThat(this.answer.headers().firstValue("Content-Type")).hasValue("application/json; charset=utf-8");
+    }
+
+    private void thenTheBodyDoesNotContain(String text) {
+        assertThat(this.answer.body()).doesNotContain(text);
     }
 
     private void thenTheBodyContains(String... parts) {

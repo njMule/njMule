@@ -31,6 +31,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -60,6 +61,7 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.persist.PreferencesCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JsonGenerator;
@@ -91,6 +93,7 @@ public final class RemoteApi implements AutoCloseable {
     private static final String CATEGORY_KEY = "category";
     private static final String URL_KEY = "url";
     private static final long ENGINE_WAIT_SECONDS = 10;
+    private static final String PROXY_PASSWORD = "proxy.password";
 
     private final NjMuleEngine engine;
     private final Guard guard;
@@ -169,6 +172,8 @@ public final class RemoteApi implements AutoCloseable {
                 entry("getSpecification", c -> send(c.exchange(), 200, YAML, this.specification.yaml())),
                 entry("getStatus", this::getStatus),
                 entry("getLimits", c -> limits(c, this.engine.preferences())),
+                entry("getPreferences", c -> preferences(c, this.engine.preferences())),
+                entry("updatePreferences", this::updatePreferences),
                 entry("setLimits", this::setLimits),
                 entry("updateIpFilter", c -> count(c, this.engine.updateIpFilter(url(c)))),
                 entry("getLog", this::getLog),
@@ -365,6 +370,27 @@ public final class RemoteApi implements AutoCloseable {
             return b.build();
         }));
         limits(c, now);
+    }
+
+    // Checked before the engine's loop takes them, so that a wrong value is the caller's error.
+    private void updatePreferences(Call c) throws IOException {
+        Map<String, String> changes = new LinkedHashMap<>();
+        c.body().properties().forEach(e -> changes.put(e.getKey(), e.getValue().asString()));
+        PreferencesCodec.apply(this.engine.preferences(), changes);
+        preferences(c, await(this.engine.updatePreferences(p -> PreferencesCodec.apply(p, changes))));
+    }
+
+    // The proxy password never leaves.
+    private void preferences(Call c, Preferences now) throws IOException {
+        reply(c.exchange(), 200, g -> {
+            g.writeStartObject();
+            PreferencesCodec.values(now).forEach((key, value) -> {
+                if (!key.equals(PROXY_PASSWORD)) {
+                    g.writeStringProperty(key, value);
+                }
+            });
+            g.writeEndObject();
+        });
     }
 
     private void limits(Call c, Preferences now) throws IOException {

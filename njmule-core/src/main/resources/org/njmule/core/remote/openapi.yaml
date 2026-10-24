@@ -135,6 +135,47 @@ paths:
           $ref: "#/components/responses/BadRequest"
         default:
           $ref: "#/components/responses/Error"
+  /preferences:
+    get:
+      operationId: getPreferences
+      tags: [engine]
+      summary: Every preference, as njMule's njmule.properties file writes it.
+      description: The proxy password is never given.
+      responses:
+        "200":
+          description: The preferences by key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preferences"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updatePreferences
+      tags: [engine]
+      summary: Changes the preferences named, as the file's values are read; the others stay.
+      description: >-
+        An unknown key or a wrong value changes nothing, and the error names the key. Ports, UPnP,
+        the proxy and the network interface take effect when njMule connects again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Preferences"
+                - minProperties: 1
+      responses:
+        "200":
+          description: The preferences as they are now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preferences"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
   /ipfilter:
     post:
       operationId: updateIpFilter
@@ -1870,6 +1911,12 @@ components:
           type: string
         address:
           type: [string, "null"]
+    Preferences:
+      type: object
+      description: Values as text, by the keys of njmule.properties (user.nick, net.tcpPort, ...).
+      additionalProperties:
+        type: string
+        maxLength: 16384
     FriendSlot:
       type: object
       required: [userHash]
