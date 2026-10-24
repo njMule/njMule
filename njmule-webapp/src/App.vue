@@ -33,7 +33,7 @@ const groups: Place[][] = [
         { title: 'IDS_NETWORK', icon: 'NETWORK', route: '/network' },
         { title: 'IDS_EM_STATISTIC', icon: 'STATISTICS', route: '/statistics' },
     ],
-    [{ title: 'IDS_EM_PREFS', icon: 'OPTIONS', page: 'settings' }],
+    [{ title: 'IDS_EM_PREFS', icon: 'OPTIONS', route: '/settings' }],
 ];
 
 const route = useRoute();
