@@ -6,6 +6,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 import { ElButton, ElInput, ElInputNumber, ElOption, ElSelect, ElSwitch } from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
 import { api } from '../api';
+import HostsPanel from '../components/HostsPanel.vue';
+import UpdatePanel from '../components/UpdatePanel.vue';
 import { t } from '../i18n';
 import { attempt, told } from '../notify';
 import { matches, PAGES, type Page, type Row } from '../settings';
@@ -67,16 +69,25 @@ async function applyHeld(): Promise<void> {
             <el-input v-model="find" clearable :placeholder="t('nj.settings.find')" />
             <ul>
                 <li v-for="p in shownPages" :key="p.id">
-                    <button type="button" :class="{ current: current?.id === p.id }" @click="page = p.id">
+                    <button
+                        type="button"
+                        :class="{ current: page !== 'web' && current?.id === p.id }"
+                        @click="page = p.id"
+                    >
                         {{ t(p.title) }}
                     </button>
                 </li>
             </ul>
             <p v-if="shownPages.length === 0" class="hint">{{ t('nj.settings.noMatch') }}</p>
-            <!-- The web interface's own settings and the updates keep their page for now. -->
-            <a class="more" href="settings">{{ t('IDS_PW_WS') }} · {{ t('nj.update.title') }}</a>
+            <button type="button" class="web" :class="{ current: page === 'web' }" @click="page = 'web'">
+                {{ t('IDS_PW_WS') }}
+            </button>
         </nav>
-        <section v-if="current" class="page">
+        <section v-if="page === 'web'" class="page">
+            <h2>{{ t('IDS_PW_WS') }}</h2>
+            <HostsPanel />
+        </section>
+        <section v-else-if="current" class="page">
             <h2>{{ t(current.title) }}</h2>
             <p class="hint">{{ t(current.summary) }}</p>
             <template v-for="(section, i) in current.sections" :key="i">
@@ -125,6 +136,7 @@ async function applyHeld(): Promise<void> {
                     </div>
                 </template>
             </template>
+            <UpdatePanel v-if="current.id === 'general'" />
         </section>
     </div>
     <div v-if="Object.keys(held).length > 0" class="pending" role="status">
@@ -156,14 +168,12 @@ async function applyHeld(): Promise<void> {
     text-align: start;
     cursor: pointer;
 }
+.pages .web {
+    width: 100%;
+}
 .pages button.current {
     background: var(--el-fill-color);
     font-weight: 600;
-}
-.more {
-    display: block;
-    padding: 7px 10px;
-    color: var(--el-color-primary);
 }
 .page {
     max-width: 860px;

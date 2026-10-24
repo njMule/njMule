@@ -156,6 +156,27 @@ class WebUiPagesTest {
     }
 
     @Test
+    void shouldSaveTheHostNamesTheAppSendsWithTheSessionsToken() throws Exception {
+        givenALoggedInUser();
+        givenTheSettingsInTheConfigDirectory();
+
+        whenTheAppPutsTheHostNames("NAS.local njmule.example.com", true);
+
+        thenTheAnswerIs(200, "{\"lan\":false,\"hosts\":[\"nas.local\",\"njmule.example.com\"]}");
+        thenTheSavedHostNamesAre("nas.local", "njmule.example.com");
+    }
+
+    @Test
+    void shouldRefuseHostNamesSentWithoutTheSessionsToken() throws Exception {
+        givenALoggedInUser();
+        givenTheSettingsInTheConfigDirectory();
+
+        whenTheAppPutsTheHostNames("nas.local", false);
+
+        thenTheAnswerIs(403, "{\"error\":\"Expired session token: reload the page.\"}");
+    }
+
+    @Test
     void shouldRefuseAHostNameOfTheSettingsPageThatIsNone() throws Exception {
         givenALoggedInUser();
         givenTheSettingsInTheConfigDirectory();
@@ -609,6 +630,19 @@ class WebUiPagesTest {
         Matcher m = CSRF.matcher(get("/search").body());
         assertThat(m.find()).isTrue();
         return m.group(1);
+    }
+
+    private void whenTheAppPutsTheHostNames(String hosts, boolean withToken) throws Exception {
+        HttpRequest.Builder put = request("/webui/hosts")
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .PUT(HttpRequest.BodyPublishers.ofString("hosts=" + URLEncoder.encode(hosts, StandardCharsets.UTF_8)));
+        if (withToken) {
+            Matcher m =
+                    Pattern.compile("name=\"njmule-csrf\" content=\"([^\"]+)\"").matcher(get("/").body());
+            assertThat(m.find()).isTrue();
+            put.header("X-NjMule-CSRF", m.group(1));
+        }
+        this.answer = this.http.send(put.build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private HttpResponse<String> get(String path) throws Exception {
