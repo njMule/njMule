@@ -21,6 +21,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.function.Consumer;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
@@ -44,6 +45,7 @@ import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadInfo;
+import org.njmule.core.config.Schedule;
 import tools.jackson.core.JsonEncoding;
 import tools.jackson.core.JsonGenerator;
 import tools.jackson.core.ObjectWriteContext;
@@ -358,6 +360,38 @@ final class ApiJson {
         optional(g, "type", r.type());
         g.writeStringProperty("link", r.link().toUri());
         g.writeEndObject();
+    }
+
+    /** The rules of the schedule and the one that applies now, if any. */
+    static void schedule(JsonGenerator g, Schedule s, Optional<Schedule.Rule> active) {
+        g.writeStartObject();
+        g.writeArrayPropertyStart("rules");
+        for (Schedule.Rule r : s.rules()) {
+            g.writeStartObject();
+            g.writeStringProperty("name", r.name());
+            g.writeBooleanProperty("enabled", r.enabled());
+            g.writeArrayPropertyStart("days");
+            r.days().stream().sorted().forEach(d -> g.writeString(name(d)));
+            g.writeEndArray();
+            g.writeStringProperty("start", r.start().toString());
+            g.writeStringProperty("end", r.end().toString());
+            optionalInt(g, "uploadKiBps", r.uploadKiBps());
+            optionalInt(g, "downloadKiBps", r.downloadKiBps());
+            optionalInt(g, "maxConnections", r.maxConnections());
+            optionalInt(g, "maxSourcesPerFile", r.maxSourcesPerFile());
+            optionalInt(g, "stopCategory", r.stopCategory());
+            optionalInt(g, "resumeCategory", r.resumeCategory());
+            g.writeEndObject();
+        }
+        g.writeEndArray();
+        optional(g, "active", active.map(Schedule.Rule::name));
+        g.writeEndObject();
+    }
+
+    private static void optionalInt(JsonGenerator g, String name, OptionalInt value) {
+        if (value.isPresent()) {
+            g.writeNumberProperty(name, value.getAsInt());
+        }
     }
 
     static void portTest(JsonGenerator g, PortTest t) {

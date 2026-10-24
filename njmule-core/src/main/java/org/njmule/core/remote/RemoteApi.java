@@ -29,14 +29,19 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.time.DayOfWeek;
 import java.time.Duration;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
@@ -66,6 +71,7 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.Schedule;
 import org.njmule.core.persist.PreferencesCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -178,6 +184,13 @@ public final class RemoteApi implements AutoCloseable {
                 entry("getStatus", this::getStatus),
                 entry("getLimits", c -> limits(c, this.engine.preferences())),
                 entry("getPreferences", c -> preferences(c, this.engine.preferences())),
+                entry(
+                        "getSchedule",
+                        c -> reply(
+                                c.exchange(),
+                                200,
+                                g -> ApiJson.schedule(g, this.engine.schedule(), this.engine.activeRule()))),
+                entry("setSchedule", this::setSchedule),
                 entry("updatePreferences", this::updatePreferences),
                 entry("setLimits", this::setLimits),
                 entry("updateIpFilter", c -> count(c, this.engine.updateIpFilter(url(c)))),
@@ -462,6 +475,36 @@ public final class RemoteApi implements AutoCloseable {
             return b.build();
         }));
         limits(c, now);
+    }
+
+    private void setSchedule(Call c) throws IOException {
+        List<Schedule.Rule> rules = new ArrayList<>();
+        for (JsonNode r : c.body().get("rules").values()) {
+            Set<DayOfWeek> days = EnumSet.noneOf(DayOfWeek.class);
+            r.path("days").values().forEach(d -> days.add(enumValue(DayOfWeek.class, d.asString())));
+            try {
+                rules.add(new Schedule.Rule(
+                        r.path("name").asString(""),
+                        r.path("enabled").asBoolean(true),
+                        days,
+                        LocalTime.parse(text(r, "start")),
+                        LocalTime.parse(text(r, "end")),
+                        optionalInt(r, "uploadKiBps"),
+                        optionalInt(r, "downloadKiBps"),
+                        optionalInt(r, "maxConnections"),
+                        optionalInt(r, "maxSourcesPerFile"),
+                        optionalInt(r, "stopCategory"),
+                        optionalInt(r, "resumeCategory")));
+            } catch (DateTimeParseException e) {
+                throw new Failure(400, "Not a time of the form hh:mm: " + e.getParsedString());
+            }
+        }
+        Schedule now = await(this.engine.updateSchedule(new Schedule(rules)));
+        reply(c.exchange(), 200, g -> ApiJson.schedule(g, now, this.engine.activeRule()));
+    }
+
+    private static OptionalInt optionalInt(JsonNode values, String name) {
+        return values.hasNonNull(name) ? OptionalInt.of(number(values, name)) : OptionalInt.empty();
     }
 
     // Checked before the engine's loop takes them, so that a wrong value is the caller's error.

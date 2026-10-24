@@ -64,6 +64,7 @@ import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
+import org.njmule.core.config.Schedule;
 
 /** The remote-control API against an engine the test controls. */
 @Timeout(60)
@@ -670,6 +671,33 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldReplaceTheRulesOfTheSchedule() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsTheSchedule();
+
+        whenCalled(
+                "PUT",
+                "/api/v1/schedule",
+                "{\"rules\":[{\"name\":\"night\",\"days\":[\"monday\",\"sunday\"],\"start\":\"23:00\","
+                        + "\"end\":\"06:00\",\"downloadKiBps\":0}]}");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains(
+                "\"name\":\"night\"", "\"days\":[\"monday\",\"sunday\"]", "\"start\":\"23:00\"", "\"downloadKiBps\":0");
+        thenTheBodyDoesNotContain("uploadKiBps");
+    }
+
+    @Test
+    void shouldRefuseARuleWithoutATime() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsTheSchedule();
+
+        whenCalled("PUT", "/api/v1/schedule", "{\"rules\":[{\"start\":\"late\",\"end\":\"06:00\"}]}");
+
+        thenTheStatusIs(400);
+    }
+
+    @Test
     void shouldSetTheSpeedLimits() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -770,6 +798,15 @@ class RemoteApiTest {
                         args[0].toString().equals(client)
                                 ? List.of(new SearchResult(Hash16.parseHex(HASH), name, 5000, 1, 1, Optional.empty()))
                                 : List.of()));
+    }
+
+    private void givenTheEngineKeepsTheSchedule() {
+        this.fake.value("schedule", Schedule.EMPTY);
+        this.fake.value("activeRule", Optional.empty());
+        this.fake.answer("updateSchedule", args -> {
+            this.fake.value("schedule", args[0]);
+            return CompletableFuture.completedFuture((Schedule) args[0]);
+        });
     }
 
     private void givenTheEngineDownloads(DownloadInfo download) {
