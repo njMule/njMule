@@ -302,6 +302,9 @@ final class ApiJson {
         optional(g, "incoming", c.incoming().map(Object::toString));
         g.writeStringProperty("comment", c.comment());
         g.writeStringProperty("priority", name(c.priority()));
+        g.writeNumberProperty("color", c.color());
+        g.writeStringProperty("patterns", c.patterns());
+        g.writeBooleanProperty("regex", c.regex());
         g.writeEndObject();
     }
 

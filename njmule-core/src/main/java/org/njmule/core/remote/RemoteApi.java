@@ -44,6 +44,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
@@ -264,6 +265,12 @@ public final class RemoteApi implements AutoCloseable {
                 entry("moreSearchResults", this::moreSearchResults),
                 entry("downloadSearchResult", this::downloadSearchResult),
                 entry("listCategories", c -> list(c, this.engine::categories, ApiJson::category)),
+                entry("setCategories", this::setCategories),
+                entry("updateIpFilterLists", this::updateIpFilterLists),
+                entry(
+                        "getServerLists",
+                        c -> reply(c.exchange(), 200, g -> addresses(g, await(this.engine.serverListAddresses())))),
+                entry("setServerLists", this::setServerLists),
                 entry("listFriends", c -> list(c, this.engine::friends, ApiJson::friend)),
                 entry("addFriend", this::addFriend),
                 entry("removeFriend", c -> known(c, this.engine.removeFriend(hash(text(c.parameters(), HASH_KEY))))),
@@ -568,6 +575,57 @@ public final class RemoteApi implements AutoCloseable {
         getFriendSlot(c);
     }
 
+    private void setCategories(Call c) throws IOException {
+        List<Category> all = new ArrayList<>();
+        for (JsonNode n : c.body().values()) {
+            all.add(new Category(
+                    number(n, "id"),
+                    text(n, "name"),
+                    n.hasNonNull("incoming") ? Optional.of(Path.of(text(n, "incoming"))) : Optional.empty(),
+                    n.path("comment").asString(""),
+                    n.path("color").asInt(0),
+                    n.has(PRIORITY_KEY)
+                            ? enumValue(DownloadPriority.class, text(n, PRIORITY_KEY))
+                            : DownloadPriority.AUTO,
+                    n.path("patterns").asString(""),
+                    n.path("regex").asBoolean(false)));
+        }
+        await(this.engine.setCategories(all));
+        list(c, this.engine::categories, ApiJson::category);
+    }
+
+    // The lists of the preferences, one http or https address a line.
+    private void updateIpFilterLists(Call c) throws IOException {
+        List<URI> lists = new ArrayList<>();
+        this.engine
+                .preferences()
+                .ipFilterLists()
+                .lines()
+                .filter(line -> !line.isBlank())
+                .forEach(line -> lists.add(webAddress(line)));
+        if (lists.isEmpty()) {
+            throw new Failure(409, "No IP filter list is set.");
+        }
+        count(c, this.engine.updateIpFilter(lists));
+    }
+
+    private void setServerLists(Call c) throws IOException {
+        List<URI> lists = new ArrayList<>();
+        for (JsonNode n : c.body().get("addresses").values()) {
+            lists.add(webAddress(n.asString()));
+        }
+        await(this.engine.setServerListAddresses(lists));
+        reply(c.exchange(), 200, g -> addresses(g, lists));
+    }
+
+    private static void addresses(JsonGenerator g, List<URI> lists) {
+        g.writeStartObject();
+        g.writeArrayPropertyStart("addresses");
+        lists.forEach(u -> g.writeString(u.toString()));
+        g.writeEndArray();
+        g.writeEndObject();
+    }
+
     private void getKad(Call c) throws IOException {
         var kad = await(this.engine.kad());
         reply(c.exchange(), 200, g -> {
@@ -814,7 +872,10 @@ public final class RemoteApi implements AutoCloseable {
     }
 
     private static URI url(Call c) {
-        String text = text(c.body(), URL_KEY);
+        return webAddress(text(c.body(), URL_KEY));
+    }
+
+    private static URI webAddress(String text) {
         try {
             URI uri = new URI(text.strip());
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);

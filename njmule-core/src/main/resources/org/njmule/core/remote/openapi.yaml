@@ -194,6 +194,18 @@ paths:
           $ref: "#/components/responses/BadRequest"
         default:
           $ref: "#/components/responses/Error"
+  /ipfilter/lists:
+    post:
+      operationId: updateIpFilterLists
+      tags: [engine]
+      summary: Replaces the IP filter with the lists of the preferences, joined into one.
+      responses:
+        "200":
+          $ref: "#/components/responses/Added"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/Error"
   /log:
     get:
       operationId: getLog
@@ -793,6 +805,41 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /servers/lists:
+    get:
+      operationId: getServerLists
+      tags: [servers]
+      summary: The addresses of the server lists taken again at each start, when the preferences ask.
+      responses:
+        "200":
+          description: The addresses.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerLists"
+        default:
+          $ref: "#/components/responses/Error"
+    put:
+      operationId: setServerLists
+      tags: [servers]
+      summary: Replaces the addresses of the server lists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServerLists"
+      responses:
+        "200":
+          description: The addresses as they are now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerLists"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
   /servers/{address}/priority:
     parameters:
       - $ref: "#/components/parameters/ServerAddress"
@@ -1123,6 +1170,52 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Category"
+        default:
+          $ref: "#/components/responses/Error"
+    put:
+      operationId: setCategories
+      tags: [downloads]
+      summary: Replaces the categories; the downloads of one removed fall into none.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 1000
+              items:
+                type: object
+                required: [id, name]
+                properties:
+                  id:
+                    $ref: "#/components/schemas/CategoryId"
+                  name:
+                    type: string
+                  incoming:
+                    type: [string, "null"]
+                  comment:
+                    type: string
+                  priority:
+                    $ref: "#/components/schemas/DownloadPriority"
+                  color:
+                    type: integer
+                    minimum: 0
+                    maximum: 8
+                  patterns:
+                    type: string
+                  regex:
+                    type: boolean
+      responses:
+        "200":
+          description: The categories as they are now.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         default:
           $ref: "#/components/responses/Error"
 
@@ -2005,6 +2098,15 @@ components:
           type: string
         priority:
           $ref: "#/components/schemas/DownloadPriority"
+        color:
+          type: integer
+          description: 0 for none, then the tints of the desktop app.
+        patterns:
+          type: string
+          description: File name patterns separated by |, that put new downloads in it.
+        regex:
+          type: boolean
+          description: Whether the patterns are regular expressions.
     Friend:
       type: object
       required: [userHash, name, address]
@@ -2021,6 +2123,17 @@ components:
       additionalProperties:
         type: string
         maxLength: 16384
+    ServerLists:
+      type: object
+      required: [addresses]
+      properties:
+        addresses:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            minLength: 1
+            description: An http or https address of a server.met.
     PortTest:
       type: object
       required: [tcpPort, udpPort, forwarding, router, tcp, udp, done]

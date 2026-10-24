@@ -48,6 +48,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
@@ -540,6 +541,52 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldReplaceTheCategories() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsCategories();
+
+        whenCalled(
+                "PUT",
+                "/api/v1/categories",
+                "[{\"id\":1,\"name\":\"Films\",\"color\":3,\"patterns\":\"*.mkv|*.avi\",\"priority\":\"high\"}]");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains(
+                "\"name\":\"Films\"", "\"color\":3", "\"patterns\":\"*.mkv|*.avi\"", "\"priority\":\"high\"");
+    }
+
+    @Test
+    void shouldRefuseACategoryWithoutAName() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsCategories();
+
+        whenCalled("PUT", "/api/v1/categories", "[{\"id\":1,\"name\":\" \"}]");
+
+        thenTheStatusIs(400);
+    }
+
+    @Test
+    void shouldNotUpdateTheIpFilterWithoutLists() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+
+        whenCalled("POST", "/api/v1/ipfilter/lists", "");
+
+        thenTheStatusIs(409);
+    }
+
+    @Test
+    void shouldKeepTheAddressesOfTheServerLists() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsServerLists();
+
+        whenCalled("PUT", "/api/v1/servers/lists", "{\"addresses\":[\"https://example.org/server.met\"]}");
+
+        thenTheStatusIs(200);
+        thenTheServerListsAre("{\"addresses\":[\"https://example.org/server.met\"]}");
+    }
+
+    @Test
     void shouldSetTheSpeedLimits() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -727,6 +774,33 @@ class RemoteApiTest {
                         PortTest.Reach.TESTING,
                         PortTest.Reach.TESTING,
                         false)));
+    }
+
+    private void givenTheEngineKeepsCategories() {
+        AtomicReference<List<Category>> kept = new AtomicReference<>(List.of());
+        this.fake.answer("categories", args -> CompletableFuture.completedFuture(kept.get()));
+        this.fake.answer("setCategories", args -> {
+            @SuppressWarnings("unchecked")
+            List<Category> all = (List<Category>) args[0];
+            kept.set(List.copyOf(all));
+            return CompletableFuture.completedFuture(null);
+        });
+    }
+
+    private void givenTheEngineKeepsServerLists() {
+        AtomicReference<List<URI>> kept = new AtomicReference<>(List.of());
+        this.fake.answer("serverListAddresses", args -> CompletableFuture.completedFuture(kept.get()));
+        this.fake.answer("setServerListAddresses", args -> {
+            @SuppressWarnings("unchecked")
+            List<URI> all = (List<URI>) args[0];
+            kept.set(List.copyOf(all));
+            return CompletableFuture.completedFuture(null);
+        });
+    }
+
+    private void thenTheServerListsAre(String body) throws Exception {
+        whenCalled("GET", "/api/v1/servers/lists", "");
+        assertThat(this.answer.body()).isEqualTo(body);
     }
 
     private void givenTheEngineSearchesAs(long id) {
