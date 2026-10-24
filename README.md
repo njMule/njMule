@@ -180,8 +180,8 @@ The command-line interface is `/Applications/njMule.app/Contents/MacOS/njmule`.
 <summary><strong>Docker</strong></summary>
 
 The image `ghcr.io/njmule/njmule` runs the headless engine with its web interface. It holds only
-the native executable on a distroless base (no shell, no package manager), runs as user and group
-1000, and keeps all its data in the volume `/njmule` (`config`, `data`, `temp`, `incoming`, …);
+the native executable: on amd64 the static one, alone on an empty base (no libc, no shell, no
+package manager); on arm64 the glibc one on a distroless base. It runs as user and group 1000, and keeps all its data in the volume `/njmule` (`config`, `data`, `temp`, `incoming`, …);
 incomplete (`/njmule/temp`) and completed downloads (`/njmule/incoming`) can be mounted on their
 own, preferably on the same disk. At every start the web interface takes its password (8
 characters at least) from the first line of the secret `/run/secrets/njmule_webui_password` and

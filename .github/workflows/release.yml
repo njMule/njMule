@@ -260,13 +260,19 @@ jobs:
               with:
                   name: synology-x86_64
                   path: dist/
+            # The amd64 Docker image takes it too.
+            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+              with:
+                  name: headless-linux-x64-static
+                  path: njmule-app/build/native/nativeCompile/njmule
 
-    # The headless engine with its web interface as a Docker image for linux/amd64 and linux/arm64,
-    # made from the headless executables of the Linux jobs (no emulation, no second compilation).
-    # The amd64 image is tried first; a tag pushes both to the GitHub Container Registry.
+    # The headless engine with its web interface as a Docker image for linux/amd64 (the static
+    # executable of the Synology job) and linux/arm64 (the Linux job's), with no emulation and no
+    # second compilation. The amd64 image is tried first; a tag pushes both to the GitHub Container
+    # Registry.
     docker:
         name: docker image
-        needs: [version, linux]
+        needs: [version, linux, synology]
         runs-on: ubuntu-24.04
         permissions:
             actions: read
@@ -282,8 +288,8 @@ jobs:
                   GH_TOKEN: ${{ github.token }}
               run: |
                   gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
-                      --name headless-linux-x64 --name headless-linux-arm64 --dir "$RUNNER_TEMP/headless"
-                  for pair in x64:amd64 arm64:arm64; do
+                      --name headless-linux-x64-static --name headless-linux-arm64 --dir "$RUNNER_TEMP/headless"
+                  for pair in x64-static:amd64 arm64:arm64; do
                       install -D -m 755 "$RUNNER_TEMP/headless/headless-linux-${pair%%:*}/njmule" \
                           "$RUNNER_TEMP/binary/${pair##*:}/njmule"
                   done
@@ -338,7 +344,7 @@ jobs:
                   }
                   test "$(login wrong-password)" = 401
                   test "$(login smoke-test-password)" = 303
-                  curl -fsS -b "$RUNNER_TEMP/cookies" http://127.0.0.1:4711/ | grep -q "Status"
+                  curl -fsS -b "$RUNNER_TEMP/cookies" http://127.0.0.1:4711/transfers | grep -q "Transfers"
                   docker stop --timeout 30 njmule
                   docker logs njmule > "$RUNNER_TEMP/njmule.log" 2>&1
                   cat "$RUNNER_TEMP/njmule.log"
