@@ -30,15 +30,21 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.PartMap;
 
 /** Password hashes, sessions, settings and page building. */
 class WebUiPartsTest {
@@ -607,17 +613,63 @@ class WebUiPartsTest {
 
     @Test
     void shouldMakeAPageWithoutNavigationOutsideASession() {
-        whenAPageIsMade("T<", "", "body");
+        whenAPageOutsideASessionIsMade("T<", "body");
 
         thenTheTextContains("<h1>T&lt;</h1>");
-        thenTheTextDoesNotContain("nav");
+        thenTheTextDoesNotContain("<nav");
     }
 
     @Test
-    void shouldMakeAPageWithNavigationAndTheFormTokenInASession() {
+    void shouldMakeAPageWithThePlacesAndTheFormTokenInASession() {
         whenAPageIsMade("T", "tok", "body");
 
-        thenTheTextContains("<nav>", "value=\"tok\"");
+        thenTheTextContains(
+                "<nav aria-label=\"Places\">",
+                "value=\"tok\"",
+                "<a class=\"place\" href=\"transfers\" aria-current=\"page\">",
+                "href=\"servers\"",
+                "<span>Log out</span>");
+    }
+
+    @Test
+    void shouldTellTheNetworksInTheTopBarOfASessionsPage() {
+        whenAPageIsMadeWithTheStatus(Optional.of(new KadInfo(
+                true,
+                10,
+                5,
+                true,
+                "00112233445566778899AABBCCDDEEFF",
+                "198.51.100.7",
+                4672,
+                false,
+                false,
+                KadInfo.Buddy.NONE,
+                0,
+                0)));
+
+        thenTheTextContains("eD2K not connected · Kad firewalled", "class=\"chip warn\"");
+    }
+
+    @Test
+    void shouldMarkTheCurrentSegment() {
+        whenSegmentsAreMade("kad");
+
+        thenTheTextContains("<a href=\"kad\" aria-current=\"page\">Kad</a>", "<a href=\"log\">Log</a>");
+    }
+
+    @Test
+    void shouldDrawTheMissingBytesOverTheBarOfParts() {
+        whenThePartsAreDrawn(new PartMap(1000, List.of(new PartMap.Span(250, 500)), List.of(), List.of()), 1000);
+
+        thenTheTextContains("<rect class=\"have\"", "<rect class=\"missing\" x=\"250.00\" width=\"250.00\"");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"45, 45 s", "725, 12 min 5 s", "12000, 3 h 20 min", "187200, 2 d 4 h"})
+    void shouldTellATimeInItsTwoLargestUnits(long seconds, String expected) {
+        whenATimeIsWritten(seconds);
+
+        thenTheTextIs(expected);
     }
 
     private static Stream<Arguments> sizes() {
@@ -789,8 +841,33 @@ class WebUiPartsTest {
         this.text = Html.hidden(name, value);
     }
 
+    private void whenAPageOutsideASessionIsMade(String title, String content) {
+        this.text = Html.bare(title, content);
+    }
+
     private void whenAPageIsMade(String title, String csrf, String content) {
-        this.text = Html.page(title, csrf, content);
+        this.text = Html.page(new Html.Frame(csrf, Html.Place.TRANSFERS, Optional.empty(), ""), title, "", content, 0);
+    }
+
+    private void whenAPageIsMadeWithTheStatus(Optional<KadInfo> kad) {
+        EngineStatus status = new EngineStatus(
+                Optional.empty(), 0, false, false, kad, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, "", 4662, false);
+        this.text = Html.page(new Html.Frame("tok", Html.Place.NETWORK, Optional.of(status), ""), "T", "", "", 0);
+    }
+
+    private void whenSegmentsAreMade(String current) {
+        this.text = Html.segments(
+                "Network",
+                List.of(Map.entry("servers", "Servers"), Map.entry("kad", "Kad"), Map.entry("log", "Log")),
+                current);
+    }
+
+    private void whenThePartsAreDrawn(PartMap parts, long size) {
+        this.text = TransfersPages.parts(parts, size);
+    }
+
+    private void whenATimeIsWritten(long seconds) {
+        this.text = Html.duration(seconds);
     }
 
     private void thenTheHashStartsWith(String prefix) {

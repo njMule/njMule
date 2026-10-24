@@ -86,8 +86,8 @@ class WebUiFlowTest {
         givenNjMuleRunningWithTheWebInterfaceAndThePassword("flow password");
         givenLoggedInWith("flow password");
         givenConnectedToTheServerThroughThePages();
-        givenTheStatusSoonShows("(HighID)");
-        givenThePageShows("/servers", "<h1>Servers</h1>", "Disconnect");
+        givenTheStatusSoonShows("Connected · High ID");
+        givenThePageShows("/servers", "<h1>Network</h1>", "Disconnect");
         givenASearchForNothingLeadsTo("search");
         givenASearchStartedFor("linux", "SERVER");
         givenTheResultsSoonShow("linux.txt");
@@ -100,7 +100,7 @@ class WebUiFlowTest {
 
         whenDisconnectedThroughThePages();
 
-        thenTheStatusSoonShows("not connected");
+        thenTheStatusSoonShows("eD2K not connected");
     }
 
     private void givenAServerFinding(FileEntry... files) throws IOException {
@@ -174,12 +174,14 @@ class WebUiFlowTest {
     }
 
     private void givenTheFirstResultDownloaded() throws Exception {
-        Matcher download =
-                Pattern.compile("name=\"download\" value=\"([0-9A-F]{32})\"").matcher(page(this.results));
+        Matcher download = Pattern.compile("name=\"action\" value=\"download\"><input type=\"hidden\" name=\"search\""
+                        + " value=\"[0-9]+\"><input type=\"hidden\" name=\"hash\" value=\"([0-9A-F]{32})\"")
+                .matcher(page(this.results));
         assertThat(download.find()).isTrue();
         this.hash = download.group(1);
         String id = this.results.substring(this.results.indexOf('=') + 1);
-        HttpResponse<String> taken = post("/search", Map.of("search", id, "download", this.hash, "csrf", csrf()));
+        HttpResponse<String> taken =
+                post("/search", Map.of("action", "download", "search", id, "hash", this.hash, "csrf", csrf()));
         assertThat(taken.headers().firstValue("Location")).hasValue("transfers");
     }
 
@@ -188,7 +190,8 @@ class WebUiFlowTest {
     }
 
     private void givenADownloadFromTheUnknownSearchRefused(String search) throws Exception {
-        HttpResponse<String> gone = post("/search", Map.of("search", search, "download", this.hash, "csrf", csrf()));
+        HttpResponse<String> gone =
+                post("/search", Map.of("action", "download", "search", search, "hash", this.hash, "csrf", csrf()));
         assertThat(gone.statusCode()).isEqualTo(400);
         assertThat(gone.body()).contains("search again");
     }
@@ -202,11 +205,11 @@ class WebUiFlowTest {
     }
 
     private void thenTheStatusSoonShows(String text) throws InterruptedException {
-        await(() -> page("/").contains(text));
+        await(() -> page("/transfers").contains(text));
     }
 
     private String csrf() throws Exception {
-        Matcher m = CSRF.matcher(page("/"));
+        Matcher m = CSRF.matcher(page("/transfers"));
         assertThat(m.find()).isTrue();
         return m.group(1);
     }

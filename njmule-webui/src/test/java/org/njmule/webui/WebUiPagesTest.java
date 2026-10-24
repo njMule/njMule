@@ -94,7 +94,7 @@ class WebUiPagesTest {
 
         whenThePageIsAsked("/shared");
 
-        thenThePageShows("talk.bin", Path.of("/files") + " (with subfolders)", "value=\"high\" selected");
+        thenThePageShows("talk.bin", Path.of("/files") + "</span> (with subfolders)", "value=\"high\" selected");
     }
 
     @Test
@@ -114,8 +114,7 @@ class WebUiPagesTest {
 
         whenThePageIsAsked("/kad");
 
-        thenThePageShows(
-                "href=\"style.css\"", "href=\"./\"", "href=\"transfers\"", "action=\"kad\"", "action=\"logout\"");
+        thenThePageShows("href=\"style.css\"", "href=\"transfers\"", "action=\"kad\"", "action=\"logout\"");
         thenThePageHasNoLinkFromTheTop();
     }
 
@@ -126,7 +125,13 @@ class WebUiPagesTest {
 
         whenThePageIsAsked("/kad");
 
-        thenThePageShows("firewalled", "42 (40 verified)", ">Disconnect<", "Recheck firewall", "Buddy");
+        thenThePageShows(
+                "<dt>State</dt><dd>Firewalled</dd>",
+                "<dt>Contacts</dt><dd>42</dd>",
+                "<dt>Verified contacts</dt><dd>40</dd>",
+                ">Disconnect<",
+                "Recheck firewall",
+                "<dt>Buddy</dt>");
     }
 
     @Test
@@ -166,7 +171,7 @@ class WebUiPagesTest {
         givenALoggedInUser();
         givenANewVersion(InstallKind.MSI, Optional.empty());
 
-        whenThePageIsAsked("/");
+        whenThePageIsAsked("/log");
 
         thenThePageShows("njMule 0.2.0 is available", "What changed", "href=\"settings\"");
     }
@@ -176,7 +181,7 @@ class WebUiPagesTest {
         givenALoggedInUser();
         givenANewVersion(InstallKind.MSI, Optional.of("0.2.0"));
 
-        whenThePageIsAsked("/");
+        whenThePageIsAsked("/log");
 
         thenThePageDoesNotShow("is available");
     }
@@ -270,7 +275,7 @@ class WebUiPagesTest {
         givenALoggedInUser();
         givenTheUpdate(InstallKind.WINDOWS_ZIP, Optional.empty(), true, AT_EXIT);
 
-        whenThePageIsAsked("/");
+        whenThePageIsAsked("/log");
 
         thenThePageShows("njMule 0.2.0 is downloaded and ready to install", "Install it");
     }
@@ -280,7 +285,7 @@ class WebUiPagesTest {
         givenALoggedInUser();
         givenTheUpdate(InstallKind.WINDOWS_ZIP, Optional.empty(), true, RESTART);
 
-        whenThePageIsAsked("/");
+        whenThePageIsAsked("/log");
 
         thenThePageShows("is installing a new version and starting again");
     }
@@ -377,10 +382,32 @@ class WebUiPagesTest {
     }
 
     private void givenKadConnectedAndFirewalled() {
+        KadInfo kad = new KadInfo(true, 42, 40, true, "00".repeat(16), "1.2.3.4", 4672);
+        this.fake.answer("kad", args -> CompletableFuture.completedFuture(Optional.of(kad)));
         this.fake.answer(
-                "kad",
-                args -> CompletableFuture.completedFuture(
-                        Optional.of(new KadInfo(true, 42, 40, true, "00".repeat(16), "1.2.3.4", 4672))));
+                "status",
+                args -> CompletableFuture.completedFuture(new EngineStatus(
+                        Optional.empty(),
+                        0,
+                        false,
+                        false,
+                        Optional.of(kad),
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        1,
+                        1,
+                        1,
+                        "",
+                        4662,
+                        false)));
         this.fake.answer("kadBootstrap", args -> {
             ServerAddress node = (ServerAddress) args[0];
             this.calls.add("bootstrap " + node.host() + ":" + node.port());
@@ -402,7 +429,7 @@ class WebUiPagesTest {
             boolean ready,
             UpdateStatus.Install install) {
         givenANewVersion(installation, Optional.empty(), false);
-        UpdateStatus found = (UpdateStatus) this.fake.engine().updateStatus();
+        UpdateStatus found = this.fake.engine().updateStatus();
         this.fake.value(
                 "updateStatus",
                 new UpdateStatus(

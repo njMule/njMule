@@ -56,6 +56,7 @@ class WebUiTest {
     private static final String PASSWORD = "correct horse";
     private static final Pattern CSRF = Pattern.compile("name=\"csrf\" value=\"([^\"]+)\"");
     private static final String HASH = "0123456789ABCDEF0123456789ABCDEF";
+    private static final String ASKED_HASH = "FEDCBA9876543210FEDCBA9876543210";
     private static final String REFUSED_LINK = "ed2k://|file|refused.bin|1000|" + "AB".repeat(16) + "|/";
 
     @TempDir
@@ -165,13 +166,13 @@ class WebUiTest {
     }
 
     @Test
-    void shouldShowTheStatusToAUserLoggedIn() throws Exception {
+    void shouldShowTheTransfersToAUserLoggedIn() throws Exception {
         givenALoggedInUser();
 
-        whenThePageIsAsked("/");
+        whenThePageIsAsked("/transfers");
 
         thenTheStatusIs(200);
-        thenTheBodyContains("<h1>Status</h1>", "not connected", "Log out");
+        thenTheBodyContains("<h1>Transfers</h1>", "eD2K not connected", "Log out");
     }
 
     @Test
@@ -195,7 +196,7 @@ class WebUiTest {
     @Test
     void shouldEndTheSessionOnLogout() throws Exception {
         givenALoggedInUser();
-        givenTheFormTokenOfThePage("/");
+        givenTheFormTokenOfThePage("/transfers");
 
         whenPosted("/logout", Map.of());
 
@@ -342,18 +343,30 @@ class WebUiTest {
         givenTheDownloadsShow("web &amp; test.bin", "Pause");
         givenTheDownloadsDoNotShow("web & test");
         givenTheActionDoneOnTheDownload("pause", HASH);
-        givenTheDownloadsShow("paused", "Resume");
+        givenTheDownloadsShow("Paused", "Resume");
         givenTheActionDoneOnTheDownload("resume", HASH);
         givenTheDownloadsShow("Pause");
         givenTheActionDoneOnTheDownload("stop", HASH);
-        givenTheDownloadsShow("stopped", "Resume");
+        givenTheDownloadsShow("Stopped", "Resume");
         givenThePriorityOfTheDownloadSet(HASH, "high");
         givenTheDownloadsShow("value=\"high\" selected");
 
-        whenPosted("/transfers", Map.of("action", "cancel", "hash", HASH));
+        whenPosted("/transfers", Map.of("action", "cancel", "hash", HASH, "confirmed", "yes"));
 
         thenTheStatusIs(303);
         thenTheDownloadsSoonDoNotShow("web &amp; test.bin");
+    }
+
+    @Test
+    void shouldAskBeforeCancellingADownload() throws Exception {
+        givenALoggedInUser();
+        givenTheFormTokenOfThePage("/transfers");
+        givenADownloadAdded("ed2k://|file|ask.bin|1000|" + ASKED_HASH + "|/");
+
+        whenPosted("/transfers", Map.of("action", "cancel", "hash", ASKED_HASH));
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("Cancel <b>ask.bin</b>?", "name=\"confirmed\" value=\"yes\"", "Keep downloading");
     }
 
     @Test
@@ -370,7 +383,7 @@ class WebUiTest {
     @Test
     void shouldRefuseAnUnknownAction() throws Exception {
         givenALoggedInUser();
-        givenTheFormTokenOfThePage("/");
+        givenTheFormTokenOfThePage("/transfers");
 
         whenPosted("/transfers", Map.of("action", "explode", "hash", HASH));
 

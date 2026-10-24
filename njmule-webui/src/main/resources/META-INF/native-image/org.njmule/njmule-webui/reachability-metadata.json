@@ -7,12 +7,19 @@
             "glob": "org/njmule/webui/favicon.png"
         },
         {
+            "glob": "org/njmule/webui/style.css"
+        },
+        {
             "module": "org.njmule.webui",
             "glob": "org/njmule/webui/favicon.svg"
         },
         {
             "module": "org.njmule.webui",
             "glob": "org/njmule/webui/favicon.png"
+        },
+        {
+            "module": "org.njmule.webui",
+            "glob": "org/njmule/webui/style.css"
         }
     ]
 }

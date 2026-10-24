@@ -45,6 +45,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
@@ -58,6 +59,8 @@ import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
+import org.njmule.core.api.SourceInfo;
+import org.njmule.core.api.UploadInfo;
 
 /** How the web interface answers what the engine does, against an engine a test controls. */
 @Timeout(60)
@@ -109,10 +112,10 @@ class WebUiAnswersTest {
     void shouldAnswerUnavailableWhenTheEngineFails() throws Exception {
         givenALoggedInUser();
 
-        whenThePageIsAsked("/");
+        whenThePageIsAsked("/transfers");
 
         thenTheStatusIs(503);
-        thenTheBodyContains("status failed");
+        thenTheBodyContains("downloads failed");
     }
 
     @Test
@@ -120,7 +123,7 @@ class WebUiAnswersTest {
         givenALoggedInUser();
         givenTheEngineAnswersNoStatus();
 
-        whenThePageIsAsked("/");
+        whenThePageIsAsked("/statistics");
 
         thenTheStatusIs(500, "a fault of the page");
     }
@@ -192,7 +195,8 @@ class WebUiAnswersTest {
         givenALoggedInUser();
         givenTheEngineNoLongerHasTheDownload();
 
-        whenTheFormIsPosted("/transfers", Map.of("action", action, "hash", HASH, "priority", "high"));
+        whenTheFormIsPosted(
+                "/transfers", Map.of("action", action, "hash", HASH, "priority", "high", "confirmed", "yes"));
 
         thenTheStatusIs(400);
         thenTheBodyContains("That download is gone");
@@ -287,7 +291,7 @@ class WebUiAnswersTest {
 
         thenTheBodyContains("first.iso");
         thenTheBodyDoesNotContain("other.iso");
-        thenThePageDoesNotShow("/search?id=100", "<table>");
+        thenThePageDoesNotShow("/search?id=100", "<table");
     }
 
     @Test
@@ -323,7 +327,9 @@ class WebUiAnswersTest {
 
         whenThePageIsAsked("/search?id=3");
 
-        thenTheBodyContains("href=\"search?id=3\" class=\"current\">linux</a>", "href=\"search?id=4\">ubuntu</a>");
+        thenTheBodyContains(
+                "href=\"search?id=3\" aria-current=\"true\">linux <span class=\"count\">",
+                "href=\"search?id=4\">ubuntu <span class=\"count\">");
     }
 
     @Test
@@ -360,7 +366,7 @@ class WebUiAnswersTest {
 
         whenThePageIsAskedUntilItShows("/search?id=3", "debian.iso");
 
-        thenTheBodyContains("<th>Complete</th>", "<th>Type</th>", "<th>Known</th>", "<td>100%</td>");
+        thenTheBodyContains(">Complete</a></th>", ">Type</a></th>", "<th>Status</th>", ">100%</td>");
         thenTheBodyDoesNotContain("<th>Artist</th>");
     }
 
@@ -412,52 +418,173 @@ class WebUiAnswersTest {
     @Test
     void shouldShowALowIdOnAServerAndKadOff() throws Exception {
         givenALoggedInUser();
+        givenNoServers();
         givenConnectedToTheServer("Big <server>", true);
+
+        whenThePageIsAsked("/servers");
+
+        thenTheBodyContains(
+                "Not reachable from outside (Low ID)", "Big &lt;server&gt;", "Connected · Low ID · Kad off");
+    }
+
+    @Test
+    void shouldLeadFromTheTopToTheTransfers() throws Exception {
+        givenALoggedInUser();
 
         whenThePageIsAsked("/");
 
-        thenTheBodyContains("eD2K<b>Big &lt;server&gt; (LowID)</b>", "Kad<b>off</b>");
+        thenTheStatusIs(303);
+        thenTheAnswerLeadsTo("transfers");
     }
 
     @Test
     void shouldShowAHighIdOnAServerAndKadFirewalled() throws Exception {
         givenALoggedInUser();
+        givenNoServers();
         givenConnectedToTheServer("Big", false);
         givenKad(true, true);
 
-        whenThePageIsAsked("/");
+        whenThePageIsAsked("/servers");
 
-        thenTheBodyContains("eD2K<b>Big (HighID)</b>", "Kad<b>firewalled</b>");
+        thenTheBodyContains(
+                "Reachable from outside (High ID)",
+                "Not reachable from outside (Firewalled)",
+                "Connected · High ID · Kad firewalled");
+    }
+
+    @Test
+    void shouldListTheClientsThatDownloadFromUsAndThoseWaiting() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineUploads(
+                upload("alice", "talk.bin", UploadInfo.State.UPLOADING),
+                upload("bob", "song.mp3", UploadInfo.State.QUEUED));
+
+        whenThePageIsAsked("/transfers?view=uploads");
+
+        thenTheBodyContains(
+                "alice",
+                "talk.bin",
+                "Uploads <span class=\"count\">1</span>",
+                "On queue <span class=\"count\">1</span>");
+        thenTheBodyDoesNotContain("bob");
+    }
+
+    @Test
+    void shouldUnbanAClient() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineBans("198.51.100.9");
+
+        whenTheFormIsPosted("/transfers", Map.of("action", "unban", "ip", "198.51.100.9"));
+
+        thenTheAnswerLeadsTo("transfers?view=banned");
+        thenTheEngineWasAsked("unban 198.51.100.9");
+    }
+
+    @Test
+    void shouldShowTheDetailsOfADownloadBesideTheDownloads() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineDownloads(download("half.iso", DownloadInfo.Status.DOWNLOADING, 1));
+        givenTheEngineKnowsASourceOfTheDownload("carol");
+
+        whenThePageIsAsked("/transfers?hash=" + HASH);
+
+        thenTheBodyContains(
+                "aria-label=\"Details\"",
+                "<rect class=\"missing\"",
+                "<dt>Hash</dt>",
+                HASH,
+                "carol",
+                "On queue, rank 3");
+    }
+
+    @Test
+    void shouldShowOnlyTheDownloadsInTheStateChosen() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineDownloads(
+                download("paused.iso", DownloadInfo.Status.PAUSED, 0),
+                other("busy.iso", DownloadInfo.Status.DOWNLOADING));
+
+        whenThePageIsAsked("/transfers?state=paused");
+
+        thenTheBodyContains("paused.iso", "Paused <span class=\"count\">1</span>");
+        thenTheBodyDoesNotContain("busy.iso</a>");
+    }
+
+    @Test
+    void shouldDownloadTheLinksPastedInTheSearchField() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineAddsDownloads();
+
+        whenTheFormIsPosted("/search", Map.of("query", ED2K_LINK, "scope", "AUTOMATIC"));
+
+        thenTheAnswerLeadsTo("transfers");
+        thenTheDownloadsAddedAre("a.bin");
+    }
+
+    @Test
+    void shouldSearchWithTheFiltersAsAttributesOfTheExpression() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineSearchesAs(7);
+
+        whenTheFormIsPosted(
+                "/search",
+                Map.of("query", "linux", "scope", "KAD", "type", "VIDEO", "minSize", "100", "extension", ".mkv"));
+
+        thenTheEngineSearched("linux @type=video @size>=100m @ext=mkv", SearchRequest.Scope.KAD);
+    }
+
+    @Test
+    void shouldShowTheNumbersOfTheSessionAndOfAll() throws Exception {
+        givenALoggedInUser();
+        givenKad(true, false);
+
+        whenThePageIsAsked("/statistics");
+
+        thenTheBodyContains("<h1>Statistics</h1>", "Downloaded total", "<dt>Sessions</dt><dd>0</dd>", "On Queue");
+    }
+
+    @Test
+    void shouldAskTheEngineToTestThePorts() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineTestsThePorts();
+
+        whenTheFormIsPosted("/servers", Map.of("action", "test-ports"));
+
+        thenTheAnswerLeadsTo("servers");
+        thenTheEngineWasAsked("test the ports");
     }
 
     @Test
     void shouldShowNoServerAndKadOpen() throws Exception {
         givenALoggedInUser();
+        givenNoServers();
         givenKad(true, false);
 
-        whenThePageIsAsked("/");
+        whenThePageIsAsked("/servers");
 
-        thenTheBodyContains("eD2K<b>not connected</b>", "Kad<b>open</b>");
+        thenTheBodyContains("Not connected", "Reachable from outside (Open)", "eD2K not connected · Kad open");
     }
 
     @Test
-    void shouldShowOurIpv6AddressOrNone() throws Exception {
+    void shouldShowOurIpv6AddressOnThePorts() throws Exception {
         givenALoggedInUser();
+        givenNoServers();
         givenOurIpv6AddressIs("2001:db8::99");
 
-        whenThePageIsAsked("/");
+        whenThePageIsAsked("/servers");
 
-        thenTheBodyContains("IPv6<b>2001:db8::99</b>");
+        thenTheBodyContains("IPv6: <span class=\"mono\">2001:db8::99</span>");
     }
 
     @Test
     void shouldShowKadNotConnected() throws Exception {
         givenALoggedInUser();
+        givenNoServers();
         givenKad(false, false);
 
-        whenThePageIsAsked("/");
+        whenThePageIsAsked("/servers");
 
-        thenTheBodyContains("Kad<b>not connected</b>");
+        thenTheBodyContains("<span class=\"state\">Connecting</span>", "Kad connecting");
     }
 
     @Test
@@ -468,8 +595,9 @@ class WebUiAnswersTest {
         whenThePageIsAsked("/servers");
 
         thenTheBodyContains(
-                "<h1>Servers</h1>",
-                "<td>Fake &lt;1&gt;</td><td>10.0.0.1:4661</td><td>1200</td><td>34000</td>",
+                "<h1>Network</h1>",
+                "<td class=\"name\">Fake &lt;1&gt;</td><td class=\"mono\">10.0.0.1:4661</td>",
+                "<td class=\"num\">20</td>",
                 "name=\"address\" value=\"10.0.0.1:4661\"");
     }
 
@@ -513,7 +641,7 @@ class WebUiAnswersTest {
         whenTheFormIsPosted("/servers", Map.of("action", "explode"));
 
         thenTheStatusIs(400);
-        thenTheBodyContains("Unknown action.", "<a href=\"/servers\">Back</a>");
+        thenTheBodyContains("Unknown action.", "<a href=\"servers\">Back</a>");
     }
 
     @Test
@@ -618,7 +746,7 @@ class WebUiAnswersTest {
         givenTheEngineFinds(5, "found.iso");
         givenThePageShows("/search?id=5", "found.iso");
 
-        whenTheFormIsPosted("/search", Map.of("search", "5", "download", HASH));
+        whenTheFormIsPosted("/search", Map.of("action", "download", "search", "5", "hash", HASH));
 
         thenTheStatusIs(400);
         thenTheBodyContains("search again");
@@ -643,7 +771,7 @@ class WebUiAnswersTest {
         // A kept result gets its new sources, a new one finds no room.
         givenTheEngineFinds(6, numbered(0, 99), numbered(2000, 1));
 
-        whenThePageIsAskedUntilItShows("/search?id=6", "<td>99</td>");
+        whenThePageIsAskedUntilItShows("/search?id=6", ">99</td>");
 
         thenTheBodyContains("1000 results", "n0.iso", "n999.iso");
         thenTheBodyDoesNotContain("n1000.iso", "n2000.iso");
@@ -656,7 +784,7 @@ class WebUiAnswersTest {
 
         whenThePageIsAsked("/transfers");
 
-        thenTheBodyContains("empty.txt", "value=\"0\"></progress> 0 %", "stopped", "Resume");
+        thenTheBodyContains("empty.txt", "value=\"0\"></progress> <span class=\"percent\">0 %", "Stopped", "Resume");
         thenTheBodyDoesNotContain(">Stop<");
     }
 
@@ -809,6 +937,92 @@ class WebUiAnswersTest {
             assertThat(System.nanoTime()).as("waited too long").isLessThan(end);
             Thread.sleep(5);
         }
+    }
+
+    private void givenTheEngineUploads(UploadInfo... uploads) {
+        this.fake.answer("downloads", args -> CompletableFuture.completedFuture(List.of()));
+        this.fake.answer("uploads", args -> CompletableFuture.completedFuture(List.of(uploads)));
+    }
+
+    private void givenTheEngineBans(String ip) {
+        this.fake.answer("bans", args -> CompletableFuture.completedFuture(List.of(new BanInfo(ip, 600))));
+        this.fake.answer("unban", args -> {
+            this.asked.add("unban " + args[0]);
+            return CompletableFuture.completedFuture(true);
+        });
+    }
+
+    private void givenTheEngineDownloads(DownloadInfo... downloads) {
+        this.fake.answer("downloads", args -> CompletableFuture.completedFuture(List.of(downloads)));
+        this.fake.answer("categories", args -> CompletableFuture.completedFuture(List.of()));
+    }
+
+    private void givenTheEngineKnowsASourceOfTheDownload(String nick) {
+        this.fake.answer(
+                "sources",
+                args -> CompletableFuture.completedFuture(List.of(new SourceInfo(
+                        Hash16.parseHex(HASH),
+                        "half.iso",
+                        "203.0.113.5:4662",
+                        Optional.of(nick),
+                        "eMule v0.72",
+                        SourceInfo.State.QUEUED,
+                        3,
+                        0,
+                        2,
+                        3))));
+    }
+
+    private void givenTheEngineTestsThePorts() {
+        this.fake.answer("testPorts", args -> {
+            this.asked.add("test the ports");
+            return new CompletableFuture<>();
+        });
+    }
+
+    private void thenTheEngineWasAsked(Object call) {
+        assertThat(this.asked).contains(call);
+    }
+
+    private static UploadInfo upload(String nick, String file, UploadInfo.State state) {
+        return new UploadInfo(
+                "203.0.113.7:4662", Hash16.parseHex(HASH), Optional.of(nick), "eMule v0.72", file, state, 1000, 0, 30);
+    }
+
+    // A download of three parts, the first two missing beyond what came of the first.
+    private static DownloadInfo download(String name, DownloadInfo.Status status, int transferring) {
+        long size = 3 * PartMap.PART_SIZE;
+        return new DownloadInfo(
+                Hash16.parseHex(HASH),
+                name,
+                size,
+                PartMap.PART_SIZE / 2,
+                status,
+                DownloadPriority.NORMAL,
+                0,
+                2,
+                transferring,
+                transferring * 1000L,
+                new PartMap(size, List.of(new PartMap.Span(PartMap.PART_SIZE / 2, size)), List.of(), List.of()));
+    }
+
+    private static DownloadInfo other(String name, DownloadInfo.Status status) {
+        return new DownloadInfo(
+                Hash16.parseHex("CD".repeat(16)),
+                name,
+                1000,
+                0,
+                status,
+                DownloadPriority.NORMAL,
+                0,
+                1,
+                1,
+                100,
+                PartMap.EMPTY);
+    }
+
+    private void givenNoServers() {
+        this.fake.answer("servers", args -> CompletableFuture.completedFuture(List.of()));
     }
 
     private void givenTheEngineAnswersNoStatus() {
@@ -1059,9 +1273,11 @@ class WebUiAnswersTest {
         whenTheFormIsPosted(
                 "/search",
                 Map.of(
+                        "action",
+                        "download",
                         "search",
                         Long.toString(search),
-                        "download",
+                        "hash",
                         result(name).hash().toHex()));
     }
 
