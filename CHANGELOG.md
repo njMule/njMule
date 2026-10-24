@@ -154,14 +154,17 @@ All notable changes to this project are documented here. The format follows
   (downloads, uploads, queue, banned, links added, priorities, categories, sources), search (tabs,
   filters, results), shared files (sharing any folder by its path, asking again before a personal
   or system one), messages (chats, friends, friend slot, CAPTCHA), network (servers, Kad, log),
-  statistics, settings (the desktop app's pages, updates, host names) and the state and limits in
-  the top bar. It calls the remote-control API with the login session, each change carrying the
+  statistics (rates of the last day, free space), settings (the desktop app's pages, scheduler,
+  updates, host names), the import from eMule, the set-up, notices of finished downloads and new
+  messages with a chime, and the state and limits in the top bar. It calls the remote-control API with the login session, each change carrying the
   session's token in a header; only the login page is still written by the server. Gradle fetches
   Node.js and checks it, and npm installs exactly the packages of `package-lock.json`, running none
   of their scripts.
 - Remote-control API: searches on the network picked automatically, folders shared and unshared,
-  shared files renamed, the chats of the run, friends added and removed and the friend slot, and
-  every preference read and changed by the keys of `njmule.properties`.
+  shared files renamed, the chats of the run, friends added and removed and the friend slot, every
+  preference read and changed by the keys of `njmule.properties`, the scheduler, categories, server
+  lists and their priority, the port test, the parts of a download, comments and Kad notes, spam
+  marks, a client's files, the rates of the last day, the import from eMule and the free space.
 - Web interface laid out as the desktop app: the places in a sidebar, a top bar with one field to
   search or paste eD2K links, the rates and the state of the networks, Nord light or dark after
   the system. Transfers in segments (downloads with state filters and the desktop app's columns,
