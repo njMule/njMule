@@ -19,7 +19,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api';
 import { copy } from '../clipboard';
 import NjIcon from '../components/NjIcon.vue';
-import { usePoll } from '../engine';
+import { status, usePoll } from '../engine';
 import { size } from '../format';
 import { t } from '../i18n';
 import { htmlLinks } from '../links';
@@ -28,6 +28,7 @@ import {
     completeness,
     expression,
     link,
+    playingTime,
     searches,
     words,
     type FileType,
@@ -153,6 +154,30 @@ async function markSpam(spam: boolean): Promise<void> {
     await refresh(s);
 }
 
+const KNOWN: Record<NonNullable<Result['known']>, { key: string; tone: string }> = {
+    downloading: { key: 'IDS_DOWNLOADING', tone: 'busy' },
+    shared: { key: 'IDS_SHARED', tone: 'ok' },
+    downloaded: { key: 'IDS_DOWNLOADED', tone: 'ok' },
+    cancelled: { key: 'IDS_CANCELLED', tone: '' },
+};
+
+// The media columns show when a result is a piece of music or a film, as the desktop app's do.
+const hasMedia = computed(() => (shown.value?.results ?? []).some((r) => r.media !== undefined));
+
+// The files related to those chosen, which only some servers find.
+async function searchRelated(): Promise<void> {
+    const hashes = [...new Set(chosen.value.map((r) => r.hash))];
+    if (hashes.length === 0) {
+        return;
+    }
+    const e = `related::${hashes.join('::')}`;
+    await attempt(async () => {
+        const { id } = await api.post<{ id: number }>('/searches', { query: e, scope: 'server' });
+        searches.value = [...searches.value, { id, expression: e, results: [] }];
+        active.value = id.toString();
+    });
+}
+
 function copyLinks(html: boolean): void {
     const links = chosen.value.map((r) => ({ link: link(r), name: r.name }));
     void copy(
@@ -273,6 +298,9 @@ onUnmounted(() => window.clearInterval(timer));
                 <NjIcon name="COPY" />{{ t('nj.copyLink') }}
             </el-button>
             <el-button :disabled="chosen.length === 0" @click="copyLinks(true)">{{ t('IDS_DL_LINK2') }}</el-button>
+            <el-button :disabled="chosen.length === 0 || !status?.relatedSearch" @click="searchRelated">
+                {{ t('IDS_SEARCHRELATED') }}
+            </el-button>
             <el-button :disabled="chosen.length === 0" @click="markSpam(true)">{{ t('IDS_MARKSPAM') }}</el-button>
             <el-button :disabled="chosen.length === 0" @click="markSpam(false)">{{ t('IDS_MARKNOTSPAM') }}</el-button>
             <el-button @click="more">{{ t('nj.search.more') }}</el-button>
@@ -307,11 +335,33 @@ onUnmounted(() => window.clearInterval(timer));
             <el-table-column :label="t('nj.search.known')" width="150">
                 <template #default="{ row }">
                     <span v-if="row.spam" class="nj-chip error">{{ t('IDS_SPAM') }}</span>
-                    <span v-else-if="downloading.has(row.hash.toUpperCase())" class="nj-chip busy">
-                        {{ t('IDS_DOWNLOADING') }}
+                    <span v-else-if="row.known" class="nj-chip" :class="KNOWN[(row as Result).known!].tone">
+                        {{ t(KNOWN[(row as Result).known!].key) }}
                     </span>
                 </template>
             </el-table-column>
+            <template v-if="hasMedia">
+                <el-table-column :label="t('IDS_ARTIST')" min-width="120" show-overflow-tooltip>
+                    <template #default="{ row }">{{ row.media?.artist }}</template>
+                </el-table-column>
+                <el-table-column :label="t('IDS_ALBUM')" min-width="120" show-overflow-tooltip>
+                    <template #default="{ row }">{{ row.media?.album }}</template>
+                </el-table-column>
+                <el-table-column :label="t('IDS_TITLE')" min-width="120" show-overflow-tooltip>
+                    <template #default="{ row }">{{ row.media?.title }}</template>
+                </el-table-column>
+                <el-table-column :label="t('IDS_LENGTH')" width="90" align="right">
+                    <template #default="{ row }">{{ row.media?.length ? playingTime(row.media.length) : '' }}</template>
+                </el-table-column>
+                <el-table-column :label="t('IDS_BITRATE')" width="110" align="right">
+                    <template #default="{ row }">
+                        {{ row.media?.bitrate ? `${row.media.bitrate} ${t('IDS_KBITSSEC')}` : '' }}
+                    </template>
+                </el-table-column>
+                <el-table-column :label="t('IDS_CODEC')" width="90">
+                    <template #default="{ row }">{{ row.media?.codec }}</template>
+                </el-table-column>
+            </template>
         </el-table>
     </template>
 </template>

@@ -25,6 +25,16 @@ export interface Result {
     spamRating: number;
     spam: boolean;
     names: { name: string; sources: number; completeSources: number | null }[];
+    known?: 'downloading' | 'shared' | 'downloaded' | 'cancelled';
+    media?: { artist: string; album: string; title: string; length: number; bitrate: number; codec: string };
+}
+
+/** A playing time as 1:02:03 or 3:25. */
+export function playingTime(seconds: number): string {
+    const two = (n: number) => (n < 10 ? `0${n}` : String(n));
+    const s = Math.max(0, Math.floor(seconds));
+    const rest = `${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}`;
+    return s >= 3600 ? `${Math.floor(s / 3600)}:${rest}` : `${Math.floor(s / 60)}:${two(s % 60)}`;
 }
 
 /** A search shown in a tab: its words, and its results as the engine gathered them. */

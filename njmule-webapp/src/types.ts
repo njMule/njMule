@@ -57,6 +57,8 @@ export interface Status {
     publicIpv6?: string;
     tcpPort: number;
     missingInterface?: string;
+    relatedSearch?: boolean;
+    freeSpace?: { incoming?: number; temp?: number };
 }
 
 export type DownloadStatus = 'downloading' | 'paused' | 'stopped' | 'no_space' | 'error' | 'complete';

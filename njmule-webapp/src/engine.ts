@@ -11,18 +11,10 @@ export const status = ref<Status | null>(null);
 /** Why the engine could not be read, empty while it answers. */
 export const unreachable = ref('');
 
-/** The rates of each second since the page opened, at most an hour of them. */
-export const rates = ref<{ down: number; up: number }[]>([]);
-const RATE_SAMPLES = 3600;
-
 async function readStatus(): Promise<void> {
     try {
         status.value = await api.get<Status>('/status');
         unreachable.value = '';
-        rates.value = [
-            ...rates.value.slice(-(RATE_SAMPLES - 1)),
-            { down: status.value.downloadBytesPerSecond, up: status.value.uploadBytesPerSecond },
-        ];
     } catch (e) {
         unreachable.value = e instanceof ApiError ? e.message : String(e);
     }

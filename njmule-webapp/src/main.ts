@@ -9,6 +9,7 @@ import App from './App.vue';
 import { followChats } from './chats';
 import { followStatus } from './engine';
 import { bestLanguage, loadLanguage } from './i18n';
+import { followNotices } from './notices';
 import { router } from './router';
 import { followTheme } from './theme';
 
@@ -17,3 +18,4 @@ await loadLanguage(bestLanguage(navigator.languages));
 followStatus();
 followChats();
 createApp(App).use(router).mount('#app');
+followNotices(router);

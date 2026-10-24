@@ -17,7 +17,7 @@ import {
     ElTableColumn,
 } from 'element-plus';
 import { computed, ref } from 'vue';
-import { api, ApiError } from '../api';
+import { api } from '../api';
 import { copy } from '../clipboard';
 import CommentsDialog from '../components/CommentsDialog.vue';
 import NjIcon from '../components/NjIcon.vue';
@@ -25,7 +25,8 @@ import { usePoll } from '../engine';
 import { size } from '../format';
 import { t } from '../i18n';
 import { htmlLinks } from '../links';
-import { attempt, failed } from '../notify';
+import { attempt } from '../notify';
+import { shareFolder } from '../sharing';
 
 type Priority = 'very_low' | 'low' | 'normal' | 'high' | 'release' | 'auto';
 
@@ -92,31 +93,8 @@ function priority(p: Priority): string {
     return t(PRIORITIES.find((x) => x.value === p)?.key ?? 'IDS_PRIOAUTO');
 }
 
-// A folder that may hold personal or system files is shared only after a second question.
 async function share(path: string, subdirectories: boolean): Promise<void> {
-    try {
-        await api.post('/shared/directories', { path, subdirectories });
-    } catch (e) {
-        if (!(e instanceof ApiError) || e.status !== 409) {
-            failed(e);
-            return;
-        }
-        try {
-            await ElMessageBox.confirm(
-                `${path}\n\n${t('nj.shared.sensitiveText')}\n${t('nj.shared.asksAlso')}`,
-                t('nj.shared.shareAllTitle'),
-                {
-                    type: 'warning',
-                    confirmButtonText: t('nj.shared.shareAll'),
-                    cancelButtonText: t('nj.shared.chooseOther'),
-                    confirmButtonClass: 'el-button--danger',
-                },
-            );
-        } catch {
-            return;
-        }
-        await attempt(() => api.post('/shared/directories', { path, subdirectories, everything: true }));
-    }
+    await shareFolder(path, subdirectories);
     await folders.refresh();
     await files.refresh();
 }

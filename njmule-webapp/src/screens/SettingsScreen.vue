@@ -7,6 +7,8 @@ import { ElButton, ElInput, ElInputNumber, ElOption, ElSelect, ElSwitch } from '
 import { computed, onMounted, ref } from 'vue';
 import { api } from '../api';
 import HostsPanel from '../components/HostsPanel.vue';
+import ImportPanel from '../components/ImportPanel.vue';
+import SetupWizard from '../components/SetupWizard.vue';
 import SchedulerPanel from '../components/SchedulerPanel.vue';
 import SettingsExtras from '../components/SettingsExtras.vue';
 import UpdatePanel from '../components/UpdatePanel.vue';
@@ -20,6 +22,7 @@ const values = ref<Values>({});
 const held = ref<Values>({});
 const page = ref(PAGES[0]?.id ?? 'general');
 const find = ref('');
+const setupOpen = ref(false);
 
 onMounted(async () => {
     await attempt(async () => {
@@ -73,7 +76,7 @@ async function applyHeld(): Promise<void> {
                 <li v-for="p in shownPages" :key="p.id">
                     <button
                         type="button"
-                        :class="{ current: page !== 'web' && page !== 'scheduler' && current?.id === p.id }"
+                        :class="{ current: !['web', 'scheduler', 'import'].includes(page) && current?.id === p.id }"
                         @click="page = p.id"
                     >
                         {{ t(p.title) }}
@@ -84,11 +87,19 @@ async function applyHeld(): Promise<void> {
             <button type="button" class="web" :class="{ current: page === 'scheduler' }" @click="page = 'scheduler'">
                 {{ t('nj.scheduler.title') }}
             </button>
+            <button type="button" class="web" :class="{ current: page === 'import' }" @click="page = 'import'">
+                {{ t('nj.import.title') }}
+            </button>
+            <button type="button" class="web" @click="setupOpen = true">{{ t('nj.wizard.title') }}</button>
             <button type="button" class="web" :class="{ current: page === 'web' }" @click="page = 'web'">
                 {{ t('IDS_PW_WS') }}
             </button>
         </nav>
-        <section v-if="page === 'scheduler'" class="page">
+        <section v-if="page === 'import'" class="page">
+            <h2>{{ t('nj.import.heading') }}</h2>
+            <ImportPanel />
+        </section>
+        <section v-else-if="page === 'scheduler'" class="page">
             <h2>{{ t('nj.scheduler.title') }}</h2>
             <p class="hint">{{ t('nj.settings.page.scheduler') }}</p>
             <SchedulerPanel />
@@ -150,6 +161,7 @@ async function applyHeld(): Promise<void> {
             <SettingsExtras :key="current.id" :page="current.id" />
         </section>
     </div>
+    <SetupWizard v-model="setupOpen" />
     <div v-if="Object.keys(held).length > 0" class="pending" role="status">
         <span>{{ t('nj.settings.pendingReconnect') }}</span>
         <el-button @click="held = {}">{{ t('nj.settings.discard') }}</el-button>

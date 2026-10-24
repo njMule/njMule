@@ -8,9 +8,11 @@ import { useRoute, useRouter } from 'vue-router';
 import { unreadTotal } from './chats';
 import Banners from './components/Banners.vue';
 import CommandPalette from './components/CommandPalette.vue';
+import SetupWizard from './components/SetupWizard.vue';
 import NetworkControl from './components/NetworkControl.vue';
 import NjIcon from './components/NjIcon.vue';
 import SpeedLimits from './components/SpeedLimits.vue';
+import { api } from './api';
 import { unreachable } from './engine';
 import { t } from './i18n';
 import type { IconName } from './icons';
@@ -60,7 +62,36 @@ function key(e: KeyboardEvent): void {
     }
 }
 
-onMounted(() => window.addEventListener('keydown', key));
+// The set-up opens by itself once in a browser, while the nick is still the one njMule starts with.
+const SETUP = 'njmule.setup';
+const setup = ref(false);
+
+function seen(): boolean {
+    try {
+        return localStorage.getItem(SETUP) !== null;
+    } catch {
+        return true;
+    }
+}
+
+function setupDone(): void {
+    try {
+        localStorage.setItem(SETUP, 'done');
+    } catch {
+        // Asked again next time.
+    }
+}
+
+onMounted(async () => {
+    window.addEventListener('keydown', key);
+    if (!seen()) {
+        try {
+            setup.value = (await api.get<Record<string, string>>('/preferences'))['user.nick'] === 'njMule';
+        } catch {
+            // Not now.
+        }
+    }
+});
 onUnmounted(() => window.removeEventListener('keydown', key));
 const title = computed(() => t(String(route.meta.title ?? 'IDS_EM_TRANS')));
 
@@ -110,6 +141,7 @@ function nextMode(): void {
             <main>
                 <router-view />
                 <CommandPalette v-model="palette" :places="places" />
+                <SetupWizard v-model="setup" @done="setupDone" />
             </main>
         </div>
     </div>

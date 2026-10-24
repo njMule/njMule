@@ -4,8 +4,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
 import { ElSegmented } from 'element-plus';
-import { computed, ref } from 'vue';
-import { rates, status } from '../engine';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { api } from '../api';
+import { status } from '../engine';
 import { count, duration, rate, size } from '../format';
 import { t } from '../i18n';
 
@@ -13,20 +14,49 @@ const range = ref(600);
 const RANGES = computed(() => [
     { value: 600, label: `10 ${t('IDS_MINS')}` },
     { value: 3600, label: `1 ${t('IDS_HOURS')}` },
+    { value: 86400, label: `24 ${t('IDS_HOURS')}` },
 ]);
+
+// The rates njMule sampled, however long this page was closed: a second each up to an hour, a minute each for a day.
+const rates = ref<{ down: number; up: number }[]>([]);
+const step = ref(1);
+let timer = 0;
+
+async function readRates(): Promise<void> {
+    try {
+        const answer = await api.get<{ step: number; rates: [number, number][] }>(`/rates?span=${range.value}`);
+        step.value = answer.step;
+        rates.value = answer.rates.map(([down, up]) => ({ down, up }));
+    } catch {
+        // The top bar tells when the engine does not answer.
+    }
+}
+
+function follow(): void {
+    window.clearInterval(timer);
+    void readRates();
+    timer = window.setInterval(() => void readRates(), range.value > 3600 ? 60000 : 2000);
+}
+
+watch(range, follow);
+onMounted(follow);
+onUnmounted(() => window.clearInterval(timer));
 
 const WIDTH = 720;
 const HEIGHT = 180;
 
-const shown = computed(() => rates.value.slice(-range.value));
+const slots = computed(() => Math.round(range.value / step.value));
+const shown = computed(() => rates.value.slice(-slots.value));
 const highest = computed(() => Math.max(1024, ...shown.value.map((r) => Math.max(r.down, r.up))));
 
 // The samples from the left edge on, newest at the right.
 function line(pick: (r: { down: number; up: number }) => number): string {
-    const step = WIDTH / Math.max(1, range.value - 1);
-    const start = range.value - shown.value.length;
+    const width = WIDTH / Math.max(1, slots.value - 1);
+    const start = slots.value - shown.value.length;
     return shown.value
-        .map((r, i) => `${((start + i) * step).toFixed(1)},${(HEIGHT - (pick(r) / highest.value) * HEIGHT).toFixed(1)}`)
+        .map(
+            (r, i) => `${((start + i) * width).toFixed(1)},${(HEIGHT - (pick(r) / highest.value) * HEIGHT).toFixed(1)}`,
+        )
         .join(' ');
 }
 
@@ -87,6 +117,20 @@ function ratio(up: number, down: number): string {
                 <polyline class="up" :points="line((r) => r.up)" />
             </svg>
             <p class="hint">{{ summary }}</p>
+        </section>
+
+        <section v-if="status.freeSpace" class="card">
+            <h2>{{ t('IDS_STATS_FREESPACE') }}</h2>
+            <dl>
+                <template v-if="status.freeSpace.incoming !== undefined">
+                    <dt>{{ t('IDS_PW_INCOMING') }}</dt>
+                    <dd>{{ size(status.freeSpace.incoming) }}</dd>
+                </template>
+                <template v-if="status.freeSpace.temp !== undefined">
+                    <dt>{{ t('IDS_PW_TEMP') }}</dt>
+                    <dd>{{ size(status.freeSpace.temp) }}</dd>
+                </template>
+            </dl>
         </section>
 
         <div class="cards">
