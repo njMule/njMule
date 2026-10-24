@@ -50,6 +50,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
@@ -192,6 +193,38 @@ public final class RemoteApi implements AutoCloseable {
                 entry("stopDownload", c -> changed(c, this.engine.stopDownload(hash(c)))),
                 entry("restoreDownload", c -> changed(c, this.engine.restoreDownload(hash(c)))),
                 entry("getDownloadParts", this::getDownloadParts),
+                entry(
+                        "listPeerComments",
+                        c -> list(
+                                c,
+                                () -> this.engine.peerComments(hash(c)),
+                                (g, p) -> ApiJson.comment(g, p.user(), p.fileName(), p.comment()))),
+                entry("getFileComment", c -> {
+                    Optional<FileComment> mine = await(this.engine.fileComment(hash(c)));
+                    reply(c.exchange(), 200, g -> {
+                        FileComment f = mine.orElse(FileComment.of("", 0));
+                        g.writeStartObject();
+                        g.writeNumberProperty("rating", f.rating());
+                        g.writeStringProperty("text", f.text());
+                        g.writeEndObject();
+                    });
+                }),
+                entry("setFileComment", c -> {
+                    FileComment f = FileComment.of(c.body().path("text").asString(""), number(c.body(), "rating"));
+                    done(c, this.engine.setFileComment(hash(c), f));
+                }),
+                entry(
+                        "listKadNotes",
+                        c -> list(
+                                c,
+                                () -> this.engine.kadNotes(hash(c)),
+                                (g, n) -> ApiJson.comment(g, n.publisher(), n.fileName(), n.comment()))),
+                entry(
+                        "searchKadNotes",
+                        c -> list(
+                                c,
+                                () -> this.engine.searchKadNotes(hash(c)),
+                                (g, n) -> ApiJson.comment(g, n.publisher(), n.fileName(), n.comment()))),
                 entry(
                         "setDownloadPreview",
                         c -> changed(c, this.engine.setDownloadPreview(hash(c), flag(c.body(), "previewFirst")))),

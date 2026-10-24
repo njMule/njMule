@@ -520,6 +520,96 @@ paths:
           $ref: "#/components/responses/Added"
         default:
           $ref: "#/components/responses/Error"
+  /downloads/{hash}/comments:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    get:
+      operationId: listPeerComments
+      tags: [downloads]
+      summary: The comments the sources of a download gave on it.
+      responses:
+        "200":
+          description: The comments.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /files/{hash}/comment:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    get:
+      operationId: getFileComment
+      tags: [downloads]
+      summary: Our rating and comment of a file, as others see them; 0 and empty while there is none.
+      responses:
+        "200":
+          description: The rating and comment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnComment"
+        default:
+          $ref: "#/components/responses/Error"
+    put:
+      operationId: setFileComment
+      tags: [downloads]
+      summary: Rates and comments a file for others to see.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OwnComment"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /files/{hash}/notes:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    get:
+      operationId: listKadNotes
+      tags: [downloads]
+      summary: The notes Kad gave on a file so far.
+      responses:
+        "200":
+          description: The notes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: searchKadNotes
+      tags: [downloads]
+      summary: Asks Kad for the notes on a file and answers those found.
+      responses:
+        "200":
+          description: The notes found.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
   /downloads/{hash}/restore:
     parameters:
       - $ref: "#/components/parameters/Hash"
@@ -2288,6 +2378,32 @@ components:
         items:
           type: integer
           format: int64
+    Comment:
+      type: object
+      required: [who, fileName, rating, text]
+      properties:
+        who:
+          type: string
+        fileName:
+          type: string
+        rating:
+          type: integer
+          minimum: 0
+          maximum: 5
+          description: 0 not rated, 1 invalid or fake, then poor, fair, good, excellent.
+        text:
+          type: string
+    OwnComment:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 0
+          maximum: 5
+        text:
+          type: string
+          maxLength: 128
     ServerLists:
       type: object
       required: [addresses]

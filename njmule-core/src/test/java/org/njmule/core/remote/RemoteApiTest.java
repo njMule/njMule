@@ -53,6 +53,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.PartMap;
@@ -636,6 +637,28 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldKeepOurRatingAndCommentOfAFile() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsFileComments();
+        givenAFileCommented("{\"rating\":4,\"text\":\"clean copy\"}");
+
+        whenCalled("GET", "/api/v1/files/" + HASH + "/comment", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{\"rating\":4,\"text\":\"clean copy\"}");
+    }
+
+    @Test
+    void shouldRefuseARatingAboveFive() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsFileComments();
+
+        whenCalled("PUT", "/api/v1/files/" + HASH + "/comment", "{\"rating\":6}");
+
+        thenTheStatusIs(400);
+    }
+
+    @Test
     void shouldSetTheSpeedLimits() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -709,6 +732,24 @@ class RemoteApiTest {
 
     private void givenTheEngineSwapsSources(int count) {
         this.fake.answer("swapSourcesToDownload", args -> CompletableFuture.completedFuture(count));
+    }
+
+    private void givenTheEngineKeepsFileComments() {
+        AtomicReference<Optional<FileComment>> kept = new AtomicReference<>(Optional.empty());
+        this.fake.answer("fileComment", args -> CompletableFuture.completedFuture(kept.get()));
+        this.fake.answer("setFileComment", args -> {
+            kept.set(Optional.of((FileComment) args[1]));
+            return CompletableFuture.completedFuture(null);
+        });
+    }
+
+    private void givenAFileCommented(String body) throws Exception {
+        whenCalled("PUT", "/api/v1/files/" + HASH + "/comment", body);
+        thenTheStatusIs(200);
+    }
+
+    private void thenTheBodyIs(String body) {
+        assertThat(this.answer.body()).isEqualTo(body);
     }
 
     private void givenTheEngineDownloads(DownloadInfo download) {

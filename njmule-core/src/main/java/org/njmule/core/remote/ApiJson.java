@@ -27,6 +27,7 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadContactInfo;
@@ -335,6 +336,16 @@ final class ApiJson {
         g.writeNumberProperty("color", c.color());
         g.writeStringProperty("patterns", c.patterns());
         g.writeBooleanProperty("regex", c.regex());
+        g.writeEndObject();
+    }
+
+    /** A comment on a file: who wrote it, the name they have the file under, its rating 0 to 5 and its text. */
+    static void comment(JsonGenerator g, String who, String fileName, FileComment c) {
+        g.writeStartObject();
+        g.writeStringProperty("who", who);
+        g.writeStringProperty("fileName", fileName);
+        g.writeNumberProperty("rating", c.rating());
+        g.writeStringProperty("text", c.text());
         g.writeEndObject();
     }
 
