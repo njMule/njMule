@@ -74,7 +74,16 @@ export interface Download {
     transferring: number;
     bytesPerSecond: number;
     previewFirst: boolean;
+    autoSwap: boolean;
     link: string;
+}
+
+/** The map of a download's parts: byte ranges [start, end) missing and asked for, and the sources of each part. */
+export interface Parts {
+    size: number;
+    missing: [number, number][];
+    requested: [number, number][];
+    sources: number[];
 }
 
 export interface Upload {

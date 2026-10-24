@@ -14,24 +14,26 @@ import {
     ElOption,
     ElProgress,
     ElSelect,
+    ElSwitch,
     ElTable,
     ElTableColumn,
     ElTabPane,
     ElTabs,
 } from 'element-plus';
-import { computed, h, ref } from 'vue';
+import { computed, h, onUnmounted, ref, watch } from 'vue';
 import { api } from '../../api';
 import { copy } from '../../clipboard';
 import AddLinksDialog from '../../components/AddLinksDialog.vue';
 import CategoriesDialog from '../../components/CategoriesDialog.vue';
 import NjIcon from '../../components/NjIcon.vue';
+import PartBar from '../../components/PartBar.vue';
 import { duration, percent, rate, size } from '../../format';
 import { t } from '../../i18n';
 import type { IconName } from '../../icons';
 import { htmlLinks } from '../../links';
 import { attempt, told } from '../../notify';
 import { shown, type Shown } from '../../transfers';
-import type { Category, Download, DownloadPriority, Source } from '../../types';
+import type { Category, Download, DownloadPriority, Parts, Source } from '../../types';
 
 const props = defineProps<{ downloads: Download[]; categories: Category[]; sources: Source[] }>();
 const emit = defineEmits<{ changed: [] }>();
@@ -103,6 +105,43 @@ const visible = computed(() => {
 
 const one = computed(() => (chosen.value.length === 1 ? chosen.value[0] : undefined));
 const ofOne = computed(() => (one.value ? props.sources.filter((s) => s.file === one.value?.hash) : []));
+
+// The parts of the download chosen, read again while it stays chosen.
+const parts = ref<Parts | null>(null);
+let partsTimer = 0;
+
+async function readParts(hash: string): Promise<void> {
+    try {
+        parts.value = (await api.get<{ parts: Parts }>(`/downloads/${hash}/parts`)).parts;
+    } catch {
+        // Gone or not answering: the list tells.
+    }
+}
+
+watch(
+    () => one.value?.hash,
+    (hash) => {
+        window.clearInterval(partsTimer);
+        parts.value = null;
+        if (hash !== undefined) {
+            void readParts(hash);
+            partsTimer = window.setInterval(() => void readParts(hash), 3000);
+        }
+    },
+);
+onUnmounted(() => window.clearInterval(partsTimer));
+
+async function setFlag(d: Download, path: 'preview' | 'autoswap', key: string, on: boolean): Promise<void> {
+    await attempt(() => api.put(`/downloads/${d.hash}/${path}`, { [key]: on }));
+    emit('changed');
+}
+
+async function swap(d: Download, direction: 'here' | 'away'): Promise<void> {
+    await attempt(async () => {
+        const { added } = await api.post<{ added: number }>(`/downloads/${d.hash}/swap`, { direction });
+        told(t('nj.a4af.swapped', added));
+    });
+}
 
 function state(d: Download) {
     return STATES[shown(d)];
@@ -392,6 +431,27 @@ const SOURCE_STATES: Record<Source['state'], string> = {
             <p v-if="shown(one) === 'noSources'" class="hint">{{ t('nj.details.noSourcesNote') }}</p>
             <p v-if="shown(one) === 'noSpace'" class="hint">{{ t('nj.details.diskFullNote') }}</p>
             <p v-if="shown(one) === 'error'" class="hint">{{ t('nj.details.errorNote') }}</p>
+            <PartBar v-if="parts && one.status !== 'complete'" :parts="parts" />
+            <div v-if="one.status !== 'complete'" class="flags">
+                <label>
+                    <el-switch
+                        :model-value="one.previewFirst"
+                        @change="(on) => setFlag(one!, 'preview', 'previewFirst', Boolean(on))"
+                    />
+                    {{ t('IDS_DOWNLOADMOVIECHUNKS') }}
+                </label>
+                <label>
+                    <el-switch
+                        :model-value="one.autoSwap"
+                        @change="(on) => setFlag(one!, 'autoswap', 'autoSwap', Boolean(on))"
+                    />
+                    {{ t('nj.a4af.auto') }}
+                </label>
+                <el-button size="small" :disabled="one.status !== 'downloading'" @click="swap(one!, 'here')">
+                    {{ t('nj.a4af.toThis') }}
+                </el-button>
+                <el-button size="small" @click="swap(one!, 'away')">{{ t('nj.a4af.toOther') }}</el-button>
+            </div>
             <el-tabs>
                 <el-tab-pane :label="`${t('IDS_DL_SOURCES')} (${ofOne.length})`">
                     <el-table :data="ofOne" :empty-text="t('nj.transfers.noSources')" size="small">
@@ -475,6 +535,18 @@ const SOURCE_STATES: Record<Source['state'], string> = {
     margin: 0 0 4px;
     font-size: 16px;
     word-break: break-all;
+}
+.flags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    margin: 10px 0;
+}
+.flags label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 .facts,
 .hint {
