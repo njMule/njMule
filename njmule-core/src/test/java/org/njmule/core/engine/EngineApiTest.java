@@ -26,8 +26,10 @@ import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
@@ -58,11 +60,16 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
+import org.njmule.core.kad.KadNode;
+import org.njmule.core.kad.UInt128;
 import org.njmule.core.persist.ConfigBackup;
 import org.njmule.core.persist.PreferencesCodec;
 import org.njmule.core.persist.ScheduleCodec;
 import org.njmule.core.persist.SyntheticEmuleProfile;
 import org.njmule.core.persist.format.IpFilterDat;
+import org.njmule.core.persist.format.NodesDat;
+import org.njmule.core.protocol.io.DecodeException;
+import org.njmule.core.util.Ipv4;
 
 /** The engine's own API: what it does itself around the network, and what it refuses. */
 @Timeout(60)
@@ -98,6 +105,8 @@ class EngineApiTest {
     private byte[] list;
     private List<IpFilterDat.Range> ranges;
     private Throwable exception;
+    private Path nodesDat;
+    private int newContacts;
 
     @AfterEach
     void closeEngine() {
@@ -149,6 +158,27 @@ class EngineApiTest {
         whenAServerListIsFetchedFrom(LOCAL_LIST);
 
         thenTheFetchFailsWithTheRootCause(IOException.class, "local or private");
+    }
+
+    @Test
+    void shouldKeepTheKadContactsOfANodesDatFile() throws Exception {
+        givenARunningEngine();
+        givenANodesDatFileWithContacts(2);
+
+        whenTheKadContactsOfTheFileAreAdded();
+
+        thenTheNewContactsAre(2);
+        thenOurNodesDatHolds(2);
+    }
+
+    @Test
+    void shouldRefuseAFileThatIsNoNodesDat() throws Exception {
+        givenARunningEngine();
+        givenAFileOf(new byte[] {1, 2, 3});
+
+        whenTheKadContactsOfTheFileAreAdded();
+
+        thenExceptionOccurredWithTheCause(DecodeException.class);
     }
 
     @Test
@@ -588,6 +618,42 @@ class EngineApiTest {
     private void whenAServerListIsFetchedFrom(String address) {
         this.exception =
                 catchThrowable(() -> this.engine.addServers(URI.create(address)).get(10, TimeUnit.SECONDS));
+    }
+
+    private void givenANodesDatFileWithContacts(int count) throws IOException {
+        List<NodesDat.Contact> contacts = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            contacts.add(new NodesDat.Contact(
+                    UInt128.random(new SecureRandom()),
+                    Ipv4.parse("81.2.3." + (i + 1)),
+                    4672,
+                    4662,
+                    8,
+                    3,
+                    NodesDat.UdpKey.NONE,
+                    true));
+        }
+        givenAFileOf(NodesDat.write(contacts));
+    }
+
+    private void givenAFileOf(byte[] content) throws IOException {
+        this.nodesDat = this.dir.resolve("chosen-nodes.dat");
+        Files.write(this.nodesDat, content);
+    }
+
+    private void whenTheKadContactsOfTheFileAreAdded() {
+        this.exception = catchThrowable(() ->
+                this.newContacts = this.engine.addKadContacts(this.nodesDat).get(10, TimeUnit.SECONDS));
+    }
+
+    private void thenTheNewContactsAre(int count) {
+        assertThat(this.exception).isNull();
+        assertThat(this.newContacts).isEqualTo(count);
+    }
+
+    private void thenOurNodesDatHolds(int count) throws IOException {
+        byte[] ours = Files.readAllBytes(this.engine.directories().config().resolve(KadNode.NODES_FILE));
+        assertThat(NodesDat.read(ours).contacts()).hasSize(count);
     }
 
     private void whenKadContactsAreFetchedFrom(String address) {

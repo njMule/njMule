@@ -218,6 +218,8 @@ All notable changes to this project are documented here. The format follows
 - A server.met or a nodes.dat can be taken from an address, as in eMule: the box offers the
   addresses used before, and server list and nodes.dat links from the browser are followed. The
   lists are fetched over http or https from public addresses only, within size and redirect limits.
+- A nodes.dat can also be added from a file, as a server.met can: the Kad view of the desktop
+  app has the button, and the engine API `addKadContacts(Path)`.
 - The IP filter can be updated from up to 16 lists on the web (ipfilter.dat, PeerGuardian or P2B,
   zipped or not), one address per line in the settings, joined into one filter that applies at
   once; a list that cannot be fetched or read is left out and named in the log. The lists are

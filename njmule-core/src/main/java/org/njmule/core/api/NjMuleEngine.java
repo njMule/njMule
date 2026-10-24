@@ -308,6 +308,9 @@ public interface NjMuleEngine extends AutoCloseable {
      */
     CompletableFuture<Integer> addKadContacts(URI url);
 
+    /** Adds the Kad contacts of a {@code nodes.dat} file (e.g. eMule's); completes with how many were new. */
+    CompletableFuture<Integer> addKadContacts(Path nodesDat);
+
     /** Our comment on a file, which the clients downloading it hear. */
     CompletableFuture<Optional<FileComment>> fileComment(Hash16 file);
 

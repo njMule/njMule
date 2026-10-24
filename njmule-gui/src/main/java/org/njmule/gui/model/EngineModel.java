@@ -816,6 +816,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         later(this.engine.addKadContacts(url), done::accept);
     }
 
+    /** Adds the Kad contacts of the nodes.dat file {@code file}, then hands {@code done} how many were new. */
+    public void addKadContacts(Path file, IntConsumer done) {
+        later(this.engine.addKadContacts(file), done::accept);
+    }
+
     /** Asks a client for its shared files; {@code found} or {@code failed} gets the outcome on the FX thread. */
     // The follow-up only hands the outcome to the FX thread, which shows a failure itself.
     @SuppressWarnings("FutureReturnValueIgnored")

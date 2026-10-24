@@ -745,6 +745,29 @@ public final class Engine implements NjMuleEngine {
                 .thenCompose(contents -> this.loop.submit(() -> this.network.addKadContacts(contents)));
     }
 
+    @Override
+    public CompletableFuture<Integer> addKadContacts(Path nodesDat) {
+        Objects.requireNonNull(nodesDat, "nodesDat");
+        return read(nodesDat, NodesDat::read)
+                .thenCompose(contents -> this.loop.submit(() -> this.network.addKadContacts(contents)));
+    }
+
+    /** Reads a file the user chose, on a thread of its own, no larger than a list from the web may be. */
+    private static <T> CompletableFuture<T> read(Path file, Parser<T> parser) {
+        return CompletableFuture.supplyAsync(
+                () -> {
+                    try {
+                        if (Files.size(file) > WebLists.MAX_SIZE) {
+                            throw new IOException(file.getFileName() + " is larger than a list may be");
+                        }
+                        return parser.parse(Files.readAllBytes(file));
+                    } catch (IOException e) {
+                        throw new CompletionException(e);
+                    }
+                },
+                task -> Thread.ofVirtual().name("njmule-read").start(task));
+    }
+
     /** Reads what the web gives, on a thread of its own: the engine thread never waits for the network. */
     private <T> CompletableFuture<T> fetch(URI url, Parser<T> parser) {
         return fetch(url, false, parser);

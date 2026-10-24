@@ -18,6 +18,7 @@ package org.njmule.gui.screens;
 
 import atlantafx.base.theme.Styles;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import javafx.scene.Node;
@@ -35,6 +36,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.stage.FileChooser;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
@@ -203,8 +205,8 @@ public final class KadScreen implements Screen {
         this.gui.model().refreshKadLists();
     }
 
-    // The two ways in, explained together: a list of nodes from the web (an address typed or used before), or one
-    // client known by its address.
+    // The ways in, explained together: a list of nodes from the web (an address typed or used before) or from a file,
+    // or one client known by its address.
     private Node ways() {
         this.nodes = new UrlBox(this.gui, "nodesDat", this.gui.t("IDS_BOOTSRAPNODESDAT"));
         this.nodes.node().setPromptText("https://\u2026/nodes.dat");
@@ -220,7 +222,8 @@ public final class KadScreen implements Screen {
         hint.setMinHeight(Region.USE_PREF_SIZE);
         GridPane ways = new GridPane(8, 8);
         ways.addRow(0, Fx.whole(new Label(this.gui.t("IDS_BOOTSRAPNODESDAT"))), this.nodes.node(), Fx.whole(take));
-        ways.addRow(1, Fx.whole(new Label(this.gui.t("nj.kad.fromClient"))), this.node, Fx.whole(start));
+        ways.add(Fx.whole(Fx.button(this.gui.t("nj.kad.addNodesDat"), Icons.FOLDER_OPEN, this::chooseNodesDat)), 1, 1);
+        ways.addRow(2, Fx.whole(new Label(this.gui.t("nj.kad.fromClient"))), this.node, Fx.whole(start));
         ColumnConstraints grows = new ColumnConstraints();
         grows.setHgrow(Priority.ALWAYS);
         ways.getColumnConstraints().addAll(new ColumnConstraints(), grows);
@@ -237,6 +240,23 @@ public final class KadScreen implements Screen {
             this.nodes.worked(url);
             this.gui.inform().accept(this.gui.f("nj.kad.fromUrl", added, url.getHost()));
         });
+    }
+
+    private void chooseNodesDat() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(this.gui.t("nj.kad.addNodesDat"));
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("nodes.dat", "*.dat"));
+        var file = chooser.showOpenDialog(this.view.getScene().getWindow());
+        if (file != null) {
+            addNodesDat(file.toPath());
+        }
+    }
+
+    void addNodesDat(Path file) {
+        String name = String.valueOf(file.getFileName());
+        this.gui
+                .model()
+                .addKadContacts(file, added -> this.gui.inform().accept(this.gui.f("nj.kad.fromFile", added, name)));
     }
 
     UrlBox nodesBox() {

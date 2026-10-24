@@ -19,7 +19,10 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import java.io.IOException;
 import java.net.URI;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -79,6 +82,7 @@ class ScreensTest {
     private StatisticsScreen statistics;
     private SchedulerPane scheduler;
     private Path serverMet;
+    private Path nodesDat;
     private Path sharedFolder;
     private long timeLeft;
     private List<?> serverLinks;
@@ -228,6 +232,16 @@ class ScreensTest {
 
         thenTheServerListBoxOffers("https://example.org/server.met");
         thenTheSavedServerListAddressesAre("https://example.org/server.met");
+    }
+
+    @Test
+    void shouldAddTheKadContactsOfANodesDatFile() throws Exception {
+        givenTheKadScreen();
+        givenANodesDatWithAContact();
+
+        whenTheKadContactsAreAddedFromTheFile();
+
+        thenTheProfilesNodesDatSoonHolds(1);
     }
 
     @Test
@@ -1016,6 +1030,42 @@ class ScreensTest {
 
     private void givenTheFirstSharedFileChosen() throws Exception {
         FxTesting.onFx(() -> this.shared.table().getSelectionModel().select(0));
+    }
+
+    // A nodes.dat of version 2 with one contact: 16 bytes of id, IPv4, UDP and TCP port, Kad version, UDP key,
+    // verified.
+    private void givenANodesDatWithAContact() throws Exception {
+        ByteBuffer file = ByteBuffer.allocate(12 + 34).order(ByteOrder.LITTLE_ENDIAN);
+        file.putInt(0).putInt(2).putInt(1);
+        file.put(new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+        file.put(new byte[] {81, 2, 3, 4})
+                .putShort((short) 4672)
+                .putShort((short) 4662)
+                .put((byte) 8);
+        file.putInt(0).putInt(0).put((byte) 1);
+        this.nodesDat = this.dir.resolve("nodes.dat");
+        Files.write(this.nodesDat, file.array());
+    }
+
+    private void whenTheKadContactsAreAddedFromTheFile() throws Exception {
+        FxTesting.onFx(() -> this.kadScreen.addNodesDat(this.nodesDat));
+    }
+
+    // The count of contacts of a nodes.dat of version 2 follows its zero and its version.
+    private void thenTheProfilesNodesDatSoonHolds(int count) throws Exception {
+        Path ours = this.test.engine.directories().config().resolve("nodes.dat");
+        FxTesting.assertEventually("the profile's nodes.dat holds " + count, () -> contactsIn(ours) == count);
+    }
+
+    // The count of contacts of a nodes.dat of version 2 follows its zero and its version.
+    private static int contactsIn(Path nodesDat) {
+        try {
+            return ByteBuffer.wrap(Files.readAllBytes(nodesDat))
+                    .order(ByteOrder.LITTLE_ENDIAN)
+                    .getInt(8);
+        } catch (IOException | IndexOutOfBoundsException e) {
+            return -1;
+        }
     }
 
     private void givenTheKadScreen() throws Exception {
