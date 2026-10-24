@@ -43,10 +43,10 @@ import org.njmule.gui.model.EngineModel;
  */
 public final class RateGraph extends Region {
 
-    /** The time shown: the last ten minutes or hour second by second, or the last day minute by minute. */
     /** What the graph shows, for those who cannot see it: the rates now and the highest of the time shown. */
     public record Summary(Range range, long down, long up, long highest) {}
 
+    /** The time shown: the last ten minutes or hour second by second, or the last day minute by minute. */
     public enum Range {
         TEN_MINUTES(600, 1),
         HOUR(3_600, 1),
