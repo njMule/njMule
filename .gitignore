@@ -4,6 +4,8 @@
 # --- Gradle ------------------------------------------------------------------
 .gradle/
 build/
+# The web app's packages, installed by npm from package-lock.json.
+node_modules/
 .kotlin/
 # Output folders of the former Maven build, still present in older checkouts.
 target/

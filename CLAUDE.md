@@ -78,6 +78,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 | `njmule-app` (`org.njmule.app`) | headless launcher/CLI, Logback set-up (`logging.internal` is not exported) |
 | `njmule-gui` (`org.njmule.gui`) | JavaFX 27 + AtlantaFX desktop app, with its own SVG line icons |
 | `njmule-webui` (`org.njmule.webui`) | web interface on Jetty (password, sessions, CSRF); serves the core's remote-control API |
+| `njmule-webapp` | the web interface's browser app (Vue 3, Element Plus, TypeScript, Vite); built into njmule-webui's jar |
 | `njmule-testkit` (`org.njmule.testkit`) | test doubles (fake server and peers, from M2) |
 | `njmule-bench` | JMH benchmarks; classpath build so it reaches internal core packages; not distributed |
 | `build-logic/` | Gradle convention plugin shared by the modules (`njmule.java-conventions`) |
@@ -120,6 +121,12 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `./gradlew :njmule-core:test --tests '*TagCodecTest'`. Speed of the transfers on the loopback
   (prints MiB/s): `./gradlew :njmule-testkit:test --tests '*ThroughputTest' '-Ptest.tags=perf'
   '-Ptest.excludedTags=interop'`.
+- Web app (`njmule-webapp`): Gradle downloads Node.js (`nodejs` in `libs.versions.toml`, checked
+  in `verification-metadata.xml` for every platform) and runs `npm ci` from `package-lock.json`
+  without install scripts (`.npmrc`); `bundle` type-checks and builds it, `unitTest` runs Vitest,
+  `formatCheck` runs Prettier (fix with `npm run format` there). Its texts are the desktop app's
+  translation keys (`t('IDS_…')`, `t('nj.…')`), converted to JSON at build time; only literal keys
+  are found. Its icons are the desktop app's (`src/icons.ts`).
 - Other tasks: `:njmule-gui:generateLicenseReport` (THIRD-PARTY.txt in `build/reports/licenses`),
   `cyclonedxBom` (SBOM in `build/reports/cyclonedx`), `dependencyCheckAggregate` (OWASP
   dependency-check, needs `NVD_API_KEY`), `:njmule-app:nativeCompile` (GraalVM native image).

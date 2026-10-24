@@ -16,7 +16,7 @@ set -euo pipefail
 src=/work
 build=$(mktemp -d)
 tar -C "$src" --exclude=./.git --exclude=./docs --exclude=./.local --exclude=./fixtures-private \
-    --exclude=build --exclude=.gradle --exclude=.kotlin -cf - . | tar -C "$build" -xf -
+    --exclude=build --exclude=.gradle --exclude=.kotlin --exclude=node_modules -cf - . | tar -C "$build" -xf -
 cd "$build"
 ./gradlew --no-daemon --console=plain :njmule-app:nativeCompile "$@"
 mkdir -p "$src/njmule-app/build/native-linux"

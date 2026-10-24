@@ -149,6 +149,12 @@ All notable changes to this project are documented here. The format follows
   with Kwik, each side first proving its user hash) when the source has it, else over uTP (LEDBAT
   congestion control, selective acknowledgements). A host QUIC failed with is met over uTP for two
   minutes. Our hello and Kad publishes say that we take such connections.
+- Web interface as a browser app (`njmule-webapp`: Vue, Element Plus, TypeScript, Vite), in the
+  desktop app's Nord colours, icons and 36 languages: it calls the remote-control API with the login
+  session, each change carrying the session's token in a header. It opens on the downloads (state,
+  progress, speed, sources, time left, filter; pause, resume, stop, cancel after a question); the
+  other places keep their pages until they move into it. Gradle fetches Node.js and checks it, and
+  npm installs exactly the packages of `package-lock.json`, running none of their scripts.
 - Web interface laid out as the desktop app: the places in a sidebar, a top bar with one field to
   search or paste eD2K links, the rates and the state of the networks, Nord light or dark after
   the system. Transfers in segments (downloads with state filters and the desktop app's columns,

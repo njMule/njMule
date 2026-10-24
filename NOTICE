@@ -65,6 +65,12 @@ versions is generated at release time in THIRD-PARTY.txt.
     RichTextFX, Flowless,       BSD 2-Clause License (RichTextFX also
     ReactFX, UndoFX,            GPL-2.0 WITH Classpath-exception-2.0); used
     WellBehavedFX               under BSD 2-Clause
+    Vue, Vue Router,            MIT License (the web interface's browser
+    Element Plus and the        app; their license texts are shipped beside
+    packages they bundle        it, in THIRD-PARTY.md)
+    (VueUse, Floating UI,
+    lodash-es, Day.js and
+    others)
     GraalVM Native Image        GPL-2.0 WITH Classpath-exception-2.0
     (Substrate VM runtime embedded in the native executables)
     musl libc                   MIT License
@@ -72,7 +78,8 @@ versions is generated at release time in THIRD-PARTY.txt.
     (both linked statically into the executable of the Synology DSM
     package, which ships their license texts in its doc folder)
 
-Test-only dependencies (JUnit, AssertJ, jqwik, Jimfs, openapi-parser) are not
+Test-only dependencies (JUnit, AssertJ, jqwik, Jimfs, openapi-parser) and the
+web app's build tools (Node.js, Vite, TypeScript, Vitest, Prettier) are not
 distributed.
 
 

@@ -68,6 +68,7 @@ class WebUiAnswersTest {
 
     private static final String PASSWORD = "correct horse";
     private static final Pattern CSRF = Pattern.compile("name=\"csrf\" value=\"([^\"]+)\"");
+    private static final Pattern APP_TOKEN = Pattern.compile("name=\"njmule-csrf\" content=\"([^\"]+)\"");
     private static final String HASH = "AB".repeat(16);
     private static final String ED2K_LINK = "ed2k://|file|a.bin|1000|" + HASH + "|/";
     private static final String MAGNET_LINK = "magnet:?xt=urn:ed2k:" + "CD".repeat(16) + "&xl=1000&dn=b.bin";
@@ -428,13 +429,79 @@ class WebUiAnswersTest {
     }
 
     @Test
-    void shouldLeadFromTheTopToTheTransfers() throws Exception {
+    void shouldAnswerTheAppsCallsWithTheLoginSession() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineDownloads();
+
+        whenTheApiIsCalled("GET", "/api/v1/downloads", Optional.empty());
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("[]");
+    }
+
+    @Test
+    void shouldTurnAwayTheAppsCallsWithoutLogin() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenTheApiIsCalled("GET", "/api/v1/status", Optional.empty());
+
+        thenTheStatusIs(401);
+    }
+
+    @Test
+    void shouldRefuseTheAppsChangesWithoutTheSessionsToken() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineConnectsAndDisconnects();
+
+        whenTheApiIsCalled("POST", "/api/v1/servers/disconnect", Optional.of("not-the-token"));
+
+        thenTheStatusIs(403);
+        thenTheEngineWasNotAskedToDisconnect();
+    }
+
+    @Test
+    void shouldTakeTheAppsChangesWithTheSessionsToken() throws Exception {
+        givenALoggedInUser();
+        givenTheEngineConnectsAndDisconnects();
+
+        whenTheApiIsCalledWithTheSessionsToken("POST", "/api/v1/servers/disconnect");
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAskedToDisconnect();
+    }
+
+    @Test
+    void shouldServeTheAppsTranslationsBeforeTheLogin() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenThePageIsAsked("/i18n/en.json");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"IDS_EM_TRANS\": \"Transfers\"");
+    }
+
+    @Test
+    void shouldServeNoOtherResourceAsAFileOfTheApp() throws Exception {
+        givenALoggedInUser();
+
+        whenThePageIsAsked("/index.html");
+
+        thenTheStatusIs(404);
+    }
+
+    @Test
+    void shouldServeTheAppWithTheSessionsTokenAtTheTop() throws Exception {
         givenALoggedInUser();
 
         whenThePageIsAsked("/");
 
-        thenTheStatusIs(303);
-        thenTheAnswerLeadsTo("transfers");
+        thenTheStatusIs(200);
+        thenTheBodyContains("<meta name=\"njmule-csrf\" content=\"");
+        thenTheBodyDoesNotContain("__NJMULE_CSRF__");
+        thenTheHeaderIs(
+                "Content-Security-Policy",
+                "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self';"
+                        + " connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
     }
 
     @Test
@@ -1220,6 +1287,19 @@ class WebUiAnswersTest {
                 HttpResponse.BodyHandlers.ofString());
     }
 
+    private void whenTheApiIsCalled(String method, String path, Optional<String> token) throws Exception {
+        HttpRequest.Builder call = request(path).method(method, HttpRequest.BodyPublishers.noBody());
+        token.ifPresent(v -> call.header("X-NjMule-CSRF", v));
+        this.answer = this.http.send(call.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    // The token the app's page carries for its session.
+    private void whenTheApiIsCalledWithTheSessionsToken(String method, String path) throws Exception {
+        Matcher m = APP_TOKEN.matcher(get("/").body());
+        assertThat(m.find()).isTrue();
+        whenTheApiIsCalled(method, path, Optional.of(m.group(1)));
+    }
+
     private void whenThePageIsAskedUntilItShows(String path, String text) throws Exception {
         askUntilItShows(path, text);
     }
@@ -1375,6 +1455,10 @@ class WebUiAnswersTest {
 
     private void thenTheEngineWasAskedToConnectToAnyServer() {
         assertThat(this.asked).containsExactly(Optional.empty());
+    }
+
+    private void thenTheEngineWasNotAskedToDisconnect() {
+        assertThat(this.asked).doesNotContain("disconnect");
     }
 
     private void thenTheEngineWasAskedToDisconnect() {

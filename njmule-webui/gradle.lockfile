@@ -107,4 +107,4 @@ tools.jackson.core:jackson-core:3.2.3=compileClasspath,runtimeClasspath,testComp
 tools.jackson.core:jackson-databind:3.2.3=runtimeClasspath,testRuntimeClasspath
 tools.jackson.dataformat:jackson-dataformat-yaml:3.2.3=runtimeClasspath,testRuntimeClasspath
 tools.jackson:jackson-bom:3.2.3=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
-empty=
+empty=webApp

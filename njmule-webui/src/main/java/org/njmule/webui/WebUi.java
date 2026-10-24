@@ -80,6 +80,15 @@ public final class WebUi implements AutoCloseable {
     private static final String GET = "GET";
     private static final String POST = "POST";
     private static final String SETTINGS_PAGE = "/settings";
+    private static final String API_PATH = "/api/";
+    // The header that carries the session's token on the app's changes: no other site's page can send it.
+    private static final String CSRF_HEADER = "X-NjMule-CSRF";
+    private static final String PAGES_POLICY =
+            "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self';"
+                    + " frame-ancestors 'none'; base-uri 'none'";
+    private static final String APP_POLICY = "default-src 'none'; script-src 'self'; style-src 'self';"
+            + " img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none';"
+            + " base-uri 'none'";
     private static final String ACTION = "action";
     private static final int MAX_LOGIN_BODY = 16 * 1024;
     private static final int MAX_LOGIN_FIELDS = 4;
@@ -121,7 +130,8 @@ public final class WebUi implements AutoCloseable {
     private final RecentEvents recent;
     private final SearchCollector searches;
     private final RecentLog recentLog;
-    private final Optional<RemoteApi> api;
+    private final RemoteApi api;
+    private final WebApp app = new WebApp();
 
     private WebUi(
             NjMuleEngine engine,
@@ -148,15 +158,10 @@ public final class WebUi implements AutoCloseable {
         this.searchPages = new SearchPages(this.calls, this.searches);
         this.network = new NetworkPages(this.calls, this.recentLog);
         this.library = new LibraryPages(this.calls);
-        // A wrong API token counts as a failed login of its address.
-        this.api = settings.api()
-                ? Optional.of(new RemoteApi(
-                        engine,
-                        this.recent,
-                        client -> this.sessions.mayTry(Sessions.clientKey(client)),
-                        exit,
-                        heartbeat))
-                : Optional.empty();
+        // The app calls it with the login session; callers with the API token too when the settings allow them. A
+        // wrong API token counts as a failed login of its address.
+        this.api = new RemoteApi(
+                engine, this.recent, client -> this.sessions.mayTry(Sessions.clientKey(client)), exit, heartbeat);
     }
 
     /** Starts the interface; it must be enabled and have a password. The API cannot stop njMule. */
@@ -204,14 +209,15 @@ public final class WebUi implements AutoCloseable {
         // Bound first: the session cookie is named after the port.
         connector.open();
         WebUi ui = new WebUi(engine, settings, server, connector.getLocalPort(), passwordChecks, exit, heartbeat);
-        Optional<RemoteApi> api = ui.api;
+        RemoteApi api = ui.api;
+        boolean tokens = settings.api();
         server.setHandler(new Handler.Abstract() {
             @Override
             public boolean handle(Request request, Response response, Callback callback) {
                 Exchange exchange = new Exchange(request, response, ui.proxies);
                 try {
-                    if (api.isPresent() && exchange.path().startsWith("/api/")) {
-                        api.get().handle(exchange);
+                    if (tokens && exchange.path().startsWith(API_PATH) && exchange.header("Authorization") != null) {
+                        api.handle(exchange);
                     } else {
                         ui.handle(exchange);
                     }
@@ -253,7 +259,7 @@ public final class WebUi implements AutoCloseable {
     @Override
     public void close() {
         this.recent.close();
-        this.api.ifPresent(RemoteApi::close);
+        this.api.close();
         stop(this.server);
     }
 
@@ -299,12 +305,13 @@ public final class WebUi implements AutoCloseable {
                             + " Settings.");
             return;
         }
-        if (method.equals(POST) && !trustedOrigin(exchange.header("Origin"), exchange.header("Host"), names)) {
+        if (!method.equals(GET) && !trustedOrigin(exchange.header("Origin"), exchange.header("Host"), names)) {
             send(exchange, 403, TEXT, "Cross-site request refused.");
             return;
         }
-        if (path.startsWith("/api/")) {
-            send(exchange, 404, TEXT, "The remote-control API is off.");
+        Optional<WebApp.File> file = method.equals(GET) ? this.app.file(path) : Optional.empty();
+        if (file.isPresent()) {
+            send(exchange, file.get());
             return;
         }
         if (path.equals("/style.css") && method.equals(GET)) {
@@ -321,6 +328,10 @@ public final class WebUi implements AutoCloseable {
             return;
         }
         Optional<Sessions.Session> session = session(exchange);
+        if (path.startsWith(API_PATH)) {
+            callApi(exchange, method, session);
+            return;
+        }
         if (session.isEmpty()) {
             if (method.equals(GET)) {
                 redirect(exchange, "/login");
@@ -333,6 +344,20 @@ public final class WebUi implements AutoCloseable {
             case POST -> post(exchange, path, session.get());
             case GET -> get(exchange, path, session.get());
             default -> send(exchange, 405, TEXT, "Method not allowed.");
+        }
+    }
+
+    // The app's calls: with the session, and with its token on changes. Token callers reach here only while the
+    // settings turn them away.
+    private void callApi(Exchange exchange, String method, Optional<Sessions.Session> session) throws IOException {
+        if (session.isEmpty() && exchange.header("Authorization") != null) {
+            sendJson(exchange, 404, "The remote-control API is off.");
+        } else if (session.isEmpty()) {
+            sendJson(exchange, 401, "Log in first.");
+        } else if (!method.equals(GET) && !Sessions.validForm(session.get(), exchange.header(CSRF_HEADER))) {
+            sendJson(exchange, 403, "Expired session token: reload the page.");
+        } else {
+            this.api.handleTrusted(exchange);
         }
     }
 
@@ -472,7 +497,7 @@ public final class WebUi implements AutoCloseable {
 
     private void get(Exchange exchange, String path, Sessions.Session session) throws IOException {
         if (path.equals("/")) {
-            redirect(exchange, TransfersPages.PATH);
+            send(exchange, 200, HTML, this.app.page(session.csrf()).getBytes(StandardCharsets.UTF_8), APP_POLICY);
             return;
         }
         Map<String, String> query = exchange.query();
@@ -812,7 +837,7 @@ public final class WebUi implements AutoCloseable {
 
     private void redirect(Exchange exchange, String location) throws IOException {
         exchange.setHeader("Location", Html.relative(location));
-        securityHeaders(exchange);
+        securityHeaders(exchange, PAGES_POLICY);
         exchange.sendHeaders(303, -1);
     }
 
@@ -821,8 +846,38 @@ public final class WebUi implements AutoCloseable {
     }
 
     private void send(Exchange exchange, int status, String type, byte[] bytes) throws IOException {
+        send(exchange, status, type, bytes, PAGES_POLICY);
+    }
+
+    // A file of the app; the bundled ones never change under their names.
+    private static void send(Exchange exchange, WebApp.File file) throws IOException {
+        exchange.setHeader("Content-Type", file.type());
+        securityHeaders(exchange, PAGES_POLICY);
+        exchange.setHeader("Cache-Control", file.immutable() ? "public, max-age=31536000, immutable" : "no-cache");
+        byte[] bytes = file.bytes();
+        if (exchange.isHead()) {
+            exchange.setHeader("Content-Length", String.valueOf(bytes.length));
+            exchange.sendHeaders(200, -1);
+            return;
+        }
+        exchange.sendHeaders(200, bytes.length);
+        try (OutputStream out = exchange.responseBody()) {
+            out.write(bytes);
+        }
+    }
+
+    // An error of the app's calls, in the API's form.
+    private void sendJson(Exchange exchange, int status, String message) throws IOException {
+        send(
+                exchange,
+                status,
+                "application/json; charset=utf-8",
+                ("{\"error\":\"" + message + "\"}").getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void send(Exchange exchange, int status, String type, byte[] bytes, String policy) throws IOException {
         exchange.setHeader("Content-Type", type);
-        securityHeaders(exchange);
+        securityHeaders(exchange, policy);
         if (exchange.isHead()) {
             // The length the GET would have, without the body the server refuses to send.
             exchange.setHeader("Content-Length", String.valueOf(bytes.length));
@@ -835,11 +890,8 @@ public final class WebUi implements AutoCloseable {
         }
     }
 
-    private static void securityHeaders(Exchange exchange) {
-        exchange.setHeader(
-                "Content-Security-Policy",
-                "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none';"
-                        + " base-uri 'none'");
+    private static void securityHeaders(Exchange exchange, String policy) {
+        exchange.setHeader("Content-Security-Policy", policy);
         exchange.setHeader("X-Frame-Options", "DENY");
         exchange.setHeader("X-Content-Type-Options", "nosniff");
         // Not no-referrer: browsers would then send "Origin: null" with the pages' own forms.

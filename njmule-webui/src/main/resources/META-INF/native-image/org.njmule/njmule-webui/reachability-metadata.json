@@ -10,6 +10,9 @@
             "glob": "org/njmule/webui/style.css"
         },
         {
+            "glob": "org/njmule/webui/app/**"
+        },
+        {
             "module": "org.njmule.webui",
             "glob": "org/njmule/webui/favicon.svg"
         },
@@ -20,6 +23,10 @@
         {
             "module": "org.njmule.webui",
             "glob": "org/njmule/webui/style.css"
+        },
+        {
+            "module": "org.njmule.webui",
+            "glob": "org/njmule/webui/app/**"
         }
     ]
 }

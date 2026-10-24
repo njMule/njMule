@@ -7,7 +7,15 @@ plugins {
 
 description = "njMule Web UI"
 
+// The browser app, built by njmule-webapp.
+val webAppDeclared = configurations.dependencyScope("webAppDeclared")
+val webApp = configurations.resolvable("webApp") {
+    extendsFrom(webAppDeclared.get())
+    attributes { attribute(Usage.USAGE_ATTRIBUTE, objects.named("njmule-web-app")) }
+}
+
 dependencies {
+    webAppDeclared(project(":njmule-webapp"))
     api(project(":njmule-core"))
     implementation(libs.slf4j.api)
     implementation(libs.guava)
@@ -22,6 +30,9 @@ dependencies {
 
 // The browser icons come straight from the branding (no copy in the sources).
 tasks.processResources {
+    from(webApp) {
+        into("org/njmule/webui/app")
+    }
     from(layout.settingsDirectory.file("branding/njmule-icon.svg")) {
         into("org/njmule/webui")
         rename { "favicon.svg" }

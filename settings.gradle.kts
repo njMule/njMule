@@ -9,9 +9,21 @@ dependencyResolutionManagement {
     repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
     repositories {
         mavenCentral()
+        // The Node.js builds the web app is made with (njmule-webapp), and nothing else from there.
+        exclusiveContent {
+            forRepository {
+                ivy {
+                    name = "Node.js"
+                    setUrl("https://nodejs.org/dist/")
+                    patternLayout { artifact("v[revision]/[artifact](-v[revision]-[classifier]).[ext]") }
+                    metadataSources { artifact() }
+                }
+            }
+            filter { includeModule("org.nodejs", "node") }
+        }
     }
 }
 
 rootProject.name = "njmule"
 
-include("njmule-core", "njmule-testkit", "njmule-webui", "njmule-app", "njmule-gui", "njmule-bench")
+include("njmule-core", "njmule-testkit", "njmule-webapp", "njmule-webui", "njmule-app", "njmule-gui", "njmule-bench")

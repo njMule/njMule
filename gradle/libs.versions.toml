@@ -3,6 +3,8 @@
 
 [versions]
 java = "25"
+# Node.js for the web app (njmule-webapp): an LTS line
+nodejs = "24.22.1"
 
 # Runtime dependencies
 slf4j = "2.0.20"
@@ -90,3 +92,4 @@ cyclonedx = { id = "org.cyclonedx.bom", version = "3.5.1" }
 license-report = { id = "com.github.jk1.dependency-license-report", version = "3.1.4" }
 dependency-check = { id = "org.owasp.dependencycheck", version = "13.0.0" }
 sonarqube = { id = "org.sonarqube", version = "7.5.0.8588" }
+node = { id = "com.github.node-gradle.node", version = "7.1.0" }

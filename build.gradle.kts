@@ -15,6 +15,7 @@ plugins {
     id("njmule.java-conventions") apply false
     alias(libs.plugins.graalvm.native) apply false
     alias(libs.plugins.shadow) apply false
+    alias(libs.plugins.node) apply false
     alias(libs.plugins.license.report) apply false
     alias(libs.plugins.cyclonedx)
     alias(libs.plugins.dependency.check)
@@ -45,8 +46,8 @@ tasks.register<Sync>("iconTools") {
     into(layout.buildDirectory.dir("tools"))
 }
 
-// The benchmarks (JMH and its dependencies) are not distributed.
-val distributed = subprojects.filter { it.name != "njmule-bench" }
+// The benchmarks (JMH and its dependencies) are not distributed; the web app is, inside the web interface's jar.
+val distributed = subprojects.filter { it.name != "njmule-bench" && it.name != "njmule-webapp" }
 
 // Software bill of materials, part of every release: ./gradlew cyclonedxBom → build/reports/cyclonedx/.
 // The third-party license report comes from the desktop app, whose runtime holds every distributed

@@ -26,7 +26,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -87,7 +86,6 @@ public final class RemoteApi implements AutoCloseable {
     private static final long ENGINE_WAIT_SECONDS = 10;
 
     private final NjMuleEngine engine;
-    private final Path configDir;
     private final Guard guard;
     private final SearchCollector searches;
     private final RecentLog log;
@@ -115,7 +113,6 @@ public final class RemoteApi implements AutoCloseable {
     public RemoteApi(
             NjMuleEngine engine, RecentEvents recent, Guard guard, Optional<Runnable> exit, Duration heartbeat) {
         this.engine = engine;
-        this.configDir = engine.directories().config();
         this.guard = guard;
         this.searches = recent.searches();
         this.log = recent.log();
@@ -239,9 +236,24 @@ public final class RemoteApi implements AutoCloseable {
                 entry("unban", c -> known(c, this.engine.unban(text(c.parameters(), ADDRESS_KEY)))));
     }
 
-    /** Answers a request whose path starts with {@value #PREFIX}. */
+    /** Answers a request whose path starts with {@value #PREFIX}, from a caller that sends the API token. */
     public void handle(Exchange exchange) throws IOException {
+        serve(exchange, true);
+    }
+
+    /**
+     * Answers a request whose path starts with {@value #PREFIX} from a caller the host has let in already, such as a
+     * logged-in browser whose request carried its session's token.
+     */
+    public void handleTrusted(Exchange exchange) throws IOException {
+        serve(exchange, false);
+    }
+
+    private void serve(Exchange exchange, boolean needsToken) throws IOException {
         try {
+            if (needsToken) {
+                authorize(exchange);
+            }
             route(exchange);
         } catch (Failure e) {
             error(exchange, e.status, e.getMessage());
@@ -259,10 +271,9 @@ public final class RemoteApi implements AutoCloseable {
         this.streams.close();
     }
 
-    // No Host check: browsers never send the token by themselves, so a page reaching us through DNS rebinding cannot
-    // act, and other computers may use any name of this one.
+    // No Host check for token callers: browsers never send the token by themselves, so a page reaching us through DNS
+    // rebinding cannot act, and other computers may use any name of this one.
     private void route(Exchange exchange) throws IOException {
-        authorize(exchange);
         List<String> segments = segments(exchange.rawPath());
         ApiSpecification.Route route = this.specification.route(segments).orElseThrow(RemoteApi::notFound);
         ApiSpecification.Operation operation = route.operation(exchange.method())
@@ -282,7 +293,7 @@ public final class RemoteApi implements AutoCloseable {
                 : null;
         Optional<String> token;
         try {
-            token = ApiToken.load(this.configDir);
+            token = ApiToken.load(this.engine.directories().config());
         } catch (IOException e) {
             logger.warn("Cannot read the API token: {}", e.toString());
             throw new Failure(503, "The API token cannot be read.");

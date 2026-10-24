@@ -27,7 +27,7 @@ export DISPLAY=:99
 src=/work
 build=$(mktemp -d)
 tar -C "$src" --exclude=./.git --exclude=./docs --exclude=./.local --exclude=./fixtures-private \
-    --exclude=build --exclude=.gradle --exclude=.kotlin -cf - . | tar -C "$build" -xf -
+    --exclude=build --exclude=.gradle --exclude=.kotlin --exclude=node_modules -cf - . | tar -C "$build" -xf -
 cd "$build"
 metadata=njmule-gui/src/main/resources/META-INF/native-image/org.njmule/njmule-gui/tour
 ./gradlew --no-daemon --console=plain :njmule-gui:nativeTour

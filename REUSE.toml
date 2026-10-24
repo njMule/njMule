@@ -23,6 +23,7 @@ path = [
     "packaging/synology/app/*",
     "njmule-gui/native/*.args",
     "njmule-gui/native/**/*.json",
+    "njmule-webapp/*.json",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Salvatore Coppola and the njMule contributors"
