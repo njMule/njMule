@@ -31,6 +31,7 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -293,6 +294,45 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldSearchKadAutomaticallyFromASmallServerAmongMany() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSearchesAs(8);
+        givenTheEngineConnected(true);
+        givenTheEngineKnowsServers(40);
+
+        whenCalled("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"automatic\"}");
+
+        thenTheStatusIs(201);
+        thenTheEngineWasAsked("search talk KAD");
+    }
+
+    @Test
+    void shouldStayOnABigServerAutomatically() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSearchesAs(8);
+        givenTheEngineConnected(true);
+        givenTheEngineKnowsServers(1);
+
+        whenCalled("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"automatic\"}");
+
+        thenTheStatusIs(201);
+        thenTheEngineWasAsked("search talk SERVER");
+    }
+
+    @Test
+    void shouldRefuseAnAutomaticSearchWithNoNetwork() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSearchesAs(8);
+        givenTheEngineConnected(false);
+        givenTheEngineKnowsServers(1);
+
+        whenCalled("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"automatic\"}");
+
+        thenTheStatusIs(409);
+        thenTheBodyContains("Not connected");
+    }
+
+    @Test
     void shouldSetTheSpeedLimits() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -384,6 +424,15 @@ class RemoteApiTest {
     private void givenTheEnginePausesOnly(String hash) {
         this.fake.answer(
                 "pauseDownload", args -> CompletableFuture.completedFuture(args[0].equals(Hash16.parseHex(hash))));
+    }
+
+    private void givenTheEngineConnected(boolean connected) {
+        this.fake.answer("status", args -> CompletableFuture.completedFuture(ApiSamples.status(connected)));
+    }
+
+    private void givenTheEngineKnowsServers(int count) {
+        this.fake.answer(
+                "servers", args -> CompletableFuture.completedFuture(Collections.nCopies(count, ApiSamples.server())));
     }
 
     private void givenTheEngineSearchesAs(long id) {

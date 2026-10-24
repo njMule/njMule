@@ -43,7 +43,9 @@ import java.util.function.Supplier;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
+import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.SearchId;
@@ -476,9 +478,9 @@ public final class RemoteApi implements AutoCloseable {
     private void startSearch(Call c) throws IOException {
         String expression = text(c.body(), "query").strip();
         SearchRequest.checkExpression(expression);
-        SearchRequest.Scope scope = c.body().has("scope")
-                ? enumValue(SearchRequest.Scope.class, text(c.body(), "scope"))
-                : SearchRequest.Scope.SERVER;
+        String asked = c.body().has("scope") ? text(c.body(), "scope") : "server";
+        SearchRequest.Scope scope =
+                asked.equalsIgnoreCase("automatic") ? automaticScope() : enumValue(SearchRequest.Scope.class, asked);
         SearchId id = await(this.engine.search(new SearchRequest(expression, scope)));
         this.searches.started(id.value());
         reply(c.exchange(), 201, g -> {
@@ -486,6 +488,17 @@ public final class RemoteApi implements AutoCloseable {
             g.writeNumberProperty("id", id.value());
             g.writeEndObject();
         });
+    }
+
+    // As the desktop app picks it: the network connected, Kad with both unless the server is a static or a big one.
+    private SearchRequest.Scope automaticScope() {
+        EngineStatus status = await(this.engine.status());
+        return SearchRequest.automatic(
+                        status.server().isPresent(),
+                        status.kad().map(KadInfo::connected).orElse(false),
+                        status.server(),
+                        await(this.engine.servers()).size())
+                .orElseThrow(() -> new Failure(409, "Not connected to a server or to Kad."));
     }
 
     private void getSearchResults(Call c) throws IOException {

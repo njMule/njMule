@@ -90,7 +90,6 @@ class ApiSpecificationTest {
         return Stream.of(
                 Arguments.of("/components/schemas/DownloadPriority/enum", DownloadPriority.class),
                 Arguments.of("/components/schemas/UploadPriority/enum", UploadPriority.class),
-                Arguments.of("/components/schemas/SearchScope/enum", SearchRequest.Scope.class),
                 Arguments.of("/components/schemas/Download/properties/status/enum", DownloadInfo.Status.class),
                 Arguments.of("/components/schemas/Server/properties/priority/enum", ServerInfo.Priority.class),
                 Arguments.of("/components/schemas/Kad/properties/buddy/enum", KadInfo.Buddy.class),
@@ -106,6 +105,13 @@ class ApiSpecificationTest {
         whenTheValuesAreRead(pointer);
 
         thenTheyAreTheLowerCaseNamesOf(type);
+    }
+
+    @Test
+    void shouldOfferTheSearchScopesOfTheEngineAndAutomatic() {
+        whenTheValuesAreRead("/components/schemas/SearchScope/enum");
+
+        thenTheyAreTheLowerCaseNamesOfAnd(SearchRequest.Scope.class, "automatic");
     }
 
     @Test
@@ -250,6 +256,14 @@ class ApiSpecificationTest {
 
     private void thenNoExceptionOccurred() {
         assertThat(this.exception).isNull();
+    }
+
+    private void thenTheyAreTheLowerCaseNamesOfAnd(Class<? extends Enum<?>> type, String more) {
+        List<String> names = new ArrayList<>(Arrays.stream(type.getEnumConstants())
+                .map(e -> e.name().toLowerCase(Locale.ROOT))
+                .toList());
+        names.add(more);
+        assertThat(this.found).containsExactlyElementsOf(names);
     }
 
     private void thenTheyAreTheLowerCaseNamesOf(Class<? extends Enum<?>> type) {

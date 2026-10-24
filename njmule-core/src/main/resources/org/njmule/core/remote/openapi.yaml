@@ -799,6 +799,12 @@ paths:
                     $ref: "#/components/schemas/SearchId"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Automatic was asked, and neither a server nor Kad is connected.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         default:
           $ref: "#/components/responses/Error"
   /searches/{id}:
@@ -1264,9 +1270,11 @@ components:
       enum: [very_low, low, normal, high, release, auto]
     SearchScope:
       type: string
-      enum: [server, global, kad]
+      enum: [server, global, kad, automatic]
       default: server
-      description: The connected server, every known server, or Kad.
+      description: >-
+        The connected server, every known server, or Kad; automatic picks the network connected, Kad
+        when both are unless the server is a static or a big one.
 
     Status:
       type: object
