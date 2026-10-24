@@ -14,7 +14,8 @@ import {
     ElTabPane,
     ElTabs,
 } from 'element-plus';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api';
 import { copy } from '../clipboard';
 import NjIcon from '../components/NjIcon.vue';
@@ -169,6 +170,22 @@ async function refresh(s: Search): Promise<void> {
         // A search the engine forgot keeps the results it showed.
     }
 }
+
+// A search asked for elsewhere, such as from the palette.
+const route = useRoute();
+const router = useRouter();
+watch(
+    () => route.query.q,
+    (q) => {
+        if (typeof q === 'string' && q.trim() !== '') {
+            query.value = q;
+            void start();
+            // Once: going back to the page does not search again.
+            void router.replace('/search');
+        }
+    },
+    { immediate: true },
+);
 
 let timer = 0;
 onMounted(() => {

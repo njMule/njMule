@@ -3,9 +3,11 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { unreadTotal } from './chats';
+import Banners from './components/Banners.vue';
+import CommandPalette from './components/CommandPalette.vue';
 import NetworkControl from './components/NetworkControl.vue';
 import NjIcon from './components/NjIcon.vue';
 import SpeedLimits from './components/SpeedLimits.vue';
@@ -37,6 +39,29 @@ const groups: Place[][] = [
 ];
 
 const route = useRoute();
+const router = useRouter();
+const palette = ref(false);
+
+// The places in the sidebar's order, for Ctrl+1 to Ctrl+7 and the palette.
+const places = groups.flat().map((p) => ({ title: p.title, route: p.route ?? '/' }));
+
+// The desktop app's keys: Ctrl (Cmd on a Mac) with a digit opens a place, with K the palette.
+function key(e: KeyboardEvent): void {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) {
+        return;
+    }
+    const place = places[Number(e.key) - 1];
+    if (/^[1-9]$/.test(e.key) && place !== undefined) {
+        e.preventDefault();
+        void router.push(place.route);
+    } else if (e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        palette.value = true;
+    }
+}
+
+onMounted(() => window.addEventListener('keydown', key));
+onUnmounted(() => window.removeEventListener('keydown', key));
 const title = computed(() => t(String(route.meta.title ?? 'IDS_EM_TRANS')));
 
 function nextMode(): void {
@@ -81,8 +106,10 @@ function nextMode(): void {
                 </button>
             </header>
             <p v-if="unreachable" class="unreachable" role="alert">{{ unreachable }}</p>
+            <Banners />
             <main>
                 <router-view />
+                <CommandPalette v-model="palette" :places="places" />
             </main>
         </div>
     </div>
