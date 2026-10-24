@@ -1004,6 +1004,124 @@ paths:
                   $ref: "#/components/schemas/Friend"
         default:
           $ref: "#/components/responses/Error"
+    post:
+      operationId: addFriend
+      tags: [social]
+      summary: Adds a friend, or renames one known by the user hash.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userHash, name]
+              properties:
+                userHash:
+                  $ref: "#/components/schemas/Hash"
+                name:
+                  type: string
+                  maxLength: 255
+                address:
+                  $ref: "#/components/schemas/HostPort"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /friends/{userHash}:
+    parameters:
+      - name: userHash
+        in: path
+        required: true
+        description: The user hash of the friend.
+        schema:
+          $ref: "#/components/schemas/Hash"
+    delete:
+      operationId: removeFriend
+      tags: [social]
+      summary: Removes a friend.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /friends/slot:
+    get:
+      operationId: getFriendSlot
+      tags: [social]
+      summary: The friend who has the upload slot kept for a friend, if one has.
+      responses:
+        "200":
+          description: The friend's user hash, or null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendSlot"
+        default:
+          $ref: "#/components/responses/Error"
+    put:
+      operationId: setFriendSlot
+      tags: [social]
+      summary: Gives the friend slot to a friend, or to nobody with null.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FriendSlot"
+      responses:
+        "200":
+          description: The slot as it is now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendSlot"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /conversations:
+    get:
+      operationId: listConversations
+      tags: [social]
+      summary: The chats of this run, the one with the newest line first.
+      description: >-
+        Up to 1000 lines a chat; of the clients that wrote and were never answered, the 50 newest
+        are kept.
+      responses:
+        "200":
+          description: Every chat.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+        default:
+          $ref: "#/components/responses/Error"
+  /conversations/{address}:
+    parameters:
+      - name: address
+        in: path
+        required: true
+        description: The client's address, as the chat gives it.
+        schema:
+          $ref: "#/components/schemas/HostPort"
+    delete:
+      operationId: closeConversation
+      tags: [social]
+      summary: Forgets a chat.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
   /messages:
     post:
       operationId: sendMessage
@@ -1752,6 +1870,50 @@ components:
           type: string
         address:
           type: [string, "null"]
+    FriendSlot:
+      type: object
+      required: [userHash]
+      properties:
+        userHash:
+          oneOf:
+            - $ref: "#/components/schemas/Hash"
+            - type: "null"
+    Conversation:
+      type: object
+      required: [address, lines]
+      properties:
+        address:
+          type: string
+        userHash:
+          $ref: "#/components/schemas/Hash"
+        nick:
+          type: string
+        captcha:
+          type: string
+          contentEncoding: base64
+          contentMediaType: image/bmp
+          description: A picture whose letters the client wants typed before it reads our messages.
+        lines:
+          type: array
+          items:
+            type: object
+            required: [sequence, time, author, text]
+            properties:
+              sequence:
+                type: integer
+                format: int64
+              time:
+                type: string
+                format: date-time
+              author:
+                type: string
+                enum: [us, them, notice]
+              text:
+                type: string
+              notice:
+                type: string
+                enum: [captcha_passed, captcha_wrong, not_delivered]
+                description: What a notice tells; the text of not_delivered is the reason.
     Ban:
       type: object
       required: [address, secondsLeft]

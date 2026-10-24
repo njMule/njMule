@@ -32,6 +32,7 @@ public final class RecentEvents implements AutoCloseable, Flow.Subscriber<Engine
 
     private final SearchCollector searches = new SearchCollector();
     private final RecentLog log = new RecentLog();
+    private final Conversations conversations = new Conversations();
     private volatile Flow.Subscription subscription;
 
     private RecentEvents() {}
@@ -51,6 +52,10 @@ public final class RecentEvents implements AutoCloseable, Flow.Subscriber<Engine
         return this.log;
     }
 
+    public Conversations conversations() {
+        return this.conversations;
+    }
+
     @Override
     public void onSubscribe(Flow.Subscription s) {
         this.subscription = s;
@@ -63,6 +68,10 @@ public final class RecentEvents implements AutoCloseable, Flow.Subscriber<Engine
             case EngineEvent.SearchResults r -> this.searches.add(r);
             case EngineEvent.SearchEnded e -> this.searches.ended(e);
             case EngineEvent.Log l -> this.log.add(l.line());
+            case EngineEvent.MessageReceived m -> this.conversations.received(m);
+            case EngineEvent.CaptchaRequested c -> this.conversations.captcha(c);
+            case EngineEvent.CaptchaAnswered a -> this.conversations.answered(a);
+            case EngineEvent.MessageFailed f -> this.conversations.failed(f);
             default -> {
                 // Front ends read the rest when they are asked for it.
             }

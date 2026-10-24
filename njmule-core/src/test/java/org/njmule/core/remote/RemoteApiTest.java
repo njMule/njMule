@@ -42,6 +42,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -403,6 +404,52 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldKeepTheMessagesSentInTheirConversation() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSendsMessages();
+        givenAMessageSent("203.0.113.5:4662", "hello");
+
+        whenCalled("GET", "/api/v1/conversations", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"address\":\"203.0.113.5:4662\"", "\"author\":\"us\"", "\"text\":\"hello\"");
+    }
+
+    @Test
+    void shouldForgetAConversationThatIsClosed() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSendsMessages();
+        givenAMessageSent("203.0.113.5:4662", "hello");
+
+        whenCalled("DELETE", "/api/v1/conversations/203.0.113.5:4662", "");
+
+        thenTheStatusIs(200);
+        thenTheConversationsAre("[]");
+    }
+
+    @Test
+    void shouldGiveTheFriendSlotToAFriend() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsTheFriendSlot();
+
+        whenCalled("PUT", "/api/v1/friends/slot", "{\"userHash\":\"" + "A1".repeat(16) + "\"}");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"userHash\":\"" + "A1".repeat(16) + "\"");
+    }
+
+    @Test
+    void shouldTakeTheFriendSlotBackWithNull() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsTheFriendSlot();
+
+        whenCalled("PUT", "/api/v1/friends/slot", "{\"userHash\":null}");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"userHash\":null");
+    }
+
+    @Test
     void shouldSetTheSpeedLimits() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -536,6 +583,31 @@ class RemoteApiTest {
 
     private void thenTheEngineWasNotAsked() {
         assertThat(this.calls).isEmpty();
+    }
+
+    private void givenTheEngineSendsMessages() {
+        this.fake.answer("sendMessage", args -> CompletableFuture.completedFuture(null));
+    }
+
+    private void givenAMessageSent(String to, String text) throws Exception {
+        whenCalled("POST", "/api/v1/messages", "{\"to\":\"" + to + "\",\"text\":\"" + text + "\"}");
+        thenTheStatusIs(200);
+    }
+
+    private void givenTheEngineKeepsTheFriendSlot() {
+        AtomicReference<Optional<Hash16>> slot = new AtomicReference<>(Optional.empty());
+        this.fake.answer("friendSlot", args -> CompletableFuture.completedFuture(slot.get()));
+        this.fake.answer("setFriendSlot", args -> {
+            @SuppressWarnings("unchecked")
+            Optional<Hash16> friend = (Optional<Hash16>) args[0];
+            slot.set(friend);
+            return CompletableFuture.completedFuture(true);
+        });
+    }
+
+    private void thenTheConversationsAre(String body) throws Exception {
+        whenCalled("GET", "/api/v1/conversations", "");
+        assertThat(this.answer.body()).isEqualTo(body);
     }
 
     private void givenTheEngineSearchesAs(long id) {

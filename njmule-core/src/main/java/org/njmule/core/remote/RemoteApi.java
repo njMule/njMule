@@ -47,6 +47,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.NjMuleEngine;
@@ -95,6 +96,7 @@ public final class RemoteApi implements AutoCloseable {
     private final Guard guard;
     private final SearchCollector searches;
     private final RecentLog log;
+    private final Conversations conversations;
     private final EventStreams streams;
     private final Optional<Runnable> exit;
     private final ApiSpecification specification;
@@ -122,6 +124,7 @@ public final class RemoteApi implements AutoCloseable {
         this.guard = guard;
         this.searches = recent.searches();
         this.log = recent.log();
+        this.conversations = recent.conversations();
         this.streams = new EventStreams(engine, heartbeat);
         this.exit = exit;
         this.specification = Shipped.DOCUMENT;
@@ -227,9 +230,20 @@ public final class RemoteApi implements AutoCloseable {
                 entry("downloadSearchResult", this::downloadSearchResult),
                 entry("listCategories", c -> list(c, this.engine::categories, ApiJson::category)),
                 entry("listFriends", c -> list(c, this.engine::friends, ApiJson::friend)),
+                entry("addFriend", this::addFriend),
+                entry("removeFriend", c -> known(c, this.engine.removeFriend(hash(text(c.parameters(), HASH_KEY))))),
+                entry("getFriendSlot", this::getFriendSlot),
+                entry("setFriendSlot", this::setFriendSlot),
+                entry("sendMessage", this::sendMessage),
                 entry(
-                        "sendMessage",
-                        c -> done(c, this.engine.sendMessage(address(text(c.body(), "to")), text(c.body(), "text")))),
+                        "listConversations",
+                        c -> reply(c.exchange(), 200, g -> ApiJson.array(g, this.conversations.all(), ApiJson::chat))),
+                entry("closeConversation", c -> {
+                    if (!this.conversations.close(text(c.parameters(), ADDRESS_KEY))) {
+                        throw notFound();
+                    }
+                    ok(c.exchange(), 200);
+                }),
                 entry("listBans", c -> list(c, this.engine::bans, ApiJson::ban)),
                 entry("getUpdate", c -> reply(c.exchange(), 200, g -> ApiJson.update(g, this.engine.updateStatus()))),
                 entry("checkForUpdate", this::checkForUpdate),
@@ -458,6 +472,44 @@ public final class RemoteApi implements AutoCloseable {
             // Answered below.
         }
         throw new Failure(400, "Not a folder of this computer: " + text);
+    }
+
+    // The line is kept once the engine took the message; a CAPTCHA it answers is then solved.
+    private void sendMessage(Call c) throws IOException {
+        ServerAddress to = address(text(c.body(), "to"));
+        String text = text(c.body(), "text");
+        await(this.engine.sendMessage(to, text));
+        this.conversations.sent(to.host() + ":" + to.port(), text);
+        ok(c.exchange(), 200);
+    }
+
+    private void addFriend(Call c) throws IOException {
+        Optional<ServerAddress> where =
+                c.body().has(ADDRESS_KEY) ? Optional.of(address(text(c.body(), ADDRESS_KEY))) : Optional.empty();
+        done(c, this.engine.addFriend(new Friend(hash(text(c.body(), "userHash")), text(c.body(), "name"), where)));
+    }
+
+    private void getFriendSlot(Call c) throws IOException {
+        Optional<Hash16> slot = await(this.engine.friendSlot());
+        reply(c.exchange(), 200, g -> {
+            g.writeStartObject();
+            if (slot.isPresent()) {
+                g.writeStringProperty("userHash", slot.get().toHex());
+            } else {
+                g.writeNullProperty("userHash");
+            }
+            g.writeEndObject();
+        });
+    }
+
+    private void setFriendSlot(Call c) throws IOException {
+        JsonNode given = c.body().get("userHash");
+        Optional<Hash16> friend =
+                given == null || given.isNull() ? Optional.empty() : Optional.of(hash(given.asString()));
+        if (!await(this.engine.setFriendSlot(friend))) {
+            throw new Failure(404, "Not a friend.");
+        }
+        getFriendSlot(c);
     }
 
     private void getKad(Call c) throws IOException {

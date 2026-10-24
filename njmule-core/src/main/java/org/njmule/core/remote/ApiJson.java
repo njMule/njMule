@@ -17,6 +17,7 @@
 package org.njmule.core.remote;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -27,6 +28,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.Friend;
+import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadSearchInfo;
@@ -299,6 +301,26 @@ final class ApiJson {
         optional(g, "incoming", c.incoming().map(Object::toString));
         g.writeStringProperty("comment", c.comment());
         g.writeStringProperty("priority", name(c.priority()));
+        g.writeEndObject();
+    }
+
+    static void chat(JsonGenerator g, Conversations.Chat c) {
+        g.writeStartObject();
+        g.writeStringProperty("address", c.address());
+        optional(g, "userHash", c.userHash().map(Hash16::toHex));
+        optional(g, "nick", c.nick());
+        optional(g, "captcha", c.captcha().map(p -> Base64.getEncoder().encodeToString(p.image())));
+        g.writeArrayPropertyStart("lines");
+        for (Conversations.Line l : c.lines()) {
+            g.writeStartObject();
+            g.writeNumberProperty("sequence", l.sequence());
+            g.writeStringProperty("time", l.time().toString());
+            g.writeStringProperty("author", name(l.author()));
+            g.writeStringProperty("text", l.text());
+            optional(g, "notice", l.notice().map(ApiJson::name));
+            g.writeEndObject();
+        }
+        g.writeEndArray();
         g.writeEndObject();
     }
 
