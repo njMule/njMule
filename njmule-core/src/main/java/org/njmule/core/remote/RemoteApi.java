@@ -36,12 +36,14 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
@@ -56,8 +58,11 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.FileComment;
+import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.ImportOptions;
+import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
@@ -111,6 +116,8 @@ public final class RemoteApi implements AutoCloseable {
     private final SearchCollector searches;
     private final RecentLog log;
     private final Conversations conversations;
+    private final RateHistory rates = new RateHistory();
+    private final Thread sampler;
     private final EventStreams streams;
     private final Optional<Runnable> exit;
     private final ApiSpecification specification;
@@ -139,6 +146,7 @@ public final class RemoteApi implements AutoCloseable {
         this.searches = recent.searches();
         this.log = recent.log();
         this.conversations = recent.conversations();
+        this.sampler = Thread.ofVirtual().name("njmule-api-rates").start(this::sampleRates);
         this.streams = new EventStreams(engine, heartbeat);
         this.exit = exit;
         this.specification = Shipped.DOCUMENT;
@@ -184,6 +192,8 @@ public final class RemoteApi implements AutoCloseable {
                 entry("getStatus", this::getStatus),
                 entry("getLimits", c -> limits(c, this.engine.preferences())),
                 entry("getPreferences", c -> preferences(c, this.engine.preferences())),
+                entry("getRates", this::getRates),
+                entry("importEmule", this::importEmule),
                 entry(
                         "getSchedule",
                         c -> reply(
@@ -401,6 +411,7 @@ public final class RemoteApi implements AutoCloseable {
     /** Ends the open event streams; the host stops its server afterwards. */
     @Override
     public void close() {
+        this.sampler.interrupt();
         this.streams.close();
     }
 
@@ -459,7 +470,63 @@ public final class RemoteApi implements AutoCloseable {
 
     private void getStatus(Call c) throws IOException {
         var status = await(this.engine.status());
-        reply(c.exchange(), 200, g -> ApiJson.status(g, status));
+        Preferences p = this.engine.preferences();
+        OptionalLong incoming = freeSpace(p.effectiveIncomingDir(this.engine.directories()));
+        OptionalLong temp = freeSpace(p.effectiveTempDir(this.engine.directories()));
+        reply(c.exchange(), 200, g -> ApiJson.status(g, status, incoming, temp));
+    }
+
+    private static OptionalLong freeSpace(Path dir) {
+        try {
+            return OptionalLong.of(Files.getFileStore(dir).getUsableSpace());
+        } catch (IOException | RuntimeException e) {
+            return OptionalLong.empty();
+        }
+    }
+
+    // The rates of each second, for the front ends that draw an hour or a day of them; a status that does not come
+    // in time leaves its second out.
+    private void sampleRates() {
+        while (!Thread.currentThread().isInterrupted()) {
+            try {
+                EngineStatus s = this.engine.status().get(ENGINE_WAIT_SECONDS, TimeUnit.SECONDS);
+                this.rates.add(s.downloadBytesPerSecond(), s.uploadBytesPerSecond());
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException | TimeoutException | RuntimeException e) {
+                logger.trace("No rates this second: {}", e.toString());
+                pause();
+            }
+        }
+    }
+
+    private static void pause() {
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void getRates(Call c) throws IOException {
+        JsonNode span = c.parameters().get("span");
+        int seconds = span == null ? 600 : span.asInt();
+        if (seconds > RateHistory.SECONDS) {
+            reply(c.exchange(), 200, g -> ApiJson.rates(g, 60, this.rates.minutes(seconds / 60)));
+        } else {
+            reply(c.exchange(), 200, g -> ApiJson.rates(g, 1, this.rates.seconds(seconds)));
+        }
+    }
+
+    // Only reads eMule's folder; a check changes nothing.
+    private void importEmule(Call c) throws IOException {
+        ImportOptions options = new ImportOptions(
+                c.body().path("dryRun").asBoolean(true),
+                c.body().path("identity").asBoolean(false),
+                c.body().path("downloads").asBoolean(false));
+        ImportReport report = await(this.engine.importFromEmule(folder(text(c.body(), "path")), options));
+        reply(c.exchange(), 200, g -> ApiJson.importReport(g, report));
     }
 
     private void setLimits(Call c) throws IOException {
@@ -812,12 +879,13 @@ public final class RemoteApi implements AutoCloseable {
         found.sort(Comparator.comparing(SearchResult::isSpam)
                 .thenComparing(Comparator.comparingInt(SearchResult::sources).reversed()));
         boolean running = this.searches.running(id);
+        Known known = known();
         reply(c.exchange(), 200, g -> {
             g.writeStartObject();
             g.writeNumberProperty("id", id);
             g.writeBooleanProperty("running", running);
             g.writeName("results");
-            ApiJson.array(g, found, ApiJson::result);
+            ApiJson.array(g, found, (w, r) -> ApiJson.result(w, r, known.of(r.hash())));
             g.writeEndObject();
         });
     }
@@ -845,6 +913,30 @@ public final class RemoteApi implements AutoCloseable {
                 .orElseThrow(() -> new Failure(404, "That result is gone: search again."));
         DownloadInfo d = await(this.engine.addDownload(result.link()));
         reply(c.exchange(), 201, g -> ApiJson.download(g, d));
+    }
+
+    // What we know of files: downloading, shared, or downloaded or cancelled before; the first that holds wins.
+    private record Known(Set<Hash16> downloading, Set<Hash16> shared, FileHistory history) {
+        Optional<String> of(Hash16 file) {
+            if (this.downloading.contains(file)) {
+                return Optional.of("downloading");
+            }
+            if (this.shared.contains(file)) {
+                return Optional.of("shared");
+            }
+            if (this.history.downloaded(file)) {
+                return Optional.of("downloaded");
+            }
+            return this.history.cancelled(file) ? Optional.of("cancelled") : Optional.empty();
+        }
+    }
+
+    private Known known() {
+        Set<Hash16> downloading = new HashSet<>();
+        await(this.engine.downloads()).forEach(d -> downloading.add(d.hash()));
+        Set<Hash16> shared = new HashSet<>();
+        await(this.engine.sharedFiles()).forEach(f -> shared.add(f.hash()));
+        return new Known(downloading, shared, await(this.engine.fileHistory()));
     }
 
     private void markSpam(Call c) throws IOException {

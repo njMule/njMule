@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.function.Consumer;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
@@ -31,6 +32,7 @@ import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadSearchInfo;
@@ -73,8 +75,21 @@ final class ApiJson {
         return value.name().toLowerCase(Locale.ROOT);
     }
 
-    static void status(JsonGenerator g, EngineStatus s) {
+    /** The status, with the free space of the incoming and temporary folders when they could be read. */
+    static void status(JsonGenerator g, EngineStatus s, OptionalLong incomingFree, OptionalLong tempFree) {
         g.writeStartObject();
+        g.writeBooleanProperty("relatedSearch", s.relatedSearch());
+        if (incomingFree.isPresent() || tempFree.isPresent()) {
+            g.writeName("freeSpace");
+            g.writeStartObject();
+            if (incomingFree.isPresent()) {
+                g.writeNumberProperty("incoming", incomingFree.getAsLong());
+            }
+            if (tempFree.isPresent()) {
+                g.writeNumberProperty("temp", tempFree.getAsLong());
+            }
+            g.writeEndObject();
+        }
         g.writeName("server");
         if (s.server().isPresent()) {
             server(g, s.server().get());
@@ -297,7 +312,27 @@ final class ApiJson {
     }
 
     static void result(JsonGenerator g, SearchResult r) {
+        result(g, r, Optional.empty());
+    }
+
+    /** A result, with what we know of its file: downloading, shared, downloaded or cancelled before. */
+    static void result(JsonGenerator g, SearchResult r, Optional<String> known) {
         g.writeStartObject();
+        if (known.isPresent()) {
+            g.writeStringProperty("known", known.get());
+        }
+        SearchResult.Media m = r.media();
+        if (!m.equals(SearchResult.Media.NONE)) {
+            g.writeName("media");
+            g.writeStartObject();
+            g.writeStringProperty("artist", m.artist());
+            g.writeStringProperty("album", m.album());
+            g.writeStringProperty("title", m.title());
+            g.writeNumberProperty("length", m.length());
+            g.writeNumberProperty("bitrate", m.bitrate());
+            g.writeStringProperty("codec", m.codec());
+            g.writeEndObject();
+        }
         g.writeStringProperty("hash", r.hash().toHex());
         g.writeStringProperty("name", r.name());
         g.writeNumberProperty("size", r.size());
@@ -392,6 +427,36 @@ final class ApiJson {
         if (value.isPresent()) {
             g.writeNumberProperty(name, value.getAsInt());
         }
+    }
+
+    static void importReport(JsonGenerator g, ImportReport report) {
+        g.writeStartObject();
+        g.writeBooleanProperty("dryRun", report.dryRun());
+        g.writeBooleanProperty("startAtLogin", report.startAtLogin());
+        g.writeArrayPropertyStart("items");
+        for (ImportReport.Item i : report.items()) {
+            g.writeStartObject();
+            g.writeStringProperty("file", i.file());
+            g.writeStringProperty("outcome", name(i.outcome()));
+            g.writeStringProperty("detail", i.detail());
+            g.writeEndObject();
+        }
+        g.writeEndArray();
+        g.writeEndObject();
+    }
+
+    static void rates(JsonGenerator g, int step, List<RateHistory.Rate> rates) {
+        g.writeStartObject();
+        g.writeNumberProperty("step", step);
+        g.writeArrayPropertyStart("rates");
+        for (RateHistory.Rate r : rates) {
+            g.writeStartArray();
+            g.writeNumber(r.down());
+            g.writeNumber(r.up());
+            g.writeEndArray();
+        }
+        g.writeEndArray();
+        g.writeEndObject();
     }
 
     static void portTest(JsonGenerator g, PortTest t) {

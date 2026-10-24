@@ -37,6 +37,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -54,7 +55,10 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.FileComment;
+import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.ImportOptions;
+import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.PortTest;
@@ -698,6 +702,52 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldCheckAnEmuleProfileWithoutImportingIt() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineReadsEmuleProfiles();
+
+        whenCalled("POST", "/api/v1/import/emule", "{\"path\":\"" + jsonPath(this.dir) + "\"}");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"dryRun\":true", "\"file\":\"server.met\"", "\"outcome\":\"would_import\"");
+        thenTheEngineWasAsked("import " + this.dir + " dry");
+    }
+
+    @Test
+    void shouldRefuseToImportWhatIsNoFolder() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineReadsEmuleProfiles();
+
+        whenCalled("POST", "/api/v1/import/emule", "{\"path\":\"" + jsonPath(this.dir.resolve("none")) + "\"}");
+
+        thenTheStatusIs(400);
+        thenTheEngineWasNotAsked();
+    }
+
+    @Test
+    void shouldTellTheResultsWhoseFilesAreDownloadedAlready() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSearchesAs(7);
+        givenTheEngineDownloadedBefore(HASH);
+        givenASearchStarted("{\"query\":\"talk\",\"scope\":\"kad\"}", "\"id\":7");
+        givenTheEngineFinds(7, "talk.bin");
+
+        whenTheResultsAreAskedUntilTheyCome("/api/v1/searches/7", "talk.bin");
+
+        thenTheBodyContains("\"known\":\"downloaded\"");
+    }
+
+    @Test
+    void shouldGiveTheRatesOfTheLastMinutes() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("GET", "/api/v1/rates?span=600", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"step\":1", "\"rates\":[");
+    }
+
+    @Test
     void shouldSetTheSpeedLimits() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -807,6 +857,26 @@ class RemoteApiTest {
             this.fake.value("schedule", args[0]);
             return CompletableFuture.completedFuture((Schedule) args[0]);
         });
+    }
+
+    private void givenTheEngineReadsEmuleProfiles() {
+        this.fake.answer("importFromEmule", args -> {
+            ImportOptions options = (ImportOptions) args[1];
+            this.calls.add("import " + args[0] + (options.dryRun() ? " dry" : ""));
+            return CompletableFuture.completedFuture(new ImportReport(
+                    options.dryRun(),
+                    List.of(new ImportReport.Item("server.met", ImportReport.Outcome.WOULD_IMPORT, "12 servers"))));
+        });
+    }
+
+    private void givenTheEngineDownloadedBefore(String hash) {
+        Hash16 file = Hash16.parseHex(hash);
+        this.fake.answer(
+                "fileHistory", args -> CompletableFuture.completedFuture(FileHistory.of(Set.of(file), h -> false)));
+    }
+
+    private static String jsonPath(Path path) {
+        return path.toString().replace("\\", "\\\\");
     }
 
     private void givenTheEngineDownloads(DownloadInfo download) {

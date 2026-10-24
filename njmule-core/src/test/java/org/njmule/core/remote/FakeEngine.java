@@ -17,12 +17,15 @@
 package org.njmule.core.remote;
 
 import java.lang.reflect.Proxy;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.SubmissionPublisher;
 import java.util.function.Function;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.NjMuleEngine;
 
 /** An engine that answers what a test sets, by method name; any other command fails. */
@@ -35,6 +38,11 @@ final class FakeEngine {
     // Results keep their spam rating unless a test says otherwise.
     FakeEngine() {
         this.answers.put("rateSpam", args -> CompletableFuture.completedFuture(args[0]));
+        // Nothing downloaded, shared or known before, unless a test says otherwise.
+        this.answers.put("downloads", args -> CompletableFuture.completedFuture(List.of()));
+        this.answers.put("sharedFiles", args -> CompletableFuture.completedFuture(List.of()));
+        this.answers.put(
+                "fileHistory", args -> CompletableFuture.completedFuture(FileHistory.of(Set.of(), h -> false)));
     }
 
     void answer(String method, Function<Object[], CompletableFuture<?>> answer) {

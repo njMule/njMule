@@ -218,6 +218,104 @@ paths:
           $ref: "#/components/responses/BadRequest"
         default:
           $ref: "#/components/responses/Error"
+  /rates:
+    get:
+      operationId: getRates
+      tags: [engine]
+      summary: The transfer rates of the last minutes or of the last day, as njMule sampled them.
+      parameters:
+        - name: span
+          in: query
+          description: Seconds back; up to an hour comes a sample a second, a day a sample a minute.
+          schema:
+            type: integer
+            enum: [600, 3600, 86400]
+            default: 600
+      responses:
+        "200":
+          description: The rates, oldest first, each [download, upload] in bytes a second.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [step, rates]
+                properties:
+                  step:
+                    type: integer
+                    description: The seconds between two samples.
+                  rates:
+                    type: array
+                    items:
+                      type: array
+                      minItems: 2
+                      maxItems: 2
+                      items:
+                        type: integer
+                        format: int64
+        default:
+          $ref: "#/components/responses/Error"
+  /import/emule:
+    post:
+      operationId: importEmule
+      tags: [engine]
+      summary: Checks or imports an eMule profile, reading its folder without changing it.
+      description: >-
+        Servers, Kad contacts, known and shared files and the preferences are taken over; ports and
+        folders stay njMule's own. A check (dryRun, the default) changes nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+                  minLength: 1
+                  maxLength: 4096
+                  description: The absolute path of eMule's configuration folder.
+                dryRun:
+                  type: boolean
+                  default: true
+                identity:
+                  type: boolean
+                  default: false
+                  description: Also takes eMule's user hash, key and credits from the next start.
+                downloads:
+                  type: boolean
+                  default: false
+                  description: Also copies the downloads in progress.
+      responses:
+        "200":
+          description: What was, or would be, taken.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dryRun, startAtLogin, items]
+                properties:
+                  dryRun:
+                    type: boolean
+                  startAtLogin:
+                    type: boolean
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [file, outcome, detail]
+                      properties:
+                        file:
+                          type: string
+                        outcome:
+                          type: string
+                          enum: [imported, would_import, skipped, missing, failed]
+                        detail:
+                          type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
   /ipfilter:
     post:
       operationId: updateIpFilter
@@ -2128,6 +2226,19 @@ components:
         missingInterface:
           type: string
           description: Present while the network interface the preferences bind to is gone, which keeps njMule offline.
+        relatedSearch:
+          type: boolean
+          description: Whether the server we are on finds the files related to others (related::<hash> searches).
+        freeSpace:
+          type: object
+          description: The bytes free on the disks of the incoming and temporary folders, when they could be read.
+          properties:
+            incoming:
+              type: integer
+              format: int64
+            temp:
+              type: integer
+              format: int64
     Server:
       type: object
       required:
@@ -2375,6 +2486,28 @@ components:
       type: object
       required: [hash, name, size, sources, completeSources, type, spamRating, spam, names]
       properties:
+        known:
+          type: string
+          enum: [downloading, shared, downloaded, cancelled]
+          description: What we know of the file, in the results of a search read through the API.
+        media:
+          type: object
+          description: What the file's publishers told of its content.
+          properties:
+            artist:
+              type: string
+            album:
+              type: string
+            title:
+              type: string
+            length:
+              type: integer
+              description: Seconds.
+            bitrate:
+              type: integer
+              description: kbit/s.
+            codec:
+              type: string
         hash:
           $ref: "#/components/schemas/Hash"
         name:
