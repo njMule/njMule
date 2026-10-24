@@ -5,9 +5,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
+import NetworkControl from './components/NetworkControl.vue';
 import NjIcon from './components/NjIcon.vue';
-import { status, unreachable } from './engine';
-import { rate } from './format';
+import SpeedLimits from './components/SpeedLimits.vue';
+import { unreachable } from './engine';
 import { t } from './i18n';
 import type { IconName } from './icons';
 import { mode, setMode } from './theme';
@@ -23,7 +24,7 @@ interface Place {
 const groups: Place[][] = [
     [
         { title: 'IDS_EM_TRANS', icon: 'DOWNLOAD', route: '/transfers' },
-        { title: 'IDS_EM_SEARCH', icon: 'SEARCH', page: 'search' },
+        { title: 'IDS_EM_SEARCH', icon: 'SEARCH', route: '/search' },
         { title: 'IDS_EM_FILES', icon: 'SHARED', page: 'shared' },
     ],
     [
@@ -35,10 +36,6 @@ const groups: Place[][] = [
 
 const route = useRoute();
 const title = computed(() => t(String(route.meta.title ?? 'IDS_EM_TRANS')));
-
-const connected = computed(
-    () => status.value !== null && (status.value.server !== null || !!status.value.kad?.connected),
-);
 
 function nextMode(): void {
     setMode(mode.value === 'system' ? 'dark' : mode.value === 'dark' ? 'light' : 'system');
@@ -69,14 +66,8 @@ function nextMode(): void {
             <header class="topbar">
                 <h1>{{ title }}</h1>
                 <span class="grow"></span>
-                <span v-if="status" class="rates" :title="t('nj.tray.speed')">
-                    <NjIcon name="ARROW_DOWN" />{{ rate(status.downloadBytesPerSecond) }} <NjIcon name="ARROW_UP" />{{
-                        rate(status.uploadBytesPerSecond)
-                    }}
-                </span>
-                <span class="nj-chip" :class="connected ? 'ok' : 'warn'">
-                    <NjIcon name="DOT" />{{ connected ? t('IDS_CONNECTED') : t('IDS_NOTCONNECTED') }}
-                </span>
+                <SpeedLimits />
+                <NetworkControl />
                 <button class="mode" type="button" :title="t('nj.top.theme')" @click="nextMode">
                     <NjIcon name="THEME" :label="t('nj.top.theme')" />
                 </button>
@@ -183,13 +174,6 @@ const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="njmule-csr
 }
 .grow {
     flex: 1;
-}
-.rates {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--el-text-color-secondary);
-    font-variant-numeric: tabular-nums;
 }
 .mode {
     display: flex;

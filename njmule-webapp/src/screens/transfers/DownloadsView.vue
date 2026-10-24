@@ -1,0 +1,456 @@
+<!--
+SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<script setup lang="ts">
+import {
+    ElButton,
+    ElDropdown,
+    ElDropdownItem,
+    ElDropdownMenu,
+    ElInput,
+    ElMessageBox,
+    ElOption,
+    ElProgress,
+    ElSelect,
+    ElTable,
+    ElTableColumn,
+    ElTabPane,
+    ElTabs,
+} from 'element-plus';
+import { computed, ref } from 'vue';
+import { api } from '../../api';
+import { copy } from '../../clipboard';
+import AddLinksDialog from '../../components/AddLinksDialog.vue';
+import NjIcon from '../../components/NjIcon.vue';
+import { duration, percent, rate, size } from '../../format';
+import { t } from '../../i18n';
+import type { IconName } from '../../icons';
+import { htmlLinks } from '../../links';
+import { attempt, told } from '../../notify';
+import { shown, type Shown } from '../../transfers';
+import type { Category, Download, DownloadPriority, Source } from '../../types';
+
+const props = defineProps<{ downloads: Download[]; categories: Category[]; sources: Source[] }>();
+const emit = defineEmits<{ changed: [] }>();
+
+type Chip = 'all' | 'downloading' | 'waiting' | 'noSources' | 'paused' | 'erroneous' | 'complete';
+
+const chip = ref<Chip>('all');
+const category = ref<number | null>(null);
+const filter = ref('');
+const chosen = ref<Download[]>([]);
+const adding = ref(false);
+
+const STATES: Record<Shown, { key: string; tone: string; icon: IconName }> = {
+    downloading: { key: 'IDS_DOWNLOADING', tone: 'busy', icon: 'DOWNLOAD' },
+    waiting: { key: 'IDS_WAITING', tone: '', icon: 'CLOCK' },
+    noSources: { key: 'nj.transfers.stateNoSources', tone: 'warn', icon: 'NO_SOURCES' },
+    paused: { key: 'IDS_PAUSED', tone: '', icon: 'PAUSE' },
+    stopped: { key: 'IDS_STOPPED', tone: '', icon: 'STOP' },
+    noSpace: { key: 'IDS_INSUFFICIENT', tone: 'error', icon: 'ERROR' },
+    error: { key: 'IDS_ERRORLIKE', tone: 'error', icon: 'ERROR' },
+    complete: { key: 'IDS_COMPLETE', tone: 'ok', icon: 'CHECK' },
+};
+
+const CHIPS: { chip: Chip; key: string }[] = [
+    { chip: 'all', key: 'IDS_ALL' },
+    { chip: 'downloading', key: 'IDS_DOWNLOADING' },
+    { chip: 'waiting', key: 'IDS_WAITING' },
+    { chip: 'noSources', key: 'nj.transfers.stateNoSources' },
+    { chip: 'paused', key: 'IDS_PAUSED' },
+    { chip: 'erroneous', key: 'IDS_ERRORLIKE' },
+    { chip: 'complete', key: 'IDS_COMPLETE' },
+];
+
+const PRIORITIES: { value: DownloadPriority; key: string }[] = [
+    { value: 'low', key: 'IDS_PRIOLOW' },
+    { value: 'normal', key: 'IDS_PRIONORMAL' },
+    { value: 'high', key: 'IDS_PRIOHIGH' },
+    { value: 'auto', key: 'IDS_PRIOAUTO' },
+];
+
+function chipOf(d: Download): Chip {
+    const s = shown(d);
+    return s === 'stopped' ? 'paused' : s === 'noSpace' || s === 'error' ? 'erroneous' : s;
+}
+
+const inCategory = computed(() =>
+    props.downloads.filter((d) => category.value === null || d.category === category.value),
+);
+
+const counts = computed(() => {
+    const all = new Map<Chip, number>([['all', inCategory.value.length]]);
+    for (const d of inCategory.value) {
+        all.set(chipOf(d), (all.get(chipOf(d)) ?? 0) + 1);
+    }
+    return all;
+});
+
+const visible = computed(() => {
+    const words = filter.value
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w !== '');
+    return inCategory.value.filter(
+        (d) =>
+            (chip.value === 'all' || chipOf(d) === chip.value) && words.every((w) => d.name.toLowerCase().includes(w)),
+    );
+});
+
+const one = computed(() => (chosen.value.length === 1 ? chosen.value[0] : undefined));
+const ofOne = computed(() => (one.value ? props.sources.filter((s) => s.file === one.value?.hash) : []));
+
+function state(d: Download) {
+    return STATES[shown(d)];
+}
+
+function remaining(d: Download): string {
+    return d.bytesPerSecond > 0 && d.status !== 'complete' ? duration((d.size - d.completed) / d.bytesPerSecond) : '—';
+}
+
+function priority(d: Download): string {
+    return t(PRIORITIES.find((p) => p.value === d.priority)?.key ?? 'IDS_PRIOAUTO');
+}
+
+function categoryName(id: number): string {
+    return props.categories.find((c) => c.id === id)?.name ?? '';
+}
+
+async function each(call: (d: Download) => Promise<unknown>): Promise<void> {
+    await attempt(async () => {
+        for (const d of chosen.value) {
+            await call(d);
+        }
+    });
+    emit('changed');
+}
+
+function act(what: 'pause' | 'resume' | 'stop'): void {
+    void each((d) => api.post(`/downloads/${d.hash}/${what}`));
+}
+
+function setPriority(value: DownloadPriority): void {
+    void each((d) => api.put(`/downloads/${d.hash}/priority`, { priority: value }));
+}
+
+function setCategory(id: number): void {
+    void each((d) => api.put(`/downloads/${d.hash}/category`, { category: id }));
+}
+
+async function cancel(): Promise<void> {
+    const many = chosen.value.length > 1;
+    try {
+        await ElMessageBox.confirm(
+            t('nj.transfers.cancelText'),
+            many ? t('nj.transfers.cancelTitleMany', chosen.value.length) : t('nj.transfers.cancelTitleOne'),
+            {
+                type: 'warning',
+                confirmButtonText: many ? t('nj.transfers.cancelMany') : t('nj.transfers.cancelOne'),
+                cancelButtonText: t('nj.transfers.keepDownloading'),
+                confirmButtonClass: 'el-button--danger',
+            },
+        );
+    } catch {
+        return;
+    }
+    const count = chosen.value.length;
+    await each((d) => api.delete(`/downloads/${d.hash}`));
+    told(t('nj.transfers.cancelled', count));
+}
+
+async function rename(): Promise<void> {
+    const d = one.value;
+    if (d === undefined) {
+        return;
+    }
+    try {
+        const { value } = await ElMessageBox.prompt(d.name, t('IDS_RENAME'), {
+            inputValue: d.name,
+            confirmButtonText: t('IDS_RENAME'),
+            cancelButtonText: t('IDS_CANCEL'),
+        });
+        await attempt(() => api.put(`/downloads/${d.hash}/name`, { name: value }));
+        emit('changed');
+    } catch {
+        // Not renamed.
+    }
+}
+
+async function addSource(): Promise<void> {
+    const d = one.value;
+    if (d === undefined) {
+        return;
+    }
+    try {
+        const { value } = await ElMessageBox.prompt(
+            `${t('nj.transfers.sourceFor', d.name)}\n${t('nj.transfers.sourceHint')}`,
+            t('nj.transfers.addSourceTitle'),
+            {
+                inputPlaceholder: '192.0.2.10:4662',
+                confirmButtonText: t('nj.transfers.addSource'),
+                cancelButtonText: t('IDS_CANCEL'),
+            },
+        );
+        if (await attempt(() => api.post(`/downloads/${d.hash}/sources`, { address: value.trim() }))) {
+            told(t('nj.transfers.sourceAdded', value.trim()), 'success');
+        }
+    } catch {
+        // Not added.
+    }
+}
+
+function copyLinks(html: boolean): void {
+    const links = chosen.value.map((d) => ({ link: d.link, name: d.name }));
+    void copy(
+        html ? htmlLinks(links) : links.map((l) => l.link).join('\n'),
+        html ? t('IDS_DL_LINK2') : t('nj.copyLink'),
+    );
+}
+
+function more(command: string): void {
+    switch (command) {
+        case 'rename':
+            void rename();
+            break;
+        case 'source':
+            void addSource();
+            break;
+        case 'html':
+            copyLinks(true);
+            break;
+    }
+}
+
+const SOURCE_STATES: Record<Source['state'], string> = {
+    waiting: 'IDS_WAITING',
+    connecting: 'IDS_CONNECTING',
+    asking: 'IDS_ASKING',
+    queued: 'IDS_ONQUEUE',
+    downloading: 'IDS_TRANSFERRING',
+    a4af: 'IDS_ASKED4ANOTHERFILE',
+};
+</script>
+
+<template>
+    <div class="tools">
+        <el-button @click="adding = true" type="primary"
+            ><NjIcon name="ADD" />{{ t('nj.transfers.addLinks') }}</el-button
+        >
+        <span class="grow"></span>
+        <el-select v-model="category" class="category" :placeholder="t('nj.transfers.allCategories')" clearable>
+            <el-option :value="0" :label="t('IDS_CAT_UNASSIGN')" />
+            <el-option v-for="c in categories" :key="c.id" :value="c.id" :label="c.name" />
+        </el-select>
+        <el-input v-model="filter" class="filter" clearable :placeholder="t('nj.transfers.filter')" />
+    </div>
+    <div class="chips" role="radiogroup">
+        <button
+            v-for="c in CHIPS"
+            :key="c.chip"
+            type="button"
+            role="radio"
+            :aria-checked="chip === c.chip"
+            class="nj-chip"
+            :class="{ busy: chip === c.chip }"
+            @click="chip = c.chip"
+        >
+            {{ t(c.key) }} <b>{{ counts.get(c.chip) ?? 0 }}</b>
+        </button>
+    </div>
+    <div class="actions">
+        <el-button :disabled="chosen.length === 0" @click="act('resume')">
+            <NjIcon name="PLAY" />{{ t('IDS_DL_RESUME') }}
+        </el-button>
+        <el-button :disabled="chosen.length === 0" @click="act('pause')">
+            <NjIcon name="PAUSE" />{{ t('IDS_DL_PAUSE') }}
+        </el-button>
+        <el-button :disabled="chosen.length === 0" @click="act('stop')">
+            <NjIcon name="STOP" />{{ t('IDS_DL_STOP') }}
+        </el-button>
+        <el-dropdown :disabled="chosen.length === 0" trigger="click" @command="setPriority">
+            <el-button :disabled="chosen.length === 0"><NjIcon name="PRIORITY" />{{ t('IDS_PRIORITY') }}</el-button>
+            <template #dropdown>
+                <el-dropdown-menu>
+                    <el-dropdown-item v-for="p in PRIORITIES" :key="p.value" :command="p.value">
+                        {{ t(p.key) }}
+                    </el-dropdown-item>
+                </el-dropdown-menu>
+            </template>
+        </el-dropdown>
+        <el-dropdown :disabled="chosen.length === 0" trigger="click" @command="setCategory">
+            <el-button :disabled="chosen.length === 0"><NjIcon name="CATEGORY" />{{ t('IDS_CAT') }}</el-button>
+            <template #dropdown>
+                <el-dropdown-menu>
+                    <el-dropdown-item :command="0">{{ t('IDS_CAT_UNASSIGN') }}</el-dropdown-item>
+                    <el-dropdown-item v-for="c in categories" :key="c.id" :command="c.id">{{
+                        c.name
+                    }}</el-dropdown-item>
+                </el-dropdown-menu>
+            </template>
+        </el-dropdown>
+        <el-button :disabled="chosen.length === 0" @click="copyLinks(false)">
+            <NjIcon name="COPY" />{{ t('nj.copyLink') }}
+        </el-button>
+        <el-dropdown :disabled="chosen.length === 0" trigger="click" @command="more">
+            <el-button :disabled="chosen.length === 0"><NjIcon name="MORE" />{{ t('IDS_MORE') }}</el-button>
+            <template #dropdown>
+                <el-dropdown-menu>
+                    <el-dropdown-item command="rename" :disabled="!one">{{ t('IDS_RENAME') }}</el-dropdown-item>
+                    <el-dropdown-item command="source" :disabled="!one || one.status === 'complete'">
+                        {{ t('IDS_ADDSRCMANUALLY') }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="html">{{ t('IDS_DL_LINK2') }}</el-dropdown-item>
+                </el-dropdown-menu>
+            </template>
+        </el-dropdown>
+        <el-button :disabled="chosen.length === 0" type="danger" plain @click="cancel">
+            <NjIcon name="DELETE" />{{ t('nj.transfers.cancelOne') }}
+        </el-button>
+    </div>
+    <el-table
+        :data="visible"
+        row-key="hash"
+        :empty-text="t('nj.transfers.none')"
+        @selection-change="(rows: Download[]) => (chosen = rows)"
+    >
+        <el-table-column type="selection" width="40" />
+        <el-table-column :label="t('IDS_DL_FILENAME')" prop="name" min-width="260" sortable show-overflow-tooltip />
+        <el-table-column :label="t('IDS_DL_SIZE')" prop="size" width="110" sortable align="right">
+            <template #default="{ row }">{{ size(row.size) }}</template>
+        </el-table-column>
+        <el-table-column :label="t('IDS_DL_PROGRESS')" width="170">
+            <template #default="{ row }">
+                <el-progress
+                    :percentage="row.size > 0 ? Math.floor((row.completed * 1000) / row.size) / 10 : 0"
+                    :status="row.status === 'complete' ? 'success' : undefined"
+                />
+            </template>
+        </el-table-column>
+        <el-table-column :label="t('IDS_DL_SPEED')" prop="bytesPerSecond" width="110" sortable align="right">
+            <template #default="{ row }">{{ row.bytesPerSecond > 0 ? rate(row.bytesPerSecond) : '—' }}</template>
+        </el-table-column>
+        <el-table-column :label="t('IDS_DL_SOURCES')" width="90" align="right">
+            <template #default="{ row }">
+                {{ row.status === 'complete' ? '—' : `${row.transferring}/${row.sources}` }}
+            </template>
+        </el-table-column>
+        <el-table-column :label="t('nj.transfers.status')" width="190">
+            <template #default="{ row }">
+                <span class="nj-chip" :class="state(row as Download).tone">
+                    <NjIcon :name="state(row as Download).icon" />{{ t(state(row as Download).key) }}
+                </span>
+            </template>
+        </el-table-column>
+        <el-table-column :label="t('IDS_DL_REMAINS')" width="110" align="right">
+            <template #default="{ row }">{{ remaining(row as Download) }}</template>
+        </el-table-column>
+        <el-table-column :label="t('IDS_PRIORITY')" width="100">
+            <template #default="{ row }">{{ priority(row as Download) }}</template>
+        </el-table-column>
+        <el-table-column :label="t('IDS_CAT')" width="120" show-overflow-tooltip>
+            <template #default="{ row }">{{ categoryName(row.category) }}</template>
+        </el-table-column>
+    </el-table>
+
+    <section class="details" :aria-label="t('IDS_DETAILS')">
+        <p v-if="chosen.length === 0" class="hint">{{ t('nj.details.none') }}</p>
+        <p v-else-if="!one" class="hint">{{ t('nj.details.chosen', chosen.length) }}</p>
+        <template v-else>
+            <h2>{{ one.name }}</h2>
+            <p class="facts">
+                {{ t('nj.details.doneOf', size(one.completed), size(one.size)) }} ·
+                {{ percent(one.completed, one.size) }} · {{ t(state(one).key) }}
+            </p>
+            <p v-if="shown(one) === 'noSources'" class="hint">{{ t('nj.details.noSourcesNote') }}</p>
+            <p v-if="shown(one) === 'noSpace'" class="hint">{{ t('nj.details.diskFullNote') }}</p>
+            <p v-if="shown(one) === 'error'" class="hint">{{ t('nj.details.errorNote') }}</p>
+            <el-tabs>
+                <el-tab-pane :label="`${t('IDS_DL_SOURCES')} (${ofOne.length})`">
+                    <el-table :data="ofOne" :empty-text="t('nj.transfers.noSources')" size="small">
+                        <el-table-column :label="t('IDS_QL_USERNAME')" min-width="160" show-overflow-tooltip>
+                            <template #default="{ row }">{{ row.nick ?? row.address }}</template>
+                        </el-table-column>
+                        <el-table-column :label="t('IDS_CD_CSOFT')" prop="software" width="150" />
+                        <el-table-column :label="t('nj.transfers.status')" width="190">
+                            <template #default="{ row }">
+                                {{ t(SOURCE_STATES[(row as Source).state]) }}
+                                <span v-if="row.state === 'queued' && row.queueRank > 0">
+                                    ({{ t('nj.transfers.queueRank') }} {{ row.queueRank }})
+                                </span>
+                            </template>
+                        </el-table-column>
+                        <el-table-column :label="t('IDS_DL_TRANSF')" width="110" align="right">
+                            <template #default="{ row }">{{ size(row.received) }}</template>
+                        </el-table-column>
+                        <el-table-column :label="t('IDS_DL_PROGRESS')" width="120" align="right">
+                            <template #default="{ row }">{{ row.parts }}/{{ row.partCount }}</template>
+                        </el-table-column>
+                    </el-table>
+                </el-tab-pane>
+            </el-tabs>
+        </template>
+    </section>
+
+    <AddLinksDialog v-model="adding" :categories="categories" :downloads="downloads" @added="emit('changed')" />
+</template>
+
+<style scoped>
+.tools,
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.tools .el-button + .el-button,
+.actions .el-button + .el-button {
+    margin-left: 0;
+}
+.nj-icon {
+    width: 16px;
+    height: 16px;
+}
+.el-button .nj-icon {
+    margin-inline-end: 6px;
+}
+.grow {
+    flex: 1;
+}
+.filter {
+    width: 240px;
+}
+.category {
+    width: 200px;
+}
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.chips button {
+    border: 0;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+}
+.details {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border: 1px solid var(--el-border-color);
+    border-radius: 8px;
+    background: var(--el-bg-color);
+}
+.details h2 {
+    margin: 0 0 4px;
+    font-size: 16px;
+    word-break: break-all;
+}
+.facts,
+.hint {
+    margin: 0 0 8px;
+    color: var(--el-text-color-secondary);
+}
+</style>

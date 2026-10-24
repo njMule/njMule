@@ -1,0 +1,361 @@
+<!--
+SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<script setup lang="ts">
+import {
+    ElButton,
+    ElInput,
+    ElInputNumber,
+    ElPopover,
+    ElSegmented,
+    ElTable,
+    ElTableColumn,
+    ElTabPane,
+    ElTabs,
+} from 'element-plus';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { api } from '../api';
+import { copy } from '../clipboard';
+import NjIcon from '../components/NjIcon.vue';
+import { usePoll } from '../engine';
+import { size } from '../format';
+import { t } from '../i18n';
+import { htmlLinks } from '../links';
+import { attempt, told } from '../notify';
+import {
+    completeness,
+    expression,
+    link,
+    searches,
+    words,
+    type FileType,
+    type Filters,
+    type Result,
+    type Search,
+} from '../search';
+import type { Download } from '../types';
+
+type Scope = 'automatic' | 'server' | 'global' | 'kad';
+
+const query = ref('');
+const scope = ref<Scope>('automatic');
+const filters = ref<Filters>({ type: '', extension: '' });
+const active = ref(searches.value.at(-1)?.id.toString() ?? '');
+const filter = ref('');
+const chosen = ref<Result[]>([]);
+const downloads = usePoll(() => api.get<Download[]>('/downloads'), 5000, [] as Download[]);
+
+const SCOPES = computed(() => [
+    { value: 'automatic', label: t('IDS_AUTOMATIC') },
+    { value: 'server', label: t('IDS_SERVER') },
+    { value: 'global', label: t('IDS_GLOBALSEARCH') },
+    { value: 'kad', label: t('IDS_KADEMLIA') },
+]);
+
+const TYPES: { value: FileType; key: string }[] = [
+    { value: '', key: 'IDS_SEARCH_ANY' },
+    { value: 'archive', key: 'IDS_SEARCH_ARC' },
+    { value: 'audio', key: 'IDS_SEARCH_AUDIO' },
+    { value: 'cd', key: 'IDS_SEARCH_CDIMG' },
+    { value: 'image', key: 'IDS_SEARCH_PICS' },
+    { value: 'program', key: 'IDS_SEARCH_PRG' },
+    { value: 'video', key: 'IDS_SEARCH_VIDEO' },
+    { value: 'document', key: 'IDS_SEARCH_DOC' },
+];
+
+const filterCount = computed(
+    () =>
+        [
+            filters.value.type !== '',
+            filters.value.minMb,
+            filters.value.maxMb,
+            filters.value.availability,
+            filters.value.complete,
+            filters.value.extension.trim() !== '' ? 1 : undefined,
+        ].filter((v) => v !== undefined && v !== false).length,
+);
+
+const shown = computed(() => searches.value.find((s) => s.id.toString() === active.value));
+const downloading = computed(() => new Set(downloads.data.value.map((d) => d.hash.toUpperCase())));
+const visible = computed(() => {
+    const results = shown.value?.results ?? [];
+    const all = filter.value
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w !== '');
+    const wanted = all.filter((w) => !w.startsWith('-'));
+    const unwanted = all.filter((w) => w.startsWith('-') && w.length > 1).map((w) => w.substring(1));
+    return results.filter((r) => {
+        const name = r.name.toLowerCase();
+        return wanted.every((w) => name.includes(w)) && !unwanted.some((w) => name.includes(w));
+    });
+});
+
+function resetFilters(): void {
+    filters.value = { type: '', extension: '' };
+}
+
+async function start(): Promise<void> {
+    if (query.value.trim() === '') {
+        return;
+    }
+    const e = expression(query.value, filters.value);
+    await attempt(async () => {
+        const { id } = await api.post<{ id: number }>('/searches', { query: e, scope: scope.value });
+        searches.value = [...searches.value, { id, expression: e, results: [] }];
+        active.value = id.toString();
+    });
+}
+
+async function close(name: string | number): Promise<void> {
+    const id = Number(name);
+    searches.value = searches.value.filter((s) => s.id !== id);
+    if (active.value === String(name)) {
+        active.value = searches.value.at(-1)?.id.toString() ?? '';
+    }
+    try {
+        await api.delete(`/searches/${id}`);
+    } catch {
+        // Gone already: the engine keeps the last searches only.
+    }
+}
+
+async function more(): Promise<void> {
+    if (shown.value) {
+        const id = shown.value.id;
+        await attempt(() => api.post(`/searches/${id}/more`));
+    }
+}
+
+async function download(results: Result[]): Promise<void> {
+    const s = shown.value;
+    if (s === undefined) {
+        return;
+    }
+    await attempt(async () => {
+        for (const r of results) {
+            await api.post(`/searches/${s.id}/download`, { hash: r.hash });
+            told(t('nj.transfers.added', r.name), 'success');
+        }
+    });
+    await downloads.refresh();
+}
+
+function copyLinks(html: boolean): void {
+    const links = chosen.value.map((r) => ({ link: link(r), name: r.name }));
+    void copy(
+        html ? htmlLinks(links) : links.map((l) => l.link).join('\n'),
+        html ? t('IDS_DL_LINK2') : t('nj.copyLink'),
+    );
+}
+
+async function refresh(s: Search): Promise<void> {
+    try {
+        const answer = await api.get<{ results: Result[] }>(`/searches/${s.id}`);
+        s.results = answer.results;
+    } catch {
+        // A search the engine forgot keeps the results it showed.
+    }
+}
+
+let timer = 0;
+onMounted(() => {
+    timer = window.setInterval(() => {
+        if (shown.value) {
+            void refresh(shown.value);
+        }
+    }, 2000);
+});
+onUnmounted(() => window.clearInterval(timer));
+</script>
+
+<template>
+    <form class="tools" @submit.prevent="start">
+        <el-input v-model="query" class="query" :placeholder="t('IDS_SEARCH_TEXT')" clearable />
+        <el-segmented v-model="scope" :options="SCOPES" />
+        <el-popover trigger="click" :width="360">
+            <template #reference>
+                <el-button><NjIcon name="FILTER" />{{ t('nj.search.filters') }} ({{ filterCount }})</el-button>
+            </template>
+            <div class="filters">
+                <div class="types">
+                    <button
+                        v-for="ty in TYPES"
+                        :key="ty.value"
+                        type="button"
+                        class="nj-chip"
+                        :class="{ busy: filters.type === ty.value }"
+                        @click="filters.type = ty.value"
+                    >
+                        {{ t(ty.key) }}
+                    </button>
+                </div>
+                <label>
+                    <span>{{ t('IDS_SEARCHMINSIZE') }}</span>
+                    <el-input-number v-model="filters.minMb" :min="0" :max="262144" controls-position="right" />
+                </label>
+                <label>
+                    <span>{{ t('IDS_SEARCHMAXSIZE') }}</span>
+                    <el-input-number v-model="filters.maxMb" :min="0" :max="262144" controls-position="right" />
+                </label>
+                <label>
+                    <span>{{ t('IDS_SEARCHAVAIL') }}</span>
+                    <el-input-number v-model="filters.availability" :min="1" :max="1000000" controls-position="right" />
+                </label>
+                <label>
+                    <span>{{ t('IDS_COMPLSOURCES') }}</span>
+                    <el-input-number v-model="filters.complete" :min="1" :max="1000000" controls-position="right" />
+                </label>
+                <label>
+                    <span>{{ t('IDS_SEARCHEXTENTION') }}</span>
+                    <el-input v-model="filters.extension" maxlength="10" class="ext" />
+                </label>
+                <p class="hint">{{ t('nj.search.filtersNote') }}</p>
+                <el-button size="small" @click="resetFilters">{{ t('IDS_PW_RESET') }}</el-button>
+            </div>
+        </el-popover>
+        <el-button type="primary" native-type="submit"><NjIcon name="SEARCH" />{{ t('nj.search.start') }}</el-button>
+    </form>
+
+    <div v-if="searches.length === 0" class="empty">
+        <h2>{{ t('nj.search.emptyTitle') }}</h2>
+        <p>{{ t('nj.search.emptyText') }}</p>
+        <ul>
+            <li>{{ t('nj.search.tipExact') }}: <code>"night of the living dead"</code></li>
+            <li>{{ t('nj.search.tipWithout') }}: <code>debian -netinst</code></li>
+            <li>{{ t('nj.search.tipLink') }}: <code>ed2k://|file|…|/</code></li>
+        </ul>
+    </div>
+
+    <template v-else>
+        <el-tabs v-model="active" type="card" closable @tab-remove="close">
+            <el-tab-pane
+                v-for="s in searches"
+                :key="s.id"
+                :name="s.id.toString()"
+                :label="`${words(s.expression)} (${s.results.length})`"
+            />
+        </el-tabs>
+        <div class="actions">
+            <el-button :disabled="chosen.length === 0" type="primary" @click="download(chosen)">
+                <NjIcon name="DOWNLOAD" />{{ t('IDS_DOWNLOAD') }}
+            </el-button>
+            <el-button :disabled="chosen.length === 0" @click="copyLinks(false)">
+                <NjIcon name="COPY" />{{ t('nj.copyLink') }}
+            </el-button>
+            <el-button :disabled="chosen.length === 0" @click="copyLinks(true)">{{ t('IDS_DL_LINK2') }}</el-button>
+            <el-button @click="more">{{ t('nj.search.more') }}</el-button>
+            <span class="grow"></span>
+            <span class="count">{{ t('nj.search.count', `${visible.length}/${shown?.results.length ?? 0}`) }}</span>
+            <el-input v-model="filter" class="filter" clearable :placeholder="t('IDS_DL_FILENAME')" />
+        </div>
+        <el-table
+            :data="visible"
+            row-key="hash"
+            :empty-text="t('nj.search.waiting')"
+            :default-sort="{ prop: 'sources', order: 'descending' }"
+            @selection-change="(rows: Result[]) => (chosen = rows)"
+            @row-dblclick="(row: Result) => download([row])"
+        >
+            <el-table-column type="selection" width="40" />
+            <el-table-column :label="t('IDS_DL_FILENAME')" prop="name" min-width="300" sortable show-overflow-tooltip>
+                <template #default="{ row }">
+                    <span :class="{ mine: downloading.has(row.hash.toUpperCase()), spam: row.spam }">{{
+                        row.name
+                    }}</span>
+                </template>
+            </el-table-column>
+            <el-table-column :label="t('IDS_DL_SIZE')" prop="size" width="110" sortable align="right">
+                <template #default="{ row }">{{ size(row.size) }}</template>
+            </el-table-column>
+            <el-table-column :label="t('IDS_SEARCHAVAIL')" prop="sources" width="120" sortable align="right" />
+            <el-table-column :label="t('IDS_COMPLETE')" width="100" align="right">
+                <template #default="{ row }">{{ completeness(row as Result) }}</template>
+            </el-table-column>
+            <el-table-column :label="t('IDS_TYPE')" prop="type" width="110" sortable />
+            <el-table-column :label="t('nj.search.known')" width="150">
+                <template #default="{ row }">
+                    <span v-if="row.spam" class="nj-chip error">{{ t('IDS_SPAM') }}</span>
+                    <span v-else-if="downloading.has(row.hash.toUpperCase())" class="nj-chip busy">
+                        {{ t('IDS_DOWNLOADING') }}
+                    </span>
+                </template>
+            </el-table-column>
+        </el-table>
+    </template>
+</template>
+
+<style scoped>
+.tools,
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.tools .el-button + .el-button,
+.actions .el-button + .el-button {
+    margin-left: 0;
+}
+.el-button .nj-icon {
+    width: 16px;
+    height: 16px;
+    margin-inline-end: 6px;
+}
+.query {
+    flex: 1 1 280px;
+    max-width: 520px;
+}
+.filters label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+}
+.types {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.types button {
+    border: 0;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+}
+.ext {
+    width: 150px;
+}
+.hint {
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+}
+.empty {
+    max-width: 640px;
+    padding: 24px;
+    border: 1px solid var(--el-border-color);
+    border-radius: 8px;
+    background: var(--el-bg-color);
+}
+.empty h2 {
+    margin-top: 0;
+}
+.grow {
+    flex: 1;
+}
+.count {
+    color: var(--el-text-color-secondary);
+}
+.filter {
+    width: 220px;
+}
+.mine {
+    font-weight: 600;
+}
+.spam {
+    color: var(--el-text-color-secondary);
+}
+</style>

@@ -76,3 +76,43 @@ export interface Download {
     previewFirst: boolean;
     link: string;
 }
+
+export interface Upload {
+    address: string;
+    userHash: string;
+    nick?: string;
+    software: string;
+    file: string;
+    state: 'uploading' | 'queued';
+    transferred: number;
+    bytesPerSecond: number;
+    waitingSeconds: number;
+}
+
+export interface Ban {
+    address: string;
+    secondsLeft: number;
+}
+
+export interface Category {
+    id: number;
+    name: string;
+    comment: string;
+    priority: DownloadPriority;
+}
+
+export type SourceState = 'waiting' | 'connecting' | 'asking' | 'queued' | 'downloading' | 'a4af';
+
+export interface Source {
+    file: string;
+    fileName: string;
+    address: string;
+    nick?: string;
+    software: string;
+    state: SourceState;
+    queueRank: number;
+    received: number;
+    parts: number;
+    partCount: number;
+    reportedName?: string;
+}
