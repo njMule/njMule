@@ -60,7 +60,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 | 🕸️ **Kad 2** | Routing table, keyword and source lookups, publishing of shared files, firewall check, bootstrap from the contacts shipped with njMule or from a `nodes.dat` URL. |
 | 📂 **File management** | Shared directories with recursive sharing and change monitoring; download and upload priorities, categories, preview in an external video player, comments and ratings. |
 | 🖥️ **Desktop app** | JavaFX with AtlantaFX themes (Nord light and dark by default, following the system, and the system colours under Windows high contrast), 36 languages including right-to-left ones with a mirrored layout, system tray integration and optional registration as the `ed2k://` link handler. |
-| 🌍 **Web interface** | Status, transfers, searches and servers, protected by a password. |
+| 🌍 **Web interface** | The desktop app's layout in the browser, behind a password: downloads with their details, uploads, queue and bans; searches with filters; shared files; the network with its servers, Kad and log; statistics. |
 | 🔧 **Networking** | IPv6 alongside IPv4, connections between firewalled clients through their routers (QUIC or uTP), SOCKS 4/5 and HTTP CONNECT proxies, binding to one network interface (such as a VPN) that keeps njMule offline while it is gone, port forwarding with UPnP, NAT-PMP or PCP, IP filtering (`ipfilter.dat`, PeerGuardian, P2B) with updates from a URL, and a weekly scheduler for bandwidth limits and categories. |
 | 💬 **Messaging** | Chat with CAPTCHA verification, a friends list and spam filters. |
 
@@ -368,7 +368,8 @@ its own, it sets the password at every start, so that the file stays the referen
 njMule.
 
 It starts together with the engine, headless or with the desktop application, on
-`http://localhost:4711/`. It listens on the loopback interface only, unless `--webui-lan` makes it
+`http://localhost:4711/`, and is laid out as the desktop application: the places in a sidebar, a
+top bar with one field to search or paste eD2K links, the rates and the state of the networks. It listens on the loopback interface only, unless `--webui-lan` makes it
 listen on all interfaces.
 
 Against DNS rebinding it answers only to `localhost`, to IP addresses with `--webui-lan`, and to

@@ -149,6 +149,17 @@ All notable changes to this project are documented here. The format follows
   with Kwik, each side first proving its user hash) when the source has it, else over uTP (LEDBAT
   congestion control, selective acknowledgements). A host QUIC failed with is met over uTP for two
   minutes. Our hello and Kad publishes say that we take such connections.
+- Web interface laid out as the desktop app: the places in a sidebar, a top bar with one field to
+  search or paste eD2K links, the rates and the state of the networks, Nord light or dark after
+  the system. Transfers in segments (downloads with state filters and the desktop app's columns,
+  the details of one with its parts, sources and their names; uploads, the queue, the banned
+  clients to unban), a cancel that asks first and can be undone; searches with filters, sortable
+  columns, other names, more results, stop and spam marks; the shared files' counters of the
+  session or of all; the network's cards (eD2K, Kad, ports with IPv6, NAT traversal and a port
+  test) over its servers, Kad (contacts, current searches, bootstrap, nodes.dat) and log by level;
+  statistics.
+- The ports card of the desktop app's network tells our IPv6 address and whether firewalled
+  clients are met through the routers.
 - Port test, in the first-start wizard and in the connection options: the ports as chosen are
   applied, the router asked again through UPnP, then the server checks the TCP port at a new login
   (a HighID) and Kad nodes check both ports; the outcomes show as they come, with what to do about
