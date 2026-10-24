@@ -3,7 +3,17 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { ElButton, ElInput, ElMessageBox, ElPopover, ElTable, ElTableColumn } from 'element-plus';
+import {
+    ElButton,
+    ElDropdown,
+    ElDropdownItem,
+    ElDropdownMenu,
+    ElInput,
+    ElMessageBox,
+    ElPopover,
+    ElTable,
+    ElTableColumn,
+} from 'element-plus';
 import { computed, ref } from 'vue';
 import { api } from '../../api';
 import { copy } from '../../clipboard';
@@ -93,6 +103,23 @@ async function remove(all: boolean): Promise<void> {
     await servers.refresh();
 }
 
+async function each(call: (s: Server) => Promise<unknown>): Promise<void> {
+    await attempt(async () => {
+        for (const s of chosen.value) {
+            await call(s);
+        }
+    });
+    await servers.refresh();
+}
+
+function setPriority(priority: Server['priority']): void {
+    void each((s) => api.put(`/servers/${encodeURIComponent(s.address)}/priority`, { priority }));
+}
+
+function setStatic(on: boolean): void {
+    void each((s) => api.put(`/servers/${encodeURIComponent(s.address)}/static`, { static: on }));
+}
+
 function copyLinks(): void {
     const links = chosen.value.map((s) => {
         const colon = s.address.lastIndexOf(':');
@@ -126,6 +153,18 @@ function copyLinks(): void {
         <el-button :disabled="chosen.length !== 1" @click="connectTo(chosen[0]?.address)">
             {{ t('IDS_CONNECTTHIS') }}
         </el-button>
+        <el-dropdown :disabled="chosen.length === 0" trigger="click" @command="setPriority">
+            <el-button :disabled="chosen.length === 0">{{ t('IDS_PRIORITY') }}</el-button>
+            <template #dropdown>
+                <el-dropdown-menu>
+                    <el-dropdown-item v-for="(key, value) in PRIORITY" :key="value" :command="value">
+                        {{ t(key) }}
+                    </el-dropdown-item>
+                </el-dropdown-menu>
+            </template>
+        </el-dropdown>
+        <el-button :disabled="chosen.length === 0" @click="setStatic(true)">{{ t('IDS_ADDTOSTATIC') }}</el-button>
+        <el-button :disabled="chosen.length === 0" @click="setStatic(false)">{{ t('IDS_REMOVEFROMSTATIC') }}</el-button>
         <el-button :disabled="chosen.length === 0" @click="copyLinks">
             <NjIcon name="COPY" />{{ t('IDS_DL_LINK1') }}
         </el-button>

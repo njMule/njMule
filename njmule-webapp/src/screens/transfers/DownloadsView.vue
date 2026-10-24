@@ -10,6 +10,7 @@ import {
     ElDropdownMenu,
     ElInput,
     ElMessageBox,
+    ElNotification,
     ElOption,
     ElProgress,
     ElSelect,
@@ -18,7 +19,7 @@ import {
     ElTabPane,
     ElTabs,
 } from 'element-plus';
-import { computed, ref } from 'vue';
+import { computed, h, ref } from 'vue';
 import { api } from '../../api';
 import { copy } from '../../clipboard';
 import AddLinksDialog from '../../components/AddLinksDialog.vue';
@@ -154,9 +155,32 @@ async function cancel(): Promise<void> {
     } catch {
         return;
     }
-    const count = chosen.value.length;
+    const gone = chosen.value;
     await each((d) => api.delete(`/downloads/${d.hash}`));
-    told(t('nj.transfers.cancelled', count));
+    // The engine keeps what they had downloaded for a few seconds: long enough to change one's mind.
+    const note = ElNotification({
+        message: h('span', [
+            t('nj.transfers.cancelled', gone.length),
+            ' ',
+            h(
+                ElButton,
+                {
+                    size: 'small',
+                    onClick: async () => {
+                        note.close();
+                        await attempt(async () => {
+                            for (const d of gone) {
+                                await api.post(`/downloads/${d.hash}/restore`);
+                            }
+                        });
+                        emit('changed');
+                    },
+                },
+                () => t('IDS_UNDO'),
+            ),
+        ]),
+        duration: 10000,
+    });
 }
 
 async function rename(): Promise<void> {

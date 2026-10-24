@@ -7,6 +7,7 @@ import { ElSegmented } from 'element-plus';
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import NjIcon from '../components/NjIcon.vue';
+import PortTest from '../components/PortTest.vue';
 import { status } from '../engine';
 import { count } from '../format';
 import { t } from '../i18n';
@@ -70,6 +71,7 @@ const kad = computed(() => status.value?.kad ?? null);
             </p>
             <p v-if="status?.publicIp">IP: {{ status.publicIp }}</p>
             <p v-if="status?.publicIpv6">IPv6: {{ status.publicIpv6 }}</p>
+            <PortTest />
         </section>
     </div>
     <el-segmented v-model="part" :options="PARTS" class="parts" />
