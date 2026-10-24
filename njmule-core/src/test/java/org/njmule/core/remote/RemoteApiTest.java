@@ -587,6 +587,21 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldMarkAResultOfASearchAsSpam() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSearchesAs(7);
+        givenTheEngineMarksSpam();
+        givenASearchStarted("{\"query\":\"talk\",\"scope\":\"kad\"}", "\"id\":7");
+        givenTheEngineFinds(7, "talk.bin");
+        givenTheResultsCame("/api/v1/searches/7", "talk.bin");
+
+        whenCalled("POST", "/api/v1/searches/7/spam", "{\"hashes\":[\"" + HASH + "\"],\"spam\":true}");
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("spam talk.bin true");
+    }
+
+    @Test
     void shouldSetTheSpeedLimits() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -815,6 +830,20 @@ class RemoteApiTest {
         whenCalled("POST", "/api/v1/searches", body);
         thenTheStatusIs(201);
         thenTheBodyContains(answered);
+    }
+
+    private void givenTheEngineMarksSpam() {
+        this.fake.answer("markSpam", args -> {
+            @SuppressWarnings("unchecked")
+            List<SearchResult> marked = (List<SearchResult>) args[0];
+            marked.forEach(r -> this.calls.add("spam " + r.name() + " " + args[1]));
+            return CompletableFuture.completedFuture(null);
+        });
+    }
+
+    private void givenTheResultsCame(String path, String name) throws Exception {
+        whenTheResultsAreAskedUntilTheyCome(path, name);
+        thenTheBodyContains(name);
     }
 
     private void givenTheEngineFinds(long search, String name) {

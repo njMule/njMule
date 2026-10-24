@@ -31,6 +31,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -264,6 +265,7 @@ public final class RemoteApi implements AutoCloseable {
                 entry("stopSearch", this::stopSearch),
                 entry("moreSearchResults", this::moreSearchResults),
                 entry("downloadSearchResult", this::downloadSearchResult),
+                entry("markSpam", this::markSpam),
                 entry("listCategories", c -> list(c, this.engine::categories, ApiJson::category)),
                 entry("setCategories", this::setCategories),
                 entry("updateIpFilterLists", this::updateIpFilterLists),
@@ -708,11 +710,16 @@ public final class RemoteApi implements AutoCloseable {
 
     private void getSearchResults(Call c) throws IOException {
         long id = searchId(c);
-        List<SearchResult> found = this.searches.results(id).orElseThrow(RemoteApi::notFound);
-        found.sort((a, b) -> Integer.compare(b.sources(), a.sources()));
+        // Rated now, as the files marked since they came make them; spam last.
+        List<SearchResult> found = new ArrayList<>(
+                await(this.engine.rateSpam(this.searches.results(id).orElseThrow(RemoteApi::notFound))));
+        found.sort(Comparator.comparing(SearchResult::isSpam)
+                .thenComparing(Comparator.comparingInt(SearchResult::sources).reversed()));
+        boolean running = this.searches.running(id);
         reply(c.exchange(), 200, g -> {
             g.writeStartObject();
             g.writeNumberProperty("id", id);
+            g.writeBooleanProperty("running", running);
             g.writeName("results");
             ApiJson.array(g, found, ApiJson::result);
             g.writeEndObject();
@@ -742,6 +749,19 @@ public final class RemoteApi implements AutoCloseable {
                 .orElseThrow(() -> new Failure(404, "That result is gone: search again."));
         DownloadInfo d = await(this.engine.addDownload(result.link()));
         reply(c.exchange(), 201, g -> ApiJson.download(g, d));
+    }
+
+    private void markSpam(Call c) throws IOException {
+        long id = searchId(c);
+        searchKnown(id);
+        List<SearchResult> marked = new ArrayList<>();
+        for (JsonNode h : c.body().get("hashes").values()) {
+            marked.add(this.searches
+                    .result(id, hash(h.asString()))
+                    .orElseThrow(() -> new Failure(404, "That result is gone: search again.")));
+        }
+        await(this.engine.markSpam(marked, c.body().path("spam").asBoolean(true)));
+        ok(c.exchange(), 200);
     }
 
     private void searchKnown(long id) {

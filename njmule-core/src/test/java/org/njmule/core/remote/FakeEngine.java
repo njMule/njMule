@@ -32,6 +32,11 @@ final class FakeEngine {
     private final Map<String, Function<Object[], CompletableFuture<?>>> answers = new ConcurrentHashMap<>();
     private final Map<String, Object> values = new ConcurrentHashMap<>();
 
+    // Results keep their spam rating unless a test says otherwise.
+    FakeEngine() {
+        this.answers.put("rateSpam", args -> CompletableFuture.completedFuture(args[0]));
+    }
+
     void answer(String method, Function<Object[], CompletableFuture<?>> answer) {
         this.answers.put(method, answer);
     }

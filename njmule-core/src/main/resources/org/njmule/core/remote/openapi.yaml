@@ -1083,7 +1083,8 @@ paths:
     get:
       operationId: getSearchResults
       tags: [searches]
-      summary: The results of a search, those with the most sources first.
+      summary: The results of a search, those with the most sources first and spam last.
+      description: Their spam ratings are those of the files marked so far.
       responses:
         "200":
           description: The results so far.
@@ -1091,10 +1092,13 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [id, results]
+                required: [id, running, results]
                 properties:
                   id:
                     $ref: "#/components/schemas/SearchId"
+                  running:
+                    type: boolean
+                    description: Whether more results may come.
                   results:
                     type: array
                     items:
@@ -1107,6 +1111,37 @@ paths:
       operationId: stopSearch
       tags: [searches]
       summary: Stops a search and forgets its results.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /searches/{id}/spam:
+    parameters:
+      - $ref: "#/components/parameters/SearchId"
+    post:
+      operationId: markSpam
+      tags: [searches]
+      summary: Marks results as spam, or as not spam; every search is rated again by the marks.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hashes]
+              properties:
+                hashes:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items:
+                    $ref: "#/components/schemas/Hash"
+                spam:
+                  type: boolean
+                  default: true
       responses:
         "200":
           $ref: "#/components/responses/Ok"
