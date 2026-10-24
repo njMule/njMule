@@ -403,6 +403,123 @@ paths:
           $ref: "#/components/responses/NotFound"
         default:
           $ref: "#/components/responses/Error"
+  /downloads/{hash}/parts:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    get:
+      operationId: getDownloadParts
+      tags: [downloads]
+      summary: The map of a download's parts.
+      responses:
+        "200":
+          description: What is missing, what is being asked for, and how many sources have each part.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [hash, parts]
+                properties:
+                  hash:
+                    $ref: "#/components/schemas/Hash"
+                  parts:
+                    type: object
+                    required: [size, missing, requested, sources]
+                    properties:
+                      size:
+                        type: integer
+                        format: int64
+                      missing:
+                        $ref: "#/components/schemas/Spans"
+                      requested:
+                        $ref: "#/components/schemas/Spans"
+                      sources:
+                        type: array
+                        description: The sources that have each part, in the order of the parts.
+                        items:
+                          type: integer
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}/preview:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    put:
+      operationId: setDownloadPreview
+      tags: [downloads]
+      summary: Asks for the first and last parts first, so that the file can be previewed early.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [previewFirst]
+              properties:
+                previewFirst:
+                  type: boolean
+      responses:
+        "200":
+          description: The download as it is now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Download"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}/autoswap:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    put:
+      operationId: setDownloadAutoSwap
+      tags: [downloads]
+      summary: Takes the sources shared with other files whenever they are free to move.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [autoSwap]
+              properties:
+                autoSwap:
+                  type: boolean
+      responses:
+        "200":
+          description: The download as it is now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Download"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}/swap:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    post:
+      operationId: swapSources
+      tags: [downloads]
+      summary: Moves the sources shared with other files to this download now, or this download's to the others.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [direction]
+              properties:
+                direction:
+                  type: string
+                  enum: [here, away]
+      responses:
+        "200":
+          $ref: "#/components/responses/Added"
+        default:
+          $ref: "#/components/responses/Error"
   /downloads/{hash}/restore:
     parameters:
       - $ref: "#/components/parameters/Hash"
@@ -1976,6 +2093,9 @@ components:
           format: int64
         previewFirst:
           type: boolean
+        autoSwap:
+          type: boolean
+          description: Whether sources asked for another file come to this one whenever they are free to move.
         link:
           type: string
           description: The eD2K link of the file.
@@ -2158,6 +2278,16 @@ components:
       additionalProperties:
         type: string
         maxLength: 16384
+    Spans:
+      type: array
+      description: Byte ranges, each [start, end) as two numbers.
+      items:
+        type: array
+        minItems: 2
+        maxItems: 2
+        items:
+          type: integer
+          format: int64
     ServerLists:
       type: object
       required: [addresses]

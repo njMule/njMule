@@ -602,6 +602,40 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldGiveTheMapOfTheParts() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineDownloads(ApiSamples.download());
+
+        whenCalled("GET", "/api/v1/downloads/" + HASH + "/parts", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"parts\":{\"size\":0,\"missing\":[],\"requested\":[],\"sources\":[]}");
+    }
+
+    @Test
+    void shouldAskForThePreviewPartsFirst() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineDownloads(ApiSamples.download());
+        givenTheEngineChangesDownloads("setDownloadPreview");
+
+        whenCalled("PUT", "/api/v1/downloads/" + HASH + "/preview", "{\"previewFirst\":true}");
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("setDownloadPreview true");
+    }
+
+    @Test
+    void shouldSwapTheSharedSourcesToADownload() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSwapsSources(3);
+
+        whenCalled("POST", "/api/v1/downloads/" + HASH + "/swap", "{\"direction\":\"here\"}");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"added\":3");
+    }
+
+    @Test
     void shouldSetTheSpeedLimits() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -664,6 +698,17 @@ class RemoteApiTest {
             whenCalled("GET", "/api/v1/status", Optional.of("wrong"), "");
             thenTheStatusIs(401);
         }
+    }
+
+    private void givenTheEngineChangesDownloads(String method) {
+        this.fake.answer(method, args -> {
+            this.calls.add(method + " " + args[1]);
+            return CompletableFuture.completedFuture(true);
+        });
+    }
+
+    private void givenTheEngineSwapsSources(int count) {
+        this.fake.answer("swapSourcesToDownload", args -> CompletableFuture.completedFuture(count));
     }
 
     private void givenTheEngineDownloads(DownloadInfo download) {

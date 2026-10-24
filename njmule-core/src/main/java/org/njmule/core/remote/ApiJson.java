@@ -34,6 +34,7 @@ import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
+import org.njmule.core.api.PartMap;
 import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
@@ -211,8 +212,37 @@ final class ApiJson {
         g.writeNumberProperty("transferring", d.transferring());
         g.writeNumberProperty("bytesPerSecond", d.bytesPerSecond());
         g.writeBooleanProperty("previewFirst", d.previewFirst());
+        g.writeBooleanProperty("autoSwap", d.autoSwap());
         g.writeStringProperty("link", d.link().toUri());
         g.writeEndObject();
+    }
+
+    /** A download with the map of its parts: what is missing, what is being asked for, how many sources have each. */
+    static void downloadWithParts(JsonGenerator g, DownloadInfo d) {
+        g.writeStartObject();
+        g.writeStringProperty("hash", d.hash().toHex());
+        g.writeName("parts");
+        PartMap p = d.parts();
+        g.writeStartObject();
+        g.writeNumberProperty("size", p.size());
+        spans(g, "missing", p.missing());
+        spans(g, "requested", p.requested());
+        g.writeArrayPropertyStart("sources");
+        p.sources().forEach(g::writeNumber);
+        g.writeEndArray();
+        g.writeEndObject();
+        g.writeEndObject();
+    }
+
+    private static void spans(JsonGenerator g, String name, List<PartMap.Span> spans) {
+        g.writeArrayPropertyStart(name);
+        for (PartMap.Span s : spans) {
+            g.writeStartArray();
+            g.writeNumber(s.start());
+            g.writeNumber(s.end());
+            g.writeEndArray();
+        }
+        g.writeEndArray();
     }
 
     static void source(JsonGenerator g, SourceInfo s) {

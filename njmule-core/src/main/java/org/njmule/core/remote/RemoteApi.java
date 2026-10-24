@@ -191,6 +191,20 @@ public final class RemoteApi implements AutoCloseable {
                 entry("resumeDownload", c -> changed(c, this.engine.resumeDownload(hash(c)))),
                 entry("stopDownload", c -> changed(c, this.engine.stopDownload(hash(c)))),
                 entry("restoreDownload", c -> changed(c, this.engine.restoreDownload(hash(c)))),
+                entry("getDownloadParts", this::getDownloadParts),
+                entry(
+                        "setDownloadPreview",
+                        c -> changed(c, this.engine.setDownloadPreview(hash(c), flag(c.body(), "previewFirst")))),
+                entry(
+                        "setDownloadAutoSwap",
+                        c -> changed(c, this.engine.setDownloadAutoSwap(hash(c), flag(c.body(), "autoSwap")))),
+                entry(
+                        "swapSources",
+                        c -> count(
+                                c,
+                                text(c.body(), "direction").equals("here")
+                                        ? this.engine.swapSourcesToDownload(hash(c))
+                                        : this.engine.swapSourcesFromDownload(hash(c)))),
                 entry(
                         "setDownloadPriority",
                         c -> changed(
@@ -778,6 +792,15 @@ public final class RemoteApi implements AutoCloseable {
         reply(c.exchange(), 200, g -> ApiJson.array(g, all, each));
     }
 
+    private void getDownloadParts(Call c) throws IOException {
+        Hash16 hash = hash(c);
+        DownloadInfo d = await(this.engine.downloads()).stream()
+                .filter(i -> i.hash().equals(hash))
+                .findFirst()
+                .orElseThrow(RemoteApi::notFound);
+        reply(c.exchange(), 200, g -> ApiJson.downloadWithParts(g, d));
+    }
+
     private void download(Call c, int status) throws IOException {
         Hash16 hash = hash(c);
         DownloadInfo d = await(this.engine.downloads()).stream()
@@ -841,6 +864,14 @@ public final class RemoteApi implements AutoCloseable {
             throw new Failure(400, "Missing text: " + name);
         }
         return value.asString();
+    }
+
+    private static boolean flag(JsonNode values, String name) {
+        JsonNode value = values.get(name);
+        if (value == null || !value.isBoolean()) {
+            throw new Failure(400, "Missing truth value: " + name);
+        }
+        return value.asBoolean();
     }
 
     private static String text(Map<String, JsonNode> parameters, String name) {
