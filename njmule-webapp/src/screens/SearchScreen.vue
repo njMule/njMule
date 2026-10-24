@@ -142,6 +142,16 @@ async function download(results: Result[]): Promise<void> {
     await downloads.refresh();
 }
 
+async function markSpam(spam: boolean): Promise<void> {
+    const s = shown.value;
+    if (s === undefined || chosen.value.length === 0) {
+        return;
+    }
+    const hashes = chosen.value.map((r) => r.hash);
+    await attempt(() => api.post(`/searches/${s.id}/spam`, { hashes, spam }));
+    await refresh(s);
+}
+
 function copyLinks(html: boolean): void {
     const links = chosen.value.map((r) => ({ link: link(r), name: r.name }));
     void copy(
@@ -152,8 +162,9 @@ function copyLinks(html: boolean): void {
 
 async function refresh(s: Search): Promise<void> {
     try {
-        const answer = await api.get<{ results: Result[] }>(`/searches/${s.id}`);
+        const answer = await api.get<{ running: boolean; results: Result[] }>(`/searches/${s.id}`);
         s.results = answer.results;
+        s.running = answer.running;
     } catch {
         // A search the engine forgot keeps the results it showed.
     }
@@ -234,7 +245,7 @@ onUnmounted(() => window.clearInterval(timer));
                 v-for="s in searches"
                 :key="s.id"
                 :name="s.id.toString()"
-                :label="`${words(s.expression)} (${s.results.length})`"
+                :label="`${words(s.expression)} (${s.results.length})${s.running ? ' …' : ''}`"
             />
         </el-tabs>
         <div class="actions">
@@ -245,6 +256,8 @@ onUnmounted(() => window.clearInterval(timer));
                 <NjIcon name="COPY" />{{ t('nj.copyLink') }}
             </el-button>
             <el-button :disabled="chosen.length === 0" @click="copyLinks(true)">{{ t('IDS_DL_LINK2') }}</el-button>
+            <el-button :disabled="chosen.length === 0" @click="markSpam(true)">{{ t('IDS_MARKSPAM') }}</el-button>
+            <el-button :disabled="chosen.length === 0" @click="markSpam(false)">{{ t('IDS_MARKNOTSPAM') }}</el-button>
             <el-button @click="more">{{ t('nj.search.more') }}</el-button>
             <span class="grow"></span>
             <span class="count">{{ t('nj.search.count', `${visible.length}/${shown?.results.length ?? 0}`) }}</span>

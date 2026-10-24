@@ -32,6 +32,8 @@ export interface Search {
     id: number;
     expression: string;
     results: Result[];
+    // Whether more results may come.
+    running?: boolean;
 }
 
 /** The searches of this page, kept while it moves between places. */
