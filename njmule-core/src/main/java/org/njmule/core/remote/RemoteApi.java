@@ -253,6 +253,12 @@ public final class RemoteApi implements AutoCloseable {
                         c -> changed(c, this.engine.addSource(hash(c), address(text(c.body(), ADDRESS_KEY))))),
                 entry("listSources", c -> list(c, this.engine::sources, ApiJson::source)),
                 entry("listUploads", c -> list(c, this.engine::uploads, ApiJson::upload)),
+                entry(
+                        "browseClient",
+                        c -> list(
+                                c,
+                                () -> this.engine.browseSharedFiles(address(text(c.parameters(), ADDRESS_KEY))),
+                                ApiJson::sharedByClient)),
                 entry("listSharedFiles", c -> list(c, this.engine::sharedFiles, ApiJson::shared)),
                 entry("listSharedDirectories", c -> list(c, this.engine::sharedDirectories, ApiJson::directory)),
                 entry("shareDirectory", this::shareDirectory),

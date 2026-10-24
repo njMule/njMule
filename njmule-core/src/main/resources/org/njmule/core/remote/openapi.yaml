@@ -762,6 +762,45 @@ paths:
                   $ref: "#/components/schemas/Upload"
         default:
           $ref: "#/components/responses/Error"
+  /clients/{address}/files:
+    parameters:
+      - name: address
+        in: path
+        required: true
+        description: The client, as host:port.
+        schema:
+          $ref: "#/components/schemas/HostPort"
+    post:
+      operationId: browseClient
+      tags: [uploads]
+      summary: Asks a client for the files it shares and answers them, when the client shows them.
+      responses:
+        "200":
+          description: The files the client shares.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [hash, name, size, link]
+                  properties:
+                    hash:
+                      $ref: "#/components/schemas/Hash"
+                    name:
+                      type: string
+                    size:
+                      type: integer
+                      format: int64
+                    type:
+                      type: string
+                    link:
+                      type: string
+                      description: The file's eD2K link.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
   /shared:
     get:
       operationId: listSharedFiles

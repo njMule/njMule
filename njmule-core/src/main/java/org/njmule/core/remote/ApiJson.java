@@ -349,6 +349,17 @@ final class ApiJson {
         g.writeEndObject();
     }
 
+    /** A file a client shares, with its link. */
+    static void sharedByClient(JsonGenerator g, SearchResult r) {
+        g.writeStartObject();
+        g.writeStringProperty("hash", r.hash().toHex());
+        g.writeStringProperty("name", r.name());
+        g.writeNumberProperty("size", r.size());
+        optional(g, "type", r.type());
+        g.writeStringProperty("link", r.link().toUri());
+        g.writeEndObject();
+    }
+
     static void portTest(JsonGenerator g, PortTest t) {
         g.writeStartObject();
         g.writeNumberProperty("tcpPort", t.tcpPort());

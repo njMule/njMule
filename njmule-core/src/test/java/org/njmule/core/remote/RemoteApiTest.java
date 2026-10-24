@@ -659,6 +659,17 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldListTheFilesAClientShares() throws Exception {
+        givenTheApiRuns();
+        givenAClientSharing("203.0.113.5:4662", "talk.bin");
+
+        whenCalled("POST", "/api/v1/clients/203.0.113.5:4662/files", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"name\":\"talk.bin\"", "\"link\":\"ed2k://|file|talk.bin|5000|" + HASH + "|/\"");
+    }
+
+    @Test
     void shouldSetTheSpeedLimits() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -750,6 +761,15 @@ class RemoteApiTest {
 
     private void thenTheBodyIs(String body) {
         assertThat(this.answer.body()).isEqualTo(body);
+    }
+
+    private void givenAClientSharing(String client, String name) {
+        this.fake.answer(
+                "browseSharedFiles",
+                args -> CompletableFuture.completedFuture(
+                        args[0].toString().equals(client)
+                                ? List.of(new SearchResult(Hash16.parseHex(HASH), name, 5000, 1, 1, Optional.empty()))
+                                : List.of()));
     }
 
     private void givenTheEngineDownloads(DownloadInfo download) {
