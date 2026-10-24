@@ -3,3 +3,9 @@
 #
 # The minisign public keys that sign the update information of njMule releases: the signing
 # key first, then the standby key that replaces it if it is ever lost or leaked.
+
+untrusted comment: minisign public key 9EB0B033FD26A52A
+RWQqpSb9M7CwntTJXDrwmcHlrGiA5i1y3EWMX7N2N9yWQMrO+BEz0i38
+
+untrusted comment: minisign public key 8E51D5EBFAB41950
+RWRQGbT669VRjvKAg5AZBvXzoQ0/80MkM2vc+0T2i/7IG56OCtkgYis5

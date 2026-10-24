@@ -101,8 +101,12 @@ also signs the update information (`njmule-update.json`), and GitHub attests whe
 built. Check the signature, then that a file comes from this repository's release workflow:
 
 ```bash
-minisign -Vm SHA256SUMS -P <njMule's public key, from njmule-core/src/main/resources/org/njmule/core/update/keys.pub>
+minisign -Vm SHA256SUMS -P RWQqpSb9M7CwntTJXDrwmcHlrGiA5i1y3EWMX7N2N9yWQMrO+BEz0i38
 ```
+
+The key is the first one in
+[`keys.pub`](njmule-core/src/main/resources/org/njmule/core/update/keys.pub); should it ever be
+lost or leaked, releases are signed with the standby key listed after it.
 
 ```bash
 gh attestation verify njmule-<version>-windows-x64.msi --repo njMule/njMule

@@ -40,6 +40,9 @@ class MinisignTest {
             trusted comment: timestamp:1555779966\tfile:test
             QtKMXWyYcwdpZAlPF7tE2ENJkRd1ujvKjlj1m9RtHTBnZPa5WKU5uWRs5GoP5M/VqE81QFuMKI5k/SfNQUaOAA==
             """;
+    // The release keys of keys.pub by the ids signatures name them by; minisign prints these ids byte-reversed.
+    private static final String SIGNING_KEY_ID = "2aa526fd33b0b09e";
+    private static final String STANDBY_KEY_ID = "5019b4faebd5518e";
 
     private Map<String, Minisign.PublicKey> keys = Map.of();
     private String signature = "";
@@ -133,6 +136,14 @@ class MinisignTest {
         thenExceptionOccurred(IllegalArgumentException.class, "");
     }
 
+    @Test
+    void shouldBuildInTheSigningKeyFollowedByTheStandbyKey() {
+        whenTheBuiltInKeysAreRead();
+
+        thenNoExceptionOccurred();
+        thenTheKeyIdsAre(SIGNING_KEY_ID, STANDBY_KEY_ID);
+    }
+
     private void givenTheKeys(String text) {
         this.keys = Minisign.publicKeys(text);
     }
@@ -150,6 +161,10 @@ class MinisignTest {
         this.exception = catchThrowable(() -> this.keys = Minisign.publicKeys(text));
     }
 
+    private void whenTheBuiltInKeysAreRead() {
+        this.exception = catchThrowable(() -> this.keys = Updates.shippedKeys());
+    }
+
     private void thenNoExceptionOccurred() {
         assertThat(this.exception).isNull();
     }
@@ -164,6 +179,10 @@ class MinisignTest {
 
     private void thenThereAreKeys(int count) {
         assertThat(this.keys).hasSize(count);
+    }
+
+    private void thenTheKeyIdsAre(String... ids) {
+        assertThat(this.keys.keySet()).containsExactly(ids);
     }
 
     private static String keyFile(TestSigning... signers) {
