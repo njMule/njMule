@@ -5,6 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
+import { unreadTotal } from './chats';
 import NetworkControl from './components/NetworkControl.vue';
 import NjIcon from './components/NjIcon.vue';
 import SpeedLimits from './components/SpeedLimits.vue';
@@ -26,6 +27,7 @@ const groups: Place[][] = [
         { title: 'IDS_EM_TRANS', icon: 'DOWNLOAD', route: '/transfers' },
         { title: 'IDS_EM_SEARCH', icon: 'SEARCH', route: '/search' },
         { title: 'IDS_EM_FILES', icon: 'SHARED', route: '/shared' },
+        { title: 'IDS_EM_MESSAGES', icon: 'CHATS', route: '/messages' },
     ],
     [
         { title: 'IDS_NETWORK', icon: 'NETWORK', route: '/network' },
@@ -53,6 +55,12 @@ function nextMode(): void {
                 <li v-for="place in group" :key="place.title">
                     <router-link v-if="place.route" :to="place.route" class="place" active-class="current">
                         <NjIcon :name="place.icon" />{{ t(place.title) }}
+                        <span
+                            v-if="place.route === '/messages' && unreadTotal > 0"
+                            class="badge"
+                            :aria-label="t('nj.rail.unread', unreadTotal)"
+                            >{{ unreadTotal > 99 ? '99+' : unreadTotal }}</span
+                        >
                     </router-link>
                     <a v-else :href="place.page" class="place"><NjIcon :name="place.icon" />{{ t(place.title) }}</a>
                 </li>
@@ -150,6 +158,16 @@ const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="njmule-csr
     width: 3px;
     border-radius: 2px;
     background: var(--nj-accent);
+}
+.badge {
+    margin-inline-start: auto;
+    min-width: 22px;
+    padding: 0 7px;
+    border-radius: 10px;
+    background: var(--nj-accent);
+    color: var(--nj-on-accent);
+    font-size: 12px;
+    text-align: center;
 }
 .logout {
     margin-top: auto;

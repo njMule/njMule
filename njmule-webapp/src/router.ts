@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { createRouter, createWebHashHistory } from 'vue-router';
+import MessagesScreen from './screens/MessagesScreen.vue';
 import NetworkScreen from './screens/NetworkScreen.vue';
 import SearchScreen from './screens/SearchScreen.vue';
 import SharedScreen from './screens/SharedScreen.vue';
@@ -16,6 +17,7 @@ export const router = createRouter({
         { path: '/transfers', component: TransfersScreen, meta: { title: 'IDS_EM_TRANS' } },
         { path: '/search', component: SearchScreen, meta: { title: 'IDS_EM_SEARCH' } },
         { path: '/shared', component: SharedScreen, meta: { title: 'IDS_EM_FILES' } },
+        { path: '/messages', component: MessagesScreen, meta: { title: 'IDS_EM_MESSAGES' } },
         { path: '/network/:part?', component: NetworkScreen, meta: { title: 'IDS_NETWORK' } },
         { path: '/statistics', component: StatisticsScreen, meta: { title: 'IDS_EM_STATISTIC' } },
     ],
