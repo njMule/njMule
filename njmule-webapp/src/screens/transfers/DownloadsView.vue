@@ -25,6 +25,7 @@ import { api } from '../../api';
 import { copy } from '../../clipboard';
 import AddLinksDialog from '../../components/AddLinksDialog.vue';
 import CategoriesDialog from '../../components/CategoriesDialog.vue';
+import ClientFilesDialog from '../../components/ClientFilesDialog.vue';
 import CommentsDialog from '../../components/CommentsDialog.vue';
 import NjIcon from '../../components/NjIcon.vue';
 import PartBar from '../../components/PartBar.vue';
@@ -48,6 +49,13 @@ const chosen = ref<Download[]>([]);
 const adding = ref(false);
 const editing = ref(false);
 const commenting = ref(false);
+const browsing = ref(false);
+const client = ref({ address: '', name: '' });
+
+function browse(s: Source): void {
+    client.value = { address: s.address, name: s.nick ?? s.address };
+    browsing.value = true;
+}
 
 const STATES: Record<Shown, { key: string; tone: string; icon: IconName }> = {
     downloading: { key: 'IDS_DOWNLOADING', tone: 'busy', icon: 'DOWNLOAD' },
@@ -479,12 +487,20 @@ const SOURCE_STATES: Record<Source['state'], string> = {
                         <el-table-column :label="t('IDS_DL_PROGRESS')" width="120" align="right">
                             <template #default="{ row }">{{ row.parts }}/{{ row.partCount }}</template>
                         </el-table-column>
+                        <el-table-column width="170" align="right">
+                            <template #default="{ row }">
+                                <el-button size="small" @click="browse(row as Source)">{{
+                                    t('IDS_VIEWFILES')
+                                }}</el-button>
+                            </template>
+                        </el-table-column>
                     </el-table>
                 </el-tab-pane>
             </el-tabs>
         </template>
     </section>
 
+    <ClientFilesDialog v-model="browsing" :address="client.address" :name="client.name" />
     <CommentsDialog v-if="one" v-model="commenting" :hash="one.hash" :name="one.name" :download="true" />
     <CategoriesDialog v-model="editing" :categories="categories" @changed="emit('changed')" />
     <AddLinksDialog v-model="adding" :categories="categories" :downloads="downloads" @added="emit('changed')" />

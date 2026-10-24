@@ -3,12 +3,22 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { ElTable, ElTableColumn } from 'element-plus';
+import { ElButton, ElTable, ElTableColumn } from 'element-plus';
+import { ref } from 'vue';
+import ClientFilesDialog from '../../components/ClientFilesDialog.vue';
 import { duration, rate, size } from '../../format';
 import { t } from '../../i18n';
 import type { Upload } from '../../types';
 
 defineProps<{ peers: Upload[] }>();
+
+const browsing = ref(false);
+const client = ref({ address: '', name: '' });
+
+function browse(p: Upload): void {
+    client.value = { address: p.address, name: p.nick ?? p.address };
+    browsing.value = true;
+}
 </script>
 
 <template>
@@ -27,5 +37,11 @@ defineProps<{ peers: Upload[] }>();
         <el-table-column :label="t('nj.transfers.waited')" prop="waitingSeconds" width="120" sortable align="right">
             <template #default="{ row }">{{ duration(row.waitingSeconds) }}</template>
         </el-table-column>
+        <el-table-column width="180" align="right">
+            <template #default="{ row }">
+                <el-button size="small" @click="browse(row as Upload)">{{ t('IDS_VIEWFILES') }}</el-button>
+            </template>
+        </el-table-column>
     </el-table>
+    <ClientFilesDialog v-model="browsing" :address="client.address" :name="client.name" />
 </template>
