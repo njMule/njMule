@@ -7,6 +7,7 @@ import { ElButton, ElInput, ElInputNumber, ElOption, ElSelect, ElSwitch } from '
 import { computed, onMounted, ref } from 'vue';
 import { api } from '../api';
 import HostsPanel from '../components/HostsPanel.vue';
+import SettingsExtras from '../components/SettingsExtras.vue';
 import UpdatePanel from '../components/UpdatePanel.vue';
 import { t } from '../i18n';
 import { attempt, told } from '../notify';
@@ -137,6 +138,7 @@ async function applyHeld(): Promise<void> {
                 </template>
             </template>
             <UpdatePanel v-if="current.id === 'general'" />
+            <SettingsExtras :key="current.id" :page="current.id" />
         </section>
     </div>
     <div v-if="Object.keys(held).length > 0" class="pending" role="status">

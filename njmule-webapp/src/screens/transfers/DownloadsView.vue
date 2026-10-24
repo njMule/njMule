@@ -23,6 +23,7 @@ import { computed, h, ref } from 'vue';
 import { api } from '../../api';
 import { copy } from '../../clipboard';
 import AddLinksDialog from '../../components/AddLinksDialog.vue';
+import CategoriesDialog from '../../components/CategoriesDialog.vue';
 import NjIcon from '../../components/NjIcon.vue';
 import { duration, percent, rate, size } from '../../format';
 import { t } from '../../i18n';
@@ -42,6 +43,7 @@ const category = ref<number | null>(null);
 const filter = ref('');
 const chosen = ref<Download[]>([]);
 const adding = ref(false);
+const editing = ref(false);
 
 const STATES: Record<Shown, { key: string; tone: string; icon: IconName }> = {
     downloading: { key: 'IDS_DOWNLOADING', tone: 'busy', icon: 'DOWNLOAD' },
@@ -266,6 +268,7 @@ const SOURCE_STATES: Record<Source['state'], string> = {
             <el-option :value="0" :label="t('IDS_CAT_UNASSIGN')" />
             <el-option v-for="c in categories" :key="c.id" :value="c.id" :label="c.name" />
         </el-select>
+        <el-button :title="t('nj.categories.title')" @click="editing = true"><NjIcon name="CATEGORY" /></el-button>
         <el-input v-model="filter" class="filter" clearable :placeholder="t('nj.transfers.filter')" />
     </div>
     <div class="chips" role="radiogroup">
@@ -416,6 +419,7 @@ const SOURCE_STATES: Record<Source['state'], string> = {
         </template>
     </section>
 
+    <CategoriesDialog v-model="editing" :categories="categories" @changed="emit('changed')" />
     <AddLinksDialog v-model="adding" :categories="categories" :downloads="downloads" @added="emit('changed')" />
 </template>
 

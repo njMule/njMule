@@ -40,7 +40,10 @@ const shelves = computed(() => [
         :downloads="downloads.data.value"
         :categories="categories.data.value"
         :sources="sources.data.value"
-        @changed="downloads.refresh"
+        @changed="
+            downloads.refresh();
+            categories.refresh();
+        "
     />
     <PeersView v-else-if="shelf === 'uploads'" :peers="uploading" />
     <PeersView v-else-if="shelf === 'queue'" :peers="queued" />

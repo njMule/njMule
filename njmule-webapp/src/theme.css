@@ -183,6 +183,35 @@ body {
     transform: scaleX(-1);
 }
 
+/* The tints of the categories, by their number; 0 is none. */
+.cat-0 {
+    background: transparent;
+}
+.cat-1 {
+    background: #e8afb4;
+}
+.cat-2 {
+    background: #f2c6a0;
+}
+.cat-3 {
+    background: #f3e2a9;
+}
+.cat-4 {
+    background: #c6dbb0;
+}
+.cat-5 {
+    background: #a9d6d0;
+}
+.cat-6 {
+    background: #b4c8e6;
+}
+.cat-7 {
+    background: #cdb8dc;
+}
+.cat-8 {
+    background: #ecbcd3;
+}
+
 .nj-chip {
     display: inline-flex;
     align-items: center;

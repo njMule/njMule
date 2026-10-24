@@ -97,8 +97,12 @@ export interface Ban {
 export interface Category {
     id: number;
     name: string;
+    incoming?: string | null;
     comment: string;
     priority: DownloadPriority;
+    color?: number;
+    patterns?: string;
+    regex?: boolean;
 }
 
 export type SourceState = 'waiting' | 'connecting' | 'asking' | 'queued' | 'downloading' | 'a4af';
