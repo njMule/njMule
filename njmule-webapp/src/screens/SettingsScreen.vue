@@ -7,6 +7,7 @@ import { ElButton, ElInput, ElInputNumber, ElOption, ElSelect, ElSwitch } from '
 import { computed, onMounted, ref } from 'vue';
 import { api } from '../api';
 import HostsPanel from '../components/HostsPanel.vue';
+import SchedulerPanel from '../components/SchedulerPanel.vue';
 import SettingsExtras from '../components/SettingsExtras.vue';
 import UpdatePanel from '../components/UpdatePanel.vue';
 import { t } from '../i18n';
@@ -72,7 +73,7 @@ async function applyHeld(): Promise<void> {
                 <li v-for="p in shownPages" :key="p.id">
                     <button
                         type="button"
-                        :class="{ current: page !== 'web' && current?.id === p.id }"
+                        :class="{ current: page !== 'web' && page !== 'scheduler' && current?.id === p.id }"
                         @click="page = p.id"
                     >
                         {{ t(p.title) }}
@@ -80,11 +81,19 @@ async function applyHeld(): Promise<void> {
                 </li>
             </ul>
             <p v-if="shownPages.length === 0" class="hint">{{ t('nj.settings.noMatch') }}</p>
+            <button type="button" class="web" :class="{ current: page === 'scheduler' }" @click="page = 'scheduler'">
+                {{ t('nj.scheduler.title') }}
+            </button>
             <button type="button" class="web" :class="{ current: page === 'web' }" @click="page = 'web'">
                 {{ t('IDS_PW_WS') }}
             </button>
         </nav>
-        <section v-if="page === 'web'" class="page">
+        <section v-if="page === 'scheduler'" class="page">
+            <h2>{{ t('nj.scheduler.title') }}</h2>
+            <p class="hint">{{ t('nj.settings.page.scheduler') }}</p>
+            <SchedulerPanel />
+        </section>
+        <section v-else-if="page === 'web'" class="page">
             <h2>{{ t('IDS_PW_WS') }}</h2>
             <HostsPanel />
         </section>
