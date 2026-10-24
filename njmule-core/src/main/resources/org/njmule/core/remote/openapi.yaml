@@ -391,6 +391,24 @@ paths:
           $ref: "#/components/responses/NotFound"
         default:
           $ref: "#/components/responses/Error"
+  /downloads/{hash}/restore:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    post:
+      operationId: restoreDownload
+      tags: [downloads]
+      summary: Brings back a download cancelled in the last seconds, with what it had downloaded.
+      responses:
+        "200":
+          description: The download as it is now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Download"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
   /downloads/{hash}/priority:
     parameters:
       - $ref: "#/components/parameters/Hash"
@@ -775,6 +793,85 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /servers/{address}/priority:
+    parameters:
+      - $ref: "#/components/parameters/ServerAddress"
+    put:
+      operationId: setServerPriority
+      tags: [servers]
+      summary: Sets the priority of a server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [priority]
+              properties:
+                priority:
+                  type: string
+                  enum: [low, normal, high]
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /servers/{address}/static:
+    parameters:
+      - $ref: "#/components/parameters/ServerAddress"
+    put:
+      operationId: setStaticServer
+      tags: [servers]
+      summary: Puts a server in the static list, or takes it out.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [static]
+              properties:
+                static:
+                  type: boolean
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /ports/test:
+    get:
+      operationId: getPortTest
+      tags: [engine]
+      summary: The last test of the ports, or null before the first.
+      responses:
+        "200":
+          description: The test as far as it went.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/PortTest"
+                  - type: "null"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: testPorts
+      tags: [engine]
+      summary: Tests the ports, asking the router through UPnP and a server or Kad whether others reach them.
+      description: The test goes on after the answer; read it again until done.
+      responses:
+        "202":
+          description: The test as it started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortTest"
+        default:
+          $ref: "#/components/responses/Error"
   /kad:
     get:
       operationId: getKad
@@ -1348,6 +1445,13 @@ components:
       description: The id the search was given when it started.
       schema:
         $ref: "#/components/schemas/SearchId"
+    ServerAddress:
+      name: address
+      in: path
+      required: true
+      description: The server, as host:port.
+      schema:
+        $ref: "#/components/schemas/HostPort"
 
   responses:
     Ok:
@@ -1917,6 +2021,27 @@ components:
       additionalProperties:
         type: string
         maxLength: 16384
+    PortTest:
+      type: object
+      required: [tcpPort, udpPort, forwarding, router, tcp, udp, done]
+      properties:
+        tcpPort:
+          type: integer
+        udpPort:
+          type: integer
+        forwarding:
+          type: string
+          enum: [off, asking, forwarded, partly, refused, no_router, failed]
+        router:
+          type: string
+        tcp:
+          type: string
+          enum: [testing, open, closed, unknown]
+        udp:
+          type: string
+          enum: [testing, open, closed, unknown]
+        done:
+          type: boolean
     FriendSlot:
       type: object
       required: [userHash]

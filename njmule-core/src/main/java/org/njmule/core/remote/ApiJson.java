@@ -34,6 +34,7 @@ import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
+import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
@@ -301,6 +302,18 @@ final class ApiJson {
         optional(g, "incoming", c.incoming().map(Object::toString));
         g.writeStringProperty("comment", c.comment());
         g.writeStringProperty("priority", name(c.priority()));
+        g.writeEndObject();
+    }
+
+    static void portTest(JsonGenerator g, PortTest t) {
+        g.writeStartObject();
+        g.writeNumberProperty("tcpPort", t.tcpPort());
+        g.writeNumberProperty("udpPort", t.udpPort());
+        g.writeStringProperty("forwarding", name(t.forwarding()));
+        g.writeStringProperty("router", t.router());
+        g.writeStringProperty("tcp", name(t.tcp()));
+        g.writeStringProperty("udp", name(t.udp()));
+        g.writeBooleanProperty("done", t.done());
         g.writeEndObject();
     }
 

@@ -53,10 +53,12 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadPriority;
@@ -186,6 +188,7 @@ public final class RemoteApi implements AutoCloseable {
                 entry("pauseDownload", c -> changed(c, this.engine.pauseDownload(hash(c)))),
                 entry("resumeDownload", c -> changed(c, this.engine.resumeDownload(hash(c)))),
                 entry("stopDownload", c -> changed(c, this.engine.stopDownload(hash(c)))),
+                entry("restoreDownload", c -> changed(c, this.engine.restoreDownload(hash(c)))),
                 entry(
                         "setDownloadPriority",
                         c -> changed(
@@ -213,6 +216,33 @@ public final class RemoteApi implements AutoCloseable {
                                 this.engine.setUploadPriority(
                                         hash(c), enumValue(UploadPriority.class, text(c.body(), PRIORITY_KEY))))),
                 entry("listServers", c -> list(c, this.engine::servers, ApiJson::server)),
+                entry(
+                        "setServerPriority",
+                        c -> known(
+                                c,
+                                this.engine.setServerPriority(
+                                        address(text(c.parameters(), ADDRESS_KEY)),
+                                        enumValue(ServerInfo.Priority.class, text(c.body(), PRIORITY_KEY))))),
+                entry("setStaticServer", c -> {
+                    JsonNode on = c.body().get("static");
+                    if (on == null || !on.isBoolean()) {
+                        throw new Failure(400, "Missing truth value: static");
+                    }
+                    known(c, this.engine.setStaticServer(address(text(c.parameters(), ADDRESS_KEY)), on.asBoolean()));
+                }),
+                entry(
+                        "testPorts",
+                        c -> reply(c.exchange(), 202, g -> ApiJson.portTest(g, await(this.engine.testPorts())))),
+                entry("getPortTest", c -> {
+                    Optional<PortTest> test = await(this.engine.portTest());
+                    reply(c.exchange(), 200, g -> {
+                        if (test.isPresent()) {
+                            ApiJson.portTest(g, test.get());
+                        } else {
+                            g.writeNull();
+                        }
+                    });
+                }),
                 entry("addServer", this::addServer),
                 entry("connectServer", this::connectServer),
                 entry("disconnectServer", c -> done(c, this.engine.disconnect())),

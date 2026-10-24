@@ -55,6 +55,7 @@ import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.PartMap;
+import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
@@ -496,6 +497,49 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldSetThePriorityOfAServer() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKnowsTheServer("203.0.113.10:4661");
+
+        whenCalled("PUT", "/api/v1/servers/203.0.113.10:4661/priority", "{\"priority\":\"high\"}");
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("priority 203.0.113.10:4661 HIGH");
+    }
+
+    @Test
+    void shouldPutAServerInTheStaticList() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKnowsTheServer("203.0.113.10:4661");
+
+        whenCalled("PUT", "/api/v1/servers/203.0.113.10:4661/static", "{\"static\":true}");
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("static 203.0.113.10:4661 true");
+    }
+
+    @Test
+    void shouldNotFindTheStaticFlagOfAnUnknownServer() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKnowsTheServer("203.0.113.10:4661");
+
+        whenCalled("PUT", "/api/v1/servers/198.51.100.1:4661/static", "{\"static\":true}");
+
+        thenTheStatusIs(404);
+    }
+
+    @Test
+    void shouldStartATestOfThePorts() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineTestsThePorts();
+
+        whenCalled("POST", "/api/v1/ports/test", "");
+
+        thenTheStatusIs(202);
+        thenTheBodyContains("\"forwarding\":\"asking\"", "\"tcp\":\"testing\"", "\"done\":false");
+    }
+
+    @Test
     void shouldSetTheSpeedLimits() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -659,6 +703,30 @@ class RemoteApiTest {
     private void thenTheNickIsStill(String nick) throws Exception {
         whenCalled("GET", "/api/v1/preferences", "");
         thenTheBodyContains("\"user.nick\":\"" + nick + "\"");
+    }
+
+    private void givenTheEngineKnowsTheServer(String known) {
+        this.fake.answer("setServerPriority", args -> {
+            this.calls.add("priority " + args[0] + " " + args[1]);
+            return CompletableFuture.completedFuture(args[0].toString().equals(known));
+        });
+        this.fake.answer("setStaticServer", args -> {
+            this.calls.add("static " + args[0] + " " + args[1]);
+            return CompletableFuture.completedFuture(args[0].toString().equals(known));
+        });
+    }
+
+    private void givenTheEngineTestsThePorts() {
+        this.fake.answer(
+                "testPorts",
+                args -> CompletableFuture.completedFuture(new PortTest(
+                        4662,
+                        4672,
+                        PortTest.Forwarding.ASKING,
+                        "",
+                        PortTest.Reach.TESTING,
+                        PortTest.Reach.TESTING,
+                        false)));
     }
 
     private void givenTheEngineSearchesAs(long id) {
