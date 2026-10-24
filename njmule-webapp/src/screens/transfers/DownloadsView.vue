@@ -25,6 +25,7 @@ import { api } from '../../api';
 import { copy } from '../../clipboard';
 import AddLinksDialog from '../../components/AddLinksDialog.vue';
 import CategoriesDialog from '../../components/CategoriesDialog.vue';
+import CommentsDialog from '../../components/CommentsDialog.vue';
 import NjIcon from '../../components/NjIcon.vue';
 import PartBar from '../../components/PartBar.vue';
 import { duration, percent, rate, size } from '../../format';
@@ -46,6 +47,7 @@ const filter = ref('');
 const chosen = ref<Download[]>([]);
 const adding = ref(false);
 const editing = ref(false);
+const commenting = ref(false);
 
 const STATES: Record<Shown, { key: string; tone: string; icon: IconName }> = {
     downloading: { key: 'IDS_DOWNLOADING', tone: 'busy', icon: 'DOWNLOAD' },
@@ -284,6 +286,9 @@ function more(command: string): void {
         case 'html':
             copyLinks(true);
             break;
+        case 'comments':
+            commenting.value = true;
+            break;
     }
 }
 
@@ -367,6 +372,7 @@ const SOURCE_STATES: Record<Source['state'], string> = {
                         {{ t('IDS_ADDSRCMANUALLY') }}
                     </el-dropdown-item>
                     <el-dropdown-item command="html">{{ t('IDS_DL_LINK2') }}</el-dropdown-item>
+                    <el-dropdown-item command="comments" :disabled="!one">{{ t('IDS_CMT_ADD') }}</el-dropdown-item>
                 </el-dropdown-menu>
             </template>
         </el-dropdown>
@@ -479,6 +485,7 @@ const SOURCE_STATES: Record<Source['state'], string> = {
         </template>
     </section>
 
+    <CommentsDialog v-if="one" v-model="commenting" :hash="one.hash" :name="one.name" :download="true" />
     <CategoriesDialog v-model="editing" :categories="categories" @changed="emit('changed')" />
     <AddLinksDialog v-model="adding" :categories="categories" :downloads="downloads" @added="emit('changed')" />
 </template>

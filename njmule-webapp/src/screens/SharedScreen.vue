@@ -19,6 +19,7 @@ import {
 import { computed, ref } from 'vue';
 import { api, ApiError } from '../api';
 import { copy } from '../clipboard';
+import CommentsDialog from '../components/CommentsDialog.vue';
 import NjIcon from '../components/NjIcon.vue';
 import { usePoll } from '../engine';
 import { size } from '../format';
@@ -50,6 +51,7 @@ const chosen = ref<Shared[]>([]);
 const sharing = ref(false);
 const newFolder = ref('');
 const withSubfolders = ref(true);
+const commenting = ref(false);
 
 const PRIORITIES: { value: Priority; key: string }[] = [
     { value: 'very_low', key: 'IDS_PRIOVERYLOW' },
@@ -246,6 +248,7 @@ function copyLinks(html: boolean): void {
                 </el-button>
                 <el-button :disabled="chosen.length === 0" @click="copyLinks(true)">{{ t('IDS_DL_LINK2') }}</el-button>
                 <el-button :disabled="chosen.length !== 1" @click="rename">{{ t('IDS_RENAME') }}</el-button>
+                <el-button :disabled="chosen.length !== 1" @click="commenting = true">{{ t('IDS_CMT_ADD') }}</el-button>
                 <span class="grow"></span>
                 <el-input v-model="filter" class="filter" clearable :placeholder="t('nj.shared.filter')" />
             </div>
@@ -274,6 +277,13 @@ function copyLinks(html: boolean): void {
         </section>
     </div>
 
+    <CommentsDialog
+        v-if="chosen.length === 1 && chosen[0]"
+        v-model="commenting"
+        :hash="chosen[0].hash"
+        :name="chosen[0].name"
+        :download="false"
+    />
     <el-dialog v-model="sharing" :title="t('IDS_SHAREDIR')" width="560px">
         <form @submit.prevent="shareNew">
             <label class="label" for="nj-folder">{{ t('nj.shared.folder') }}</label>
