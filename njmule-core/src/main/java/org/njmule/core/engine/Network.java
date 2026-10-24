@@ -2406,11 +2406,8 @@ final class Network {
         }
     }
 
-    // Plain, as such connections are: never where obfuscation is required, nor behind a proxy, whose relay shows
-    // another address.
     private boolean mayTraverse() {
-        Preferences prefs = this.preferences.get();
-        return prefs.obfuscation() != ObfuscationMode.REQUIRED && !prefs.proxy().isEnabled();
+        return this.preferences.get().routerTraversal();
     }
 
     // A connection through the routers: one a client opened counts as coming in, one we asked for as ours.

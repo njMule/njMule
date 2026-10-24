@@ -261,6 +261,14 @@ public record Preferences(
         return Optional.empty();
     }
 
+    /**
+     * Whether firewalled clients are met through the routers, over uTP or QUIC: such connections are plain, so not
+     * where obfuscation is required, and not behind a proxy, whose relay shows another address.
+     */
+    public boolean routerTraversal() {
+        return this.obfuscation != ObfuscationMode.REQUIRED && !this.proxy.isEnabled();
+    }
+
     /** The addresses of the IP filter lists, in their order. */
     public List<URI> ipFilterListAddresses() {
         return listAddresses(this.ipFilterLists);

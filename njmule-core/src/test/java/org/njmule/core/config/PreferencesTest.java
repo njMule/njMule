@@ -58,6 +58,15 @@ class PreferencesTest {
         thenTheEffectiveTempDirectoryIs("tmp");
     }
 
+    @ParameterizedTest
+    @CsvSource({"REQUESTED, NONE, true", "REQUIRED, NONE, false", "SUPPORTED, SOCKS, false"})
+    void shouldMeetFirewalledClientsThroughRoutersOnlyWithoutProxyNorRequiredObfuscation(
+            ObfuscationMode mode, ProxySettings.Type proxy, boolean traversed) {
+        whenTheObfuscationAndProxyAre(mode, proxy);
+
+        thenRoutersAreTraversed(traversed);
+    }
+
     @Test
     void shouldUseTheTempDirectoryOfTheProfileByDefault() {
         whenTheDefaultsAreTaken();
@@ -209,6 +218,17 @@ class PreferencesTest {
 
     private void whenTheObfuscationFlagsAreMapped(boolean supported, boolean requested, boolean required) {
         this.obfuscation = ObfuscationMode.fromFlags(supported, requested, required);
+    }
+
+    private void whenTheObfuscationAndProxyAre(ObfuscationMode mode, ProxySettings.Type proxy) {
+        this.preferences = Preferences.defaults().toBuilder()
+                .obfuscation(mode)
+                .proxy(new ProxySettings(proxy, proxy == ProxySettings.Type.NONE ? "" : "proxy.example", 1080, "", ""))
+                .build();
+    }
+
+    private void thenRoutersAreTraversed(boolean expected) {
+        assertThat(this.preferences.routerTraversal()).isEqualTo(expected);
     }
 
     private void thenTheTcpPortIs(int expected) {
