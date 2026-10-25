@@ -81,6 +81,7 @@ import javafx.stage.PopupWindow;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import javax.imageio.ImageIO;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -110,6 +111,7 @@ import org.njmule.gui.shell.MiniMule;
 import org.njmule.gui.shell.TrayMenu;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Subscriptions;
+import org.njmule.gui.ui.SystemIcons;
 import org.njmule.testkit.FreePorts;
 
 /**
@@ -165,6 +167,11 @@ class CaptureTour {
     private final AtomicReference<MainWindow> forMessages = new AtomicReference<>();
     private final Locale systemLanguage = Locale.getDefault();
 
+    @AfterEach
+    void giveTheSystemIconsBack() {
+        System.clearProperty(SystemIcons.PROPERTY);
+    }
+
     @Test
     void shouldPictureEveryStateOfTheInterface() throws Exception {
         givenTheSetsAsked();
@@ -174,6 +181,8 @@ class CaptureTour {
 
     private void givenTheSetsAsked() throws Exception {
         this.out = Files.createDirectories(Path.of(System.getProperty("njmule.capture")));
+        // The icons of this computer's programs would differ elsewhere, and are theirs.
+        System.setProperty(SystemIcons.PROPERTY, "false");
         String asked = System.getProperty("njmule.capture.sets", "");
         this.sets = List.of((asked.isBlank() ? SETS : asked).split(","));
         FxTesting.start();

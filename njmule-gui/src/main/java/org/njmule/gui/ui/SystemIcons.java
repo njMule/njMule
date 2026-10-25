@@ -45,6 +45,9 @@ import org.slf4j.LoggerFactory;
  */
 public final class SystemIcons {
 
+    /** {@code false} keeps the app's own icons of the kinds on Windows too, as for pictures of the interface. */
+    public static final String PROPERTY = "njmule.gui.systemIcons";
+
     private static final Logger logger = LoggerFactory.getLogger(SystemIcons.class);
     // Read at 32 pixels and shown smaller: sharp on screens that scale.
     private static final int SIZE = 32;
@@ -75,7 +78,7 @@ public final class SystemIcons {
      */
     public static Optional<Image> of(String name, Runnable ready) {
         String extension = extension(name);
-        if (!WINDOWS || extension.isEmpty()) {
+        if (!WINDOWS || extension.isEmpty() || !Boolean.parseBoolean(System.getProperty(PROPERTY, "true"))) {
             return Optional.empty();
         }
         Optional<Image> known = ICONS.get(extension);
