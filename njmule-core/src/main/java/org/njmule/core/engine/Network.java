@@ -1218,6 +1218,15 @@ final class Network {
         return cleared.size();
     }
 
+    /** Takes one completed download off the list; its file stays. */
+    boolean clearCompletedDownload(Hash16 hash) {
+        if (!this.finished.remove(hash)) {
+            return false;
+        }
+        this.publish.accept(new EngineEvent.DownloadRemoved(hash));
+        return true;
+    }
+
     boolean pauseDownload(Hash16 hash) {
         return this.downloads.pause(hash);
     }

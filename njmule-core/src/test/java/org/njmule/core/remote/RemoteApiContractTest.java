@@ -401,6 +401,7 @@ class RemoteApiContractTest {
                 "renameDownload",
                 "addSource",
                 "cancelDownload",
+                "clearCompletedDownload",
                 "setUploadPriority",
                 "addServer",
                 "removeServer",

@@ -238,6 +238,7 @@ public final class RemoteApi implements AutoCloseable {
                 entry("shutdown", this::shutdown),
                 entry("listDownloads", this::listDownloads),
                 entry("clearCompletedDownloads", c -> count(c, "removed", this.engine.clearCompletedDownloads())),
+                entry("clearCompletedDownload", c -> known(c, this.engine.clearCompletedDownload(hash(c)))),
                 entry("addDownloads", this::addDownloads),
                 entry("getDownload", c -> download(c, 200)),
                 entry("cancelDownload", c -> known(c, this.engine.cancelDownload(hash(c)))),

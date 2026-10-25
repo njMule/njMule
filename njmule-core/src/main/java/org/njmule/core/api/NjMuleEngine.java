@@ -189,6 +189,9 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Takes the completed downloads off the list of downloads, and tells how many there were; their files stay. */
     CompletableFuture<Integer> clearCompletedDownloads();
 
+    /** Takes one completed download off the list of downloads; its file stays. {@code false} for one not there. */
+    CompletableFuture<Boolean> clearCompletedDownload(Hash16 hash);
+
     /** Completes with {@code false} for an unknown download. */
     CompletableFuture<Boolean> pauseDownload(Hash16 hash);
 

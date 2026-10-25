@@ -522,6 +522,20 @@ paths:
                     minimum: 0
         default:
           $ref: "#/components/responses/Error"
+  /downloads/completed/{hash}:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    delete:
+      operationId: clearCompletedDownload
+      tags: [downloads]
+      summary: Takes one completed download off the list; its file stays.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
   /downloads/{hash}:
     parameters:
       - $ref: "#/components/parameters/Hash"

@@ -78,6 +78,7 @@ class DownloadFlowTest {
     private EngineEvent.DownloadCompleted completion;
     private int closedPort;
     private boolean cancelled;
+    private boolean clearedOne;
     private int cleared;
 
     @AfterEach
@@ -113,6 +114,19 @@ class DownloadFlowTest {
         whenTheCompletedDownloadsAreCleared();
 
         thenTheClearedDownloadsAre(1);
+        thenTheDownloadIsGoneFromTheList();
+        thenTheFileHoldsTheData();
+    }
+
+    @Test
+    void shouldTakeOneCompletedDownloadOffTheListAndKeepItsFile() throws Exception {
+        givenAPeerSharing(12_345, 2);
+        givenNjMuleRunning();
+        givenTheLinkOfThePeerDownloaded();
+
+        whenTheCompletedDownloadIsCleared();
+
+        thenTheCompletedDownloadWasCleared();
         thenTheDownloadIsGoneFromTheList();
         thenTheFileHoldsTheData();
     }
@@ -371,6 +385,10 @@ class DownloadFlowTest {
         this.cleared = this.engine.clearCompletedDownloads().get(10, TimeUnit.SECONDS);
     }
 
+    private void whenTheCompletedDownloadIsCleared() throws Exception {
+        this.clearedOne = this.engine.clearCompletedDownload(this.added.hash()).get(10, TimeUnit.SECONDS);
+    }
+
     private void whenTheLinkOfThePeerIsDownloaded() throws Exception {
         download(this.peer.link());
     }
@@ -399,6 +417,10 @@ class DownloadFlowTest {
         assertThat(this.engine.downloads().get(10, TimeUnit.SECONDS))
                 .extracting(DownloadInfo::hash, DownloadInfo::status)
                 .containsExactly(tuple(this.added.hash(), DownloadInfo.Status.COMPLETE));
+    }
+
+    private void thenTheCompletedDownloadWasCleared() {
+        assertThat(this.clearedOne).isTrue();
     }
 
     private void thenTheClearedDownloadsAre(int count) {
