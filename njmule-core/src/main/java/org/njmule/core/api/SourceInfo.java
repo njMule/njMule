@@ -55,7 +55,11 @@ public record SourceInfo(
         QUEUED,
         DOWNLOADING,
         /** Asked for another file: a client is asked for one download at a time, here for {@code askedFor}. */
-        A4AF
+        A4AF,
+        /** Its upload queue took no one more when last asked. */
+        QUEUE_FULL,
+        /** It has no part the download still needs. */
+        NO_NEEDED_PARTS
     }
 
     public SourceInfo {

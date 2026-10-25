@@ -256,6 +256,27 @@ class DownloadSourcesTest {
     }
 
     @Test
+    void shouldTellASourceWhoseQueueIsFull() throws Exception {
+        givenAQueuedSourceAskedAgainOverUdp();
+
+        whenTheSourceAnswersOverUdp(ClientReasks.queueFull());
+
+        thenTheSourceIs(SourceInfo.State.QUEUE_FULL);
+    }
+
+    @Test
+    void shouldTellASourceThatHasNoPartTheDownloadNeeds() throws Exception {
+        givenASourceTakingUdpReasksOnItsPort(SOURCE_UDP_PORT);
+        givenTheManagerAskingAgainOverUdp();
+        givenADownloadFromTheSource("none.bin", Hash16.parseHex("42".repeat(16)));
+        givenTheSourceAskedForTheFile();
+
+        whenTheSourceTellsItHasNoPart();
+
+        thenTheSourceIs(SourceInfo.State.NO_NEEDED_PARTS);
+    }
+
+    @Test
     void shouldNotConnectWhenItsTimeComesToASourceThatAnsweredOverUdp() throws Exception {
         givenAQueuedSourceAskedAgainOverUdp();
         givenTheSourceAnsweredOverUdp(new ClientReasks.Ack(Optional.of(ClientMessages.PartStatus.COMPLETE), 2)
@@ -772,6 +793,14 @@ class DownloadSourcesTest {
         assertThat(sent.to()).isEqualTo(new InetSocketAddress(InetAddress.getLoopbackAddress(), udpPort));
         assertThat(sent.packet().opcode()).isEqualTo(Opcodes.ClientUdp.REASKFILEPING.code());
         assertThat(ClientReasks.Ping.file(sent.packet())).isEqualTo(this.hash);
+    }
+
+    private void whenTheSourceTellsItHasNoPart() throws Exception {
+        this.link.send(new ClientMessages.FileStatus(this.hash, 1, new BitSet()).encode());
+    }
+
+    private void thenTheSourceIs(SourceInfo.State state) throws Exception {
+        awaitSource(this.source, s -> s.state() == state);
     }
 
     private void thenTheSourceShowsTheRank(int rank) throws Exception {

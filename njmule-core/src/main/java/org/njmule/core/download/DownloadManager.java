@@ -429,6 +429,8 @@ public final class DownloadManager implements AutoCloseable {
         private long partsAt;
         // Our place in the client's queue for the file, as it last told; 0 for none.
         private int rank;
+        // The client's queue took no one more when last asked.
+        private boolean queueFull;
         private long sourcesAsked;
         private boolean sourcesEverAsked;
         private long received;
@@ -1034,6 +1036,7 @@ public final class DownloadManager implements AutoCloseable {
         }
         // Still queued, a full queue included: asked again a whole interval from now.
         source.rank = rank;
+        source.queueFull = packet.opcode() == Opcodes.ClientUdp.QUEUEFULL.code();
         client.lastAsk = now;
         client.nextAsk = now + REASK_INTERVAL.toNanos();
         entry.changed = true;
@@ -2228,8 +2231,10 @@ public final class DownloadManager implements AutoCloseable {
                 SourceInfo.State state;
                 if (a4af) {
                     state = SourceInfo.State.A4AF;
+                } else if (session != null && session.state() != DownloadSession.State.ENDED) {
+                    state = state(session.state());
                 } else {
-                    state = session == null ? SourceInfo.State.WAITING : state(session.state());
+                    state = between(source, parts);
                 }
                 PartFile askedFor = client.current.entry.download.file();
                 all.add(new SourceInfo(
@@ -2252,6 +2257,23 @@ public final class DownloadManager implements AutoCloseable {
             }
         }
         return all;
+    }
+
+    // Between two asks, the source is as it told last: of no use for now, or to be asked again.
+    private static SourceInfo.State between(Source source, BitSet parts) {
+        if (parts != null && !needed(source.entry.download.file(), parts)) {
+            return SourceInfo.State.NO_NEEDED_PARTS;
+        }
+        return source.queueFull ? SourceInfo.State.QUEUE_FULL : SourceInfo.State.WAITING;
+    }
+
+    private static boolean needed(PartFile file, BitSet parts) {
+        for (int part = parts.nextSetBit(0); part >= 0 && part < file.partCount(); part = parts.nextSetBit(part + 1)) {
+            if (!file.isComplete(part)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static SourceInfo.State state(DownloadSession.State state) {
@@ -2769,6 +2791,7 @@ public final class DownloadManager implements AutoCloseable {
             session.sourceParts().ifPresent(parts -> setParts(source, parts, now));
             if (session.uploadAsked()) {
                 source.rank = session.queueRank();
+                source.queueFull = false;
             }
             session.peerHash().ifPresent(hash -> client.userHash = Optional.of(hash));
             session.peer().ifPresent(hello -> {

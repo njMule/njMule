@@ -2536,7 +2536,7 @@ components:
           type: string
         state:
           type: string
-          enum: [waiting, connecting, asking, queued, downloading, a4af]
+          enum: [waiting, connecting, asking, queued, downloading, a4af, queue_full, no_needed_parts]
         queueRank:
           type: integer
         received:
