@@ -61,6 +61,7 @@ class RemoteEngineTest {
     private RemoteEngine remote;
     private Object answer;
     private Throwable exception;
+    private CompletableFuture<Void> closed;
 
     @AfterEach
     void stop() throws IOException {
@@ -179,6 +180,40 @@ class RemoteEngineTest {
             this.asked.add("pauseDownload " + args[0]);
             return CompletableFuture.completedFuture(known);
         });
+    }
+
+    @Test
+    void shouldCloseAtOnceWhileItFollowsTheEvents() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItDownloads(ApiSamples.download());
+        givenConnected();
+        givenTheDownloadsWereRead();
+        givenTheEventsAreFollowed();
+        givenTheEventStreamIsOpen();
+
+        whenClosed();
+
+        thenItClosedWithin(Duration.ofSeconds(10));
+    }
+
+    // An event has come through the stream, which stays open.
+    private void givenTheEventStreamIsOpen() throws InterruptedException {
+        EngineEvent event = new EngineEvent.DownloadProgress(ApiSamples.download());
+        for (int i = 0; i < 100 && this.received.isEmpty(); i++) {
+            this.fake.events.submit(event);
+            Thread.sleep(100);
+        }
+        assertThat(this.received.poll(10, TimeUnit.SECONDS)).isEqualTo(event);
+    }
+
+    private void whenClosed() {
+        RemoteEngine closing = this.remote;
+        this.closed = CompletableFuture.runAsync(closing::close);
+        this.remote = null;
+    }
+
+    private void thenItClosedWithin(Duration time) {
+        assertThat(this.closed).succeedsWithin(time);
     }
 
     private void givenConnected() throws IOException {

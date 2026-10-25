@@ -740,7 +740,8 @@ public final class RemoteEngine implements NjMuleEngine {
             events.interrupt();
         }
         this.publisher.close();
-        this.http.close();
+        // Not close(), which waits for every request: the event stream lasts as long as the other njMule.
+        this.http.shutdownNow();
     }
 
     // The events, followed again after a pause when the stream breaks, as the other njMule may restart.
