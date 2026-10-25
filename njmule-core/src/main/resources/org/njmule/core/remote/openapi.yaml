@@ -915,6 +915,22 @@ paths:
                   $ref: "#/components/schemas/Upload"
         default:
           $ref: "#/components/responses/Error"
+  /clients/known:
+    get:
+      operationId: listKnownClients
+      tags: [transfers]
+      summary: The clients met in the last 90 days, those met last first; never their addresses.
+      responses:
+        "200":
+          description: The clients.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnownClient"
+        default:
+          $ref: "#/components/responses/Error"
   /clients/{address}/files:
     parameters:
       - name: address
@@ -2526,6 +2542,39 @@ components:
           type: [string, "null"]
           pattern: "^[a-z]{2}$"
           description: The client's country (ISO 3166-1, lower case), when the countries are shown and it is known.
+    KnownClient:
+      type: object
+      required: [userHash, nick, software, firstSeen, lastSeen, uploaded, downloaded]
+      properties:
+        userHash:
+          type: string
+          pattern: "^[0-9A-F]{32}$"
+        nick:
+          type: string
+          description: The name it gave last; empty when it gave none.
+        software:
+          type: string
+          description: The program it said it runs, last.
+        firstSeen:
+          type: integer
+          format: int64
+          description: When it was first met, in seconds since the epoch.
+        lastSeen:
+          type: integer
+          format: int64
+          description: When it was last met, in seconds since the epoch.
+        country:
+          type: [string, "null"]
+          pattern: "^[a-z]{2}$"
+          description: Where it was last met from (ISO 3166-1, lower case), when the countries were shown.
+        uploaded:
+          type: integer
+          format: int64
+          description: The bytes sent to it, of all times.
+        downloaded:
+          type: integer
+          format: int64
+          description: The bytes it sent, of all times.
     Upload:
       type: object
       required:

@@ -424,6 +424,10 @@ All notable changes to this project are documented here. The format follows
   minutes after the last one, through the Windows launcher, `caffeinate` on macOS or
   `systemd-inhibit` on Linux, which end with njMule anyway (off by default; desktop and web
   settings, `system.preventSleep`).
+- A history of the clients met, kept 90 days in `clienthistory.json` (at most 20,000): the name and
+  program each gave last, when it was first and last met and, when the countries are shown, where
+  from, never its address, with the bytes exchanged of all times from the credits; the Known
+  Clients list of the transfers in the desktop and web apps, and the API (`GET /clients/known`).
 - The country of other clients, with its flag beside its code and its name as tooltip, in the
   sources of a download and among the uploads and the queue, in the desktop and web apps and in
   the API (off by default; `geo.countries`): njMule then downloads DB-IP's free IP to Country Lite

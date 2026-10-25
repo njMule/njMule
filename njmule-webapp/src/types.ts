@@ -103,6 +103,17 @@ export interface Upload {
     country?: string | null;
 }
 
+export interface KnownClient {
+    userHash: string;
+    nick: string;
+    software: string;
+    firstSeen: number;
+    lastSeen: number;
+    country?: string | null;
+    uploaded: number;
+    downloaded: number;
+}
+
 export interface Ban {
     address: string;
     secondsLeft: number;

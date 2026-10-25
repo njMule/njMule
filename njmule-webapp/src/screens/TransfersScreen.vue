@@ -9,18 +9,25 @@ import { api } from '../api';
 import { usePoll } from '../engine';
 import { t } from '../i18n';
 import { guest } from '../role';
-import type { Ban, Category, Download, Source, Upload } from '../types';
+import type { Ban, Category, Download, KnownClient, Source, Upload } from '../types';
 import BansView from './transfers/BansView.vue';
 import DownloadsView from './transfers/DownloadsView.vue';
+import KnownView from './transfers/KnownView.vue';
 import PeersView from './transfers/PeersView.vue';
 
-type Shelf = 'downloads' | 'uploads' | 'queue' | 'banned';
+type Shelf = 'downloads' | 'uploads' | 'queue' | 'banned' | 'known';
 
 const shelf = ref<Shelf>('downloads');
 const downloads = usePoll(() => api.get<Download[]>('/downloads'), 1000, [] as Download[]);
 const peers = usePoll(() => api.get<Upload[]>('/uploads'), 2000, [] as Upload[]);
 const bans = usePoll(() => (guest ? Promise.resolve([]) : api.get<Ban[]>('/bans')), 2000, [] as Ban[]);
 const sources = usePoll(() => api.get<Source[]>('/sources'), 2000, [] as Source[]);
+// A guest sees neither the banned nor the clients known.
+const known = usePoll(
+    () => (guest ? Promise.resolve([]) : api.get<KnownClient[]>('/clients/known')),
+    30000,
+    [] as KnownClient[],
+);
 const categories = usePoll(() => api.get<Category[]>('/categories'), 15000, [] as Category[]);
 
 const uploading = computed(() => peers.data.value.filter((p) => p.state === 'uploading'));
@@ -32,7 +39,8 @@ const shelves = computed(() =>
         { value: 'uploads', label: `${t('IDS_TW_UPLOADS')} ${uploading.value.length}` },
         { value: 'queue', label: `${t('IDS_ONQUEUE')} ${queued.value.length}` },
         { value: 'banned', label: `${t('IDS_BANNED')} ${bans.data.value.length}` },
-    ].filter((s) => !guest || s.value !== 'banned'),
+        { value: 'known', label: `${t('IDS_CLIENTLIST')} ${known.data.value.length}` },
+    ].filter((s) => !guest || (s.value !== 'banned' && s.value !== 'known')),
 );
 </script>
 
@@ -50,6 +58,7 @@ const shelves = computed(() =>
     />
     <PeersView v-else-if="shelf === 'uploads'" :peers="uploading" />
     <PeersView v-else-if="shelf === 'queue'" :peers="queued" />
+    <KnownView v-else-if="shelf === 'known'" :clients="known.data.value" />
     <BansView v-else :bans="bans.data.value" @changed="bans.refresh" />
 </template>
 

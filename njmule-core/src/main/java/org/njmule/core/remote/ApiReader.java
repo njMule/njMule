@@ -44,6 +44,7 @@ import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadNote;
 import org.njmule.core.api.KadSearchInfo;
+import org.njmule.core.api.KnownClient;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NotificationResult;
@@ -447,6 +448,18 @@ final class ApiReader {
             default -> null;
         };
         return Optional.ofNullable(event);
+    }
+
+    static KnownClient knownClient(JsonNode n) {
+        return new KnownClient(
+                hash(n, "userHash"),
+                text(n, "nick"),
+                text(n, "software"),
+                n.path("firstSeen").asLong(),
+                n.path("lastSeen").asLong(),
+                optional(n, "country"),
+                n.path("uploaded").asLong(),
+                n.path("downloaded").asLong());
     }
 
     static NotificationResult notificationResult(JsonNode n) {

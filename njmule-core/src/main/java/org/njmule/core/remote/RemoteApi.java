@@ -64,6 +64,7 @@ import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.KnownClient;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.NotificationResult;
@@ -358,6 +359,7 @@ public final class RemoteApi implements AutoCloseable {
                         c -> known(c, this.engine.removeServer(address(text(c.parameters(), ADDRESS_KEY))))),
                 entry("getKad", this::getKad),
                 entry("testNotifications", this::testNotifications),
+                entry("listKnownClients", this::listKnownClients),
                 entry("listKadContacts", c -> list(c, this.engine::kadContacts, ApiJson::kadContact)),
                 entry("listKadSearches", c -> list(c, this.engine::kadSearches, ApiJson::kadSearch)),
                 entry("connectKad", c -> done(c, this.engine.connectKad())),
@@ -844,6 +846,11 @@ public final class RemoteApi implements AutoCloseable {
         lists.forEach(u -> g.writeString(u.toString()));
         g.writeEndArray();
         g.writeEndObject();
+    }
+
+    private void listKnownClients(Call c) throws IOException {
+        List<KnownClient> clients = await(this.engine.knownClients());
+        reply(c.exchange(), 200, g -> ApiJson.array(g, clients, ApiJson::knownClient));
     }
 
     private void testNotifications(Call c) throws IOException {

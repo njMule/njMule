@@ -85,6 +85,7 @@ import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadNote;
 import org.njmule.core.api.KadSearchInfo;
+import org.njmule.core.api.KnownClient;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NjMuleEngine;
@@ -652,6 +653,7 @@ public final class Engine implements NjMuleEngine {
     private void updateCountriesIfDue() {
         if (!this.preferences.showCountries()) {
             this.countries = CountryTable.EMPTY;
+            this.network.countries(CountryTable.EMPTY);
             return;
         }
         Path file = this.directories.cache().resolve(COUNTRIES_FILE);
@@ -680,6 +682,7 @@ public final class Engine implements NjMuleEngine {
             this.countriesUpdating = false;
             if (failure == null) {
                 this.countries = this.preferences.showCountries() ? table : CountryTable.EMPTY;
+                this.network.countries(this.countries);
             } else {
                 Throwable reason = failure instanceof CompletionException && failure.getCause() != null
                         ? failure.getCause()
@@ -1027,6 +1030,11 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<List<SearchResult>> rateSpam(List<SearchResult> results) {
         List<SearchResult> rated = List.copyOf(results);
         return this.loop.submit(() -> this.network.rateSpam(rated));
+    }
+
+    @Override
+    public CompletableFuture<List<KnownClient>> knownClients() {
+        return this.loop.submit(this.network::knownClients);
     }
 
     @Override

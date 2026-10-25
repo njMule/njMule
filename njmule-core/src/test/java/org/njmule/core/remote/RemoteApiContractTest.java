@@ -53,6 +53,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KnownClient;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NotificationResult;
 import org.njmule.core.api.SearchId;
@@ -119,6 +120,7 @@ class RemoteApiContractTest {
                 "/api/v1/kad/contacts",
                 "/api/v1/kad/searches",
                 "/api/v1/searches",
+                "/api/v1/clients/known",
                 "/api/v1/categories",
                 "/api/v1/friends",
                 "/api/v1/bans",
@@ -350,6 +352,17 @@ class RemoteApiContractTest {
         answerWith("downloads", List.of(ApiSamples.download()));
         answerWith("sources", List.of(ApiSamples.source()));
         answerWith("uploads", List.of(ApiSamples.upload()));
+        answerWith(
+                "knownClients",
+                List.of(new KnownClient(
+                        Hash16.parseHex(HASH),
+                        "ann",
+                        "eMule v0.70b",
+                        1_760_000_000L,
+                        1_761_000_000L,
+                        Optional.of("it"),
+                        5_000_000L,
+                        12_000_000L)));
         answerWith("sharedFiles", List.of(ApiSamples.shared()));
         answerWith("sharedDirectories", List.of(ApiSamples.directory()));
         answerWith("servers", List.of(ApiSamples.server()));

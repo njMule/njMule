@@ -19,6 +19,7 @@ package org.njmule.gui.screens;
 import atlantafx.base.controls.CustomTextField;
 import atlantafx.base.theme.Styles;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -78,6 +79,7 @@ import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.FileKind;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.KnownClient;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.UploadInfo;
@@ -126,7 +128,8 @@ public final class TransfersScreen implements Screen {
         DOWNLOADS("IDS_TW_DOWNLOADS"),
         UPLOADS("IDS_TW_UPLOADS"),
         QUEUE("IDS_ONQUEUE"),
-        BANNED("IDS_BANNED");
+        BANNED("IDS_BANNED"),
+        KNOWN("IDS_CLIENTLIST");
 
         private final String title;
 
@@ -174,6 +177,7 @@ public final class TransfersScreen implements Screen {
     private TableView<LiveList.Row<UploadInfo>> queue;
     private ListView<LiveList.Row<SourceInfo>> sources;
     private TableView<LiveList.Row<BanInfo>> bans;
+    private TableView<LiveList.Row<KnownClient>> known;
     private Segments<Shelf> shelves;
     private FilterChips<StateFilter> states;
     private final ComboBox<Integer> category = new ComboBox<>();
@@ -270,6 +274,7 @@ public final class TransfersScreen implements Screen {
         this.uploads = uploadTable(UploadInfo.State.UPLOADING, "uploads");
         this.queue = uploadTable(UploadInfo.State.QUEUED, "queue");
         this.bans = banTable();
+        this.known = knownTable();
         this.sources = sourceList();
         buildDetails();
 
@@ -279,6 +284,7 @@ public final class TransfersScreen implements Screen {
         lists.put(Shelf.UPLOADS, this.uploads);
         lists.put(Shelf.QUEUE, this.queue);
         lists.put(Shelf.BANNED, this.bans);
+        lists.put(Shelf.KNOWN, this.known);
         this.shelves = new Segments<>(List.of(Shelf.values()), s -> this.gui.t(s.title));
         this.shelves.node().setId("shelves");
         StackPane shownList = new StackPane(lists.get(Shelf.DOWNLOADS));
@@ -289,6 +295,7 @@ public final class TransfersScreen implements Screen {
         countShelf(Shelf.UPLOADS, this.uploads.getItems());
         countShelf(Shelf.QUEUE, this.queue.getItems());
         countShelf(Shelf.BANNED, this.bans.getItems());
+        countShelf(Shelf.KNOWN, this.known.getItems());
 
         Button clear = Fx.button(this.gui.t("IDS_DL_CLEAR"), Icons.CLEAR_ALL, this.gui.model()::clearCompleted);
         clear.getStyleClass().add(Styles.FLAT);
@@ -1142,7 +1149,7 @@ public final class TransfersScreen implements Screen {
         return this.shelves.names();
     }
 
-    /** Shows the list at {@code index}: the downloads, the uploads, the queue or the banned. */
+    /** Shows the list at {@code index}: the downloads, the uploads, the queue, the banned or the clients known. */
     void showShelf(int index) {
         this.shelves.setValue(Shelf.values()[index]);
     }
@@ -1260,6 +1267,54 @@ public final class TransfersScreen implements Screen {
         MenuItem unban = Fx.menuItem(this.gui.t("IDS_UNBAN"), Icons.UNLOCK, this::unbanSelected);
         table.setContextMenu(new ContextMenu(unban));
         return table;
+    }
+
+    // The clients met in the last 90 days, never their addresses; the totals are those of the credits.
+    private TableView<LiveList.Row<KnownClient>> knownTable() {
+        var formats = this.gui.formats();
+        TableView<LiveList.Row<KnownClient>> table =
+                Fx.table(this.gui.model().knownClients(), this.gui.t("nj.clients.none"));
+        table.setId("known");
+        TableColumn<LiveList.Row<KnownClient>, String> country = Fx.column(
+                this.gui.t("nj.clients.country"),
+                70,
+                (KnownClient k) -> k.country().orElse(""));
+        country.setCellFactory(c -> new TableCell<>() {
+            @Override
+            protected void updateItem(String code, boolean empty) {
+                super.updateItem(code, empty);
+                Optional<String> where = empty || code == null || code.isEmpty() ? Optional.empty() : Optional.of(code);
+                Flags.show(this, where, TransfersScreen.this.gui.i18n().locale());
+            }
+        });
+        table.getColumns()
+                .addAll(List.of(
+                        Fx.ownDirection(Fx.column(
+                                this.gui.t("IDS_QL_USERNAME"),
+                                180,
+                                (KnownClient k) ->
+                                        k.nick().isEmpty() ? k.userHash().toHex() : k.nick())),
+                        Fx.leftToRight(country),
+                        Fx.leftToRight(Fx.column(this.gui.t("IDS_CD_CSOFT"), 150, KnownClient::software)),
+                        Fx.column(
+                                this.gui.t("nj.clients.firstSeen"),
+                                150,
+                                KnownClient::firstSeen,
+                                s -> formats.dateTime(Instant.ofEpochSecond(s))),
+                        Fx.column(
+                                label("IDS_LASTSEEN"),
+                                150,
+                                KnownClient::lastSeen,
+                                s -> formats.dateTime(Instant.ofEpochSecond(s))),
+                        Fx.numeric(Fx.column(label("IDS_CD_TUP"), 110, KnownClient::uploaded, formats::size)),
+                        Fx.numeric(Fx.column(label("IDS_CD_TDOWN"), 110, KnownClient::downloaded, formats::size))));
+        TableLayout.remember(table, "known", this.gui.settings());
+        return table;
+    }
+
+    // A label of eMule's texts as a column title, without the colon it ends with.
+    private String label(String key) {
+        return this.gui.t(key).replaceFirst("\\s*:\\s*$", "");
     }
 
     void unbanSelected() {

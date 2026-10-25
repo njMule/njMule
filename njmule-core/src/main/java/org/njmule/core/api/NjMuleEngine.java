@@ -143,6 +143,9 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The sources of our downloads. */
     CompletableFuture<List<SourceInfo>> sources();
 
+    /** The clients met in the last 90 days, those met last first. */
+    CompletableFuture<List<KnownClient>> knownClients();
+
     /** The addresses refused uploads for a while. */
     CompletableFuture<List<BanInfo>> bans();
 

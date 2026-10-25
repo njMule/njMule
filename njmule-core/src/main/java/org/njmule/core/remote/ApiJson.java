@@ -36,6 +36,7 @@ import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadSearchInfo;
+import org.njmule.core.api.KnownClient;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NotificationResult;
@@ -202,6 +203,19 @@ final class ApiJson {
         } else {
             g.writeNull();
         }
+        g.writeEndObject();
+    }
+
+    static void knownClient(JsonGenerator g, KnownClient k) {
+        g.writeStartObject();
+        g.writeStringProperty("userHash", k.userHash().toHex());
+        g.writeStringProperty("nick", k.nick());
+        g.writeStringProperty("software", k.software());
+        g.writeNumberProperty("firstSeen", k.firstSeen());
+        g.writeNumberProperty("lastSeen", k.lastSeen());
+        optional(g, "country", k.country());
+        g.writeNumberProperty("uploaded", k.uploaded());
+        g.writeNumberProperty("downloaded", k.downloaded());
         g.writeEndObject();
     }
 

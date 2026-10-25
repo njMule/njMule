@@ -105,7 +105,7 @@ class TransfersMenusTest {
     void shouldShowTheClientsAndTheBansInTheirListsAndTheSourcesInTheDetails() throws Exception {
         givenTheTransfersScreenWithADownload();
         givenTheListsBelowRead();
-        givenTheShelvesRead("Downloads 1", "Uploads 1", "On Queue 1", "Banned 1");
+        givenTheShelvesRead("Downloads 1", "Uploads 1", "On Queue 1", "Banned 1", "Known Clients 0");
         givenTheShelfShows(1, "Peer", "eMule", "film.mkv");
         givenTheShelfShows(2, "10.0.0.2:4662");
         givenTheShelfShown(0);

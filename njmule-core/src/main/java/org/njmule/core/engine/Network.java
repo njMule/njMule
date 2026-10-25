@@ -34,6 +34,7 @@ import java.nio.file.StandardOpenOption;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -69,6 +70,7 @@ import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadNote;
 import org.njmule.core.api.KadSearchInfo;
+import org.njmule.core.api.KnownClient;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.PeerComment;
 import org.njmule.core.api.PeerInfo;
@@ -101,6 +103,7 @@ import org.njmule.core.kad.KadNotes;
 import org.njmule.core.kad.KadPublisher;
 import org.njmule.core.kad.KadSocket;
 import org.njmule.core.kad.UInt128;
+import org.njmule.core.net.CountryTable;
 import org.njmule.core.net.ProxyRoute;
 import org.njmule.core.net.PublicIpv6;
 import org.njmule.core.net.RelayKeeper;
@@ -111,12 +114,14 @@ import org.njmule.core.net.TcpListener;
 import org.njmule.core.net.Traffic;
 import org.njmule.core.net.UdpRoute;
 import org.njmule.core.peer.BuddyLink;
+import org.njmule.core.peer.ClientHistory;
 import org.njmule.core.peer.Identities;
 import org.njmule.core.peer.IdentityHandshake;
 import org.njmule.core.peer.NatTraversal;
 import org.njmule.core.peer.PeerGreetings;
 import org.njmule.core.peer.PeerLink;
 import org.njmule.core.peer.PeerLinks;
+import org.njmule.core.peer.PeerSoftware;
 import org.njmule.core.peer.SharedFilesBrowser;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.CategoriesCodec;
@@ -260,6 +265,8 @@ final class Network {
     private volatile Set<Integer> serverIps = Set.of();
     private final DownloadManager downloads;
     private final Credits credits;
+    private final ClientHistory history;
+    private volatile CountryTable countries = CountryTable.EMPTY;
     private final UploadManager uploads;
     private final FilePublisher publisher;
     // Replaced on the engine thread, read by the connection threads too.
@@ -343,6 +350,7 @@ final class Network {
         this.configDir = configDir;
         this.incomingDir = incomingDir;
         this.credits = Credits.load(configDir, Clock.systemUTC());
+        this.history = ClientHistory.load(configDir, Instant.now());
         this.totals = Totals.load(configDir.resolve(Totals.FILE_NAME));
         this.friends = Friends.load(configDir);
         this.categories = CategoriesCodec.load(configDir.resolve(CategoriesCodec.FILE_NAME));
@@ -435,6 +443,7 @@ final class Network {
             this.loop.post(() -> {
                 serverOf(hello);
                 kadBootstrapVia(address, hello);
+                met(hello, address);
             });
         });
         this.buddyLink = new BuddyLink(
@@ -626,6 +635,7 @@ final class Network {
         this.loop.scheduleRepeating("network interface", BIND_CHECK, BIND_CHECK, this::checkBinding);
         this.loop.scheduleRepeating("public address", ADDRESS_CHECK, ADDRESS_CHECK, this::watchAddress);
         this.loop.scheduleRepeating("save totals", TOTALS_SAVE, TOTALS_SAVE, this::saveTotals);
+        this.loop.scheduleRepeating("save client history", TOTALS_SAVE, TOTALS_SAVE, this.history::save);
         this.loop.scheduleRepeating(
                 "offer shared files", Duration.ofSeconds(1), Duration.ofSeconds(1), this.publisher::tick);
         logger.info(
@@ -982,6 +992,38 @@ final class Network {
 
     List<SourceInfo> sources() {
         return this.downloads.sources();
+    }
+
+    /** The table that gives the country of the clients met from now on; {@link CountryTable#EMPTY} for none. */
+    void countries(CountryTable table) {
+        this.countries = table;
+    }
+
+    // Who a greeted client said it is goes into the history, with the country of its address, never the address.
+    private void met(Hello hello, InetAddress address) {
+        CountryTable table = this.countries;
+        Optional<String> country = address instanceof Inet4Address ip && table.size() > 0
+                ? table.country(Ipv4.fromBytes(ip.getAddress()))
+                : Optional.empty();
+        this.history.seen(
+                hello.userHash(), hello.nick().orElse(""), PeerSoftware.describe(hello), country, Instant.now());
+    }
+
+    List<KnownClient> knownClients() {
+        return this.history.clients(Instant.now()).stream()
+                .map(c -> {
+                    Optional<Credits.Credit> credit = this.credits.get(c.userHash());
+                    return new KnownClient(
+                            c.userHash(),
+                            c.nick(),
+                            c.software(),
+                            c.firstSeen(),
+                            c.lastSeen(),
+                            c.country(),
+                            credit.map(Credits.Credit::uploaded).orElse(0L),
+                            credit.map(Credits.Credit::downloaded).orElse(0L));
+                })
+                .toList();
     }
 
     SpamMarks spamMarks() {
@@ -1779,6 +1821,7 @@ final class Network {
             portTestDone(this.portCheck.state());
         }
         saveTotals();
+        this.history.save();
         // The servers' spam shares change with every UDP answer.
         try {
             this.spam.save(this.spamFile);

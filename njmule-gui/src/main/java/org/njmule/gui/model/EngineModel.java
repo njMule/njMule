@@ -64,6 +64,7 @@ import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadNote;
 import org.njmule.core.api.KadSearchInfo;
+import org.njmule.core.api.KnownClient;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NjMuleEngine;
@@ -182,6 +183,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     private final LiveList<String, SourceInfo> sources =
             new LiveList<>(s -> s.file().toHex() + "@" + s.address());
     private final LiveList<String, BanInfo> bans = new LiveList<>(BanInfo::address);
+    private final LiveList<Hash16, KnownClient> knownClients = new LiveList<>(KnownClient::userHash);
     private final LiveList<Path, SharedFileInfo> shared = new LiveList<>(SharedFileInfo::path);
     // The hashes of the shared files, built again after the list changed.
     private Set<Hash16> sharedHashes;
@@ -337,6 +339,9 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             later(this.engine.uploads(), this.uploads::update);
             later(this.engine.sources(), this.sources::update);
             later(this.engine.bans(), this.bans::update);
+        }
+        if (this.ticks % 30 == 0) {
+            later(this.engine.knownClients(), this.knownClients::update);
         }
         if (this.ticks % 10 == 0) {
             refreshServers();
@@ -509,6 +514,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     public LiveList<String, SourceInfo> sources() {
         return this.sources;
+    }
+
+    /** The clients met in the last 90 days, read again every half minute. */
+    public LiveList<Hash16, KnownClient> knownClients() {
+        return this.knownClients;
     }
 
     public LiveList<String, BanInfo> bans() {
