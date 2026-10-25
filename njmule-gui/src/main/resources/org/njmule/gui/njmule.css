@@ -1845,7 +1845,7 @@
 }
 
 .details-head {
-    -fx-padding: 16;
+    -fx-padding: 12 16 12 16;
     -fx-border-color: -color-border-muted;
     -fx-border-width: 0 1 0 0;
 }

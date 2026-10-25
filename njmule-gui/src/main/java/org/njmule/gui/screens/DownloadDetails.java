@@ -117,8 +117,9 @@ final class DownloadDetails {
             "IDS_CMT_NOTRATED", "IDS_CMT_FAKE", "IDS_CMT_POOR", "IDS_CMT_FAIR", "IDS_CMT_GOOD", "IDS_CMT_EXCELLENT");
     private static final List<String> RATING_TONES =
             List.of("neutral", "danger", "warning", "neutral", "accent", "success");
-    // What the download is, beside its tabs.
-    private static final double HEAD_WIDTH = 340;
+    // What the download is, beside its tabs: wide enough for most names on one line and the legend on two, so that
+    // little height shows it whole.
+    private static final double HEAD_WIDTH = 440;
 
     private final Gui gui;
     private final Words words;
@@ -201,7 +202,7 @@ final class DownloadDetails {
         VBox title = new VBox(2, this.name, this.meta);
         title.setMinWidth(0);
         HBox.setHgrow(title, Priority.ALWAYS);
-        HBox top = new HBox(12, kindBox, title, this.close);
+        HBox top = new HBox(12, kindBox, title);
         top.setAlignment(Pos.TOP_LEFT);
         this.percent.getStyleClass().addAll("details-percent", "display");
         this.done.getStyleClass().add("details-figure");
@@ -246,7 +247,7 @@ final class DownloadDetails {
         HBox.setHgrow(toDo, Priority.ALWAYS);
         HBox actionRow = new HBox(8, toDo, copy, this.more);
         actionRow.setAlignment(Pos.TOP_LEFT);
-        this.head = new VBox(12, top, progress, new VBox(8, this.bar, legend()), this.note, actionRow);
+        this.head = new VBox(8, top, progress, new VBox(6, this.bar, legend()), this.note, actionRow);
         this.head.getStyleClass().add("details-head");
         this.head.setPrefWidth(HEAD_WIDTH);
         this.head.setMinWidth(HEAD_WIDTH);
@@ -258,7 +259,6 @@ final class DownloadDetails {
         this.pages.put(Tab.COMMENTS, commentsPage());
         ToggleGroup group = new ToggleGroup();
         FlowPane tabRow = new FlowPane(14, 0);
-        tabRow.getStyleClass().add("details-tabs");
         for (Tab tab : Tab.values()) {
             Label count = new Label();
             count.getStyleClass().add("chip-count");
@@ -280,7 +280,12 @@ final class DownloadDetails {
         this.sources.getItems().addListener((ListChangeListener<LiveList.Row<SourceInfo>>) c -> countSources());
         showTab(Tab.SOURCES);
         VBox.setVgrow(this.page, Priority.ALWAYS);
-        VBox tabbed = new VBox(tabRow, this.page);
+        // The tabs, and at the end of their row the button that closes the details.
+        HBox.setHgrow(tabRow, Priority.ALWAYS);
+        HBox tabBar = new HBox(8, tabRow, this.close);
+        tabBar.setAlignment(Pos.CENTER_LEFT);
+        tabBar.getStyleClass().add("details-tabs");
+        VBox tabbed = new VBox(tabBar, this.page);
         HBox.setHgrow(tabbed, Priority.ALWAYS);
         tabbed.setMinWidth(0);
         HBox box = new HBox(this.head, tabbed);
