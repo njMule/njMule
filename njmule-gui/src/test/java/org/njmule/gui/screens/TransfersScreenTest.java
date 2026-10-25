@@ -76,6 +76,56 @@ class TransfersScreenTest {
     }
 
     @Test
+    void shouldOfferToPauseAndStopButNotToResumeADownloadThatRuns() throws Exception {
+        givenTheEngine();
+        givenTheScreen();
+        givenADownloadThatIs(DownloadInfo.Status.DOWNLOADING);
+
+        whenTheMenuOfTheFirstDownloadShows();
+
+        thenTheItemIsOn("IDS_DL_PAUSE", "pause");
+        thenTheItemIsOn("IDS_DL_STOP", "stop");
+        thenTheItemIsOff("IDS_DL_RESUME", "resume");
+    }
+
+    @Test
+    void shouldOfferToResumeButNotToPauseOrStopAStoppedDownload() throws Exception {
+        givenTheEngine();
+        givenTheScreen();
+        givenADownloadThatIs(DownloadInfo.Status.STOPPED);
+
+        whenTheMenuOfTheFirstDownloadShows();
+
+        thenTheItemIsOn("IDS_DL_RESUME", "resume");
+        thenTheItemIsOff("IDS_DL_PAUSE", "pause");
+        thenTheItemIsOff("IDS_DL_STOP", "stop");
+    }
+
+    @Test
+    void shouldOfferToResumeAndStopButNotToPauseAPausedDownload() throws Exception {
+        givenTheEngine();
+        givenTheScreen();
+        givenADownloadThatIs(DownloadInfo.Status.PAUSED);
+
+        whenTheMenuOfTheFirstDownloadShows();
+
+        thenTheItemIsOn("IDS_DL_RESUME", "resume");
+        thenTheItemIsOn("IDS_DL_STOP", "stop");
+        thenTheItemIsOff("IDS_DL_PAUSE", "pause");
+    }
+
+    @Test
+    void shouldShowEveryItemOfTheMenuEvenWhenItIsOff() throws Exception {
+        givenTheEngine();
+        givenTheScreen();
+        givenACompletedDownload();
+
+        whenTheMenuOfTheFirstDownloadShows();
+
+        thenEveryItemIsShown();
+    }
+
+    @Test
     void shouldOfferToClearTheCompletedDownloadsWhenThereAreSome() throws Exception {
         givenTheEngine();
         givenTheScreen();
@@ -169,18 +219,12 @@ class TransfersScreenTest {
     }
 
     private void givenAStartedDownload() throws Exception {
+        givenADownloadThatIs(DownloadInfo.Status.DOWNLOADING);
+    }
+
+    private void givenADownloadThatIs(DownloadInfo.Status status) throws Exception {
         DownloadInfo started = new DownloadInfo(
-                FILE,
-                "film.mkv",
-                100_000,
-                5000,
-                DownloadInfo.Status.DOWNLOADING,
-                DownloadPriority.AUTO,
-                0,
-                1,
-                1,
-                0,
-                PartMap.EMPTY);
+                FILE, "film.mkv", 100_000, 5000, status, DownloadPriority.AUTO, 0, 1, 1, 0, PartMap.EMPTY);
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.DownloadAdded(started)));
         FxTesting.await(
                 "the download row", () -> this.screen.downloads().getItems().size() == 1);
@@ -232,6 +276,14 @@ class TransfersScreenTest {
 
     private void thenTheDetailsShow() throws Exception {
         assertThat(FxTesting.onFx(this.screen::detailsShown)).isTrue();
+    }
+
+    private void thenEveryItemIsShown() throws Exception {
+        assertThat(FxTesting.onFx(() -> items(this.menu.getItems()).stream()
+                        .filter(i -> !i.isVisible())
+                        .map(MenuItem::getText)
+                        .toList()))
+                .isEmpty();
     }
 
     private void thenTheItemIsOff(String key, String what) throws Exception {

@@ -758,6 +758,10 @@ public final class SearchScreen implements Screen {
         ContextMenu menu = new ContextMenu(download, copy, html, related, new SeparatorMenuItem(), spam, notSpam);
         menu.setOnShowing(e -> {
             List<SearchResult> selected = Fx.selected(table);
+            download.setDisable(
+                    selected.stream().allMatch(r -> known(r) == Known.DOWNLOADING || known(r) == Known.SHARED));
+            copy.setDisable(selected.isEmpty());
+            html.setDisable(selected.isEmpty());
             related.setDisable(selected.isEmpty()
                     || !this.gui.model().statusProperty().get().relatedSearch());
             spam.setDisable(selected.stream().allMatch(SearchResult::isSpam));

@@ -421,8 +421,8 @@ public final class MessagesScreen implements Screen {
                         .filter(e.friend().get().userHash()::equals)
                         .isPresent());
         this.befriendButton.setVisible(!friend && e.chat().isPresent());
-        this.removeFriendItem.setVisible(friend);
-        this.closeItem.setVisible(e.chat().isPresent());
+        this.removeFriendItem.setDisable(!friend);
+        this.closeItem.setDisable(e.chat().isEmpty());
         if (e.chat().isPresent()) {
             Chats.Chat chat = e.chat().get();
             this.body.getChildren().setAll(this.panes.computeIfAbsent(chat, ChatPane::new));

@@ -235,6 +235,9 @@ public final class SharedScreen implements Screen {
             rename.setDisable(selected != 1);
             comment.setDisable(selected != 1);
             folder.setDisable(selected != 1);
+            priority.setDisable(selected == 0);
+            copy.setDisable(selected == 0);
+            html.setDisable(selected == 0);
         });
         this.table.setContextMenu(menu);
         return Fx.screen(new HBox(16, side(), files()));

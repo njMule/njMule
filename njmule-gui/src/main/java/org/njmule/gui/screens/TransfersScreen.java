@@ -517,9 +517,12 @@ public final class TransfersScreen implements Screen {
             category.getItems().setAll(categoryItems());
             List<DownloadInfo> selected = Fx.selected(this.downloads);
             boolean none = selected.isEmpty();
-            for (MenuItem item : List.of(pause, resume, stop, cancel, details, priority, category, copy, html)) {
+            for (MenuItem item : List.of(details, copy, html)) {
                 item.setDisable(none);
             }
+            pause.setDisable(selected.stream().noneMatch(TransfersScreen::pausable));
+            resume.setDisable(selected.stream().noneMatch(TransfersScreen::resumable));
+            stop.setDisable(selected.stream().noneMatch(TransfersScreen::stoppable));
             cancel.setDisable(cancellable().isEmpty());
             clearCompleted.setDisable(this.gui.model().downloads().rows().stream()
                     .noneMatch(r -> r.get().status() == DownloadInfo.Status.COMPLETE));
@@ -531,6 +534,8 @@ public final class TransfersScreen implements Screen {
             previewFirst.setSelected(!none && selected.stream().allMatch(DownloadInfo::previewFirst));
             boolean unfinished = !none && selected.stream().noneMatch(d -> d.status() == DownloadInfo.Status.COMPLETE);
             previewFirst.setDisable(!unfinished);
+            priority.setDisable(cancellable().isEmpty());
+            category.setDisable(cancellable().isEmpty());
             // Sources move only to a download that runs.
             swapHere.setDisable(none || selected.stream().anyMatch(d -> d.status() != DownloadInfo.Status.DOWNLOADING));
             swapAway.setDisable(!unfinished);
@@ -1316,15 +1321,36 @@ public final class TransfersScreen implements Screen {
     }
 
     void pauseSelected() {
-        Fx.selected(this.downloads).forEach(d -> this.gui.model().pause(d.hash()));
+        Fx.selected(this.downloads).stream()
+                .filter(TransfersScreen::pausable)
+                .forEach(d -> this.gui.model().pause(d.hash()));
     }
 
     void stopSelected() {
-        Fx.selected(this.downloads).forEach(d -> this.gui.model().stop(d.hash()));
+        Fx.selected(this.downloads).stream()
+                .filter(TransfersScreen::stoppable)
+                .forEach(d -> this.gui.model().stop(d.hash()));
     }
 
     void resumeSelected() {
-        Fx.selected(this.downloads).forEach(d -> this.gui.model().resume(d.hash()));
+        Fx.selected(this.downloads).stream()
+                .filter(TransfersScreen::resumable)
+                .forEach(d -> this.gui.model().resume(d.hash()));
+    }
+
+    // A download pauses while it runs, resumes once paused, stopped or failed, and stops until it is stopped.
+    static boolean pausable(DownloadInfo d) {
+        return d.status() == DownloadInfo.Status.DOWNLOADING || d.status() == DownloadInfo.Status.NO_SPACE;
+    }
+
+    static boolean resumable(DownloadInfo d) {
+        return d.status() == DownloadInfo.Status.PAUSED
+                || d.status() == DownloadInfo.Status.STOPPED
+                || d.status() == DownloadInfo.Status.ERROR;
+    }
+
+    static boolean stoppable(DownloadInfo d) {
+        return d.status() != DownloadInfo.Status.STOPPED && d.status() != DownloadInfo.Status.COMPLETE;
     }
 
     // A cancel deletes what was downloaded: asked first.
@@ -1670,7 +1696,9 @@ public final class TransfersScreen implements Screen {
                                 this.gui.formats()::duration))));
         TableLayout.remember(table, "bans", this.gui.settings());
         MenuItem unban = Fx.menuItem(this.gui.t("IDS_UNBAN"), Icons.UNLOCK, this::unbanSelected);
-        table.setContextMenu(new ContextMenu(unban));
+        ContextMenu menu = new ContextMenu(unban);
+        menu.setOnShowing(e -> unban.setDisable(Fx.selected(table).isEmpty()));
+        table.setContextMenu(menu);
         return table;
     }
 
