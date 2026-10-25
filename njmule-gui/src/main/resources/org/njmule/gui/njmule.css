@@ -2067,8 +2067,9 @@
     -fx-background-color: -color-success-emphasis;
 }
 
+/* The yellow of the parts asked for: the warning tone of some themes is orange, close to the red of reaching. */
 .source-dot.dot-queued {
-    -fx-background-color: -color-warning-emphasis;
+    -fx-background-color: -nj-bar-requested;
 }
 
 .source-dot.dot-reaching {

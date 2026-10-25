@@ -1801,8 +1801,11 @@ public final class TransfersScreen implements Screen {
             case QUEUE_FULL, NO_NEEDED_PARTS, A4AF -> "dot-useless";
             case WAITING -> "dot-unknown";
         };
-        dot.getStyleClass().removeIf(c -> c.startsWith("dot-"));
-        dot.getStyleClass().add(tone);
+        // Each second's news restyles a dot only when its state changed.
+        if (!dot.getStyleClass().contains(tone)) {
+            dot.getStyleClass().removeIf(c -> c.startsWith("dot-"));
+            dot.getStyleClass().add(tone);
+        }
         dot.setText(state == SourceInfo.State.WAITING ? "?" : "");
     }
 
