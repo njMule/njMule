@@ -512,7 +512,7 @@ public final class RemoteApi implements AutoCloseable {
     private void getRates(Call c) throws IOException {
         JsonNode span = c.parameters().get("span");
         int seconds = span == null ? 600 : span.asInt();
-        if (seconds > RateHistory.SECONDS) {
+        if (seconds > RateHistory.SECONDS_KEPT) {
             reply(c.exchange(), 200, g -> ApiJson.rates(g, 60, this.rates.minutes(seconds / 60)));
         } else {
             reply(c.exchange(), 200, g -> ApiJson.rates(g, 1, this.rates.seconds(seconds)));

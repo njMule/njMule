@@ -100,7 +100,7 @@ public final class RemoteEngine implements NjMuleEngine {
     private static final Logger logger = LoggerFactory.getLogger(RemoteEngine.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
     private static final Duration RETRY = Duration.ofSeconds(5);
-    private static final JsonMapper JSON = JsonMapper.shared();
+    private static final JsonMapper MAPPER = JsonMapper.shared();
 
     private final String api;
     private final String token;
@@ -169,7 +169,7 @@ public final class RemoteEngine implements NjMuleEngine {
     public CompletableFuture<Preferences> updatePreferences(UnaryOperator<Preferences> change) {
         Preferences now = this.preferences;
         Map<String, String> before = PreferencesCodec.values(now);
-        ObjectNode body = JSON.createObjectNode();
+        ObjectNode body = MAPPER.createObjectNode();
         PreferencesCodec.values(change.apply(now)).forEach((key, value) -> {
             if (!value.equals(before.get(key))) {
                 body.put(key, value);
@@ -261,7 +261,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Void> setServerListAddresses(List<URI> addresses) {
-        ObjectNode body = JSON.createObjectNode();
+        ObjectNode body = MAPPER.createObjectNode();
         ArrayNode all = body.putArray("addresses");
         addresses.forEach(a -> all.add(a.toString()));
         return done("PUT", "servers/lists", body);
@@ -287,7 +287,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Boolean> setStaticServer(ServerAddress server, boolean isStatic) {
-        ObjectNode body = JSON.createObjectNode().put("static", isStatic);
+        ObjectNode body = MAPPER.createObjectNode().put("static", isStatic);
         return yes("PUT", "servers/" + server + "/static", body);
     }
 
@@ -348,7 +348,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Void> connect(Optional<ServerAddress> server) {
-        ObjectNode body = JSON.createObjectNode();
+        ObjectNode body = MAPPER.createObjectNode();
         server.ifPresent(s -> body.put("address", s.toString()));
         return done("POST", "servers/connect", body);
     }
@@ -360,8 +360,9 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<SearchId> search(SearchRequest request) {
-        ObjectNode body =
-                JSON.createObjectNode().put("query", request.expression()).put("scope", ApiJson.name(request.scope()));
+        ObjectNode body = MAPPER.createObjectNode()
+                .put("query", request.expression())
+                .put("scope", ApiJson.name(request.scope()));
         return json("POST", "searches", body)
                 .thenApply(n -> new SearchId(n.path("id").asLong()));
     }
@@ -388,7 +389,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<DownloadInfo> addDownload(Ed2kLink.FileLink link, OptionalInt category, boolean paused) {
-        ObjectNode body = JSON.createObjectNode();
+        ObjectNode body = MAPPER.createObjectNode();
         body.putArray("links").add(link.toUri());
         category.ifPresent(c -> body.put("category", c));
         CompletableFuture<DownloadInfo> added =
@@ -434,7 +435,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Boolean> setDownloadCategory(Hash16 hash, int category) {
-        return yes("PUT", download(hash, "category"), JSON.createObjectNode().put("category", category));
+        return yes("PUT", download(hash, "category"), MAPPER.createObjectNode().put("category", category));
     }
 
     @Override
@@ -444,7 +445,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Boolean> setDownloadPreview(Hash16 hash, boolean previewFirst) {
-        return yes("PUT", download(hash, "preview"), JSON.createObjectNode().put("previewFirst", previewFirst));
+        return yes("PUT", download(hash, "preview"), MAPPER.createObjectNode().put("previewFirst", previewFirst));
     }
 
     @Override
@@ -459,7 +460,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Boolean> setDownloadAutoSwap(Hash16 hash, boolean autoSwap) {
-        return yes("PUT", download(hash, "autoswap"), JSON.createObjectNode().put("autoSwap", autoSwap));
+        return yes("PUT", download(hash, "autoswap"), MAPPER.createObjectNode().put("autoSwap", autoSwap));
     }
 
     @Override
@@ -606,7 +607,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Boolean> setFriendSlot(Optional<Hash16> friend) {
-        ObjectNode body = JSON.createObjectNode();
+        ObjectNode body = MAPPER.createObjectNode();
         if (friend.isPresent()) {
             body.put("userHash", friend.get().toHex());
         } else {
@@ -710,7 +711,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<UpdateStatus> installUpdate(boolean restart) {
-        return updating("POST", "update/install", JSON.createObjectNode().put("restart", restart));
+        return updating("POST", "update/install", MAPPER.createObjectNode().put("restart", restart));
     }
 
     private CompletableFuture<UpdateStatus> updating(String method, String path, ObjectNode body) {
@@ -798,7 +799,7 @@ public final class RemoteEngine implements NjMuleEngine {
         if (name.equals("lost")) {
             return false;
         }
-        JsonNode n = data.isEmpty() ? JSON.createObjectNode() : JSON.readTree(data);
+        JsonNode n = data.isEmpty() ? MAPPER.createObjectNode() : MAPPER.readTree(data);
         switch (name) {
             // The stream's own thread waits for what the event needs besides.
             case "preferences.changed" -> {
@@ -843,7 +844,7 @@ public final class RemoteEngine implements NjMuleEngine {
     }
 
     private static ObjectNode body(String name, String value) {
-        return JSON.createObjectNode().put(name, value);
+        return MAPPER.createObjectNode().put(name, value);
     }
 
     private static String query(String value) {
@@ -905,7 +906,7 @@ public final class RemoteEngine implements NjMuleEngine {
     private static String failure(HttpResponse<byte[]> r) {
         String message = "";
         try {
-            message = JSON.readTree(r.body()).path("error").asString("");
+            message = MAPPER.readTree(r.body()).path("error").asString("");
         } catch (RuntimeException e) {
             // Not the API's own answer: the status says it.
         }
@@ -913,11 +914,11 @@ public final class RemoteEngine implements NjMuleEngine {
     }
 
     private static byte[] bytes(ObjectNode body) {
-        return body == null ? null : JSON.writeValueAsBytes(body);
+        return body == null ? null : MAPPER.writeValueAsBytes(body);
     }
 
     private static JsonNode tree(HttpResponse<byte[]> r) {
         byte[] body = r.body();
-        return body.length == 0 ? JSON.createObjectNode() : JSON.readTree(body);
+        return body.length == 0 ? MAPPER.createObjectNode() : MAPPER.readTree(body);
     }
 }

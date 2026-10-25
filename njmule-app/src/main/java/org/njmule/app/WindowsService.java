@@ -60,6 +60,9 @@ final class WindowsService {
 
         Path programData();
 
+        /** A folder of this user's own, for the messages the elevated command hands back. */
+        Path ownFolder();
+
         /** Runs a program, drops its output and returns its exit code. */
         int run(List<String> command) throws IOException;
 
@@ -158,7 +161,9 @@ final class WindowsService {
         if (task.action() == LaunchOptions.ServiceAction.INSTALL) {
             cli.webUi().ifPresent(setup -> args.addAll(webUiArguments(setup)));
         }
-        Path output = Files.createTempFile("njmule-service", ".txt");
+        // Not the shared temporary folder: the user's own profile, which other users cannot write into.
+        Path folder = Files.createDirectories(this.system.ownFolder());
+        Path output = Files.createTempFile(folder, "service-", ".txt");
         try {
             args.addAll(List.of("--service-output", output.toString()));
             say("Windows asks for the administrator's rights"
@@ -322,6 +327,11 @@ final class WindowsService {
                     .command()
                     .map(Path::of)
                     .filter(p -> String.valueOf(p.getFileName()).equalsIgnoreCase("njmule.exe"));
+        }
+
+        @Override
+        public Path ownFolder() {
+            return AppDirectories.resolve(Optional.empty()).cache();
         }
 
         @Override

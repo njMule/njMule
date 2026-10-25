@@ -290,6 +290,11 @@ class WindowsServiceTest {
         }
 
         @Override
+        public Path ownFolder() {
+            return WindowsServiceTest.this.dir.resolve("own");
+        }
+
+        @Override
         public int run(List<String> command) {
             WindowsServiceTest.this.commands.add(command);
             boolean ours = command.getFirst().endsWith(WindowsService.HOST);

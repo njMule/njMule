@@ -28,11 +28,11 @@ class RateHistoryTest {
 
     @Test
     void shouldKeepTheSecondsOfTheLastHourOnly() {
-        givenSecondsWithRisingRates(RateHistory.SECONDS + 1);
+        givenSecondsWithRisingRates(RateHistory.SECONDS_KEPT + 1);
 
-        whenTheSecondsAreRead(RateHistory.SECONDS);
+        whenTheSecondsAreRead(RateHistory.SECONDS_KEPT);
 
-        thenThereAre(RateHistory.SECONDS);
+        thenThereAre(RateHistory.SECONDS_KEPT);
         thenTheFirstIs(new RateHistory.Rate(1, 2));
     }
 

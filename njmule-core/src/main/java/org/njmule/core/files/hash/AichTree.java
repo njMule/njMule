@@ -98,7 +98,6 @@ public final class AichTree {
     private static final class Builder {
         private final List<Hash20> leaves;
         private final List<Hash20> parts;
-        private final MessageDigest sha1 = sha1();
         private int next;
 
         Builder(List<Hash20> leaves, List<Hash20> parts) {
@@ -120,7 +119,7 @@ public final class AichTree {
             byte[] both = new byte[2 * Hash20.LENGTH];
             l.copyTo(both, 0);
             r.copyTo(both, Hash20.LENGTH);
-            return Hash20.of(this.sha1.digest(both));
+            return Hash20.of(sha1().digest(both));
         }
 
         private Hash20 child(long dataSize, boolean left, long parentBase) {

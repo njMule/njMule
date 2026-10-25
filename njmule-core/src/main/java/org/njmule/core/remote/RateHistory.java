@@ -27,8 +27,8 @@ import java.util.List;
  */
 public final class RateHistory {
 
-    static final int SECONDS = 3600;
-    static final int MINUTES = 1440;
+    static final int SECONDS_KEPT = 3600;
+    static final int MINUTES_KEPT = 1440;
 
     /** The bytes a second downloaded and uploaded. */
     public record Rate(long down, long up) {}
@@ -41,11 +41,11 @@ public final class RateHistory {
 
     /** Adds the rates of a second; every sixtieth closes a minute. */
     public synchronized void add(long down, long up) {
-        keep(this.seconds, new Rate(down, up), SECONDS);
+        keep(this.seconds, new Rate(down, up), SECONDS_KEPT);
         this.minuteDown += down;
         this.minuteUp += up;
         if (++this.minuteSamples == 60) {
-            keep(this.minutes, new Rate(this.minuteDown / 60, this.minuteUp / 60), MINUTES);
+            keep(this.minutes, new Rate(this.minuteDown / 60, this.minuteUp / 60), MINUTES_KEPT);
             this.minuteDown = 0;
             this.minuteUp = 0;
             this.minuteSamples = 0;
