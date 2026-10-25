@@ -443,7 +443,9 @@ All notable changes to this project are documented here. The format follows
 - The columns of the search results and of the transfers in the web interface can be resized by
   dragging their edges in the head, and keep their widths in the browser; the rows chosen there stay
   chosen and tinted as the lists are read again, a click chooses a row alone (Ctrl or Cmd adds it),
-  and the whole text of a cut cell shows after a moment under the pointer.
+  and the whole text of a cut cell shows after a moment under the pointer. As in the desktop app, a
+  download opens onto its sources with its arrow or a double click, and the search results are
+  coloured by what they are to us.
 - The country of other clients, with its flag beside its code and its name as tooltip, in the
   sources of a download and among the uploads and the queue, in the desktop and web apps and in
   the API (off by default; `geo.countries`): njMule then downloads DB-IP's free IP to Country Lite
