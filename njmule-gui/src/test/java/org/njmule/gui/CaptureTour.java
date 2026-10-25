@@ -345,7 +345,7 @@ class CaptureTour {
         this.model.onNext(new EngineEvent.MessageReceived(
                 "203.0.113.33:4672", CaptureDemo.hash("f1"), Optional.of("Owl"), "Hi! Do you have the 4K one too?"));
         this.model.onNext(new EngineEvent.MessageReceived(
-                "203.0.113.33:4672", CaptureDemo.hash("f1"), Optional.of("Owl"), "Thanks for Sintel :)"));
+                "203.0.113.33:4672", CaptureDemo.hash("f1"), Optional.of("Owl"), "Thanks for Harbor Lights :)"));
         FxTesting.onFx(
                 () -> this.model.sendMessage("203.0.113.33:4672", "You're welcome! The 4K one is in my shared files."));
         this.model.onNext(new EngineEvent.MessageReceived(
@@ -457,7 +457,7 @@ class CaptureTour {
         fx(() -> this.stage.getScene().getRoot().fireEvent(FxTesting.key(javafx.scene.input.KeyCode.K, true)));
         shot("palette", "The command palette (Ctrl+K)");
         fx(() -> ((TextField) this.stage.getScene().getRoot().lookup(".command-palette .text-field"))
-                .setText("big buck"));
+                .setText("paper boats"));
         shot("palette-search", "The command palette offering a search of the network");
         fx(() -> this.stage
                 .getScene()
@@ -678,7 +678,7 @@ class CaptureTour {
         }
         fx(() -> {
             TextField f = field.get();
-            f.setText("ed2k://|file|Sintel.2010.1080p.x264.mkv|1245822976|…|/");
+            f.setText("ed2k://|file|Harbor.Lights.2024.1080p.x264.mkv|1245822976|…|/");
             f.requestFocus();
             f.selectAll();
             Bounds b = f.localToScreen(f.getBoundsInLocal());
@@ -723,7 +723,7 @@ class CaptureTour {
                     .map(n -> (ComboBox<?>) n)
                     .findFirst()
                     .orElseThrow();
-            query.getEditor().setText("big buck bunny");
+            query.getEditor().setText("paper boats");
             find(root, Button.class).stream()
                     .filter(b -> this.gui.t("nj.search.start").equals(b.getText()))
                     .findFirst()
@@ -844,8 +844,8 @@ class CaptureTour {
         // Links on the clipboard are in the box when the dialog opens.
         waiting("dialog-add-links", "Add downloads: the links copied and the files found in them", () -> {
             javafx.scene.input.ClipboardContent links = new javafx.scene.input.ClipboardContent();
-            links.putString("ed2k://|file|Sintel.2010.4K.mkv|4939212800|9C4E2A07B1D35F8E61A0C2D47E93B5F1|/\n"
-                    + "ed2k://|file|ubuntu-24.04.1-desktop-amd64.iso|6217003008|E2B71C09A4F35D8E10C6A2B94D7F53E1|/");
+            links.putString("ed2k://|file|Harbor.Lights.2024.4K.mkv|4939212800|9C4E2A07B1D35F8E61A0C2D47E93B5F1|/\n"
+                    + "ed2k://|file|lumenos-4.1-desktop-amd64.iso|6217003008|E2B71C09A4F35D8E10C6A2B94D7F53E1|/");
             javafx.scene.input.Clipboard.getSystemClipboard().setContent(links);
             ((javafx.scene.control.Button) transfers.lookup("#add-links")).fire();
         });
@@ -1030,7 +1030,7 @@ class CaptureTour {
     private void toasts() throws Exception {
         fx(() -> this.window.show("transfers"));
         fx(() -> {
-            this.window.success(this.gui.f("nj.transfers.completed", "LibreOffice_25.8.1_Win_x86-64.msi"));
+            this.window.success(this.gui.f("nj.transfers.completed", "Pinecone_Office_7.3_Win_x64.msi"));
             this.window.message(this.gui.f("nj.chat.from", "Owl"));
             this.window.problem("203.0.113.11:4232: connection refused");
         });
