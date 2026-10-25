@@ -811,6 +811,11 @@ public final class TransfersScreen implements Screen {
         return this.details;
     }
 
+    /** The clients met, for tests. */
+    TableView<LiveList.Row<KnownClient>> knownClients() {
+        return this.known;
+    }
+
     /** The downloads over their details, for tests. */
     SplitPane split() {
         return this.split;
@@ -1806,7 +1811,8 @@ public final class TransfersScreen implements Screen {
 
     // A label of eMule's texts as a column title, without the colon it ends with.
     private String label(String key) {
-        return this.gui.t(key).replaceFirst("\\s*:\\s*$", "");
+        String text = this.gui.t(key).stripTrailing();
+        return text.endsWith(":") ? text.substring(0, text.length() - 1).stripTrailing() : text;
     }
 
     void unbanSelected() {

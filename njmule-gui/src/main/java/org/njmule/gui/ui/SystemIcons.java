@@ -81,9 +81,8 @@ public final class SystemIcons {
         if (!WINDOWS || extension.isEmpty() || !Boolean.parseBoolean(System.getProperty(PROPERTY, "true"))) {
             return Optional.empty();
         }
-        Optional<Image> known = ICONS.get(extension);
-        if (known != null) {
-            return known;
+        if (ICONS.containsKey(extension)) {
+            return ICONS.get(extension);
         }
         if (ASKED.add(extension)) {
             SHELL.execute(() -> {

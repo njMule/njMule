@@ -70,7 +70,7 @@ public final class RemoteDialog {
         this.stage.setTitle(gui.t("nj.remote.title"));
         this.address.setEditable(true);
         this.address.setMaxWidth(Double.MAX_VALUE);
-        this.address.setPromptText("http://192.168.1.10:4711/api/v1");
+        this.address.setPromptText("http://nas.local:4711/api/v1");
         try {
             RemoteConnections.remembered(this.local.gui())
                     .forEach(a -> this.address.getItems().add(a.toString()));

@@ -27,6 +27,7 @@ import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.TableColumnBase;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -54,6 +55,7 @@ class TransfersScreenTest {
     private TestGui test;
     private TransfersScreen screen;
     private ContextMenu menu;
+    private List<String> columns = List.of();
 
     @AfterEach
     void close() {
@@ -162,6 +164,16 @@ class TransfersScreenTest {
     }
 
     @Test
+    void shouldNameTheColumnsOfTheKnownClientsWithoutTheColonOfTheirTexts() throws Exception {
+        givenTheEngine();
+        givenTheScreen();
+
+        whenTheColumnsOfTheKnownClientsAreRead();
+
+        thenTheColumnsInclude("Uploaded total", "Last Seen");
+    }
+
+    @Test
     void shouldSaySoForAPreviewBeforeTheStartOfTheFileCame() throws Exception {
         givenTheEngine();
         givenTheVideoPlayer("player");
@@ -228,6 +240,16 @@ class TransfersScreenTest {
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.DownloadAdded(started)));
         FxTesting.await(
                 "the download row", () -> this.screen.downloads().getItems().size() == 1);
+    }
+
+    private void whenTheColumnsOfTheKnownClientsAreRead() throws Exception {
+        this.columns = FxTesting.onFx(() -> this.screen.knownClients().getColumns().stream()
+                .map(TableColumnBase::getText)
+                .toList());
+    }
+
+    private void thenTheColumnsInclude(String... titles) {
+        assertThat(this.columns).contains(titles);
     }
 
     private void givenTheDetailsHidden() throws Exception {
