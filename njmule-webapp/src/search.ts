@@ -94,3 +94,25 @@ export function completeness(r: Pick<Result, 'sources' | 'completeSources'>): st
     }
     return r.sources > 0 ? `${Math.round((Math.min(r.completeSources, r.sources) * 100) / r.sources)}%` : '0%';
 }
+
+/** What a result is to us, which tells its colour as in the desktop app. */
+export type Tone = 'ours' | 'before' | 'spam' | 'fresh';
+
+/**
+ * Ours already when downloading or shared, known from before when downloaded or cancelled, spam, or new; {@code
+ * downloading} also says whether its file is downloading now.
+ */
+export function tone(r: Pick<Result, 'spam' | 'known'>, downloading: boolean): Tone {
+    if (r.spam) {
+        return 'spam';
+    }
+    if (downloading || r.known === 'downloading' || r.known === 'shared') {
+        return 'ours';
+    }
+    return r.known === 'downloaded' || r.known === 'cancelled' ? 'before' : 'fresh';
+}
+
+/** How far towards the accent's colour a new result goes: none with one source, a thirteenth more for each other. */
+export function shade(sources: number): number {
+    return (Math.min(Math.max(sources - 1, 0), 12) * 100) / 13;
+}

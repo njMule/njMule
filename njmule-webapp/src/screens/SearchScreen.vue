@@ -33,6 +33,8 @@ import {
     link,
     playingTime,
     searches,
+    shade,
+    tone,
     words,
     type FileType,
     type Filters,
@@ -104,6 +106,17 @@ const choice = chooser(
     (r) => r.hash,
     () => visible.value,
 );
+
+// What a result is to us tells its colour, as in the desktop app: ours already (downloading or shared), known from
+// before (downloaded or cancelled), spam; a new one goes from the text's colour towards the accent's, by thirteenths,
+// as it has more sources.
+function resultClass({ row }: { row: Result }): string {
+    return `${choice.rowClass({ row })} result-${tone(row, downloading.value.has(row.hash.toUpperCase()))}`;
+}
+
+function resultStyle({ row }: { row: Result }): Record<string, string> {
+    return { '--nj-shade': `${shade(row.sources)}%` };
+}
 
 function resetFilters(): void {
     filters.value = { type: '', extension: '' };
@@ -355,7 +368,8 @@ onUnmounted(() => window.clearInterval(timer));
             @header-dragend="widths"
             :data="visible"
             row-key="hash"
-            :row-class-name="choice.rowClass"
+            :row-class-name="resultClass"
+            :row-style="resultStyle"
             :empty-text="t('nj.search.waiting')"
             @row-click="choice.click"
             :default-sort="{ prop: 'sources', order: 'descending' }"
@@ -482,6 +496,18 @@ onUnmounted(() => window.clearInterval(timer));
     font-weight: 600;
 }
 .spam {
+    color: var(--el-text-color-secondary);
+}
+:deep(.result-fresh td.el-table__cell) {
+    color: color-mix(in srgb, var(--el-color-primary) var(--nj-shade), var(--el-text-color-primary));
+}
+:deep(.result-ours td.el-table__cell) {
+    color: var(--nj-error-fg);
+}
+:deep(.result-before td.el-table__cell) {
+    color: var(--nj-ok-fg);
+}
+:deep(.result-spam td.el-table__cell) {
     color: var(--el-text-color-secondary);
 }
 </style>

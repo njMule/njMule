@@ -38,7 +38,7 @@ import CountryFlag from '../../components/CountryFlag.vue';
 import type { IconName } from '../../icons';
 import { htmlLinks } from '../../links';
 import { attempt, told } from '../../notify';
-import { shown, type Shown } from '../../transfers';
+import { bySending, shown, type Shown } from '../../transfers';
 import type { Category, Download, DownloadPriority, Parts, Source } from '../../types';
 
 const props = defineProps<{ downloads: Download[]; categories: Category[]; sources: Source[] }>();
@@ -130,6 +130,17 @@ const one = computed(() => (chosen.value.length === 1 ? chosen.value[0] : undefi
 const cancellable = computed(() => chosen.value.filter((d) => d.status !== 'complete'));
 const anyComplete = computed(() => props.downloads.some((d) => d.status === 'complete'));
 const ofOne = computed(() => (one.value ? props.sources.filter((s) => s.file === one.value?.hash) : []));
+
+function sourcesOf(d: Download): Source[] {
+    return bySending(props.sources.filter((s) => s.file === d.hash));
+}
+
+// A double click opens a download onto its sources under it, or closes it; a complete one has none left.
+function toggleSources(d: Download): void {
+    if (d.status !== 'complete') {
+        downloadTable.value?.toggleRowExpansion(d);
+    }
+}
 
 // The parts of the download chosen, read again while it stays chosen.
 const parts = ref<Parts | null>(null);
@@ -433,9 +444,28 @@ const SOURCE_STATES: Record<Source['state'], string> = {
         :row-class-name="choice.rowClass"
         :empty-text="t('nj.transfers.none')"
         @row-click="choice.click"
+        @row-dblclick="(row: Download) => toggleSources(row)"
         @selection-change="(rows: Download[]) => (chosen = rows)"
     >
         <el-table-column type="selection" width="40" reserve-selection :resizable="false" />
+        <el-table-column type="expand" width="36" :resizable="false">
+            <template #default="{ row }">
+                <div class="sources-under">
+                    <span v-if="sourcesOf(row as Download).length === 0" class="none">{{
+                        t('nj.transfers.noSources')
+                    }}</span>
+                    <div v-for="s in sourcesOf(row as Download)" :key="s.address" class="source">
+                        <span class="who">{{ s.nick ?? s.address }}</span>
+                        <span class="figure">{{ s.received > 0 ? size(s.received) : '' }}</span>
+                        <span class="figure">{{ s.parts }}/{{ s.partCount }}</span>
+                        <span class="soft"
+                            >{{ s.software }}<template v-if="s.queueRank > 0"> QR: {{ s.queueRank }}</template></span
+                        >
+                        <span class="state">{{ t(SOURCE_STATES[s.state]) }}</span>
+                    </div>
+                </div>
+            </template>
+        </el-table-column>
         <el-table-column :label="t('IDS_DL_FILENAME')" prop="name" min-width="260" sortable show-overflow-tooltip />
         <el-table-column :label="t('IDS_DL_SIZE')" prop="size" width="110" sortable align="right">
             <template #default="{ row }">{{ size(row.size) }}</template>
@@ -624,5 +654,26 @@ const SOURCE_STATES: Record<Source['state'], string> = {
 .hint {
     margin: 0 0 8px;
     color: var(--el-text-color-secondary);
+}
+.sources-under {
+    padding: 2px 8px 6px 44px;
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+}
+.sources-under .source {
+    display: grid;
+    grid-template-columns: minmax(160px, 2fr) 90px 80px minmax(140px, 1.5fr) minmax(140px, 1.5fr);
+    gap: 12px;
+    padding: 2px 0;
+}
+.sources-under .who {
+    color: var(--el-text-color-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sources-under .figure {
+    text-align: end;
+    direction: ltr;
 }
 </style>

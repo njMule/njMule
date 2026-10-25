@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { describe, expect, it } from 'vitest';
-import { shown, type Shown } from '../transfers';
+import { bySending, shown, type Shown } from '../transfers';
 import type { DownloadStatus } from '../types';
 
 describe('transfers', () => {
@@ -37,5 +37,29 @@ describe('transfers', () => {
 
     function thenItIs(expected: Shown): void {
         expect(state).toBe(expected);
+    }
+});
+
+describe('the sources of a download', () => {
+    type Source = { name: string; state: string; queueRank: number };
+    let order: string[] = [];
+
+    it('should come sending first, then by their place in the queues, those without one last', () => {
+        whenTheSourcesAreOrdered(
+            { name: 'waiting', state: 'waiting', queueRank: 0 },
+            { name: 'queued 9', state: 'queued', queueRank: 9 },
+            { name: 'sending', state: 'downloading', queueRank: 0 },
+            { name: 'queued 2', state: 'queued', queueRank: 2 },
+        );
+
+        thenTheOrderIs('sending', 'queued 2', 'queued 9', 'waiting');
+    });
+
+    function whenTheSourcesAreOrdered(...sources: Source[]): void {
+        order = bySending(sources).map((s) => s.name);
+    }
+
+    function thenTheOrderIs(...names: string[]): void {
+        expect(order).toEqual(names);
     }
 });

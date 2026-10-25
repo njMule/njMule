@@ -16,3 +16,13 @@ export function shown(d: Pick<Download, 'status' | 'transferring' | 'sources'>):
             return d.status;
     }
 }
+
+/** The sources of a download in their order: those sending first, then by their place in the queues. */
+export function bySending<T extends { state: string; queueRank: number }>(sources: T[]): T[] {
+    return [...sources].sort(
+        (a, b) =>
+            Number(a.state !== 'downloading') - Number(b.state !== 'downloading') ||
+            Number(a.queueRank === 0) - Number(b.queueRank === 0) ||
+            a.queueRank - b.queueRank,
+    );
+}
