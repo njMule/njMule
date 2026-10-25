@@ -19,6 +19,9 @@
             "glob": "org/njmule/core/remote/openapi.yaml"
         },
         {
+            "glob": "org/njmule/core/remote/openapi.json"
+        },
+        {
             "glob": "org/njmule/core/update/keys.pub"
         },
         {
@@ -32,6 +35,10 @@
         {
             "module": "org.njmule.core",
             "glob": "org/njmule/core/remote/openapi.yaml"
+        },
+        {
+            "module": "org.njmule.core",
+            "glob": "org/njmule/core/remote/openapi.json"
         },
         {
             "module": "org.njmule.core",

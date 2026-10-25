@@ -50,8 +50,7 @@ versions is generated at release time in THIRD-PARTY.txt.
     IO, Lang, Codec
     XZ for Java                 0BSD (Zero-Clause BSD)
     Jackson (core, databind,    Apache License 2.0; Jackson Core bundles
-    annotations, YAML format)   FastDoubleParser and Schubfach (MIT License)
-    SnakeYAML Engine            Apache License 2.0
+    annotations)                FastDoubleParser and Schubfach (MIT License)
     networknt JSON Schema       Apache License 2.0; bundles parts of Apache
     Validator                   Commons Validator (Apache License 2.0)
     ethlo ITU (date and time)   Apache License 2.0

@@ -57,6 +57,7 @@ import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /** The OpenAPI document of the API: a valid OpenAPI 3.2 description that matches the engine and the code. */
 class ApiSpecificationTest {
@@ -241,7 +242,8 @@ class ApiSpecificationTest {
     }
 
     private void whenTheDocumentIsRead() {
-        this.exception = catchThrowable(() -> ApiSpecification.parse(this.yaml.getBytes(StandardCharsets.UTF_8)));
+        this.exception = catchThrowable(() -> ApiSpecification.parse(
+                this.yaml.getBytes(StandardCharsets.UTF_8), YAMLMapper.shared().readTree(this.yaml)));
     }
 
     // Then

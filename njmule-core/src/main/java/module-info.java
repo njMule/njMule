@@ -33,7 +33,6 @@ module org.njmule.core {
     requires org.tukaani.xz;
     requires tools.jackson.core;
     requires tools.jackson.databind;
-    requires tools.jackson.dataformat.yaml;
     requires com.networknt.schema;
 
     exports org.njmule.core.api;

@@ -50,7 +50,6 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.JsonNodeFactory;
-import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
  * The OpenAPI document of the remote-control API, the source of its routes: a request is matched to an operation of the
@@ -59,6 +58,8 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 final class ApiSpecification {
 
     static final String RESOURCE = "openapi.yaml";
+    // The same document as JSON, made by the build: the engine needs no YAML parser.
+    private static final String CONVERTED = "openapi.json";
 
     /** The largest request body taken. */
     static final int MAX_BODY = 1024 * 1024;
@@ -112,18 +113,22 @@ final class ApiSpecification {
 
     /** The document shipped with njMule. */
     static ApiSpecification load() {
-        try (InputStream in = ApiSpecification.class.getResourceAsStream(RESOURCE)) {
+        return parse(resource(RESOURCE), JsonMapper.shared().readTree(resource(CONVERTED)));
+    }
+
+    private static byte[] resource(String name) {
+        try (InputStream in = ApiSpecification.class.getResourceAsStream(name)) {
             if (in == null) {
-                throw new IllegalStateException(RESOURCE + " is missing");
+                throw new IllegalStateException(name + " is missing");
             }
-            return parse(in.readAllBytes());
+            return in.readAllBytes();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
-    static ApiSpecification parse(byte[] yaml) {
-        JsonNode document = YAMLMapper.shared().readTree(yaml);
+    /** The document whose text is {@code yaml}, read as {@code document}. */
+    static ApiSpecification parse(byte[] yaml, JsonNode document) {
         SchemaRegistry registry = registry(BASE, document);
         Schema root = registry.loadSchema(SchemaLocation.of(BASE), false);
         Document doc = new Document(document, root);

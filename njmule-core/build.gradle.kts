@@ -7,6 +7,13 @@ plugins {
 
 description = "njMule Core"
 
+// The build's own converter of the API's document from YAML to JSON; not shipped, so SpotBugs leaves it out as it
+// does the tests.
+val openapi = sourceSets.create("openapi")
+tasks.named("spotbugsOpenapi") {
+    enabled = false
+}
+
 dependencies {
     // Compile-time annotations for Error Prone (@CanIgnoreReturnValue).
     compileOnly(libs.errorprone.annotations)
@@ -24,13 +31,17 @@ dependencies {
     implementation(platform(libs.jetty.bom))
     implementation(libs.jetty.client)
     // The remote-control API: a handler that front ends serve on their Jetty server, routed and checked by
-    // its OpenAPI document (YAML, JSON Schema 2020-12), with JSON answers.
+    // its OpenAPI document (JSON Schema 2020-12), with JSON answers. The document is written in YAML and read as
+    // the JSON the build makes of it: the validator's YAML support stays out of the executables.
     api(platform(libs.jetty.bom))
     api(libs.jetty.server)
     implementation(libs.jackson.core)
     implementation(libs.jackson.databind)
-    implementation(libs.jackson.dataformat.yaml)
-    implementation(libs.json.schema.validator)
+    implementation(libs.json.schema.validator) {
+        exclude(group = "tools.jackson.dataformat", module = "jackson-dataformat-yaml")
+    }
+    "openapiImplementation"(libs.jackson.databind)
+    "openapiImplementation"(libs.jackson.dataformat.yaml)
 
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
@@ -40,6 +51,7 @@ dependencies {
     // Checks that the API's document is a valid OpenAPI 3.2 description.
     testImplementation(libs.openapi.parser)
     testImplementation(libs.openapi.parser.jackson)
+    testImplementation(libs.jackson.dataformat.yaml)
 }
 
 tasks.compileJava {
@@ -48,7 +60,22 @@ tasks.compileJava {
     options.compilerArgs.add("-Xlint:-module")
 }
 
+val openApiJson = tasks.register<JavaExec>("openApiJson") {
+    description = "Converts the API's OpenAPI document to the JSON the engine reads."
+    val source = file("src/main/resources/org/njmule/core/remote/openapi.yaml")
+    val target = layout.buildDirectory.file("openapi/openapi.json")
+    classpath = openapi.runtimeClasspath
+    mainClass = "org.njmule.openapi.OpenApiJson"
+    inputs.file(source).withPathSensitivity(PathSensitivity.NONE)
+    outputs.file(target)
+    outputs.cacheIf { true }
+    argumentProviders.add(CommandLineArgumentProvider { listOf(source.path, target.get().asFile.path) })
+}
+
 tasks.processResources {
+    from(openApiJson) {
+        into("org/njmule/core/remote")
+    }
     val version = project.version.toString()
     inputs.property("version", version)
     from("src/main/resources-filtered") {

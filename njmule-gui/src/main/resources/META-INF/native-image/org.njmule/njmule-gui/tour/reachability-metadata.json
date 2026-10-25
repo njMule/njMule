@@ -17402,6 +17402,10 @@
     },
     {
       "module": "org.njmule.core",
+      "glob": "org/njmule/core/remote/openapi.json"
+    },
+    {
+      "module": "org.njmule.core",
       "glob": "org/njmule/core/update/keys.pub"
     },
     {
