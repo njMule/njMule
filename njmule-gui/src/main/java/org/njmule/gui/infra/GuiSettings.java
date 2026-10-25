@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.Properties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,10 +52,6 @@ public final class GuiSettings {
     }
 
     private static final Logger logger = LoggerFactory.getLogger(GuiSettings.class);
-    // Half each at first; the list keeps a fifth of the height at least, the details a tenth.
-    private static final double DEFAULT_DIVIDER = 0.5;
-    private static final double MIN_DIVIDER = 0.2;
-    private static final double MAX_DIVIDER = 0.9;
 
     private final Path file;
     private final Properties values = new Properties();
@@ -190,18 +187,18 @@ public final class GuiSettings {
         this.values.setProperty("transfers.details", String.valueOf(value));
     }
 
-    /** Where the divider between the downloads and their details is, as a share of the height from the top. */
-    public double transfersDivider() {
+    /** How tall the details under the downloads were left, in pixels; none until their divider is moved. */
+    public OptionalDouble transfersDetailsHeight() {
         try {
-            double share = Double.parseDouble(this.values.getProperty("transfers.divider", ""));
-            return Double.isFinite(share) ? Math.clamp(share, MIN_DIVIDER, MAX_DIVIDER) : DEFAULT_DIVIDER;
+            double height = Double.parseDouble(this.values.getProperty("transfers.detailsHeight", ""));
+            return Double.isFinite(height) && height > 0 ? OptionalDouble.of(height) : OptionalDouble.empty();
         } catch (NumberFormatException e) {
-            return DEFAULT_DIVIDER;
+            return OptionalDouble.empty();
         }
     }
 
-    public void setTransfersDivider(double share) {
-        this.values.setProperty("transfers.divider", String.valueOf(share));
+    public void setTransfersDetailsHeight(double height) {
+        this.values.setProperty("transfers.detailsHeight", String.valueOf(height));
     }
 
     /** Whether eD2K file links copied in other programs are downloaded; off by default. */

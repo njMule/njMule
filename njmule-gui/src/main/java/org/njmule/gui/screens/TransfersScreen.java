@@ -48,6 +48,7 @@ import javafx.beans.value.ObservableValue;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
+import javafx.event.EventTarget;
 import javafx.geometry.HPos;
 import javafx.geometry.NodeOrientation;
 import javafx.geometry.Orientation;
@@ -82,6 +83,7 @@ import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -134,7 +136,11 @@ public final class TransfersScreen implements Screen {
     private static final int SHOW_ALL = -1;
     // The names a cancel question lists at most.
     private static final int CANCEL_NAMES_SHOWN = 5;
-    // The list keeps this width beside the details; narrower, the details lie over its end.
+    // The details at first, until the head of a download asks for more; the room under its buttons; what the list and
+    // the details keep at least.
+    private static final double DETAILS_HEIGHT = 300;
+    private static final double DETAILS_MARGIN = 16;
+    private static final double LEAST_HEIGHT = 120;
     private static final KeyCombination COPY_LINKS = new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN);
 
     /** The lists of the screen, one shown at a time. */
@@ -211,8 +217,9 @@ public final class TransfersScreen implements Screen {
             new SimpleObjectProperty<>(s -> false);
     private final CustomTextField filter = new CustomTextField();
     private final ToggleButton detailsButton = new ToggleButton();
-    // The downloads over the details of the chosen one.
+    // The downloads over the details of the chosen one, placed once the split has a height.
     private SplitPane split;
+    private boolean placeDetails;
     private DownloadDetails details;
     private int shownCategory = SHOW_ALL;
 
@@ -411,8 +418,15 @@ public final class TransfersScreen implements Screen {
         this.split = new SplitPane(list);
         this.split.setOrientation(Orientation.VERTICAL);
         this.split.getStyleClass().add("transfers-split");
-        // A taller window gives the room to the list; the details keep theirs.
+        // A taller window gives the room to the list; the details keep theirs. Only a divider the user drags is
+        // remembered, as the height of the details.
         SplitPane.setResizableWithParent(this.details.view(), false);
+        this.split.heightProperty().addListener((o, was, now) -> placeDetails());
+        this.split.addEventFilter(MouseEvent.MOUSE_RELEASED, e -> {
+            if (onDivider(e.getTarget()) && detailsShown()) {
+                this.gui.settings().setTransfersDetailsHeight(detailsHeight());
+            }
+        });
         showBelow(this.detailsButton.isSelected());
         this.detailsButton.selectedProperty().addListener((o, was, now) -> showBelow(now));
         VBox part = new VBox(10, narrowing, this.split);
@@ -786,6 +800,7 @@ public final class TransfersScreen implements Screen {
             return;
         }
         this.details.show(Fx.selected(this.downloads));
+        fitDetails();
     }
 
     /** The details beside the list, for tests. */
@@ -803,20 +818,60 @@ public final class TransfersScreen implements Screen {
         return this.split.getItems().contains(this.details.view());
     }
 
-    // The details go under the list where the divider was left, which is remembered as it moves.
     private void showBelow(boolean shown) {
         Region below = this.details.view();
         if (!shown) {
             this.split.getItems().remove(below);
         } else if (!this.split.getItems().contains(below)) {
             this.split.getItems().add(below);
-            this.split.setDividerPositions(this.gui.settings().transfersDivider());
-            this.split
-                    .getDividers()
-                    .getFirst()
-                    .positionProperty()
-                    .addListener((o, was, now) -> this.gui.settings().setTransfersDivider(now.doubleValue()));
+            this.placeDetails = true;
+            placeDetails();
         }
+    }
+
+    // As tall as the user left them, else tall enough for the head of a download and its buttons.
+    private void placeDetails() {
+        if (this.placeDetails && detailsShown() && this.split.getHeight() > 0) {
+            this.placeDetails = false;
+            setDetailsHeight(this.gui
+                    .settings()
+                    .transfersDetailsHeight()
+                    .orElse(Math.max(DETAILS_HEIGHT, this.details.headHeight() + DETAILS_MARGIN)));
+        }
+    }
+
+    // Until the user moves the divider, the details grow to show the buttons of each download chosen.
+    private void fitDetails() {
+        if (detailsShown()
+                && !this.placeDetails
+                && this.split.getHeight() > 0
+                && this.gui.settings().transfersDetailsHeight().isEmpty()) {
+            double needed = this.details.headHeight() + DETAILS_MARGIN;
+            if (needed > detailsHeight()) {
+                setDetailsHeight(needed);
+            }
+        }
+    }
+
+    private double detailsHeight() {
+        return this.split.getHeight() * (1 - this.split.getDividerPositions()[0]);
+    }
+
+    // The list keeps some rows in any case.
+    private void setDetailsHeight(double wanted) {
+        double height = this.split.getHeight();
+        double kept =
+                Math.clamp(wanted, Math.min(LEAST_HEIGHT, height / 2), Math.max(height - LEAST_HEIGHT, height / 2));
+        this.split.setDividerPositions(1 - kept / height);
+    }
+
+    private static boolean onDivider(EventTarget target) {
+        for (Node n = target instanceof Node node ? node : null; n != null; n = n.getParent()) {
+            if (n.getStyleClass().contains("split-pane-divider")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // The sources in the details are those of the download chosen.

@@ -33,6 +33,8 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -77,6 +79,7 @@ class DownloadDetailsTest {
     private TestGui test;
     private TransfersScreen screen;
     private int complete;
+    private double leftAt;
     private final List<String> renamed = new CopyOnWriteArrayList<>();
 
     @AfterEach
@@ -120,13 +123,32 @@ class DownloadDetailsTest {
     }
 
     @Test
-    void shouldRememberWhereTheDividerOverTheDetailsIsLeft() throws Exception {
+    void shouldRememberHowTallTheDetailsAreLeftWhenTheirDividerIsDragged() throws Exception {
         givenTheTransfersWith(FILM);
         givenTheDetailsAre(true);
 
-        whenTheDividerIsMovedTo(0.7);
+        whenTheDividerIsDraggedTo(0.7);
 
-        thenTheSettingsRememberTheDividerAt(0.7);
+        thenTheSettingsRememberTheDetailsAsTallAsTheRestOfTheSplit(0.3);
+    }
+
+    @Test
+    void shouldBringTheDetailsBackAsTallAsTheyWereLeft() throws Exception {
+        givenTheDetailsWereLeft(250);
+
+        whenTheTransfersShow(FILM);
+
+        thenTheDetailsAreAbout(250);
+    }
+
+    @Test
+    void shouldShowTheButtonsOfTheChosenDownloadUntilTheDividerIsMoved() throws Exception {
+        givenTheTransfersWith(FILM);
+        givenTheDetailsAre(true);
+
+        whenTheDownloadIsChosen();
+
+        thenTheButtonsOfTheDownloadShowWithRoomUnder();
     }
 
     @Test
@@ -207,6 +229,9 @@ class DownloadDetailsTest {
                     return CompletableFuture.completedFuture(true);
                 });
         this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, commands));
+        if (this.leftAt > 0) {
+            this.test.gui.settings().setTransfersDetailsHeight(this.leftAt);
+        }
         this.screen = new TransfersScreen(this.test.gui);
         this.test.show(FxTesting.onFx(this.screen::view));
         FxTesting.onFx(this.test.model::tick);
@@ -233,13 +258,63 @@ class DownloadDetailsTest {
         FxTesting.onFx(() -> newName().setText(name));
     }
 
-    private void whenTheDividerIsMovedTo(double share) throws Exception {
-        FxTesting.onFx(() -> this.screen.split().setDividerPositions(share));
+    private void givenTheDetailsWereLeft(double height) {
+        this.leftAt = height;
     }
 
-    private void thenTheSettingsRememberTheDividerAt(double share) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.test.gui.settings().transfersDivider()))
-                .isCloseTo(share, within(0.001));
+    private void whenTheTransfersShow(DownloadInfo download) throws Exception {
+        givenTheTransfersWith(download);
+    }
+
+    // As the mouse leaves it: the split hears the release on its divider.
+    private void whenTheDividerIsDraggedTo(double share) throws Exception {
+        FxTesting.onFx(() -> {
+            this.screen.split().setDividerPositions(share);
+            this.screen
+                    .split()
+                    .lookup(".split-pane-divider")
+                    .fireEvent(new MouseEvent(
+                            MouseEvent.MOUSE_RELEASED,
+                            0,
+                            0,
+                            0,
+                            0,
+                            MouseButton.PRIMARY,
+                            1,
+                            false,
+                            false,
+                            false,
+                            false,
+                            false,
+                            false,
+                            false,
+                            false,
+                            false,
+                            false,
+                            null));
+        });
+    }
+
+    private void thenTheSettingsRememberTheDetailsAsTallAsTheRestOfTheSplit(double share) throws Exception {
+        double expected = FxTesting.onFx(() -> this.screen.split().getHeight() * share);
+        assertThat(FxTesting.onFx(() -> this.test.gui.settings().transfersDetailsHeight()))
+                .hasValueCloseTo(expected, within(1.0));
+    }
+
+    // The divider takes a few pixels of what is kept.
+    private void thenTheDetailsAreAbout(double height) throws Exception {
+        FxTesting.assertEventually(
+                "the details " + height + " tall",
+                () -> Math.abs(this.screen.details().view().getHeight() - height) < 12);
+    }
+
+    private void thenTheButtonsOfTheDownloadShowWithRoomUnder() throws Exception {
+        FxTesting.assertEventually("the buttons of the download with room under them", () -> {
+            Node button = this.screen.details().view().lookup("#details-first");
+            Node details = this.screen.details().view();
+            return button.localToScene(button.getLayoutBounds()).getMaxY() + 8
+                    <= details.localToScene(details.getLayoutBounds()).getMaxY();
+        });
     }
 
     private void whenPressed(String action) throws Exception {

@@ -156,6 +156,7 @@ final class DownloadDetails {
     // The download shown, whose comments are asked for once.
     private Hash16 shownHash;
     private final Region one;
+    private VBox head;
     private final VBox many;
     private final Label none;
     private final StackPane view;
@@ -245,11 +246,11 @@ final class DownloadDetails {
         HBox.setHgrow(toDo, Priority.ALWAYS);
         HBox actionRow = new HBox(8, toDo, copy, this.more);
         actionRow.setAlignment(Pos.TOP_LEFT);
-        VBox head = new VBox(12, top, progress, new VBox(8, this.bar, legend()), this.note, actionRow);
-        head.getStyleClass().add("details-head");
-        head.setPrefWidth(HEAD_WIDTH);
-        head.setMinWidth(HEAD_WIDTH);
-        head.setMaxWidth(HEAD_WIDTH);
+        this.head = new VBox(12, top, progress, new VBox(8, this.bar, legend()), this.note, actionRow);
+        this.head.getStyleClass().add("details-head");
+        this.head.setPrefWidth(HEAD_WIDTH);
+        this.head.setMinWidth(HEAD_WIDTH);
+        this.head.setMaxWidth(HEAD_WIDTH);
 
         this.pages.put(Tab.SOURCES, sourcesPage());
         this.pages.put(Tab.FACTS, factsPage());
@@ -282,7 +283,7 @@ final class DownloadDetails {
         VBox tabbed = new VBox(tabRow, this.page);
         HBox.setHgrow(tabbed, Priority.ALWAYS);
         tabbed.setMinWidth(0);
-        HBox box = new HBox(head, tabbed);
+        HBox box = new HBox(this.head, tabbed);
         box.getStyleClass().add("details-content");
         return box;
     }
@@ -390,6 +391,11 @@ final class DownloadDetails {
 
     Region view() {
         return this.view;
+    }
+
+    /** How tall the details must be to show the download's head, its buttons included. */
+    double headHeight() {
+        return this.head.prefHeight(HEAD_WIDTH) + this.view.snappedTopInset() + this.view.snappedBottomInset();
     }
 
     TableView<SourceName> names() {
