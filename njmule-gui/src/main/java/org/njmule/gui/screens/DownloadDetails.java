@@ -28,7 +28,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import javafx.beans.property.ReadOnlyIntegerWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
-import javafx.beans.value.ObservableBooleanValue;
 import javafx.collections.ListChangeListener;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -118,6 +117,8 @@ final class DownloadDetails {
             "IDS_CMT_NOTRATED", "IDS_CMT_FAKE", "IDS_CMT_POOR", "IDS_CMT_FAIR", "IDS_CMT_GOOD", "IDS_CMT_EXCELLENT");
     private static final List<String> RATING_TONES =
             List.of("neutral", "danger", "warning", "neutral", "accent", "success");
+    // What the download is, beside its tabs.
+    private static final double HEAD_WIDTH = 340;
 
     private final Gui gui;
     private final Words words;
@@ -185,8 +186,8 @@ final class DownloadDetails {
         show(List.of());
     }
 
-    // One download: its head, then the tabs.
-    private VBox oneDownload() {
+    // One download: its head, the tabs beside it.
+    private HBox oneDownload() {
         this.kind.getStyleClass().add("details-kind-icon");
         StackPane kindBox = new StackPane(this.kind);
         kindBox.getStyleClass().add("details-kind");
@@ -244,8 +245,11 @@ final class DownloadDetails {
         HBox.setHgrow(toDo, Priority.ALWAYS);
         HBox actionRow = new HBox(8, toDo, copy, this.more);
         actionRow.setAlignment(Pos.TOP_LEFT);
-        VBox head = new VBox(14, top, progress, new VBox(8, this.bar, legend()), this.note, actionRow);
+        VBox head = new VBox(12, top, progress, new VBox(8, this.bar, legend()), this.note, actionRow);
         head.getStyleClass().add("details-head");
+        head.setPrefWidth(HEAD_WIDTH);
+        head.setMinWidth(HEAD_WIDTH);
+        head.setMaxWidth(HEAD_WIDTH);
 
         this.pages.put(Tab.SOURCES, sourcesPage());
         this.pages.put(Tab.FACTS, factsPage());
@@ -275,7 +279,10 @@ final class DownloadDetails {
         this.sources.getItems().addListener((ListChangeListener<LiveList.Row<SourceInfo>>) c -> countSources());
         showTab(Tab.SOURCES);
         VBox.setVgrow(this.page, Priority.ALWAYS);
-        VBox box = new VBox(head, tabRow, this.page);
+        VBox tabbed = new VBox(tabRow, this.page);
+        HBox.setHgrow(tabbed, Priority.ALWAYS);
+        tabbed.setMinWidth(0);
+        HBox box = new HBox(head, tabbed);
         box.getStyleClass().add("details-content");
         return box;
     }
@@ -381,13 +388,7 @@ final class DownloadDetails {
         });
     }
 
-    /** Shows the close button while {@code floating}: over the list, the details close by themselves. */
-    void closeShown(ObservableBooleanValue floating) {
-        this.close.visibleProperty().bind(floating);
-        this.close.managedProperty().bind(floating);
-    }
-
-    Node view() {
+    Region view() {
         return this.view;
     }
 

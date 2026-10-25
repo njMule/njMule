@@ -231,8 +231,7 @@ class TransfersScreenTest {
     }
 
     private void thenTheDetailsShow() throws Exception {
-        assertThat(FxTesting.onFx(() -> this.screen.inspector().openProperty().get()))
-                .isTrue();
+        assertThat(FxTesting.onFx(this.screen::detailsShown)).isTrue();
     }
 
     private void thenTheItemIsOff(String key, String what) throws Exception {

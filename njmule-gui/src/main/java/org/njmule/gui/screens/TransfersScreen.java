@@ -50,6 +50,7 @@ import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.geometry.HPos;
 import javafx.geometry.NodeOrientation;
+import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -64,6 +65,7 @@ import javafx.scene.control.MenuItem;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Skin;
+import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
@@ -115,7 +117,6 @@ import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icon;
 import org.njmule.gui.ui.Icons;
-import org.njmule.gui.ui.InspectorPane;
 import org.njmule.gui.ui.Navigate;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.Segments;
@@ -134,9 +135,6 @@ public final class TransfersScreen implements Screen {
     // The names a cancel question lists at most.
     private static final int CANCEL_NAMES_SHOWN = 5;
     // The list keeps this width beside the details; narrower, the details lie over its end.
-    private static final double LIST_WIDTH = 560;
-    private static final double DETAILS_WIDTH = 320;
-    private static final double DETAILS_GAP = 12;
     private static final KeyCombination COPY_LINKS = new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN);
 
     /** The lists of the screen, one shown at a time. */
@@ -213,7 +211,8 @@ public final class TransfersScreen implements Screen {
             new SimpleObjectProperty<>(s -> false);
     private final CustomTextField filter = new CustomTextField();
     private final ToggleButton detailsButton = new ToggleButton();
-    private InspectorPane inspector;
+    // The downloads over the details of the chosen one.
+    private SplitPane split;
     private DownloadDetails details;
     private int shownCategory = SHOW_ALL;
 
@@ -409,11 +408,15 @@ public final class TransfersScreen implements Screen {
         Fx.whole(this.category);
         VBox list = new VBox(this.downloads);
         VBox.setVgrow(this.downloads, Priority.ALWAYS);
-        this.inspector = new InspectorPane(list, (Region) this.details.view(), LIST_WIDTH, DETAILS_WIDTH, DETAILS_GAP);
-        this.inspector.openProperty().bindBidirectional(this.detailsButton.selectedProperty());
-        this.details.closeShown(this.inspector.floatingProperty());
-        VBox part = new VBox(10, narrowing, this.inspector);
-        VBox.setVgrow(this.inspector, Priority.ALWAYS);
+        this.split = new SplitPane(list);
+        this.split.setOrientation(Orientation.VERTICAL);
+        this.split.getStyleClass().add("transfers-split");
+        // A taller window gives the room to the list; the details keep theirs.
+        SplitPane.setResizableWithParent(this.details.view(), false);
+        showBelow(this.detailsButton.isSelected());
+        this.detailsButton.selectedProperty().addListener((o, was, now) -> showBelow(now));
+        VBox part = new VBox(10, narrowing, this.split);
+        VBox.setVgrow(this.split, Priority.ALWAYS);
         return part;
     }
 
@@ -785,9 +788,30 @@ public final class TransfersScreen implements Screen {
         return this.details;
     }
 
-    /** The details' pane, for tests. */
-    InspectorPane inspector() {
-        return this.inspector;
+    /** The downloads over their details, for tests. */
+    SplitPane split() {
+        return this.split;
+    }
+
+    /** Whether the details show under the downloads. */
+    boolean detailsShown() {
+        return this.split.getItems().contains(this.details.view());
+    }
+
+    // The details go under the list where the divider was left, which is remembered as it moves.
+    private void showBelow(boolean shown) {
+        Region below = this.details.view();
+        if (!shown) {
+            this.split.getItems().remove(below);
+        } else if (!this.split.getItems().contains(below)) {
+            this.split.getItems().add(below);
+            this.split.setDividerPositions(this.gui.settings().transfersDivider());
+            this.split
+                    .getDividers()
+                    .getFirst()
+                    .positionProperty()
+                    .addListener((o, was, now) -> this.gui.settings().setTransfersDivider(now.doubleValue()));
+        }
     }
 
     // The sources in the details are those of the download chosen.

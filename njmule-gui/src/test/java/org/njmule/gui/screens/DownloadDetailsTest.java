@@ -17,6 +17,7 @@
 package org.njmule.gui.screens;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -116,6 +117,16 @@ class DownloadDetailsTest {
         whenTheTabIsShown(DownloadDetails.Tab.FACTS);
 
         thenTheDetailsTell("2 / 4", "7", "High");
+    }
+
+    @Test
+    void shouldRememberWhereTheDividerOverTheDetailsIsLeft() throws Exception {
+        givenTheTransfersWith(FILM);
+        givenTheDetailsAre(true);
+
+        whenTheDividerIsMovedTo(0.7);
+
+        thenTheSettingsRememberTheDividerAt(0.7);
     }
 
     @Test
@@ -222,6 +233,15 @@ class DownloadDetailsTest {
         FxTesting.onFx(() -> newName().setText(name));
     }
 
+    private void whenTheDividerIsMovedTo(double share) throws Exception {
+        FxTesting.onFx(() -> this.screen.split().setDividerPositions(share));
+    }
+
+    private void thenTheSettingsRememberTheDividerAt(double share) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.test.gui.settings().transfersDivider()))
+                .isCloseTo(share, within(0.001));
+    }
+
     private void whenPressed(String action) throws Exception {
         FxTesting.onFx(() -> this.screen.details().button(action).fire());
     }
@@ -314,8 +334,7 @@ class DownloadDetailsTest {
     }
 
     private void detailsAre(boolean shown) throws Exception {
-        assertThat(FxTesting.onFx(() -> this.screen.inspector().openProperty().get()))
-                .isEqualTo(shown);
+        assertThat(FxTesting.onFx(this.screen::detailsShown)).isEqualTo(shown);
     }
 
     // The details follow the chosen download a moment later.

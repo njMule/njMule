@@ -51,6 +51,10 @@ public final class GuiSettings {
     }
 
     private static final Logger logger = LoggerFactory.getLogger(GuiSettings.class);
+    // Half each at first; the list keeps a fifth of the height at least, the details a tenth.
+    private static final double DEFAULT_DIVIDER = 0.5;
+    private static final double MIN_DIVIDER = 0.2;
+    private static final double MAX_DIVIDER = 0.9;
 
     private final Path file;
     private final Properties values = new Properties();
@@ -177,13 +181,27 @@ public final class GuiSettings {
         this.values.setProperty("table." + name + ".sort", sort);
     }
 
-    /** Whether the transfers show the details of the download chosen beside the list; on by default. */
+    /** Whether the transfers show the details of the download chosen under the list; on by default. */
     public boolean transfersDetails() {
         return Boolean.parseBoolean(this.values.getProperty("transfers.details", "true"));
     }
 
     public void setTransfersDetails(boolean value) {
         this.values.setProperty("transfers.details", String.valueOf(value));
+    }
+
+    /** Where the divider between the downloads and their details is, as a share of the height from the top. */
+    public double transfersDivider() {
+        try {
+            double share = Double.parseDouble(this.values.getProperty("transfers.divider", ""));
+            return Double.isFinite(share) ? Math.clamp(share, MIN_DIVIDER, MAX_DIVIDER) : DEFAULT_DIVIDER;
+        } catch (NumberFormatException e) {
+            return DEFAULT_DIVIDER;
+        }
+    }
+
+    public void setTransfersDivider(double share) {
+        this.values.setProperty("transfers.divider", String.valueOf(share));
     }
 
     /** Whether eD2K file links copied in other programs are downloaded; off by default. */
