@@ -22,12 +22,16 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.TableColumnBase;
+import javafx.scene.input.KeyCode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -38,6 +42,7 @@ import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.config.Preferences;
+import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
 import org.njmule.gui.i18n.I18n;
@@ -48,6 +53,7 @@ import org.njmule.gui.ui.Gui;
 class TransfersScreenTest {
 
     private static final Hash16 FILE = Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF");
+    private final List<Hash16> cleared = new CopyOnWriteArrayList<>();
 
     @TempDir
     Path dir;
@@ -75,6 +81,19 @@ class TransfersScreenTest {
         thenTheItemIsOff("IDS_DL_PREVIEW", "preview");
         thenTheItemIsOff("IDS_ADDSRCMANUALLY", "add a source");
         thenTheItemIsOn("IDS_CMT_ADD", "comments");
+    }
+
+    @Test
+    void shouldTakeACompletedDownloadOffTheListWithDeleteAndKeepItsFile() throws Exception {
+        givenTheEngineClearingCompletedDownloads();
+        givenTheScreen();
+        givenACompletedDownload();
+        givenTheFirstDownloadChosen();
+
+        whenDeleteIsPressed();
+
+        thenTheEngineClearedTheCompletedDownload(FILE);
+        thenTheDownloadsAreGone();
     }
 
     @Test
@@ -222,6 +241,34 @@ class TransfersScreenTest {
         // The model's first reading of the downloads would take away a row an event adds before it lands.
         this.test.engine.downloads().get(10, TimeUnit.SECONDS);
         FxTesting.onFx(() -> {});
+    }
+
+    private void givenTheEngineClearingCompletedDownloads() throws Exception {
+        this.test = TestGui.start(
+                this.dir.resolve("njmule"),
+                real -> Engines.overriding(real, Map.of("clearCompletedDownload", args -> {
+                    this.cleared.add((Hash16) args[0]);
+                    return CompletableFuture.completedFuture(true);
+                })));
+        this.test.engine.downloads().get(10, TimeUnit.SECONDS);
+        FxTesting.onFx(() -> {});
+    }
+
+    private void givenTheFirstDownloadChosen() throws Exception {
+        FxTesting.onFx(() -> this.screen.downloads().getSelectionModel().select(0));
+    }
+
+    private void whenDeleteIsPressed() throws Exception {
+        FxTesting.onFx(() -> this.screen.downloads().fireEvent(FxTesting.key(KeyCode.DELETE, false)));
+    }
+
+    private void thenTheEngineClearedTheCompletedDownload(Hash16 file) throws Exception {
+        FxTesting.await("the completed download cleared", () -> this.cleared.contains(file));
+    }
+
+    private void thenTheDownloadsAreGone() throws Exception {
+        FxTesting.assertEventually(
+                "no download", () -> this.screen.downloads().getItems().isEmpty());
     }
 
     private void givenTheScreen() throws Exception {

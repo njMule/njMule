@@ -689,6 +689,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         later(this.engine.clearCompletedDownloads(), cleared -> refreshDownloads());
     }
 
+    /** Takes one completed download off the list; its file stays. */
+    public void clearCompleted(Hash16 file) {
+        later(this.engine.clearCompletedDownload(file), ok -> this.downloads.remove(file));
+    }
+
     public void cancel(Hash16 file) {
         later(this.engine.cancelDownload(file), ok -> this.downloads.remove(file));
     }

@@ -296,9 +296,13 @@ public final class TransfersScreen implements Screen {
             showOpened();
         });
         this.downloads.setContextMenu(downloadMenu());
-        // Delete cancels the chosen downloads, after the question; Ctrl+C copies their links.
+        // Delete cancels the chosen downloads, after the question, and takes the completed ones off the list with their
+        // files kept; Ctrl+C copies their links.
         this.downloads.addEventHandler(KeyEvent.KEY_PRESSED, e -> {
             if (e.getCode() == KeyCode.DELETE) {
+                Fx.selected(this.downloads).stream()
+                        .filter(d -> d.status() == DownloadInfo.Status.COMPLETE)
+                        .forEach(d -> this.gui.model().clearCompleted(d.hash()));
                 askCancelSelected();
                 e.consume();
             } else if (e.getCode() == KeyCode.RIGHT || e.getCode() == KeyCode.LEFT) {

@@ -22,7 +22,7 @@ import {
     ElTabPane,
     ElTabs,
 } from 'element-plus';
-import { computed, h, onUnmounted, ref, useTemplateRef, watch } from 'vue';
+import { computed, h, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue';
 import { api } from '../../api';
 import { copy } from '../../clipboard';
 import AddLinksDialog from '../../components/AddLinksDialog.vue';
@@ -269,6 +269,41 @@ async function clearCompleted(): Promise<void> {
     await attempt(() => api.delete('/downloads/completed'));
     emit('changed');
 }
+
+// Delete cancels the chosen downloads, after the question, and takes the completed ones off the list; their files stay.
+async function deleteChosen(): Promise<void> {
+    const done = chosen.value.filter((d) => d.status === 'complete');
+    if (done.length > 0) {
+        await attempt(async () => {
+            for (const d of done) {
+                await api.delete(`/downloads/completed/${d.hash}`);
+            }
+        });
+        emit('changed');
+    }
+    if (cancellable.value.length > 0) {
+        await cancel();
+    }
+}
+
+// Not while typing, nor while a dialog is open.
+function deleteKey(e: KeyboardEvent): void {
+    const at = e.target instanceof Element ? e.target : null;
+    if (
+        e.key !== 'Delete' ||
+        guest ||
+        chosen.value.length === 0 ||
+        at?.closest('input:not([type="checkbox"]), textarea, select, [contenteditable], .el-overlay') ||
+        document.querySelector('.el-overlay:not([style*="display: none"])')
+    ) {
+        return;
+    }
+    e.preventDefault();
+    void deleteChosen();
+}
+
+onMounted(() => window.addEventListener('keydown', deleteKey));
+onUnmounted(() => window.removeEventListener('keydown', deleteKey));
 
 async function rename(): Promise<void> {
     const d = one.value;
