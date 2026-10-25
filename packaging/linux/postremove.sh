@@ -12,7 +12,7 @@ fi
 case "$1" in
     remove | purge | 0)
         echo "njMule is removed. Each user's profile stays in their home: ~/.config/njmule, ~/.local/share/njmule,"
-        echo "~/.local/state/njmule and ~/.cache/njmule (the downloads in ~/Downloads/njMule stay too)."
+        echo "~/.local/state/njmule and ~/.cache/njmule (the completed downloads stay where they are)."
         echo "Delete those folders to remove it; before uninstalling, njmule --remove-profile does it."
         ;;
 esac

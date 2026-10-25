@@ -21,12 +21,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.Writer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Optional;
+import java.util.Properties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -63,6 +65,17 @@ class ProfileRemovalTest {
     }
 
     @Test
+    void shouldKeepTheFolderOfTheDownloadsTheUserChoseInsideTheProfile() throws Exception {
+        givenAProfileWithADownload();
+        givenTheDownloadsGoInsideTheProfile();
+
+        whenRemoved("--remove-profile", "--yes");
+
+        thenTheExitCodeIs(Main.EXIT_OK);
+        thenTheChosenDownloadsStay();
+    }
+
+    @Test
     void shouldDeleteAfterAYes() throws Exception {
         givenAProfileWithADownload();
 
@@ -96,8 +109,20 @@ class ProfileRemovalTest {
     private void givenAProfileWithADownload() throws IOException {
         this.profile = AppDirectories.resolve(Optional.of(this.dir));
         this.profile.createAll();
+        Files.createDirectories(this.profile.downloads());
         Files.writeString(this.profile.config().resolve("preferences.ini"), "nick=Ann");
         Files.writeString(this.profile.downloads().resolve("talk.bin"), "data");
+    }
+
+    // The completed downloads go to a folder of the data, which would go with it.
+    private void givenTheDownloadsGoInsideTheProfile() throws IOException {
+        Path chosen = Files.createDirectories(this.profile.data().resolve("Incoming"));
+        Files.writeString(chosen.resolve("film.mkv"), "film");
+        Properties preferences = new Properties();
+        preferences.setProperty("dirs.incoming", chosen.toString());
+        try (Writer out = Files.newBufferedWriter(this.profile.config().resolve("njmule.properties"))) {
+            preferences.store(out, null);
+        }
     }
 
     // The engine's lock of the profile, held as by a running njMule.
@@ -135,6 +160,12 @@ class ProfileRemovalTest {
 
     private void thenTheProfileStays() {
         assertThat(this.profile.config().resolve("preferences.ini")).exists();
+    }
+
+    private void thenTheChosenDownloadsStay() {
+        assertThat(this.profile.data().resolve("Incoming").resolve("film.mkv")).hasContent("film");
+        assertThat(this.out.toString(StandardCharsets.UTF_8))
+                .contains(this.profile.data().resolve("Incoming").toString());
     }
 
     private void thenTheDownloadStays() {

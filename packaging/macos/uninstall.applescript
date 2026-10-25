@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 --
 -- "Uninstall njMule", beside the app in its disk image: moves njMule.app to the Trash and, when the box is ticked,
--- the user's profile of njMule too. The completed downloads, in ~/Downloads/njMule, stay.
+-- the user's profile of njMule too. The completed downloads stay where they are.
 on run
     set appId to "org.njmule.njMule"
     set dialogTitle to "Uninstall njMule"

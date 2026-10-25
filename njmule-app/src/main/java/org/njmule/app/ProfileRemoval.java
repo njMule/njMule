@@ -20,6 +20,8 @@ import com.google.common.io.MoreFiles;
 import com.google.common.io.RecursiveDeleteOption;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,6 +29,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Properties;
 import java.util.function.Function;
 import org.njmule.core.config.AppDirectories;
 
@@ -35,6 +38,10 @@ import org.njmule.core.config.AppDirectories;
  * identity, unfinished downloads, caches and logs. The completed downloads stay.
  */
 final class ProfileRemoval {
+
+    // The preferences of the engine and their key of the folder of the completed downloads.
+    private static final String PREFERENCES = "njmule.properties";
+    private static final String INCOMING = "dirs.incoming";
 
     private ProfileRemoval() {}
 
@@ -45,14 +52,15 @@ final class ProfileRemoval {
             err.println("njMule runs on this profile: stop it first (njmule --exit).");
             return Main.EXIT_FAILURE;
         }
-        List<Path> folders = folders(dirs);
+        Path incoming = incoming(dirs);
+        List<Path> folders = folders(dirs, incoming);
         if (folders.isEmpty()) {
             out.println("There is no profile of njMule to delete.");
             return Main.EXIT_OK;
         }
         out.println("These folders of njMule will be deleted:");
         folders.forEach(f -> out.println("  " + f));
-        out.println("The completed downloads in " + dirs.downloads() + " stay.");
+        out.println("The completed downloads in " + incoming + " stay.");
         if (!cli.confirmed()) {
             String answer = ask.apply("Delete them? [y/N] ");
             String said = answer == null ? "" : answer.strip().toLowerCase(Locale.ROOT);
@@ -78,8 +86,8 @@ final class ProfileRemoval {
     }
 
     // The existing folders of the profile, a folder inside another one counted once; never one holding downloads.
-    static List<Path> folders(AppDirectories dirs) {
-        Path downloads = dirs.downloads().toAbsolutePath().normalize();
+    static List<Path> folders(AppDirectories dirs, Path incoming) {
+        Path downloads = incoming.toAbsolutePath().normalize();
         List<Path> all = new ArrayList<>();
         for (Path p : List.of(dirs.config(), dirs.data(), dirs.temp(), dirs.cache(), dirs.logs(), dirs.gui())) {
             Path folder = p.toAbsolutePath().normalize();
@@ -90,6 +98,21 @@ final class ProfileRemoval {
             }
         }
         return List.copyOf(all);
+    }
+
+    /**
+     * Where the completed downloads go: the folder the preferences name, else the default one. Read from the file
+     * itself, as the engine does not run.
+     */
+    static Path incoming(AppDirectories dirs) {
+        Properties preferences = new Properties();
+        try (Reader in = Files.newBufferedReader(dirs.config().resolve(PREFERENCES), StandardCharsets.UTF_8)) {
+            preferences.load(in);
+            String chosen = preferences.getProperty(INCOMING, "").strip();
+            return chosen.isEmpty() ? dirs.downloads() : Path.of(chosen);
+        } catch (IOException | IllegalArgumentException e) {
+            return dirs.downloads();
+        }
     }
 
     // The folder named after njMule that held them goes too once empty, as %APPDATA%\njMule.
