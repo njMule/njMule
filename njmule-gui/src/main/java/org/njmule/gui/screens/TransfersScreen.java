@@ -40,6 +40,7 @@ import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.StringBinding;
 import javafx.beans.property.ObjectProperty;
@@ -223,6 +224,10 @@ public final class TransfersScreen implements Screen {
     private boolean placeDetails;
     // How tall the app made the details last, or the user left them.
     private double placedHeight = -1;
+    // How tall the details should be, the user's or the app's, which a window too low for it only puts off.
+    private double wantedHeight = -1;
+    // The split's height as last seen: the divider moved while it stays is moved by the user.
+    private double splitHeightSeen = -1;
     private DownloadDetails details;
     private int shownCategory = SHOW_ALL;
 
@@ -424,7 +429,20 @@ public final class TransfersScreen implements Screen {
         // A taller window gives the room to the list; the details keep theirs. Only a divider the user drags is
         // remembered, as the height of the details.
         SplitPane.setResizableWithParent(this.details.view(), false);
-        this.split.heightProperty().addListener((o, was, now) -> placeDetails());
+        this.split.heightProperty().addListener((o, was, now) -> {
+            this.splitHeightSeen = now.doubleValue();
+            if (this.placeDetails) {
+                placeDetails();
+            } else if (detailsShown() && this.wantedHeight > 0) {
+                // A window that grows from its first size, or comes back from a smaller one, gives the details again
+                // the height they want, once the split has laid out its new size.
+                Platform.runLater(() -> {
+                    if (detailsShown() && this.split.getHeight() > 0) {
+                        setDetailsHeight(this.wantedHeight);
+                    }
+                });
+            }
+        });
         showBelow(this.detailsButton.isSelected());
         this.detailsButton.selectedProperty().addListener((o, was, now) -> showBelow(now));
         VBox part = new VBox(10, narrowing, this.split);
@@ -842,10 +860,14 @@ public final class TransfersScreen implements Screen {
     // keeps
     // the details as tall as they were, so it changes nothing here.
     private void keepDetailsHeight() {
-        if (detailsShown() && !this.placeDetails && this.split.getHeight() > 0) {
+        if (detailsShown()
+                && !this.placeDetails
+                && this.split.getHeight() > 0
+                && this.split.getHeight() == this.splitHeightSeen) {
             double now = detailsHeight();
             if (Math.abs(now - this.placedHeight) >= 2) {
                 this.placedHeight = now;
+                this.wantedHeight = now;
                 this.gui.settings().setTransfersDetailsHeight(now);
             }
         }
@@ -855,10 +877,11 @@ public final class TransfersScreen implements Screen {
     private void placeDetails() {
         if (this.placeDetails && detailsShown() && this.split.getHeight() > 0) {
             this.placeDetails = false;
-            setDetailsHeight(this.gui
+            this.wantedHeight = this.gui
                     .settings()
                     .transfersDetailsHeight()
-                    .orElse(Math.max(DETAILS_HEIGHT, this.details.headHeight() + DETAILS_MARGIN)));
+                    .orElse(Math.max(DETAILS_HEIGHT, this.details.headHeight() + DETAILS_MARGIN));
+            setDetailsHeight(this.wantedHeight);
         }
     }
 
@@ -870,6 +893,7 @@ public final class TransfersScreen implements Screen {
                 && this.gui.settings().transfersDetailsHeight().isEmpty()) {
             double needed = this.details.headHeight() + DETAILS_MARGIN;
             if (needed > detailsHeight()) {
+                this.wantedHeight = needed;
                 setDetailsHeight(needed);
             }
         }

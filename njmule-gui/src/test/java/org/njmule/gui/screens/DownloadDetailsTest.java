@@ -35,6 +35,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
+import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -139,6 +140,18 @@ class DownloadDetailsTest {
         whenTheTransfersShow(FILM);
 
         thenTheDetailsAreAbout(250);
+    }
+
+    @Test
+    void shouldGiveTheDetailsBackTheirHeightWhenTheWindowGrowsFromALowOne() throws Exception {
+        givenTheDetailsWereLeft(250);
+        givenTheTransfersWith(FILM);
+        givenTheWindowHigh(330);
+
+        whenTheWindowIsHigh(720);
+
+        thenTheDetailsAreAbout(250);
+        thenTheSettingsStillHaveTheDetails(250);
     }
 
     @Test
@@ -260,6 +273,25 @@ class DownloadDetailsTest {
 
     private void givenTheDetailsWereLeft(double height) {
         this.leftAt = height;
+    }
+
+    private void givenTheWindowHigh(double height) throws Exception {
+        whenTheWindowIsHigh(height);
+    }
+
+    // As a window shows first at a size and then at another, maximised.
+    private void whenTheWindowIsHigh(double height) throws Exception {
+        FxTesting.onFx(() -> {
+            Stage stage = (Stage) this.screen.split().getScene().getWindow();
+            stage.setHeight(height);
+            this.screen.split().getScene().getRoot().applyCss();
+            this.screen.split().getScene().getRoot().layout();
+        });
+    }
+
+    private void thenTheSettingsStillHaveTheDetails(double height) throws Exception {
+        assertThat(FxTesting.onFx(() -> this.test.gui.settings().transfersDetailsHeight()))
+                .hasValue(height);
     }
 
     private void whenTheTransfersShow(DownloadInfo download) throws Exception {
