@@ -23,8 +23,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
+import javafx.scene.control.TableRow;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -57,8 +59,12 @@ class DownloadSourcesTest {
     @TempDir
     Path dir;
 
+    private static final Hash16 OTHER_FILE = Hash16.parseHex("FF".repeat(16));
+
+    private final AtomicReference<List<SourceInfo>> sources = new AtomicReference<>(List.of());
     private TestGui test;
     private TransfersScreen screen;
+    private Label line;
 
     @AfterEach
     void close() {
@@ -86,19 +92,50 @@ class DownloadSourcesTest {
         thenNoSourceIsShown();
     }
 
+    @Test
+    void shouldShowTheChangesOfASourceInTheLineItHasAlready() throws Exception {
+        givenTheFilmWithASourceAndASourceOfAnotherFile();
+        givenTheFilmOpened();
+        givenTheLineOfTheFirstSourceNoted();
+
+        whenTheSourcesBecome(source(FILM.hash(), "10.0.0.1:4662", "ann"), source(OTHER_FILE, "10.0.0.2:4662", ""));
+
+        thenTheNotedLineReads("ann");
+    }
+
+    @Test
+    void shouldMakeRoomForASourceFoundWhileTheDownloadIsOpen() throws Exception {
+        givenTheFilmWithASourceAndASourceOfAnotherFile();
+        givenTheFilmOpened();
+
+        whenTheSourcesBecome(
+                source(FILM.hash(), "10.0.0.1:4662", ""),
+                source(OTHER_FILE, "10.0.0.2:4662", ""),
+                source(FILM.hash(), "10.0.0.3:4662", ""));
+
+        thenTheSourcesShownAre("10.0.0.1:4662", "10.0.0.3:4662");
+        thenTheRowHoldsItsLastSource();
+    }
+
     private void givenTheFilmWithASourceAndASourceOfAnotherFile() throws Exception {
-        List<SourceInfo> sources = List.of(
-                source(FILM.hash(), "10.0.0.1:4662"), source(Hash16.parseHex("FF".repeat(16)), "10.0.0.2:4662"));
+        this.sources.set(List.of(source(FILM.hash(), "10.0.0.1:4662", ""), source(OTHER_FILE, "10.0.0.2:4662", "")));
         Map<String, Engines.Command> commands = Map.of(
                 "downloads", a -> CompletableFuture.completedFuture(List.of(FILM)),
-                "sources", a -> CompletableFuture.completedFuture(sources));
+                "sources", a -> CompletableFuture.completedFuture(this.sources.get()));
         this.test = TestGui.start(this.dir.resolve("njmule"), real -> Engines.overriding(real, commands));
         this.screen = new TransfersScreen(this.test.gui);
         this.test.show(FxTesting.onFx(this.screen::view));
         FxTesting.onFx(this.test.model::tick);
         FxTesting.onFx(this.test.model::tick);
         FxTesting.await("the download", () -> this.screen.downloads().getItems().size() == 1);
-        FxTesting.await("the sources", () -> this.test.model.sources().size() == sources.size());
+        FxTesting.await("the sources", () -> this.test.model.sources().size() == 2);
+    }
+
+    private void givenTheLineOfTheFirstSourceNoted() throws Exception {
+        this.line = FxTesting.onFx(() -> (Label) this.screen.downloads().lookupAll(".source-name").stream()
+                .filter(DownloadSourcesTest::inTheScene)
+                .findFirst()
+                .orElseThrow());
     }
 
     private void givenTheFilmOpened() throws Exception {
@@ -108,6 +145,40 @@ class DownloadSourcesTest {
 
     private void whenTheFilmIsOpened() throws Exception {
         FxTesting.onFx(() -> this.screen.activate(FILM));
+    }
+
+    // As the engine tells them at its next reading.
+    private void whenTheSourcesBecome(SourceInfo... now) throws Exception {
+        this.sources.set(List.of(now));
+        FxTesting.onFx(this.test.model::tick);
+        FxTesting.onFx(this.test.model::tick);
+        FxTesting.await(
+                "the sources read",
+                () -> this.test.model.sources().rows().stream()
+                        .map(r -> r.get())
+                        .toList()
+                        .equals(List.of(now)));
+    }
+
+    private void thenTheNotedLineReads(String text) throws Exception {
+        FxTesting.assertEventually("the line of the source, kept", () -> text.equals(this.line.getText()));
+        assertThat(FxTesting.onFx(() -> inTheScene(this.line))).isTrue();
+    }
+
+    // The row has grown with its lines: the last one is not cut off or drawn over the next row.
+    private void thenTheRowHoldsItsLastSource() throws Exception {
+        FxTesting.assertEventually("the row holding its sources", () -> {
+            List<Node> names = this.screen.downloads().lookupAll(".source-name").stream()
+                    .filter(DownloadSourcesTest::inTheScene)
+                    .toList();
+            Node last = names.getLast();
+            Node row = last;
+            while (!(row instanceof TableRow<?>)) {
+                row = row.getParent();
+            }
+            return last.localToScene(last.getLayoutBounds()).getMaxY()
+                    <= row.localToScene(row.getLayoutBounds()).getMaxY() + 0.5;
+        });
     }
 
     private void thenTheSourcesShownAre(String... names) throws Exception {
@@ -133,12 +204,12 @@ class DownloadSourcesTest {
         return node.getScene() != null && node.isVisible();
     }
 
-    private static SourceInfo source(Hash16 file, String address) {
+    private static SourceInfo source(Hash16 file, String address, String nick) {
         return new SourceInfo(
                 file,
                 "film.mkv",
                 address,
-                Optional.empty(),
+                nick.isEmpty() ? Optional.empty() : Optional.of(nick),
                 "eMule",
                 SourceInfo.State.DOWNLOADING,
                 0,

@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -34,7 +35,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.function.BiPredicate;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import javafx.beans.binding.Bindings;
@@ -191,6 +194,8 @@ public final class TransfersScreen implements Screen {
     // What each source had sent at the last reading, and its speed since, by file and address.
     private final Map<String, long[]> sourceSeen = new HashMap<>();
     private final Map<String, Long> sourceRates = new HashMap<>();
+    // The rows of the downloads the list made, to show the sources of the opened ones as they change.
+    private final Set<DownloadRow> rows = Collections.newSetFromMap(new WeakHashMap<>());
     private TableView<LiveList.Row<UploadInfo>> uploads;
     private TableView<LiveList.Row<UploadInfo>> queue;
     private ListView<LiveList.Row<SourceInfo>> sources;
@@ -270,11 +275,14 @@ public final class TransfersScreen implements Screen {
         this.downloads.setRowFactory(t -> new DownloadRow());
         downloadColumns();
         // The sources shown under opened downloads follow theirs, with the speed each sends at.
+        // In place: recreating the rows each time would make the list flicker.
         this.gui.subscriptions().onListChange(this.gui.model().sources().rows(), c -> {
             measureSources();
-            if (!this.opened.isEmpty()) {
-                this.downloads.refresh();
-            }
+            showOpened();
+        });
+        this.gui.subscriptions().onListChange(this.downloads.getVisibleLeafColumns(), c -> {
+            this.rows.forEach(DownloadRow::forgetSources);
+            showOpened();
         });
         this.downloads.setContextMenu(downloadMenu());
         // Delete cancels the chosen downloads, after the question; Ctrl+C copies their links.
@@ -934,7 +942,7 @@ public final class TransfersScreen implements Screen {
         } else if (!this.opened.remove(d.hash())) {
             this.opened.add(d.hash());
         }
-        this.downloads.refresh();
+        showOpened();
     }
 
     /** Whether the download of {@code hash} shows its sources under it. */
@@ -951,7 +959,11 @@ public final class TransfersScreen implements Screen {
                 this.opened.remove(d.hash());
             }
         }
-        this.downloads.refresh();
+        showOpened();
+    }
+
+    private void showOpened() {
+        this.rows.forEach(DownloadRow::showSources);
     }
 
     private void openCompleted(DownloadInfo d) {
@@ -973,7 +985,7 @@ public final class TransfersScreen implements Screen {
         Map<String, long[]> seen = new HashMap<>();
         for (LiveList.Row<SourceInfo> row : this.gui.model().sources().rows()) {
             SourceInfo source = row.get();
-            String key = source.file().toHex() + " " + source.address();
+            String key = sourceKey(source);
             long[] before = this.sourceSeen.get(key);
             if (before != null && now > before[1] && source.received() >= before[0]) {
                 this.sourceRates.put(key, (source.received() - before[0]) * 1_000_000_000L / (now - before[1]));
@@ -996,66 +1008,102 @@ public final class TransfersScreen implements Screen {
                 .toList();
     }
 
-    // One source in the columns of the downloads: its name under the file's, what it sent under the size, its parts
-    // under the progress, its speed, its program and place in the queue under the sources, what it does.
-    private Node sourceLine(SourceInfo s) {
-        HBox line = new HBox();
-        line.getStyleClass().add("source-line");
-        line.setAlignment(Pos.CENTER_LEFT);
-        for (TableColumn<LiveList.Row<DownloadInfo>, ?> column : this.downloads.getVisibleLeafColumns()) {
-            Region cell = sourceCell(String.valueOf(column.getId()), s);
-            cell.minWidthProperty().bind(column.widthProperty());
-            cell.prefWidthProperty().bind(column.widthProperty());
-            cell.maxWidthProperty().bind(column.widthProperty());
-            line.getChildren().add(cell);
+    /**
+     * One source in the columns of the downloads: its name under the file's, what it sent under the size, its parts
+     * under the progress, its speed, its program and place in the queue under the sources, what it does. Built once,
+     * then shown again as the source changes.
+     */
+    private final class SourceLine {
+        private final HBox box = new HBox();
+        private final List<Consumer<SourceInfo>> shows = new ArrayList<>();
+
+        SourceLine() {
+            this.box.getStyleClass().add("source-line");
+            this.box.setAlignment(Pos.CENTER_LEFT);
+            for (TableColumn<LiveList.Row<DownloadInfo>, ?> column :
+                    TransfersScreen.this.downloads.getVisibleLeafColumns()) {
+                Region cell = sourceCell(String.valueOf(column.getId()), this.shows);
+                cell.minWidthProperty().bind(column.widthProperty());
+                cell.prefWidthProperty().bind(column.widthProperty());
+                cell.maxWidthProperty().bind(column.widthProperty());
+                this.box.getChildren().add(cell);
+            }
         }
-        return line;
+
+        void show(SourceInfo s) {
+            this.shows.forEach(show -> show.accept(s));
+        }
     }
 
-    private Region sourceCell(String column, SourceInfo s) {
+    // The cell of a source under a column; what shows the source in it goes into shows.
+    private Region sourceCell(String column, List<Consumer<SourceInfo>> shows) {
         var formats = this.gui.formats();
         return switch (column) {
             case "download-name" -> {
-                Label name = Fx.ownDirection(new Label(s.nick().orElse(s.address())));
-                Icon icon = Fx.icon(sourceIcon(s.state()));
-                icon.getStyleClass()
-                        .addAll("source-state-icon", s.state().name().toLowerCase(Locale.ROOT));
+                Label name = Fx.ownDirection(new Label());
+                Icon icon = Fx.icon(sourceIcon(SourceInfo.State.WAITING));
+                Tooltip address = new Tooltip();
                 name.setGraphic(icon);
                 name.getStyleClass().add("source-name");
-                name.setTooltip(new Tooltip(s.address()));
+                name.setTooltip(address);
+                shows.add(s -> {
+                    name.setText(s.nick().orElse(s.address()));
+                    address.setText(s.address());
+                    icon.setGlyph(sourceIcon(s.state()));
+                    icon.getStyleClass()
+                            .setAll(
+                                    "nj-icon",
+                                    "source-state-icon",
+                                    s.state().name().toLowerCase(Locale.ROOT));
+                });
                 yield name;
             }
-            case "download-size" -> figure(s.received() > 0 ? formats.size(s.received()) : "");
+            case "download-size" -> {
+                Label figure = figure();
+                shows.add(s -> figure.setText(s.received() > 0 ? formats.size(s.received()) : ""));
+                yield figure;
+            }
             case "download-progress" -> {
                 ThinBar parts = new ThinBar();
-                parts.set(s.partCount() == 0 ? 0 : (double) s.parts() / s.partCount(), "accent");
-                parts.setAccessibleText(formats.percent(s.parts(), s.partCount()));
+                shows.add(s -> {
+                    parts.set(s.partCount() == 0 ? 0 : (double) s.parts() / s.partCount(), "accent");
+                    parts.setAccessibleText(formats.percent(s.parts(), s.partCount()));
+                });
                 StackPane box = new StackPane(parts);
                 box.getStyleClass().add("source-cell");
                 yield box;
             }
             case "download-speed" -> {
-                long rate = this.sourceRates.getOrDefault(s.file().toHex() + " " + s.address(), 0L);
-                yield figure(s.state() == SourceInfo.State.DOWNLOADING && rate > 0 ? formats.rate(rate) : "");
+                Label figure = figure();
+                shows.add(s -> {
+                    long rate = this.sourceRates.getOrDefault(sourceKey(s), 0L);
+                    figure.setText(s.state() == SourceInfo.State.DOWNLOADING && rate > 0 ? formats.rate(rate) : "");
+                });
+                yield figure;
             }
             case "download-sources" -> {
-                Label program =
-                        Fx.leftToRight(new Label(s.software() + (s.queueRank() > 0 ? " QR: " + s.queueRank() : "")));
+                Label program = Fx.leftToRight(new Label());
                 program.getStyleClass().add("source-cell");
+                shows.add(s -> program.setText(s.software() + (s.queueRank() > 0 ? " QR: " + s.queueRank() : "")));
                 yield program;
             }
             case "download-status" -> {
-                Label state = new Label(sourceState(s.state()));
+                Label state = new Label();
                 state.getStyleClass().add("source-cell");
+                shows.add(s -> state.setText(sourceState(s.state())));
                 yield state;
             }
             default -> new Region();
         };
     }
 
+    private static String sourceKey(SourceInfo s) {
+        return s.file().toHex() + " " + s.address();
+    }
+
     // Left to right and on the right in every language, as the figures of the downloads above.
-    private static Label figure(String text) {
-        Label figure = new Label(text);
+    private static Label figure() {
+        Label figure = new Label();
         figure.setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
         figure.getStyleClass().add("source-cell");
         figure.setAlignment(Pos.CENTER_RIGHT);
@@ -1069,9 +1117,14 @@ public final class TransfersScreen implements Screen {
      */
     private final class DownloadRow extends TableRow<LiveList.Row<DownloadInfo>> {
         private final VBox lines = new VBox();
+        // The lines of the sources shown, by file and address, shown again in place.
+        private final Map<String, SourceLine> shown = new HashMap<>();
+        private final Label none = new Label();
 
         DownloadRow() {
             this.lines.getStyleClass().add("source-lines");
+            this.none.getStyleClass().addAll("source-cell", "source-none");
+            TransfersScreen.this.rows.add(this);
             setOnMouseClicked(e -> {
                 if (e.getButton() == MouseButton.PRIMARY && e.getClickCount() == 2 && !isEmpty() && getItem() != null) {
                     activate(getItem().get());
@@ -1096,22 +1149,44 @@ public final class TransfersScreen implements Screen {
         @Override
         protected void updateItem(LiveList.Row<DownloadInfo> item, boolean empty) {
             super.updateItem(item, empty);
+            showSources();
+        }
+
+        // The lines change only where the sources did; the row grows or shrinks with their number.
+        void showSources() {
             if (!opened()) {
-                this.lines.getChildren().clear();
+                if (!this.lines.getChildren().isEmpty()) {
+                    forgetSources();
+                    requestLayout();
+                }
                 return;
             }
-            List<SourceInfo> sources = sourcesOf(item.get().hash());
-            if (sources.isEmpty()) {
-                Label none = new Label(TransfersScreen.this.gui.t("nj.transfers.noSources"));
-                none.getStyleClass().addAll("source-cell", "source-none");
-                this.lines.getChildren().setAll(none);
-            } else {
-                this.lines
-                        .getChildren()
-                        .setAll(sources.stream()
-                                .map(TransfersScreen.this::sourceLine)
-                                .toList());
+            List<Node> wanted = new ArrayList<>();
+            Map<String, SourceLine> kept = new HashMap<>();
+            for (SourceInfo s : sourcesOf(getItem().get().hash())) {
+                SourceLine line = this.shown.get(sourceKey(s));
+                if (line == null) {
+                    line = new SourceLine();
+                }
+                line.show(s);
+                kept.put(sourceKey(s), line);
+                wanted.add(line.box);
             }
+            if (wanted.isEmpty()) {
+                this.none.setText(TransfersScreen.this.gui.t("nj.transfers.noSources"));
+                wanted.add(this.none);
+            }
+            this.shown.clear();
+            this.shown.putAll(kept);
+            if (!this.lines.getChildren().equals(wanted)) {
+                this.lines.getChildren().setAll(wanted);
+                requestLayout();
+            }
+        }
+
+        void forgetSources() {
+            this.lines.getChildren().clear();
+            this.shown.clear();
         }
     }
 
