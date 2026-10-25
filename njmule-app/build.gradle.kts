@@ -45,6 +45,9 @@ tasks.distTar {
 // Native executable with GraalVM (GRAALVM_HOME): ./gradlew :njmule-app:nativeCompile
 // → build/native/nativeCompile/njmule[.exe]. On Windows it links its icon and version information (native/windows).
 val windows = System.getProperty("os.name").lowercase().startsWith("windows")
+// x86-64 executables run on CPUs without AVX2 too (native-image's default x86-64-v3 needs it), such as the Celeron
+// of many Synology NAS; ARM builds keep their default.
+val x64 = System.getProperty("os.arch") in setOf("amd64", "x86_64")
 val nativeResourceSources =
     tasks.register<Sync>("nativeResourceSources") {
         val version = project.version.toString()
@@ -79,6 +82,9 @@ graalvmNative {
         mainClass = application.mainClass
         buildArgs.add("-H:+ReportExceptionStackTraces")
         buildArgs.add(providers.gradleProperty("native.optimization"))
+        if (x64) {
+            buildArgs.add("-march=x86-64-v2")
+        }
         // -Pnative.static=musl: no libc of the system needed (Synology DSM's is too old), musl toolchain on PATH.
         if (providers.gradleProperty("native.static").orNull == "musl") {
             buildArgs.addAll("--static", "--libc=musl")

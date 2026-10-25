@@ -250,7 +250,7 @@ secrets:
 <summary><strong>Synology DSM</strong></summary>
 
 The `.spk` package runs the headless engine with its web interface on DSM 7.0 or later (x86_64
-models), as a user of its own without administrator rights. Install it from *Package Center →
+models, those with a Celeron or Atom included), as a user of its own without administrator rights. Install it from *Package Center →
 Manual Install*; DSM warns that the package is not signed by Synology. The install wizard asks for
 the web interface password (8 characters at least), of which only a hash is kept.
 

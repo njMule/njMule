@@ -110,6 +110,8 @@ val nativeOs =
         hostOs.startsWith("mac") -> "macos"
         else -> "linux"
     }
+// x86-64 executables run on CPUs without AVX2 too (native-image's default x86-64-v3 needs it); ARM keeps its default.
+val nativeMarch = if (System.getProperty("os.arch") in setOf("amd64", "x86_64")) listOf("-march=x86-64-v2") else emptyList()
 val graalvmBin = providers.environmentVariable("GRAALVM_HOME").map { "$it/bin/" }.orElse("")
 val cmdSuffix = if (nativeOs == "windows") ".cmd" else ""
 val guiModule = "org.njmule.gui/org.njmule.gui.GuiMain"
@@ -184,6 +186,8 @@ tasks.register<Exec>("nativeGui") {
     val generatedArgs = layout.buildDirectory.file("native-args/njmule-gui.args")
     val optimization = providers.gradleProperty("native.optimization")
     inputs.property("optimization", optimization)
+    val march = nativeMarch
+    inputs.property("march", march)
     val i18n = file("src/main/resources/org/njmule/gui/i18n")
     argumentProviders.add(
         CommandLineArgumentProvider {
@@ -208,7 +212,8 @@ tasks.register<Exec>("nativeGui") {
             )
             listOf("@${long.path}", "--module", module, "-o", name, "@$argsFile") +
                 (if (windows) listOf("-H:NativeLinkerOption=${resFile.get().asFile}") else emptyList()) +
-                listOf(optimization.get())
+                listOf(optimization.get()) +
+                march
         }
     )
     doFirst { out.get().asFile.mkdirs() }
