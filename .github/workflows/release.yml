@@ -477,9 +477,15 @@ jobs:
             - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
               with:
                   cache-provider: basic
-            # The committed metadata comes from Windows and Linux: the tour adds macOS's first.
+            # The committed metadata comes from Windows and Linux: the tour adds macOS's first. JavaFX's Metal pipeline
+            # crashes now and then on the runner's virtual GPU, which has no OpenGL: the tour gets three tries.
             - name: Trace the GUI tour
-              run: ./gradlew :njmule-gui:nativeTour
+              run: |
+                  for attempt in 1 2 3; do
+                      ./gradlew :njmule-gui:nativeTour && exit 0
+                      echo "::warning::The GUI tour failed (attempt $attempt of 3)"
+                  done
+                  exit 1
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
             - name: Build the native executable
               run: ./gradlew :njmule-gui:nativeGui '-Pnative.optimization=-O2'
@@ -488,7 +494,8 @@ jobs:
                   njmule-gui/build/native/njmule-gui --headless --version
                   tour="$RUNNER_TEMP/tour"
                   cp -r njmule-gui/native/tour "$tour"
-                  njmule-gui/build/native/njmule-gui -Dnjmule.gui.tour=true -Dprism.verbose=true \
+                  # Drawn in software: the runner's virtual GPU crashes Metal now and then and has no OpenGL.
+                  njmule-gui/build/native/njmule-gui -Dnjmule.gui.tour=true -Dprism.verbose=true -Dprism.order=sw \
                       --config-dir "$tour" > "$RUNNER_TEMP/gui.out" 2>&1 &
                   gui=$!
                   ( sleep 180 && kill -QUIT "$gui" && sleep 5 && kill "$gui" ) 2>/dev/null &
