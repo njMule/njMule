@@ -22,7 +22,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 
-/** Opens a folder in the system's file manager. */
+/** Opens a folder in the system's file manager, or a file with the program the system gives its kind. */
 public final class Folders {
 
     private Folders() {}
@@ -31,6 +31,12 @@ public final class Folders {
     public static void open(Path folder) throws IOException {
         Path dir = Files.createDirectories(folder).toAbsolutePath();
         process(command(System.getProperty("os.name", ""), dir)).start();
+    }
+
+    /** Opens {@code file} with the program the system opens its kind with; the program runs on its own. */
+    public static void openFile(Path file) throws IOException {
+        process(command(System.getProperty("os.name", ""), file.toAbsolutePath()))
+                .start();
     }
 
     /** Shows the folder of {@code file} with the file selected, where the file manager can. */
@@ -57,7 +63,7 @@ public final class Folders {
         return List.of("xdg-open", String.valueOf(file.getParent()));
     }
 
-    // The desktop's own opener; the folder is one argument, never parsed by a shell.
+    // The desktop's own opener, for a folder or a file; the path is one argument, never parsed by a shell.
     static List<String> command(String os, Path dir) {
         String name = os.toLowerCase(Locale.ROOT);
         if (name.startsWith("windows")) {

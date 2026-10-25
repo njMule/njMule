@@ -19,16 +19,21 @@ package org.njmule.gui.screens;
 import atlantafx.base.controls.CustomTextField;
 import atlantafx.base.theme.Styles;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -54,17 +59,21 @@ import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.SeparatorMenuItem;
+import javafx.scene.control.Skin;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.Tooltip;
+import javafx.scene.control.skin.TableRowSkin;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseButton;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -173,6 +182,11 @@ public final class TransfersScreen implements Screen {
     private StringBinding summary;
     private Node view;
     private TableView<LiveList.Row<DownloadInfo>> downloads;
+    // The downloads opened onto their sources in the list, by hash.
+    private final Set<Hash16> opened = new HashSet<>();
+    // What each source had sent at the last reading, and its speed since, by file and address.
+    private final Map<String, long[]> sourceSeen = new HashMap<>();
+    private final Map<String, Long> sourceRates = new HashMap<>();
     private TableView<LiveList.Row<UploadInfo>> uploads;
     private TableView<LiveList.Row<UploadInfo>> queue;
     private ListView<LiveList.Row<SourceInfo>> sources;
@@ -249,12 +263,27 @@ public final class TransfersScreen implements Screen {
     private Node build() {
         this.downloads = Fx.table(this.gui.model().downloads(), this.gui.t("nj.transfers.none"), this.shown);
         this.downloads.setId("downloads");
+        this.downloads.setRowFactory(t -> new DownloadRow());
         downloadColumns();
+        // The sources shown under opened downloads follow theirs, with the speed each sends at.
+        this.gui.subscriptions().onListChange(this.gui.model().sources().rows(), c -> {
+            measureSources();
+            if (!this.opened.isEmpty()) {
+                this.downloads.refresh();
+            }
+        });
         this.downloads.setContextMenu(downloadMenu());
         // Delete cancels the chosen downloads, after the question; Ctrl+C copies their links.
         this.downloads.addEventHandler(KeyEvent.KEY_PRESSED, e -> {
             if (e.getCode() == KeyCode.DELETE) {
                 askCancelSelected();
+                e.consume();
+            } else if (e.getCode() == KeyCode.RIGHT || e.getCode() == KeyCode.LEFT) {
+                showSources(Fx.selected(this.downloads), e.getCode() == KeyCode.RIGHT);
+                e.consume();
+            } else if (e.getCode() == KeyCode.ENTER
+                    && Fx.selected(this.downloads).size() == 1) {
+                activate(Fx.selected(this.downloads).getFirst());
                 e.consume();
             } else if (COPY_LINKS.match(e)) {
                 copyLinks();
@@ -877,6 +906,225 @@ public final class TransfersScreen implements Screen {
 
     static double fraction(DownloadInfo d) {
         return d.size() <= 0 ? 0 : (double) d.completed() / d.size();
+    }
+
+    /**
+     * What a double click or Enter does to a download: a complete one opens in the program of its kind, the others open
+     * onto their sources, or close, as eMule's list does.
+     */
+    void activate(DownloadInfo d) {
+        if (d.status() == DownloadInfo.Status.COMPLETE) {
+            openCompleted(d);
+        } else if (!this.opened.remove(d.hash())) {
+            this.opened.add(d.hash());
+        }
+        this.downloads.refresh();
+    }
+
+    /** Whether the download of {@code hash} shows its sources under it. */
+    boolean isOpened(Hash16 hash) {
+        return this.opened.contains(hash);
+    }
+
+    // Right opens the chosen downloads onto their sources, Left closes them.
+    private void showSources(List<DownloadInfo> chosen, boolean show) {
+        for (DownloadInfo d : chosen) {
+            if (show && d.status() != DownloadInfo.Status.COMPLETE) {
+                this.opened.add(d.hash());
+            } else {
+                this.opened.remove(d.hash());
+            }
+        }
+        this.downloads.refresh();
+    }
+
+    private void openCompleted(DownloadInfo d) {
+        Optional<Path> file = this.gui.model().completedFile(d.hash()).filter(Files::isRegularFile);
+        if (file.isEmpty()) {
+            this.gui.warn().accept(this.gui.t("IDS_ERR_REQ_FNF") + ": " + d.name());
+            return;
+        }
+        try {
+            Folders.openFile(file.get());
+        } catch (IOException e) {
+            this.gui.warn().accept(e.getMessage());
+        }
+    }
+
+    // A source's speed is what it sent since the last reading, over the time between.
+    private void measureSources() {
+        long now = System.nanoTime();
+        Map<String, long[]> seen = new HashMap<>();
+        for (LiveList.Row<SourceInfo> row : this.gui.model().sources().rows()) {
+            SourceInfo source = row.get();
+            String key = source.file().toHex() + " " + source.address();
+            long[] before = this.sourceSeen.get(key);
+            if (before != null && now > before[1] && source.received() >= before[0]) {
+                this.sourceRates.put(key, (source.received() - before[0]) * 1_000_000_000L / (now - before[1]));
+            }
+            seen.put(key, new long[] {source.received(), now});
+        }
+        this.sourceSeen.clear();
+        this.sourceSeen.putAll(seen);
+        this.sourceRates.keySet().retainAll(seen.keySet());
+    }
+
+    // The sources of an opened download, those sending first, then by their place in the queues.
+    private List<SourceInfo> sourcesOf(Hash16 hash) {
+        return this.gui.model().sources().rows().stream()
+                .map(LiveList.Row::get)
+                .filter(s -> s.file().equals(hash))
+                .sorted(Comparator.comparing((SourceInfo s) -> s.state() != SourceInfo.State.DOWNLOADING)
+                        .thenComparing(s -> s.queueRank() == 0)
+                        .thenComparingInt(SourceInfo::queueRank))
+                .toList();
+    }
+
+    // One source in the columns of the downloads: its name under the file's, what it sent under the size, its parts
+    // under the progress, its speed, its program and place in the queue under the sources, what it does.
+    private Node sourceLine(SourceInfo s) {
+        HBox line = new HBox();
+        line.getStyleClass().add("source-line");
+        line.setAlignment(Pos.CENTER_LEFT);
+        for (TableColumn<LiveList.Row<DownloadInfo>, ?> column : this.downloads.getVisibleLeafColumns()) {
+            Region cell = sourceCell(String.valueOf(column.getId()), s);
+            cell.minWidthProperty().bind(column.widthProperty());
+            cell.prefWidthProperty().bind(column.widthProperty());
+            cell.maxWidthProperty().bind(column.widthProperty());
+            line.getChildren().add(cell);
+        }
+        return line;
+    }
+
+    private Region sourceCell(String column, SourceInfo s) {
+        var formats = this.gui.formats();
+        return switch (column) {
+            case "download-name" -> {
+                Label name = Fx.ownDirection(new Label(s.nick().orElse(s.address())));
+                Icon icon = Fx.icon(sourceIcon(s.state()));
+                icon.getStyleClass()
+                        .addAll("source-state-icon", s.state().name().toLowerCase(Locale.ROOT));
+                name.setGraphic(icon);
+                name.getStyleClass().add("source-name");
+                name.setTooltip(new Tooltip(s.address()));
+                yield name;
+            }
+            case "download-size" -> figure(s.received() > 0 ? formats.size(s.received()) : "");
+            case "download-progress" -> {
+                ThinBar parts = new ThinBar();
+                parts.set(s.partCount() == 0 ? 0 : (double) s.parts() / s.partCount(), "accent");
+                parts.setAccessibleText(formats.percent(s.parts(), s.partCount()));
+                StackPane box = new StackPane(parts);
+                box.getStyleClass().add("source-cell");
+                yield box;
+            }
+            case "download-speed" -> {
+                long rate = this.sourceRates.getOrDefault(s.file().toHex() + " " + s.address(), 0L);
+                yield figure(s.state() == SourceInfo.State.DOWNLOADING && rate > 0 ? formats.rate(rate) : "");
+            }
+            case "download-sources" -> {
+                Label program =
+                        Fx.leftToRight(new Label(s.software() + (s.queueRank() > 0 ? " QR: " + s.queueRank() : "")));
+                program.getStyleClass().add("source-cell");
+                yield program;
+            }
+            case "download-status" -> {
+                Label state = new Label(sourceState(s.state()));
+                state.getStyleClass().add("source-cell");
+                yield state;
+            }
+            default -> new Region();
+        };
+    }
+
+    private static Label figure(String text) {
+        Label figure = Fx.leftToRight(new Label(text));
+        figure.getStyleClass().add("source-cell");
+        figure.setAlignment(Pos.CENTER_RIGHT);
+        figure.setMaxWidth(Double.MAX_VALUE);
+        return figure;
+    }
+
+    /**
+     * A download's row, which shows the download's sources under it when it is opened, one line each in the columns of
+     * the list; a double click opens or closes it, or opens a complete download's file.
+     */
+    private final class DownloadRow extends TableRow<LiveList.Row<DownloadInfo>> {
+        private final VBox lines = new VBox();
+
+        DownloadRow() {
+            this.lines.getStyleClass().add("source-lines");
+            setOnMouseClicked(e -> {
+                if (e.getButton() == MouseButton.PRIMARY && e.getClickCount() == 2 && !isEmpty() && getItem() != null) {
+                    activate(getItem().get());
+                    e.consume();
+                }
+            });
+        }
+
+        boolean opened() {
+            return !isEmpty()
+                    && getItem() != null
+                    && TransfersScreen.this.opened.contains(getItem().get().hash());
+        }
+
+        @Override
+        protected Skin<?> createDefaultSkin() {
+            return new OpenedRowSkin(this);
+        }
+
+        @Override
+        protected void updateItem(LiveList.Row<DownloadInfo> item, boolean empty) {
+            super.updateItem(item, empty);
+            if (!opened()) {
+                this.lines.getChildren().clear();
+                return;
+            }
+            List<SourceInfo> sources = sourcesOf(item.get().hash());
+            if (sources.isEmpty()) {
+                Label none = new Label(TransfersScreen.this.gui.t("nj.transfers.noSources"));
+                none.getStyleClass().addAll("source-cell", "source-none");
+                this.lines.getChildren().setAll(none);
+            } else {
+                this.lines
+                        .getChildren()
+                        .setAll(sources.stream()
+                                .map(TransfersScreen.this::sourceLine)
+                                .toList());
+            }
+        }
+    }
+
+    /** Lays the cells of a download's row out on its first line, and the lines of its sources under them. */
+    private static final class OpenedRowSkin extends TableRowSkin<LiveList.Row<DownloadInfo>> {
+        private final DownloadRow row;
+
+        OpenedRowSkin(DownloadRow row) {
+            super(row);
+            this.row = row;
+        }
+
+        @Override
+        protected double computePrefHeight(double width, double top, double right, double bottom, double left) {
+            double cells = super.computePrefHeight(width, top, right, bottom, left);
+            return this.row.opened() ? cells + this.row.lines.prefHeight(width) : cells;
+        }
+
+        @Override
+        protected void layoutChildren(double x, double y, double w, double h) {
+            if (!this.row.opened()) {
+                getChildren().remove(this.row.lines);
+                super.layoutChildren(x, y, w, h);
+                return;
+            }
+            if (!getChildren().contains(this.row.lines)) {
+                getChildren().add(this.row.lines);
+            }
+            double cells = super.computePrefHeight(
+                    w, snappedTopInset(), snappedRightInset(), snappedBottomInset(), snappedLeftInset());
+            super.layoutChildren(x, y, w, cells);
+            this.row.lines.resizeRelocate(x, y + cells, w, Math.max(0, h - cells));
+        }
     }
 
     /**

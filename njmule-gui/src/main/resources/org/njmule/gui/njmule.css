@@ -1994,6 +1994,31 @@
     -fx-font-size: 0.92em;
 }
 
+/* The sources under an opened download, in the list's columns: lighter than the downloads. */
+.source-lines {
+    -fx-padding: 0 0 4 0;
+}
+
+.source-line {
+    -fx-min-height: 22;
+}
+
+.source-line .source-name {
+    -fx-padding: 0 4 0 24;
+    -fx-font-size: 0.92em;
+}
+
+.source-line .source-cell,
+.source-lines .source-none {
+    -fx-padding: 0 6 0 6;
+    -fx-text-fill: -color-fg-muted;
+    -fx-font-size: 0.92em;
+}
+
+.source-lines .source-none {
+    -fx-padding: 2 4 2 24;
+}
+
 /* What a source does, told by an icon of its own beside its words. */
 .source-state-icon {
     -nj-icon-size: 14;

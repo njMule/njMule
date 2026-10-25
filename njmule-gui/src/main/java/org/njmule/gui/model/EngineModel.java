@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -184,6 +185,8 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             new LiveList<>(s -> s.file().toHex() + "@" + s.address());
     private final LiveList<String, BanInfo> bans = new LiveList<>(BanInfo::address);
     private final LiveList<Hash16, KnownClient> knownClients = new LiveList<>(KnownClient::userHash);
+    // Where the downloads completed in this run went.
+    private final Map<Hash16, Path> completedFiles = new HashMap<>();
     private final LiveList<Path, SharedFileInfo> shared = new LiveList<>(SharedFileInfo::path);
     // The hashes of the shared files, built again after the list changed.
     private Set<Hash16> sharedHashes;
@@ -514,6 +517,19 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
 
     public LiveList<String, SourceInfo> sources() {
         return this.sources;
+    }
+
+    /** Where the completed download of {@code hash} is: where it went in this run, or the shared file it became. */
+    public Optional<Path> completedFile(Hash16 hash) {
+        Path went = this.completedFiles.get(hash);
+        if (went != null) {
+            return Optional.of(went);
+        }
+        return this.shared.rows().stream()
+                .map(LiveList.Row::get)
+                .filter(f -> f.hash().equals(hash))
+                .map(SharedFileInfo::path)
+                .findFirst();
     }
 
     /** The clients met in the last 90 days, read again every half minute. */
@@ -1042,6 +1058,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             case EngineEvent.DownloadAdded e -> this.downloads.put(e.download());
             case EngineEvent.DownloadProgress e -> this.downloads.put(e.download());
             case EngineEvent.DownloadCompleted e -> {
+                this.completedFiles.put(e.download().hash(), e.file());
                 this.downloads.put(e.download());
                 refreshShared();
                 this.completedCount.set(this.completedCount.get() + 1);
