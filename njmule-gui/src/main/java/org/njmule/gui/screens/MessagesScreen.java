@@ -65,6 +65,7 @@ import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.gui.i18n.I18n;
+import org.njmule.gui.infra.Smileys;
 import org.njmule.gui.model.Chats;
 import org.njmule.gui.model.EngineModel;
 import org.njmule.gui.model.LiveList;
@@ -761,8 +762,8 @@ public final class MessagesScreen implements Screen {
     private String preview(Chats.Line line) {
         I18n i18n = this.gui.i18n();
         return switch (line.author()) {
-            case US -> this.gui.f("nj.chat.you", i18n.embed(line.text()));
-            case THEM -> i18n.embed(line.text());
+            case US -> this.gui.f("nj.chat.you", i18n.embed(Smileys.show(line.text())));
+            case THEM -> i18n.embed(Smileys.show(line.text()));
             case NOTICE -> this.gui.f(line.text(), line.detail());
         };
     }
@@ -910,11 +911,11 @@ public final class MessagesScreen implements Screen {
             switch (line.author()) {
                 case US -> {
                     this.meta.setText(time + "  " + i18n.t("nj.chat.me"));
-                    this.words.setText(i18n.embed(line.text()));
+                    this.words.setText(i18n.embed(Smileys.show(line.text())));
                 }
                 case THEM -> {
                     this.meta.setText(time + "  " + i18n.embed(who()));
-                    this.words.setText(i18n.embed(line.text()));
+                    this.words.setText(i18n.embed(Smileys.show(line.text())));
                 }
                 case NOTICE -> {
                     this.meta.setText(time);

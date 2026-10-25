@@ -22,6 +22,7 @@ import NjIcon from '../components/NjIcon.vue';
 import { usePoll } from '../engine';
 import { language, t } from '../i18n';
 import { attempt, told } from '../notify';
+import { smileys } from '../smileys';
 
 const friends = usePoll(() => api.get<Friend[]>('/friends'), 10000, [] as Friend[]);
 const slot = usePoll(() => api.get<{ userHash: string | null }>('/friends/slot'), 10000, { userHash: null });
@@ -91,7 +92,7 @@ function lineText(l: Line): string {
         case 'not_delivered':
             return t('nj.chat.failed', l.text);
         default:
-            return l.text;
+            return smileys(l.text);
     }
 }
 
@@ -104,7 +105,7 @@ function preview(r: Row): string {
     if (last === undefined) {
         return '';
     }
-    return last.author === 'us' ? t('nj.chat.you', last.text) : lineText(last);
+    return last.author === 'us' ? t('nj.chat.you', smileys(last.text)) : lineText(last);
 }
 
 async function send(message: string): Promise<boolean> {

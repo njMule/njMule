@@ -416,6 +416,8 @@ All notable changes to this project are documented here. The format follows
   imported.
 - The deb and rpm packages install a systemd user unit, `njmule.service`, that runs the headless
   engine as the user and restarts it on failure (`systemctl --user enable --now njmule`).
+- Chat smileys typed as text (`:)`, `;-)`, `:D`, `<3` and others) show as emoji in the desktop and
+  web chats; the messages sent stay as typed.
 - An option keeps the computer from sleeping while files are transferred, and lets it sleep again two
   minutes after the last one, through the Windows launcher, `caffeinate` on macOS or
   `systemd-inhibit` on Linux, which end with njMule anyway (off by default; desktop and web
