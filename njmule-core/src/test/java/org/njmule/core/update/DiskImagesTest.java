@@ -58,22 +58,23 @@ class DiskImagesTest {
     }
 
     @Test
-    void shouldRefuseAnImageWithoutAnApp() {
-        givenTheImageHolds();
+    void shouldRefuseAnImageWithoutTheApp() {
+        givenTheImageHolds("Other.app");
 
         whenExtracted();
 
-        thenItFailedWith("no app");
+        thenItFailedWith("no njMule.app");
         thenTheToolsRanInOrder("hdiutil attach", "hdiutil detach");
     }
 
     @Test
-    void shouldRefuseAnImageWithTwoApps() {
-        givenTheImageHolds("njMule.app", "Other.app");
+    void shouldTakeTheAppBesideItsUninstaller() {
+        givenTheImageHolds("Uninstall njMule.app", "njMule.app");
 
         whenExtracted();
 
-        thenItFailedWith("more than one app");
+        thenNoFailureOccurred();
+        thenTheBundleIs("njMule.app");
     }
 
     private void givenTheSignatureFails() {

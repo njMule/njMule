@@ -17,7 +17,6 @@
 package org.njmule.core.update;
 
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -37,10 +36,13 @@ final class DiskImages {
     private static final Logger logger = LoggerFactory.getLogger(DiskImages.class);
     private static final Duration MOUNT_TIME = Duration.ofMinutes(2);
     private static final Duration COPY_TIME = Duration.ofMinutes(5);
+    private static final String APP = "njMule.app";
 
     private DiskImages() {}
 
-    /** Copies the one app of the disk image {@code dmg} into the empty folder {@code target}; returns the bundle. */
+    /**
+     * Copies njMule's app out of the disk image {@code dmg} into the empty folder {@code target}; returns the bundle.
+     */
     static Path extract(Path dmg, Path target, Commands commands) throws IOException {
         Path folder = Files.createDirectories(target).toAbsolutePath();
         Path mount = Files.createTempDirectory(Objects.requireNonNullElse(folder.getParent(), folder), "mount-");
@@ -77,22 +79,12 @@ final class DiskImages {
         commands.require(List.of("codesign", "--verify", "--deep", "--strict", bundle.toString()), COPY_TIME);
     }
 
-    // The image holds the app and a link to /Applications.
+    // The image holds the app, its uninstaller and a link to /Applications.
     private static Path app(Path mount) throws IOException {
-        Path found = null;
-        try (DirectoryStream<Path> entries = Files.newDirectoryStream(mount, "*.app")) {
-            for (Path entry : entries) {
-                if (Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)) {
-                    if (found != null) {
-                        throw new IOException("the disk image holds more than one app");
-                    }
-                    found = entry;
-                }
-            }
+        Path app = mount.resolve(APP);
+        if (!Files.isDirectory(app, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("the disk image holds no " + APP);
         }
-        if (found == null) {
-            throw new IOException("the disk image holds no app");
-        }
-        return found;
+        return app;
     }
 }
