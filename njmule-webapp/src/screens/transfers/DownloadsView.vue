@@ -38,7 +38,7 @@ import CountryFlag from '../../components/CountryFlag.vue';
 import type { IconName } from '../../icons';
 import { htmlLinks } from '../../links';
 import { attempt, told } from '../../notify';
-import { bySending, shown, type Shown } from '../../transfers';
+import { bySending, shown, sourceDot, sourceShown, type Shown } from '../../transfers';
 import type { Category, Download, DownloadPriority, Parts, Source } from '../../types';
 
 const props = defineProps<{ downloads: Download[]; categories: Category[]; sources: Source[] }>();
@@ -343,6 +343,8 @@ const SOURCE_STATES: Record<Source['state'], string> = {
     queued: 'IDS_ONQUEUE',
     downloading: 'IDS_TRANSFERRING',
     a4af: 'IDS_ASKED4ANOTHERFILE',
+    queue_full: 'IDS_QUEUEFULL',
+    no_needed_parts: 'IDS_NONEEDEDPARTS',
 };
 </script>
 
@@ -455,13 +457,18 @@ const SOURCE_STATES: Record<Source['state'], string> = {
                         t('nj.transfers.noSources')
                     }}</span>
                     <div v-for="s in sourcesOf(row as Download)" :key="s.address" class="source">
-                        <span class="who">{{ s.nick ?? s.address }}</span>
+                        <span class="who"
+                            ><span :class="['source-dot', 'dot-' + sourceDot(sourceShown(s))]">{{
+                                sourceShown(s) === 'waiting' ? '?' : ''
+                            }}</span
+                            >{{ s.nick ?? s.address }}</span
+                        >
                         <span class="figure">{{ s.received > 0 ? size(s.received) : '' }}</span>
                         <span class="figure">{{ s.parts }}/{{ s.partCount }}</span>
                         <span class="soft"
                             >{{ s.software }}<template v-if="s.queueRank > 0"> QR: {{ s.queueRank }}</template></span
                         >
-                        <span class="state">{{ t(SOURCE_STATES[s.state]) }}</span>
+                        <span class="state">{{ t(SOURCE_STATES[sourceShown(s)]) }}</span>
                     </div>
                 </div>
             </template>
@@ -554,8 +561,11 @@ const SOURCE_STATES: Record<Source['state'], string> = {
                         <el-table-column :label="t('IDS_CD_CSOFT')" prop="software" width="150" />
                         <el-table-column :label="t('nj.transfers.status')" width="190">
                             <template #default="{ row }">
-                                {{ t(SOURCE_STATES[(row as Source).state]) }}
-                                <span v-if="row.state === 'queued' && row.queueRank > 0">
+                                <span :class="['source-dot', 'dot-' + sourceDot(sourceShown(row as Source))]">{{
+                                    sourceShown(row as Source) === 'waiting' ? '?' : ''
+                                }}</span>
+                                {{ t(SOURCE_STATES[sourceShown(row as Source)]) }}
+                                <span v-if="sourceShown(row as Source) === 'queued' && row.queueRank > 0">
                                     ({{ t('nj.transfers.queueRank') }} {{ row.queueRank }})
                                 </span>
                             </template>

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { describe, expect, it } from 'vitest';
-import { bySending, shown, type Shown } from '../transfers';
-import type { DownloadStatus } from '../types';
+import { bySending, shown, sourceDot, sourceShown, type Shown, type SourceDot } from '../transfers';
+import type { DownloadStatus, SourceState } from '../types';
 
 describe('transfers', () => {
     let download = { status: 'downloading' as DownloadStatus, transferring: 0, sources: 0 };
@@ -61,5 +61,41 @@ describe('the sources of a download', () => {
 
     function thenTheOrderIs(...names: string[]): void {
         expect(order).toEqual(names);
+    }
+});
+
+describe('source dots', () => {
+    let source = { state: 'waiting' as SourceState, queueRank: 0 };
+    let dot: SourceDot | undefined;
+
+    it.each([
+        ['downloading', 0, 'downloading'],
+        ['queued', 3, 'queued'],
+        ['waiting', 3, 'queued'],
+        ['connecting', 0, 'reaching'],
+        ['asking', 0, 'reaching'],
+        ['queue_full', 0, 'useless'],
+        ['no_needed_parts', 0, 'useless'],
+        ['a4af', 0, 'useless'],
+        ['waiting', 0, 'unknown'],
+    ] as [SourceState, number, SourceDot][])(
+        'should show a %s source queued at %i with the dot %s',
+        (state, rank, expected) => {
+            givenASource(state, rank);
+            whenItsDotIsShown();
+            thenTheDotIs(expected);
+        },
+    );
+
+    function givenASource(state: SourceState, queueRank: number): void {
+        source = { state, queueRank };
+    }
+
+    function whenItsDotIsShown(): void {
+        dot = sourceDot(sourceShown(source));
+    }
+
+    function thenTheDotIs(expected: SourceDot): void {
+        expect(dot).toBe(expected);
     }
 });

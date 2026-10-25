@@ -130,7 +130,8 @@ export interface Category {
     regex?: boolean;
 }
 
-export type SourceState = 'waiting' | 'connecting' | 'asking' | 'queued' | 'downloading' | 'a4af';
+export type SourceState =
+    'waiting' | 'connecting' | 'asking' | 'queued' | 'downloading' | 'a4af' | 'queue_full' | 'no_needed_parts';
 
 export interface Source {
     file: string;

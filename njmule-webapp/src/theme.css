@@ -58,10 +58,18 @@
     --el-fill-color-blank: #ffffff;
     --nj-mix: var(--el-color-white);
     --nj-shade: var(--el-color-black);
+    --nj-dot-downloading: #5b8a47;
+    --nj-dot-queued: #e0b23a;
+    --nj-dot-reaching: #bf4b57;
+    --nj-dot-useless: #4c566a;
 }
 
 html.dark {
     --nj-brand: #88c0d0;
+    --nj-dot-downloading: #a3be8c;
+    --nj-dot-queued: #ebcb8b;
+    --nj-dot-reaching: #d27c86;
+    --nj-dot-useless: #81889a;
     --nj-ok-bg: #3c4a3a;
     --nj-ok-fg: #c7deb4;
     --nj-warn-bg: #4d4434;
@@ -252,4 +260,42 @@ body {
 .nj-chip.error {
     background: var(--nj-error-bg);
     color: var(--nj-error-fg);
+}
+
+/* What a source does at a glance, beside the state written out: not asked yet shows a question mark. */
+.source-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 12px;
+    height: 12px;
+    margin-inline-end: 6px;
+    border-radius: 50%;
+    box-sizing: border-box;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    vertical-align: -1px;
+}
+
+.source-dot.dot-downloading {
+    background: var(--nj-dot-downloading);
+}
+
+.source-dot.dot-queued {
+    background: var(--nj-dot-queued);
+}
+
+.source-dot.dot-reaching {
+    background: var(--nj-dot-reaching);
+}
+
+.source-dot.dot-useless {
+    background: var(--nj-dot-useless);
+}
+
+.source-dot.dot-unknown {
+    border: 1px solid var(--el-text-color-secondary);
+    color: var(--el-text-color-secondary);
 }

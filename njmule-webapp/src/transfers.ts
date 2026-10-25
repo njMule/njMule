@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { Download } from './types';
+import type { Download, SourceState } from './types';
 
 /** The state a download shows: a running one is downloading, waiting for its sources or without any. */
 export type Shown = 'downloading' | 'waiting' | 'noSources' | 'paused' | 'stopped' | 'noSpace' | 'error' | 'complete';
@@ -14,6 +14,29 @@ export function shown(d: Pick<Download, 'status' | 'transferring' | 'sources'>):
             return 'noSpace';
         default:
             return d.status;
+    }
+}
+
+/** What a source does, as shown: between two asks, one that keeps us in its queue is still queued. */
+export function sourceShown(s: { state: SourceState; queueRank: number }): SourceState {
+    return s.state === 'waiting' && s.queueRank > 0 ? 'queued' : s.state;
+}
+
+/** The dot of a source: downloading, queued, being reached, of no use now, or not asked yet. */
+export type SourceDot = 'downloading' | 'queued' | 'reaching' | 'useless' | 'unknown';
+
+export function sourceDot(state: SourceState): SourceDot {
+    switch (state) {
+        case 'downloading':
+        case 'queued':
+            return state;
+        case 'connecting':
+        case 'asking':
+            return 'reaching';
+        case 'waiting':
+            return 'unknown';
+        default:
+            return 'useless';
     }
 }
 

@@ -1186,20 +1186,15 @@ public final class TransfersScreen implements Screen {
         return switch (column) {
             case "download-name" -> {
                 Label name = Fx.ownDirection(new Label());
-                Icon icon = Fx.icon(sourceIcon(SourceInfo.State.WAITING));
+                Label dot = sourceDot();
                 Tooltip address = new Tooltip();
-                name.setGraphic(icon);
+                name.setGraphic(dot);
                 name.getStyleClass().add("source-name");
                 name.setTooltip(address);
                 shows.add(s -> {
                     name.setText(s.nick().orElse(s.address()));
                     address.setText(s.address());
-                    icon.setGlyph(sourceIcon(s.state()));
-                    icon.getStyleClass()
-                            .setAll(
-                                    "nj-icon",
-                                    "source-state-icon",
-                                    s.state().name().toLowerCase(Locale.ROOT));
+                    showDot(dot, shownState(s));
                 });
                 yield name;
             }
@@ -1235,7 +1230,7 @@ public final class TransfersScreen implements Screen {
             case "download-status" -> {
                 Label state = new Label();
                 state.getStyleClass().add("source-cell");
-                shows.add(s -> state.setText(sourceState(s.state())));
+                shows.add(s -> state.setText(sourceState(shownState(s))));
                 yield state;
             }
             default -> new Region();
@@ -1777,18 +1772,34 @@ public final class TransfersScreen implements Screen {
                     case QUEUED -> "IDS_ONQUEUE";
                     case DOWNLOADING -> "IDS_TRANSFERRING";
                     case A4AF -> "IDS_ASKED4ANOTHERFILE";
+                    case QUEUE_FULL -> "IDS_QUEUEFULL";
+                    case NO_NEEDED_PARTS -> "IDS_NONEEDEDPARTS";
                 });
     }
 
-    private static Icons sourceIcon(SourceInfo.State state) {
-        return switch (state) {
-            case WAITING -> Icons.CLOCK;
-            case CONNECTING -> Icons.LINK;
-            case ASKING -> Icons.CHATS;
-            case QUEUED -> Icons.QUEUE;
-            case DOWNLOADING -> Icons.ARROW_DOWN;
-            case A4AF -> Icons.SWAP;
+    // Between two asks, a source that keeps us in its queue is still queued.
+    static SourceInfo.State shownState(SourceInfo s) {
+        return s.state() == SourceInfo.State.WAITING && s.queueRank() > 0 ? SourceInfo.State.QUEUED : s.state();
+    }
+
+    // What a source does at a glance, beside the state written out: a question mark for one not asked yet.
+    private static Label sourceDot() {
+        Label dot = new Label();
+        dot.getStyleClass().add("source-dot");
+        return dot;
+    }
+
+    static void showDot(Label dot, SourceInfo.State state) {
+        String tone = switch (state) {
+            case DOWNLOADING -> "dot-downloading";
+            case QUEUED -> "dot-queued";
+            case CONNECTING, ASKING -> "dot-reaching";
+            case QUEUE_FULL, NO_NEEDED_PARTS, A4AF -> "dot-useless";
+            case WAITING -> "dot-unknown";
         };
+        dot.getStyleClass().removeIf(c -> c.startsWith("dot-"));
+        dot.getStyleClass().add(tone);
+        dot.setText(state == SourceInfo.State.WAITING ? "?" : "");
     }
 
     private TableView<LiveList.Row<BanInfo>> banTable() {
@@ -1875,6 +1886,7 @@ public final class TransfersScreen implements Screen {
         private final Label country = Fx.leftToRight(new Label());
         private final Label figure = Fx.leftToRight(new Label());
         private final Label state = new Label();
+        private final Label dot = sourceDot();
         private final ThinBar has = new ThinBar();
         private final GridPane grid = new GridPane();
 
@@ -1886,6 +1898,7 @@ public final class TransfersScreen implements Screen {
             Fx.leftToRight(this.software);
             this.figure.getStyleClass().add("source-figure");
             this.state.getStyleClass().add("source-state");
+            this.state.setGraphic(this.dot);
             this.has.setPrefWidth(96);
             this.has.setMaxWidth(96);
             this.country.getStyleClass().add("source-software");
@@ -1923,10 +1936,8 @@ public final class TransfersScreen implements Screen {
                             : s.queueRank() > 0
                                     ? TransfersScreen.this.gui.t("nj.transfers.queueRank") + " " + s.queueRank()
                                     : "");
-            this.state.setText(TransfersScreen.this.sourceState(s.state()));
-            Icon icon = Fx.icon(sourceIcon(s.state()));
-            icon.getStyleClass().addAll("source-state-icon", s.state().name().toLowerCase(Locale.ROOT));
-            this.state.setGraphic(icon);
+            this.state.setText(TransfersScreen.this.sourceState(shownState(s)));
+            showDot(this.dot, shownState(s));
             this.has.set(s.partCount() == 0 ? 0 : (double) s.parts() / s.partCount(), "accent");
             this.has.setAccessibleText(TransfersScreen.this.gui.formats().percent(s.parts(), s.partCount()));
             setAccessibleText(String.join(

@@ -34,6 +34,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Hash16;
@@ -129,6 +131,28 @@ class DownloadSourcesTest {
 
         thenTheSourcesAreOnTheBackgroundOfTheList();
         thenTheLineOfTheFilmIsHighlighted();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "DOWNLOADING, 0, dot-downloading, ''",
+        "QUEUED, 3, dot-queued, ''",
+        "WAITING, 3, dot-queued, ''",
+        "CONNECTING, 0, dot-reaching, ''",
+        "ASKING, 0, dot-reaching, ''",
+        "QUEUE_FULL, 0, dot-useless, ''",
+        "NO_NEEDED_PARTS, 0, dot-useless, ''",
+        "A4AF, 0, dot-useless, ''",
+        "WAITING, 0, dot-unknown, ?"
+    })
+    void shouldShowWhatASourceDoesAsADotOfItsColour(SourceInfo.State state, int rank, String tone, String text)
+            throws Exception {
+        givenTheFilmWithASourceAndASourceOfAnotherFile();
+        givenTheFilmOpened();
+
+        whenTheSourcesBecome(source(FILM.hash(), "10.0.0.1:4662", "ann", state, rank));
+
+        thenTheDotOfTheSourceIs(tone, text);
     }
 
     private void givenTheFilmWithASourceAndASourceOfAnotherFile() throws Exception {
@@ -233,6 +257,18 @@ class DownloadSourcesTest {
         });
     }
 
+    private void thenTheDotOfTheSourceIs(String tone, String text) throws Exception {
+        FxTesting.assertEventually("the source with a dot " + tone, () -> {
+            List<Label> dots = this.screen.downloads().lookupAll(".source-dot").stream()
+                    .filter(DownloadSourcesTest::inTheScene)
+                    .map(Label.class::cast)
+                    .toList();
+            return dots.size() == 1
+                    && dots.getFirst().getStyleClass().contains(tone)
+                    && dots.getFirst().getText().equals(text);
+        });
+    }
+
     private void thenTheSourcesShownAre(String... names) throws Exception {
         FxTesting.assertEventually(
                 "the sources under the download", () -> shownSources().equals(List.of(names)));
@@ -257,14 +293,18 @@ class DownloadSourcesTest {
     }
 
     private static SourceInfo source(Hash16 file, String address, String nick) {
+        return source(file, address, nick, SourceInfo.State.DOWNLOADING, 0);
+    }
+
+    private static SourceInfo source(Hash16 file, String address, String nick, SourceInfo.State state, int rank) {
         return new SourceInfo(
                 file,
                 "film.mkv",
                 address,
                 nick.isEmpty() ? Optional.empty() : Optional.of(nick),
                 "eMule",
-                SourceInfo.State.DOWNLOADING,
-                0,
+                state,
+                rank,
                 1024,
                 1,
                 2,
