@@ -432,6 +432,12 @@ All notable changes to this project are documented here. The format follows
   completed* takes them off, in the desktop and web apps and in the API
   (`DELETE /downloads/completed`); they are kept in `finished.json` of the profile, and cancelling
   leaves them out, as their files stay where they are.
+- The downloads of the desktop app open onto their sources with a double click, Enter or the right
+  arrow (the left one closes them): a line each under the file, in the list's columns, with the
+  name or address, what it sent, its parts, its speed, its program and place in the queue, and what
+  it does. A double click or Enter on a completed download opens its file in the program the system
+  gives its kind; on Windows each download shows that program's icon. The time left also tells how
+  much is missing, in the units of the speeds.
 - The country of other clients, with its flag beside its code and its name as tooltip, in the
   sources of a download and among the uploads and the queue, in the desktop and web apps and in
   the API (off by default; `geo.countries`): njMule then downloads DB-IP's free IP to Country Lite
