@@ -218,7 +218,11 @@ tasks.register<Exec>("nativeGui") {
                     .plus("-H:IncludeLocales=" + locales.joinToString(","))
                     .joinToString("\n", postfix = "\n")
             )
+            // Angus Mail's and Angus Activation's features for native images implement GraalVM's Feature, which
+            // their modules do not read.
             listOf("@${long.path}", "--module", module, "-o", name, "@$argsFile") +
+                listOf("--add-reads", "org.eclipse.angus.mail=org.graalvm.nativeimage") +
+                listOf("--add-reads", "org.eclipse.angus.activation=org.graalvm.nativeimage") +
                 (if (windows) listOf("-H:NativeLinkerOption=${resFile.get().asFile}") else emptyList()) +
                 listOf(optimization.get()) +
                 march
