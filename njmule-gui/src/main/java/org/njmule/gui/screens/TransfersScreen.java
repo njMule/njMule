@@ -404,11 +404,7 @@ public final class TransfersScreen implements Screen {
                 Fx.numeric(Fx.column(this.gui.t("IDS_DL_SPEED"), 90, DownloadInfo::bytesPerSecond, this::speedText)),
                 sources,
                 statusColumn(),
-                Fx.numeric(Fx.column(
-                        this.gui.t("IDS_DL_REMAINS"),
-                        90,
-                        TransfersScreen::remaining,
-                        s -> s < 0 ? "—" : formats.duration(s))),
+                Fx.numeric(Fx.column(this.gui.t("IDS_DL_REMAINS"), 130, TransfersScreen::left, this::leftText)),
                 completed,
                 priority,
                 categoryColumn);
@@ -416,7 +412,7 @@ public final class TransfersScreen implements Screen {
         List<String> ids = List.of(
                 "name", "size", "progress", "speed", "sources", "status", "left", "completed", "priority", "category");
         // A narrow list cuts the names, never a figure.
-        List<Integer> least = List.of(100, 76, 96, 88, 52, 104, 80, 76, 72, 72);
+        List<Integer> least = List.of(100, 76, 96, 88, 52, 104, 120, 76, 72, 72);
         for (int i = 0; i < columns.size(); i++) {
             columns.get(i).setId("download-" + ids.get(i));
             columns.get(i).setMinWidth(least.get(i));
@@ -881,6 +877,32 @@ public final class TransfersScreen implements Screen {
 
     static double fraction(DownloadInfo d) {
         return d.size() <= 0 ? 0 : (double) d.completed() / d.size();
+    }
+
+    /**
+     * What a download still lacks: the time at its speed, -1 when it gets nothing, and the bytes; sorted by the time.
+     */
+    record Left(long seconds, long bytes) implements Comparable<Left> {
+        @Override
+        public int compareTo(Left other) {
+            return Comparator.comparingLong(Left::seconds)
+                    .thenComparingLong(Left::bytes)
+                    .compare(this, other);
+        }
+    }
+
+    static Left left(DownloadInfo d) {
+        return new Left(remaining(d), Math.max(0, d.size() - d.completed()));
+    }
+
+    // The time, then the bytes in the units of the speed, as "9:13 min (151.9 MB)"; nothing once complete.
+    private String leftText(Left left) {
+        if (left.bytes() == 0) {
+            return "";
+        }
+        var formats = this.gui.formats();
+        return (left.seconds() < 0 ? "—" : formats.duration(left.seconds())) + " (" + formats.amount(left.bytes())
+                + ")";
     }
 
     /** Seconds left at the current rate; -1 when nothing arrives. */

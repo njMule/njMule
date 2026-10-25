@@ -100,6 +100,25 @@ class FormatsUnitsTest {
         thenItReads(shown);
     }
 
+    @ParameterizedTest
+    @MethodSource("amounts")
+    void shouldWriteAmountsInTheUnitsAndFormOfTheRates(long bytes, String shown) {
+        givenTheInterfaceIn(Locale.ENGLISH);
+
+        whenAnAmountIsShown(bytes);
+
+        thenItReads(shown);
+    }
+
+    static Stream<Arguments> amounts() {
+        return Stream.of(
+                Arguments.of(512L, "0.5 KB"),
+                Arguments.of(831_900L, "812.4 KB"),
+                Arguments.of(159_237_570L, "151.9 MB"),
+                Arguments.of(52_428_800L, "50.00 MB"),
+                Arguments.of(5L << 30, "5.00 GB"));
+    }
+
     static Stream<Arguments> fastRates() {
         return Stream.of(
                 Arguments.of(1_355_000L, "1.29 MB/s"),
@@ -126,6 +145,10 @@ class FormatsUnitsTest {
     private void whenASizeAndARateAreShown(long bytes, long bytesPerSecond) {
         this.size = this.formats.size(bytes);
         this.rate = this.formats.rate(bytesPerSecond);
+    }
+
+    private void whenAnAmountIsShown(long bytes) {
+        this.rate = this.formats.amount(bytes);
     }
 
     private void whenARateIsShown(long bytesPerSecond) {

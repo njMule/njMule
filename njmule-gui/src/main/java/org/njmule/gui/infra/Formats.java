@@ -172,6 +172,25 @@ public final class Formats {
         return format.format(value) + " " + this.rateUnits[unit];
     }
 
+    /**
+     * An amount of bytes in the units and the form of {@link #rate}, so that the two read alike side by side: 812.4 KB,
+     * from a thousand KB on 1.26 MB or 151.86 MB, from a thousand MB on 1.05 GB.
+     */
+    public String amount(long bytes) {
+        double value = Math.max(0, bytes) / 1024.0;
+        if (value < 999.95) {
+            return this.oneDecimal.format(value) + " " + this.units[1];
+        }
+        int unit = 2;
+        value /= 1024;
+        if (value >= 999.95) {
+            unit = 3;
+            value /= 1024;
+        }
+        DecimalFormat format = value < 99.995 ? this.twoDecimals : this.oneDecimal;
+        return format.format(value) + " " + this.units[unit];
+    }
+
     /** A ratio with up to two decimals: 2.5, 0.33. */
     public String ratio(double value) {
         return this.twoDecimals.format(value);
