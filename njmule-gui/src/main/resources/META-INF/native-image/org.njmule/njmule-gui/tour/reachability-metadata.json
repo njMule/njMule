@@ -17398,11 +17398,11 @@
     },
     {
       "module": "org.njmule.core",
-      "glob": "org/njmule/core/remote/openapi.yaml"
+      "glob": "org/njmule/core/remote/openapi.json"
     },
     {
       "module": "org.njmule.core",
-      "glob": "org/njmule/core/remote/openapi.json"
+      "glob": "org/njmule/core/remote/openapi.yaml"
     },
     {
       "module": "org.njmule.core",
@@ -17795,6 +17795,10 @@
     {
       "module": "org.njmule.gui",
       "glob": "org/njmule/gui/njmule.css"
+    },
+    {
+      "module": "org.njmule.webui",
+      "glob": "org/njmule/webui/app/index.html"
     },
     {
       "bundle": "com.sun.javafx.tk.quantum.QuantumMessagesBundle"
