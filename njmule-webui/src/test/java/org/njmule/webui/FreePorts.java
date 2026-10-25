@@ -18,6 +18,7 @@ package org.njmule.webui;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.BindException;
 import java.net.DatagramSocket;
 import java.net.ServerSocket;
 import java.security.SecureRandom;
@@ -33,12 +34,35 @@ final class FreePorts {
     private static final int LAST = 32_000;
     private static final int ATTEMPTS = 1_000;
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final int BIND_ATTEMPTS = 5;
 
     private FreePorts() {}
 
     /** A port no TCP socket is bound to now. */
     static int tcp() {
         return find(FreePorts::isFreeForTcp);
+    }
+
+    /**
+     * What {@code start} makes of a port no TCP socket is bound to now. Another test may bind it before {@code start}
+     * does: then another port is tried.
+     */
+    static <T> T bound(OnPort<T> start) throws IOException {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return start.on(tcp());
+            } catch (IOException e) {
+                if (attempt == BIND_ATTEMPTS
+                        || !(e instanceof BindException || e.getCause() instanceof BindException)) {
+                    throw e;
+                }
+            }
+        }
+    }
+
+    /** What is made of a port. */
+    interface OnPort<T> {
+        T on(int port) throws IOException;
     }
 
     /** A port no UDP socket is bound to now. */

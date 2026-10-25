@@ -120,18 +120,18 @@ class WebUiApiTest {
     private void givenTheApiRuns() throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir, true);
         this.fake.value("directories", dirs);
-        this.ui = WebUi.start(
+        this.ui = FreePorts.bound(port -> WebUi.start(
                 this.fake.engine(),
-                new WebUiSettings(true, FreePorts.tcp(), false, "pbkdf2-sha512$1$AA$AA", true),
+                new WebUiSettings(true, port, false, "pbkdf2-sha512$1$AA$AA", true),
                 Optional.of(this.exited::countDown),
                 1,
-                Duration.ofSeconds(1));
+                Duration.ofSeconds(1)));
         this.token = ApiToken.load(dirs.config()).orElseThrow();
     }
 
     private void givenTheWebInterfaceRunsWithoutTheApi() throws IOException {
-        this.ui = WebUi.start(
-                this.fake.engine(), new WebUiSettings(true, FreePorts.tcp(), false, "pbkdf2-sha512$1$AA$AA"));
+        this.ui = FreePorts.bound(
+                port -> WebUi.start(this.fake.engine(), new WebUiSettings(true, port, false, "pbkdf2-sha512$1$AA$AA")));
     }
 
     private void givenWrongTokensSent(int count) throws Exception {

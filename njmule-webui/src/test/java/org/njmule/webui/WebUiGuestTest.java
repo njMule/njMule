@@ -147,7 +147,7 @@ class WebUiGuestTest {
     // Given
 
     private void givenTheWebInterfaceRunsWithAGuest() throws Exception {
-        this.ui = WebUi.start(this.fake.engine(), settings(FreePorts.tcp()));
+        this.ui = FreePorts.bound(port -> WebUi.start(this.fake.engine(), settings(port)));
     }
 
     private void givenTheSettingsInTheConfigDirectory() throws Exception {

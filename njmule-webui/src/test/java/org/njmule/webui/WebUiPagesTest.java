@@ -86,7 +86,7 @@ class WebUiPagesTest {
 
     private void givenALoggedInUser() throws Exception {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, FreePorts.tcp(), false, hash));
+        this.ui = FreePorts.bound(port -> WebUi.start(this.fake.engine(), new WebUiSettings(true, port, false, hash)));
         HttpResponse<String> in = post("/login", Map.of("password", PASSWORD));
         assertThat(in.statusCode()).isEqualTo(303);
         String set = in.headers().firstValue("Set-Cookie").orElseThrow();

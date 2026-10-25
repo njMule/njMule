@@ -371,7 +371,7 @@ class WebUiAnswersTest {
 
     private void givenTheWebInterfaceRuns() throws IOException {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, FreePorts.tcp(), false, hash));
+        this.ui = FreePorts.bound(port -> WebUi.start(this.fake.engine(), new WebUiSettings(true, port, false, hash)));
     }
 
     private void givenALoggedInUser() throws Exception {
@@ -385,7 +385,8 @@ class WebUiAnswersTest {
     private void givenTheWebInterfaceRunsWithASlowPassword(int checksAtOnce) throws IOException {
         // Two million rounds keep the first check busy for a while.
         String slow = "pbkdf2-sha512$2000000$" + "A".repeat(22) + "$" + "A".repeat(86);
-        this.ui = WebUi.start(this.fake.engine(), new WebUiSettings(true, FreePorts.tcp(), false, slow), checksAtOnce);
+        this.ui = FreePorts.bound(
+                port -> WebUi.start(this.fake.engine(), new WebUiSettings(true, port, false, slow), checksAtOnce));
     }
 
     private void givenALoginBeingChecked(String password) throws InterruptedException {
@@ -595,7 +596,8 @@ class WebUiAnswersTest {
     private void startAnotherInstance() throws IOException {
         this.otherEngine = new FakeEngine();
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        this.other = WebUi.start(this.otherEngine.engine(), new WebUiSettings(true, FreePorts.tcp(), false, hash));
+        this.other = FreePorts.bound(
+                port -> WebUi.start(this.otherEngine.engine(), new WebUiSettings(true, port, false, hash)));
     }
 
     // The search page asks nothing of the engine.

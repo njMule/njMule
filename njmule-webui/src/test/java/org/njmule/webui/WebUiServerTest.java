@@ -110,7 +110,7 @@ class WebUiServerTest {
                 "net.tcpPort=" + FreePorts.tcp() + "\nnet.ed2k.enabled=false\nnet.kad.enabled=false\n");
         this.engine = NjMuleEngine.start(new EngineConfig(dirs));
         String hash = Passwords.hash("correct horse".toCharArray(), new byte[16], 1000);
-        this.ui = WebUi.start(this.engine, new WebUiSettings(true, FreePorts.tcp(), false, hash));
+        this.ui = FreePorts.bound(port -> WebUi.start(this.engine, new WebUiSettings(true, port, false, hash)));
     }
 
     // Raw bytes, as a caller may send what no well-behaved client would.

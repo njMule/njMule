@@ -338,7 +338,8 @@ class WebUiTest {
 
     private void givenTheWebInterfaceRunsWithTheHostNames(String... names) throws IOException {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        this.ui = WebUi.start(engine, new WebUiSettings(true, FreePorts.tcp(), false, hash, false, List.of(names)));
+        this.ui = FreePorts.bound(
+                port -> WebUi.start(engine, new WebUiSettings(true, port, false, hash, false, List.of(names))));
     }
 
     private void givenALoggedInUser() throws Exception {
@@ -352,8 +353,8 @@ class WebUiTest {
 
     private void givenTheWebInterfaceRunsBehindTheProxies(String... proxies) throws IOException {
         String hash = Passwords.hash(PASSWORD.toCharArray(), new byte[16], 1000);
-        this.ui = WebUi.start(
-                engine, new WebUiSettings(true, FreePorts.tcp(), false, hash, false, List.of(), List.of(proxies)));
+        this.ui = FreePorts.bound(port ->
+                WebUi.start(engine, new WebUiSettings(true, port, false, hash, false, List.of(), List.of(proxies))));
     }
 
     // Sent as a proxy forwards them, naming its client.
