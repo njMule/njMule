@@ -198,13 +198,13 @@ class AppDirectoriesTest {
     }
 
     @Test
-    void shouldCreateEveryDirectory() throws IOException {
+    void shouldCreateTheDirectoriesOfTheProfileButNotThoseOfTheDownloads() throws IOException {
         givenTheDirectoriesBelowTheRoot("r");
 
         whenAllDirectoriesAreCreated();
 
         thenTheLogsDirectoryExists();
-        thenTheDownloadsDirectoryExists();
+        thenTheDirectoriesOfTheDownloadsExist(false);
     }
 
     @Test
@@ -328,8 +328,10 @@ class AppDirectoriesTest {
         assertThat(this.directories.logs()).isDirectory();
     }
 
-    private void thenTheDownloadsDirectoryExists() {
-        assertThat(this.directories.downloads()).isDirectory();
+    // The engine creates those the preferences name, which may be others.
+    private void thenTheDirectoriesOfTheDownloadsExist(boolean exist) {
+        assertThat(Files.isDirectory(this.directories.downloads())).isEqualTo(exist);
+        assertThat(Files.isDirectory(this.directories.temp())).isEqualTo(exist);
     }
 
     private void thenTheDownloadDirectoryReadIs(String pathInTheHome) {

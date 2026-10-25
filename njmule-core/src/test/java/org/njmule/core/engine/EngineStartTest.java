@@ -115,6 +115,46 @@ class EngineStartTest {
         thenTheRuleResumesCategory(1);
     }
 
+    @Test
+    void shouldCreateTheFoldersChosenForTheDownloadsAndNotTheDefaultOnes() throws Exception {
+        givenTheFoldersChosen("Download-Media", "Part-Files");
+
+        whenTheEngineStarts();
+
+        thenTheFolderExists("Download-Media", true);
+        thenTheFolderExists("Part-Files", true);
+        thenTheDefaultFoldersOfTheDownloadsExist(false);
+    }
+
+    private void givenTheFoldersChosen(String incoming, String temp) throws IOException {
+        AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
+        Files.createDirectories(dirs.config());
+        Files.writeString(
+                dirs.config().resolve("njmule.properties"),
+                "net.tcpPort=" + FreePorts.tcp() + "\nnet.kad.enabled=false\nnet.ed2k.enabled=false\n"
+                        + "dirs.incoming=" + escaped(this.dir.resolve(incoming)) + "\n"
+                        + "dirs.temp=" + escaped(this.dir.resolve(temp)) + "\n");
+    }
+
+    // A path as a properties file writes it.
+    private static String escaped(Path path) {
+        return path.toString().replace("\\", "\\\\");
+    }
+
+    private void whenTheEngineStarts() throws IOException {
+        this.engine = start();
+    }
+
+    private void thenTheFolderExists(String folder, boolean exists) {
+        assertThat(Files.isDirectory(this.dir.resolve(folder))).isEqualTo(exists);
+    }
+
+    private void thenTheDefaultFoldersOfTheDownloadsExist(boolean exist) {
+        AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
+        assertThat(Files.isDirectory(dirs.downloads())).as("completed").isEqualTo(exist);
+        assertThat(Files.isDirectory(dirs.temp())).as("part files").isEqualTo(exist);
+    }
+
     private void givenARunningEngine() throws IOException {
         this.engine = start();
     }

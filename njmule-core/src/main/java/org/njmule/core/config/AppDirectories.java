@@ -109,8 +109,12 @@ public record AppDirectories(
         };
     }
 
+    /**
+     * Creates the folders of the profile. Those of the completed downloads and of the part files are left to the
+     * engine, which creates those the preferences name, maybe others.
+     */
     public void createAll() throws IOException {
-        for (Path p : List.of(this.config, this.data, this.temp, this.cache, this.logs, this.gui, this.downloads)) {
+        for (Path p : List.of(this.config, this.data, this.cache, this.logs, this.gui)) {
             Files.createDirectories(p);
         }
     }

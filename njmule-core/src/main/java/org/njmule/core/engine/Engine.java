@@ -293,6 +293,9 @@ public final class Engine implements NjMuleEngine {
             Path prefsFile = dirs.config().resolve(PreferencesCodec.FILE_NAME);
             AtomicFiles.cleanupInterruptedWrite(prefsFile);
             Preferences prefs = PreferencesCodec.load(prefsFile);
+            // Where the downloads go, complete and in parts, which need not be the default folders.
+            Files.createDirectories(prefs.effectiveIncomingDir(dirs));
+            Files.createDirectories(prefs.effectiveTempDir(dirs));
             // Before a version that did not run here yet changes anything: the configuration as the last one left it.
             if (Updates.starting(dirs.config()) && prefs.backupCopies() > 0) {
                 backUp(dirs, prefs.backupCopies());
