@@ -126,6 +126,16 @@ administrator rights:
 msiexec /i njmule-<version>-windows-x64.msi MSIINSTALLPERUSER=""
 ```
 
+njMule can also run as the Windows service "njMule", headless with its web interface, started with
+Windows before anyone logs in. `njmule --service=install` sets it up (Windows asks for the
+administrator's rights, then njMule for the web interface password; `--webui-lan` and the other web
+interface options apply). The service runs as the virtual account `NT SERVICE\njMule`, keeps its
+profile in `%ProgramData%\njMule`, and a firewall rule lets other clients in on private and domain
+networks. `--service=start`, `stop`, `status` and `uninstall` do the rest; uninstalling keeps the
+profile. A per-machine MSI installs the service at once with `NJMULE_SERVICE=1
+NJMULE_WEBUI_PASSWORD_FILE=<file>`, a file holding the password; it stops the service while
+upgrading and removes it with njMule.
+
 The `.zip` archive contains the same executables and runs from any directory. The executables are
 not code-signed yet, so SmartScreen may require confirmation (*More info → Run anyway*). GraalVM
 and JavaFX do not support Windows on Arm yet; on those systems the x64 package runs under emulation.

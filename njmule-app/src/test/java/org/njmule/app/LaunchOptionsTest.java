@@ -61,6 +61,43 @@ class LaunchOptionsTest {
     }
 
     @Test
+    void shouldParseTheServiceInstallationWithTheWebInterfaceOptions() {
+        whenTheArgumentsAreParsed("--service=install", "--webui-lan", "--webui-password");
+
+        thenTheActionIs(Action.SERVICE);
+        thenTheServiceActionIs(LaunchOptions.ServiceAction.INSTALL);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"--webui-lan", "--config-dir=.", "--headless"})
+    void shouldRefuseOtherOptionsWithAServiceCommand(String option) {
+        whenTheArgumentsAreParsed("--service=start", option);
+
+        thenExceptionOccurred(UsageException.class, "cannot be combined");
+    }
+
+    @Test
+    void shouldTellTheServicesProfileInTheHelp() {
+        whenTheHelpIsRead();
+
+        thenTheHelpTells("in %ProgramData%\\njMule as the virtual account");
+    }
+
+    @Test
+    void shouldRefuseAnUnknownServiceCommand() {
+        whenTheArgumentsAreParsed("--service=restart");
+
+        thenExceptionOccurred(UsageException.class, "install, uninstall, start, stop or status");
+    }
+
+    @Test
+    void shouldRefuseTheServiceOutputWithoutAServiceCommand() {
+        whenTheArgumentsAreParsed("--service-output", "said.txt");
+
+        thenExceptionOccurred(UsageException.class, "--service-output applies to --service");
+    }
+
+    @Test
     void shouldParseTheConfigDirAndTheLogLevel() {
         whenTheArgumentsAreParsed("--config-dir", this.dir.toString(), "--log-level", "debug");
 
@@ -532,6 +569,12 @@ class LaunchOptionsTest {
 
     private void thenTheActionIs(Action expected) {
         assertThat(parsed().action()).isEqualTo(expected);
+    }
+
+    private void thenTheServiceActionIs(LaunchOptions.ServiceAction expected) {
+        assertThat(this.options.service())
+                .map(LaunchOptions.ServiceTask::action)
+                .hasValue(expected);
     }
 
     private void thenThereIsNoConfigDir() {

@@ -53,7 +53,8 @@ public record LaunchOptions(
         List<Ed2kLink> links,
         Optional<Remote> remote,
         Optional<Path> applyUpdate,
-        List<Long> waitFor) {
+        List<Long> waitFor,
+        Optional<ServiceTask> service) {
 
     public LaunchOptions {
         files = List.copyOf(files);
@@ -147,6 +148,18 @@ public record LaunchOptions(
     /** An import of the eMule profile in {@code dir}. */
     public record EmuleImport(Path dir, ImportOptions options) {}
 
+    /** What {@code --service} does with the Windows service of njMule. */
+    public enum ServiceAction {
+        INSTALL,
+        UNINSTALL,
+        START,
+        STOP,
+        STATUS
+    }
+
+    /** A {@code --service} command; {@code output} receives its messages too, for the command that asked for it. */
+    public record ServiceTask(ServiceAction action, Optional<Path> output) {}
+
     /** What the program should do. */
     public enum Action {
         RUN,
@@ -164,7 +177,8 @@ public record LaunchOptions(
         RESTORE_LINKS,
         CHECK_UPDATE,
         UPDATE,
-        APPLY_UPDATE
+        APPLY_UPDATE,
+        SERVICE
     }
 
     /** Thrown for invalid arguments; the message is meant for the user. */
@@ -209,6 +223,8 @@ public record LaunchOptions(
     private static final String CHECK_UPDATE_OPTION = "--check-update";
     private static final String UPDATE_OPTION = "--update";
     private static final String APPLY_UPDATE_OPTION = "--apply-update";
+    private static final String SERVICE_OPTION = "--service";
+    private static final String SERVICE_OUTPUT_OPTION = "--service-output";
     private static final String WAIT_OPTION = "--wait";
 
     // What --webui-port, --webui-lan, --webui-api, --webui-host and --webui-proxy apply to.
@@ -216,6 +232,19 @@ public record LaunchOptions(
 
     // What --exit and --restore-links may come with: where and how to run, nothing to do.
     private static final Set<String> ALONG = Set.of(CONFIG_DIR_OPTION, LOG_LEVEL_OPTION, HEADLESS_OPTION, WAIT_OPTION);
+
+    private static final Set<String> SERVICE_ALONG = Set.of(SERVICE_OPTION, SERVICE_OUTPUT_OPTION, LOG_LEVEL_OPTION);
+    private static final Set<String> SERVICE_INSTALL_ALONG = Set.of(
+            SERVICE_OPTION,
+            SERVICE_OUTPUT_OPTION,
+            LOG_LEVEL_OPTION,
+            WEBUI_PASSWORD_OPTION,
+            WEBUI_PASSWORD_FILE_OPTION,
+            WEBUI_PORT_OPTION,
+            WEBUI_LAN_OPTION,
+            WEBUI_API_OPTION,
+            WEBUI_HOST_OPTION,
+            WEBUI_PROXY_OPTION);
 
     public static LaunchOptions parse(String... args) throws UsageException {
         ParseResult result;
@@ -230,6 +259,7 @@ public record LaunchOptions(
                 alone(result, alone);
             }
         }
+        Optional<ServiceTask> service = service(result);
         Optional<Path> configDir = Optional.empty();
         if (result.hasMatchedOption(CONFIG_DIR_OPTION)) {
             configDir = Optional.of(toDirectory(result.matchedOptionValue(CONFIG_DIR_OPTION, "")));
@@ -286,7 +316,8 @@ public record LaunchOptions(
                 links(result.matchedPositionalValue(0, List.<String>of())),
                 remote(result),
                 applyUpdate(result),
-                waits(result));
+                waits(result),
+                service);
     }
 
     /** The help text, without colours. */
@@ -309,6 +340,9 @@ public record LaunchOptions(
         }
         if (result.hasMatchedOption("--notice")) {
             return Action.NOTICE;
+        }
+        if (result.hasMatchedOption(SERVICE_OPTION)) {
+            return Action.SERVICE;
         }
         if (result.hasMatchedOption(WEBUI_PASSWORD_OPTION)) {
             return Action.WEBUI_PASSWORD;
@@ -460,6 +494,19 @@ public record LaunchOptions(
                 "look for a new version of njMule, download it, check it against its signed information and install"
                         + " it where njMule may replace itself (the Windows installer and zip, the macOS app, the Linux"
                         + " archives; elsewhere it tells how), then exit; stop njMule first (njmule --exit)"));
+        spec.addOption(valued(
+                SERVICE_OPTION,
+                "<action>",
+                "install, uninstall, start, stop or show (status) njMule as a Windows service, which runs it"
+                        + " headless with its web interface on the profile in %%ProgramData%%\\njMule as the virtual"
+                        + " account NT SERVICE\\njMule (Windows asks for the administrator's rights); install"
+                        + " takes the web interface options, and asks for its password when none is set"));
+        spec.addOption(OptionSpec.builder(SERVICE_OUTPUT_OPTION)
+                .paramLabel("<file>")
+                .type(String.class)
+                .hidden(true)
+                .description("also write the messages of " + SERVICE_OPTION + " to <file>")
+                .build());
         spec.addOption(OptionSpec.builder(APPLY_UPDATE_OPTION)
                 .paramLabel("<plan>")
                 .type(String.class)
@@ -522,6 +569,39 @@ public record LaunchOptions(
     }
 
     // Another action, a task or links beside the option would be dropped without a word.
+    // The service has its own profile: --service comes alone, but for the web interface's options of install.
+    private static Optional<ServiceTask> service(ParseResult result) throws UsageException {
+        if (!result.hasMatchedOption(SERVICE_OPTION)) {
+            if (result.hasMatchedOption(SERVICE_OUTPUT_OPTION)) {
+                throw new UsageException(SERVICE_OUTPUT_OPTION + " applies to " + SERVICE_OPTION);
+            }
+            return Optional.empty();
+        }
+        String value = result.matchedOptionValue(SERVICE_OPTION, "");
+        ServiceAction action;
+        try {
+            action = ServiceAction.valueOf(value.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new UsageException(
+                    "Invalid " + SERVICE_OPTION + ": " + value + " (install, uninstall, start, stop or status)");
+        }
+        Set<String> along = action == ServiceAction.INSTALL ? SERVICE_INSTALL_ALONG : SERVICE_ALONG;
+        for (OptionSpec option : result.matchedOptions()) {
+            if (!along.contains(option.longestName())) {
+                throw new UsageException(
+                        SERVICE_OPTION + "=" + value + " cannot be combined with " + option.longestName());
+            }
+        }
+        if (!result.matchedPositionalValue(0, List.<String>of()).isEmpty()) {
+            throw new UsageException(SERVICE_OPTION + " cannot be combined with links");
+        }
+        Optional<Path> output = Optional.empty();
+        if (result.hasMatchedOption(SERVICE_OUTPUT_OPTION)) {
+            output = Optional.of(toFile(result.matchedOptionValue(SERVICE_OUTPUT_OPTION, "")));
+        }
+        return Optional.of(new ServiceTask(action, output));
+    }
+
     private static void alone(ParseResult result, String name) throws UsageException {
         for (OptionSpec option : result.matchedOptions()) {
             if (!option.longestName().equals(name) && !ALONG.contains(option.longestName())) {

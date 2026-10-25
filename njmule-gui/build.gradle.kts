@@ -125,7 +125,7 @@ val nativeResourceSources =
         val version = project.version.toString()
         inputs.property("version", version)
         from("native/windows") {
-            include("njmule-gui.rc")
+            include("njmule-gui.rc", "njmule-service.rc")
             filter { line -> line.replace("\${project.version}", version) }
         }
         from(layout.settingsDirectory.dir("njmule-app/native/windows")) {
@@ -149,24 +149,32 @@ fun registerResources(name: String, program: String) =
 
 val nativeResources = registerResources("nativeResources", "njmule")
 val launcherResources = registerResources("nativeLauncherResources", "njmule-gui")
+val serviceResources = registerResources("nativeServiceResources", "njmule-service")
 
 // ./gradlew :njmule-gui:nativeLauncher → build/launcher/njmule-gui.exe (native/windows/launcher.c), the
 // small GUI program that starts njmule.exe without a console for the desktop, as javaw.exe stands for java.exe.
-tasks.register<Exec>("nativeLauncher") {
-    group = "build"
-    description = "Builds njmule-gui.exe, the launcher of the Windows desktop app."
-    dependsOn(launcherResources)
-    val source = file("native/windows/launcher.c")
-    val dir = layout.buildDirectory.dir("native-res")
-    val exe = layout.buildDirectory.file("launcher/njmule-gui.exe")
-    val cl = layout.settingsDirectory.file("packaging/windows/cl.cmd").asFile
-    inputs.files(source, cl)
-    inputs.file(dir.map { it.file("njmule-gui.res") })
-    outputs.file(exe)
-    workingDir(dir)
-    commandLine("cmd", "/c", cl.path, exe.get().asFile.path, source.path, "njmule-gui.res")
-    doFirst { exe.get().asFile.parentFile.mkdirs() }
-}
+fun registerProgram(name: String, what: String, source: String, program: String, resources: TaskProvider<Exec>) =
+    tasks.register<Exec>(name) {
+        group = "build"
+        description = "Builds $program.exe, $what."
+        dependsOn(resources)
+        val code = file("native/windows/$source")
+        val dir = layout.buildDirectory.dir("native-res")
+        val exe = layout.buildDirectory.file("launcher/$program.exe")
+        val cl = layout.settingsDirectory.file("packaging/windows/cl.cmd").asFile
+        inputs.files(code, cl)
+        inputs.file(dir.map { it.file("$program.res") })
+        outputs.file(exe)
+        workingDir(dir)
+        commandLine("cmd", "/c", cl.path, exe.get().asFile.path, code.path, "$program.res")
+        doFirst { exe.get().asFile.parentFile.mkdirs() }
+    }
+
+registerProgram("nativeLauncher", "the launcher of the Windows desktop app", "launcher.c", "njmule-gui", launcherResources)
+
+// ./gradlew :njmule-gui:nativeService → build/launcher/njmule-service.exe (native/windows/service.c), the Windows
+// service that runs njmule.exe headless (njmule --service=install).
+registerProgram("nativeService", "the Windows service of njMule", "service.c", "njmule-service", serviceResources)
 
 tasks.register<Exec>("nativeGui") {
     group = "build"

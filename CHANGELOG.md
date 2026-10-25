@@ -412,6 +412,11 @@ All notable changes to this project are documented here. The format follows
   imported.
 - The deb and rpm packages install a systemd user unit, `njmule.service`, that runs the headless
   engine as the user and restarts it on failure (`systemctl --user enable --now njmule`).
+- Windows service: `njmule --service=install|uninstall|start|stop|status` runs the headless engine
+  with its web interface as the service "njMule" (`njmule-service.exe`), as the virtual account
+  `NT SERVICE\njMule` on a profile of its own in `%ProgramData%\njMule`, with a firewall rule,
+  restarted after a failure and stopped with a save; a per-machine MSI installs it with
+  `NJMULE_SERVICE=1` and a password file.
 - Kad notes: our comment and rating of a shared file go to the Kad nodes closest to it, once a day,
   at once when they change and no more once taken away. As a Kad node njMule keeps the notes of
   others (150 per file and 50,000 in all, one per publisher and per address, each for a day) and

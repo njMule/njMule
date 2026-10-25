@@ -125,8 +125,65 @@
         </InstallExecuteSequence>
         <?endif?>
 
+        <!-- njMule as the Windows service "njMule" (as with njmule's service option), for an installation for
+             every user: msiexec /i njmule.msi MSIINSTALLPERUSER="" NJMULE_SERVICE=1
+             NJMULE_WEBUI_PASSWORD_FILE=<a file holding the web interface password>. The service is
+             stopped while its files are replaced, started again after an upgrade, and removed with
+             njMule; its profile in %ProgramData%\njMule stays. -->
+        <Property Id="NJMULE_SERVICE" Secure="yes"/>
+        <Property Id="NJMULE_WEBUI_PASSWORD_FILE" Secure="yes"/>
+        <Launch
+                Condition="NOT NJMULE_SERVICE OR (Privileged AND NJMULE_WEBUI_PASSWORD_FILE)"
+                Message="NJMULE_SERVICE=1 installs for every user (MSIINSTALLPERUSER=&quot;&quot;) and needs NJMULE_WEBUI_PASSWORD_FILE, a file holding the web interface password."/>
+        <ComponentGroup Id="Service" Directory="INSTALLFOLDER">
+            <Component Id="ServiceControl" Condition="Privileged" Guid="6F1D2B4E-6C55-4E5B-9B0A-2C7E5D9A41B3">
+                <ServiceControl Id="StopService" Name="njMule" Stop="both" Wait="yes"/>
+                <RegistryValue
+                        Root="HKLM"
+                        Key="Software\njMule"
+                        Name="ServiceControl"
+                        Type="integer"
+                        Value="1"
+                        KeyPath="yes"/>
+            </Component>
+        </ComponentGroup>
+        <CustomAction
+                Id="InstallService"
+                Directory="INSTALLFOLDER"
+                ExeCommand="&quot;[INSTALLFOLDER]njmule.exe&quot; --service=install --webui-password-file &quot;[NJMULE_WEBUI_PASSWORD_FILE]&quot;"
+                Execute="deferred"
+                Impersonate="no"
+                Return="check"/>
+        <CustomAction
+                Id="StartService"
+                Directory="INSTALLFOLDER"
+                ExeCommand="&quot;[INSTALLFOLDER]njmule.exe&quot; --service=start"
+                Execute="deferred"
+                Impersonate="no"
+                Return="ignore"/>
+        <CustomAction
+                Id="UninstallService"
+                Directory="INSTALLFOLDER"
+                ExeCommand="&quot;[INSTALLFOLDER]njmule.exe&quot; --service=uninstall"
+                Execute="deferred"
+                Impersonate="no"
+                Return="ignore"/>
+        <InstallExecuteSequence>
+            <Custom Action="InstallService" After="InstallFiles" Condition="NJMULE_SERVICE AND NOT REMOVE"/>
+            <!-- An upgrade starts again the service it stopped; where there is none, nothing happens. -->
+            <Custom
+                    Action="StartService"
+                    After="InstallFiles"
+                    Condition="Privileged AND NOT NJMULE_SERVICE AND NOT REMOVE AND WIX_UPGRADE_DETECTED"/>
+            <Custom
+                    Action="UninstallService"
+                    Before="RemoveFiles"
+                    Condition="Privileged AND REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>
+        </InstallExecuteSequence>
+
         <Feature Id="Main" Title="njMule">
             <ComponentGroupRef Id="Programs"/>
+            <ComponentGroupRef Id="Service"/>
             <?if $(var.Gui) = yes ?>
             <ComponentGroupRef Id="Desktop"/>
             <ComponentGroupRef Id="DesktopShortcut"/>

@@ -171,6 +171,9 @@ public final class Main {
             case UPDATE -> {
                 return update(cli, out, err);
             }
+            case SERVICE -> {
+                return WindowsService.run(cli, out, err, passwords);
+            }
             case APPLY_UPDATE -> {
                 LoggingSetup.setLevel(cli.logLevel().orElse("INFO"));
                 return UpdateHandOver.install(cli.applyUpdate().orElseThrow(), cli.waitFor());
@@ -452,8 +455,7 @@ public final class Main {
         }
     }
 
-    private static WebUiSettings setTypedWebUiPassword(
-            LaunchOptions.WebUiSetup setup, Path config, PasswordSource passwords)
+    static WebUiSettings setTypedWebUiPassword(LaunchOptions.WebUiSetup setup, Path config, PasswordSource passwords)
             throws LaunchOptions.UsageException, IOException {
         char[] first = null;
         char[] second = null;
