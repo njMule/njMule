@@ -436,7 +436,8 @@ All notable changes to this project are documented here. The format follows
   arrow (the left one closes them): a line each under the file, in the list's columns, with the
   name or address, what it sent, its parts, its speed, its program and place in the queue, and what
   it does. A double click or Enter on a completed download opens its file in the program the system
-  gives its kind; on Windows each download shows that program's icon. The time left also tells how
+  gives its kind, and its menu opens its folder in the system's file manager, the file selected; on
+  Windows each download shows that program's icon. The time left also tells how
   much is missing, in the units of the speeds.
 - A *Buy me a coffee* button in the sidebar of the desktop and web apps, above the options and the
   logout, opens the page where whoever likes njMule can support it, in the system's browser.

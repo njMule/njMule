@@ -492,6 +492,7 @@ public final class TransfersScreen implements Screen {
         MenuItem cancel = Fx.menuItem(this.gui.t("nj.transfers.cancelOne"), Icons.DELETE, this::askCancelSelected);
         MenuItem details = Fx.menuItem(this.gui.t("IDS_DETAILS"), Icons.INFO, () -> showDetails(true));
         MenuItem preview = Fx.menuItem(this.gui.t("IDS_DL_PREVIEW"), Icons.PREVIEW, this::previewSelected);
+        MenuItem folder = Fx.menuItem(this.gui.t("IDS_OPENFOLDER"), Icons.FOLDER_OPEN, this::revealSelected);
         MenuItem comments = Fx.menuItem(this.gui.t("IDS_CMT_ADD"), Icons.COMMENT, this::commentSelected);
         Menu priority = priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Icons.PRIORITY)));
         Menu category = new Menu(this.gui.t("IDS_CAT"), Fx.icon(Icons.LABEL));
@@ -521,6 +522,7 @@ public final class TransfersScreen implements Screen {
                 new SeparatorMenuItem(),
                 details,
                 preview,
+                folder,
                 comments,
                 priority,
                 category,
@@ -546,6 +548,7 @@ public final class TransfersScreen implements Screen {
             // A completed download has no part file any more: there is nothing to preview or to fetch.
             boolean active = selected.size() == 1 && selected.getFirst().status() != DownloadInfo.Status.COMPLETE;
             preview.setDisable(!active || selected.getFirst().completed() == 0);
+            folder.setDisable(selected.size() != 1 || selected.getFirst().status() != DownloadInfo.Status.COMPLETE);
             comments.setDisable(selected.size() != 1);
             addSource.setDisable(!active);
             previewFirst.setSelected(!none && selected.stream().allMatch(DownloadInfo::previewFirst));
@@ -1068,16 +1071,37 @@ public final class TransfersScreen implements Screen {
     }
 
     private void openCompleted(DownloadInfo d) {
+        completedFile(d).ifPresent(file -> {
+            try {
+                Folders.openFile(file);
+            } catch (IOException e) {
+                this.gui.warn().accept(e.getMessage());
+            }
+        });
+    }
+
+    // The folder of the one completed download chosen, in the system's file manager, the file selected where it can.
+    void revealSelected() {
+        List<DownloadInfo> selected = Fx.selected(this.downloads);
+        if (selected.size() != 1 || selected.getFirst().status() != DownloadInfo.Status.COMPLETE) {
+            return;
+        }
+        completedFile(selected.getFirst()).ifPresent(file -> {
+            try {
+                Folders.reveal(file);
+            } catch (IOException e) {
+                this.gui.warn().accept(e.getMessage());
+            }
+        });
+    }
+
+    // Where a completed download is; when its file is gone, the user is told.
+    private Optional<Path> completedFile(DownloadInfo d) {
         Optional<Path> file = this.gui.model().completedFile(d.hash()).filter(Files::isRegularFile);
         if (file.isEmpty()) {
             this.gui.warn().accept(this.gui.t("IDS_ERR_REQ_FNF") + ": " + d.name());
-            return;
         }
-        try {
-            Folders.openFile(file.get());
-        } catch (IOException e) {
-            this.gui.warn().accept(e.getMessage());
-        }
+        return file;
     }
 
     // A source's speed is what it sent since the last reading, over the time between.

@@ -128,6 +128,28 @@ class TransfersScreenTest {
     }
 
     @Test
+    void shouldOfferTheFolderOfACompletedDownload() throws Exception {
+        givenTheEngine();
+        givenTheScreen();
+        givenACompletedDownload();
+
+        whenTheMenuOfTheFirstDownloadShows();
+
+        thenTheItemIsOn("IDS_OPENFOLDER", "open its folder");
+    }
+
+    @Test
+    void shouldNotOfferTheFolderOfADownloadNotCompleteYet() throws Exception {
+        givenTheEngine();
+        givenTheScreen();
+        givenAStartedDownload();
+
+        whenTheMenuOfTheFirstDownloadShows();
+
+        thenTheItemIsOff("IDS_OPENFOLDER", "open its folder");
+    }
+
+    @Test
     void shouldOfferToClearTheCompletedDownloadsWhenThereAreSome() throws Exception {
         givenTheEngine();
         givenTheScreen();
