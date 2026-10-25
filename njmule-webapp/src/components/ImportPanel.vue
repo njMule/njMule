@@ -11,7 +11,71 @@ import { t } from '../i18n';
 interface Report {
     dryRun: boolean;
     startAtLogin: boolean;
-    items: { file: string; outcome: Outcome; detail: string }[];
+    items: Item[];
+}
+
+interface Item {
+    file: string;
+    outcome: Outcome;
+    detail: string;
+    phrases: { key: string; args: (string | number)[] }[];
+}
+
+// The report's phrases, written out so that the build takes their texts into the translations.
+const PHRASES = new Set([
+    'nj.import.d.text',
+    'nj.import.d.insideEmule',
+    'nj.import.d.shortLived',
+    'nj.import.d.noSection',
+    'nj.import.d.preferences',
+    'nj.import.d.startAtLogin',
+    'nj.import.d.portsOurs',
+    'nj.import.d.servers',
+    'nj.import.d.added',
+    'nj.import.d.bootstrapNodes',
+    'nj.import.d.kadContacts',
+    'nj.import.d.knownFiles',
+    'nj.import.d.aichTrees',
+    'nj.import.d.leftOut',
+    'nj.import.d.noSharedFolder',
+    'nj.import.d.folders',
+    'nj.import.d.notShared',
+    'nj.import.d.singleFiles',
+    'nj.import.d.ranges',
+    'nj.import.d.ourOwn',
+    'nj.import.d.nextStart',
+    'nj.import.d.files',
+    'nj.import.d.friends',
+    'nj.import.d.searches',
+    'nj.import.d.spamMarkers',
+    'nj.import.d.comments',
+    'nj.import.d.addresses',
+    'nj.import.d.entries',
+    'nj.import.d.sections',
+    'nj.import.d.noCategory',
+    'nj.import.d.categories',
+    'nj.import.d.withoutPatterns',
+    'nj.import.d.ownIdentity',
+    'nj.import.d.closeEmule',
+    'nj.import.d.userHash',
+    'nj.import.d.identityKey',
+    'nj.import.d.together',
+    'nj.import.d.credits',
+    'nj.import.d.kadId',
+    'nj.import.d.notAsked',
+    'nj.import.d.noDownloads',
+    'nj.import.d.noDataFile',
+    'nj.import.d.pauseFirst',
+    'nj.import.d.download',
+    'nj.import.d.copied',
+]);
+
+// The detail in the interface's language; in English, as njMule wrote it, if a phrase is not known here.
+function detail(item: Item): string {
+    if (item.phrases.some((p) => !PHRASES.has(p.key))) {
+        return item.detail;
+    }
+    return item.phrases.map((p) => t(p.key, ...p.args)).join('; ');
 }
 
 type Outcome = 'imported' | 'would_import' | 'skipped' | 'missing' | 'failed';
@@ -68,7 +132,9 @@ async function run(dryRun: boolean): Promise<void> {
     <h3>{{ t('nj.import.whatHappens') }}</h3>
     <el-table :data="report?.items ?? []" :empty-text="t('nj.import.empty')" height="260">
         <el-table-column :label="t('IDS_DL_FILENAME')" prop="file" min-width="160" />
-        <el-table-column :label="t('nj.import.detail')" prop="detail" min-width="220" show-overflow-tooltip />
+        <el-table-column :label="t('nj.import.detail')" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">{{ detail(row as Item) }}</template>
+        </el-table-column>
         <el-table-column :label="t('nj.import.outcome')" width="170">
             <template #default="{ row }">
                 <span class="nj-chip" :class="OUTCOMES[row.outcome as Outcome].tone">

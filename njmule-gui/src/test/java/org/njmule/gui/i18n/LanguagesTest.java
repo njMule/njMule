@@ -40,6 +40,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.njmule.core.api.ImportReport;
 
 class LanguagesTest {
 
@@ -58,6 +59,7 @@ class LanguagesTest {
     private Properties translation;
     private Properties translatedEmule;
     private Set<String> usedEmuleKeys;
+    private Map<String, String> importPhrases;
 
     /** Every language of the interface, with its own name and its word for "Language". */
     static Stream<Arguments> languages() {
@@ -256,6 +258,15 @@ class LanguagesTest {
         thenTheLanguageIsNamed("Norsk bokmål");
     }
 
+    @Test
+    void shouldWordTheImportsPhrasesInEnglishAsTheEngineDoes() throws IOException {
+        givenTheEnglishTexts();
+
+        whenTheImportsPhrasesAreRead();
+
+        thenTheyAreTheEnginesOwn();
+    }
+
     @ParameterizedTest
     @MethodSource("translations")
     void shouldHaveEveryNjmuleTextWithTheSamePlaceholdersInATranslation(Locale language) throws IOException {
@@ -290,6 +301,15 @@ class LanguagesTest {
     private void givenTheEnglishTexts() throws IOException {
         this.english = load("nj.properties");
         this.englishEmule = load("emule.properties");
+    }
+
+    private void whenTheImportsPhrasesAreRead() {
+        this.importPhrases = new TreeMap<>();
+        for (String key : this.english.stringPropertyNames()) {
+            if (key.startsWith("nj.import.d.")) {
+                this.importPhrases.put(key, this.english.getProperty(key));
+            }
+        }
     }
 
     private void givenTheEmuleTextsTheInterfaceUses() throws IOException {
@@ -336,6 +356,10 @@ class LanguagesTest {
 
     private void thenTheTextOfIs(String key, String text) {
         assertThat(this.texts.t(key)).isEqualTo(text);
+    }
+
+    private void thenTheyAreTheEnginesOwn() {
+        assertThat(this.importPhrases).isEqualTo(new TreeMap<>(ImportReport.Phrase.englishTexts()));
     }
 
     private void thenItHasEveryNjmuleTextAndNoOther() {

@@ -857,7 +857,7 @@ class EmuleImporterTest {
         whenTheProfileIsImported(new ImportOptions(false, false, false));
 
         thenTheOutcomeOfIs("shareddir.dat", Outcome.IMPORTED);
-        thenTheDetailOfContains("shareddir.dat", "1 directories", "1 not shared", "refusing");
+        thenTheDetailOfContains("shareddir.dat", "1 folders", "1 not shared", "refusing");
         thenTheDirectoriesSharedAre(this.emule.shared);
     }
 

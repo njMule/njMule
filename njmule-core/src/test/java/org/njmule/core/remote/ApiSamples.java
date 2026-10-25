@@ -34,6 +34,7 @@ import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
@@ -228,6 +229,21 @@ final class ApiSamples {
                 PortTest.Reach.OPEN,
                 PortTest.Reach.TESTING,
                 false);
+    }
+
+    static ImportReport importReport() {
+        return new ImportReport(
+                true,
+                List.of(
+                        new ImportReport.Item(
+                                "server.met",
+                                ImportReport.Outcome.WOULD_IMPORT,
+                                List.of(
+                                        ImportReport.Phrase.of("nj.import.d.servers", 12),
+                                        ImportReport.Phrase.of("nj.import.d.added", 3))),
+                        new ImportReport.Item("known.met", ImportReport.Outcome.FAILED, "unreadable"),
+                        new ImportReport.Item("ipfilter.dat", ImportReport.Outcome.MISSING, "")),
+                true);
     }
 
     static PeerComment peerComment() {

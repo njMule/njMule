@@ -65,6 +65,8 @@ class RemoteApiContractTest {
     private static final ApiContract CONTRACT = new ApiContract();
     private static final String LINK = "ed2k://|file|talk.bin|5000|" + HASH + "|/";
     private static final String LIST = "{\"url\":\"http://example.org/list.met\"}";
+    // An existing absolute folder, as the import asks for, written for JSON.
+    private static final String TEMP = System.getProperty("java.io.tmpdir").replace("\\", "\\\\");
 
     @TempDir
     Path dir;
@@ -197,6 +199,7 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/update/download", "", 202),
                 Arguments.of("POST", "/api/v1/update/install", "", 202),
                 Arguments.of("POST", "/api/v1/update/install", "{\"restart\":false}", 200),
+                Arguments.of("POST", "/api/v1/import/emule", "{\"path\":\"" + TEMP + "\",\"dryRun\":true}", 200),
                 Arguments.of("POST", "/api/v1/shutdown", "", 202),
                 Arguments.of("PATCH", "/api/v1/preferences", "{\"user.nick\":\"Night Owl\"}", 200),
                 Arguments.of(
@@ -415,6 +418,7 @@ class RemoteApiContractTest {
         answerWith("addDownload", ApiSamples.download());
         answerWith("swapSourcesToDownload", 3);
         answerWith("testPorts", ApiSamples.portTest());
+        answerWith("importFromEmule", ApiSamples.importReport());
         answerWith("searchKadNotes", List.of(ApiSamples.kadNote()));
         answerWith("browseSharedFiles", List.of(ApiSamples.result()));
         answerWith("updateSchedule", ApiSamples.schedule());

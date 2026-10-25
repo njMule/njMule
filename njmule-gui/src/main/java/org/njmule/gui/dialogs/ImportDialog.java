@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
@@ -99,7 +100,7 @@ public final class ImportDialog {
         file.setCellValueFactory(c -> new ReadOnlyStringWrapper(c.getValue().file()));
         file.setPrefWidth(150);
         TableColumn<ImportReport.Item, String> detail = new TableColumn<>(gui.t("nj.import.detail"));
-        detail.setCellValueFactory(c -> new ReadOnlyStringWrapper(c.getValue().detail()));
+        detail.setCellValueFactory(c -> new ReadOnlyStringWrapper(detail(gui, c.getValue())));
         detail.setPrefWidth(400);
         TableColumn<ImportReport.Item, ImportReport.Outcome> outcome = new TableColumn<>(gui.t("nj.import.outcome"));
         outcome.setCellValueFactory(
@@ -272,6 +273,13 @@ public final class ImportDialog {
                                 this.gui.warn().accept(this.gui.f("nj.settings.autostartFailed", e.getMessage())));
                     }
                 }));
+    }
+
+    /** An item's detail in the interface's language, phrase by phrase. */
+    static String detail(Gui gui, ImportReport.Item item) {
+        return item.phrases().stream()
+                .map(p -> gui.f(p.key(), p.args().toArray()))
+                .collect(Collectors.joining(ImportReport.Phrase.SEPARATOR));
     }
 
     private String outcome(ImportReport.Outcome outcome) {

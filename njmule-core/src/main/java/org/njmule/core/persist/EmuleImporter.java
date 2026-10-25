@@ -255,10 +255,7 @@ public final class EmuleImporter {
     public ImportReport run() {
         // njMule writes into its configuration directory, which must never be eMule's.
         if (canonical(this.target.configDir()).startsWith(canonical(this.emule))) {
-            report(
-                    this.emule,
-                    ImportReport.Outcome.FAILED,
-                    "njMule's configuration is in eMule's directory: nothing is taken");
+            report(this.emule, ImportReport.Outcome.FAILED, phrase("insideEmule"));
             return new ImportReport(this.options.dryRun(), this.items);
         }
         Optional<IniFile> ini = preferences();
@@ -268,24 +265,36 @@ public final class EmuleImporter {
         sharedDirectories(ini);
         with(this.emule.resolve("sharedfiles.dat"), EmuleImporter::sharedFiles);
         with(this.emule.resolve("ipfilter.dat"), this::ipFilter);
-        kept("cancelled.met", data -> CancelledMet.read(data).keys().size() + " files");
-        kept("emfriends.met", data -> FriendsMet.read(data).size() + " friends");
-        kept("StoredSearches.met", data -> SearchFiles.readStored(data).size() + " searches");
-        kept("SearchSpam.met", data -> SearchFiles.readSpam(data).size() + " markers");
-        kept("fileinfo.ini", data -> IniFile.parse(data).sections().size() + " file comments");
-        kept("staticservers.dat", data -> TextFiles.staticServers(data).size() + " servers");
-        kept("addresses.dat", data -> TextFiles.lines(data).size() + " addresses");
+        kept(
+                "cancelled.met",
+                data -> phrase("files", CancelledMet.read(data).keys().size()));
+        kept("emfriends.met", data -> phrase("friends", FriendsMet.read(data).size()));
+        kept(
+                "StoredSearches.met",
+                data -> phrase("searches", SearchFiles.readStored(data).size()));
+        kept(
+                "SearchSpam.met",
+                data -> phrase("spamMarkers", SearchFiles.readSpam(data).size()));
+        kept(
+                "fileinfo.ini",
+                data -> phrase("comments", IniFile.parse(data).sections().size()));
+        kept(
+                "staticservers.dat",
+                data -> phrase("servers", TextFiles.staticServers(data).size()));
+        kept("addresses.dat", data -> phrase("addresses", TextFiles.lines(data).size()));
         // The addresses typed in eMule's boxes, which the interface offers again.
         for (String history : List.of(
                 "AC_ServerMetURLs.dat", "AC_IPFilterUpdateURLs.dat", "AC_BootstrapIPs.dat", "AC_SearchStrings.dat")) {
-            kept(history, data -> TextFiles.entries(data).size() + " entries");
+            kept(history, data -> phrase("entries", TextFiles.entries(data).size()));
         }
         categories(ini);
-        kept("statistics.ini", data -> IniFile.parse(data).sections().size() + " sections");
+        kept(
+                "statistics.ini",
+                data -> phrase("sections", IniFile.parse(data).sections().size()));
         for (String name : List.of("key_index.dat", "src_index.dat", "load_index.dat")) {
             Path file = this.emule.resolve(name);
             if (Files.exists(file)) {
-                report(file, ImportReport.Outcome.SKIPPED, "other nodes' entries, short-lived");
+                report(file, ImportReport.Outcome.SKIPPED, phrase("shortLived"));
             }
         }
         identity(ini);
@@ -320,19 +329,19 @@ public final class EmuleImporter {
             return Optional.empty();
         }
         if (!ini.hasSection(SECTION)) {
-            report(file, ImportReport.Outcome.FAILED, "no [" + SECTION + "] section");
+            report(file, ImportReport.Outcome.FAILED, phrase("noSection", SECTION));
             return Optional.empty();
         }
-        String detail = "nick, limits, networks, obfuscation"
-                + (startsAtLogin(ini) ? ", start at login" : "")
-                + "; ports and directories stay ours";
+        List<ImportReport.Phrase> detail = startsAtLogin(ini)
+                ? List.of(phrase("preferences"), phrase("startAtLogin"), phrase("portsOurs"))
+                : List.of(phrase("preferences"), phrase("portsOurs"));
         if (this.options.dryRun()) {
-            report(file, ImportReport.Outcome.WOULD_IMPORT, detail);
+            this.items.add(new ImportReport.Item(name(file), ImportReport.Outcome.WOULD_IMPORT, detail));
             return Optional.of(ini);
         }
         try {
             this.target.updatePreferences(p -> mapPreferences(ini, p));
-            report(file, ImportReport.Outcome.IMPORTED, detail);
+            this.items.add(new ImportReport.Item(name(file), ImportReport.Outcome.IMPORTED, detail));
         } catch (IOException | RuntimeException e) {
             report(file, ImportReport.Outcome.FAILED, String.valueOf(e.getMessage()));
         }
@@ -490,42 +499,42 @@ public final class EmuleImporter {
     private ImportReport.Item servers(Path file, byte[] data) throws IOException {
         int count = ServerMet.read(data).size();
         if (this.options.dryRun()) {
-            return item(file, ImportReport.Outcome.WOULD_IMPORT, count + " servers");
+            return item(file, ImportReport.Outcome.WOULD_IMPORT, phrase("servers", count));
         }
         int added = this.target.addServers(file);
-        return item(file, ImportReport.Outcome.IMPORTED, count + " servers, " + added + " new");
+        return item(file, ImportReport.Outcome.IMPORTED, phrase("servers", count), phrase("added", added));
     }
 
     private ImportReport.Item nodes(Path file, byte[] data) throws IOException {
         NodesDat.Contents contents = NodesDat.read(data);
         int count = contents.contacts().size();
-        String what = count + (contents.bootstrap() ? " bootstrap nodes" : " Kad contacts");
+        ImportReport.Phrase what = phrase(contents.bootstrap() ? "bootstrapNodes" : "kadContacts", count);
         if (this.options.dryRun()) {
             return item(file, ImportReport.Outcome.WOULD_IMPORT, what);
         }
         int added = this.target.addKadContacts(contents);
-        return item(file, ImportReport.Outcome.IMPORTED, what + ", " + added + " new");
+        return item(file, ImportReport.Outcome.IMPORTED, what, phrase("added", added));
     }
 
     private ImportReport.Item known(Path file, byte[] data) throws IOException {
         List<KnownMet.KnownFile> files = KnownMet.read(data);
         List<Known2Met.Entry> trees = List.of();
-        String unreadable = "";
+        List<ImportReport.Phrase> what = new ArrayList<>();
         Path aich = this.emule.resolve("known2_64.met");
         if (Files.exists(aich)) {
             try {
                 trees = Known2Met.read(read(aich));
             } catch (IOException | RuntimeException e) {
                 // The trees only spare hashing the shared files again.
-                unreadable = "; " + aich.getFileName() + " left out: " + e.getMessage();
+                what.add(phrase("leftOut", name(aich), String.valueOf(e.getMessage())));
             }
         }
-        String what = files.size() + " known files, " + trees.size() + " AICH trees" + unreadable;
+        what.addAll(0, List.of(phrase("knownFiles", files.size()), phrase("aichTrees", trees.size())));
         if (this.options.dryRun()) {
-            return item(file, ImportReport.Outcome.WOULD_IMPORT, what);
+            return new ImportReport.Item(name(file), ImportReport.Outcome.WOULD_IMPORT, what);
         }
-        int added = this.target.addKnownFiles(files, trees);
-        return item(file, ImportReport.Outcome.IMPORTED, what + ", " + added + " new");
+        what.add(phrase("added", this.target.addKnownFiles(files, trees)));
+        return new ImportReport.Item(name(file), ImportReport.Outcome.IMPORTED, what);
     }
 
     // eMule shares its incoming directory and those of shareddir.dat, each without subdirectories.
@@ -547,11 +556,11 @@ public final class EmuleImporter {
             }
         }
         if (dirs.isEmpty()) {
-            report(file, ImportReport.Outcome.MISSING, "no shared directory");
+            report(file, ImportReport.Outcome.MISSING, phrase("noSharedFolder"));
             return;
         }
         if (this.options.dryRun()) {
-            report(file, ImportReport.Outcome.WOULD_IMPORT, dirs.size() + " directories");
+            report(file, ImportReport.Outcome.WOULD_IMPORT, phrase("folders", dirs.size()));
             return;
         }
         // A directory refused (a private one) or failing does not stop the others.
@@ -569,30 +578,35 @@ public final class EmuleImporter {
             report(file, ImportReport.Outcome.FAILED, failure);
         } else {
             int skipped = dirs.size() - shared;
-            report(
-                    file,
-                    ImportReport.Outcome.IMPORTED,
-                    shared + " directories" + (skipped == 0 ? "" : ", " + skipped + " not shared: " + failure));
+            if (skipped == 0) {
+                report(file, ImportReport.Outcome.IMPORTED, phrase("folders", shared));
+            } else {
+                report(
+                        file,
+                        ImportReport.Outcome.IMPORTED,
+                        phrase("folders", shared),
+                        phrase("notShared", skipped, failure));
+            }
         }
     }
 
     private static ImportReport.Item sharedFiles(Path file, byte[] data) {
         long single =
                 TextFiles.sharedFiles(data).stream().filter(s -> !s.excluded()).count();
-        return item(file, ImportReport.Outcome.SKIPPED, single + " single files: not shared yet");
+        return item(file, ImportReport.Outcome.SKIPPED, phrase("singleFiles", single));
     }
 
     private ImportReport.Item ipFilter(Path file, byte[] data) throws IOException {
         int ranges = IpFilterDat.read(data, String.valueOf(file.getFileName())).size();
         Path ours = this.target.configDir().resolve("ipfilter.dat");
         if (Files.exists(ours)) {
-            return item(file, ImportReport.Outcome.SKIPPED, ranges + " ranges; we have our own");
+            return item(file, ImportReport.Outcome.SKIPPED, phrase("ranges", ranges), phrase("ourOwn"));
         }
         if (this.options.dryRun()) {
-            return item(file, ImportReport.Outcome.WOULD_IMPORT, ranges + " ranges");
+            return item(file, ImportReport.Outcome.WOULD_IMPORT, phrase("ranges", ranges));
         }
         AtomicFiles.writeBytes(ours, data);
-        return item(file, ImportReport.Outcome.IMPORTED, ranges + " ranges, from the next start");
+        return item(file, ImportReport.Outcome.IMPORTED, phrase("ranges", ranges), phrase("nextStart"));
     }
 
     // eMule's categories keep their numbers, so downloads taken from its temp folder stay in theirs.
@@ -603,7 +617,7 @@ public final class EmuleImporter {
         with(this.emule.resolve("Category.ini"), (file, data) -> {
             IniFile ini = IniFile.parse(data);
             List<Category> found = new ArrayList<>();
-            StringBuilder notes = new StringBuilder();
+            List<ImportReport.Phrase> notes = new ArrayList<>();
             for (String section : ini.sections()) {
                 OptionalInt id = categoryId(section);
                 // Cat#0 is the list of all downloads, not a category.
@@ -628,27 +642,25 @@ public final class EmuleImporter {
                         // Patterns we cannot compile: the category comes without them.
                         found.add(new Category(
                                 id.getAsInt(), title, incoming, comment, color, DownloadPriority.AUTO, "", false));
-                        notes.append("; ")
-                                .append(title)
-                                .append(" without its file name patterns, which are not valid here");
+                        notes.add(phrase("withoutPatterns", title));
                     } catch (IllegalArgumentException again) {
                         logger.info("Leaving out the category {} of {}: {}", section, file, e.getMessage());
                     }
                 }
             }
             if (found.isEmpty()) {
-                return item(file, ImportReport.Outcome.SKIPPED, "no category besides all downloads");
+                return item(file, ImportReport.Outcome.SKIPPED, phrase("noCategory"));
             }
             if (this.options.dryRun()) {
-                return item(file, ImportReport.Outcome.WOULD_IMPORT, found.size() + " categories" + notes);
+                return withNotes(file, ImportReport.Outcome.WOULD_IMPORT, phrase("categories", found.size()), notes);
             }
             int added = this.target.addCategories(found);
             if (added == found.size()) {
                 found.forEach(c -> this.categoriesTaken.add(c.id()));
             }
             return added == 0
-                    ? item(file, ImportReport.Outcome.SKIPPED, found.size() + " categories; we have our own")
-                    : item(file, ImportReport.Outcome.IMPORTED, added + " categories" + notes);
+                    ? item(file, ImportReport.Outcome.SKIPPED, phrase("categories", found.size()), phrase("ourOwn"))
+                    : withNotes(file, ImportReport.Outcome.IMPORTED, phrase("categories", added), notes);
         });
     }
 
@@ -707,14 +719,14 @@ public final class EmuleImporter {
     /** Files checked, then kept unless njMule has its own; those the engine keeps up to date wait for its start. */
     private void kept(String name, Reader reader) {
         with(this.emule.resolve(name), (file, data) -> {
-            String what = reader.read(data);
+            ImportReport.Phrase what = reader.read(data);
             Path ours = this.target.configDir().resolve(name);
             Path pending = this.target.configDir().resolve(PENDING_FILES);
             Path staged = pending.resolve(name);
             boolean live = LIVE.contains(name);
             // With a copy waiting from an earlier import, ours is only what the engine saved since.
             if (Files.exists(ours) && !(live && Files.exists(staged))) {
-                return item(file, ImportReport.Outcome.SKIPPED, what + "; we have our own");
+                return item(file, ImportReport.Outcome.SKIPPED, what, phrase("ourOwn"));
             }
             if (this.options.dryRun()) {
                 return item(file, ImportReport.Outcome.WOULD_IMPORT, what);
@@ -722,7 +734,7 @@ public final class EmuleImporter {
             if (live) {
                 Files.createDirectories(pending);
                 AtomicFiles.write(staged, out -> out.write(data), false);
-                return item(file, ImportReport.Outcome.IMPORTED, what + ", from the next start");
+                return item(file, ImportReport.Outcome.IMPORTED, what, phrase("nextStart"));
             }
             AtomicFiles.writeBytes(ours, data);
             return item(file, ImportReport.Outcome.IMPORTED, what);
@@ -731,11 +743,11 @@ public final class EmuleImporter {
 
     // The user hash, key, credits and Kad identity belong together; they wait for the next start.
     private void identity(Optional<IniFile> ini) {
-        String refusal = null;
+        ImportReport.Phrase refusal = null;
         if (!this.options.identity()) {
-            refusal = "njMule keeps its own identity unless asked to adopt eMule's";
+            refusal = phrase("ownIdentity");
         } else if (this.emuleRunning.getAsBoolean()) {
-            refusal = "close eMule first: two clients with one identity spoil their credits";
+            refusal = phrase("closeEmule");
         }
         if (refusal != null) {
             for (String name : IDENTITY.subList(0, IDENTITY.size() - 1)) {
@@ -754,28 +766,25 @@ public final class EmuleImporter {
             if (!PreferencesDat.isMarkedUserHash(PreferencesDat.read(data).userHash())) {
                 throw new IOException("not a usable user hash");
             }
-            return "user hash";
+            return phrase("userHash");
         });
         boolean key = pending(KEY_FILE, data -> {
             String text = new String(data, StandardCharsets.US_ASCII);
             RsaKeys.decodePrivate(Base64.getDecoder().decode(text.replaceAll("\\s+", "")));
-            return "secure identification key";
+            return phrase("identityKey");
         });
         if (!hash || !key) {
             // Our key with eMule's user hash would fail every identification, and the reverse.
             if (!this.options.dryRun()) {
                 dropPendingIdentity();
             }
-            report(
-                    this.emule,
-                    ImportReport.Outcome.SKIPPED,
-                    "identity: the user hash and the key are taken only together");
+            report(this.emule, ImportReport.Outcome.SKIPPED, phrase("together"));
             return;
         }
-        pending("clients.met", data -> ClientsMet.read(data).size() + " credits");
+        pending("clients.met", data -> phrase("credits", ClientsMet.read(data).size()));
         pending("preferencesKad.dat", data -> {
             PreferencesKadDat.read(data);
-            return "Kad id";
+            return phrase("kadId");
         });
         long udpKey = ini.map(i -> i.getLong(SECTION, "KadUDPKey"))
                         .orElse(OptionalLong.empty())
@@ -806,14 +815,14 @@ public final class EmuleImporter {
     /** Checks an identity file and puts it aside for the next start; returns whether it could. */
     private boolean pending(String name, Reader check) {
         ImportReport.Outcome outcome = with(this.emule.resolve(name), (file, data) -> {
-            String what = check.read(data);
+            ImportReport.Phrase what = check.read(data);
             if (this.options.dryRun()) {
                 return item(file, ImportReport.Outcome.WOULD_IMPORT, what);
             }
             Path pending = this.target.configDir().resolve(PENDING_IDENTITY);
             Files.createDirectories(pending);
             writePending(pending.resolve(name), data);
-            return item(file, ImportReport.Outcome.IMPORTED, what + ", from the next start");
+            return item(file, ImportReport.Outcome.IMPORTED, what, phrase("nextStart"));
         });
         return outcome == ImportReport.Outcome.IMPORTED || outcome == ImportReport.Outcome.WOULD_IMPORT;
     }
@@ -827,7 +836,7 @@ public final class EmuleImporter {
             return;
         }
         if (!this.options.downloads()) {
-            report(where, ImportReport.Outcome.SKIPPED, "downloads were not asked for");
+            report(where, ImportReport.Outcome.SKIPPED, phrase("notAsked"));
             return;
         }
         boolean running = this.emuleRunning.getAsBoolean();
@@ -843,7 +852,7 @@ public final class EmuleImporter {
             }
         }
         if (found == 0) {
-            report(where, ImportReport.Outcome.MISSING, "no downloads in progress");
+            report(where, ImportReport.Outcome.MISSING, phrase("noDownloads"));
         }
     }
 
@@ -869,14 +878,14 @@ public final class EmuleImporter {
         String name = contents.name().orElse(metName);
         Path part = met.resolveSibling(metName.substring(0, metName.length() - ".met".length()));
         if (contents.size().isEmpty() || !Files.isRegularFile(part)) {
-            return item(met, ImportReport.Outcome.FAILED, name + ": no data file");
+            return item(met, ImportReport.Outcome.FAILED, phrase("noDataFile", name));
         }
         if (running && !contents.paused()) {
-            return item(met, ImportReport.Outcome.SKIPPED, name + ": pause it in eMule first");
+            return item(met, ImportReport.Outcome.SKIPPED, phrase("pauseFirst", name));
         }
         long mib = Files.size(part) / (1024 * 1024);
         if (this.options.dryRun()) {
-            return item(met, ImportReport.Outcome.WOULD_IMPORT, name + ", " + mib + " MiB");
+            return item(met, ImportReport.Outcome.WOULD_IMPORT, phrase("download", name, mib));
         }
         // eMule's number names one of ours only when that category came with this import.
         long category = contents.category().orElse(Category.NONE);
@@ -886,7 +895,7 @@ public final class EmuleImporter {
                 category > 0 && category <= Integer.MAX_VALUE && this.categoriesTaken.contains((int) category)
                         ? (int) category
                         : Category.NONE);
-        return item(met, ImportReport.Outcome.IMPORTED, adopted + ", " + mib + " MiB copied");
+        return item(met, ImportReport.Outcome.IMPORTED, phrase("copied", adopted, mib));
     }
 
     // Absolute only, as a relative one would name a folder below njMule's working directory; normalized, so that one
@@ -971,7 +980,7 @@ public final class EmuleImporter {
     /** Reads a file and says what is in it. */
     @FunctionalInterface
     private interface Reader {
-        String read(byte[] data) throws IOException;
+        ImportReport.Phrase read(byte[] data) throws IOException;
     }
 
     @FunctionalInterface
@@ -998,7 +1007,32 @@ public final class EmuleImporter {
         this.items.add(item(file, outcome, detail));
     }
 
+    private void report(Path file, ImportReport.Outcome outcome, ImportReport.Phrase... phrases) {
+        this.items.add(item(file, outcome, phrases));
+    }
+
     private static ImportReport.Item item(Path file, ImportReport.Outcome outcome, String detail) {
-        return new ImportReport.Item(String.valueOf(file.getFileName()), outcome, detail);
+        return new ImportReport.Item(name(file), outcome, detail);
+    }
+
+    private static ImportReport.Item item(Path file, ImportReport.Outcome outcome, ImportReport.Phrase... phrases) {
+        return new ImportReport.Item(name(file), outcome, List.of(phrases));
+    }
+
+    private static ImportReport.Item withNotes(
+            Path file, ImportReport.Outcome outcome, ImportReport.Phrase what, List<ImportReport.Phrase> notes) {
+        List<ImportReport.Phrase> phrases = new ArrayList<>();
+        phrases.add(what);
+        phrases.addAll(notes);
+        return new ImportReport.Item(name(file), outcome, phrases);
+    }
+
+    private static String name(Path file) {
+        return String.valueOf(file.getFileName());
+    }
+
+    // The phrases of the report, which the interfaces translate.
+    private static ImportReport.Phrase phrase(String name, Object... args) {
+        return ImportReport.Phrase.of("nj.import.d." + name, args);
     }
 }

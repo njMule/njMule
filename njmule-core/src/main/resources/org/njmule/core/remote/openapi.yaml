@@ -303,7 +303,7 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [file, outcome, detail]
+                      required: [file, outcome, detail, phrases]
                       properties:
                         file:
                           type: string
@@ -312,6 +312,22 @@ paths:
                           enum: [imported, would_import, skipped, missing, failed]
                         detail:
                           type: string
+                          description: The phrases in English, joined by "; ".
+                        phrases:
+                          type: array
+                          description: >-
+                            The detail as texts of the interface's translations (nj.import.d.*), whose %s and %d
+                            take the arguments in order; a client joins them by "; ".
+                          items:
+                            type: object
+                            required: [key, args]
+                            properties:
+                              key:
+                                type: string
+                              args:
+                                type: array
+                                items:
+                                  type: [string, integer]
         "400":
           $ref: "#/components/responses/BadRequest"
         default:

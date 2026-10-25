@@ -439,6 +439,22 @@ final class ApiJson {
             g.writeStringProperty("file", i.file());
             g.writeStringProperty("outcome", name(i.outcome()));
             g.writeStringProperty("detail", i.detail());
+            g.writeArrayPropertyStart("phrases");
+            for (ImportReport.Phrase p : i.phrases()) {
+                g.writeStartObject();
+                g.writeStringProperty("key", p.key());
+                g.writeArrayPropertyStart("args");
+                for (Object arg : p.args()) {
+                    if (arg instanceof Number n) {
+                        g.writeNumber(n.longValue());
+                    } else {
+                        g.writeString(String.valueOf(arg));
+                    }
+                }
+                g.writeEndArray();
+                g.writeEndObject();
+            }
+            g.writeEndArray();
             g.writeEndObject();
         }
         g.writeEndArray();
