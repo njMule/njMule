@@ -463,12 +463,14 @@ public final class TransfersScreen implements Screen {
         TableLayout.remember(this.downloads, "downloads", this.gui.settings());
     }
 
-    // What one does to the chosen downloads, the common first; the rarer under More, in plain words.
+    // What one does to the chosen downloads, the common first; the rarer under More, in plain words. Clearing the
+    // completed ones is of the whole list, so it comes last.
     private ContextMenu downloadMenu() {
         MenuItem pause = Fx.menuItem(this.gui.t("IDS_DL_PAUSE"), Icons.PAUSE, this::pauseSelected);
         MenuItem resume = Fx.menuItem(this.gui.t("IDS_DL_RESUME"), Icons.PLAY, this::resumeSelected);
         MenuItem stop = Fx.menuItem(this.gui.t("IDS_DL_STOP"), Icons.STOP, this::stopSelected);
         MenuItem cancel = Fx.menuItem(this.gui.t("nj.transfers.cancelOne"), Icons.DELETE, this::askCancelSelected);
+        MenuItem details = Fx.menuItem(this.gui.t("IDS_DETAILS"), Icons.INFO, () -> showDetails(true));
         MenuItem preview = Fx.menuItem(this.gui.t("IDS_DL_PREVIEW"), Icons.PREVIEW, this::previewSelected);
         MenuItem comments = Fx.menuItem(this.gui.t("IDS_CMT_ADD"), Icons.COMMENT, this::commentSelected);
         Menu priority = priorityMenu(new Menu(this.gui.t("IDS_PRIORITY"), Fx.icon(Icons.PRIORITY)));
@@ -489,12 +491,15 @@ public final class TransfersScreen implements Screen {
         Menu more = new Menu(this.gui.t("IDS_MORE"), Fx.icon(Icons.MORE), addSource, previewFirst, shared);
         MenuItem copy = Fx.menuItem(this.gui.t("nj.copyLink"), Icons.COPY, this::copyLinks);
         MenuItem html = Fx.menuItem(this.gui.t("IDS_DL_LINK2"), Icons.CODE, this::copyHtml);
+        MenuItem clearCompleted =
+                Fx.menuItem(this.gui.t("IDS_DL_CLEAR"), Icons.CLEAR_ALL, this.gui.model()::clearCompleted);
         ContextMenu menu = new ContextMenu(
                 pause,
                 resume,
                 stop,
                 cancel,
                 new SeparatorMenuItem(),
+                details,
                 preview,
                 comments,
                 priority,
@@ -502,16 +507,20 @@ public final class TransfersScreen implements Screen {
                 more,
                 new SeparatorMenuItem(),
                 copy,
-                html);
+                html,
+                new SeparatorMenuItem(),
+                clearCompleted);
         menu.setOnShowing(e -> {
             category.getItems().setAll(categoryItems());
             List<DownloadInfo> selected = Fx.selected(this.downloads);
             boolean none = selected.isEmpty();
-            for (MenuItem item : List.of(pause, resume, stop, cancel, priority, category, copy, html)) {
+            for (MenuItem item : List.of(pause, resume, stop, cancel, details, priority, category, copy, html)) {
                 item.setDisable(none);
             }
             cancel.setDisable(cancellable().isEmpty());
-            // A finished download has left the engine: there is nothing to preview or to fetch any more.
+            clearCompleted.setDisable(this.gui.model().downloads().rows().stream()
+                    .noneMatch(r -> r.get().status() == DownloadInfo.Status.COMPLETE));
+            // A completed download has no part file any more: there is nothing to preview or to fetch.
             boolean active = selected.size() == 1 && selected.getFirst().status() != DownloadInfo.Status.COMPLETE;
             preview.setDisable(!active || selected.getFirst().completed() == 0);
             comments.setDisable(selected.size() != 1);

@@ -76,6 +76,42 @@ class TransfersScreenTest {
     }
 
     @Test
+    void shouldOfferToClearTheCompletedDownloadsWhenThereAreSome() throws Exception {
+        givenTheEngine();
+        givenTheScreen();
+        givenACompletedDownload();
+
+        whenTheMenuOfTheFirstDownloadShows();
+
+        thenTheItemIsOn("IDS_DL_CLEAR", "clear the completed");
+    }
+
+    @Test
+    void shouldNotOfferToClearTheCompletedDownloadsWithoutAny() throws Exception {
+        givenTheEngine();
+        givenTheScreen();
+        givenAStartedDownload();
+
+        whenTheMenuOfTheFirstDownloadShows();
+
+        thenTheItemIsOff("IDS_DL_CLEAR", "clear the completed");
+        thenTheItemIsOn("nj.transfers.cancelOne", "cancel");
+    }
+
+    @Test
+    void shouldShowTheDetailsOfADownloadFromItsMenu() throws Exception {
+        givenTheEngine();
+        givenTheScreen();
+        givenAStartedDownload();
+        givenTheDetailsHidden();
+        givenTheMenuOfTheFirstDownloadShown();
+
+        whenTheItemIsChosen("IDS_DETAILS");
+
+        thenTheDetailsShow();
+    }
+
+    @Test
     void shouldSaySoForAPreviewBeforeTheStartOfTheFileCame() throws Exception {
         givenTheEngine();
         givenTheVideoPlayer("player");
@@ -150,6 +186,14 @@ class TransfersScreenTest {
                 "the download row", () -> this.screen.downloads().getItems().size() == 1);
     }
 
+    private void givenTheDetailsHidden() throws Exception {
+        FxTesting.onFx(() -> this.screen.showDetails(false));
+    }
+
+    private void givenTheMenuOfTheFirstDownloadShown() throws Exception {
+        whenTheMenuOfTheFirstDownloadShows();
+    }
+
     private void whenADownloadCompletes() throws Exception {
         DownloadInfo done = new DownloadInfo(
                 FILE,
@@ -180,6 +224,15 @@ class TransfersScreenTest {
             this.screen.downloads().getSelectionModel().select(0);
             this.screen.previewSelected();
         });
+    }
+
+    private void whenTheItemIsChosen(String key) throws Exception {
+        FxTesting.onFx(() -> item(this.menu, key).fire());
+    }
+
+    private void thenTheDetailsShow() throws Exception {
+        assertThat(FxTesting.onFx(() -> this.screen.inspector().openProperty().get()))
+                .isTrue();
     }
 
     private void thenTheItemIsOff(String key, String what) throws Exception {
