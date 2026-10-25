@@ -264,8 +264,7 @@ val tourAccelerated =
     registerTour(
         "nativeTourAccelerated",
         listOf(
-            // OpenGL on macOS, the app's default there while JavaFX's Metal pipeline crashes (GuiMain).
-            "-Dprism.order=" + mapOf("windows" to "d3d").getOrDefault(nativeOs, "es2"),
+            "-Dprism.order=" + mapOf("windows" to "d3d", "macos" to "mtl").getOrDefault(nativeOs, "es2"),
             // Also on virtual displays without a GPU (CI, Xvfb).
             "-Dprism.forceGPU=true",
         ),

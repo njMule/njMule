@@ -17,7 +17,6 @@
 package org.njmule.gui;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import javafx.application.Application;
 import org.njmule.app.LaunchOptions;
@@ -66,7 +65,6 @@ public final class GuiMain {
         if (windows) {
             WindowsDesktop.useAppId();
         }
-        preferOpenGlOnMac();
         // On macOS links come as events; the handler is set first, on the thread that starts JavaFX.
         if (MacMainThread.needed()) {
             MacMainThread.run(() -> {
@@ -81,14 +79,5 @@ public final class GuiMain {
         // The window has closed and the engine stopped: a new version goes in place now, if one is due. The
         // notification area keeps AWT threads alive.
         System.exit(NjMuleFxApp.handOver());
-    }
-
-    // JavaFX 27's Metal pipeline crashes soon after the first frames on macOS (MTLContext.nUpdateRenderTarget): OpenGL
-    // stays the default there until it is fixed, and -Dprism.order still chooses.
-    static void preferOpenGlOnMac() {
-        if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("mac")
-                && System.getProperty("prism.order") == null) {
-            System.setProperty("prism.order", "es2,sw");
-        }
     }
 }
