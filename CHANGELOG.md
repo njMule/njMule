@@ -432,6 +432,13 @@ All notable changes to this project are documented here. The format follows
   completed* takes them off, in the desktop and web apps and in the API
   (`DELETE /downloads/completed`); they are kept in `finished.json` of the profile, and cancelling
   leaves them out, as their files stay where they are.
+- Delete takes the chosen completed downloads off the list, their files kept, and asks before
+  cancelling the others as their menu does, in the desktop and web apps; the API takes one off with
+  `DELETE /downloads/completed/{hash}`.
+- The sources of a download show what they do as a dot, under the file and in its details, in the
+  desktop and web apps: green downloading, yellow queued, red being reached, dark grey of no use
+  for now (queue full, no needed parts, asked for another file), a question mark not asked yet. The
+  API tells the states `queue_full` and `no_needed_parts`.
 - The downloads of the desktop app open onto their sources with a double click, Enter or the right
   arrow (the left one closes them): a line each under the file, in the list's columns, with the
   name or address, what it sent, its parts, its speed, its program and place in the queue, and what
