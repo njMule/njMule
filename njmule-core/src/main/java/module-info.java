@@ -22,6 +22,7 @@ module org.njmule.core {
     // API, which a front end serves on its HTTP server). Everything else is internal.
     requires com.google.common;
     requires static com.google.errorprone.annotations;
+    requires java.net.http;
     requires java.xml;
     requires org.apache.commons.compress;
     requires org.eclipse.jetty.client;
