@@ -3,6 +3,8 @@
 
 import com.github.gradle.node.npm.task.NpmTask
 import java.util.Properties
+import java.util.zip.Deflater
+import java.util.zip.GZIPOutputStream
 
 plugins {
     base
@@ -78,6 +80,45 @@ abstract class Translations : DefaultTask() {
     }
 }
 
+/**
+ * The app's files as the web interface ships them: text files compressed with gzip, which browsers take as they are
+ * (the server unpacks them for a client that cannot), the rest unchanged.
+ */
+@CacheableTask
+abstract class Compress : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val roots: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val output: DirectoryProperty
+
+    @TaskAction
+    fun compress() {
+        val dir = output.get().asFile
+        dir.deleteRecursively()
+        for (root in roots.files) {
+            root.walkTopDown().filter { it.isFile }.forEach { file ->
+                val path = file.relativeTo(root).invariantSeparatorsPath
+                // The page stays as it is: the server fills in each session's token.
+                if (file.extension in setOf("js", "css", "svg", "json", "md")) {
+                    val target = dir.resolve("$path.gz")
+                    target.parentFile.mkdirs()
+                    target.outputStream().use { out ->
+                        object : GZIPOutputStream(out) {
+                            init {
+                                def.setLevel(Deflater.BEST_COMPRESSION)
+                            }
+                        }.use { gzip -> file.inputStream().use { it.copyTo(gzip) } }
+                    }
+                } else {
+                    file.copyTo(dir.resolve(path))
+                }
+            }
+        }
+    }
+}
+
 val translations = tasks.register<Translations>("translations") {
     description = "Converts the desktop app's translations the web app uses to JSON."
     bundles.from(fileTree(rootDir.resolve("njmule-gui/src/main/resources/org/njmule/gui/i18n")) {
@@ -122,7 +163,14 @@ val formatCheck = tasks.register<NpmTask>("formatCheck") {
     doLast { done.get().asFile.writeText("") }
 }
 
-tasks.assemble { dependsOn(bundle, translations) }
+val compress = tasks.register<Compress>("compress") {
+    description = "Compresses the bundle and the translations for the web interface's jar."
+    dependsOn(bundle, translations)
+    roots.from(layout.buildDirectory.dir("dist"), layout.buildDirectory.dir("translations"))
+    output = layout.buildDirectory.dir("shipped")
+}
+
+tasks.assemble { dependsOn(compress) }
 tasks.check { dependsOn(unitTest, formatCheck) }
 
 // The bundle and the translations, for the web interface's jar.
@@ -130,6 +178,5 @@ val webApp = configurations.consumable("webApp") {
     attributes { attribute(Usage.USAGE_ATTRIBUTE, objects.named("njmule-web-app")) }
 }
 artifacts {
-    add(webApp.name, layout.buildDirectory.dir("dist")) { builtBy(bundle) }
-    add(webApp.name, layout.buildDirectory.dir("translations")) { builtBy(translations) }
+    add(webApp.name, compress.flatMap { it.output }) { builtBy(compress) }
 }

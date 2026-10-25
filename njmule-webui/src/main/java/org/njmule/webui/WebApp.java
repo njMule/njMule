@@ -17,6 +17,7 @@
 package org.njmule.webui;
 
 import com.google.common.base.CharMatcher;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -25,6 +26,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Pattern;
+import java.util.zip.GZIPInputStream;
 
 /**
  * The browser app built by njmule-webapp, shipped in this module's resources: its page, whose session token is filled
@@ -34,6 +36,8 @@ final class WebApp {
 
     private static final String ROOT = "app/";
     private static final String TOKEN = "__NJMULE_CSRF__";
+    // The build ships the text files compressed only.
+    private static final String GZIP = ".gz";
 
     // Only the names Vite and the translations give files: nothing else of the resources can be asked for.
     private static final String ASSETS = "/assets/";
@@ -49,15 +53,32 @@ final class WebApp {
         private final byte[] bytes;
         private final String type;
         private final boolean immutable;
+        private final boolean gzipped;
 
-        File(byte[] bytes, String type, boolean immutable) {
+        File(byte[] bytes, String type, boolean immutable, boolean gzipped) {
             this.bytes = bytes;
             this.type = type;
             this.immutable = immutable;
+            this.gzipped = gzipped;
         }
 
+        /** The content as it is kept: compressed with gzip when {@link #gzipped()}. */
         byte[] bytes() {
             return this.bytes.clone();
+        }
+
+        boolean gzipped() {
+            return this.gzipped;
+        }
+
+        /** The content itself, for a client that does not take gzip. */
+        byte[] unpacked() throws IOException {
+            if (!this.gzipped) {
+                return bytes();
+            }
+            try (InputStream in = new GZIPInputStream(new ByteArrayInputStream(this.bytes))) {
+                return in.readAllBytes();
+            }
         }
 
         String type() {
@@ -85,7 +106,13 @@ final class WebApp {
         if (!servable(path)) {
             return Optional.empty();
         }
-        return this.files.computeIfAbsent(path, p -> read(p.substring(1)).map(b -> new File(b, type(p), isHashed(p))));
+        return this.files.computeIfAbsent(path, WebApp::load);
+    }
+
+    private static Optional<File> load(String path) {
+        String name = path.substring(1);
+        Optional<File> packed = read(name + GZIP).map(b -> new File(b, type(path), isHashed(path), true));
+        return packed.isPresent() ? packed : read(name).map(b -> new File(b, type(path), isHashed(path), false));
     }
 
     static boolean servable(String path) {

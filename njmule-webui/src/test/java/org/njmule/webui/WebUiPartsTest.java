@@ -55,6 +55,7 @@ class WebUiPartsTest {
     private List<String> trustedNames = List.of();
     private InetAddress reached = Inet4Address.ofLiteral("192.168.1.80");
     private boolean trusted;
+    private boolean gzip;
     private List<String> hostNames;
     private WebUiSettings chosen;
     private WebUiSettings settings;
@@ -260,6 +261,23 @@ class WebUiPartsTest {
         whenAnAttemptComesFrom("10.1.0.1");
 
         thenTheAddressesCountedAre(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"gzip", "gzip, deflate, br, zstd", "br;q=1.0, gzip;q=0.5", "*", "GZIP"})
+    void shouldSendTheAppsFilesCompressedToClientsTakingGzip(String acceptEncoding) {
+        whenTheClientsEncodingsAreRead(acceptEncoding);
+
+        thenTheClientTakesGzip(true);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "identity", "br, zstd", "gzip;q=0", "deflate, gzip;q=0.0"})
+    void shouldSendTheAppsFilesUnpackedToOtherClients(String acceptEncoding) {
+        whenTheClientsEncodingsAreRead(acceptEncoding);
+
+        thenTheClientTakesGzip(false);
     }
 
     @ParameterizedTest
@@ -695,6 +713,10 @@ class WebUiPartsTest {
         this.trusted = WebUi.trustedHost(host, this.lanAllowed, this.trustedNames, this.reached);
     }
 
+    private void whenTheClientsEncodingsAreRead(String acceptEncoding) {
+        this.gzip = WebUi.takesGzip(acceptEncoding);
+    }
+
     private void whenTheOriginIsChecked(String origin, String host) {
         this.trusted = WebUi.trustedOrigin(origin, host, this.trustedNames);
     }
@@ -794,6 +816,10 @@ class WebUiPartsTest {
 
     private void thenTheHostIsTrusted(boolean expected, String why) {
         assertThat(this.trusted).as(why).isEqualTo(expected);
+    }
+
+    private void thenTheClientTakesGzip(boolean expected) {
+        assertThat(this.gzip).isEqualTo(expected);
     }
 
     private void thenTheOriginIsTrusted(boolean expected) {

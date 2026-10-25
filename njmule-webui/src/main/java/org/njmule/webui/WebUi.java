@@ -37,6 +37,7 @@ import java.util.concurrent.Semaphore;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.eclipse.jetty.http.HttpCookie;
+import org.eclipse.jetty.http.QuotedQualityCSV;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
@@ -574,7 +575,18 @@ public final class WebUi implements AutoCloseable {
         exchange.setHeader("Content-Type", file.type());
         securityHeaders(exchange, PAGES_POLICY);
         exchange.setHeader("Cache-Control", file.immutable() ? "public, max-age=31536000, immutable" : "no-cache");
-        byte[] bytes = file.bytes();
+        byte[] bytes;
+        if (!file.gzipped()) {
+            bytes = file.bytes();
+        } else {
+            exchange.setHeader("Vary", "Accept-Encoding");
+            if (takesGzip(exchange.header("Accept-Encoding"))) {
+                exchange.setHeader("Content-Encoding", "gzip");
+                bytes = file.bytes();
+            } else {
+                bytes = file.unpacked();
+            }
+        }
         if (exchange.isHead()) {
             exchange.setHeader("Content-Length", String.valueOf(bytes.length));
             exchange.sendHeaders(200, -1);
@@ -584,6 +596,16 @@ public final class WebUi implements AutoCloseable {
         try (OutputStream out = exchange.responseBody()) {
             out.write(bytes);
         }
+    }
+
+    /** Whether a client with this {@code Accept-Encoding} (null when it sends none) takes gzip. */
+    static boolean takesGzip(String acceptEncoding) {
+        if (acceptEncoding == null) {
+            return false;
+        }
+        QuotedQualityCSV codings = new QuotedQualityCSV();
+        codings.addValue(acceptEncoding);
+        return codings.getValues().stream().anyMatch(c -> c.equalsIgnoreCase("gzip") || c.equals("*"));
     }
 
     // An error of the app's calls, in the API's form.

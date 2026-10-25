@@ -19,7 +19,9 @@ package org.njmule.webui;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -36,6 +38,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.zip.GZIPInputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -55,6 +58,7 @@ class WebUiAnswersTest {
     private String cookie;
     private String origin;
     private HttpResponse<String> answer;
+    private HttpResponse<byte[]> packed;
     private CompletableFuture<HttpResponse<String>> firstLogin;
     private FakeEngine otherEngine;
     private WebUi other;
@@ -222,6 +226,16 @@ class WebUiAnswersTest {
 
         thenTheStatusIs(200);
         thenTheBodyContains("\"IDS_EM_TRANS\": \"Transfers\"");
+        thenTheHeaderIsMissing("Content-Encoding");
+    }
+
+    @Test
+    void shouldSendTheAppsFilesCompressedToABrowserTakingGzip() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenThePageIsAskedTakingGzip("/i18n/en.json");
+
+        thenItComesCompressedHolding("\"IDS_EM_TRANS\": \"Transfers\"");
     }
 
     @Test
@@ -435,6 +449,15 @@ class WebUiAnswersTest {
         this.answer = get(path);
     }
 
+    private void whenThePageIsAskedTakingGzip(String path) throws Exception {
+        this.packed = this.http.send(
+                request(path)
+                        .header("Accept-Encoding", "gzip, deflate, br")
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+    }
+
     private void whenTheHeadIsAsked(String path) throws Exception {
         whenThePageIsAskedWithTheMethod(path, "HEAD");
     }
@@ -515,6 +538,19 @@ class WebUiAnswersTest {
 
     private void thenTheBodyIs(String body) {
         assertThat(this.answer.body()).isEqualTo(body);
+    }
+
+    private void thenTheHeaderIsMissing(String name) {
+        assertThat(this.answer.headers().firstValue(name)).isEmpty();
+    }
+
+    private void thenItComesCompressedHolding(String part) throws IOException {
+        assertThat(this.packed.statusCode()).isEqualTo(200);
+        assertThat(this.packed.headers().firstValue("Content-Encoding")).hasValue("gzip");
+        assertThat(this.packed.headers().firstValue("Vary")).hasValue("Accept-Encoding");
+        try (InputStream in = new GZIPInputStream(new ByteArrayInputStream(this.packed.body()))) {
+            assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8)).contains(part);
+        }
     }
 
     private void thenTheBodyContains(String... parts) {
