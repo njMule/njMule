@@ -56,6 +56,11 @@ versions is generated at release time in THIRD-PARTY.txt.
     ethlo ITU (date and time)   Apache License 2.0
     Eclipse Jetty (HTTP client  Apache License 2.0 OR EPL-2.0; used under
     and server)                 Apache License 2.0
+    Jakarta Mail, Angus Mail    EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+    (e-mail notifications)      OR BSD-3-Clause (EDL 1.0); used under
+                                BSD-3-Clause
+    Jakarta Activation, Angus   BSD-3-Clause (EDL 1.0)
+    Activation
     Logback (classic, core)     EPL-1.0 OR LGPL-2.1; used under LGPL-2.1
     OpenJFX (JavaFX)            GPL-2.0 WITH Classpath-exception-2.0
     AtlantaFX                   MIT License

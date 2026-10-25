@@ -7,9 +7,10 @@ import { ElButton, ElInput } from 'element-plus';
 import { onMounted, ref } from 'vue';
 import { api } from '../api';
 import { t } from '../i18n';
-import { attempt, told } from '../notify';
+import { attempt, failed, told } from '../notify';
 
-// What a settings page does besides its options: the IP filter's update, the addresses of the server lists.
+// What a settings page does besides its options: the IP filter's update, the addresses of the server lists, the
+// test of the notifications.
 const props = defineProps<{ page: string }>();
 const addresses = ref('');
 
@@ -29,6 +30,29 @@ async function updateIpFilter(): Promise<void> {
     });
 }
 
+interface Sent {
+    channel: 'email' | 'webhook';
+    sent: boolean;
+    error?: string;
+}
+
+async function testNotifications(): Promise<void> {
+    await attempt(async () => {
+        const results = await api.post<Sent[]>('/notifications/test');
+        if (results.length === 0) {
+            told(t('nj.notify.none'));
+        }
+        for (const r of results) {
+            const channel = t(r.channel === 'email' ? 'IDS_PW_EMAILNOTIFICATIONS' : 'nj.notify.hook');
+            if (r.sent) {
+                told(t('nj.notify.sent', channel), 'success');
+            } else {
+                failed(`${channel}: ${r.error ?? ''}`);
+            }
+        }
+    });
+}
+
 async function saveAddresses(): Promise<void> {
     const list = addresses.value
         .split('\n')
@@ -43,6 +67,9 @@ async function saveAddresses(): Promise<void> {
 <template>
     <div v-if="page === 'ipfilter'" class="extra">
         <el-button @click="updateIpFilter">{{ t('IDS_SV_UPDATE') }}</el-button>
+    </div>
+    <div v-else-if="page === 'notify'" class="extra">
+        <el-button @click="testNotifications">{{ t('IDS_TEST') }}</el-button>
     </div>
     <div v-else-if="page === 'servers'" class="extra">
         <label for="nj-server-lists">

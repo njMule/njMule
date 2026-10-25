@@ -66,6 +66,7 @@ import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.api.NotificationResult;
 import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
@@ -109,7 +110,8 @@ public final class RemoteApi implements AutoCloseable {
     private static final String CATEGORY_KEY = "category";
     private static final String URL_KEY = "url";
     private static final long ENGINE_WAIT_SECONDS = 10;
-    private static final String PROXY_PASSWORD = "proxy.password";
+    // The passwords the preferences hold, which never leave.
+    private static final Set<String> SECRETS = Set.of("proxy.password", "notify.smtpPassword");
 
     // What a guest of the web interface may read: the transfers, the searches made, the servers, Kad and the
     // statistics; never the settings, the log, the chats, the shared files or the files' data.
@@ -355,6 +357,7 @@ public final class RemoteApi implements AutoCloseable {
                         "removeServer",
                         c -> known(c, this.engine.removeServer(address(text(c.parameters(), ADDRESS_KEY))))),
                 entry("getKad", this::getKad),
+                entry("testNotifications", this::testNotifications),
                 entry("listKadContacts", c -> list(c, this.engine::kadContacts, ApiJson::kadContact)),
                 entry("listKadSearches", c -> list(c, this.engine::kadSearches, ApiJson::kadSearch)),
                 entry("connectKad", c -> done(c, this.engine.connectKad())),
@@ -620,12 +623,11 @@ public final class RemoteApi implements AutoCloseable {
         preferences(c, await(this.engine.updatePreferences(p -> PreferencesCodec.apply(p, changes))));
     }
 
-    // The proxy password never leaves.
     private void preferences(Call c, Preferences now) throws IOException {
         reply(c.exchange(), 200, g -> {
             g.writeStartObject();
             PreferencesCodec.values(now).forEach((key, value) -> {
-                if (!key.equals(PROXY_PASSWORD)) {
+                if (!SECRETS.contains(key)) {
                     g.writeStringProperty(key, value);
                 }
             });
@@ -842,6 +844,11 @@ public final class RemoteApi implements AutoCloseable {
         lists.forEach(u -> g.writeString(u.toString()));
         g.writeEndArray();
         g.writeEndObject();
+    }
+
+    private void testNotifications(Call c) throws IOException {
+        List<NotificationResult> results = await(this.engine.testNotifications());
+        reply(c.exchange(), 200, g -> ApiJson.array(g, results, ApiJson::notificationResult));
     }
 
     private void getKad(Call c) throws IOException {

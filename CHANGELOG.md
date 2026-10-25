@@ -424,6 +424,13 @@ All notable changes to this project are documented here. The format follows
   minutes after the last one, through the Windows launcher, `caffeinate` on macOS or
   `systemd-inhibit` on Linux, which end with njMule anyway (off by default; desktop and web
   settings, `system.preventSleep`).
+- Notifications by e-mail and through a web hook (both off by default; desktop and web settings,
+  `notify.*`): a completed or failed download, a chat message or a temp disk short of space, as
+  chosen, are told by an e-mail through the user's SMTP server, never in the clear (STARTTLS required
+  or TLS from the start, the server's name checked), and by an HTTPS request, as text with a Title
+  header for ntfy or as JSON for Gotify; at most ten messages in ten minutes, and a button sends a
+  test. The SMTP password stays out of the API, as the proxy's does. Jakarta Mail (Angus Mail)
+  sends the e-mails.
 - A guest of the web interface, with a password of its own set in the desktop or web settings (none
   by default): it sees the transfers, the searches made through the web interface, the servers, Kad
   and the statistics, and the server refuses it any change, the settings, the log, the chats and the

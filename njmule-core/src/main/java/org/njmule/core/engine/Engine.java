@@ -85,6 +85,7 @@ import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.api.NotificationResult;
 import org.njmule.core.api.PeerComment;
 import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.PortTest;
@@ -159,6 +160,7 @@ public final class Engine implements NjMuleEngine {
     private final AtomicBoolean closed = new AtomicBoolean();
     // Written only on the engine thread, read from anywhere.
     private volatile Preferences preferences;
+    private final Notifier notifier;
     private final KeepAwake keepAwake = KeepAwake.forThisSystem();
     // The preferences with the scheduler's rule applied: what the network uses.
     private volatile Preferences effective;
@@ -201,6 +203,8 @@ public final class Engine implements NjMuleEngine {
                 EventCommandRunner::launch,
                 command -> Thread.ofVirtual().name("njmule-event-command").start(command),
                 OsFamily.current() == OsFamily.WINDOWS));
+        this.notifier = Notifier.create(() -> this.preferences.notifications());
+        this.events.subscribe(this.notifier);
         this.updates = Updates.create(
                 directories.config(), directories.cache(), this.web, preferences, new Updates.Listener() {
                     @Override
@@ -692,6 +696,20 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<UpdateStatus> checkForUpdate() {
         return this.updates.check(this.preferences.updateChannel(), false);
+    }
+
+    @Override
+    public CompletableFuture<List<NotificationResult>> testNotifications() {
+        return CompletableFuture.supplyAsync(
+                () -> {
+                    try {
+                        return this.notifier.test();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new CompletionException(e);
+                    }
+                },
+                task -> Thread.ofVirtual().name("njmule-notify-test").start(task));
     }
 
     @Override

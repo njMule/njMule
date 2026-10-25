@@ -46,6 +46,7 @@ import org.njmule.core.api.KadNote;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
+import org.njmule.core.api.NotificationResult;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.PeerComment;
 import org.njmule.core.api.PortTest;
@@ -444,6 +445,14 @@ final class ApiReader {
             default -> null;
         };
         return Optional.ofNullable(event);
+    }
+
+    static NotificationResult notificationResult(JsonNode n) {
+        return new NotificationResult(
+                n.path("channel").asString(),
+                n.path("sent").asBoolean()
+                        ? Optional.empty()
+                        : Optional.of(n.path("error").asString("")));
     }
 
     static <T> List<T> list(JsonNode n, Function<JsonNode, T> each) {

@@ -353,6 +353,9 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The state of Kad, empty when it does not run. */
     CompletableFuture<Optional<KadInfo>> kad();
 
+    /** Sends a test message through each notification channel that is on, with how each went. */
+    CompletableFuture<List<NotificationResult>> testNotifications();
+
     /**
      * Takes what njMule can use from the eMule profile in {@code emuleConfigDir}, which is only read; completes with
      * what happened to each file.

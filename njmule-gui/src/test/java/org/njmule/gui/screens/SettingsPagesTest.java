@@ -42,6 +42,7 @@ class SettingsPagesTest {
             "Messages",
             "Scheduler",
             "Programs run on events",
+            "Notifications",
             "Web Interface",
             "Extended");
 

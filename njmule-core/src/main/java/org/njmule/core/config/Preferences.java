@@ -55,6 +55,7 @@ import org.njmule.core.security.IpWhitelist;
  * @param preventSleep keeps the computer from sleeping while files are transferred
  * @param autoDeleteDays a running download that receives nothing for this many days is deleted, its link kept; 0 for
  *     never
+ * @param notifications the e-mails and web hook requests that tell of what happens
  */
 public record Preferences(
         String nick,
@@ -120,7 +121,8 @@ public record Preferences(
         NightHours nightHours,
         Optional<URI> updateUrl,
         boolean preventSleep,
-        int autoDeleteDays) {
+        int autoDeleteDays,
+        Notifications notifications) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -198,6 +200,7 @@ public record Preferences(
         requireRange("uploadCapacityKiBps", uploadCapacityKiBps, 1, MAX_RATE_KIBPS);
         requireRange("minFreeSpaceMiB", minFreeSpaceMiB, 0, MAX_MIN_FREE_SPACE);
         requireRange("autoDeleteDays", autoDeleteDays, 0, MAX_AUTO_DELETE_DAYS);
+        Objects.requireNonNull(notifications, "notifications");
         requireRange("deadServerRetries", deadServerRetries, 1, MAX_DEAD_SERVER_RETRIES);
         requireRange("backupCopies", backupCopies, 0, MAX_BACKUP_COPIES);
         requireRange("ipFilterLevel", ipFilterLevel, 0, MAX_IP_FILTER_LEVEL);
@@ -389,7 +392,8 @@ public record Preferences(
                 NightHours.DEFAULT,
                 Optional.empty(),
                 false,
-                0);
+                0,
+                Notifications.NONE);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -498,6 +502,18 @@ public record Preferences(
         private Optional<URI> updateUrl;
         private boolean preventSleep;
         private int autoDeleteDays;
+        private boolean notifyEmail;
+        private String smtpHost;
+        private int smtpPort;
+        private Notifications.SmtpSecurity smtpSecurity;
+        private String smtpUser;
+        private String smtpPassword;
+        private String mailFrom;
+        private String mailTo;
+        private boolean notifyWebhook;
+        private String webhookUrl;
+        private Notifications.WebhookFormat webhookBody;
+        private Set<EventCommands.Event> notifyEvents;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -564,6 +580,7 @@ public record Preferences(
             this.updateUrl = p.updateUrl;
             this.preventSleep = p.preventSleep;
             this.autoDeleteDays = p.autoDeleteDays;
+            notifications(p.notifications);
         }
 
         public Builder nick(String value) {
@@ -925,6 +942,82 @@ public record Preferences(
             return this;
         }
 
+        public Builder notifications(Notifications value) {
+            this.notifyEmail = value.email();
+            this.smtpHost = value.smtpHost();
+            this.smtpPort = value.smtpPort();
+            this.smtpSecurity = value.security();
+            this.smtpUser = value.smtpUser();
+            this.smtpPassword = value.smtpPassword();
+            this.mailFrom = value.mailFrom();
+            this.mailTo = value.mailTo();
+            this.notifyWebhook = value.webhook();
+            this.webhookUrl = value.webhookUrl();
+            this.webhookBody = value.webhookBody();
+            this.notifyEvents = value.events();
+            return this;
+        }
+
+        public Builder notifyEmail(boolean value) {
+            this.notifyEmail = value;
+            return this;
+        }
+
+        public Builder smtpHost(String value) {
+            this.smtpHost = value;
+            return this;
+        }
+
+        public Builder smtpPort(int value) {
+            this.smtpPort = value;
+            return this;
+        }
+
+        public Builder smtpSecurity(Notifications.SmtpSecurity value) {
+            this.smtpSecurity = value;
+            return this;
+        }
+
+        public Builder smtpUser(String value) {
+            this.smtpUser = value;
+            return this;
+        }
+
+        public Builder smtpPassword(String value) {
+            this.smtpPassword = value;
+            return this;
+        }
+
+        public Builder mailFrom(String value) {
+            this.mailFrom = value;
+            return this;
+        }
+
+        public Builder mailTo(String value) {
+            this.mailTo = value;
+            return this;
+        }
+
+        public Builder notifyWebhook(boolean value) {
+            this.notifyWebhook = value;
+            return this;
+        }
+
+        public Builder webhookUrl(String value) {
+            this.webhookUrl = value;
+            return this;
+        }
+
+        public Builder webhookBody(Notifications.WebhookFormat value) {
+            this.webhookBody = value;
+            return this;
+        }
+
+        public Builder notifyEvents(Set<EventCommands.Event> value) {
+            this.notifyEvents = Set.copyOf(value);
+            return this;
+        }
+
         public Builder updateUrl(Optional<URI> value) {
             this.updateUrl = value;
             return this;
@@ -996,7 +1089,20 @@ public record Preferences(
                     this.nightHours,
                     this.updateUrl,
                     this.preventSleep,
-                    this.autoDeleteDays);
+                    this.autoDeleteDays,
+                    new Notifications(
+                            this.notifyEmail,
+                            this.smtpHost,
+                            this.smtpPort,
+                            this.smtpSecurity,
+                            this.smtpUser,
+                            this.smtpPassword,
+                            this.mailFrom,
+                            this.mailTo,
+                            this.notifyWebhook,
+                            this.webhookUrl,
+                            this.webhookBody,
+                            this.notifyEvents));
         }
     }
 }

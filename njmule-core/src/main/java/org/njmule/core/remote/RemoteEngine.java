@@ -61,6 +61,7 @@ import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadNote;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.NotificationResult;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.PeerComment;
 import org.njmule.core.api.PeerInfo;
@@ -656,6 +657,12 @@ public final class RemoteEngine implements NjMuleEngine {
     @Override
     public CompletableFuture<Optional<KadInfo>> kad() {
         return json("GET", "kad", null).thenApply(n -> n.isObject() ? Optional.of(ApiReader.kad(n)) : Optional.empty());
+    }
+
+    @Override
+    public CompletableFuture<List<NotificationResult>> testNotifications() {
+        return json("POST", "notifications/test", null)
+                .thenApply(n -> ApiReader.list(n, ApiReader::notificationResult));
     }
 
     @Override

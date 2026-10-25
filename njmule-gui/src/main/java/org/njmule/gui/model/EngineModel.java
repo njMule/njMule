@@ -68,6 +68,7 @@ import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
+import org.njmule.core.api.NotificationResult;
 import org.njmule.core.api.PeerComment;
 import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SavedSearch;
@@ -858,6 +859,11 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     /** Tests our ports as the preferences give them; {@code done} gets the outcome on the FX thread. */
     public void testPorts(Consumer<PortTest> done) {
         later(this.engine.testPorts(), done);
+    }
+
+    /** Sends a test through each notification channel on; {@code done} gets how each went on the FX thread. */
+    public void testNotifications(Consumer<List<NotificationResult>> done) {
+        later(this.engine.testNotifications(), done);
     }
 
     /** Reads how far the test of our ports went, for {@code then} on the FX thread. */

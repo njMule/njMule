@@ -3,7 +3,16 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { ElButton, ElInput, ElInputNumber, ElOption, ElSelect, ElSwitch } from 'element-plus';
+import {
+    ElButton,
+    ElCheckbox,
+    ElCheckboxGroup,
+    ElInput,
+    ElInputNumber,
+    ElOption,
+    ElSelect,
+    ElSwitch,
+} from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
 import { api } from '../api';
 import GuestPanel from '../components/GuestPanel.vue';
@@ -44,6 +53,13 @@ function value(key: string): string {
 
 function visible(row: Row, p: Page): boolean {
     return (row.when === undefined || row.when.values.includes(value(row.when.key))) && matches(row, p, find.value, t);
+}
+
+// The options ticked in a flags row.
+function flags(key: string): string[] {
+    return value(key)
+        .split(',')
+        .filter((v) => v !== '');
 }
 
 async function save(changes: Values): Promise<boolean> {
@@ -145,6 +161,15 @@ async function applyHeld(): Promise<void> {
                         >
                             <el-option v-for="o in row.options" :key="o.value" :value="o.value" :label="t(o.label)" />
                         </el-select>
+                        <el-checkbox-group
+                            v-else-if="row.kind === 'flags'"
+                            :id="`nj-${row.key}`"
+                            :model-value="flags(row.key)"
+                            class="flags"
+                            @change="(v) => change(row, (v as string[]).join(','))"
+                        >
+                            <el-checkbox v-for="o in row.options" :key="o.value" :value="o.value" :label="t(o.label)" />
+                        </el-checkbox-group>
                         <el-input
                             v-else
                             :id="`nj-${row.key}`"

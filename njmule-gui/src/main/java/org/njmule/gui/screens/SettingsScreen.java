@@ -39,6 +39,7 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.SimpleStringProperty;
@@ -59,6 +60,7 @@ import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextInputControl;
 import javafx.scene.control.Tooltip;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -67,11 +69,13 @@ import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import org.njmule.app.Autostart;
 import org.njmule.app.LinkAssociation;
+import org.njmule.core.api.NotificationResult;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.config.BindInterface;
 import org.njmule.core.config.EventCommands;
 import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.NightHours;
+import org.njmule.core.config.Notifications;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
@@ -184,6 +188,24 @@ public final class SettingsScreen implements Screen {
     private final ToggleSwitch startNext = new ToggleSwitch();
     private final ComboBox<NextDownload> nextCategory = new ComboBox<>();
     private final ComboBox<ProxySettings.Type> proxyType = new ComboBox<>();
+    private final ToggleSwitch notifyEmail = new ToggleSwitch();
+    private final TextField smtpHost = new TextField();
+    private final TextField smtpPort = new TextField();
+    private final ComboBox<Notifications.SmtpSecurity> smtpSecurity = new ComboBox<>();
+    private final TextField smtpUser = new TextField();
+    private final PasswordField smtpPassword = new PasswordField();
+    private final TextField mailFrom = new TextField();
+    private final TextField mailTo = new TextField();
+    private final ToggleSwitch notifyWebhook = new ToggleSwitch();
+    private final TextField webhookUrl = new TextField();
+    private final ComboBox<Notifications.WebhookFormat> webhookBody = new ComboBox<>();
+    private final Map<EventCommands.Event, CheckBox> notifyOn = new EnumMap<>(EventCommands.Event.class);
+    private Input<String> smtpHostInput;
+    private Input<Integer> smtpPortInput;
+    private Input<String> smtpUserInput;
+    private Input<String> mailFromInput;
+    private Input<String> mailToInput;
+    private Input<String> webhookUrlInput;
     private final ComboBox<UpdateMode> updateMode = new ComboBox<>();
     private final ComboBox<UpdateChannel> updateChannel = new ComboBox<>();
     private final ComboBox<UpdateInstallTime> updateInstallTime = new ComboBox<>();
@@ -345,6 +367,15 @@ public final class SettingsScreen implements Screen {
                 .disableProperty()
                 .bind(this.startNext.selectedProperty().not());
         this.proxyType.getItems().addAll(ProxySettings.Type.values());
+        this.smtpSecurity.getItems().addAll(Notifications.SmtpSecurity.values());
+        this.smtpSecurity.setCellFactory(l -> new NamedCell<>(this::securityName));
+        this.smtpSecurity.setButtonCell(new NamedCell<>(this::securityName));
+        this.webhookBody.getItems().addAll(Notifications.WebhookFormat.values());
+        this.webhookBody.setCellFactory(l -> new NamedCell<>(this::bodyName));
+        this.webhookBody.setButtonCell(new NamedCell<>(this::bodyName));
+        for (EventCommands.Event event : EventCommands.Event.values()) {
+            this.notifyOn.put(event, new CheckBox(this.gui.t("nj.events." + event.id())));
+        }
         this.proxyType.setCellFactory(l -> new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
         this.proxyType.setButtonCell(new NamedCell<>(t -> this.gui.t("nj.proxy." + key(t))));
         this.updateMode.getItems().addAll(UpdateMode.values());
@@ -439,6 +470,7 @@ public final class SettingsScreen implements Screen {
                 page("messages", "IDS_EM_MESSAGES", "nj.settings.page.messages", Icons.MESSAGE, messages()),
                 page("scheduler", "nj.scheduler.title", "nj.settings.page.scheduler", Icons.CLOCK, schedulerPage()),
                 page("events", "nj.settings.events", "nj.settings.page.events", Icons.PLAY, events()),
+                page("notify", "IDS_PW_EKDEV_OPTIONS", "nj.notify.page", Icons.SEND, notifications()),
                 page("web", "IDS_PW_WS", "nj.webui.note", Icons.NETWORK, webInterface()),
                 page("advanced", "IDS_PW_TWEAK", "nj.settings.page.advanced", Icons.TOOLS, advanced()));
     }
@@ -950,6 +982,101 @@ public final class SettingsScreen implements Screen {
 
     private List<SettingsPages.Section> schedulerPage() {
         return List.of(section("", new SettingRow(this.gui, "", scheduler()).wide()));
+    }
+
+    // Every row reads and shows the whole notification settings, as the proxy rows do theirs.
+    private List<SettingsPages.Section> notifications() {
+        Supplier<Notifications> read = () -> new Notifications(
+                this.notifyEmail.isSelected(),
+                this.smtpHostInput.value(),
+                this.smtpPortInput.value(),
+                this.smtpSecurity.getValue(),
+                this.smtpUserInput.value(),
+                this.smtpPassword.getText(),
+                this.mailFromInput.value(),
+                this.mailToInput.value(),
+                this.notifyWebhook.isSelected(),
+                this.webhookUrlInput.value(),
+                this.webhookBody.getValue(),
+                this.notifyOn.entrySet().stream()
+                        .filter(e -> e.getValue().isSelected())
+                        .map(Map.Entry::getKey)
+                        .collect(Collectors.toSet()));
+        Consumer<Notifications> show = n -> {
+            this.notifyEmail.setSelected(n.email());
+            this.smtpHost.setText(n.smtpHost());
+            this.smtpPort.setText(String.valueOf(n.smtpPort()));
+            this.smtpSecurity.setValue(n.security());
+            this.smtpUser.setText(n.smtpUser());
+            this.smtpPassword.setText(n.smtpPassword());
+            this.mailFrom.setText(n.mailFrom());
+            this.mailTo.setText(n.mailTo());
+            this.notifyWebhook.setSelected(n.webhook());
+            this.webhookUrl.setText(n.webhookUrl());
+            this.webhookBody.setValue(n.webhookBody());
+            this.notifyOn.forEach((event, box) -> box.setSelected(n.tells(event)));
+        };
+        HBox server = new HBox(8, this.smtpHost, this.smtpPort);
+        HBox login = new HBox(8, this.smtpUser, this.smtpPassword);
+        FlowPane events = new FlowPane(16, 8);
+        events.getChildren().addAll(this.notifyOn.values());
+        Button test = Fx.button(this.gui.t("IDS_TEST"), Icons.SEND, this::testNotifications);
+        return List.of(
+                section(
+                        "IDS_PW_EMAILNOTIFICATIONS",
+                        notify(switchTitle(this.notifyEmail, "IDS_PW_ENABLEEMAIL"), this.notifyEmail, read, show),
+                        notify(this.gui.t("IDS_SMTPSERVER"), server, read, show)
+                                .checkedBy(this.smtpHostInput, this.smtpPortInput),
+                        notify(this.gui.t("nj.notify.security"), this.smtpSecurity, read, show),
+                        notify(this.gui.t("nj.proxy.user"), login, read, show).checkedBy(this.smtpUserInput),
+                        notify(this.gui.t("nj.notify.from"), this.mailFrom, read, show)
+                                .checkedBy(this.mailFromInput),
+                        notify(this.gui.t("nj.notify.to"), this.mailTo, read, show)
+                                .checkedBy(this.mailToInput)
+                                .wide()),
+                section(
+                        "nj.notify.hook",
+                        notify(switchTitle(this.notifyWebhook, "nj.notify.webhook"), this.notifyWebhook, read, show),
+                        notify(this.gui.t("nj.notify.webhookUrl"), this.webhookUrl, read, show)
+                                .checkedBy(this.webhookUrlInput)
+                                .wide(),
+                        notify(this.gui.t("nj.notify.webhookBody"), this.webhookBody, read, show)),
+                section(
+                        "",
+                        notify(this.gui.t("nj.notify.events"), events, read, show)
+                                .wide(),
+                        new SettingRow(this.gui, "", test)));
+    }
+
+    private SettingRow notify(String title, Node control, Supplier<Notifications> read, Consumer<Notifications> show) {
+        return engine(
+                title, control, Preferences::notifications, Preferences.Builder::notifications, read, show, n -> "");
+    }
+
+    private String securityName(Notifications.SmtpSecurity security) {
+        return this.gui.t(security == Notifications.SmtpSecurity.TLS ? "nj.notify.tls" : "nj.notify.starttls");
+    }
+
+    private String bodyName(Notifications.WebhookFormat body) {
+        return this.gui.t(body == Notifications.WebhookFormat.TEXT ? "nj.notify.bodyText" : "nj.notify.bodyJson");
+    }
+
+    // What is set goes first, so that the test sends with it.
+    private void testNotifications() {
+        this.commits.forEach(Runnable::run);
+        this.gui.model().testNotifications(results -> {
+            if (results.isEmpty()) {
+                this.gui.warn().accept(this.gui.t("nj.notify.none"));
+            }
+            for (NotificationResult result : results) {
+                String channel =
+                        this.gui.t(result.channel().equals("email") ? "IDS_PW_EMAILNOTIFICATIONS" : "nj.notify.hook");
+                result.error()
+                        .ifPresentOrElse(
+                                error -> this.gui.warn().accept(channel + ": " + error),
+                                () -> this.gui.inform().accept(this.gui.f("nj.notify.sent", channel)));
+            }
+        });
     }
 
     private List<SettingsPages.Section> events() {
@@ -1789,6 +1916,19 @@ public final class SettingsScreen implements Screen {
         this.proxyType.valueProperty().addListener((o, was, now) -> this.proxyHostInput.check());
         this.proxyPortInput = inputs.number(this.proxyPort, this.gui.t("nj.proxy.host"), 1, Preferences.MAX_PORT);
         this.proxyUserInput = inputs.text(this.proxyUser, this.gui.t("nj.proxy.user"), MAX_PROXY_USER, false);
+        this.smtpHostInput = inputs.host(this.smtpHost, this.gui.t("IDS_SMTPSERVER"), this.notifyEmail::isSelected);
+        this.notifyEmail.selectedProperty().addListener((o, was, now) -> this.smtpHostInput.check());
+        this.smtpPortInput = inputs.number(this.smtpPort, this.gui.t("IDS_SMTPSERVER"), 1, Preferences.MAX_PORT);
+        this.smtpUserInput = inputs.text(this.smtpUser, this.gui.t("nj.proxy.user"), Notifications.MAX_TEXT, false);
+        this.mailFromInput = inputs.text(this.mailFrom, this.gui.t("nj.notify.from"), Notifications.MAX_TEXT, false);
+        this.mailToInput = inputs.text(this.mailTo, this.gui.t("nj.notify.to"), Notifications.MAX_TEXT, false);
+        this.webhookUrlInput = Input.of(
+                this.webhookUrl,
+                this.gui.t("nj.notify.webhookUrl"),
+                "https://ntfy.sh/…",
+                c -> !Character.isISOControl(c),
+                Notifications.MAX_URL,
+                Notifications::requireWebhookUrl);
         this.incomingInput = inputs.folder(this.incoming, this.gui.t("IDS_PW_INCOMING"));
         this.tempInput = inputs.folder(this.temp, this.gui.t("IDS_PW_TEMP"));
         this.soundFileInput = inputs.soundFile(this.soundFile, this.gui.t("nj.settings.soundFile"));

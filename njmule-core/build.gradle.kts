@@ -37,6 +37,8 @@ dependencies {
     api(libs.jetty.server)
     implementation(libs.jackson.core)
     implementation(libs.jackson.databind)
+    // E-mail notifications through the user's SMTP server.
+    implementation(libs.angus.mail)
     implementation(libs.json.schema.validator) {
         exclude(group = "tools.jackson.dataformat", module = "jackson-dataformat-yaml")
     }

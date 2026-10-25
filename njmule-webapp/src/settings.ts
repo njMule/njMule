@@ -12,7 +12,8 @@ export interface Option {
 export interface Row {
     key: string;
     label: string;
-    kind: 'switch' | 'number' | 'text' | 'lines' | 'choice' | 'password';
+    // A flags row holds the values of the options ticked, apart by commas.
+    kind: 'switch' | 'number' | 'text' | 'lines' | 'choice' | 'password' | 'flags';
     hint?: string;
     min?: number;
     max?: number;
@@ -380,6 +381,60 @@ export const PAGES: Page[] = [
                 { key: `events.${id}.command`, label: 'nj.settings.events', kind: 'text' as const, max: 4096 },
             ],
         })),
+    },
+    {
+        id: 'notify',
+        title: 'IDS_PW_EKDEV_OPTIONS',
+        summary: 'nj.notify.page',
+        sections: [
+            {
+                title: 'IDS_PW_EMAILNOTIFICATIONS',
+                rows: [
+                    { key: 'notify.email', label: 'IDS_PW_ENABLEEMAIL', kind: 'switch' },
+                    { key: 'notify.smtpHost', label: 'IDS_SMTPSERVER', kind: 'text', max: 255 },
+                    { key: 'notify.smtpPort', label: 'nj.webui.port', kind: 'number', min: 1, max: 65535 },
+                    {
+                        key: 'notify.smtpSecurity',
+                        label: 'nj.notify.security',
+                        kind: 'choice',
+                        options: [
+                            { value: 'STARTTLS', label: 'nj.notify.starttls' },
+                            { value: 'TLS', label: 'nj.notify.tls' },
+                        ],
+                    },
+                    { key: 'notify.smtpUser', label: 'nj.proxy.user', kind: 'text', max: 255 },
+                    { key: 'notify.smtpPassword', label: 'nj.input.password', kind: 'password' },
+                    { key: 'notify.mailFrom', label: 'nj.notify.from', kind: 'text', max: 255 },
+                    { key: 'notify.mailTo', label: 'nj.notify.to', kind: 'text', max: 255 },
+                ],
+            },
+            {
+                title: 'nj.notify.hook',
+                rows: [
+                    { key: 'notify.webhook', label: 'nj.notify.webhook', kind: 'switch' },
+                    { key: 'notify.webhookUrl', label: 'nj.notify.webhookUrl', kind: 'text', max: 2048 },
+                    {
+                        key: 'notify.webhookBody',
+                        label: 'nj.notify.webhookBody',
+                        kind: 'choice',
+                        options: [
+                            { value: 'TEXT', label: 'nj.notify.bodyText' },
+                            { value: 'JSON', label: 'nj.notify.bodyJson' },
+                        ],
+                    },
+                ],
+            },
+            {
+                rows: [
+                    {
+                        key: 'notify.events',
+                        label: 'nj.notify.events',
+                        kind: 'flags',
+                        options: EVENTS.map(([value, label]) => ({ value, label })),
+                    },
+                ],
+            },
+        ],
     },
     {
         id: 'advanced',

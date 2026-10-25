@@ -38,6 +38,7 @@ import java.util.function.Function;
 import org.njmule.core.config.EventCommands;
 import org.njmule.core.config.NextDownload;
 import org.njmule.core.config.NightHours;
+import org.njmule.core.config.Notifications;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
@@ -141,6 +142,33 @@ public final class PreferencesCodec {
         boolKey("files.cleanUpNewNames", Preferences::cleanUpNewNames, Preferences.Builder::cleanUpNewNames);
         boolKey("notify.sound", Preferences::notificationSound, Preferences.Builder::notificationSound);
         boolKey("system.preventSleep", Preferences::preventSleep, Preferences.Builder::preventSleep);
+        boolKey("notify.email", p -> p.notifications().email(), Preferences.Builder::notifyEmail);
+        key("notify.smtpHost", p -> p.notifications().smtpHost(), Preferences.Builder::smtpHost);
+        intKey("notify.smtpPort", p -> p.notifications().smtpPort(), Preferences.Builder::smtpPort);
+        key(
+                "notify.smtpSecurity",
+                p -> p.notifications().security().name(),
+                (b, v) -> b.smtpSecurity(
+                        Notifications.SmtpSecurity.valueOf(v.strip().toUpperCase(Locale.ROOT))));
+        key("notify.smtpUser", p -> p.notifications().smtpUser(), Preferences.Builder::smtpUser);
+        key("notify.smtpPassword", p -> p.notifications().smtpPassword(), Preferences.Builder::smtpPassword);
+        key("notify.mailFrom", p -> p.notifications().mailFrom(), Preferences.Builder::mailFrom);
+        key("notify.mailTo", p -> p.notifications().mailTo(), Preferences.Builder::mailTo);
+        boolKey("notify.webhook", p -> p.notifications().webhook(), Preferences.Builder::notifyWebhook);
+        key("notify.webhookUrl", p -> p.notifications().webhookUrl(), Preferences.Builder::webhookUrl);
+        key(
+                "notify.webhookBody",
+                p -> p.notifications().webhookBody().name(),
+                (b, v) -> b.webhookBody(
+                        Notifications.WebhookFormat.valueOf(v.strip().toUpperCase(Locale.ROOT))));
+        key(
+                "notify.events",
+                p -> String.join(
+                        ",",
+                        p.notifications().events().stream()
+                                .map(EventCommands.Event::id)
+                                .toList()),
+                (b, v) -> b.notifyEvents(Notifications.events(v)));
         key(
                 "notify.soundFile",
                 p -> p.notificationSoundFile().map(Path::toString).orElse(""),

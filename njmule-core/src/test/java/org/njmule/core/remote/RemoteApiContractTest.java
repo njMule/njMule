@@ -54,6 +54,7 @@ import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.NotificationResult;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
@@ -196,6 +197,7 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/messages", "{\"to\":\"198.51.100.9:4662\",\"text\":\"hi\"}", 200),
                 Arguments.of("DELETE", "/api/v1/bans/192.0.2.200", "", 200),
                 Arguments.of("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"global\"}", 201),
+                Arguments.of("POST", "/api/v1/notifications/test", "", 200),
                 Arguments.of("POST", "/api/v1/update/check", "", 200),
                 Arguments.of("POST", "/api/v1/update/skip", "{\"version\":\"0.2.0\"}", 200),
                 Arguments.of("POST", "/api/v1/update/download", "", 202),
@@ -420,6 +422,11 @@ class RemoteApiContractTest {
         answerWith("addDownload", ApiSamples.download());
         answerWith("swapSourcesToDownload", 3);
         answerWith("testPorts", ApiSamples.portTest());
+        answerWith(
+                "testNotifications",
+                List.of(
+                        new NotificationResult("email", Optional.of("the server refused the password")),
+                        new NotificationResult("webhook", Optional.empty())));
         answerWith("importFromEmule", ApiSamples.importReport());
         answerWith("searchKadNotes", List.of(ApiSamples.kadNote()));
         answerWith("browseSharedFiles", List.of(ApiSamples.result()));

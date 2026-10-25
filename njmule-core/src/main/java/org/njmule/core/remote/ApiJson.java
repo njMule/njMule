@@ -38,6 +38,7 @@ import org.njmule.core.api.KadInfo;
 import org.njmule.core.api.KadSearchInfo;
 import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
+import org.njmule.core.api.NotificationResult;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SearchResult;
@@ -201,6 +202,14 @@ final class ApiJson {
         } else {
             g.writeNull();
         }
+        g.writeEndObject();
+    }
+
+    static void notificationResult(JsonGenerator g, NotificationResult r) {
+        g.writeStartObject();
+        g.writeStringProperty("channel", r.channel());
+        g.writeBooleanProperty("sent", r.error().isEmpty());
+        r.error().ifPresent(e -> g.writeStringProperty("error", e));
         g.writeEndObject();
     }
 

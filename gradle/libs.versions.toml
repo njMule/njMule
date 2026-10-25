@@ -8,6 +8,7 @@ nodejs = "24.22.1"
 
 # Runtime dependencies
 slf4j = "2.0.20"
+angus-mail = "2.0.5"
 jackson = "3.2.3"
 json-schema-validator = "3.0.8"
 jetty = "12.1.14"
@@ -44,6 +45,7 @@ jacoco = "0.8.15"
 
 [libraries]
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+angus-mail = { module = "org.eclipse.angus:angus-mail", version.ref = "angus-mail" }
 jackson-core = { module = "tools.jackson.core:jackson-core", version.ref = "jackson" }
 jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson" }
 jackson-dataformat-yaml = { module = "tools.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }

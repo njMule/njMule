@@ -1288,6 +1288,32 @@ paths:
           $ref: "#/components/responses/NotFound"
         default:
           $ref: "#/components/responses/Error"
+  /notifications/test:
+    post:
+      operationId: testNotifications
+      tags: [engine]
+      summary: Sends a test message through each notification channel that is on, and tells how each went.
+      responses:
+        "200":
+          description: One entry for each channel that is on; none when no channel is.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [channel, sent]
+                  properties:
+                    channel:
+                      type: string
+                      enum: [email, webhook]
+                    sent:
+                      type: boolean
+                    error:
+                      type: string
+                      description: Why the message was not sent.
+        default:
+          $ref: "#/components/responses/Error"
   /ports/test:
     get:
       operationId: getPortTest
