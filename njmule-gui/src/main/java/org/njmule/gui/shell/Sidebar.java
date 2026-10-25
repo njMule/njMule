@@ -82,6 +82,8 @@ final class Sidebar {
     // Narrow or wide whatever the width, while the window is measured; null otherwise.
     private final ObjectProperty<Boolean> forced = new SimpleObjectProperty<>();
     private GuiSettings settings;
+    // Where the places at the bottom start, after the room that keeps them there.
+    private int bottom;
 
     /**
      * {@code groups} of places, apart by a line, the last one at the bottom; {@code open} opens a place by its id and
@@ -124,6 +126,7 @@ final class Sidebar {
                 Region grow = new Region();
                 VBox.setVgrow(grow, Priority.ALWAYS);
                 this.box.getChildren().add(grow);
+                this.bottom = this.box.getChildren().size();
             } else if (g > 0) {
                 Region line = new Region();
                 line.getStyleClass().add("rail-separator");
@@ -170,6 +173,27 @@ final class Sidebar {
 
     Region view() {
         return this.box;
+    }
+
+    /**
+     * Adds a button above the places at the bottom that runs {@code action}, such as opening a web page: it looks like
+     * a place but is never selected.
+     */
+    void addLink(String id, String title, String tip, Icons icon, Runnable action) {
+        StackPane graphic = new StackPane(new Icon(icon));
+        graphic.getStyleClass().add("rail-graphic");
+        ToggleButton button = new ToggleButton(title, graphic);
+        button.setTooltip(new Tooltip(tip));
+        button.setId("rail-" + id);
+        button.setMaxWidth(Double.MAX_VALUE);
+        button.setOnAction(e -> {
+            button.setSelected(false);
+            action.run();
+        });
+        StackPane row = new StackPane(button);
+        row.getStyleClass().add("rail-item");
+        this.buttons.put(id, button);
+        this.box.getChildren().add(this.bottom, row);
     }
 
     /** Selects the button of {@code place}. */

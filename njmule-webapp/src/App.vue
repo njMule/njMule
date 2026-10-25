@@ -100,6 +100,9 @@ const title = computed(() => t(String(route.meta.title ?? 'IDS_EM_TRANS')));
 function nextMode(): void {
     setMode(mode.value === 'system' ? 'dark' : mode.value === 'dark' ? 'light' : 'system');
 }
+
+// Where whoever likes njMule can support it.
+const COFFEE_PAGE = 'https://buymeacoffee.com/scoppolap';
 </script>
 
 <template>
@@ -123,6 +126,10 @@ function nextMode(): void {
                     <a v-else :href="place.page" class="place"><NjIcon :name="place.icon" />{{ t(place.title) }}</a>
                 </li>
             </ul>
+            <!-- The service's own name, the same in every language. -->
+            <a class="place coffee" :href="COFFEE_PAGE" target="_blank" rel="noopener noreferrer" :title="COFFEE_PAGE">
+                <NjIcon name="COFFEE" />Buy me a coffee
+            </a>
             <form method="post" action="logout" class="logout">
                 <input type="hidden" name="csrf" :value="csrfToken" />
                 <button class="place" type="submit"><NjIcon name="EXIT" />{{ t('IDS_WEB_LOGOUT') }}</button>
@@ -231,7 +238,7 @@ const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="njmule-csr
     font-size: 12px;
     text-align: center;
 }
-.logout {
+.coffee {
     margin-top: auto;
 }
 .frame {

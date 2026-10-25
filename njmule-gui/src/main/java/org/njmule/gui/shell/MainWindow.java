@@ -20,6 +20,7 @@ import atlantafx.base.controls.Popover;
 import atlantafx.base.theme.Styles;
 import atlantafx.base.theme.Tweaks;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -110,6 +111,8 @@ public final class MainWindow {
             KeyCode.DIGIT6,
             KeyCode.DIGIT7);
     private static final String NETWORK_PLACE = "network";
+    // Where whoever likes njMule can support it.
+    private static final URI COFFEE_PAGE = URI.create("https://buymeacoffee.com/scoppolap");
     // The places of the sidebar in groups: what one does first comes first, the network and the statistics after, the
     // options at the bottom.
     private static final List<List<String>> GROUPS = List.of(
@@ -190,6 +193,15 @@ public final class MainWindow {
                 List.of("transfers", "messages"),
                 NETWORK_PLACE,
                 this::open);
+        // The service's own name, the same in every language.
+        this.sidebar.addLink(
+                "coffee", "Buy me a coffee", COFFEE_PAGE.getHost() + COFFEE_PAGE.getPath(), Icons.COFFEE, () -> {
+                    try {
+                        Folders.openPage(COFFEE_PAGE);
+                    } catch (IOException e) {
+                        gui.warn().accept(e.getMessage());
+                    }
+                });
         VBox center = new VBox(topBar(), this.banner.view(), this.content);
         VBox.setVgrow(this.content, Priority.ALWAYS);
         // The brand's orange along the top of the window, the sidebar beside the screen, the status strip under both.

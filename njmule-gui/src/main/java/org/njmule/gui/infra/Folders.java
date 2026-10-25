@@ -17,12 +17,16 @@
 package org.njmule.gui.infra;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 
-/** Opens a folder in the system's file manager, or a file with the program the system gives its kind. */
+/**
+ * Opens a folder in the system's file manager, a file with the program the system gives its kind, or a web page in the
+ * system's browser.
+ */
 public final class Folders {
 
     private Folders() {}
@@ -30,13 +34,18 @@ public final class Folders {
     /** Opens {@code folder}, creating it first; the file manager runs on its own. */
     public static void open(Path folder) throws IOException {
         Path dir = Files.createDirectories(folder).toAbsolutePath();
-        process(command(System.getProperty("os.name", ""), dir)).start();
+        process(command(System.getProperty("os.name", ""), dir.toString())).start();
     }
 
     /** Opens {@code file} with the program the system opens its kind with; the program runs on its own. */
     public static void openFile(Path file) throws IOException {
-        process(command(System.getProperty("os.name", ""), file.toAbsolutePath()))
+        process(command(System.getProperty("os.name", ""), file.toAbsolutePath().toString()))
                 .start();
+    }
+
+    /** Opens the web {@code page} in the system's browser; the browser runs on its own. */
+    public static void openPage(URI page) throws IOException {
+        process(command(System.getProperty("os.name", ""), page.toString())).start();
     }
 
     /** Shows the folder of {@code file} with the file selected, where the file manager can. */
@@ -63,15 +72,15 @@ public final class Folders {
         return List.of("xdg-open", String.valueOf(file.getParent()));
     }
 
-    // The desktop's own opener, for a folder or a file; the path is one argument, never parsed by a shell.
-    static List<String> command(String os, Path dir) {
+    // The desktop's own opener, for a folder, a file or a page; the target is one argument, never parsed by a shell.
+    static List<String> command(String os, String target) {
         String name = os.toLowerCase(Locale.ROOT);
         if (name.startsWith("windows")) {
-            return List.of("explorer.exe", dir.toString());
+            return List.of("explorer.exe", target);
         }
         if (name.startsWith("mac")) {
-            return List.of("open", dir.toString());
+            return List.of("open", target);
         }
-        return List.of("xdg-open", dir.toString());
+        return List.of("xdg-open", target);
     }
 }

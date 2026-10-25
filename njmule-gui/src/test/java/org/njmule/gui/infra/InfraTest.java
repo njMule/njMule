@@ -294,6 +294,14 @@ class InfraTest {
         thenTheCommandIs(program, FOLDER.toString());
     }
 
+    @ParameterizedTest
+    @CsvSource({"Windows 11, explorer.exe", "Mac OS X, open", "Linux, xdg-open"})
+    void shouldOpenAWebPageInTheBrowserOfEachSystem(String os, String program) {
+        whenThePageIsOpenedOn(os, "https://example.org/page");
+
+        thenTheCommandIs(program, "https://example.org/page");
+    }
+
     @Test
     void shouldPassEachArgumentOfThePlayerApartWithTheFileLast() {
         whenThePlayerIsStarted("C:\\VLC\\vlc.exe", " --fullscreen  --no-audio ");
@@ -505,7 +513,11 @@ class InfraTest {
     }
 
     private void whenTheFolderIsOpenedOn(String os) {
-        this.command = Folders.command(os, FOLDER);
+        this.command = Folders.command(os, FOLDER.toString());
+    }
+
+    private void whenThePageIsOpenedOn(String os, String page) {
+        this.command = Folders.command(os, page);
     }
 
     private void whenTheFileIsRevealedOn(String os) {
@@ -522,7 +534,7 @@ class InfraTest {
     }
 
     private void whenTheFileManagerProcessIsPreparedOn(String os) {
-        this.process = Folders.process(Folders.command(os, FILE));
+        this.process = Folders.process(Folders.command(os, FILE.toString()));
     }
 
     private void whenAskedWhetherThePlayerIsSet(String player) {

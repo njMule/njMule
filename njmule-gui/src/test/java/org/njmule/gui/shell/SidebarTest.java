@@ -134,6 +134,15 @@ class SidebarTest {
         thenTheButtonThatOpensTheSidebarStandsAboveThePlaces();
     }
 
+    @Test
+    void shouldOfferToBuyACoffeeJustAboveTheOptions() throws Exception {
+        givenTheWindow();
+
+        whenThePlaceIsShown("transfers");
+
+        thenTheButtonStandsJustAbove("coffee", "settings");
+    }
+
     private void givenTheWindow() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
@@ -186,6 +195,18 @@ class SidebarTest {
             };
         });
         assertThat(tops[0]).isLessThanOrEqualTo(tops[1]);
+    }
+
+    private void thenTheButtonStandsJustAbove(String upper, String lower) throws Exception {
+        double[] edges = FxTesting.onFx(() -> {
+            Node above = this.window.sidebar().button(upper);
+            Node below = this.window.sidebar().button(lower);
+            return new double[] {
+                above.localToScene(above.getLayoutBounds()).getMaxY(),
+                below.localToScene(below.getLayoutBounds()).getMinY()
+            };
+        });
+        assertThat(edges[0]).isLessThanOrEqualTo(edges[1]).isCloseTo(edges[1], within(12.0));
     }
 
     private void givenTheWindowWide(boolean wide) throws Exception {

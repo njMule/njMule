@@ -64,7 +64,15 @@ class NavigationTest {
 
         whenTheWindowShows();
 
-        thenTheRailReads("Transfers", "Search", "Shared Files", "Messages", "Network", "Statistics", "Options");
+        thenTheRailReads(
+                "Transfers",
+                "Search",
+                "Shared Files",
+                "Messages",
+                "Network",
+                "Statistics",
+                "Buy me a coffee",
+                "Options");
     }
 
     @Test
