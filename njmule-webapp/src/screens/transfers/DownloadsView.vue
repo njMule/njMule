@@ -31,6 +31,7 @@ import NjIcon from '../../components/NjIcon.vue';
 import PartBar from '../../components/PartBar.vue';
 import { duration, percent, rate, size } from '../../format';
 import { t } from '../../i18n';
+import { guest } from '../../role';
 import type { IconName } from '../../icons';
 import { htmlLinks } from '../../links';
 import { attempt, told } from '../../notify';
@@ -312,7 +313,7 @@ const SOURCE_STATES: Record<Source['state'], string> = {
 
 <template>
     <div class="tools">
-        <el-button @click="adding = true" type="primary"
+        <el-button v-if="!guest" @click="adding = true" type="primary"
             ><NjIcon name="ADD" />{{ t('nj.transfers.addLinks') }}</el-button
         >
         <span class="grow"></span>
@@ -320,7 +321,9 @@ const SOURCE_STATES: Record<Source['state'], string> = {
             <el-option :value="0" :label="t('IDS_CAT_UNASSIGN')" />
             <el-option v-for="c in categories" :key="c.id" :value="c.id" :label="c.name" />
         </el-select>
-        <el-button :title="t('nj.categories.title')" @click="editing = true"><NjIcon name="CATEGORY" /></el-button>
+        <el-button v-if="!guest" :title="t('nj.categories.title')" @click="editing = true"
+            ><NjIcon name="CATEGORY"
+        /></el-button>
         <el-input v-model="filter" class="filter" clearable :placeholder="t('nj.transfers.filter')" />
     </div>
     <div class="chips" role="radiogroup">
@@ -337,7 +340,12 @@ const SOURCE_STATES: Record<Source['state'], string> = {
             {{ t(c.key) }} <b>{{ counts.get(c.chip) ?? 0 }}</b>
         </button>
     </div>
-    <div class="actions">
+    <div v-if="guest" class="actions">
+        <el-button :disabled="chosen.length === 0" @click="copyLinks(false)">
+            <NjIcon name="COPY" />{{ t('nj.copyLink') }}
+        </el-button>
+    </div>
+    <div v-else class="actions">
         <el-button :disabled="chosen.length === 0" @click="act('resume')">
             <NjIcon name="PLAY" />{{ t('IDS_DL_RESUME') }}
         </el-button>
@@ -446,7 +454,7 @@ const SOURCE_STATES: Record<Source['state'], string> = {
             <p v-if="shown(one) === 'noSpace'" class="hint">{{ t('nj.details.diskFullNote') }}</p>
             <p v-if="shown(one) === 'error'" class="hint">{{ t('nj.details.errorNote') }}</p>
             <PartBar v-if="parts && one.status !== 'complete'" :parts="parts" />
-            <div v-if="one.status !== 'complete'" class="flags">
+            <div v-if="!guest && one.status !== 'complete'" class="flags">
                 <label>
                     <el-switch
                         :model-value="one.previewFirst"

@@ -7,6 +7,7 @@ import { computed, ref, watch } from 'vue';
 import { api } from '../api';
 import { status, usePoll } from '../engine';
 import { t } from '../i18n';
+import { guest } from '../role';
 import NjIcon from './NjIcon.vue';
 
 interface Update {
@@ -14,7 +15,12 @@ interface Update {
     skipped?: string;
 }
 
-const update = usePoll(() => api.get<Update>('/update'), 60000, null as Update | null);
+// A guest is told nothing of new versions.
+const update = usePoll(
+    () => (guest ? Promise.resolve(null) : api.get<Update>('/update')),
+    60000,
+    null as Update | null,
+);
 
 // A new version the user did not skip; one with security fixes is told whatever was skipped.
 const version = computed(() => {

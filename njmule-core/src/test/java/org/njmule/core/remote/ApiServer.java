@@ -25,8 +25,13 @@ import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.thread.VirtualThreadPool;
 
-/** The remote-control API on a bare Jetty server of the loopback, served as a front end serves it. */
+/**
+ * The remote-control API on a bare Jetty server of the loopback, served as a front end serves it: a request with the
+ * header {@value #GUEST} as from a guest it let in.
+ */
 final class ApiServer implements AutoCloseable {
+
+    static final String GUEST = "X-Test-Guest";
 
     private final Server server;
     private final int port;
@@ -47,7 +52,11 @@ final class ApiServer implements AutoCloseable {
             public boolean handle(Request request, Response response, Callback callback) {
                 Exchange exchange = new Exchange(request, response);
                 try {
-                    api.handle(exchange);
+                    if (exchange.header(GUEST) != null) {
+                        api.handleGuest(exchange);
+                    } else {
+                        api.handle(exchange);
+                    }
                     exchange.finish();
                     callback.succeeded();
                 } catch (IOException | RuntimeException e) {

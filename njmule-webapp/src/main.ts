@@ -10,12 +10,17 @@ import { followChats } from './chats';
 import { followStatus } from './engine';
 import { bestLanguage, loadLanguage } from './i18n';
 import { followNotices } from './notices';
+import { guest } from './role';
 import { router } from './router';
 import { followTheme } from './theme';
 
 followTheme();
 await loadLanguage(bestLanguage(navigator.languages));
 followStatus();
-followChats();
+if (!guest) {
+    followChats();
+}
 createApp(App).use(router).mount('#app');
-followNotices(router);
+if (!guest) {
+    followNotices(router);
+}

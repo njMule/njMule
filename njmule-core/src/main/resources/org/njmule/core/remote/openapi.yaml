@@ -1436,6 +1436,38 @@ paths:
           $ref: "#/components/responses/Error"
 
   /searches:
+    get:
+      operationId: listSearches
+      tags: [searches]
+      summary: The searches started through the API or the web pages whose results are kept, oldest first.
+      responses:
+        "200":
+          description: The searches.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, query, scope, running, results]
+                  properties:
+                    id:
+                      $ref: "#/components/schemas/SearchId"
+                    query:
+                      type: string
+                      description: What was searched for; empty for a search whose start was not noted.
+                    scope:
+                      type: string
+                      description: Where it was searched, as asked; empty when not noted.
+                    running:
+                      type: boolean
+                      description: Whether more results may come.
+                    results:
+                      type: integer
+                      minimum: 0
+                      description: The results kept so far.
+        default:
+          $ref: "#/components/responses/Error"
     post:
       operationId: startSearch
       tags: [searches]

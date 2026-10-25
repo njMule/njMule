@@ -6,6 +6,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 import { ElButton, ElInput, ElInputNumber, ElOption, ElSelect, ElSwitch } from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
 import { api } from '../api';
+import GuestPanel from '../components/GuestPanel.vue';
 import HostsPanel from '../components/HostsPanel.vue';
 import ImportPanel from '../components/ImportPanel.vue';
 import SetupWizard from '../components/SetupWizard.vue';
@@ -107,6 +108,7 @@ async function applyHeld(): Promise<void> {
         <section v-else-if="page === 'web'" class="page">
             <h2>{{ t('IDS_PW_WS') }}</h2>
             <HostsPanel />
+            <GuestPanel />
         </section>
         <section v-else-if="current" class="page">
             <h2>{{ t(current.title) }}</h2>

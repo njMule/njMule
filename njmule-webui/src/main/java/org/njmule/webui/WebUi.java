@@ -72,6 +72,9 @@ public final class WebUi implements AutoCloseable {
     private static final String API_PATH = "/api/";
     // The web interface's own settings the app changes: the host names it answers to.
     private static final String HOSTS_PATH = "/webui/hosts";
+    // Whether a guest may log in, and its password, which the app's settings change.
+    private static final String GUEST_PATH = "/webui/guest";
+    private static final String ADMINS_ONLY = "A guest can only look.";
     // The header that carries the session's token on the app's changes: no other site's page can send it.
     private static final String CSRF_HEADER = "X-NjMule-CSRF";
     private static final String PAGES_POLICY =
@@ -102,6 +105,8 @@ public final class WebUi implements AutoCloseable {
     private final WebUiSettings settings;
     // The names of the settings, changed by the settings page.
     private volatile List<String> hosts;
+    // The guest's password hash, changed by the settings page; empty for no guest.
+    private volatile String guestHash;
     private final TrustedProxies proxies;
     private final Server server;
     private final int port;
@@ -127,6 +132,7 @@ public final class WebUi implements AutoCloseable {
         this.engine = engine;
         this.settings = settings;
         this.hosts = settings.hosts();
+        this.guestHash = settings.guestPasswordHash();
         this.proxies = new TrustedProxies(settings.proxies());
         this.server = server;
         this.port = port;
@@ -306,8 +312,16 @@ public final class WebUi implements AutoCloseable {
             callApi(exchange, method, session);
             return;
         }
+        if (session.isPresent() && session.get().guest() && (path.equals(HOSTS_PATH) || path.equals(GUEST_PATH))) {
+            sendJson(exchange, 403, ADMINS_ONLY);
+            return;
+        }
         if (path.equals(HOSTS_PATH)) {
             hosts(exchange, method, session);
+            return;
+        }
+        if (path.equals(GUEST_PATH)) {
+            guest(exchange, method, session);
             return;
         }
         if (session.isEmpty()) {
@@ -334,6 +348,8 @@ public final class WebUi implements AutoCloseable {
             sendJson(exchange, 401, "Log in first.");
         } else if (!method.equals(GET) && !Sessions.validForm(session.get(), exchange.header(CSRF_HEADER))) {
             sendJson(exchange, 403, "Expired session token: reload the page.");
+        } else if (session.get().guest()) {
+            this.api.handleGuest(exchange);
         } else {
             this.api.handleTrusted(exchange);
         }
@@ -370,6 +386,56 @@ public final class WebUi implements AutoCloseable {
             json.append(i == 0 ? "" : ",").append('"').append(names.get(i)).append('"');
         }
         send(exchange, 200, "application/json; charset=utf-8", json.append("]}").toString());
+    }
+
+    // Whether a guest may log in; a PUT of the form field "password", with the session's token, sets its password, an
+    // empty one takes the guest away.
+    private void guest(Exchange exchange, String method, Optional<Sessions.Session> session) throws IOException {
+        if (session.isEmpty()) {
+            sendJson(exchange, 401, "Log in first.");
+            return;
+        }
+        if (!method.equals(GET)) {
+            Optional<Map<String, String>> form = exchange.form(MAX_LOGIN_FIELDS, MAX_LOGIN_BODY);
+            if (!method.equals("PUT") || form.isEmpty()) {
+                sendJson(exchange, 400, "Send the password as the form field password.");
+                return;
+            }
+            if (!Sessions.validForm(session.get(), exchange.header(CSRF_HEADER))) {
+                sendJson(exchange, 403, "Expired session token: reload the page.");
+                return;
+            }
+            char[] password = form.get().getOrDefault("password", "").toCharArray();
+            try {
+                guestPassword(password);
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400, String.valueOf(e.getMessage()));
+                return;
+            } finally {
+                Passwords.wipe(password);
+            }
+        }
+        send(exchange, 200, "application/json; charset=utf-8", "{\"guest\":" + !this.guestHash.isEmpty() + "}");
+    }
+
+    // The guest's password, written to the file of the running settings, which the command line may have changed.
+    private void guestPassword(char[] password) throws IOException {
+        if (password.length > 0 && password.length < Passwords.MIN_LENGTH) {
+            throw new IllegalArgumentException(
+                    "The guest password needs at least " + Passwords.MIN_LENGTH + " characters.");
+        }
+        Path dir = this.engine.directories().config();
+        WebUiSettings file = WebUiSettings.load(dir);
+        if (!file.usable()) {
+            throw new IllegalArgumentException("Cannot read " + WebUiSettings.FILE_NAME + ": nothing was changed.");
+        }
+        String hash = password.length == 0 ? "" : Passwords.hash(password, new SecureRandom());
+        if (!hash.isEmpty() && Passwords.matches(password, file.passwordHash())) {
+            throw new IllegalArgumentException("The guest password must differ from yours.");
+        }
+        file.withGuest(hash).save(dir);
+        this.guestHash = hash;
+        logger.info(hash.isEmpty() ? "Web interface guest taken away" : "Web interface guest password set");
     }
 
     static boolean trustedHost(String host, boolean lan, List<String> names, InetAddress reached) {
@@ -470,8 +536,14 @@ public final class WebUi implements AutoCloseable {
             return;
         }
         boolean right;
+        boolean guest = false;
         try {
             right = Passwords.matches(password, this.settings.passwordHash());
+            String guestHash = this.guestHash;
+            if (!right && !guestHash.isEmpty()) {
+                guest = Passwords.matches(password, guestHash);
+                right = guest;
+            }
         } finally {
             this.checking.release();
             Passwords.wipe(password);
@@ -482,7 +554,10 @@ public final class WebUi implements AutoCloseable {
             return;
         }
         this.sessions.succeeded(address);
-        Sessions.Session session = this.sessions.open();
+        if (guest) {
+            logger.info("Web interface guest logged in from {}", address);
+        }
+        Sessions.Session session = this.sessions.open(guest);
         exchange.addCookie(sessionCookie(exchange, session.id()).build());
         redirect(exchange, "/");
     }
@@ -499,7 +574,12 @@ public final class WebUi implements AutoCloseable {
 
     private void get(Exchange exchange, String path, Sessions.Session session) throws IOException {
         if (path.equals("/")) {
-            send(exchange, 200, HTML, this.app.page(session.csrf()).getBytes(StandardCharsets.UTF_8), APP_POLICY);
+            send(
+                    exchange,
+                    200,
+                    HTML,
+                    this.app.page(session.csrf(), session.guest()).getBytes(StandardCharsets.UTF_8),
+                    APP_POLICY);
         } else {
             send(exchange, 404, TEXT, "Not found.");
         }
@@ -534,7 +614,14 @@ public final class WebUi implements AutoCloseable {
             throw new IllegalArgumentException("Cannot read " + WebUiSettings.FILE_NAME + ": nothing was changed.");
         }
         WebUiSettings changed = new WebUiSettings(
-                file.enabled(), file.port(), file.lan(), file.passwordHash(), file.api(), names, file.proxies());
+                file.enabled(),
+                file.port(),
+                file.lan(),
+                file.passwordHash(),
+                file.api(),
+                names,
+                file.proxies(),
+                file.guestPasswordHash());
         try {
             changed.save(dir);
         } catch (IOException e) {

@@ -8,6 +8,7 @@ import { computed, ref } from 'vue';
 import { api } from '../api';
 import { usePoll } from '../engine';
 import { t } from '../i18n';
+import { guest } from '../role';
 import type { Ban, Category, Download, Source, Upload } from '../types';
 import BansView from './transfers/BansView.vue';
 import DownloadsView from './transfers/DownloadsView.vue';
@@ -18,19 +19,21 @@ type Shelf = 'downloads' | 'uploads' | 'queue' | 'banned';
 const shelf = ref<Shelf>('downloads');
 const downloads = usePoll(() => api.get<Download[]>('/downloads'), 1000, [] as Download[]);
 const peers = usePoll(() => api.get<Upload[]>('/uploads'), 2000, [] as Upload[]);
-const bans = usePoll(() => api.get<Ban[]>('/bans'), 2000, [] as Ban[]);
+const bans = usePoll(() => (guest ? Promise.resolve([]) : api.get<Ban[]>('/bans')), 2000, [] as Ban[]);
 const sources = usePoll(() => api.get<Source[]>('/sources'), 2000, [] as Source[]);
 const categories = usePoll(() => api.get<Category[]>('/categories'), 15000, [] as Category[]);
 
 const uploading = computed(() => peers.data.value.filter((p) => p.state === 'uploading'));
 const queued = computed(() => peers.data.value.filter((p) => p.state === 'queued'));
 
-const shelves = computed(() => [
-    { value: 'downloads', label: `${t('IDS_TW_DOWNLOADS')} ${downloads.data.value.length}` },
-    { value: 'uploads', label: `${t('IDS_TW_UPLOADS')} ${uploading.value.length}` },
-    { value: 'queue', label: `${t('IDS_ONQUEUE')} ${queued.value.length}` },
-    { value: 'banned', label: `${t('IDS_BANNED')} ${bans.data.value.length}` },
-]);
+const shelves = computed(() =>
+    [
+        { value: 'downloads', label: `${t('IDS_TW_DOWNLOADS')} ${downloads.data.value.length}` },
+        { value: 'uploads', label: `${t('IDS_TW_UPLOADS')} ${uploading.value.length}` },
+        { value: 'queue', label: `${t('IDS_ONQUEUE')} ${queued.value.length}` },
+        { value: 'banned', label: `${t('IDS_BANNED')} ${bans.data.value.length}` },
+    ].filter((s) => !guest || s.value !== 'banned'),
+);
 </script>
 
 <template>

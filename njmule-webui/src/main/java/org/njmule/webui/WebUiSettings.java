@@ -44,6 +44,7 @@ import org.slf4j.LoggerFactory;
  *     proxy's, as {@link #hostName} keeps them
  * @param proxies the reverse proxies trusted to name their client in X-Forwarded-For, as {@link #proxy} keeps them;
  *     none by default
+ * @param guestPasswordHash the hash of the password of a guest, who may only look; empty for no guest
  */
 public record WebUiSettings(
         boolean enabled,
@@ -52,7 +53,8 @@ public record WebUiSettings(
         String passwordHash,
         boolean api,
         List<String> hosts,
-        List<String> proxies) {
+        List<String> proxies,
+        String guestPasswordHash) {
 
     public static final String FILE_NAME = "webui.properties";
 
@@ -60,7 +62,7 @@ public record WebUiSettings(
     public static final int DEFAULT_PORT = 4711;
 
     public static final WebUiSettings DEFAULTS =
-            new WebUiSettings(false, DEFAULT_PORT, false, "", false, List.of(), List.of());
+            new WebUiSettings(false, DEFAULT_PORT, false, "", false, List.of(), List.of(), "");
 
     private static final Logger logger = LoggerFactory.getLogger(WebUiSettings.class);
 
@@ -72,6 +74,7 @@ public record WebUiSettings(
             throw new IllegalArgumentException("port must be in [1, 65535]: " + port);
         }
         Objects.requireNonNull(passwordHash, "passwordHash");
+        Objects.requireNonNull(guestPasswordHash, "guestPasswordHash");
         // List.copyOf, which SpotBugs knows to be unmodifiable.
         hosts = List.copyOf(Objects.requireNonNull(hosts, "hosts").stream()
                 .map(WebUiSettings::hostName)
@@ -81,6 +84,29 @@ public record WebUiSettings(
                 .map(WebUiSettings::proxy)
                 .distinct()
                 .toList());
+    }
+
+    /** Settings without a guest. */
+    public WebUiSettings(
+            boolean enabled,
+            int port,
+            boolean lan,
+            String passwordHash,
+            boolean api,
+            List<String> hosts,
+            List<String> proxies) {
+        this(enabled, port, lan, passwordHash, api, hosts, proxies, "");
+    }
+
+    /** These settings with the guest password of {@code hash}, or none when it is empty. */
+    public WebUiSettings withGuest(String hash) {
+        return new WebUiSettings(
+                this.enabled, this.port, this.lan, this.passwordHash, this.api, this.hosts, this.proxies, hash);
+    }
+
+    /** Whether a guest may log in. */
+    public boolean hasGuest() {
+        return !this.guestPasswordHash.isEmpty();
     }
 
     /** Settings that trust no proxy. */
@@ -167,7 +193,8 @@ public record WebUiSettings(
                     p.getProperty("password", "").strip(),
                     Boolean.parseBoolean(p.getProperty("api", "false").strip()),
                     hostNames(p.getProperty("hosts", "")),
-                    proxies(p.getProperty("proxies", "")));
+                    proxies(p.getProperty("proxies", "")),
+                    p.getProperty("guestPassword", "").strip());
         } catch (IOException | IllegalArgumentException e) {
             logger.warn("The web interface stays off: cannot read {}: {}", file, e.toString());
             return DEFAULTS;
@@ -184,6 +211,9 @@ public record WebUiSettings(
         values.setProperty("api", String.valueOf(this.api));
         values.setProperty("hosts", String.join(",", this.hosts));
         values.setProperty("proxies", String.join(",", this.proxies));
+        if (hasGuest()) {
+            values.setProperty("guestPassword", this.guestPasswordHash);
+        }
         StringWriter stored = new StringWriter();
         values.store(stored, null);
         StringBuilder text = new StringBuilder("# njMule web interface\n");
@@ -195,7 +225,7 @@ public record WebUiSettings(
         Files.createDirectories(configDir);
         Path tmp = configDir.resolve(FILE_NAME + ".tmp");
         Files.deleteIfExists(tmp);
-        // Only its owner may read the password hash, where the file system can say so.
+        // Only its owner may read the password hashes, where the file system can say so.
         if (tmp.getFileSystem().supportedFileAttributeViews().contains("posix")) {
             Files.createFile(tmp, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
         }
@@ -207,6 +237,6 @@ public record WebUiSettings(
     @Override
     public String toString() {
         return "WebUiSettings[enabled=" + this.enabled + ", port=" + this.port + ", lan=" + this.lan + ", api="
-                + this.api + ", hosts=" + this.hosts + ", proxies=" + this.proxies + "]";
+                + this.api + ", hosts=" + this.hosts + ", proxies=" + this.proxies + ", guest=" + hasGuest() + "]";
     }
 }

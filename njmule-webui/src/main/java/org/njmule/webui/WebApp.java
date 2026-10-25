@@ -36,6 +36,7 @@ final class WebApp {
 
     private static final String ROOT = "app/";
     private static final String TOKEN = "__NJMULE_CSRF__";
+    private static final String ROLE = "__NJMULE_ROLE__";
     // The build ships the text files compressed only.
     private static final String GZIP = ".gz";
 
@@ -97,9 +98,9 @@ final class WebApp {
         this.page = new String(read("index.html").orElse(new byte[0]), StandardCharsets.UTF_8);
     }
 
-    /** The app's page for a session with {@code csrf}, a token of URL-safe characters. */
-    String page(String csrf) {
-        return this.page.replace(TOKEN, Html.text(csrf));
+    /** The app's page for a session with {@code csrf}, a token of URL-safe characters, and for a guest or not. */
+    String page(String csrf, boolean guest) {
+        return this.page.replace(TOKEN, Html.text(csrf)).replace(ROLE, guest ? "guest" : "admin");
     }
 
     Optional<File> file(String path) {

@@ -9,6 +9,7 @@ import { api } from '../../api';
 import { status, usePoll } from '../../engine';
 import { count } from '../../format';
 import { t } from '../../i18n';
+import { guest } from '../../role';
 import { attempt, told } from '../../notify';
 import { distanceBars } from '../../kad';
 
@@ -109,7 +110,7 @@ async function recheck(): Promise<void> {
                 <dd class="id">{{ kad.id }}</dd>
             </template>
         </dl>
-        <div class="buttons">
+        <div v-if="!guest" class="buttons">
             <el-button type="primary" @click="toggle">
                 {{ kad?.connected ? t('IDS_MAIN_BTN_DISCONNECT') : t('IDS_MAIN_BTN_CONNECT') }}
             </el-button>
@@ -117,7 +118,7 @@ async function recheck(): Promise<void> {
         </div>
     </div>
 
-    <section class="join">
+    <section v-if="!guest" class="join">
         <h2>{{ t('nj.kad.join') }}</h2>
         <p class="hint">{{ t('nj.kad.joinHint') }}</p>
         <form class="line" @submit.prevent="download">

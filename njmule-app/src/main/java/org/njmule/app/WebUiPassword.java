@@ -81,7 +81,8 @@ public final class WebUiPassword {
                 Passwords.hash(password, new SecureRandom()),
                 setup.api() || old.api(),
                 setup.hosts(),
-                setup.proxies());
+                setup.proxies(),
+                old.guestPasswordHash());
         settings.save(config);
         return settings;
     }

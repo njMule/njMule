@@ -208,6 +208,9 @@ public final class SettingsScreen implements Screen {
     private final ToggleSwitch webUiApi = new ToggleSwitch();
     private final PasswordField webUiPassword = new PasswordField();
     private final PasswordField webUiAgain = new PasswordField();
+    private final PasswordField webUiGuest = new PasswordField();
+    private final PasswordField webUiGuestAgain = new PasswordField();
+    private final Button noGuest = new Button();
     private SchedulerPane scheduler;
     private Input<String> nickInput;
     private Input<Integer> tcpPortInput;
@@ -235,6 +238,8 @@ public final class SettingsScreen implements Screen {
     private Input<List<String>> webUiProxiesInput;
     private Input<String> webUiPasswordInput;
     private Input<String> webUiAgainInput;
+    private Input<String> webUiGuestInput;
+    private Input<String> webUiGuestAgainInput;
     private final Map<EventCommands.Event, ToggleSwitch> eventSwitches = new EnumMap<>(EventCommands.Event.class);
     private final Map<EventCommands.Event, Input<String>> eventInputs = new EnumMap<>(EventCommands.Event.class);
     // Every option of the pages, and how each shows its saved value and saves what the user set.
@@ -985,6 +990,16 @@ public final class SettingsScreen implements Screen {
                 .checkedBy(this.webUiPasswordInput, this.webUiAgainInput);
         watch(passwords, this::savePassword);
         this.commits.add(this::savePassword);
+        this.noGuest.setText(this.gui.t("nj.webui.noGuest"));
+        this.noGuest.setGraphic(Fx.icon(Icons.DELETE));
+        Fx.whole(this.noGuest);
+        this.noGuest.setOnAction(e -> removeGuest());
+        HBox guestPasswords = new HBox(8, this.webUiGuest, this.webUiGuestAgain, this.noGuest);
+        SettingRow guest = new SettingRow(this.gui, this.gui.t("nj.webui.guestPassword"), guestPasswords)
+                .checkedBy(this.webUiGuestInput, this.webUiGuestAgainInput)
+                .describedAs(this.gui.t("nj.webui.guestHint"));
+        watch(guestPasswords, this::saveGuestPassword);
+        this.commits.add(this::saveGuestPassword);
         return List.of(section(
                 "",
                 web(
@@ -992,7 +1007,14 @@ public final class SettingsScreen implements Screen {
                         this.webUi,
                         WebUiSettings::enabled,
                         (w, v) -> new WebUiSettings(
-                                v, w.port(), w.lan(), w.passwordHash(), w.api(), w.hosts(), w.proxies()),
+                                v,
+                                w.port(),
+                                w.lan(),
+                                w.passwordHash(),
+                                w.api(),
+                                w.hosts(),
+                                w.proxies(),
+                                w.guestPasswordHash()),
                         this.webUi::isSelected,
                         this.webUi::setSelected,
                         this::yesNo),
@@ -1001,7 +1023,14 @@ public final class SettingsScreen implements Screen {
                                 this.webUiPort,
                                 WebUiSettings::port,
                                 (w, v) -> new WebUiSettings(
-                                        w.enabled(), v, w.lan(), w.passwordHash(), w.api(), w.hosts(), w.proxies()),
+                                        w.enabled(),
+                                        v,
+                                        w.lan(),
+                                        w.passwordHash(),
+                                        w.api(),
+                                        w.hosts(),
+                                        w.proxies(),
+                                        w.guestPasswordHash()),
                                 this.webUiPortInput::value,
                                 v -> this.webUiPort.setText(String.valueOf(v)),
                                 String::valueOf)
@@ -1011,7 +1040,14 @@ public final class SettingsScreen implements Screen {
                         this.webUiLan,
                         WebUiSettings::lan,
                         (w, v) -> new WebUiSettings(
-                                w.enabled(), w.port(), v, w.passwordHash(), w.api(), w.hosts(), w.proxies()),
+                                w.enabled(),
+                                w.port(),
+                                v,
+                                w.passwordHash(),
+                                w.api(),
+                                w.hosts(),
+                                w.proxies(),
+                                w.guestPasswordHash()),
                         this.webUiLan::isSelected,
                         this.webUiLan::setSelected,
                         this::yesNo),
@@ -1020,7 +1056,14 @@ public final class SettingsScreen implements Screen {
                                 this.webUiHosts,
                                 WebUiSettings::hosts,
                                 (w, v) -> new WebUiSettings(
-                                        w.enabled(), w.port(), w.lan(), w.passwordHash(), w.api(), v, w.proxies()),
+                                        w.enabled(),
+                                        w.port(),
+                                        w.lan(),
+                                        w.passwordHash(),
+                                        w.api(),
+                                        v,
+                                        w.proxies(),
+                                        w.guestPasswordHash()),
                                 this.webUiHostsInput::value,
                                 v -> this.webUiHosts.setText(String.join(", ", v)),
                                 v -> "")
@@ -1032,7 +1075,14 @@ public final class SettingsScreen implements Screen {
                                 this.webUiProxies,
                                 WebUiSettings::proxies,
                                 (w, v) -> new WebUiSettings(
-                                        w.enabled(), w.port(), w.lan(), w.passwordHash(), w.api(), w.hosts(), v),
+                                        w.enabled(),
+                                        w.port(),
+                                        w.lan(),
+                                        w.passwordHash(),
+                                        w.api(),
+                                        w.hosts(),
+                                        v,
+                                        w.guestPasswordHash()),
                                 this.webUiProxiesInput::value,
                                 v -> this.webUiProxies.setText(String.join(", ", v)),
                                 v -> "")
@@ -1040,12 +1090,20 @@ public final class SettingsScreen implements Screen {
                         .describedAs(this.gui.t("nj.webui.proxiesHint"))
                         .wide(),
                 password,
+                guest,
                 web(
                         switchTitle(this.webUiApi, "nj.webui.api"),
                         this.webUiApi,
                         WebUiSettings::api,
                         (w, v) -> new WebUiSettings(
-                                w.enabled(), w.port(), w.lan(), w.passwordHash(), v, w.hosts(), w.proxies()),
+                                w.enabled(),
+                                w.port(),
+                                w.lan(),
+                                w.passwordHash(),
+                                v,
+                                w.hosts(),
+                                w.proxies(),
+                                w.guestPasswordHash()),
                         this.webUiApi::isSelected,
                         this.webUiApi::setSelected,
                         this::yesNo),
@@ -1479,7 +1537,44 @@ public final class SettingsScreen implements Screen {
         } catch (IOException e) {
             this.gui.warn().accept(e.getMessage());
         }
+        this.noGuest.setDisable(!this.web.hasGuest());
         refresh();
+    }
+
+    // A guest password replaces the stored one once both fields agree; it may not be the admin's.
+    private void saveGuestPassword() {
+        if (this.loading
+                || this.webUiGuest.getText().isEmpty()
+                || !this.webUiGuestInput.isValid()
+                || !this.webUiGuestAgainInput.isValid()) {
+            return;
+        }
+        char[] password = this.webUiGuest.getText().toCharArray();
+        try {
+            if (password.length < Passwords.MIN_LENGTH) {
+                return;
+            }
+            WebUiSettings now = WebUiSettings.load(this.gui.directories().config());
+            if (Passwords.matches(password, now.passwordHash())) {
+                this.gui.warn().accept(this.gui.t("nj.webui.guestSame"));
+                return;
+            }
+            saveWeb(now.withGuest(Passwords.hash(password, new SecureRandom())));
+        } finally {
+            Passwords.wipe(password);
+        }
+        quietly(() -> {
+            this.webUiGuest.clear();
+            this.webUiGuestAgain.clear();
+        });
+        this.gui.inform().accept(this.gui.t("nj.settings.saved"));
+        this.webCommits.forEach(Runnable::run);
+    }
+
+    private void removeGuest() {
+        saveWeb(WebUiSettings.load(this.gui.directories().config()).withGuest(""));
+        this.gui.inform().accept(this.gui.t("nj.settings.saved"));
+        this.webCommits.forEach(Runnable::run);
     }
 
     // A new password replaces the stored hash once both fields agree; they empty then.
@@ -1503,7 +1598,8 @@ public final class SettingsScreen implements Screen {
                     Passwords.hash(password, new SecureRandom()),
                     now.api(),
                     now.hosts(),
-                    now.proxies()));
+                    now.proxies(),
+                    now.guestPasswordHash()));
         } finally {
             Passwords.wipe(password);
         }
@@ -1610,6 +1706,9 @@ public final class SettingsScreen implements Screen {
             this.shows.forEach(s -> s.show().accept(p));
             this.webUiPassword.clear();
             this.webUiAgain.clear();
+            this.webUiGuest.clear();
+            this.webUiGuestAgain.clear();
+            this.noGuest.setDisable(!this.web.hasGuest());
         });
         this.held.clear();
         this.languageHeld = false;
@@ -1808,6 +1907,33 @@ public final class SettingsScreen implements Screen {
                         })
                 .keepSpaces();
         this.webUiPassword.textProperty().addListener((o, was, now) -> this.webUiAgainInput.check());
+        this.webUiGuestInput = Input.of(
+                        this.webUiGuest,
+                        this.gui.t("nj.webui.guestPassword"),
+                        this.gui.f("nj.input.password", Passwords.MIN_LENGTH),
+                        c -> !Character.isISOControl(c),
+                        MAX_PASSWORD,
+                        t -> {
+                            if (!t.isEmpty() && t.length() < Passwords.MIN_LENGTH) {
+                                throw new IllegalArgumentException(t);
+                            }
+                            return t;
+                        })
+                .keepSpaces();
+        this.webUiGuestAgainInput = Input.of(
+                        this.webUiGuestAgain,
+                        this.gui.t("nj.webui.guestPassword"),
+                        this.gui.t("nj.input.passwordAgain"),
+                        c -> !Character.isISOControl(c),
+                        MAX_PASSWORD,
+                        t -> {
+                            if (!t.equals(this.webUiGuest.getText())) {
+                                throw new IllegalArgumentException(t);
+                            }
+                            return t;
+                        })
+                .keepSpaces();
+        this.webUiGuest.textProperty().addListener((o, was, now) -> this.webUiGuestAgainInput.check());
         for (EventCommands.Event event : EventCommands.Event.values()) {
             String name = this.gui.t("nj.events." + event.id());
             ToggleSwitch on = new ToggleSwitch();

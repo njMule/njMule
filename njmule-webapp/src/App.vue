@@ -14,6 +14,7 @@ import NjIcon from './components/NjIcon.vue';
 import SpeedLimits from './components/SpeedLimits.vue';
 import { api } from './api';
 import { unreachable } from './engine';
+import { allowed, guest } from './role';
 import { t } from './i18n';
 import type { IconName } from './icons';
 import { mode, setMode } from './theme';
@@ -26,7 +27,7 @@ interface Place {
     page?: string;
 }
 
-const groups: Place[][] = [
+const everyPlace: Place[][] = [
     [
         { title: 'IDS_EM_TRANS', icon: 'DOWNLOAD', route: '/transfers' },
         { title: 'IDS_EM_SEARCH', icon: 'SEARCH', route: '/search' },
@@ -39,6 +40,7 @@ const groups: Place[][] = [
     ],
     [{ title: 'IDS_EM_PREFS', icon: 'OPTIONS', route: '/settings' }],
 ];
+const groups = everyPlace.map((g) => g.filter((p) => allowed(p.route ?? '/'))).filter((g) => g.length > 0);
 
 const route = useRoute();
 const router = useRouter();
@@ -84,7 +86,7 @@ function setupDone(): void {
 
 onMounted(async () => {
     window.addEventListener('keydown', key);
-    if (!seen()) {
+    if (!guest && !seen()) {
         try {
             setup.value = (await api.get<Record<string, string>>('/preferences'))['user.nick'] === 'njMule';
         } catch {
@@ -130,8 +132,9 @@ function nextMode(): void {
             <header class="topbar">
                 <h1>{{ title }}</h1>
                 <span class="grow"></span>
-                <SpeedLimits />
-                <NetworkControl />
+                <span v-if="guest" class="guest">{{ t('IDS_WEB_LOWUSER') }}</span>
+                <SpeedLimits v-if="!guest" />
+                <NetworkControl v-if="!guest" />
                 <button class="mode" type="button" :title="t('nj.top.theme')" @click="nextMode">
                     <NjIcon name="THEME" :label="t('nj.top.theme')" />
                 </button>
@@ -141,7 +144,7 @@ function nextMode(): void {
             <main>
                 <router-view />
                 <CommandPalette v-model="palette" :places="places" />
-                <SetupWizard v-model="setup" @done="setupDone" />
+                <SetupWizard v-if="!guest" v-model="setup" @done="setupDone" />
             </main>
         </div>
     </div>
@@ -260,6 +263,13 @@ const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="njmule-csr
     background: none;
     color: var(--el-text-color-primary);
     cursor: pointer;
+}
+.guest {
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--el-fill-color);
+    color: var(--el-text-color-regular);
+    font-size: 13px;
 }
 .unreachable {
     margin: 12px 20px 0;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { createRouter, createWebHashHistory } from 'vue-router';
+import { allowed } from './role';
 import MessagesScreen from './screens/MessagesScreen.vue';
 import NetworkScreen from './screens/NetworkScreen.vue';
 import SearchScreen from './screens/SearchScreen.vue';
@@ -24,3 +25,6 @@ export const router = createRouter({
         { path: '/settings', component: SettingsScreen, meta: { title: 'IDS_EM_PREFS' } },
     ],
 });
+
+// A guest's page opens only the places it may look at.
+router.beforeEach((to) => (allowed(to.path) ? true : '/transfers'));

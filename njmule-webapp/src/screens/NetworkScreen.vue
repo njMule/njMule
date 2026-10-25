@@ -13,6 +13,7 @@ import { count } from '../format';
 import { t } from '../i18n';
 import KadView from './network/KadView.vue';
 import LogView from './network/LogView.vue';
+import { guest } from '../role';
 import ServersView from './network/ServersView.vue';
 
 const route = useRoute();
@@ -22,11 +23,13 @@ const part = computed({
     set: (value: string) => void router.replace(`/network/${value}`),
 });
 
-const PARTS = computed(() => [
-    { value: 'servers', label: t('IDS_SV_SERVERLIST') },
-    { value: 'kad', label: t('IDS_EM_KADEMLIA') },
-    { value: 'log', label: t('IDS_SV_LOG') },
-]);
+const PARTS = computed(() =>
+    [
+        { value: 'servers', label: t('IDS_SV_SERVERLIST') },
+        { value: 'kad', label: t('IDS_EM_KADEMLIA') },
+        { value: 'log', label: t('IDS_SV_LOG') },
+    ].filter((p) => !guest || p.value !== 'log'),
+);
 
 const server = computed(() => status.value?.server ?? null);
 const kad = computed(() => status.value?.kad ?? null);
@@ -71,7 +74,7 @@ const kad = computed(() => status.value?.kad ?? null);
             </p>
             <p v-if="status?.publicIp">IP: {{ status.publicIp }}</p>
             <p v-if="status?.publicIpv6">IPv6: {{ status.publicIpv6 }}</p>
-            <PortTest />
+            <PortTest v-if="!guest" />
         </section>
     </div>
     <el-segmented v-model="part" :options="PARTS" class="parts" />

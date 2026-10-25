@@ -50,8 +50,8 @@ final class Sessions {
 
     private static final int TOKEN_BYTES = 16;
 
-    /** One session; {@code csrf} goes into every form. */
-    record Session(String id, String csrf) {}
+    /** One session; {@code csrf} goes into every form, and a guest's may only look. */
+    record Session(String id, String csrf, boolean guest) {}
 
     private record Entry(Session session, long lastUse) {}
 
@@ -70,7 +70,11 @@ final class Sessions {
     }
 
     synchronized Session open() {
-        Session session = new Session(token(), token());
+        return open(false);
+    }
+
+    synchronized Session open(boolean guest) {
+        Session session = new Session(token(), token(), guest);
         this.sessions.put(session.id(), new Entry(session, this.clock.getAsLong()));
         return session;
     }

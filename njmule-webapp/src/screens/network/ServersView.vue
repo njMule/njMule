@@ -21,6 +21,7 @@ import NjIcon from '../../components/NjIcon.vue';
 import { status, usePoll } from '../../engine';
 import { count } from '../../format';
 import { t } from '../../i18n';
+import { guest } from '../../role';
 import { attempt, told } from '../../notify';
 import type { Server } from '../../types';
 
@@ -57,6 +58,13 @@ async function update(): Promise<void> {
         told(t('nj.servers.fromUrl', added, url), 'success');
     });
     await servers.refresh();
+}
+
+// A guest's double click does nothing.
+function connectOnDoubleClick(row: Server): void {
+    if (!guest) {
+        void connectTo(row.address);
+    }
 }
 
 async function connectTo(where?: string): Promise<void> {
@@ -131,47 +139,51 @@ function copyLinks(): void {
 
 <template>
     <div class="tools">
-        <el-popover trigger="click" :width="420">
-            <template #reference>
-                <el-button type="primary"><NjIcon name="ADD" />{{ t('nj.servers.add') }}</el-button>
-            </template>
-            <form class="add" @submit.prevent="update">
-                <label for="nj-met">{{ t('IDS_SV_MET') }}</label>
-                <div class="line">
-                    <el-input id="nj-met" v-model="metUrl" />
-                    <el-button native-type="submit">{{ t('IDS_SV_UPDATE') }}</el-button>
-                </div>
-            </form>
-            <form class="add" @submit.prevent="addAndConnect">
-                <label for="nj-address">{{ t('IDS_SV_ADDRESS') }}</label>
-                <div class="line">
-                    <el-input id="nj-address" v-model="address" :placeholder="t('nj.servers.addressPrompt')" />
-                    <el-button native-type="submit">{{ t('nj.servers.addConnect') }}</el-button>
-                </div>
-            </form>
-        </el-popover>
-        <el-button :disabled="chosen.length !== 1" @click="connectTo(chosen[0]?.address)">
-            {{ t('IDS_CONNECTTHIS') }}
-        </el-button>
-        <el-dropdown :disabled="chosen.length === 0" trigger="click" @command="setPriority">
-            <el-button :disabled="chosen.length === 0">{{ t('IDS_PRIORITY') }}</el-button>
-            <template #dropdown>
-                <el-dropdown-menu>
-                    <el-dropdown-item v-for="(key, value) in PRIORITY" :key="value" :command="value">
-                        {{ t(key) }}
-                    </el-dropdown-item>
-                </el-dropdown-menu>
-            </template>
-        </el-dropdown>
-        <el-button :disabled="chosen.length === 0" @click="setStatic(true)">{{ t('IDS_ADDTOSTATIC') }}</el-button>
-        <el-button :disabled="chosen.length === 0" @click="setStatic(false)">{{ t('IDS_REMOVEFROMSTATIC') }}</el-button>
-        <el-button :disabled="chosen.length === 0" @click="copyLinks">
-            <NjIcon name="COPY" />{{ t('IDS_DL_LINK1') }}
-        </el-button>
-        <el-button :disabled="chosen.length === 0" @click="remove(false)">{{ t('IDS_REMOVETHIS') }}</el-button>
-        <el-button :disabled="servers.data.value.length === 0" type="danger" plain @click="remove(true)">
-            {{ t('IDS_REMOVEALL') }}
-        </el-button>
+        <template v-if="!guest">
+            <el-popover trigger="click" :width="420">
+                <template #reference>
+                    <el-button type="primary"><NjIcon name="ADD" />{{ t('nj.servers.add') }}</el-button>
+                </template>
+                <form class="add" @submit.prevent="update">
+                    <label for="nj-met">{{ t('IDS_SV_MET') }}</label>
+                    <div class="line">
+                        <el-input id="nj-met" v-model="metUrl" />
+                        <el-button native-type="submit">{{ t('IDS_SV_UPDATE') }}</el-button>
+                    </div>
+                </form>
+                <form class="add" @submit.prevent="addAndConnect">
+                    <label for="nj-address">{{ t('IDS_SV_ADDRESS') }}</label>
+                    <div class="line">
+                        <el-input id="nj-address" v-model="address" :placeholder="t('nj.servers.addressPrompt')" />
+                        <el-button native-type="submit">{{ t('nj.servers.addConnect') }}</el-button>
+                    </div>
+                </form>
+            </el-popover>
+            <el-button :disabled="chosen.length !== 1" @click="connectTo(chosen[0]?.address)">
+                {{ t('IDS_CONNECTTHIS') }}
+            </el-button>
+            <el-dropdown :disabled="chosen.length === 0" trigger="click" @command="setPriority">
+                <el-button :disabled="chosen.length === 0">{{ t('IDS_PRIORITY') }}</el-button>
+                <template #dropdown>
+                    <el-dropdown-menu>
+                        <el-dropdown-item v-for="(key, value) in PRIORITY" :key="value" :command="value">
+                            {{ t(key) }}
+                        </el-dropdown-item>
+                    </el-dropdown-menu>
+                </template>
+            </el-dropdown>
+            <el-button :disabled="chosen.length === 0" @click="setStatic(true)">{{ t('IDS_ADDTOSTATIC') }}</el-button>
+            <el-button :disabled="chosen.length === 0" @click="setStatic(false)">{{
+                t('IDS_REMOVEFROMSTATIC')
+            }}</el-button>
+            <el-button :disabled="chosen.length === 0" @click="copyLinks">
+                <NjIcon name="COPY" />{{ t('IDS_DL_LINK1') }}
+            </el-button>
+            <el-button :disabled="chosen.length === 0" @click="remove(false)">{{ t('IDS_REMOVETHIS') }}</el-button>
+            <el-button :disabled="servers.data.value.length === 0" type="danger" plain @click="remove(true)">
+                {{ t('IDS_REMOVEALL') }}
+            </el-button>
+        </template>
         <span class="grow"></span>
         <span class="count">{{ t('IDS_SV_SERVERLIST') }} ({{ visible.length }}/{{ servers.data.value.length }})</span>
         <el-input v-model="filter" class="filter" clearable :placeholder="t('nj.servers.filter')" />
@@ -182,7 +194,7 @@ function copyLinks(): void {
         :empty-text="t('nj.servers.none')"
         :row-class-name="({ row }: { row: Server }) => (row.address === current ? 'current' : '')"
         @selection-change="(rows: Server[]) => (chosen = rows)"
-        @row-dblclick="(row: Server) => connectTo(row.address)"
+        @row-dblclick="(row: Server) => connectOnDoubleClick(row)"
     >
         <el-table-column type="selection" width="40" />
         <el-table-column :label="t('IDS_SL_SERVERNAME')" prop="name" min-width="180" sortable show-overflow-tooltip />

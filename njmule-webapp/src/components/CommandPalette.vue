@@ -8,6 +8,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import { t } from '../i18n';
+import { guest } from '../role';
 import { fileLinks } from '../links';
 import { attempt, told } from '../notify';
 
@@ -23,7 +24,7 @@ const router = useRouter();
 const text = ref('');
 const field = ref<InstanceType<typeof ElInput> | null>(null);
 
-const links = computed(() => fileLinks(text.value));
+const links = computed(() => (guest ? [] : fileLinks(text.value)));
 const matching = computed(() => {
     const words = text.value.trim().toLowerCase();
     return words === '' ? props.places : props.places.filter((p) => t(p.title).toLowerCase().includes(words));
@@ -69,7 +70,7 @@ async function run(): Promise<void> {
                 <li v-for="p in matching" :key="p.route">
                     <button type="button" @click="go(p.route)">{{ t(p.title) }}</button>
                 </li>
-                <li v-if="text.trim() !== ''">
+                <li v-if="!guest && text.trim() !== ''">
                     <button type="button" @click="go(`/search?q=${encodeURIComponent(text.trim())}`)">
                         {{ t('nj.palette.search', text.trim()) }}
                     </button>

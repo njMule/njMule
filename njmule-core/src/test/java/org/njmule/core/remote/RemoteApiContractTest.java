@@ -117,6 +117,7 @@ class RemoteApiContractTest {
                 "/api/v1/kad",
                 "/api/v1/kad/contacts",
                 "/api/v1/kad/searches",
+                "/api/v1/searches",
                 "/api/v1/categories",
                 "/api/v1/friends",
                 "/api/v1/bans",

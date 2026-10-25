@@ -49,6 +49,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
@@ -780,6 +782,55 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldLetAGuestReadTheTransfers() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledAsGuest("GET", "/api/v1/downloads");
+
+        thenTheStatusIs(200);
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "/api/v1/preferences",
+                "/api/v1/log?after=0",
+                "/api/v1/conversations",
+                "/api/v1/shared",
+                "/api/v1/events?types=message"
+            })
+    void shouldRefuseAGuestWhatIsNotTransfersSearchesServersKadOrStatistics(String path) throws Exception {
+        givenTheApiRuns();
+
+        whenCalledAsGuest("GET", path);
+
+        thenTheStatusIs(403);
+    }
+
+    @Test
+    void shouldRefuseAGuestAnyChange() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineDisconnects();
+
+        whenCalledAsGuest("POST", "/api/v1/servers/disconnect");
+
+        thenTheStatusIs(403);
+        thenTheEngineWasNotAsked();
+    }
+
+    @Test
+    void shouldListTheSearchesStartedWithWhatTheyAskedFor() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSearchesAs(7);
+        givenASearchStarted("{\"query\":\"talk\",\"scope\":\"kad\"}", "7");
+
+        whenCalled("GET", "/api/v1/searches", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("{\"id\":7,\"query\":\"talk\",\"scope\":\"kad\",\"running\":true,\"results\":0}");
+    }
+
+    @Test
     void shouldStopNjMuleWhenAsked() throws Exception {
         givenTheApiRuns();
 
@@ -946,6 +997,13 @@ class RemoteApiTest {
         return URLEncoder.encode(text, StandardCharsets.UTF_8);
     }
 
+    private void givenTheEngineDisconnects() {
+        this.fake.answer("disconnect", args -> {
+            this.calls.add("disconnect");
+            return CompletableFuture.completedFuture(null);
+        });
+    }
+
     private void thenTheEngineWasNotAsked() {
         assertThat(this.calls).isEmpty();
     }
@@ -1103,6 +1161,15 @@ class RemoteApiTest {
                 body.isEmpty() ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body);
         this.answer = this.http.send(
                 request(path, token).method(method, content).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private void whenCalledAsGuest(String method, String path) throws Exception {
+        this.answer = this.http.send(
+                request(path, Optional.empty())
+                        .header(ApiServer.GUEST, "1")
+                        .method(method, HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     // Results come through the engine's events, delivered on the publisher's threads.

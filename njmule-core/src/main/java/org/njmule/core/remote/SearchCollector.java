@@ -98,12 +98,13 @@ public final class SearchCollector {
     /** The searches started here, oldest first. */
     public synchronized List<Listed> searches() {
         return this.ours.entrySet().stream()
-                .map(e -> new Listed(e.getKey(), e.getValue().asked))
+                .map(e -> new Listed(
+                        e.getKey(), e.getValue().asked, e.getValue().results.size(), running(e.getKey())))
                 .toList();
     }
 
-    /** A search started here. */
-    public record Listed(long id, Asked asked) {}
+    /** A search started here, with the results it has and whether more may come. */
+    public record Listed(long id, Asked asked, int results, boolean running) {}
 
     /** Whether a search started here may still bring results. */
     public synchronized boolean running(long search) {

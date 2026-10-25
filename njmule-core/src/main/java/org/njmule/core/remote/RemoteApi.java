@@ -111,6 +111,32 @@ public final class RemoteApi implements AutoCloseable {
     private static final long ENGINE_WAIT_SECONDS = 10;
     private static final String PROXY_PASSWORD = "proxy.password";
 
+    // What a guest of the web interface may read: the transfers, the searches made, the servers, Kad and the
+    // statistics; never the settings, the log, the chats, the shared files or the files' data.
+    private static final Set<String> GUEST_READS = Set.of(
+            "getApi",
+            "getStatus",
+            "getLimits",
+            "getRates",
+            "streamEvents",
+            "listDownloads",
+            "getDownload",
+            "getDownloadParts",
+            "listPeerComments",
+            "listSources",
+            "listUploads",
+            "listServers",
+            "getKad",
+            "listKadContacts",
+            "listKadSearches",
+            "listSearches",
+            "getSearchResults",
+            "listCategories");
+
+    // The events a guest follows, by the prefixes of their names.
+    private static final List<String> GUEST_EVENTS =
+            List.of("started", "stopping", "server", "search", "download", "disk");
+
     private final NjMuleEngine engine;
     private final Guard guard;
     private final SearchCollector searches;
@@ -177,7 +203,7 @@ public final class RemoteApi implements AutoCloseable {
     }
 
     /** A request matched to an operation, with its parameters and body checked against the document. */
-    private record Call(Exchange exchange, Map<String, JsonNode> parameters, JsonNode body) {}
+    private record Call(Exchange exchange, Map<String, JsonNode> parameters, JsonNode body, boolean guest) {}
 
     @FunctionalInterface
     private interface Handler {
@@ -337,6 +363,7 @@ public final class RemoteApi implements AutoCloseable {
                 entry("bootstrapKad", c -> done(c, this.engine.kadBootstrap(address(text(c.body(), ADDRESS_KEY))))),
                 entry("importKadNodes", c -> count(c, this.engine.addKadContacts(url(c)))),
                 entry("startSearch", this::startSearch),
+                entry("listSearches", this::listSearches),
                 entry("getSearchResults", this::getSearchResults),
                 entry("stopSearch", this::stopSearch),
                 entry("moreSearchResults", this::moreSearchResults),
@@ -381,7 +408,7 @@ public final class RemoteApi implements AutoCloseable {
 
     /** Answers a request whose path starts with {@value #PREFIX}, from a caller that sends the API token. */
     public void handle(Exchange exchange) throws IOException {
-        serve(exchange, true);
+        serve(exchange, true, false);
     }
 
     /**
@@ -389,15 +416,23 @@ public final class RemoteApi implements AutoCloseable {
      * logged-in browser whose request carried its session's token.
      */
     public void handleTrusted(Exchange exchange) throws IOException {
-        serve(exchange, false);
+        serve(exchange, false, false);
     }
 
-    private void serve(Exchange exchange, boolean needsToken) throws IOException {
+    /**
+     * Answers a guest the host has let in: the reads of the transfers, the searches, the servers, Kad and the
+     * statistics only, with their events.
+     */
+    public void handleGuest(Exchange exchange) throws IOException {
+        serve(exchange, false, true);
+    }
+
+    private void serve(Exchange exchange, boolean needsToken, boolean guest) throws IOException {
         try {
             if (needsToken) {
                 authorize(exchange);
             }
-            route(exchange);
+            route(exchange, guest);
         } catch (Failure e) {
             error(exchange, e.status, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -417,7 +452,7 @@ public final class RemoteApi implements AutoCloseable {
 
     // No Host check for token callers: browsers never send the token by themselves, so a page reaching us through DNS
     // rebinding cannot act, and other computers may use any name of this one.
-    private void route(Exchange exchange) throws IOException {
+    private void route(Exchange exchange, boolean guest) throws IOException {
         List<String> segments = segments(exchange.rawPath());
         ApiSpecification.Route route = this.specification.route(segments).orElseThrow(RemoteApi::notFound);
         ApiSpecification.Operation operation = route.operation(exchange.method())
@@ -425,9 +460,12 @@ public final class RemoteApi implements AutoCloseable {
                     exchange.setHeader("Allow", route.allowed());
                     return new Failure(405, "Method not allowed.");
                 });
+        if (guest && !GUEST_READS.contains(operation.id())) {
+            throw new Failure(403, "A guest can only look at the transfers, searches, servers, Kad and statistics.");
+        }
         Map<String, JsonNode> parameters = operation.arguments(route.values(segments), exchange.query());
         JsonNode body = operation.body().isPresent() ? operation.body(read(exchange)) : null;
-        this.handlers.get(operation.id()).handle(new Call(exchange, parameters, body));
+        this.handlers.get(operation.id()).handle(new Call(exchange, parameters, body, guest));
     }
 
     private void authorize(Exchange exchange) {
@@ -616,8 +654,23 @@ public final class RemoteApi implements AutoCloseable {
         if (types != null) {
             types.values().forEach(t -> wanted.add(t.asString()));
         }
+        if (c.guest()) {
+            guestEvents(wanted);
+        }
         if (!this.streams.serve(c.exchange(), wanted)) {
             throw new Failure(503, "Too many event streams.");
+        }
+    }
+
+    // All the guest's events when it asks for all, else those it asks for among them.
+    private static void guestEvents(List<String> wanted) {
+        if (wanted.isEmpty()) {
+            wanted.addAll(GUEST_EVENTS);
+            return;
+        }
+        wanted.removeIf(w -> GUEST_EVENTS.stream().noneMatch(w::startsWith));
+        if (wanted.isEmpty()) {
+            throw new Failure(403, "A guest cannot follow these events.");
         }
     }
 
@@ -852,7 +905,7 @@ public final class RemoteApi implements AutoCloseable {
         SearchRequest.Scope scope =
                 asked.equalsIgnoreCase("automatic") ? automaticScope() : enumValue(SearchRequest.Scope.class, asked);
         SearchId id = await(this.engine.search(new SearchRequest(expression, scope)));
-        this.searches.started(id.value());
+        this.searches.started(id.value(), new SearchCollector.Asked(expression, asked.toLowerCase(Locale.ROOT)));
         reply(c.exchange(), 201, g -> {
             g.writeStartObject();
             g.writeNumberProperty("id", id.value());
@@ -869,6 +922,22 @@ public final class RemoteApi implements AutoCloseable {
                         status.server(),
                         await(this.engine.servers()).size())
                 .orElseThrow(() -> new Failure(409, "Not connected to a server or to Kad."));
+    }
+
+    private void listSearches(Call c) throws IOException {
+        List<SearchCollector.Listed> listed = this.searches.searches();
+        reply(
+                c.exchange(),
+                200,
+                g -> ApiJson.array(g, listed, (w, s) -> {
+                    w.writeStartObject();
+                    w.writeNumberProperty("id", s.id());
+                    w.writeStringProperty("query", s.asked().expression());
+                    w.writeStringProperty("scope", s.asked().scope());
+                    w.writeBooleanProperty("running", s.running());
+                    w.writeNumberProperty("results", s.results());
+                    w.writeEndObject();
+                }));
     }
 
     private void getSearchResults(Call c) throws IOException {

@@ -424,6 +424,11 @@ All notable changes to this project are documented here. The format follows
   minutes after the last one, through the Windows launcher, `caffeinate` on macOS or
   `systemd-inhibit` on Linux, which end with njMule anyway (off by default; desktop and web
   settings, `system.preventSleep`).
+- A guest of the web interface, with a password of its own set in the desktop or web settings (none
+  by default): it sees the transfers, the searches made through the web interface, the servers, Kad
+  and the statistics, and the server refuses it any change, the settings, the log, the chats and the
+  shared files; its page leaves out what it cannot do. The API lists the searches it keeps
+  (`GET /searches`), so that a page reloaded or opened elsewhere shows them again.
 - Downloads that receive nothing for a number of days can be deleted by themselves (off by default;
   `download.autoDeleteDays`): only the time a download runs while njMule is connected counts, kept
   across restarts in its part.met, paused and stopped downloads are never deleted, and each link is

@@ -24,6 +24,7 @@ import { size } from '../format';
 import { t } from '../i18n';
 import { htmlLinks } from '../links';
 import { attempt, told } from '../notify';
+import { guest } from '../role';
 import {
     completeness,
     expression,
@@ -98,8 +99,25 @@ function resetFilters(): void {
     filters.value = { type: '', extension: '' };
 }
 
+// The searches started through the web interface, here or in another browser: a guest sees those only.
+async function takeTheServersSearches(): Promise<void> {
+    try {
+        const listed = await api.get<{ id: number; query: string; running: boolean }[]>('/searches');
+        const known = new Set(searches.value.map((s) => s.id));
+        const added = listed
+            .filter((l) => !known.has(l.id) && l.query !== '')
+            .map((l) => ({ id: l.id, expression: l.query, results: [] as Result[], running: l.running }));
+        if (added.length > 0) {
+            searches.value = [...searches.value, ...added];
+            active.value ||= added.at(-1)!.id.toString();
+        }
+    } catch {
+        // The page's own searches stay.
+    }
+}
+
 async function start(): Promise<void> {
-    if (query.value.trim() === '') {
+    if (guest || query.value.trim() === '') {
         return;
     }
     const e = expression(query.value, filters.value);
@@ -127,6 +145,13 @@ async function more(): Promise<void> {
     if (shown.value) {
         const id = shown.value.id;
         await attempt(() => api.post(`/searches/${id}/more`));
+    }
+}
+
+// A guest's double click does nothing.
+function downloadOnDoubleClick(row: Result): void {
+    if (!guest) {
+        void download([row]);
     }
 }
 
@@ -214,6 +239,7 @@ watch(
 
 let timer = 0;
 onMounted(() => {
+    void takeTheServersSearches();
     timer = window.setInterval(() => {
         if (shown.value) {
             void refresh(shown.value);
@@ -224,7 +250,7 @@ onUnmounted(() => window.clearInterval(timer));
 </script>
 
 <template>
-    <form class="tools" @submit.prevent="start">
+    <form v-if="!guest" class="tools" @submit.prevent="start">
         <el-input v-model="query" class="query" :placeholder="t('IDS_SEARCH_TEXT')" clearable />
         <el-segmented v-model="scope" :options="SCOPES" />
         <el-popover trigger="click" :width="360">
@@ -273,8 +299,8 @@ onUnmounted(() => window.clearInterval(timer));
 
     <div v-if="searches.length === 0" class="empty">
         <h2>{{ t('nj.search.emptyTitle') }}</h2>
-        <p>{{ t('nj.search.emptyText') }}</p>
-        <ul>
+        <p v-if="!guest">{{ t('nj.search.emptyText') }}</p>
+        <ul v-if="!guest">
             <li>{{ t('nj.search.tipExact') }}: <code>"night of the living dead"</code></li>
             <li>{{ t('nj.search.tipWithout') }}: <code>debian -netinst</code></li>
             <li>{{ t('nj.search.tipLink') }}: <code>ed2k://|file|…|/</code></li>
@@ -282,7 +308,7 @@ onUnmounted(() => window.clearInterval(timer));
     </div>
 
     <template v-else>
-        <el-tabs v-model="active" type="card" closable @tab-remove="close">
+        <el-tabs v-model="active" type="card" :closable="!guest" @tab-remove="close">
             <el-tab-pane
                 v-for="s in searches"
                 :key="s.id"
@@ -291,19 +317,23 @@ onUnmounted(() => window.clearInterval(timer));
             />
         </el-tabs>
         <div class="actions">
-            <el-button :disabled="chosen.length === 0" type="primary" @click="download(chosen)">
+            <el-button v-if="!guest" :disabled="chosen.length === 0" type="primary" @click="download(chosen)">
                 <NjIcon name="DOWNLOAD" />{{ t('IDS_DOWNLOAD') }}
             </el-button>
             <el-button :disabled="chosen.length === 0" @click="copyLinks(false)">
                 <NjIcon name="COPY" />{{ t('nj.copyLink') }}
             </el-button>
             <el-button :disabled="chosen.length === 0" @click="copyLinks(true)">{{ t('IDS_DL_LINK2') }}</el-button>
-            <el-button :disabled="chosen.length === 0 || !status?.relatedSearch" @click="searchRelated">
-                {{ t('IDS_SEARCHRELATED') }}
-            </el-button>
-            <el-button :disabled="chosen.length === 0" @click="markSpam(true)">{{ t('IDS_MARKSPAM') }}</el-button>
-            <el-button :disabled="chosen.length === 0" @click="markSpam(false)">{{ t('IDS_MARKNOTSPAM') }}</el-button>
-            <el-button @click="more">{{ t('nj.search.more') }}</el-button>
+            <template v-if="!guest">
+                <el-button :disabled="chosen.length === 0 || !status?.relatedSearch" @click="searchRelated">
+                    {{ t('IDS_SEARCHRELATED') }}
+                </el-button>
+                <el-button :disabled="chosen.length === 0" @click="markSpam(true)">{{ t('IDS_MARKSPAM') }}</el-button>
+                <el-button :disabled="chosen.length === 0" @click="markSpam(false)">{{
+                    t('IDS_MARKNOTSPAM')
+                }}</el-button>
+                <el-button @click="more">{{ t('nj.search.more') }}</el-button>
+            </template>
             <span class="grow"></span>
             <span class="count">{{ t('nj.search.count', `${visible.length}/${shown?.results.length ?? 0}`) }}</span>
             <el-input v-model="filter" class="filter" clearable :placeholder="t('IDS_DL_FILENAME')" />
@@ -314,7 +344,7 @@ onUnmounted(() => window.clearInterval(timer));
             :empty-text="t('nj.search.waiting')"
             :default-sort="{ prop: 'sources', order: 'descending' }"
             @selection-change="(rows: Result[]) => (chosen = rows)"
-            @row-dblclick="(row: Result) => download([row])"
+            @row-dblclick="(row: Result) => downloadOnDoubleClick(row)"
         >
             <el-table-column type="selection" width="40" />
             <el-table-column :label="t('IDS_DL_FILENAME')" prop="name" min-width="300" sortable show-overflow-tooltip>
