@@ -46,6 +46,7 @@ import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.geometry.HPos;
+import javafx.geometry.NodeOrientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -924,7 +925,7 @@ public final class TransfersScreen implements Screen {
 
     /**
      * What a double click or Enter does to a download: a complete one opens in the program of its kind, the others open
-     * onto their sources, or close, as eMule's list does.
+     * onto their sources, or close.
      */
     void activate(DownloadInfo d) {
         if (d.status() == DownloadInfo.Status.COMPLETE) {
@@ -1051,8 +1052,10 @@ public final class TransfersScreen implements Screen {
         };
     }
 
+    // Left to right and on the right in every language, as the figures of the downloads above.
     private static Label figure(String text) {
-        Label figure = Fx.leftToRight(new Label(text));
+        Label figure = new Label(text);
+        figure.setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
         figure.getStyleClass().add("source-cell");
         figure.setAlignment(Pos.CENTER_RIGHT);
         figure.setMaxWidth(Double.MAX_VALUE);
@@ -1076,9 +1079,11 @@ public final class TransfersScreen implements Screen {
             });
         }
 
+        // A download that completed has no sources left to show.
         boolean opened() {
             return !isEmpty()
                     && getItem() != null
+                    && getItem().get().status() != DownloadInfo.Status.COMPLETE
                     && TransfersScreen.this.opened.contains(getItem().get().hash());
         }
 
