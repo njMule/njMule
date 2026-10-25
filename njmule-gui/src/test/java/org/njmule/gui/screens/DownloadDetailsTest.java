@@ -26,8 +26,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import javafx.event.EventType;
+import javafx.geometry.Bounds;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
+import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
@@ -128,30 +131,61 @@ class DownloadDetailsTest {
         givenTheTransfersWith(FILM);
         givenTheDetailsAre(true);
 
-        whenTheDividerIsDraggedTo(0.7);
+        whenTheDividerIsDraggedBy(-120);
 
-        thenTheSettingsRememberTheDetailsAsTallAsTheRestOfTheSplit(0.3);
+        thenTheSettingsRememberTheDetailsAsTallAsTheyAre();
+    }
+
+    @Test
+    void shouldKeepTheButtonsOfTheDownloadInSightWhenTheDividerIsDraggedDown() throws Exception {
+        givenTheTransfersWith(FILM);
+        givenTheDownloadChosen();
+
+        whenTheDividerIsDraggedBy(400);
+
+        thenTheButtonsOfTheDownloadShowWithRoomUnder();
+    }
+
+    @Test
+    void shouldBringTheDetailsBackAsTallAsTheyWereLeftWhenShownAgain() throws Exception {
+        givenTheDetailsWereLeft(400);
+        givenTheTransfersWith(FILM);
+        givenTheDetailsShown(false);
+
+        whenTheDetailsAreShown();
+
+        thenTheDetailsAreAbout(400);
+    }
+
+    @Test
+    void shouldNotTakeTheHeightALowWindowLeavesTheDetailsForTheUsers() throws Exception {
+        givenTheDetailsWereLeft(400);
+        givenTheTransfersWith(FILM);
+
+        whenTheWindowIsHigh(330);
+
+        thenTheSettingsStillHaveTheDetails(400);
     }
 
     @Test
     void shouldBringTheDetailsBackAsTallAsTheyWereLeft() throws Exception {
-        givenTheDetailsWereLeft(250);
+        givenTheDetailsWereLeft(400);
 
         whenTheTransfersShow(FILM);
 
-        thenTheDetailsAreAbout(250);
+        thenTheDetailsAreAbout(400);
     }
 
     @Test
     void shouldGiveTheDetailsBackTheirHeightWhenTheWindowGrowsFromALowOne() throws Exception {
-        givenTheDetailsWereLeft(250);
+        givenTheDetailsWereLeft(400);
         givenTheTransfersWith(FILM);
         givenTheWindowHigh(330);
 
         whenTheWindowIsHigh(720);
 
-        thenTheDetailsAreAbout(250);
-        thenTheSettingsStillHaveTheDetails(250);
+        thenTheDetailsAreAbout(400);
+        thenTheSettingsStillHaveTheDetails(400);
     }
 
     @Test
@@ -298,39 +332,58 @@ class DownloadDetailsTest {
         givenTheTransfersWith(download);
     }
 
-    // As the mouse leaves it: the split hears the release on its divider.
-    private void whenTheDividerIsDraggedTo(double share) throws Exception {
+    private void givenTheDetailsShown(boolean shown) throws Exception {
+        FxTesting.onFx(() -> this.screen.showDetails(shown));
+    }
+
+    private void whenTheDetailsAreShown() throws Exception {
+        givenTheDetailsShown(true);
+    }
+
+    // As the mouse does it: pressed on the divider, moved and let go.
+    private void whenTheDividerIsDraggedBy(double pixels) throws Exception {
         FxTesting.onFx(() -> {
-            this.screen.split().setDividerPositions(share);
-            this.screen
-                    .split()
-                    .lookup(".split-pane-divider")
-                    .fireEvent(new MouseEvent(
-                            MouseEvent.MOUSE_RELEASED,
-                            0,
-                            0,
-                            0,
-                            0,
-                            MouseButton.PRIMARY,
-                            1,
-                            false,
-                            false,
-                            false,
-                            false,
-                            false,
-                            false,
-                            false,
-                            false,
-                            false,
-                            false,
-                            null));
+            Node divider = this.screen.split().lookup(".split-pane-divider");
+            Bounds at = divider.localToScene(divider.getLayoutBounds());
+            divider.fireEvent(mouse(MouseEvent.MOUSE_PRESSED, at.getCenterX(), at.getCenterY()));
+            divider.fireEvent(mouse(MouseEvent.MOUSE_DRAGGED, at.getCenterX(), at.getCenterY() + pixels));
+        });
+        FxTesting.onFx(() -> {
+            Node divider = this.screen.split().lookup(".split-pane-divider");
+            Bounds at = divider.localToScene(divider.getLayoutBounds());
+            divider.fireEvent(mouse(MouseEvent.MOUSE_RELEASED, at.getCenterX(), at.getCenterY()));
         });
     }
 
-    private void thenTheSettingsRememberTheDetailsAsTallAsTheRestOfTheSplit(double share) throws Exception {
-        double expected = FxTesting.onFx(() -> this.screen.split().getHeight() * share);
+    private static MouseEvent mouse(EventType<MouseEvent> type, double x, double y) {
+        return new MouseEvent(
+                type,
+                x,
+                y,
+                x,
+                y,
+                MouseButton.PRIMARY,
+                1,
+                false,
+                false,
+                false,
+                false,
+                type != MouseEvent.MOUSE_RELEASED,
+                false,
+                false,
+                false,
+                false,
+                false,
+                null);
+    }
+
+    private void thenTheSettingsRememberTheDetailsAsTallAsTheyAre() throws Exception {
+        double tall = FxTesting.onFx(() -> {
+            SplitPane split = this.screen.split();
+            return split.getHeight() * (1 - split.getDividerPositions()[0]);
+        });
         assertThat(FxTesting.onFx(() -> this.test.gui.settings().transfersDetailsHeight()))
-                .hasValueCloseTo(expected, within(1.0));
+                .hasValueCloseTo(tall, within(1.0));
     }
 
     // The divider takes a few pixels of what is kept.
