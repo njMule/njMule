@@ -219,6 +219,9 @@ class TransfersScreenTest {
 
     private void givenTheEngine() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
+        // The model's first reading of the downloads would take away a row an event adds before it lands.
+        this.test.engine.downloads().get(10, TimeUnit.SECONDS);
+        FxTesting.onFx(() -> {});
     }
 
     private void givenTheScreen() throws Exception {
