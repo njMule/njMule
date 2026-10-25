@@ -49,7 +49,6 @@ import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.css.PseudoClass;
-import javafx.event.EventTarget;
 import javafx.geometry.HPos;
 import javafx.geometry.NodeOrientation;
 import javafx.geometry.Orientation;
@@ -84,7 +83,6 @@ import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
-import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -223,6 +221,8 @@ public final class TransfersScreen implements Screen {
     // The downloads over the details of the chosen one, placed once the split has a height.
     private SplitPane split;
     private boolean placeDetails;
+    // How tall the app made the details last, or the user left them.
+    private double placedHeight = -1;
     private DownloadDetails details;
     private int shownCategory = SHOW_ALL;
 
@@ -425,11 +425,6 @@ public final class TransfersScreen implements Screen {
         // remembered, as the height of the details.
         SplitPane.setResizableWithParent(this.details.view(), false);
         this.split.heightProperty().addListener((o, was, now) -> placeDetails());
-        this.split.addEventFilter(MouseEvent.MOUSE_RELEASED, e -> {
-            if (onDivider(e.getTarget()) && detailsShown()) {
-                this.gui.settings().setTransfersDetailsHeight(detailsHeight());
-            }
-        });
         showBelow(this.detailsButton.isSelected());
         this.detailsButton.selectedProperty().addListener((o, was, now) -> showBelow(now));
         VBox part = new VBox(10, narrowing, this.split);
@@ -835,8 +830,24 @@ public final class TransfersScreen implements Screen {
             this.split.getItems().remove(below);
         } else if (!this.split.getItems().contains(below)) {
             this.split.getItems().add(below);
+            // The details show the chosen download before they are measured, and a moved divider is remembered.
+            refreshDetails();
             this.placeDetails = true;
             placeDetails();
+            this.split.getDividers().getFirst().positionProperty().addListener((o, was, now) -> keepDetailsHeight());
+        }
+    }
+
+    // A height the app did not give the details is the user's, from the divider: it is remembered. A taller window
+    // keeps
+    // the details as tall as they were, so it changes nothing here.
+    private void keepDetailsHeight() {
+        if (detailsShown() && !this.placeDetails && this.split.getHeight() > 0) {
+            double now = detailsHeight();
+            if (Math.abs(now - this.placedHeight) >= 2) {
+                this.placedHeight = now;
+                this.gui.settings().setTransfersDetailsHeight(now);
+            }
         }
     }
 
@@ -873,16 +884,8 @@ public final class TransfersScreen implements Screen {
         double height = this.split.getHeight();
         double kept =
                 Math.clamp(wanted, Math.min(LEAST_HEIGHT, height / 2), Math.max(height - LEAST_HEIGHT, height / 2));
+        this.placedHeight = kept;
         this.split.setDividerPositions(1 - kept / height);
-    }
-
-    private static boolean onDivider(EventTarget target) {
-        for (Node n = target instanceof Node node ? node : null; n != null; n = n.getParent()) {
-            if (n.getStyleClass().contains("split-pane-divider")) {
-                return true;
-            }
-        }
-        return false;
     }
 
     // The sources in the details are those of the download chosen.

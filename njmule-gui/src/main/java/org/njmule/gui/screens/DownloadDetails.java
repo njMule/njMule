@@ -39,6 +39,7 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.OverrunStyle;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
@@ -157,6 +158,7 @@ final class DownloadDetails {
     // The download shown, whose comments are asked for once.
     private Hash16 shownHash;
     private final Region one;
+    private final Tooltip nameTip = new Tooltip();
     private VBox head;
     private final VBox many;
     private final Label none;
@@ -194,8 +196,11 @@ final class DownloadDetails {
         StackPane kindBox = new StackPane(this.kind);
         kindBox.getStyleClass().add("details-kind");
         this.name.getStyleClass().add("details-name");
-        Fx.wrap(this.name);
-        this.name.setMinHeight(Region.USE_PREF_SIZE);
+        // One line, cut in the middle so that the end of the name shows, whole in its tooltip: the head is as tall for
+        // every download, and the details open as tall as they stay.
+        this.name.setText(" ");
+        this.name.setTextOverrun(OverrunStyle.CENTER_ELLIPSIS);
+        this.name.setTooltip(this.nameTip);
         Fx.ownDirection(this.name);
         this.meta.getStyleClass().add("details-meta");
         Fx.wrap(this.meta);
@@ -452,6 +457,7 @@ final class DownloadDetails {
         TransfersScreen.Shown shown = TransfersScreen.shown(d);
         this.kind.setGlyph(Fx.fileIcon(FileKind.of(d.name())));
         this.name.setText(d.name());
+        this.nameTip.setText(d.name());
         String category = this.words.category().apply(d);
         this.meta.setText(f.size(d.size()) + (category.isEmpty() ? "" : " · " + category) + " · "
                 + this.words.priority().apply(d));
