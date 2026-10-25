@@ -107,6 +107,7 @@ class RemoteApiContractTest {
                 "/api/v1/limits",
                 "/api/v1/log?after=0",
                 "/api/v1/downloads",
+                "/api/v1/downloads?include=parts",
                 "/api/v1/downloads/" + HASH,
                 "/api/v1/sources",
                 "/api/v1/uploads",

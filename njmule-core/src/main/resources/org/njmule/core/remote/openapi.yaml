@@ -442,6 +442,13 @@ paths:
       operationId: listDownloads
       tags: [downloads]
       summary: The downloads.
+      parameters:
+        - name: include
+          in: query
+          description: With parts, each download comes with the map of its parts.
+          schema:
+            type: string
+            enum: [parts]
       responses:
         "200":
           description: Every download.
@@ -450,7 +457,11 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Download"
+                  allOf:
+                    - $ref: "#/components/schemas/Download"
+                  properties:
+                    parts:
+                      $ref: "#/components/schemas/PartMap"
         default:
           $ref: "#/components/responses/Error"
     post:
@@ -578,21 +589,7 @@ paths:
                   hash:
                     $ref: "#/components/schemas/Hash"
                   parts:
-                    type: object
-                    required: [size, missing, requested, sources]
-                    properties:
-                      size:
-                        type: integer
-                        format: int64
-                      missing:
-                        $ref: "#/components/schemas/Spans"
-                      requested:
-                        $ref: "#/components/schemas/Spans"
-                      sources:
-                        type: array
-                        description: The sources that have each part, in the order of the parts.
-                        items:
-                          type: integer
+                    $ref: "#/components/schemas/PartMap"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -2325,6 +2322,8 @@ components:
         - udpFirewalled
         - udpVerified
         - buddy
+        - users
+        - files
       properties:
         connected:
           type: boolean
@@ -2347,6 +2346,14 @@ components:
         buddy:
           type: string
           enum: [none, connecting, connected, serving]
+        users:
+          type: integer
+          format: int64
+          description: The users of Kad, as estimated from the contacts.
+        files:
+          type: integer
+          format: int64
+          description: The files on Kad, as estimated from the contacts.
     Download:
       type: object
       required:
@@ -2411,6 +2418,8 @@ components:
         - parts
         - partCount
         - reportedName
+        - askedFor
+        - askedForName
       properties:
         file:
           $ref: "#/components/schemas/Hash"
@@ -2438,6 +2447,13 @@ components:
         reportedName:
           type: [string, "null"]
           description: The name the source gives the file, when it differs.
+        askedFor:
+          type: [string, "null"]
+          pattern: "^[0-9A-F]{32}$"
+          description: The hash of the download the source is asked for instead (A4AF), when it is another one.
+        askedForName:
+          type: string
+          description: The name of that download; empty when there is none.
     Upload:
       type: object
       required:
@@ -2475,7 +2491,7 @@ components:
           format: int64
     SharedFile:
       type: object
-      required: [hash, name, size, path, priority, link]
+      required: [hash, name, size, path, priority, link, statistics]
       properties:
         hash:
           $ref: "#/components/schemas/Hash"
@@ -2490,6 +2506,29 @@ components:
           $ref: "#/components/schemas/UploadPriority"
         link:
           type: string
+        statistics:
+          type: object
+          description: The requests, accepted uploads and bytes sent of this session and of all of them.
+          required: [requests, accepted, transferred, totalRequests, totalAccepted, totalTransferred]
+          properties:
+            requests:
+              type: integer
+              format: int64
+            accepted:
+              type: integer
+              format: int64
+            transferred:
+              type: integer
+              format: int64
+            totalRequests:
+              type: integer
+              format: int64
+            totalAccepted:
+              type: integer
+              format: int64
+            totalTransferred:
+              type: integer
+              format: int64
     SharedDirectory:
       type: object
       required: [path, subdirectories]
@@ -2651,6 +2690,22 @@ components:
         resumeCategory:
           type: integer
           minimum: 0
+    PartMap:
+      type: object
+      required: [size, missing, requested, sources]
+      properties:
+        size:
+          type: integer
+          format: int64
+        missing:
+          $ref: "#/components/schemas/Spans"
+        requested:
+          $ref: "#/components/schemas/Spans"
+        sources:
+          type: array
+          description: The sources that have each part, in the order of the parts.
+          items:
+            type: integer
     Spans:
       type: array
       description: Byte ranges, each [start, end) as two numbers.

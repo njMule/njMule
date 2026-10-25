@@ -207,7 +207,7 @@ public final class RemoteApi implements AutoCloseable {
                 entry("getLog", this::getLog),
                 entry("streamEvents", this::streamEvents),
                 entry("shutdown", this::shutdown),
-                entry("listDownloads", c -> list(c, this.engine::downloads, ApiJson::download)),
+                entry("listDownloads", this::listDownloads),
                 entry("addDownloads", this::addDownloads),
                 entry("getDownload", c -> download(c, 200)),
                 entry("cancelDownload", c -> known(c, this.engine.cancelDownload(hash(c)))),
@@ -964,6 +964,13 @@ public final class RemoteApi implements AutoCloseable {
             throws IOException {
         List<T> all = await(items.get());
         reply(c.exchange(), 200, g -> ApiJson.array(g, all, each));
+    }
+
+    // With include=parts each download comes with the map of its parts, as a remote desktop app shows them.
+    private void listDownloads(Call c) throws IOException {
+        JsonNode include = c.parameters().get("include");
+        boolean withParts = include != null && include.asString().equals("parts");
+        list(c, this.engine::downloads, withParts ? ApiJson::downloadAndParts : ApiJson::download);
     }
 
     private void getDownloadParts(Call c) throws IOException {

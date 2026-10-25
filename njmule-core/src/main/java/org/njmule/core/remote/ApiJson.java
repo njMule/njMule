@@ -214,11 +214,27 @@ final class ApiJson {
         g.writeBooleanProperty("udpFirewalled", k.udpFirewalled());
         g.writeBooleanProperty("udpVerified", k.udpVerified());
         g.writeStringProperty("buddy", name(k.buddy()));
+        g.writeNumberProperty("users", k.users());
+        g.writeNumberProperty("files", k.files());
         g.writeEndObject();
     }
 
     static void download(JsonGenerator g, DownloadInfo d) {
         g.writeStartObject();
+        downloadFields(g, d);
+        g.writeEndObject();
+    }
+
+    /** A download with the map of its parts. */
+    static void downloadAndParts(JsonGenerator g, DownloadInfo d) {
+        g.writeStartObject();
+        downloadFields(g, d);
+        g.writeName("parts");
+        parts(g, d.parts());
+        g.writeEndObject();
+    }
+
+    private static void downloadFields(JsonGenerator g, DownloadInfo d) {
         g.writeStringProperty("hash", d.hash().toHex());
         g.writeStringProperty("name", d.name());
         g.writeNumberProperty("size", d.size());
@@ -232,7 +248,6 @@ final class ApiJson {
         g.writeBooleanProperty("previewFirst", d.previewFirst());
         g.writeBooleanProperty("autoSwap", d.autoSwap());
         g.writeStringProperty("link", d.link().toUri());
-        g.writeEndObject();
     }
 
     /** A download with the map of its parts: what is missing, what is being asked for, how many sources have each. */
@@ -240,7 +255,11 @@ final class ApiJson {
         g.writeStartObject();
         g.writeStringProperty("hash", d.hash().toHex());
         g.writeName("parts");
-        PartMap p = d.parts();
+        parts(g, d.parts());
+        g.writeEndObject();
+    }
+
+    private static void parts(JsonGenerator g, PartMap p) {
         g.writeStartObject();
         g.writeNumberProperty("size", p.size());
         spans(g, "missing", p.missing());
@@ -248,7 +267,6 @@ final class ApiJson {
         g.writeArrayPropertyStart("sources");
         p.sources().forEach(g::writeNumber);
         g.writeEndArray();
-        g.writeEndObject();
         g.writeEndObject();
     }
 
@@ -276,6 +294,9 @@ final class ApiJson {
         g.writeNumberProperty("parts", s.parts());
         g.writeNumberProperty("partCount", s.partCount());
         optional(g, "reportedName", s.reportedName());
+        // The download the source is asked for instead, when it is another one (A4AF).
+        optional(g, "askedFor", s.askedFor().map(Hash16::toHex));
+        g.writeStringProperty("askedForName", s.askedForName());
         g.writeEndObject();
     }
 
@@ -301,6 +322,16 @@ final class ApiJson {
         g.writeStringProperty("path", f.path().toString());
         g.writeStringProperty("priority", name(f.priority()));
         g.writeStringProperty("link", f.link().toUri());
+        SharedFileInfo.Statistics t = f.statistics();
+        g.writeName("statistics");
+        g.writeStartObject();
+        g.writeNumberProperty("requests", t.requests());
+        g.writeNumberProperty("accepted", t.accepted());
+        g.writeNumberProperty("transferred", t.transferred());
+        g.writeNumberProperty("totalRequests", t.totalRequests());
+        g.writeNumberProperty("totalAccepted", t.totalAccepted());
+        g.writeNumberProperty("totalTransferred", t.totalTransferred());
+        g.writeEndObject();
         g.writeEndObject();
     }
 
