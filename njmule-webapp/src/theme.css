@@ -183,6 +183,11 @@ body {
     transform: scaleX(-1);
 }
 
+/* The columns' edges, which can be dragged, show in the head only: the rows keep their lines across. */
+.el-table--border .el-table__body td.el-table__cell {
+    border-right-color: transparent;
+}
+
 /* A chosen row stands out, under the pointer too, as in the desktop app. */
 .el-table .el-table__body tr.chosen > td.el-table__cell,
 .el-table .el-table__body tr.chosen:hover > td.el-table__cell {

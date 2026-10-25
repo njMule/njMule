@@ -4,7 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
 import type { TableInstance } from 'element-plus';
-import { CUT_HINT, chooser } from '../tables';
+import { CUT_HINT, chooser, rememberedWidths } from '../tables';
 import {
     ElButton,
     ElInput,
@@ -50,6 +50,7 @@ const active = ref(searches.value.at(-1)?.id.toString() ?? '');
 const filter = ref('');
 const chosen = ref<Result[]>([]);
 const resultTable = useTemplateRef<TableInstance>('resultTable');
+const widths = rememberedWidths(resultTable, 'search');
 const downloads = usePoll(() => api.get<Download[]>('/downloads'), 5000, [] as Download[]);
 
 const SCOPES = computed(() => [
@@ -350,6 +351,8 @@ onUnmounted(() => window.clearInterval(timer));
         <el-table
             :tooltip-options="CUT_HINT"
             ref="resultTable"
+            border
+            @header-dragend="widths"
             :data="visible"
             row-key="hash"
             :row-class-name="choice.rowClass"
@@ -359,7 +362,7 @@ onUnmounted(() => window.clearInterval(timer));
             @selection-change="(rows: Result[]) => (chosen = rows)"
             @row-dblclick="(row: Result) => downloadOnDoubleClick(row)"
         >
-            <el-table-column type="selection" width="40" reserve-selection />
+            <el-table-column type="selection" width="40" reserve-selection :resizable="false" />
             <el-table-column :label="t('IDS_DL_FILENAME')" prop="name" min-width="300" sortable show-overflow-tooltip>
                 <template #default="{ row }">
                     <span :class="{ mine: downloading.has(row.hash.toUpperCase()), spam: row.spam }">{{

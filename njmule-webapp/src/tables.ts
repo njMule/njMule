@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { TableInstance } from 'element-plus';
-import { nextTick, watch } from 'vue';
+import { nextTick, onMounted, watch } from 'vue';
 
 // A row of a table, as Element Plus types it.
 type Row = Record<PropertyKey, any>;
@@ -54,5 +54,67 @@ export function chooser<T extends Row>(
             t.clearSelection();
             t.toggleRowSelection(row, true);
         },
+    };
+}
+
+// What a table keeps of a column, as Element Plus does it.
+interface Column {
+    property?: string;
+    label?: string;
+    type?: string;
+    width?: number | string;
+    realWidth?: number | null;
+}
+
+// The table's own store of its columns, which its resizing uses.
+interface Columns {
+    store: { states: { columns: { value: Column[] } }; scheduleLayout: (heights: boolean, widths: boolean) => void };
+}
+
+function columnKey(column: Column): string {
+    return column.property || column.label || '';
+}
+
+/**
+ * The widths the user gave the columns of the table {@code name} by dragging their edges, kept in this browser and given
+ * back as the table comes again, also to columns shown later; the returned handler takes each new width.
+ */
+export function rememberedWidths(table: { readonly value: TableInstance | null }, name: string) {
+    const key = `njmule.columns.${name}`;
+    const read = (): Record<string, number> => {
+        try {
+            return JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, number>;
+        } catch {
+            return {};
+        }
+    };
+    const columns = (): Column[] => (table.value as unknown as Columns | null)?.store.states.columns.value ?? [];
+    const restore = (): void => {
+        const saved = read();
+        let changed = false;
+        for (const column of columns()) {
+            const width = saved[columnKey(column)];
+            if (column.type !== 'selection' && width !== undefined && column.realWidth !== width) {
+                column.width = column.realWidth = width;
+                changed = true;
+            }
+        }
+        if (changed) {
+            (table.value as unknown as Columns).store.scheduleLayout(false, true);
+        }
+    };
+    onMounted(() => void nextTick(restore));
+    watch(
+        () => columns().length,
+        () => void nextTick(restore),
+    );
+    return (width: number, _old: number, column: Column): void => {
+        const saved = read();
+        saved[columnKey(column)] = Math.round(width);
+        try {
+            localStorage.setItem(key, JSON.stringify(saved));
+        } catch {
+            // Private windows may keep nothing: the width lasts as long as the page.
+        }
     };
 }

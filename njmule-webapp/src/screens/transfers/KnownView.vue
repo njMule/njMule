@@ -3,8 +3,9 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { CUT_HINT } from '../../tables';
-import { ElTable, ElTableColumn } from 'element-plus';
+import { CUT_HINT, rememberedWidths } from '../../tables';
+import { ElTable, ElTableColumn, type TableInstance } from 'element-plus';
+import { useTemplateRef } from 'vue';
 import CountryFlag from '../../components/CountryFlag.vue';
 import { size } from '../../format';
 import { language, t } from '../../i18n';
@@ -12,6 +13,8 @@ import type { KnownClient } from '../../types';
 
 // The clients met in the last 90 days, never their addresses; the totals are those of the credits.
 defineProps<{ clients: KnownClient[] }>();
+const knownTable = useTemplateRef<TableInstance>('knownTable');
+const widths = rememberedWidths(knownTable, 'known');
 
 // eMule's texts as column titles, without the colon they end with.
 function label(key: string): string {
@@ -24,7 +27,15 @@ function when(seconds: number): string {
 </script>
 
 <template>
-    <el-table :tooltip-options="CUT_HINT" :data="clients" row-key="userHash" :empty-text="t('nj.clients.none')">
+    <el-table
+        ref="knownTable"
+        border
+        @header-dragend="widths"
+        :tooltip-options="CUT_HINT"
+        :data="clients"
+        row-key="userHash"
+        :empty-text="t('nj.clients.none')"
+    >
         <el-table-column :label="t('IDS_QL_USERNAME')" prop="nick" min-width="160" sortable show-overflow-tooltip>
             <template #default="{ row }">{{ row.nick || row.userHash }}</template>
         </el-table-column>

@@ -3,8 +3,9 @@
 
 import type { TableInstance } from 'element-plus';
 import { describe, expect, it } from 'vitest';
-import { nextTick, ref } from 'vue';
-import { chooser } from '../tables';
+import { mount } from '@vue/test-utils';
+import { defineComponent, h, nextTick, ref } from 'vue';
+import { chooser, rememberedWidths } from '../tables';
 
 interface Row extends Record<string, unknown> {
     hash: string;
@@ -115,5 +116,63 @@ describe('tables', () => {
         const event = new MouseEvent('click', keys);
         Object.defineProperty(event, 'target', { value: target ?? document.createElement('td') });
         choice.click(row, { type }, event);
+    }
+});
+
+describe('remembered widths', () => {
+    interface Column {
+        label: string;
+        type?: string;
+        width?: number;
+        realWidth?: number | null;
+    }
+
+    let columns: Column[] = [];
+    let laidOut = 0;
+    let save: (width: number, old: number, column: Column) => void = () => undefined;
+
+    it('should give the columns back the widths they were left at', async () => {
+        givenTheWidthsLeft({ Name: 320 });
+
+        await whenTheTableComes({ label: 'Name', width: 200 }, { label: 'Size', width: 100 });
+
+        expect(columns.map((c) => c.width)).toEqual([320, 100]);
+        expect(laidOut).toBe(1);
+    });
+
+    it('should keep the width a column is dragged to', async () => {
+        givenTheWidthsLeft({});
+        await whenTheTableComes({ label: 'Name', width: 200 });
+
+        save(256.4, 200, columns[0]!);
+
+        expect(JSON.parse(localStorage.getItem('njmule.columns.test') ?? '{}')).toEqual({ Name: 256 });
+    });
+
+    function givenTheWidthsLeft(widths: Record<string, number>): void {
+        localStorage.setItem('njmule.columns.test', JSON.stringify(widths));
+        laidOut = 0;
+    }
+
+    async function whenTheTableComes(...shown: Column[]): Promise<void> {
+        columns = shown;
+        const table = {
+            store: {
+                states: { columns: { value: columns } },
+                scheduleLayout: () => {
+                    laidOut++;
+                },
+            },
+        } as unknown as TableInstance;
+        mount(
+            defineComponent({
+                setup() {
+                    save = rememberedWidths({ value: table }, 'test');
+                    return () => h('div');
+                },
+            }),
+        );
+        await nextTick();
+        await nextTick();
     }
 });

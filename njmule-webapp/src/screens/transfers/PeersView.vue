@@ -3,9 +3,9 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { CUT_HINT } from '../../tables';
-import { ElButton, ElTable, ElTableColumn } from 'element-plus';
-import { ref } from 'vue';
+import { CUT_HINT, rememberedWidths } from '../../tables';
+import { ElButton, ElTable, ElTableColumn, type TableInstance } from 'element-plus';
+import { ref, useTemplateRef } from 'vue';
 import ClientFilesDialog from '../../components/ClientFilesDialog.vue';
 import CountryFlag from '../../components/CountryFlag.vue';
 import { duration, rate, size } from '../../format';
@@ -14,6 +14,8 @@ import { guest } from '../../role';
 import type { Upload } from '../../types';
 
 defineProps<{ peers: Upload[] }>();
+const peerTable = useTemplateRef<TableInstance>('peerTable');
+const widths = rememberedWidths(peerTable, 'peers');
 
 const browsing = ref(false);
 const client = ref({ address: '', name: '' });
@@ -25,7 +27,14 @@ function browse(p: Upload): void {
 </script>
 
 <template>
-    <el-table :tooltip-options="CUT_HINT" :data="peers" :empty-text="t('nj.transfers.noUploads')">
+    <el-table
+        ref="peerTable"
+        border
+        @header-dragend="widths"
+        :tooltip-options="CUT_HINT"
+        :data="peers"
+        :empty-text="t('nj.transfers.noUploads')"
+    >
         <el-table-column :label="t('IDS_QL_USERNAME')" min-width="160" sortable show-overflow-tooltip>
             <template #default="{ row }">{{ row.nick ?? row.address }}</template>
         </el-table-column>

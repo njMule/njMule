@@ -4,7 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
 import type { TableInstance } from 'element-plus';
-import { CUT_HINT, chooser } from '../../tables';
+import { CUT_HINT, chooser, rememberedWidths } from '../../tables';
 import {
     ElButton,
     ElDropdown,
@@ -51,6 +51,7 @@ const category = ref<number | null>(null);
 const filter = ref('');
 const chosen = ref<Download[]>([]);
 const downloadTable = useTemplateRef<TableInstance>('downloadTable');
+const widths = rememberedWidths(downloadTable, 'downloads');
 const adding = ref(false);
 const editing = ref(false);
 const commenting = ref(false);
@@ -425,6 +426,8 @@ const SOURCE_STATES: Record<Source['state'], string> = {
     <el-table
         :tooltip-options="CUT_HINT"
         ref="downloadTable"
+        border
+        @header-dragend="widths"
         :data="visible"
         row-key="hash"
         :row-class-name="choice.rowClass"
@@ -432,7 +435,7 @@ const SOURCE_STATES: Record<Source['state'], string> = {
         @row-click="choice.click"
         @selection-change="(rows: Download[]) => (chosen = rows)"
     >
-        <el-table-column type="selection" width="40" reserve-selection />
+        <el-table-column type="selection" width="40" reserve-selection :resizable="false" />
         <el-table-column :label="t('IDS_DL_FILENAME')" prop="name" min-width="260" sortable show-overflow-tooltip />
         <el-table-column :label="t('IDS_DL_SIZE')" prop="size" width="110" sortable align="right">
             <template #default="{ row }">{{ size(row.size) }}</template>
