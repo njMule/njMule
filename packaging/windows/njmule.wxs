@@ -117,11 +117,25 @@
                 Execute="deferred"
                 Impersonate="yes"
                 Return="ignore"/>
+        <!-- At uninstall, not at an upgrade nor in a quiet one, the user is asked whether their profile
+             (settings, lists, identity, unfinished downloads, caches, logs) goes too, to the Recycle Bin;
+             the completed downloads stay. Impersonated: it is the user's own profile. -->
+        <CustomAction
+                Id="AskProfile"
+                Directory="INSTALLFOLDER"
+                ExeCommand="&quot;[INSTALLFOLDER]njmule-gui.exe&quot; --uninstall-profile"
+                Execute="deferred"
+                Impersonate="yes"
+                Return="ignore"/>
         <InstallExecuteSequence>
             <Custom
                     Action="RestoreLinks"
                     Before="RemoveFiles"
                     Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>
+            <Custom
+                    Action="AskProfile"
+                    After="RestoreLinks"
+                    Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE AND UILevel &gt;= 3"/>
         </InstallExecuteSequence>
         <?endif?>
 

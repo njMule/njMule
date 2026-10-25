@@ -119,8 +119,9 @@ The MSI performs a per-user installation and requires no administrator rights. I
 executables in `%LOCALAPPDATA%\Programs\njMule`, creates Start menu and desktop shortcuts and adds
 the installation directory to the user's `PATH`. Installing a newer MSI upgrades the existing
 installation; uninstall from *Settings → Apps*, which gives ed2k links back to the program that
-opened them before, if njMule still opens them. A per-machine installation, for all users, requires
-administrator rights:
+opened them before, if njMule still opens them, and offers a box that also deletes the profile
+(settings, lists, identity, unfinished downloads, caches and logs, to the Recycle Bin); the
+completed downloads stay. A per-machine installation, for all users, requires administrator rights:
 
 ```powershell
 msiexec /i njmule-<version>-windows-x64.msi MSIINSTALLPERUSER=""
@@ -156,8 +157,11 @@ entry, AppStream metadata and icons. The desktop entry starts the application as
 process lists show for it, however it was started. They depend on GTK 3, libXtst and OpenGL; the
 command line itself needs none of them. The `.tar.xz` archive contains the same programs and runs
 from any directory; its `share/` directory provides the desktop entry, metadata and icon for manual
-desktop integration. Where those executables do not start, on a distribution with an older C
-library or with musl such as Alpine, the headless engine of
+desktop integration. Removing a package leaves each user's profile in their home (`~/.config`,
+`~/.local/share`, `~/.local/state` and `~/.cache`, folder `njmule`); `njmule --remove-profile`,
+before removing it, deletes the profile of the user who runs it, after asking. Where those
+executables do not start, on a distribution with an older C library or with musl such as Alpine,
+the headless engine of
 `njmule-<version>-linux-x64-static.tar.xz` runs alone: it is linked statically and needs no
 library of the system, and it uses less memory than the desktop executable running headless.
 
@@ -186,7 +190,9 @@ Security → Open Anyway*, or remove the quarantine attribute:
 xattr -dr com.apple.quarantine /Applications/njMule.app
 ```
 
-The command-line interface is `/Applications/njMule.app/Contents/MacOS/njmule`.
+The command-line interface is `/Applications/njMule.app/Contents/MacOS/njmule`. *Uninstall njMule*,
+in the disk image, moves the application to the Trash and, when its box is ticked, the profile in
+`~/Library` too; the completed downloads stay.
 
 </details>
 

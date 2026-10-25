@@ -12,16 +12,25 @@
 //     [--relaunch <program> <arguments>...]
 // It waits for those processes to end, runs msiexec on the package, writes its exit code to the result
 // file, which the next start of njMule reads, and starts njMule again when asked.
+//
+// The uninstaller runs it with --uninstall-profile: it asks whether the user's profile goes too.
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <wchar.h>
 #include <windows.h>
 #include <shellapi.h>
+#include <commctrl.h>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "shell32.lib")
 
+// The common controls 6, for the task dialog of the uninstaller.
+#pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+
+#define PROFILE_TEXT \
+    L"The profile holds your settings, server and contact lists, identity and credits, unfinished downloads, " \
+    L"caches and logs; deleted, it goes to the Recycle Bin."
 #define MAX_WAITS 8
 #define WAIT_MILLIS 60000
 
@@ -235,6 +244,72 @@ static int apply_update(int argc, wchar_t **argv) {
     return code == 0 || code == ERROR_SUCCESS_REBOOT_REQUIRED ? 0 : (int) code;
 }
 
+// Appends the folder %variable%\njMule, if it exists, to a list of paths each ended by a null.
+static void add_profile_folder(wchar_t *list, size_t size, size_t *at, const wchar_t *variable) {
+    wchar_t folder[MAX_PATH];
+    DWORD length = GetEnvironmentVariableW(variable, folder, MAX_PATH);
+    if (length == 0 || length + 8 >= MAX_PATH || wcscat_s(folder, MAX_PATH, L"\\njMule") != 0
+            || GetFileAttributesW(folder) == INVALID_FILE_ATTRIBUTES) {
+        return;
+    }
+    size_t needed = wcslen(folder) + 1;
+    if (*at + needed + 1 > size) {
+        return;
+    }
+    wcscpy_s(list + *at, size - *at, folder);
+    *at += needed;
+}
+
+typedef HRESULT(WINAPI *TaskDialogFunction)(const TASKDIALOGCONFIG *, int *, int *, BOOL *);
+
+// Whether the user ticks the box that deletes the profile; unticked at first. The task dialog comes from the
+// common controls 6 the manifest asks for, found at run time, so that the launcher starts without them; a yes or
+// no question stands in for it then.
+static BOOL profile_ticked(void) {
+    HMODULE controls = LoadLibraryW(L"comctl32.dll");
+    TaskDialogFunction dialog =
+            controls == NULL ? NULL : (TaskDialogFunction) (void *) GetProcAddress(controls, "TaskDialogIndirect");
+    if (dialog == NULL) {
+        return MessageBoxW(NULL,
+                       L"Also delete your njMule profile?\n\n" PROFILE_TEXT,
+                       L"njMule", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST)
+                == IDYES;
+    }
+    TASKDIALOGCONFIG config = {0};
+    config.cbSize = sizeof config;
+    config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION;
+    config.pszWindowTitle = L"njMule";
+    config.pszMainIcon = TD_INFORMATION_ICON;
+    config.pszMainInstruction = L"njMule is being uninstalled";
+    config.pszContent = L"Your completed downloads stay. " PROFILE_TEXT;
+    config.pszVerificationText = L"Also delete my njMule profile";
+    config.dwCommonButtons = TDCBF_OK_BUTTON;
+    int button = 0;
+    BOOL ticked = FALSE;
+    return SUCCEEDED(dialog(&config, &button, NULL, &ticked)) && button == IDOK && ticked;
+}
+
+// At uninstall: lets the user choose to delete their profile of njMule too, moved to the Recycle Bin. The
+// completed downloads, in the Downloads folder, stay.
+static int uninstall_profile(void) {
+    static wchar_t folders[2 * MAX_PATH + 2];
+    size_t at = 0;
+    add_profile_folder(folders, ARRAYSIZE(folders), &at, L"APPDATA");
+    add_profile_folder(folders, ARRAYSIZE(folders), &at, L"LOCALAPPDATA");
+    if (at == 0) {
+        return 0;
+    }
+    folders[at] = L'\0';
+    if (!profile_ticked()) {
+        return 0;
+    }
+    SHFILEOPSTRUCTW operation = {0};
+    operation.wFunc = FO_DELETE;
+    operation.pFrom = folders;
+    operation.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI;
+    return SHFileOperationW(&operation);
+}
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR commandLine, int show) {
     (void) instance;
     (void) previous;
@@ -245,6 +320,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR commandLine, i
         int code = apply_update(argc, argv);
         LocalFree(argv);
         return code;
+    }
+    if (argv != NULL && argc == 2 && wcscmp(argv[1], L"--uninstall-profile") == 0) {
+        LocalFree(argv);
+        return uninstall_profile();
     }
     if (argv != NULL) {
         LocalFree(argv);

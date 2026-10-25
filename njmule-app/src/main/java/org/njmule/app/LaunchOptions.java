@@ -54,7 +54,8 @@ public record LaunchOptions(
         Optional<Remote> remote,
         Optional<Path> applyUpdate,
         List<Long> waitFor,
-        Optional<ServiceTask> service) {
+        Optional<ServiceTask> service,
+        boolean confirmed) {
 
     public LaunchOptions {
         files = List.copyOf(files);
@@ -178,7 +179,8 @@ public record LaunchOptions(
         CHECK_UPDATE,
         UPDATE,
         APPLY_UPDATE,
-        SERVICE
+        SERVICE,
+        REMOVE_PROFILE
     }
 
     /** Thrown for invalid arguments; the message is meant for the user. */
@@ -224,6 +226,8 @@ public record LaunchOptions(
     private static final String UPDATE_OPTION = "--update";
     private static final String APPLY_UPDATE_OPTION = "--apply-update";
     private static final String SERVICE_OPTION = "--service";
+    private static final String REMOVE_PROFILE_OPTION = "--remove-profile";
+    private static final String YES_OPTION = "--yes";
     private static final String SERVICE_OUTPUT_OPTION = "--service-output";
     private static final String WAIT_OPTION = "--wait";
 
@@ -231,7 +235,8 @@ public record LaunchOptions(
     private static final String WEBUI_SETUP = WEBUI_PASSWORD_OPTION + " or " + WEBUI_PASSWORD_FILE_OPTION;
 
     // What --exit and --restore-links may come with: where and how to run, nothing to do.
-    private static final Set<String> ALONG = Set.of(CONFIG_DIR_OPTION, LOG_LEVEL_OPTION, HEADLESS_OPTION, WAIT_OPTION);
+    private static final Set<String> ALONG =
+            Set.of(CONFIG_DIR_OPTION, LOG_LEVEL_OPTION, HEADLESS_OPTION, WAIT_OPTION, YES_OPTION);
 
     private static final Set<String> SERVICE_ALONG = Set.of(SERVICE_OPTION, SERVICE_OUTPUT_OPTION, LOG_LEVEL_OPTION);
     private static final Set<String> SERVICE_INSTALL_ALONG = Set.of(
@@ -253,13 +258,21 @@ public record LaunchOptions(
         } catch (ParameterException e) {
             throw new UsageException(e.getMessage());
         }
-        for (String alone :
-                List.of(EXIT_OPTION, RESTORE_LINKS_OPTION, CHECK_UPDATE_OPTION, UPDATE_OPTION, APPLY_UPDATE_OPTION)) {
+        for (String alone : List.of(
+                EXIT_OPTION,
+                RESTORE_LINKS_OPTION,
+                CHECK_UPDATE_OPTION,
+                UPDATE_OPTION,
+                APPLY_UPDATE_OPTION,
+                REMOVE_PROFILE_OPTION)) {
             if (result.hasMatchedOption(alone) && !result.isUsageHelpRequested() && !result.isVersionHelpRequested()) {
                 alone(result, alone);
             }
         }
         Optional<ServiceTask> service = service(result);
+        if (result.hasMatchedOption(YES_OPTION) && !result.hasMatchedOption(REMOVE_PROFILE_OPTION)) {
+            throw new UsageException(YES_OPTION + " applies to " + REMOVE_PROFILE_OPTION);
+        }
         Optional<Path> configDir = Optional.empty();
         if (result.hasMatchedOption(CONFIG_DIR_OPTION)) {
             configDir = Optional.of(toDirectory(result.matchedOptionValue(CONFIG_DIR_OPTION, "")));
@@ -317,7 +330,8 @@ public record LaunchOptions(
                 remote(result),
                 applyUpdate(result),
                 waits(result),
-                service);
+                service,
+                result.hasMatchedOption(YES_OPTION));
     }
 
     /** The help text, without colours. */
@@ -361,6 +375,9 @@ public record LaunchOptions(
         }
         if (result.hasMatchedOption(RESTORE_LINKS_OPTION)) {
             return Action.RESTORE_LINKS;
+        }
+        if (result.hasMatchedOption(REMOVE_PROFILE_OPTION)) {
+            return Action.REMOVE_PROFILE;
         }
         if (result.hasMatchedOption(CHECK_UPDATE_OPTION)) {
             return Action.CHECK_UPDATE;
@@ -502,6 +519,11 @@ public record LaunchOptions(
                         + " headless with its web interface on the profile in %%ProgramData%%\\njMule as the virtual"
                         + " account NT SERVICE\\njMule (Windows asks for the administrator's rights); install"
                         + " takes the web interface options, and asks for its password when none is set"));
+        spec.addOption(flag(
+                REMOVE_PROFILE_OPTION,
+                "delete this njMule's settings, lists, identity, unfinished downloads, caches and logs, after asking,"
+                        + " and exit; the completed downloads stay (stop njMule first)"));
+        spec.addOption(flag(YES_OPTION, "with " + REMOVE_PROFILE_OPTION + ": do not ask"));
         spec.addOption(OptionSpec.builder(SERVICE_OUTPUT_OPTION)
                 .paramLabel("<file>")
                 .type(String.class)

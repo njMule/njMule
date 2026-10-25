@@ -2,5 +2,12 @@
 # SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Required by DSM; njMule needs nothing done at this step.
+# Asked in the uninstall wizard, njMule's profile goes too: settings, lists, identity, unfinished downloads and
+# logs. The downloaded files, in the shared folder njmule, stay.
+if [ "${SYNOPKG_PKG_STATUS}" = "UNINSTALL" ] && [ "${wizard_delete_profile}" = "true" ]; then
+    VAR="${SYNOPKG_PKGVAR:-/var/packages/${SYNOPKG_PKGNAME}/var}"
+    if [ -d "${VAR}" ]; then
+        find "${VAR}" -mindepth 1 -delete 2> /dev/null || true
+    fi
+fi
 exit 0

@@ -11,7 +11,7 @@ if not exist "%VSWHERE%" goto missing
 for /f "usebackq delims=" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS=%%i"
 if not defined VS goto missing
 call "%VS%\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1 || exit /b 1
-cl /nologo /W4 /WX /O1 /MT /DUNICODE /D_UNICODE "/Fe%~1" "%~2" "%~3" /link /SUBSYSTEM:WINDOWS
+cl /nologo /W4 /WX /O1 /MT /DUNICODE /D_UNICODE "/Fe%~1" "%~2" "%~3" /link /SUBSYSTEM:WINDOWS /MANIFEST:EMBED
 exit /b %errorlevel%
 
 :missing

@@ -178,6 +178,9 @@ public final class Main {
             case SERVICE -> {
                 return WindowsService.run(cli, out, err, passwords);
             }
+            case REMOVE_PROFILE -> {
+                return ProfileRemoval.run(cli, out, err, prompt -> answer(passwords, prompt));
+            }
             case APPLY_UPDATE -> {
                 LoggingSetup.setLevel(cli.logLevel().orElse("INFO"));
                 return UpdateHandOver.install(cli.applyUpdate().orElseThrow(), cli.waitFor());
@@ -481,6 +484,16 @@ public final class Main {
             if (second != null) {
                 Passwords.wipe(second);
             }
+        }
+    }
+
+    // A short answer typed in reply; null at the end of the input.
+    private static String answer(PasswordSource input, String prompt) {
+        try {
+            char[] typed = input.read(prompt);
+            return typed == null ? null : new String(typed);
+        } catch (IOException e) {
+            return null;
         }
     }
 

@@ -512,6 +512,9 @@ jobs:
                   codesign --verify --deep --strict stage/njMule.app
                   # The command line runs the desktop executable headless.
                   "$app/MacOS/njmule" --version
+                  # Beside the app: moves it to the Trash, and the user's profile too when its box is ticked.
+                  osacompile -o "stage/Uninstall njMule.app" packaging/macos/uninstall.applescript
+                  codesign --force --deep --sign - "stage/Uninstall njMule.app"
                   ln -s /Applications stage/Applications
                   # LZMA (ULMO): smaller than zlib (UDZO), opened by every supported macOS.
                   hdiutil create -volname njMule -srcfolder stage -ov -format ULMO \

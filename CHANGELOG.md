@@ -416,6 +416,10 @@ All notable changes to this project are documented here. The format follows
   imported.
 - The deb and rpm packages install a systemd user unit, `njmule.service`, that runs the headless
   engine as the user and restarts it on failure (`systemctl --user enable --now njmule`).
+- Uninstalling can delete the profile too: a box at the Windows uninstall (to the Recycle Bin), in
+  the Synology uninstall wizard and in *Uninstall njMule* of the macOS disk image; elsewhere
+  `njmule --remove-profile` deletes it after asking, and the deb and rpm packages tell where it
+  stays. The completed downloads always stay.
 - Windows service: `njmule --service=install|uninstall|start|stop|status` runs the headless engine
   with its web interface as the service "njMule" (`njmule-service.exe`), as the virtual account
   `NT SERVICE\njMule` on a profile of its own in `%ProgramData%\njMule`, with a firewall rule,

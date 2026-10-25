@@ -1,0 +1,18 @@
+[
+    {
+        "step_title": "Remove njMule",
+        "items": [
+            {
+                "type": "multiselect",
+                "desc": "The downloaded files in the shared folder njmule stay. njMule's profile can go too: its settings, server and contact lists, identity and credits, unfinished downloads and logs.",
+                "subitems": [
+                    {
+                        "key": "wizard_delete_profile",
+                        "desc": "Also delete njMule's profile",
+                        "defaultValue": false
+                    }
+                ]
+            }
+        ]
+    }
+]
