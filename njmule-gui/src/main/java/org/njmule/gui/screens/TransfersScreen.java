@@ -48,6 +48,7 @@ import javafx.beans.value.ObservableValue;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
+import javafx.css.PseudoClass;
 import javafx.event.EventTarget;
 import javafx.geometry.HPos;
 import javafx.geometry.NodeOrientation;
@@ -141,6 +142,8 @@ public final class TransfersScreen implements Screen {
     private static final double DETAILS_HEIGHT = 300;
     private static final double DETAILS_MARGIN = 16;
     private static final double LEAST_HEIGHT = 120;
+    // A download opened onto its sources highlights its own line only.
+    private static final PseudoClass OPENED_ROW = PseudoClass.getPseudoClass("opened");
     private static final KeyCombination COPY_LINKS = new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN);
 
     /** The lists of the screen, one shown at a time. */
@@ -1247,6 +1250,7 @@ public final class TransfersScreen implements Screen {
 
         // The lines change only where the sources did; the row grows or shrinks with their number.
         void showSources() {
+            pseudoClassStateChanged(OPENED_ROW, opened());
             if (!opened()) {
                 if (!this.lines.getChildren().isEmpty()) {
                     forgetSources();

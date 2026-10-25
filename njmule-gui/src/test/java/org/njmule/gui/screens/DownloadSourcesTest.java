@@ -27,6 +27,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableRow;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.Region;
+import javafx.scene.paint.Paint;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -117,6 +120,17 @@ class DownloadSourcesTest {
         thenTheRowHoldsItsLastSource();
     }
 
+    @Test
+    void shouldLeaveTheSourcesOutOfTheHighlightOfTheChosenDownload() throws Exception {
+        givenTheFilmWithASourceAndASourceOfAnotherFile();
+        givenTheFilmOpened();
+
+        whenTheFilmIsChosen();
+
+        thenTheSourcesAreOnTheBackgroundOfTheList();
+        thenTheLineOfTheFilmIsHighlighted();
+    }
+
     private void givenTheFilmWithASourceAndASourceOfAnotherFile() throws Exception {
         this.sources.set(List.of(source(FILM.hash(), "10.0.0.1:4662", ""), source(OTHER_FILE, "10.0.0.2:4662", "")));
         Map<String, Engines.Command> commands = Map.of(
@@ -147,6 +161,10 @@ class DownloadSourcesTest {
         FxTesting.onFx(() -> this.screen.activate(FILM));
     }
 
+    private void whenTheFilmIsChosen() throws Exception {
+        FxTesting.onFx(() -> this.screen.downloads().getSelectionModel().select(0));
+    }
+
     // As the engine tells them at its next reading.
     private void whenTheSourcesBecome(SourceInfo... now) throws Exception {
         this.sources.set(List.of(now));
@@ -158,6 +176,40 @@ class DownloadSourcesTest {
                         .map(r -> r.get())
                         .toList()
                         .equals(List.of(now)));
+    }
+
+    private void thenTheSourcesAreOnTheBackgroundOfTheList() throws Exception {
+        FxTesting.assertEventually("the sources without a background of their own", () -> {
+            Background own = ((Region) this.screen.downloads().lookup(".source-lines")).getBackground();
+            return own == null || own.isEmpty();
+        });
+    }
+
+    // Its cells carry the highlight, not the row the sources are in.
+    private void thenTheLineOfTheFilmIsHighlighted() throws Exception {
+        FxTesting.assertEventually("the line of the film highlighted, not its row", () -> {
+            TableRow<?> row = filmRow();
+            Region cell = (Region) row.lookup(".table-cell");
+            return row.isSelected()
+                    && fill(cell).isPresent()
+                    && fill(row).isPresent()
+                    && !fill(cell).equals(fill(row));
+        });
+    }
+
+    private TableRow<?> filmRow() {
+        Node row = this.screen.downloads().lookup(".source-lines");
+        while (!(row instanceof TableRow<?>)) {
+            row = row.getParent();
+        }
+        return (TableRow<?>) row;
+    }
+
+    private static Optional<Paint> fill(Region region) {
+        Background background = region.getBackground();
+        return background == null || background.getFills().isEmpty()
+                ? Optional.empty()
+                : Optional.of(background.getFills().getLast().getFill());
     }
 
     private void thenTheNotedLineReads(String text) throws Exception {
