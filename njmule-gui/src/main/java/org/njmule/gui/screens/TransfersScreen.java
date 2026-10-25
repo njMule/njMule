@@ -68,6 +68,8 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.skin.TableRowSkin;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
@@ -113,6 +115,7 @@ import org.njmule.gui.ui.InspectorPane;
 import org.njmule.gui.ui.Navigate;
 import org.njmule.gui.ui.Screen;
 import org.njmule.gui.ui.Segments;
+import org.njmule.gui.ui.SystemIcons;
 import org.njmule.gui.ui.TableLayout;
 import org.njmule.gui.ui.ThinBar;
 
@@ -839,10 +842,15 @@ public final class TransfersScreen implements Screen {
         private final Icon kind = Fx.icon(Icons.FILE);
         private final Circle dot = Fx.categoryDot(0);
         private final Label name = new Label();
-        private final HBox box = new HBox(8, this.kind, this.dot, this.name);
+        // The icon the system gives the kind, the program's that opens it, in place of the app's own when there is one.
+        private final ImageView program = new ImageView();
+        private final HBox box = new HBox(8, this.program, this.kind, this.dot, this.name);
 
         NameCell() {
             this.kind.getStyleClass().add("file-kind");
+            this.program.setFitWidth(16);
+            this.program.setFitHeight(16);
+            this.program.setSmooth(true);
             this.box.setAlignment(Pos.CENTER_LEFT);
             this.name.setMinWidth(0);
             Fx.ownDirection(this.name);
@@ -862,6 +870,12 @@ public final class TransfersScreen implements Screen {
             }
             DownloadInfo d = row.get();
             this.kind.setGlyph(Fx.fileIcon(FileKind.of(d.name())));
+            Optional<Image> system = SystemIcons.of(d.name(), TransfersScreen.this.downloads::refresh);
+            this.program.setImage(system.orElse(null));
+            this.program.setVisible(system.isPresent());
+            this.program.setManaged(system.isPresent());
+            this.kind.setVisible(system.isEmpty());
+            this.kind.setManaged(system.isEmpty());
             int color = TransfersScreen.this.categoryColor(d.category());
             this.dot.getStyleClass().removeIf(s -> s.startsWith("cat-"));
             if (color > 0) {

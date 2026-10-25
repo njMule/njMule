@@ -73,7 +73,7 @@ tasks.processResources {
 application {
     mainModule = "org.njmule.gui"
     mainClass = "org.njmule.gui.GuiMain"
-    applicationDefaultJvmArgs = listOf("--enable-native-access=javafx.graphics")
+    applicationDefaultJvmArgs = listOf("--enable-native-access=javafx.graphics,org.njmule.gui")
 }
 
 // The launcher scripts and libraries are kept for installDist; no archives in every build.
