@@ -440,6 +440,10 @@ All notable changes to this project are documented here. The format follows
   much is missing, in the units of the speeds.
 - A *Buy me a coffee* button in the sidebar of the desktop and web apps, above the options and the
   logout, opens the page where whoever likes njMule can support it, in the system's browser.
+- The columns of the search results and of the transfers in the web interface can be resized by
+  dragging their edges in the head, and keep their widths in the browser; the rows chosen there stay
+  chosen and tinted as the lists are read again, a click chooses a row alone (Ctrl or Cmd adds it),
+  and the whole text of a cut cell shows after a moment under the pointer.
 - The country of other clients, with its flag beside its code and its name as tooltip, in the
   sources of a download and among the uploads and the queue, in the desktop and web apps and in
   the API (off by default; `geo.countries`): njMule then downloads DB-IP's free IP to Country Lite
