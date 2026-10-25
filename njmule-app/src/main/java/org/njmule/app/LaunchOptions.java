@@ -483,8 +483,9 @@ public record LaunchOptions(
         spec.addOption(valued(
                 REMOTE_URL_OPTION,
                 "<url>",
-                "with " + REMOTE_OPTION + ": the API of another computer, as http://host:4711/api/v1; the token"
-                        + " comes from the NJMULE_API_TOKEN environment variable"));
+                "the API of another njMule, as http://host:4711/api/v1: with " + REMOTE_OPTION + " the command runs"
+                        + " there, without it the desktop app shows and drives that njMule; the token comes from the"
+                        + " NJMULE_API_TOKEN environment variable or, for the desktop app, a connection it remembers"));
         spec.addOption(flag(
                 CHECK_UPDATE_OPTION,
                 "look for a new version of njMule on GitHub, print it and exit: 0 when this one is the newest,"
@@ -696,11 +697,9 @@ public record LaunchOptions(
         return pids;
     }
 
+    // Without --remote, an address is the njMule the desktop app shows: a remote with no command.
     private static Optional<Remote> remote(ParseResult result) throws UsageException {
-        if (!result.hasMatchedOption(REMOTE_OPTION)) {
-            if (result.hasMatchedOption(REMOTE_URL_OPTION)) {
-                throw new UsageException(REMOTE_URL_OPTION + " applies to " + REMOTE_OPTION);
-            }
+        if (!result.hasMatchedOption(REMOTE_OPTION) && !result.hasMatchedOption(REMOTE_URL_OPTION)) {
             return Optional.empty();
         }
         Optional<URI> url = Optional.empty();
@@ -717,6 +716,11 @@ public record LaunchOptions(
             }
         }
         return Optional.of(new Remote(result.matchedOptionValue(REMOTE_OPTION, List.<String>of()), url));
+    }
+
+    /** The njMule whose API the desktop app shows instead of an engine of its own, if any. */
+    public Optional<URI> remoteDesktop() {
+        return this.remote.filter(r -> r.command().isEmpty()).flatMap(Remote::url);
     }
 
     private static Optional<EmuleImport> emuleImport(ParseResult result) throws UsageException {

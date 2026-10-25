@@ -53,6 +53,7 @@ import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.remote.RemoteEngine;
 import org.njmule.gui.dialogs.AboutDialog;
 import org.njmule.gui.dialogs.FirstRunWizard;
 import org.njmule.gui.dialogs.ImportDialog;
@@ -60,6 +61,7 @@ import org.njmule.gui.i18n.I18n;
 import org.njmule.gui.infra.Folders;
 import org.njmule.gui.infra.Formats;
 import org.njmule.gui.infra.GuiSettings;
+import org.njmule.gui.infra.RemoteConnections;
 import org.njmule.gui.infra.SoundPlayer;
 import org.njmule.gui.infra.Themes;
 import org.njmule.gui.infra.WavPlayer;
@@ -97,6 +99,8 @@ public final class DesktopApp implements AutoCloseable {
     private Optional<Autostart> autostart = Optional.empty();
     // What starts the app again as this one: on Windows, from the window pinned to the taskbar too.
     private List<String> startArguments = List.of();
+    // The other njMule this window shows, when it has no engine of its own.
+    private Optional<URI> remote = Optional.empty();
     // Links from the command line or a later start, until the window is there; FX thread.
     private final List<Ed2kLink.FileLink> pending = new ArrayList<>();
     // The links of the command line, followed once the window shows.
@@ -132,10 +136,25 @@ public final class DesktopApp implements AutoCloseable {
             throw new IOException(e.getMessage(), e);
         }
         dirs.createAll();
-        LoggingSetup.enableFileLog(dirs.logs());
-        NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs, true));
+        Optional<URI> remote = cli.remoteDesktop();
+        NjMuleEngine engine;
+        Optional<WebUi> webUi;
+        if (remote.isPresent()) {
+            // A log of its own: the njMule of this computer may be writing the other one.
+            LoggingSetup.enableFileLog(dirs.logs().resolve("remote"));
+            String token = RemoteConnections.token(dirs.gui(), remote.get(), System.getenv())
+                    .orElseThrow(() -> new IOException("No token for " + remote.get() + ": set "
+                            + RemoteConnections.TOKEN_VARIABLE + " or connect from the menu."));
+            engine = RemoteEngine.connect(remote.get(), token, dirs);
+            webUi = Optional.empty();
+        } else {
+            LoggingSetup.enableFileLog(dirs.logs());
+            engine = NjMuleEngine.start(new EngineConfig(dirs, true));
+            webUi = startWebUi(engine, dirs);
+        }
         LoggingSetup.setLevel(cli.logLevel().orElse(engine.preferences().logLevel()));
-        DesktopApp app = new DesktopApp(engine, dirs, GuiSettings.load(dirs.gui()), startWebUi(engine, dirs));
+        DesktopApp app = new DesktopApp(engine, dirs, GuiSettings.load(dirs.gui()), webUi);
+        app.remote = remote;
         // A start at login, or from the window pinned to the taskbar, keeps the configuration of this one;
         // starting minimised follows the settings.
         app.startArguments = cli.configDir()
@@ -143,10 +162,14 @@ public final class DesktopApp implements AutoCloseable {
                 .orElse(List.of());
         app.autostart = Autostart.forThisSystem(dirs.config(), app.startArguments);
         cli.links().forEach(link -> app.startLinks.add(link.toUri()));
-        try {
-            app.handoff = LinkHandoff.listen(dirs.config(), links -> Platform.runLater(() -> app.handedOver(links)));
-        } catch (IOException e) {
-            logger.warn("Later starts cannot hand their links over: {}", e.toString());
+        // The links of this computer go to its own njMule, which a window on another one leaves alone.
+        if (remote.isEmpty()) {
+            try {
+                app.handoff =
+                        LinkHandoff.listen(dirs.config(), links -> Platform.runLater(() -> app.handedOver(links)));
+            } catch (IOException e) {
+                logger.warn("Later starts cannot hand their links over: {}", e.toString());
+            }
         }
         return app;
     }
@@ -320,7 +343,8 @@ public final class DesktopApp implements AutoCloseable {
                     stage.setHeight(b[3]);
                 });
         stage.setMaximized(this.settings.maximized());
-        stage.setTitle(NjMuleInfo.NAME + " " + NjMuleInfo.version());
+        stage.setTitle(NjMuleInfo.NAME + " " + NjMuleInfo.version()
+                + this.remote.map(r -> " - " + r.getAuthority()).orElse(""));
         stage.setScene(this.scene);
         stage.setOnHiding(e -> remember(stage));
         stage.setOnCloseRequest(e -> {

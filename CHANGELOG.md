@@ -349,6 +349,10 @@ All notable changes to this project are documented here. The format follows
   `njmule --remote <command>` drives a running njMule through it, here or on another computer
   (`--remote-url`, `NJMULE_API_TOKEN`), and `--api-token` / `--new-api-token` print or replace the
   token.
+- Remote desktop app: the desktop app shows and drives another njMule through its API, in a window
+  of its own (*Connect to a remote njMule*, or `--remote-url` without `--remote`), with the
+  connections and their tokens remembered in an owner-only file; the API gives what it needs for
+  that (`/downloads?include=parts`, shared-file statistics, A4AF sources, Kad user estimates).
 - OpenAPI 3.2 description of the remote-control API, served at `/api/v1/openapi.yaml`: the API is
   routed by its paths and operations, and checks every parameter and request body against its
   schemas (JSON Schema 2020-12) before acting; the event stream is described item by item.

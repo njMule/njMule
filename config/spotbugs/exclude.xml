@@ -158,13 +158,15 @@
 
     <!-- The updates run fixed system tools (hdiutil, ditto, codesign, msiexec through the launcher) and
          njMule's own programs, the installed ones or those unpacked from a package checked against its
-         signed update information, with arguments built from our own paths. The command line is a
-         list, so no shell parses it. -->
+         signed update information, with arguments built from our own paths; a window on a remote njMule
+         is the installed desktop program again, given the address the user typed. The command line is
+         a list, so no shell parses it. -->
     <Match>
         <Bug pattern="COMMAND_INJECTION"/>
         <Or>
             <Class name="org.njmule.core.update.Commands"/>
             <Class name="org.njmule.core.update.Launcher"/>
+            <Class name="org.njmule.gui.infra.RemoteConnections"/>
         </Or>
     </Match>
 

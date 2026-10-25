@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -74,6 +75,22 @@ class LaunchOptionsTest {
         whenTheArgumentsAreParsed("--service=start", option);
 
         thenExceptionOccurred(UsageException.class, "cannot be combined");
+    }
+
+    @Test
+    void shouldOpenTheDesktopAppOnTheNjmuleOfAnAddressWithoutACommand() {
+        whenTheArgumentsAreParsed("--remote-url", "http://nas:4711/api/v1");
+
+        thenTheActionIs(Action.RUN);
+        thenTheDesktopAppShows("http://nas:4711/api/v1");
+    }
+
+    @Test
+    void shouldRunACommandOnTheNjmuleOfAnAddress() {
+        whenTheArgumentsAreParsed("--remote=status", "--remote-url", "http://nas:4711/api/v1");
+
+        thenTheActionIs(Action.REMOTE);
+        thenTheDesktopAppShowsNoOtherNjmule();
     }
 
     @Test
@@ -569,6 +586,14 @@ class LaunchOptionsTest {
 
     private void thenTheActionIs(Action expected) {
         assertThat(parsed().action()).isEqualTo(expected);
+    }
+
+    private void thenTheDesktopAppShows(String api) {
+        assertThat(this.options.remoteDesktop()).hasValue(URI.create(api));
+    }
+
+    private void thenTheDesktopAppShowsNoOtherNjmule() {
+        assertThat(this.options.remoteDesktop()).isEmpty();
     }
 
     private void thenTheServiceActionIs(LaunchOptions.ServiceAction expected) {

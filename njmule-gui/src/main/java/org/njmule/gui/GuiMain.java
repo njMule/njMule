@@ -56,7 +56,7 @@ public final class GuiMain {
         Updating.awaitEnd(cli.waitFor());
         // A running njMule takes the links, or just shows its window, instead of failing on its lock.
         List<String> links = cli.links().stream().map(Ed2kLink::toUri).toList();
-        if (LinkHandoff.deliver(DesktopApp.configDir(cli), links)) {
+        if (cli.remoteDesktop().isEmpty() && LinkHandoff.deliver(DesktopApp.configDir(cli), links)) {
             System.exit(0);
         }
         if (LinuxProcessName.applies()) {

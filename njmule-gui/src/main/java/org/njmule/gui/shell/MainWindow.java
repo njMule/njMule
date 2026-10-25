@@ -71,6 +71,7 @@ import org.njmule.core.config.Preferences;
 import org.njmule.gui.dialogs.AboutDialog;
 import org.njmule.gui.dialogs.FirstRunWizard;
 import org.njmule.gui.dialogs.ImportDialog;
+import org.njmule.gui.dialogs.RemoteDialog;
 import org.njmule.gui.dialogs.UpdateDialog;
 import org.njmule.gui.infra.Folders;
 import org.njmule.gui.infra.Formats;
@@ -469,6 +470,11 @@ public final class MainWindow {
                 Icons.IMPORT,
                 () -> new ImportDialog(this.gui, this.root.getScene().getWindow()).show());
         importer.setId("import");
+        MenuItem remote = Fx.menuItem(
+                this.gui.t("nj.remote.title"),
+                Icons.LINK,
+                () -> new RemoteDialog(this.gui, this.root.getScene().getWindow()).show());
+        remote.setId("remote");
         MenuItem about = Fx.menuItem(
                 this.gui.t("nj.about.title"),
                 Icons.INFO,
@@ -498,6 +504,7 @@ public final class MainWindow {
                 options,
                 wizard,
                 importer,
+                remote,
                 new SeparatorMenuItem(),
                 theme,
                 shortcuts,

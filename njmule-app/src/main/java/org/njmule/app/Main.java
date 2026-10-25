@@ -156,6 +156,10 @@ public final class Main {
                         AppDirectories.resolve(cli.configDir()).config(), LinkAssociation::forThisSystem, out, err);
             }
             case RUN -> {
+                if (cli.remoteDesktop().isPresent()) {
+                    err.println("--remote-url without --remote opens the desktop app on that njMule.");
+                    return EXIT_USAGE;
+                }
                 Updating.awaitEnd(cli.waitFor());
                 return runEngine(cli, List.of(args), out, err, stop);
             }

@@ -103,7 +103,8 @@ class TopBarTest {
     @Test
     void shouldOpenTheIncomingFolderAndTheOptionsFromTheMoreMenu() throws Exception {
         givenTheWindow();
-        givenTheToolsAre("incoming", "options", "wizard", "import", null, "theme", "shortcuts", "updates", "about");
+        givenTheToolsAre(
+                "incoming", "options", "wizard", "import", "remote", null, "theme", "shortcuts", "updates", "about");
 
         whenTheToolIsChosen("options");
 

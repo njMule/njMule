@@ -435,6 +435,13 @@ njmule --remote help
 `--remote-url http://<host>:4711/api/v1` reaches another computer, whose token is taken from the
 `NJMULE_API_TOKEN` environment variable.
 
+The desktop app shows and drives another njMule the same way, such as one on a NAS or a Windows
+service: *⋯ → Connect to a remote njMule* asks for the address of its web interface and the token,
+remembers them if asked (in a file of the profile that only its owner reads) and opens the window
+of that njMule beside the own one. `njmule-gui --remote-url <address>` opens it directly, with the
+token remembered or in `NJMULE_API_TOKEN`. What only the own computer can do (adding a server.met
+or nodes.dat of this computer, previewing a download) ends with a message instead.
+
 The API is described by an [OpenAPI 3.2](https://spec.openapis.org/oas/v3.2.0.html) document,
 [`openapi.yaml`](njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml), which every
 njMule also serves at `/api/v1/openapi.yaml`. It is the source of the API: requests are routed by its
