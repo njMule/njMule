@@ -53,6 +53,8 @@ import org.njmule.core.security.IpWhitelist;
  * @param nightHours the hours when njMule may restart to install it, with {@link UpdateInstallTime#EXIT_OR_NIGHT}
  * @param updateUrl where the releases are looked for instead of GitHub, as for a fork or a test; empty for GitHub
  * @param preventSleep keeps the computer from sleeping while files are transferred
+ * @param autoDeleteDays a running download that receives nothing for this many days is deleted, its link kept; 0 for
+ *     never
  */
 public record Preferences(
         String nick,
@@ -117,7 +119,8 @@ public record Preferences(
         UpdateInstallTime updateInstallTime,
         NightHours nightHours,
         Optional<URI> updateUrl,
-        boolean preventSleep) {
+        boolean preventSleep,
+        int autoDeleteDays) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -132,6 +135,7 @@ public record Preferences(
     public static final int DEFAULT_UPLOAD_CAPACITY = 1_024;
     public static final int DEFAULT_MIN_FREE_SPACE = 512;
     public static final int MAX_MIN_FREE_SPACE = 10_000_000;
+    public static final int MAX_AUTO_DELETE_DAYS = 365;
     /** A server that failed this many times in a row is dropped from the list. */
     public static final int DEFAULT_DEAD_SERVER_RETRIES = 1;
 
@@ -193,6 +197,7 @@ public record Preferences(
         requireRange("downloadCapacityKiBps", downloadCapacityKiBps, 1, MAX_RATE_KIBPS);
         requireRange("uploadCapacityKiBps", uploadCapacityKiBps, 1, MAX_RATE_KIBPS);
         requireRange("minFreeSpaceMiB", minFreeSpaceMiB, 0, MAX_MIN_FREE_SPACE);
+        requireRange("autoDeleteDays", autoDeleteDays, 0, MAX_AUTO_DELETE_DAYS);
         requireRange("deadServerRetries", deadServerRetries, 1, MAX_DEAD_SERVER_RETRIES);
         requireRange("backupCopies", backupCopies, 0, MAX_BACKUP_COPIES);
         requireRange("ipFilterLevel", ipFilterLevel, 0, MAX_IP_FILTER_LEVEL);
@@ -383,7 +388,8 @@ public record Preferences(
                 UpdateInstallTime.EXIT,
                 NightHours.DEFAULT,
                 Optional.empty(),
-                false);
+                false,
+                0);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -491,6 +497,7 @@ public record Preferences(
         private NightHours nightHours;
         private Optional<URI> updateUrl;
         private boolean preventSleep;
+        private int autoDeleteDays;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -556,6 +563,7 @@ public record Preferences(
             this.nightHours = p.nightHours;
             this.updateUrl = p.updateUrl;
             this.preventSleep = p.preventSleep;
+            this.autoDeleteDays = p.autoDeleteDays;
         }
 
         public Builder nick(String value) {
@@ -912,6 +920,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder autoDeleteDays(int value) {
+            this.autoDeleteDays = value;
+            return this;
+        }
+
         public Builder updateUrl(Optional<URI> value) {
             this.updateUrl = value;
             return this;
@@ -982,7 +995,8 @@ public record Preferences(
                     this.updateInstallTime,
                     this.nightHours,
                     this.updateUrl,
-                    this.preventSleep);
+                    this.preventSleep,
+                    this.autoDeleteDays);
         }
     }
 }

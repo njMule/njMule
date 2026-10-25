@@ -196,6 +196,7 @@ public final class SettingsScreen implements Screen {
     private final TextField incoming = new TextField();
     private final TextField temp = new TextField();
     private final TextField minFreeSpace = new TextField();
+    private final TextField autoDeleteDays = new TextField();
     private final ComboBox<Themes.Family> theme = new ComboBox<>();
     private final ComboBox<GuiSettings.Mode> mode = new ComboBox<>();
     private final ComboBox<Optional<Locale>> language = new ComboBox<>();
@@ -222,6 +223,7 @@ public final class SettingsScreen implements Screen {
     private Input<Optional<Path>> tempInput;
     private Input<Optional<Path>> soundFileInput;
     private Input<Integer> minFreeSpaceInput;
+    private Input<Integer> autoDeleteDaysInput;
     private Input<Integer> deadRetriesInput;
     private Input<Integer> backupsInput;
     private Input<Integer> filterLevelInput;
@@ -373,6 +375,7 @@ public final class SettingsScreen implements Screen {
                 this.queueSize,
                 this.sources,
                 this.minFreeSpace,
+                this.autoDeleteDays,
                 this.deadRetries,
                 this.backups,
                 this.filterLevel,
@@ -825,7 +828,14 @@ public final class SettingsScreen implements Screen {
                                 "IDS_PW_REMEMBERCANCELLED",
                                 this.rememberCancelled,
                                 Preferences::rememberCancelledFiles,
-                                Preferences.Builder::rememberCancelledFiles)),
+                                Preferences.Builder::rememberCancelledFiles),
+                        number(
+                                        "nj.settings.autoDeleteDays",
+                                        this.autoDeleteDays,
+                                        this.autoDeleteDaysInput,
+                                        Preferences::autoDeleteDays,
+                                        Preferences.Builder::autoDeleteDays)
+                                .describedAs(this.gui.t("nj.settings.autoDeleteHint"))),
                 section(
                         "IDS_DL_PREVIEW",
                         toggle(
@@ -1685,6 +1695,8 @@ public final class SettingsScreen implements Screen {
         this.soundFileInput = inputs.soundFile(this.soundFile, this.gui.t("nj.settings.soundFile"));
         this.minFreeSpaceInput =
                 inputs.number(this.minFreeSpace, this.gui.t("IDS_MINFREEDISKSPACE"), 0, Preferences.MAX_MIN_FREE_SPACE);
+        this.autoDeleteDaysInput = inputs.number(
+                this.autoDeleteDays, this.gui.t("nj.settings.autoDeleteDays"), 0, Preferences.MAX_AUTO_DELETE_DAYS);
         this.filterLevelInput =
                 inputs.number(this.filterLevel, this.gui.t("IDS_FILTERLEVEL"), 0, Preferences.MAX_IP_FILTER_LEVEL);
         this.nightHoursInput = Input.of(

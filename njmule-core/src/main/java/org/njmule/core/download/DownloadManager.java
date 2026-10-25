@@ -114,6 +114,11 @@ public final class DownloadManager implements AutoCloseable {
          * The source at {@code ip} sent corrupt data: its sources were dropped, and it is not taken again for a while.
          */
         default void corruptSender(InetAddress ip) {}
+
+        /** Keeps the link of a download about to be deleted for receiving nothing; {@code false} keeps the download. */
+        default boolean keepLink(Ed2kLink.FileLink link) {
+            return false;
+        }
     }
 
     /** The server connection, as far as the downloads use it. */
@@ -221,6 +226,7 @@ public final class DownloadManager implements AutoCloseable {
      * @param previewFirst whether every playable download fetches its first and last parts first
      * @param commentFilter words, apart by {@code |}, that leave the sources' comments holding them out
      * @param maxDownloadKiBps the download limit, 0 for none
+     * @param autoDeleteDays a running download that receives nothing for this many days is deleted, 0 for never
      */
     public record Settings(
             ObfuscationMode obfuscation,
@@ -232,7 +238,8 @@ public final class DownloadManager implements AutoCloseable {
             String commentFilter,
             int maxDownloadKiBps,
             boolean cleanUpNewNames,
-            String nameCleanups) {
+            String nameCleanups,
+            int autoDeleteDays) {
 
         public Settings(
                 ObfuscationMode obfuscation,
@@ -240,7 +247,7 @@ public final class DownloadManager implements AutoCloseable {
                 int listenPort,
                 long minFreeSpace,
                 boolean filterLan) {
-            this(obfuscation, maxSourcesPerFile, listenPort, minFreeSpace, filterLan, false, "", 0, false, "");
+            this(obfuscation, maxSourcesPerFile, listenPort, minFreeSpace, filterLan, false, "", 0, false, "", 0);
         }
     }
 
@@ -1454,7 +1461,13 @@ public final class DownloadManager implements AutoCloseable {
             }
         }
         sendCallbacks(now);
+        boolean online = this.server.clientId() != 0 || this.kad.get().isPresent();
+        int deleteDays = this.settings.get().autoDeleteDays();
+        List<Entry> stale = new ArrayList<>();
         for (Entry entry : byPriority()) {
+            if (idleTooLong(entry, online, Duration.ofDays(deleteDays).toSeconds())) {
+                stale.add(entry);
+            }
             entry.window[entry.slot] = entry.received;
             entry.slot = (entry.slot + 1) % RATE_WINDOW;
             if (entry.received > 0) {
@@ -1479,6 +1492,33 @@ public final class DownloadManager implements AutoCloseable {
                 this.listener.progress(info(entry));
             }
         }
+        for (Entry entry : stale) {
+            deleteIdle(entry, deleteDays);
+        }
+    }
+
+    // Only the time it could have received counts: running, with room on the disk, and with eD2K or Kad up.
+    private boolean idleTooLong(Entry entry, boolean online, long limitSeconds) {
+        PartFile file = entry.download.file();
+        if (entry.received > 0) {
+            this.queue.setIdleSeconds(entry.download, 0);
+        } else if (online && entry.download.isActive()) {
+            this.queue.setIdleSeconds(entry.download, file.idleSeconds() + TICK.toSeconds());
+        }
+        return limitSeconds > 0 && entry.download.isActive() && file.idleSeconds() >= limitSeconds;
+    }
+
+    private void deleteIdle(Entry entry, int days) {
+        PartFile file = entry.download.file();
+        Ed2kLink.FileLink link = new Ed2kLink.FileLink(
+                file.name(), file.size(), file.hash(), file.aichHash(), List.of(), List.of(), List.of());
+        if (!this.listener.keepLink(link)) {
+            // Without its link kept the download stays, and counts its days again.
+            this.queue.setIdleSeconds(entry.download, 0);
+            return;
+        }
+        logger.info("Deleting {}: it ran {} days without receiving data", file.name(), days);
+        cancel(file.hash());
     }
 
     // Each tick adds a tenth of the limit, up to a second's worth; without a limit nothing is counted, so a limit set

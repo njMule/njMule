@@ -424,6 +424,10 @@ All notable changes to this project are documented here. The format follows
   minutes after the last one, through the Windows launcher, `caffeinate` on macOS or
   `systemd-inhibit` on Linux, which end with njMule anyway (off by default; desktop and web
   settings, `system.preventSleep`).
+- Downloads that receive nothing for a number of days can be deleted by themselves (off by default;
+  `download.autoDeleteDays`): only the time a download runs while njMule is connected counts, kept
+  across restarts in its part.met, paused and stopped downloads are never deleted, and each link is
+  first written to `deleted-downloads.txt` in the profile, to add it again at will.
 - The statistics show the session's overhead sent and received, the protocol's bytes besides the
   file data over TCP and UDP, in the desktop and web apps and in the API's status.
 - Uninstalling can delete the profile too: a box at the Windows uninstall (to the Recycle Bin), in

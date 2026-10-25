@@ -111,6 +111,8 @@ public final class DownloadQueue implements AutoCloseable {
     private static final Duration CLOSE_WAIT = Duration.ofSeconds(30);
 
     private static final Logger logger = LoggerFactory.getLogger(DownloadQueue.class);
+    private static final long IDLE_SAVED_EVERY = Duration.ofMinutes(10).toSeconds();
+
     // The met of a cancelled download kept for an undo: no start loads it, and the next start deletes it.
     private static final String SET_ASIDE = ".cancelled";
     private static final Pattern SET_ASIDE_NAME = Pattern.compile("(\\d{1,6})"
@@ -482,6 +484,15 @@ public final class DownloadQueue implements AutoCloseable {
     public void setKnownSources(Download download, List<PartFile.KnownSource> sources) {
         if (!download.file.knownSources().equals(sources)) {
             download.file.setKnownSources(sources);
+            download.dirty = true;
+        }
+    }
+
+    /** Sets how long the download has run without data; saved when it starts again from zero and every ten minutes. */
+    public void setIdleSeconds(Download download, long seconds) {
+        long before = download.file.idleSeconds();
+        download.file.setIdleSeconds(seconds);
+        if (seconds == 0 ? before != 0 : seconds / IDLE_SAVED_EVERY != before / IDLE_SAVED_EVERY) {
             download.dirty = true;
         }
     }

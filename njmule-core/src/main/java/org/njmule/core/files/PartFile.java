@@ -61,12 +61,13 @@ public final class PartFile {
     private static final Logger logger = LoggerFactory.getLogger(PartFile.class);
 
     // njMule's own tags, which other clients skip: the parts that passed their check, the place of the download in the
-    // order downloads were added, whether it takes sources asked for other files by itself, and the sources kept for
-    // the next run.
+    // order downloads were added, whether it takes sources asked for other files by itself, the sources kept for the
+    // next run, and how long it has run without receiving data.
     private static final TagName VERIFIED_TAG = TagName.of("njm_verified");
     private static final TagName ADDED_TAG = TagName.of("njm_added");
     private static final TagName AUTO_SWAP_TAG = TagName.of("njm_a4af_auto");
     private static final TagName SOURCES_TAG = TagName.of("njm_sources");
+    private static final TagName IDLE_TAG = TagName.of("njm_idle");
     private static final int SOURCES_VERSION = 1;
 
     /** The most sources kept from one run to the next. */
@@ -142,6 +143,7 @@ public final class PartFile {
     private DownloadPriority priority = DownloadPriority.AUTO;
     private int category = Category.NONE;
     private long added;
+    private long idleSeconds;
 
     private PartFile(
             int number,
@@ -212,6 +214,7 @@ public final class PartFile {
         // Bit 0: first and last parts first, for a preview.
         file.previewFirst = (Tags.intValue(contents.tags(), FileTag.DL_PREVIEW).orElse(0) & 1) != 0;
         file.autoSwap = Tags.intValue(contents.tags(), AUTO_SWAP_TAG).orElse(0) != 0;
+        file.idleSeconds = Math.max(0, Tags.intValue(contents.tags(), IDLE_TAG).orElse(0));
         for (Tag tag : contents.tags()) {
             if (tag instanceof Tag.BlobTag blob && blob.name().equals(SOURCES_TAG)) {
                 file.knownSources = readSources(blob.value().toByteArray());
@@ -315,6 +318,9 @@ public final class PartFile {
         if (this.autoSwap) {
             tags.add(new Tag.IntTag(AUTO_SWAP_TAG, 1));
         }
+        if (this.idleSeconds > 0) {
+            tags.add(new Tag.IntTag(IDLE_TAG, this.idleSeconds));
+        }
         this.aichHash.ifPresent(h -> tags.add(new Tag.StringTag(TagName.id(FileTag.AICH_HASH), h.toBase32())));
         List<PartMet.Gap> gaps = new ArrayList<>();
         for (Range<Long> gap : this.missing.asRanges()) {
@@ -410,6 +416,15 @@ public final class PartFile {
     /** The place of the download in the order downloads were added, from 1; 0 when not known. */
     public long added() {
         return this.added;
+    }
+
+    /** How long the download has run, over all starts, since it last received data; in seconds. */
+    public long idleSeconds() {
+        return this.idleSeconds;
+    }
+
+    public void setIdleSeconds(long seconds) {
+        this.idleSeconds = Math.max(0, seconds);
     }
 
     public void setAdded(long added) {

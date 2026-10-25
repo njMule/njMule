@@ -565,6 +565,17 @@ class PartFileTest {
     }
 
     @Test
+    void shouldKeepHowLongItRanWithoutData() throws Exception {
+        givenAFileOf(3, "a.bin", 5000);
+        givenItRanWithoutDataFor(86_400);
+        givenTheFileIsSaved();
+
+        whenTheFileIsLoaded();
+
+        thenItRanWithoutDataFor(86_400);
+    }
+
+    @Test
     void shouldKeepWhetherItIsStoppedAndItsCategory() throws Exception {
         givenAFileOf(3, "a.bin", 5000);
         givenThePriorityIs(DownloadPriority.HIGH);
@@ -721,6 +732,14 @@ class PartFileTest {
 
     private void givenTheKnownSources(PartFile.KnownSource... sources) {
         this.file.setKnownSources(List.of(sources));
+    }
+
+    private void givenItRanWithoutDataFor(long seconds) {
+        this.file.setIdleSeconds(seconds);
+    }
+
+    private void thenItRanWithoutDataFor(long seconds) {
+        assertThat(this.file.idleSeconds()).isEqualTo(seconds);
     }
 
     private void thenTheKnownSourcesAre(PartFile.KnownSource... sources) {

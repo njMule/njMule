@@ -1676,7 +1676,7 @@ class DownloadSourcesTest {
 
     private static DownloadManager.Settings settings(ObfuscationMode obfuscation, int maxSources, long minFree) {
         return new DownloadManager.Settings(
-                obfuscation, maxSources, PORT, minFree, true, false, "spam|fake", 0, false, "");
+                obfuscation, maxSources, PORT, minFree, true, false, "spam|fake", 0, false, "", 0);
     }
 
     private ScriptedSource source(int misc1, int misc2) throws Exception {

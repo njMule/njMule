@@ -85,6 +85,7 @@ public final class PreferencesCodec {
                 Preferences.Builder::uploadCapacityKiBps);
         intKey("download.maxSourcesPerFile", Preferences::maxSourcesPerFile, Preferences.Builder::maxSourcesPerFile);
         intKey("download.minFreeSpaceMiB", Preferences::minFreeSpaceMiB, Preferences.Builder::minFreeSpaceMiB);
+        intKey("download.autoDeleteDays", Preferences::autoDeleteDays, Preferences.Builder::autoDeleteDays);
         key(
                 "security.obfuscation",
                 p -> p.obfuscation().name(),

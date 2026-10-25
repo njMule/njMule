@@ -67,6 +67,7 @@ class DownloadManagerTest {
     private static final int CORRUPT = Ipv4.of(192, 0, 2, 66);
     private static final int HONEST = Ipv4.of(192, 0, 2, 67);
     private static final Hash16 CORRUPT_FILE = Hash16.parseHex("c0".repeat(16));
+    private static final Hash16 IDLE_FILE = Hash16.parseHex("1d".repeat(16));
     // A link with a loopback, a blocked and a LAN source.
     private static final String LINK_WITH_SOURCES = "ed2k://|file|link.bin|5000|" + "34".repeat(16)
             + "|/|sources,127.0.0.1:" + PORT + "," + Ipv4.format(BLOCKED_IP) + ":" + PORT + ",172.20.0.9:" + PORT
@@ -88,6 +89,7 @@ class DownloadManagerTest {
     private final List<String> banned = new CopyOnWriteArrayList<>();
     private Consumer<List<DownloadManager.KadSource>> kadFound;
     private final List<DownloadInfo> added = new CopyOnWriteArrayList<>();
+    private final List<String> keptLinks = new CopyOnWriteArrayList<>();
     private HighIdServer server;
     private Hash16 hash;
     private DownloadInfo info;
@@ -117,6 +119,42 @@ class DownloadManagerTest {
 
         thenItsSourcesAre(HONEST);
         thenTheBannedAre(CORRUPT);
+    }
+
+    @Test
+    void shouldDeleteARunningDownloadIdleForTheDaysSetAndKeepItsLinkFirst() throws Exception {
+        givenDownloadsDeletedAfterIdleDays(1);
+        givenTheLinksKept(true);
+        givenADownloadIdleForSeconds("idle.bin", IDLE_FILE, 86_399);
+
+        whenTheManagerHasRunAWhile();
+
+        thenTheDownloadIsGone(true);
+        thenTheKeptLinksAre("ed2k://|file|idle.bin|5000|" + IDLE_FILE.toHex() + "|/");
+    }
+
+    @Test
+    void shouldLeaveAPausedDownloadAloneWhateverItsIdleTime() throws Exception {
+        givenDownloadsDeletedAfterIdleDays(1);
+        givenTheLinksKept(true);
+        givenAPausedDownloadIdleForSeconds("paused.bin", IDLE_FILE, 86_400);
+
+        whenTheManagerHasRunAWhile();
+
+        thenTheDownloadIsGone(false);
+        thenTheKeptLinksAre();
+    }
+
+    @Test
+    void shouldKeepADownloadWhoseLinkCannotBeKeptAndCountItsDaysAgain() throws Exception {
+        givenDownloadsDeletedAfterIdleDays(1);
+        givenTheLinksKept(false);
+        givenADownloadIdleForSeconds("kept.bin", IDLE_FILE, 86_399);
+
+        whenTheManagerHasRunAWhile();
+
+        thenTheDownloadIsGone(false);
+        thenItsIdleTimeIsBelow(86_399);
     }
 
     @Test
@@ -649,6 +687,63 @@ class DownloadManagerTest {
         onLoop(() -> this.manager.add(Ed2kLink.FileLink.of(name, 5000, hash)));
     }
 
+    private void givenDownloadsDeletedAfterIdleDays(int days) {
+        this.settings = new DownloadManager.Settings(
+                ObfuscationMode.SUPPORTED, 100, PORT, 0, true, false, "", 0, false, "", days);
+    }
+
+    private void givenTheLinksKept(boolean kept) {
+        List<String> links = this.keptLinks;
+        this.listener = new Quiet() {
+            @Override
+            public boolean keepLink(Ed2kLink.FileLink link) {
+                if (kept) {
+                    links.add(link.toUri());
+                }
+                return kept;
+            }
+        };
+    }
+
+    private void givenADownloadIdleForSeconds(String name, Hash16 hash, long seconds) throws Exception {
+        manager();
+        givenADownload(name, hash);
+        onLoop(() -> {
+            this.manager.find(hash).orElseThrow().file().setIdleSeconds(seconds);
+            return null;
+        });
+    }
+
+    private void givenAPausedDownloadIdleForSeconds(String name, Hash16 hash, long seconds) throws Exception {
+        manager();
+        givenAPausedDownload(name, 5000, hash);
+        onLoop(() -> {
+            this.manager.find(hash).orElseThrow().file().setIdleSeconds(seconds);
+            return null;
+        });
+    }
+
+    // A few ticks, of a second each.
+    private void whenTheManagerHasRunAWhile() throws Exception {
+        Thread.sleep(2500);
+    }
+
+    private void thenTheDownloadIsGone(boolean gone) throws Exception {
+        assertThat(onLoop(() -> this.manager.download(this.hash)))
+                .as("download")
+                .matches(d -> d.isEmpty() == gone);
+    }
+
+    private void thenTheKeptLinksAre(String... links) {
+        assertThat(this.keptLinks).containsExactly(links);
+    }
+
+    private void thenItsIdleTimeIsBelow(long seconds) throws Exception {
+        assertThat(onLoop(
+                        () -> this.manager.find(this.hash).orElseThrow().file().idleSeconds()))
+                .isLessThan(seconds);
+    }
+
     private void givenAPausedDownload(String name, long size, Hash16 hash) throws Exception {
         this.hash = hash;
         onLoop(() -> {
@@ -809,8 +904,8 @@ class DownloadManagerTest {
     }
 
     private void givenTheNamesOfNewDownloadsCleanedUpOf(String words) {
-        this.settings =
-                new DownloadManager.Settings(ObfuscationMode.SUPPORTED, 100, PORT, 0, true, false, "", 0, true, words);
+        this.settings = new DownloadManager.Settings(
+                ObfuscationMode.SUPPORTED, 100, PORT, 0, true, false, "", 0, true, words, 0);
     }
 
     private void givenTheDownloadRenamed(String name) throws Exception {

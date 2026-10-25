@@ -27,8 +27,10 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -177,6 +179,8 @@ final class Network {
     /** How long a hello waits for the identification after the answer. */
     static final Duration IDENTIFY_WAIT = Duration.ofSeconds(10);
 
+    // The links of the downloads deleted for receiving nothing, one a line, to add again at will.
+    private static final String DELETED_LINKS_FILE = "deleted-downloads.txt";
     // Server updates are saved together, at most this long after the first one.
     private static final Duration SAVE_DELAY = Duration.ofSeconds(30);
     private static final Duration TOTALS_SAVE = Duration.ofMinutes(5);
@@ -460,7 +464,8 @@ final class Network {
                             prefs.commentFilter(),
                             prefs.maxDownloadKiBps(),
                             prefs.cleanUpNewNames(),
-                            prefs.nameCleanups());
+                            prefs.nameCleanups(),
+                            prefs.autoDeleteDays());
                 },
                 new ServerLinkImpl(),
                 ip -> this.ipFilter.blocks(ip),
@@ -3204,6 +3209,24 @@ final class Network {
         @Override
         public void removed(Hash16 hash) {
             Network.this.publish.accept(new EngineEvent.DownloadRemoved(hash));
+        }
+
+        @Override
+        public boolean keepLink(Ed2kLink.FileLink link) {
+            Path file = Network.this.configDir.resolve(DELETED_LINKS_FILE);
+            try {
+                Files.writeString(
+                        file,
+                        link.toUri() + System.lineSeparator(),
+                        StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE,
+                        StandardOpenOption.APPEND);
+                return true;
+            } catch (IOException e) {
+                logger.warn(
+                        "Cannot keep the link of {} in {}, so it is not deleted: {}", link.name(), file, e.toString());
+                return false;
+            }
         }
     }
 
