@@ -33,6 +33,11 @@ public final class CaptureAccess {
         screen.choose(name);
     }
 
+    /** Opens the download in row {@code row} onto its sources, as a double click does. */
+    public static void openOntoSources(TransfersScreen screen, int row) {
+        screen.activate(screen.downloads().getItems().get(row).get());
+    }
+
     public static void editServerListAddresses(SettingsScreen screen) {
         screen.editServerListAddresses();
     }

@@ -106,6 +106,7 @@ import org.njmule.gui.screens.CaptureAccess;
 import org.njmule.gui.screens.MessagesScreen;
 import org.njmule.gui.screens.SettingsScreen;
 import org.njmule.gui.screens.SharedScreen;
+import org.njmule.gui.screens.TransfersScreen;
 import org.njmule.gui.shell.MainWindow;
 import org.njmule.gui.shell.MiniMule;
 import org.njmule.gui.shell.TrayMenu;
@@ -405,6 +406,9 @@ class CaptureTour {
             if (this.stage.getScene().lookup("#details") instanceof ToggleButton details && details.isSelected()) {
                 details.fire();
             }
+            // The first download shows its sources under it.
+            CaptureAccess.openOntoSources(
+                    (TransfersScreen) this.window.screen("transfers").orElseThrow(), 0);
         });
         shot("transfers", "The transfers, for the README");
     }
