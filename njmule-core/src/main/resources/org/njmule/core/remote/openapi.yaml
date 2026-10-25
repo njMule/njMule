@@ -451,7 +451,7 @@ paths:
             enum: [parts]
       responses:
         "200":
-          description: Every download.
+          description: Every download; the completed ones come last and stay until they are cleared.
           content:
             application/json:
               schema:
@@ -501,6 +501,25 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "413":
           $ref: "#/components/responses/TooLarge"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/completed:
+    delete:
+      operationId: clearCompletedDownloads
+      tags: [downloads]
+      summary: Takes the completed downloads off the list; their files stay.
+      responses:
+        "200":
+          description: How many completed downloads were taken off.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [removed]
+                properties:
+                  removed:
+                    type: integer
+                    minimum: 0
         default:
           $ref: "#/components/responses/Error"
   /downloads/{hash}:

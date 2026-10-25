@@ -428,6 +428,10 @@ All notable changes to this project are documented here. The format follows
   program each gave last, when it was first and last met and, when the countries are shown, where
   from, never its address, with the bytes exchanged of all times from the credits; the Known
   Clients list of the transfers in the desktop and web apps, and the API (`GET /clients/known`).
+- The completed downloads stay in the list of the transfers, restarts included, until *Clear
+  completed* takes them off, in the desktop and web apps and in the API
+  (`DELETE /downloads/completed`); they are kept in `finished.json` of the profile, and cancelling
+  leaves them out, as their files stay where they are.
 - The country of other clients, with its flag beside its code and its name as tooltip, in the
   sources of a download and among the uploads and the queue, in the desktop and web apps and in
   the API (off by default; `geo.countries`): njMule then downloads DB-IP's free IP to Country Lite

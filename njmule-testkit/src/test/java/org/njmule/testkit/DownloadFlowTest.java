@@ -17,6 +17,7 @@
 package org.njmule.testkit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -77,6 +78,7 @@ class DownloadFlowTest {
     private EngineEvent.DownloadCompleted completion;
     private int closedPort;
     private boolean cancelled;
+    private int cleared;
 
     @AfterEach
     void closeEverything() throws Exception {
@@ -100,6 +102,19 @@ class DownloadFlowTest {
         thenThePeerReceivedInOrder("HELLO", "SETREQFILEID", "HASHSETREQUEST", "STARTUPLOADREQ");
         thenThePeerReceived("REQUESTPARTS");
         thenThePeerReceivedTimes("STARTUPLOADREQ", 1);
+    }
+
+    @Test
+    void shouldKeepACompletedDownloadListedUntilTheCompletedAreCleared() throws Exception {
+        givenAPeerSharing(12_345, 2);
+        givenNjMuleRunning();
+        givenTheLinkOfThePeerDownloaded();
+
+        whenTheCompletedDownloadsAreCleared();
+
+        thenTheClearedDownloadsAre(1);
+        thenTheDownloadIsGoneFromTheList();
+        thenTheFileHoldsTheData();
     }
 
     @Test
@@ -348,6 +363,14 @@ class DownloadFlowTest {
         assertThat(this.engine.downloads().get().getFirst().status()).isEqualTo(DownloadInfo.Status.DOWNLOADING);
     }
 
+    private void givenTheLinkOfThePeerDownloaded() throws Exception {
+        whenTheLinkOfThePeerIsDownloaded();
+    }
+
+    private void whenTheCompletedDownloadsAreCleared() throws Exception {
+        this.cleared = this.engine.clearCompletedDownloads().get(10, TimeUnit.SECONDS);
+    }
+
     private void whenTheLinkOfThePeerIsDownloaded() throws Exception {
         download(this.peer.link());
     }
@@ -369,9 +392,21 @@ class DownloadFlowTest {
         assertThat(this.added.sources()).isEqualTo(sources);
     }
 
+    // It stays listed as complete until the completed downloads are cleared.
     private void thenTheDownloadIsComplete() throws Exception {
         assertThat(this.completion.download().completed())
                 .isEqualTo(this.completion.download().size());
+        assertThat(this.engine.downloads().get(10, TimeUnit.SECONDS))
+                .extracting(DownloadInfo::hash, DownloadInfo::status)
+                .containsExactly(tuple(this.added.hash(), DownloadInfo.Status.COMPLETE));
+    }
+
+    private void thenTheClearedDownloadsAre(int count) {
+        assertThat(this.cleared).isEqualTo(count);
+    }
+
+    private void thenTheDownloadIsGoneFromTheList() throws Exception {
+        assertThat(this.events.next(EngineEvent.DownloadRemoved.class).hash()).isEqualTo(this.added.hash());
         assertThat(this.engine.downloads().get(10, TimeUnit.SECONDS)).isEmpty();
     }
 

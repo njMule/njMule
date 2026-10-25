@@ -109,9 +109,7 @@ class DownloadLimitFlowTest {
         DownloadInfo added = this.engine.addDownload(this.peer.link()).get(10, TimeUnit.SECONDS);
         long deadline = start + Duration.ofSeconds(60).toNanos();
         while (this.engine.downloads().get(10, TimeUnit.SECONDS).stream()
-                .map(DownloadInfo::hash)
-                .toList()
-                .contains(added.hash())) {
+                .noneMatch(d -> d.hash().equals(added.hash()) && d.status() == DownloadInfo.Status.COMPLETE)) {
             assertThat(System.nanoTime()).as("the download goes on").isLessThan(deadline);
             Thread.sleep(50);
         }

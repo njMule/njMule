@@ -337,7 +337,7 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
             }
             addToMinute(sample);
         });
-        later(this.engine.downloads(), this::showDownloads);
+        later(this.engine.downloads(), this.downloads::update);
         if (this.ticks % 2 == 0) {
             later(this.engine.uploads(), this.uploads::update);
             later(this.engine.sources(), this.sources::update);
@@ -684,14 +684,9 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
         later(this.engine.setDownloadPriority(file, priority), ok -> refreshDownloads());
     }
 
-    /** Takes the finished downloads off the list. */
+    /** Takes the completed downloads off the list, which the engine keeps them in until then. */
     public void clearCompleted() {
-        this.downloads.rows().stream()
-                .map(LiveList.Row::get)
-                .filter(d -> d.status() == DownloadInfo.Status.COMPLETE)
-                .map(DownloadInfo::hash)
-                .toList()
-                .forEach(this.downloads::remove);
+        later(this.engine.clearCompletedDownloads(), cleared -> refreshDownloads());
     }
 
     public void cancel(Hash16 file) {
@@ -1135,20 +1130,10 @@ public final class EngineModel implements Flow.Subscriber<EngineEvent>, AutoClos
     }
 
     private void refreshDownloads() {
-        later(this.engine.downloads(), this::showDownloads);
+        later(this.engine.downloads(), this.downloads::update);
     }
 
     // The engine forgets finished downloads; they stay listed until cleared.
-    private void showDownloads(List<DownloadInfo> active) {
-        List<DownloadInfo> all = new ArrayList<>(active);
-        for (LiveList.Row<DownloadInfo> row : this.downloads.rows()) {
-            if (row.get().status() == DownloadInfo.Status.COMPLETE) {
-                all.add(row.get());
-            }
-        }
-        this.downloads.update(all);
-    }
-
     private void run(CompletableFuture<?> work) {
         later(work, done -> {});
     }

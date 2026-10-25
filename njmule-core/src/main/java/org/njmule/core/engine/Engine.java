@@ -1133,6 +1133,11 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Integer> clearCompletedDownloads() {
+        return this.loop.submit(this.network::clearCompletedDownloads);
+    }
+
+    @Override
     public CompletableFuture<Boolean> pauseDownload(Hash16 hash) {
         Objects.requireNonNull(hash, "hash");
         return this.loop.submit(() -> this.network.pauseDownload(hash));

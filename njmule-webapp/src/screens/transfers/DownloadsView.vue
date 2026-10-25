@@ -116,6 +116,9 @@ const visible = computed(() => {
 });
 
 const one = computed(() => (chosen.value.length === 1 ? chosen.value[0] : undefined));
+// A completed download is not cancelled: its file stays, and clearing takes it off the list.
+const cancellable = computed(() => chosen.value.filter((d) => d.status !== 'complete'));
+const anyComplete = computed(() => props.downloads.some((d) => d.status === 'complete'));
 const ofOne = computed(() => (one.value ? props.sources.filter((s) => s.file === one.value?.hash) : []));
 
 // The parts of the download chosen, read again while it stays chosen.
@@ -193,11 +196,12 @@ function setCategory(id: number): void {
 }
 
 async function cancel(): Promise<void> {
-    const many = chosen.value.length > 1;
+    const gone = cancellable.value;
+    const many = gone.length > 1;
     try {
         await ElMessageBox.confirm(
             t('nj.transfers.cancelText'),
-            many ? t('nj.transfers.cancelTitleMany', chosen.value.length) : t('nj.transfers.cancelTitleOne'),
+            many ? t('nj.transfers.cancelTitleMany', gone.length) : t('nj.transfers.cancelTitleOne'),
             {
                 type: 'warning',
                 confirmButtonText: many ? t('nj.transfers.cancelMany') : t('nj.transfers.cancelOne'),
@@ -208,8 +212,12 @@ async function cancel(): Promise<void> {
     } catch {
         return;
     }
-    const gone = chosen.value;
-    await each((d) => api.delete(`/downloads/${d.hash}`));
+    await attempt(async () => {
+        for (const d of gone) {
+            await api.delete(`/downloads/${d.hash}`);
+        }
+    });
+    emit('changed');
     // The engine keeps what they had downloaded for a few seconds: long enough to change one's mind.
     const note = ElNotification({
         message: h('span', [
@@ -234,6 +242,11 @@ async function cancel(): Promise<void> {
         ]),
         duration: 10000,
     });
+}
+
+async function clearCompleted(): Promise<void> {
+    await attempt(() => api.delete('/downloads/completed'));
+    emit('changed');
 }
 
 async function rename(): Promise<void> {
@@ -393,7 +406,10 @@ const SOURCE_STATES: Record<Source['state'], string> = {
                 </el-dropdown-menu>
             </template>
         </el-dropdown>
-        <el-button :disabled="chosen.length === 0" type="danger" plain @click="cancel">
+        <el-button :disabled="!anyComplete" @click="clearCompleted">
+            <NjIcon name="CLEAR_ALL" />{{ t('IDS_DL_CLEAR') }}
+        </el-button>
+        <el-button :disabled="cancellable.length === 0" type="danger" plain @click="cancel">
             <NjIcon name="DELETE" />{{ t('nj.transfers.cancelOne') }}
         </el-button>
     </div>

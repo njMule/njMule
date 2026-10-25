@@ -237,6 +237,7 @@ public final class RemoteApi implements AutoCloseable {
                 entry("streamEvents", this::streamEvents),
                 entry("shutdown", this::shutdown),
                 entry("listDownloads", this::listDownloads),
+                entry("clearCompletedDownloads", c -> count(c, "removed", this.engine.clearCompletedDownloads())),
                 entry("addDownloads", this::addDownloads),
                 entry("getDownload", c -> download(c, 200)),
                 entry("cancelDownload", c -> known(c, this.engine.cancelDownload(hash(c)))),
@@ -1016,7 +1017,9 @@ public final class RemoteApi implements AutoCloseable {
 
     private Known known() {
         Set<Hash16> downloading = new HashSet<>();
-        await(this.engine.downloads()).forEach(d -> downloading.add(d.hash()));
+        await(this.engine.downloads()).stream()
+                .filter(d -> d.status() != DownloadInfo.Status.COMPLETE)
+                .forEach(d -> downloading.add(d.hash()));
         Set<Hash16> shared = new HashSet<>();
         await(this.engine.sharedFiles()).forEach(f -> shared.add(f.hash()));
         return new Known(downloading, shared, await(this.engine.fileHistory()));
@@ -1102,10 +1105,14 @@ public final class RemoteApi implements AutoCloseable {
     }
 
     private void count(Call c, CompletableFuture<Integer> work) throws IOException {
-        int added = await(work);
+        count(c, "added", work);
+    }
+
+    private void count(Call c, String what, CompletableFuture<Integer> work) throws IOException {
+        int counted = await(work);
         reply(c.exchange(), 200, g -> {
             g.writeStartObject();
-            g.writeNumberProperty("added", added);
+            g.writeNumberProperty(what, counted);
             g.writeEndObject();
         });
     }

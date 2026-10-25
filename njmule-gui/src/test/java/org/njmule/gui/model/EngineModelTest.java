@@ -102,6 +102,7 @@ class EngineModelTest {
     private final CompletableFuture<Void> connecting = new CompletableFuture<>();
     private final List<String> added = new CopyOnWriteArrayList<>();
     private final List<String> finished = new CopyOnWriteArrayList<>();
+    private final AtomicBoolean clearing = new AtomicBoolean();
     private final List<String> categoriesAdded = new CopyOnWriteArrayList<>();
     private final AtomicReference<EngineModel.Search> started = new AtomicReference<>();
     private final AtomicReference<ImportReport> report = new AtomicReference<>();
@@ -309,14 +310,13 @@ class EngineModelTest {
     }
 
     @Test
-    void shouldClearTheFinishedDownloads() throws Exception {
-        givenAModelThatHearsNoEventOfTheEngine();
-        givenTheModelHears(new EngineEvent.DownloadAdded(DOWNLOAD));
-        givenTheDownloadCompleted();
+    void shouldHaveTheEngineClearTheFinishedDownloads() throws Exception {
+        givenAModelWhoseEngineNotesTheClearings();
 
         whenTheFinishedDownloadsAreCleared();
 
-        thenTheModelHasNoDownload();
+        thenTheEngineIsAskedToClearThem();
+        thenTheModelSoonHasNoDownload();
     }
 
     @Test
@@ -458,6 +458,13 @@ class EngineModelTest {
         notListening();
     }
 
+    private void givenAModelWhoseEngineNotesTheClearings() throws Exception {
+        start(real -> Engines.overriding(real, Map.of("clearCompletedDownloads", args -> {
+            this.clearing.set(true);
+            return CompletableFuture.completedFuture(1);
+        })));
+    }
+
     private void givenAModelWhoseEngineCannotConnectTo(String host) throws Exception {
         start(real -> Engines.overriding(
                 real, Map.of("connect", args -> CompletableFuture.failedFuture(new UnknownHostException(host)))));
@@ -554,10 +561,6 @@ class EngineModelTest {
 
     private void givenTheFinishedDownloadsAreNoted() {
         this.model.onCompleted(d -> this.finished.add(d.name()));
-    }
-
-    private void givenTheDownloadCompleted() {
-        complete();
     }
 
     private void givenTheEngineStartedWithItsPreferences() {
@@ -777,6 +780,10 @@ class EngineModelTest {
 
     private void thenTheModelHasNoDownload() {
         assertThat(this.model.downloads().size()).isZero();
+    }
+
+    private void thenTheEngineIsAskedToClearThem() {
+        assertThat(this.clearing).isTrue();
     }
 
     private void thenTheModelSoonHasNoDownload() throws Exception {

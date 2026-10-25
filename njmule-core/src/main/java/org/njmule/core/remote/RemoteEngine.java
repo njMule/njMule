@@ -410,6 +410,12 @@ public final class RemoteEngine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Integer> clearCompletedDownloads() {
+        return json("DELETE", "downloads/completed", null)
+                .thenApply(n -> n.path("removed").asInt());
+    }
+
+    @Override
     public CompletableFuture<Boolean> pauseDownload(Hash16 hash) {
         return yes("POST", download(hash, "pause"), null);
     }

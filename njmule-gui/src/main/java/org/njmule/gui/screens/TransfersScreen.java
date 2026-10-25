@@ -502,6 +502,7 @@ public final class TransfersScreen implements Screen {
             for (MenuItem item : List.of(pause, resume, stop, cancel, priority, category, copy, html)) {
                 item.setDisable(none);
             }
+            cancel.setDisable(cancellable().isEmpty());
             // A finished download has left the engine: there is nothing to preview or to fetch any more.
             boolean active = selected.size() == 1 && selected.getFirst().status() != DownloadInfo.Status.COMPLETE;
             preview.setDisable(!active || selected.getFirst().completed() == 0);
@@ -1220,10 +1221,17 @@ public final class TransfersScreen implements Screen {
 
     // A cancel deletes what was downloaded: asked first.
     void askCancelSelected() {
-        List<DownloadInfo> selected = Fx.selected(this.downloads);
+        List<DownloadInfo> selected = cancellable();
         if (!selected.isEmpty() && this.cancelAnswer.test(cancelQuestion(selected), selected.size())) {
             cancelSelected();
         }
+    }
+
+    // The chosen downloads but the completed ones, whose files stay: clearing takes those off the list.
+    private List<DownloadInfo> cancellable() {
+        return Fx.selected(this.downloads).stream()
+                .filter(d -> d.status() != DownloadInfo.Status.COMPLETE)
+                .toList();
     }
 
     private boolean askCancel(String question, int count) {
@@ -1268,7 +1276,7 @@ public final class TransfersScreen implements Screen {
 
     // The engine keeps what was downloaded for a while, and the message offers to take it back.
     void cancelSelected() {
-        List<DownloadInfo> selected = Fx.selected(this.downloads);
+        List<DownloadInfo> selected = cancellable();
         if (selected.isEmpty()) {
             return;
         }

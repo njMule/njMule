@@ -182,6 +182,7 @@ class RemoteApiContractTest {
                 Arguments.of("PUT", download + "/name", "{\"name\":\"talk 2.bin\"}", 200),
                 Arguments.of("POST", download + "/sources", "{\"address\":\"198.51.100.7:4662\"}", 200),
                 Arguments.of("DELETE", download, "", 200),
+                Arguments.of("DELETE", "/api/v1/downloads/completed", "", 200),
                 Arguments.of("PUT", "/api/v1/shared/" + HASH + "/priority", "{\"priority\":\"release\"}", 200),
                 Arguments.of("POST", "/api/v1/servers", "{\"address\":\"203.0.113.10:4661\"}", 201),
                 Arguments.of("POST", "/api/v1/servers/connect", "", 200),
@@ -434,6 +435,7 @@ class RemoteApiContractTest {
         }
         answerWith("addDownload", ApiSamples.download());
         answerWith("swapSourcesToDownload", 3);
+        answerWith("clearCompletedDownloads", 2);
         answerWith("testPorts", ApiSamples.portTest());
         answerWith(
                 "testNotifications",

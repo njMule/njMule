@@ -183,7 +183,11 @@ public interface NjMuleEngine extends AutoCloseable {
      */
     CompletableFuture<DownloadInfo> addDownload(Ed2kLink.FileLink link, OptionalInt category, boolean paused);
 
+    /** The downloads, then the completed ones, which stay until {@link #clearCompletedDownloads} takes them off. */
     CompletableFuture<List<DownloadInfo>> downloads();
+
+    /** Takes the completed downloads off the list of downloads, and tells how many there were; their files stay. */
+    CompletableFuture<Integer> clearCompletedDownloads();
 
     /** Completes with {@code false} for an unknown download. */
     CompletableFuture<Boolean> pauseDownload(Hash16 hash);

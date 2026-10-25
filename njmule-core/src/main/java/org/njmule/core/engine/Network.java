@@ -92,6 +92,7 @@ import org.njmule.core.config.Preferences;
 import org.njmule.core.config.ProxySettings;
 import org.njmule.core.config.SharedFilesVisibility;
 import org.njmule.core.download.DownloadManager;
+import org.njmule.core.download.FinishedDownloads;
 import org.njmule.core.files.CancelledFiles;
 import org.njmule.core.files.CommentFilter;
 import org.njmule.core.files.FileComments;
@@ -264,6 +265,7 @@ final class Network {
     // The servers logged in to or being tried, read by the listener's threads.
     private volatile Set<Integer> serverIps = Set.of();
     private final DownloadManager downloads;
+    private final FinishedDownloads finished;
     private final Credits credits;
     private final ClientHistory history;
     private volatile CountryTable countries = CountryTable.EMPTY;
@@ -351,6 +353,7 @@ final class Network {
         this.incomingDir = incomingDir;
         this.credits = Credits.load(configDir, Clock.systemUTC());
         this.history = ClientHistory.load(configDir, Instant.now());
+        this.finished = FinishedDownloads.load(configDir);
         this.totals = Totals.load(configDir.resolve(Totals.FILE_NAME));
         this.friends = Friends.load(configDir);
         this.categories = CategoriesCodec.load(configDir.resolve(CategoriesCodec.FILE_NAME));
@@ -1176,8 +1179,43 @@ final class Network {
         return info;
     }
 
+    // The completed downloads follow, in a category of none once theirs is gone.
     List<DownloadInfo> downloads() {
-        return this.downloads.downloads();
+        List<DownloadInfo> all = new ArrayList<>(this.downloads.downloads());
+        Set<Hash16> active = new HashSet<>();
+        all.forEach(d -> active.add(d.hash()));
+        Set<Integer> categories = new HashSet<>();
+        this.categories.forEach(c -> categories.add(c.id()));
+        for (DownloadInfo d : this.finished.downloads()) {
+            if (!active.contains(d.hash())) {
+                all.add(d.category() == Category.NONE || categories.contains(d.category()) ? d : withoutCategory(d));
+            }
+        }
+        return all;
+    }
+
+    private static DownloadInfo withoutCategory(DownloadInfo d) {
+        return new DownloadInfo(
+                d.hash(),
+                d.name(),
+                d.size(),
+                d.completed(),
+                d.status(),
+                d.priority(),
+                Category.NONE,
+                d.sources(),
+                d.transferring(),
+                d.bytesPerSecond(),
+                d.parts(),
+                d.previewFirst(),
+                d.autoSwap());
+    }
+
+    /** Takes the completed downloads off the list; their files stay. */
+    int clearCompletedDownloads() {
+        List<Hash16> cleared = this.finished.clear();
+        cleared.forEach(hash -> this.publish.accept(new EngineEvent.DownloadRemoved(hash)));
+        return cleared.size();
     }
 
     boolean pauseDownload(Hash16 hash) {
@@ -3224,6 +3262,8 @@ final class Network {
 
         @Override
         public void added(DownloadInfo download) {
+            // A file downloaded again takes the place of its completed download.
+            Network.this.finished.remove(download.hash());
             Network.this.publish.accept(new EngineEvent.DownloadAdded(download));
         }
 
@@ -3239,6 +3279,7 @@ final class Network {
                 Network.this.shares.finished(file, part);
             }
             Network.this.publisher.changed(Optional.of(download.hash()));
+            Network.this.finished.add(download);
             Network.this.publish.accept(new EngineEvent.DownloadCompleted(download, file));
             Network.this.startNext(download.category());
         }

@@ -237,8 +237,11 @@ class EngineImportTest {
         assertThat(Files.readAllBytes(finished)).isEqualTo(this.emule.downloadData);
     }
 
+    // The complete one stays listed as complete.
     private void givenTheHalfDownloadGoesOn() throws Exception {
-        List<DownloadInfo> downloads = this.engine.downloads().get(5, TimeUnit.SECONDS);
+        List<DownloadInfo> downloads = this.engine.downloads().get(5, TimeUnit.SECONDS).stream()
+                .filter(d -> d.status() != DownloadInfo.Status.COMPLETE)
+                .toList();
         assertThat(downloads).hasSize(1);
         assertThat(downloads.getFirst().hash()).isEqualTo(this.emule.halfHash);
         assertThat(downloads.getFirst().completed()).isEqualTo(SyntheticEmuleProfile.DOWNLOAD_SIZE / 2);
