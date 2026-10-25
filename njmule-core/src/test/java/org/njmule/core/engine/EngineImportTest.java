@@ -235,6 +235,12 @@ class EngineImportTest {
             Thread.sleep(50);
         }
         assertThat(Files.readAllBytes(finished)).isEqualTo(this.emule.downloadData);
+        // The file is in place a moment before the engine lists the download as complete.
+        while (this.engine.downloads().get(5, TimeUnit.SECONDS).stream()
+                .noneMatch(d -> d.name().equals("complete.bin") && d.status() == DownloadInfo.Status.COMPLETE)) {
+            assertThat(System.nanoTime()).as("the download listed as complete").isLessThan(deadline);
+            Thread.sleep(50);
+        }
     }
 
     // The complete one stays listed as complete.
