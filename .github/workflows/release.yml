@@ -344,7 +344,9 @@ jobs:
                   }
                   test "$(login wrong-password)" = 401
                   test "$(login smoke-test-password)" = 303
-                  curl -fsS -b "$RUNNER_TEMP/cookies" http://127.0.0.1:4711/transfers | grep -q "Transfers"
+                  # The session gets the browser app and its calls to the API.
+                  curl -fsS -b "$RUNNER_TEMP/cookies" http://127.0.0.1:4711/ | grep -q 'name="njmule-csrf"'
+                  curl -fsS -b "$RUNNER_TEMP/cookies" http://127.0.0.1:4711/api/v1/status | grep -q '"tcpPort"'
                   docker stop --timeout 30 njmule
                   docker logs njmule > "$RUNNER_TEMP/njmule.log" 2>&1
                   cat "$RUNNER_TEMP/njmule.log"
