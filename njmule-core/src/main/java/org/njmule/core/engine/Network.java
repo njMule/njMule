@@ -106,6 +106,7 @@ import org.njmule.core.net.StreamTransport;
 import org.njmule.core.net.TcpConnection;
 import org.njmule.core.net.TcpConnector;
 import org.njmule.core.net.TcpListener;
+import org.njmule.core.net.Traffic;
 import org.njmule.core.net.UdpRoute;
 import org.njmule.core.peer.BuddyLink;
 import org.njmule.core.peer.Identities;
@@ -956,7 +957,10 @@ final class Network {
                 this.binding instanceof BindInterface.Binding.Missing missing
                         ? Optional.of(missing.choice())
                         : Optional.empty(),
-                this.ourIpv6.map(InetAddresses::toAddrString));
+                this.ourIpv6.map(InetAddresses::toAddrString),
+                Traffic.overheadSent(),
+                // What came besides the files: the packets of file data count by their payload only.
+                Math.max(0, Traffic.received() - this.downloads.downloaded()));
     }
 
     private long sessionSeconds() {

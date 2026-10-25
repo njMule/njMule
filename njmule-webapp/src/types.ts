@@ -44,6 +44,8 @@ export interface Status {
     uploadBytesPerSecond: number;
     downloaded: number;
     uploaded: number;
+    overheadDownloaded: number;
+    overheadUploaded: number;
     downloads: number;
     uploads: number;
     queued: number;

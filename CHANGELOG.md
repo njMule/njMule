@@ -424,6 +424,8 @@ All notable changes to this project are documented here. The format follows
   minutes after the last one, through the Windows launcher, `caffeinate` on macOS or
   `systemd-inhibit` on Linux, which end with njMule anyway (off by default; desktop and web
   settings, `system.preventSleep`).
+- The statistics show the session's overhead sent and received, the protocol's bytes besides the
+  file data over TCP and UDP, in the desktop and web apps and in the API's status.
 - Uninstalling can delete the profile too: a box at the Windows uninstall (to the Recycle Bin), in
   the Synology uninstall wizard and in *Uninstall njMule* of the macOS disk image; elsewhere
   `njmule --remove-profile` deletes it after asking, and the deb and rpm packages tell where it

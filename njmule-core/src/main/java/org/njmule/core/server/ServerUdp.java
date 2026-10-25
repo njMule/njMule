@@ -27,6 +27,7 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.ToIntFunction;
+import org.njmule.core.net.Traffic;
 import org.njmule.core.net.UdpRoute;
 import org.njmule.core.protocol.crypt.DatagramObfuscation;
 import org.njmule.core.protocol.io.DecodeException;
@@ -130,6 +131,7 @@ public final class ServerUdp implements AutoCloseable {
         Optional<DatagramPacket> out = this.route.outgoing(to, datagram);
         if (out.isPresent()) {
             this.socket.send(out.get());
+            Traffic.sent(datagram.length, false);
         }
     }
 
@@ -161,6 +163,7 @@ public final class ServerUdp implements AutoCloseable {
             try {
                 datagram.setLength(buffer.length);
                 this.socket.receive(datagram);
+                Traffic.received(datagram.getLength());
                 Optional<UdpRoute.Received> got = this.route.incoming(datagram);
                 if (got.isEmpty()) {
                     continue;

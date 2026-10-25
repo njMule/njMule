@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.function.IntPredicate;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.engine.EngineLoop;
+import org.njmule.core.net.Traffic;
 import org.njmule.core.net.UdpRoute;
 import org.njmule.core.protocol.crypt.DatagramObfuscation;
 import org.njmule.core.protocol.io.DecodeException;
@@ -178,6 +179,7 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
             Optional<DatagramPacket> out = this.route.outgoing(to, datagram);
             if (out.isPresent()) {
                 this.socket.send(out.get());
+                Traffic.sent(datagram.length, false);
             }
         } catch (IOException | IllegalArgumentException e) {
             // A bad address must not end the caller's work, a lookup or the table's upkeep.
@@ -209,6 +211,7 @@ public final class KadSocket implements KadNode.Transport, AutoCloseable {
             try {
                 datagram.setLength(buffer.length);
                 this.socket.receive(datagram);
+                Traffic.received(datagram.getLength());
                 received(datagram);
             } catch (IOException e) {
                 if (!this.socket.isClosed()) {

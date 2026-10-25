@@ -99,6 +99,7 @@ final class StatsTree {
                 Entry.of(
                         this.gui.t("IDS_STATS_SESSION"),
                         Entry.of(this.gui.f("IDS_STATS_UDATA", f.size(s.uploaded()))),
+                        Entry.of(this.gui.t("IDS_STATS_OVRHD") + ": " + f.size(s.overheadUploaded())),
                         Entry.of(this.gui.f("IDS_STATS_ACTUL", s.uploads())),
                         Entry.of(this.gui.f("IDS_STATS_WAITINGUSERS", s.queued()))),
                 Entry.of(
@@ -109,6 +110,7 @@ final class StatsTree {
                 Entry.of(
                         this.gui.t("IDS_STATS_SESSION"),
                         Entry.of(this.gui.f("IDS_STATS_DDATA", f.size(s.downloaded()))),
+                        Entry.of(this.gui.t("IDS_STATS_OVRHD") + ": " + f.size(s.overheadDownloaded())),
                         Entry.of(this.gui.f("IDS_STATS_ACTDL", s.downloads())),
                         Entry.of(this.gui.f(
                                 "IDS_STATS_FOUNDSRC", m.sources().rows().size())),

@@ -94,7 +94,9 @@ final class ApiReader {
                 n.path("tcpPort").asInt(),
                 n.path("relatedSearch").asBoolean(),
                 optional(n, "missingInterface"),
-                optional(n, "publicIpv6"));
+                optional(n, "publicIpv6"),
+                n.path("overheadUploaded").asLong(),
+                n.path("overheadDownloaded").asLong());
     }
 
     static ServerInfo server(JsonNode n) {

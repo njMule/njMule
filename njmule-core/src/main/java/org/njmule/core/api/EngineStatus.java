@@ -33,6 +33,8 @@ import java.util.Optional;
  * @param relatedSearch whether the server we are on finds the files related to others
  * @param missingInterface the network interface the preferences bind to while it is not there, which keeps us offline
  * @param publicIpv6 our public IPv6 address, at which clients may reach us, when we have one
+ * @param overheadUploaded the bytes of packets sent this session besides file data
+ * @param overheadDownloaded the bytes of packets received this session besides file data
  */
 public record EngineStatus(
         Optional<ServerInfo> server,
@@ -57,7 +59,9 @@ public record EngineStatus(
         int tcpPort,
         boolean relatedSearch,
         Optional<String> missingInterface,
-        Optional<String> publicIpv6) {
+        Optional<String> publicIpv6,
+        long overheadUploaded,
+        long overheadDownloaded) {
 
     public EngineStatus {
         Objects.requireNonNull(server, "server");
@@ -65,6 +69,59 @@ public record EngineStatus(
         Objects.requireNonNull(publicIp, "publicIp");
         Objects.requireNonNull(missingInterface, "missingInterface");
         Objects.requireNonNull(publicIpv6, "publicIpv6");
+    }
+
+    /** A status without the overhead of the session. */
+    public EngineStatus(
+            Optional<ServerInfo> server,
+            long clientId,
+            boolean lowId,
+            boolean obfuscated,
+            Optional<KadInfo> kad,
+            long downloadBytesPerSecond,
+            long uploadBytesPerSecond,
+            long downloaded,
+            long uploaded,
+            int downloads,
+            int uploads,
+            int queued,
+            int sharedFiles,
+            long totalDownloaded,
+            long totalUploaded,
+            long sessions,
+            long sessionSeconds,
+            long totalSeconds,
+            String publicIp,
+            int tcpPort,
+            boolean relatedSearch,
+            Optional<String> missingInterface,
+            Optional<String> publicIpv6) {
+        this(
+                server,
+                clientId,
+                lowId,
+                obfuscated,
+                kad,
+                downloadBytesPerSecond,
+                uploadBytesPerSecond,
+                downloaded,
+                uploaded,
+                downloads,
+                uploads,
+                queued,
+                sharedFiles,
+                totalDownloaded,
+                totalUploaded,
+                sessions,
+                sessionSeconds,
+                totalSeconds,
+                publicIp,
+                tcpPort,
+                relatedSearch,
+                missingInterface,
+                publicIpv6,
+                0,
+                0);
     }
 
     /** A status without an IPv6 address. */

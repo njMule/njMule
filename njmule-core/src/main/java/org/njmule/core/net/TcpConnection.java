@@ -63,6 +63,8 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
     }
 
     private static final int OUTBOX_CAPACITY = 1_024;
+    // Protocol byte, length and opcode before each payload.
+    private static final int FRAME_HEADER = 6;
     // What a peer may leave unread, whatever the number of frames.
     private static final long OUTBOX_BYTES = 16L << 20;
     // A clean close sends what is queued, for this long at most.
@@ -266,6 +268,7 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
         try {
             while (isOpen()) {
                 Packet frame = TcpFraming.read(this.in, this.frameLimit);
+                Traffic.received(FRAME_HEADER + frame.length());
                 // The handler heard of the close: nothing more for it.
                 if (!isOpen()) {
                     return;
@@ -324,6 +327,9 @@ public final class TcpConnection implements PeerChannel, AutoCloseable {
                 return null;
             }
             this.queuedData.addAndGet(-frame.length);
+            Traffic.sent(frame.length, true);
+        } else {
+            Traffic.sent(frame.length, false);
         }
         this.queued.addAndGet(-frame.length);
         this.frames.decrementAndGet();

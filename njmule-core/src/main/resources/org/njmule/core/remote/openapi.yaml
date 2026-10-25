@@ -2174,6 +2174,8 @@ components:
         - totalSeconds
         - publicIp
         - tcpPort
+        - overheadUploaded
+        - overheadDownloaded
       properties:
         server:
           description: The server we are connected to, or null.
@@ -2236,6 +2238,14 @@ components:
           description: Our public IPv6 address, at which clients may reach us; present when we have one.
         tcpPort:
           type: integer
+        overheadUploaded:
+          type: integer
+          format: int64
+          description: The bytes of packets sent this session besides file data.
+        overheadDownloaded:
+          type: integer
+          format: int64
+          description: The bytes of packets received this session besides file data.
         missingInterface:
           type: string
           description: Present while the network interface the preferences bind to is gone, which keeps njMule offline.

@@ -141,6 +141,11 @@ function ratio(up: number, down: number): string {
                     <dd>{{ size(status.downloaded) }}</dd>
                     <dt>{{ t('IDS_CD_UP') }}</dt>
                     <dd>{{ size(status.uploaded) }}</dd>
+                    <dt>{{ t('IDS_STATS_OVRHD') }}</dt>
+                    <dd>
+                        &darr; {{ size(status.overheadDownloaded) }} &middot; &uarr;
+                        {{ size(status.overheadUploaded) }}
+                    </dd>
                     <dt>UL:DL</dt>
                     <dd>{{ ratio(status.uploaded, status.downloaded) }}</dd>
                     <dt>{{ t('nj.stats.runtime') }}</dt>
