@@ -10,6 +10,7 @@ import { status, usePoll } from '../../engine';
 import { count } from '../../format';
 import { t } from '../../i18n';
 import { attempt, told } from '../../notify';
+import { distanceBars } from '../../kad';
 
 interface Contact {
     id: string;
@@ -32,6 +33,9 @@ const nodesUrl = ref('https://upd.emule-security.org/nodes.dat');
 const node = ref('');
 
 const kad = computed(() => status.value?.kad ?? null);
+// Our contacts from the closest to the farthest, each bar as tall as its share of the fullest.
+const bars = computed(() => distanceBars(contacts.data.value));
+const fullest = computed(() => Math.max(1, ...bars.value));
 const said = computed(() => {
     if (kad.value === null) {
         return t('nj.kad.sayOff');
@@ -128,6 +132,20 @@ async function recheck(): Promise<void> {
         </form>
     </section>
 
+    <section class="distance" :aria-label="t('nj.kad.byDistance')">
+        <h3>{{ t('nj.kad.byDistance') }}</h3>
+        <div class="bars">
+            <div
+                v-for="(n, i) in bars"
+                :key="i"
+                class="bar"
+                :class="{ empty: n === 0 }"
+                :style="{ height: `${Math.max(2, (n / fullest) * 72)}px` }"
+                :title="String(n)"
+            />
+        </div>
+    </section>
+
     <el-tabs>
         <el-tab-pane :label="`${t('IDS_KADCONTACTLAB')} (${contacts.data.value.length})`">
             <el-table :data="contacts.data.value" :empty-text="t('nj.kad.off')" height="420">
@@ -151,6 +169,25 @@ async function recheck(): Promise<void> {
 </template>
 
 <style scoped>
+.distance h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+}
+.bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 72px;
+    margin-bottom: 12px;
+}
+.bar {
+    flex: 1;
+    background: var(--el-color-primary-light-5);
+    border-radius: 2px 2px 0 0;
+}
+.bar.empty {
+    background: var(--el-border-color);
+}
 .said {
     margin: 0 0 12px;
 }
