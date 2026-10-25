@@ -1,14 +1,14 @@
 [
     {
-        "step_title": "Rimuovi njMule",
+        "step_title": "Disinstalla njMule",
         "items": [
             {
                 "type": "multiselect",
-                "desc": "I file scaricati nella cartella condivisa njmule restano. Si può eliminare anche il profilo di njMule: impostazioni, elenchi di server e contatti, identità e crediti, download incompleti e log.",
+                "desc": "Eliminare anche i dati di njMule? Sono le impostazioni, gli elenchi di server e contatti, l'identità e i crediti, i download incompleti e i log. Lascia la casella vuota per conservarli per una futura installazione. I file scaricati nella cartella condivisa njmule restano sempre.",
                 "subitems": [
                     {
                         "key": "wizard_delete_profile",
-                        "desc": "Elimina anche il profilo di njMule",
+                        "desc": "Elimina i dati di njMule",
                         "defaultValue": false
                     }
                 ]

@@ -28,9 +28,11 @@
 // The common controls 6, for the task dialog of the uninstaller.
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
+#define PROFILE_QUESTION L"Also delete your njMule data?"
 #define PROFILE_TEXT \
-    L"The profile holds your settings, server and contact lists, identity and credits, unfinished downloads, " \
-    L"caches and logs; deleted, it goes to the Recycle Bin."
+    L"Your data is your settings, server and contact lists, identity and credits, unfinished downloads and logs. " \
+    L"Leave the box unticked to keep it for a later installation; tick it to move the data to the Recycle Bin.\n\n" \
+    L"Your completed downloads are always kept."
 #define MAX_WAITS 8
 #define WAIT_MILLIS 60000
 
@@ -271,18 +273,18 @@ static BOOL profile_ticked(void) {
             controls == NULL ? NULL : (TaskDialogFunction) (void *) GetProcAddress(controls, "TaskDialogIndirect");
     if (dialog == NULL) {
         return MessageBoxW(NULL,
-                       L"Also delete your njMule profile?\n\n" PROFILE_TEXT,
+                       PROFILE_QUESTION L"\n\n" PROFILE_TEXT,
                        L"njMule", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST)
                 == IDYES;
     }
     TASKDIALOGCONFIG config = {0};
     config.cbSize = sizeof config;
     config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION;
-    config.pszWindowTitle = L"njMule";
+    config.pszWindowTitle = L"Uninstall njMule";
     config.pszMainIcon = TD_INFORMATION_ICON;
-    config.pszMainInstruction = L"njMule is being uninstalled";
-    config.pszContent = L"Your completed downloads stay. " PROFILE_TEXT;
-    config.pszVerificationText = L"Also delete my njMule profile";
+    config.pszMainInstruction = PROFILE_QUESTION;
+    config.pszContent = PROFILE_TEXT;
+    config.pszVerificationText = L"Delete my njMule data";
     config.dwCommonButtons = TDCBF_OK_BUTTON;
     int button = 0;
     BOOL ticked = FALSE;

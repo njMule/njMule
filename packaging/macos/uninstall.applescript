@@ -10,8 +10,8 @@ on run
         display dialog "Quit njMule first, then uninstall it." buttons {"OK"} default button 1 with title dialogTitle with icon caution
         return
     end if
-    set profileBox to "Also delete my njMule profile: settings, server and contact lists, identity and credits, unfinished downloads, caches and logs"
-    set chosen to choose from list {profileBox} with title dialogTitle with prompt "njMule goes to the Trash. Your completed downloads stay." OK button name "Uninstall" cancel button name "Cancel" with empty selection allowed
+    set profileBox to "Delete my njMule data: settings, server and contact lists, identity and credits, unfinished downloads and logs"
+    set chosen to choose from list {profileBox} with title dialogTitle with prompt "njMule goes to the Trash. Select the line below to also delete your data; leave it unselected to keep it for a later installation. Your completed downloads are always kept." OK button name "Uninstall" cancel button name "Cancel" with empty selection allowed
     if chosen is false then return
     set doomed to {}
     try

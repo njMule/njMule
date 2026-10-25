@@ -1,14 +1,14 @@
 [
     {
-        "step_title": "Remove njMule",
+        "step_title": "Uninstall njMule",
         "items": [
             {
                 "type": "multiselect",
-                "desc": "The downloaded files in the shared folder njmule stay. njMule's profile can go too: its settings, server and contact lists, identity and credits, unfinished downloads and logs.",
+                "desc": "Also delete njMule's data? It is its settings, server and contact lists, identity and credits, unfinished downloads and logs. Leave the box unticked to keep it for a later installation. The downloaded files in the shared folder njmule are always kept.",
                 "subitems": [
                     {
                         "key": "wizard_delete_profile",
-                        "desc": "Also delete njMule's profile",
+                        "desc": "Delete njMule's data",
                         "defaultValue": false
                     }
                 ]
