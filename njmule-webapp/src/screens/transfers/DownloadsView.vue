@@ -3,6 +3,8 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
+import type { TableInstance } from 'element-plus';
+import { CUT_HINT, chooser } from '../../tables';
 import {
     ElButton,
     ElDropdown,
@@ -20,7 +22,7 @@ import {
     ElTabPane,
     ElTabs,
 } from 'element-plus';
-import { computed, h, onUnmounted, ref, watch } from 'vue';
+import { computed, h, onUnmounted, ref, useTemplateRef, watch } from 'vue';
 import { api } from '../../api';
 import { copy } from '../../clipboard';
 import AddLinksDialog from '../../components/AddLinksDialog.vue';
@@ -48,6 +50,7 @@ const chip = ref<Chip>('all');
 const category = ref<number | null>(null);
 const filter = ref('');
 const chosen = ref<Download[]>([]);
+const downloadTable = useTemplateRef<TableInstance>('downloadTable');
 const adding = ref(false);
 const editing = ref(false);
 const commenting = ref(false);
@@ -114,6 +117,12 @@ const visible = computed(() => {
             (chip.value === 'all' || chipOf(d) === chip.value) && words.every((w) => d.name.toLowerCase().includes(w)),
     );
 });
+const choice = chooser(
+    downloadTable,
+    chosen,
+    (d) => d.hash,
+    () => visible.value,
+);
 
 const one = computed(() => (chosen.value.length === 1 ? chosen.value[0] : undefined));
 // A completed download is not cancelled: its file stays, and clearing takes it off the list.
@@ -414,12 +423,16 @@ const SOURCE_STATES: Record<Source['state'], string> = {
         </el-button>
     </div>
     <el-table
+        :tooltip-options="CUT_HINT"
+        ref="downloadTable"
         :data="visible"
         row-key="hash"
+        :row-class-name="choice.rowClass"
         :empty-text="t('nj.transfers.none')"
+        @row-click="choice.click"
         @selection-change="(rows: Download[]) => (chosen = rows)"
     >
-        <el-table-column type="selection" width="40" />
+        <el-table-column type="selection" width="40" reserve-selection />
         <el-table-column :label="t('IDS_DL_FILENAME')" prop="name" min-width="260" sortable show-overflow-tooltip />
         <el-table-column :label="t('IDS_DL_SIZE')" prop="size" width="110" sortable align="right">
             <template #default="{ row }">{{ size(row.size) }}</template>
@@ -493,7 +506,12 @@ const SOURCE_STATES: Record<Source['state'], string> = {
             </div>
             <el-tabs>
                 <el-tab-pane :label="`${t('IDS_DL_SOURCES')} (${ofOne.length})`">
-                    <el-table :data="ofOne" :empty-text="t('nj.transfers.noSources')" size="small">
+                    <el-table
+                        :tooltip-options="CUT_HINT"
+                        :data="ofOne"
+                        :empty-text="t('nj.transfers.noSources')"
+                        size="small"
+                    >
                         <el-table-column :label="t('IDS_QL_USERNAME')" min-width="160" show-overflow-tooltip>
                             <template #default="{ row }">{{ row.nick ?? row.address }}</template>
                         </el-table-column>

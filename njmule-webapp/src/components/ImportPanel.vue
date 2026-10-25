@@ -3,6 +3,7 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
+import { CUT_HINT } from '../tables';
 import { ElButton, ElCheckbox, ElInput, ElTable, ElTableColumn } from 'element-plus';
 import { computed, ref } from 'vue';
 import { api } from '../api';
@@ -130,7 +131,7 @@ async function run(dryRun: boolean): Promise<void> {
     <el-checkbox v-model="identity">{{ t('nj.import.identity') }}</el-checkbox>
     <el-checkbox v-model="downloads">{{ t('nj.import.downloads') }}</el-checkbox>
     <h3>{{ t('nj.import.whatHappens') }}</h3>
-    <el-table :data="report?.items ?? []" :empty-text="t('nj.import.empty')" height="260">
+    <el-table :tooltip-options="CUT_HINT" :data="report?.items ?? []" :empty-text="t('nj.import.empty')" height="260">
         <el-table-column :label="t('IDS_DL_FILENAME')" prop="file" min-width="160" />
         <el-table-column :label="t('nj.import.detail')" min-width="220" show-overflow-tooltip>
             <template #default="{ row }">{{ detail(row as Item) }}</template>

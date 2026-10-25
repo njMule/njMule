@@ -3,6 +3,8 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
+import type { TableInstance } from 'element-plus';
+import { CUT_HINT, chooser } from '../../tables';
 import {
     ElButton,
     ElDropdown,
@@ -14,7 +16,7 @@ import {
     ElTable,
     ElTableColumn,
 } from 'element-plus';
-import { computed, ref } from 'vue';
+import { computed, ref, useTemplateRef } from 'vue';
 import { api } from '../../api';
 import { copy } from '../../clipboard';
 import NjIcon from '../../components/NjIcon.vue';
@@ -28,6 +30,7 @@ import type { Server } from '../../types';
 const servers = usePoll(() => api.get<Server[]>('/servers'), 10000, [] as Server[]);
 const filter = ref('');
 const chosen = ref<Server[]>([]);
+const serverTable = useTemplateRef<TableInstance>('serverTable');
 const metUrl = ref('https://upd.emule-security.org/server.met');
 const address = ref('');
 
@@ -43,6 +46,12 @@ const visible = computed(() => {
         return words.every((w) => text.includes(w));
     });
 });
+const choice = chooser(
+    serverTable,
+    chosen,
+    (s) => s.address,
+    () => visible.value,
+);
 
 const PRIORITY: Record<Server['priority'], string> = {
     low: 'IDS_PRIOLOW',
@@ -189,14 +198,19 @@ function copyLinks(): void {
         <el-input v-model="filter" class="filter" clearable :placeholder="t('nj.servers.filter')" />
     </div>
     <el-table
+        :tooltip-options="CUT_HINT"
+        ref="serverTable"
         :data="visible"
         row-key="address"
         :empty-text="t('nj.servers.none')"
-        :row-class-name="({ row }: { row: Server }) => (row.address === current ? 'current' : '')"
+        :row-class-name="
+            ({ row }: { row: Server }) => `${row.address === current ? 'current' : ''} ${choice.rowClass({ row })}`
+        "
+        @row-click="choice.click"
         @selection-change="(rows: Server[]) => (chosen = rows)"
         @row-dblclick="(row: Server) => connectOnDoubleClick(row)"
     >
-        <el-table-column type="selection" width="40" />
+        <el-table-column type="selection" width="40" reserve-selection />
         <el-table-column :label="t('IDS_SL_SERVERNAME')" prop="name" min-width="180" sortable show-overflow-tooltip />
         <el-table-column :label="t('IDS_IP')" prop="address" width="170" sortable />
         <el-table-column :label="t('IDS_DESCRIPTION')" prop="description" min-width="160" show-overflow-tooltip />

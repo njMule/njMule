@@ -3,6 +3,8 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
+import type { TableInstance } from 'element-plus';
+import { CUT_HINT, chooser } from '../tables';
 import {
     ElButton,
     ElInput,
@@ -14,7 +16,7 @@ import {
     ElTabPane,
     ElTabs,
 } from 'element-plus';
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api';
 import { copy } from '../clipboard';
@@ -47,6 +49,7 @@ const filters = ref<Filters>({ type: '', extension: '' });
 const active = ref(searches.value.at(-1)?.id.toString() ?? '');
 const filter = ref('');
 const chosen = ref<Result[]>([]);
+const resultTable = useTemplateRef<TableInstance>('resultTable');
 const downloads = usePoll(() => api.get<Download[]>('/downloads'), 5000, [] as Download[]);
 
 const SCOPES = computed(() => [
@@ -94,6 +97,12 @@ const visible = computed(() => {
         return wanted.every((w) => name.includes(w)) && !unwanted.some((w) => name.includes(w));
     });
 });
+const choice = chooser(
+    resultTable,
+    chosen,
+    (r) => r.hash,
+    () => visible.value,
+);
 
 function resetFilters(): void {
     filters.value = { type: '', extension: '' };
@@ -339,14 +348,18 @@ onUnmounted(() => window.clearInterval(timer));
             <el-input v-model="filter" class="filter" clearable :placeholder="t('IDS_DL_FILENAME')" />
         </div>
         <el-table
+            :tooltip-options="CUT_HINT"
+            ref="resultTable"
             :data="visible"
             row-key="hash"
+            :row-class-name="choice.rowClass"
             :empty-text="t('nj.search.waiting')"
+            @row-click="choice.click"
             :default-sort="{ prop: 'sources', order: 'descending' }"
             @selection-change="(rows: Result[]) => (chosen = rows)"
             @row-dblclick="(row: Result) => downloadOnDoubleClick(row)"
         >
-            <el-table-column type="selection" width="40" />
+            <el-table-column type="selection" width="40" reserve-selection />
             <el-table-column :label="t('IDS_DL_FILENAME')" prop="name" min-width="300" sortable show-overflow-tooltip>
                 <template #default="{ row }">
                     <span :class="{ mine: downloading.has(row.hash.toUpperCase()), spam: row.spam }">{{

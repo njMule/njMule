@@ -3,6 +3,8 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
+import type { TableInstance } from 'element-plus';
+import { CUT_HINT, chooser } from '../tables';
 import {
     ElButton,
     ElCheckbox,
@@ -16,7 +18,7 @@ import {
     ElTable,
     ElTableColumn,
 } from 'element-plus';
-import { computed, ref } from 'vue';
+import { computed, ref, useTemplateRef } from 'vue';
 import { api } from '../api';
 import { copy } from '../clipboard';
 import CommentsDialog from '../components/CommentsDialog.vue';
@@ -49,6 +51,7 @@ const folders = usePoll(() => api.get<Folder[]>('/shared/directories'), 15000, [
 const place = ref<string>('');
 const filter = ref('');
 const chosen = ref<Shared[]>([]);
+const sharedTable = useTemplateRef<TableInstance>('sharedTable');
 const sharing = ref(false);
 const newFolder = ref('');
 const withSubfolders = ref(true);
@@ -88,6 +91,12 @@ const visible = computed(() => {
     const here = folder.value ? inPlace(folder.value) : files.data.value;
     return here.filter((f) => words.every((w) => f.name.toLowerCase().includes(w)));
 });
+const choice = chooser(
+    sharedTable,
+    chosen,
+    (f) => f.hash,
+    () => visible.value,
+);
 
 function priority(p: Priority): string {
     return t(PRIORITIES.find((x) => x.value === p)?.key ?? 'IDS_PRIOAUTO');
@@ -231,12 +240,16 @@ function copyLinks(html: boolean): void {
                 <el-input v-model="filter" class="filter" clearable :placeholder="t('nj.shared.filter')" />
             </div>
             <el-table
+                :tooltip-options="CUT_HINT"
+                ref="sharedTable"
                 :data="visible"
                 row-key="hash"
+                :row-class-name="choice.rowClass"
                 :empty-text="t('nj.shared.none')"
+                @row-click="choice.click"
                 @selection-change="(rows: Shared[]) => (chosen = rows)"
             >
-                <el-table-column type="selection" width="40" />
+                <el-table-column type="selection" width="40" reserve-selection />
                 <el-table-column
                     :label="t('IDS_DL_FILENAME')"
                     prop="name"

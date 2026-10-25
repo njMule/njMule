@@ -3,6 +3,7 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
+import { CUT_HINT } from '../../tables';
 import { ElTable, ElTableColumn } from 'element-plus';
 import CountryFlag from '../../components/CountryFlag.vue';
 import { size } from '../../format';
@@ -23,7 +24,7 @@ function when(seconds: number): string {
 </script>
 
 <template>
-    <el-table :data="clients" row-key="userHash" :empty-text="t('nj.clients.none')">
+    <el-table :tooltip-options="CUT_HINT" :data="clients" row-key="userHash" :empty-text="t('nj.clients.none')">
         <el-table-column :label="t('IDS_QL_USERNAME')" prop="nick" min-width="160" sortable show-overflow-tooltip>
             <template #default="{ row }">{{ row.nick || row.userHash }}</template>
         </el-table-column>

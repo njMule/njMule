@@ -183,6 +183,12 @@ body {
     transform: scaleX(-1);
 }
 
+/* A chosen row stands out, under the pointer too, as in the desktop app. */
+.el-table .el-table__body tr.chosen > td.el-table__cell,
+.el-table .el-table__body tr.chosen:hover > td.el-table__cell {
+    background-color: var(--el-color-primary-light-8);
+}
+
 /* The tints of the categories, by their number; 0 is none. */
 .cat-0 {
     background: transparent;

@@ -3,6 +3,7 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
+import { CUT_HINT } from '../../tables';
 import { ElButton, ElInput, ElTable, ElTableColumn, ElTabPane, ElTabs } from 'element-plus';
 import { computed, ref } from 'vue';
 import { api } from '../../api';
@@ -149,7 +150,12 @@ async function recheck(): Promise<void> {
 
     <el-tabs>
         <el-tab-pane :label="`${t('IDS_KADCONTACTLAB')} (${contacts.data.value.length})`">
-            <el-table :data="contacts.data.value" :empty-text="t('nj.kad.off')" height="420">
+            <el-table
+                :tooltip-options="CUT_HINT"
+                :data="contacts.data.value"
+                :empty-text="t('nj.kad.off')"
+                height="420"
+            >
                 <el-table-column :label="t('IDS_ID')" prop="id" min-width="280" show-overflow-tooltip />
                 <el-table-column :label="t('IDS_TYPE')" prop="type" width="80" sortable align="right" />
                 <el-table-column :label="t('IDS_KADDISTANCE')" prop="distance" min-width="280" sortable />
@@ -158,7 +164,7 @@ async function recheck(): Promise<void> {
             </el-table>
         </el-tab-pane>
         <el-tab-pane :label="`${t('IDS_KADSEARCHLAB')} (${lookups.data.value.length})`">
-            <el-table :data="lookups.data.value" :empty-text="t('nj.kad.noSearches')">
+            <el-table :tooltip-options="CUT_HINT" :data="lookups.data.value" :empty-text="t('nj.kad.noSearches')">
                 <el-table-column :label="t('IDS_KADID')" prop="target" min-width="280" />
                 <el-table-column :label="t('IDS_TYPE')" width="180">
                     <template #default="{ row }">{{ t(KINDS[(row as Lookup).kind]) }}</template>

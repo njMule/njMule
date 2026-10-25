@@ -3,8 +3,10 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
+import type { TableInstance } from 'element-plus';
+import { CUT_HINT, chooser } from '../tables';
 import { ElButton, ElDialog, ElTable, ElTableColumn } from 'element-plus';
-import { ref, watch } from 'vue';
+import { ref, useTemplateRef, watch } from 'vue';
 import { api } from '../api';
 import { size } from '../format';
 import { t } from '../i18n';
@@ -23,6 +25,13 @@ const open = defineModel<boolean>({ required: true });
 
 const files = ref<Shared[]>([]);
 const chosen = ref<Shared[]>([]);
+const fileTable = useTemplateRef<TableInstance>('fileTable');
+const choice = chooser(
+    fileTable,
+    chosen,
+    (f) => f.hash,
+    () => files.value,
+);
 const said = ref('');
 
 watch(open, async (now) => {
@@ -49,8 +58,17 @@ async function download(): Promise<void> {
 <template>
     <el-dialog v-model="open" :title="`${t('IDS_VIEWFILES')}: ${name}`" width="760px">
         <p class="said">{{ said }}</p>
-        <el-table :data="files" height="360" @selection-change="(rows: Shared[]) => (chosen = rows)">
-            <el-table-column type="selection" width="40" />
+        <el-table
+            :tooltip-options="CUT_HINT"
+            ref="fileTable"
+            :data="files"
+            row-key="hash"
+            height="360"
+            :row-class-name="choice.rowClass"
+            @row-click="choice.click"
+            @selection-change="(rows: Shared[]) => (chosen = rows)"
+        >
+            <el-table-column type="selection" width="40" reserve-selection />
             <el-table-column :label="t('IDS_DL_FILENAME')" prop="name" min-width="300" sortable show-overflow-tooltip />
             <el-table-column :label="t('IDS_DL_SIZE')" prop="size" width="110" sortable align="right">
                 <template #default="{ row }">{{ size(row.size) }}</template>
