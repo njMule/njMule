@@ -217,7 +217,12 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `DIRECT` and a field `direct`, or `SETTINGS` and `settings`: SonarQube's rule `java:S1845` marks
   it a blocker and fails the quality gate, and neither the build nor Checkstyle catches it. Before
   adding a constant, field or method, check the type's other names, inherited ones included;
-  rename the newcomer (`SETTINGS_PAGE`, `straight`).
+  rename the newcomer (`SETTINGS_PAGE`, `straight`). **This mistake recurs**: it comes back
+  whenever a constant is named after what a field or method of the same type holds or does, as
+  `SECONDS` beside `seconds`, `JSON` beside `json(...)`, `HOST` beside `host(...)`, `ENGLISH`
+  beside `english()`, or a nested type `Windows` beside a field `windows`. Give such a constant
+  what it is, not the same word (`SECONDS_KEPT`, `MAPPER`, `TEMPLATES`), and before each commit
+  compare every new member's lower-cased name with the others of its type.
 - Optional pre-commit hook: `git config core.hooksPath .githooks` (runs `spotlessCheck`).
 - IDEs: install the palantir-java-format plugin (IntelliJ) and honour `.editorconfig`.
 - Markdown is wrapped at ~100 columns.
