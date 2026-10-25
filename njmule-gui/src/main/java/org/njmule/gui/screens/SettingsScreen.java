@@ -147,6 +147,7 @@ public final class SettingsScreen implements Screen {
     private final ToggleSwitch watchClipboard = new ToggleSwitch();
     private final ToggleSwitch sound = new ToggleSwitch();
     private final ToggleSwitch preventSleep = new ToggleSwitch();
+    private final ToggleSwitch showCountries = new ToggleSwitch();
     private final TextField soundFile = new TextField();
     private final ToggleSwitch filterLan = new ToggleSwitch();
     private final TextArea whitelist = new TextArea();
@@ -521,7 +522,13 @@ public final class SettingsScreen implements Screen {
                                 "nj.settings.preventSleep",
                                 this.preventSleep,
                                 Preferences::preventSleep,
-                                (b, v) -> b.preventSleep(v))),
+                                (b, v) -> b.preventSleep(v)),
+                        toggle(
+                                        "nj.settings.countries",
+                                        this.showCountries,
+                                        Preferences::showCountries,
+                                        (b, v) -> b.showCountries(v))
+                                .describedAs(this.gui.t("nj.settings.countriesHint"))),
                 section(
                         "nj.update.title",
                         engine(

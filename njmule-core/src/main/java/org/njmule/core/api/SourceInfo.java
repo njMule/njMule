@@ -28,6 +28,7 @@ import java.util.Optional;
  * @param parts the parts of the file it has, of {@code partCount}; 0 when not known yet
  * @param askedFor in state {@link State#A4AF}, the download the client is asked for instead, with its name
  * @param reportedName the name the client gives the file, once it told
+ * @param country the client's country as its ISO 3166-1 code in lower case, when the countries are shown and known
  */
 public record SourceInfo(
         Hash16 file,
@@ -42,7 +43,8 @@ public record SourceInfo(
         int partCount,
         Optional<Hash16> askedFor,
         String askedForName,
-        Optional<String> reportedName) {
+        Optional<String> reportedName,
+        Optional<String> country) {
 
     public enum State {
         /** Asked again later. */
@@ -66,6 +68,58 @@ public record SourceInfo(
         Objects.requireNonNull(askedFor, "askedFor");
         Objects.requireNonNull(askedForName, "askedForName");
         Objects.requireNonNull(reportedName, "reportedName");
+        Objects.requireNonNull(country, "country");
+    }
+
+    /** A source whose country is not known. */
+    public SourceInfo(
+            Hash16 file,
+            String fileName,
+            String address,
+            Optional<String> nick,
+            String software,
+            State state,
+            int queueRank,
+            long received,
+            int parts,
+            int partCount,
+            Optional<Hash16> askedFor,
+            String askedForName,
+            Optional<String> reportedName) {
+        this(
+                file,
+                fileName,
+                address,
+                nick,
+                software,
+                state,
+                queueRank,
+                received,
+                parts,
+                partCount,
+                askedFor,
+                askedForName,
+                reportedName,
+                Optional.empty());
+    }
+
+    /** This source in {@code where}. */
+    public SourceInfo withCountry(Optional<String> where) {
+        return new SourceInfo(
+                this.file,
+                this.fileName,
+                this.address,
+                this.nick,
+                this.software,
+                this.state,
+                this.queueRank,
+                this.received,
+                this.parts,
+                this.partCount,
+                this.askedFor,
+                this.askedForName,
+                this.reportedName,
+                where);
     }
 
     /** A source asked for this download, or waiting to be. */

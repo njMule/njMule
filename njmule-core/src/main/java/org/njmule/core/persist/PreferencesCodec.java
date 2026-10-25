@@ -142,6 +142,7 @@ public final class PreferencesCodec {
         boolKey("files.cleanUpNewNames", Preferences::cleanUpNewNames, Preferences.Builder::cleanUpNewNames);
         boolKey("notify.sound", Preferences::notificationSound, Preferences.Builder::notificationSound);
         boolKey("system.preventSleep", Preferences::preventSleep, Preferences.Builder::preventSleep);
+        boolKey("geo.countries", Preferences::showCountries, Preferences.Builder::showCountries);
         boolKey("notify.email", p -> p.notifications().email(), Preferences.Builder::notifyEmail);
         key("notify.smtpHost", p -> p.notifications().smtpHost(), Preferences.Builder::smtpHost);
         intKey("notify.smtpPort", p -> p.notifications().smtpPort(), Preferences.Builder::smtpPort);

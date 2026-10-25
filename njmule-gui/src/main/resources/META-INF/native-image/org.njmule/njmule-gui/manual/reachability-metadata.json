@@ -132,6 +132,10 @@
     {
       "module": "javafx.graphics",
       "glob": "com/sun/prism/es2/glsl/*.frag"
+    },
+    {
+      "module": "org.njmule.gui",
+      "glob": "org/njmule/gui/flags/*.png"
     }
   ]
 }

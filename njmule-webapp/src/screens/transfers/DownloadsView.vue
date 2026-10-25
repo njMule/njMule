@@ -32,6 +32,7 @@ import PartBar from '../../components/PartBar.vue';
 import { duration, percent, rate, size } from '../../format';
 import { t } from '../../i18n';
 import { guest } from '../../role';
+import CountryFlag from '../../components/CountryFlag.vue';
 import type { IconName } from '../../icons';
 import { htmlLinks } from '../../links';
 import { attempt, told } from '../../notify';
@@ -479,6 +480,9 @@ const SOURCE_STATES: Record<Source['state'], string> = {
                     <el-table :data="ofOne" :empty-text="t('nj.transfers.noSources')" size="small">
                         <el-table-column :label="t('IDS_QL_USERNAME')" min-width="160" show-overflow-tooltip>
                             <template #default="{ row }">{{ row.nick ?? row.address }}</template>
+                        </el-table-column>
+                        <el-table-column :label="t('nj.clients.country')" width="90">
+                            <template #default="{ row }"><CountryFlag :code="row.country" /></template>
                         </el-table-column>
                         <el-table-column :label="t('IDS_CD_CSOFT')" prop="software" width="150" />
                         <el-table-column :label="t('nj.transfers.status')" width="190">

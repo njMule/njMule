@@ -100,6 +100,7 @@ export interface Upload {
     transferred: number;
     bytesPerSecond: number;
     waitingSeconds: number;
+    country?: string | null;
 }
 
 export interface Ban {
@@ -132,4 +133,5 @@ export interface Source {
     parts: number;
     partCount: number;
     reportedName?: string;
+    country?: string | null;
 }

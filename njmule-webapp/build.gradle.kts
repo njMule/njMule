@@ -128,6 +128,12 @@ val translations = tasks.register<Translations>("translations") {
     output = layout.buildDirectory.dir("translations/i18n")
 }
 
+// The desktop app's country flags, which the web interface serves too.
+val flags = tasks.register<Sync>("flags") {
+    from(rootDir.resolve("njmule-gui/src/main/resources/org/njmule/gui/flags")) { include("*.png") }
+    into(layout.buildDirectory.dir("flags/flags"))
+}
+
 val npmSources = listOf("src", "index.html", "vite.config.ts", "tsconfig.json", "package.json", "package-lock.json")
 
 val bundle = tasks.register<NpmTask>("bundle") {
@@ -165,8 +171,12 @@ val formatCheck = tasks.register<NpmTask>("formatCheck") {
 
 val compress = tasks.register<Compress>("compress") {
     description = "Compresses the bundle and the translations for the web interface's jar."
-    dependsOn(bundle, translations)
-    roots.from(layout.buildDirectory.dir("dist"), layout.buildDirectory.dir("translations"))
+    dependsOn(bundle, translations, flags)
+    roots.from(
+        layout.buildDirectory.dir("dist"),
+        layout.buildDirectory.dir("translations"),
+        layout.buildDirectory.dir("flags"),
+    )
     output = layout.buildDirectory.dir("shipped")
 }
 

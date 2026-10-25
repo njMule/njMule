@@ -230,6 +230,16 @@ class WebUiAnswersTest {
     }
 
     @Test
+    void shouldServeTheFlagOfACountryAsAnImage() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenThePageIsAsked("/flags/it.png");
+
+        thenTheStatusIs(200);
+        thenTheHeaderIs("Content-Type", "image/png");
+    }
+
+    @Test
     void shouldSendTheAppsFilesCompressedToABrowserTakingGzip() throws Exception {
         givenTheWebInterfaceRuns();
 

@@ -93,6 +93,7 @@ import org.njmule.gui.model.LiveList;
 import org.njmule.gui.ui.Ask;
 import org.njmule.gui.ui.ClipboardWatch;
 import org.njmule.gui.ui.FilterChips;
+import org.njmule.gui.ui.Flags;
 import org.njmule.gui.ui.Fx;
 import org.njmule.gui.ui.Gui;
 import org.njmule.gui.ui.Icon;
@@ -1159,6 +1160,7 @@ public final class TransfersScreen implements Screen {
                                 this.gui.t("IDS_QL_USERNAME"),
                                 180,
                                 (UploadInfo u) -> u.nick().orElse(u.address()))),
+                        countryColumn(),
                         Fx.leftToRight(Fx.column(this.gui.t("IDS_CD_CSOFT"), 130, UploadInfo::software)),
                         Fx.ownDirection(Fx.column(this.gui.t("IDS_DL_FILENAME"), 260, UploadInfo::file)),
                         Fx.numeric(
@@ -1273,6 +1275,7 @@ public final class TransfersScreen implements Screen {
     private final class SourceCell extends ListCell<LiveList.Row<SourceInfo>> {
         private final Label name = new Label();
         private final Label software = new Label();
+        private final Label country = Fx.leftToRight(new Label());
         private final Label figure = Fx.leftToRight(new Label());
         private final Label state = new Label();
         private final ThinBar has = new ThinBar();
@@ -1288,7 +1291,8 @@ public final class TransfersScreen implements Screen {
             this.state.getStyleClass().add("source-state");
             this.has.setPrefWidth(96);
             this.has.setMaxWidth(96);
-            HBox who = new HBox(6, this.name, this.software);
+            this.country.getStyleClass().add("source-software");
+            HBox who = new HBox(6, this.name, this.country, this.software);
             who.setAlignment(Pos.BASELINE_LEFT);
             who.setMinWidth(0);
             this.grid.add(who, 0, 0);
@@ -1314,6 +1318,8 @@ public final class TransfersScreen implements Screen {
             SourceInfo s = row.get();
             this.name.setText(s.nick().orElse(s.address()));
             this.software.setText(s.software());
+            Flags.show(
+                    this.country, s.country(), TransfersScreen.this.gui.i18n().locale());
             this.figure.setText(
                     s.state() == SourceInfo.State.DOWNLOADING
                             ? TransfersScreen.this.gui.formats().size(s.received())
@@ -1339,6 +1345,24 @@ public final class TransfersScreen implements Screen {
                             : null);
             setGraphic(this.grid);
         }
+    }
+
+    // The country of the client, its flag beside its code; sorted by the code.
+    private TableColumn<LiveList.Row<UploadInfo>, String> countryColumn() {
+        TableColumn<LiveList.Row<UploadInfo>, String> column = Fx.column(
+                this.gui.t("nj.clients.country"),
+                70,
+                (UploadInfo u) -> u.country().orElse(""));
+        column.setCellFactory(c -> new TableCell<>() {
+            @Override
+            protected void updateItem(String code, boolean empty) {
+                super.updateItem(code, empty);
+                Optional<String> country =
+                        empty || code == null || code.isEmpty() ? Optional.empty() : Optional.of(code);
+                Flags.show(this, country, TransfersScreen.this.gui.i18n().locale());
+            }
+        });
+        return Fx.leftToRight(column);
     }
 
     /** A thin bar of how much is downloaded, in the tone of the state, the percentage beside it. */

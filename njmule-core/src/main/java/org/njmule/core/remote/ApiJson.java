@@ -308,6 +308,7 @@ final class ApiJson {
         // The download the source is asked for instead, when it is another one (A4AF).
         optional(g, "askedFor", s.askedFor().map(Hash16::toHex));
         g.writeStringProperty("askedForName", s.askedForName());
+        optional(g, "country", s.country());
         g.writeEndObject();
     }
 
@@ -322,6 +323,7 @@ final class ApiJson {
         g.writeNumberProperty("transferred", u.transferred());
         g.writeNumberProperty("bytesPerSecond", u.bytesPerSecond());
         g.writeNumberProperty("waitingSeconds", u.waitingSeconds());
+        optional(g, "country", u.country());
         g.writeEndObject();
     }
 

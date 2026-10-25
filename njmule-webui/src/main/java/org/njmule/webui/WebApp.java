@@ -48,6 +48,8 @@ final class WebApp {
             .or(CharMatcher.anyOf("._-"));
     private static final Set<String> EXTENSIONS = Set.of("js", "css", "svg", "woff2");
     private static final Pattern TRANSLATION = Pattern.compile("/i18n/[A-Za-z-]{2,10}\\.json");
+    // The flags of the desktop app, by country code.
+    private static final Pattern FLAG = Pattern.compile("/flags/[a-z]{2}\\.png");
 
     /** A file of the app; the bundled files have their content's hash in their names and never change. */
     static final class File {
@@ -125,7 +127,9 @@ final class WebApp {
                     && !name.contains("..")
                     && EXTENSIONS.contains(name.substring(dot + 1));
         }
-        return path.equals("/THIRD-PARTY.md") || TRANSLATION.matcher(path).matches();
+        return path.equals("/THIRD-PARTY.md")
+                || TRANSLATION.matcher(path).matches()
+                || FLAG.matcher(path).matches();
     }
 
     private static boolean isHashed(String path) {
@@ -139,6 +143,7 @@ final class WebApp {
             case "css" -> "text/css; charset=utf-8";
             case "svg" -> "image/svg+xml";
             case "woff2" -> "font/woff2";
+            case "png" -> "image/png";
             case "json" -> "application/json; charset=utf-8";
             default -> "text/markdown; charset=utf-8";
         };

@@ -44,6 +44,14 @@ precedence = "override"
 SPDX-FileCopyrightText = "2018 The Manrope Project Authors (https://github.com/googlefonts/manrope)"
 SPDX-License-Identifier = "OFL-1.1"
 
+# The country flags shown beside clients: the 4:3 flags of flag-icons 7.6.0 (https://github.com/lipis/flag-icons,
+# from the npm package), rendered to 32x24 PNG by tools/FlagGen.java on 25 October 2026.
+[[annotations]]
+path = ["njmule-gui/src/main/resources/org/njmule/gui/flags/*.png"]
+precedence = "override"
+SPDX-FileCopyrightText = "2013 Panayiotis Lipiridis"
+SPDX-License-Identifier = "MIT"
+
 # The server list and Kad contacts a new profile starts from, downloaded unchanged on 15 October
 # 2026 from https://upd.emule-security.org/server.met and /nodes.dat: public addresses, ports and
 # server names, facts not covered by copyright.

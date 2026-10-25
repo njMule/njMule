@@ -179,7 +179,8 @@ final class ApiReader {
                 n.path("partCount").asInt(),
                 optional(n, "askedFor").map(Hash16::parseHex),
                 text(n, "askedForName"),
-                optional(n, "reportedName"));
+                optional(n, "reportedName"),
+                optional(n, "country"));
     }
 
     static UploadInfo upload(JsonNode n) {
@@ -192,7 +193,8 @@ final class ApiReader {
                 constant(UploadInfo.State.class, n, "state"),
                 n.path("transferred").asLong(),
                 n.path("bytesPerSecond").asLong(),
-                n.path("waitingSeconds").asLong());
+                n.path("waitingSeconds").asLong(),
+                optional(n, "country"));
     }
 
     static SharedFileInfo shared(JsonNode n) {

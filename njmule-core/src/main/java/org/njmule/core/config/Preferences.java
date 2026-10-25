@@ -56,6 +56,7 @@ import org.njmule.core.security.IpWhitelist;
  * @param autoDeleteDays a running download that receives nothing for this many days is deleted, its link kept; 0 for
  *     never
  * @param notifications the e-mails and web hook requests that tell of what happens
+ * @param showCountries shows the country of other clients, from DB-IP's database fetched once a month
  */
 public record Preferences(
         String nick,
@@ -122,7 +123,8 @@ public record Preferences(
         Optional<URI> updateUrl,
         boolean preventSleep,
         int autoDeleteDays,
-        Notifications notifications) {
+        Notifications notifications,
+        boolean showCountries) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -393,7 +395,8 @@ public record Preferences(
                 Optional.empty(),
                 false,
                 0,
-                Notifications.NONE);
+                Notifications.NONE,
+                false);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -514,6 +517,7 @@ public record Preferences(
         private String webhookUrl;
         private Notifications.WebhookFormat webhookBody;
         private Set<EventCommands.Event> notifyEvents;
+        private boolean showCountries;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -581,6 +585,7 @@ public record Preferences(
             this.preventSleep = p.preventSleep;
             this.autoDeleteDays = p.autoDeleteDays;
             notifications(p.notifications);
+            this.showCountries = p.showCountries;
         }
 
         public Builder nick(String value) {
@@ -958,6 +963,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder showCountries(boolean value) {
+            this.showCountries = value;
+            return this;
+        }
+
         public Builder notifyEmail(boolean value) {
             this.notifyEmail = value;
             return this;
@@ -1102,7 +1112,8 @@ public record Preferences(
                             this.notifyWebhook,
                             this.webhookUrl,
                             this.webhookBody,
-                            this.notifyEvents));
+                            this.notifyEvents),
+                    this.showCountries);
         }
     }
 }

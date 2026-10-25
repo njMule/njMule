@@ -53,6 +53,12 @@ export const PAGES: Page[] = [
                 rows: [
                     { key: 'user.nick', label: 'IDS_PW_NICK', kind: 'text', max: 50 },
                     { key: 'system.preventSleep', label: 'nj.settings.preventSleep', kind: 'switch' },
+                    {
+                        key: 'geo.countries',
+                        label: 'nj.settings.countries',
+                        kind: 'switch',
+                        hint: 'nj.settings.countriesHint',
+                    },
                 ],
             },
             {

@@ -24,6 +24,7 @@ import java.util.Optional;
  *
  * @param transferred bytes sent in this slot
  * @param waitingSeconds how long it waited, or waits, for a slot
+ * @param country the client's country as its ISO 3166-1 code in lower case, when the countries are shown and known
  */
 public record UploadInfo(
         String address,
@@ -34,7 +35,8 @@ public record UploadInfo(
         State state,
         long transferred,
         long bytesPerSecond,
-        long waitingSeconds) {
+        long waitingSeconds,
+        Optional<String> country) {
 
     public enum State {
         UPLOADING,
@@ -48,5 +50,45 @@ public record UploadInfo(
         Objects.requireNonNull(software, "software");
         Objects.requireNonNull(file, "file");
         Objects.requireNonNull(state, "state");
+        Objects.requireNonNull(country, "country");
+    }
+
+    /** A client whose country is not known. */
+    public UploadInfo(
+            String address,
+            Hash16 userHash,
+            Optional<String> nick,
+            String software,
+            String file,
+            State state,
+            long transferred,
+            long bytesPerSecond,
+            long waitingSeconds) {
+        this(
+                address,
+                userHash,
+                nick,
+                software,
+                file,
+                state,
+                transferred,
+                bytesPerSecond,
+                waitingSeconds,
+                Optional.empty());
+    }
+
+    /** This client in {@code where}. */
+    public UploadInfo withCountry(Optional<String> where) {
+        return new UploadInfo(
+                this.address,
+                this.userHash,
+                this.nick,
+                this.software,
+                this.file,
+                this.state,
+                this.transferred,
+                this.bytesPerSecond,
+                this.waitingSeconds,
+                where);
     }
 }

@@ -2522,6 +2522,10 @@ components:
         askedForName:
           type: string
           description: The name of that download; empty when there is none.
+        country:
+          type: [string, "null"]
+          pattern: "^[a-z]{2}$"
+          description: The client's country (ISO 3166-1, lower case), when the countries are shown and it is known.
     Upload:
       type: object
       required:
@@ -2557,6 +2561,10 @@ components:
         waitingSeconds:
           type: integer
           format: int64
+        country:
+          type: [string, "null"]
+          pattern: "^[a-z]{2}$"
+          description: The client's country (ISO 3166-1, lower case), when the countries are shown and it is known.
     SharedFile:
       type: object
       required: [hash, name, size, path, priority, link, statistics]

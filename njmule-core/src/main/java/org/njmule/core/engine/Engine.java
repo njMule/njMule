@@ -33,13 +33,17 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.YearMonth;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -108,6 +112,7 @@ import org.njmule.core.config.OsFamily;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 import org.njmule.core.config.UpdateMode;
+import org.njmule.core.net.CountryTable;
 import org.njmule.core.net.WebLists;
 import org.njmule.core.persist.AtomicFiles;
 import org.njmule.core.persist.ConfigBackup;
@@ -143,6 +148,13 @@ public final class Engine implements NjMuleEngine {
     // How often the IP filter lists are looked at, and how long after a failed update they wait.
     private static final Duration IP_FILTER_CHECK = Duration.ofHours(1);
     private static final Duration IP_FILTER_RETRY = Duration.ofHours(6);
+    private static final Duration COUNTRIES_CHECK = Duration.ofHours(1);
+    private static final Duration COUNTRIES_RETRY = Duration.ofHours(6);
+    // DB-IP publishes its database once a month.
+    private static final Duration COUNTRIES_AGE = Duration.ofDays(32);
+    private static final String COUNTRIES_FILE = "countries.dat";
+    // Followed by the month, yyyy-MM, and .csv.gz.
+    private static final String COUNTRIES_URL = "https://download.db-ip.com/free/dbip-country-lite-";
     // The first look for a new version waits for the start to settle; then whether one is due is asked often.
     private static final Duration UPDATE_FIRST = Duration.ofMinutes(2);
     private static final Duration UPDATE_TICK = Duration.ofMinutes(10);
@@ -167,6 +179,9 @@ public final class Engine implements NjMuleEngine {
     // Engine thread only: an update of the IP filter lists under way, and when the last one was tried.
     private boolean ipFilterUpdating;
     private long ipFilterTried;
+    private volatile CountryTable countries = CountryTable.EMPTY;
+    private boolean countriesUpdating;
+    private long countriesTried;
     private volatile Schedule schedule;
     private volatile Schedule.Rule activeRule;
     private final Path scheduleFile;
@@ -312,6 +327,8 @@ public final class Engine implements NjMuleEngine {
                                 "keep awake", KEEP_AWAKE_CHECK, KEEP_AWAKE_CHECK, engine::keepComputerAwake);
                         engine.loop.scheduleRepeating(
                                 "IP filter lists", Duration.ofMinutes(1), IP_FILTER_CHECK, engine::updateIpFilterIfDue);
+                        engine.loop.scheduleRepeating(
+                                "countries", Duration.ofSeconds(5), COUNTRIES_CHECK, engine::updateCountriesIfDue);
                         engine.loop.scheduleRepeating(
                                 "updates", UPDATE_FIRST, UPDATE_TICK, engine::checkForUpdateIfDue);
                         engine.loop.schedule("update proven", UPDATE_PROVEN, engine::provenVersion);
@@ -630,6 +647,79 @@ public final class Engine implements NjMuleEngine {
         this.keepAwake.update(this.preferences.preventSleep(), transferring, Instant.now());
     }
 
+    // The countries of DB-IP, kept in the cache: read at the first check, fetched again once a month old. Turned off,
+    // the table is let go.
+    private void updateCountriesIfDue() {
+        if (!this.preferences.showCountries()) {
+            this.countries = CountryTable.EMPTY;
+            return;
+        }
+        Path file = this.directories.cache().resolve(COUNTRIES_FILE);
+        long now = System.currentTimeMillis();
+        OptionalLong date = modified(file);
+        boolean fetch = (date.isEmpty() || now - date.getAsLong() >= COUNTRIES_AGE.toMillis())
+                && now - this.countriesTried >= COUNTRIES_RETRY.toMillis();
+        boolean read = this.countries.size() == 0 && date.isPresent();
+        if (this.countriesUpdating || !(fetch || read)) {
+            return;
+        }
+        this.countriesUpdating = true;
+        if (fetch) {
+            this.countriesTried = now;
+        }
+        CompletableFuture<CountryTable> work = CompletableFuture.supplyAsync(
+                () -> {
+                    try {
+                        return fetch ? fetchCountries(file) : CountryTable.read(Files.readAllBytes(file));
+                    } catch (IOException e) {
+                        throw new CompletionException(e);
+                    }
+                },
+                task -> Thread.ofVirtual().name("njmule-countries").start(task));
+        this.loop.whenDone(work, (table, failure) -> {
+            this.countriesUpdating = false;
+            if (failure == null) {
+                this.countries = this.preferences.showCountries() ? table : CountryTable.EMPTY;
+            } else {
+                Throwable reason = failure instanceof CompletionException && failure.getCause() != null
+                        ? failure.getCause()
+                        : failure;
+                userLog(LogLine.Level.WARNING, "Country database not updated: " + reason.getMessage());
+            }
+        });
+    }
+
+    // This month's database, or last month's while this one is not out yet.
+    private CountryTable fetchCountries(Path file) throws IOException {
+        YearMonth month = YearMonth.now(ZoneOffset.UTC);
+        IOException first = null;
+        for (YearMonth candidate : List.of(month, month.minusMonths(1))) {
+            try {
+                CountryTable table = CountryTable.parse(this.web.fetch(URI.create(COUNTRIES_URL
+                        + candidate.format(DateTimeFormatter.ofPattern("yyyy-MM", Locale.ROOT)) + ".csv.gz")));
+                Files.createDirectories(this.directories.cache());
+                AtomicFiles.writeBytes(file, table.write());
+                userLog(
+                        LogLine.Level.INFO,
+                        "Country database updated: " + table.size() + " ranges (IP Geolocation by DB-IP)");
+                return table;
+            } catch (IOException e) {
+                if (first == null) {
+                    first = e;
+                }
+            }
+        }
+        throw first;
+    }
+
+    private static OptionalLong modified(Path file) {
+        try {
+            return OptionalLong.of(Files.getLastModifiedTime(file).toMillis());
+        } catch (IOException e) {
+            return OptionalLong.empty();
+        }
+    }
+
     private void updateIpFilterIfDue() {
         Preferences now = this.preferences;
         long nowMillis = System.currentTimeMillis();
@@ -893,7 +983,14 @@ public final class Engine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<List<UploadInfo>> uploads() {
-        return this.loop.submit(this.network::uploads);
+        return this.loop.submit(this.network::uploads).thenApply(list -> {
+            CountryTable table = this.countries;
+            return table.size() == 0
+                    ? list
+                    : list.stream()
+                            .map(u -> u.withCountry(table.countryOf(u.address())))
+                            .toList();
+        });
     }
 
     @Override
@@ -934,7 +1031,14 @@ public final class Engine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<List<SourceInfo>> sources() {
-        return this.loop.submit(this.network::sources);
+        return this.loop.submit(this.network::sources).thenApply(list -> {
+            CountryTable table = this.countries;
+            return table.size() == 0
+                    ? list
+                    : list.stream()
+                            .map(s -> s.withCountry(table.countryOf(s.address())))
+                            .toList();
+        });
     }
 
     @Override

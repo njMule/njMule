@@ -64,6 +64,11 @@ versions is generated at release time in THIRD-PARTY.txt.
     Logback (classic, core)     EPL-1.0 OR LGPL-2.1; used under LGPL-2.1
     OpenJFX (JavaFX)            GPL-2.0 WITH Classpath-exception-2.0
     AtlantaFX                   MIT License
+    flag-icons (country flags,  MIT License
+    rendered to PNG)
+    DB-IP IP to Country Lite    CC BY 4.0, downloaded by njMule when the
+    (not shipped)               countries are shown: IP Geolocation by
+                                DB-IP (https://db-ip.com)
     Manrope (font, Bold and     SIL Open Font License 1.1
     ExtraBold)
     RichTextFX, Flowless,       BSD 2-Clause License (RichTextFX also

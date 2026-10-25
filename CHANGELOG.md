@@ -424,6 +424,11 @@ All notable changes to this project are documented here. The format follows
   minutes after the last one, through the Windows launcher, `caffeinate` on macOS or
   `systemd-inhibit` on Linux, which end with njMule anyway (off by default; desktop and web
   settings, `system.preventSleep`).
+- The country of other clients, with its flag beside its code and its name as tooltip, in the
+  sources of a download and among the uploads and the queue, in the desktop and web apps and in
+  the API (off by default; `geo.countries`): njMule then downloads DB-IP's free IP to Country Lite
+  database once a month into its cache (IP Geolocation by DB-IP, CC BY 4.0). The flags are
+  flag-icons' (MIT), rendered to small PNG by `tools/FlagGen.java`.
 - Notifications by e-mail and through a web hook (both off by default; desktop and web settings,
   `notify.*`): a completed or failed download, a chat message or a temp disk short of space, as
   chosen, are told by an e-mail through the user's SMTP server, never in the clear (STARTTLS required
