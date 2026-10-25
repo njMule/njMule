@@ -138,6 +138,7 @@ public final class Engine implements NjMuleEngine {
     private static final int EVENT_BUFFER = 1_024;
     private static final Duration UNMAP_WAIT = Duration.ofSeconds(5);
     private static final Duration SCHEDULE_CHECK = Duration.ofSeconds(15);
+    private static final Duration KEEP_AWAKE_CHECK = Duration.ofSeconds(30);
     // How often the IP filter lists are looked at, and how long after a failed update they wait.
     private static final Duration IP_FILTER_CHECK = Duration.ofHours(1);
     private static final Duration IP_FILTER_RETRY = Duration.ofHours(6);
@@ -158,6 +159,7 @@ public final class Engine implements NjMuleEngine {
     private final AtomicBoolean closed = new AtomicBoolean();
     // Written only on the engine thread, read from anywhere.
     private volatile Preferences preferences;
+    private final KeepAwake keepAwake = KeepAwake.forThisSystem();
     // The preferences with the scheduler's rule applied: what the network uses.
     private volatile Preferences effective;
     // Engine thread only: an update of the IP filter lists under way, and when the last one was tried.
@@ -302,6 +304,8 @@ public final class Engine implements NjMuleEngine {
                         engine.loop.scheduleRepeating(
                                 "scheduler", SCHEDULE_CHECK, SCHEDULE_CHECK, engine::refreshSchedule);
                         engine.loop.scheduleRepeating("config backup", BACKUP_EVERY, BACKUP_EVERY, engine::backUp);
+                        engine.loop.scheduleRepeating(
+                                "keep awake", KEEP_AWAKE_CHECK, KEEP_AWAKE_CHECK, engine::keepComputerAwake);
                         engine.loop.scheduleRepeating(
                                 "IP filter lists", Duration.ofMinutes(1), IP_FILTER_CHECK, engine::updateIpFilterIfDue);
                         engine.loop.scheduleRepeating(
@@ -615,6 +619,13 @@ public final class Engine implements NjMuleEngine {
     }
 
     // The lists of the preferences fetched again once the filter is as old as they say; a failed update waits.
+    // The computer stays awake while files are transferred, when the preferences ask for it.
+    private void keepComputerAwake() {
+        EngineStatus now = this.network.status();
+        boolean transferring = now.downloadBytesPerSecond() > 0 || now.uploadBytesPerSecond() > 0;
+        this.keepAwake.update(this.preferences.preventSleep(), transferring, Instant.now());
+    }
+
     private void updateIpFilterIfDue() {
         Preferences now = this.preferences;
         long nowMillis = System.currentTimeMillis();
@@ -1445,6 +1456,7 @@ public final class Engine implements NjMuleEngine {
         publish(new EngineEvent.Stopping());
         logger.info("Stopping {}", NjMuleInfo.NAME);
         this.updates.close();
+        this.keepAwake.close();
         AtomicReference<CompletableFuture<Void>> unmapped =
                 new AtomicReference<>(CompletableFuture.completedFuture(null));
         CompletableFuture<Void> closing = this.loop.submit(() -> {

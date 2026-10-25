@@ -48,7 +48,12 @@ export const PAGES: Page[] = [
         title: 'IDS_PW_GENERAL',
         summary: 'nj.settings.page.general',
         sections: [
-            { rows: [{ key: 'user.nick', label: 'IDS_PW_NICK', kind: 'text', max: 50 }] },
+            {
+                rows: [
+                    { key: 'user.nick', label: 'IDS_PW_NICK', kind: 'text', max: 50 },
+                    { key: 'system.preventSleep', label: 'nj.settings.preventSleep', kind: 'switch' },
+                ],
+            },
             {
                 title: 'nj.update.title',
                 rows: [

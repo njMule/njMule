@@ -13,7 +13,8 @@
 // It waits for those processes to end, runs msiexec on the package, writes its exit code to the result
 // file, which the next start of njMule reads, and starts njMule again when asked.
 //
-// The uninstaller runs it with --uninstall-profile: it asks whether the user's profile goes too.
+// The uninstaller runs it with --uninstall-profile: it asks whether the user's profile goes too. njMule runs it with
+// --keep-awake <pid> while files are transferred, if asked to keep the computer from sleeping.
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -312,6 +313,18 @@ static int uninstall_profile(void) {
     return SHFileOperationW(&operation);
 }
 
+// Keeps the computer from sleeping until the njMule running as pid ends, or ends this program.
+static int keep_awake(DWORD pid) {
+    HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
+    if (process == NULL) {
+        return 1;
+    }
+    SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
+    WaitForSingleObject(process, INFINITE);
+    CloseHandle(process);
+    return 0;
+}
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR commandLine, int show) {
     (void) instance;
     (void) previous;
@@ -326,6 +339,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR commandLine, i
     if (argv != NULL && argc == 2 && wcscmp(argv[1], L"--uninstall-profile") == 0) {
         LocalFree(argv);
         return uninstall_profile();
+    }
+    if (argv != NULL && argc == 3 && wcscmp(argv[1], L"--keep-awake") == 0) {
+        DWORD pid = wcstoul(argv[2], NULL, 10);
+        LocalFree(argv);
+        return keep_awake(pid);
     }
     if (argv != NULL) {
         LocalFree(argv);

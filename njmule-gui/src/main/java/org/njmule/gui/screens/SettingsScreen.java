@@ -142,6 +142,7 @@ public final class SettingsScreen implements Screen {
     private int autostartLoads;
     private final ToggleSwitch watchClipboard = new ToggleSwitch();
     private final ToggleSwitch sound = new ToggleSwitch();
+    private final ToggleSwitch preventSleep = new ToggleSwitch();
     private final TextField soundFile = new TextField();
     private final ToggleSwitch filterLan = new ToggleSwitch();
     private final TextArea whitelist = new TextArea();
@@ -475,7 +476,12 @@ public final class SettingsScreen implements Screen {
                                         () -> this.gui.settings().minimizeToTray(),
                                         true,
                                         v -> this.gui.settings().setMinimizeToTray(v))
-                                : null),
+                                : null,
+                        toggle(
+                                "nj.settings.preventSleep",
+                                this.preventSleep,
+                                Preferences::preventSleep,
+                                (b, v) -> b.preventSleep(v))),
                 section(
                         "nj.update.title",
                         engine(

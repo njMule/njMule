@@ -140,16 +140,18 @@
         <Class name="org.njmule.app.LinkHandoff"/>
     </Match>
 
-    <!-- The link association, the folder opener, the Windows service and the lookup of the default
-         gateway run fixed system tools (reg, xdg-mime, the file manager, icacls, netsh, PowerShell,
-         route) or njMule's own service program with arguments built from our own paths and constants,
-         never from the network; the preview runs the player the user chose in the settings on one of
-         our own data files. The command line is a list, so no shell parses it. -->
+    <!-- The link association, the folder opener, the Windows service, keeping the computer awake and
+         the lookup of the default gateway run fixed system tools (reg, xdg-mime, the file manager,
+         icacls, netsh, PowerShell, caffeinate, systemd-inhibit, route) or njMule's own programs with
+         arguments built from our own paths and constants, never from the network; the preview runs the
+         player the user chose in the settings on one of our own data files. The command line is a list,
+         so no shell parses it. -->
     <Match>
         <Bug pattern="COMMAND_INJECTION"/>
         <Or>
             <Class name="org.njmule.app.LinkAssociation"/>
             <Class name="org.njmule.app.WindowsService$SystemWindows"/>
+            <Class name="org.njmule.core.engine.KeepAwake"/>
             <Class name="org.njmule.core.upnp.DefaultGateway"/>
             <Class name="org.njmule.gui.infra.Folders"/>
             <Class name="org.njmule.gui.infra.Preview"/>

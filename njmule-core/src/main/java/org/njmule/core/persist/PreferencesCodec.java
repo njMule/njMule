@@ -139,6 +139,7 @@ public final class PreferencesCodec {
         key("files.nameCleanups", Preferences::nameCleanups, Preferences.Builder::nameCleanups);
         boolKey("files.cleanUpNewNames", Preferences::cleanUpNewNames, Preferences.Builder::cleanUpNewNames);
         boolKey("notify.sound", Preferences::notificationSound, Preferences.Builder::notificationSound);
+        boolKey("system.preventSleep", Preferences::preventSleep, Preferences.Builder::preventSleep);
         key(
                 "notify.soundFile",
                 p -> p.notificationSoundFile().map(Path::toString).orElse(""),

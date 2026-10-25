@@ -52,6 +52,7 @@ import org.njmule.core.security.IpWhitelist;
  * @param updateInstallTime when a new version downloaded is installed, in the {@link UpdateMode#INSTALL} mode
  * @param nightHours the hours when njMule may restart to install it, with {@link UpdateInstallTime#EXIT_OR_NIGHT}
  * @param updateUrl where the releases are looked for instead of GitHub, as for a fork or a test; empty for GitHub
+ * @param preventSleep keeps the computer from sleeping while files are transferred
  */
 public record Preferences(
         String nick,
@@ -115,7 +116,8 @@ public record Preferences(
         UpdateChannel updateChannel,
         UpdateInstallTime updateInstallTime,
         NightHours nightHours,
-        Optional<URI> updateUrl) {
+        Optional<URI> updateUrl,
+        boolean preventSleep) {
 
     public static final int MAX_NICK_LENGTH = 50;
     public static final int MAX_PORT = 65_535;
@@ -380,7 +382,8 @@ public record Preferences(
                 UpdateChannel.of(NjMuleInfo.version()),
                 UpdateInstallTime.EXIT,
                 NightHours.DEFAULT,
-                Optional.empty());
+                Optional.empty(),
+                false);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {
@@ -487,6 +490,7 @@ public record Preferences(
         private UpdateInstallTime updateInstallTime;
         private NightHours nightHours;
         private Optional<URI> updateUrl;
+        private boolean preventSleep;
 
         private Builder(Preferences p) {
             this.nick = p.nick;
@@ -551,6 +555,7 @@ public record Preferences(
             this.updateInstallTime = p.updateInstallTime;
             this.nightHours = p.nightHours;
             this.updateUrl = p.updateUrl;
+            this.preventSleep = p.preventSleep;
         }
 
         public Builder nick(String value) {
@@ -902,6 +907,11 @@ public record Preferences(
             return this;
         }
 
+        public Builder preventSleep(boolean value) {
+            this.preventSleep = value;
+            return this;
+        }
+
         public Builder updateUrl(Optional<URI> value) {
             this.updateUrl = value;
             return this;
@@ -971,7 +981,8 @@ public record Preferences(
                     this.updateChannel,
                     this.updateInstallTime,
                     this.nightHours,
-                    this.updateUrl);
+                    this.updateUrl,
+                    this.preventSleep);
         }
     }
 }

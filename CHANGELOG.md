@@ -416,6 +416,10 @@ All notable changes to this project are documented here. The format follows
   imported.
 - The deb and rpm packages install a systemd user unit, `njmule.service`, that runs the headless
   engine as the user and restarts it on failure (`systemctl --user enable --now njmule`).
+- An option keeps the computer from sleeping while files are transferred, and lets it sleep again two
+  minutes after the last one, through the Windows launcher, `caffeinate` on macOS or
+  `systemd-inhibit` on Linux, which end with njMule anyway (off by default; desktop and web
+  settings, `system.preventSleep`).
 - Uninstalling can delete the profile too: a box at the Windows uninstall (to the Recycle Bin), in
   the Synology uninstall wizard and in *Uninstall njMule* of the macOS disk image; elsewhere
   `njmule --remove-profile` deletes it after asking, and the deb and rpm packages tell where it
