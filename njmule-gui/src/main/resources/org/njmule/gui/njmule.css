@@ -2325,6 +2325,37 @@
     -fx-font-weight: bold;
 }
 
+/* The colours of the search results, beside their chips: ours already in red, known from before in green, spam
+   muted; a new result from the text's colour towards the accent's as it has more sources (-nj-result-fg, set on its
+   row from the two swatches). */
+.result-plain {
+    -fx-background-color: -color-fg-default;
+}
+
+.result-rich {
+    -fx-background-color: -color-accent-fg;
+}
+
+.search-tabs .table-row-cell {
+    -nj-result-fg: -color-cell-fg;
+}
+
+.search-tabs .table-row-cell > .table-cell {
+    -fx-text-fill: -nj-result-fg;
+}
+
+.search-tabs .table-row-cell:ours > .table-cell {
+    -fx-text-fill: -color-danger-fg;
+}
+
+.search-tabs .table-row-cell:known > .table-cell {
+    -fx-text-fill: -color-success-fg;
+}
+
+.search-tabs .table-row-cell:spam > .table-cell {
+    -fx-text-fill: -color-fg-muted;
+}
+
 /* The server in use: bold behind an accent bar; the one being tried: italic. */
 .table-row-cell:current-server {
     -fx-border-color: transparent transparent transparent -nj-accent-strong;

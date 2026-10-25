@@ -41,12 +41,15 @@ import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.Tab;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
+import javafx.scene.layout.Pane;
+import javafx.scene.paint.Color;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -316,6 +319,30 @@ class SearchResultsTest {
 
         thenTheKnownFilesAreMarked();
         thenTheCellsShow("Shared", "Downloaded", "Cancelled");
+    }
+
+    @Test
+    void shouldColourWhatIsOursAlreadyAndWhatIsKnownFromBefore() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.GLOBAL);
+        givenTheEngineWasAskedFor("search film GLOBAL");
+
+        whenTheResultsCome(SHARED, DOWNLOADED, CANCELLED, FILM_HD);
+
+        thenTheNameOfIsIn(SHARED, "-color-danger-fg");
+        thenTheNameOfIsIn(DOWNLOADED, "-color-success-fg");
+        thenTheNameOfIsIn(CANCELLED, "-color-success-fg");
+    }
+
+    @Test
+    void shouldColourANewResultCloserToTheAccentTheMoreSourcesItHas() throws Exception {
+        givenTheSearchScreen();
+        givenASearchFor("film", SearchScreen.Method.SERVER);
+
+        whenTheResultsCome(withSources(SONG, 1), withSources(FILM_HD, 40));
+
+        thenTheNameOfIsIn(SONG, "-color-fg-default");
+        thenTheNameOfIsCloserTo(FILM_HD, "-color-accent-fg", "-color-fg-default");
     }
 
     @Test
@@ -885,6 +912,58 @@ class SearchResultsTest {
         assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS))
                 .extracting(DownloadInfo::name)
                 .containsExactly(names);
+    }
+
+    private void thenTheNameOfIsIn(SearchResult result, String token) throws Exception {
+        FxTesting.assertEventually(
+                result.name() + " in " + token,
+                () -> nameColour(result)
+                        .filter(c -> c.equals(themeColour(token)))
+                        .isPresent());
+    }
+
+    private void thenTheNameOfIsCloserTo(SearchResult result, String near, String far) throws Exception {
+        FxTesting.assertEventually(
+                result.name() + " closer to " + near + " than to " + far,
+                () -> nameColour(result)
+                        .filter(c -> distance(c, themeColour(near)) < distance(c, themeColour(far)))
+                        .isPresent());
+    }
+
+    // The colour the name of the result is written in; on the FX thread.
+    private Optional<Color> nameColour(SearchResult result) {
+        String name = this.test.gui.t("IDS_DL_FILENAME");
+        return table().lookupAll(".table-row-cell").stream()
+                .map(node -> (TableRow<?>) node)
+                .filter(row -> row.getItem() instanceof LiveList.Row<?> r
+                        && r.get() instanceof SearchResult found
+                        && found.hash().equals(result.hash()))
+                .flatMap(row -> row.lookupAll(".table-cell").stream())
+                .map(node -> (TableCell<?, ?>) node)
+                .filter(cell -> name.equals(cell.getTableColumn().getText()))
+                .map(cell -> cell.getTextFill())
+                .filter(Color.class::isInstance)
+                .map(Color.class::cast)
+                .findFirst();
+    }
+
+    // A colour of the theme, as a label in the screen reads it; on the FX thread.
+    private Color themeColour(String token) {
+        Label probe = new Label();
+        probe.setManaged(false);
+        probe.setStyle("-fx-text-fill: " + token + ";");
+        Pane root = (Pane) this.shownScreen.view().getScene().getRoot();
+        root.getChildren().add(probe);
+        probe.applyCss();
+        Color colour = (Color) probe.getTextFill();
+        root.getChildren().remove(probe);
+        return colour;
+    }
+
+    private static double distance(Color a, Color b) {
+        return Math.abs(a.getRed() - b.getRed())
+                + Math.abs(a.getGreen() - b.getGreen())
+                + Math.abs(a.getBlue() - b.getBlue());
     }
 
     private void thenTheKnownFilesAreMarked() throws Exception {

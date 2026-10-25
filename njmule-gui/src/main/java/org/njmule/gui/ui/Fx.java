@@ -55,10 +55,13 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.Background;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
+import javafx.scene.paint.Paint;
 import javafx.scene.shape.Circle;
 import org.njmule.core.api.FileKind;
 import org.njmule.gui.model.LiveList;
@@ -413,6 +416,27 @@ public final class Fx {
         scroll.setFitToHeight(true);
         scroll.getStyleClass().add(Tweaks.EDGE_TO_EDGE);
         return scroll;
+    }
+
+    /** A hidden box whose background, styled by {@code styleClass}, holds a colour of the theme for drawing. */
+    public static Region swatch(String styleClass) {
+        Region region = new Region();
+        region.getStyleClass().add(styleClass);
+        region.setManaged(false);
+        region.setVisible(false);
+        return region;
+    }
+
+    /** The colour {@code swatch} holds, or {@code fallback} before the theme is applied. */
+    public static Color swatchColor(Region swatch, Color fallback) {
+        Background background = swatch.getBackground();
+        if (background != null && !background.getFills().isEmpty()) {
+            Paint fill = background.getFills().getFirst().getFill();
+            if (fill instanceof Color c) {
+                return c;
+            }
+        }
+        return fallback;
     }
 
     /** A table over live rows, sortable by any column, with several rows selectable. */

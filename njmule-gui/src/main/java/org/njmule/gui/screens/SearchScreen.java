@@ -80,6 +80,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
 import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Hash16;
@@ -157,9 +158,18 @@ public final class SearchScreen implements Screen {
     // The row of one name a file was found under.
     private static final PseudoClass NAME_ROW = PseudoClass.getPseudoClass("name-row");
     static final PseudoClass DOWNLOADING_ROW = PseudoClass.getPseudoClass("downloading");
+    // What a result is to us tells its colour: ours already (downloading or shared), known from before (downloaded or
+    // cancelled), spam; a new one goes from the text's colour towards the accent's, by thirteenths, as it has more
+    // sources.
+    static final PseudoClass OURS_ROW = PseudoClass.getPseudoClass("ours");
+    static final PseudoClass KNOWN_ROW = PseudoClass.getPseudoClass("known");
+    static final PseudoClass SPAM_ROW = PseudoClass.getPseudoClass("spam");
+    private static final int SHADES = 13;
 
     private final Gui gui;
     private final StringProperty summary = new SimpleStringProperty("");
+    private final Region plainText = Fx.swatch("result-plain");
+    private final Region richText = Fx.swatch("result-rich");
     private Node view;
     private final ComboBox<String> query = new ComboBox<>();
     private Input<String> queryInput;
@@ -296,7 +306,11 @@ public final class SearchScreen implements Screen {
         this.empty = emptyState();
         this.tabs.getTabs().addListener((ListChangeListener<Tab>) c -> showFoundOrEmpty());
         showFoundOrEmpty();
-        return Fx.screen(tools, this.content);
+        VBox screen = Fx.screen(tools, this.content);
+        screen.getChildren().addAll(this.plainText, this.richText);
+        // Another theme, other shades.
+        this.richText.backgroundProperty().addListener(o -> refreshAll());
+        return screen;
     }
 
     // The tabs of results while there are some, else how to search.
@@ -738,8 +752,15 @@ public final class SearchScreen implements Screen {
                 @Override
                 protected void updateItem(LiveList.Row<SearchResult> item, boolean empty) {
                     super.updateItem(item, empty);
-                    pseudoClassStateChanged(
-                            DOWNLOADING_ROW, !empty && item != null && known(item.get()) == Known.DOWNLOADING);
+                    Known k = empty || item == null ? Known.NONE : known(item.get());
+                    pseudoClassStateChanged(DOWNLOADING_ROW, k == Known.DOWNLOADING);
+                    pseudoClassStateChanged(OURS_ROW, k == Known.DOWNLOADING || k == Known.SHARED);
+                    pseudoClassStateChanged(KNOWN_ROW, k == Known.DOWNLOADED || k == Known.CANCELLED);
+                    pseudoClassStateChanged(SPAM_ROW, k == Known.SPAM);
+                    setStyle(
+                            empty || item == null || k != Known.NONE
+                                    ? ""
+                                    : "-nj-result-fg: " + shade(item.get().sources()) + ";");
                 }
             };
             row.setOnMouseClicked(e -> {
@@ -956,6 +977,15 @@ public final class SearchScreen implements Screen {
             return Known.CANCELLED;
         }
         return result.isSpam() ? Known.SPAM : Known.NONE;
+    }
+
+    // The colour of a new result: one source or none keeps the text's, each more a thirteenth closer to the accent's.
+    private String shade(int sources) {
+        int step = Math.clamp(sources - 1L, 0, SHADES - 1);
+        Color plain = Fx.swatchColor(this.plainText, Color.BLACK);
+        Color c = plain.interpolate(Fx.swatchColor(this.richText, Color.BLUE), (double) step / SHADES);
+        return "rgb(" + Math.round(c.getRed() * 255) + "," + Math.round(c.getGreen() * 255) + ","
+                + Math.round(c.getBlue() * 255) + ")";
     }
 
     // Only files coming or going matter, not their progress.

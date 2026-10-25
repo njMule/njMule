@@ -22,10 +22,8 @@ import javafx.scene.AccessibleAttribute;
 import javafx.scene.AccessibleRole;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
-import javafx.scene.layout.Background;
 import javafx.scene.layout.Region;
 import javafx.scene.paint.Color;
-import javafx.scene.paint.Paint;
 import org.njmule.core.api.PartMap;
 
 /**
@@ -40,13 +38,13 @@ public final class PartBar extends Region {
     private static final double STRIP = 3;
 
     private final Canvas canvas = new Canvas();
-    private final Region track = swatch("bar-bg");
-    private final Region have = swatch("bar-have");
-    private final Region missing = swatch("bar-missing");
-    private final Region few = swatch("bar-sources-min");
-    private final Region many = swatch("bar-sources-max");
-    private final Region requested = swatch("bar-requested");
-    private final Region complete = swatch("bar-complete");
+    private final Region track = Fx.swatch("bar-bg");
+    private final Region have = Fx.swatch("bar-have");
+    private final Region missing = Fx.swatch("bar-missing");
+    private final Region few = Fx.swatch("bar-sources-min");
+    private final Region many = Fx.swatch("bar-sources-max");
+    private final Region requested = Fx.swatch("bar-requested");
+    private final Region complete = Fx.swatch("bar-complete");
     private PartMap map = PartMap.EMPTY;
     private long done;
 
@@ -99,18 +97,18 @@ public final class PartBar extends Region {
         double h = this.canvas.getHeight();
         GraphicsContext g = this.canvas.getGraphicsContext2D();
         g.clearRect(0, 0, w, h);
-        g.setFill(color(this.track, Color.LIGHTGRAY));
+        g.setFill(Fx.swatchColor(this.track, Color.LIGHTGRAY));
         g.fillRect(0, 0, w, h);
         long size = this.map.size();
         if (size <= 0 || w < 1) {
             return;
         }
         double scale = w / size;
-        g.setFill(color(this.have, Color.DIMGRAY));
+        g.setFill(Fx.swatchColor(this.have, Color.DIMGRAY));
         g.fillRect(0, STRIP, w, h - STRIP);
-        Color none = color(this.missing, Color.FIREBRICK);
-        Color low = color(this.few, Color.LIGHTSTEELBLUE);
-        Color high = color(this.many, Color.STEELBLUE);
+        Color none = Fx.swatchColor(this.missing, Color.FIREBRICK);
+        Color low = Fx.swatchColor(this.few, Color.LIGHTSTEELBLUE);
+        Color high = Fx.swatchColor(this.many, Color.STEELBLUE);
         for (PartMap.Span gap : this.map.missing()) {
             // A gap can cross parts, each with its own sources.
             long start = gap.start();
@@ -124,11 +122,11 @@ public final class PartBar extends Region {
                 start = end;
             }
         }
-        g.setFill(color(this.requested, Color.GOLD));
+        g.setFill(Fx.swatchColor(this.requested, Color.GOLD));
         for (PartMap.Span block : this.map.requested()) {
             fill(g, block.start(), block.end(), scale, STRIP, h - STRIP);
         }
-        g.setFill(color(this.complete, Color.SEAGREEN));
+        g.setFill(Fx.swatchColor(this.complete, Color.SEAGREEN));
         g.fillRect(0, 0, Math.min(w, this.done * scale), STRIP);
     }
 
@@ -137,24 +135,5 @@ public final class PartBar extends Region {
         double x = start * scale;
         double width = Math.max(1, (end - start) * scale);
         g.fillRect(x, y, width, height);
-    }
-
-    private static Region swatch(String styleClass) {
-        Region region = new Region();
-        region.getStyleClass().add(styleClass);
-        region.setManaged(false);
-        region.setVisible(false);
-        return region;
-    }
-
-    private static Color color(Region swatch, Color fallback) {
-        Background background = swatch.getBackground();
-        if (background != null && !background.getFills().isEmpty()) {
-            Paint fill = background.getFills().getFirst().getFill();
-            if (fill instanceof Color c) {
-                return c;
-            }
-        }
-        return fallback;
     }
 }
