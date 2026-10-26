@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Documentation
+
+# The documentation website (website/): built on every change that can alter it, to catch broken pages and
+# links; published on GitHub Pages only when asked (a manual run with "deploy") and with each release tag.
+on:
+    push:
+        branches: [main]
+        # Tag pushes ignore the path filters: every release publishes the site.
+        tags: ["v*"]
+        paths:
+            - "website/**"
+            - "njmule-gui/src/main/**"
+            - "njmule-gui/src/test/java/org/njmule/gui/Capture*.java"
+            - "njmule-gui/src/test/java/org/njmule/gui/WebCaptureDemo.java"
+            - "njmule-webapp/src/**"
+            - "njmule-webui/src/main/**"
+            - "njmule-app/src/main/java/org/njmule/app/LaunchOptions.java"
+            - "njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml"
+            - "branding/**"
+            - "CHANGELOG.md"
+            - "CONTRIBUTING.md"
+            - "SECURITY.md"
+            - "CODE_OF_CONDUCT.md"
+            - "gradle/**"
+            - ".github/workflows/docs.yml"
+    pull_request:
+        paths:
+            - "website/**"
+            - "njmule-gui/src/test/java/org/njmule/gui/Capture*.java"
+            - "njmule-gui/src/test/java/org/njmule/gui/WebCaptureDemo.java"
+            - "njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml"
+            - ".github/workflows/docs.yml"
+    workflow_dispatch:
+        inputs:
+            deploy:
+                description: Publish the site on GitHub Pages
+                type: boolean
+                default: false
+
+permissions:
+    contents: read
+
+# One publication at a time; a newer one waits for the running one instead of cancelling it.
+concurrency:
+    group: pages-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    build:
+        name: build the site
+        runs-on: ubuntu-latest
+        outputs:
+            deploy: ${{ steps.publish.outputs.deploy }}
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+              with:
+                  distribution: temurin
+                  java-version: "25"
+            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+              with:
+                  cache-provider: basic
+            # The pictures of the desktop app come from its tests on JavaFX's headless platform, those of the web
+            # interface from the runner's own Chrome; the site fails on a broken link or a missing picture.
+            - name: Build the site
+              run: ./gradlew :website:siteCheck :website:site
+            - name: Should it be published
+              id: publish
+              env:
+                  EVENT: ${{ github.event_name }}
+                  REF: ${{ github.ref }}
+                  ASKED: ${{ inputs.deploy }}
+              run: |
+                  if [[ "$EVENT" == "workflow_dispatch" && "$ASKED" == "true" ]] || [[ "$EVENT" == "push" && "$REF" == refs/tags/v* ]]; then
+                      echo "deploy=true" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "deploy=false" >> "$GITHUB_OUTPUT"
+                  fi
+            - name: Upload the site
+              if: steps.publish.outputs.deploy == 'true'
+              uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+              with:
+                  path: website/build/site
+
+    deploy:
+        name: publish on GitHub Pages
+        needs: build
+        if: needs.build.outputs.deploy == 'true'
+        runs-on: ubuntu-latest
+        permissions:
+            pages: write
+            id-token: write
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        steps:
+            - name: Publish
+              id: deployment
+              uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
