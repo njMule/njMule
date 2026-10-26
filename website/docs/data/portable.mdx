@@ -1,0 +1,101 @@
+---
+title: Portable mode
+description: Run njMule from a folder or a removable drive with all its data beside the programs, or keep a separate profile anywhere with --config-dir.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+Normally njMule keeps its profile in your user folders (see
+[Where njMule keeps its data](./locations.mdx)). Two ways put the whole profile in one folder
+instead: the **portable mode**, which keeps it beside the programs, and the **`--config-dir`**
+option, which keeps it wherever you say.
+
+## Portable mode
+
+Use the `.zip` archive on Windows or a `.tar.xz` archive on Linux: the portable mode is meant for
+these archives, which run from any folder.
+
+1. Extract the archive where you want njMule to live, for example on a USB drive.
+2. Next to the programs (`njmule.exe` and `njmule-gui.exe` on Windows, `njmule` and `njmule-gui` on
+   Linux), create an empty file named `portable.flag`.
+3. Start njMule from that folder.
+
+<Tabs groupId="os">
+  <TabItem value="windows" label="Windows" default>
+
+```powershell
+cd E:\njMule
+New-Item portable.flag -ItemType File
+.\njmule-gui.exe
+```
+
+  </TabItem>
+  <TabItem value="linux" label="Linux">
+
+```bash
+cd /media/you/stick/njmule
+touch portable.flag
+./njmule-gui
+```
+
+  </TabItem>
+</Tabs>
+
+All the data then lives in a `data` folder beside the programs:
+
+```text
+njMule/
+├── njmule-gui.exe
+├── njmule.exe
+├── …              the libraries and documents of the archive
+├── portable.flag
+└── data/
+    ├── config/      settings, lists, identity
+    ├── data/        configuration backups
+    ├── temp/        downloads in progress
+    ├── cache/
+    ├── logs/
+    ├── gui/         the desktop app's state
+    └── incoming/    completed downloads
+```
+
+The desktop app, the command line and the headless engine started from that folder all use it.
+An update installed by njMule replaces only the programs: `portable.flag` and `data` stay.
+
+:::tip[Keep it movable]
+The folders you choose in the options are stored as full paths. To move the whole folder, or to use
+it from a drive that gets another letter on another computer, keep the default incoming and
+temporary folders, which follow the `data` folder wherever it is.
+:::
+
+To leave the portable mode, delete `portable.flag`: njMule uses the usual folders again (the `data`
+folder stays where it is; copy its `config` folder over if you want to keep your settings).
+
+## Another profile with --config-dir
+
+`--config-dir <dir>` keeps the whole profile below `<dir>`, with the same folders as above
+(`config`, `data`, `temp`, `cache`, `logs`, `gui`, `incoming`). It works with `njmule` and with
+`njmule-gui`, and takes precedence over `portable.flag`.
+
+```bash
+njmule-gui --config-dir /home/you/njmule-test
+njmule --config-dir /home/you/njmule-test --exit
+```
+
+Use it to try something without touching your profile, to keep two identities apart, or to run a
+second njMule beside the first one. Two njMule on one computer need their own profiles and their
+own ports (**Options → Connection**, and the web interface's port if both have one); a second start
+on a profile already in use only hands its links to the running one. Every command that acts on a
+running njMule (`--exit`, `--remote`, links) must be given the same `--config-dir` to find it.
+
+The [Windows service](../server/windows-service.mdx), the
+[Docker image](../getting-started/install-docker.mdx) and the
+[Synology package](../getting-started/install-synology.mdx) use this option to keep their
+profile in `%ProgramData%\njMule`, `/njmule` and `/var/packages/njmule/var`.
+
+## Related pages
+
+- [Where njMule keeps its data](./locations.mdx)
+- [Command line](../server/cli.mdx)
+- [Backups](./backups.mdx)

@@ -1,0 +1,176 @@
+---
+title: Remote control
+description: Drive a running njMule from the command line, from scripts or from another computer through its JSON remote-control API, its token and its event stream.
+---
+
+import RemoteCommands from '../_generated/remote-commands.md';
+
+Besides its web pages, njMule's web interface can answer a **remote-control API**: JSON over HTTP
+under `/api/v1`, with the engine's events as a stream. The `njmule --remote` commands use it, and so
+can your own scripts, a home-automation system or the desktop app of another computer. Whoever
+holds its token can do everything njMule can, so it is off until you turn it on.
+
+## Turn it on
+
+The API is part of the web interface, which needs a password first
+([Web interface](../web/overview.mdx#turn-it-on)). Then either:
+
+- in the desktop app, switch on **Options → Web Interface → Answer the remote-control API too
+  (njmule --remote; callers need its token)**;
+- or add `--webui-api` when you set the password:
+
+  ```bash
+  njmule --webui-password --webui-api
+  njmule --webui-password-file /run/secrets/njmule_webui_password --webui-lan --webui-api
+  ```
+
+Like the other web interface settings, it applies from the next start of njMule. The command line
+only turns it on; to turn it off, use the switch in the desktop app.
+
+## The API token
+
+Callers prove themselves with a token, a random string of 43 characters kept in the file
+`api-token` of the configuration folder (readable by its owner only on Linux and macOS). njMule
+makes it when the API starts, or when you ask for it:
+
+```bash
+njmule --api-token        # prints it, making one if there is none
+njmule --new-api-token    # replaces it: whoever holds the old one is refused from now on
+```
+
+The desktop app has **Copy the API token** and **New API token** under the switch. A new token
+applies at once, without a restart.
+
+:::warning
+The token gives full control of njMule, without the limits of a [guest](../web/guest.mdx). Keep it
+like a password. Over plain HTTP it travels unencrypted: across a network you do not trust, reach
+the API through a [reverse proxy with HTTPS](../web/reverse-proxy.mdx).
+:::
+
+## Commands from the command line
+
+On the computer where njMule runs, `njmule --remote` finds the port and the token of the njMule
+running on the same configuration by itself:
+
+```bash
+njmule --remote status
+njmule --remote help
+```
+
+`--remote` takes every word after it as the command, so put other options such as `--config-dir`
+before it. The commands are:
+
+<RemoteCommands />
+
+| Command | What it does |
+|---|---|
+| `status` | The connections, the speeds and the counts |
+| `downloads`, `uploads`, `servers` | The lists, with each download's hash |
+| `add <ed2k link>...` | Downloads the files of these links (quote them) |
+| `pause`, `resume`, `stop`, `cancel <hash>...` | Acts on downloads, by their hash |
+| `priority <hash> <level>` | Sets a download's priority: `low`, `normal`, `high` or `auto` |
+| `connect [<host:port>]`, `disconnect` | Connects to this server, or to any; leaves it |
+| `kad [connect, disconnect or recheck]` | Kad's state, or connects, disconnects or checks the firewall again |
+| `search [server, global or kad] <expression>` | Starts a search, waits a moment and prints the results with the search's id |
+| `results <id>`, `get <id> <hash>` | Prints a search's results again; downloads one of them |
+| `limits [<upload> <download>]` | Prints or sets the speed limits, in KiB/s or with K, M or G (`1.5M`); 0 is unlimited |
+| `log` | The latest log lines |
+| `events [<prefix>,...]` | Prints the events as they come, until you press <kbd>Ctrl</kbd>+<kbd>C</kbd> |
+| `update [check, skip <version>, download, install [at-exit]]` | What is known of new versions, and acting on them ([Updates](../updates.mdx)) |
+| `shutdown` | Asks njMule to save and exit |
+
+Examples:
+
+```bash
+njmule --remote search kad lumenos iso
+njmule --remote get 3 0123456789ABCDEF0123456789ABCDEF
+njmule --remote limits 500 0          # upload 500 KiB/s, download unlimited
+njmule --remote events download,server
+njmule --remote update check
+njmule --remote update install at-exit
+```
+
+When the API is off, the command says so; when no njMule answers, it says *No njMule answers
+there*. Both end with exit code 1.
+
+### In Docker
+
+Add `--webui-api` to the container's arguments, then run the command inside the container:
+
+```bash
+docker exec njmule njmule --config-dir /njmule --remote status
+```
+
+## From another computer
+
+With LAN access on (or through a reverse proxy), name the other njMule's API with `--remote-url`
+and give its token in the environment variable `NJMULE_API_TOKEN` (print it there with
+`njmule --api-token`):
+
+```bash
+export NJMULE_API_TOKEN='the token of that njMule'
+njmule --remote-url http://192.0.2.10:4711/api/v1 --remote status
+njmule --remote-url https://njmule.example.com/api/v1 --remote downloads
+```
+
+```powershell
+$env:NJMULE_API_TOKEN = 'the token of that njMule'
+njmule --remote-url http://192.0.2.10:4711/api/v1 --remote status
+```
+
+`--remote-url` without `--remote` opens the desktop app on that njMule instead: see
+[Remote njMule](../desktop/remote.mdx), which also covers **⋯ → Connect to a remote njMule**.
+
+## The HTTP API
+
+Send the token as a bearer token with each request:
+
+```bash
+TOKEN=$(njmule --api-token)
+curl -H "Authorization: Bearer $TOKEN" http://localhost:4711/api/v1/status
+curl -H "Authorization: Bearer $TOKEN" http://localhost:4711/api/v1/downloads
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"links":["ed2k://|file|example.iso|1048576|0123456789ABCDEF0123456789ABCDEF|/"]}' \
+    http://localhost:4711/api/v1/downloads
+```
+
+- The API is described by an [OpenAPI 3.2](https://spec.openapis.org/oas/v3.2.0.html) document that
+  every njMule serves at `/api/v1/openapi.yaml`; each request is checked against it before anything
+  runs. The [API reference](/developer/api) documents every call.
+- Errors come back as JSON, `{"error": "…"}`, with the HTTP status.
+- A wrong token answers 401 and counts as a failed login of its address: after five, the address
+  waits a minute (429), as at the [sign-in page](../web/security.mdx#failed-logins). While the API
+  is off, a request with a token answers 404.
+- The API sets no cookie and does not check the host name: browsers never send the token by
+  themselves, so another site's page cannot use it.
+
+### The event stream
+
+`GET /api/v1/events` streams the engine's events as
+[server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html) until you
+leave. `?types=` takes prefixes of the names wanted, separated by commas:
+
+```bash
+curl -N -H "Authorization: Bearer $TOKEN" "http://localhost:4711/api/v1/events?types=download,update"
+```
+
+| Prefix | Events |
+|---|---|
+| `download` | `download.added`, `download.progress`, `download.completed`, `download.failed`, `download.removed` |
+| `server`, `servers` | `server.connecting`, `server.connected`, `server.disconnected`, `server.message`, `server.updated`, `servers.changed` |
+| `search` | `search.results`, `search.ended` |
+| `message`, `captcha` | `message.received`, `message.failed`, `captcha.requested`, `captcha.answered` |
+| `update` | `update.status`, `update.available`, `update.ready`, `update.restart` |
+| others | `started`, `stopping`, `preferences.changed`, `log`, `disk.space` |
+
+Each event's `event` field is its name and its `data` is JSON. An idle stream sends a comment every
+15 seconds to keep the connection open. A reader that falls too far behind gets a `lost` event and
+is cut off: read the state again and reconnect. At most eight streams are open at once, and each
+open page of the web interface holds one.
+
+## Related pages
+
+- [Command line](./cli.mdx)
+- [Running headless](./headless.mdx)
+- [Web interface security](../web/security.mdx)
+- [API reference](/developer/api)

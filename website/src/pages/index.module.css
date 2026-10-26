@@ -1,0 +1,1234 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * The home page, built on one shape: the part, the rectangle a download's strip is made of. Five type sizes, one
+ * margin pair, square corners, flat colour; orange only on the action and the part being received.
+ */
+
+.page {
+    --step-xl: clamp(2.75rem, 6.2vw, 6.5rem);
+    --step-l: clamp(2rem, 3.6vw, 3.5rem);
+    --step-m: 1.25rem;
+    --step-s: 1.0625rem;
+    --step-xs: 0.875rem;
+    --margin: clamp(1rem, 3vw, 2.5rem);
+    --gap: 8px;
+    --field-brand: var(--nj-brand);
+    --field-deep: var(--nj-brand-deep);
+    --field-surface: var(--nj-surface);
+    --field-soft: #dfe6f3;
+    --on-brand: var(--nj-brand-mark);
+    --ink: var(--ifm-font-color-base);
+    --ink-soft: var(--ifm-color-content-secondary);
+    --part-done: #f4f6fb;
+    --part-asked: var(--nj-brand-accent);
+    --part-none: #e8afb4;
+    --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+    overflow-x: clip;
+}
+
+:global([data-theme='dark']) .page {
+    --field-brand: #1f3560;
+    --field-deep: #162644;
+    --field-soft: #34405a;
+    --part-none: #a56a71;
+}
+
+.page h1,
+.page h2,
+.page h3 {
+    font-family: 'Manrope', var(--ifm-font-family-base);
+    letter-spacing: -0.03em;
+    margin: 0;
+}
+
+.page p {
+    font-size: var(--step-s);
+    line-height: 1.55;
+    margin: 0;
+}
+
+/* ---------------------------------------------------------------- actions */
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.25rem 1.75rem;
+}
+
+.primary,
+.secondary {
+    font-size: var(--step-s);
+    font-weight: 600;
+    transition:
+        background-color 160ms var(--ease),
+        transform 160ms var(--ease),
+        color 160ms var(--ease);
+}
+
+.primary {
+    display: inline-block;
+    padding: 0.85rem 1.5rem;
+    background: var(--nj-brand-accent);
+    color: var(--nj-on-accent);
+}
+
+.primary:hover {
+    background: var(--nj-accent-hover);
+    color: var(--nj-on-accent);
+    text-decoration: none;
+    transform: translateY(-2px);
+}
+
+.primary:active {
+    background: var(--nj-accent-pressed);
+    transform: translateY(0);
+}
+
+.secondary {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.3em;
+    text-decoration-thickness: 2px;
+}
+
+.secondary:hover {
+    color: inherit;
+    text-decoration-color: var(--nj-brand-accent);
+}
+
+.primary:focus-visible,
+.secondary:focus-visible {
+    outline: 3px solid var(--nj-brand-accent);
+    outline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------- hero: the part bar, enormous */
+
+.hero {
+    background: var(--field-brand);
+    color: var(--on-brand);
+    padding: clamp(3rem, 8vh, 6rem) var(--margin) 0;
+    min-height: calc(100svh - var(--ifm-navbar-height));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 2rem;
+    overflow: hidden;
+}
+
+.heroText {
+    max-width: 62rem;
+    display: grid;
+    gap: 1.5rem;
+}
+
+.heroTitle {
+    font-size: var(--step-xl);
+    font-weight: 800;
+    line-height: 0.98;
+    max-width: 13ch;
+    color: #ffffff;
+}
+
+.heroLead {
+    font-size: var(--step-m) !important;
+    max-width: 44ch;
+}
+
+.heroText .secondary {
+    color: var(--on-brand);
+}
+
+.heroFile {
+    display: grid;
+    gap: 0.6rem;
+    max-width: 52rem;
+    margin-top: 1rem;
+}
+
+.linkLabel {
+    font-size: var(--step-xs);
+    color: var(--on-brand);
+}
+
+.linkField {
+    width: 100%;
+    font: inherit;
+    font-size: var(--step-xs);
+    color: #ffffff;
+    background: rgb(244 246 251 / 12%);
+    border: 0;
+    border-bottom: 2px solid rgb(244 246 251 / 45%);
+    padding: 0.7rem 0.8rem;
+    transition: background-color 160ms var(--ease);
+}
+
+.linkField:hover {
+    background: rgb(244 246 251 / 18%);
+}
+
+.linkField:focus-visible {
+    outline: none;
+    border-bottom-color: var(--nj-brand-accent);
+    background: rgb(244 246 251 / 18%);
+}
+
+.fileFacts {
+    font-size: var(--step-xs) !important;
+    overflow-wrap: anywhere;
+}
+
+.bar {
+    display: flex;
+    gap: 4px;
+    height: clamp(7rem, 24vh, 15rem);
+    width: calc(100% + var(--margin) + 6vw);
+    margin-top: 0.5rem;
+}
+
+.barTight {
+    gap: 0;
+}
+
+.bar > span {
+    flex: 1 1 0;
+    min-width: 0;
+    transition: background-color 220ms linear;
+}
+
+.part-done {
+    background: var(--part-done);
+}
+
+.part-asked {
+    background: var(--part-asked);
+}
+
+.part-0 {
+    background: var(--part-none);
+}
+
+.part-1 {
+    background: rgb(244 246 251 / 18%);
+}
+
+.part-2 {
+    background: rgb(244 246 251 / 30%);
+}
+
+.part-3 {
+    background: rgb(244 246 251 / 44%);
+}
+
+.legend {
+    list-style: none;
+    margin: -1rem 0 0;
+    padding: 1rem 0 2rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.75rem;
+    font-size: var(--step-xs);
+}
+
+.legend li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.legend span {
+    display: inline-block;
+    width: 0.9rem;
+    height: 0.9rem;
+}
+
+/* ---------------------------------------------------------------- one control, blown up */
+
+.faces {
+    position: relative;
+    background: var(--field-surface);
+    min-height: 92svh;
+    padding: clamp(4rem, 10vh, 7rem) var(--margin) 0;
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-rows: auto 1fr;
+    gap: 2.5rem var(--margin);
+    overflow: hidden;
+    transition: background-color 320ms var(--ease);
+}
+
+.facesBrowser {
+    background: var(--field-soft);
+}
+
+.facesText {
+    display: grid;
+    gap: 1rem;
+    align-content: start;
+    max-width: 34rem;
+}
+
+.sectionTitle {
+    font-size: var(--step-l);
+    font-weight: 800;
+    line-height: 1.02;
+}
+
+.switch {
+    justify-self: end;
+    align-self: start;
+    display: inline-flex;
+    background: var(--ifm-background-color);
+    padding: 0.25em;
+    font-size: clamp(1.1rem, 2.4vw, 2.25rem);
+    margin-right: calc(-1 * var(--margin) - 0.4em);
+}
+
+.switchItem {
+    font: inherit;
+    font-family: 'Manrope', var(--ifm-font-family-base);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    border: 0;
+    padding: 0.45em 0.9em;
+    background: transparent;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition:
+        background-color 200ms var(--ease),
+        color 200ms var(--ease);
+}
+
+.switchItem:hover {
+    color: var(--ink);
+}
+
+.switchItem:focus-visible {
+    outline: 3px solid var(--nj-brand-accent);
+    outline-offset: -3px;
+}
+
+.switchOn {
+    background: var(--nj-brand);
+    color: var(--nj-brand-mark);
+}
+
+.switchOn:hover {
+    color: #ffffff;
+}
+
+:global([data-theme='dark']) .switchOn {
+    background: var(--ifm-color-primary);
+    color: #1b2330;
+}
+
+.facesShot {
+    grid-column: 1 / -1;
+    position: relative;
+    align-self: end;
+    margin-right: calc(-1 * var(--margin) - 8vw);
+    margin-left: clamp(0rem, 8vw, 10rem);
+    aspect-ratio: 1280 / 800;
+}
+
+.faceImage {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: auto;
+    opacity: 0;
+    transform: translateY(16px);
+    transition:
+        opacity 320ms var(--ease),
+        transform 420ms var(--ease);
+}
+
+.faceImageOn {
+    opacity: 1;
+    transform: none;
+}
+
+/* ---------------------------------------------------------------- close-ups on a board */
+
+.board {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-auto-rows: 104px;
+    gap: var(--gap);
+    padding: var(--gap) 10px;
+    background: var(--ifm-background-color);
+}
+
+.tile {
+    position: relative;
+    overflow: hidden;
+    grid-column: span 3;
+    grid-row: span 2;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    background: var(--field-surface);
+    color: var(--ink);
+}
+
+.tile h3 {
+    font-size: var(--step-m);
+    font-weight: 700;
+    position: relative;
+}
+
+.tile p {
+    font-size: var(--step-s) !important;
+    max-width: 34ch;
+    position: relative;
+}
+
+.tileTitle {
+    grid-column: span 6;
+    justify-content: flex-start;
+    background: var(--ifm-background-color);
+    padding: 1.5rem 1.25rem;
+}
+
+.tileWide {
+    grid-column: span 6;
+}
+
+.tileTall {
+    grid-row: span 4;
+}
+
+.toneBrand {
+    background: var(--field-brand);
+    color: var(--on-brand);
+}
+
+.toneDeep {
+    background: var(--field-deep);
+    color: var(--on-brand);
+}
+
+.toneSurface {
+    background: var(--field-surface);
+}
+
+.toneSoft {
+    background: var(--field-soft);
+}
+
+.toneBrand h3,
+.toneDeep h3 {
+    color: #ffffff;
+}
+
+/* A real element of the interface, enlarged and pushed off-centre so the tile's edges crop it. */
+.closeUp {
+    position: absolute;
+    top: -0.15em;
+    right: -0.35em;
+    font-size: clamp(2.2rem, 4.4vw, 4rem);
+    font-weight: 700;
+    line-height: 1.1;
+    display: flex;
+    align-items: center;
+    gap: 0.3em;
+    white-space: nowrap;
+    opacity: 0.95;
+}
+
+.closeUp small {
+    font-size: 0.45em;
+    font-weight: 500;
+    opacity: 0.85;
+}
+
+.statusDot {
+    width: 0.45em;
+    height: 0.45em;
+    background: #a3be8c;
+    display: inline-block;
+}
+
+.closeUpAddress {
+    left: 1.25rem;
+    right: auto;
+    top: 1.25rem;
+    font-size: clamp(1.3rem, 2.1vw, 2rem);
+}
+
+.segments {
+    right: auto;
+    left: 1.25rem;
+    top: 1.25rem;
+}
+
+.segments span {
+    font-size: 0.42em;
+    padding: 0.5em 0.8em;
+    background: rgb(46 52 64 / 6%);
+}
+
+:global([data-theme='dark']) .segments {
+    right: auto;
+    left: 1.25rem;
+    top: 1.25rem;
+}
+
+.segments span {
+    background: rgb(236 239 244 / 8%);
+}
+
+.segments .segmentOn {
+    background: var(--nj-brand);
+    color: var(--nj-brand-mark);
+}
+
+.toggleRow {
+    flex-direction: column;
+    align-items: flex-start;
+    right: auto;
+    left: 1.25rem;
+    top: 1.25rem;
+    font-size: clamp(2rem, 3.6vw, 3.4rem);
+}
+
+.toggle {
+    width: 2.2em;
+    height: 1.2em;
+    background: var(--nj-brand-accent);
+    position: relative;
+}
+
+.toggle::after {
+    content: '';
+    position: absolute;
+    top: 0.15em;
+    right: 0.15em;
+    width: 0.9em;
+    height: 0.9em;
+    background: var(--nj-on-accent);
+}
+
+.closeUpFigure {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0;
+    font-size: clamp(2.6rem, 5vw, 4.6rem);
+}
+
+.keys {
+    gap: 0.2em;
+}
+
+.keys kbd {
+    font-size: 0.6em;
+    padding: 0.2em 0.45em;
+    background: rgb(244 246 251 / 16%);
+    color: var(--on-brand);
+    border: 0;
+    border-radius: 0;
+}
+
+/* ---------------------------------------------------------------- moving from eMule */
+
+.stages {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr auto;
+    min-height: 88svh;
+    margin-top: clamp(5rem, 12vh, 9rem);
+}
+
+.stageClause {
+    background: var(--field-brand);
+    color: var(--on-brand);
+    padding: clamp(3rem, 8vh, 5rem) var(--margin) 2rem;
+    display: grid;
+    align-content: start;
+    gap: 1.25rem;
+}
+
+.stageClause a {
+    color: var(--on-brand);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 0.3em;
+}
+
+.stageClause p {
+    max-width: 36ch;
+}
+
+.stageTitle {
+    font-size: var(--step-l);
+    font-weight: 800;
+    line-height: 1.02;
+    color: #ffffff;
+    max-width: 12ch;
+    min-height: 2.1em;
+}
+
+.stageShot {
+    background: var(--field-surface);
+    position: relative;
+    display: grid;
+    place-items: center;
+    padding: 2rem;
+    overflow: hidden;
+}
+
+.stageImage {
+    grid-area: 1 / 1;
+    width: min(100%, 40rem);
+    height: auto;
+    opacity: 0;
+    transition: opacity 200ms linear;
+}
+
+.stageImageOn {
+    opacity: 1;
+}
+
+.stageRail {
+    grid-column: 1 / -1;
+    background: var(--field-deep);
+    color: var(--on-brand);
+    padding: 1.75rem 28px 1.5rem;
+}
+
+.rangeWrap {
+    --at: 0;
+    position: relative;
+}
+
+/* The track: the stages passed in full ink, the rest a step darker, behind a transparent native track. */
+.rangeTrack {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 12px;
+    height: 8px;
+    background: rgb(244 246 251 / 22%);
+    pointer-events: none;
+}
+
+.rangeTrack::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: calc(var(--at) * 100%);
+    background: var(--part-done);
+    transition: width 200ms var(--ease);
+}
+
+.range {
+    position: relative;
+    appearance: none;
+    width: 100%;
+    height: 32px;
+    background: transparent;
+    cursor: pointer;
+    margin: 0;
+}
+
+.range::-webkit-slider-runnable-track {
+    height: 8px;
+    background: transparent;
+}
+
+.range::-moz-range-track {
+    height: 8px;
+    background: transparent;
+}
+
+.range::-webkit-slider-thumb {
+    appearance: none;
+    width: 32px;
+    height: 32px;
+    margin-top: -12px;
+    background: var(--nj-brand-accent);
+    border: 0;
+    transition: transform 160ms var(--ease);
+}
+
+.range::-moz-range-thumb {
+    width: 32px;
+    height: 32px;
+    background: var(--nj-brand-accent);
+    border: 0;
+    border-radius: 0;
+}
+
+.range:hover::-webkit-slider-thumb {
+    transform: scale(1.1);
+}
+
+.range:focus-visible {
+    outline: 3px solid var(--nj-brand-accent);
+    outline-offset: 4px;
+}
+
+.stageNames {
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+}
+
+.stageNames li:nth-child(2) {
+    text-align: center;
+    padding-right: 12%;
+}
+
+.stageNames li:nth-child(3) {
+    text-align: center;
+    padding-left: 12%;
+}
+
+.stageNames li:last-child {
+    text-align: end;
+}
+
+.stageNames button {
+    font: inherit;
+    font-size: var(--step-s);
+    background: none;
+    border: 0;
+    padding: 0.25rem 0;
+    color: rgb(244 246 251 / 70%);
+    cursor: pointer;
+}
+
+.stageNames button:hover,
+.stageNameOn {
+    color: #ffffff !important;
+    font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- install: the giant word and its bars */
+
+.install {
+    container-type: inline-size;
+    width: min(40rem, calc(100% - 2 * var(--margin)));
+    margin: clamp(6rem, 16vh, 11rem) auto 0;
+}
+
+.giantWord {
+    font-size: 31cqw;
+    font-weight: 800;
+    line-height: 0.8;
+    letter-spacing: -0.055em;
+    margin-left: -0.04em !important;
+    color: var(--nj-brand);
+}
+
+:global([data-theme='dark']) .giantWord {
+    color: var(--ifm-color-primary);
+}
+
+.installLead {
+    margin: 1.5rem 0 1.25rem !important;
+    font-size: var(--step-s);
+}
+
+.platform {
+    background: var(--field-surface);
+    margin-bottom: 6px;
+}
+
+.platform summary {
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 56px;
+    padding: 0 18px;
+    font-size: var(--step-s);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 160ms var(--ease);
+}
+
+.platform summary::-webkit-details-marker {
+    display: none;
+}
+
+.platform summary::after {
+    content: '+';
+    font-size: 1.5rem;
+    font-weight: 400;
+    transition: transform 200ms var(--ease);
+}
+
+.platform[open] summary::after {
+    transform: rotate(45deg);
+}
+
+.platform summary:hover {
+    background: var(--field-soft);
+}
+
+.platform summary:focus-visible {
+    outline: 3px solid var(--nj-brand-accent);
+    outline-offset: -3px;
+}
+
+.platform dl {
+    margin: 0;
+    padding: 4px 20px 0;
+}
+
+.platform dl div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 7px 0;
+    font-size: var(--step-s);
+}
+
+.platform dt {
+    font-weight: 600;
+}
+
+.platform dd {
+    margin: 0;
+    text-align: end;
+    color: var(--ink-soft);
+}
+
+.platform > a {
+    display: inline-block;
+    margin: 0.5rem 20px 1.25rem;
+    font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- find your way */
+
+.places {
+    margin: clamp(6rem, 16vh, 11rem) var(--margin) 0;
+}
+
+.placesBody {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: var(--margin);
+    margin-top: 2rem;
+    align-items: start;
+}
+
+.placeList {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.placeList li {
+    transition: opacity 240ms var(--ease);
+}
+
+.placeList:hover li:not(:hover) {
+    opacity: 0.45;
+}
+
+.placeList a {
+    display: grid;
+    gap: 0.2rem;
+    padding: 0.9rem 0;
+    color: var(--ink);
+}
+
+.placeList a:hover {
+    text-decoration: none;
+}
+
+.placeList a:focus-visible {
+    outline: 3px solid var(--nj-brand-accent);
+    outline-offset: 2px;
+}
+
+.placeTitle {
+    font-family: 'Manrope', var(--ifm-font-family-base);
+    font-size: clamp(1.5rem, 2.6vw, 2.25rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    transition: color 200ms var(--ease);
+}
+
+.placeOn .placeTitle,
+.placeList a:hover .placeTitle {
+    color: var(--ifm-color-primary);
+}
+
+.placeText {
+    color: var(--ink-soft);
+    font-size: var(--step-s);
+}
+
+.placeInline {
+    display: none;
+}
+
+.placeFrame {
+    position: sticky;
+    top: calc(var(--ifm-navbar-height) + 2rem);
+    aspect-ratio: 1280 / 800;
+    background: var(--field-surface);
+    overflow: hidden;
+}
+
+.placePreview {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 240ms linear;
+}
+
+.placePreviewOn {
+    opacity: 1;
+}
+
+.previewImage {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: left top;
+}
+
+.previewCode {
+    margin: 0;
+    height: 100%;
+    border-radius: 0;
+    font-size: clamp(0.8rem, 1.2vw, 1rem);
+    display: flex;
+    align-items: center;
+    padding: 2rem;
+}
+
+/* ---------------------------------------------------------------- the action tiles */
+
+.action {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 12px;
+    margin: clamp(6rem, 16vh, 11rem) 0 0;
+    min-height: 360px;
+}
+
+.actionSide {
+    min-height: 360px;
+    overflow: hidden;
+}
+
+.actionPicture {
+    grid-column: 1 / 3;
+    margin-left: -6vw;
+    background: var(--field-surface);
+}
+
+.actionImage {
+    width: auto;
+    height: 100%;
+    max-width: none;
+    object-fit: cover;
+    object-position: right top;
+}
+
+.actionFlat {
+    grid-column: 11 / 13;
+    margin-right: -6vw;
+    background: var(--field-soft);
+}
+
+.actionMain {
+    grid-column: 3 / 11;
+    background: var(--field-brand);
+    color: var(--on-brand);
+    padding: 40px;
+    display: grid;
+    align-content: center;
+    gap: 1.25rem;
+}
+
+.actionMain h2 {
+    font-size: var(--step-l);
+    font-weight: 800;
+    line-height: 1.02;
+    color: #ffffff;
+}
+
+.actionMain p {
+    max-width: 48ch;
+}
+
+.actionMain .secondary {
+    color: var(--on-brand);
+}
+
+/* ---------------------------------------------------------------- the mark, built of parts */
+
+.mark {
+    margin-top: clamp(6rem, 16vh, 11rem);
+    padding: 0 var(--margin) clamp(3rem, 8vh, 5rem);
+}
+
+.markBlocks {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 34svh;
+    min-height: 12rem;
+}
+
+.markBlocks span {
+    flex: 1 1 0;
+    height: calc(var(--h) * 100%);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    font-family: 'Manrope', var(--ifm-font-family-base);
+    font-weight: 800;
+    font-size: clamp(4rem, 14vw, 13rem);
+    line-height: 0.8;
+    color: var(--ifm-background-color);
+    overflow: hidden;
+}
+
+.block0 {
+    background: var(--nj-brand);
+}
+
+.block1 {
+    background: var(--nj-brand-deep);
+}
+
+.block2 {
+    background: #4570ad;
+}
+
+:global([data-theme='dark']) .block0 {
+    background: #9db4e0;
+}
+
+:global([data-theme='dark']) .block1 {
+    background: #5b8cc6;
+}
+
+:global([data-theme='dark']) .block2 {
+    background: #7999d4;
+}
+
+.markNote {
+    margin-top: 1.5rem !important;
+    max-width: 60ch;
+    color: var(--ink);
+}
+
+/* ---------------------------------------------------------------- entrances */
+
+[data-reveal='waiting'] > *,
+[data-reveal='shown'] > * {
+    transition:
+        opacity 640ms var(--ease),
+        transform 640ms var(--ease);
+}
+
+[data-reveal='waiting'] > * {
+    opacity: 0;
+    transform: translateY(24px);
+}
+
+[data-reveal='shown'] > *:nth-child(2) {
+    transition-delay: 70ms;
+}
+
+[data-reveal='shown'] > *:nth-child(3) {
+    transition-delay: 140ms;
+}
+
+[data-reveal='shown'] > *:nth-child(4) {
+    transition-delay: 210ms;
+}
+
+[data-reveal='shown'] > *:nth-child(5) {
+    transition-delay: 280ms;
+}
+
+[data-reveal='shown'] > *:nth-child(n + 6) {
+    transition-delay: 350ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .bar > span,
+    .faceImage,
+    .stageImage,
+    .placePreview,
+    .primary,
+    .faces {
+        transition: none;
+    }
+
+    [data-reveal] > * {
+        opacity: 1 !important;
+        transform: none !important;
+    }
+}
+
+/* ---------------------------------------------------------------- phones and tablets */
+
+@media (max-width: 600px) {
+    /* A phone has no room for a strip of thin parts: they become a field of square ones. */
+    .bar {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(18px, 1fr));
+        grid-auto-rows: 18px;
+        gap: 4px;
+        height: auto;
+        width: 100%;
+    }
+
+    .barTight {
+        grid-template-columns: repeat(auto-fill, minmax(8px, 1fr));
+        grid-auto-rows: 8px;
+        gap: 2px;
+    }
+}
+
+@media (max-width: 996px) {
+    .faces {
+        grid-template-columns: minmax(0, 1fr);
+        min-height: 86svh;
+    }
+
+    .switch {
+        justify-self: start;
+        margin-right: 0;
+        font-size: clamp(1.1rem, 5vw, 1.6rem);
+    }
+
+    .facesShot {
+        margin-left: 0;
+        margin-right: calc(-1 * var(--margin) - 30vw);
+    }
+
+    .board {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-auto-rows: 28vw;
+        gap: 6px;
+        padding: 6px;
+    }
+
+    .tile {
+        grid-column: span 1;
+        grid-row: span 2;
+    }
+
+    .tileTitle,
+    .tileWide,
+    .tileTall {
+        grid-column: span 2;
+        grid-row: span 2;
+    }
+
+    .tileTall {
+        grid-row: span 3;
+    }
+
+    .stages {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto;
+    }
+
+    .stageShot {
+        order: -1;
+        min-height: 46svh;
+    }
+
+    .stageRail {
+        order: 0;
+    }
+
+    .stageRail .range::-webkit-slider-thumb {
+        width: 40px;
+        height: 40px;
+        margin-top: -16px;
+    }
+
+    .stageNames {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.25rem;
+    }
+
+    .stageNames li {
+        text-align: start !important;
+        padding: 0 !important;
+    }
+
+    .placesBody {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .placeFrame {
+        display: none;
+    }
+
+    .placeInline {
+        display: block;
+        aspect-ratio: 1280 / 800;
+        overflow: hidden;
+        background: var(--field-surface);
+        margin-bottom: 1rem;
+    }
+
+    .action {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    .actionMain {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        padding: 28px var(--margin);
+        min-height: 300px;
+    }
+
+    .actionPicture,
+    .actionFlat {
+        grid-column: auto;
+        grid-row: 2;
+        min-height: 120px;
+        margin: 0;
+    }
+
+    .markBlocks {
+        height: 22svh;
+    }
+}
+
+@media (hover: none) {
+    .placeList:hover li:not(:hover) {
+        opacity: 1;
+    }
+
+    .placeFrame {
+        display: none;
+    }
+
+    .placeInline {
+        display: block;
+        aspect-ratio: 1280 / 800;
+        overflow: hidden;
+        background: var(--field-surface);
+        margin-bottom: 1rem;
+    }
+
+    .placesBody {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

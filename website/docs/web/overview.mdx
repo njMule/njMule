@@ -1,0 +1,280 @@
+---
+title: Web interface
+description: Turn on njMule's web interface, sign in from a browser and find your way around its places, from the transfers to the options.
+---
+
+The web interface is the desktop app in a browser: the same places, the same columns and the same
+36 languages, behind a password. Use it to drive njMule on a server, a NAS or a Windows service that
+has no window, or to look at your desktop njMule from another room. It runs inside njMule itself,
+headless or beside the desktop app, so there is nothing else to install.
+
+## Turn it on
+
+The web interface starts together with njMule once it is turned on and has a password of at least
+8 characters. Choose one of the ways below; each of them takes effect **from the next start** of
+njMule.
+
+### In the desktop app
+
+1. Open **Options → Web Interface**.
+2. Type a password twice in **New password, twice (empty keeps the current one)**.
+3. Switch on **Turn the web interface on**.
+4. Change the **Port** if 4711 is taken, and switch on **Let other computers connect (otherwise only
+   this one)** if you want to reach it from another device.
+5. Exit njMule and start it again.
+
+<Screenshot
+    id="settings-page-12"
+    alt="The Web Interface page of the desktop options, with the switch to turn it on, the port, LAN access, host names, trusted proxies and the password fields."
+    caption="Options → Web Interface in the desktop app."
+/>
+
+The other rows of this page (host names, trusted proxies, the guest password and the API) are
+explained in [Web interface options](../settings/web-interface.mdx).
+
+### From the command line
+
+```bash
+njmule --webui-password
+njmule --webui-password --webui-port 8080 --webui-lan
+```
+
+njMule asks for the password twice, without showing it, turns the interface on, tells the address
+and exits. The interface then starts with the next njMule on this configuration.
+
+Each `--webui-password` sets the web interface up anew from the options you give with it: LAN
+access, the host names and the trusted proxies you leave out are turned off. The port, the
+remote-control API and the guest password stay as they were.
+
+### From a password file
+
+Scripts, containers and services cannot type a password. Put it on the first line of a file
+instead, such as a Docker or systemd secret, and name the file with `--webui-password-file`:
+
+```bash
+printf '%s\n' 'a password of 8 characters or more' > ~/njmule-webui-password
+chmod 600 ~/njmule-webui-password
+
+# Set it once, without asking, and exit:
+njmule --webui-password --webui-password-file ~/njmule-webui-password --webui-lan
+
+# Or set it at every start and run njMule, so that the file stays the reference:
+njmule --webui-password-file ~/njmule-webui-password --webui-lan
+```
+
+njMule reads only the first line of the file (UTF-8 text of 4096 bytes at most) and never prints
+or logs it.
+Used without `--webui-password`, the file sets the password, the LAN access, the host names and the
+trusted proxies of the command line **at every start**: give all the options you need each time.
+This is how the [Docker image](../getting-started/install-docker.mdx) starts.
+
+### The options
+
+| Option | Default | What it does |
+|---|---|---|
+| `--webui-password` | | Asks for a new password, turns the interface on and exits |
+| `--webui-password-file <file>` | | Takes the password from the first line of a file |
+| `--webui-port <port>` | 4711 | The port the interface listens on |
+| `--webui-lan` | off | Listens on every address of the computer, not only on this computer |
+| `--webui-host <name>` | none | A host name the interface answers to, such as `nas.local` (repeatable) |
+| `--webui-proxy <address>` | none | A reverse proxy trusted to name its client |
+| `--webui-api` | off | Also answers the [remote-control API](../server/remote-control.mdx) |
+
+The last five only come with `--webui-password` or `--webui-password-file`. Host names and proxies
+can be repeated or separated by commas. Without `--webui-lan` the interface listens on
+`127.0.0.1` only, so only a browser on the same computer reaches it. Read
+[Security](./security.mdx) before you open it to other computers, and
+[Reverse proxy](./reverse-proxy.mdx) to serve it over HTTPS.
+
+:::warning
+The interface speaks plain HTTP. Turn on LAN access only on a network you trust, or reach it
+through a reverse proxy that serves HTTPS.
+:::
+
+## Sign in
+
+1. Open `http://localhost:4711/` on the computer that runs njMule, or the address of that computer
+   from another one, such as `http://192.0.2.10:4711/` (with LAN access on).
+2. Type the password and choose **Log in**.
+
+<Screenshot id="web-login" alt="The sign-in page of the web interface: the njMule logo, a password field and the Log in button." caption="The sign-in page." />
+
+A session ends after 30 minutes without a request, or with **Logout** at the bottom of the
+sidebar; a page left open keeps it alive. A host name that is not `localhost` or an IP address must
+be listed first, or the interface answers *Unknown host name* (see
+[Host names](./security.mdx#host-names)). Signing in with the guest password opens the read-only
+view described in [Guest access](./guest.mdx).
+
+## Find your way around
+
+The window is laid out as the desktop app's:
+
+- **The sidebar** holds the places: **Transfers**, **Search**, **Shared Files**, **Messages**,
+  **Network**, **Statistics** and **Options**, then **Buy me a coffee** and **Logout**. A badge on
+  **Messages** counts the unread messages.
+- **The top bar** names the place and shows the current download and upload rates; choose them to
+  set the **Speed limits** in KB/s (0 = **No limit**). The network chip beside them (**Connected**,
+  for example) tells the state of eD2K and Kad, with your High or Low ID, and connects or
+  disconnects both. The last button switches between light and dark.
+- **Banners** under the top bar tell when njMule is not connected, when others cannot reach your
+  port (Low ID), when the network interface chosen in the options is gone, and when a new version
+  is out.
+- **Notices** in a corner tell of a finished download and of a message received while you are in
+  another place, with a short chime when the sound notifications are on in the options.
+
+## Transfers
+
+<Screenshot id="web-transfers" alt="The Transfers place with the Downloads segment: state chips, action buttons and a list of downloads with size, progress, speed, sources and status." caption="Transfers, with the downloads." />
+
+The segments across the top switch between **Downloads**, **Uploads**, **On Queue**, **Banned**
+and **Known Clients**, each with its count:
+
+- **Downloads** lists your downloads. The chips under the buttons (**All**, **Downloading**,
+  **Waiting**, **No sources**, **Paused**, **Erroneous**, **Complete**) show one state at a time;
+  the category list and **Filter the downloads** narrow the list further.
+- **Resume**, **Pause**, **Stop**, **Priority**, **Category**, **Copy eD2K link** and **More** act
+  on the downloads you chose. A click chooses one row; <kbd>Ctrl</kbd> or <kbd>Cmd</kbd> adds
+  more. **Clear Completed** takes the finished ones off the list (their files stay).
+- **Cancel download** asks first, then offers **Undo** for a few seconds.
+  <kbd>Delete</kbd> does the same for the chosen downloads.
+- **Uploads** and **On Queue** list the clients you send to and those waiting; **Banned** lets you
+  unban a client; **Known Clients** is the history of the clients met in the last 90 days.
+
+Drag the edges of the column heads to resize them: the widths are kept in this browser.
+
+### Sources and details
+
+A download opens onto its sources with its arrow or a double click. **Details** (or
+<kbd>Alt</kbd>+<kbd>Enter</kbd>) shows the details pane under the list: the progress with the bar
+of the parts, the buttons the state allows, the link to copy and a menu with comments, priority,
+category, adding a source and cancelling, and the tabs **Sources**, **Details**, **Source Names**
+and **Comments**. Drag its top edge to make it taller.
+
+<Screenshot id="web-transfers-sources" alt="A download expanded onto its sources in the list, and the details pane below it with the parts bar and the Sources tab." caption="A download with its sources and its details." />
+
+### Add links
+
+**Add links** opens **Add downloads**: paste eD2K links, one per line (links inside other text are
+found too), check the files found, choose a **Category** or leave it to the rules of the
+categories, then choose **Download**. You can also paste links into the
+[command palette](#command-palette-and-keys).
+
+<Screenshot id="web-add-links" alt="The Add downloads dialog with two eD2K links pasted and the files found in them listed below." caption="Adding downloads from links." />
+
+## Search
+
+<Screenshot id="web-search" alt="The Search place with the query paper boats, the method buttons Automatic, Server, Global (Servers) and Kad, and four results." caption="A search and its results." />
+
+Type the words, choose where to look (**Automatic** picks the network for you, or **Server**,
+**Global (Servers)** and **Kad**), set **Filters** if you like, and choose **Start**. Each search
+stays as a tab, also when you reload the page or open the interface in another browser. Choose
+results and **Download** them, copy their links, look for related files or mark spam; a double
+click downloads one. The results are coloured by what they are to you, such as files you are
+already downloading.
+
+## Shared Files
+
+<Screenshot id="web-shared" alt="The Shared Files place: the shared folders on the left with their file counts, and the list of shared files with size, priority and folder." caption="The shared files and their folders." />
+
+**Share Directory** shares any folder of the computer that runs njMule, typed by its path; njMule
+asks again before sharing a personal or system folder. The folders on the left filter the list.
+**Priority**, **Copy eD2K link**, **Rename** and **Comments...** act on the chosen files. The
+incoming folder, where finished downloads go, is always shared.
+
+## Messages
+
+<Screenshot id="web-messages" alt="The Messages place: a list of conversations and an open chat that asks for a CAPTCHA before the first message." caption="Chats, friends and the CAPTCHA check." />
+
+The conversations of this run are on the left, all or only your friends'; **+** starts a new one.
+An open chat can **Add to friends** or **Close**. When the other client asks for a CAPTCHA, type
+the letters of the picture before your first message.
+
+## Network
+
+<Screenshot id="web-network-servers" alt="The Network place: cards for eD2K, Kad and the ports above the list of servers with their address, ping, users and files." caption="Network, with the server list." />
+
+Three cards sum up **eD2K**, **Kad** and the **Ports** (with **Test the ports**). Under them:
+
+- **Servers**: add servers, connect, set their priority, keep them in the static list, copy their
+  links or remove them.
+- **Kad**: its state and ID, **Disconnect** or connect, **Recheck Firewall**, and **Join Kad** from
+  a `nodes.dat` address or from a client you know; then the contacts by distance and the current
+  searches.
+- **Log**: the latest log lines, by level.
+
+<Screenshot id="web-network-kad" alt="The Kad tab of the Network place: Kad's state and ID, the Join Kad box and the contacts drawn as bars by distance." caption="Kad, with the contacts by distance." />
+
+## Statistics
+
+<Screenshot id="web-statistics" alt="The Statistics place: rate cards, the transfer rate graph with 10 mins, 1 h and 24 h buttons, the free space, and session and cumulative figures." caption="Statistics." />
+
+The rates and counts at the top, the transfer rates of the last 10 minutes, hour or day, the free
+space of the incoming and temporary folders, and the figures of this session and of all of them.
+
+## Options
+
+<Screenshot id="web-settings" alt="The Options place with the General page open: the nick, two switches and the Updates section." caption="Options in the browser." />
+
+The pages are those of the desktop app, with **Find an option** above them; see
+[Options](../settings/index.mdx) for each one. Most changes apply at once. Ports, UPnP, the proxy
+and the network interface wait for **Apply and reconnect** in the bar at the bottom. Under the
+pages:
+
+- **Scheduler**: the weekly rules for limits and categories
+  ([Scheduler](../settings/scheduler.mdx)).
+- **Import from eMule...**: an eMule profile on the computer that runs njMule
+  ([Import from eMule](../getting-started/import-emule.mdx)).
+- **Set up njMule**: the first-start wizard. It also opens by itself once in each browser while
+  the nick is still `njMule`.
+- **Web Interface**: the **Host names** the interface answers to, which apply at once, and the
+  guest password ([Guest access](./guest.mdx)).
+
+**General** also holds the **Updates** of njMule, with **Check for new version** and, when one is
+out, **Download and install** or **Restart to update** ([Updates](../updates.mdx)).
+
+:::note
+The port, LAN access, your password, the trusted proxies and the API are not in the browser: set
+them in the desktop app or on the command line, on the computer that runs njMule.
+:::
+
+## Command palette and keys
+
+<Screenshot id="web-palette" alt="The command palette open over the transfers, with its field and the list of places." caption="The command palette." />
+
+<kbd>Ctrl</kbd>+<kbd>K</kbd> opens the command palette. Type the name of a place and press
+<kbd>Enter</kbd> to go there, type words to search the network for them, or paste eD2K links to
+download them at once.
+
+| Keys | What they do |
+|---|---|
+| <kbd>Ctrl</kbd>+<kbd>K</kbd> | Opens the command palette |
+| <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>7</kbd> | Open the places in the order of the sidebar, from Transfers to Options |
+| <kbd>Alt</kbd>+<kbd>Enter</kbd> | Shows or hides the details of the downloads |
+| <kbd>Delete</kbd> | Cancels the chosen downloads (after asking) and clears the completed ones |
+
+On a Mac, <kbd>Cmd</kbd> works in place of <kbd>Ctrl</kbd>.
+
+## Look and language
+
+The button at the right of the top bar switches between light and dark: each click goes from the
+system's choice to dark, to light, and back to the system's. This browser remembers it.
+
+The interface speaks the first of your browser's preferred languages that njMule has (36 of them),
+and English otherwise; Arabic, Persian and Hebrew are laid out from right to left. To change it,
+change the language order in your browser's settings and reload the page.
+
+## On a phone
+
+Below 760 pixels of width the sidebar moves above the page, and the two-column places (messages,
+shared files, options, the details of a download) stack their columns, so the interface works on
+a phone's browser too.
+
+<Screenshot id="web-phone" alt="The web interface on a phone: the list of places on top, the Transfers page below it." caption="On a phone, the places come first." width={390} />
+
+## Related pages
+
+- [Security](./security.mdx): what protects the interface, and what to watch out for.
+- [Reverse proxy](./reverse-proxy.mdx): HTTPS and a name of its own.
+- [Guest access](./guest.mdx): a password that only lets one look.
+- [Remote control](../server/remote-control.mdx): the same server as a JSON API.
+- [Running headless](../server/headless.mdx): njMule without a window.

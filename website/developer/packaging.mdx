@@ -1,0 +1,203 @@
+---
+title: Packaging
+description: How njMule's installers, archives, Synology package and Docker image are made around the native executables, locally and in the release workflow.
+---
+
+njMule's packages wrap the [native executables](native-images.mdx): the desktop packages carry the
+desktop app's executable (which is also the command line), the server packages the headless one.
+The [release workflow](releases.mdx) builds every package on its own target system, and is the
+reference for the exact steps; this page explains each format and how to make it on your machine.
+
+## The packages
+
+| Package | Platforms | Made from | Executable inside |
+|---|---|---|---|
+| `.msi` installer, `.zip` archive | Windows x64 (arm64 under emulation) | `packaging/windows/njmule.wxs` (WiX 5) | the desktop app: `njmule.exe`, `njmule-gui.exe`, `njmule-service.exe` |
+| `.deb`, `.rpm` | Linux x64 and arm64 | `packaging/linux/nfpm.yaml` (nfpm) | the desktop app, with the `njmule` script |
+| `.tar.xz` archive | Linux x64 and arm64 | the release workflow | the desktop app, with the `njmule` script |
+| `linux-x64-static.tar.xz` | any x64 Linux | the release workflow | the static headless executable |
+| `.dmg` disk image | macOS 13 or later, Apple silicon | `packaging/macos/` | the desktop app, with the `njmule` script |
+| `.spk` package | Synology DSM 7, x86_64 | `packaging/synology/build-spk.sh` | the static headless executable |
+| Docker image `ghcr.io/njmule/njmule` | `linux/amd64`, `linux/arm64` | `packaging/docker/Dockerfile` | the headless executable |
+
+### How each copy was installed
+
+Each package carries an `install.properties` file beside the executable (in `Contents/Resources`
+of the macOS app) whose `kind` says how it was installed: `msi`, `zip`, `deb`, `rpm`, `tar`,
+`static-tar`, `dmg` or `spk`; the Docker image sets the environment variable
+`NJMULE_INSTALL_KIND=docker` instead. The update check reads it to offer the right package and to
+tell whether njMule may replace itself or only explain how to update ([Updates](/docs/updates)).
+Keep it in any package you make.
+
+## Windows installer and zip
+
+The MSI is built with **WiX 5**; later versions require accepting the Open Source Maintenance Fee
+EULA. Install it as a .NET tool:
+
+```powershell
+dotnet tool install --global wix --version 5.0.2
+```
+
+What the installer does:
+
+- It installs **for the current user** by default, with no administrator rights, into
+  `%LOCALAPPDATA%\Programs\njMule`, adds that folder to the user's `PATH`, and creates Start menu
+  and desktop shortcuts to `njmule-gui.exe`. With `MSIINSTALLPERUSER=""` it installs for every user
+  into Program Files, which needs administrator rights.
+- A per-machine installation can also set up the Windows service "njMule" with
+  `NJMULE_SERVICE=1 NJMULE_WEBUI_PASSWORD_FILE=<file>`, a file holding the web interface password.
+  It stops the service while its files are replaced, starts it again after an upgrade and removes
+  it with njMule; the service's profile in `%ProgramData%\njMule` stays. See
+  [Windows service](/docs/server/windows-service).
+- A newer MSI upgrades the installed one. Uninstalling gives the ed2k links back to the program that
+  opened them before (`njmule-gui.exe --restore-links`) and, unless it runs without a user
+  interface (`/qn`), asks whether the user's profile goes to the Recycle Bin too
+  (`njmule-gui.exe --uninstall-profile`).
+
+To build it, stage the native desktop app with its launcher and service host, then run WiX from the
+root of the repository:
+
+```powershell
+./gradlew :njmule-gui:nativeGui :njmule-gui:nativeLauncher :njmule-gui:nativeService
+New-Item -ItemType Directory -Force stage\njmule | Out-Null
+Copy-Item njmule-gui\build\native\*, njmule-gui\build\launcher\njmule-gui.exe, njmule-gui\build\launcher\njmule-service.exe stage\njmule
+wix build packaging\windows\njmule.wxs -wx -arch x64 -d Version=1.2.3 -d Gui=yes -d "BinDir=$PWD\stage\njmule" -d "DocDir=$PWD" -o njmule.msi
+```
+
+| Variable | What it is |
+|---|---|
+| `Version` | the version as numbers only (`1.2.3`): MSI versions have no pre-release part, so the release workflow passes the version without it |
+| `BinDir` | an absolute folder with the executables; WiX resolves relative paths from the `.wxs` file's own folder |
+| `DocDir` | an absolute path to the repository root, for `LICENSE`, `NOTICE`, `README.md` and `packaging/windows/install.properties` |
+| `Gui` | `yes` adds the shortcuts and the uninstall actions of the desktop app |
+
+The release workflow then checks the MSI: it decompiles it and looks for the programs, the
+`install.properties` file and the `--restore-links` action, installs it for every user with the
+service and checks that the service answers, and installs, runs and uninstalls it on a Windows arm64
+runner.
+
+The **zip** holds the same files as the stage folder, plus `LICENSE`, `NOTICE`, `README.md`,
+`CHANGELOG.md` and an `install.properties` with `kind=zip`. It runs from any folder, and is portable
+once a `portable.flag` file is put beside the programs.
+
+## Linux deb and rpm
+
+nfpm builds both from `packaging/linux/nfpm.yaml`, run from the repository root. `VERSION` and
+`ARCH` (`amd64` or `arm64`) come from the environment, the programs from a `stage/` folder:
+
+```bash
+./gradlew :njmule-gui:nativeGui
+mkdir -p stage/gui stage/doc dist
+cp -r njmule-gui/build/native/. stage/gui/
+cp README.md CHANGELOG.md NOTICE stage/doc/
+VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/
+VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p rpm -t dist/
+```
+
+The packages install:
+
+| Path | What it is |
+|---|---|
+| `/usr/lib/njmule/` | the desktop executable with its shared libraries, and `install.properties` (`deb` or `rpm`) |
+| `/usr/bin/njmule` | the command line: `packaging/njmule.sh`, which runs the desktop executable without a window |
+| `/usr/bin/njmule-gui`, `/usr/bin/njMule` | links to the desktop executable; the desktop entry runs it as `njMule`, the name process lists show |
+| `/usr/share/applications/org.njmule.njMule.desktop`, `/usr/share/metainfo/org.njmule.njMule.metainfo.xml` | the desktop entry and the AppStream metadata |
+| `/usr/share/icons/hicolor/` | the icon, as SVG and PNG from 16 to 512 pixels |
+| `/usr/lib/systemd/user/njmule.service` | a systemd user unit that runs the engine headless (`systemctl --user enable --now njmule`) |
+| `/usr/share/licenses/njmule/`, `/usr/share/doc/njmule/` | the license and the documents of `stage/doc` |
+
+They depend on GTK 3, libXtst and OpenGL, and are compressed with xz. After installing and removing,
+their scripts refresh the desktop database and the icon cache; a removal also says where each
+user's profile stays, as a package touches no home folder.
+
+The **`.tar.xz` archive** of the release holds the same programs with `njmule` (the script),
+`LICENSE`, `NOTICE`, `README.md`, `CHANGELOG.md`, an `install.properties` with `kind=tar`, and a
+`share/` folder with the desktop entry, the metadata and the icon for manual desktop integration.
+The **static archive** holds the static headless executable alone, with the licenses of musl and
+zlib that it embeds.
+
+## macOS disk image
+
+The release workflow assembles the application bundle by hand on a macOS runner:
+
+```bash
+app=stage/njMule.app/Contents
+mkdir -p "$app/MacOS" "$app/Resources" dist
+cp -R njmule-gui/build/native/. "$app/MacOS/"
+install -m 755 packaging/njmule.sh "$app/MacOS/njmule"
+cp branding/generated/njmule.icns "$app/Resources/"
+sed "s/@VERSION@/1.2.3/g" packaging/macos/Info.plist > "$app/Info.plist"
+printf 'kind=dmg\n' > "$app/Resources/install.properties"
+codesign --force --deep --sign - stage/njMule.app
+osacompile -o "stage/Uninstall njMule.app" packaging/macos/uninstall.applescript
+codesign --force --deep --sign - "stage/Uninstall njMule.app"
+ln -s /Applications stage/Applications
+hdiutil create -volname njMule -srcfolder stage -ov -format ULMO dist/njmule-1.2.3-macos-arm64.dmg
+```
+
+- `Info.plist` names `njmule-gui` as the bundle's executable, `org.njmule.njMule` as its identifier
+  and macOS 13 as its minimum; `@VERSION@` takes the version without its pre-release part.
+- The bundle is **ad-hoc signed** (`--sign -`), not notarized: Gatekeeper asks users to allow its
+  first launch ([Install on macOS](/docs/getting-started/install-macos)).
+- *Uninstall njMule*, compiled from `uninstall.applescript`, sits beside the app in the disk image:
+  it moves the app to the Trash and, when its box is ticked, the user's profile too.
+- The disk image is compressed with LZMA (`ULMO`), which every supported macOS opens.
+
+## Synology package
+
+`packaging/synology/build-spk.sh` builds a DSM 7 package around a
+[static Linux executable](native-images.mdx#the-static-linux-executable), since DSM's C library is
+too old for the other Linux builds. Run it on Linux, or in a Linux container, so that the archives
+keep the scripts' modes:
+
+```bash
+packaging/synology/build-spk.sh njmule-app/build/native-static/njmule x86_64 build/synology
+```
+
+Its arguments are the executable, the architecture (`x86_64` or `armv8`) and an optional output
+folder (`build/synology` by default). DSM versions are numbers only and must grow with each package:
+the script takes the version of `gradle.properties` without its pre-release part and adds a build
+number, `SPK_BUILD`, by default the number of commits. The release workflow builds the x86_64
+package only.
+
+The package runs njMule as its own unprivileged user, keeps its settings, incomplete files and logs
+in its `var` folder, creates the shared folder `njmule` for completed downloads, asks the web
+interface password in its install wizard, and declares its three ports to the DSM firewall
+(`app/njmule.sc`). See [Install on Synology](/docs/getting-started/install-synology).
+
+## Docker image
+
+`packaging/docker/Dockerfile` builds an image of the headless engine with its web interface. From
+the repository root, it compiles njMule for the platform of the machine that builds it:
+
+```bash
+docker build -f packaging/docker/Dockerfile -t njmule .
+```
+
+- On **amd64** the executable is the static one, linked with musl, alone on an empty base: no C
+  library, no shell, no package manager. On **arm64**, where GraalVM builds no static executable,
+  it is the glibc one on a distroless base.
+- It runs as user and group 1000, keeps everything in the volume `/njmule`, exposes 4662/tcp,
+  4672/udp and 4711/tcp, and starts with
+  `--webui-password-file /run/secrets/njmule_webui_password --webui-lan`.
+- The base images are pinned by digest, and Dependabot proposes their updates.
+
+The release workflow compiles nothing in Docker: it hands the executables of its Linux jobs over as
+the build context `binary`, builds both platforms from them, tries the amd64 image (wrong and right
+password, the browser app, an API call, a clean stop with `docker stop`, no password in the log),
+and pushes both to the GitHub Container Registry for a tag. `packaging/docker/compose.yaml` is the
+Compose file users start from ([Install with Docker](/docs/getting-started/install-docker)).
+
+## The release workflow's packaging jobs
+
+| Job | Runner | What it makes and checks |
+|---|---|---|
+| `windows-x64` | Windows | the native desktop app, launcher and service host; the GUI tour; the service installed, answering and removed; the MSI and the zip; the MSI installed for every user with the service |
+| `linux` | Ubuntu x64 and arm64 | both native executables; the GUI tour under Xvfb; the deb, the rpm and the `.tar.xz` archive |
+| `synology` | Ubuntu x64 | the static executable (checked with `ldd`), the `.spk` and the static archive |
+| `docker` | Ubuntu | the image for both platforms, tried, then pushed for a tag |
+| `windows-arm64` | Windows on Arm | the x64 MSI installed, run (GUI tour), and uninstalled, ed2k links given back |
+| `macos-arm64` | macOS | the macOS metadata from the GUI tour, the native app, its tour, the signed bundle and the disk image |
+
+Every native build in the release uses `-O2`. The jobs that follow (the end-to-end update tests and
+the draft release) are described in [Releases](releases.mdx).

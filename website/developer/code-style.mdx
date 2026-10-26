@@ -1,0 +1,172 @@
+---
+title: Code style
+description: The formatting, naming, comment, logging, licensing and colour rules of njMule's code, which of them the build enforces and which you must keep yourself.
+---
+
+Most of njMule's style is enforced by the build: Spotless formats and checks the Java sources,
+Checkstyle checks what the formatter cannot, and SonarQube Cloud gates the rest. A few rules no tool
+catches; this page lists them all, so that a review has nothing left to say about style.
+
+## Formatting
+
+Java code follows the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html),
+formatted with [palantir-java-format](https://github.com/palantir/palantir-java-format) in its
+**PALANTIR** style:
+
+- 4-space indentation, 8 for continuation lines;
+- 120 columns;
+- compact lambdas and call chains, Javadoc reflowed;
+- sorted imports, no wildcard imports, no unused imports.
+
+Spotless applies it (`./gradlew spotlessApply`) and `./gradlew build` fails on any unformatted file
+or missing license header. In IntelliJ IDEA, install the palantir-java-format plugin and let the
+IDE honour `.editorconfig`.
+
+Every file type follows the same basics, set in `.editorconfig` and `.gitattributes`:
+
+| Rule | Exception |
+|---|---|
+| 4-space indentation, in Java, Kotlin build scripts, XML, YAML and scripts | tabs in Makefiles only |
+| LF line endings, in the repository and in every checkout | `*.cmd` and `*.bat` files use CRLF, which `cmd.exe` needs |
+| UTF-8, a final newline, no trailing whitespace | Markdown keeps trailing whitespace |
+| Java, Kotlin: at most 120 columns | Markdown is wrapped at about 100 columns |
+
+The web app's and this site's TypeScript and Vue files are formatted with Prettier (120 columns,
+4 spaces, single quotes, LF), checked by the build too ([Web app](web-app.mdx#formatting-and-types)).
+
+## Fields and own methods
+
+Always qualify instance fields with `this.`, also where nothing needs disambiguating, and call the
+object's own methods **without** it:
+
+```java
+this.queue.offer(task);   // a field: always this.
+publish(event);           // an own method: never this.publish(event)
+```
+
+Checkstyle enforces both, with `RequireThis` and a regular expression in
+`config/checkstyle/checkstyle.xml`. It also requires braces around every block, one statement per
+line and one variable per declaration, and refuses wildcard imports; a single warning fails the
+build. The tests follow the same rules.
+
+## Names that differ only in case
+
+**Never give two members of one type names that differ only in case**, such as a constant `DIRECT`
+and a field `direct`, or `SETTINGS` and `settings`. SonarQube's rule `java:S1845` marks it as a
+blocker and fails the quality gate, and neither the compiler nor Checkstyle notices it.
+
+The mistake comes back whenever a constant is named after what a field or method of the same type
+holds or does: `SECONDS` beside `seconds`, `JSON` beside `json(...)`, `HOST` beside `host(...)`,
+`ENGLISH` beside `english()`, or a nested type `Windows` beside a field `windows`. Name the newcomer
+after what it is (`SECONDS_KEPT`, `MAPPER`, `TEMPLATES`, `SETTINGS_PAGE`, `straight`), and before
+you commit, compare every new member's lower-cased name with the others of its type, inherited ones
+included.
+
+## Comments
+
+- Comment only what the code cannot say: the *why*, invariants, security reasons, references to a
+  specification or an RFC.
+- Keep comments to one or two lines. No comments that restate the code, no change history, no
+  "added by". The story of a change belongs in its commit message.
+- Public API Javadoc: one summary sentence; `@param` and `@return` only when the name does not say
+  it. No Javadoc on trivial getters, setters, builders or obvious methods.
+- **Never reference eMule's source code** in code, comments, tests or commit messages: no file names
+  of its sources (`*.cpp`, `*.h`), no line numbers, classes, functions or variables, and no "as eMule
+  does" phrasing. Describe the protocol or the file format itself. Name eMule only where the feature
+  is about it: importing an eMule profile, interoperability tests.
+
+## Logging
+
+- Log only through SLF4J, with `{}` placeholders: `logger.info("Server {}:{} added", host, port)`.
+  Never use external data as a format string.
+- A logger is `private static final Logger logger`, in lowerCamelCase (in the Google style a logger is
+  not a constant), never `LOG`.
+- The log line encoder of `njmule-app` replaces line breaks in every message, so call sites need not
+  clean the data they log.
+
+## Engineering rules
+
+- **Use what exists.** The JDK or a well-known, maintained library comes before a utility, codec,
+  parser or algorithm of your own ([Dependencies](dependencies.mdx#choosing-a-library)).
+- **The core stays GUI-free.** `njmule-core` never depends on JavaFX, AWT or any GUI module; front
+  ends use only its exported packages ([Developer guide](index.mdx#what-each-module-exports)).
+- **Native-image friendly.** No undeclared reflection, no dynamic proxies; register resources and
+  `ServiceLoader` providers in the reachability metadata ([Native images](native-images.mdx)).
+- **Hands off the user's eMule.** Never write into an eMule installation or configuration folder:
+  the import only reads them.
+- **Static analysis is part of the build.** Error Prone runs with the compiler, SpotBugs with
+  FindSecBugs on the production code. An exclusion in `config/spotbugs/exclude.xml` carries its
+  reason, such as MD4, MD5 and SHA-1, which the eD2K and Kad protocols mandate.
+
+## Licensing and REUSE
+
+njMule follows the [REUSE](https://reuse.software) specification, which the CI checks on every push.
+
+- Every Java file starts with the header of
+  [`config/license/header-java.txt`](https://github.com/njMule/njMule/blob/main/config/license/header-java.txt),
+  which Spotless adds and checks:
+
+  ```java
+  /*
+   * njMule - Next generation Java Mule
+   * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+   * SPDX-License-Identifier: GPL-3.0-or-later
+   *
+   * This program is free software: ...
+   */
+  ```
+
+- Every other text file carries the two SPDX lines as comments of its own syntax, for example in a
+  Kotlin build script:
+
+  ```kotlin
+  // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+  // SPDX-License-Identifier: GPL-3.0-or-later
+  ```
+
+- Files that cannot carry a comment (binaries, JSON, images, lock files) are covered by an entry of
+  [`REUSE.toml`](https://github.com/njMule/njMule/blob/main/REUSE.toml). This site's pages are
+  covered there too, under CC BY-SA 4.0.
+- Third-party code or assets keep their notices and are recorded in `REUSE.toml` and `NOTICE`; only
+  licenses compatible with the GPL 3.0 are allowed ([Dependencies](dependencies.mdx#licenses)).
+- **No graphical asset of eMule** (icons, bitmaps, skins, logo) is ever used or derived from: all
+  artwork is original and lives in `branding/`.
+- **No personal data** in the repository: no copies of an eMule configuration, user hashes, nick
+  names, IP addresses or screenshots of your own eMule. Keep them in the git-ignored
+  `fixtures-private/` and `.local/` folders.
+
+## UI colours
+
+The desktop app and the web interface share one sober palette with pastel tints, compatible with
+whichever AtlantaFX theme is in use. The default theme is Nord Light or Nord Dark, following the
+system's colour scheme.
+
+- **Tokens only.** Use the AtlantaFX looked-up colours (`-color-bg-*`, `-color-fg-*`,
+  `-color-accent-*`, `-color-success-*`, …) and njMule's `-nj-*` tokens. The tokens are defined in
+  `njmule-gui/src/main/resources/org/njmule/gui/njmule.css` for the desktop app and in
+  `njmule-webapp/src/theme.css` (`--nj-*` and Element Plus's `--el-*` variables) for the web app.
+  Those files hold the only colour literals: none in Java, CSS or Vue code elsewhere.
+- **Every token has a light and a dark value.**
+- **Pastel for surfaces, theme colours for text.** Pastel tones fill surfaces, bars, charts and
+  chips (`*-subtle`, `*-muted`); text uses the theme's `-color-fg-*` and `-color-*-fg` tokens, never
+  a pastel tone. Saturated colours are kept for real errors and warnings.
+- **Accessibility (WCAG 2.2 AA).** Text keeps a contrast of 4.5:1 at least (3:1 for large text),
+  essential icons and graphics 3:1; colour is never the only cue, so add an icon, a tooltip, a
+  legend or a pattern. `TokenContrastTest` measures the desktop app's tokens in every theme.
+- **The brand** is a deep blue `#24427A`, an off-white mark `#F4F6FB` and warm orange accents
+  `#F5A65B` (see `branding/README.md`). Orange stays an accent, never a large surface.
+
+## The pre-commit hook
+
+An optional Git hook runs `spotlessCheck` before each commit and stops a commit with unformatted
+code or a missing license header:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+## Related pages
+
+- [Testing](testing.mdx): the given/when/then style of every test.
+- [Contributing](contributing.mdx): commits, sign-off and pull requests.
+- [Releases](releases.mdx#commits-and-branches): Conventional Commits and branch names.

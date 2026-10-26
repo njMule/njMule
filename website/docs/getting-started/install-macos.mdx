@@ -1,0 +1,89 @@
+---
+title: Install on macOS
+description: Install njMule on a Mac with Apple silicon from its disk image, open it past Gatekeeper, use its command line and uninstall it.
+---
+
+njMule for macOS is an app for Macs with Apple silicon (arm64), on macOS 13 or later, shipped in a
+disk image. There is no build for Intel Macs; the [Docker image](install-docker.mdx) is an
+alternative there.
+
+Download `njmule-<version>-macos-arm64.dmg` from the
+[GitHub releases page](https://github.com/njMule/njMule/releases). You can
+[check the download](verify-downloads.mdx) before you open it.
+
+## Install
+
+1. Open the disk image.
+2. Drag **njMule** onto the **Applications** folder beside it.
+3. Open njMule from Applications or Launchpad. The first time, macOS blocks it: see
+   [Open it the first time](#open-it-the-first-time).
+4. At the first start, a wizard helps you set njMule up: see [First start](first-run.mdx).
+
+Besides the app, the disk image holds **Uninstall njMule**: keep the disk image if you may want it
+later (see [Uninstall](#uninstall)).
+
+## Open it the first time
+
+The app is signed ad hoc but not notarized by Apple, so Gatekeeper refuses its first launch. Either:
+
+- open **System Settings → Privacy & Security**, find the message about njMule and choose
+  **Open Anyway**; or
+- remove the quarantine attribute that the download put on it, in Terminal:
+
+  ```bash
+  xattr -dr com.apple.quarantine /Applications/njMule.app
+  ```
+
+After that, njMule opens as any other app. If the macOS firewall is on, allow njMule to accept
+incoming connections when asked, so that other clients can reach you.
+
+## Command line
+
+The command line is inside the app:
+
+```bash
+/Applications/njMule.app/Contents/MacOS/njmule --help
+```
+
+It is a script that runs the app's executable without a window, so it also runs the engine
+headless. To type only `njmule`, link it into a folder of your `PATH`:
+
+```bash
+sudo mkdir -p /usr/local/bin
+sudo ln -s /Applications/njMule.app/Contents/MacOS/njmule /usr/local/bin/njmule
+```
+
+See [Command line](../server/cli.mdx).
+
+## ed2k links
+
+The app declares the `ed2k://` scheme to macOS, so the links you click in a browser open in njMule,
+also when it is not running yet. See [eD2K links](../desktop/ed2k-links.mdx).
+
+## Where your data goes
+
+njMule keeps its settings, lists and unfinished downloads in
+`~/Library/Application Support/njMule`, its caches in `~/Library/Caches/org.njmule.njMule` and its
+logs in `~/Library/Logs/njMule`. Completed downloads go to `~/Downloads/njMule`. See
+[Data locations](../data/locations.mdx).
+
+## Upgrade
+
+njMule tells you when a new version is out, and can download it and replace the whole app for you
+(**Restart to update**), keeping the old one until the new one has started well: see
+[Updates](../updates.mdx). You can also drag the app of a newer disk image onto Applications,
+replacing the old one; your settings and downloads stay where they are.
+
+## Uninstall
+
+1. Quit njMule.
+2. Open the disk image again and open **Uninstall njMule**. It is signed the same way as the app, so
+   it may need the same [Open Anyway](#open-it-the-first-time) step.
+3. Leave the line **Delete my njMule data: settings, server and contact lists, identity and
+   credits, unfinished downloads and logs** unselected to keep your data for a later installation,
+   or select it to delete it too.
+4. Choose **Uninstall**.
+
+It moves njMule to the Trash and, if you selected the line, the three folders of your data too. Your
+completed downloads always stay. If njMule is still running, it asks you to quit it first. See
+[Uninstall](../uninstall.mdx).

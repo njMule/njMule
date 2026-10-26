@@ -1,0 +1,240 @@
+---
+title: Features
+description: A tour of everything njMule does - eD2K and Kad, files, the desktop app, the web interface, networking, messaging, automation, self-hosting, privacy and security.
+---
+
+This page is a tour of njMule, area by area, with a link to the page that explains each feature.
+If you are new to njMule, [Getting started](getting-started/requirements.mdx) is the place to
+begin.
+
+<Screenshot
+    id="transfers-sources"
+    alt="The transfers of the desktop app: the downloads with their progress, speed, sources, state and time left, filtered by chips, the first one opened onto its sources, each with a coloured dot telling what it does"
+    caption="The transfers of the desktop app, a download opened onto its sources"
+/>
+
+## eD2K
+
+njMule connects to the same eD2K servers as eMule and works with the clients already on the
+network.
+
+- **Servers**: a starting list shipped with njMule; `server.met` lists added from a file or an
+  address, and updated at each start from the addresses you keep; static servers; priorities; dead
+  servers dropped after a number of failed attempts; servers learnt from the server you use and from
+  other clients, if you want. Two servers are tried at once when njMule looks for one, and a lost
+  connection is replaced at once.
+- **Obfuscation** of the connections to servers and clients, and of UDP, requested by default or
+  required. See [Protocol obfuscation](network/obfuscation.mdx).
+- **High ID and Low ID**: the server checks whether others can reach you; firewalled clients are
+  called back through the server.
+- **Searches** on the connected server, on every known server over UDP (encrypted to the servers
+  that take it), or on Kad, with **Automatic** choosing for you. Filters by file type, minimum and
+  maximum size, availability, complete sources and extension; **More** results; related files;
+  media details (artist, album, title, length, bitrate, codec) in their own columns; every name a
+  file is shared under. The searches left open come back at the next start.
+- **Spam filter**: results you mark as spam teach njMule their hash, name, size and the servers that
+  gave them, and similar results are rated as spam from then on.
+- **Downloads** checked part by part against their hashes, rarest parts first; a corrupt part is
+  repaired from AICH recovery data, downloading only its bad blocks, and a source that keeps sending
+  corrupt data is banned. Sources come from the links, the server, the other servers over UDP, Kad
+  and source exchange with other clients; a client that is a source of several of your downloads is
+  asked for one at a time (A4AF), and sources are asked again over UDP to spare connections.
+- **Download control**: priorities (Low, Normal, High or Auto), pause, stop and resume, a cancel
+  that asks first and can be undone for a few seconds, new downloads paused and the next one started
+  when one ends, preview of the first and last parts in your video player, renaming, and tidy file
+  names. Downloads that receive nothing for a number of days can be deleted by themselves (off by
+  default).
+- **Uploads** through a queue scored by waiting time, credits and file priority, with secure
+  identification, so that your credits with other clients stay yours; bans for clients that ask too
+  often.
+
+More in [Transfers](desktop/transfers.mdx), [Search](desktop/search.mdx) and
+[Servers and Kad](network/servers-and-kad.mdx).
+
+## Kad 2
+
+The serverless network, alongside eD2K or alone.
+
+- A routing table of contacts, keyword and source lookups, and the publishing of your shared files
+  and of their comments and ratings (notes).
+- Firewall checks of the TCP and the UDP port, and **Recheck Firewall** on request.
+- Firewalled clients reached through *buddies* and callbacks; firewalled yourself, njMule finds a
+  buddy so that others can still reach you.
+- Joining from the contacts shipped with njMule, from a `nodes.dat` file or address, from a client
+  you know, or through the eD2K clients you meet.
+- An estimate of the users and files of the network, beside those of the servers.
+
+<Screenshot
+    id="kad"
+    alt="The network screen of the desktop app on Kad: cards saying eD2K and Kad are reachable from outside and which ports are used, the contacts drawn by distance, the node's state and ID, and the list of contacts"
+    caption="The network, on Kad"
+/>
+
+More in [Network](desktop/network.mdx) and [Servers and Kad](network/servers-and-kad.mdx).
+
+## Files and sharing
+
+- **Shared folders**, with their subfolders if you want, watched so that new and changed files are
+  shared within seconds; the incoming folder is always shared. Shared files are hashed once and
+  remembered.
+- **Safe by default**: njMule asks before sharing a whole drive, your user folder or a system folder,
+  and never shares private folders, its own configuration, backup and temporary files, or the
+  files other programs are still writing.
+- **Upload priorities** (Very low to Release, or Auto), renaming, comments and ratings, and the
+  requests, accepted requests and bytes sent of each file, for this session or all of them.
+- **Who may see your files**: everybody, your friends or nobody (the default).
+- **Categories** for downloads, each with a name, a tint, a folder of its own, a priority and file
+  name patterns that sort new downloads into it.
+
+More in [Shared files](desktop/shared-files.mdx) and [Categories](desktop/categories.mdx).
+
+## Coming from eMule
+
+- **Import of an eMule profile**, offered at the first start when one is found, and from the
+  desktop app, the web interface and the command line: preferences, servers, Kad contacts, known
+  and shared files, the IP filter, friends, searches, categories and comments; on request your
+  identity with its credits, and copies of your unfinished downloads.
+- **Only ever read**: a check shows first what would happen, and every import leaves a manifest of
+  what it read.
+- **eMule's file formats**: njMule keeps its part files, known files, credits, friends and server
+  and node lists in the same formats as eMule.
+- **ed2k links given back**: when you turn off njMule's handling of ed2k links, or uninstall it on
+  Windows, it gives them back to the program that opened them before.
+
+More in [Import an eMule profile](getting-started/import-emule.mdx).
+
+## Desktop app
+
+- A **sidebar** of places, a **top bar** with the rates and the state of both networks, a **command
+  palette** (<kbd>Ctrl</kbd>+<kbd>K</kbd>) that finds a place or a command, searches the network or
+  takes eD2K links, and a status strip. The window works down to 900 × 600.
+- **Themes** from AtlantaFX, Nord light and dark by default, following the system; the system's
+  colours under Windows high contrast.
+- **36 languages**, right-to-left ones with a mirrored layout, following the system's language.
+- **Accessible**: text contrast measured in every theme, and screen readers hear the progress bars,
+  states and graphs.
+- **Notification area** on Windows, with MiniMule, a small status window, and the speed limits in
+  its menu; minimising hides the window there.
+- **Start at login** and **keep the computer awake** while files are transferred, both off by
+  default.
+- **eD2K links** from the browser (an option on Windows and Linux; on macOS the app is registered
+  for them), dropped on the window, or watched on the clipboard if you want.
+- **A remote njMule**, such as one on a NAS or a Windows service, shown and driven in a window of its
+  own.
+
+More in [The interface](desktop/interface.mdx), [Appearance](desktop/appearance.mdx),
+[Notification area](desktop/tray.mdx), [eD2K links](desktop/ed2k-links.mdx),
+[Keyboard shortcuts](desktop/keyboard-shortcuts.mdx) and
+[Remote njMule](desktop/remote.mdx).
+
+## Web interface
+
+The desktop app in a browser, laid out the same way: transfers, searches with filters, shared
+folders, messages and friends, the network with its servers, Kad and log, statistics and the
+options, in the same 36 languages, light or dark.
+
+- Behind a password, on this computer only unless you allow other computers; host names for a LAN
+  name or a reverse proxy.
+- A **guest** password of its own lets someone look without changing anything.
+- A layout for phones, notices of finished downloads and new messages, and its own set-up wizard
+  and eMule import.
+
+<Screenshot
+    id="web-transfers"
+    alt="The transfers in the web interface: the sidebar of places, the downloads with their progress, speed, sources and status, filters by state, and the buttons Resume, Pause, Stop, Priority, Category and Copy eD2K link"
+    caption="The transfers in the web interface"
+/>
+
+More in [Web interface](web/overview.mdx), [Security](web/security.mdx),
+[Reverse proxy](web/reverse-proxy.mdx) and [Guest access](web/guest.mdx).
+
+## Networking
+
+- **IPv6** alongside IPv4, for clients and sources.
+- **Connections through routers** between two firewalled clients, over QUIC or uTP.
+- **Port forwarding** with UPnP, NAT-PMP or PCP, and a **port test** that tells whether others can
+  reach you.
+- **Proxies**: SOCKS 4 and 5, with or without credentials, and HTTP CONNECT; with SOCKS 5 the UDP of
+  Kad, clients and servers goes through the proxy too.
+- **A network interface to bind to**, such as a VPN: njMule stays offline while it is gone and comes
+  back by itself.
+- **IP filter**: `ipfilter.dat`, PeerGuardian and P2B lists, updated from up to 16 addresses, with a
+  level, a whitelist, and LAN addresses left out by default.
+
+More in [Ports and firewalls](network/ports.mdx), [IPv6](network/ipv6.mdx),
+[Connections through routers](network/nat-traversal.mdx), [Proxies](network/proxy.mdx),
+[Network interface](network/bind-interface.mdx) and [IP filter](network/ip-filter.mdx).
+
+## Messaging
+
+- **Chat** with other clients, with CAPTCHA checks both ways, and smileys shown as emoji.
+- **Friends**, and the **friend slot**, which lets a friend download from you before the queue.
+- **Filters**: messages from friends only, filtered words, and an anti-spam filter.
+- **A client's shared files**, viewed and downloaded from, when it shows them.
+
+More in [Messages](desktop/messages.mdx) and [Messages options](settings/messages.mdx).
+
+## Statistics
+
+- Rates over the last ten minutes, hour or day, with the overhead of the protocol.
+- Figures of the session and of all sessions, and a tree of every statistic.
+- Requests and transfers of each shared file.
+- A 90-day history of the clients you met, and, if you want, their countries with flags
+  ([IP Geolocation by DB-IP](https://db-ip.com)).
+
+More in [Statistics](desktop/statistics.mdx).
+
+## Automation and notifications
+
+- **Scheduler**: weekly rules that change the speed limits and connections, and stop or resume the
+  downloads of a category.
+- **Programs run on events**: a program of yours when a download completes or fails, a chat
+  message arrives or the temporary disk runs short of space, with the file, hash, size or message
+  as arguments.
+- **Notifications** of the same events by e-mail through your SMTP server (always encrypted), a web
+  hook (ntfy, Gotify), and a sound of your own for finished downloads and chat messages; all off by
+  default.
+- **Command line**: search, download, share, hash files, import, and drive a running njMule with
+  `njmule --remote`.
+- **Remote-control API** in JSON, with the engine's events as a stream, described by an OpenAPI
+  document.
+
+More in [Scheduler](settings/scheduler.mdx), [Programs run on events](settings/events.mdx),
+[Notifications](settings/notifications.mdx), [Command line](server/cli.mdx) and
+[Remote control](server/remote-control.mdx).
+
+## Self-hosting
+
+- **Headless engine**, on any desktop package or the static Linux build.
+- **Windows service**, running before anyone logs in.
+- **systemd user unit** in the Linux packages.
+- **Docker image** for `linux/amd64` and `linux/arm64`.
+- **Synology package** for DSM 7.
+- **Portable mode** and `--config-dir`, to keep a profile on a removable drive or run several.
+
+More in [Running headless](server/headless.mdx), [Windows service](server/windows-service.mdx),
+[Linux service](server/linux-service.mdx), [Docker](getting-started/install-docker.mdx),
+[Synology](getting-started/install-synology.mdx) and [Portable mode](data/portable.mdx).
+
+## Updates
+
+njMule looks for a new version at each start and once a day, believes it only when it is signed by a
+key built into njMule, and can download it and, where it may replace itself, install it: at once,
+when it exits or in the night hours. Elsewhere (the deb and rpm packages, Synology, Docker) it tells
+you how to update. Test versions are optional. More in [Updates](updates.mdx).
+
+## Privacy and security
+
+- **Hardened parsing**: everything read from the network or from disk is size-limited and checked.
+- **Crash-safe saving** and dated **backups** of the configuration.
+- **Secure identification** and obfuscation on the network; the IP filter and connection limits
+  against abuse.
+- **The web interface** keeps only a hash of its password, locks out repeated wrong passwords,
+  checks every form and refuses unknown host names.
+- **Few outside contacts**: GitHub for updates (or only when you ask), the lists you set, and DB-IP
+  only if you turn the countries on. The client history never keeps addresses.
+- **Your files**: on Linux and macOS, the identity key, the user hash, the backups and the web
+  interface settings are readable by you only; uninstalling never deletes your completed downloads.
+
+More in [Privacy](data/privacy.mdx), [Web interface security](web/security.mdx),
+[Backups](data/backups.mdx) and [Security](about/security.mdx).

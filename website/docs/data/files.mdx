@@ -1,0 +1,127 @@
+---
+title: Files of the profile
+description: Every file njMule keeps in its profile, what it holds, and which ones use eMule's formats.
+---
+
+This page lists the files njMule writes, folder by folder (see
+[Where njMule keeps its data](./locations.mdx) for where each folder is). Many of them use
+eMule's own formats, marked **eMule** below: they are the files the
+[import from eMule](../getting-started/import-emule.mdx) takes over, and other eD2K clients
+understand them too. The others are njMule's own.
+
+:::warning[Stop njMule before you edit]
+njMule reads these files at start and writes them while it runs and when it exits. Edit or replace
+a file only while njMule is stopped (`njmule --exit`, or quit the desktop app), or your change
+will be overwritten.
+:::
+
+## The configuration folder
+
+### Settings
+
+| File | Holds | Format |
+|---|---|---|
+| `njmule.properties` | Every preference of the engine, one `key=value` per line, sorted. A value that is not valid falls back to its default with a warning in the log; keys this version does not know are kept. It also holds the proxy and SMTP passwords as typed. | njMule |
+| `webui.properties` | The [web interface](../web/overview.mdx): on or off, port, other computers allowed, the password and guest password (as hashes only), the remote-control API, the host names and trusted proxies. Readable by its owner only on Linux and macOS. | njMule |
+| `scheduler.properties` | The rules of the [scheduler](../settings/scheduler.mdx). | njMule |
+| `categories.properties` | The download [categories](../desktop/categories.mdx): name, incoming folder, tint, priority, file name patterns. | njMule |
+| `addresses.dat` | The `server.met` addresses taken at each start when **Auto-update server list at startup** is on, one per line. | eMule |
+
+### Networks
+
+| File | Holds | Format |
+|---|---|---|
+| `server.met` | The eD2K server list, with each server's priority, ping, limits and failures. | eMule |
+| `staticservers.dat` | The static servers: `host:port,priority,name` per line. | eMule |
+| `nodes.dat` | The Kad contacts heard from last, to start from next time. | eMule |
+| `ipfilter.dat` | The [IP filter](../network/ip-filter.mdx), joined from its lists. | eMule |
+| `key_index.dat`, `src_index.dat`, `load_index.dat` | The Kad index: keywords and sources other nodes published to you, and the load of the nodes of your keywords. Saved when Kad stops and every half hour, read back only as far as still alive. | eMule |
+| `notes_index.dat` | The file comments and ratings other nodes published to you on Kad. | njMule, in the format of `src_index.dat` |
+
+### Identity
+
+| File | Holds | Format |
+|---|---|---|
+| `preferences.dat` | Your **user hash**, which identifies you on eD2K, created at the first start. Readable by its owner only on Linux and macOS. | eMule |
+| `cryptkey.dat` | Your private key for secure identification, which proves the user hash is yours. Readable by its owner only on Linux and macOS. | eMule |
+| `preferencesKad.dat` | Your Kad ID. | eMule |
+| `kadudpkey.dat` | The secret from which the keys of your Kad UDP obfuscation derive. | njMule |
+| `clients.met` | The credits of other clients, by user hash: what you uploaded to and downloaded from each, with their keys. | eMule |
+
+Copy these together, or not at all: a user hash with another key fails every identification.
+
+### Files and downloads
+
+| File | Holds | Format |
+|---|---|---|
+| `known.met` | The files you downloaded or share: hashes, upload priority and their request and transfer statistics. | eMule |
+| `known2_64.met` | The AICH hash sets of those files, used to repair and check parts. Rebuilt by hashing the files again if lost. | eMule |
+| `shareddir.dat` | The shared folders, one per line. | eMule |
+| `sharedtrees.dat` | The shared folders whose subfolders are shared too. | njMule |
+| `cancelled.met` | The files you cancelled, so that search results can mark them. | eMule |
+| `fileinfo.ini` | Your comments and ratings of files. | eMule |
+| `finished.json` | The completed downloads still listed in the transfers, until **Clear completed**. | njMule |
+| `deleted-downloads.txt` | The links of downloads deleted by themselves for receiving nothing, to add them again. | njMule |
+
+### Messages and searches
+
+| File | Holds | Format |
+|---|---|---|
+| `emfriends.met` | Your friends. | eMule |
+| `StoredSearches.met` | The search tabs left open at exit, with their results. | eMule |
+| `SearchSpam.met` | What you marked as spam in search results, and what the spam filter learnt from it. | eMule |
+
+### Statistics and history
+
+| File | Holds | Format |
+|---|---|---|
+| `statistics.properties` | The totals of all sessions: bytes, sessions, time. | njMule |
+| `clienthistory.json` | The clients met in the last 90 days (at most 20,000): name, program, first and last meeting and, when countries are shown, the country. Never their address. | njMule |
+
+### Running njMule
+
+| File | Holds | Format |
+|---|---|---|
+| `njmule.lock` | Held while njMule runs on this profile, so that a second one cannot start on it. | njMule |
+| `handoff` | The local port and a secret through which a second start hands its links (or `--exit`) to the njMule already running. | njMule |
+| `api-token` | The token of the [remote-control API](../server/remote-control.mdx). Readable by its owner only on Linux and macOS. | njMule |
+| `update.properties` | What njMule remembers of [updates](../updates.mdx): the last check, the newest versions seen, the one you skipped, the one that last ran here. | njMule |
+| `ed2k-handler-backup.reg` (Windows), `ed2k-handler-previous` (Linux) | The program that opened ed2k links before njMule took them, to give them back. | njMule |
+
+### Left by an import from eMule
+
+| File or folder | Holds |
+|---|---|
+| `import/` | A report of each import, `20261015-104000.txt` for example: every file read from eMule with its size and SHA-256, and what became of it. |
+| `import-identity/` | eMule's identity, waiting for the next start (and for eMule to be closed) to take its place. |
+| `import-files/` | Imported lists that the running njMule would overwrite, waiting for the next start. |
+| `AC_ServerMetURLs.dat`, `AC_SearchStrings.dat` | The addresses and searches typed in eMule's boxes, offered again by njMule's. |
+| `AC_IPFilterUpdateURLs.dat`, `AC_BootstrapIPs.dat`, `statistics.ini` | Copied from eMule, not used yet. |
+
+## The other folders
+
+| Folder | Files |
+|---|---|
+| **gui** | `gui.properties`: what the desktop app remembers (theme, language, window, screen, columns, the addresses typed before). `remotes.properties`: the remote njMule you connect to, with their tokens, readable by its owner only. |
+| **data** | `backups/njmule-config-<date>-<time>.zip`: the [configuration backups](./backups.mdx). |
+| **temp** | Each download in progress as `001.part` (its data, with gaps where nothing came yet) and `001.part.met` (its hashes, the parts done, its priority, category and best sources), in eMule's format with a few tags of njMule's own. |
+| **cache** | `countries.dat`: the country database, when countries are shown. `update/`: the packages of new versions being downloaded or waiting to be installed. |
+| **logs** | `njmule.log` and the older ones, `njmule.2026-10-15.0.log.gz` and so on; `remote/` for a desktop window that drives another njMule. See [Logs](./logs.mdx). |
+| **incoming** | Your completed downloads, nothing else. |
+
+## Safety copies
+
+Most files are written in a way that survives a crash or a full disk: njMule writes `name.tmp`,
+keeps the current file as `name.bak`, then puts the new one in place. If a file is damaged, njMule
+reads its `.bak` instead. A list that cannot be read at all (such as `cancelled.met` or
+`fileinfo.ini`) is set aside as `name.corrupt-<time>` and started anew, so that a damaged file never
+stops njMule.
+
+Leave the `.bak` and `.tmp` files alone; the [configuration backups](./backups.mdx) leave them out.
+
+## Related pages
+
+- [Where njMule keeps its data](./locations.mdx)
+- [Backups](./backups.mdx)
+- [Privacy](./privacy.mdx)
+- [Importing from eMule](../getting-started/import-emule.mdx)

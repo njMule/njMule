@@ -1,0 +1,149 @@
+---
+title: Dependencies
+description: How njMule picks, pins, locks and verifies its libraries, plugins, Node.js packages and build tools, and how to update them.
+---
+
+Every library njMule uses is pinned to one version, locked, and checked against a known SHA-256
+checksum before Gradle uses it. This page explains where versions live, which libraries are
+welcome, and the exact steps after you change a version.
+
+## Where versions live
+
+[`gradle/libs.versions.toml`](https://github.com/njMule/njMule/blob/main/gradle/libs.versions.toml)
+is the version catalog of the whole build:
+
+- `[versions]`: Java (`java = "25"`), the Node.js release of the web app and this site (`nodejs`, an
+  LTS line), the runtime and test libraries, and the build tools (Checkstyle,
+  palantir-java-format, Error Prone, SpotBugs, FindSecBugs, JaCoCo).
+- `[libraries]`: every library, including the Gradle plugins that the convention plugin in
+  `build-logic/` applies (Spotless, Error Prone, SpotBugs).
+- `[plugins]`: the other Gradle plugins (GraalVM Native Build Tools, Shadow, CycloneDX, the license
+  report, OWASP dependency-check, SonarQube, the Node.js plugin).
+
+The modules name libraries only through the catalog (`libs.guava`, `libs.jetty.server`), never with
+a version of their own. Gradle itself is pinned in `gradle/wrapper/gradle-wrapper.properties`, with
+the SHA-256 of its distribution.
+
+The build downloads from Maven Central only; `build-logic` also reads the Gradle Plugin Portal. The
+settings add one more repository, `https://nodejs.org/dist/`, limited to the Node.js archives.
+
+## Choosing a library
+
+- **The JDK first, then a well-known library.** Before you write a utility, codec, parser or data
+  structure, check whether the JDK or a maintained open-source library already does it. Write your
+  own only for what is specific to eD2K and Kad, or when nothing suitable exists or fits the
+  constraints below, and say why in a comment or the commit message. The
+  [benchmarks](benchmarks.mdx) keep some of the measurements behind such choices.
+- **A license compatible with the GPL 3.0**: MIT, BSD, Apache-2.0, LGPL, GPL-2.0-or-later and the
+  like. See [Licenses](#licenses) below.
+- **Native-image friendly**: no undeclared reflection, no dynamic proxies
+  ([Native images](native-images.mdx)).
+- **Always the latest stable version.** Check Maven Central and the Gradle Plugin Portal before you
+  add or bump one.
+
+:::note[One known exception]
+palantir-java-format is pinned to the newest version that Spotless supports, which may be older than
+the newest palantir-java-format release.
+:::
+
+## Locking and verification
+
+Two mechanisms make every build resolve exactly the same files:
+
+- **Dependency locking.** Every resolved version is written to the `gradle.lockfile` of each
+  project, plus `buildscript-gradle.lockfile` and `settings-gradle.lockfile` at the root and the lock
+  files of `build-logic/`. A resolution that differs from the lock files fails the build.
+- **Dependency verification.** Every downloaded artifact, POMs and Gradle module metadata included,
+  is checked against its SHA-256 in
+  [`gradle/verification-metadata.xml`](https://github.com/njMule/njMule/blob/main/gradle/verification-metadata.xml).
+  Any difference fails the build. The file lists the OpenJFX jars of all five platforms (Windows,
+  Linux x64 and arm64, macOS x64 and arm64), not only yours: the GUI module resolves them in a
+  configuration of their own for that purpose. It also lists the Node.js archives of the five
+  platforms the web app may be built on, with the checksums Node.js publishes in its
+  `SHASUMS256.txt`.
+
+### After changing a version
+
+When you change `libs.versions.toml`, a plugin version or Gradle itself:
+
+1. Rewrite the lock files and the checksums in one run:
+
+   ```bash
+   ./gradlew --no-configuration-cache --refresh-dependencies --write-verification-metadata sha256 \
+       --write-locks spotlessCheck :njmule-app:collectReachabilityMetadata \
+       :njmule-gui:generateLicenseReport cyclonedxBom
+   ```
+
+   The tasks in the command make Gradle resolve what a plain build may not: the formatter that
+   Spotless downloads, the GraalVM reachability metadata repository of the native build, and what
+   the license report and the SBOM read.
+2. Delete the entries of the versions no longer used from `verification-metadata.xml`.
+3. Review the new checksums before you commit them.
+4. After a change of `nodejs`, add the new Node.js archives of all five platforms to
+   `verification-metadata.xml` with the checksums of Node.js's `SHASUMS256.txt`, as the existing
+   entries are.
+
+:::warning[Why refresh the dependencies]
+Without it, Gradle leaves out of `verification-metadata.xml` the parent POMs and BOMs it already
+holds in its local cache. Your build still passes, but the CI starts with an empty cache, downloads
+them and fails on their missing checksums.
+:::
+
+Dependabot's pull requests change versions without these steps: run the same command on their
+branch before you merge them.
+
+## Web app and site packages
+
+The web app (`njmule-webapp`) and this site (`website`) are npm projects inside the Gradle build.
+Gradle downloads the pinned Node.js and runs `npm ci`, which installs exactly what
+`package-lock.json` holds. Their `.npmrc` files set:
+
+| Setting | Effect |
+|---|---|
+| `ignore-scripts=true` | no package runs code while it is installed |
+| `save-exact=true` | `npm install <package>` writes an exact version, never a range |
+| `engine-strict=true` | npm refuses a Node.js older than the `engines` field asks (24 or newer) |
+| `audit=false`, `fund=false` | no audit or funding requests while installing |
+
+To add or update a package, run npm in that folder (with the Node.js Gradle downloaded into its
+`.gradle/nodejs` folder, or your own Node.js 24 or newer), then commit `package.json` and
+`package-lock.json` together.
+
+## Dependabot
+
+[`.github/dependabot.yml`](https://github.com/njMule/njMule/blob/main/.github/dependabot.yml) looks
+for updates once a week:
+
+| Ecosystem | Where | Commit prefix |
+|---|---|---|
+| Gradle | the root build and the version catalog | `chore(deps)` |
+| GitHub Actions | the workflows, whose actions are pinned by commit hash | `ci(deps)` |
+| Docker | the base images of `packaging/docker`, pinned by digest | `build(deps)` |
+| npm | `website/package-lock.json`, with the Docusaurus packages and the two OpenAPI docs packages grouped | `docs(deps)` |
+
+The web app's npm packages (`njmule-webapp`) are not on that list: update them by hand.
+
+The downloads the workflows make outside Gradle (GraalVM, the musl toolchain, nfpm) are pinned too,
+each checked against its SHA-256 in the workflow file.
+
+## Licenses
+
+njMule is licensed under the GPL 3.0 or later, so everything it ships must be compatible with it.
+When you add third-party code or an asset:
+
+- keep its original notices;
+- record its origin and license in
+  [`REUSE.toml`](https://github.com/njMule/njMule/blob/main/REUSE.toml) when the file cannot carry
+  an SPDX header itself, and add its license text to `LICENSES/`;
+- add it to [`NOTICE`](https://github.com/njMule/njMule/blob/main/NOTICE), which lists the
+  components of the binary distributions.
+
+The full lists with versions are generated: `THIRD-PARTY.txt` by
+`./gradlew :njmule-gui:generateLicenseReport`, and the web app's `THIRD-PARTY.md` by its Vite build,
+which ships it beside the app. Test-only libraries and build tools are not distributed.
+
+## Related pages
+
+- [Building](building.mdx)
+- [Code style](code-style.mdx#licensing-and-reuse): SPDX headers and REUSE.
+- [Releases](releases.mdx): the SBOM attached to every release.

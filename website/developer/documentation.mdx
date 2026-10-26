@@ -1,0 +1,189 @@
+---
+title: Documentation
+description: How this documentation site is built with Docusaurus and Gradle, where its screenshots and generated pages come from, how to preview it, the rules for writing pages, and how it is published.
+---
+
+This site is a [Docusaurus](https://docusaurus.io/) 3.10 project in the repository's `website/`
+folder. Gradle builds it like the rest of njMule: it takes the screenshots on example data, prints
+the command line's help, generates the API reference from the OpenAPI document, and fails on any
+broken link. Change a page in the same branch as the user-visible change it describes.
+
+## Layout
+
+| Path | Content |
+|---|---|
+| `website/docs/` | the user guide, served under `/docs/` |
+| `website/developer/` | this developer guide, served under `/developer/` |
+| `website/developer/api/reference/` | the API reference, generated from `openapi.yaml` (not committed) |
+| `website/docs/_generated/`, `website/developer/_generated/` | partials generated from the repository: the changelog, the security policy, the contributing guide, the code of conduct, the pull request template, `njmule --help` and `njmule --remote help` (not committed) |
+| `website/src/` | the home page (`pages/index.tsx`), the components (`Screenshot`, `ThemedShot`, `NjIcon`), the components every page gets without importing them (`theme/MDXComponents.tsx`) and the styles (`css/custom.css`) |
+| `website/scripts/` | `prepare.mjs`, which puts in place what the site takes from the repository, and `capture-web.mjs`, which pictures the web interface |
+| `website/static/` | static files served as they are |
+| `sidebars.ts`, `sidebarsDeveloper.ts` | the order of the pages of each guide; a new page must be listed there |
+| `docusaurus.config.ts` | the site: address, plugins, navigation, footer, search |
+| `build.gradle.kts`, `package.json`, `package-lock.json` | the Gradle tasks and the npm packages |
+
+Everything the build generates lands in `website/build/`, under `.gitignore` like the generated
+folders above. Screenshots are never committed.
+
+## Building the site
+
+```bash
+./gradlew :website:site
+```
+
+The site lands in `website/build/site`. The task runs, in order of need:
+
+1. **`:njmule-gui:docsCaptures`**: the [capture tour](testing.mdx#the-capture-tour) on its example
+   data, in the sets `en-light-docs`, `en-dark-docs` and `en-contrast-screens`, each picture named
+   by what it shows (`njmule.capture.stable`), into `njmule-gui/build/docs-captures/<set>/`.
+2. **`:njmule-gui:webCaptureArgs`** and **`:website:webScreenshots`**: `scripts/capture-web.mjs`
+   starts the web interface on the same example data (`WebCaptureDemo`), signs in, and pictures each
+   place in light and dark at 1280×800, a phone-sized page and a guest's page, into
+   `website/build/web-captures/`. It drives the Chrome or Edge already installed on your computer
+   through Playwright, which downloads no browser; set `NJMULE_CAPTURE_BROWSER` to the path of
+   another Chromium-based browser. A step that fails is reported as "not pictured" and the others
+   go on.
+3. **`:njmule-app:cliHelp`**: what `njmule --help` and `njmule --remote help` print.
+4. **`:website:prepare`**: `scripts/prepare.mjs --strict` copies the brand's images and the
+   screenshots the pages name into `website/build/generated/static/img`, and writes the partials of
+   `_generated/`: the repository's pages without their license comment and title, with their links
+   to repository files made absolute, and the command line's help as text blocks. With `--strict`, a
+   picture a page names but the build did not make fails the build.
+5. **`:website:apiDocs`**: `docusaurus gen-api-docs` turns
+   `njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml` into the pages of
+   `developer/api/reference/`.
+6. `docusaurus build`, with the version of `gradle.properties` shown in the footer.
+
+The build fails on a broken link, a broken anchor or a missing image. The site is not part of
+`./gradlew build`.
+
+To check the formatting (Prettier) and the types (TypeScript) of the site's own code, in `src/`,
+`scripts/` and the configuration files:
+
+```bash
+./gradlew :website:siteCheck
+```
+
+## Previewing pages
+
+1. Put the generated files in place once, and again after you change what they come from:
+
+   ```bash
+   ./gradlew :website:prepare :website:apiDocs
+   ```
+
+2. Start the development server from `website/`:
+
+   ```bash
+   npm start
+   ```
+
+   It opens the site and reloads a page as you save it. Use the Node.js Gradle downloaded
+   (`website/.gradle/nodejs/node-v…/`) or your own Node.js 24 or newer.
+
+For a quick look at text alone, run `./gradlew :website:apiDocs` once, then `npm run prepare-site`
+in `website/`: it writes the partials without the pictures and the command line's help, and a
+missing picture is only a warning. `npm run serve` serves a built site from `website/build/site`.
+
+## Writing pages
+
+The pages are **MDX** files (`.mdx`), in English.
+
+### Form
+
+- Start with front matter: a `title` and a one-sentence `description`, which search results and
+  link previews show. The title is the page's heading: start the body with an introduction, then use
+  `##` and `###` headings of a few words, since they become anchors.
+- Wrap prose at about 100 columns.
+- MDX is strict: escape `{`, `}`, `<` and `>` in prose, or put the text in `inline code`; no HTML
+  comments; no autolinks in angle brackets (write `[text](url)`). Code blocks are safe.
+- Use admonitions sparingly (`:::note`, `:::tip`, `:::info`, `:::warning`, `:::danger`, with an
+  optional title in brackets), tables for lists of options (Option, Default, What it does), code
+  blocks with their language (`bash`, `powershell`, `ini`, `properties`, `yaml`, `json`, `nginx`,
+  `text`), `<kbd>` for keys, Docusaurus `Tabs` for instructions that differ per system, and small
+  Mermaid diagrams where a picture explains better.
+- Link to pages by their file: `[ports](../network/ports.mdx)` with a relative path and the `.mdx`
+  extension inside a guide, `/docs/…` or `/developer/…` from one guide to the other, and full GitHub
+  URLs (`https://github.com/njMule/njMule/blob/main/<path>`) for files of the repository.
+
+### Content
+
+- Write for the reader, in the second person and in plain, friendly English: what it is, when you
+  need it, how to do it in numbered steps, what happens, and related pages.
+- Everything must be true of the code as it is: read the sources before you describe a feature.
+  When the README or the changelog and the code disagree, the code wins. Never invent version
+  numbers, measurements, dates, users or quotes.
+- Use the exact labels the user sees, in **bold**, with menu paths as **⋯ → Import from eMule…**.
+  They are in `njmule-gui/src/main/resources/org/njmule/gui/i18n/`: `nj.properties` for njMule's own
+  texts, `emule.properties` for the `IDS_*` texts ([Translations](translations.mdx)).
+- Take defaults from the code: the preferences in `njmule-core`'s `config` package, the keys of
+  `njmule.properties` in `PreferencesCodec`, the settings pages of the desktop app.
+- Never reference eMule's source code; name eMule only where the feature is about it (the import,
+  compatibility). Do not present njMule as the official eMule client, and describe legal use only.
+- No personal data: in examples, use the documentation addresses (`192.0.2.x`, `198.51.100.x`,
+  `203.0.113.x`, `2001:db8::/32`) and paths such as `C:\Users\you\…` or `/home/you/…`. No artwork of
+  eMule either.
+
+## Screenshots
+
+Every page can show a screenshot without importing anything:
+
+```jsx
+<Screenshot id="web-transfers" alt="What the picture shows, for screen readers." caption="A short caption." />
+```
+
+| Attribute | What it does |
+|---|---|
+| `id` | the picture's name, as the build makes it |
+| `alt` | a description of the picture |
+| `caption` | an optional short caption under it |
+| `width` | the largest width to draw it at, in pixels: `width={560}` keeps a dialog pictured alone from being blown up |
+| `set` | `contrast` for a picture in Windows' high contrast scheme, which has no light or dark version |
+
+The component shows the light or the dark picture as the reader's theme is set; a click opens it at
+full size. `prepare.mjs` copies only the pictures the pages name, so a page can name any picture the
+build makes:
+
+- **Desktop app**: the names of the capture tour, in `njmule-gui/build/docs-captures/<set>/index.tsv`
+  after a build. A screen is named by its ID (`transfers`, `search`), its tabs, context menus,
+  drop-down lists, column menus, tooltips and button menus by the screen and the element
+  (`transfers-ctx-downloads`, `search-menubutton-more`), a dialog over the main window with `-over`
+  after its name. The contrast set holds the screens only.
+- **Web interface**: the names fixed in `scripts/capture-web.mjs`: `web-login`, `web-transfers`,
+  `web-search`, `web-settings`, `web-guest` and the others it lists.
+
+Look at a picture before you describe it, so that the text and the caption match what it shows.
+The home page uses `ThemedShot`, the same pictures without a frame; `NjIcon` draws one of njMule's
+line icons by its name in the web app's `icons.ts`.
+
+To include a generated partial, import it, for example the command line's help:
+
+```jsx
+import CliHelp from '../_generated/cli-help.md';
+
+<CliHelp />
+```
+
+## Licenses
+
+The text of this site (`website/docs/` and `website/developer/`) is licensed under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), as `REUSE.toml` records; its code,
+styles and scripts are under the GPL 3.0 or later, as their own headers say. The footer of every
+page says so too.
+
+## Deployment
+
+The `Documentation` workflow (`.github/workflows/docs.yml`) builds the site with
+`./gradlew :website:siteCheck :website:site` on an Ubuntu runner, the desktop app's pictures coming
+from its tests on JavaFX's headless platform and the web interface's from the runner's Chrome:
+
+- **It checks** every push to `main` that changes the site or what it is made from (the desktop
+  app, the web app and web interface, the command line's options, the API document, the branding,
+  the repository's pages, the Gradle set-up), and every pull request that changes the site, the
+  capture tour, the API document or the workflow itself.
+- **It publishes** on GitHub Pages only when asked: a manual run with **deploy** ticked, or the push
+  of a `v*` tag, which publishes the site of every release.
+
+The site's address is `https://njmule.github.io/njMule/`. One publication runs at a time; a newer one
+waits for it. Each page links to its source on GitHub (**Edit this page**).

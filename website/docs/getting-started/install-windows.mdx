@@ -1,0 +1,156 @@
+---
+title: Install on Windows
+description: Install njMule on Windows with the MSI installer, for your user or for every user, or run it from the zip archive.
+---
+
+njMule for Windows comes as an MSI installer and as a zip archive, both for x64 processors. The
+installer is the usual choice: it needs no administrator rights, adds shortcuts and keeps njMule up
+to date. The zip runs from any folder, a USB drive included.
+
+Both are on the [GitHub releases page](https://github.com/njMule/njMule/releases):
+
+| File | What it is |
+|---|---|
+| `njmule-<version>-windows-x64.msi` | the installer |
+| `njmule-<version>-windows-x64.zip` | the same programs, to unpack anywhere |
+
+You can [check the download](verify-downloads.mdx) before you open it.
+
+## Install with the MSI
+
+1. Download `njmule-<version>-windows-x64.msi`.
+2. Open it. If Windows SmartScreen says it protected your PC, choose **More info**, then
+   **Run anyway** (see [SmartScreen](#smartscreen) below).
+3. The installer runs for your user only: it asks for no administrator rights and finishes on its
+   own.
+4. Start njMule from the **Start** menu or from the **njMule** shortcut on the desktop. At the first
+   start, a wizard helps you set it up: see [First start](first-run.mdx).
+
+The installer:
+
+- puts the programs in `%LOCALAPPDATA%\Programs\njMule`;
+- creates a **njMule** shortcut in the Start menu and on the desktop, whose windows are grouped and
+  pinned on the taskbar as one app;
+- adds that folder to your user's `PATH`, so that `njmule` works in a new terminal.
+
+The folder holds:
+
+| File | What it is |
+|---|---|
+| `njmule-gui.exe` | the desktop app, what the shortcuts open |
+| `njmule.exe` | the command line, a console program; without options it runs the engine headless |
+| `njmule-service.exe` | the program of the [Windows service](../server/windows-service.mdx) |
+| `LICENSE.txt`, `NOTICE.txt`, `README.md` | the license, the notices and the read-me |
+
+`njmule-gui.exe` is a small program that starts `njmule.exe` for the desktop, as `javaw.exe` does
+for `java.exe`; both carry the njMule icon and version, as Explorer and Task Manager show. The other
+files beside them are libraries the programs load.
+
+Your settings and downloads are not in the program folder: see
+[Data locations](../data/locations.mdx). By default, completed downloads go to
+`%USERPROFILE%\Downloads\njMule`.
+
+### For every user
+
+A per-machine installation, in `C:\Program Files\njMule` for all the users of the computer, needs
+administrator rights. Run the installer from a terminal opened as administrator:
+
+```powershell
+msiexec /i njmule-<version>-windows-x64.msi MSIINSTALLPERUSER=""
+```
+
+Each user still has a profile of their own.
+
+### As a Windows service
+
+njMule can also run as the Windows service **njMule**: headless, with its web interface, started
+with Windows before anyone logs in. A per-machine installation sets the service up at once when you
+give it `NJMULE_SERVICE=1` and a file whose first line is the web interface password (8 characters
+at least):
+
+```powershell
+msiexec /i njmule-<version>-windows-x64.msi MSIINSTALLPERUSER="" NJMULE_SERVICE=1 NJMULE_WEBUI_PASSWORD_FILE=C:\Users\you\webui-password.txt
+```
+
+The installer refuses `NJMULE_SERVICE=1` without administrator rights or without the password
+file. njMule keeps only a hash of the password, so you can delete the file afterwards. An upgrade
+stops the service while it replaces the files and starts it again; uninstalling njMule removes the
+service and keeps its profile in `%ProgramData%\njMule`.
+
+You can also set the service up later from a terminal with `njmule --service=install`: Windows asks
+for the administrator's rights, then njMule for the web interface password. Everything about it is
+in [Windows service](../server/windows-service.mdx).
+
+### Unattended installation
+
+`msiexec` installs without any window with `/qn`, for your user unless you add
+`MSIINSTALLPERUSER=""`:
+
+```powershell
+msiexec /i njmule-<version>-windows-x64.msi /qn
+```
+
+## Run from the zip
+
+1. Download `njmule-<version>-windows-x64.zip`.
+2. Unpack it into a folder of your own, such as `C:\Users\you\Apps`: a folder you can write to lets
+   njMule [update itself](../updates.mdx) there.
+3. Open `njmule-gui.exe` in the folder `njmule-<version>-windows-x64`.
+
+The zip holds the same programs as the installer, and adds nothing to the Start menu, the desktop or
+the `PATH`. In a terminal, run the command line from its folder:
+
+```powershell
+.\njmule.exe --help
+```
+
+To keep all of njMule's data beside the programs, on a USB drive for example, put an empty file
+named `portable.flag` next to them: see [Portable mode](../data/portable.mdx).
+
+## SmartScreen
+
+The programs and the installer are not code-signed yet, so Windows SmartScreen may stop them the
+first time with "Windows protected your PC". Choose **More info**, check that the file is the one
+you downloaded, then **Run anyway**. [Verifying the download](verify-downloads.mdx) tells you that
+it is the file the njMule project built.
+
+## Windows on Arm
+
+GraalVM and JavaFX do not support Windows on Arm yet. Install the same x64 package: Windows runs it
+through its x64 emulation.
+
+## Firewall
+
+When njMule first listens on its ports, Windows Defender Firewall may ask whether to allow it. Allow
+it on private networks, so that other clients can reach you; see
+[Ports and firewalls](../network/ports.mdx) for the router.
+
+## ed2k links from the browser
+
+njMule can open the `ed2k://` links you click in a browser. This is off by default, so that it does
+not take them from another program: turn on **Open ed2k links with njMule (from browsers and other
+programs)** in **Options → General**. See [eD2K links](../desktop/ed2k-links.mdx).
+
+## Upgrade
+
+- **Installer**: install a newer MSI the same way; it replaces the old version and keeps your
+  settings and downloads. An older MSI refuses to replace a newer version.
+- **Zip**: unpack the new archive in place of the old one, or let njMule do it.
+
+njMule tells you when a new version is out and can download and install it for you, through
+msiexec for the installer and file by file for the zip: see [Updates](../updates.mdx).
+
+## Uninstall
+
+Uninstall njMule from **Settings → Apps**, as any other program. The uninstaller:
+
+- gives the ed2k links back to the program that opened them before, such as eMule, if njMule
+  still opens them;
+- asks whether to delete your data too (settings, lists, identity and credits, unfinished downloads,
+  caches and logs): tick **Delete my njMule data** to move it to the Recycle Bin, or leave it
+  unticked to keep it for a later installation. It does not ask during an upgrade or a silent
+  uninstall.
+
+Your completed downloads always stay. For the zip, delete its folder; `njmule --remove-profile`
+deletes your profile first, after asking. See [Uninstall](../uninstall.mdx) and
+[Remove your profile](../data/remove-profile.mdx).

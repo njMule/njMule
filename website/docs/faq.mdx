@@ -1,0 +1,241 @@
+---
+title: Frequently asked questions
+description: Short answers to the questions people ask most about njMule, from eMule compatibility and installing to downloads, data and the project.
+toc_max_heading_level: 3
+---
+
+Short answers to the questions people ask most, each with a link to the page that tells more. If
+something does not work as it should, see [Troubleshooting](troubleshooting.mdx); for the words of
+eD2K and Kad, see the [glossary](glossary.mdx).
+
+## About njMule
+
+### What is njMule?
+
+njMule, *Next generation Java Mule*, is a file-sharing client for the eD2K and Kad networks,
+written in Java 25. It comes as a desktop app, as a headless engine with a command line, as a web
+interface you open in a browser and as a JSON remote-control API, all driving the same engine.
+See [Features](features.mdx).
+
+### Is it eMule?
+
+No. njMule is an independent re-implementation of eMule: it follows eMule's protocols, file formats
+and interface texts, so it works on the same networks, but it is a program of its own. It is not
+affiliated with or endorsed by the eMule project. See [License and credits](about/license.mdx).
+
+### Is it free?
+
+Yes. njMule is free software under the GNU General Public License, version 3 or later: you may use
+it for any purpose, study and change its source code and share it. There is no account to create
+and nothing to pay. See [License and credits](about/license.mdx).
+
+### Does it need Java?
+
+No. The packages contain native executables built with GraalVM, so no Java runtime has to be
+installed. Only [building njMule from source](/developer/building) needs a JDK 25.
+
+### Does it work with eMule and aMule?
+
+Yes. njMule speaks eD2K and Kad 2, the protocols of eMule, so it connects to the same eD2K servers
+and the same Kad network, and it exchanges files with eMule, aMule and other compatible clients:
+obfuscation, secure identification, credits, source exchange, AICH recovery and browsing each
+other's shared files included. Other clients show njMule's name and version in their lists. See
+[Servers and Kad](network/servers-and-kad.mdx).
+
+### Which eMule features are missing?
+
+At version `0.0.1-alpha.1`, njMule has no IRC client (none is planned), no eMule collections, no
+preview or recovery of archives, no *Import Parts*, no skins (it has themes instead, see
+[Appearance](desktop/appearance.mdx)) and no category-based A4AF options. The
+[changelog](about/changelog.mdx) lists everything it does.
+
+### Is it safe and legal?
+
+njMule is built to be careful with what comes from the network: every packet, list and file it
+reads is size-limited and checked, updates are signed, and the web interface sits behind a
+password. It asks before sharing a whole drive or a personal folder, and never shares its own
+private folders. Keep in mind that the servers and clients you talk to see your IP address, and
+that [obfuscation](network/obfuscation.mdx) hides the protocol, not what you share.
+
+njMule is a tool for sharing files: whether you may share or download a file depends on the file
+and on the law where you live. Use njMule only for files you have the right to share and download.
+
+## Coming from eMule
+
+### Can I import my eMule data?
+
+Yes. **⋯ → Import from eMule...**, also offered at the first start when an eMule profile is found,
+takes eMule's preferences (nick, limits, networks, obfuscation), servers, Kad contacts, known and
+shared files, the IP filter, categories, friends and searches. On request it also takes eMule's
+identity, with its credits, and copies of the unfinished downloads. It only reads eMule's folder,
+never changes it, and keeps njMule's own ports and folders. See
+[Import from eMule](getting-started/import-emule.mdx).
+
+### Can I keep using eMule?
+
+Yes. The import changes nothing in eMule, which goes on as before. To run both at the same time on
+one computer, give one of them other ports: both use TCP 4662 and UDP 4672 by default. njMule keeps
+an identity of its own unless you asked it to take eMule's; if you did, never run both at once,
+since two clients with one identity spoil their credits. See [Ports and firewalls](network/ports.mdx).
+
+### Can it handle ed2k links?
+
+Yes. Paste them into the field at the top or into **Add links**, drop them on the window, or let
+njMule watch the clipboard (**Watch clipboard for eD2K file links**, off by default). To have links
+clicked in the browser open in njMule, turn on **Open ed2k links with njMule (from browsers and other
+programs)** in **Options → General** on Windows and Linux; turned off, it gives them back to the
+program that had them, such as eMule. On macOS the app takes them by itself. See
+[eD2K links](desktop/ed2k-links.mdx).
+
+## Installing and running
+
+### Which systems does it run on?
+
+Windows x64 (also Windows on Arm, through its x64 emulation), macOS 13 or later on Apple silicon,
+Linux on x64 and arm64, Docker on `linux/amd64` and `linux/arm64`, and Synology DSM 7 on x86_64
+models. There is no package for Intel Macs nor for 32-bit systems. See
+[Requirements](getting-started/requirements.mdx).
+
+### Why does my system warn me?
+
+The executables are not code-signed yet. Windows SmartScreen asks for confirmation (**More info →
+Run anyway**), and macOS blocks the first start of an app that is ad-hoc signed but not notarized
+(**System Settings → Privacy & Security → Open Anyway**). Synology warns that the package is not
+signed by Synology. Each release has a `SHA256SUMS` file signed with minisign and GitHub attestations,
+so you can check that a file is the one the project built: see
+[Verifying downloads](getting-started/verify-downloads.mdx).
+
+### Does it need administrator rights?
+
+Usually not. The Windows installer installs for your user only; installing for all users, or as a
+Windows service, asks for administrator rights. On Linux you install the package with `sudo`, but
+njMule always runs as your own user, never as root. On Synology it runs as a user of its own without
+administrator rights. See [Install on Windows](getting-started/install-windows.mdx) and
+[Install on Linux](getting-started/install-linux.mdx).
+
+### Can it run on a NAS or server?
+
+Yes. `njmule` runs the engine without a window, and you control it from the
+[web interface](web/overview.mdx), the [command line](server/cli.mdx) or another computer's desktop
+app. There is a [Docker image](getting-started/install-docker.mdx), a
+[Synology package](getting-started/install-synology.mdx), a static Linux x64 executable that needs
+no system library, a [Windows service](server/windows-service.mdx) and a
+[systemd user unit](server/linux-service.mdx). See [Headless](server/headless.mdx).
+
+### Can I use it from my phone?
+
+Yes, through the web interface, which has a layout for phones. Turn it on with a password, allow
+other computers to connect (**Let other computers connect (otherwise only this one)** or
+`--webui-lan`), then open the computer's address with port 4711 on the phone, such as
+`http://192.0.2.10:4711/`. The interface is plain HTTP: outside your home network, reach it only
+through a reverse proxy that serves HTTPS. See [Web interface](web/overview.mdx) and
+[Reverse proxy](web/reverse-proxy.mdx).
+
+### How much memory and CPU?
+
+It depends on how much you do: how many files you share and download, and how many sources,
+waiting clients and Kad contacts njMule deals with. The native executables start at once, with no
+Java runtime to load, and the static headless engine uses less memory than the desktop executable
+run headless. Hashing new shared files reads them once, which keeps the processor and the disk busy
+for a while. **Max. connections**, **Max. Sources/File** and **Queue size** in
+**Options → Connection** bound the work. See [Connection options](settings/connection.mdx).
+
+### Is there a portable version?
+
+Yes. Unpack the Windows `.zip` or the Linux `.tar.xz` archive and put an empty file named
+`portable.flag` next to the programs: njMule then keeps everything in a `data` folder beside them,
+for example on a removable drive. See [Portable mode](data/portable.mdx).
+
+### Can it start with my computer?
+
+Yes. **Start njMule when I log in** in **Options → General** (off by default) starts the installed
+desktop app at login. To run njMule before anyone logs in, use the
+[Windows service](server/windows-service.mdx) or the [systemd user unit](server/linux-service.mdx)
+with lingering.
+
+## Using njMule
+
+### Where are my downloads?
+
+Finished files go to the incoming folder, unfinished ones stay in the temporary folder until they
+are complete:
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| Finished | `%USERPROFILE%\Downloads\njMule` | `~/Downloads/njMule` | `~/Downloads/njMule` |
+| Unfinished | `%LOCALAPPDATA%\njMule\temp` | `~/Library/Application Support/njMule/temp` | `~/.local/share/njmule/temp` |
+
+**⋯ → Open Incoming Folder** opens it. Change both in **Options → Directories**; a
+[category](desktop/categories.mdx) can have an incoming folder of its own. See
+[Data locations](data/locations.mdx).
+
+### How do I change the ports?
+
+In **Options → Connection → Ports**, set **Client Port (TCP)** and **UDP**, then choose **Apply and
+reconnect**: njMule listens on the new ports at once and tells the server, Kad and the router. With
+UPnP off, forward the new ports in your router; in Docker, publish them unchanged. See
+[Ports and firewalls](network/ports.mdx).
+
+### Why are downloads slow at first?
+
+On eD2K every client serves a few others at a time and queues the rest, by how long they waited and
+by the credits they earned uploading to it. A new njMule has no credits yet and waits in the
+queues; being reachable from outside (a HighID) and sharing files help. See
+[Downloads stay "Waiting"](troubleshooting.mdx#downloads-stay-waiting).
+
+### Can it open torrents?
+
+No. njMule is a client for eD2K and Kad only. It takes `ed2k://` links and the magnet links that
+carry an eD2K hash (`urn:ed2k:` or `urn:ed2khash:`), not BitTorrent's.
+
+### Can I use it without servers?
+
+Yes. With Kad alone njMule still searches, finds sources and downloads; with eD2K servers alone it
+works too. Turn either network on or off with **Use the eD2K network** and **Use the Kad network**
+in **Options → Connection**. See [Servers and Kad](network/servers-and-kad.mdx).
+
+### Which languages does it speak?
+
+The desktop app and the web interface come in 36 languages, right-to-left ones with a mirrored
+layout, and follow the system's language. Choose another in **Options → General → Language**, then
+**Apply and restart**. To help with a translation, see [Translations](/developer/translations).
+
+## Your data
+
+### How do I back up njMule?
+
+njMule backs up its configuration (settings, lists, identity and credits) by itself, as a dated
+zip at each exit and once a day, in the `backups` folder of its data folder; it keeps the latest
+three (**Configuration backups kept (0 for none)** in **Options → Extended**). The copies do not
+hold your unfinished or finished downloads: copy those folders yourself. See
+[Backups](data/backups.mdx).
+
+### How do I move to another computer?
+
+Quit njMule, copy its profile folders (the configuration and the unfinished downloads, as listed
+in [Data locations](data/locations.mdx)) to the same places on the new computer, then check the
+folders in **Options → Directories** and your shared folders. In portable mode, copy the whole
+folder. Afterwards never run both copies: they share one identity.
+
+### What does njMule send online?
+
+Besides eD2K and Kad, njMule asks GitHub for the update information of the newest version: the
+request carries only njMule's version, and GitHub sees the address it comes from. njMule downloads
+DB-IP's country database once a month only when you choose to see the countries of other clients,
+and fetches server lists, Kad contacts and IP filter lists only from addresses you choose (the
+boxes suggest those of `upd.emule-security.org`). Notifications go only to the mail server or web
+hook you set up. See [Privacy](data/privacy.mdx).
+
+## The project
+
+### How can I help?
+
+Report bugs and ideas on [GitHub](https://github.com/njMule/njMule/issues), improve a
+[translation](/developer/translations) or the code (see [Contributing](/developer/contributing)), or
+support the development on [Buy me a coffee](https://buymeacoffee.com/scoppolap), also linked in the
+sidebar of the desktop app and the web interface.
+
+### Where do I report a bug?
+
+On GitHub, with the bug report form: see [Reporting a bug](troubleshooting.mdx#reporting-a-bug).
+Security problems are reported privately, as the [security policy](about/security.mdx) explains.

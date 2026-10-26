@@ -1,0 +1,83 @@
+---
+title: Developer guide
+description: Who the developer guide is for, the technologies njMule is built with, how the repository is laid out and where to start.
+---
+
+This guide is for you if you want to build njMule from its sources, change it, translate it, package
+it or drive it from your own programs through its remote-control API. If you only want to use
+njMule, the [user guide](/docs/intro) is the place to start.
+
+njMule is a Java 25 re-implementation of eMule's networks (eD2K and Kad 2), compatible with the
+eMule network and licensed under the GPL 3.0 or later. One engine without any user interface
+(`njmule-core`) is driven by a JavaFX desktop app, a command line that also runs it headless, and a
+web interface with a JSON API, all shipped as GraalVM native executables.
+
+## Technology stack
+
+| Area | What njMule uses |
+|---|---|
+| Language and build | Java 25 (JPMS modules), Gradle through the Gradle Wrapper, a convention plugin of its own in `build-logic/` |
+| Engine | virtual threads, Bouncy Castle, Guava, Jackson 3, Eclipse Jetty 12 (HTTP client and server), Kwik (QUIC), Angus Mail (e-mail notifications), semver4j, Apache Commons Compress and XZ for Java (update packages) |
+| Remote-control API | an OpenAPI 3.2 document, validated with the networknt JSON Schema validator, served by Jetty |
+| Command line and logging | picocli, SLF4J with Logback |
+| Desktop app | JavaFX 27 with AtlantaFX themes and RichTextFX, its own SVG line icons |
+| Web interface | Jetty on the server side; the browser app in Vue 3, Vue Router and Element Plus, written in TypeScript and built with Vite |
+| Native executables | GraalVM Community Native Image 25.0.4.1.1 (`native-image`); a small C launcher and service host on Windows |
+| Tests | JUnit (Jupiter) with AssertJ, jqwik for property-based tests, Jimfs, openapi-parser; Vitest with happy-dom for the web app |
+| Quality gates | Spotless with palantir-java-format, Checkstyle, Error Prone, JaCoCo, SpotBugs with FindSecBugs, SonarQube Cloud |
+| Packages | WiX 5 (Windows MSI), nfpm (deb and rpm), `codesign` and `hdiutil` (macOS), a shell script for the Synology package, Docker |
+| Documentation | Docusaurus 3.10 with the OpenAPI docs plugin |
+
+Every library and plugin version lives in one file,
+[`gradle/libs.versions.toml`](https://github.com/njMule/njMule/blob/main/gradle/libs.versions.toml):
+see [Dependencies](dependencies.mdx).
+
+## Repository layout
+
+| Path | Content |
+|---|---|
+| `njmule-core` (module `org.njmule.core`) | the engine: protocols, files, persistence, networking, and the remote-control API; no GUI dependency |
+| `njmule-app` (module `org.njmule.app`) | the headless launcher and command line, the Logback set-up, the Windows service commands |
+| `njmule-gui` (module `org.njmule.gui`) | the JavaFX desktop app with its own SVG line icons, its translations and the native build of the desktop app |
+| `njmule-webui` (module `org.njmule.webui`) | the web interface on Jetty (password, sessions, form tokens); serves the core's remote-control API |
+| `njmule-webapp` | the web interface's browser app (Vue 3, Element Plus, TypeScript, Vite), built into the jar of `njmule-webui` |
+| `njmule-testkit` (module `org.njmule.testkit`) | test doubles shared by the modules (a fake server, a fake peer, free ports) and the end-to-end tests |
+| `njmule-bench` | JMH benchmarks; a classpath build so that it reaches internal core packages; never distributed |
+| `website` | this documentation site (Docusaurus): `docs/` is the user guide, `developer/` this guide |
+| `build-logic/` | the Gradle convention plugin every module applies (`njmule.java-conventions`) |
+| `gradle/` | `libs.versions.toml`, `verification-metadata.xml` and the Gradle Wrapper |
+| `config/` | the license header, the Checkstyle and SpotBugs configuration |
+| `packaging/` | Windows installer (WiX), Linux packages (nfpm), macOS bundle metadata, Docker image, Synology package |
+| `branding/` | original artwork: the master SVG and the PNG, ICO and ICNS files made from it |
+| `tools/` | single-file helper programs (icons, flags, translations, update information) and Docker build scripts |
+| `.github/` | the CI, release and documentation workflows, Dependabot, issue and pull request templates |
+| `LICENSES/` | the texts of every license used in the repository ([REUSE](https://reuse.software)) |
+
+## What each module exports
+
+The Java modules expose only what their `module-info.java` exports:
+
+- **`org.njmule.core`** exports `org.njmule.core.api` (the engine facade, events and application
+  information), `org.njmule.core.config` (preferences and directory layout) and
+  `org.njmule.core.remote` (the remote-control API, which a front end serves on its HTTP server).
+  Everything else is internal; a few codec packages are exported to `org.njmule.testkit` only.
+- **`org.njmule.app`** exports `org.njmule.app` and `org.njmule.app.logging`, and provides njMule's
+  Logback configurator; `org.njmule.app.logging.internal` is not exported.
+- **`org.njmule.webui`** exports `org.njmule.webui`.
+- **`org.njmule.gui`** exports `org.njmule.gui` to `javafx.graphics` only, which starts the app.
+- **`org.njmule.testkit`** exports `org.njmule.testkit`.
+
+`njmule-bench` is not a module, and `njmule-webapp` and `website` are not Java projects.
+
+## Where to start
+
+1. [Build njMule](building.mdx) and run it from the build.
+2. Read the [code style](code-style.mdx) and the [testing rules](testing.mdx): every change keeps
+   to them, and the build checks most of them.
+3. Read [Contributing](contributing.mdx) before you open a pull request.
+4. Pick the page of the area you work on: the [web app](web-app.mdx),
+   [translations](translations.mdx), [native images](native-images.mdx),
+   [packaging](packaging.mdx), [releases](releases.mdx), [benchmarks](benchmarks.mdx) or this
+   [documentation](documentation.mdx).
+5. To drive njMule from a script or another program, read the
+   [remote-control API](api/index.mdx).

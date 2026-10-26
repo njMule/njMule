@@ -1,0 +1,168 @@
+---
+title: Releases
+description: How njMule is versioned, how its changelog, commits, branches and tags are written, and what the release workflow builds, tests, signs and publishes.
+---
+
+A release of njMule is one annotated Git tag. Pushing it starts the release workflow, which builds
+every package on its own system, tests them, signs the update information and the checksums, and
+opens a draft GitHub release that the maintainer publishes by hand. This page explains the
+conventions that lead there and what the workflow does.
+
+## Versioning
+
+njMule follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html), with one source of
+truth: `version` in
+[`gradle.properties`](https://github.com/njMule/njMule/blob/main/gradle.properties).
+
+- `0.y.z` while the features are being completed, `1.0.0` at feature parity.
+- Pre-releases carry `-alpha.N`, `-beta.N` or `-rc.N`.
+- A new feature raises the minor number, a fix the patch number, a breaking change the major
+  number (the minor one while the version is `0.y.z`).
+
+Everything else takes the version from there: the jars' manifests, `njmule --version`, the version
+information of the Windows executables, the packages, and this site's footer. Formats that accept
+numbers only (the MSI, the macOS bundle, the Synology package) get the version without its
+pre-release part.
+
+## The changelog
+
+[`CHANGELOG.md`](https://github.com/njMule/njMule/blob/main/CHANGELOG.md) follows
+[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). Every user-visible change adds an
+entry to the `[Unreleased]` section, under `Added`, `Changed`, `Fixed` or the other headings of
+that format. At a release the section becomes `## [X.Y.Z]`, which the release workflow copies as the
+release notes and builds into the update information.
+
+A `### Security` heading in a release's section marks the release as critical: njMule then offers
+it as an update that cannot be skipped.
+
+## Commits and branches
+
+Commit messages, pull request titles and branch names follow
+[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
+
+```text
+<type>[optional scope][!]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+- **Types**: `feat` (a new feature), `fix` (a bug fix), `build`, `ci`, `docs`, `perf`, `refactor`,
+  `style`, `test`, `chore`, `revert`.
+- **Scopes**: lower-case module or area names: `core`, `api`, `engine`, `protocol`, `net`,
+  `server`, `kad`, `files`, `download`, `upload`, `search`, `persist`, `config`, `security`,
+  `social`, `extras`, `gui`, `webui`, `app`, `testkit`, `bench`, `packaging`, `branding`, `i18n`,
+  `deps`, `docs`, `ci`, `release`.
+- **Description**: imperative mood, lower case, no final period; the header stays within 72
+  characters.
+- **Body**: what changed and why, wrapped at 72 columns.
+- **Footers**: `Token: value`, such as `Refs: #12`, `Closes: #34` or `Signed-off-by: …`.
+- **Breaking changes**: `!` after the type or scope (`feat(api)!: …`) and/or a
+  `BREAKING CHANGE: <text>` footer.
+- One logical change per commit, signed off for the Developer Certificate of Origin
+  (`git commit -s`), as [Contributing](contributing.mdx) explains.
+
+Branches are named `<type>/<short-kebab-case-description>`, with the same types: lower case,
+`a-z0-9-` only, 50 characters at most, for example `fix/server-udp-min-length` or
+`chore/deps-logback-1.6.6`. Pull request titles are Conventional Commits headers, since a pull
+request is squash-merged into `main` with its title as the commit message. Release branches, if
+ever needed, are named `release/vX.Y.Z`.
+
+## Tags
+
+A release tag is **annotated** and named `vX.Y.Z` (with its pre-release part, such as
+`v0.1.0-beta.1`), and it must match `version` in `gradle.properties`: the workflow's first job stops
+the release otherwise.
+
+```bash
+git tag -a v1.2.3 -m "njMule 1.2.3"
+git push origin v1.2.3
+```
+
+## The release workflow
+
+[`.github/workflows/release.yml`](https://github.com/njMule/njMule/blob/main/.github/workflows/release.yml)
+runs in two ways:
+
+| Trigger | What it does |
+|---|---|
+| a pushed tag `vX.Y.Z` | builds and tests every package, pushes the Docker image, and opens a **draft** GitHub release |
+| a manual run | builds and tests every package, kept as workflow artifacts, then runs the end-to-end update tests; nothing is published |
+
+The packaging jobs are described in [Packaging](packaging.mdx#the-release-workflows-packaging-jobs).
+Every native build of a release uses `-O2`, never the quicker `-Ob` of the CI checks.
+
+### The draft release
+
+For a tag, the `release` job collects:
+
+- the packages: the Windows MSI and zip, the Linux deb, rpm and `.tar.xz` for x64 and arm64, the
+  static Linux archive, the macOS disk image and the Synology package;
+- `njmule-<version>-sbom.cdx.json`, the CycloneDX software bill of materials;
+- `njmule-update.json`, made by `tools/UpdateManifest.java`: the version, the release notes from
+  the changelog, whether it is critical, and every package with its platform, kind, size and SHA-256;
+- `SHA256SUMS`, the checksums of all the files;
+- minisign signatures of `njmule-update.json` and `SHA256SUMS`;
+- GitHub build provenance attestations for every file.
+
+The release is created as a draft, marked as a pre-release when the version has a pre-release part,
+with the changelog's section as its notes. Publishing it is a manual step. The same tag pushes the
+Docker image `ghcr.io/njmule/njmule` for both platforms, and publishes this site
+([Documentation](documentation.mdx#deployment)).
+
+### Signing the update information
+
+njMule's update check believes the update information of a release only when it is signed by a key
+built into njMule: [minisign](https://jedisct1.github.io/minisign/), Ed25519 over the BLAKE2b-512
+hash of the file. The public keys are in
+[`keys.pub`](https://github.com/njMule/njMule/blob/main/njmule-core/src/main/resources/org/njmule/core/update/keys.pub):
+the signing key first, then a standby key that replaces it should it ever be lost or leaked.
+
+- The secret key and its password are secrets of the GitHub environment `release`
+  (`MINISIGN_SECRET_KEY`, `MINISIGN_PASSWORD`). The environment's required reviewer approves the
+  `release` job: nothing is signed without the maintainer.
+- After signing, the job verifies both signatures against the keys of `keys.pub` before anything is
+  published.
+- The update check also refuses update information older than one it has already seen.
+
+### End-to-end update tests
+
+A manual run proves that installed copies update themselves to the packages it built. One job makes
+a signing key for that run only and signs update information for the new packages with it. Then, on
+Windows, Linux and macOS, a test build (version `0.0.0-e2e.0`, which trusts that key besides
+njMule's own) is installed, pointed at a local release server (`tools/e2e-update-server.sh`, on
+`127.0.0.1:8765`, through `update.url`) and told to update itself:
+
+- **Windows**: the per-user MSI updates through its launcher and `msiexec`, and the zip by swapping
+  its files;
+- **Linux**: the `.tar.xz` archive swaps its files inside a plain Debian container;
+- **macOS**: the app swaps its whole bundle.
+
+Each test checks the version now installed; those of the zip, the archive and the app also check
+that the old files were kept as `.old`.
+
+## Making a release
+
+1. In `CHANGELOG.md`, turn `[Unreleased]` into the section of the new version; put security fixes
+   under `### Security`.
+2. Set `version` in `gradle.properties` to the new version, and commit both with the scope
+   `release`.
+3. Optionally, run the release workflow by hand on that commit, to see the packages and the update
+   tests pass before you tag.
+4. Push an annotated tag `vX.Y.Z` that matches the version.
+5. Approve the `release` environment when the workflow asks.
+6. Review the draft release, its files and notes, and publish it.
+
+## Verifying a release
+
+Users can check that a download is intact and comes from this repository's release workflow:
+
+```bash
+sha256sum --check --ignore-missing SHA256SUMS
+minisign -Vm SHA256SUMS -P RWQqpSb9M7CwntTJXDrwmcHlrGiA5i1y3EWMX7N2N9yWQMrO+BEz0i38
+gh attestation verify njmule-<version>-windows-x64.msi --repo njMule/njMule
+```
+
+The key in the second command is the first one of `keys.pub`. The user guide explains each step:
+[Verify your download](/docs/getting-started/verify-downloads).

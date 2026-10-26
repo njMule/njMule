@@ -1,0 +1,150 @@
+---
+title: Translations
+description: How njMule's 36 interface languages are organised - eMule's converted texts and njMule's own - and how to fix a text or add a language.
+---
+
+njMule's desktop app and web interface speak 36 languages. Most of their words come from eMule's own
+translations, converted so that the interface keeps eMule's familiar wording; the texts njMule adds
+are translated in the same terms. This page explains where the texts live, how to correct one, and
+everything a new language needs.
+
+## The languages
+
+English, Catalan, Czech, Danish, German, Estonian, Spanish, French, Galician, Italian, Latvian,
+Lithuanian, Hungarian, Dutch, Norwegian Bokmål, Polish, Brazilian and European Portuguese, Romanian,
+Albanian, Slovenian, Finnish, Swedish, Vietnamese, Turkish, Greek, Bulgarian, Russian, Ukrainian,
+Arabic, Persian, Hebrew, Simplified and Traditional Chinese, Japanese and Korean.
+
+Arabic, Persian and Hebrew are written right to left: the window, its dialogs and menus are
+mirrored, while paths, links, hashes, addresses and numbers keep their own direction. Numbers use
+Latin digits in every language.
+
+The desktop app follows the system's language when it is one of these, and English otherwise:
+Norwegian and Nynorsk get Bokmål, Portuguese outside Brazil gets European Portuguese, Chinese in the
+traditional script (or of Taiwan, Hong Kong and Macao) gets Traditional Chinese. The web interface
+picks the best match of the browser's languages.
+
+## Where the texts live
+
+All texts are Java resource bundles in UTF-8, in
+[`njmule-gui/src/main/resources/org/njmule/gui/i18n/`](https://github.com/njMule/njMule/tree/main/njmule-gui/src/main/resources/org/njmule/gui/i18n).
+Each language has two files; `<lang>` is a language code, with the region for the two Portuguese
+and the two Chinese (`pt_BR`, `pt_PT`, `zh_CN`, `zh_TW`):
+
+| File | Keys | What it holds |
+|---|---|---|
+| `emule.properties`, `emule_<lang>.properties` | `IDS_*` | eMule's interface strings and their translations, **generated** from the string tables of eMule's resource scripts by `tools/Rc2Properties.java`. Never edit them by hand: regenerate them |
+| `nj.properties`, `nj_<lang>.properties` | `nj.*`, and `IDS_*` in translations | njMule's own texts, in English and in each language; a translation may also reword some of eMule's texts in that language |
+
+The files without a suffix are English, which is also the fallback: a text missing in a language
+shows in English. The code looks a text up by its key, `texts.t("IDS_DL_FILENAME")` or
+`texts.f("nj.wizard.stepOf", step, steps)` in Java, `t('IDS_…')` or `t('nj.…')` in the
+[web app](web-app.mdx#texts-and-languages); an unknown key shows itself in brackets, `[nj.some.key]`.
+
+For an `IDS_*` key, the language's `nj_<lang>.properties` wins over its `emule_<lang>.properties`
+when it holds the key: that is how a translation rewords one of eMule's texts. The rewordings sit at
+the end of each `nj_<lang>.properties`, under a comment that says why that language rewords them
+(for example, Italian keeps "upload" and "download" in English, as Italian software usually does).
+The English `nj.properties` never holds `IDS_*` keys.
+
+### Regenerating eMule's texts
+
+`Rc2Properties` reads eMule's resource scripts (the English one, then one per language), keeps the
+`IDS_*` string tables, drops the menu mnemonics (`&O`, and `(&O)` in Chinese, Japanese and Korean)
+and turns C format specifiers into Java ones:
+
+```bash
+java tools/Rc2Properties.java <english .rc> njmule-gui/src/main/resources/org/njmule/gui/i18n <lang>=<translated .rc>...
+```
+
+It writes `emule.properties` and one `emule_<lang>.properties` per language given, keeping only the
+keys the English file has, and prints which strings each language lacks.
+
+## Fixing a text
+
+1. Find the key: search the English bundles for the text as it appears.
+2. Choose the file:
+   - **an `nj.*` text**, in any language: edit it in `nj.properties` (English) or in
+     `nj_<lang>.properties`;
+   - **an `IDS_*` text in one language**: add the key with the new wording to that language's
+     `nj_<lang>.properties`, among the rewordings at its end; never edit `emule_<lang>.properties`;
+   - **an `IDS_*` text in English**: the English eMule texts are not reworded. Give the code a new
+     `nj.*` key with the better text instead, translated in every language.
+3. Keep the placeholders (see [Placeholders](#placeholders)).
+4. Run the tests of the desktop app's translations:
+
+   ```bash
+   ./gradlew :njmule-gui:test --tests 'org.njmule.gui.i18n.*'
+   ```
+
+5. Commit with the scope `i18n`, for example
+   `fix(i18n): word the upload counter as the download one in German`.
+
+### A new text
+
+A new `nj.*` key goes into `nj.properties` **and every `nj_<lang>.properties`**: each translation
+must hold exactly the English set of `nj.*` keys, none blank. Write the key literally in the code,
+where the tests find it. For a key the code builds at run time (a prefix and an enum constant), add
+it to `DYNAMIC` in `I18nTest`, so that the test checks it in every language; the web app must name
+such a key in full somewhere in its sources, or its build leaves the text out.
+
+## Placeholders
+
+The texts use Java's format specifiers, filled in with `String.format` in the desktop app and by the
+web app's own `format()`:
+
+| Specifier | Meaning |
+|---|---|
+| `%s`, `%d` | a text, a whole number |
+| `%.1f` | a number with one decimal |
+| `%1$s`, `%2$d` | an argument by its position, to change their order |
+| `%%` | a percent sign |
+
+A translation must keep, for every argument, the same conversion as the English text: it may move
+them around with positions (`%2$s … %1$s`), but not drop, add or change one. The tests compare them
+for every `nj.*` text, every rewording and every `IDS_*` text the code uses. Numbers are formatted
+with the interface language's separators.
+
+## Adding a language
+
+A new language needs eMule's translation of its texts, so that `emule_<lang>.properties` exists.
+Then:
+
+1. **Convert** eMule's translation with `Rc2Properties`, adding `<lang>=<translated .rc>` to the
+   command above.
+2. **Translate** `nj.properties` into a new `nj_<lang>.properties`, every key included, with the
+   SPDX header of the other files. `nj.language` is the language's own name, as the language box
+   shows it ("Deutsch", "Italiano").
+3. **Offer it** in the desktop app: add its `Locale` to `I18n.LANGUAGES` in
+   `njmule-gui/src/main/java/org/njmule/gui/i18n/I18n.java`, after English in the order of the
+   languages' own names, as the list is.
+4. **Offer it** in the web app: add its tag (`pt-BR` style, with a hyphen) to `LANGUAGES` in
+   `njmule-webapp/src/i18n.ts`, in the same place.
+5. **Right to left?** Add its code to `RIGHT_TO_LEFT` in `I18n`, to the list in `loadLanguage()`
+   of `i18n.ts`, and to `WRITTEN_RIGHT_TO_LEFT` of `RightToLeftTextsTest`.
+6. **Update the tests** that list the languages: in `LanguagesTest`, `languages()` (its name and its
+   word for "Language", the text of `IDS_PW_LANG`), the list of
+   `shouldOfferEnglishFirstThenEveryTranslation`, and a case or two of
+   `theSystemLanguagePicksItsTranslationOrEnglish`.
+7. **Update the documents**: the list of languages and their count in the `README.md` and on this
+   page, and an entry in `CHANGELOG.md`.
+
+The rest follows by itself: the web app's build makes a JSON file for every `nj_<lang>.properties`,
+and the native desktop app keeps the date and number formats of every language that has one.
+
+## The tests that guard them
+
+| Test | What it checks |
+|---|---|
+| `LanguagesTest` | the list of languages and its order; each language loads with its own name and eMule's texts; the system's language picks the right translation; every translation has exactly the English `nj.*` keys, none blank, with the same placeholders; each rewording names an existing eMule text; the eMule texts the code uses keep their placeholders in every language |
+| `I18nTest` | every key the Java sources use, plus the `DYNAMIC` ones, has a text in every language; placeholders and fallbacks work |
+| `LanguageNamesTest` | the language box's names match each language's own `nj.language` |
+| `RightToLeftTextsTest` | only Arabic, Persian and Hebrew run right to left; names and numbers keep their direction inside a sentence |
+| `JavaFxTextsTest` | JavaFX's own texts, such as dialog buttons, follow the interface's language, not the system's |
+| `i18n.test.ts` (web app) | placeholders are filled in, and the browser's languages pick a translation or English |
+
+## Related pages
+
+- [Web app](web-app.mdx#texts-and-languages): how the web app uses the keys.
+- [Testing](testing.mdx): running the tests.
+- [Contributing](contributing.mdx): commit messages and pull requests.

@@ -1,0 +1,237 @@
+---
+title: Command line
+description: Every option of the njmule command, grouped by what it does, with examples, exit codes and environment variables.
+---
+
+import CliHelp from '../_generated/cli-help.md';
+
+`njmule` is njMule's command line. Run without a task, it starts the engine
+[headless](./headless.mdx) and keeps it running until you stop it; with a task (a search, a hash,
+an import, a remote command), it does that and exits. It is `njmule.exe` on Windows (on the `PATH`
+after the installer), `/Applications/njMule.app/Contents/MacOS/njmule` on macOS and `njmule` in
+`/usr/bin` with the Linux packages.
+
+The desktop app, `njmule-gui`, takes the same options: started plainly or with ed2k links it opens
+its window (or hands the links to the njMule already running), while a task that ends, such as a
+search, a hash, an import or a remote command, runs as on the command line.
+
+:::tip[Quote the links]
+ed2k links contain `|`, which shells read as a pipe. Always put them in quotes:
+`njmule "ed2k://|file|example.iso|1048576|0123456789ABCDEF0123456789ABCDEF|/"`.
+:::
+
+## The full help
+
+This is what `njmule --help` prints for this version:
+
+<CliHelp />
+
+## Run the engine
+
+| Option | What it does |
+|---|---|
+| (none) | Runs the engine headless until <kbd>Ctrl</kbd>+<kbd>C</kbd>, `SIGTERM` or `njmule --exit` |
+| `--headless` | Runs without a window; it is what `njmule` adds when it starts the desktop app's executable |
+| `--config-dir <dir>` | Keeps all data below `<dir>` (`config`, `data`, `temp`, `cache`, `logs`, `gui`, `incoming`) instead of the system's folders |
+| `--log-level <level>` | `ERROR`, `WARN`, `INFO`, `DEBUG` or `TRACE` for this run, whatever the options say |
+| `--share <dir>...` | Shares these folders too, besides the incoming one, and remembers them |
+| `--add-servers <server.met>` | Adds the servers of another client's `server.met` |
+| `--connect-server <host:port>` | Connects to this server |
+| `--kad-bootstrap <host:port>` | Joins Kad through this node (its UDP port), such as an eMule running nearby |
+
+These options run their task and then keep the engine running:
+
+```bash
+njmule --config-dir /srv/njmule --log-level DEBUG
+njmule --share /data/music /data/books
+njmule --add-servers ~/server.met --connect-server 203.0.113.10:4661
+njmule --kad-bootstrap 192.0.2.20:4672
+```
+
+`--config-dir` works with every other option: give it to each command that should reach that
+profile, such as `njmule --config-dir /srv/njmule --exit`.
+
+## Add downloads
+
+Links given without an option go to the njMule already running on the same configuration, desktop
+or headless, as a browser hands over a clicked link; when none runs, `njmule` starts headless with
+them and keeps running.
+
+```bash
+njmule "ed2k://|file|example.iso|1048576|0123456789ABCDEF0123456789ABCDEF|/"
+```
+
+A file link becomes a download, a server link adds the server, and a server-list or `nodes.dat`
+link takes the servers or Kad contacts found at its address. To download and then exit instead,
+use `--download`.
+
+## Stop a running njMule
+
+```bash
+njmule --exit
+```
+
+Asks the njMule running on this configuration (desktop or headless) to save and exit, and waits
+for it, 30 seconds at most. It fails with exit code 1 when no njMule runs there, or when it still
+runs after that time.
+
+## One-off network tasks
+
+These start the engine, do their task and exit. The engine then makes no connection of its own:
+it connects only as the task asks.
+
+| Option | What it does |
+|---|---|
+| `--search <expression>` | Searches on a server (the one of `--connect-server`, or any known one), prints the results with their links and exits |
+| `--global` | With `--search`: asks every other known server too, over UDP |
+| `--kad` | With `--search`: searches on Kad instead, once it knows enough nodes |
+| `--download <ed2k link>...` | Downloads these files from the sources in their links and, with `--connect-server`, from the server's; prints the progress and exits when each one has finished or failed |
+| `--hello <host:port>` | Says hello to a client, prints its answer and stays connected 30 seconds |
+| `--hash <file>...` | Prints the ed2k link of each file, with its AICH hash, and the hashing speed; needs no engine |
+
+```bash
+njmule --search "lumenos iso"
+njmule --search "lumenos iso" --global
+njmule --search "lumenos" --kad
+njmule --connect-server 203.0.113.10:4661 --download "ed2k://|file|lumenos.iso|…|/"
+njmule --hash ~/Videos/holiday.mkv
+```
+
+A search waits up to 3 minutes for a server login (or for Kad to know enough nodes) and up to 90
+seconds for results, and ends 3 seconds after the last one. Each result is printed as its number
+of sources, its size and its name, with its link on the next line.
+
+## Import from eMule
+
+| Option | What it does |
+|---|---|
+| `--import-emule <dir>` | Takes the servers, Kad contacts, known files, shared folders and preferences from eMule's configuration folder, only reading it, then exits |
+| `--dry-run` | Only tells what would be imported |
+| `--adopt-emule-identity` | Also takes eMule's user hash, key and credits, from the next start of njMule |
+| `--import-downloads` | Also copies eMule's unfinished downloads (paused ones while eMule runs) |
+
+```bash
+njmule --import-emule "D:\eMule\config" --dry-run
+njmule --import-emule "D:\eMule\config" --adopt-emule-identity --import-downloads
+```
+
+Never run eMule and njMule with the same identity at once. See
+[Import from eMule](../getting-started/import-emule.mdx) for what each part does.
+
+## Web interface
+
+| Option | What it does |
+|---|---|
+| `--webui-password` | Asks for a new password twice, turns the interface on from the next start and exits |
+| `--webui-password-file <file>` | Takes the password from the first line of `<file>`: with `--webui-password` it sets it without asking; alone, at every start before running njMule |
+| `--webui-port <port>` | The port (4711 by default) |
+| `--webui-lan` | Lets other computers connect; otherwise only this one |
+| `--webui-host <name>` | A host name the interface answers to besides `localhost` (repeatable, or separated by commas) |
+| `--webui-proxy <address>` | A reverse proxy trusted to name its client in `X-Forwarded-For`: an address, a CIDR block or a range (repeatable, or separated by commas) |
+| `--webui-api` | Lets the remote-control API answer too, to holders of its token |
+
+The last five only come with `--webui-password` or `--webui-password-file`, which set LAN access,
+the host names and the proxies anew each time (what you leave out is turned off; the port and the
+API stay as they were).
+
+```bash
+njmule --webui-password --webui-lan --webui-host nas.local --webui-api
+njmule --webui-password-file /run/secrets/njmule_webui_password --webui-lan
+```
+
+See [Web interface](../web/overview.mdx), [Security](../web/security.mdx) and
+[Reverse proxy](../web/reverse-proxy.mdx).
+
+## Remote control
+
+| Option | What it does |
+|---|---|
+| `--remote <command>...` | Runs a command in the njMule running on this configuration through its API; `--remote help` lists the commands |
+| `--remote-url <url>` | The API of another njMule, as `http://192.0.2.10:4711/api/v1`: with `--remote` the command runs there; without it the desktop app shows that njMule |
+| `--api-token` | Prints the API token, making one if there is none |
+| `--new-api-token` | Replaces the API token, prints the new one and exits; the old one stops working |
+
+`--remote` takes every word after it as the command, so put it last:
+
+```bash
+njmule --remote status
+njmule --config-dir /srv/njmule --remote search kad lumenos
+NJMULE_API_TOKEN=… njmule --remote-url http://192.0.2.10:4711/api/v1 --remote downloads
+```
+
+See [Remote control](./remote-control.mdx) for every command.
+
+## Updates
+
+| Option | What it does |
+|---|---|
+| `--check-update` | Looks for a new version on GitHub, prints it with how to install it, and exits with 0, 100 or 1 (see below) |
+| `--update` | Looks for a new version, downloads it, checks it against its signed information and installs it where njMule may replace itself; elsewhere it tells how. Stop njMule first |
+
+Both start an engine on the configuration, so they work only while no njMule runs on it. With
+njMule running, ask it instead: `njmule --remote update check`. See [Updates](../updates.mdx).
+
+## System
+
+| Option | What it does |
+|---|---|
+| `--service=<action>` | Windows only: `install`, `uninstall`, `start`, `stop` or `status` of the service "njMule" ([Windows service](./windows-service.mdx)) |
+| `--restore-links` | Gives ed2k links back to the program that opened them before the desktop app took them, if it still has them, and exits; the Windows uninstaller runs it |
+| `--remove-profile` | Deletes this profile's settings, lists, identity, unfinished downloads, caches and logs after asking, and exits; the completed downloads stay. Stop njMule first |
+| `--yes` | With `--remove-profile`: does not ask |
+
+```bash
+njmule --remove-profile
+njmule --config-dir /srv/njmule --remove-profile --yes
+```
+
+## Information
+
+| Option | What it does |
+|---|---|
+| `-h`, `--help` | Prints the help |
+| `-V`, `--version` | Prints the version and the license |
+| `--license` | Prints the GNU General Public License |
+| `--warranty` | Prints the warranty disclaimer |
+| `--notice` | Prints the copyright, attribution and third-party notices |
+
+## Combining options
+
+njMule refuses, with a usage error, options that would be silently ignored together:
+
+- `--exit`, `--restore-links`, `--check-update`, `--update` and `--remove-profile` come alone,
+  besides `--config-dir`, `--log-level` and `--headless` (and `--yes` for `--remove-profile`), and
+  never with links.
+- `--global` and `--kad` need `--search`, and not both.
+- `--dry-run`, `--adopt-emule-identity` and `--import-downloads` need `--import-emule`.
+- `--webui-port`, `--webui-lan`, `--webui-host`, `--webui-proxy` and `--webui-api` need
+  `--webui-password` or `--webui-password-file`.
+- `--service` comes alone, besides `--log-level` and, for `install`, the web interface options.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Done; for `--check-update`, this version is the newest; for `--service=status`, the service runs |
+| 1 | Failed: njMule could not start or connect, a download failed, no njMule answered, the check failed; for `--service=status`, the service does not run |
+| 2 | Usage error: an unknown option, a wrong value or a forbidden combination; the help follows the message |
+| 75 | Under systemd only: njMule has put a new version in place and stopped so that the service manager starts it again ([Linux service](./linux-service.mdx#updates)) |
+| 100 | `--check-update`: a newer version is out |
+
+## Environment variables
+
+| Variable | What it does |
+|---|---|
+| `NJMULE_API_TOKEN` | The API token of the other njMule, for `--remote-url` (and for `njmule-gui --remote-url` when no connection is remembered) |
+| `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` | Linux: where the configuration, data, logs and cache go, when set to an absolute path (`njmule` is the folder inside each) |
+| `XDG_DOWNLOAD_DIR` | Linux: the folder in which the completed downloads' folder `njMule` is made; otherwise the one of `~/.config/user-dirs.dirs`, else `~/Downloads` |
+| `NJMULE_INSTALL_KIND` | Set by the Docker image (`docker`), so that the update check tells to pull a new image; leave it alone |
+
+See [Where njMule keeps its files](../data/locations.mdx) for the folders on each system.
+
+## Related pages
+
+- [Running headless](./headless.mdx)
+- [Remote control](./remote-control.mdx)
+- [Web interface](../web/overview.mdx)
+- [Updates](../updates.mdx)

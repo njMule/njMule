@@ -1,0 +1,90 @@
+---
+title: Notification area and app menu
+description: Keep njMule running in the Windows notification area, with its menu, speed limits and the small MiniMule window, and use the application menu on macOS.
+---
+
+On Windows njMule can hide in the **notification area**, next to the clock, instead of the taskbar:
+it keeps downloading and uploading while its window is out of the way. On macOS it takes the
+**application menu** of the system. On Linux the window minimises as usual.
+
+## The notification area (Windows)
+
+**Minimise to the notification area, next to the clock** is on by default (in
+[General options](../settings/general.mdx), under **Startup**; the option shows on Windows only).
+While it is on, minimising the window hides it, and the njMule icon appears in the notification area.
+
+With the window hidden:
+
+- **Rest the pointer** on the icon to see the rates, as `njMule - Download: … | Upload: …`.
+- **Click** the icon to open [MiniMule](#minimule), a small window with njMule at a glance.
+- **Double-click** the icon to bring the main window back.
+- **Right-click** the icon to open [its menu](#the-menu-of-the-icon).
+- The [messages](./interface.mdx#messages) of njMule, such as a finished download or a new chat
+  message, show as notifications of the icon.
+
+When the window comes back, the icon goes. If Windows cannot show the icon, the window comes back by
+itself.
+
+### Starting hidden
+
+Turn on **Start minimized** (also under **Startup**, off by default) to start njMule out of sight: in
+the notification area while minimising goes there, or minimised on the taskbar otherwise. Together
+with **Start njMule when I log in**, njMule then runs in the background from the moment you log in.
+
+### The menu of the icon
+
+A right click on the icon opens njMule's menu:
+
+<Screenshot
+    id="tray-menu"
+    alt="The menu of the notification area icon: njMule on the brand's blue with Connected and the rates, Speed limits with the Download and Upload sliders and the buttons Full speed and Slow down, then Show njMule, Disconnect, Options and Quit njMule"
+    caption="The menu of the notification area icon"
+    width={320}
+/>
+
+- **The head** names njMule with its state and its rates, as `Connected · ↓ 1.26 MB/s · ↑ 95.8 KB/s`.
+- **Speed limits**: the **Download** and **Upload** sliders, with **Full speed** and **Slow down**,
+  as under the rates of the top bar; see [Speed limits](./interface.mdx#speed-limits).
+- **Show njMule** (the default, in bold) brings the window back.
+- **Connect** or **Disconnect**: only the one that applies shows. It connects to an eD2K server, or
+  leaves it; Kad is started and stopped from the window.
+- **Options** brings the window back on the options.
+- **Quit njMule** ends njMule, asking first unless you turned the question off; see
+  [Closing the window](./interface.mdx#closing-the-window).
+
+The menu closes when you click elsewhere or press <kbd>Esc</kbd>.
+
+### MiniMule
+
+A click on the icon opens **MiniMule** in the corner of the screen, over the other windows:
+
+<Screenshot
+    id="minimule"
+    alt="MiniMule: Connected with a dot, Download 1.26 MB/s, a small graph of the rates, Upload 95.8 KB/s, Completed 0, Free Space 1.05 TB, and the buttons Open Incoming Folder, Options and Show njMule"
+    caption="MiniMule"
+    width={300}
+/>
+
+- **Connected** or **Not Connected**, with a dot.
+- **Download** and **Upload**: the rates, with their last half minute drawn between them.
+- **Completed**: the downloads finished since njMule started.
+- **Free Space**: the room left on the disk of the incoming folder.
+- **Open Incoming Folder**, **Options** and **Show njMule**.
+
+It is read again every second while it is open.
+
+## The application menu (macOS)
+
+On macOS the items of the application menu lead into njMule:
+
+- **About njMule** opens njMule's About window.
+- **Settings…** opens the options.
+- **Quit njMule** asks first, as closing the window does, unless you turned the question off.
+
+The shortcuts of the window use <kbd>Cmd</kbd> on macOS: see
+[Keyboard shortcuts](./keyboard-shortcuts.mdx).
+
+## Related pages
+
+- [The main window](./interface.mdx)
+- [General options](../settings/general.mdx)
