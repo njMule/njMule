@@ -36,11 +36,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
     </picture>
 </p>
 
-> [!WARNING]
-> **Pre-alpha (`0.0.1-alpha.1`).** No release has been published yet: the packages described
-> below are produced by the release workflow and will be attached to the first
-> [GitHub release](https://github.com/njMule/njMule/releases). Features and settings may still
-> change before 1.0.0.
+> [!NOTE]
+> **First release (`0.1.0`).** njMule works on the eD2K and Kad networks today; its features and
+> settings may still change before 1.0.0. The packages are on the
+> [releases page](https://github.com/njMule/njMule/releases).
 
 ## Overview
 

@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-26
+
 The first release of njMule, a new client for the eD2K and Kad networks written in Java 25, which
 works with eMule and the other clients of the network.
 
