@@ -359,8 +359,9 @@ public final class SharedFiles implements AutoCloseable {
             throw new IllegalArgumentException("a file named " + name + " is not shared");
         }
         Path target = file.path().resolveSibling(name);
-        if (target.equals(file.path())) {
-            // Only the case changes, which a system that ignores it does not see as a move: through another name.
+        if (target.equals(file.path()) || (Files.exists(target) && Files.isSameFile(file.path(), target))) {
+            // Only the case changes, which a system that ignores it does not see as a move, and Java not as another
+            // file where paths keep their case (macOS): through another name.
             Path step = AtomicFiles.tmpPath(target);
             Files.move(file.path(), step);
             try {
