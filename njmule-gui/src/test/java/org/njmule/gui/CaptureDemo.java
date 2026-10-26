@@ -16,6 +16,12 @@
  */
 package org.njmule.gui;
 
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -34,10 +40,12 @@ import java.util.OptionalInt;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import javax.imageio.ImageIO;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
+import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.FileHistory;
@@ -459,14 +467,19 @@ final class CaptureDemo {
     }
 
     static EngineStatus status() {
+        return status(1_322_500, 98_100);
+    }
+
+    // The status with the rates of this moment, in bytes a second.
+    static EngineStatus status(long down, long up) {
         return new EngineStatus(
                 Optional.of(server(0)),
                 0x17643C6AL,
                 false,
                 true,
                 Optional.of(kad()),
-                1_322_500,
-                98_100,
+                down,
+                up,
                 2_576_980_378L,
                 640_942_080L,
                 11,
@@ -685,7 +698,7 @@ final class CaptureDemo {
         return List.of(
                 new LogLine(now, LogLine.Level.INFO, "njMule started"),
                 new LogLine(now.plusSeconds(1), LogLine.Level.INFO, "26 shared files in 3 folders"),
-                new LogLine(now.plusSeconds(2), LogLine.Level.DEBUG, "UPnP: no router found"),
+                new LogLine(now.plusSeconds(2), LogLine.Level.DEBUG, "UPnP, NAT-PMP and PCP: no router answered"),
                 new LogLine(now.plusSeconds(3), LogLine.Level.INFO, "Connecting to Lighthouse (203.0.113.10:4661)…"),
                 new LogLine(now.plusSeconds(5), LogLine.Level.SUCCESS, "Connected to Lighthouse with a high ID"),
                 new LogLine(now.plusSeconds(9), LogLine.Level.INFO, "Kad: connected, 1243 contacts"),
@@ -748,18 +761,79 @@ final class CaptureDemo {
                 true,
                 List.of(
                         new ImportReport.Item(
-                                "preferences.ini", ImportReport.Outcome.WOULD_IMPORT, "nick, ports, limits, folders"),
-                        new ImportReport.Item("server.met", ImportReport.Outcome.WOULD_IMPORT, "214 server"),
-                        new ImportReport.Item("known.met", ImportReport.Outcome.WOULD_IMPORT, "1208 known files"),
+                                "preferences.ini",
+                                ImportReport.Outcome.WOULD_IMPORT,
+                                List.of(phrase("nj.import.d.preferences"), phrase("nj.import.d.portsOurs"))),
                         new ImportReport.Item(
-                                "clients.met", ImportReport.Outcome.WOULD_IMPORT, "credits of 3402 clients"),
+                                "server.met",
+                                ImportReport.Outcome.WOULD_IMPORT,
+                                List.of(phrase("nj.import.d.servers", 214))),
                         new ImportReport.Item(
-                                "cryptkey.dat", ImportReport.Outcome.SKIPPED, "identity: only when asked"),
-                        new ImportReport.Item("nodes.dat", ImportReport.Outcome.WOULD_IMPORT, "512 Kad contacts"),
-                        new ImportReport.Item("ipfilter.dat", ImportReport.Outcome.MISSING, ""),
-                        new ImportReport.Item("Category.ini", ImportReport.Outcome.WOULD_IMPORT, "3 categories"),
+                                "known.met",
+                                ImportReport.Outcome.WOULD_IMPORT,
+                                List.of(phrase("nj.import.d.knownFiles", 1208))),
+                        new ImportReport.Item(
+                                "clients.met",
+                                ImportReport.Outcome.WOULD_IMPORT,
+                                List.of(phrase("nj.import.d.credits", 3402))),
+                        new ImportReport.Item(
+                                "cryptkey.dat",
+                                ImportReport.Outcome.SKIPPED,
+                                List.of(phrase("nj.import.d.ownIdentity"))),
+                        new ImportReport.Item(
+                                "nodes.dat",
+                                ImportReport.Outcome.WOULD_IMPORT,
+                                List.of(phrase("nj.import.d.kadContacts", 512))),
+                        new ImportReport.Item("ipfilter.dat", ImportReport.Outcome.MISSING, List.of()),
+                        new ImportReport.Item(
+                                "Category.ini",
+                                ImportReport.Outcome.WOULD_IMPORT,
+                                List.of(phrase("nj.import.d.categories", 3))),
                         new ImportReport.Item("staticservers.dat", ImportReport.Outcome.FAILED, "line 4 unreadable")),
                 false);
+    }
+
+    private static ImportReport.Phrase phrase(String key, Object... args) {
+        return ImportReport.Phrase.of(key, args);
+    }
+
+    // What only events tell: the connection, the log, what the server said and the chats, one of them asking for a
+    // CAPTCHA.
+    static List<EngineEvent> events() {
+        List<EngineEvent> events = new ArrayList<>();
+        events.add(new EngineEvent.ServerConnecting(server(0)));
+        for (LogLine line : log()) {
+            events.add(new EngineEvent.Log(line));
+        }
+        events.add(new EngineEvent.ServerConnected(server(0), 0x17643C6AL, false, true));
+        events.add(new EngineEvent.ServerMessage(server(0), "Welcome to Lighthouse! Rules: no fake files, no spam."));
+        events.add(new EngineEvent.MessageReceived(
+                "203.0.113.33:4672", hash("f1"), Optional.of("Owl"), "Hi! Do you have the 4K one too?"));
+        events.add(new EngineEvent.MessageReceived(
+                "203.0.113.33:4672", hash("f1"), Optional.of("Owl"), "Thanks for Harbor Lights :)"));
+        events.add(new EngineEvent.MessageReceived(
+                "198.51.100.77:4662", hash("x9"), Optional.of("Fog"), "May I add you as a friend?"));
+        events.add(new EngineEvent.CaptchaRequested("192.0.2.99:4662", hash("c9"), captcha()));
+        return events;
+    }
+
+    private static byte[] captcha() {
+        BufferedImage img = new BufferedImage(120, 36, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = img.createGraphics();
+        g.setColor(new Color(0xEEEEEE));
+        g.fillRect(0, 0, 120, 36);
+        g.setColor(new Color(0x334455));
+        g.setFont(g.getFont().deriveFont(22f));
+        g.drawString("K7Q2M", 18, 27);
+        g.drawLine(5, 20, 115, 12);
+        g.dispose();
+        ByteArrayOutputStream bmp = new ByteArrayOutputStream();
+        try {
+            ImageIO.write(img, "bmp", bmp);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return bmp.toByteArray();
     }
 
     static Map<String, Engines.Command> commands(Path dir) {

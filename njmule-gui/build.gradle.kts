@@ -90,12 +90,98 @@ tasks.distTar {
 // native libraries under build/javafx-cache (FxTesting). The capture tour (CaptureTour) pictures the
 // interface only when given a folder: -Pnjmule.capture=build/gui-capture, optionally
 // -Pnjmule.capture.sets=it-light-full,...
-tasks.test {
+tasks.withType<Test>().configureEach {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
     systemProperty("glass.platform", "Headless")
     systemProperty("prism.order", "sw")
     systemProperty("njmule.snapshots", layout.buildDirectory.dir("gui-snapshots").get().asFile.path)
     systemProperty("njmule.javafx.cache", layout.buildDirectory.dir("javafx-cache").get().asFile.path)
+}
+
+// The pictures of the documentation (website/): the capture tour on its example data, light and dark, and the
+// screens in high contrast, each picture named by what it shows. → build/docs-captures/<set>/<name>.png
+val docsCapturesDir = layout.buildDirectory.dir("docs-captures")
+val docsCaptures =
+    tasks.register<Test>("docsCaptures") {
+        description = "Pictures the desktop app for the documentation."
+        group = "documentation"
+        testClassesDirs = sourceSets.test.get().output.classesDirs
+        classpath = sourceSets.test.get().runtimeClasspath
+        filter { includeTestsMatching("*CaptureTour") }
+        maxParallelForks = 1
+        systemProperty("njmule.capture", docsCapturesDir.get().asFile.path)
+        systemProperty("njmule.capture.sets", "en-light-docs,en-dark-docs,en-contrast-screens")
+        systemProperty("njmule.capture.stable", "true")
+        // The pictures show the profile's folders: outside Windows a plain path that names nobody.
+        if (!System.getProperty("os.name").lowercase().startsWith("windows")) {
+            systemProperty("njmule.capture.profiles", "/tmp/njmule-docs")
+        }
+        outputs.dir(docsCapturesDir)
+        // Stable names are free only in an empty folder.
+        val folder = docsCapturesDir.get().asFile
+        doFirst { folder.deleteRecursively() }
+    }
+
+// How to start the web interface on the same example data (WebCaptureDemo) for the documentation's pictures of
+// the web app: the Java launcher and an argument file with the class path. → build/web-capture/launcher.json
+@CacheableTask
+abstract class WebCaptureLauncher : DefaultTask() {
+    @get:Classpath
+    abstract val classpath: ConfigurableFileCollection
+
+    @get:Nested
+    abstract val launcher: Property<JavaLauncher>
+
+    @get:OutputDirectory
+    abstract val output: DirectoryProperty
+
+    @TaskAction
+    fun write() {
+        val dir = output.get().asFile
+        dir.mkdirs()
+        // Forward slashes, quoted: an argument file reads backslashes as escapes.
+        val path = classpath.files.joinToString(File.pathSeparator) { it.invariantSeparatorsPath }
+        val args = dir.resolve("java.args")
+        args.writeText(
+            listOf(
+                    "-cp",
+                    "\"$path\"",
+                    "-Dfile.encoding=UTF-8",
+                    "-Djava.awt.headless=true",
+                    "-Dnjmule.upnp.disabled=true",
+                    "-Dnjmule.defaultlists.disabled=true",
+                    "-Dnjmule.update.disabled=true",
+                    "org.njmule.gui.WebCaptureDemo",
+                )
+                .joinToString("\n", postfix = "\n")
+        )
+        val executable = launcher.get().executablePath.asFile.invariantSeparatorsPath
+        dir.resolve("launcher.json")
+            .writeText("{\"java\": \"$executable\", \"args\": \"${args.invariantSeparatorsPath}\"}\n")
+    }
+}
+
+val webCaptureArgs =
+    tasks.register<WebCaptureLauncher>("webCaptureArgs") {
+        description = "Writes how to start the web interface on example data, for the documentation."
+        group = "documentation"
+        classpath.from(sourceSets.test.get().runtimeClasspath)
+        launcher = javaToolchains.launcherFor(java.toolchain)
+        output = layout.buildDirectory.dir("web-capture")
+    }
+
+// Both, for the documentation website (website/build.gradle.kts).
+val docsScreenshots =
+    configurations.consumable("docsScreenshots") {
+        attributes { attribute(Usage.USAGE_ATTRIBUTE, objects.named("njmule-docs-screenshots")) }
+    }
+val webCapture =
+    configurations.consumable("webCapture") {
+        attributes { attribute(Usage.USAGE_ATTRIBUTE, objects.named("njmule-web-capture")) }
+    }
+artifacts {
+    add(docsScreenshots.name, docsCapturesDir) { builtBy(docsCaptures) }
+    add(webCapture.name, webCaptureArgs.flatMap { it.output }) { builtBy(webCaptureArgs) }
 }
 
 // Native executable of the desktop app with GraalVM (GRAALVM_HOME), from the module path:

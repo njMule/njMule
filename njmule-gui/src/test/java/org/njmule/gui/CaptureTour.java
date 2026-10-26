@@ -22,7 +22,7 @@ import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -31,6 +31,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -42,6 +43,7 @@ import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Bounds;
@@ -88,7 +90,6 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
-import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.config.AppDirectories;
@@ -117,9 +118,11 @@ import org.njmule.testkit.FreePorts;
 
 /**
  * Pictures every screen, tab, menu, sub-menu, context menu, drop-down list, column menu, icon-button tooltip and dialog
- * of the interface, with example data, for reviews of its design. Runs only when asked: {@code ./gradlew
- * :njmule-gui:test --tests CaptureTour -Pnjmule.capture=build/gui-capture}; {@code -Pnjmule.capture.sets} picks the
- * sets (see {@link #SETS}).
+ * of the interface, with example data, for reviews of its design and for the documentation. Runs only when asked:
+ * {@code ./gradlew :njmule-gui:test --tests CaptureTour -Pnjmule.capture=build/gui-capture};
+ * {@code -Pnjmule.capture.sets} picks the sets (see {@link #SETS}) and {@code -Pnjmule.capture.stable=true} names each
+ * picture by what it shows alone, without its number, as the documentation refers to them ({@code ./gradlew
+ * :njmule-gui:docsCaptures}).
  */
 @Timeout(1800)
 @EnabledIfSystemProperty(named = "njmule.capture", matches = ".+")
@@ -128,8 +131,8 @@ class CaptureTour {
     /**
      * The sets pictured unless {@code njmule.capture.sets} lists others: language, then light, dark or contrast (a dark
      * high contrast scheme of the system), then {@code full} for everything or {@code screens} for the screens and
-     * their tabs, {@code empty} for a disconnected profile without data, or {@code readme} for the transfers alone once
-     * the messages of the start have gone.
+     * their tabs, {@code empty} for a disconnected profile without data, {@code readme} for the transfers alone once
+     * the messages of the start have gone, or {@code docs} for the README's picture and then everything.
      */
     static final String SETS = "it-light-full,it-dark-screens,en-light-screens,ar-light-screens,it-light-empty";
 
@@ -154,6 +157,7 @@ class CaptureTour {
     Path dir;
 
     private Path out;
+    private Path profiles;
     private List<String> sets;
     private NjMuleEngine engine;
     private EngineModel model;
@@ -162,6 +166,7 @@ class CaptureTour {
     private Stage stage;
     private String set;
     private int counter;
+    private boolean stable;
     private final List<String> index = new ArrayList<>();
     private final List<String> missed = new ArrayList<>();
     private final Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -186,6 +191,10 @@ class CaptureTour {
         System.setProperty(SystemIcons.PROPERTY, "false");
         String asked = System.getProperty("njmule.capture.sets", "");
         this.sets = List.of((asked.isBlank() ? SETS : asked).split(","));
+        this.stable = Boolean.getBoolean("njmule.capture.stable");
+        // The documentation's pictures show the profile's folders: a plain path instead of the test's own.
+        String plain = System.getProperty("njmule.capture.profiles", "");
+        this.profiles = plain.isBlank() ? this.dir : Files.createDirectories(Path.of(plain));
         FxTesting.start();
     }
 
@@ -199,7 +208,10 @@ class CaptureTour {
             if ("full".equals(depth)) {
                 everything();
             } else if ("readme".equals(depth)) {
-                readme();
+                readme("transfers");
+            } else if ("docs".equals(depth)) {
+                readme("transfers-sources");
+                everything();
             } else {
                 screens("screens".equals(depth));
             }
@@ -220,7 +232,8 @@ class CaptureTour {
         this.set = name;
         this.counter = 0;
         this.seen.clear();
-        Path root = this.dir.resolve(name);
+        Path root = this.profiles.equals(this.dir) ? this.dir.resolve(name) : this.profiles.resolve("njMule");
+        deleteTree(root);
         AppDirectories dirs = AppDirectories.underRoot(root, true);
         Files.createDirectories(dirs.config());
         Files.createDirectories(dirs.gui());
@@ -333,24 +346,15 @@ class CaptureTour {
         });
     }
 
-    // What only events tell: the connection, the log, the chats and ten minutes of rates.
+    // What only events tell (the demo's events and a reply to the first chat) and ten minutes of rates.
     private void feed() throws Exception {
-        this.model.onNext(new EngineEvent.ServerConnecting(CaptureDemo.server(0)));
-        for (LogLine line : CaptureDemo.log()) {
-            this.model.onNext(new EngineEvent.Log(line));
+        for (EngineEvent event : CaptureDemo.events()) {
+            this.model.onNext(event);
+            if (event instanceof EngineEvent.MessageReceived m && m.text().startsWith("Thanks")) {
+                FxTesting.onFx(() -> this.model.sendMessage(
+                        "203.0.113.33:4672", "You're welcome! The 4K one is in my shared files."));
+            }
         }
-        this.model.onNext(new EngineEvent.ServerConnected(CaptureDemo.server(0), 0x17643C6AL, false, true));
-        this.model.onNext(new EngineEvent.ServerMessage(
-                CaptureDemo.server(0), "Welcome to Lighthouse! Rules: no fake files, no spam."));
-        this.model.onNext(new EngineEvent.MessageReceived(
-                "203.0.113.33:4672", CaptureDemo.hash("f1"), Optional.of("Owl"), "Hi! Do you have the 4K one too?"));
-        this.model.onNext(new EngineEvent.MessageReceived(
-                "203.0.113.33:4672", CaptureDemo.hash("f1"), Optional.of("Owl"), "Thanks for Harbor Lights :)"));
-        FxTesting.onFx(
-                () -> this.model.sendMessage("203.0.113.33:4672", "You're welcome! The 4K one is in my shared files."));
-        this.model.onNext(new EngineEvent.MessageReceived(
-                "198.51.100.77:4662", CaptureDemo.hash("x9"), Optional.of("Fog"), "May I add you as a friend?"));
-        this.model.onNext(new EngineEvent.CaptchaRequested("192.0.2.99:4662", CaptureDemo.hash("c9"), captcha()));
         FxTesting.onFx(() -> {
             long start = Instant.now().getEpochSecond() - 600;
             for (int i = 0; i < 600; i++) {
@@ -362,27 +366,24 @@ class CaptureTour {
         });
     }
 
-    private static byte[] captcha() throws IOException {
-        BufferedImage img = new BufferedImage(120, 36, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = img.createGraphics();
-        g.setColor(new Color(0xEEEEEE));
-        g.fillRect(0, 0, 120, 36);
-        g.setColor(new Color(0x334455));
-        g.setFont(g.getFont().deriveFont(22f));
-        g.drawString("K7Q2M", 18, 27);
-        g.drawLine(5, 20, 115, 12);
-        g.dispose();
-        ByteArrayOutputStream bmp = new ByteArrayOutputStream();
-        ImageIO.write(img, "bmp", bmp);
-        return bmp.toByteArray();
-    }
-
     private void close() throws Exception {
         FxTesting.onFx(() -> List.copyOf(Window.getWindows()).forEach(Window::hide));
         this.forMessages.set(null);
         this.model.close();
         this.engine.close();
         I18n.makeDefault(this.systemLanguage);
+        if (!this.profiles.equals(this.dir)) {
+            deleteTree(this.profiles.resolve("njMule"));
+            deleteTree(this.profiles.resolve("eMule"));
+        }
+    }
+
+    private static void deleteTree(Path root) throws IOException {
+        if (Files.exists(root)) {
+            try (Stream<Path> files = Files.walk(root)) {
+                files.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+            }
+        }
     }
 
     // ---------------------------------------------------------------- plans
@@ -399,7 +400,7 @@ class CaptureTour {
     }
 
     // The picture of the README: no message over the lists, and the table at its whole width.
-    private void readme() throws Exception {
+    private void readme(String slug) throws Exception {
         Thread.sleep(MESSAGES_GONE.toMillis());
         fx(() -> {
             this.window.show("transfers");
@@ -410,7 +411,7 @@ class CaptureTour {
             CaptureAccess.openOntoSources(
                     (TransfersScreen) this.window.screen("transfers").orElseThrow(), 0);
         });
-        shot("transfers", "The transfers, for the README");
+        shot(slug, "The transfers, for the README");
     }
 
     private void everything() throws Exception {
@@ -787,7 +788,7 @@ class CaptureTour {
 
     private void dialogs() throws Exception {
         window("dialog-about", "About njMule", () -> new AboutDialog(this.gui, this.stage).show(), w -> {});
-        Path emule = Files.createDirectories(this.dir.resolve("eMule").resolve("config"));
+        Path emule = Files.createDirectories(this.profiles.resolve("eMule").resolve("config"));
         // The first start, page by page, with an eMule found.
         for (int page = 0; page < 5; page++) {
             int nexts = page;
@@ -1400,8 +1401,16 @@ class CaptureTour {
     }
 
     private void save(String slug, BufferedImage image, String what) throws IOException {
+        Path folder = Files.createDirectories(this.out.resolve(this.set));
         String file = String.format(Locale.ROOT, "%03d-%s.png", ++this.counter, slug);
-        Path target = Files.createDirectories(this.out.resolve(this.set)).resolve(file);
+        if (this.stable) {
+            // The same thing pictured again (a screen opened twice) gets the next free number after its name.
+            file = slug + ".png";
+            for (int again = 2; Files.exists(folder.resolve(file)); again++) {
+                file = slug + "-" + again + ".png";
+            }
+        }
+        Path target = folder.resolve(file);
         ImageIO.write(image, "png", target.toFile());
         this.index.add(this.set + "\t" + file + "\t" + image.getWidth() + "x" + image.getHeight() + "\t" + what);
     }
