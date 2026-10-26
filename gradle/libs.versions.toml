@@ -38,7 +38,7 @@ jsvg = "2.2.0"
 # Build tooling
 checkstyle = "14.3.0"
 palantir-java-format = "2.102.0"
-errorprone = "2.50.0"
+errorprone = "2.51.0"
 spotbugs = "4.10.5"
 findsecbugs = "1.14.0"
 jacoco = "0.8.15"
