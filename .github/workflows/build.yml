@@ -6,13 +6,18 @@ on:
     push:
         branches: [main]
     pull_request:
+    # Once a week everything, the Synology package included: what changes outside the repository (runner images,
+    # downloads, toolchains) breaks there first.
+    schedule:
+        - cron: "23 4 * * 1"
 
 permissions:
     contents: read
 
 jobs:
     # Changes that cannot affect the build (documents, repository metadata, branding sources, local
-    # tools) skip the build jobs; skipped jobs count as passed, so such commits and PRs stay green.
+    # tools) skip the build jobs; skipped jobs count as passed, so such commits and PRs stay green. The
+    # weekly run takes no filter and builds everything.
     changes:
         name: detect changes
         runs-on: ubuntu-latest
@@ -20,11 +25,13 @@ jobs:
             contents: read
             pull-requests: read
         outputs:
-            build: ${{ steps.filter.outputs.build }}
-            workflows: ${{ steps.filter.outputs.workflows }}
+            build: ${{ github.event_name == 'schedule' || steps.filter.outputs.build == 'true' }}
+            workflows: ${{ steps.filter.outputs.workflows == 'true' }}
+            static: ${{ github.event_name == 'schedule' || steps.filter.outputs.static == 'true' }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+              if: github.event_name != 'schedule'
               id: filter
               with:
                   predicate-quantifier: every
@@ -47,6 +54,19 @@ jobs:
                           - '!tools/**'
                       workflows:
                           - '.github/workflows/**'
+                      # What can break the static executable and its package rather than the code: the build,
+                      # the dependencies and GraalVM, the native configuration, the package's files.
+                      static:
+                          - 'gradle/**'
+                          - 'gradle.properties'
+                          - '**/*.gradle.kts'
+                          - '**/*.lockfile'
+                          - 'build-logic/**'
+                          - '**/META-INF/native-image/**'
+                          - 'packaging/synology/**'
+                          - 'branding/generated/**'
+                          - 'tools/native-static-docker.sh'
+                          - '.github/workflows/build.yml'
 
     verify:
         name: verify (${{ matrix.os }})
@@ -55,7 +75,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                os: [ubuntu-latest, windows-latest]
+                os: [ubuntu-latest, windows-latest, macos-latest]
         runs-on: ${{ matrix.os }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -182,6 +202,89 @@ jobs:
               if: always()
               run: ./gradlew --stop
 
+    # macOS is built and tested here too: the release would otherwise be the first to try it.
+    native-macos:
+        name: native image (macos-arm64)
+        needs: changes
+        if: needs.changes.outputs.build == 'true'
+        runs-on: macos-latest
+        env:
+            GRAALVM_URL: https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-25.4.4.1.1/graalvm-community-jdk-25i4-25.0.4.1.1_macos-aarch64_bin.tar.gz
+            GRAALVM_SHA256: 4ec9932aa4aab1afca0ea31982d32d6f956615c61fe21a227b49756b25adda4f
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - name: Install GraalVM
+              run: |
+                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_URL"
+                  echo "$GRAALVM_SHA256  $RUNNER_TEMP/graalvm.tar.gz" | shasum -a 256 -c -
+                  mkdir -p "$RUNNER_TEMP/graalvm"
+                  tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
+                  echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm/Contents/Home" >> "$GITHUB_ENV"
+                  echo "JAVA_HOME=$RUNNER_TEMP/graalvm/Contents/Home" >> "$GITHUB_ENV"
+            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+              with:
+                  cache-provider: basic
+            - name: Build the native executable
+              run: ./gradlew :njmule-app:nativeCompile '-Pnative.optimization=-Ob'
+            - name: Smoke test
+              run: |
+                  njmule-app/build/native/nativeCompile/njmule --version
+                  njmule-app/build/native/nativeCompile/njmule --license | grep -q "GNU GENERAL PUBLIC LICENSE"
+
+    # The static executable of the Synology package, linked with musl, and the package around it; only when what
+    # can break them changes, and weekly.
+    synology:
+        name: synology package (x86_64)
+        needs: changes
+        if: needs.changes.outputs.static == 'true'
+        runs-on: ubuntu-24.04
+        env:
+            GRAALVM_URL: https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-25.4.4.1.1/graalvm-community-jdk-25i4-25.0.4.1.1_linux-x64_bin.tar.gz
+            GRAALVM_SHA256: 05ccbbe783210b6886ff7b08fcd0b061c5dce4852b05db87284fc0e24abb08e2
+            MUSL_URL: https://gds.oracle.com/download/bfs/archive/musl-toolchain-1.2.5-oracle-00001-linux-amd64.tar.gz
+            MUSL_SHA256: 77a60e1d31303f214e1c9d8e5843abcce2743a0c6f6b436e251f69a3161801ad
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - name: Install GraalVM and the musl toolchain
+              run: |
+                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_URL"
+                  echo "$GRAALVM_SHA256  $RUNNER_TEMP/graalvm.tar.gz" | sha256sum -c -
+                  mkdir -p "$RUNNER_TEMP/graalvm"
+                  tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
+                  echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm" >> "$GITHUB_ENV"
+                  echo "JAVA_HOME=$RUNNER_TEMP/graalvm" >> "$GITHUB_ENV"
+                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/musl.tar.gz" "$MUSL_URL"
+                  echo "$MUSL_SHA256  $RUNNER_TEMP/musl.tar.gz" | sha256sum -c -
+                  tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/musl.tar.gz"
+                  echo "$RUNNER_TEMP/musl-toolchain/bin" >> "$GITHUB_PATH"
+            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+              with:
+                  cache-provider: basic
+            - name: Build the static executable
+              run: ./gradlew :njmule-app:nativeCompile '-Pnative.static=musl' '-Pnative.optimization=-Ob'
+            # Static, or it would not start on DSM's old glibc.
+            - name: Smoke test
+              run: |
+                  exe=njmule-app/build/native/nativeCompile/njmule
+                  if ldd "$exe"; then
+                      echo "njmule links to libraries of the system" >&2
+                      exit 1
+                  fi
+                  "$exe" --version
+                  "$exe" --license | grep -q "GNU GENERAL PUBLIC LICENSE"
+            - name: Pack and check the package
+              run: |
+                  mkdir -p build/synology
+                  SPK_BUILD=1 packaging/synology/build-spk.sh njmule-app/build/native/nativeCompile/njmule x86_64 \
+                      build/synology
+                  spk=$(ls build/synology/*.spk)
+                  tar -tf "$spk" > "$RUNNER_TEMP/spk.txt"
+                  for entry in INFO package.tgz scripts/start-stop-status conf/privilege LICENSE PACKAGE_ICON.PNG; do
+                      grep -qx "$entry" "$RUNNER_TEMP/spk.txt" || { echo "$entry missing from the package" >&2; exit 1; }
+                  done
+                  tar -xOf "$spk" INFO | grep -qx 'arch="x86_64"'
+                  tar -xOf "$spk" package.tgz | tar -tJf - | grep -qx 'bin/njmule'
+
     sonar:
         name: SonarQube Cloud
         needs: changes
@@ -213,10 +316,10 @@ jobs:
     ci:
         name: CI result
         if: always()
-        needs: [changes, verify, actionlint, reuse, native, native-windows, sonar]
+        needs: [changes, verify, actionlint, reuse, native, native-windows, native-macos, synology, sonar]
         runs-on: ubuntu-latest
         steps:
             - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
               with:
-                  allowed-skips: verify, actionlint, native, native-windows, sonar
+                  allowed-skips: verify, actionlint, native, native-windows, native-macos, synology, sonar
                   jobs: ${{ toJSON(needs) }}
