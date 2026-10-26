@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 import atlantafx.base.controls.Notification;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -339,7 +340,8 @@ class DesktopAppFlowsTest {
     }
 
     private void givenTheWebInterfaceOnATakenPort() throws Exception {
-        this.taken = new ServerSocket(0);
+        // On the loopback, as the web interface: macOS lets a port held on every address be taken on one of them.
+        this.taken = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
         new WebUiSettings(true, this.taken.getLocalPort(), false, "hash")
                 .save(this.dir.resolve("njmule").resolve("config"));
     }

@@ -90,7 +90,9 @@ class MainWindowTest {
         }
     }
 
+    // Every screen in each language and mode takes a minute here, more on a slow runner (macOS).
     @Test
+    @Timeout(600)
     void shouldShowEveryScreenInEveryLanguageAndMode() throws Exception {
         givenTheEngine();
 
