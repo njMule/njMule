@@ -49,8 +49,13 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   e.g. `feat(kad): add routing zone splitting`.
 - PR body uses `.github/pull_request_template.md` (summary, security gates touched, interop
   checklist, test evidence).
-- Merge strategy (once pull requests start, after the plan): squash merge into `main`; `main` is
-  protected and never committed to directly.
+- Merge strategy: squash merge into `main`, which is never committed to directly. A ruleset protects
+  it: a pull request, its `CI result` check green (the summary job of `build.yml`), squash only,
+  linear history, no force push or deletion, no bypass; no approval is required, the maintainer
+  being the only reviewer. The squash commit takes the PR title and the commits' messages, their
+  `Signed-off-by` lines included; merged branches are deleted.
+- Dependabot's pull requests are completed on their own branch (locks and checksums rewritten, see
+  Tooling) and squash-merged like the others.
 
 ### Branch names
 
@@ -68,7 +73,13 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 
 - [Semantic Versioning 2.0.0](https://semver.org/). Single source: `version` in `gradle.properties`.
 - `0.y.z` during milestones, pre-releases `-alpha.N` / `-beta.N` / `-rc.N`, `1.0.0` at feature parity.
-- Tags are annotated: `vX.Y.Z`. `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/).
+- Tags are annotated: `vX.Y.Z`. `CHANGELOG.md` follows
+  [Keep a Changelog](https://keepachangelog.com/): each user-visible change adds a short line under
+  `[Unreleased]` (Added, Changed, Fixed, Security).
+- A release: a pull request sets `version` and turns `[Unreleased]` into `[X.Y.Z] - <date>` under a
+  new empty `[Unreleased]`; once merged, the annotated tag `vX.Y.Z` on that commit of `main` runs
+  `release.yml`, whose draft release waits for the maintainer's approval of the `release`
+  environment and is then published by hand.
 
 ## Project layout
 
@@ -178,10 +189,9 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - GitHub operations use the GitHub CLI (`gh pr create`, `gh release create`, `gh api`); remote is
   `git@github.com:njMule/njMule.git` (SSH).
 - Push, PRs, tags and releases only when the maintainer explicitly asks.
-- **Until the whole plan (M0–M8) is complete: no pull requests.** Each milestone lives on its own
-  branch (`feat/mN-…`); when the milestone is complete (exit criteria in `docs/PLAN.md` §10.1 met
-  and `./gradlew build` green) fast-forward `main` to it, push `main`, and start the next milestone
-  from the updated `main`. After the plan, pull requests start and `main` gets branch protection.
+- **Every change reaches `main` through a pull request** (since 0.1.0, when the milestones on
+  `main` ended): a branch `<type>/<description>` from the latest `main`, `./gradlew build` green,
+  then the pull request, squash-merged once its checks pass.
 
 ## Licensing rules (GPL-3.0-or-later, REUSE-compliant)
 
