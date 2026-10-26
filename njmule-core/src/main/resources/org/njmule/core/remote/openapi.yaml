@@ -2415,6 +2415,14 @@ components:
         - overheadUploaded
         - overheadDownloaded
       properties:
+        upnp:
+          type: boolean
+          description: Whether the router is asked to forward our ports.
+        routerTraversal:
+          type: boolean
+          description: >-
+            Whether firewalled clients may be met through the routers, over uTP or QUIC: not where obfuscation is
+            required nor behind a proxy, and only while Kad runs.
         server:
           description: The server we are connected to, or null.
           oneOf:

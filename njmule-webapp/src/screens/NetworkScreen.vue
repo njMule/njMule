@@ -72,8 +72,13 @@ const kad = computed(() => status.value?.kad ?? null);
             <p class="headline">
                 TCP {{ status?.tcpPort }}<template v-if="kad"> · UDP {{ kad.udpPort }}</template>
             </p>
+            <p>{{ t('IDS_UPNP') }}: {{ status?.upnp ? t('IDS_YES') : t('IDS_NO') }}</p>
             <p v-if="status?.publicIp">IP: {{ status.publicIp }}</p>
             <p v-if="status?.publicIpv6">IPv6: {{ status.publicIpv6 }}</p>
+            <p>
+                {{ t('nj.network.natTraversal') }}:
+                {{ status?.routerTraversal && kad ? t('IDS_YES') : t('IDS_NO') }}
+            </p>
             <PortTest v-if="!guest" />
         </section>
     </div>

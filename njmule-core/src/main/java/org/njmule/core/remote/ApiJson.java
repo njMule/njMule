@@ -82,9 +82,21 @@ final class ApiJson {
         return value.name().toLowerCase(Locale.ROOT);
     }
 
-    /** The status, with the free space of the incoming and temporary folders when they could be read. */
+    /** How the preferences let others reach us: UPnP, and firewalled clients met through the routers. */
+    record Reach(boolean upnp, boolean routerTraversal) {}
+
     static void status(JsonGenerator g, EngineStatus s, OptionalLong incomingFree, OptionalLong tempFree) {
+        status(g, s, incomingFree, tempFree, Optional.empty());
+    }
+
+    /** The status, with the free space of the incoming and temporary folders when they could be read. */
+    static void status(
+            JsonGenerator g, EngineStatus s, OptionalLong incomingFree, OptionalLong tempFree, Optional<Reach> reach) {
         g.writeStartObject();
+        if (reach.isPresent()) {
+            g.writeBooleanProperty("upnp", reach.get().upnp());
+            g.writeBooleanProperty("routerTraversal", reach.get().routerTraversal());
+        }
         g.writeBooleanProperty("relatedSearch", s.relatedSearch());
         if (incomingFree.isPresent() || tempFree.isPresent()) {
             g.writeName("freeSpace");

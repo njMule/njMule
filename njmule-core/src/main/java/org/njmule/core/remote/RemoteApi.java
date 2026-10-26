@@ -533,7 +533,8 @@ public final class RemoteApi implements AutoCloseable {
         Preferences p = this.engine.preferences();
         OptionalLong incoming = freeSpace(p.effectiveIncomingDir(this.engine.directories()));
         OptionalLong temp = freeSpace(p.effectiveTempDir(this.engine.directories()));
-        reply(c.exchange(), 200, g -> ApiJson.status(g, status, incoming, temp));
+        ApiJson.Reach reach = new ApiJson.Reach(p.upnp(), p.routerTraversal());
+        reply(c.exchange(), 200, g -> ApiJson.status(g, status, incoming, temp, Optional.of(reach)));
     }
 
     private static OptionalLong freeSpace(Path dir) {

@@ -57,6 +57,8 @@ export interface Status {
     totalSeconds: number;
     publicIp: string;
     publicIpv6?: string;
+    upnp?: boolean;
+    routerTraversal?: boolean;
     tcpPort: number;
     missingInterface?: string;
     relatedSearch?: boolean;
