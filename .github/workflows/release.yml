@@ -133,6 +133,38 @@ jobs:
                   Copy-Item LICENSE, NOTICE, README.md, CHANGELOG.md "stage\$name"
                   Set-Content -Encoding ascii "stage\$name\install.properties" "kind=zip"
                   Compress-Archive -Path "stage\$name" -DestinationPath "dist\$name.zip"
+            # The installer for every user sets the service up, which starts and answers; uninstalling removes it and
+            # keeps its profile.
+            - name: Installer service test
+              shell: pwsh
+              run: |
+                  $msi = (Resolve-Path "dist\njmule-$env:VERSION-windows-x64.msi").Path
+                  $data = Join-Path $env:ProgramData njMule
+                  New-Item -ItemType Directory -Force (Join-Path $data config) | Out-Null
+                  Set-Content -Encoding ascii (Join-Path $data "config\njmule.properties") "net.ed2k.enabled=false`nnet.kad.enabled=false`nnet.upnp=false"
+                  $password = "$env:RUNNER_TEMP\service-password"
+                  Set-Content -Encoding ascii $password "service-test-password"
+                  $log = "$env:RUNNER_TEMP\service-install.log"
+                  $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @(
+                      "/i", "`"$msi`"", "/qn", 'MSIINSTALLPERUSER=""', "NJMULE_SERVICE=1",
+                      "NJMULE_WEBUI_PASSWORD_FILE=`"$password`"", "/l*v", "`"$log`"")
+                  if ($p.ExitCode -ne 0) {
+                      Select-String -Path $log -Pattern "InstallService|njmule.exe|Return value 3" | Select-Object -Last 40
+                      throw "install for every user failed: $($p.ExitCode)"
+                  }
+                  if (-not (Get-Service njMule -ErrorAction SilentlyContinue)) { throw "the installer did not set the service up" }
+                  $answered = $false
+                  foreach ($i in 1..60) {
+                      try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:4711/login | Out-Null; $answered = $true; break } catch { Start-Sleep 1 }
+                  }
+                  if (-not $answered) { throw "the service's web interface does not answer" }
+                  if ((Get-Service njMule).Status -ne "Running") { throw "the service does not run" }
+                  $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @(
+                      "/x", "`"$msi`"", "/qn", "/l*v", "`"$env:RUNNER_TEMP\service-uninstall.log`"")
+                  if ($p.ExitCode -ne 0) { throw "uninstall failed: $($p.ExitCode)" }
+                  if (Get-Service njMule -ErrorAction SilentlyContinue) { throw "the uninstaller left the service" }
+                  if (-not (Test-Path (Join-Path $data "config\njmule.properties"))) { throw "the uninstaller took the service's profile" }
+                  Remove-Item -Recurse -Force $data
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: windows-x64
