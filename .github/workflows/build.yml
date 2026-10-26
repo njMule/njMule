@@ -95,10 +95,11 @@ jobs:
               with:
                   cache-provider: basic
             # One module's tests at a time: on the runners' four CPUs the long timed tests (the Kad
-            # simulation, the window tests) ran out of time next to the other modules' test JVMs.
+            # simulation, the window tests) ran out of time next to the other modules' test JVMs. A failure
+            # does not stop the other modules, whose reports come too.
             - name: Build and test
               shell: bash
-              run: ./gradlew build '-Ptest.parallelModules=1'
+              run: ./gradlew build --continue '-Ptest.parallelModules=1'
             - name: Upload test reports
               if: failure()
               uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
