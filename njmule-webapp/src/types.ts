@@ -80,7 +80,10 @@ export interface Download {
     previewFirst: boolean;
     autoSwap: boolean;
     link: string;
+    kind?: FileKind;
 }
+
+export type FileKind = 'video' | 'audio' | 'image' | 'document' | 'archive' | 'disc_image' | 'program' | 'other';
 
 /** The map of a download's parts: byte ranges [start, end) missing and asked for, and the sources of each part. */
 export interface Parts {
@@ -146,4 +149,6 @@ export interface Source {
     partCount: number;
     reportedName?: string;
     country?: string | null;
+    askedFor?: string | null;
+    askedForName?: string;
 }

@@ -435,6 +435,15 @@ All notable changes to this project are documented here. The format follows
 - Delete takes the chosen completed downloads off the list, their files kept, and asks before
   cancelling the others as their menu does, in the desktop and web apps; the API takes one off with
   `DELETE /downloads/completed/{hash}`.
+- The details of a download in the web interface are those of the desktop app: under the list and
+  in sight as it scrolls, shown or hidden with *Details* or Alt+Enter and closed with their cross,
+  as tall as last dragged and never lower than their buttons; the file's icon, name, size and
+  priority, the share done, the bar of the parts, the buttons the state asks for, the link to copy
+  and a menu with comments, priority, category, a source to add and cancelling; tabs for the sources
+  (dot, country, program, place in the queue, the files they share, a move of an A4AF one), the
+  facts with the hash to copy, the names the sources give with take over, clean up and rename, and
+  the comments. The list's *More* menu takes preview first and the A4AF commands, as the desktop
+  app's.
 - The sources of a download show what they do as a dot, under the file and in its details, in the
   desktop and web apps: green downloading, yellow queued, red being reached, dark grey of no use
   for now (queue full, no needed parts, asked for another file), a question mark not asked yet. The

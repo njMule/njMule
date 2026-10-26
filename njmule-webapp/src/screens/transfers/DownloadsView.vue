@@ -16,11 +16,8 @@ import {
     ElOption,
     ElProgress,
     ElSelect,
-    ElSwitch,
     ElTable,
     ElTableColumn,
-    ElTabPane,
-    ElTabs,
 } from 'element-plus';
 import { computed, h, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue';
 import { api } from '../../api';
@@ -30,15 +27,13 @@ import CategoriesDialog from '../../components/CategoriesDialog.vue';
 import ClientFilesDialog from '../../components/ClientFilesDialog.vue';
 import CommentsDialog from '../../components/CommentsDialog.vue';
 import NjIcon from '../../components/NjIcon.vue';
-import PartBar from '../../components/PartBar.vue';
-import { duration, percent, rate, size } from '../../format';
+import { duration, rate, size } from '../../format';
 import { t } from '../../i18n';
 import { guest } from '../../role';
-import CountryFlag from '../../components/CountryFlag.vue';
-import type { IconName } from '../../icons';
 import { htmlLinks } from '../../links';
 import { attempt, told } from '../../notify';
-import { bySending, shown, sourceDot, sourceShown, type Shown } from '../../transfers';
+import { PRIORITIES, SOURCE_STATES, STATES, bySending, shown, sourceDot, sourceShown } from '../../transfers';
+import DownloadDetails from './DownloadDetails.vue';
 import type { Category, Download, DownloadPriority, Parts, Source } from '../../types';
 
 const props = defineProps<{ downloads: Download[]; categories: Category[]; sources: Source[] }>();
@@ -63,17 +58,6 @@ function browse(s: Source): void {
     browsing.value = true;
 }
 
-const STATES: Record<Shown, { key: string; tone: string; icon: IconName }> = {
-    downloading: { key: 'IDS_DOWNLOADING', tone: 'busy', icon: 'DOWNLOAD' },
-    waiting: { key: 'IDS_WAITING', tone: '', icon: 'CLOCK' },
-    noSources: { key: 'nj.transfers.stateNoSources', tone: 'warn', icon: 'NO_SOURCES' },
-    paused: { key: 'IDS_PAUSED', tone: '', icon: 'PAUSE' },
-    stopped: { key: 'IDS_STOPPED', tone: '', icon: 'STOP' },
-    noSpace: { key: 'IDS_INSUFFICIENT', tone: 'error', icon: 'ERROR' },
-    error: { key: 'IDS_ERRORLIKE', tone: 'error', icon: 'ERROR' },
-    complete: { key: 'IDS_COMPLETE', tone: 'ok', icon: 'CHECK' },
-};
-
 const CHIPS: { chip: Chip; key: string }[] = [
     { chip: 'all', key: 'IDS_ALL' },
     { chip: 'downloading', key: 'IDS_DOWNLOADING' },
@@ -82,13 +66,6 @@ const CHIPS: { chip: Chip; key: string }[] = [
     { chip: 'paused', key: 'IDS_PAUSED' },
     { chip: 'erroneous', key: 'IDS_ERRORLIKE' },
     { chip: 'complete', key: 'IDS_COMPLETE' },
-];
-
-const PRIORITIES: { value: DownloadPriority; key: string }[] = [
-    { value: 'low', key: 'IDS_PRIOLOW' },
-    { value: 'normal', key: 'IDS_PRIONORMAL' },
-    { value: 'high', key: 'IDS_PRIOHIGH' },
-    { value: 'auto', key: 'IDS_PRIOAUTO' },
 ];
 
 function chipOf(d: Download): Chip {
@@ -129,7 +106,35 @@ const one = computed(() => (chosen.value.length === 1 ? chosen.value[0] : undefi
 // A completed download is not cancelled: its file stays, and clearing takes it off the list.
 const cancellable = computed(() => chosen.value.filter((d) => d.status !== 'complete'));
 const anyComplete = computed(() => props.downloads.some((d) => d.status === 'complete'));
-const ofOne = computed(() => (one.value ? props.sources.filter((s) => s.file === one.value?.hash) : []));
+const ofOne = computed(() => (one.value ? sourcesOf(one.value) : []));
+
+// The details under the list, shown or not as the viewer left them.
+const SHOWN_KEY = 'njmule.details.shown';
+const detailsShown = ref(readShown());
+
+function readShown(): boolean {
+    try {
+        return localStorage.getItem(SHOWN_KEY) !== 'false';
+    } catch {
+        return true;
+    }
+}
+
+function showDetails(on: boolean): void {
+    detailsShown.value = on;
+    try {
+        localStorage.setItem(SHOWN_KEY, String(on));
+    } catch {
+        // Kept for this page only.
+    }
+}
+
+async function swapSource(s: Source): Promise<void> {
+    const d = one.value;
+    if (d) {
+        await attempt(() => api.post(`/downloads/${d.hash}/sources/swap`, { address: s.address }));
+    }
+}
 
 function sourcesOf(d: Download): Source[] {
     return bySending(props.sources.filter((s) => s.file === d.hash));
@@ -289,6 +294,11 @@ async function deleteChosen(): Promise<void> {
 // Not while typing, nor while a dialog is open.
 function deleteKey(e: KeyboardEvent): void {
     const at = e.target instanceof Element ? e.target : null;
+    if (e.key === 'Enter' && e.altKey && !at?.closest('textarea, [contenteditable], .el-overlay')) {
+        e.preventDefault();
+        showDetails(!detailsShown.value);
+        return;
+    }
     if (
         e.key !== 'Delete' ||
         guest ||
@@ -368,19 +378,24 @@ function more(command: string): void {
         case 'comments':
             commenting.value = true;
             break;
+        case 'previewFirst':
+            if (one.value) {
+                void setFlag(one.value, 'preview', 'previewFirst', !one.value.previewFirst);
+            }
+            break;
+        case 'autoSwap':
+            if (one.value) {
+                void setFlag(one.value, 'autoswap', 'autoSwap', !one.value.autoSwap);
+            }
+            break;
+        case 'swapHere':
+        case 'swapAway':
+            if (one.value) {
+                void swap(one.value, command === 'swapHere' ? 'here' : 'away');
+            }
+            break;
     }
 }
-
-const SOURCE_STATES: Record<Source['state'], string> = {
-    waiting: 'IDS_WAITING',
-    connecting: 'IDS_CONNECTING',
-    asking: 'IDS_ASKING',
-    queued: 'IDS_ONQUEUE',
-    downloading: 'IDS_TRANSFERRING',
-    a4af: 'IDS_ASKED4ANOTHERFILE',
-    queue_full: 'IDS_QUEUEFULL',
-    no_needed_parts: 'IDS_NONEEDEDPARTS',
-};
 </script>
 
 <template>
@@ -397,6 +412,14 @@ const SOURCE_STATES: Record<Source['state'], string> = {
             ><NjIcon name="CATEGORY"
         /></el-button>
         <el-input v-model="filter" class="filter" clearable :placeholder="t('nj.transfers.filter')" />
+        <el-button
+            :class="{ 'is-on': detailsShown }"
+            :aria-pressed="detailsShown"
+            :title="`${t('IDS_DETAILS')}  Alt+Enter`"
+            @click="showDetails(!detailsShown)"
+        >
+            <NjIcon name="INFO" />{{ t('IDS_DETAILS') }}
+        </el-button>
     </div>
     <div class="chips" role="radiogroup">
         <button
@@ -461,6 +484,30 @@ const SOURCE_STATES: Record<Source['state'], string> = {
                     </el-dropdown-item>
                     <el-dropdown-item command="html">{{ t('IDS_DL_LINK2') }}</el-dropdown-item>
                     <el-dropdown-item command="comments" :disabled="!one">{{ t('IDS_CMT_ADD') }}</el-dropdown-item>
+                    <el-dropdown-item
+                        command="previewFirst"
+                        divided
+                        :disabled="!one || one.status === 'complete'"
+                        class="check"
+                        :class="{ on: one?.previewFirst }"
+                    >
+                        {{ t('IDS_DOWNLOADMOVIECHUNKS') }}
+                    </el-dropdown-item>
+                    <el-dropdown-item disabled divided class="heading">{{ t('nj.a4af.menu') }}</el-dropdown-item>
+                    <el-dropdown-item command="swapHere" :disabled="!one || one.status !== 'downloading'" class="check">
+                        {{ t('nj.a4af.toThis') }}
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                        command="autoSwap"
+                        :disabled="!one || one.status === 'complete'"
+                        class="check"
+                        :class="{ on: one?.autoSwap }"
+                    >
+                        {{ t('nj.a4af.auto') }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="swapAway" :disabled="!one" class="check">
+                        {{ t('nj.a4af.toOther') }}
+                    </el-dropdown-item>
                 </el-dropdown-menu>
             </template>
         </el-dropdown>
@@ -546,83 +593,24 @@ const SOURCE_STATES: Record<Source['state'], string> = {
         </el-table-column>
     </el-table>
 
-    <section class="details" :aria-label="t('IDS_DETAILS')">
-        <p v-if="chosen.length === 0" class="hint">{{ t('nj.details.none') }}</p>
-        <p v-else-if="!one" class="hint">{{ t('nj.details.chosen', chosen.length) }}</p>
-        <template v-else>
-            <h2>{{ one.name }}</h2>
-            <p class="facts">
-                {{ t('nj.details.doneOf', size(one.completed), size(one.size)) }} ·
-                {{ percent(one.completed, one.size) }} · {{ t(state(one).key) }}
-            </p>
-            <p v-if="shown(one) === 'noSources'" class="hint">{{ t('nj.details.noSourcesNote') }}</p>
-            <p v-if="shown(one) === 'noSpace'" class="hint">{{ t('nj.details.diskFullNote') }}</p>
-            <p v-if="shown(one) === 'error'" class="hint">{{ t('nj.details.errorNote') }}</p>
-            <PartBar v-if="parts && one.status !== 'complete'" :parts="parts" />
-            <div v-if="!guest && one.status !== 'complete'" class="flags">
-                <label>
-                    <el-switch
-                        :model-value="one.previewFirst"
-                        @change="(on) => setFlag(one!, 'preview', 'previewFirst', Boolean(on))"
-                    />
-                    {{ t('IDS_DOWNLOADMOVIECHUNKS') }}
-                </label>
-                <label>
-                    <el-switch
-                        :model-value="one.autoSwap"
-                        @change="(on) => setFlag(one!, 'autoswap', 'autoSwap', Boolean(on))"
-                    />
-                    {{ t('nj.a4af.auto') }}
-                </label>
-                <el-button size="small" :disabled="one.status !== 'downloading'" @click="swap(one!, 'here')">
-                    {{ t('nj.a4af.toThis') }}
-                </el-button>
-                <el-button size="small" @click="swap(one!, 'away')">{{ t('nj.a4af.toOther') }}</el-button>
-            </div>
-            <el-tabs>
-                <el-tab-pane :label="`${t('IDS_DL_SOURCES')} (${ofOne.length})`">
-                    <el-table
-                        :tooltip-options="CUT_HINT"
-                        :data="ofOne"
-                        :empty-text="t('nj.transfers.noSources')"
-                        size="small"
-                    >
-                        <el-table-column :label="t('IDS_QL_USERNAME')" min-width="160" show-overflow-tooltip>
-                            <template #default="{ row }">{{ row.nick ?? row.address }}</template>
-                        </el-table-column>
-                        <el-table-column :label="t('nj.clients.country')" width="90">
-                            <template #default="{ row }"><CountryFlag :code="row.country" /></template>
-                        </el-table-column>
-                        <el-table-column :label="t('IDS_CD_CSOFT')" prop="software" width="150" />
-                        <el-table-column :label="t('nj.transfers.status')" width="190">
-                            <template #default="{ row }">
-                                <span :class="['source-dot', 'dot-' + sourceDot(sourceShown(row as Source))]">{{
-                                    sourceShown(row as Source) === 'waiting' ? '?' : ''
-                                }}</span>
-                                {{ t(SOURCE_STATES[sourceShown(row as Source)]) }}
-                                <span v-if="sourceShown(row as Source) === 'queued' && row.queueRank > 0">
-                                    ({{ t('nj.transfers.queueRank') }} {{ row.queueRank }})
-                                </span>
-                            </template>
-                        </el-table-column>
-                        <el-table-column :label="t('IDS_DL_TRANSF')" width="110" align="right">
-                            <template #default="{ row }">{{ size(row.received) }}</template>
-                        </el-table-column>
-                        <el-table-column :label="t('IDS_DL_PROGRESS')" width="120" align="right">
-                            <template #default="{ row }">{{ row.parts }}/{{ row.partCount }}</template>
-                        </el-table-column>
-                        <el-table-column width="170" align="right">
-                            <template #default="{ row }">
-                                <el-button size="small" @click="browse(row as Source)">{{
-                                    t('IDS_VIEWFILES')
-                                }}</el-button>
-                            </template>
-                        </el-table-column>
-                    </el-table>
-                </el-tab-pane>
-            </el-tabs>
-        </template>
-    </section>
+    <DownloadDetails
+        v-if="detailsShown"
+        :chosen="chosen"
+        :sources="ofOne"
+        :parts="parts"
+        :categories="categories"
+        @act="act"
+        @cancel="cancel"
+        @copy-link="copyLinks(false)"
+        @comments="commenting = true"
+        @add-source="addSource"
+        @priority="setPriority"
+        @category="setCategory"
+        @browse="browse"
+        @swap="swapSource"
+        @close="showDetails(false)"
+        @changed="emit('changed')"
+    />
 
     <ClientFilesDialog v-model="browsing" :address="client.address" :name="client.name" />
     <CommentsDialog v-if="one" v-model="commenting" :hash="one.hash" :name="one.name" :download="true" />
@@ -671,34 +659,22 @@ const SOURCE_STATES: Record<Source['state'], string> = {
     font: inherit;
     font-size: 13px;
 }
-.details {
-    margin-top: 18px;
-    padding: 14px 16px;
-    border: 1px solid var(--el-border-color);
-    border-radius: 8px;
-    background: var(--el-bg-color);
+.el-button.is-on {
+    border-color: var(--el-color-primary-light-5);
+    background: var(--el-color-primary-light-9);
+    color: var(--el-color-primary);
 }
-.details h2 {
-    margin: 0 0 4px;
-    font-size: 16px;
-    word-break: break-all;
+.el-dropdown-menu .heading {
+    font-weight: 700;
 }
-.flags {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 16px;
-    margin: 10px 0;
+.el-dropdown-menu .check {
+    position: relative;
+    padding-inline-start: 34px;
 }
-.flags label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-.facts,
-.hint {
-    margin: 0 0 8px;
-    color: var(--el-text-color-secondary);
+.el-dropdown-menu .check.on::before {
+    content: '✓';
+    position: absolute;
+    inset-inline-start: 14px;
 }
 .sources-under {
     padding: 2px 8px 6px 44px;
