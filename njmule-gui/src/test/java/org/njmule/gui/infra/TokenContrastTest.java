@@ -61,6 +61,7 @@ class TokenContrastTest {
             new Pair("the upload line of the graphs", "-nj-graph-up", "-color-bg-default", GRAPHIC),
             new Pair("the ring of the safe answer", "-color-accent-fg", "-color-bg-subtle", GRAPHIC),
             new Pair("the dot of a connection", "-color-success-fg", "-color-bg-default", GRAPHIC),
+            new Pair("the dot of a source of no use for now", "-nj-dot-useless", "-color-bg-default", GRAPHIC),
             new Pair("muted words on a card", "-color-fg-muted", "-color-bg-subtle", TEXT),
             new Pair("the sign of a warning", "-color-warning-fg", "-color-bg-default", GRAPHIC),
             new Pair("the parts we have", "-nj-bar-have", "-nj-bar-bg", GRAPHIC));

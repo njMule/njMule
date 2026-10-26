@@ -41,6 +41,8 @@
     -nj-graph-down: #4570AD;
     -nj-graph-up: #5E8A4A;
     -nj-graph-grid: -color-border-muted;
+    /* A source of no use for now: a grey that dark surfaces do not swallow. */
+    -nj-dot-useless: -color-neutral-emphasis;
     /* The veil behind a box over the window. */
     -nj-scrim: rgba(46, 52, 64, 0.18);
     /* The plate under a CAPTCHA: light in every theme, as its letters are drawn for a light page. */
@@ -79,6 +81,7 @@
     -nj-cat-8: #C98BAA;
     -nj-graph-down: #5B8CC6;
     -nj-graph-up: #7D9F57;
+    -nj-dot-useless: #81889A;
     -nj-scrim: rgba(0, 0, 0, 0.35);
     -nj-captcha-paper: #ECEFF4;
 }
@@ -219,6 +222,7 @@
     -nj-graph-down: -nj-sys-link;
     -nj-graph-up: -nj-sys-highlight;
     -nj-graph-grid: -nj-sys-gray;
+    -nj-dot-useless: -nj-sys-gray;
     -nj-captcha-paper: -nj-sys-window;
 }
 
@@ -2077,7 +2081,7 @@
 }
 
 .source-dot.dot-useless {
-    -fx-background-color: -color-neutral-emphasis;
+    -fx-background-color: -nj-dot-useless;
 }
 
 .source-dot.dot-unknown {
