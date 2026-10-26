@@ -185,5 +185,9 @@ from its tests on JavaFX's headless platform and the web interface's from the ru
 - **It publishes** on GitHub Pages only when asked: a manual run with **deploy** ticked, or the push
   of a `v*` tag, which publishes the site of every release.
 
+The download links of the Getting started pages and the Docker image's tag are those of `version` in
+`gradle.properties` (the `<Downloads>`, `<DockerImage>` and `<Version>` components of
+`src/components/Release.tsx`), so the site a tag publishes links that release's files.
+
 The site's address is `https://njmule.github.io/njMule/`. One publication runs at a time; a newer one
 waits for it. Each page links to its source on GitHub (**Edit this page**).

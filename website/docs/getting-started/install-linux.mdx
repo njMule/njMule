@@ -10,17 +10,22 @@ njMule for Linux comes for x64 and arm64 processors as deb and rpm packages and 
 archive, each with the desktop app and the command line. A fourth download, the static archive, holds
 the headless engine alone for any x64 Linux.
 
-They are on the [GitHub releases page](https://github.com/njMule/njMule/releases):
+## Download
 
-| File | For |
-|---|---|
-| `njmule_…_amd64.deb`, `njmule_…_arm64.deb` | Debian, Ubuntu and their derivatives |
-| `njmule-….x86_64.rpm`, `njmule-….aarch64.rpm` | Fedora, RHEL and their derivatives |
-| `njmule-<version>-linux-x64.tar.xz`, `njmule-<version>-linux-arm64.tar.xz` | any distribution, run from any folder |
-| `njmule-<version>-linux-x64-static.tar.xz` | headless only, any x64 Linux whatever its C library |
+<Downloads platform="linux" />
 
-You can [check the download](verify-downloads.mdx) before you install it. The desktop app needs
+The archives run from any folder on any distribution; the static one holds the headless engine
+alone, for any x64 Linux whatever its C library. Older versions are on the
+[GitHub releases page](https://github.com/njMule/njMule/releases). You can
+[check the download](verify-downloads.mdx) before you install it. The desktop app needs
 GTK 3, libXtst and OpenGL; the packages bring them in (see [Requirements](requirements.mdx)).
+
+With the [GitHub CLI](https://cli.github.com/) you can also fetch the files of the latest release
+from a terminal, for example the Debian package of a 64-bit PC with its checksums:
+
+```bash
+gh release download --repo njMule/njMule --pattern '*_amd64.deb' --pattern 'SHA256SUMS*'
+```
 
 ## Install the package
 

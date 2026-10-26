@@ -5,11 +5,15 @@ import type { Config } from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 import type { Options as DocsOptions } from '@docusaurus/plugin-content-docs';
 import type * as OpenApiPlugin from 'docusaurus-plugin-openapi-docs';
+import { readFileSync } from 'node:fs';
 import { themes as prismThemes } from 'prism-react-renderer';
 
 const repository = 'https://github.com/njMule/njMule';
-// The version being documented, from gradle.properties (website/build.gradle.kts passes it).
-const version = process.env.NJMULE_VERSION ?? 'development';
+// The version being documented: the project's, from gradle.properties, its single source.
+const version =
+    process.env.NJMULE_VERSION ??
+    /^version=(.+)$/m.exec(readFileSync(new URL('../gradle.properties', import.meta.url), 'utf8'))?.[1]?.trim() ??
+    'development';
 
 const config: Config = {
     title: 'njMule',

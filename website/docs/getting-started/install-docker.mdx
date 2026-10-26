@@ -3,8 +3,9 @@ title: Install with Docker
 description: Run njMule's headless engine and web interface in Docker or Docker Compose, with its volume, password secret, ports and host names.
 ---
 
-The image `ghcr.io/njmule/njmule` runs njMule's headless engine with its web interface, for a
-server, a NAS or any machine with Docker. You use it from a browser, through the
+The image `ghcr.io/njmule/njmule` ([its page on GitHub](https://github.com/njMule/njMule/pkgs/container/njmule))
+runs njMule's headless engine with its web interface, for a server, a NAS or any machine with
+Docker. This guide describes <DockerImage />. You use it from a browser, through the
 [web interface](../web/overview.mdx).
 
 ## What the image holds
@@ -29,16 +30,14 @@ on every address of the container.
 
 ## Image tags
 
-Each version is tagged with its number, such as `ghcr.io/njmule/njmule:1.2.3`. A release is also
-tagged with its minor version (`1.2`) and `latest`; a test version (alpha, beta or release
-candidate) gets its own number only, and does not move `latest`.
+Each version is tagged with its number, such as <DockerImage />. A release is also tagged with its
+minor version (`0.1` for 0.1.x) and `latest`; a test version (alpha, beta or release candidate)
+gets its own number only, and does not move `latest`. The commands below use `latest`; name a
+version instead to choose when you move to the next one.
 
-:::note[While njMule is in pre-release]
-
-As long as only test versions are out, there is no `latest` image yet: name the version you want,
-`ghcr.io/njmule/njmule:<version>`, in the commands below.
-
-:::
+```bash
+docker pull ghcr.io/njmule/njmule:latest
+```
 
 ## Run it with docker run
 
@@ -108,8 +107,6 @@ mkdir -p incoming temp
 sudo chown 1000:1000 incoming temp
 docker compose up -d
 ```
-
-While only test versions are out, replace `latest` with a version number.
 
 ## Data and permissions
 

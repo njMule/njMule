@@ -142,6 +142,11 @@
     color: var(--on-brand);
 }
 
+.release {
+    font-size: var(--step-xs) !important;
+    color: var(--on-brand);
+}
+
 .heroFile {
     display: grid;
     gap: 0.6rem;

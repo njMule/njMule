@@ -15,6 +15,31 @@ change) and [Releases](releases.mdx#commits-and-branches) (commit messages and b
 
 <Contributing />
 
+## How main is protected
+
+Since 0.1.0 every change reaches `main` through a pull request; nobody commits to `main` directly.
+A ruleset on GitHub protects it:
+
+- a change needs a pull request, and the **CI result** check of the
+  [Build workflow](https://github.com/njMule/njMule/blob/main/.github/workflows/build.yml) (the job
+  that sums up all the others) must be green;
+- pull requests are **squash-merged** only, keeping a linear history; force pushes and deleting
+  `main` are refused, and nobody bypasses the rules;
+- no approval is required, the maintainer being the only reviewer.
+
+The squash commit takes the pull request's title, a Conventional Commits header, and the messages
+of its commits with their `Signed-off-by` lines; the merged branch is deleted. So:
+
+1. Start a branch `<type>/<description>` from the latest `main`
+   ([Releases](releases.mdx#commits-and-branches) names the types).
+2. Make `./gradlew build` pass locally; add a line to `[Unreleased]` in `CHANGELOG.md` for a change
+   users will notice, and update its page of this documentation.
+3. Open the pull request with a Conventional Commits title and the template below; it is merged
+   once its checks pass.
+
+Dependabot's pull requests are completed on their own branch, with the lock files and checksums
+rewritten ([Dependencies](dependencies.mdx)), and squash-merged like the others.
+
 ## The pull request template
 
 Every pull request answers these points:

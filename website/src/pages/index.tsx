@@ -9,6 +9,7 @@ import clsx from 'clsx';
 import Layout from '@theme/Layout';
 import Link from '@docusaurus/Link';
 import ThemedShot from '@site/src/components/ThemedShot';
+import { useVersion } from '@site/src/components/Release';
 import styles from './index.module.css';
 
 const RELEASES = 'https://github.com/njMule/njMule/releases/latest';
@@ -126,6 +127,7 @@ function PartBar({ parts, seed, label }: { parts: number; seed: number; label: s
 }
 
 function Hero(): ReactNode {
+    const version = useVersion();
     const [link, setLink] = useState(EXAMPLE);
     const parsed = useMemo(() => parse(link), [link]);
     const [file, setFile] = useState<Parsed>(() => parse(EXAMPLE)!);
@@ -154,6 +156,7 @@ function Hero(): ReactNode {
                         Read the guide
                     </Link>
                 </div>
+                <p className={styles.release}>Version {version}: Windows, macOS, Linux, Docker and Synology DSM</p>
             </div>
             <div className={styles.heroFile}>
                 <label className={styles.linkLabel} htmlFor="hero-link">

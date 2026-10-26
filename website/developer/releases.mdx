@@ -27,9 +27,9 @@ pre-release part.
 ## The changelog
 
 [`CHANGELOG.md`](https://github.com/njMule/njMule/blob/main/CHANGELOG.md) follows
-[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). Every user-visible change adds an
-entry to the `[Unreleased]` section, under `Added`, `Changed`, `Fixed` or the other headings of
-that format. At a release the section becomes `## [X.Y.Z]`, which the release workflow copies as the
+[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). Every user-visible change adds a
+short line to the `[Unreleased]` section, under `Added`, `Changed`, `Fixed` or `Security`. At a
+release the section becomes `## [X.Y.Z] - <date>`, which the release workflow copies as the
 release notes and builds into the update information.
 
 A `### Security` heading in a release's section marks the release as critical: njMule then offers
@@ -144,15 +144,21 @@ that the old files were kept as `.old`.
 
 ## Making a release
 
-1. In `CHANGELOG.md`, turn `[Unreleased]` into the section of the new version; put security fixes
-   under `### Security`.
-2. Set `version` in `gradle.properties` to the new version, and commit both with the scope
-   `release`.
-3. Optionally, run the release workflow by hand on that commit, to see the packages and the update
+A release goes through a pull request like every other change, since `main` is protected (see
+[Contributing](contributing.mdx#how-main-is-protected)):
+
+1. On a branch from the latest `main`, turn `[Unreleased]` in `CHANGELOG.md` into
+   `## [X.Y.Z] - <date>` under a new, empty `## [Unreleased]`; put security fixes under
+   `### Security`.
+2. Set `version` in `gradle.properties` to the new version, commit both with the scope `release`
+   (`chore(release): X.Y.Z`), and open the pull request.
+3. Optionally, run the release workflow by hand on that branch, to see the packages and the update
    tests pass before you tag.
-4. Push an annotated tag `vX.Y.Z` that matches the version.
-5. Approve the `release` environment when the workflow asks.
-6. Review the draft release, its files and notes, and publish it.
+4. Once the pull request is merged, push an annotated tag `vX.Y.Z` on that commit of `main`; it must
+   match the version.
+5. Approve the `release` environment when the workflow asks for it.
+6. Review the draft release, its files and notes, and publish it by hand. The tag also publishes
+   this site with the new version's download links.
 
 ## Verifying a release
 
