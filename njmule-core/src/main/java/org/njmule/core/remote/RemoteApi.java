@@ -308,6 +308,18 @@ public final class RemoteApi implements AutoCloseable {
                         "addDownloadSource",
                         c -> changed(c, this.engine.addSource(hash(c), address(text(c.body(), ADDRESS_KEY))))),
                 entry("swapSourceToDownload", this::swapSourceToDownload),
+                entry("listSavedSearches", c -> list(c, this.engine::savedSearches, ApiJson::savedSearch)),
+                entry("saveSearches", this::saveSearches),
+                entry(
+                        "getSpamMarks",
+                        c -> reply(c.exchange(), 200, g -> ApiJson.spamMarks(g, await(this.engine.spamMarks())))),
+                entry(
+                        "helloClient",
+                        c -> reply(
+                                c.exchange(),
+                                200,
+                                g -> ApiJson.peer(
+                                        g, await(this.engine.hello(address(text(c.parameters(), ADDRESS_KEY))))))),
                 entry("listSources", c -> list(c, this.engine::sources, ApiJson::source)),
                 entry("listUploads", c -> list(c, this.engine::uploads, ApiJson::upload)),
                 entry(
@@ -649,6 +661,12 @@ public final class RemoteApi implements AutoCloseable {
             g.writeNumberProperty("downloadKiBps", now.maxDownloadKiBps());
             g.writeEndObject();
         });
+    }
+
+    // The tabs to show again at the next start, in place of those kept before.
+    private void saveSearches(Call c) throws IOException {
+        await(this.engine.saveSearches(ApiReader.list(c.body(), ApiReader::savedSearch)));
+        ok(c.exchange(), 200);
     }
 
     private void swapSourceToDownload(Call c) throws IOException {

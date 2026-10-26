@@ -305,12 +305,13 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<List<SavedSearch>> savedSearches() {
-        return CompletableFuture.completedFuture(List.of());
+        return list("searches/saved", ApiReader::savedSearch);
     }
 
     @Override
     public CompletableFuture<Void> saveSearches(List<SavedSearch> searches) {
-        return CompletableFuture.completedFuture(null);
+        return send("PUT", "searches/saved", ApiJson.write(g -> ApiJson.array(g, searches, ApiJson::savedSearch)))
+                .thenApply(r -> null);
     }
 
     @Override
@@ -320,7 +321,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<SpamMarks> spamMarks() {
-        return CompletableFuture.completedFuture(SpamMarks.NONE);
+        return json("GET", "searches/spam", null).thenApply(ApiReader::spamMarks);
     }
 
     @Override
@@ -381,7 +382,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<PeerInfo> hello(ServerAddress peer) {
-        return notHere("a hello to a client");
+        return json("POST", "clients/" + peer + "/hello", null).thenApply(ApiReader::peer);
     }
 
     @Override

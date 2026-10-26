@@ -25,6 +25,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
@@ -44,14 +45,18 @@ import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.PeerComment;
+import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.PortTest;
+import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchId;
+import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
+import org.njmule.core.api.SpamMarks;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
@@ -244,6 +249,25 @@ final class ApiSamples {
                         new ImportReport.Item("known.met", ImportReport.Outcome.FAILED, "unreadable"),
                         new ImportReport.Item("ipfilter.dat", ImportReport.Outcome.MISSING, "")),
                 true);
+    }
+
+    static SavedSearch savedSearch() {
+        return new SavedSearch("talks", new SearchRequest("talk", SearchRequest.Scope.GLOBAL), List.of(result()));
+    }
+
+    static SpamMarks spamMarks() {
+        return new SpamMarks(
+                Set.of(Hash16.parseHex(HASH)), Set.of(Hash16.parseHex("FF".repeat(16))), Set.of("free money now.exe"));
+    }
+
+    static PeerInfo peer() {
+        return new PeerInfo(
+                "198.51.100.9:4662",
+                Hash16.parseHex(HASH),
+                Optional.of("Ann"),
+                "eMule v0.70",
+                true,
+                PeerInfo.Identification.VERIFIED);
     }
 
     static PeerComment peerComment() {

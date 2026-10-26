@@ -120,6 +120,8 @@ class RemoteApiContractTest {
                 "/api/v1/kad/contacts",
                 "/api/v1/kad/searches",
                 "/api/v1/searches",
+                "/api/v1/searches/saved",
+                "/api/v1/searches/spam",
                 "/api/v1/clients/known",
                 "/api/v1/categories",
                 "/api/v1/friends",
@@ -238,7 +240,13 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/friends", "{\"userHash\":\"" + HASH + "\",\"name\":\"Ann\"}", 200),
                 Arguments.of("DELETE", "/api/v1/friends/" + HASH, "", 200),
                 Arguments.of("PUT", "/api/v1/friends/slot", "{\"userHash\":null}", 200),
-                Arguments.of("POST", "/api/v1/clients/198.51.100.9:4662/files", "", 200));
+                Arguments.of("POST", "/api/v1/clients/198.51.100.9:4662/files", "", 200),
+                Arguments.of("POST", "/api/v1/clients/198.51.100.9:4662/hello", "", 200),
+                Arguments.of(
+                        "PUT",
+                        "/api/v1/searches/saved",
+                        "[{\"title\":\"talks\",\"query\":\"talk\",\"scope\":\"global\",\"results\":[]}]",
+                        200));
     }
 
     @ParameterizedTest
@@ -381,6 +389,8 @@ class RemoteApiContractTest {
         answerWith("peerComments", List.of(ApiSamples.peerComment()));
         answerWith("fileComment", Optional.of(FileComment.of("clean copy", 4)));
         answerWith("kadNotes", List.of(ApiSamples.kadNote()));
+        answerWith("savedSearches", List.of(ApiSamples.savedSearch()));
+        answerWith("spamMarks", ApiSamples.spamMarks());
         this.fake.value("schedule", ApiSamples.schedule());
         this.fake.value("activeRule", ApiSamples.schedule().rules().stream().findFirst());
         this.fake.value("preferences", Preferences.defaults());
@@ -422,6 +432,7 @@ class RemoteApiContractTest {
             answerWith(yes, true);
         }
         for (String done : List.of(
+                "saveSearches",
                 "connect",
                 "disconnect",
                 "connectKad",
@@ -450,6 +461,7 @@ class RemoteApiContractTest {
         answerWith("importFromEmule", ApiSamples.importReport());
         answerWith("searchKadNotes", List.of(ApiSamples.kadNote()));
         answerWith("browseSharedFiles", List.of(ApiSamples.result()));
+        answerWith("hello", ApiSamples.peer());
         answerWith("updateSchedule", ApiSamples.schedule());
         answerWith("search", new SearchId(7));
         answerWith("checkForUpdate", ApiSamples.updateStatus());

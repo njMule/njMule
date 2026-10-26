@@ -444,6 +444,11 @@ All notable changes to this project are documented here. The format follows
   facts with the hash to copy, the names the sources give with take over, clean up and rename, and
   the comments. The list's *More* menu takes preview first and the A4AF commands, as the desktop
   app's.
+- The API keeps the search tabs for the next start (`GET`/`PUT /searches/saved`), tells the spam
+  marks (`GET /searches/spam`), says hello to a client (`POST /clients/{address}/hello`), moves one
+  A4AF source to a download (`POST /downloads/{hash}/sources/swap`), tidies a file name
+  (`POST /names/cleanup`) and tells the kind of each download's file: the desktop app connected to
+  another njMule does all of it there.
 - The sources of a download show what they do as a dot, under the file and in its details, in the
   desktop and web apps: green downloading, yellow queued, red being reached, dark grey of no use
   for now (queue full, no needed parts, asked for another file), a question mark not asked yet. The

@@ -23,6 +23,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.function.Consumer;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
@@ -42,12 +43,15 @@ import org.njmule.core.api.LogLine;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NotificationResult;
 import org.njmule.core.api.PartMap;
+import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.PortTest;
+import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
+import org.njmule.core.api.SpamMarks;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.config.Schedule;
@@ -411,6 +415,46 @@ final class ApiJson {
             g.writeEndObject();
         }
         g.writeEndArray();
+        g.writeEndObject();
+    }
+
+    /** A search kept for the next start: its title, what was searched where, and the results it had. */
+    static void savedSearch(JsonGenerator g, SavedSearch s) {
+        g.writeStartObject();
+        g.writeStringProperty("title", s.title());
+        g.writeStringProperty("query", s.request().expression());
+        g.writeStringProperty("scope", name(s.request().scope()));
+        g.writeName("results");
+        array(g, s.results(), ApiJson::result);
+        g.writeEndObject();
+    }
+
+    /** The files marked as spam or as not spam, and the names of those marked spam; sorted, for a steady answer. */
+    static void spamMarks(JsonGenerator g, SpamMarks m) {
+        g.writeStartObject();
+        hashes(g, "spam", m.spam());
+        hashes(g, "notSpam", m.notSpam());
+        g.writeArrayPropertyStart("names");
+        m.names().stream().sorted().forEach(g::writeString);
+        g.writeEndArray();
+        g.writeEndObject();
+    }
+
+    private static void hashes(JsonGenerator g, String name, Set<Hash16> hashes) {
+        g.writeArrayPropertyStart(name);
+        hashes.stream().map(Hash16::toHex).sorted().forEach(g::writeString);
+        g.writeEndArray();
+    }
+
+    /** What a client said to our hello. */
+    static void peer(JsonGenerator g, PeerInfo p) {
+        g.writeStartObject();
+        g.writeStringProperty("address", p.address());
+        g.writeStringProperty("userHash", p.userHash().toHex());
+        optional(g, "nick", p.nick());
+        g.writeStringProperty("software", p.software());
+        g.writeBooleanProperty("obfuscated", p.obfuscated());
+        g.writeStringProperty("identification", name(p.identification()));
         g.writeEndObject();
     }
 

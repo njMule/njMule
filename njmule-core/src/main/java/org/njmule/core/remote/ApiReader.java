@@ -50,14 +50,18 @@ import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NotificationResult;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.PeerComment;
+import org.njmule.core.api.PeerInfo;
 import org.njmule.core.api.PortTest;
+import org.njmule.core.api.SavedSearch;
 import org.njmule.core.api.SearchId;
+import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.api.SourceInfo;
+import org.njmule.core.api.SpamMarks;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
@@ -246,6 +250,30 @@ final class ApiReader {
                         n.path("names"),
                         each -> new SearchResult.Name(
                                 text(each, "name"), each.path("sources").asInt(), completeSources(each))));
+    }
+
+    static SavedSearch savedSearch(JsonNode n) {
+        return new SavedSearch(
+                text(n, "title"),
+                new SearchRequest(text(n, "query"), constant(SearchRequest.Scope.class, n, "scope")),
+                list(n.path("results"), ApiReader::result));
+    }
+
+    static SpamMarks spamMarks(JsonNode n) {
+        return new SpamMarks(
+                Set.copyOf(list(n.path("spam"), h -> Hash16.parseHex(h.asString()))),
+                Set.copyOf(list(n.path("notSpam"), h -> Hash16.parseHex(h.asString()))),
+                Set.copyOf(list(n.path("names"), JsonNode::asString)));
+    }
+
+    static PeerInfo peer(JsonNode n) {
+        return new PeerInfo(
+                text(n, "address"),
+                hash(n, "userHash"),
+                optional(n, "nick"),
+                text(n, "software"),
+                n.path("obfuscated").asBoolean(),
+                constant(PeerInfo.Identification.class, n, "identification"));
     }
 
     // Kad does not tell how many sources are complete.

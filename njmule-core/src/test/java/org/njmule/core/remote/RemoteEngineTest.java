@@ -41,6 +41,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
@@ -150,6 +151,50 @@ class RemoteEngineTest {
         thenExceptionOccurred(UnsupportedOperationException.class, "a server.met of this computer");
     }
 
+    @Test
+    void shouldReadTheSearchesTheOtherNjmuleKept() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItAnswers("savedSearches", List.of(ApiSamples.savedSearch()));
+        givenConnected();
+
+        whenAsked(this.remote.savedSearches());
+
+        thenTheAnswerIs(List.of(ApiSamples.savedSearch()));
+    }
+
+    @Test
+    void shouldKeepTheSearchesOnTheOtherNjmule() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItKeepsTheSearches();
+        givenConnected();
+
+        whenAsked(this.remote.saveSearches(List.of(ApiSamples.savedSearch())));
+
+        thenTheOtherNjmuleWasAsked("saveSearches " + List.of(ApiSamples.savedSearch()));
+    }
+
+    @Test
+    void shouldReadTheSpamMarksOfTheOtherNjmule() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItAnswers("spamMarks", ApiSamples.spamMarks());
+        givenConnected();
+
+        whenAsked(this.remote.spamMarks());
+
+        thenTheAnswerIs(ApiSamples.spamMarks());
+    }
+
+    @Test
+    void shouldSayHelloToAClientThroughTheOtherNjmule() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItAnswers("hello", ApiSamples.peer());
+        givenConnected();
+
+        whenAsked(this.remote.hello(ServerAddress.parse("198.51.100.9:4662")));
+
+        thenTheAnswerIs(ApiSamples.peer());
+    }
+
     private void givenTheOtherNjmuleRuns() throws Exception {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("other"), true);
         this.fake.value("directories", dirs);
@@ -169,6 +214,17 @@ class RemoteEngineTest {
         RemoteApi api = new RemoteApi(
                 engine, RecentEvents.follow(engine), client -> true, Optional.empty(), Duration.ofSeconds(1));
         this.server = ApiServer.start(api);
+    }
+
+    private void givenItAnswers(String method, Object answer) {
+        this.fake.answer(method, args -> CompletableFuture.completedFuture(answer));
+    }
+
+    private void givenItKeepsTheSearches() {
+        this.fake.answer("saveSearches", args -> {
+            this.asked.add("saveSearches " + args[0]);
+            return CompletableFuture.completedFuture(null);
+        });
     }
 
     private void givenItDownloads(DownloadInfo download) {

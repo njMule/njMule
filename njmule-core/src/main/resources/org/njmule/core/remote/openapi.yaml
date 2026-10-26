@@ -1023,6 +1023,29 @@ paths:
                   $ref: "#/components/schemas/KnownClient"
         default:
           $ref: "#/components/responses/Error"
+  /clients/{address}/hello:
+    parameters:
+      - name: address
+        in: path
+        required: true
+        description: The client, as host:port.
+        schema:
+          $ref: "#/components/schemas/HostPort"
+    post:
+      operationId: helloClient
+      tags: [uploads]
+      summary: Says hello to a client and answers what it said, to see whether and how it is reached.
+      responses:
+        "200":
+          description: What the client said.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerInfo"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
   /clients/{address}/files:
     parameters:
       - name: address
@@ -1640,6 +1663,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        default:
+          $ref: "#/components/responses/Error"
+  /searches/saved:
+    get:
+      operationId: listSavedSearches
+      tags: [searches]
+      summary: The search tabs left open at the last exit, when the preferences keep them.
+      responses:
+        "200":
+          description: The searches kept, with their results.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SavedSearch"
+        default:
+          $ref: "#/components/responses/Error"
+    put:
+      operationId: saveSearches
+      tags: [searches]
+      summary: Keeps these searches for the next start, in place of those kept before.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/SavedSearch"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /searches/spam:
+    get:
+      operationId: getSpamMarks
+      tags: [searches]
+      summary: The files marked as spam or as not spam, and the names of those marked spam.
+      responses:
+        "200":
+          description: The marks so far.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpamMarks"
         default:
           $ref: "#/components/responses/Error"
   /searches/{id}:
@@ -2815,6 +2887,61 @@ components:
                 type: integer
               completeSources:
                 $ref: "#/components/schemas/CompleteSources"
+    SavedSearch:
+      type: object
+      required: [title, query, scope, results]
+      properties:
+        title:
+          type: string
+          description: The title of the tab.
+        query:
+          type: string
+          description: What was searched for.
+        scope:
+          type: string
+          enum: [server, global, kad]
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResult"
+    SpamMarks:
+      type: object
+      required: [spam, notSpam, names]
+      properties:
+        spam:
+          type: array
+          description: The files marked as spam.
+          items:
+            $ref: "#/components/schemas/Hash"
+        notSpam:
+          type: array
+          description: The files marked as not spam, whatever else they look like.
+          items:
+            $ref: "#/components/schemas/Hash"
+        names:
+          type: array
+          description: The names, lower case, of the files marked as spam; long ones mark others named so.
+          items:
+            type: string
+    PeerInfo:
+      type: object
+      required: [address, userHash, nick, software, obfuscated, identification]
+      properties:
+        address:
+          type: string
+        userHash:
+          $ref: "#/components/schemas/Hash"
+        nick:
+          type: [string, "null"]
+        software:
+          type: string
+        obfuscated:
+          type: boolean
+          description: Whether the connection was obfuscated.
+        identification:
+          type: string
+          enum: [verified, failed, not_supported, pending]
+          description: The outcome of the secure identification.
     CompleteSources:
       type: [integer, "null"]
       description: Sources with the whole file; null when the network does not tell, as Kad.
