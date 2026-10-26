@@ -78,13 +78,28 @@ Ukrainian, Arabic, Persian, Hebrew, Simplified and Traditional Chinese, Japanese
 
 ## Download and install
 
-| Operating system | Architecture | Formats |
+[![Latest release](https://img.shields.io/github/v/release/njMule/njMule?label=latest%20release&labelColor=24427A&color=F5A65B&style=flat-square)](https://github.com/njMule/njMule/releases/latest)
+
+Download the package for your system from the
+**[latest release](https://github.com/njMule/njMule/releases/latest)**; the Docker image is on the
+**[GitHub Container Registry](https://github.com/njMule/njMule/pkgs/container/njmule)**.
+
+| Operating system | Architecture | Files of the release |
 |---|---|---|
-| 🪟 Windows | x64 (arm64 through the system's x64 emulation) | `.msi` installer, `.zip` archive |
-| 🐧 Linux | x64, arm64 | `.deb`, `.rpm`, `.tar.xz` archive; static headless `.tar.xz` (x64) |
-| 🍎 macOS 13 or later | Apple silicon (arm64) | `.dmg` disk image |
-| 🐳 Docker | `linux/amd64`, `linux/arm64` | image `ghcr.io/njmule/njmule` (headless engine and web interface) |
-| 🗄️ Synology DSM 7 | x86_64 | `.spk` package (headless engine and web interface) |
+| 🪟 Windows | x64 (arm64 through the system's x64 emulation) | installer `njmule-<version>-windows-x64.msi`, archive `njmule-<version>-windows-x64.zip` |
+| 🐧 Linux | x64 | `njmule_<version>_amd64.deb`, `njmule-<version>-1.x86_64.rpm`, archive `njmule-<version>-linux-x64.tar.xz`; headless engine only, for any x64 Linux: `njmule-<version>-linux-x64-static.tar.xz` |
+| 🐧 Linux | arm64 | `njmule_<version>_arm64.deb`, `njmule-<version>-1.aarch64.rpm`, archive `njmule-<version>-linux-arm64.tar.xz` |
+| 🍎 macOS 13 or later | Apple silicon (arm64) | disk image `njmule-<version>-macos-arm64.dmg` |
+| 🐳 Docker | `linux/amd64`, `linux/arm64` | image `ghcr.io/njmule/njmule`, tagged `latest`, `<major>.<minor>` and `<version>` (headless engine and web interface) |
+| 🗄️ Synology DSM 7 | x86_64 | package `njmule-<version>-synology-x86_64.spk` (headless engine and web interface) |
+
+With the [GitHub CLI](https://cli.github.com/) the files of the latest release can also be fetched
+from a terminal, for example the Debian package of a 64-bit PC with its checksums:
+
+```bash
+gh release download --repo njMule/njMule --pattern '*_amd64.deb' --pattern 'SHA256SUMS*'
+docker pull ghcr.io/njmule/njmule   # the Docker image
+```
 
 Every desktop package contains **`njmule-gui`**, the desktop application, and **`njmule`**, the
 command-line interface, which also runs the engine headless, around a single native executable. On
