@@ -59,6 +59,7 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.FileHistory;
+import org.njmule.core.api.FileNames;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
@@ -302,9 +303,11 @@ public final class RemoteApi implements AutoCloseable {
                         "setDownloadCategory",
                         c -> changed(c, this.engine.setDownloadCategory(hash(c), number(c.body(), CATEGORY_KEY)))),
                 entry("renameDownload", c -> changed(c, this.engine.renameDownload(hash(c), text(c.body(), "name")))),
+                entry("cleanUpName", this::cleanUpName),
                 entry(
                         "addDownloadSource",
                         c -> changed(c, this.engine.addSource(hash(c), address(text(c.body(), ADDRESS_KEY))))),
+                entry("swapSourceToDownload", this::swapSourceToDownload),
                 entry("listSources", c -> list(c, this.engine::sources, ApiJson::source)),
                 entry("listUploads", c -> list(c, this.engine::uploads, ApiJson::upload)),
                 entry(
@@ -644,6 +647,26 @@ public final class RemoteApi implements AutoCloseable {
             g.writeStartObject();
             g.writeNumberProperty("uploadKiBps", now.maxUploadKiBps());
             g.writeNumberProperty("downloadKiBps", now.maxDownloadKiBps());
+            g.writeEndObject();
+        });
+    }
+
+    private void swapSourceToDownload(Call c) throws IOException {
+        boolean moved = await(this.engine.swapSourceToDownload(hash(c), address(text(c.body(), ADDRESS_KEY))));
+        reply(c.exchange(), 200, g -> {
+            g.writeStartObject();
+            g.writeBooleanProperty("moved", moved);
+            g.writeEndObject();
+        });
+    }
+
+    // The words taken out are those of the preferences, as for the names of new downloads.
+    private void cleanUpName(Call c) throws IOException {
+        String clean = FileNames.cleanUp(
+                text(c.body(), "name"), this.engine.preferences().nameCleanups());
+        reply(c.exchange(), 200, g -> {
+            g.writeStartObject();
+            g.writeStringProperty("name", clean);
             g.writeEndObject();
         });
     }

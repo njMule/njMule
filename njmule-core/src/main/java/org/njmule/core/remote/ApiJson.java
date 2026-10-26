@@ -30,6 +30,7 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.FileComment;
+import org.njmule.core.api.FileKind;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportReport;
@@ -273,6 +274,7 @@ final class ApiJson {
         g.writeBooleanProperty("previewFirst", d.previewFirst());
         g.writeBooleanProperty("autoSwap", d.autoSwap());
         g.writeStringProperty("link", d.link().toUri());
+        g.writeStringProperty("kind", name(FileKind.of(d.name())));
     }
 
     /** A download with the map of its parts: what is missing, what is being asked for, how many sources have each. */

@@ -522,6 +522,37 @@ paths:
                     minimum: 0
         default:
           $ref: "#/components/responses/Error"
+  /names/cleanup:
+    post:
+      operationId: cleanUpName
+      tags: [downloads]
+      summary: A file name tidied, without the words the preferences take out of new names.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+      responses:
+        "200":
+          description: The name tidied; the one given when nothing would be left of it.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name]
+                properties:
+                  name:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
   /downloads/completed/{hash}:
     parameters:
       - $ref: "#/components/parameters/Hash"
@@ -913,6 +944,34 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}/sources/swap:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    post:
+      operationId: swapSourceToDownload
+      tags: [downloads]
+      summary: Moves a source asked for another file to this download, when it is free to move.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddressBody"
+      responses:
+        "200":
+          description: Whether the source moved; it does not while it sends or is about to.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [moved]
+                properties:
+                  moved:
+                    type: boolean
+        "400":
+          $ref: "#/components/responses/BadRequest"
         default:
           $ref: "#/components/responses/Error"
   /sources:
@@ -2521,6 +2580,10 @@ components:
         link:
           type: string
           description: The eD2K link of the file.
+        kind:
+          type: string
+          enum: [video, audio, image, document, archive, disc_image, program, other]
+          description: What the file is, as its extension tells.
     Source:
       type: object
       required:

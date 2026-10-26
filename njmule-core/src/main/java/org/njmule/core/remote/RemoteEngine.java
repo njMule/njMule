@@ -478,7 +478,8 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Boolean> swapSourceToDownload(Hash16 download, ServerAddress source) {
-        return notHere("moving one source");
+        return json("POST", download(download, "sources/swap"), body("address", source.toString()))
+                .thenApply(n -> n.path("moved").asBoolean());
     }
 
     @Override
