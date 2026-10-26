@@ -27,7 +27,7 @@ jobs:
         outputs:
             build: ${{ github.event_name == 'schedule' || steps.filter.outputs.build == 'true' }}
             workflows: ${{ steps.filter.outputs.workflows == 'true' }}
-            static: ${{ github.event_name == 'schedule' || steps.filter.outputs.static == 'true' }}
+            static: ${{ github.event_name == 'schedule' || steps.static.outputs.static == 'true' }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -54,8 +54,14 @@ jobs:
                           - '!tools/**'
                       workflows:
                           - '.github/workflows/**'
-                      # What can break the static executable and its package rather than the code: the build,
-                      # the dependencies and GraalVM, the native configuration, the package's files.
+            # Any of these files, unlike the build's filter where a file must pass every pattern: what can break the
+            # static executable and its package rather than the code (the build, the dependencies and GraalVM, the
+            # native configuration, the package's files).
+            - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+              if: github.event_name != 'schedule'
+              id: static
+              with:
+                  filters: |
                       static:
                           - 'gradle/**'
                           - 'gradle.properties'
