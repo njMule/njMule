@@ -17,7 +17,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
     <a href="https://sonarcloud.io/summary/new_code?id=njMule_njMule"><img alt="SonarQube Cloud coverage" src="https://img.shields.io/sonar/coverage/njMule_njMule?server=https%3A%2F%2Fsonarcloud.io&logo=sonarcloud&logoColor=white&labelColor=24427A&style=flat-square"></a>
     <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-F5A65B?labelColor=24427A&style=flat-square"></a>
     <a href="https://openjdk.org/projects/jdk/25/"><img alt="Java 25" src="https://img.shields.io/badge/Java-25-F5A65B?logo=openjdk&logoColor=white&labelColor=24427A&style=flat-square"></a>
-    <a href="#download-and-install"><img alt="Platforms: Windows, macOS, Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-F5A65B?labelColor=24427A&style=flat-square"></a>
+    <a href="#download-and-install"><img alt="Platforms: Windows, macOS, Linux, Docker, Synology DSM" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker%20%7C%20Synology%20DSM-F5A65B?labelColor=24427A&style=flat-square"></a>
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 <p align="center">
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset=".github/assets/njmule-transfers-dark.png">
-        <img alt="The transfers of the njMule desktop app: the downloads with their progress, speed, sources, state and what is left, filtered by chips, the first one opened onto its sources" src=".github/assets/njmule-transfers-light.png" width="880">
+        <img alt="The transfers of the njMule desktop app: the downloads with their progress, speed, sources, state and what is left, filtered by chips, the first one opened onto its sources, each with a coloured dot telling what it does" src=".github/assets/njmule-transfers-light.png" width="880">
     </picture>
 </p>
 
@@ -57,11 +57,14 @@ SPDX-License-Identifier: GPL-3.0-or-later
 | | |
 |---|---|
 | 🌐 **eD2K** | Server connections with optional protocol obfuscation, static servers, a starting server list shipped with njMule and `server.met` updates from a URL. Searches on the connected server, on all known servers over UDP or on Kad, filtered by file type, size, availability and extension. Downloads verified part by part, with corrupt parts repaired from AICH recovery data. Uploads through a credit-scored queue, with secure identification and source exchange. |
-| 🕸️ **Kad 2** | Routing table, keyword and source lookups, publishing of shared files, firewall check, bootstrap from the contacts shipped with njMule or from a `nodes.dat` URL. |
-| 📂 **File management** | Shared directories with recursive sharing and change monitoring; download and upload priorities, categories, preview in an external video player, comments and ratings. |
-| 🖥️ **Desktop app** | JavaFX with AtlantaFX themes (Nord light and dark by default, following the system, and the system colours under Windows high contrast), 36 languages including right-to-left ones with a mirrored layout, system tray integration and optional registration as the `ed2k://` link handler. |
-| 🌍 **Web interface** | The desktop app in the browser, behind a password and in its 36 languages: transfers, searches with filters, shared folders, messages and friends, the network with its servers, Kad and log, statistics and the settings. |
+| 🕸️ **Kad 2** | Routing table, keyword and source lookups, publishing of shared files and of their comments and ratings (notes), TCP and UDP firewall checks, buddies and callbacks through which firewalled clients are reached, bootstrap from the contacts shipped with njMule or from a `nodes.dat` URL. |
+| 📂 **File management** | Shared directories with recursive sharing and change monitoring; download and upload priorities, categories, preview in an external video player, comments and ratings; downloads that receive nothing for a number of days can be deleted by themselves (off by default). |
+| 📥 **Coming from eMule** | Import of an eMule profile, offered at the first start when one is found and only ever read: preferences, servers, Kad contacts, known files, shared directories and the IP filter, and on request the identity with its credits and copies of the unfinished downloads. |
+| 🖥️ **Desktop app** | JavaFX with AtlantaFX themes (Nord light and dark by default, following the system, and the system colours under Windows high contrast), 36 languages including right-to-left ones with a mirrored layout, system tray integration, optional registration as the `ed2k://` link handler, start at login and keeping the computer awake while files are transferred (both off by default). |
+| 🌍 **Web interface** | The desktop app in the browser, behind a password and in its 36 languages: transfers, searches with filters, shared folders, messages and friends, the network with its servers, Kad and log, statistics and the settings; a guest password of its own only lets one look. |
 | 🔧 **Networking** | IPv6 alongside IPv4, connections between firewalled clients through their routers (QUIC or uTP), SOCKS 4/5 and HTTP CONNECT proxies, binding to one network interface (such as a VPN) that keeps njMule offline while it is gone, port forwarding with UPnP, NAT-PMP or PCP, IP filtering (`ipfilter.dat`, PeerGuardian, P2B) with updates from a URL, and a weekly scheduler for bandwidth limits and categories. |
+| 📊 **Statistics** | Rates over the last ten minutes, hour or day, session and all-time totals with the protocol's overhead, figures for each shared file, a 90-day history of the clients met and, optionally, their countries with flags ([IP Geolocation by DB-IP](https://db-ip.com)). |
+| 🔔 **Notifications** | A completed or failed download, a chat message or a temp disk short of space, told as chosen by an e-mail through the user's SMTP server (always encrypted), a web hook (ntfy, Gotify) or a program of the user's, all off by default; a sound of the user's for finished downloads and chat messages. |
 | 💬 **Messaging** | Chat with CAPTCHA verification, a friends list and spam filters. |
 
 <details>
@@ -348,9 +351,13 @@ it restarts to update, exits with code 75: `Restart=on-failure` starts the new v
 
 ### Desktop application
 
-Launch njMule from the Start menu, the applications menu or the Applications folder. ed2k links
-passed on the command line (`njmule-gui "ed2k://|file|…|/"`) are added as downloads; if an
-instance is already running with the same configuration, the links are forwarded to it. The
+Launch njMule from the Start menu, the applications menu or the Applications folder. At the first
+start a wizard sets up the language and look, the nick, the folders, the ports and the speed of the
+line, and offers to import an eMule profile found on the computer; every page can be skipped, and
+*⋯ → Set up njMule* opens it again, as *⋯ → Import from eMule* does the import alone.
+
+ed2k links passed on the command line (`njmule-gui "ed2k://|file|…|/"`) are added as downloads; if
+an instance is already running with the same configuration, the links are forwarded to it. The
 options can register njMule as the handler of `ed2k://` links opened in a browser (Windows and
 Linux; disabled by default).
 
@@ -368,6 +375,7 @@ performs a single task and exits. `njmule --help` lists all options.
 | `njmule --share <dir>...` | share additional directories (persisted) |
 | `njmule --hash <file>...` | print the ed2k link of each file, including its AICH hash |
 | `njmule --kad-bootstrap <host:port>` | join Kad through the given node |
+| `njmule --import-emule <dir> [--dry-run]` | import an eMule profile, only reading it; `--adopt-emule-identity` and `--import-downloads` also take its identity and its downloads |
 | `njmule --config-dir <dir>` | keep all data below `<dir>` |
 | `njmule --log-level DEBUG` | override the configured log level |
 | `njmule --check-update` | look for a new version, print it with how to install it and exit (100 when one is out) |
@@ -458,7 +466,7 @@ event to it. Clients can be generated from it with any OpenAPI 3.2 tool.
 
 | Tool | Required for |
 |---|---|
-| JDK 25 (e.g. Eclipse Temurin) | all builds; the Gradle Wrapper provides Gradle |
+| JDK 25 (e.g. Eclipse Temurin) | all builds; the Gradle Wrapper provides Gradle, and Gradle the Node.js that builds the web interface |
 | GraalVM Community `25.0.4.1.1`, with `GRAALVM_HOME` set | native executables |
 | Visual Studio 2022 Build Tools, C++ workload | native executables on Windows |
 | Docker | Linux x64 native executables without a local GraalVM |
@@ -606,9 +614,10 @@ java -jar njmule-bench/build/libs/benchmarks.jar
 | `njmule-app` | headless launcher, command-line interface, logging |
 | `njmule-gui` | JavaFX desktop application |
 | `njmule-webui` | web interface served by Jetty, which also serves the remote-control API |
+| `njmule-webapp` | the web interface's browser app (Vue 3, Element Plus, TypeScript), built into `njmule-webui` |
 | `njmule-testkit` | test doubles shared by the modules |
 | `njmule-bench` | JMH benchmarks of the hot paths (not distributed) |
-| `packaging` | Windows installer (WiX), Linux packages (nfpm), macOS bundle metadata |
+| `packaging` | Windows installer (WiX), Linux packages (nfpm), macOS bundle metadata, Docker image, Synology package |
 | `branding` | original artwork: master SVG and generated icons |
 | `config` | license header, Checkstyle and SpotBugs configuration |
 | `build-logic`, `gradle` | Gradle set-up shared by the modules, library versions, Gradle Wrapper |

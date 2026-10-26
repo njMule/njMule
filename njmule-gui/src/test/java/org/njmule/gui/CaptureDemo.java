@@ -376,7 +376,7 @@ final class CaptureDemo {
     static List<SourceInfo> sources() {
         List<SourceInfo> list = new ArrayList<>();
         List<DownloadInfo> downloads = downloads();
-        String[] nicks = {"Fox", "", "Kiwi", "", "astro_nauta", "Lynx"};
+        String[] nicks = {"Fox", "", "Kiwi", "", "astro_nauta", "Lynx", "Heron", ""};
         int n = 0;
         for (DownloadInfo d : List.of(downloads.get(0), downloads.get(1), downloads.get(10))) {
             int partCount = (int) ((d.size() + PartMap.PART_SIZE - 1) / PartMap.PART_SIZE);
