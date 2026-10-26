@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
@@ -526,7 +527,14 @@ class LinkHandoffTest {
     private void thenTheSlowProgramIsDropped() throws IOException {
         this.slow.setSoTimeout(
                 Math.toIntExact(LinkHandoff.DEADLINE.plusSeconds(5).toMillis()));
-        assertThat(this.slow.getInputStream().read()).as("dropped").isEqualTo(-1);
+        // Closed, the stream ends; macOS tells a close with data left unread as a reset instead.
+        int read;
+        try {
+            read = this.slow.getInputStream().read();
+        } catch (SocketException e) {
+            read = -1;
+        }
+        assertThat(read).as("dropped").isEqualTo(-1);
     }
 
     private void thenItAllTookLessThan(Duration limit) {

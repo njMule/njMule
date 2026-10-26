@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
@@ -40,6 +41,7 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -710,6 +712,7 @@ class UploadQueueTest {
     }
 
     private void givenAClientAtAnotherAddressClaimingTheUserHashIsIgnored(String address, int seed) throws IOException {
+        assumeTheLoopbackHas(address);
         Client impostor = clientFrom(InetAddress.getByName(address), this.port, seed);
         impostor.send(ClientMessages.forFile(Opcodes.Client.STARTUPLOADREQ, file().hash()));
         assertThat(impostor.poll(Duration.ofSeconds(1))).isEmpty();
@@ -1131,6 +1134,15 @@ class UploadQueueTest {
                 Protocol.EDONKEY,
                 Opcodes.Client.ASKSHAREDFILESDIR.code(),
                 new PacketWriter().string16(directory, StringEncoding.UTF8));
+    }
+
+    // macOS gives the loopback 127.0.0.1 alone, not the whole of 127.0.0.0/8.
+    private static void assumeTheLoopbackHas(String address) {
+        try (Socket probe = new Socket()) {
+            probe.bind(new InetSocketAddress(address, 0));
+        } catch (IOException e) {
+            Assumptions.abort("no " + address + " on this computer's loopback: " + e.getMessage());
+        }
     }
 
     private Client clientFrom(InetAddress local, int port, int seed) throws IOException {

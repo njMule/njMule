@@ -20,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -35,6 +37,7 @@ import java.util.concurrent.Flow;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -186,8 +189,18 @@ class DownloadRecoveryFlowTest {
     }
 
     private void givenASourceThatStallsAt(String address, int seed) throws IOException {
+        assumeTheLoopbackHas(address);
         this.source = peer(InetAddress.getByName(address), config(seed, Set.of()));
         this.source.stall();
+    }
+
+    // macOS gives the loopback 127.0.0.1 alone, not the whole of 127.0.0.0/8.
+    private static void assumeTheLoopbackHas(String address) {
+        try (Socket probe = new Socket()) {
+            probe.bind(new InetSocketAddress(address, 0));
+        } catch (IOException e) {
+            Assumptions.abort("no " + address + " on this computer's loopback: " + e.getMessage());
+        }
     }
 
     private void givenASourceSendingCorruptParts(int seed, Set<Integer> parts) throws IOException {
