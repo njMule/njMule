@@ -1,0 +1,155 @@
+---
+title: Updates
+description: How njMule looks for new versions, checks their signature, downloads and installs them for each kind of installation, and how to choose what it does on its own.
+---
+
+njMule tells you when a new version is out and, where it can replace its own files, installs it
+for you: it saves everything, stops, puts the new version in place and starts again. It believes
+only release information signed by its developers, checks every downloaded package against it,
+and keeps the old version until the new one has proved that it runs.
+
+## How njMule looks for new versions
+
+At each start and then once a day, njMule asks GitHub for the update information of the newest
+release (`njmule-update.json` and its signature). A failed check is tried again six hours later.
+The request goes through the proxy and the network interface chosen in the options, like every
+other request of njMule.
+
+- **What is sent:** nothing but njMule's version, in the `User-Agent` header (`njMule/<version>`).
+  GitHub sees the address the request comes from, as for any web page.
+- **What is believed:** the information counts only when it is signed with one of the keys built
+  into njMule ([minisign](https://jedisct1.github.io/minisign/), Ed25519). Information older than
+  one already seen is refused, so nobody can offer you an older version as a new one.
+- **Which versions:** releases, and the test versions (alpha, beta, release candidates) when you
+  choose them. A release of njMule, such as <Version />, looks for releases only; a test version
+  looks for test versions too until you change it.
+
+When a newer version is out:
+
+- the desktop app shows a notice with **Details**, which opens its **Updates** window with what
+  changed;
+- the web interface shows a banner, *njMule … is available*, whose **Details** opens the options;
+- the headless engine writes *njMule … is available* with the release page to its log;
+- the remote-control API sends the `update.available` event.
+
+You can also look at any time: **⋯ → Check for new version** or the command palette in the desktop
+app, **Check for new version** under **Options → General → Updates** in the desktop app and in the
+browser, `njmule --check-update` or `njmule --remote update check`.
+
+## Choose what njMule does
+
+The **Updates** section of **Options → General**, in the desktop app and in the browser, holds four
+choices, which are also keys of `njmule.properties`:
+
+| Option | Key | Choices | Default |
+|---|---|---|---|
+| **Look for new versions** | `update.mode` | **Only when I ask** (`OFF`), **At each start and every day** (`NOTIFY`), **At each start and every day, and download them** (`DOWNLOAD`), **At each start and every day, and install them** (`INSTALL`) | `NOTIFY` |
+| **Versions** | `update.channel` | **Releases only** (`STABLE`), **Test versions too** (`PRERELEASE`) | Test versions for a test version of njMule, releases otherwise |
+| **Install them** | `update.installAt` | **When I close njMule** (`EXIT`), **When I close njMule, or in the night hours** (`EXIT_OR_NIGHT`) | `EXIT` |
+| **Night hours** | `update.nightHours` | Two times, as `03:00-05:00`; they may span midnight | `03:00-05:00` |
+
+**Install them** shows with the last mode only, and **Night hours** with the night choice. In the
+night hours njMule restarts by itself to install a new version it has downloaded: meant for a
+computer left on for days.
+
+njMule installs on its own only where it can do so without asking anybody: not an installation for
+every user on Windows, which needs the administrator's rights, and not a version whose installation
+failed before. Elsewhere the last mode works as the download mode.
+
+## Download and install
+
+When a new version is shown, **Download and install** (or **Download** where njMule does not
+install itself) fetches the package of the new version made for your kind of installation:
+
+1. The package downloads in the background, with its progress. A download cut off goes on where it
+   stopped.
+2. njMule keeps it only when its length and SHA-256 hash are those of the signed update
+   information; an archive or a disk image is then unpacked, while the old version still runs.
+3. Choose **Restart to update**: njMule saves everything, stops, puts the new version in place and
+   starts again. Or choose **Install when I close njMule**, and it happens the next time you exit.
+
+What happens in step 3 depends on how njMule was installed:
+
+| Installed with | What njMule does |
+|---|---|
+| Windows installer (`.msi`), for you | Runs the installer once njMule has stopped, then starts njMule again |
+| Windows installer, for every user | The same, after Windows asks for the administrator's rights; never on its own |
+| Windows zip, Linux `.tar.xz` (the static one too) | Replaces the files of its folder, then starts njMule again |
+| macOS disk image | Replaces the whole `njMule.app`, then starts it again |
+| Debian or RPM package | Downloads and checks the package; you install it with `sudo apt install ./…deb` or `sudo dnf install ./…rpm` |
+| Synology package | Downloads and checks the `.spk`; you install the new package in the Package Center with **Manual Install** |
+| Docker image | Nothing to download: pull the new image with `docker compose pull && docker compose up -d` |
+
+The desktop app's **Updates** window and `njmule --check-update` or `njmule --update` tell how to
+install the new version on your kind of installation. An archive or an app njMule may not write to
+(unpacked by an administrator into a system folder, say) is treated like a package: njMule
+downloads the new version and leaves its installation to you.
+
+### If something goes wrong
+
+- The replaced files of an archive or of the macOS app stay beside the new ones, named `*.old`,
+  until the new version has started, answered with its version number and run its engine for 30
+  seconds. If it does not, the old files come back and the old version starts again.
+- With the Windows installer, Windows Installer undoes its own failed installations; njMule starts
+  again and tells why it failed, with the installer's log.
+- Either way njMule tells you that the installation failed, and does not install that version again
+  on its own.
+- Before a new version first uses your configuration, njMule makes a dated backup of it in the data
+  folder ([Backups](./data/backups.mdx)).
+
+## Skip a version
+
+**Skip this version** stops the notices of that version; the next one is told again. A version
+that fixes a security problem cannot be skipped: it shows *It fixes security problems: install it
+soon.*
+
+## From the command line
+
+```bash
+njmule --check-update     # look, print what was found and how to install it
+njmule --update           # look, download, check and install; stop njMule first
+```
+
+`--check-update` exits with **0** when this version is the newest, **100** when a newer one is out
+and **1** when the check failed, so that scripts can act on it:
+
+```bash
+njmule --check-update
+if [ $? -eq 100 ]; then echo "A new njMule is out"; fi
+```
+
+`--update` prints the download's progress, then installs the new version where njMule may replace
+itself (the next start runs it; the Windows installer runs once the command has ended), or tells
+where the package is and how to install it. Both start an engine on the configuration, so they need
+njMule stopped (`njmule --exit`). While njMule runs, ask it instead:
+
+```bash
+njmule --remote update                    # what is known of new versions
+njmule --remote update check              # look now
+njmule --remote update download           # download the new version and check it
+njmule --remote update install            # install it now; njMule restarts
+njmule --remote update install at-exit    # install it when njMule exits
+njmule --remote update skip 0.1.0         # no more word of this version
+```
+
+The remote-control API offers the same: `GET /api/v1/update`, `POST /api/v1/update/check`,
+`/update/download`, `/update/install` and `/update/skip`, with the events `update.status`,
+`update.available`, `update.ready` and `update.restart` ([Remote control](./server/remote-control.mdx)).
+
+## Servers and services
+
+- **Docker:** pull the new image and recreate the container; the volume keeps everything
+  ([Docker](./getting-started/install-docker.mdx)).
+- **Synology:** install the new `.spk` with **Manual Install**; the settings and downloads stay
+  ([Synology](./getting-started/install-synology.mdx)).
+- **Windows service:** install the newer MSI as you installed the first one
+  ([Windows service](./server/windows-service.mdx#upgrades)).
+- **systemd:** after `apt` or `dnf`, restart the unit; a njMule from an archive under systemd
+  restarts through exit code 75 ([Linux service](./server/linux-service.mdx#updates)).
+
+## Related pages
+
+- [Verify downloads](./getting-started/verify-downloads.mdx): check a package by hand, with its
+  signature and provenance.
+- [Command line](./server/cli.mdx)
+- [General options](./settings/general.mdx)

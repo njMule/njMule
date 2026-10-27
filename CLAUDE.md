@@ -97,6 +97,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 | `config/` | license header, Checkstyle and SpotBugs configuration |
 | `branding/` | original artwork (master SVG + generated PNG/ICO/ICNS) — never reuse eMule assets |
 | `tools/` | single-file helper programs (`IconGen.java`) |
+| `website/` | documentation website (Docusaurus): `docs/` user guide, `developer/` developer guide, published on GitHub Pages |
 | `docs/` (local, git-ignored) | `PLAN.md`, `ARCHITECTURE.md`, `PROTOCOL.md`, `FORMATS.md`, `adr/` |
 
 ## Tooling and commands
@@ -138,6 +139,14 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `formatCheck` runs Prettier (fix with `npm run format` there). Its texts are the desktop app's
   translation keys (`t('IDS_…')`, `t('nj.…')`), converted to JSON at build time; only literal keys
   are found. Its icons are the desktop app's (`src/icons.ts`).
+- Documentation website (`website/`, Docusaurus, not part of `build`): `./gradlew :website:site` →
+  `website/build/site` (it takes the desktop app's screenshots with `:njmule-gui:docsCaptures`, the web
+  interface's with the installed Chrome or Edge, the CLI help with `:njmule-app:cliHelp`, and makes
+  the API reference from `openapi.yaml`); `./gradlew :website:siteCheck` checks its code (Prettier,
+  TypeScript). Preview: `./gradlew :website:prepare`, then `npm start` in `website/`. Pages are MDX
+  in English, text under CC BY-SA 4.0; screenshots are never committed (`<Screenshot id="…">`). A
+  user-visible change updates its page in the same branch. `.github/workflows/docs.yml` builds it
+  on changes and publishes on GitHub Pages only on a manual run with `deploy` or a `v*` tag.
 - Other tasks: `:njmule-gui:generateLicenseReport` (THIRD-PARTY.txt in `build/reports/licenses`),
   `cyclonedxBom` (SBOM in `build/reports/cyclonedx`), `dependencyCheckAggregate` (OWASP
   dependency-check, needs `NVD_API_KEY`), `:njmule-app:nativeCompile` (GraalVM native image).

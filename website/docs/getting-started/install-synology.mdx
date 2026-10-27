@@ -1,0 +1,93 @@
+---
+title: Install on Synology
+description: Install njMule on a Synology NAS with DSM 7 from its package, open its web interface, forward its ports, upgrade and uninstall it.
+---
+
+The njMule package for Synology DSM runs the headless engine with its web interface on the NAS. You
+use it from a browser, through the [web interface](../web/overview.mdx). It runs as a user of its
+own, without administrator rights.
+
+## What you need
+
+- DSM 7.0 or later;
+- a NAS with an x86_64 processor, those with a Celeron or Atom included. There is no package for
+  ARM models; if your NAS runs Docker, the [Docker image](install-docker.mdx) has an arm64 version.
+
+## Download
+
+<Downloads platform="synology" />
+
+Older versions are on the [GitHub releases page](https://github.com/njMule/njMule/releases). You
+can [check the download](verify-downloads.mdx) first.
+
+## Install
+
+1. In DSM, open **Package Center** and choose **Manual Install**.
+2. Choose the `.spk` file you downloaded. DSM warns that the package is not signed by Synology:
+   confirm to go on.
+3. The wizard asks for the web interface password: choose one of 8 characters at least. njMule keeps
+   only a hash of it.
+4. Finish the wizard. njMule starts.
+
+The package creates the shared folder **njmule**: completed downloads go there, so you reach them
+from File Station or over the network as any other shared folder. The settings, unfinished
+downloads and logs stay in the package's own folder, `/var/packages/njmule/var`.
+
+## Open the web interface
+
+Open njMule from **Package Center** (**Open**) or from the DSM main menu, or go to
+`http://<address of the NAS>:4711/` and log in with the password. The first time, a short set-up
+opens: see [First start](first-run.mdx).
+
+The interface answers to the addresses of the NAS, to its name (`<name>` and `<name>.local`, set at
+installation) and to the QuickConnect name of the address under which DSM opens it. Against DNS
+rebinding it refuses other names: add them, such as the public name of a reverse proxy, on the
+**Settings** page of the web interface. See [Web interface security](../web/security.mdx).
+
+## Firewall and router
+
+The package lists its ports as njMule services in the DSM firewall:
+
+| Service | Port |
+|---|---|
+| njMule web interface | 4711/TCP |
+| njMule eD2K (TCP) | 4662/TCP |
+| njMule eD2K and Kad (UDP) | 4672/UDP |
+
+If the DSM firewall is on, allow them there. For a High ID, so that other clients can reach you, the
+router must forward 4662/TCP and 4672/UDP to the NAS, or njMule asks it to through UPnP. See
+[Ports and firewalls](../network/ports.mdx).
+
+:::note
+
+These entries name the default ports. If you change njMule's ports in its options, open and forward
+the new ones yourself; the DSM menu entry keeps opening port 4711.
+
+:::
+
+## Start and stop
+
+Use **Stop** and **Run** in Package Center. On **Stop**, njMule saves its downloads and settings
+before it exits (it is given up to a minute).
+
+## Upgrade
+
+Install a newer `.spk` the same way, from **Manual Install**: the package is upgraded and keeps its
+settings and downloads. njMule tells you when a new version is out, on the status page of its web
+interface, and how to install it; it never replaces itself on DSM. See [Updates](../updates.mdx).
+
+DSM versions are numbers only: Package Center shows njMule's version without its pre-release label
+(alpha, beta, release candidate), followed by a build number that grows with each package.
+
+## Uninstall
+
+Uninstall njMule in Package Center. The uninstall wizard asks whether to delete njMule's data too
+(settings, server and contact lists, identity and credits, unfinished downloads and logs): tick
+**Delete njMule's data** to delete it, or leave it unticked to keep it for a later installation.
+The downloaded files in the shared folder **njmule** always stay. See [Uninstall](../uninstall.mdx).
+
+## Why a static executable
+
+The executable inside the package is the static one of `njmule-<version>-linux-x64-static.tar.xz`,
+linked with musl: the C library of DSM is too old for the other Linux executables. It needs no
+library of the system. See [Install on Linux](install-linux.mdx#the-static-headless-build).

@@ -1,0 +1,120 @@
+---
+title: Messages
+description: Chat with other eD2K clients, keep a list of friends, give a friend your friend slot and answer CAPTCHAs in the njMule desktop app.
+---
+
+**Messages** (<kbd>Ctrl</kbd>+<kbd>4</kbd>) is where you chat with other eD2K clients and keep your
+friends. Conversations and friends share one list on the left, the newest conversation first; the
+conversation chosen shows on the right. The summary under the title counts the conversations and the
+friends.
+
+<Screenshot
+    id="messages"
+    alt="The Messages screen: on the left the box Find a conversation, a plus button, the segment All 5 and Friends 3, and the list with Fog, Owl with a star, an address, marta.r and Ranger; on the right a conversation with 192.0.2.99:4662, a CAPTCHA to solve and the box to write"
+    caption="Conversations and friends, and a CAPTCHA to answer"
+/>
+
+## The list
+
+Each row shows the person's initials (or a chat icon for an address), their name, a star for a
+friend, the time of the last line, the last line itself (`You: …` for yours), and the number of
+messages not read yet. The conversations come first, newest on top, each with its friend when it is
+one; then the friends you have no conversation with.
+
+- **Find a conversation** keeps the rows whose name or address holds every word you type.
+  <kbd>Esc</kbd> empties it.
+- **All** and **Friends** show every row or the friends only, each with its count.
+
+A message that arrives while you are on another screen shows **New message from …** at the bottom of
+the window, can play a sound (see [General options](../settings/general.mdx)), and counts on
+**Messages** in the sidebar until you open it. The conversation stays marked until you look at it.
+
+## Writing to someone
+
+### To an address
+
+1. Press **+** (**New conversation**) beside the find box.
+2. Type the client's **IP or Address** and port, as `host:port`, for example `198.51.100.23:4662`.
+3. Press **Chat** or <kbd>Enter</kbd>: the conversation opens.
+4. Type your message in the box at the bottom and press <kbd>Enter</kbd> or **Send**.
+
+Chats reach eD2K clients on IPv4 addresses only; an IPv6 address is refused with a message.
+
+### To a friend
+
+Choose the friend in the list. Without a conversation yet, the right side says **No messages with …
+yet.**: type in the box under it and press **Send**, and the conversation opens at the friend's known
+address. A friend whose address is unknown cannot be written to (**This friend has no known
+address.**).
+
+## A conversation
+
+Each line is a bubble with its time and author above it: yours at the end of the row, theirs at the
+start, and njMule's own notices (such as a message not delivered) in the middle. Long lines wrap.
+
+Text smileys show as emoji, both in your messages and in theirs; what is sent stays as typed:
+
+| Typed | Shown |
+|---|---|
+| `:)` `:-)` | 🙂 |
+| `:(` `:-(` | 🙁 |
+| `;)` `;-)` | 😉 |
+| `:D` `:-D` | 😃 |
+| `:P` `:p` `:-P` | 😛 |
+| `:O` `:o` | 😮 |
+| `:'(` | 😢 |
+| `:\|` | 😐 |
+| `8)` | 😎 |
+| `:*` | 😘 |
+| `<3` | ❤ |
+
+A smiley changes only when it stands alone between spaces, so addresses and code keep their colons
+and brackets.
+
+The head of the conversation shows the person's name and address and, depending on who it is:
+
+- **Add to friends**, for someone who is not a friend yet. It works once they have written to you:
+  until then njMule says **Wait for an answer: the user hash is not known yet.**
+- **Establish Friend Slot**, for a friend: see [the friend slot](#the-friend-slot).
+- **⋯** with **Remove** (takes the friend off your list) and **Close** (closes the conversation).
+
+Conversations last as long as njMule runs: they are not kept after you quit. Friends are kept, in
+eMule's `emfriends.met`, and an eMule profile's friends come with the
+[import](../getting-started/import-emule.mdx).
+
+## CAPTCHAs
+
+Some clients ask you to solve a CAPTCHA before they show your messages. The request then appears
+above the box to write, with the picture on a light plate that reads in every theme:
+
+1. Read the letters in the picture.
+2. Type them in **Letters in the picture**.
+3. Press <kbd>Enter</kbd> or **Send**.
+
+A notice in the conversation tells whether you passed the check, and your message was received, or
+whether the answer was wrong (send a new message to get a new CAPTCHA).
+
+## The friend slot
+
+A friend can get your friend slot for as long as njMule runs: choose the friend and press
+**Establish Friend Slot**. The friend then goes before your upload queue, also when it is full, and
+keeps the upload slot. Only one friend has it at a time; press the button again to take it back. It
+counts only for a friend whose identity is proven by secure identification, so that nobody can
+take it by claiming a friend's user hash.
+
+## Keeping spam away
+
+The [Messages options](../settings/messages.mdx) choose which messages you see:
+
+- **Filter messages containing: (Separator | )**: messages holding one of these words never show.
+- **Accept from friends only**: only friends' messages show.
+- **Advanced spam filter** (on by default): someone who is not a friend and, before you wrote to
+  them, sends a link or more than three messages, is taken for a spammer: from then on nothing they
+  send shows.
+
+To let only friends see your shared files, see [Shared files](./shared-files.mdx#who-sees-your-list-of-files).
+
+## Related pages
+
+- [Messages options](../settings/messages.mdx)
+- [Transfers](./transfers.mdx)

@@ -1,0 +1,122 @@
+---
+title: Removing your profile
+description: Delete njMule's settings, lists, identity, unfinished downloads, caches and logs with njmule --remove-profile or the uninstaller's box; the completed downloads always stay.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+Uninstalling njMule removes the programs but leaves your **profile** (see
+[Where njMule keeps its data](./locations.mdx)), so that a later installation finds your settings,
+lists, identity and credits again. When you want njMule gone for good, delete the profile too: the
+uninstallers offer a box for it, and `njmule --remove-profile` does it anywhere.
+
+:::danger[Your identity goes with it]
+The profile holds your user hash and key, and the credits other clients gave you. Once deleted they
+cannot come back, unless you kept a [configuration backup](./backups.mdx) elsewhere: the backups
+are part of the profile and go too.
+:::
+
+## What is deleted, what stays
+
+| Deleted | Stays |
+|---|---|
+| Settings and lists (the **config** folder) | Your **completed downloads**, in the incoming folder and the folders of your categories |
+| The desktop app's state (**gui**) | A temporary folder you chose yourself in the options, with the unfinished downloads in it |
+| The configuration backups (**data**) | The programs, until you uninstall them |
+| The unfinished downloads in the default temporary folder (**temp**) | |
+| The cache and the logs | |
+
+A folder of the profile that holds the incoming folder is never deleted.
+
+## With the command line
+
+1. Stop njMule: quit the desktop app, or run `njmule --exit`, and stop the
+   [Linux service](../server/linux-service.mdx) if you use it.
+2. Run:
+
+   ```bash
+   njmule --remove-profile
+   ```
+
+3. njMule lists the folders it will delete and where the completed downloads stay, then asks:
+
+   ```text
+   These folders of njMule will be deleted:
+     /home/you/.config/njmule
+     /home/you/.local/share/njmule
+     /home/you/.cache/njmule
+     /home/you/.local/state/njmule/logs
+   The completed downloads in /home/you/Downloads/njMule stay.
+   Delete them? [y/N]
+   ```
+
+4. Answer `y` to delete them. Any other answer deletes nothing.
+
+`--yes` skips the question, for scripts: `njmule --remove-profile --yes`. The folders are deleted
+for good, not moved to the trash; their `njMule` parent folder goes too once it is empty.
+
+It deletes the profile of the user who runs it. With `--config-dir <dir>` it deletes the profile
+below that folder instead, and from a portable folder it deletes that folder's `data` profile. If
+njMule still runs on the profile, it stops with `njMule runs on this profile: stop it first (njmule
+--exit).`
+
+## With the uninstaller
+
+<Tabs groupId="os">
+  <TabItem value="windows" label="Windows" default>
+
+Uninstall njMule from *Settings → Apps*. The uninstaller asks **Also delete your njMule data?**:
+tick **Delete my njMule data** and click **OK** to move `%APPDATA%\njMule` and
+`%LOCALAPPDATA%\njMule` to the Recycle Bin, from where you can still restore them. Leave the box
+unticked to keep them. The question is not asked during an upgrade or a quiet uninstall.
+
+The profile of the [Windows service](../server/windows-service.mdx), in `%ProgramData%\njMule`,
+always stays; delete that folder by hand if you no longer want it.
+
+  </TabItem>
+  <TabItem value="macos" label="macOS">
+
+Quit njMule, open the disk image and run **Uninstall njMule**. Select the line **Delete my njMule
+data: settings, server and contact lists, identity and credits, unfinished downloads and logs**
+to delete your data too, then click **Uninstall**. The app goes to the Trash, and with the line
+selected so do `~/Library/Application Support/njMule`, `~/Library/Caches/org.njmule.njMule` and
+`~/Library/Logs/njMule`.
+
+  </TabItem>
+  <TabItem value="linux" label="Linux">
+
+Removing the `.deb` or `.rpm` package never touches the users' home folders; it says where each
+profile stays. Run `njmule --remove-profile` as each user **before** removing the package, or
+delete the folders by hand afterwards: `~/.config/njmule`, `~/.local/share/njmule`,
+`~/.local/state/njmule` and `~/.cache/njmule`.
+
+For an archive, run `njmule --remove-profile` from it, then delete its folder.
+
+  </TabItem>
+  <TabItem value="synology" label="Synology">
+
+Uninstall the package in Package Center. Its wizard asks **Also delete njMule's data?**: tick
+**Delete njMule's data** to delete the settings, lists, identity, unfinished downloads and logs.
+The files in the shared folder `njmule` always stay.
+
+  </TabItem>
+  <TabItem value="docker" label="Docker">
+
+The profile is the volume. Remove the container, then the volume:
+
+```bash
+docker rm -f njmule
+docker volume rm njmule
+```
+
+Folders of the host that you mounted, such as the completed downloads, stay.
+
+  </TabItem>
+</Tabs>
+
+## Related pages
+
+- [Uninstalling njMule](../uninstall.mdx)
+- [Where njMule keeps its data](./locations.mdx)
+- [Configuration backups](./backups.mdx)

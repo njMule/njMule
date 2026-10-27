@@ -18,6 +18,12 @@ replay_pid*
 *.jfr
 *.hprof
 
+# --- Documentation website (website/): Docusaurus' cache and the pages made by the build --------
+website/.docusaurus/
+website/docs/_generated/
+website/developer/_generated/
+website/developer/api/reference/
+
 # --- Test tooling ------------------------------------------------------------
 .jqwik-database
 fuzz/crashes/

@@ -1,0 +1,154 @@
+---
+title: Building
+description: Build njMule from its sources with the Gradle Wrapper, run its quality gates and tests, and start it from the build.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+njMule builds with the Gradle Wrapper on a Java 25 toolchain. One command formats-checks, compiles,
+analyses and tests every module; another starts the desktop app or the headless engine straight from
+the build. This page covers the JVM build; the native executables and the installers have pages of
+their own ([Native images](native-images.mdx), [Packaging](packaging.mdx)).
+
+## Prerequisites
+
+| Tool | Needed for |
+|---|---|
+| JDK 25 (Eclipse Temurin, for example) | every build; Gradle's toolchain support uses it |
+| Git | getting the sources |
+| GraalVM Community `25.0.4.1.1`, with `GRAALVM_HOME` set | native executables only ([Native images](native-images.mdx)) |
+| Visual Studio 2022 Build Tools, C++ workload | native executables on Windows only |
+| Docker | Linux native executables without a local GraalVM, the Docker image |
+| [WiX](https://wixtoolset.org/) 5.0.2, [nfpm](https://nfpm.goreleaser.com/) | the Windows MSI, the deb and rpm packages ([Packaging](packaging.mdx)) |
+
+You do not install Gradle or Node.js yourself: the Gradle Wrapper (`gradlew`, `gradlew.bat`)
+downloads the Gradle version the project pins, and Gradle downloads the Node.js release that builds
+the web app and this site, checked against its SHA-256 like every other download
+([Dependencies](dependencies.mdx)).
+
+## Build and test
+
+From the root of your clone:
+
+<Tabs groupId="shell">
+<TabItem value="windows" label="Windows" default>
+
+```powershell
+.\gradlew.bat build
+```
+
+</TabItem>
+<TabItem value="unix" label="macOS and Linux">
+
+```bash
+./gradlew build
+```
+
+</TabItem>
+</Tabs>
+
+The rest of this guide writes `./gradlew`; on Windows use `.\gradlew.bat`.
+
+`build` runs, for every module:
+
+- **Spotless**: the Java sources must be formatted with palantir-java-format and start with the
+  license header of `config/license/header-java.txt`, with LF line endings.
+- **Checkstyle**: the conventions the formatter does not cover, such as `this.` on fields
+  ([Code style](code-style.mdx)); any warning fails the build.
+- **Error Prone**: compile-time bug patterns, on top of `javac -Xlint:all`.
+- **The tests** (JUnit), spread over several JVMs per module ([Testing](testing.mdx)).
+- **JaCoCo**: coverage reports for every module, and at least 70% of the lines of `njmule-core`
+  covered (`jacoco.minimum.line.coverage`). The test kit also aggregates one report over the
+  end-to-end tests, which SonarQube Cloud reads too.
+- **SpotBugs with FindSecBugs**: maximum effort, medium confidence, on the production code; the
+  few exclusions are in `config/spotbugs/exclude.xml`, each with its reason.
+- For the web app (`njmule-webapp`): a type check and the Vite bundle, the Vitest tests and the
+  Prettier check ([Web app](web-app.mdx)).
+
+The documentation site is not part of `build`: see [Documentation](documentation.mdx).
+
+### Format the sources
+
+Format before you commit, or the build stops at the first unformatted file:
+
+```bash
+./gradlew spotlessApply
+```
+
+The web app's TypeScript and Vue files are formatted with Prettier instead: run `npm run format` in
+`njmule-webapp` ([Web app](web-app.mdx#formatting-and-types)).
+
+### Incremental builds
+
+Builds are incremental and cached: `gradle.properties` turns on parallel execution, the build cache
+and the configuration cache. With nothing changed, `./gradlew build` takes about a second; a change
+re-runs only what depends on it. Git worktrees of the same clone share the build cache in
+`~/.gradle`. You never need `clean` for a correct build.
+
+## Run from the build
+
+The command line and headless engine, from the module path:
+
+```bash
+./gradlew :njmule-app:run --args="--help"
+```
+
+`./gradlew :njmule-app:installDist` also installs it with a launcher script in
+`njmule-app/build/install/njmule/`; run `njmule-app/build/install/njmule/bin/njmule`.
+
+The desktop app:
+
+```bash
+./gradlew :njmule-gui:run
+```
+
+Both use your normal njMule profile. To keep your own settings and downloads out of the way, give
+them a profile of their own with `--config-dir`, for example
+`./gradlew :njmule-gui:run --args="--config-dir /home/you/njmule-dev"`. The options are those of the
+[command line](/docs/server/cli).
+
+## Test options
+
+Gradle properties (`-P`) choose which tests run and how:
+
+| Option | Default | What it does |
+|---|---|---|
+| `test.excludedTags` | `interop,private-fixtures,perf` | JUnit tags left out of the run |
+| `test.tags` | none | run only the tests with these tags |
+| `test.forks` | `4` | JVMs that run one module's test classes at once; `1` runs them one after the other |
+| `test.maxHeap` | `4g` | heap of each test JVM: within Gradle's own 512 MiB the window tests slow down to a time-out |
+| `test.parallelModules` | no limit | modules whose tests run at the same time; `1` suits machines with few cores (the CI uses it on its four CPUs) |
+| `njmule.<name>` | none | passed to the tests as the system property `njmule.<name>`, for example `-Pnjmule.interop.kadPort=14897` |
+| `jacoco.minimum.line.coverage` | `0.70` | the share of `njmule-core`'s lines the tests must cover |
+
+Run one test class:
+
+```bash
+./gradlew :njmule-core:test --tests '*TagCodecTest'
+```
+
+:::warning[PowerShell]
+PowerShell splits an unquoted argument at its first dot, so `-Ptest.forks=1` reaches Gradle as two
+arguments. Quote every such option: `'-Ptest.forks=1'`, `'-Ptest.tags=perf'`.
+:::
+
+The tags, the test kit and the GUI tests are explained in [Testing](testing.mdx).
+
+## Other tasks
+
+| Task | What it makes |
+|---|---|
+| `./gradlew :njmule-gui:generateLicenseReport` | `build/reports/licenses/THIRD-PARTY.txt`, the third-party licenses of the desktop app's runtime, which holds every distributed dependency |
+| `./gradlew cyclonedxBom` | the CycloneDX software bill of materials in `build/reports/cyclonedx` |
+| `./gradlew dependencyCheckAggregate` | the OWASP dependency-check report; fails on a vulnerability scored 7 or more; needs an NVD API key in `NVD_API_KEY` |
+| `./gradlew build sonar -Dsonar.token=<token>` | a SonarQube Cloud analysis (organisation `njmule`, project `njMule_njMule`); in CI the `sonar` job runs it once the `SONAR_TOKEN` secret is set |
+| `./gradlew iconTools` | copies the JSVG jar the icon tools need into `build/tools` (see `branding/README.md`) |
+| `./gradlew :njmule-app:nativeCompile` | the native command-line executable ([Native images](native-images.mdx)) |
+| `./gradlew :website:site` | this site ([Documentation](documentation.mdx)) |
+
+## Related pages
+
+- [Dependencies](dependencies.mdx): versions, lock files and checksums.
+- [Testing](testing.mdx): writing and running tests, and what the CI runs.
+- [Code style](code-style.mdx): what Spotless and Checkstyle enforce, and what they cannot.

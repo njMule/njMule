@@ -1,0 +1,248 @@
+---
+title: Testing
+description: How njMule's tests are written and run - the given/when/then style, tags, the test kit, GUI tests on JavaFX's headless platform, the capture tour, web app tests and the CI.
+---
+
+Every change to njMule comes with tests, and every test reads as a short scenario. This page shows
+the style the project requires, the tools the tests are written with, the groups of tests that do
+not run by default, and what the CI runs on every push.
+
+## Tools
+
+| Tool | Used for |
+|---|---|
+| JUnit (Jupiter) | every Java test, including parameterized tests |
+| AssertJ | assertions |
+| jqwik | property-based tests of codecs and parsers |
+| Jimfs | in-memory file systems for simulations whose many nodes would otherwise wait on the disk |
+| openapi-parser | checking that the API's document is a valid OpenAPI 3.2 description |
+| Vitest with happy-dom | the web app's tests |
+
+New behaviour needs tests: unit tests next to the code in each module's `src/test/java`, and flows
+across modules in the test kit (see [The test kit](#the-test-kit)).
+
+## The given/when/then style
+
+Every test follows the given/when/then form of Gherkin, inside plain JUnit classes (no Cucumber):
+
+- The test method's name states the expected behaviour (`shouldSliceInsideTheSource`), and its body
+  only calls step methods: the `given...()` steps, if any, then **one** `when...()`, then one or
+  more `then...()`.
+- A scenario has one action. Independent cases become separate tests, or one parameterized test;
+  the earlier stages of a longer flow become `given...()` steps.
+- Steps are private methods of the test class, named as sentences in lowerCamelCase, taking
+  parameters when a step is reused with other values. The state they share lives in fields.
+- A `when...()` step that can fail keeps the exception in a field, and `thenExceptionOccurred(...)`
+  or `thenNoExceptionOccurred()` checks it.
+
+A real example, from `njmule-core`'s `BytesTest` (shortened):
+
+```java
+class BytesTest {
+
+    private byte[] source;
+    private Bytes bytes;
+    private Throwable exception;
+
+    @Test
+    void shouldSliceInsideTheSource() {
+        givenTheSource(1, 2, 3, 4);
+
+        whenASliceIsTaken(1, 3);
+
+        thenTheBytesAre(2, 3, 4);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"2, 3", "5, 0", "-1, 2", "0, -1"})
+    void shouldRefuseASliceOutsideTheSource(int offset, int length) {
+        givenTheSource(1, 2, 3, 4);
+
+        whenASliceIsTaken(offset, length);
+
+        thenExceptionOccurred(IndexOutOfBoundsException.class);
+    }
+
+    private void givenTheSource(int... values) {
+        this.source = toBytes(values);
+    }
+
+    private void whenASliceIsTaken(int offset, int length) {
+        this.exception = catchThrowable(() -> this.bytes = Bytes.of(this.source, offset, length));
+    }
+
+    private void thenTheBytesAre(int... expected) {
+        assertThat(this.exception).isNull();
+        assertThat(this.bytes.toByteArray()).containsExactly(expected);
+    }
+
+    private void thenExceptionOccurred(Class<? extends Throwable> type) {
+        assertThat(this.exception).isInstanceOf(type);
+    }
+}
+```
+
+The fields are qualified with `this.` and the steps are called without it, as everywhere in the code
+([Code style](code-style.mdx#fields-and-own-methods)). The web app's Vitest tests follow the same
+form, with `given...`, `when...` and `then...` functions inside each `describe` block.
+
+## Running tests
+
+`./gradlew build` runs every test that is not excluded by a tag. To run one module's tests, or one
+class:
+
+```bash
+./gradlew :njmule-core:test
+./gradlew :njmule-core:test --tests '*TagCodecTest'
+```
+
+The options that choose and spread the tests (`test.tags`, `test.excludedTags`, `test.forks`,
+`test.maxHeap`, `test.parallelModules`, `-Pnjmule.<name>`) are listed in
+[Building](building.mdx#test-options). On PowerShell, quote every `-P` option that holds a dot.
+
+Each module's test classes are spread over a few JVMs, each running many classes one after the
+other: what a class leaves in static state, the next one finds, so tests and the engine take back
+what they set. In every test JVM the build also sets three system properties, so that no test
+reaches outside your machine by accident:
+
+| Property | Effect |
+|---|---|
+| `njmule.upnp.disabled=true` | UPnP stays off: a test never changes your router's port mappings |
+| `njmule.defaultlists.disabled=true` | a new profile starts without the shipped server list and Kad contacts, so no test reaches real servers or nodes |
+| `njmule.update.disabled=true` | njMule never looks for new versions on GitHub |
+
+### Tags
+
+Three groups of tests are left out of the default run (`test.excludedTags`):
+
+| Tag | What the tests do | How to run them |
+|---|---|---|
+| `interop` | talk to a real eMule on your computer: `KadInteropTest` sends Kad bootstrap, hello, lookup and ping messages, and stores and searches a keyword in its index; the UDP port comes from `-Pnjmule.interop.kadPort` (default 14897) | `'-Ptest.tags=interop' '-Ptest.excludedTags=private-fixtures,perf'` |
+| `private-fixtures` | read a real eMule profile, read-only, from the folder in `NJMULE_EMULE_CONFIG` (downloads in progress from `NJMULE_EMULE_TEMP`); they print only counts, never names or hashes | `'-Ptest.excludedTags=interop,perf' '-Ptest.tags=private-fixtures'` |
+| `perf` | measure transfers on the loopback interface ([Throughput tests](#throughput-tests)) | `'-Ptest.tags=perf' '-Ptest.excludedTags=interop'` |
+
+An excluded tag wins over an included one, which is why each command also narrows
+`test.excludedTags`.
+
+:::danger[No personal data in the repository]
+Copies of a real eMule profile, captures and screenshots of your own eMule belong in the git-ignored
+`fixtures-private/` folder, never in a commit.
+:::
+
+## The test kit
+
+`njmule-testkit` holds test doubles that speak the real protocol, and the end-to-end tests that use
+them:
+
+| Class | What it is |
+|---|---|
+| `FakeServer` | an in-process eD2K server: logs clients in with a chosen ID, greets them, answers searches with fixed results over TCP and, on the TCP port + 4, over UDP, knows the sources of the files it is given, and records what it receives |
+| `FakePeer` | an in-process client that shares one file: answers hellos and file requests, queues downloaders or gives them a slot (also by calling them back), sends blocks plain or compressed, and can end sessions early, send corrupt parts, go silent or drop its downloaders |
+| `FreePorts` | ports free for a test to bind, below the ranges systems hand out for port 0, so that another program cannot take them between the choice and the bind |
+
+The end-to-end tests in `njmule-testkit/src/test` drive whole flows against these doubles: server
+log-in, callbacks and searches, downloads with their limits and recovery, source exchange, the
+command line, the web interface's calls and the remote-control API. Their coverage is aggregated
+into one JaCoCo report with that of the launcher and the web interface.
+
+## Property-based and fuzz tests
+
+Codecs and parsers have jqwik properties (`@Property`) over generated input: tags, packets, hashes,
+links, search expressions, data files and more. `MutatedMessagesTest` fuzzes the decoders: it
+takes messages of the network built right, changes them 5,000 times as a broken or hostile peer or
+server could, and checks that the decoders refuse them only with a `DecodeException`, never with
+another exception.
+
+The eD2K and AICH hashes and the protocol obfuscation are also checked against golden vectors made
+by an independent Python implementation (`tools/golden/`), stored in
+`njmule-core/src/test/resources/golden/`.
+
+## GUI tests
+
+The desktop app's tests run on JavaFX's headless platform with software rendering
+(`glass.platform=Headless`, `prism.order=sw`): they need no display, on your machine or in CI.
+
+- `FxTesting` starts the toolkit and offers helpers to drive it from tests. Each test JVM unpacks
+  JavaFX's native libraries under `njmule-gui/build/javafx-cache`.
+- `FxTesting.snapshot(node, name)` saves a picture of a node as `name.png` under
+  `njmule-gui/build/gui-snapshots`, handy to look at what a test saw.
+- Window tests wait a bounded time for each step on the JavaFX thread (`FxTesting` allows 55 seconds,
+  within the tests' own 60-second time-out), so a busy machine can time them out. On a machine with
+  few cores, run with `'-Ptest.parallelModules=1'`, and keep `test.maxHeap` at 4g or more.
+- `TokenContrastTest` checks that the colours drawn with keep text at 4.5:1 and meaningful lines and
+  marks at 3:1 in every theme, `HighContrastTest` that the system's high contrast colours take the
+  theme's place while high contrast is on, and `LanguagesTest` and its neighbours guard the
+  [translations](translations.mdx#the-tests-that-guard-them).
+
+### The capture tour
+
+`CaptureTour` pictures every screen, tab, menu, sub-menu, context menu, drop-down list, column menu,
+icon-button tooltip and dialog of the interface, on example data (`CaptureDemo`: free files and
+documentation addresses only), for design reviews and for this site. It runs only when you give it
+a folder:
+
+```bash
+./gradlew :njmule-gui:test --tests CaptureTour '-Pnjmule.capture=build/gui-capture'
+```
+
+The folder is relative to `njmule-gui`. `-Pnjmule.capture.sets` picks the sets, each named
+`<language>-<scheme>-<depth>`:
+
+- **language**: a language tag (`en`, `it`, `ar`, …);
+- **scheme**: `light`, `dark` or `contrast` (a dark high contrast scheme);
+- **depth**: `full` for everything, `screens` for the screens and their tabs, `empty` for a profile
+  without data, `readme` for the transfers alone, or `docs` for the README's picture and then
+  everything.
+
+Without `njmule.capture.sets` it pictures these sets:
+
+```text
+it-light-full,it-dark-screens,en-light-screens,ar-light-screens,it-light-empty
+```
+
+Each set gets a folder of numbered pictures, and `index.tsv` lists them all with their size and
+what they show. With `-Pnjmule.capture.stable=true` each
+picture is named by what it shows alone, without its number: `./gradlew :njmule-gui:docsCaptures`
+uses that for this site ([Documentation](documentation.mdx#screenshots)).
+
+## Web app tests
+
+The web app's tests are in `njmule-webapp/src/__tests__/*.test.ts`, run by Vitest on happy-dom:
+
+```bash
+./gradlew :njmule-webapp:unitTest
+```
+
+`./gradlew build` runs them too, with the Prettier check. See [Web app](web-app.mdx).
+
+## Throughput tests
+
+Two tests of the test kit, tagged `perf`, measure how fast a download from a peer on the same
+machine goes (`DownloadThroughputTest`) and how fast njMule sends a shared file to another njMule
+(`UploadThroughputTest`), to find what holds a transfer back on a LAN. They print their speed in
+MiB/s:
+
+```bash
+./gradlew :njmule-testkit:test --tests '*ThroughputTest' '-Ptest.tags=perf' '-Ptest.excludedTags=interop'
+```
+
+For the speed of single operations, see [Benchmarks](benchmarks.mdx).
+
+## Continuous integration
+
+The `Build` workflow (`.github/workflows/build.yml`) runs on every push to `main`, on every pull
+request, and once a week on everything:
+
+| Job | What it does |
+|---|---|
+| verify | `./gradlew build --continue '-Ptest.parallelModules=1'` on Ubuntu, Windows and macOS; on a failure, the test reports are kept as an artifact |
+| native image | the native command-line executable on Linux x64 (in the pinned GraalVM container), Windows x64 and macOS arm64, built with `-Ob`, then started with `--version` and `--license` |
+| synology package | the static musl executable and the `.spk` around it, checked entry by entry; only when the build, the dependencies, the native configuration or the package's files change, and weekly |
+| REUSE compliance | `reuse lint` over the repository |
+| actionlint | lints the workflows when they change |
+| SonarQube Cloud | `./gradlew build sonar`, once the `SONAR_TOKEN` secret exists |
+| CI result | the one check to require: passes when every job passed or was skipped |
+
+Changes that cannot affect the build (Markdown files, repository metadata, the branding sources,
+`tools/`, the website) skip the build jobs; skipped jobs count as passed. The website has a
+workflow of its own ([Documentation](documentation.mdx#deployment)).

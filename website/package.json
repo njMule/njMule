@@ -1,0 +1,62 @@
+{
+    "name": "njmule-website",
+    "private": true,
+    "version": "0.0.0",
+    "description": "njMule's documentation website (Docusaurus)",
+    "license": "GPL-3.0-or-later",
+    "engines": {
+        "node": ">=24"
+    },
+    "scripts": {
+        "docusaurus": "docusaurus",
+        "prepare-site": "node scripts/prepare.mjs",
+        "start": "docusaurus start",
+        "build": "docusaurus build",
+        "serve": "docusaurus serve --dir build/site",
+        "clear": "docusaurus clear",
+        "api": "docusaurus clean-api-docs all && docusaurus gen-api-docs all && node scripts/api-labels.mjs",
+        "typecheck": "tsc",
+        "lint": "prettier --check src scripts docusaurus.config.ts sidebars.ts sidebarsDeveloper.ts",
+        "format": "prettier --write src scripts docusaurus.config.ts sidebars.ts sidebarsDeveloper.ts",
+        "check": "npm run lint && npm run typecheck"
+    },
+    "dependencies": {
+        "@docusaurus/core": "3.10.2",
+        "@docusaurus/faster": "3.10.2",
+        "@docusaurus/preset-classic": "3.10.2",
+        "@docusaurus/theme-mermaid": "3.10.2",
+        "@easyops-cn/docusaurus-search-local": "0.55.3",
+        "@fontsource/manrope": "5.3.0",
+        "@mdx-js/react": "3.1.1",
+        "clsx": "2.1.1",
+        "docusaurus-plugin-openapi-docs": "5.2.0",
+        "docusaurus-plugin-sass": "0.2.7",
+        "docusaurus-theme-openapi-docs": "5.2.0",
+        "prism-react-renderer": "2.4.1",
+        "react": "19.3.1",
+        "react-dom": "19.3.1",
+        "sass": "1.106.1"
+    },
+    "devDependencies": {
+        "@docusaurus/module-type-aliases": "3.10.2",
+        "@docusaurus/tsconfig": "3.10.2",
+        "@docusaurus/types": "3.10.2",
+        "@types/node": "24.19.2",
+        "js-yaml": "5.5.0",
+        "playwright-core": "1.64.1",
+        "prettier": "3.9.10",
+        "typescript": "6.0.3"
+    },
+    "browserslist": {
+        "production": [
+            ">0.5%",
+            "not dead",
+            "not op_mini all"
+        ],
+        "development": [
+            "last 1 chrome version",
+            "last 1 firefox version",
+            "last 1 safari version"
+        ]
+    }
+}

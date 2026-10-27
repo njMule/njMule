@@ -1,0 +1,385 @@
+---
+title: Glossary
+description: The words of eD2K, Kad and njMule explained in plain terms, from A4AF to uTP, with links to the pages that tell more.
+toc_max_heading_level: 2
+---
+
+The words you meet in njMule and on the eD2K and Kad networks, in alphabetical order. Many come
+from eMule, whose terms njMule keeps so that people who know it feel at home.
+
+## A
+
+### A4AF
+
+*Asked for another file.* A client that is a source of several of your downloads is asked for one
+of them at a time; the others list it with this state. njMule moves it to the download that needs
+it most, and you can move such sources by hand. See [Transfers](desktop/transfers.mdx).
+
+### AICH
+
+*Advanced Intelligent Corruption Handling.* A tree of SHA-1 hashes over blocks of 180 KiB of a
+file, whose root can travel in the file's ed2k link (`h=`). When a [part](#part) fails its check,
+njMule asks a source for the AICH recovery data of that part and downloads again only the blocks
+that are bad, instead of the whole part. Without a root in the link, njMule takes the one most
+sources agree on.
+
+### API token
+
+The secret that programs send to njMule's remote-control API, kept in the file `api-token` of the
+configuration folder. `njmule --api-token` prints it, `njmule --new-api-token` replaces it. See
+[Remote control](server/remote-control.mdx).
+
+## B
+
+### Block
+
+A piece of 180 KiB (184,320 bytes) of a file: the unit in which data is asked for and in which
+[AICH](#aich) checks it. A [part](#part) holds 53 blocks, the last one shorter.
+
+### Bootstrap
+
+Joining Kad for the first time, or again after a long pause, from contacts you give it: a
+`nodes.dat` from the web or from a file, or one client you know by its address and UDP port. See
+[Servers and Kad](network/servers-and-kad.mdx).
+
+### Buddy
+
+A Kad node that other nodes can reach and that keeps a link open to a [firewalled](#firewalled)
+one. Others who want a file from the firewalled node ask the buddy, which passes the request on so
+that the firewalled node connects to them. njMule finds a buddy when it is firewalled, and serves as
+the buddy of one firewalled node when it is reachable. See [NAT traversal](network/nat-traversal.mdx).
+
+## C
+
+### Callback
+
+Asking a client that others cannot reach to connect to you instead. On eD2K the server passes the
+request on; on Kad a [buddy](#buddy) does, or a direct UDP message when the client's UDP port is
+open.
+
+### Category
+
+A group of downloads with a name, a tint, an incoming folder and a priority of its own, and file
+name patterns that sort new downloads into it. See [Categories](desktop/categories.mdx).
+
+### Chunk
+
+Another name for a [part](#part).
+
+### Client
+
+Any program on the eD2K and Kad networks that downloads and uploads files: njMule, eMule, aMule
+and others. The transfers list the clients you upload to, those waiting for you and, under **Known
+Clients**, those met in the last 90 days.
+
+### Comments and ratings
+
+What people say about a file and how they rate it, from **Invalid / Corrupt / Fake** to
+**Excellent**. Your comment on a
+shared file goes to the clients that download it and to Kad, where it is called a *note*; njMule
+shows the comments of a download's sources and those found on Kad. See
+[Transfers](desktop/transfers.mdx).
+
+### Credits
+
+What a client earned with you by uploading to you. In your upload queue, its waiting time is
+multiplied by a factor from 1 to 10 that grows with what it gave you compared with what it got, so
+clients that shared with you are served sooner; others do the same for you. Credits are kept by
+[user hash](#user-hash) in `clients.met`, bound to the client's
+[secure identification](#secure-identification-sui), and forgotten after 150 days without contact.
+**Use the credit system** turns them off.
+
+## E
+
+### eD2K
+
+The eDonkey2000 network: servers that know which files users share, and clients that exchange the
+files directly with one another. njMule speaks its protocol, as eMule does. See
+[Servers and Kad](network/servers-and-kad.mdx).
+
+### ed2k link
+
+A text that names a file on eD2K, starting with `ed2k://`: its name, size and [hash](#file-hash),
+as in `ed2k://|file|name|size|hash|/`, optionally with an [AICH](#aich) root (`h=`), part hashes
+(`p=`) or sources. Links can also name a server, a server list or a list of Kad nodes. See
+[eD2K links](desktop/ed2k-links.mdx).
+
+### eMule
+
+The best-known client of eD2K and Kad, whose protocols, file formats and interface texts njMule
+follows. njMule is not affiliated with the eMule project.
+
+## F
+
+### File hash
+
+The 128-bit MD4 hash that identifies a file on eD2K, written as 32 hexadecimal digits: the MD4
+hash of the data for a file smaller than one [part](#part), and of the parts' own MD4 hashes for
+a larger one. Two files with the same hash have the same
+content, whatever their names.
+
+### Firewalled
+
+Kad's word for not reachable from outside: other nodes cannot connect to your TCP port, or send to
+your UDP port (*UDP firewalled*). It is the Kad counterpart of a [LowID](#highid-and-lowid). See
+[Ports and firewalls](network/ports.mdx).
+
+### Friend slot
+
+An upload slot given to one friend for the current run: the friend goes before everyone waiting in
+the queue, also when the queue is full, and keeps the slot. See [Messages](desktop/messages.mdx).
+
+## G
+
+### Global search
+
+A search sent over UDP to the other known servers besides the one you are connected to. The
+*Automatic* method picks Kad or the server by what is connected. See [Search](desktop/search.mdx).
+
+### Guest
+
+A second password of the web interface that lets someone look at the transfers, searches, servers,
+Kad and statistics without changing anything. See [Guest access](web/guest.mdx).
+
+## H
+
+### Hash set
+
+The list of the MD4 hashes of a file's [parts](#part), which lets a download check each part as
+soon as it is complete.
+
+### HighID and LowID
+
+The ID a server gives you. When the server can connect to your TCP port, you get a *HighID*,
+derived from your IPv4 address. When it cannot, you get a *LowID*, a number below 16,777,216: other
+clients cannot connect to you directly and must ask through the server (a [callback](#callback)),
+and two LowID clients usually cannot reach each other on eD2K. See
+[Ports and firewalls](network/ports.mdx).
+
+## I
+
+### ICH
+
+*Intelligent corruption handling.* A part that fails its check keeps its data while it is
+downloaded again and is checked after each block written into it, so it is whole again as soon as
+the bad block came in again, even without [AICH](#aich).
+
+### Incoming folder
+
+Where finished downloads go. It is always shared. Set it in **Options → Directories**
+(**Incoming Files**); a [category](#category) may have one of its own. See
+[Data locations](data/locations.mdx).
+
+### IP filter
+
+A list of address ranges njMule never talks to, read from `ipfilter.dat`, PeerGuardian or P2B
+lists and optionally updated from the web. Each range has a level, and ranges below the filter
+level (127 by default) block. Addresses under **Always allowed** are never blocked. See
+[IP filter](network/ip-filter.mdx).
+
+## K
+
+### Kad
+
+The serverless network of eMule, based on Kademlia: every client is a node that keeps contacts to
+others and stores a share of the index of keywords, sources and notes. It finds files and sources
+without any server. njMule speaks Kad 2. See [Servers and Kad](network/servers-and-kad.mdx).
+
+### Kad ID
+
+Your 128-bit identifier on Kad, kept in `preferencesKad.dat`. The distance between two IDs decides
+which nodes store what, and which contacts the Kad view draws as near or far.
+
+### Known files
+
+The files njMule has hashed, downloaded or shared, with their hashes, kept in `known.met` (and the
+AICH trees in `known2_64.met`), so that they are not hashed again. Search results show the files
+you downloaded before; cancelled ones are remembered in `cancelled.met`.
+
+## L
+
+### LowID
+
+See [HighID and LowID](#highid-and-lowid).
+
+## M
+
+### Magnet link
+
+A link starting with `magnet:?`. njMule takes those that carry an eD2K hash (`urn:ed2k:` or
+`urn:ed2khash:`) as it takes an [ed2k link](#ed2k-link).
+
+### MiniMule
+
+The small status window that opens with a click on njMule's icon in the Windows notification
+area: connection, rates, finished downloads and free space. See [Notification area](desktop/tray.mdx).
+
+## N
+
+### NAT traversal
+
+Connecting two clients that are both behind routers: each side sends packets that open its router
+to the other, then they talk over [uTP or QUIC](#utp-and-quic). See
+[NAT traversal](network/nat-traversal.mdx).
+
+### Nick
+
+The name others see in their upload lists and in chats; `njMule` until you choose one. Set it in
+**Options → General**.
+
+### nodes.dat
+
+The file of Kad contacts, in the configuration folder: Kad starts from it, and a fresh one from
+the web brings Kad back after a long pause. See [Bootstrap](#bootstrap).
+
+## O
+
+### Obfuscation
+
+Protocol obfuscation scrambles the traffic with servers and clients so that simple filters cannot
+recognise eD2K and Kad. It is not encryption and hides nothing from those you talk to. It can be
+**Disabled**, **Supported**, **Requested** (the default) or **Required**. See
+[Obfuscation](network/obfuscation.mdx).
+
+### Overhead
+
+The bytes of the protocol itself, besides the file data: requests, answers, searches and Kad
+traffic. The statistics show it apart.
+
+## P
+
+### Part
+
+A piece of 9,728,000 bytes of a file, called a *chunk* in eMule; the last part of a file is
+shorter. Each part has its own MD4 hash and is checked as soon as it is complete; only checked
+parts are shared with others.
+
+### Part file
+
+An unfinished download in the temporary folder: the data in `001.part` (or another number) and
+what is known about it in `001.part.met`, the format eMule uses. See [Files](data/files.mdx).
+
+### Portable mode
+
+njMule keeps all its data in a `data` folder next to the programs when an empty `portable.flag`
+file lies beside them. See [Portable mode](data/portable.mdx).
+
+### Preview
+
+Opening what has arrived of a video in the player of your choice before it is complete; njMule can
+fetch the first and last parts first for it. See [Transfers](desktop/transfers.mdx).
+
+### Priority
+
+How much a file is favoured. A download's priority (**Low**, **Normal**, **High** or **Auto**,
+which favours rare files) decides which downloads look for sources and start first. A shared
+file's upload priority, from **Very Low** to **Release**, or **Auto**, scales the place in your
+queue of the clients that want it. See [Release priority](#release-priority).
+
+### Profile
+
+All of njMule's own data on a computer: its configuration, identity, lists, unfinished downloads,
+caches and logs, spread over the folders of [Data locations](data/locations.mdx). `--config-dir`
+starts njMule on another profile.
+
+## Q
+
+### Queue rank
+
+Your place in the upload queue of a source: 1 is next. It changes as others join or leave and with
+the [credits](#credits) each client has there. While you wait the source shows **On Queue**;
+**Queue Full** means it takes nobody more for now. See
+[Downloads stay "Waiting"](troubleshooting.mdx#downloads-stay-waiting).
+
+## R
+
+### Release priority
+
+The highest upload priority of a shared file, meant for a file you are the first to share: its
+waiting clients count more than twice as much as those of a file of **Normal** priority.
+
+## S
+
+### Scheduler
+
+Rules by weekday and time that change the speed limits and connections, and can stop or resume the
+downloads of a category. See [Scheduler](settings/scheduler.mdx).
+
+### Secure identification (SUI)
+
+A proof, with an RSA key kept in `cryptkey.dat`, that a client really owns its
+[user hash](#user-hash). It keeps others from taking your [credits](#credits). **Use secure
+identification** turns it off.
+
+### Server
+
+A computer of the eD2K network that knows which files its users share. It answers searches and
+tells where a file's sources are, but holds no files. The list of servers is kept in
+[server.met](#servermet). See [Servers and Kad](network/servers-and-kad.mdx).
+
+### server.met
+
+The file of known eD2K servers, in the configuration folder. A new profile starts with the list
+shipped with njMule; more can come from a server.met on the web or in a file.
+
+### Source
+
+A client that has all or part of a file you download. Each source shows what it does:
+**Transferring**, **On Queue**, **Connecting**, **Asking**, **Queue Full**, **No needed parts** or
+[A4AF](#a4af).
+
+### Source exchange
+
+Clients telling each other the other sources they know of a file they share, so that sources spread
+without asking a server or Kad.
+
+### Spam filter
+
+Two filters. The search spam filter rates search results by what you marked as spam before (names,
+sizes, hashes and the servers that sent them) and shows the spam muted. The message filters leave
+out chat messages with filtered words or links. See [IP filter options](settings/ip-filter.mdx) and
+[Message options](settings/messages.mdx).
+
+### Static server
+
+A server you keep in the list for good: it is never removed as dead, and automatic connection can
+keep to static servers only. They are kept in `staticservers.dat`.
+
+## T
+
+### Temp folder
+
+Where unfinished downloads are kept as [part files](#part-file) until they are complete; called
+**Temporary Files** in **Options → Directories**. See [Data locations](data/locations.mdx).
+
+## U
+
+### Upload queue
+
+The clients waiting for a turn to download from you, ordered by how long they waited, their
+[credits](#credits) and the [priority](#priority) of the file they want; up to 5,000 by default
+(**Queue size**). They show under **On Queue** in the transfers.
+
+### Upload slot
+
+A turn to download from you. njMule opens as many slots as the upload limit allows and shares the
+bandwidth among them; a client keeps its slot for about one part, then the next one in the queue
+gets it.
+
+### UPnP, NAT-PMP and PCP
+
+Ways for njMule to ask your router to forward its ports, so others can reach you. njMule tries UPnP
+first (**Forward the ports with UPnP**, on by default), then NAT-PMP or PCP, and removes the
+forwarding when it exits. See [Ports and firewalls](network/ports.mdx).
+
+### User hash
+
+Your 128-bit identity on eD2K, made at the first start and kept in `preferences.dat`. Clients
+remember your [credits](#credits) under it. Never share it, and never run two clients with the
+same one at once.
+
+### uTP and QUIC
+
+Two ways to carry a connection over UDP, used for [NAT traversal](#nat-traversal) between
+firewalled clients: QUIC, encrypted with TLS 1.3, with clients that take it, otherwise uTP. See
+[NAT traversal](network/nat-traversal.mdx).

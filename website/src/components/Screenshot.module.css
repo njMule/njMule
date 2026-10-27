@@ -1,0 +1,35 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+.figure {
+    margin: 1.5rem 0;
+}
+
+.frame {
+    display: block;
+    border: 1px solid var(--nj-border);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: var(--nj-shadow);
+    background: var(--ifm-background-surface-color);
+    line-height: 0;
+}
+
+.frame img {
+    width: 100%;
+    height: auto;
+}
+
+.frame:focus-visible {
+    outline: 3px solid var(--nj-brand-accent);
+    outline-offset: 2px;
+}
+
+.caption {
+    margin-top: 0.6rem;
+    font-size: 0.9rem;
+    color: var(--ifm-color-content-secondary);
+    text-align: center;
+}

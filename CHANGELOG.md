@@ -10,6 +10,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A documentation website (`website/`, Docusaurus) for GitHub Pages: a user guide for the desktop
+  app, the web interface and servers, a developer guide and the remote-control API's reference, in
+  the brand's colours, with screenshots taken by the build; its text is under CC BY-SA 4.0.
+
 ### Fixed
 
 - With `--webui-password-file` at each start, as in the Docker image, only the password is set

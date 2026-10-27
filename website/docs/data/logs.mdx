@@ -1,0 +1,128 @@
+---
+title: Logs
+description: Where njMule writes its log files, how they rotate, how to change the log level, and how to read the log in the app, under systemd and in Docker.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+njMule tells what it does in two places: the **Log** in the app, which shows the events that
+matter to you, and the **log files**, which keep everything at the chosen level, with the time and
+the part of njMule that wrote each line. When you ask for help, the log file is what others will
+want to see.
+
+## The Log in the app
+
+Open **Network → Log** (or click the last event in the status strip). Three tabs:
+
+- **Log**: njMule's events (connections, servers found, downloads finished, warnings, errors),
+  newest at the bottom. Chips with counts narrow it to **Error**, **Warning** or **Info** lines,
+  **All** shows them all.
+- **Server Info**: the connections to servers and what the servers say.
+- **My Info**: your addresses, IDs and the state of eD2K, Kad and the web interface.
+
+Select text with the mouse and copy it with the system's shortcut or the context menu (**Copy**,
+**Select All**). **Reset** clears the tab shown, not the files. The app keeps the latest 5,000
+lines of each tab.
+
+<Screenshot
+    id="log-tab-log"
+    alt="Network, Log view: the chips All 9, Error 1, Warning 1, Info 7 and a Reset button above the Log, Server Info and My Info tabs; the log lists dated lines such as njMule started, Connecting to Lighthouse, Connected with a high ID, a part found corrupt and a download completed"
+    caption="The log, with its chips by level"
+/>
+
+The web interface has the same log on its **Network → Log** page, and
+`njmule --remote log` prints the latest lines of a running njMule (see
+[Remote control](../server/remote-control.mdx)).
+
+## Log files
+
+| Where njMule runs | Folder |
+|---|---|
+| Windows | `%LOCALAPPDATA%\njMule\logs` |
+| macOS | `~/Library/Logs/njMule` |
+| Linux | `~/.local/state/njmule/logs` (or `$XDG_STATE_HOME/njmule/logs`) |
+| Portable mode, `--config-dir` | `logs` below the profile's folder |
+| Windows service | `%ProgramData%\njMule\logs` |
+| Docker | `/njmule/logs` in the volume |
+| Synology | `/var/packages/njmule/var/logs` |
+
+The current file is `njmule.log`. It rolls over each day and whenever it reaches 10 MB; older files
+are compressed as `njmule.2026-10-15.0.log.gz` (the date, then a number for each file of that day).
+Files older than 14 days go, and so do the oldest ones once all of them take more than 200 MB.
+
+Each line carries the date and time with the time zone, the level, the thread and the part of
+njMule that wrote it:
+
+```text
+2026-10-15T10:40:03.512+02:00 INFO  [main] org.njmule.core.engine.Engine - njMule 0.1.0 started
+```
+
+Line breaks inside messages are replaced, so nothing received from the network can forge a log
+line. A desktop window that drives [another njMule](../desktop/remote.mdx) writes its own log in
+`logs/remote`.
+
+The files hold the addresses of servers and clients and the names of files: share them with care.
+
+## Log level
+
+| Level | What is written |
+|---|---|
+| `ERROR` | Only failures. |
+| `WARN` | Failures and what may need your attention. |
+| `INFO` | The default: the main events, as in the app's Log, and a little more. |
+| `DEBUG` | Details for finding a problem; much more text. |
+| `TRACE` | Everything; for developers. |
+
+There is no option for it in the options pages. Choose it:
+
+- **for one run**, with `--log-level`: `njmule --log-level DEBUG` or
+  `njmule-gui --log-level DEBUG`;
+- **for good**, with `log.level` in `njmule.properties` (edit it while njMule is stopped, or change
+  it through the remote-control API); it takes effect at the next start.
+
+```properties
+log.level=DEBUG
+```
+
+Commands that do one thing and exit (`--search`, `--download`, `--hash`…) print only errors on the
+console unless you give `--log-level`.
+
+## Where the console goes
+
+The headless engine also writes its log to the console (standard output), at the same level.
+
+<Tabs groupId="os">
+  <TabItem value="linux" label="Linux (systemd)" default>
+
+The [systemd user unit](../server/linux-service.mdx) sends it to the journal:
+
+```bash
+journalctl --user -u njmule        # the log of the unit
+journalctl --user -u njmule -f     # follow it as it is written
+```
+
+  </TabItem>
+  <TabItem value="docker" label="Docker">
+
+```bash
+docker logs njmule                 # the console of the container
+docker logs -f --tail 100 njmule   # follow the last 100 lines
+```
+
+The files are in the volume too, under `/njmule/logs`.
+
+  </TabItem>
+  <TabItem value="synology" label="Synology">
+
+The package writes no console: the log goes to its files under `/var/packages/njmule/var/logs`,
+and only a fatal error at start lands in `/var/packages/njmule/var/njmule.err`.
+
+  </TabItem>
+</Tabs>
+
+## Related pages
+
+- [Where njMule keeps its data](./locations.mdx)
+- [Troubleshooting](../troubleshooting.mdx)
+- [Command line](../server/cli.mdx)
