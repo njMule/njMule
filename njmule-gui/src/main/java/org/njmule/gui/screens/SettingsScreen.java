@@ -163,8 +163,6 @@ public final class SettingsScreen implements Screen {
     private final ToggleSwitch kad = new ToggleSwitch();
     private final ToggleSwitch autoConnect = new ToggleSwitch();
     private final ToggleSwitch reconnect = new ToggleSwitch();
-    private final ToggleSwitch secureIdent = new ToggleSwitch();
-    private final ToggleSwitch credits = new ToggleSwitch();
     private final ToggleSwitch upnp = new ToggleSwitch();
     private PortTestPane portTest;
     private final TextField deadRetries = new TextField();
@@ -1334,33 +1332,21 @@ public final class SettingsScreen implements Screen {
                 new SettingRow(this.gui, "", tokens)));
     }
 
+    // Secure identification and the credit system are always on: their keys are kept, but nothing reads them.
     private List<SettingsPages.Section> advanced() {
-        return List.of(
-                section(
-                        "IDS_SECURITY",
-                        toggle(
-                                "nj.settings.secureIdent",
-                                this.secureIdent,
-                                Preferences::secureIdent,
-                                Preferences.Builder::secureIdent),
-                        toggle(
-                                "nj.settings.credits",
-                                this.credits,
-                                Preferences::creditSystem,
-                                Preferences.Builder::creditSystem)),
-                section(
-                        "IDS_PW_MISC",
-                        toggle(
-                                "IDS_STORESEARCHES",
-                                this.storeSearches,
-                                Preferences::storeSearches,
-                                Preferences.Builder::storeSearches),
-                        number(
-                                "nj.settings.backups",
-                                this.backups,
-                                this.backupsInput,
-                                Preferences::backupCopies,
-                                Preferences.Builder::backupCopies)));
+        return List.of(section(
+                "IDS_PW_MISC",
+                toggle(
+                        "IDS_STORESEARCHES",
+                        this.storeSearches,
+                        Preferences::storeSearches,
+                        Preferences.Builder::storeSearches),
+                number(
+                        "nj.settings.backups",
+                        this.backups,
+                        this.backupsInput,
+                        Preferences::backupCopies,
+                        Preferences.Builder::backupCopies)));
     }
 
     // ------------------------------------------------------------------ the kinds of option

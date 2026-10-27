@@ -448,13 +448,6 @@ export const PAGES: Page[] = [
         summary: 'nj.settings.page.advanced',
         sections: [
             {
-                title: 'IDS_SECURITY',
-                rows: [
-                    { key: 'security.secureIdent', label: 'nj.settings.secureIdent', kind: 'switch' },
-                    { key: 'upload.creditSystem', label: 'nj.settings.credits', kind: 'switch' },
-                ],
-            },
-            {
                 title: 'IDS_PW_MISC',
                 rows: [
                     { key: 'search.store', label: 'IDS_STORESEARCHES', kind: 'switch' },
