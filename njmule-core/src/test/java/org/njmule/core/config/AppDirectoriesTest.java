@@ -39,6 +39,7 @@ class AppDirectoriesTest {
     private final Map<String, String> env = new HashMap<>();
     private Optional<Path> overrideRoot = Optional.empty();
     private Optional<Path> executableDir = Optional.empty();
+    private Optional<Path> windowsDownloads = Optional.empty();
     private AppDirectories directories;
     private Optional<Path> download;
     private OsFamily detected;
@@ -61,6 +62,16 @@ class AppDirectoriesTest {
         thenTheLogsDirectoryIs("AppData/Local/njMule/logs");
         thenTheDownloadsDirectoryIs("Downloads/njMule");
         thenTheDirectoriesArePortable(false);
+    }
+
+    @Test
+    void shouldFollowTheDownloadsFolderTheUserMovedOnWindows() {
+        givenTheOperatingSystem(OsFamily.WINDOWS);
+        givenTheDownloadsFolderMovedInTheHome("Data/Downloads");
+
+        whenTheDirectoriesAreResolved();
+
+        thenTheDownloadsDirectoryIs("Data/Downloads/njMule");
     }
 
     @Test
@@ -262,12 +273,22 @@ class AppDirectoriesTest {
         this.executableDir = Optional.of(exeDir);
     }
 
+    private void givenTheDownloadsFolderMovedInTheHome(String pathInTheHome) {
+        this.windowsDownloads = Optional.of(this.home.resolve(pathInTheHome));
+    }
+
     private void givenTheDirectoriesBelowTheRoot(String pathInTheHome) {
         this.directories = AppDirectories.underRoot(this.home.resolve(pathInTheHome), false);
     }
 
     private void whenTheDirectoriesAreResolved() {
-        this.directories = AppDirectories.resolve(this.os, this.env, this.home, this.overrideRoot, this.executableDir);
+        this.directories = AppDirectories.resolve(
+                this.os,
+                this.env,
+                this.home,
+                this.overrideRoot,
+                this.executableDir,
+                variables -> this.windowsDownloads);
     }
 
     private void whenTheDownloadDirectoryIsReadFromUserDirs() {
