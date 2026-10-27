@@ -48,6 +48,11 @@ public interface NjMuleEngine extends AutoCloseable {
 
     AppDirectories directories();
 
+    /** Whether the engine runs on this computer, whose folders and files the caller can then open itself. */
+    default boolean onThisComputer() {
+        return true;
+    }
+
     /** Latest committed preferences; never blocks. */
     Preferences preferences();
 

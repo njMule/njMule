@@ -26,6 +26,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Iterator;
@@ -111,6 +112,8 @@ public final class RemoteEngine implements NjMuleEngine {
     private final SubmissionPublisher<EngineEvent> publisher = new SubmissionPublisher<>();
     // The part maps of the last list, for the download events, which carry none.
     private final Map<Hash16, PartMap> parts = new ConcurrentHashMap<>();
+    // The search each result came from: the other njMule marks spam through it.
+    private final Map<Hash16, SearchId> resultSearches = new ConcurrentHashMap<>();
     private volatile Preferences preferences = Preferences.defaults();
     private volatile Schedule schedule = Schedule.EMPTY;
     private volatile Optional<String> activeRule = Optional.empty();
@@ -159,6 +162,11 @@ public final class RemoteEngine implements NjMuleEngine {
     @Override
     public AppDirectories directories() {
         return this.directories;
+    }
+
+    @Override
+    public boolean onThisComputer() {
+        return false;
     }
 
     @Override
@@ -326,7 +334,23 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<SpamMarks> markSpam(List<SearchResult> results, boolean isSpam) {
-        return notHere("spam marks");
+        Map<SearchId, List<Hash16>> bySearch = new LinkedHashMap<>();
+        for (SearchResult result : results) {
+            SearchId search = this.resultSearches.get(result.hash());
+            if (search == null) {
+                return CompletableFuture.failedFuture(new IllegalStateException("That result is gone: search again."));
+            }
+            bySearch.computeIfAbsent(search, s -> new ArrayList<>()).add(result.hash());
+        }
+        CompletableFuture<Void> marked = CompletableFuture.completedFuture(null);
+        for (Map.Entry<SearchId, List<Hash16>> one : bySearch.entrySet()) {
+            ObjectNode body = MAPPER.createObjectNode().put("spam", isSpam);
+            ArrayNode hashes = body.putArray("hashes");
+            one.getValue().forEach(hash -> hashes.add(hash.toHex()));
+            marked = marked.thenCompose(
+                    done -> done("POST", "searches/" + one.getKey().value() + "/spam", body));
+        }
+        return marked.thenCompose(done -> spamMarks());
     }
 
     @Override
@@ -377,6 +401,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Void> stopSearch(SearchId search) {
+        this.resultSearches.values().removeIf(search::equals);
         return done("DELETE", "searches/" + search.value(), null);
     }
 
@@ -490,7 +515,7 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<Optional<Path>> downloadData(Hash16 hash) {
-        return CompletableFuture.completedFuture(Optional.empty());
+        return notHere("a preview, which plays the data on the computer that downloads it");
     }
 
     @Override
@@ -845,6 +870,9 @@ public final class RemoteEngine implements NjMuleEngine {
                 ApiReader.event(name, n, known).ifPresent(event -> {
                     if (event instanceof EngineEvent.UpdateStatusChanged changed) {
                         this.update = changed.status();
+                    }
+                    if (event instanceof EngineEvent.SearchResults found) {
+                        found.results().forEach(r -> this.resultSearches.put(r.hash(), found.search()));
                     }
                     this.publisher.submit(event);
                 });

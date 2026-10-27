@@ -41,6 +41,9 @@ import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.SearchId;
+import org.njmule.core.api.SearchRequest;
+import org.njmule.core.api.SearchResult;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
@@ -185,6 +188,23 @@ class RemoteEngineTest {
     }
 
     @Test
+    void shouldMarkAResultAsSpamThroughItsSearchOnTheOtherNjmule() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItMarksSpam();
+        givenItAnswers("spamMarks", ApiSamples.spamMarks());
+        givenItSearches(new SearchId(7));
+        givenConnected();
+        givenTheEventsAreFollowed();
+        givenASearchStartedThroughTheRemote();
+        givenTheOtherNjmuleFound(new SearchId(7), ApiSamples.result());
+
+        whenAsked(this.remote.markSpam(List.of(ApiSamples.result()), true));
+
+        thenTheAnswerIs(ApiSamples.spamMarks());
+        thenTheOtherNjmuleWasAsked("markSpam " + List.of(ApiSamples.result().hash()) + " true");
+    }
+
+    @Test
     void shouldSayHelloToAClientThroughTheOtherNjmule() throws Exception {
         givenTheOtherNjmuleRuns();
         givenItAnswers("hello", ApiSamples.peer());
@@ -225,6 +245,33 @@ class RemoteEngineTest {
             this.asked.add("saveSearches " + args[0]);
             return CompletableFuture.completedFuture(null);
         });
+    }
+
+    private void givenItMarksSpam() {
+        this.fake.answer("markSpam", args -> {
+            @SuppressWarnings("unchecked")
+            List<SearchResult> results = (List<SearchResult>) args[0];
+            this.asked.add(
+                    "markSpam " + results.stream().map(SearchResult::hash).toList() + " " + args[1]);
+            return CompletableFuture.completedFuture(ApiSamples.spamMarks());
+        });
+    }
+
+    private void givenItSearches(SearchId id) {
+        this.fake.answer("search", args -> CompletableFuture.completedFuture(id));
+    }
+
+    private void givenASearchStartedThroughTheRemote() {
+        this.remote
+                .search(new SearchRequest("talk", SearchRequest.Scope.GLOBAL))
+                .join();
+    }
+
+    // The result reaches both ends: the API keeps it under its search, and the remote engine learns the search.
+    private void givenTheOtherNjmuleFound(SearchId search, SearchResult result) throws InterruptedException {
+        EngineEvent found = new EngineEvent.SearchResults(search, List.of(result));
+        whenTheOtherNjmuleTells(found);
+        thenTheEventCame(found);
     }
 
     private void givenItDownloads(DownloadInfo download) {
