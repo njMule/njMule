@@ -68,6 +68,10 @@ public final class DialogFrame {
 
     /** The band with {@code note} above the buttons, for a note too long to share the line with them. */
     public static VBox footerBelow(Node note, Button... buttons) {
+        // Each button as wide as its words: made as wide as the widest, several would not fit the window.
+        for (Button button : buttons) {
+            ButtonBar.setButtonUniformSize(button, false);
+        }
         VBox footer = new VBox(8, note, bar(buttons));
         footer.getStyleClass().add("dialog-footer");
         return footer;

@@ -323,7 +323,7 @@ class UpdateDialogTest {
         List<Double> rights = FxTesting.onFx(() -> {
             List<Double> found = new ArrayList<>();
             collect(this.dialog.stage().getScene().getRoot(), n -> {
-                if (n instanceof Button b && b.getId() != null) {
+                if (n instanceof Button b) {
                     found.add(b.localToScene(b.getBoundsInLocal()).getMaxX());
                 }
             });
