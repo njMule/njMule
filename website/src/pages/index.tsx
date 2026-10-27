@@ -462,10 +462,9 @@ const PLATFORMS: { name: string; page: string; link?: string; items: [string, st
         name: 'Windows',
         page: '/docs/getting-started/install-windows',
         items: [
-            ['MSI installer', 'for you alone, no administrator'],
-            ['MSI for every user', 'MSIINSTALLPERUSER=""'],
+            ['MSI installer', 'double-click it or run msiexec /i, no administrator'],
             ['Zip archive', 'unzip and run'],
-            ['Windows service', 'njmule --service=install'],
+            ['Windows service', 'headless, started with Windows'],
             ['Arm64', 'the x64 build, in emulation'],
         ],
     },
