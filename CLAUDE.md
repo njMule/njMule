@@ -79,7 +79,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - A release: a pull request sets `version` and turns `[Unreleased]` into `[X.Y.Z] - <date>` under a
   new empty `[Unreleased]`; once merged, the annotated tag `vX.Y.Z` on that commit of `main` runs
   `release.yml`, whose draft release waits for the maintainer's approval of the `release`
-  environment and is then published by hand.
+  environment and is then published by hand. Then the pinned Roadmap issue (#38) gets the release
+  under "Released" and its completed "Next" items ticked.
 
 ## Project layout
 
