@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-27
+
 ### Added
 
 - A documentation website (`website/`, Docusaurus) for GitHub Pages: a user guide for the desktop
