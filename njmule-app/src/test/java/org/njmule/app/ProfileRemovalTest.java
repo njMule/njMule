@@ -89,6 +89,19 @@ class ProfileRemovalTest {
     }
 
     @Test
+    void shouldDeleteNothingWhenTheStartAtLoginCannotBeTurnedOff() throws Exception {
+        givenAProfileWithADownload();
+        givenItStartsAtLogin();
+        givenTheStartAtLoginCannotBeTurnedOff();
+
+        whenRemoved("--remove-profile", "--yes");
+
+        thenTheExitCodeIs(Main.EXIT_FAILURE);
+        thenTheErrorsSay("Nothing was deleted.");
+        thenTheProfileStays();
+    }
+
+    @Test
     void shouldDeleteAfterAYes() throws Exception {
         givenAProfileWithADownload();
 
@@ -149,6 +162,10 @@ class ProfileRemovalTest {
         this.autostart.turnOn();
     }
 
+    private void givenTheStartAtLoginCannotBeTurnedOff() {
+        this.autostart.refusesToTurnOff = true;
+    }
+
     private void givenTheAnswer(String typed) {
         this.answer = typed;
     }
@@ -173,6 +190,10 @@ class ProfileRemovalTest {
 
     private void thenTheExitCodeIs(int expected) {
         assertThat(this.code).isEqualTo(expected);
+    }
+
+    private void thenTheErrorsSay(String text) {
+        assertThat(this.err.toString(StandardCharsets.UTF_8)).contains(text);
     }
 
     private void thenTheProfileIsGone() {

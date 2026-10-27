@@ -16,9 +16,13 @@
  */
 package org.njmule.app;
 
+import java.io.IOException;
+
 /** A start at login that only remembers whether it is on. */
 final class PretendAutostart implements Autostart {
     private boolean on;
+    // As a system that does not let it go.
+    boolean refusesToTurnOff;
 
     PretendAutostart(boolean on) {
         this.on = on;
@@ -35,7 +39,10 @@ final class PretendAutostart implements Autostart {
     }
 
     @Override
-    public void turnOff() {
+    public void turnOff() throws IOException {
+        if (this.refusesToTurnOff) {
+            throw new IOException("access denied");
+        }
         this.on = false;
     }
 }

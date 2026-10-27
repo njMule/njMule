@@ -138,6 +138,19 @@ class RestoreLinksTest {
     }
 
     @Test
+    void shouldTellWhenTheStartAtLoginCannotBeTurnedOff() throws Exception {
+        givenTheConfigurationDirectory();
+        givenTheLinksOpenIn(OURS);
+        givenItStartsAtLogin();
+        givenTheStartAtLoginCannotBeTurnedOff();
+
+        whenTheLinksAreRestored();
+
+        thenTheExitCodeIs(Main.EXIT_FAILURE);
+        thenTheErrorsSay("Cannot stop njMule from starting at login: access denied");
+    }
+
+    @Test
     void shouldReadTheOptionWithAConfigurationDirectory() throws Exception {
         whenTheCommandLineIs("--restore-links", "--config-dir", this.dir.toString());
 
@@ -176,6 +189,10 @@ class RestoreLinksTest {
 
     private void givenItStartsAtLogin() {
         this.autostart.turnOn();
+    }
+
+    private void givenTheStartAtLoginCannotBeTurnedOff() {
+        this.autostart.refusesToTurnOff = true;
     }
 
     private void givenAProgramThatCannotOpenLinks() {
