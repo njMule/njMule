@@ -1024,6 +1024,8 @@
     font-weight: 800;
     font-size: clamp(3rem, 9vw, 8rem);
     line-height: 0.8;
+    /* The baseline stands above the block's edge by the depth of the j's descender, which it would cut. */
+    padding-bottom: 0.25em;
     color: var(--ifm-background-color);
     overflow: hidden;
 }
