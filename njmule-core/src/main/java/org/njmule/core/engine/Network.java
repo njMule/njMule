@@ -3257,6 +3257,13 @@ final class Network {
         }
 
         @Override
+        public void corruptPart(DownloadInfo download, int part) {
+            Network.this.userLog.log(
+                    LogLine.Level.WARNING,
+                    "Part " + part + " of " + download.name() + " is corrupt: downloading it again");
+        }
+
+        @Override
         public void diskSpace(boolean enough) {
             if (enough) {
                 Network.this.userLog.log(
