@@ -28,6 +28,14 @@ All notable changes to this project are documented here. The format follows
   tells how to install the new version for each kind of installation (the package manager's
   command, the Docker image to pull, the Synology Package Center) and no longer offers a download
   that cannot work.
+- `njmule --restore-links`, which the Windows uninstaller runs and now the macOS one too, also
+  turns the start at login off; `njmule --remove-profile` does both before it deletes the profile,
+  which keeps the program the ed2k links go back to. A Linux start at login whose program was
+  removed is skipped.
+- The import no longer copies eMule files njMule does not read (`statistics.ini`,
+  `AC_BootstrapIPs.dat`, `AC_IPFilterUpdateURLs.dat`), and the first start no longer says that it
+  takes eMule's statistics over.
+- On Windows the completed downloads go to the Downloads folder where the user moved it.
 
 ### Security
 

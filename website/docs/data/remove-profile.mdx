@@ -9,7 +9,9 @@ import TabItem from '@theme/TabItem';
 Uninstalling njMule removes the programs but leaves your **profile** (see
 [Where njMule keeps its data](./locations.mdx)), so that a later installation finds your settings,
 lists, identity and credits again. When you want njMule gone for good, delete the profile too: the
-uninstallers offer a box for it, and `njmule --remove-profile` does it anywhere.
+uninstallers offer a box for it, and `njmule --remove-profile` does it anywhere. Before deleting,
+it gives the ed2k links back and turns the start at login off, as the uninstallers do: the profile
+holds the program the links go back to.
 
 :::danger[Your identity goes with it]
 The profile holds your user hash and key, and the credits other clients gave you. Once deleted they
