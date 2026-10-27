@@ -256,6 +256,7 @@ class DownloadQueueTest {
 
         thenNoEventComesWithin(Duration.ofSeconds(1));
         thenNothingIsCompleted();
+        thenItsFilesAreGoneOnceTheQueueCloses();
     }
 
     @Test
@@ -1130,6 +1131,13 @@ class DownloadQueueTest {
 
     private void thenNothingIsCompleted() throws Exception {
         assertThat(onLoop(() -> this.download.file().completedBytes())).isZero();
+    }
+
+    // The write, the save, the set-aside and the deletes of a cancel run off the engine thread and may outlast the
+    // test, then race JUnit's deletion of the directory; closing waits for them.
+    private void thenItsFilesAreGoneOnceTheQueueCloses() throws Exception {
+        closeTheQueue();
+        thenNothingIsLeftInTheTempDirectory();
     }
 
     private void thenTheLeftoverPartFileIsKept() {
