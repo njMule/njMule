@@ -1,0 +1,115 @@
+---
+title: Remote njMule
+description: Show and drive the njMule of another computer, such as a NAS or a Windows service, from the njMule desktop app, through its remote-control API.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+The desktop app can show and drive another njMule: one running headless on a NAS, in Docker or as a
+Windows service, or on another computer. It opens a window of its own on that njMule, with the same
+screens as for your own, and talks to it through its **remote-control API** with a token. Your own
+njMule, if it runs, goes on beside it.
+
+## Before you start
+
+On the computer you want to reach:
+
+1. Turn on its web interface, and with it the API: in the desktop app, turn on **Answer the
+   remote-control API too (njmule --remote; callers need its token)** in the
+   [Web interface options](../settings/web-interface.mdx); headless, start it with `--webui-api`
+   (see [Remote control](../server/remote-control.mdx)). To reach it from another computer, turn on
+   **Let other computers connect (otherwise only this one)** too.
+2. Get its token: **Copy the API token** in the same options, or run:
+
+   ```bash
+   njmule --api-token
+   ```
+
+The token gives full control of that njMule: keep it as you would a password. **New API token**, or
+`njmule --new-api-token`, replaces it, and the old one stops working.
+
+## Connecting from the menu
+
+1. Choose **⋯** → **Connect to a remote njMule**.
+2. Type the **Address of its web interface**, such as `http://nas.local:4711/api/v1`. A shorter form
+   works too: `nas.local:4711` becomes `http://nas.local:4711/api/v1`. The list offers the
+   connections remembered.
+3. Paste the **API token**.
+4. Leave **Remember this connection on this computer** ticked to keep the address and the token for
+   next time.
+5. Press **Connect**.
+
+njMule first tries the address and the token: if the other njMule does not answer or refuses the
+token, the dialog says **Cannot connect: …** and stays open. Otherwise a new njMule window opens on
+the other computer's njMule, its address in the title bar (as `njMule 0.1.0 - nas.local:4711`).
+
+The new window is a second start of the installed njMule. A development build cannot start itself and
+says so: **This njMule cannot open another window: start the installed njMule with --remote-url and
+the token in NJMULE_API_TOKEN.**
+
+## Connecting from the command line
+
+`njmule-gui --remote-url` opens the desktop app directly on another njMule. The token comes from the
+`NJMULE_API_TOKEN` environment variable or, without it, from a connection remembered for that address.
+
+<Tabs groupId="os">
+<TabItem value="windows" label="Windows" default>
+
+```powershell
+$env:NJMULE_API_TOKEN = "<the token>"
+njmule-gui --remote-url http://nas.local:4711/api/v1
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+NJMULE_API_TOKEN="<the token>" njmule-gui --remote-url http://nas.local:4711/api/v1
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+```bash
+NJMULE_API_TOKEN="<the token>" njmule-gui --remote-url http://nas.local:4711/api/v1
+```
+
+</TabItem>
+</Tabs>
+
+The address must be a full `http://` or `https://` address of the API. Without a token njMule does not
+start, and tells you to set `NJMULE_API_TOKEN` or connect from the menu.
+
+## Remembered connections
+
+The connections you ask njMule to remember are kept, address and token, in `remotes.properties` in
+the `gui` folder of your profile (see [Data locations](../data/locations.mdx)). On Linux and macOS
+only your user can read the file; on Windows it lies in your own profile folder. Remove a line of it
+to forget that connection.
+
+## What works remotely
+
+Almost everything works as with your own njMule, on the other one: transfers, searches (and the
+search tabs kept for its next start), shared files, messages and friends, the network, the
+statistics, the options, the scheduler, the categories and the updates of the other njMule. What only
+this computer can do does not work:
+
+| What | What happens |
+|---|---|
+| **Add servers from server.met...** and **Add contacts from nodes.dat...** | A file of this computer cannot reach the other njMule: njMule says so. Use **Update server.met from URL** and **Nodes.dat from URL:** instead. |
+| **Mark as Spam**, **Mark as not Spam** | Not available: njMule says so. The results the other njMule rates as spam still show as spam. |
+| **Preview** | Not available, as the data of the download stays on the other computer: njMule answers that the start of the file has not arrived yet. |
+| Opening files and folders | **Open Folder**, **Open Incoming Folder** and opening a completed download use the folders of this computer, which hold nothing of the other njMule. |
+| Choosing a folder or a file | The folder choosers (sharing a folder, a category's incoming folder) browse this computer; the path you choose is used as it is on the other one. Type a path of the other computer instead. |
+
+What belongs to this computer stays local: the look and language of the window, links clicked in
+your browser (they go to your own njMule) and its log, written apart in the `remote` folder of your
+logs.
+
+## Related pages
+
+- [Remote control](../server/remote-control.mdx)
+- [Web interface options](../settings/web-interface.mdx)
+- [Headless njMule](../server/headless.mdx)
+- [Windows service](../server/windows-service.mdx)

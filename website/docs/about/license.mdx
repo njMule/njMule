@@ -1,0 +1,164 @@
+---
+title: License and credits
+description: njMule's licence (GPL-3.0-or-later), the documentation's (CC BY-SA 4.0), the third-party components and data njMule uses, and its debt to eMule.
+---
+
+njMule is free software, built from free and open-source components. This page says what you may
+do with njMule and with this documentation, which components and data come from others and under
+which licences, and whom njMule thanks.
+
+## njMule's licence
+
+Copyright (C) 2026 Salvatore Coppola and the njMule contributors: the people listed in the
+repository's [`AUTHORS`](https://github.com/njMule/njMule/blob/main/AUTHORS) file and everyone who
+has contributed under the Developer Certificate of Origin.
+
+njMule is licensed under the **GNU General Public License, version 3 or (at your option) any later
+version** (SPDX: `GPL-3.0-or-later`). In short, it lets you:
+
+- **run** njMule for any purpose;
+- **study** how it works and **change** it, with its full source code;
+- **share** copies with others, free of charge or for a fee;
+- **share your changed versions**, under the same licence, together with their source code and the
+  licence's notices.
+
+njMule comes with **no warranty**, to the extent the law allows. The licence's own text is what
+counts: read it in [`LICENSE`](https://github.com/njMule/njMule/blob/main/LICENSE) or at
+[gnu.org](https://www.gnu.org/licenses/gpl-3.0.html). Every njMule also prints it:
+`njmule --license` shows the licence, `njmule --warranty` the warranty disclaimer. The desktop app
+says the same in **⋯ → About njMule**.
+
+<Screenshot
+    id="dialog-about"
+    alt="The About njMule dialog: the logo, njMule and its version, Next generation Java Mule, the copyright, the GPL-3.0-or-later licence with no warranty, a Copy version details button and a note that njMule is not affiliated with the eMule project"
+    caption="About njMule names the licence and the copyright holders."
+    width={520}
+/>
+
+The repository follows the [REUSE](https://reuse.software) specification: every file carries an
+SPDX licence identifier, or is listed in
+[`REUSE.toml`](https://github.com/njMule/njMule/blob/main/REUSE.toml), and the licence texts are in
+[`LICENSES/`](https://github.com/njMule/njMule/tree/main/LICENSES).
+
+### What njMule owes to eMule
+
+njMule is an independent re-implementation of the eMule file-sharing client in Java. Its protocol
+constants, file formats and algorithms were translated from eMule's source code, the lower-case
+table Kad applies to keywords is taken from eMule's resource files, and the interface texts and
+their translations are converted from eMule's resource files. eMule is copyright (C) 2002-2026
+Merkur and the eMule contributors ([emule-project.net](https://www.emule-project.net)), licensed
+under the GNU GPL version 2 or any later version; the material derived from it is used in njMule
+under version 3. The community version of eMule at
+[github.com/irwir/eMule](https://github.com/irwir/eMule) served as the reference.
+
+## The documentation's licence
+
+The text of this documentation is by the njMule contributors and is licensed under the
+[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)
+licence (`CC-BY-SA-4.0`). You may copy, share and adapt it for any purpose, also commercially, as
+long as you credit it (for example *njMule documentation, by Salvatore Coppola and the njMule
+contributors, CC BY-SA 4.0*, with a link) and share what you make from it under the same licence.
+
+Some pages show files of the repository as they are: the [changelog](changelog.mdx), the
+[security policy](security.mdx) and, in the developer guide, the contribution guide, the code of
+conduct and the pull request template. Those keep the licence of their files, GPL-3.0-or-later.
+The website's own code, styles and scripts are GPL-3.0-or-later too; it is built with
+[Docusaurus](https://docusaurus.io) (MIT License), and its headings are set in Manrope (SIL Open
+Font License 1.1).
+
+### Screenshots
+
+The pictures of njMule in this documentation are taken by the documentation's build, from njMule
+itself, filled with invented example data: the nick, servers, files and clients are made up, and
+every address is one of the ranges reserved for documentation. They show njMule's own interface,
+its texts and its original artwork, which are part of njMule (GPL-3.0-or-later). No picture shows a
+real user or a real network.
+
+## Artwork
+
+The njMule logo and its icons, kept in the repository's
+[`branding/`](https://github.com/njMule/njMule/tree/main/branding) folder, and the line icons the
+desktop app and the web interface draw are original work, made for njMule. njMule never uses or
+derives any graphical asset of eMule: no icon, bitmap, skin or logo.
+
+## Third-party components
+
+The binary packages of njMule include the following components. All their licences are compatible
+with the GNU GPL version 3.
+
+| Component | Licence | What it does in njMule |
+|---|---|---|
+| SLF4J API | MIT | Logging interface |
+| Logback (classic, core) | EPL-1.0 or LGPL-2.1, used under LGPL-2.1 | Logging |
+| Bouncy Castle (bcprov) | MIT (Bouncy Castle Licence) | Cryptography (RSA, Diffie-Hellman, the signatures of updates) |
+| Kwik and Agent15 | LGPL-3.0 | QUIC and its TLS 1.3 handshake, for [NAT traversal](../network/nat-traversal.mdx) |
+| HKDF (at.favre.lib) | Apache-2.0 | Used by Kwik |
+| SipHash (io.whitfin) | MIT | Used by Kwik |
+| Guava | Apache-2.0 | Utilities |
+| picocli | Apache-2.0 | Command-line parsing |
+| semver4j | MIT | Comparing versions, for updates |
+| Apache Commons Compress, IO, Lang, Codec | Apache-2.0 | Unpacking update packages |
+| XZ for Java | 0BSD | Unpacking `.xz` update packages |
+| Jackson (core, databind, annotations) | Apache-2.0; Jackson Core bundles FastDoubleParser and Schubfach (MIT) | JSON |
+| networknt JSON Schema Validator | Apache-2.0; bundles parts of Apache Commons Validator (Apache-2.0) | Checking API requests |
+| ethlo ITU | Apache-2.0 | Used by the JSON Schema Validator |
+| Eclipse Jetty (HTTP client and server) | Apache-2.0 or EPL-2.0, used under Apache-2.0 | Web interface and API |
+| Jakarta Mail, Angus Mail | EPL-2.0 or GPL-2.0 with Classpath exception or BSD-3-Clause (EDL 1.0), used under BSD-3-Clause | E-mail notifications |
+| Jakarta Activation, Angus Activation | BSD-3-Clause (EDL 1.0) | Used by the mail library |
+| OpenJFX (JavaFX) | GPL-2.0 with Classpath exception | Desktop app |
+| AtlantaFX | MIT | Desktop app themes |
+| RichTextFX, Flowless, ReactFX, UndoFX, WellBehavedFX | BSD-2-Clause (RichTextFX also GPL-2.0 with Classpath exception), used under BSD-2-Clause | The log and server messages of the desktop app |
+| Vue, Vue Router, Element Plus and the packages they bundle (VueUse, Floating UI, lodash-es, Day.js and others) | MIT | The web interface's browser app |
+| GraalVM Native Image | GPL-2.0 with Classpath exception | The runtime built into the native executables |
+
+Components used only for testing (JUnit, AssertJ, jqwik, Jimfs, openapi-parser) and the tools that
+build the web interface (Node.js, Vite, TypeScript, Vitest, Prettier) are not distributed.
+
+### Fonts, flags and data
+
+- **Manrope**, Bold and ExtraBold: the face of the desktop app's titles and of its wordmark,
+  bundled with it. SIL Open Font License 1.1, from
+  [github.com/googlefonts/manrope](https://github.com/googlefonts/manrope).
+- **flag-icons**: the country flags shown beside clients, rendered to small PNG pictures. MIT
+  License, from [github.com/lipis/flag-icons](https://github.com/lipis/flag-icons).
+- **DB-IP IP to Country Lite**: not shipped. When you choose to see the countries of other clients
+  (off by default), njMule downloads this database once a month into its cache. It is licensed under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/):
+  [IP Geolocation by DB-IP](https://db-ip.com).
+- **The server list and Kad contacts** a new profile starts from: the `server.met` and `nodes.dat`
+  published at [upd.emule-security.org](https://upd.emule-security.org), downloaded unchanged on
+  15 October 2026. They hold public addresses, ports and server names, facts not covered by
+  copyright (recorded as `CC0-1.0` in `REUSE.toml`).
+
+### Libraries linked statically
+
+The fully static Linux x64 executable, inside the Synology DSM package, the
+`njmule-<version>-linux-x64-static.tar.xz` archive and the `linux/amd64` Docker image, contains
+**musl libc** (MIT License) and **zlib** (zlib License). Their licence texts ship with it.
+
+## The complete list
+
+- **`NOTICE`**, the file of copyright, attribution and third-party notices, ships with the Windows
+  installer and zip (as `NOTICE.txt` or `NOTICE`, beside the programs), the Linux packages (in
+  `/usr/share/doc/njmule`), the Linux archives, the Synology package and the Docker image (in
+  `/usr/share/doc/njmule`). Every njMule prints it with `njmule --notice`. Read it online in
+  [`NOTICE`](https://github.com/njMule/njMule/blob/main/NOTICE).
+- **The software bill of materials** of each release, `njmule-<version>-sbom.cdx.json` (CycloneDX),
+  lists every component with its version.
+- **The web interface's browser app** lists its packages and their licence texts at
+  `/THIRD-PARTY.md` of the web interface, such as `http://localhost:4711/THIRD-PARTY.md`.
+- **From the sources**, `./gradlew :njmule-gui:generateLicenseReport` writes `THIRD-PARTY.txt`, the
+  full list with versions, and `./gradlew cyclonedxBom` the bill of materials. See
+  [Dependencies](/developer/dependencies).
+
+## Trademarks
+
+njMule is not affiliated with or endorsed by the eMule project. eMule, eDonkey2000 and other names
+are the property of their respective owners; they are named here only to say what njMule is
+compatible with.
+
+## Acknowledgements
+
+Many thanks to the eMule team and to everyone who has contributed to
+[eMule](https://www.emule-project.net) over more than twenty years: their client keeps the eD2K and
+Kad networks alive, and its open source code made njMule possible.

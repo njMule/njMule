@@ -26,4 +26,13 @@ dependencyResolutionManagement {
 
 rootProject.name = "njmule"
 
-include("njmule-core", "njmule-testkit", "njmule-webapp", "njmule-webui", "njmule-app", "njmule-gui", "njmule-bench")
+include(
+    "njmule-core",
+    "njmule-testkit",
+    "njmule-webapp",
+    "njmule-webui",
+    "njmule-app",
+    "njmule-gui",
+    "njmule-bench",
+    "website",
+)

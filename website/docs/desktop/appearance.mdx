@@ -1,0 +1,100 @@
+---
+title: Appearance and language
+description: Choose the theme of the njMule desktop app, light, dark or as the system, use Windows high contrast, and pick one of its 36 languages, right-to-left ones included.
+---
+
+The look and the language of the desktop app are set in **Options** → **General** → **Display**.
+Both start as your system is: njMule follows its light or dark scheme and speaks its language when it
+is one of the 36 it has.
+
+<Screenshot
+    id="settings-page-01"
+    alt="The General page of the options: the Nick, then the Display section with Language As the system and Theme Nord and Light, then the Startup section"
+    caption="Language and theme, in the General options"
+/>
+
+## Theme
+
+**Theme** has two lists:
+
+1. **The family**: **Nord** (the default), **Primer**, **Cupertino** or **Dracula**. Dracula exists
+   in a dark version only.
+2. **The mode**: **Light**, **Dark**, or **As the system** (the default), which follows the light or
+   dark scheme of your system as it changes.
+
+A change applies at once, to every window of njMule. **⋯** → **Light or dark** (also in the command
+palette) switches straight between the light and the dark version of your theme; it sets **Light**
+or **Dark**, so choose **As the system** in the options to follow the system again. The link **Reset
+to Nord, As the system** beside a changed theme brings the default back.
+
+Whatever the theme, njMule keeps its own soft colours for the bars, charts and chips, in a light and a
+dark version, and makes sure text and marks stay readable: every theme is checked for the contrast of
+what njMule draws on it (WCAG 2.2 AA). Colour is never the only cue: states have words and icons,
+legends name what each colour means.
+
+## Windows high contrast
+
+When a high contrast theme of Windows is on, njMule takes the system's colours for everything: the
+window, the text, the selection, the links, the greyed-out text, the part bars and the graphs. It is
+light or dark as the high contrast theme is, whatever the mode chosen, and follows the system at once
+when the theme changes or is turned off; your own choice of theme comes back then.
+
+<Screenshot
+    id="transfers"
+    set="contrast"
+    alt="The Transfers screen under a dark Windows high contrast theme: black background, white text, yellow and cyan accents and bars"
+    caption="Transfers under a Windows high contrast theme"
+/>
+
+## Language
+
+**Language** lists **As the system** (the default) and the 36 languages, each named in its own words
+(Deutsch, Italiano, 日本語…). A new language waits for **Apply and restart** in the bar under the page
+(or **Discard**): the window is then built again in that language, while the transfers go on.
+
+<details>
+<summary>The 36 languages</summary>
+
+English, Catalan, Czech, Danish, German, Estonian, Spanish, French, Galician, Italian, Latvian,
+Lithuanian, Hungarian, Dutch, Norwegian Bokmål, Polish, Brazilian Portuguese, European Portuguese,
+Romanian, Albanian, Slovenian, Finnish, Swedish, Vietnamese, Turkish, Greek, Bulgarian, Russian,
+Ukrainian, Arabic, Persian, Hebrew, Simplified Chinese, Traditional Chinese, Japanese and Korean.
+
+</details>
+
+With **As the system**, njMule speaks your system's language when it has it, and English otherwise:
+
+- Chinese written in the traditional script (as set for Taiwan, Hong Kong or Macao) gets Traditional
+  Chinese, any other Chinese Simplified Chinese.
+- Portuguese gets Brazilian Portuguese in Brazil and European Portuguese elsewhere.
+- Norwegian and Nynorsk get Norwegian Bokmål.
+
+Sizes, rates and durations use the units of the language, as `Ko/s` in French; numbers always use
+Latin digits, Persian included. Dates and times follow the format of your system.
+
+### Right-to-left languages
+
+In Arabic, Persian and Hebrew the whole interface is mirrored: the window, its dialogs, the menus and
+the windows of the notification area. What reads left to right in any language stays so: paths,
+links, hashes, addresses, the numbers in lists, the logs, and the fields for links and addresses.
+File and user names read in the direction of their first letter. The part bars and the rate graph
+keep their direction, the start of a file and the past on the left; of the icons, only those that
+point the way text runs are mirrored.
+
+## Fonts and icons
+
+Titles and the njMule wordmark are set in Manrope, which comes with njMule. All other text uses your
+system's font, which covers every script of the translations. The icons are njMule's own line icons,
+drawn in the colour of the text beside them in every theme.
+
+## Screen readers
+
+Screen readers hear the progress bars as progress with their value, the state chips, the file names
+and the outcomes in the lists as words, and the rate graph of the statistics as a sentence with the
+rates now and the highest.
+
+## Related pages
+
+- [General options](../settings/general.mdx)
+- [The main window](./interface.mdx)
+- [Keyboard shortcuts](./keyboard-shortcuts.mdx)

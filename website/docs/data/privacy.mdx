@@ -1,0 +1,84 @@
+---
+title: Privacy
+description: What njMule tells servers, clients and Kad nodes, what it fetches from the web on its own, what it keeps on your computer, and how to protect yourself.
+---
+
+eD2K and Kad are public networks: to share files, your computer tells others who it is and what it
+offers. This page says exactly what njMule tells, to whom, and what it does not. In short: njMule
+sends nothing about you to its authors, has no telemetry, and talks to the web only for what you
+see below.
+
+## What the networks see
+
+| Who | What they learn |
+|---|---|
+| **The eD2K server** you are on | Your IP address and ports, your **user hash**, your nick, your client and its version, and the list of your shared files (names, sizes, hashes), which it indexes for others; also your searches and the files you look for sources of. |
+| **Other clients** you exchange with | Your IP address (and your [IPv6 address](../network/ipv6.mdx), when you have one), your ports, user hash and nick, your client as `njMule` with its full version, your Kad buddy when you have one, the files you ask them for, the parts you have of the files they ask you for, and your comment and rating of those files. With secure identification, your public key. |
+| **Kad nodes** | Your Kad ID, IP address and ports; the keywords of your shared files with you as their source, and your comments and ratings, published to the nodes closest to them; your searches. |
+| **Who may browse your shared files** | **See My Shared Files/Directories** (**Options → Directories**) decides who may ask for the full list of your shared files: **Nobody** (the default), **Friends** (whose identity is proven) or **Everybody**. Clients that browse see the files in one folder, never your real paths. |
+
+Your nick is `njMule` until you change it (**Options → General → Nick**, or the first-start
+wizard): choose one that does not give your name away.
+
+Some files are never shared, whatever folder you share: your home, configuration and temporary
+folders, any folder holding a client key, backup and temporary files, and the files other programs
+keep beside their work (Office owner files `~$…`, which carry your user name, macOS `._` files,
+downloads still being written by a browser). Sharing a whole drive or a personal folder such as
+your documents asks first.
+
+## What njMule fetches on its own
+
+| What | From | When | What it sends |
+|---|---|---|---|
+| **Update information** | GitHub (`api.github.com` and the release files) | At each start and once a day, unless set to **Only when I ask** | Only njMule's version, in the `User-Agent` (`njMule/0.1.0`, for example). GitHub sees your IP address. |
+| **Country database** | DB-IP (`download.db-ip.com`) | Once a month, only when **Show the country of other clients** (**Options → General**) is on, which it is not by default | Only njMule's version, in the `User-Agent`; the countries of other clients are then looked up on your computer. |
+| **Lists you ask for** | The address you type | When you click **Update** or **Download**, or as their options say (IP filter lists every few days, server lists at start) | Only njMule's version, in the `User-Agent`. The site sees your IP address. |
+
+All of these go through the [proxy](../network/proxy.mdx) and the
+[network interface](../network/bind-interface.mdx) of the options. The update information is
+believed only when it is signed with a key built into njMule (see [Updates](../updates.mdx)).
+
+To stop the update check, set **Options → General → Updates → Look for new versions** to **Only
+when I ask** (`update.mode=OFF`).
+
+The countries of other clients come from DB-IP's free *IP to Country Lite* database, under the
+Creative Commons Attribution 4.0 license:
+[IP Geolocation by DB-IP](https://db-ip.com).
+
+Nothing else leaves on its own: no usage statistics, no crash reports, no telemetry. The
+notifications you set up (e-mail through your SMTP server, a web hook) go only where you say, and
+**Buy me a coffee** only opens a page in your browser when you click it.
+
+## What stays on your computer
+
+- **The history of the clients met** (`clienthistory.json`): for 90 days at most, and at most
+  20,000 clients, the name and program each gave last, when you first and last met it and, when
+  countries are shown, its country. Never its address.
+- **Credits** (`clients.met`): what you exchanged with each user hash, as the credit system needs.
+- **Logs**: the [log files](./logs.mdx) hold the addresses of servers and clients and the names of
+  files, for 14 days at most.
+- **Statistics**: totals of what you transferred.
+
+See [Files of the profile](./files.mdx) for every file, and
+[Removing your profile](./remove-profile.mdx) to delete them all.
+
+## How to protect yourself
+
+- **[Protocol obfuscation](../network/obfuscation.mdx)** (requested by default) keeps your traffic
+  from being recognised as eD2K on the way. It does not hide your address.
+- **[The IP filter](../network/ip-filter.mdx)** keeps away the address ranges of lists you trust.
+- **[Binding to a VPN's interface](../network/bind-interface.mdx)** shows others the VPN's address
+  instead of yours, and keeps njMule offline while the VPN is down.
+- **[A proxy](../network/proxy.mdx)** shows its address on the connections njMule opens; note
+  what it does not cover.
+- **The web interface** answers only on this computer unless you allow others, always behind a
+  password (see [Web interface security](../web/security.mdx)).
+
+Use njMule only for files you have the right to share and download.
+
+## Related pages
+
+- [Files of the profile](./files.mdx)
+- [Updates](../updates.mdx)
+- [General options](../settings/general.mdx)
+- [Security policy](../about/security.mdx)

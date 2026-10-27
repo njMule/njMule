@@ -1,0 +1,270 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * The site in njMule's colours: the brand's deep blue, its off-white and warm orange accents (branding/README.md),
+ * over the Nord tones of the app's default theme. Orange stays an accent, never a large surface or text on light
+ * backgrounds. Every pair of text and background reads at 4.5:1 or more (WCAG 2.2 AA).
+ */
+
+@import '@fontsource/manrope/700.css';
+@import '@fontsource/manrope/800.css';
+
+:root {
+    /* Brand (branding/README.md) */
+    --nj-brand: #24427a;
+    --nj-brand-deep: #1b3260;
+    --nj-brand-mark: #f4f6fb;
+    --nj-brand-accent: #f5a65b;
+    --nj-accent-hover: #e8944a;
+    --nj-accent-pressed: #d9822b;
+    --nj-on-accent: #2e3440;
+    /* Orange as text on light surfaces (the app's -nj-accent-strong), 4.8:1 on white. */
+    --nj-accent-strong: #b35a12;
+    --nj-surface: #f4f6fb;
+    --nj-border: #d8dee9;
+    --nj-shadow: 0 1px 2px rgb(46 52 64 / 8%), 0 8px 24px rgb(46 52 64 / 10%);
+
+    /* Infima: links, buttons and the active item in the brand's blue, 9.8:1 on white. */
+    --ifm-color-primary: #24427a;
+    --ifm-color-primary-dark: #203b6e;
+    --ifm-color-primary-darker: #1f3868;
+    --ifm-color-primary-darkest: #192e55;
+    --ifm-color-primary-light: #284986;
+    --ifm-color-primary-lighter: #2a4c8c;
+    --ifm-color-primary-lightest: #30579f;
+    --ifm-background-color: #ffffff;
+    --ifm-background-surface-color: var(--nj-surface);
+    --ifm-font-color-base: #2e3440;
+    --ifm-color-content-secondary: #4c566a;
+    --ifm-toc-border-color: var(--nj-border);
+    --ifm-hr-border-color: var(--nj-border);
+    --ifm-table-border-color: var(--nj-border);
+    --ifm-table-stripe-background: rgb(244 246 251 / 70%);
+    --ifm-code-font-size: 92%;
+    --ifm-font-family-base: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --ifm-heading-font-family: 'Manrope', var(--ifm-font-family-base);
+    --ifm-heading-font-weight: 700;
+    --ifm-navbar-background-color: var(--nj-brand);
+    --ifm-navbar-link-color: var(--nj-brand-mark);
+    --ifm-navbar-link-hover-color: #ffffff;
+    --ifm-navbar-link-active-color: #ffffff;
+    --ifm-footer-background-color: var(--nj-brand-deep);
+    --ifm-footer-color: #d8dee9;
+    --ifm-footer-link-color: var(--nj-brand-mark);
+    --ifm-footer-link-hover-color: var(--nj-brand-accent);
+    --ifm-footer-title-color: #ffffff;
+    --ifm-menu-color-background-active: rgb(36 66 122 / 9%);
+    --ifm-menu-color-background-hover: rgb(36 66 122 / 6%);
+    --docusaurus-highlighted-code-line-bg: rgb(36 66 122 / 10%);
+
+    /* Admonitions in the Nord tones of the app's chips: pastel surfaces, theme text, stronger edge. */
+    --ifm-color-info: #537297;
+    --ifm-color-info-dark: #476283;
+    --ifm-color-info-contrast-background: #eaf0f8;
+    --ifm-color-info-contrast-foreground: #2e3440;
+    --ifm-color-success: #3a6867;
+    --ifm-color-success-dark: #457b7a;
+    --ifm-color-success-contrast-background: #e6f1ef;
+    --ifm-color-success-contrast-foreground: #2e3440;
+    --ifm-color-warning: #925f4e;
+    --ifm-color-warning-dark: #d9822b;
+    --ifm-color-warning-contrast-background: #fdf0e3;
+    --ifm-color-warning-contrast-foreground: #2e3440;
+    --ifm-color-danger: #994e55;
+    --ifm-color-danger-dark: #ac575f;
+    --ifm-color-danger-contrast-background: #f8e7e9;
+    --ifm-color-danger-contrast-foreground: #2e3440;
+    --ifm-color-secondary-contrast-background: #eef1f5;
+    --ifm-color-secondary-contrast-foreground: #2e3440;
+}
+
+html[data-theme='dark'] {
+    --nj-surface: #3b4252;
+    --nj-border: #4c566a;
+    --nj-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 35%);
+    --nj-accent-strong: #f5a65b;
+
+    /* A lighter brand blue: 6.0:1 on the page, 4.8:1 on its surfaces. */
+    --ifm-color-primary: #9db4e0;
+    --ifm-color-primary-dark: #85a2d8;
+    --ifm-color-primary-darker: #7999d4;
+    --ifm-color-primary-darkest: #557dc8;
+    --ifm-color-primary-light: #b5c6e8;
+    --ifm-color-primary-lighter: #c1cfec;
+    --ifm-color-primary-lightest: #e5ebf7;
+    --ifm-background-color: #2e3440;
+    --ifm-background-surface-color: var(--nj-surface);
+    --ifm-font-color-base: #eceff4;
+    --ifm-color-content-secondary: #d8dee9;
+    --ifm-table-stripe-background: rgb(59 66 82 / 55%);
+    --ifm-navbar-background-color: #1f3560;
+    --ifm-footer-background-color: #242a35;
+    --ifm-menu-color-background-active: rgb(157 180 224 / 14%);
+    --ifm-menu-color-background-hover: rgb(157 180 224 / 9%);
+    --docusaurus-highlighted-code-line-bg: rgb(0 0 0 / 30%);
+
+    --ifm-color-info-contrast-background: #34405a;
+    --ifm-color-info-contrast-foreground: #eceff4;
+    --ifm-color-info-dark: #98aeca;
+    --ifm-color-success-contrast-background: #2f4645;
+    --ifm-color-success-contrast-foreground: #eceff4;
+    --ifm-color-success-dark: #82b8b8;
+    --ifm-color-warning-contrast-background: #4b3b2e;
+    --ifm-color-warning-contrast-foreground: #eceff4;
+    --ifm-color-warning-dark: #f5a65b;
+    --ifm-color-danger-contrast-background: #4a3238;
+    --ifm-color-danger-contrast-foreground: #eceff4;
+    --ifm-color-danger-dark: #d29097;
+    --ifm-color-secondary-contrast-background: #3b4252;
+    --ifm-color-secondary-contrast-foreground: #eceff4;
+}
+
+/* ---- Navbar: the brand's blue band, the active page marked in orange ---- */
+
+.navbar {
+    box-shadow: none;
+    border-bottom: 3px solid var(--nj-brand-accent);
+}
+
+.navbar__title {
+    font-family: 'Manrope', var(--ifm-font-family-base);
+    font-weight: 800;
+    font-size: 1.25rem;
+    color: var(--nj-brand-mark);
+    letter-spacing: -0.01em;
+}
+
+.navbar__logo {
+    height: 2.1rem;
+}
+
+.navbar__link--active {
+    box-shadow: inset 0 -3px 0 var(--nj-brand-accent);
+}
+
+.navbar .navbar__toggle,
+.navbar .clean-btn {
+    color: var(--nj-brand-mark);
+}
+
+.navbar-sidebar .navbar__link,
+.navbar-sidebar .menu__link {
+    color: var(--ifm-font-color-base);
+}
+
+.navbar-sidebar .navbar__link--active {
+    box-shadow: none;
+}
+
+/* The download link reads as the one orange button of the band. */
+.navbar-download {
+    margin-inline: 0.5rem;
+    padding: 0.35rem 0.95rem;
+    border-radius: 0;
+    background: var(--nj-brand-accent);
+    color: var(--nj-on-accent) !important;
+    font-weight: 600;
+}
+
+.navbar-download:hover {
+    background: var(--nj-accent-hover);
+}
+
+.navbar-download svg {
+    display: none;
+}
+
+.navbar-github {
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0.3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.navbar-github::before {
+    content: '';
+    width: 1.45rem;
+    height: 1.45rem;
+    background: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.8 1.19 1.83 1.19 3.09 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z'/%3E%3C/svg%3E")
+        no-repeat center / contain;
+}
+
+.navbar-github svg {
+    display: none;
+}
+
+/* The search box on the blue band. */
+.navbar .navbar__search-input,
+.navbar [class*='searchBar'] input {
+    background-color: rgb(244 246 251 / 14%);
+    color: var(--nj-brand-mark);
+}
+
+.navbar [class*='searchBar'] input::placeholder {
+    color: rgb(244 246 251 / 75%);
+}
+
+/* ---- Content ---- */
+
+h1,
+h2,
+h3 {
+    letter-spacing: -0.015em;
+}
+
+.markdown h1:first-child {
+    font-weight: 800;
+}
+
+.markdown table {
+    display: table;
+    width: 100%;
+}
+
+.markdown table th {
+    background: var(--nj-surface);
+    text-align: start;
+}
+
+kbd {
+    font-family: var(--ifm-font-family-base);
+    font-size: 0.85em;
+    border-radius: 6px;
+    border: 1px solid var(--nj-border);
+    border-bottom-width: 2px;
+    background: var(--nj-surface);
+    color: var(--ifm-font-color-base);
+    box-shadow: none;
+}
+
+.menu__link--active:not(.menu__link--sublist) {
+    font-weight: 600;
+    box-shadow: inset 3px 0 0 var(--nj-brand-accent);
+}
+
+.footer {
+    border-top: 3px solid var(--nj-brand-accent);
+}
+
+.footer__copyright {
+    max-width: 75ch;
+    margin-inline: auto;
+    font-size: 0.875rem;
+    color: #d8dee9;
+}
+
+/* The OpenAPI pages: method badges in tones of the theme. */
+.api-method > .menu__link {
+    align-items: center;
+}
+
+.theme-doc-sidebar-item-link.api-method > .menu__link::before,
+.menu__list-item.api-method > .menu__link::before {
+    width: 3.4rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+}

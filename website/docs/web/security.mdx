@@ -1,0 +1,143 @@
+---
+title: Web interface security
+description: How njMule protects its web interface (password hashing, sessions, lockout, cookies, CSRF, host and origin checks) and how to open it safely to other computers.
+---
+
+The web interface lets whoever knows its password do everything njMule can, from downloading to
+sharing a folder of your disk. This page tells what guards it, so that you can choose how far to
+open it: to this computer only (the default), to your home network, or to the internet through a
+[reverse proxy](./reverse-proxy.mdx) with HTTPS.
+
+## The password
+
+- It needs **at least 8 characters**, in the desktop app, on the command line and in a password
+  file alike. Choose a long one: it is the only thing between the network and your njMule.
+- njMule keeps only a **hash** of it, in `webui.properties` in the configuration folder:
+  PBKDF2 with HMAC-SHA512, 210,000 rounds and a random 16-byte salt for each password. The
+  password itself is never written, printed or logged, and njMule wipes it from memory once
+  checked.
+- On Linux and macOS, `webui.properties` (and the `api-token` file of the
+  [remote-control API](../server/remote-control.mdx)) can be read by their owner only. A damaged
+  `webui.properties` keeps the interface off, with a warning in the log, rather than guessing.
+- At most two passwords are checked at the same time: a burst of logins from many addresses
+  answers *Busy: try again in a moment.* instead of taking every processor core.
+- The [guest password](./guest.mdx), if you set one, must differ from yours.
+
+To change the password, set a new one as you set the first
+([Turn it on](./overview.mdx#turn-it-on)); it applies from the next start of njMule.
+
+## Failed logins
+
+After **5 failed logins** from one address, that address must wait: the sign-in page answers
+*Too many attempts: wait a minute.* for a minute after the fifth attempt. Attempts are remembered
+as long as they come less than a minute apart, and a successful login clears them. An attempt
+counts as failed until its password has been checked, so parallel attempts cannot slip past the
+limit.
+
+- IPv4 clients are counted by their address, IPv6 clients by their **/64 network**, since a host
+  can pick any address of its own network.
+- A wrong API token counts the same way as a wrong password.
+- Each wrong password and API token is logged as a warning with the address it came from.
+- Behind a reverse proxy every login comes from the proxy, so the limit would hold for all your
+  users at once, unless you [trust the proxy](./reverse-proxy.mdx#trusted-proxies) to name its
+  client.
+
+## Sessions and cookies
+
+Logging in opens a session, kept in memory by njMule; restarting njMule ends every session.
+
+- A session ends after **30 minutes without a request**, or at once with **Logout**. An open page
+  keeps asking for news, so it stays signed in while it is open.
+- The session cookie is named `njmule-session-<port>`, so that two njMule on one computer keep
+  their own sessions. It is **HttpOnly** (no script can read it), **SameSite=Strict** (no other
+  site's page can send it) and **Secure** when you logged in over HTTPS, as through a reverse
+  proxy that serves HTTPS: the browser then never sends it over plain HTTP.
+- Session identifiers and form tokens are 128-bit random values; the tokens are compared in
+  constant time.
+
+## Cross-site requests
+
+Another site's page open in your browser must not be able to act on your njMule:
+
+- Every change the web app makes carries the session's own token in a header, which no page of
+  another site can send; the logout form carries it as a field.
+- A request that changes anything and comes with the `Origin` of another site is refused with
+  *Cross-site request refused.* Browsers always send it with such requests; the interface accepts
+  its own origin and those of its [host names](#host-names), on any port, over HTTP or HTTPS.
+- No page of the interface can be shown inside another site's frame (`frame-ancestors 'none'` and
+  `X-Frame-Options: DENY`).
+- A strict Content-Security-Policy lets the pages load scripts, styles and pictures from the
+  interface only; the sign-in page runs no script at all. The answers also say `nosniff`, send
+  the referrer only to the interface's own pages, and the pages and data are never cached.
+
+## Host names
+
+A trick called **DNS rebinding** points a name of an attacker's site at your computer's address, so
+that their page talks to your njMule as if it were the same site. To defeat it, the interface
+answers only requests whose `Host` is:
+
+- `localhost`, `127.0.0.1` or `[::1]`;
+- with LAN access on, an **IP address** (no DNS answer can make an IP address point elsewhere),
+  and the Synology **QuickConnect** name of the address the request came to, such as
+  `192-168-1-80.<id>.direct.quickconnect.to`, which only ever points to that address and is the
+  name under which DSM opens the interface;
+- a name you listed.
+
+Any other name gets *Unknown host name: open the interface by this computer's address and add the
+name under Settings.* To open the interface by a LAN name such as `nas.local`, or by the public
+name of a reverse proxy, list it:
+
+- on the command line, with `--webui-host` beside `--webui-password` or `--webui-password-file`
+  (repeat it, or separate the names with commas):
+
+  ```bash
+  njmule --webui-password --webui-lan --webui-host nas.local,nas
+  ```
+
+- in the desktop app, in **Options → Web Interface → Host names**;
+- in the browser, in **Options → Web Interface → Host names**, opened by an address that already
+  works. It applies at once, and keeps the name the page is open under, so that you cannot lock
+  yourself out.
+
+Give names without a port or a scheme; an international name goes in its ASCII form (`xn--…`).
+
+:::note
+When njMule is started with `--webui-password-file` at every start, as the Docker image is, the
+host names of the command line replace the listed ones at each start: give them with
+`--webui-host` there.
+:::
+
+The [remote-control API](../server/remote-control.mdx), when you turn it on, needs no host name:
+its callers send a token that browsers never send by themselves, and it uses no cookie.
+
+## LAN access
+
+Without LAN access the interface listens on `127.0.0.1` only: no other computer reaches it, even
+through a misconfigured firewall. With **Let other computers connect** (or `--webui-lan`) it
+listens on every address of the computer, IPv4 and IPv6.
+
+Before you turn it on:
+
+- Use a strong password, since anyone on the network can try it (five times a minute).
+- Prefer a network you trust. Do not forward the interface's port in your router to the internet:
+  put a [reverse proxy](./reverse-proxy.mdx) with HTTPS in front of it instead.
+- Consider a [guest password](./guest.mdx) for the people who only need to look.
+
+## Plain HTTP
+
+The interface itself speaks **plain HTTP**: on the network, the password at login and everything
+on the pages travel unencrypted, and anyone who can watch the traffic (a shared Wi-Fi, a
+compromised router) could read them or take over the session.
+
+:::danger
+Never expose the interface's port directly to the internet. To reach njMule from outside your
+home, serve it through a [reverse proxy with HTTPS](./reverse-proxy.mdx) or reach your home
+network through a VPN first.
+:::
+
+## Related pages
+
+- [Web interface](./overview.mdx): turning it on and signing in.
+- [Reverse proxy](./reverse-proxy.mdx): HTTPS, host names and trusted proxies.
+- [Guest access](./guest.mdx): a password that only lets one look.
+- [Web interface options](../settings/web-interface.mdx): the desktop app's page.

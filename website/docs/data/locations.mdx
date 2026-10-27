@@ -1,0 +1,139 @@
+---
+title: Where njMule keeps its data
+description: The folders of njMule's profile on Windows, macOS and Linux, under the XDG variables, as a Windows service, in Docker and on Synology, and how to move them.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+njMule keeps your settings, lists, identity and downloads in a few folders, together called the
+**profile**. It follows each system's conventions (the user folders on Windows, the Library on
+macOS, the XDG Base Directory specification on Linux), keeps the profile apart from the programs
+unless you ask for the [portable mode](./portable.mdx), and never writes into an eMule folder. The
+desktop app, the command line and the headless engine of one user share the same profile.
+
+## The folders
+
+| Folder | Holds |
+|---|---|
+| **config** | The settings, the server and Kad lists, your identity and credits, the lists of known, shared and cancelled files, the IP filter: almost everything. See [Files of the profile](./files.mdx). |
+| **gui** | What the desktop app remembers: theme, language, window, columns, the addresses typed before, the remote njMule it connects to. |
+| **data** | The [configuration backups](./backups.mdx), in `backups`. |
+| **temp** | The downloads in progress (`001.part` and `001.part.met`, and so on). |
+| **cache** | What njMule can fetch again: the country database, downloaded updates. |
+| **logs** | The [log files](./logs.mdx). |
+| **incoming** | The completed downloads. |
+
+## Default locations
+
+<Tabs groupId="os">
+  <TabItem value="windows" label="Windows" default>
+
+| Folder | Location |
+|---|---|
+| config | `%APPDATA%\njMule\config` |
+| gui | `%APPDATA%\njMule\gui` |
+| data | `%LOCALAPPDATA%\njMule\data` |
+| temp | `%LOCALAPPDATA%\njMule\temp` |
+| cache | `%LOCALAPPDATA%\njMule\cache` |
+| logs | `%LOCALAPPDATA%\njMule\logs` |
+| incoming | `%USERPROFILE%\Downloads\njMule` |
+
+`%APPDATA%` is usually `C:\Users\you\AppData\Roaming` and `%LOCALAPPDATA%`
+`C:\Users\you\AppData\Local`; paste either into the Explorer address bar to open it. The completed
+downloads go to the `Downloads` folder of your user folder even if you moved your Downloads
+folder elsewhere: choose another folder in the options then (see below).
+
+  </TabItem>
+  <TabItem value="macos" label="macOS">
+
+| Folder | Location |
+|---|---|
+| config | `~/Library/Application Support/njMule/config` |
+| gui | `~/Library/Application Support/njMule/gui` |
+| data | `~/Library/Application Support/njMule/data` |
+| temp | `~/Library/Application Support/njMule/temp` |
+| cache | `~/Library/Caches/org.njmule.njMule` |
+| logs | `~/Library/Logs/njMule` |
+| incoming | `~/Downloads/njMule` |
+
+The Library is hidden in the Finder: choose *Go → Go to Folder…* and type
+`~/Library/Application Support/njMule`.
+
+  </TabItem>
+  <TabItem value="linux" label="Linux">
+
+| Folder | Location |
+|---|---|
+| config | `~/.config/njmule` |
+| gui | `~/.config/njmule/gui` |
+| data | `~/.local/share/njmule` |
+| temp | `~/.local/share/njmule/temp` |
+| cache | `~/.cache/njmule` |
+| logs | `~/.local/state/njmule/logs` |
+| incoming | `~/Downloads/njMule` |
+
+The [systemd user unit](../server/linux-service.mdx) runs as you and uses the same folders, which
+is why only one of it and the desktop app runs at a time.
+
+  </TabItem>
+</Tabs>
+
+### Linux and the XDG variables
+
+When they are set to an absolute path, these variables take precedence (relative paths are
+ignored, as the specification asks):
+
+| Variable | Default | njMule's folders |
+|---|---|---|
+| `XDG_CONFIG_HOME` | `~/.config` | `$XDG_CONFIG_HOME/njmule` (config) and its `gui` |
+| `XDG_DATA_HOME` | `~/.local/share` | `$XDG_DATA_HOME/njmule` (data) and its `temp` |
+| `XDG_CACHE_HOME` | `~/.cache` | `$XDG_CACHE_HOME/njmule` |
+| `XDG_STATE_HOME` | `~/.local/state` | `$XDG_STATE_HOME/njmule/logs` |
+| `XDG_DOWNLOAD_DIR` | `~/Downloads` | `$XDG_DOWNLOAD_DIR/njMule` (incoming) |
+
+The download folder comes from the `XDG_DOWNLOAD_DIR` variable, or else from the `user-dirs.dirs`
+file of xdg-user-dirs in the configuration folder (the last assignment in it counts), so it
+follows a desktop in another language, such as `~/Téléchargements`.
+
+## Services, containers and NAS
+
+| Where njMule runs | Its profile |
+|---|---|
+| [Windows service](../server/windows-service.mdx) | `%ProgramData%\njMule` (usually `C:\ProgramData\njMule`), with the folders `config`, `data`, `temp`, `cache`, `logs`, `gui` and `incoming` below it. The service runs as `NT SERVICE\njMule`, which owns it. Uninstalling the service keeps it. |
+| [Docker](../getting-started/install-docker.mdx) | The volume `/njmule`, with the same folders below it. Mount `/njmule/incoming` (and `/njmule/temp`) on their own to keep the downloads on a disk of the host, preferably the same one. |
+| [Synology](../getting-started/install-synology.mdx) | The package's folder, `/var/packages/njmule/var`, with the same folders below it; the completed downloads go to the shared folder `njmule` that the package creates. |
+| Linux service | The user's own folders, as above. |
+
+## Portable mode and another profile
+
+Two ways put the whole profile below one folder, with the same seven folders (`config`, `data`,
+`temp`, `cache`, `logs`, `gui`, `incoming`) inside:
+
+- **Portable mode**: an empty `portable.flag` file next to the programs of the `.zip` or `.tar.xz`
+  archive keeps everything in a `data` folder beside them, for example on a removable drive.
+- **`--config-dir <dir>`**: `njmule --config-dir D:\njmule-test` or
+  `njmule-gui --config-dir /home/you/njmule-test` keeps everything below that folder, to run a
+  separate profile.
+
+`--config-dir` wins over `portable.flag`, which wins over the system locations. See
+[Portable mode](./portable.mdx).
+
+## Change where downloads go
+
+The completed and the incomplete downloads can live elsewhere: **Options → Directories → Incoming
+Files** and **Temporary Files** (see [Directories](../settings/directories.mdx)). A new temporary
+folder takes effect at the next start. [Categories](../desktop/categories.mdx) can have incoming
+folders of their own. The other folders of the profile can only move all together, with
+`--config-dir` or
+the portable mode.
+
+Uninstalling njMule leaves the profile in place, so that a later installation finds it again. See
+[Removing your profile](./remove-profile.mdx) to delete it.
+
+## Related pages
+
+- [Files of the profile](./files.mdx)
+- [Portable mode](./portable.mdx)
+- [Backups](./backups.mdx)
+- [Logs](./logs.mdx)

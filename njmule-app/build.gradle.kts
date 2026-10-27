@@ -98,3 +98,58 @@ graalvmNative {
         }
     }
 }
+
+// The command line's help and its list of remote commands, as they print them, for the documentation website
+// (website/). → build/cli-help/help.txt and remote.txt
+@CacheableTask
+abstract class CliHelp : DefaultTask() {
+    @get:Inject
+    abstract val exec: ExecOperations
+
+    @get:Classpath
+    abstract val classpath: ConfigurableFileCollection
+
+    @get:Nested
+    abstract val launcher: Property<JavaLauncher>
+
+    @get:Input
+    abstract val main: Property<String>
+
+    @get:OutputDirectory
+    abstract val output: DirectoryProperty
+
+    @TaskAction
+    fun print() {
+        val dir = output.get().asFile
+        dir.mkdirs()
+        for ((name, arguments) in listOf("help.txt" to listOf("--help"), "remote.txt" to listOf("--remote", "help"))) {
+            dir.resolve(name).outputStream().use { out ->
+                exec.javaexec {
+                    executable = launcher.get().executablePath.asFile.path
+                    classpath = this@CliHelp.classpath
+                    mainClass = main
+                    args(arguments)
+                    standardOutput = out
+                }
+            }
+        }
+    }
+}
+
+val cliHelp =
+    tasks.register<CliHelp>("cliHelp") {
+        description = "Prints the command line's help for the documentation."
+        group = "documentation"
+        classpath.from(sourceSets.main.get().runtimeClasspath)
+        launcher = javaToolchains.launcherFor(java.toolchain)
+        main = application.mainClass
+        output = layout.buildDirectory.dir("cli-help")
+    }
+
+val cliHelpFiles =
+    configurations.consumable("cliHelp") {
+        attributes { attribute(Usage.USAGE_ATTRIBUTE, objects.named("njmule-cli-help")) }
+    }
+artifacts {
+    add(cliHelpFiles.name, cliHelp.flatMap { it.output }) { builtBy(cliHelp) }
+}

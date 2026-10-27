@@ -1,0 +1,105 @@
+---
+title: Requirements
+description: The systems, processors, libraries, disk space and network ports njMule needs, for the desktop app, the headless engine, Docker and Synology.
+---
+
+njMule is shipped as native executables: you do not need Java or any other runtime. This page lists
+the systems it runs on, what the desktop app needs on Linux, and which ports and disk space to
+plan for. If your system is listed, go on with the installation page for it.
+
+## Supported systems
+
+| System | Processor | Package | What you get |
+|---|---|---|---|
+| Windows | x64; Arm through the system's x64 emulation | `.msi` installer, `.zip` archive | desktop app, command line, Windows service |
+| macOS 13 (Ventura) or later | Apple silicon (arm64) | `.dmg` disk image | desktop app, command line |
+| Linux | x64, arm64 | `.deb`, `.rpm`, `.tar.xz` archive | desktop app, command line, systemd user service |
+| Linux | x64 | static `.tar.xz` archive | headless engine and web interface only |
+| Docker | `linux/amd64`, `linux/arm64` | image `ghcr.io/njmule/njmule` | headless engine and web interface |
+| Synology DSM 7.0 or later | x86_64 | `.spk` package | headless engine and web interface |
+
+A few things are not covered by these packages:
+
+- **Intel Macs**: there is no macOS build for x64 processors. The Docker image runs on Docker
+  Desktop for Mac as an alternative, with the web interface.
+- **Windows on Arm** runs the x64 package under emulation: GraalVM and JavaFX, which njMule is built
+  with, have no Windows Arm build yet. The release workflow installs, runs and uninstalls the x64
+  package on an Arm machine to check that it works.
+- **Synology NAS with an ARM processor**: the package is built for x86_64 models only (those with a
+  Celeron or Atom processor included).
+- **32-bit systems** are not supported.
+
+Every desktop package holds two programs: `njmule-gui`, the desktop app, and `njmule`, the command
+line, which also runs the engine headless. See [Install on Windows](install-windows.mdx),
+[macOS](install-macos.mdx), [Linux](install-linux.mdx), [Docker](install-docker.mdx) or
+[Synology](install-synology.mdx).
+
+## Linux libraries
+
+The desktop app uses the system's GTK 3, libXtst and OpenGL libraries. The `.deb` and `.rpm`
+packages depend on them, so the package manager installs them for you:
+
+| Package | Dependencies |
+|---|---|
+| `.deb` (Debian, Ubuntu) | `libgtk-3-0t64` or `libgtk-3-0`, `libxtst6`, `libgl1` |
+| `.rpm` (Fedora, RHEL) | `gtk3`, `libXtst`, `mesa-libGL` |
+
+With the `.tar.xz` archive, install the same libraries yourself. The command line, `njmule`, runs
+the same executable without a window and needs none of them.
+
+The Linux executables are built on Ubuntu 24.04 and need the system's C library (glibc). On a
+distribution with an older C library, or one built on musl such as Alpine, they may not start: use
+the static archive `njmule-<version>-linux-x64-static.tar.xz` there. It is linked statically, needs
+no library of the system at all, and uses less memory than the desktop executable running headless,
+but it has no desktop app.
+
+## Screen
+
+The desktop window works down to 900 × 600 pixels; in a narrow window the sidebar folds to its
+icons and the tools show only their icons. The web interface also has a layout for phones.
+
+## Disk space
+
+- **The programs** take little room; the packages are compressed with xz.
+- **Unfinished downloads** live in the temporary folder (`temp`) and grow as data arrives. njMule
+  keeps a minimum of free space on that disk, 512 MiB unless you change it: below it, downloads
+  wait and go on by themselves once there is room again.
+- **Completed downloads** move to the incoming folder. Keep both folders on the same disk if you
+  can: a finished file then moves at once, without being copied.
+
+The folders are listed in [Data locations](../data/locations.mdx) and set in
+[Directories](../settings/directories.mdx).
+
+## Network ports
+
+| Port | Protocol | Used for | Default |
+|---|---|---|---|
+| 4662 | TCP | eD2K: other clients and the server's check of your port | open to the Internet |
+| 4672 | UDP | eD2K client UDP and Kad | open to the Internet |
+| 4711 | TCP | the web interface and its remote-control API | this computer only, until you allow other computers |
+
+njMule works behind a router without any of these ports open, but other clients can then not
+connect to you (a *Low ID* on eD2K, *firewalled* on Kad), which gives you fewer sources. To be
+reachable, forward 4662/TCP and 4672/UDP to your computer: njMule asks the router to do it with
+UPnP (on by default), NAT-PMP or PCP. You can choose other ports in the
+[first-start wizard](first-run.mdx) or in the [Connection options](../settings/connection.mdx).
+[Ports and firewalls](../network/ports.mdx) explains it all, including the port test.
+
+Besides the eD2K servers, the Kad network and other clients, njMule connects to:
+
+- GitHub, at each start and once a day, to look for a new version (you can turn that into "only
+  when I ask"; see [Updates](../updates.mdx));
+- the addresses of server lists, `nodes.dat` files and IP filter lists, when you ask for them or
+  set them to update;
+- DB-IP, once a month, only if you turn on the countries of other clients.
+
+## Web interface
+
+The web interface works in a current browser and listens on port 4711. By default it answers on
+the computer njMule runs on only; see [Web interface](../web/overview.mdx) to reach it from other
+computers.
+
+## Building from source
+
+To build njMule yourself you need JDK 25, and GraalVM to build native executables. See
+[Building](/developer/building) in the developer guide.

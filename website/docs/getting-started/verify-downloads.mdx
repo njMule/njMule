@@ -1,0 +1,133 @@
+---
+title: Verify downloads
+description: Check that a njMule download is intact and comes from the project, with SHA256SUMS, its minisign signature, GitHub's build attestations and the SBOM.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+Every njMule release comes with what you need to check a download before you install it: a list of
+SHA-256 checksums, a signature of that list, an attestation of where each file was built, and a
+software bill of materials. Checking takes a minute and tells you that the file is complete and is
+the one the njMule project built.
+
+## What a release holds
+
+Besides the packages, each [release](https://github.com/njMule/njMule/releases) has these files;
+those of njMule <Version /> are:
+
+<Downloads platform="checks" />
+
+All of them, with what each is for:
+
+| File | What it is |
+|---|---|
+| `SHA256SUMS` | the SHA-256 checksum of every package and of the files below, but the signatures |
+| `SHA256SUMS.minisig` | the [minisign](https://jedisct1.github.io/minisign/) signature of `SHA256SUMS` |
+| `njmule-<version>-sbom.cdx.json` | the software bill of materials, in CycloneDX format |
+| `njmule-update.json`, `njmule-update.json.minisig` | what njMule's update check reads, signed with the same key |
+
+The packages and these files are built by the project's
+[release workflow](https://github.com/njMule/njMule/blob/main/.github/workflows/release.yml) on
+GitHub, which also attests where each of them was built.
+
+## 1. Check the checksum
+
+Put `SHA256SUMS` in the folder of your download, then:
+
+<Tabs groupId="os">
+<TabItem value="windows" label="Windows" default>
+
+In PowerShell, for the file you downloaded:
+
+```powershell
+$file = "njmule-<version>-windows-x64.msi"
+$line = Select-String -Path SHA256SUMS -SimpleMatch $file
+$expected = $line.Line.Split(" ")[0]
+(Get-FileHash $file -Algorithm SHA256).Hash -eq $expected
+```
+
+`True` means the file is intact.
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+grep njmule-<version>-macos-arm64.dmg SHA256SUMS | shasum -a 256 -c -
+```
+
+`OK` after the file name means the file is intact.
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+```bash
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+`OK` after each file you downloaded means it is intact; the files you did not download are skipped.
+
+</TabItem>
+</Tabs>
+
+A checksum alone shows that the file is complete. The signature below shows that the list of
+checksums comes from the njMule project.
+
+## 2. Check the signature
+
+`SHA256SUMS` is signed with [minisign](https://jedisct1.github.io/minisign/), which runs on
+Windows, macOS and Linux. Download `SHA256SUMS.minisig` into the same folder, then:
+
+```bash
+minisign -Vm SHA256SUMS -P RWQqpSb9M7CwntTJXDrwmcHlrGiA5i1y3EWMX7N2N9yWQMrO+BEz0i38
+```
+
+minisign says that the signature is verified and prints its trusted comment, which names the
+version: `njmule <version> SHA256SUMS`. Any other answer means the list was changed or signed with
+another key: do not install the files.
+
+The key is the one njMule's own update check trusts. It is the first key in
+[`keys.pub`](https://github.com/njMule/njMule/blob/main/njmule-core/src/main/resources/org/njmule/core/update/keys.pub),
+which every njMule carries:
+
+| Key | Id | Use |
+|---|---|---|
+| `RWQqpSb9M7CwntTJXDrwmcHlrGiA5i1y3EWMX7N2N9yWQMrO+BEz0i38` | `9EB0B033FD26A52A` | signs the releases |
+| `RWRQGbT669VRjvKAg5AZBvXzoQ0/80MkM2vc+0T2i/7IG56OCtkgYis5` | `8E51D5EBFAB41950` | standby key |
+
+Should the signing key ever be lost or leaked, releases are signed with the standby key that
+follows it in `keys.pub`; njMule's update check already trusts both.
+
+## 3. Check where it was built
+
+GitHub attests, for every file of a release, that the project's release workflow built it from the
+repository. Check it with the [GitHub CLI](https://cli.github.com/), signed in to GitHub:
+
+```bash
+gh attestation verify njmule-<version>-windows-x64.msi --repo njMule/njMule
+```
+
+To require the release workflow itself, add
+`--signer-workflow njMule/njMule/.github/workflows/release.yml`.
+
+## The Docker image
+
+The image `ghcr.io/njmule/njmule` is not one of the release files: it is built by the same release
+workflow and pushed to the GitHub Container Registry with a provenance attestation and an SBOM of
+its own, which Docker can show:
+
+```bash
+docker buildx imagetools inspect ghcr.io/njmule/njmule:<version> --format "{{ json .Provenance }}"
+```
+
+## The software bill of materials
+
+`njmule-<version>-sbom.cdx.json` lists the libraries njMule is built from, with their versions, in
+the [CycloneDX](https://cyclonedx.org/) format. Tools that read it, such as OWASP Dependency-Track,
+can check them against the known vulnerabilities.
+
+## If a check fails
+
+Do not install the file. Download it again from the
+[releases page](https://github.com/njMule/njMule/releases) and check it once more. If it still
+fails, tell the project as described in [Security](../about/security.mdx).

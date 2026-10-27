@@ -1,0 +1,171 @@
+---
+title: Windows service
+description: Run njMule as the Windows service "njMule", headless with its web interface, started with Windows before anyone signs in, set up from the command line or by the installer.
+---
+
+On a Windows computer that stays on, njMule can run as a **Windows service**: it starts with
+Windows, before anyone signs in, runs headless with its [web interface](../web/overview.mdx), and
+keeps running when you sign out. It runs as the virtual account `NT SERVICE\njMule`, which may use
+its own profile and njMule's programs and nothing else of the computer, and keeps that profile in
+`%ProgramData%\njMule`, apart from your own njMule.
+
+The service needs njMule's Windows package, installed by the MSI or unpacked from the zip archive:
+it runs `njmule-service.exe`, which lies beside `njmule.exe`.
+
+## Install it
+
+1. Open a terminal (PowerShell or the Command Prompt). It need not be an administrator's.
+2. Run:
+
+   ```powershell
+   njmule --service=install
+   ```
+
+   To let other computers reach the web interface, or to set its port or host names, give the web
+   interface options with `--webui-password`:
+
+   ```powershell
+   njmule --service=install --webui-password --webui-lan
+   njmule --service=install --webui-password --webui-lan --webui-port 8080 --webui-host homepc --webui-api
+   ```
+
+3. Windows asks for the administrator's rights. A new window opens and asks for the web interface
+   password twice (at least 8 characters), unless the service's profile already has one and you
+   gave no web interface option.
+4. njMule registers the service, gives its account its profile and the right to run njMule's
+   programs, adds the firewall rule, starts the service and prints the address of its web
+   interface.
+
+To take the password from a file instead, as a script would:
+
+```powershell
+njmule --service=install --webui-password-file C:\Users\you\njmule-password.txt --webui-lan
+```
+
+If you decline the administrator's rights, nothing changes and the command says so.
+
+### What it sets up
+
+| What | How |
+|---|---|
+| Service | "njMule", started automatically with Windows (delayed, after the other services) |
+| Account | The virtual account `NT SERVICE\njMule` |
+| Profile | `%ProgramData%\njMule`, with `config`, `data`, `temp`, `logs` and the completed downloads in `incoming` |
+| After a failure | Started again after a minute, twice; the count starts over after a day |
+| At shutdown | njMule is asked to save first, as at a stop |
+| Firewall | The rule "njMule (service)" lets other clients reach `njmule.exe` on private and domain networks |
+
+The firewall rule does not cover public networks. For a High ID, forward the eD2K and Kad ports to
+the computer in your router, or let UPnP do it ([Ports](../network/ports.mdx)).
+
+## Manage it
+
+```powershell
+njmule --service=status      # exit code 0 when it runs, 1 otherwise
+njmule --service=stop
+njmule --service=start
+```
+
+`start` and `stop` ask for the administrator's rights; `status` does not. The Services console of
+Windows and `sc` work too. At a stop the service asks njMule to save and exit, as `njmule --exit`
+does, and ends it only if it still runs after a minute.
+
+Drive the service through its web interface at `http://localhost:4711/` (or the port you chose),
+from another computer when LAN access is on. The service's njMule is not yours: it has its own
+settings, server list, downloads and identity, and you change them in its web interface.
+
+### Change its web interface
+
+The port, LAN access, the password, the host names, the trusted proxies and the API are set like at
+the installation, then take effect at the next start of the service:
+
+```powershell
+njmule --service=install --webui-password --webui-lan --webui-host homepc
+njmule --service=stop
+njmule --service=start
+```
+
+Installing again keeps the profile and its downloads.
+
+### Downloads in another folder
+
+The service's account may write only in its profile, so the completed downloads go to
+`%ProgramData%\njMule\incoming`. To download to another folder, give the account the right to
+change it, in an administrator's terminal, then choose the folder in the service's web interface
+(**Options → Directories**):
+
+```powershell
+icacls D:\Downloads /grant "NT SERVICE\njMule:(OI)(CI)M"
+```
+
+Do the same for a folder you want the service to share.
+
+### The remote-control API
+
+Install the service with `--webui-api` to turn on its [API](./remote-control.mdx). Its token lies in
+the service's profile: print it in an administrator's terminal, then use it from anywhere:
+
+```powershell
+njmule --config-dir C:\ProgramData\njMule --api-token
+$env:NJMULE_API_TOKEN = 'the token'
+njmule --remote-url http://localhost:4711/api/v1 --remote status
+```
+
+The desktop app can show the service's njMule in a window of its own with **⋯ → Connect to a remote
+njMule** and the same token ([Remote njMule](../desktop/remote.mdx)).
+
+## With the installer
+
+An installation for every user can set the service up in one go. In an administrator's terminal,
+with the web interface password on the first line of a file:
+
+```powershell
+msiexec /i njmule-<version>-windows-x64.msi MSIINSTALLPERUSER="" NJMULE_SERVICE=1 NJMULE_WEBUI_PASSWORD_FILE=C:\Users\you\njmule-password.txt
+```
+
+| Property | What it does |
+|---|---|
+| `MSIINSTALLPERUSER=""` | Installs for every user, in the programs folder; required for the service |
+| `NJMULE_SERVICE=1` | Runs `njmule --service=install` once the files are in place |
+| `NJMULE_WEBUI_PASSWORD_FILE` | The file holding the web interface password; required with `NJMULE_SERVICE=1` |
+
+Without the two required properties the installer stops with a message. Delete the password file
+afterwards: njMule keeps only a hash of the password. The web interface set up this way answers on
+this computer only; to open it to the network, run
+`njmule --service=install --webui-password --webui-lan` and restart the service as shown above.
+
+### Upgrades
+
+Install a newer MSI the same way (`MSIINSTALLPERUSER=""` again, `NJMULE_SERVICE` no longer needed):
+the installer stops the service while it replaces the files and starts it again. A service set up
+from the zip archive or from a per-user installation is not stopped by an upgrade: stop it first
+with `njmule --service=stop`, upgrade, then start it again. See [Updates](../updates.mdx).
+
+## Remove it
+
+```powershell
+njmule --service=uninstall
+```
+
+It removes the service, its account's rights and the firewall rule. Uninstalling an installation
+for every user removes the service too. The profile in `%ProgramData%\njMule` always stays, with
+its downloads; delete that folder yourself to remove them, after moving the completed downloads of
+its `incoming` folder somewhere else.
+
+## When it does not work
+
+- *The service needs njMule's Windows package: njmule-service.exe beside njmule.exe.*: run the
+  `njmule.exe` of the installer or of the zip archive, not a copy elsewhere.
+- The service stops at once: look at its log in `%ProgramData%\njMule\logs`, and at the System log
+  of the Event Viewer.
+- The web interface does not answer from another computer: install it again with `--webui-lan`,
+  restart it, and check that nothing else uses the port.
+- On Linux and macOS, `--service` answers that it is for Windows: use the
+  [systemd user unit](./linux-service.mdx), Docker or the Synology package instead.
+
+## Related pages
+
+- [Running headless](./headless.mdx)
+- [Web interface](../web/overview.mdx)
+- [Remote control](./remote-control.mdx)
+- [Installing on Windows](../getting-started/install-windows.mdx)

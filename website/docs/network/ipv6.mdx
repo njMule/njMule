@@ -1,0 +1,70 @@
+---
+title: IPv6
+description: What njMule does with IPv6 alongside IPv4, why it helps firewalled clients, and how to see your IPv6 address.
+---
+
+eD2K servers and Kad work over IPv4, and so does njMule with them. But many connections today
+also have IPv6, where no router translates addresses: a client with a public IPv6 address can be
+reached directly, even when it is firewalled or has a LowID on IPv4. njMule uses IPv6 alongside
+IPv4 between clients, by itself. There is nothing to set up.
+
+## What njMule does with IPv6
+
+- **Other clients connect to you over IPv6** on your usual TCP port, as they do over IPv4.
+- **Your public IPv6 address travels with you**: njMule puts it in the hello it sends to other
+  clients, in its Kad source publishes and in the extended source exchange, with the clients that
+  take it. Clients connected to you hear at once when it changes.
+- **Their IPv6 address helps you**: from the same places njMule learns the IPv6 addresses of other
+  clients, and connects to a firewalled source there directly, with no callback, or when the
+  connection over IPv4 failed.
+- **Sources are asked again over UDP at their IPv6 address**, so a source that keeps you in its
+  queue is asked for your place without a new connection.
+- **Your router's IPv6 firewall is opened** to your ports, through UPnP or PCP, when you use
+  automatic forwarding (see [IPv6 pinholes](./ports.mdx#ipv6-pinholes)).
+- **Sources can be added by hand at an IPv6 address**, and links may carry them, written with
+  brackets: `[2001:db8::1]:4662`.
+
+Servers and Kad nodes stay on IPv4. A client that comes over IPv6 counts with the rest of its
+`/64` network for the connection limits, the bans and the checks of corrupt data, as one home
+holds a whole `/64`. Secure identification works over IPv6 too.
+
+## Your public IPv6 address
+
+njMule asks the system which address it would send from to reach the IPv6 Internet: only the
+route is looked up, nothing is sent. It counts only a global address, not a link-local, unique
+local, 6to4 or Teredo one. It looks again every ten seconds, so it follows the temporary addresses
+many systems change during the day, and the log says so:
+
+```text
+Clients may reach us at the IPv6 address 2001:db8:1234:5678::20
+No IPv6 address to be reached at any more
+```
+
+## Where you see it
+
+- On the **Ports** card at the top of **Network**, in the desktop app and in the web interface:
+  `IPv6: 2001:db8:1234:5678::20`. Without a line, njMule found no public IPv6 address.
+- In the log, as above.
+- In the `publicIpv6` field of the [remote-control API](../server/remote-control.mdx)'s status.
+
+**My Info** shows the IPv4 address that the server and Kad see.
+
+## When IPv6 is not used
+
+- **Bound to a network interface**: the interface njMule keeps to is chosen by its IPv4 address,
+  so while [binding](./bind-interface.mdx) is on njMule has no IPv6 address and opens no IPv6
+  connection, which would leave around the interface.
+- **With a proxy**: no UDP goes over IPv6, since a proxy's UDP relay carries IPv4 only. See
+  [Proxy](./proxy.mdx) about what else a proxy changes.
+- **With obfuscation required**: re-asks over IPv6 go plain, so they are not sent, and those of
+  other clients are not answered.
+- **No public IPv6 address**: everything works over IPv4 as before.
+
+The [IP filter](./ip-filter.mdx) knows IPv4 ranges only: it does not apply to clients that come
+over IPv6, though bans and connection limits do.
+
+## Related pages
+
+- [Ports and firewalls](./ports.mdx)
+- [NAT traversal](./nat-traversal.mdx)
+- [Binding to an interface](./bind-interface.mdx)

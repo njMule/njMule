@@ -1,0 +1,187 @@
+---
+title: Install on Linux
+description: Install njMule on Linux from the deb or rpm package or a tar.xz archive, run it as a systemd user service, and use the static headless build.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+njMule for Linux comes for x64 and arm64 processors as deb and rpm packages and as a `.tar.xz`
+archive, each with the desktop app and the command line. A fourth download, the static archive, holds
+the headless engine alone for any x64 Linux.
+
+## Download
+
+<Downloads platform="linux" />
+
+The archives run from any folder on any distribution; the static one holds the headless engine
+alone, for any x64 Linux whatever its C library. Older versions are on the
+[GitHub releases page](https://github.com/njMule/njMule/releases). You can
+[check the download](verify-downloads.mdx) before you install it. The desktop app needs
+GTK 3, libXtst and OpenGL; the packages bring them in (see [Requirements](requirements.mdx)).
+
+With the [GitHub CLI](https://cli.github.com/) you can also fetch the files of the latest release
+from a terminal, for example the Debian package of a 64-bit PC with its checksums:
+
+```bash
+gh release download --repo njMule/njMule --pattern '*_amd64.deb' --pattern 'SHA256SUMS*'
+```
+
+## Install the package
+
+<Tabs groupId="linux-package">
+<TabItem value="deb" label="Debian, Ubuntu" default>
+
+```bash
+sudo apt install ./njmule_*_amd64.deb    # on arm64: ./njmule_*_arm64.deb
+```
+
+</TabItem>
+<TabItem value="rpm" label="Fedora, RHEL">
+
+```bash
+sudo dnf install ./njmule-*.x86_64.rpm   # on arm64: ./njmule-*.aarch64.rpm
+```
+
+</TabItem>
+</Tabs>
+
+The package installs:
+
+- `njmule-gui`, the desktop app, and `njmule`, the command line, in `/usr/bin`; the desktop app and
+  its shared libraries live in `/usr/lib/njmule`, and `njmule` runs that same executable without a
+  window;
+- a desktop entry, AppStream metadata and icons, so that njMule appears in your applications menu;
+- a systemd user unit, `njmule.service`, to run the engine headless (see
+  [Run it as a service](#run-it-as-a-service)).
+
+Start njMule from your applications menu, or run `njmule-gui`. The desktop entry starts it under the
+name `njMule`, which process lists then show, however it was started, and your desktop matches its
+window to its menu entry and icon. At the first start, a wizard helps you set it up: see
+[First start](first-run.mdx).
+
+The desktop entry also declares njMule as a program for `ed2k://` links. To make it the one that
+opens them, turn on **Open ed2k links with njMule (from browsers and other programs)** in
+**Options → General** (off by default; see [eD2K links](../desktop/ed2k-links.mdx)).
+
+Your settings and downloads stay in your home folder: `~/.config/njmule`, `~/.local/share/njmule`,
+`~/.local/state/njmule` and `~/.cache/njmule`, or where the `XDG_*` variables point. Completed
+downloads go to `~/Downloads/njMule`, or the download folder of `XDG_DOWNLOAD_DIR`. See
+[Data locations](../data/locations.mdx).
+
+## Run from the archive
+
+The `.tar.xz` archive holds the same programs and runs from any folder:
+
+```bash
+mkdir -p ~/Apps
+tar -C ~/Apps -xJf njmule-<version>-linux-x64.tar.xz
+~/Apps/njmule-<version>-linux-x64/njmule-gui
+```
+
+Unpack it into a folder you can write to, such as `~/Apps`: njMule can then
+[update itself](../updates.mdx) there. Install GTK 3, libXtst and OpenGL yourself if the desktop app
+does not start. The command line is `njmule` in the same folder.
+
+To keep all of njMule's data beside the programs, on a removable drive for example, put an empty
+file named `portable.flag` next to them: see [Portable mode](../data/portable.mdx).
+
+### Add it to the applications menu
+
+The archive's `share/` folder holds the desktop entry, the AppStream metadata and the icon. To list
+njMule in your menu, link the programs into `~/.local/bin` and install the entry and the icon for
+your user:
+
+```bash
+cd ~/Apps/njmule-<version>-linux-x64
+mkdir -p ~/.local/bin ~/.local/share/applications ~/.local/share/icons/hicolor/scalable/apps
+ln -sf "$PWD/njmule-gui" ~/.local/bin/njMule
+ln -sf "$PWD/njmule" ~/.local/bin/njmule
+cp share/njmule-icon.svg ~/.local/share/icons/hicolor/scalable/apps/org.njmule.njMule.svg
+sed "s|^Exec=njMule|Exec=$HOME/.local/bin/njMule|" share/org.njmule.njMule.desktop \
+    > ~/.local/share/applications/org.njmule.njMule.desktop
+```
+
+The entry starts the link named `njMule`, as the packages do. Both programs find the files of the
+archive through their links, so its folder can stay where it is.
+
+## The static headless build
+
+Where the executables above do not start, on a distribution with an older C library or one built on
+musl such as Alpine, use `njmule-<version>-linux-x64-static.tar.xz`. It holds a single program,
+`njmule`, linked statically: it needs no library of the system and uses less memory than the desktop
+executable running headless. It has no desktop app: you use it from the
+[web interface](../web/overview.mdx) and the [command line](../server/cli.mdx).
+
+```bash
+tar -xJf njmule-<version>-linux-x64-static.tar.xz
+cd njmule-<version>-linux-x64-static
+./njmule --webui-password --webui-lan   # choose the web interface password, for other computers too
+./njmule                                # run the engine; Ctrl+C or njmule --exit stops it
+```
+
+The web interface then answers at `http://<address of the computer>:4711/`. Leave out `--webui-lan`
+to reach it from that computer only.
+
+The same executable runs inside the [Synology package](install-synology.mdx) and the x64
+[Docker image](install-docker.mdx). See [Running headless](../server/headless.mdx).
+
+## Run it as a service
+
+The deb and rpm packages install a systemd user unit that runs the engine headless as your user,
+never as root, and starts it again if it fails:
+
+```bash
+systemctl --user enable --now njmule   # start now and at each login
+loginctl enable-linger                 # optional: keep it running while you are logged out
+journalctl --user -u njmule            # its log
+```
+
+The unit and the desktop app use the same configuration, so only one of them runs at a time: stop
+the service before you open the desktop app, and use the [web interface](../web/overview.mdx) to
+control the headless engine. Set the web interface password first, with `njmule --webui-password`.
+Everything else is in [Linux service](../server/linux-service.mdx).
+
+## Firewall
+
+njMule's packages do not change the firewall. If yours blocks incoming connections, open the eD2K
+port (4662/TCP) and the client UDP port (4672/UDP), or those you chose, for example with
+`sudo ufw allow 4662/tcp` and `sudo ufw allow 4672/udp`. See
+[Ports and firewalls](../network/ports.mdx).
+
+## Upgrade
+
+- **Packages**: install the newer package the same way, or let `apt` or `dnf` do it; your settings
+  and downloads stay. njMule tells you when a new version is out, downloads the package and tells
+  you how to install it.
+- **Archives**: njMule can download the new archive and replace its files for you, keeping the old
+  ones until the new version has started well; or unpack the new archive in place of the old one.
+
+See [Updates](../updates.mdx).
+
+## Uninstall
+
+<Tabs groupId="linux-package">
+<TabItem value="deb" label="Debian, Ubuntu" default>
+
+```bash
+njmule --remove-profile   # optional, first: delete your profile, after asking
+sudo apt remove njmule
+```
+
+</TabItem>
+<TabItem value="rpm" label="Fedora, RHEL">
+
+```bash
+njmule --remove-profile   # optional, first: delete your profile, after asking
+sudo dnf remove njmule
+```
+
+</TabItem>
+</Tabs>
+
+A package touches no home folder: removing it leaves each user's profile in place, and says where.
+`njmule --remove-profile` deletes the profile of the user who runs it (settings, lists, identity,
+unfinished downloads, caches and logs), after asking; stop njMule first. Completed downloads always
+stay. For an archive, delete its folder, and the links and menu entry if you made them. See
+[Uninstall](../uninstall.mdx) and [Remove your profile](../data/remove-profile.mdx).

@@ -1,0 +1,70 @@
+---
+title: Guest access
+description: Give the web interface a second, read-only password for people who may look at your transfers, searches, servers, Kad and statistics but change nothing.
+---
+
+A guest is someone who signs in to the web interface with a password of its own and may only look:
+your family checking whether a download is done, or you on a borrowed computer where you would
+rather not type your real password. njMule has no guest until you give it a password; there is at
+most one guest password, shared by everyone you give it to.
+
+## Set the guest password
+
+The guest password needs at least 8 characters and must differ from yours.
+
+### In the desktop app
+
+1. Open **Options → Web Interface**.
+2. Type the password twice in **Guest password, twice (a guest may only look)**.
+3. Restart njMule: the desktop app's web interface settings apply from the next start.
+
+**No guest** takes the guest away, again from the next start.
+
+### In the browser
+
+1. Sign in with your own password and open **Options → Web Interface**.
+2. Type the password twice under **Guest password, twice (a guest may only look)** and choose
+   **Save**. It applies at once; the page then says *A guest can log in.*
+
+**No guest** takes the guest away at once. A guest cannot open this page.
+
+On the command line there is no guest option, but setting your own password with
+`--webui-password` or `--webui-password-file` keeps the guest password as it is.
+
+## What a guest sees
+
+The guest signs in on the same page as you, with the guest password. The top bar then says
+**Guest**, and the sidebar offers only the places a guest may open.
+
+<Screenshot id="web-guest" alt="The Transfers place as a guest sees it: only Transfers, Search, Network and Statistics in the sidebar, the word Guest in the top bar, and only the Copy eD2K link button." caption="Transfers, as a guest sees them." />
+
+| Place | What the guest sees | What it cannot do |
+|---|---|---|
+| **Transfers** | The downloads with their details, sources, names and comments; the uploads and the queue | Any action on a download; the banned and the known clients |
+| **Search** | The searches made through the web interface, with their results | Start, close or download a search |
+| **Network** | The eD2K, Kad and port cards; the servers; Kad's state, contacts and searches | Connect, add or change servers, join Kad, test the ports; the log |
+| **Statistics** | The rates and figures | |
+
+A guest never sees **Shared Files**, **Messages** or **Options**, nor the speed limits and the
+network control of the top bar. **Copy eD2K link** and the filters still work, since they change
+nothing. Of the live notices, a guest gets only those of finished downloads.
+
+## What protects it
+
+The page a guest gets leaves out what it may not do, but that is only for comfort: njMule itself
+refuses every change a guest's session asks for, and every read outside the list above (the
+settings, the log, the chats, the shared files and the banned and known clients), answering
+*A guest can only look at the transfers, searches, servers, Kad and statistics.* A guest's session
+otherwise follows the same rules as yours: the same [lockout](./security.mdx#failed-logins) after
+wrong passwords, the same idle time of 30 minutes. njMule logs each guest login with its address.
+
+:::note
+A guest sees the names of the files you download and the searches made through the web
+interface. Give the password only to people who may know them.
+:::
+
+## Related pages
+
+- [Web interface](./overview.mdx)
+- [Web interface security](./security.mdx)
+- [Web interface options](../settings/web-interface.mdx)

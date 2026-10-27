@@ -1,0 +1,159 @@
+---
+title: Linux service
+description: Run njMule headless under systemd with the user unit of the deb and rpm packages, keep it running while you are logged out, read its log and update it.
+---
+
+The deb and rpm packages install a **systemd user unit**, `njmule.service`, that runs njMule
+headless as your own user (never as root) with your own profile, and starts it again if it fails.
+Use it on a desktop you leave on, or on a server where you have an account: njMule then runs
+without a window, and you drive it through its [web interface](../web/overview.mdx).
+
+## Before you start
+
+Give the web interface a password, or you will have no way to look at the headless njMule:
+
+```bash
+njmule --webui-password              # this computer only
+njmule --webui-password --webui-lan  # also from other computers
+```
+
+## Turn it on
+
+```bash
+systemctl --user enable --now njmule   # start now and at each login
+loginctl enable-linger                 # optional: keep it running while you are logged out
+journalctl --user -u njmule            # its log (add -f to follow it)
+```
+
+Without lingering, systemd stops your user units when your last session ends, njMule included.
+
+Other commands:
+
+```bash
+systemctl --user status njmule
+systemctl --user stop njmule
+systemctl --user restart njmule
+systemctl --user disable --now njmule   # stop it, and no longer at login
+```
+
+## What the unit does
+
+| Setting | Value | Why |
+|---|---|---|
+| `ExecStart` | `/usr/bin/njmule --headless` | The headless engine, with the profile in your home |
+| `Restart` | `on-failure`, after 10 s | Starts it again after a crash or an error |
+| `StartLimitBurst` | 5 starts in 300 s | Gives up on a start that keeps failing, as while the desktop app runs |
+| `TimeoutStopSec` | 60 s | Time to save the downloads and settings at a stop |
+| `SuccessExitStatus` | 143 | The exit after `SIGTERM` is a stop asked for, not a failure |
+| `NoNewPrivileges` | yes | njMule and what it runs can never gain rights |
+
+The unit file lies in `/usr/lib/systemd/user/njmule.service`. To change it, use
+`systemctl --user edit njmule`, which keeps your changes apart from the package's file. For
+example, to start the web interface from a password file at every start:
+
+```ini
+[Service]
+ExecStart=
+ExecStart=/usr/bin/njmule --headless --webui-password-file %h/.config/njmule-webui-password --webui-lan
+```
+
+## One njMule at a time
+
+The unit and the desktop app share your configuration, and only one njMule runs on a configuration
+at a time:
+
+- While the unit runs, starting the desktop app only hands its ed2k links to the headless njMule:
+  no window opens. Drive it through the web interface, or stop the unit first with
+  `systemctl --user stop njmule`.
+- While the desktop app runs, the unit cannot start; after five tries in five minutes systemd
+  gives up. Once the desktop app is closed, run `systemctl --user reset-failed njmule`, then start
+  the unit again.
+
+## Updates
+
+The deb and rpm packages are updated by the system's package manager. njMule's own
+[update check](../updates.mdx) tells you of a new version in its web interface and its log, and can
+download the package, but installing it is up to you:
+
+```bash
+sudo apt install ./njmule_<version>_amd64.deb   # or: sudo dnf install ./njmule-<version>.x86_64.rpm
+systemctl --user restart njmule                  # run the new version
+```
+
+The running njMule keeps the old program until it restarts.
+
+### Exit code 75
+
+njMule replaces itself only where its own files may be changed: the `.tar.xz` archives, unpacked in
+a folder of yours. When such a njMule runs under systemd (it knows by the `INVOCATION_ID` and
+`JOURNAL_STREAM` variables systemd sets) and installs a new version, it puts the new files in place
+at its stop, then exits with code **75** when it is to start again (after **Restart to update**, or
+in the night hours). With `Restart=on-failure`, systemd then starts the new version. A unit of your
+own for an archive therefore needs only the usual settings:
+
+```ini title="~/.config/systemd/user/njmule.service"
+[Unit]
+Description=njMule without a window
+
+[Service]
+ExecStart=/home/you/njmule/njmule --headless
+TimeoutStopSec=60
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+```
+
+## As a system service
+
+njMule provides a user unit only: it runs with a user's rights and profile, which is what a
+desktop or a personal server needs. If you want njMule as a system service instead, with an account
+of its own and its data under `/var/lib`, write the unit yourself. A starting point, for the deb or
+rpm package:
+
+```bash
+sudo useradd --system --home-dir /var/lib/njmule --create-home --shell /usr/sbin/nologin njmule
+# The web interface password, 8 characters or more, kept where only the account reads it:
+sudo -u njmule bash -c 'umask 077; read -rsp "Password: " p; printf "%s\n" "$p" > /var/lib/njmule/webui-password'
+```
+
+```ini title="/etc/systemd/system/njmule.service"
+[Unit]
+Description=njMule without a window
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=njmule
+Group=njmule
+ExecStart=/usr/bin/njmule --headless --config-dir /var/lib/njmule --webui-password-file /var/lib/njmule/webui-password --webui-lan
+TimeoutStopSec=60
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now njmule
+```
+
+With `--webui-password-file` at every start, give the host names and trusted proxies on the same
+line (`--webui-host`, `--webui-proxy`): they are set anew at each start. Drive it with
+`sudo -u njmule njmule --config-dir /var/lib/njmule --remote status` once its API is on
+([Remote control](./remote-control.mdx)). On a server without a desktop, the static headless
+archive (`njmule-<version>-linux-x64-static.tar.xz`) needs none of the desktop libraries of the
+packages.
+
+## Related pages
+
+- [Running headless](./headless.mdx)
+- [Installing on Linux](../getting-started/install-linux.mdx)
+- [Web interface](../web/overview.mdx)
+- [Updates](../updates.mdx)

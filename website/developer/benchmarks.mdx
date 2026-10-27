@@ -1,0 +1,86 @@
+---
+title: Benchmarks
+description: Measure the speed of njMule's hot paths with the JMH benchmarks of njmule-bench, inside a native image too, and the speed of whole transfers on the loopback interface.
+---
+
+`njmule-bench` holds [JMH](https://github.com/openjdk/jmh) benchmarks of the code that runs for
+every byte, packet or connection: hashing, ciphers, codecs, the IP filter, the upload queue. They
+help you check that a change does not slow njMule down, and they keep the measurements behind the
+choices between a library and code of njMule's own. This page does not quote results: they depend
+on your machine, so measure before and after your change on the same one.
+
+## Build and run
+
+```bash
+./gradlew :njmule-bench:shadowJar
+java -jar njmule-bench/build/libs/benchmarks.jar
+```
+
+The jar runs JMH's own command line, so every JMH option works after it: a regular expression picks
+benchmarks (`java -jar njmule-bench/build/libs/benchmarks.jar Rc4Bench`), `-l` lists them, `-h`
+shows the options. Each benchmark sets its own warm-up, measurement and a single fork.
+
+The project is a classpath build, not a Java module, so that the benchmarks can reach the core's
+internal packages; two of them sit in core packages to reach package-private code. It is never
+distributed: SpotBugs, the SBOM and SonarQube leave it out.
+
+## Reading the results
+
+Two kinds of benchmarks report two kinds of numbers:
+
+- **Throughput benchmarks** process 1 MiB per operation, so their **ops/s are MiB/s**: `DigestBench`,
+  `HashingBench`, `Rc4Bench` and `FileHashBench`. `ObfuscatedStreamBench` processes 100 frames of
+  10 KB per operation, about 1 MiB, so its ops/s are about MiB/s.
+- **Average-time benchmarks** report the time of one operation, in nanoseconds, microseconds or
+  milliseconds as each one says.
+
+## The benchmarks
+
+| Benchmark | What it measures |
+|---|---|
+| `DigestBench` | single-thread throughput of the per-byte primitives |
+| `HashingBench` | the file hashes, njMule's own against the libraries' |
+| `FileHashBench` | the one-pass eD2K hash set and AICH tree over data already in memory, so the disk does not count |
+| `Rc4Bench` | the RC4 key stream of a long obfuscated connection |
+| `ObfuscatedStreamBench` | reading and writing the 10 KB data frames of an obfuscated connection, as the TCP reader and writer do |
+| `DatagramKeyBench` | one key attempt on an obfuscated UDP datagram: MD5 of the key material, an RC4 key schedule and the decryption of 150 bytes (a received datagram may take up to three) |
+| `DatagramDecodeBench` | obfuscated 120-byte UDP datagrams as the Kad socket receives and sends them |
+| `StringDecodeBench` | decoding one string of a packet or tag: UTF-8 when valid, else Windows-1252 |
+| `LittleEndianBench` | 32-bit little-endian reads and writes in a byte array, as the framing and codecs do |
+| `BlockDeflateBench` | zlib (level 1) of one 180 KiB upload block, of text and of random data |
+| `PartPickBench` | the scan behind each block request of a 4 GiB download (442 parts) |
+| `IpFilterBench` | an IP filter of 200,000 ranges, the size of the public lists: a lookup per connection, and building it |
+| `HtmlEscapeBench` | escaping one table cell of the web interface |
+| `KadTextBench` | small per-message Kad work: search words, result keywords, the hex form of an ID, a socket address |
+| `UploadQueueBench` | the engine thread's cost of a full upload queue of 1,000 and 5,000 clients |
+
+Several benchmarks measure alternatives side by side: the JDK against Bouncy Castle, Guava against
+plain code, njMule's code against the version it replaced. The replaced implementations are kept in
+`org.njmule.bench.alternatives` (the IP filter on Guava's range map, the hand-written RC4) for that
+purpose. When you replace a library with code of your own, or the other way round, because of
+speed, add a benchmark that compares both.
+
+## In a native image
+
+njMule ships as native executables, where JMH cannot run, and a choice that wins on the JVM may lose
+there. `NativeSpot` runs the same benchmark bodies in a plain timed loop, inside a native image:
+
+```bash
+native-image -cp njmule-bench/build/libs/benchmarks.jar -O2 -o nativespot org.njmule.bench.NativeSpot
+./nativespot 2 Rc4
+```
+
+The first argument is the time per benchmark in seconds (1 by default), the second a filter on the
+benchmark names. Use the GraalVM Community release of [Native images](native-images.mdx), so that
+the numbers match what users run.
+
+## Transfers on the loopback
+
+To measure whole transfers rather than single operations, two tests of the test kit, tagged `perf`,
+download from and upload to another client on the same machine and print the speed in MiB/s:
+
+```bash
+./gradlew :njmule-testkit:test --tests '*ThroughputTest' '-Ptest.tags=perf' '-Ptest.excludedTags=interop'
+```
+
+See [Throughput tests](testing.mdx#throughput-tests).
