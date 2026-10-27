@@ -8,7 +8,9 @@ your own mail server, a message to a web hook such as an [ntfy](https://ntfy.sh)
 [Gotify](https://gotify.net) server, or both. You choose which events are told: a completed or failed
 download, a chat message, or a temporary disk short of space. Both ways are off by default. The
 engine sends them, so they work with the headless njMule too, and the web interface has the same
-page, with its **Test** button.
+page, with its **Test** button. They take the route of njMule's other connections: through the
+[proxy](../network/proxy.mdx) and from the [network interface](../network/bind-interface.mdx) of the
+options, and none is sent while that interface is gone.
 
 <Screenshot
   id="settings-page-11"

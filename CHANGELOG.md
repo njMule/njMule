@@ -38,6 +38,18 @@ All notable changes to this project are documented here. The format follows
   note says that it goes on by itself once there is room.
 - A part found corrupt is told in the app's log too, not only in the log file.
 
+### Security
+
+- The profile of the Windows service, `%ProgramData%\njMule`, is closed to the other users of the
+  computer before its web interface password is written; a service installed before gets it at its
+  next `njmule --service=install`.
+- `njmule.properties`, which holds the proxy and mail passwords, and its backup are readable by
+  their owner only on Linux and macOS.
+- Our public IPv6 address is no longer told to other clients and to Kad while a proxy carries the
+  connections.
+- E-mail and web hook notifications go through the proxy of the preferences and from the network
+  interface chosen, and are not sent while that interface is gone.
+
 ## [0.1.0] - 2026-10-26
 
 The first release of njMule, a new client for the eD2K and Kad networks written in Java 25, which

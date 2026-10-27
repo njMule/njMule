@@ -55,6 +55,7 @@ class WindowsServiceTest {
     private List<String> elevatedArgs;
     private Path program;
     private Path passwordFile;
+    private boolean settingsWhenClosed = true;
     private boolean asked;
     private int code;
     private String line;
@@ -75,6 +76,7 @@ class WindowsServiceTest {
         thenTheExitCodeIs(Main.EXIT_OK);
         thenTheCommandsWere(
                 List.of(host(), "status"),
+                closingTheProfile(),
                 List.of(host(), "install"),
                 List.of("icacls", profile().toString(), "/grant", "NT SERVICE\\njMule:(OI)(CI)M", "/T", "/Q"),
                 List.of("icacls", app().toString(), "/grant", "NT SERVICE\\njMule:(OI)(CI)RX", "/T", "/Q"),
@@ -94,6 +96,16 @@ class WindowsServiceTest {
                 List.of(host(), "start"));
         thenTheProfileHasAWebInterfacePassword();
         thenItSaid("http://localhost:4711/");
+    }
+
+    @Test
+    void shouldCloseTheProfileToOtherUsersBeforeWritingThePassword() throws Exception {
+        givenAPasswordFile();
+
+        whenRun("--service=install", "--webui-password-file", this.passwordFile.toString());
+
+        thenTheProfileWasClosedWithoutAPasswordInIt();
+        thenTheProfileHasAWebInterfacePassword();
     }
 
     @Test
@@ -278,6 +290,11 @@ class WindowsServiceTest {
         assertThat(this.commands).isEqualTo(List.of(expected));
     }
 
+    private void thenTheProfileWasClosedWithoutAPasswordInIt() {
+        assertThat(this.commands).contains(closingTheProfile());
+        assertThat(this.settingsWhenClosed).isFalse();
+    }
+
     private void thenTheServiceWasStoppedAndStartedAgain() {
         int size = this.commands.size();
         assertThat(this.commands.subList(size - 2, size))
@@ -331,6 +348,17 @@ class WindowsServiceTest {
         return this.dir.resolve("ProgramData").resolve("njMule");
     }
 
+    private List<String> closingTheProfile() {
+        return List.of(
+                "icacls",
+                profile().toString(),
+                "/inheritance:r",
+                "/grant:r",
+                "*S-1-5-18:(OI)(CI)F",
+                "*S-1-5-32-544:(OI)(CI)F",
+                "/Q");
+    }
+
     private final class FakeWindows implements WindowsService.Windows {
         @Override
         public boolean applies() {
@@ -360,6 +388,10 @@ class WindowsServiceTest {
         @Override
         public int run(List<String> command) {
             WindowsServiceTest.this.commands.add(command);
+            if (command.contains("/inheritance:r")) {
+                Path config = AppDirectories.resolve(Optional.of(profile())).config();
+                WindowsServiceTest.this.settingsWhenClosed = Files.exists(config.resolve(WebUiSettings.FILE_NAME));
+            }
             boolean ours = command.getFirst().endsWith(WindowsService.HOST);
             return ours ? WindowsServiceTest.this.answers.getOrDefault(command.get(1), 0) : 0;
         }
