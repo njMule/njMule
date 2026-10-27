@@ -21,7 +21,7 @@ will be overwritten.
 
 | File | Holds | Format |
 |---|---|---|
-| `njmule.properties` | Every preference of the engine, one `key=value` per line, sorted. A value that is not valid falls back to its default with a warning in the log; keys this version does not know are kept. It also holds the proxy and SMTP passwords as typed. | njMule |
+| `njmule.properties` | Every preference of the engine, one `key=value` per line, sorted. A value that is not valid falls back to its default with a warning in the log; keys this version does not know are kept. It also holds the proxy and SMTP passwords as typed, so it is readable by its owner only on Linux and macOS, its backup `njmule.properties.bak` too. | njMule |
 | `webui.properties` | The [web interface](../web/overview.mdx): on or off, port, other computers allowed, the password and guest password (as hashes only), the remote-control API, the host names and trusted proxies. Readable by its owner only on Linux and macOS. | njMule |
 | `scheduler.properties` | The rules of the [scheduler](../settings/scheduler.mdx). | njMule |
 | `categories.properties` | The download [categories](../desktop/categories.mdx): name, incoming folder, tint, priority, file name patterns. | njMule |
@@ -102,7 +102,7 @@ Copy these together, or not at all: a user hash with another key fails every ide
 
 | Folder | Files |
 |---|---|
-| **gui** | `gui.properties`: what the desktop app remembers (theme, language, window, screen, columns, the addresses typed before). `remotes.properties`: the remote njMule you connect to, with their tokens, readable by its owner only. |
+| **gui** | `gui.properties`: what the desktop app remembers (theme, language, window, screen, columns, the addresses typed before). `remotes.properties`: the remote njMule you connect to, with their tokens, readable by its owner only on Linux and macOS; on Windows your own profile folder keeps it from the other users. |
 | **data** | `backups/njmule-config-<date>-<time>.zip`: the [configuration backups](./backups.mdx). |
 | **temp** | Each download in progress as `001.part` (its data, with gaps where nothing came yet) and `001.part.met` (its hashes, the parts done, its priority, category and best sources), in eMule's format with a few tags of njMule's own. |
 | **cache** | `countries.dat`: the country database, when countries are shown. `update/`: the packages of new versions being downloaded or waiting to be installed. |

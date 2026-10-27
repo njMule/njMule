@@ -7,7 +7,8 @@ On a Windows computer that stays on, njMule can run as a **Windows service**: it
 Windows, before anyone signs in, runs headless with its [web interface](../web/overview.mdx), and
 keeps running when you sign out. It runs as the virtual account `NT SERVICE\njMule`, which may use
 its own profile and njMule's programs and nothing else of the computer, and keeps that profile in
-`%ProgramData%\njMule`, apart from your own njMule.
+`%ProgramData%\njMule`, apart from your own njMule. Only the service and the administrators may read
+that profile, which holds the web interface's password hash and the API token.
 
 The service needs njMule's Windows package, installed by the MSI or unpacked from the zip archive:
 it runs `njmule-service.exe`, which lies beside `njmule.exe`.
@@ -50,7 +51,7 @@ If you decline the administrator's rights, nothing changes and the command says 
 |---|---|
 | Service | "njMule", started automatically with Windows (delayed, after the other services) |
 | Account | The virtual account `NT SERVICE\njMule` |
-| Profile | `%ProgramData%\njMule`, with `config`, `data`, `temp`, `logs` and the completed downloads in `incoming` |
+| Profile | `%ProgramData%\njMule`, with `config`, `data`, `temp`, `logs` and the completed downloads in `incoming`; readable by the service, SYSTEM and the Administrators only (a service installed by njMule 0.1.0 gets these rights at its next `njmule --service=install`) |
 | After a failure | Started again after a minute, twice; the count starts over after a day |
 | At shutdown | njMule is asked to save first, as at a stop |
 | Firewall | The rule "njMule (service)" lets other clients reach `njmule.exe` on private and domain networks |

@@ -50,6 +50,8 @@ other ports. Prefer a SOCKS 5 proxy if you can.
   or SOCKS 5 proxy.
 - **The update check and update downloads**, and the monthly download of the country database
   when you show countries.
+- **[Notifications](../settings/notifications.mdx)**: e-mails through an HTTP or SOCKS proxy (a
+  SOCKS one gets the user name and password), web hook requests through an HTTP or SOCKS 5 proxy.
 - **UDP, with a SOCKS 5 proxy**: Kad, the UDP between clients and the datagrams to servers (pings,
   global searches, source requests) go through the proxy's UDP relay (`UDP ASSOCIATE`).
 
@@ -82,17 +84,14 @@ Kad UDP goes straight to the network: an HTTP proxy carries TCP only
 - **Name lookups.** The names of servers and of web lists are looked up by your computer, then
   the proxy is asked to connect.
 - **Port forwarding.** UPnP, NAT-PMP and PCP talk to your own router on the local network.
-- **Notifications.** E-mails and web hook requests (see
-  [Notifications](../settings/notifications.mdx)) are sent directly.
 - **NAT traversal** is off with a proxy, since other clients would see the proxy's address (see
   [NAT traversal](./nat-traversal.mdx)).
 - **UDP over IPv6** is not used, as a relay carries IPv4 only.
 
-:::warning[Your IPv6 address]
-If your computer has a public [IPv6 address](./ipv6.mdx), njMule still tells it to other clients
-in its hello and Kad publishes, so they can see and reach you there, around the proxy. To keep
-njMule off IPv6 entirely, [bind it to a network interface](./bind-interface.mdx) (an interface is
-chosen by its IPv4 address) or turn IPv6 off in the system.
+:::note[Your IPv6 address]
+While a proxy is set, njMule does not tell your public [IPv6 address](./ipv6.mdx) to other clients,
+in its hello, Kad publishes or source exchange, so that they cannot reach you there around the
+proxy; it stops telling it as soon as you apply the proxy.
 :::
 
 ## Check that it works

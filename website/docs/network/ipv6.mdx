@@ -54,8 +54,9 @@ No IPv6 address to be reached at any more
 - **Bound to a network interface**: the interface njMule keeps to is chosen by its IPv4 address,
   so while [binding](./bind-interface.mdx) is on njMule has no IPv6 address and opens no IPv6
   connection, which would leave around the interface.
-- **With a proxy**: no UDP goes over IPv6, since a proxy's UDP relay carries IPv4 only. See
-  [Proxy](./proxy.mdx) about what else a proxy changes.
+- **With a proxy**: njMule does not tell your public IPv6 address to other clients, which would
+  reach you there around the proxy, and no UDP goes over IPv6, since a proxy's UDP relay carries
+  IPv4 only. See [Proxy](./proxy.mdx) about what else a proxy changes.
 - **With obfuscation required**: re-asks over IPv6 go plain, so they are not sent, and those of
   other clients are not answered.
 - **No public IPv6 address**: everything works over IPv4 as before.
