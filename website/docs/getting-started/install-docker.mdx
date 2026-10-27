@@ -179,8 +179,9 @@ stop. `docker logs njmule` shows what it printed; the full log is in the volume,
 
 ## Update
 
-njMule in Docker tells you when a new version is out, on the status page of the web interface and in
-its log, but never replaces itself: pull the new image and recreate the container.
+njMule in Docker tells you when a new version is out, in a banner of the web interface (its
+**Options → General** tell how to install it) and in its log, but never replaces itself: pull the
+new image and recreate the container.
 
 ```bash
 docker compose pull && docker compose up -d
