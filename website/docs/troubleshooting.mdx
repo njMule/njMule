@@ -94,7 +94,8 @@ must belong to that user.
 The first one locks the file `njmule.lock` in the configuration folder. A second start does not
 fail on that lock: it hands its eD2K links to the njMule already running and asks it to show its
 window, then ends. When the njMule already running is the headless engine (`njmule` in a terminal,
-or the systemd user unit), it has no window to show, so nothing seems to happen. The
+or the systemd user unit), it has no window to show: the desktop app says so, and that the links
+went to it, then ends. The
 error appears when the profile is held by an njMule that takes no links, such as a command-line
 task (`njmule --search`, `njmule --import-emule`) that is still running.
 

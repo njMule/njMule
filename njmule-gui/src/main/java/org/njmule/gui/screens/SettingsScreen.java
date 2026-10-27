@@ -2381,6 +2381,9 @@ public final class SettingsScreen implements Screen {
         field.setPromptText(this.gui.t("nj.settings.defaultDir"));
         HBox.setHgrow(field, Priority.ALWAYS);
         return new HBox(6, field, Fx.button(this.gui.t("IDS_PW_BROWSE"), Icons.FOLDER_OPEN, () -> {
+            if (!this.gui.opensFoldersHere()) {
+                return;
+            }
             DirectoryChooser chooser = new DirectoryChooser();
             var dir = chooser.showDialog(this.view.getScene().getWindow());
             if (dir != null) {

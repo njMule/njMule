@@ -37,6 +37,14 @@ All notable changes to this project are documented here. The format follows
 - A download waiting for disk space offers to pause instead of a resume that did nothing, and its
   note says that it goes on by itself once there is room.
 - A part found corrupt is told in the app's log too, not only in the log file.
+- The dialog that adds links finds them inside other text too, as it says, and its paused box wins
+  over the option that adds downloads paused; the remote-control API takes `paused` when it adds
+  downloads.
+- A desktop window on a remote njMule marks spam through it, tells that a preview and the folders
+  of the other njMule are on its own computer instead of opening this computer's, and turns *Open
+  Folder* and *Open Incoming Folder* off.
+- A desktop app started while a headless njMule runs on the same profile says that the links went
+  to it, instead of closing without a word.
 - The *Ports* card tells what the router answered through UPnP instead of whether UPnP is on, and
   the UDP port while Kad runs, which listens on it; the port test is *Test Ports* everywhere.
 - In the options of the desktop app a long name wraps instead of running under its control, and each

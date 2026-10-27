@@ -64,6 +64,13 @@ class ClipboardWatchTest {
     }
 
     @Test
+    void shouldFindTheLinksInsideOtherTextForTheDialogThatAddsLinks() {
+        whenTheFileLinksAreFoundIn("Here: <a href=\"" + FILM + "\">film</a>, and " + SONG + ", then " + FILM + ".");
+
+        thenTheFileLinksAre("my film.mkv", "song.mp3");
+    }
+
+    @Test
     void shouldLeaveAServerLink() {
         whenTheFileLinksAreTakenFrom("ed2k://|server|10.0.0.1|4661|/");
 
@@ -208,6 +215,10 @@ class ClipboardWatchTest {
 
     private void whenTheFileLinksAreTakenFrom(String text) {
         this.links = ClipboardWatch.fileLinks(text);
+    }
+
+    private void whenTheFileLinksAreFoundIn(String text) {
+        this.links = ClipboardWatch.fileLinksIn(text);
     }
 
     private void thenTheFileLinksAre(String... names) {

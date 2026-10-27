@@ -119,6 +119,20 @@ public record Gui(
         return this.i18n.t(key);
     }
 
+    /** Whether the engine runs on this computer, whose folders and files this window can then open. */
+    public boolean onThisComputer() {
+        return this.model.engine().onThisComputer();
+    }
+
+    /** As {@link #onThisComputer}; a window on a remote njMule tells the user that its folders are not here. */
+    public boolean opensFoldersHere() {
+        if (onThisComputer()) {
+            return true;
+        }
+        this.warn.accept(t("nj.remote.elsewhere"));
+        return false;
+    }
+
     public String f(String key, Object... args) {
         return this.i18n.f(key, args);
     }

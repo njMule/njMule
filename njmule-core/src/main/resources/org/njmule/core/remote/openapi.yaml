@@ -488,6 +488,11 @@ paths:
                 category:
                   description: The category the downloads join.
                   $ref: "#/components/schemas/CategoryId"
+                paused:
+                  type: boolean
+                  description: |
+                    Whether new downloads start paused; when left out, as the preference to add
+                    downloads paused says. Downloads already known keep their state.
       responses:
         "201":
           description: The downloads of the links, new or already known.

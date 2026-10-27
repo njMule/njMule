@@ -202,7 +202,7 @@ public final class AddLinksDialog {
         Map<Ed2kLink.FileLink, CheckBox> before = new LinkedHashMap<>(this.links);
         this.links.clear();
         this.rows.clear();
-        for (Ed2kLink.FileLink link : ClipboardWatch.fileLinks(typed == null ? "" : typed)) {
+        for (Ed2kLink.FileLink link : ClipboardWatch.fileLinksIn(typed == null ? "" : typed)) {
             if (this.links.keySet().stream().anyMatch(l -> l.hash().equals(link.hash()))) {
                 continue;
             }
