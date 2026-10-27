@@ -37,6 +37,7 @@ All notable changes to this project are documented here. The format follows
 - A download waiting for disk space offers to pause instead of a resume that did nothing, and its
   note says that it goes on by itself once there is room.
 - A part found corrupt is told in the app's log too, not only in the log file.
+- The macOS app carries the license and the notices, as the other packages do.
 
 ### Security
 
