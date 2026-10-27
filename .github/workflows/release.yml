@@ -9,10 +9,11 @@
 # njmule-gui.exe, a small GUI program, starts for the desktop (as javaw.exe stands for java.exe).
 # A pushed tag vX.Y.Z that matches the project version also opens a draft GitHub release with
 # them, an SBOM, SHA-256 sums and njmule-update.json (what the update check of njMule reads), both
-# signed with minisign, and pushes the image to ghcr.io/njmule/njmule; publishing the release stays
-# a manual step. A manual run builds, then checks that a test build updates itself to the packages
-# built (the e2e jobs). Each package says in install.properties how it was installed, which tells the
-# update check what to offer and how njMule installs it.
+# signed with minisign, and notes that link each package's VirusTotal report, and pushes the image
+# to ghcr.io/njmule/njmule; publishing the release stays a manual step. A manual run builds, then
+# checks that a test build updates itself to the packages built (the e2e jobs). Each package says
+# in install.properties how it was installed, which tells the update check what to offer and how
+# njMule installs it.
 name: Release
 
 on:
@@ -809,12 +810,48 @@ jobs:
                   codesign --verify --deep --strict "$apps/njMule.app"
                   test -d "$apps/njMule.app.old"
 
+    # For a tag, every package goes to VirusTotal (public API, key in the repository secret
+    # VIRUSTOTAL_API_KEY), whose reports the draft release links. A failed scan only leaves them
+    # out, never holds the release up. No write permission here, none of the release's secrets.
+    virustotal:
+        name: virustotal scan
+        if: github.ref_type == 'tag'
+        needs: [windows-x64, linux, macos-arm64, synology]
+        runs-on: ubuntu-24.04
+        permissions:
+            actions: read
+            contents: read
+        outputs:
+            scanned: ${{ steps.scan.outcome == 'success' }}
+        steps:
+            - name: Collect the packages
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --dir packages \
+                      --name windows-x64 --name linux-x64 --name linux-arm64 --name macos-arm64 --name synology-x86_64
+                  mkdir -p dist
+                  find packages -type f -exec cp {} dist/ \;
+            # The public API takes 4 requests a minute. The action counts one per file, but one
+            # over 32 MiB costs two (its upload URL, then the upload): one file a minute stays within.
+            - id: scan
+              name: Send the packages to VirusTotal
+              uses: crazy-max/ghaction-virustotal@936d8c5c00afe97d3d9a1af26d017cfdf26800a2 # v5.0.0
+              continue-on-error: true
+              with:
+                  vt_api_key: ${{ secrets.VIRUSTOTAL_API_KEY }}
+                  request_rate: 1
+                  files: dist/*
+            - name: Report a failed scan
+              if: steps.scan.outcome != 'success'
+              run: echo "::warning::VirusTotal did not take every package; the draft release links no report"
+
     # The signing key of the update information is a secret of the environment "release", whose
     # required reviewer approves this job: nothing is signed without the maintainer.
     release:
         name: draft release
         if: github.ref_type == 'tag'
-        needs: [version, windows-x64, windows-arm64, linux, macos-arm64, docker, synology]
+        needs: [version, windows-x64, windows-arm64, linux, macos-arm64, docker, synology, virustotal]
         runs-on: ubuntu-latest
         environment: release
         permissions:
@@ -857,6 +894,20 @@ jobs:
                       CHANGELOG.md > notes.md
                   java tools/UpdateManifest.java dist "${VERSION}" notes.md > dist/njmule-update.json
                   (cd dist && sha256sum -- * > SHA256SUMS)
+            # In the release's notes only, after the update information took them: VirusTotal finds
+            # a report by the file's SHA-256, the same as in SHA256SUMS.
+            - name: Link the VirusTotal reports
+              if: needs.virustotal.outputs.scanned == 'true'
+              run: |
+                  {
+                      printf '\n### VirusTotal\n\nThe report of each package, found by its SHA-256:\n\n'
+                      while read -r sha file; do
+                          if [[ "$file" != *.json ]]; then
+                              printf -- "- [\`%s\`](https://www.virustotal.com/gui/file/%s)\n" "$file" "$sha"
+                          fi
+                      done < dist/SHA256SUMS
+                  } >> notes.md
+                  cat notes.md
             # The update check of njMule takes the update information only signed by a key built into it.
             - name: Sign the update information and the checksums
               env:

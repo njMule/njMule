@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The notes of each release link VirusTotal's report of every package.
+
 ## [0.1.1] - 2026-10-27
 
 ### Added

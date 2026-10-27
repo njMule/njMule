@@ -107,9 +107,9 @@ For a tag, the `release` job collects:
 - GitHub build provenance attestations for every file.
 
 The release is created as a draft, marked as a pre-release when the version has a pre-release part,
-with the changelog's section as its notes. Publishing it is a manual step. The same tag pushes the
-Docker image `ghcr.io/njmule/njmule` for both platforms, and publishes this site
-([Documentation](documentation.mdx#deployment)).
+with the changelog's section as its notes, followed by a link to each package's VirusTotal report.
+Publishing it is a manual step. The same tag pushes the Docker image `ghcr.io/njmule/njmule` for
+both platforms, and publishes this site ([Documentation](documentation.mdx#deployment)).
 
 ### Signing the update information
 
@@ -125,6 +125,21 @@ the signing key first, then a standby key that replaces it should it ever be los
 - After signing, the job verifies both signatures against the keys of `keys.pub` before anything is
   published.
 - The update check also refuses update information older than one it has already seen.
+
+### VirusTotal scan
+
+For a tag, the `virustotal` job sends every package to [VirusTotal](https://www.virustotal.com/)
+through [ghaction-virustotal](https://github.com/crazy-max/ghaction-virustotal), and the `release`
+job adds to the notes a link to each report, by the package's SHA-256. Only the notes get them:
+`njmule-update.json`, and so the update panel of njMule, keeps the changelog's section alone.
+
+- The key of VirusTotal's free public API is the repository secret `VIRUSTOTAL_API_KEY`. The job
+  runs with read permissions only, apart from the `release` environment and its secrets.
+- The public API takes 4 requests a minute, and a package over 32 MiB costs two of them: the job
+  sends one package a minute, about ten minutes for a release, while the other jobs go on.
+- A detection does not stop the release, nor does a failed scan: the job then leaves a warning and
+  the notes link no report.
+- Manual runs send nothing: test builds stay off VirusTotal.
 
 ### End-to-end update tests
 
@@ -157,8 +172,8 @@ A release goes through a pull request like every other change, since `main` is p
 4. Once the pull request is merged, push an annotated tag `vX.Y.Z` on that commit of `main`; it must
    match the version.
 5. Approve the `release` environment when the workflow asks for it.
-6. Review the draft release, its files and notes, and publish it by hand. The tag also publishes
-   this site with the new version's download links.
+6. Review the draft release, its files and notes, and the VirusTotal reports the notes link, then
+   publish it by hand. The tag also publishes this site with the new version's download links.
 
 ## Verifying a release
 

@@ -1,6 +1,6 @@
 ---
 title: Verify downloads
-description: Check that a njMule download is intact and comes from the project, with SHA256SUMS, its minisign signature, GitHub's build attestations and the SBOM.
+description: Check that a njMule download is intact and comes from the project, with SHA256SUMS, its minisign signature, GitHub's build attestations, the SBOM and VirusTotal's reports.
 ---
 
 import Tabs from '@theme/Tabs';
@@ -109,6 +109,17 @@ gh attestation verify njmule-<version>-windows-x64.msi --repo njMule/njMule
 
 To require the release workflow itself, add
 `--signer-workflow njMule/njMule/.github/workflows/release.yml`.
+
+## VirusTotal
+
+The release workflow sends every package to [VirusTotal](https://www.virustotal.com/), where dozens
+of antivirus engines scan it, and the notes of the release link each report. VirusTotal finds a
+file by its SHA-256, the same as in `SHA256SUMS`, so you can also look your download up there by its
+checksum.
+
+An engine or two that judge by heuristics may flag a new program that is not code-signed yet, as
+njMule's executables are not. The checks above tell you whether the file is the one the project
+built.
 
 ## The Docker image
 
