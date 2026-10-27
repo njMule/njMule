@@ -30,12 +30,25 @@ public final class NjMuleFxApp extends Application {
 
     // The app whose window closed, for the installation of a new version once the toolkit is gone.
     private static final AtomicReference<DesktopApp> CLOSED = new AtomicReference<>();
+    // What a later start tells when a njMule without a window runs with its configuration.
+    private static final AtomicReference<String> HEADLESS = new AtomicReference<>();
 
     private DesktopApp app;
     private IOException failure;
 
+    /** A njMule without a window took what this start handed over: the window only tells so. */
+    static void headlessRuns(boolean links) {
+        HEADLESS.set(NjMuleInfo.NAME + " already runs without a window with this configuration"
+                + (links ? ", and the links went to it" : "")
+                + ". Use its web interface, or stop it with njmule --exit to open the desktop app.");
+    }
+
     @Override
     public void init() throws Exception {
+        if (HEADLESS.get() != null) {
+            this.failure = new IOException(HEADLESS.get());
+            return;
+        }
         try {
             this.app =
                     DesktopApp.open(LaunchOptions.parse(getParameters().getRaw().toArray(String[]::new)));

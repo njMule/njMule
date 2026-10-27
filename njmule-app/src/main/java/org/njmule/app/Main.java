@@ -656,7 +656,7 @@ public final class Main {
     private static Optional<LinkHandoff> listen(
             NjMuleEngine engine, AppDirectories dirs, PrintStream err, CompletableFuture<Void> stop) {
         try {
-            return Optional.of(LinkHandoff.listen(dirs.config(), links -> {
+            return Optional.of(LinkHandoff.listen(dirs.config(), true, links -> {
                 if (links.contains(LinkHandoff.EXIT)) {
                     stop.complete(null);
                     return;

@@ -56,8 +56,15 @@ public final class GuiMain {
         Updating.awaitEnd(cli.waitFor());
         // A running njMule takes the links, or just shows its window, instead of failing on its lock.
         List<String> links = cli.links().stream().map(Ed2kLink::toUri).toList();
-        if (cli.remoteDesktop().isEmpty() && LinkHandoff.deliver(DesktopApp.configDir(cli), links)) {
+        LinkHandoff.Taker taker = cli.remoteDesktop().isPresent()
+                ? LinkHandoff.Taker.NONE
+                : LinkHandoff.handOver(DesktopApp.configDir(cli), links);
+        if (taker == LinkHandoff.Taker.WINDOW) {
             System.exit(0);
+        }
+        // A headless one has no window to show: the user is told instead of seeing nothing happen.
+        if (taker == LinkHandoff.Taker.HEADLESS) {
+            NjMuleFxApp.headlessRuns(!links.isEmpty());
         }
         if (LinuxProcessName.applies()) {
             LinuxProcessName.nameThisThread();

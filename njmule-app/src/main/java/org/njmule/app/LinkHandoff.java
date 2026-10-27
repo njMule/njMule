@@ -64,6 +64,16 @@ public final class LinkHandoff implements AutoCloseable {
     /** The file in the configuration directory with the port and the secret. */
     public static final String FILE_NAME = "handoff";
 
+    /** Who took what a later start handed over. */
+    public enum Taker {
+        /** Nobody: no njMule runs with the configuration, and the later start may. */
+        NONE,
+        /** A njMule with a window, which shows itself. */
+        WINDOW,
+        /** A njMule without a window, which has nothing to show. */
+        HEADLESS
+    }
+
     static final int MAX_LINKS = 256;
     static final int MAX_LINE = 64 * 1024;
 
@@ -77,6 +87,8 @@ public final class LinkHandoff implements AutoCloseable {
     private static final Logger logger = LoggerFactory.getLogger(LinkHandoff.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
     private static final String OK = "OK";
+    // After OK, from a receiver without a window; an older start reads the first line only.
+    private static final String WINDOWLESS = "headless";
     private static final HexFormat HEX = HexFormat.of();
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -85,14 +97,21 @@ public final class LinkHandoff implements AutoCloseable {
     private final String content;
     private final byte[] secret;
     private final Consumer<List<String>> receiver;
+    private final boolean headless;
 
     private LinkHandoff(
-            ServerSocket socket, Path file, String content, byte[] secret, Consumer<List<String>> receiver) {
+            ServerSocket socket,
+            Path file,
+            String content,
+            byte[] secret,
+            Consumer<List<String>> receiver,
+            boolean headless) {
         this.socket = socket;
         this.file = file;
         this.content = content;
         this.secret = secret;
         this.receiver = receiver;
+        this.headless = headless;
     }
 
     /**
@@ -100,28 +119,35 @@ public final class LinkHandoff implements AutoCloseable {
      * {@code false} when none listens, and then this process may start.
      */
     public static boolean deliver(Path configDir, List<String> links) {
+        return handOver(configDir, links) != Taker.NONE;
+    }
+
+    /**
+     * As {@link #deliver}, telling who took the links: a later desktop start has nothing to show for a headless one.
+     */
+    public static Taker handOver(Path configDir, List<String> links) {
         String[] fields;
         try {
             fields = Files.readString(configDir.resolve(FILE_NAME), StandardCharsets.US_ASCII)
                     .strip()
                     .split(" ", -1);
         } catch (NoSuchFileException e) {
-            return false;
+            return Taker.NONE;
         } catch (IOException e) {
             logger.debug("Cannot read the handoff file: {}", e.toString());
-            return false;
+            return Taker.NONE;
         }
         if (fields.length != 2) {
-            return false;
+            return Taker.NONE;
         }
         int port;
         try {
             port = Integer.parseInt(fields[0]);
         } catch (NumberFormatException e) {
-            return false;
+            return Taker.NONE;
         }
         if (port < 1 || port > 0xFFFF) {
-            return false;
+            return Taker.NONE;
         }
         try (Socket client = new Socket()) {
             client.connect(
@@ -142,11 +168,14 @@ public final class LinkHandoff implements AutoCloseable {
             out.flush();
             BufferedReader in =
                     new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
-            return OK.equals(in.readLine());
+            if (!OK.equals(in.readLine())) {
+                return Taker.NONE;
+            }
+            return WINDOWLESS.equals(in.readLine()) ? Taker.HEADLESS : Taker.WINDOW;
         } catch (IOException e) {
             // A file left by a crash: nobody listens there any more.
             logger.debug("No njMule took the links: {}", e.toString());
-            return false;
+            return Taker.NONE;
         }
     }
 
@@ -192,6 +221,12 @@ public final class LinkHandoff implements AutoCloseable {
      * thread of each, maybe at the same time.
      */
     public static LinkHandoff listen(Path configDir, Consumer<List<String>> receiver) throws IOException {
+        return listen(configDir, false, receiver);
+    }
+
+    /** As {@link #listen(Path, Consumer)}, for a njMule that runs {@code headless}, which later starts are told. */
+    public static LinkHandoff listen(Path configDir, boolean headless, Consumer<List<String>> receiver)
+            throws IOException {
         Objects.requireNonNull(receiver, "receiver");
         byte[] secret = new byte[32];
         RANDOM.nextBytes(secret);
@@ -204,7 +239,7 @@ public final class LinkHandoff implements AutoCloseable {
             socket.close();
             throw e;
         }
-        LinkHandoff handoff = new LinkHandoff(socket, file, content, secret, receiver);
+        LinkHandoff handoff = new LinkHandoff(socket, file, content, secret, receiver, headless);
         Thread.ofVirtual().name("njmule-handoff").start(handoff::acceptLoop);
         return handoff;
     }
@@ -285,7 +320,7 @@ public final class LinkHandoff implements AutoCloseable {
             logger.warn("Cannot follow the links handed over: {}", e.toString());
         }
         OutputStream out = client.getOutputStream();
-        out.write((OK + "\n").getBytes(StandardCharsets.UTF_8));
+        out.write((OK + "\n" + (this.headless ? WINDOWLESS + "\n" : "")).getBytes(StandardCharsets.UTF_8));
         out.flush();
     }
 
