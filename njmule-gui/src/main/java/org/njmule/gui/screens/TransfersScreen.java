@@ -556,7 +556,9 @@ public final class TransfersScreen implements Screen {
             // A completed download has no part file any more: there is nothing to preview or to fetch.
             boolean active = selected.size() == 1 && selected.getFirst().status() != DownloadInfo.Status.COMPLETE;
             preview.setDisable(!active || selected.getFirst().completed() == 0);
-            folder.setDisable(selected.size() != 1 || selected.getFirst().status() != DownloadInfo.Status.COMPLETE);
+            folder.setDisable(selected.size() != 1
+                    || selected.getFirst().status() != DownloadInfo.Status.COMPLETE
+                    || !this.gui.onThisComputer());
             comments.setDisable(selected.size() != 1);
             addSource.setDisable(!active);
             previewFirst.setSelected(!none && selected.stream().allMatch(DownloadInfo::previewFirst));
@@ -1095,6 +1097,9 @@ public final class TransfersScreen implements Screen {
     }
 
     private void openCompleted(DownloadInfo d) {
+        if (!this.gui.opensFoldersHere()) {
+            return;
+        }
         completedFile(d).ifPresent(file -> {
             try {
                 Folders.openFile(file);
@@ -1107,7 +1112,9 @@ public final class TransfersScreen implements Screen {
     // The folder of the one completed download chosen, in the system's file manager, the file selected where it can.
     void revealSelected() {
         List<DownloadInfo> selected = Fx.selected(this.downloads);
-        if (selected.size() != 1 || selected.getFirst().status() != DownloadInfo.Status.COMPLETE) {
+        if (selected.size() != 1
+                || selected.getFirst().status() != DownloadInfo.Status.COMPLETE
+                || !this.gui.opensFoldersHere()) {
             return;
         }
         completedFile(selected.getFirst()).ifPresent(file -> {
@@ -1632,7 +1639,7 @@ public final class TransfersScreen implements Screen {
     // Where finished downloads go, in the system's file manager.
     private void openIncoming() {
         Preferences preferences = this.gui.model().preferencesProperty().get();
-        if (preferences == null) {
+        if (preferences == null || !this.gui.opensFoldersHere()) {
             return;
         }
         try {
