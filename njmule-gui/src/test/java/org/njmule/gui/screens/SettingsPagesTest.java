@@ -20,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.function.UnaryOperator;
 import javafx.event.ActionEvent;
 import javafx.geometry.Bounds;
 import javafx.scene.control.Label;
@@ -28,11 +30,19 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.core.config.Notifications;
+import org.njmule.core.config.Notifications.SmtpSecurity;
+import org.njmule.core.config.Notifications.WebhookFormat;
+import org.njmule.core.config.Preferences;
+import org.njmule.core.config.ProxySettings;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
 
 @Timeout(60)
 class SettingsPagesTest {
+
+    private static final String SMTP = "SMTP server";
+    private static final String TO = "Recipient addresses, apart by commas";
 
     private static final List<String> PAGES = List.of(
             "General",
@@ -136,12 +146,108 @@ class SettingsPagesTest {
         thenTheNameIsWholeBesideItsControl("New password, twice (empty keeps the current one)");
     }
 
+    @Test
+    void shouldMarkOnlyTheNotificationOptionSetApartFromItsDefault() throws Exception {
+        givenTheGui();
+        givenTheNotifications(new Notifications(
+                false,
+                "",
+                587,
+                SmtpSecurity.STARTTLS,
+                "",
+                "",
+                "",
+                "me@example.com",
+                false,
+                "",
+                WebhookFormat.TEXT,
+                Notifications.NONE.events()));
+        givenTheOptionsShownAgain();
+
+        whenThePageIsShown("notify");
+
+        thenTheResetOfReads(TO, "Reset");
+        thenTheResetOfIsHidden(SMTP);
+    }
+
+    @Test
+    void shouldResetOnlyTheNotificationOptionWhoseResetIsPressed() throws Exception {
+        givenTheGui();
+        givenTheNotifications(new Notifications(
+                false,
+                "mail.example.com",
+                465,
+                SmtpSecurity.TLS,
+                "",
+                "",
+                "",
+                "me@example.com",
+                false,
+                "",
+                WebhookFormat.TEXT,
+                Notifications.NONE.events()));
+        givenTheOptionsShownAgain();
+        givenThePageShown("notify");
+
+        whenTheResetOfIsPressed(SMTP);
+
+        thenTheNotificationsSavedAre(new Notifications(
+                false,
+                "",
+                587,
+                SmtpSecurity.TLS,
+                "",
+                "",
+                "",
+                "me@example.com",
+                false,
+                "",
+                WebhookFormat.TEXT,
+                Notifications.NONE.events()));
+    }
+
+    @Test
+    void shouldMarkEachProxyOptionSetApartFromItsDefault() throws Exception {
+        givenTheGui();
+        givenTheProxy(new ProxySettings(ProxySettings.Type.SOCKS, "proxy.example.com", 1080, "", ""));
+        givenTheOptionsShownAgain();
+
+        whenThePageIsShown("proxy");
+
+        thenTheResetOfReads("Type", "Reset to No proxy");
+        thenTheResetOfReads("Host and port", "Reset");
+        thenTheResetOfIsHidden("User name and password");
+    }
+
     private void givenTheGui() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
     }
 
     private void givenAWindowThisWide(double width) throws Exception {
         FxTesting.onFx(() -> this.screen.view().getScene().getWindow().setWidth(width));
+    }
+
+    private void givenTheOptionsShownAgain() throws Exception {
+        whenTheOptionsShow();
+    }
+
+    private void givenThePageShown(String id) throws Exception {
+        whenThePageIsShown(id);
+    }
+
+    private void givenTheNotifications(Notifications notifications) throws Exception {
+        givenThePreferences(p -> p.toBuilder().notifications(notifications).build());
+    }
+
+    private void givenTheProxy(ProxySettings proxy) throws Exception {
+        givenThePreferences(p -> p.toBuilder().proxy(proxy).build());
+    }
+
+    private void givenThePreferences(UnaryOperator<Preferences> change) throws Exception {
+        Preferences now = this.test.engine.updatePreferences(change).get(10, TimeUnit.SECONDS);
+        FxTesting.await(
+                "the new preferences",
+                () -> this.test.model.preferencesProperty().get().equals(now));
     }
 
     private void givenTheOptionsShown() throws Exception {
@@ -229,6 +335,12 @@ class SettingsPagesTest {
         FxTesting.assertEventually(
                 "no reset of " + option,
                 () -> !this.screen.pagesView().row(option).resetLink().isVisible());
+    }
+
+    private void thenTheNotificationsSavedAre(Notifications notifications) throws Exception {
+        FxTesting.assertEventually(
+                "the notifications saved",
+                () -> notifications.equals(this.test.engine.preferences().notifications()));
     }
 
     // Wrapped, the name keeps all its words; run under the control, it would end past the control's start.
