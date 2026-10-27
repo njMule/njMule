@@ -35,7 +35,9 @@ Third-party components
 ----------------------
 Binary distributions of njMule include the following components. Their
 licenses are compatible with the GNU GPL version 3. The complete list with
-versions is generated at release time in THIRD-PARTY.txt.
+versions is the software bill of materials (CycloneDX) attached to every
+release; ./gradlew :njmule-gui:generateLicenseReport writes it with the
+license of each component to THIRD-PARTY.txt.
 
     SLF4J API                   MIT License
     Bouncy Castle (bcprov)      MIT License (Bouncy Castle Licence)
@@ -84,8 +86,14 @@ versions is generated at release time in THIRD-PARTY.txt.
     (Substrate VM runtime embedded in the native executables)
     musl libc                   MIT License
     zlib                        zlib License
-    (both linked statically into the executable of the Synology DSM
-    package, which ships their license texts in its doc folder)
+    (both linked statically into the headless executable of the static
+    Linux archive, the amd64 Docker image and the Synology DSM package,
+    each of which ships their license texts beside it)
+    Distroless base image       the Debian 13 packages of Google's distroless
+    (arm64 Docker image only)   base image, such as glibc, zlib, OpenSSL, the
+                                CA certificates and the time zone data, each
+                                under its own license; their copyright files
+                                are in the image under /usr/share/doc
 
 Test-only dependencies (JUnit, AssertJ, jqwik, Jimfs, openapi-parser) and the
 web app's build tools (Node.js, Vite, TypeScript, Vitest, Prettier) are not
