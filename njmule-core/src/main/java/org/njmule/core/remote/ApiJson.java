@@ -198,6 +198,7 @@ final class ApiJson {
             g.writeNull();
         }
         g.writeBooleanProperty("ready", s.ready().isPresent());
+        optional(g, "readyFile", s.ready().map(Object::toString));
         g.writeStringProperty("install", name(s.install()));
         g.writeEndObject();
     }
