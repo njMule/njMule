@@ -83,7 +83,7 @@ val includedTags = listProperty("test.tags")
 val testForks = providers.gradleProperty("test.forks").map(String::toInt)
 val testSettings = providers.gradlePropertiesPrefixedBy("njmule.")
 
-// The window tests wait at most 30 s for each step on the FX thread: on a machine with few cores, next to
+// The window tests wait at most 55 s for each step on the FX thread: on a machine with few cores, next to
 // the test forks of the other modules, -Ptest.parallelModules=1 runs one module's tests at a time.
 val testSlots =
     gradle.sharedServices.registerIfAbsent("testSlots", TestSlots::class) {

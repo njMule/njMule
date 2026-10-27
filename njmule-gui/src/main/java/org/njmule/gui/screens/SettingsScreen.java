@@ -458,7 +458,7 @@ public final class SettingsScreen implements Screen {
         return Fx.screen(body);
     }
 
-    // The twelve pages, each option in the section it belongs to.
+    // The thirteen pages, each option in the section it belongs to.
     private List<SettingsPages.Page> pages() {
         return List.of(
                 page("general", "IDS_PW_GENERAL", "nj.settings.page.general", Icons.OPTIONS, general()),

@@ -29,7 +29,10 @@ public record SearchRequest(String expression, Scope scope) {
         SERVER,
         /** The connected server, then the other known servers over UDP. */
         GLOBAL,
-        /** The Kad network, without servers; the first word of the expression is looked up. */
+        /**
+         * The Kad network, without servers: the longest word every result must have is looked up, and what comes back
+         * is matched against the whole expression.
+         */
         KAD
     }
 

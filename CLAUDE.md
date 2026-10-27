@@ -12,7 +12,7 @@ The full implementation plan lives in `docs/PLAN.md` (milestones M0–M8). Read 
 
 **Language: everything in the repository is written in English** — source code, comments, commit
 messages, PR texts, documentation (`docs/`, README, changelog). Only the UI translations
-(`messages_<lang>.properties`) are in other languages.
+(the `emule[_<lang>].properties` and `nj[_<lang>].properties` bundles) are in other languages.
 
 ## Git conventions (mandatory)
 
@@ -154,7 +154,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `./gradlew :njmule-app:installDist` and `njmule-app/build/install/njmule/bin/njmule`. Run the GUI:
   `./gradlew :njmule-gui:run`.
 - Benchmarks: `./gradlew :njmule-bench:shadowJar`, then
-  `java -jar njmule-bench/build/libs/benchmarks.jar` (one operation = 1 MiB, so ops/s = MiB/s).
+  `java -jar njmule-bench/build/libs/benchmarks.jar` (for the throughput benchmarks one operation is
+  1 MiB, so ops/s = MiB/s).
 - Static analysis on SonarQube Cloud: `./gradlew build sonar -Dsonar.token=<token>` (project
   `njMule_njMule`, organisation `njmule`); in CI the `sonar` job runs once the
   `SONAR_TOKEN` secret is set.

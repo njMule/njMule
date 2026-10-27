@@ -95,7 +95,7 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * The engine of another njMule, driven through its remote-control API and a token: what a desktop app shows and does,
  * as with an engine of its own. Its directories are those of this computer's profile; what the API has no call for (a
- * server.met or nodes.dat of this computer, the data of a download, the saved searches) fails or comes back empty.
+ * server.met or nodes.dat of this computer, the data of a download for a preview) fails or comes back empty.
  */
 public final class RemoteEngine implements NjMuleEngine {
 
