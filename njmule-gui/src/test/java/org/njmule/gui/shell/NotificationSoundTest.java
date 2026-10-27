@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -99,13 +98,8 @@ class NotificationSoundTest {
     }
 
     private void givenTheSound(boolean on, Optional<Path> file) throws Exception {
-        this.test
-                .engine
-                .updatePreferences(p -> p.toBuilder()
-                        .notificationSound(on)
-                        .notificationSoundFile(file)
-                        .build())
-                .get(10, TimeUnit.SECONDS);
+        FxTesting.await(this.test.engine.updatePreferences(p ->
+                p.toBuilder().notificationSound(on).notificationSoundFile(file).build()));
         FxTesting.await("the model has the sound", () -> {
             var shown = this.test.model.preferencesProperty().get();
             return shown != null
