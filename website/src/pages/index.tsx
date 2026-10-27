@@ -4,15 +4,26 @@
 // The home page. Its one motif is the part bar: an eD2K file is cut into parts of 9,728,000 bytes, and njMule draws a
 // download as a strip of them, coloured as they arrive. The hero's strip is a real one for the link pasted in it.
 
-import { type CSSProperties, type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    type CSSProperties,
+    type KeyboardEvent,
+    type ReactNode,
+    type RefObject,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
 import clsx from 'clsx';
 import Layout from '@theme/Layout';
 import Link from '@docusaurus/Link';
+import CodeBlock from '@theme/CodeBlock';
+import NjIcon, { type IconName } from '@site/src/components/NjIcon';
 import ThemedShot from '@site/src/components/ThemedShot';
-import { useVersion } from '@site/src/components/Release';
+import { IMAGE, REPOSITORY, releaseFile, useVersion } from '@site/src/components/Release';
 import styles from './index.module.css';
 
-const RELEASES = 'https://github.com/njMule/njMule/releases/latest';
+const RELEASES = `${REPOSITORY}/releases/latest`;
 const PART = 9_728_000;
 const EXAMPLE = 'ed2k://|file|Paper_Boats_2160p_60fps.mp4|712934400|5B1E0C9A7D24F38E61C0A2B94D7F5E13|/';
 
@@ -455,96 +466,443 @@ function Stages(): ReactNode {
     );
 }
 
-// ---------------------------------------------------------------- install
+// ---------------------------------------------------------------- install: pick a system, get its file and its steps
 
-const PLATFORMS: { name: string; page: string; link?: string; items: [string, string][] }[] = [
+type System = 'windows' | 'macos' | 'linux' | 'docker' | 'synology' | 'sources';
+type Package = 'deb' | 'rpm' | 'tar';
+type Processor = 'x64' | 'arm64';
+
+interface Offer {
+    title: string;
+    download?: { label: string; file: { name: string; url: string } };
+    // Where there is no file to download, the command that starts.
+    command?: string;
+    others: { what: string; file: { name: string; url: string } }[];
+    facts: string[];
+    shell: 'bash' | 'powershell';
+    steps: { text: string; command?: string }[];
+}
+
+const SYSTEMS: {
+    key: System;
+    name: string;
+    short?: string;
+    formats: string;
+    icon: IconName;
+    page: string;
+    link: string;
+    offer: (version: string, linux: [Package, Processor]) => Offer;
+}[] = [
     {
+        key: 'windows',
         name: 'Windows',
+        formats: 'MSI · zip',
+        icon: 'DESKTOP',
         page: '/docs/getting-started/install-windows',
-        items: [
-            ['MSI installer', 'double-click it or run msiexec /i, no administrator'],
-            ['Zip archive', 'unzip and run'],
-            ['Windows service', 'headless, started with Windows'],
-            ['Arm64', 'the x64 build, in emulation'],
-        ],
+        link: 'Installing on Windows',
+        offer: (version) => {
+            const msi = releaseFile(version, 'windows', 'msi');
+            return {
+                title: 'Installed with a double-click',
+                download: { label: 'Download the installer', file: msi },
+                others: [
+                    { what: 'Zip archive, to run without installing', file: releaseFile(version, 'windows', 'zip') },
+                ],
+                facts: ['x64, Arm64 in emulation', 'No administrator rights', 'Also as a Windows service'],
+                shell: 'powershell',
+                steps: [
+                    { text: 'Download the installer.' },
+                    {
+                        text: 'Double-click it (if SmartScreen stops it: More info, then Run anyway), or install it from a terminal:',
+                        command: `msiexec /i ${msi.name}`,
+                    },
+                    {
+                        text: 'Start njMule from the Start menu: the first-start wizard offers to bring your eMule along.',
+                    },
+                ],
+            };
+        },
     },
     {
+        key: 'macos',
         name: 'macOS',
+        formats: 'DMG · Apple silicon',
+        icon: 'LAPTOP',
         page: '/docs/getting-started/install-macos',
-        items: [
-            ['Disk image', 'Apple silicon, drag to Applications'],
-            ['First start', 'Open Anyway, in Privacy & Security'],
-            ['Uninstall njMule', 'in the disk image'],
-        ],
+        link: 'Installing on macOS',
+        offer: (version) => ({
+            title: 'Dragged to Applications',
+            download: { label: 'Download the disk image', file: releaseFile(version, 'macos', 'dmg') },
+            others: [],
+            facts: ['Apple silicon', 'macOS 13 or later', 'Intel Macs: the Docker image'],
+            shell: 'bash',
+            steps: [
+                { text: 'Open the disk image and drag njMule to Applications.' },
+                {
+                    text: 'At its first start macOS stops it, as it is not notarized: in System Settings → Privacy & Security, choose Open Anyway.',
+                },
+                { text: 'Keep the disk image: its Uninstall njMule removes the app, and your data if you ask.' },
+            ],
+        }),
     },
     {
+        key: 'linux',
         name: 'Linux',
+        formats: 'deb · rpm · tar.xz',
+        icon: 'TERMINAL',
         page: '/docs/getting-started/install-linux',
-        items: [
-            ['deb and rpm', 'x64 and arm64, with apt or dnf'],
-            ['tar.xz archive', 'with the desktop files to install by hand'],
-            ['Static headless', 'no system libraries: old glibc, Alpine'],
-            ['systemd user unit', 'systemctl --user enable --now njmule'],
-        ],
+        link: 'Installing on Linux',
+        offer: (version, [kind, processor]) => {
+            const file = releaseFile(version, 'linux', `${kind}-${processor}`);
+            const folder = file.name.replace(/\.tar\.xz$/, '');
+            return {
+                title: 'Packages for apt and dnf',
+                download: {
+                    label: kind === 'tar' ? 'Download the archive' : `Download the .${kind}`,
+                    file,
+                },
+                others: [
+                    {
+                        what: 'Static headless archive, for old systems and Alpine',
+                        file: releaseFile(version, 'linux', 'static'),
+                    },
+                ],
+                facts: ['x64 and arm64', 'Desktop app and headless', 'In your applications menu'],
+                shell: 'bash',
+                steps:
+                    kind === 'tar'
+                        ? [
+                              { text: 'Download the archive for your processor.' },
+                              {
+                                  text: 'Unpack it into a folder you can write to:',
+                                  command: `mkdir -p ~/Apps\ntar -C ~/Apps -xJf ${file.name}`,
+                              },
+                              { text: 'Start the desktop app from there:', command: `~/Apps/${folder}/njmule-gui` },
+                          ]
+                        : [
+                              { text: 'Download the package for your distribution and processor.' },
+                              {
+                                  text: `Install it with ${kind === 'deb' ? 'apt' : 'dnf'}:`,
+                                  command: `sudo ${kind === 'deb' ? 'apt' : 'dnf'} install ./${file.name}`,
+                              },
+                              {
+                                  text: 'Start it from your applications menu, or keep it running headless as a service of your user:',
+                                  command: 'systemctl --user enable --now njmule',
+                              },
+                          ],
+            };
+        },
     },
     {
+        key: 'docker',
         name: 'Docker',
+        formats: 'amd64 · arm64',
+        icon: 'CONTAINER',
         page: '/docs/getting-started/install-docker',
-        items: [
-            ['ghcr.io/njmule/njmule', 'amd64 and arm64'],
-            ['Web interface', 'port 4711, password from a secret'],
-            ['Peer ports', '4662/tcp and 4672/udp'],
-        ],
+        link: 'Installing with Docker',
+        offer: (version) => ({
+            title: 'One container, its web interface on port 4711',
+            command: `docker pull ${IMAGE}:${version}`,
+            others: [],
+            facts: ['amd64 and arm64', 'Password from a secret', '4662/tcp · 4672/udp · 4711/tcp'],
+            shell: 'bash',
+            steps: [
+                {
+                    text: 'Make a folder for the completed downloads, and a file whose first line is the web interface password.',
+                },
+                {
+                    text: 'Start the container:',
+                    command: [
+                        'docker run -d --name njmule --restart unless-stopped --stop-timeout 30 \\',
+                        '    -p 4662:4662/tcp -p 4672:4672/udp -p 4711:4711/tcp \\',
+                        '    -v njmule:/njmule -v ~/njmule/incoming:/njmule/incoming \\',
+                        '    -v ~/njmule/webui_password:/run/secrets/njmule_webui_password:ro \\',
+                        `    ${IMAGE}:${version}`,
+                    ].join('\n'),
+                },
+                { text: 'Open port 4711 of the host in a browser and log in. The guide has a Compose file too.' },
+            ],
+        }),
     },
     {
-        name: 'Synology DSM 7',
+        key: 'synology',
+        name: 'Synology',
+        formats: 'DSM 7 · x86_64',
+        icon: 'NAS',
         page: '/docs/getting-started/install-synology',
-        items: [
-            ['Package for x86_64', 'Manual Install in Package Center'],
-            ['Shared folder njmule', 'where completed downloads go'],
-        ],
+        link: 'Installing on Synology',
+        offer: (version) => ({
+            title: 'A package for Package Center',
+            download: { label: 'Download the package', file: releaseFile(version, 'synology', 'spk') },
+            others: [],
+            facts: ['DSM 7.0 or later', 'x86_64 models', 'Downloads in the shared folder njmule'],
+            shell: 'bash',
+            steps: [
+                { text: 'In Package Center, choose Manual Install and pick the .spk file.' },
+                {
+                    text: 'Confirm the warning about a package Synology did not sign, then choose the web interface password.',
+                },
+                { text: 'Open njMule from Package Center, or port 4711 of the NAS in a browser.' },
+            ],
+        }),
     },
     {
+        key: 'sources',
         name: 'From the sources',
+        short: 'Sources',
+        formats: 'JDK 25 · Gradle',
+        icon: 'CODE',
         page: '/developer/building',
         link: 'Building njMule',
-        items: [
-            ['Java 25 and Gradle', './gradlew build'],
-            ['Native executables', 'GraalVM Community 25'],
-        ],
+        offer: () => ({
+            title: 'Built, changed and run by you',
+            command: `git clone ${REPOSITORY}.git`,
+            others: [],
+            facts: ['JDK 25', 'Gradle Wrapper', 'GraalVM Community for native builds'],
+            shell: 'bash',
+            steps: [
+                { text: 'Go into the folder the clone made:', command: 'cd njMule' },
+                { text: 'Build it and run every check:', command: './gradlew build' },
+                { text: 'Start the desktop app:', command: './gradlew :njmule-gui:run' },
+            ],
+        }),
     },
 ];
 
+// The visitor's system, chosen for them once the page runs: nothing on a phone, where none of these installs.
+function detectSystem(): [System, Processor] | undefined {
+    const agent = navigator as Navigator & { userAgentData?: { platform: string } };
+    const platform = agent.userAgentData?.platform || navigator.userAgent;
+    const processor = /aarch64|arm64/i.test(navigator.userAgent) ? 'arm64' : 'x64';
+    if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+        return undefined;
+    }
+    if (/Win/i.test(platform)) {
+        return ['windows', processor];
+    }
+    if (/Mac/i.test(platform)) {
+        return ['macos', processor];
+    }
+    if (/Linux|X11|CrOS/i.test(platform)) {
+        return ['linux', processor];
+    }
+    return undefined;
+}
+
 function Install(): ReactNode {
+    const version = useVersion();
+    const [system, setSystem] = useState<System>('windows');
+    const [yours, setYours] = useState<System>();
+    const [linux, setLinux] = useState<[Package, Processor]>(['deb', 'x64']);
+    const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+    useEffect(() => {
+        const found = detectSystem();
+        if (found) {
+            setSystem(found[0]);
+            setYours(found[0]);
+            setLinux((l) => [l[0], found[1]]);
+        }
+    }, []);
+    const chosen = SYSTEMS.find((s) => s.key === system)!;
+    const offer = chosen.offer(version, linux);
+    // Arrows, Home and End move between the systems as between tabs.
+    const onKeyDown = (e: KeyboardEvent): void => {
+        const at = SYSTEMS.indexOf(chosen);
+        const to = { ArrowRight: at + 1, ArrowDown: at + 1, ArrowLeft: at - 1, ArrowUp: at - 1, Home: 0 }[e.key];
+        const next = e.key === 'End' ? SYSTEMS.length - 1 : to;
+        if (next === undefined) {
+            return;
+        }
+        e.preventDefault();
+        const index = (next + SYSTEMS.length) % SYSTEMS.length;
+        setSystem(SYSTEMS[index].key);
+        tabs.current[index]?.focus();
+    };
     return (
         <section className={styles.install} data-reveal aria-labelledby="install-title">
-            <h2 id="install-title" className={styles.sectionTitle}>
-                Install
-            </h2>
-            <p className={styles.installLead}>
-                Native executables everywhere: no Java to install. Every download comes with its checksums, a minisign
-                signature and a software bill of materials.
-            </p>
-            {PLATFORMS.map((p, i) => (
-                <details key={p.name} className={styles.platform} open={i === 0}>
-                    <summary>{p.name}</summary>
-                    <dl>
-                        {p.items.map(([what, how]) => (
-                            <div key={what}>
-                                <dt>{what}</dt>
-                                <dd>{how}</dd>
-                            </div>
+            <div className={styles.installHead}>
+                <h2 id="install-title" className={styles.sectionTitle}>
+                    Install
+                </h2>
+                <p>Native executables everywhere: no Java to install. The system you are on is already chosen.</p>
+            </div>
+            <div className={styles.systems} role="tablist" aria-label="Your system" onKeyDown={onKeyDown}>
+                {SYSTEMS.map((s, i) => (
+                    <button
+                        key={s.key}
+                        ref={(el) => {
+                            tabs.current[i] = el;
+                        }}
+                        type="button"
+                        role="tab"
+                        id={`install-tab-${s.key}`}
+                        aria-selected={s.key === system}
+                        aria-controls="install-panel"
+                        tabIndex={s.key === system ? 0 : -1}
+                        className={clsx(styles.system, styles[`system-${s.key}`])}
+                        onClick={() => setSystem(s.key)}
+                    >
+                        {s.key === yours && <span className={styles.yours}>Your system</span>}
+                        <span className={styles.systemIcon}>
+                            <NjIcon name={s.icon} />
+                        </span>
+                        <span>
+                            <span className={styles.systemName}>
+                                {s.short ? (
+                                    <>
+                                        <span className={styles.long}>{s.name}</span>
+                                        <span className={styles.short}>{s.short}</span>
+                                    </>
+                                ) : (
+                                    s.name
+                                )}
+                            </span>
+                            <span className={styles.systemFormats}>{s.formats}</span>
+                        </span>
+                    </button>
+                ))}
+            </div>
+            <div
+                key={system}
+                id="install-panel"
+                role="tabpanel"
+                aria-labelledby={`install-tab-${system}`}
+                className={styles.offer}
+            >
+                <div className={styles.offerMain}>
+                    <span className={styles.offerFor}>
+                        <NjIcon name={chosen.icon} size={18} /> njMule {version}{' '}
+                        {system === 'sources' ? 'for developers' : `for ${chosen.name}`}
+                    </span>
+                    <h3>{offer.title}</h3>
+                    {system === 'linux' && (
+                        <div className={styles.choices}>
+                            <Choice
+                                label="Package"
+                                options={[
+                                    ['deb', 'deb'],
+                                    ['rpm', 'rpm'],
+                                    ['tar', 'tar.xz'],
+                                ]}
+                                value={linux[0]}
+                                onChange={(v) => setLinux((l) => [v, l[1]])}
+                            />
+                            <Choice
+                                label="Processor"
+                                options={[
+                                    ['x64', 'x64'],
+                                    ['arm64', 'arm64'],
+                                ]}
+                                value={linux[1]}
+                                onChange={(v) => setLinux((l) => [l[0], v])}
+                            />
+                        </div>
+                    )}
+                    {offer.download && (
+                        <a className={styles.download} href={offer.download.file.url}>
+                            <NjIcon name="DOWNLOAD" />
+                            <strong>{offer.download.label}</strong>
+                            <small>{offer.download.file.name}</small>
+                        </a>
+                    )}
+                    {offer.command && (
+                        <CodeBlock language="bash" className={styles.firstCommand}>
+                            {offer.command}
+                        </CodeBlock>
+                    )}
+                    {offer.others.length > 0 && (
+                        <ul className={styles.others}>
+                            {offer.others.map((o) => (
+                                <li key={o.file.name}>
+                                    <a href={o.file.url}>
+                                        <NjIcon name="FILE_ARCHIVE" size={18} />
+                                        {o.what}
+                                    </a>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    <ul className={styles.facts}>
+                        {offer.facts.map((f) => (
+                            <li key={f}>
+                                <NjIcon name="CHECK" size={16} />
+                                {f}
+                            </li>
                         ))}
-                    </dl>
-                    <Link to={p.page}>{p.link ?? `Installing on ${p.name}`}</Link>
-                </details>
-            ))}
-            <p className={styles.installLead}>
-                Every version, with its checksums and signatures, is on the{' '}
-                <Link href="https://github.com/njMule/njMule/releases">releases page</Link>; the guide shows how to{' '}
-                <Link to="/docs/getting-started/verify-downloads">check a download</Link>.
-            </p>
+                    </ul>
+                    <Link className={styles.offerGuide} to={chosen.page}>
+                        {chosen.link} <NjIcon name="ARROW_FORWARD" size={18} />
+                    </Link>
+                </div>
+                <div className={styles.offerSteps}>
+                    <h4>In three steps</h4>
+                    <ol>
+                        {offer.steps.map((s) => (
+                            <li key={s.text}>
+                                <p>{s.text}</p>
+                                {s.command && <CodeBlock language={offer.shell}>{s.command}</CodeBlock>}
+                            </li>
+                        ))}
+                    </ol>
+                </div>
+            </div>
+            <ul className={styles.proofs}>
+                <li className={styles['proof-signed']}>
+                    <span className={styles.proofIcon}>
+                        <NjIcon name="SHIELD" />
+                    </span>
+                    <span>
+                        <strong>Signed</strong> minisign signature of the checksums
+                    </span>
+                </li>
+                <li className={styles['proof-sums']}>
+                    <span className={styles.proofIcon}>
+                        <NjIcon name="CHECK_CIRCLE" />
+                    </span>
+                    <span>
+                        <strong>Checksums</strong> SHA-256 of every file
+                    </span>
+                </li>
+                <li className={styles['proof-sbom']}>
+                    <span className={styles.proofIcon}>
+                        <NjIcon name="FILE_DOCUMENT" />
+                    </span>
+                    <span>
+                        <strong>Bill of materials</strong> every library inside, in CycloneDX
+                    </span>
+                </li>
+                <li className={styles.proofLinks}>
+                    <Link to="/docs/getting-started/verify-downloads">
+                        How to check a download <NjIcon name="ARROW_FORWARD" size={18} />
+                    </Link>
+                    <Link href={`${REPOSITORY}/releases`}>
+                        Every version on GitHub <NjIcon name="OPEN_EXTERNAL" size={18} />
+                    </Link>
+                </li>
+            </ul>
         </section>
+    );
+}
+
+function Choice<T extends string>({
+    label,
+    options,
+    value,
+    onChange,
+}: {
+    label: string;
+    options: [T, string][];
+    value: T;
+    onChange: (value: T) => void;
+}): ReactNode {
+    return (
+        <span className={styles.choice} role="group" aria-label={label}>
+            {options.map(([v, text]) => (
+                <button key={v} type="button" aria-pressed={v === value} onClick={() => onChange(v)}>
+                    {text}
+                </button>
+            ))}
+        </span>
     );
 }
 

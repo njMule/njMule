@@ -33,6 +33,22 @@
     --mark-0: var(--nj-brand);
     --mark-1: var(--nj-brand-deep);
     --mark-2: #4570ad;
+    /* The systems of the install section, each on its own pastel tint with a deep tone of it for its icon. */
+    --tint-windows: #dde7f5;
+    --tint-windows-ink: #24427a;
+    --tint-macos: #ebe3f0;
+    --tint-macos-ink: #5e4570;
+    --tint-linux: #e3eedb;
+    --tint-linux-ink: #3f5a2c;
+    --tint-docker: #dcedf2;
+    --tint-docker-ink: #2c5f6b;
+    --tint-synology: #f6ecd3;
+    --tint-synology-ink: #6b5216;
+    --tint-sources: #f7e2d6;
+    --tint-sources-ink: #7a3f22;
+    --chosen-ring: transparent;
+    --step-number: var(--nj-brand);
+    --on-step-number: var(--nj-brand-mark);
     --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
     overflow-x: clip;
 }
@@ -45,6 +61,22 @@
     --mark-0: #9db4e0;
     --mark-1: #5b8cc6;
     --mark-2: #7999d4;
+    --tint-windows: #2f4466;
+    --tint-windows-ink: #c9d7f0;
+    --tint-macos: #47394f;
+    --tint-macos-ink: #e2d2ec;
+    --tint-linux: #3a4a33;
+    --tint-linux-ink: #d3e6c4;
+    --tint-docker: #2f4a52;
+    --tint-docker-ink: #c6e4ec;
+    --tint-synology: #4d4330;
+    --tint-synology-ink: #f0e0b8;
+    --tint-sources: #4f3a30;
+    --tint-sources-ink: #f2d0bd;
+    /* The chosen system's blue is close to the page's in the dark: a ring tells it. */
+    --chosen-ring: #9db4e0;
+    --step-number: #9db4e0;
+    --on-step-number: #1b2330;
 }
 
 .page h1,
@@ -758,87 +790,453 @@
     margin: var(--space) auto 0;
 }
 
-.installLead {
-    max-width: 44rem;
-    margin: 1.25rem 0 !important;
-}
-
-.platform {
-    background: var(--field-surface);
-    border-radius: var(--radius-m);
-    margin-bottom: 8px;
-    overflow: hidden;
-}
-
-.platform summary {
-    list-style: none;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    min-height: 56px;
-    padding: 0 20px;
-    font-size: var(--step-s);
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 160ms var(--ease);
-}
-
-/* What a closed platform holds is not there at all, not merely out of sight. */
-.platform:not([open]) > :not(summary) {
-    display: none;
-}
-
-.platform summary::-webkit-details-marker {
-    display: none;
-}
-
-.platform summary::after {
-    content: '+';
-    font-size: 1.5rem;
-    font-weight: 400;
-    transition: transform 200ms var(--ease);
-}
-
-.platform[open] summary::after {
-    transform: rotate(45deg);
-}
-
-.platform summary:hover {
-    background: var(--field-soft);
-}
-
-.platform summary:focus-visible {
-    outline: 3px solid var(--nj-brand-accent);
-    outline-offset: -3px;
-    border-radius: var(--radius-m);
-}
-
-.platform dl {
-    margin: 0;
-    padding: 4px 20px 0;
-}
-
-.platform dl div {
+.installHead {
     display: grid;
-    grid-template-columns: minmax(8rem, 1fr) minmax(0, 3fr);
     gap: 1rem;
-    padding: 7px 0;
-    font-size: var(--step-s);
+    max-width: 44rem;
+    margin-bottom: 2rem;
 }
 
-.platform dt {
-    font-weight: 600;
+/* The systems: one tile each, its own icon on its own pastel tint; the chosen one takes the blue of its panel. */
+.systems {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.75rem;
 }
 
-.platform dd {
-    margin: 0;
+.system {
+    position: relative;
+    display: grid;
+    align-content: start;
+    gap: 0.85rem;
+    padding: 1rem 1.1rem 1.15rem;
+    border: 0;
+    border-radius: var(--radius-m);
+    background: var(--field-surface);
+    color: var(--ink);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition:
+        background-color 180ms var(--ease),
+        color 180ms var(--ease),
+        transform 180ms var(--ease);
+}
+
+.system:hover {
+    background: var(--field-soft);
+    transform: translateY(-2px);
+}
+
+.system:focus-visible {
+    outline: 3px solid var(--nj-brand-accent);
+    outline-offset: 2px;
+}
+
+.system[aria-selected='true'] {
+    background: var(--field-brand);
+    color: var(--on-brand);
+    transform: none;
+    box-shadow: inset 0 0 0 2px var(--chosen-ring);
+}
+
+.systemIcon {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: var(--tint);
+    color: var(--tint-ink);
+    transition:
+        background-color 180ms var(--ease),
+        color 180ms var(--ease);
+}
+
+.system[aria-selected='true'] .systemIcon {
+    background: rgb(244 246 251 / 14%);
+    color: #ffffff;
+}
+
+.system-windows {
+    --tint: var(--tint-windows);
+    --tint-ink: var(--tint-windows-ink);
+}
+
+.system-macos {
+    --tint: var(--tint-macos);
+    --tint-ink: var(--tint-macos-ink);
+}
+
+.system-linux {
+    --tint: var(--tint-linux);
+    --tint-ink: var(--tint-linux-ink);
+}
+
+.system-docker {
+    --tint: var(--tint-docker);
+    --tint-ink: var(--tint-docker-ink);
+}
+
+.system-synology {
+    --tint: var(--tint-synology);
+    --tint-ink: var(--tint-synology-ink);
+}
+
+.system-sources {
+    --tint: var(--tint-sources);
+    --tint-ink: var(--tint-sources-ink);
+}
+
+.systemName {
+    display: block;
+    font-family: 'Manrope', var(--ifm-font-family-base);
+    font-size: 1.125rem;
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    line-height: 1.2;
+}
+
+.short {
+    display: none;
+}
+
+.systemFormats {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: var(--step-xs);
     color: var(--ink-soft);
 }
 
-.platform > a {
-    display: inline-block;
-    margin: 0.5rem 20px 1.25rem;
+.system[aria-selected='true'] .systemFormats {
+    color: var(--on-brand);
+}
+
+.yours {
+    position: absolute;
+    top: 0.8rem;
+    inset-inline-end: 0.8rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    background: var(--nj-brand-accent);
+    color: var(--nj-on-accent);
+    font-size: 0.75rem;
     font-weight: 600;
+}
+
+/* The chosen system: what to download on the brand's blue, how to install it beside. */
+.offer {
+    margin-top: 0.75rem;
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    border-radius: var(--radius-l);
+    overflow: hidden;
+    animation: offer-in 260ms var(--ease);
+}
+
+@keyframes offer-in {
+    from {
+        opacity: 0.4;
+    }
+}
+
+.offerMain {
+    background: var(--field-brand);
+    color: var(--on-brand);
+    padding: clamp(1.5rem, 3vw, 2.5rem);
+    display: grid;
+    align-content: start;
+    gap: 1.25rem;
+}
+
+.offerFor {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: var(--step-xs);
+}
+
+.offerMain h3 {
+    font-size: clamp(1.5rem, 2.4vw, 2.1rem);
+    font-weight: 800;
+    line-height: 1.1;
+    color: #ffffff;
+    max-width: 16ch;
+}
+
+.download {
+    justify-self: start;
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 0.8rem;
+    align-items: center;
+    padding: 0.85rem 1.3rem 0.85rem 1.05rem;
+    border-radius: var(--radius-s);
+    background: var(--nj-brand-accent);
+    color: var(--nj-on-accent);
+    transition:
+        background-color 160ms var(--ease),
+        transform 160ms var(--ease);
+}
+
+.download:hover {
+    background: var(--nj-accent-hover);
+    color: var(--nj-on-accent);
+    text-decoration: none;
+    transform: translateY(-2px);
+}
+
+.download:active {
+    background: var(--nj-accent-pressed);
+    transform: translateY(0);
+}
+
+.download:focus-visible {
+    outline: 3px solid var(--on-brand);
+    outline-offset: 3px;
+}
+
+.download svg {
+    grid-row: span 2;
+}
+
+.download strong {
+    font-size: var(--step-s);
+}
+
+.download small {
+    font-family: var(--ifm-font-family-monospace);
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+}
+
+.firstCommand {
+    margin: 0 !important;
+}
+
+.choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+}
+
+.choice {
+    display: inline-flex;
+    padding: 3px;
+    border-radius: 999px;
+    background: rgb(244 246 251 / 10%);
+}
+
+.choice button {
+    font: inherit;
+    font-size: var(--step-xs);
+    border: 0;
+    border-radius: 999px;
+    padding: 0.3rem 0.85rem;
+    background: transparent;
+    color: var(--on-brand);
+    cursor: pointer;
+}
+
+.choice button[aria-pressed='true'] {
+    background: var(--on-brand);
+    color: var(--nj-brand);
+    font-weight: 600;
+}
+
+.choice button:focus-visible {
+    outline: 2px solid var(--nj-brand-accent);
+    outline-offset: 1px;
+}
+
+.others {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.others a {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.8rem;
+    border-radius: var(--radius-s);
+    background: rgb(244 246 251 / 8%);
+    color: var(--on-brand);
+    transition: background-color 160ms var(--ease);
+}
+
+.others a:hover {
+    background: rgb(244 246 251 / 15%);
+    color: #ffffff;
+    text-decoration: none;
+}
+
+.facts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.facts li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.7rem 0.3rem 0.5rem;
+    border-radius: 999px;
+    background: rgb(244 246 251 / 10%);
+    font-size: var(--step-xs);
+}
+
+.facts svg {
+    color: var(--ok);
+}
+
+.offerGuide {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--on-brand);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 0.3em;
+}
+
+.offerGuide:hover {
+    color: #ffffff;
+    text-decoration-color: var(--nj-brand-accent);
+}
+
+.offerSteps {
+    background: var(--field-soft);
+    padding: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.offerSteps h4 {
+    margin: 0 0 1.25rem;
+    font-family: 'Manrope', var(--ifm-font-family-base);
+    font-size: 1.15rem;
+    font-weight: 800;
+}
+
+.offerSteps ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 1.15rem;
+    counter-reset: step;
+}
+
+.offerSteps li {
+    position: relative;
+    min-width: 0;
+    padding-inline-start: 2.9rem;
+    counter-increment: step;
+}
+
+.offerSteps li::before {
+    content: counter(step);
+    position: absolute;
+    inset-inline-start: 0;
+    top: -0.1rem;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--step-number);
+    color: var(--on-step-number);
+    font-family: 'Manrope', var(--ifm-font-family-base);
+    font-size: 0.95rem;
+    font-weight: 800;
+}
+
+.offerSteps li :global(.theme-code-block) {
+    margin: 0.6rem 0 0;
+}
+
+/* What comes with every download. */
+.proofs {
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.15fr);
+    gap: 0.75rem;
+}
+
+.proofs li {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 1rem 1.15rem;
+    border-radius: var(--radius-m);
+    background: var(--field-surface);
+    font-size: var(--step-xs);
+    color: var(--ink-soft);
+}
+
+.proofs strong {
+    display: block;
+    font-size: 1rem;
+    color: var(--ink);
+}
+
+.proofIcon {
+    flex: none;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: var(--tint);
+    color: var(--tint-ink);
+}
+
+.proof-signed {
+    --tint: var(--tint-linux);
+    --tint-ink: var(--tint-linux-ink);
+}
+
+.proof-sums {
+    --tint: var(--tint-windows);
+    --tint-ink: var(--tint-windows-ink);
+}
+
+.proof-sbom {
+    --tint: var(--tint-synology);
+    --tint-ink: var(--tint-synology-ink);
+}
+
+.proofs .proofLinks {
+    display: grid;
+    align-content: center;
+    gap: 0.35rem;
+    background: var(--field-deep);
+}
+
+.proofLinks a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--on-brand);
+    font-size: var(--step-s);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 0.3em;
+}
+
+.proofLinks a:hover {
+    color: #ffffff;
+    text-decoration-color: var(--nj-brand-accent);
 }
 
 /* ---------------------------------------------------------------- find your way */
@@ -1088,8 +1486,14 @@
     .stageImage,
     .placePreview,
     .primary,
-    .card {
+    .card,
+    .system,
+    .download {
         transition: none;
+    }
+
+    .offer {
+        animation: none;
     }
 
     [data-reveal] > * {
@@ -1105,6 +1509,14 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .systems {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .proofs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .card {
         min-height: 12rem;
     }
@@ -1116,6 +1528,10 @@
     }
 
     .stages {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .offer {
         grid-template-columns: minmax(0, 1fr);
     }
 
@@ -1172,6 +1588,45 @@
 
     .card h3 {
         margin-top: 0.5rem !important;
+    }
+
+    /* Six small tiles, three a row: the icon and a short name. */
+    .systems {
+        gap: 0.5rem;
+    }
+
+    .system {
+        gap: 0.6rem;
+        padding: 0.75rem;
+    }
+
+    .systemIcon {
+        width: 38px;
+        height: 38px;
+    }
+
+    .systemName {
+        font-size: 1rem;
+    }
+
+    .systemFormats,
+    .long {
+        display: none;
+    }
+
+    .short {
+        display: inline;
+    }
+
+    .yours {
+        position: static;
+        justify-self: start;
+        order: -1;
+        font-size: 0.7rem;
+    }
+
+    .proofs {
+        grid-template-columns: minmax(0, 1fr);
     }
 
     /* A phone has no room for a strip of thin parts: they become a field of small squares. */
