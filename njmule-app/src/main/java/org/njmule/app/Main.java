@@ -153,7 +153,11 @@ public final class Main {
             }
             case RESTORE_LINKS -> {
                 return restoreLinks(
-                        AppDirectories.resolve(cli.configDir()).config(), LinkAssociation::forThisSystem, out, err);
+                        AppDirectories.resolve(cli.configDir()).config(),
+                        LinkAssociation::forThisSystem,
+                        Main::autostart,
+                        out,
+                        err);
             }
             case RUN -> {
                 if (cli.remoteDesktop().isPresent()) {
@@ -377,12 +381,22 @@ public final class Main {
         return Files.createTempDirectory(prefix);
     }
 
+    /** The start at login of this system, whatever its arguments: here only to be turned off. */
+    static Optional<Autostart> autostart(Path configDir) {
+        return Autostart.forThisSystem(configDir, List.of());
+    }
+
     /**
-     * Gives the ed2k links back when the desktop app still has them. Without a configuration directory there is no
-     * saved handler: ours only goes, from a scratch directory that goes too.
+     * Undoes what the desktop app set up on this system, as an uninstaller asks: gives the ed2k links back when it
+     * still has them, and stops it from starting at login. Without a configuration directory there is no saved handler:
+     * ours only goes, from a scratch directory that goes too.
      */
     static int restoreLinks(
-            Path config, Function<Path, Optional<LinkAssociation>> associations, PrintStream out, PrintStream err) {
+            Path config,
+            Function<Path, Optional<LinkAssociation>> associations,
+            Function<Path, Optional<Autostart>> autostarts,
+            PrintStream out,
+            PrintStream err) {
         Path scratch = null;
         try {
             Path dir = config;
@@ -390,18 +404,18 @@ public final class Main {
                 scratch = privateTempDirectory("njmule-links-");
                 dir = scratch;
             }
-            Optional<LinkAssociation> association = associations.apply(dir);
-            if (association.isEmpty()) {
-                out.println("This program does not open ed2k links here: nothing to give back.");
-                return EXIT_OK;
+            int code = giveLinksBack(associations.apply(dir), out, err);
+            try {
+                Optional<Autostart> start = autostarts.apply(dir);
+                if (start.isPresent() && start.get().isOn()) {
+                    start.get().turnOff();
+                    out.println(NjMuleInfo.NAME + " no longer starts when you log in.");
+                }
+            } catch (IOException e) {
+                err.println("Cannot stop " + NjMuleInfo.NAME + " from starting at login: " + e.getMessage());
+                code = EXIT_FAILURE;
             }
-            if (!association.get().isOurs()) {
-                out.println("ed2k links open in another program: left as they are.");
-                return EXIT_OK;
-            }
-            association.get().giveBack();
-            out.println("ed2k links given back.");
-            return EXIT_OK;
+            return code;
         } catch (IOException e) {
             err.println("Cannot give the ed2k links back: " + e.getMessage());
             return EXIT_FAILURE;
@@ -413,6 +427,25 @@ public final class Main {
                     logger.debug("Cannot delete {}: {}", scratch, e.toString());
                 }
             }
+        }
+    }
+
+    private static int giveLinksBack(Optional<LinkAssociation> association, PrintStream out, PrintStream err) {
+        if (association.isEmpty()) {
+            out.println("This program does not open ed2k links here: nothing to give back.");
+            return EXIT_OK;
+        }
+        try {
+            if (!association.get().isOurs()) {
+                out.println("ed2k links open in another program: left as they are.");
+                return EXIT_OK;
+            }
+            association.get().giveBack();
+            out.println("ed2k links given back.");
+            return EXIT_OK;
+        } catch (IOException e) {
+            err.println("Cannot give the ed2k links back: " + e.getMessage());
+            return EXIT_FAILURE;
         }
     }
 

@@ -163,6 +163,7 @@ class AutostartTest {
 
         thenTheLinuxEntryContains("Exec=/usr/lib/njmule/njmule-gui --config-dir \"/home/ann/my files/100%%\"");
         thenTheLinuxEntryContains("X-GNOME-Autostart-enabled=true");
+        thenTheLinuxEntryContains("TryExec=/usr/lib/njmule/njmule-gui");
         thenItIsOnNow(true);
     }
 

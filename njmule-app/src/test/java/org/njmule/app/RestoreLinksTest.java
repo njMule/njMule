@@ -45,6 +45,7 @@ class RestoreLinksTest {
     private final ByteArrayOutputStream err = new ByteArrayOutputStream();
     private Path config;
     private boolean desktopProgram = true;
+    private final PretendAutostart autostart = new PretendAutostart(false);
     private int exit;
     private LaunchOptions options;
     private Exception failure;
@@ -59,6 +60,19 @@ class RestoreLinksTest {
 
         thenTheLinksOpenIn(EMULE);
         thenTheSavedHandlerIsGone();
+        thenTheExitCodeIs(Main.EXIT_OK);
+    }
+
+    @Test
+    void shouldStopStartingAtLoginAsTheUninstallersAsk() throws Exception {
+        givenTheConfigurationDirectory();
+        givenTheLinksOpenIn(EMULE);
+        givenItStartsAtLogin();
+
+        whenTheLinksAreRestored();
+
+        thenItStartsAtLogin(false);
+        thenTheOutputSays("no longer starts when you log in");
         thenTheExitCodeIs(Main.EXIT_OK);
     }
 
@@ -160,6 +174,10 @@ class RestoreLinksTest {
         Files.writeString(this.config.resolve(LinkAssociation.Windows.BACKUP), command, StandardCharsets.UTF_8);
     }
 
+    private void givenItStartsAtLogin() {
+        this.autostart.turnOn();
+    }
+
     private void givenAProgramThatCannotOpenLinks() {
         this.desktopProgram = false;
     }
@@ -174,6 +192,7 @@ class RestoreLinksTest {
                 configDir -> this.desktopProgram
                         ? Optional.of(new LinkAssociation.Windows(configDir, this.registry, PROGRAM))
                         : Optional.empty(),
+                configDir -> Optional.of(this.autostart),
                 new PrintStream(this.out, true, StandardCharsets.UTF_8),
                 new PrintStream(this.err, true, StandardCharsets.UTF_8));
     }
@@ -204,6 +223,10 @@ class RestoreLinksTest {
 
     private void thenTheConfigurationDirectoryStillDoesNotExist() {
         assertThat(this.config).doesNotExist();
+    }
+
+    private void thenItStartsAtLogin(boolean expected) {
+        assertThat(this.autostart.isOn()).isEqualTo(expected);
     }
 
     private void thenTheExitCodeIs(int expected) {

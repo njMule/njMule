@@ -43,6 +43,7 @@ class ProfileRemovalTest {
     private final ByteArrayOutputStream err = new ByteArrayOutputStream();
     private AppDirectories profile;
     private String answer = "y";
+    private final PretendAutostart autostart = new PretendAutostart(false);
     private int code;
     private FileChannel running;
 
@@ -73,6 +74,18 @@ class ProfileRemovalTest {
 
         thenTheExitCodeIs(Main.EXIT_OK);
         thenTheChosenDownloadsStay();
+    }
+
+    @Test
+    void shouldStopStartingAtLoginBeforeDeletingTheProfile() throws Exception {
+        givenAProfileWithADownload();
+        givenItStartsAtLogin();
+
+        whenRemoved("--remove-profile", "--yes");
+
+        thenTheExitCodeIs(Main.EXIT_OK);
+        thenTheProfileIsGone();
+        thenItStartsAtLogin(false);
     }
 
     @Test
@@ -132,6 +145,10 @@ class ProfileRemovalTest {
         this.running.lock();
     }
 
+    private void givenItStartsAtLogin() {
+        this.autostart.turnOn();
+    }
+
     private void givenTheAnswer(String typed) {
         this.answer = typed;
     }
@@ -145,7 +162,13 @@ class ProfileRemovalTest {
                 LaunchOptions.parse(args),
                 new PrintStream(this.out, true, StandardCharsets.UTF_8),
                 new PrintStream(this.err, true, StandardCharsets.UTF_8),
-                prompt -> this.answer);
+                prompt -> this.answer,
+                config -> Optional.empty(),
+                config -> Optional.of(this.autostart));
+    }
+
+    private void thenItStartsAtLogin(boolean expected) {
+        assertThat(this.autostart.isOn()).isEqualTo(expected);
     }
 
     private void thenTheExitCodeIs(int expected) {
