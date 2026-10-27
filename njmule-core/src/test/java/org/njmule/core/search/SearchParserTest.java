@@ -328,6 +328,16 @@ class SearchParserTest {
         thenKadIsAskedForNothingMore();
     }
 
+    @ParameterizedTest
+    @MethodSource("completeSourcesInEveryPlace")
+    void shouldTakeTheCompleteSourcesAsMetWhereverKadIsAskedForThem(SearchExpr asked, Optional<SearchExpr> expected) {
+        givenTheExpression(asked);
+
+        whenItIsPreparedForKad();
+
+        thenKadIsAskedFor(expected);
+    }
+
     @Test
     void shouldAskKadForTheIndexedTypeAsServersAre() {
         givenTheSearch("linux @type=arc");
@@ -531,6 +541,10 @@ class SearchParserTest {
         this.serverSearch = SearchTreeCodec.forServer(this.search);
     }
 
+    private void givenTheExpression(SearchExpr expression) {
+        this.search = expression;
+    }
+
     private void whenItIsPreparedForKad() {
         this.kadSearch = SearchTreeCodec.forKad(this.search);
     }
@@ -619,6 +633,10 @@ class SearchParserTest {
         assertThat(this.kadSearch).contains(expected);
     }
 
+    private void thenKadIsAskedFor(Optional<SearchExpr> expected) {
+        assertThat(this.kadSearch).isEqualTo(expected);
+    }
+
     private void thenKadIsAskedForNothingMore() {
         assertThat(this.kadSearch).isEmpty();
     }
@@ -649,6 +667,17 @@ class SearchParserTest {
         PacketWriter out = new PacketWriter();
         SearchTreeCodec.write(out, tree, supports64Bit);
         return out.toByteArray();
+    }
+
+    private static Stream<Arguments> completeSourcesInEveryPlace() {
+        NumericAttr complete = new NumericAttr(FileTag.COMPLETE_SOURCES, Comparison.GREATER_EQUAL, 3);
+        return Stream.of(
+                arguments(new Not(kw("linux"), complete), Optional.of(kw("linux"))),
+                arguments(new Not(complete, kw("beta")), Optional.empty()),
+                arguments(new Not(kw("linux"), kw("beta")), Optional.of(new Not(kw("linux"), kw("beta")))),
+                arguments(new Or(kw("linux"), kw("bsd")), Optional.of(new Or(kw("linux"), kw("bsd")))),
+                arguments(new And(complete, complete), Optional.empty()),
+                arguments(new And(complete, kw("linux")), Optional.of(kw("linux"))));
     }
 
     private static Keyword kw(String text) {
