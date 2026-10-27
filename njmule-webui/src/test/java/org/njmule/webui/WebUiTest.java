@@ -114,6 +114,15 @@ class WebUiTest {
     }
 
     @Test
+    void shouldNameThePasswordFieldOfTheLoginPageInSight() throws Exception {
+        givenTheWebInterfaceRuns();
+
+        whenThePageIsAsked("/login");
+
+        thenTheBodyContains("<label for=\"password\">Password</label>", "id=\"password\"");
+    }
+
+    @Test
     void shouldServeTheStyleSheetToVisitors() throws Exception {
         givenTheWebInterfaceRuns();
 
