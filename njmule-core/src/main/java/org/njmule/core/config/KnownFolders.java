@@ -49,7 +49,8 @@ final class KnownFolders {
     private static final Pattern VARIABLE = Pattern.compile("%([^%]+)%");
     private static final Charset NATIVE =
             Charset.forName(System.getProperty("native.encoding"), StandardCharsets.UTF_8);
-    private static final Supplier<Optional<String>> DOWNLOADS_VALUE = Suppliers.memoize(() -> query(DOWNLOADS));
+    private static final Supplier<Optional<String>> DOWNLOADS_VALUE =
+            Suppliers.memoize(() -> query(command(System.getenv(), DOWNLOADS), DOWNLOADS));
 
     private KnownFolders() {}
 
@@ -58,11 +59,24 @@ final class KnownFolders {
      * code page than read here names none, and the default folder stays.
      */
     static Optional<Path> downloads(Map<String, String> env) {
-        return DOWNLOADS_VALUE
-                .get()
-                .flatMap(value -> expand(value, env))
+        return folder(DOWNLOADS_VALUE.get(), env);
+    }
+
+    /** The folder {@code value} names, with its %VARIABLES% from {@code env}, when it exists. */
+    static Optional<Path> folder(Optional<String> value, Map<String, String> env) {
+        return value.flatMap(v -> expand(v, env))
                 .flatMap(KnownFolders::absolute)
                 .filter(Files::isDirectory);
+    }
+
+    /** The reg.exe of the system folder, not the first one the PATH leads to, asking for the value {@code name}. */
+    static List<String> command(Map<String, String> env, String name) {
+        String root = env.entrySet().stream()
+                .filter(e -> e.getKey().equalsIgnoreCase("SystemRoot"))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse("C:\\Windows");
+        return List.of(Path.of(root, "System32", "reg.exe").toString(), "query", SHELL_FOLDERS, "/v", name);
     }
 
     /** The value {@code name} in what reg.exe answers, as " name REG_EXPAND_SZ value". */
@@ -103,11 +117,11 @@ final class KnownFolders {
         }
     }
 
-    private static Optional<String> query(String name) {
+    /** The value {@code name} in what {@code command} answers; empty when it fails or names none. */
+    static Optional<String> query(List<String> command, String name) {
         try {
-            Process process = new ProcessBuilder(List.of("reg", "query", SHELL_FOLDERS, "/v", name))
-                    .redirectErrorStream(true)
-                    .start();
+            Process process =
+                    new ProcessBuilder(command).redirectErrorStream(true).start();
             process.getOutputStream().close();
             String answer = new String(process.getInputStream().readAllBytes(), NATIVE);
             if (!process.waitFor(WAIT_SECONDS, TimeUnit.SECONDS) || process.exitValue() != 0) {

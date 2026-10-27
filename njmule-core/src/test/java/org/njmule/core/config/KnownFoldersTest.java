@@ -18,9 +18,14 @@ package org.njmule.core.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class KnownFoldersTest {
 
@@ -29,9 +34,17 @@ class KnownFoldersTest {
             + "Explorer\\User Shell Folders\r\n    " + KnownFolders.DOWNLOADS
             + "    REG_EXPAND_SZ    %USERPROFILE%\\My Downloads\r\n\r\n";
 
+    // The Java that runs the tests stands for reg.exe, which only Windows has.
+    private static final String JAVA = ProcessHandle.current().info().command().orElseThrow();
+
+    @TempDir
+    Path dir;
+
     private String answer = "";
     private Map<String, String> env = Map.of();
     private Optional<String> folder;
+    private Optional<Path> found;
+    private List<String> command = List.of();
 
     @Test
     void shouldTakeTheDownloadsFolderTheRegistryNames() {
@@ -61,12 +74,109 @@ class KnownFoldersTest {
         thenThereIsNoFolder();
     }
 
+    @Test
+    void shouldAskTheRegOfTheSystemFolder() {
+        givenTheVariable("SYSTEMROOT", "D:\\Win");
+
+        whenTheCommandIsMade();
+
+        thenTheProgramIs(Path.of("D:\\Win", "System32", "reg.exe"));
+    }
+
+    @Test
+    void shouldAskTheRegOfTheUsualSystemFolderWhenNoneIsNamed() {
+        whenTheCommandIsMade();
+
+        thenTheProgramIs(Path.of("C:\\Windows", "System32", "reg.exe"));
+    }
+
+    @Test
+    void shouldReadTheValueTheProgramAnswers() throws IOException {
+        givenAProgramThatAnswers(ANSWER);
+
+        whenTheValueIsAsked();
+
+        thenTheFolderIs("%USERPROFILE%\\My Downloads");
+    }
+
+    @Test
+    void shouldReadNothingFromAProgramThatFails() {
+        givenTheProgram(JAVA, "--no-such-option");
+
+        whenTheValueIsAsked();
+
+        thenThereIsNoFolder();
+    }
+
+    @Test
+    void shouldReadNothingWithoutTheProgram() {
+        givenTheProgram(this.dir.resolve("reg.exe").toString());
+
+        whenTheValueIsAsked();
+
+        thenThereIsNoFolder();
+    }
+
+    @Test
+    void shouldTakeAFolderThatExists() {
+        whenTheFolderIsFound(this.dir.toString());
+
+        thenTheFolderFoundIs(Optional.of(this.dir));
+    }
+
+    @Test
+    void shouldTakeNoFolderThatIsGone() {
+        whenTheFolderIsFound(this.dir.resolve("gone").toString());
+
+        thenTheFolderFoundIs(Optional.empty());
+    }
+
+    @Test
+    void shouldTakeNoFolderOfARelativePath() {
+        whenTheFolderIsFound("Downloads");
+
+        thenTheFolderFoundIs(Optional.empty());
+    }
+
+    @Test
+    void shouldTakeNoFolderOfAPathThatCannotBe() {
+        whenTheFolderIsFound("D:\\Users\u0000\\Downloads");
+
+        thenTheFolderFoundIs(Optional.empty());
+    }
+
+    // A program of a few lines that writes the answer, run from its source.
+    private void givenAProgramThatAnswers(String text) throws IOException {
+        Path source = this.dir.resolve("Reg.java");
+        Files.writeString(
+                source,
+                "class Reg { public static void main(String[] args) { System.out.print(\""
+                        + text.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n") + "\"); } }");
+        givenTheProgram(JAVA, source.toString());
+    }
+
+    private void givenTheProgram(String... command) {
+        this.command = List.of(command);
+    }
+
     private void givenTheRegistryAnswers(String text) {
         this.answer = text;
     }
 
     private void givenTheVariable(String name, String value) {
         this.env = Map.of(name, value);
+    }
+
+    private void whenTheCommandIsMade() {
+        this.command = KnownFolders.command(this.env, KnownFolders.DOWNLOADS);
+    }
+
+    private void whenTheValueIsAsked() {
+        this.folder = KnownFolders.query(this.command, KnownFolders.DOWNLOADS);
+    }
+
+    private void whenTheFolderIsFound(String value) {
+        this.found = KnownFolders.folder(Optional.of(value), Map.of());
     }
 
     private void whenTheFolderIsRead() {
@@ -76,6 +186,20 @@ class KnownFoldersTest {
 
     private void thenTheFolderIs(String expected) {
         assertThat(this.folder).contains(expected);
+    }
+
+    private void thenTheProgramIs(Path program) {
+        assertThat(this.command)
+                .containsExactly(
+                        program.toString(),
+                        "query",
+                        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders",
+                        "/v",
+                        KnownFolders.DOWNLOADS);
+    }
+
+    private void thenTheFolderFoundIs(Optional<Path> expected) {
+        assertThat(this.found).isEqualTo(expected);
     }
 
     private void thenThereIsNoFolder() {
