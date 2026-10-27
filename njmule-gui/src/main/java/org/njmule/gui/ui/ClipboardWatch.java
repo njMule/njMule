@@ -19,12 +19,14 @@ package org.njmule.gui.ui;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
@@ -45,6 +47,10 @@ public final class ClipboardWatch implements AutoCloseable {
     private static final String FILE_LINK = "ed2k://|file|";
     // Links copied together, apart by spaces or lines; a name may hold spaces of its own.
     private static final Pattern LINKS = Pattern.compile("\\s+(?=ed2k://)", Pattern.CASE_INSENSITIVE);
+    // Name, size and hash, then the other fields up to a space, a quote, an angle bracket or the next link.
+    private static final Pattern LINK_IN_TEXT = Pattern.compile(
+            "ed2k://\\|file\\|[^|\\r\\n]+\\|\\d{1,20}\\|\\p{XDigit}{32}\\|(?:(?!ed2k://)[^\\s\"'<>])*",
+            Pattern.CASE_INSENSITIVE);
 
     // What njMule copied itself, left while it stays on the clipboard; null once something else was copied.
     private static final AtomicReference<String> OURS = new AtomicReference<>();
@@ -139,6 +145,27 @@ public final class ClipboardWatch implements AutoCloseable {
         for (String one : LINKS.split(stripped, -1)) {
             if (Ed2kLink.tryParse(one.strip()).orElse(null) instanceof Ed2kLink.FileLink file
                     && !links.contains(file)) {
+                links.add(file);
+            }
+        }
+        return links;
+    }
+
+    /**
+     * The eD2K file links found anywhere in {@code text}, as pasted into the dialog that adds links, each file once.
+     */
+    public static List<Ed2kLink.FileLink> fileLinksIn(String text) {
+        List<Ed2kLink.FileLink> links = new ArrayList<>();
+        Matcher found = LINK_IN_TEXT.matcher(text);
+        while (found.find()) {
+            String link = found.group();
+            // A comma or a full stop of the sentence may follow it.
+            Optional<Ed2kLink> parsed = Ed2kLink.tryParse(link);
+            int closed = link.lastIndexOf("|/");
+            if (parsed.isEmpty() && closed > 0) {
+                parsed = Ed2kLink.tryParse(link.substring(0, closed + 2));
+            }
+            if (parsed.orElse(null) instanceof Ed2kLink.FileLink file && !links.contains(file)) {
                 links.add(file);
             }
         }
