@@ -3,6 +3,8 @@
 
 // The shapes of the API's answers, as the schemas of openapi.yaml describe them.
 
+import type { Forwarding } from './ports';
+
 export interface Server {
     address: string;
     name: string;
@@ -58,6 +60,8 @@ export interface Status {
     publicIp: string;
     publicIpv6?: string;
     upnp?: boolean;
+    forwarding?: Forwarding;
+    router?: string;
     routerTraversal?: boolean;
     tcpPort: number;
     missingInterface?: string;

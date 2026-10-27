@@ -13,6 +13,7 @@ import PartBar from '../../components/PartBar.vue';
 import { duration, percent, rate, size } from '../../format';
 import { t } from '../../i18n';
 import type { IconName } from '../../icons';
+import { narrow } from '../../narrow';
 import { attempt } from '../../notify';
 import { guest } from '../../role';
 import {
@@ -312,8 +313,22 @@ function drag(e: PointerEvent): void {
 </script>
 
 <template>
-    <section class="download-details" :style="{ height: `${height}px` }" :aria-label="t('IDS_DETAILS')">
-        <div class="grip" role="separator" aria-orientation="horizontal" @pointerdown.prevent="drag"></div>
+    <!-- On a phone they follow the list, as tall as they need, and only once a download is chosen: kept at the
+         bottom, they would cover the list. -->
+    <section
+        v-if="!narrow || chosen.length > 0"
+        class="download-details"
+        :class="{ phone: narrow }"
+        :style="narrow ? undefined : { height: `${height}px` }"
+        :aria-label="t('IDS_DETAILS')"
+    >
+        <div
+            v-if="!narrow"
+            class="grip"
+            role="separator"
+            aria-orientation="horizontal"
+            @pointerdown.prevent="drag"
+        ></div>
         <p v-if="chosen.length === 0" class="none">{{ t('nj.details.none') }}</p>
         <div v-else-if="!one" class="many">
             <b class="name">{{ t('nj.details.chosen', chosen.length) }}</b>
@@ -575,6 +590,10 @@ function drag(e: PointerEvent): void {
     border-radius: 8px;
     background: var(--el-bg-color);
     box-shadow: 0 -6px 16px -12px var(--nj-shade);
+}
+.download-details.phone {
+    position: static;
+    box-shadow: none;
 }
 .grip {
     flex: none;

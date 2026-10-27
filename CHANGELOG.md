@@ -53,6 +53,21 @@ All notable changes to this project are documented here. The format follows
   `AC_BootstrapIPs.dat`, `AC_IPFilterUpdateURLs.dat`), and the first start no longer says that it
   takes eMule's statistics over.
 - On Windows the completed downloads go to the Downloads folder where the user moved it.
+- The *Ports* card tells what the router answered through UPnP instead of whether UPnP is on, and
+  the UDP port while Kad runs, which listens on it; the port test is *Test Ports* everywhere.
+- In the options of the desktop app a long name wraps instead of running under its control, and each
+  row of the *Proxy* and *Notifications* pages is marked and reset by what it shows, no longer by the
+  whole page.
+- The options of the web interface name the proxy's port, user and password and the mail password
+  as such, without a placeholder in the text; its sign-in page names the password field in sight.
+- On a phone the details of a download in the web interface show only once one is chosen, after the
+  list instead of over it.
+- The smileys `:-p`, `:-O`, `:-o`, `:-|` and `:-*` show as emoji too.
+
+### Removed
+
+- The *Use secure identification* and *Use the credit system* switches: njMule always uses both and
+  never read them. Their keys stay in `njmule.properties`.
 
 ### Security
 

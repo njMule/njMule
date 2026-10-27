@@ -26,7 +26,7 @@ are those of `njmule.properties`.
 | **Client Port (TCP)** | `4662` | The TCP port other clients connect to. A server checks it when you log in and gives a HighID only when it is reachable. A whole number from 1 to 65535. Waits for **Apply and reconnect**. Key `net.tcpPort`. Also in the web interface. |
 | **UDP** | `4672` | The UDP port of Kad and of the messages between clients (re-asks, connections through routers). A whole number from 1 to 65535. Waits for **Apply and reconnect**. Key `net.udpPort`. Also in the web interface. |
 | **Forward the ports with UPnP** | On | Asks the router to forward both ports to this computer while njMule runs, renewing the forwarding and removing it at exit. A router that answers no UPnP is asked through NAT-PMP or PCP. Waits for **Apply and reconnect**. Key `net.upnp`. Also in the web interface. |
-| **Test the ports** | — | **Test Ports** checks whether others reach your ports. See below. Desktop only: the web interface has the test on its **Network** screen. |
+| **Test Ports** | — | Checks whether others reach your ports. See below. Desktop only: the web interface has the test on its **Network** screen. |
 
 When you apply new ports, njMule listens on them at once, logs in to the server again so that it
 checks the new TCP port, restarts Kad on them and asks the router again; no restart is needed.

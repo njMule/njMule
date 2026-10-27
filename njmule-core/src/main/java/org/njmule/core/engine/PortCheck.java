@@ -100,7 +100,12 @@ final class PortCheck {
             return;
         }
         this.router = router;
-        this.forwarding = switch (outcome) {
+        this.forwarding = forwarding(outcome);
+    }
+
+    /** The router's answer as the interfaces tell it. */
+    static Forwarding forwarding(PortForwarding.Outcome outcome) {
+        return switch (outcome) {
             case FORWARDED -> Forwarding.FORWARDED;
             case PARTLY -> Forwarding.PARTLY;
             case REFUSED -> Forwarding.REFUSED;

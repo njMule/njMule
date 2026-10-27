@@ -100,7 +100,7 @@ through a reverse proxy that serves HTTPS.
    from another one, such as `http://192.0.2.10:4711/` (with LAN access on).
 2. Type the password and choose **Log in**.
 
-<Screenshot id="web-login" alt="The sign-in page of the web interface: the njMule logo, a password field and the Log in button." caption="The sign-in page." />
+<Screenshot id="web-login" alt="The sign-in page of the web interface: the njMule logo, the Password field and the Log in button." caption="The sign-in page." />
 
 A session ends after 30 minutes without a request, or with **Logout** at the bottom of the
 sidebar; a page left open keeps it alive. A host name that is not `localhost` or an IP address must
@@ -196,7 +196,8 @@ the letters of the picture before your first message.
 
 <Screenshot id="web-network-servers" alt="The Network place: cards for eD2K, Kad and the ports above the list of servers with their address, ping, users and files." caption="Network, with the server list." />
 
-Three cards sum up **eD2K**, **Kad** and the **Ports** (with **Test the ports**). Under them:
+Three cards sum up **eD2K**, **Kad** and the **Ports** (with **Test Ports**); the **Ports** card says
+what the router answered through UPnP, as the desktop app's does. Under them:
 
 - **Servers**: add servers, connect, set their priority, keep them in the static list, copy their
   links or remove them.
@@ -270,7 +271,8 @@ change the language order in your browser's settings and reload the page.
 
 Below 760 pixels of width the sidebar moves above the page, and the two-column places (messages,
 shared files, options, the details of a download) stack their columns, so the interface works on
-a phone's browser too.
+a phone's browser too. The details of a download then show only once you choose one, after the list
+rather than over it.
 
 <Screenshot id="web-phone" alt="The web interface on a phone: the list of places on top, the Transfers page below it." caption="On a phone, the places come first." width={390} />
 

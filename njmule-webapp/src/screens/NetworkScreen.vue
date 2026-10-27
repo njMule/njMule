@@ -11,6 +11,7 @@ import PortTest from '../components/PortTest.vue';
 import { status } from '../engine';
 import { count } from '../format';
 import { t } from '../i18n';
+import { forwardingText } from '../ports';
 import KadView from './network/KadView.vue';
 import LogView from './network/LogView.vue';
 import { guest } from '../role';
@@ -72,7 +73,7 @@ const kad = computed(() => status.value?.kad ?? null);
             <p class="headline">
                 TCP {{ status?.tcpPort }}<template v-if="kad"> · UDP {{ kad.udpPort }}</template>
             </p>
-            <p>{{ t('IDS_UPNP') }}: {{ status?.upnp ? t('IDS_YES') : t('IDS_NO') }}</p>
+            <p v-if="status?.forwarding">{{ forwardingText(status.forwarding, status.router ?? '') }}</p>
             <p v-if="status?.publicIp">IP: {{ status.publicIp }}</p>
             <p v-if="status?.publicIpv6">IPv6: {{ status.publicIpv6 }}</p>
             <p>

@@ -24,14 +24,14 @@ To learn what eD2K, Kad, HighID and LowID are, see [Servers and Kad](../network/
 |---|---|---|
 | **eD2K** | **Reachable from outside** (a HighID) or **Not reachable from outside** (a LowID), **Connecting** or **Not Connected**; the server you are on, with its users and files. The tooltip of the state gives the technical term. | **Connect**, **Cancel** or **Disconnect**; **Choose another server…** opens the server list. |
 | **Kad** | **Reachable from outside** (open) or **Not reachable from outside** (firewalled), **Connecting** or **Off**; the number of contacts, and whether UDP is open or firewalled once tested. | **Connect** or **Disconnect**; **Recheck Firewall** asks other nodes again whether they reach you. |
-| **Ports** | Your ports, as `TCP 4662 · UDP 4672`; whether **UPnP** is on, your public IPv6 address when you have one, and whether **NAT traversal** works (it needs Kad). | **Test the ports**; **Options** opens the options. |
+| **Ports** | Your ports, as `TCP 4662 · UDP 4672` (the UDP port while Kad runs, which listens on it); what the router answered through UPnP, such as **The router at 192.168.1.1 forwards the ports** or **UPnP is off**; your public IPv6 address when you have one, and whether **NAT traversal** works (it needs Kad). | **Test Ports**; **Options** opens the options. |
 
 The ports and UPnP are set in the [Connection options](../settings/connection.mdx); NAT traversal is
 explained on [NAT traversal](../network/nat-traversal.mdx) and IPv6 on [IPv6](../network/ipv6.mdx).
 
 ### Port test
 
-**Test the ports** checks whether others can reach your ports, and shows what it finds as it comes:
+**Test Ports** checks whether others can reach your ports, and shows what it finds as it comes:
 
 1. When UPnP is on, njMule asks the router again to forward the ports, and says whether it did:
    **The router at … forwards the ports**, **forwards only some of the ports**, **refused to forward

@@ -36,6 +36,8 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.FreePorts;
 import org.njmule.core.api.EngineConfig;
+import org.njmule.core.api.EngineStatus;
+import org.njmule.core.api.PortTest;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.upnp.FakeGateway;
@@ -58,9 +60,31 @@ class UpnpTest {
 
     @AfterEach
     void stopTheRouter() throws IOException {
+        if (this.engine != null) {
+            this.engine.close();
+        }
         if (this.gateway != null) {
             this.gateway.close();
         }
+    }
+
+    @Test
+    void shouldTellInTheStatusThatTheRouterForwardsThePorts() throws Exception {
+        givenARouter();
+
+        whenAnEngineStartsWithUpnpOn();
+
+        thenTheStatusTellsTheRouterAnswered(PortTest.Forwarding.FORWARDED);
+    }
+
+    @Test
+    void shouldTellInTheStatusThatUpnpIsOffOnceTurnedOff() throws Exception {
+        givenARouter();
+        givenAnEngineThatMappedItsPortOnTheRouter();
+
+        whenUpnpIsTurnedOff();
+
+        thenTheStatusTellsTheRouterAnswered(PortTest.Forwarding.OFF);
     }
 
     @Test
@@ -121,6 +145,15 @@ class UpnpTest {
         Thread.sleep(1_000);
     }
 
+    private void whenAnEngineStartsWithUpnpOn() throws IOException {
+        this.dirs = dirs();
+        this.engine = Engine.start(new EngineConfig(this.dirs), () -> false, Optional.of(this.gateway.ssdp()));
+    }
+
+    private void whenUpnpIsTurnedOff() throws Exception {
+        this.engine.updatePreferences(p -> p.toBuilder().upnp(false).build()).get(10, TimeUnit.SECONDS);
+    }
+
     private void whenTheEngineCloses() {
         this.engine.close();
     }
@@ -135,6 +168,17 @@ class UpnpTest {
         Instant saved = Files.getLastModifiedTime(this.dirs.config().resolve("server.met"))
                 .toInstant();
         assertThat(saved).isBefore(delete.at().plusSeconds(1));
+    }
+
+    // The router is named once it answered; never while UPnP is off.
+    private void thenTheStatusTellsTheRouterAnswered(PortTest.Forwarding answer) throws InterruptedException {
+        assertThat(await(() -> {
+                    EngineStatus status = this.engine.status().join();
+                    return status.forwarding() == answer
+                            && status.router().isEmpty() == (answer == PortTest.Forwarding.OFF);
+                }))
+                .as("the status tells %s", answer)
+                .isTrue();
     }
 
     private void thenEveryPortMappedIsUnmappedAfterwards() {

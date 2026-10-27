@@ -163,8 +163,6 @@ public final class SettingsScreen implements Screen {
     private final ToggleSwitch kad = new ToggleSwitch();
     private final ToggleSwitch autoConnect = new ToggleSwitch();
     private final ToggleSwitch reconnect = new ToggleSwitch();
-    private final ToggleSwitch secureIdent = new ToggleSwitch();
-    private final ToggleSwitch credits = new ToggleSwitch();
     private final ToggleSwitch upnp = new ToggleSwitch();
     private PortTestPane portTest;
     private final TextField deadRetries = new TextField();
@@ -635,7 +633,8 @@ public final class SettingsScreen implements Screen {
                                 this.upnp::isSelected,
                                 this.upnp::setSelected,
                                 this::yesNo),
-                        new SettingRow(this.gui, this.gui.t("nj.network.testPorts"), this.portTest.node()).wide()),
+                        // The test's button names it.
+                        new SettingRow(this.gui, "", this.portTest.node()).wide()),
                 section(
                         "IDS_NETWORK",
                         toggle(
@@ -772,7 +771,7 @@ public final class SettingsScreen implements Screen {
                         this::yesNo)));
     }
 
-    // The proxy is one preference: each of its rows sets all of it.
+    // The proxy is one preference: each of its rows sets all of it, and is marked and reset by what it shows.
     private List<SettingsPages.Section> proxy() {
         Supplier<ProxySettings> read = () -> new ProxySettings(
                 this.proxyType.getValue(),
@@ -789,38 +788,55 @@ public final class SettingsScreen implements Screen {
         };
         HBox where = new HBox(8, this.proxyHost, this.proxyPort);
         HBox who = new HBox(8, this.proxyUser, this.proxyPassword);
-        SettingRow type = held(
-                "proxy",
+        SettingRow type = proxyRow(
                 this.gui.t("nj.proxy.type"),
                 this.proxyType,
+                read,
+                show,
+                new Part<>(ProxySettings::type, p -> this.proxyType.setValue(p.type())),
+                p -> this.gui.t("nj.proxy." + key(p.type())));
+        SettingRow host = proxyRow(
+                        this.gui.t("nj.proxy.host"),
+                        where,
+                        read,
+                        show,
+                        new Part<>(p -> List.of(p.host(), p.port()), p -> {
+                            this.proxyHost.setText(p.host());
+                            this.proxyPort.setText(String.valueOf(p.port()));
+                        }),
+                        p -> "")
+                .checkedBy(this.proxyHostInput, this.proxyPortInput);
+        SettingRow user = proxyRow(
+                        this.gui.t("nj.proxy.user"),
+                        who,
+                        read,
+                        show,
+                        new Part<>(p -> List.of(p.user(), p.password()), p -> {
+                            this.proxyUser.setText(p.user());
+                            this.proxyPassword.setText(p.password());
+                        }),
+                        p -> "")
+                .checkedBy(this.proxyUserInput);
+        return List.of(section("", type, host, user));
+    }
+
+    private SettingRow proxyRow(
+            String title,
+            Node control,
+            Supplier<ProxySettings> read,
+            Consumer<ProxySettings> show,
+            Part<ProxySettings> part,
+            Function<ProxySettings, String> name) {
+        return option(
+                Optional.of("proxy"),
+                title,
+                control,
                 Preferences::proxy,
                 Preferences.Builder::proxy,
                 read,
                 show,
-                p -> this.gui.t("nj.proxy." + key(p.type())));
-        SettingRow host = held(
-                        "proxy",
-                        this.gui.t("nj.proxy.host"),
-                        where,
-                        Preferences::proxy,
-                        Preferences.Builder::proxy,
-                        read,
-                        show,
-                        p -> "")
-                .checkedBy(this.proxyHostInput)
-                .defaultIs(() -> false, () -> {}, () -> "");
-        SettingRow user = held(
-                        "proxy",
-                        this.gui.t("nj.proxy.user"),
-                        who,
-                        Preferences::proxy,
-                        Preferences.Builder::proxy,
-                        read,
-                        show,
-                        p -> "")
-                .checkedBy(this.proxyUserInput)
-                .defaultIs(() -> false, () -> {}, () -> "");
-        return List.of(section("", type, host, user));
+                name,
+                part);
     }
 
     private List<SettingsPages.Section> folders() {
@@ -1028,36 +1044,108 @@ public final class SettingsScreen implements Screen {
         FlowPane events = new FlowPane(16, 8);
         events.getChildren().addAll(this.notifyOn.values());
         Button test = Fx.button(this.gui.t("IDS_TEST"), Icons.SEND, this::testNotifications);
+        NotificationRows rows = new NotificationRows(read, show);
         return List.of(
                 section(
                         "IDS_PW_EMAILNOTIFICATIONS",
-                        notify(switchTitle(this.notifyEmail, "IDS_PW_ENABLEEMAIL"), this.notifyEmail, read, show),
-                        notify(this.gui.t("IDS_SMTPSERVER"), server, read, show)
+                        rows.row(
+                                switchTitle(this.notifyEmail, "IDS_PW_ENABLEEMAIL"),
+                                this.notifyEmail,
+                                new Part<>(Notifications::email, n -> this.notifyEmail.setSelected(n.email())),
+                                n -> yesNo(n.email())),
+                        rows.row(
+                                        this.gui.t("IDS_SMTPSERVER"),
+                                        server,
+                                        new Part<>(n -> List.of(n.smtpHost(), n.smtpPort()), n -> {
+                                            this.smtpHost.setText(n.smtpHost());
+                                            this.smtpPort.setText(String.valueOf(n.smtpPort()));
+                                        }),
+                                        n -> "")
                                 .checkedBy(this.smtpHostInput, this.smtpPortInput),
-                        notify(this.gui.t("nj.notify.security"), this.smtpSecurity, read, show),
-                        notify(this.gui.t("nj.proxy.user"), login, read, show).checkedBy(this.smtpUserInput),
-                        notify(this.gui.t("nj.notify.from"), this.mailFrom, read, show)
+                        rows.row(
+                                this.gui.t("nj.notify.security"),
+                                this.smtpSecurity,
+                                new Part<>(Notifications::security, n -> this.smtpSecurity.setValue(n.security())),
+                                n -> securityName(n.security())),
+                        rows.row(
+                                        this.gui.t("nj.proxy.user"),
+                                        login,
+                                        new Part<>(n -> List.of(n.smtpUser(), n.smtpPassword()), n -> {
+                                            this.smtpUser.setText(n.smtpUser());
+                                            this.smtpPassword.setText(n.smtpPassword());
+                                        }),
+                                        n -> "")
+                                .checkedBy(this.smtpUserInput),
+                        rows.row(
+                                        this.gui.t("nj.notify.from"),
+                                        this.mailFrom,
+                                        new Part<>(Notifications::mailFrom, n -> this.mailFrom.setText(n.mailFrom())),
+                                        n -> "")
                                 .checkedBy(this.mailFromInput),
-                        notify(this.gui.t("nj.notify.to"), this.mailTo, read, show)
+                        rows.row(
+                                        this.gui.t("nj.notify.to"),
+                                        this.mailTo,
+                                        new Part<>(Notifications::mailTo, n -> this.mailTo.setText(n.mailTo())),
+                                        n -> "")
                                 .checkedBy(this.mailToInput)
                                 .wide()),
                 section(
                         "nj.notify.hook",
-                        notify(switchTitle(this.notifyWebhook, "nj.notify.webhook"), this.notifyWebhook, read, show),
-                        notify(this.gui.t("nj.notify.webhookUrl"), this.webhookUrl, read, show)
+                        rows.row(
+                                switchTitle(this.notifyWebhook, "nj.notify.webhook"),
+                                this.notifyWebhook,
+                                new Part<>(Notifications::webhook, n -> this.notifyWebhook.setSelected(n.webhook())),
+                                n -> yesNo(n.webhook())),
+                        rows.row(
+                                        this.gui.t("nj.notify.webhookUrl"),
+                                        this.webhookUrl,
+                                        new Part<>(
+                                                Notifications::webhookUrl,
+                                                n -> this.webhookUrl.setText(n.webhookUrl())),
+                                        n -> "")
                                 .checkedBy(this.webhookUrlInput)
                                 .wide(),
-                        notify(this.gui.t("nj.notify.webhookBody"), this.webhookBody, read, show)),
+                        rows.row(
+                                this.gui.t("nj.notify.webhookBody"),
+                                this.webhookBody,
+                                new Part<>(Notifications::webhookBody, n -> this.webhookBody.setValue(n.webhookBody())),
+                                n -> bodyName(n.webhookBody()))),
                 section(
                         "",
-                        notify(this.gui.t("nj.notify.events"), events, read, show)
+                        rows.row(
+                                        this.gui.t("nj.notify.events"),
+                                        events,
+                                        new Part<>(
+                                                Notifications::events,
+                                                n -> this.notifyOn.forEach(
+                                                        (event, box) -> box.setSelected(n.tells(event)))),
+                                        n -> "")
                                 .wide(),
                         new SettingRow(this.gui, "", test)));
     }
 
-    private SettingRow notify(String title, Node control, Supplier<Notifications> read, Consumer<Notifications> show) {
-        return engine(
-                title, control, Preferences::notifications, Preferences.Builder::notifications, read, show, n -> "");
+    // The rows of the notifications, which read and show all of them.
+    private final class NotificationRows {
+        private final Supplier<Notifications> read;
+        private final Consumer<Notifications> show;
+
+        NotificationRows(Supplier<Notifications> read, Consumer<Notifications> show) {
+            this.read = read;
+            this.show = show;
+        }
+
+        SettingRow row(String title, Node control, Part<Notifications> part, Function<Notifications, String> name) {
+            return option(
+                    Optional.empty(),
+                    text(title),
+                    control,
+                    Preferences::notifications,
+                    Preferences.Builder::notifications,
+                    this.read,
+                    this.show,
+                    name,
+                    part);
+        }
     }
 
     private String securityName(Notifications.SmtpSecurity security) {
@@ -1244,33 +1332,21 @@ public final class SettingsScreen implements Screen {
                 new SettingRow(this.gui, "", tokens)));
     }
 
+    // Secure identification and the credit system are always on: their keys are kept, but nothing reads them.
     private List<SettingsPages.Section> advanced() {
-        return List.of(
-                section(
-                        "IDS_SECURITY",
-                        toggle(
-                                "nj.settings.secureIdent",
-                                this.secureIdent,
-                                Preferences::secureIdent,
-                                Preferences.Builder::secureIdent),
-                        toggle(
-                                "nj.settings.credits",
-                                this.credits,
-                                Preferences::creditSystem,
-                                Preferences.Builder::creditSystem)),
-                section(
-                        "IDS_PW_MISC",
-                        toggle(
-                                "IDS_STORESEARCHES",
-                                this.storeSearches,
-                                Preferences::storeSearches,
-                                Preferences.Builder::storeSearches),
-                        number(
-                                "nj.settings.backups",
-                                this.backups,
-                                this.backupsInput,
-                                Preferences::backupCopies,
-                                Preferences.Builder::backupCopies)));
+        return List.of(section(
+                "IDS_PW_MISC",
+                toggle(
+                        "IDS_STORESEARCHES",
+                        this.storeSearches,
+                        Preferences::storeSearches,
+                        Preferences.Builder::storeSearches),
+                number(
+                        "nj.settings.backups",
+                        this.backups,
+                        this.backupsInput,
+                        Preferences::backupCopies,
+                        Preferences.Builder::backupCopies)));
     }
 
     // ------------------------------------------------------------------ the kinds of option
@@ -1309,6 +1385,20 @@ public final class SettingsScreen implements Screen {
             Supplier<T> read,
             Consumer<T> show,
             Function<T, String> name) {
+        return option(key, title, control, get, set, read, show, name, new Part<>(Function.identity(), show));
+    }
+
+    // A row that shows a part of what it sets is marked and reset by that part alone.
+    private <T> SettingRow option(
+            Optional<String> key,
+            String title,
+            Node control,
+            Function<Preferences, T> get,
+            BiConsumer<Preferences.Builder, T> set,
+            Supplier<T> read,
+            Consumer<T> show,
+            Function<T, String> name,
+            Part<T> part) {
         SettingRow row = new SettingRow(this.gui, title, control);
         Runnable commit = () -> {
             if (this.loading) {
@@ -1336,13 +1426,17 @@ public final class SettingsScreen implements Screen {
         this.commits.add(commit);
         this.shows.add(new Shown(row, key, p -> show.accept(get.apply(p))));
         return row.defaultIs(
-                () -> !Objects.equals(get.apply(this.loaded), get.apply(DEFAULTS)),
+                () -> !Objects.equals(
+                        part.of().apply(get.apply(this.loaded)), part.of().apply(get.apply(DEFAULTS))),
                 () -> {
-                    quietly(() -> show.accept(get.apply(DEFAULTS)));
+                    quietly(() -> part.show().accept(get.apply(DEFAULTS)));
                     commit.run();
                 },
                 () -> name.apply(get.apply(DEFAULTS)));
     }
+
+    /** What a row shows of the value it sets, and how it shows that part of a value. */
+    private record Part<T>(Function<T, ?> of, Consumer<T> show) {}
 
     private SettingRow toggle(
             String title,

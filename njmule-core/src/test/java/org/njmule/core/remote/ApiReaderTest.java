@@ -18,18 +18,23 @@ package org.njmule.core.remote;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.njmule.core.api.EngineEvent;
+import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.PartMap;
+import org.njmule.core.api.PortTest;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 class ApiReaderTest {
 
@@ -114,6 +119,20 @@ class ApiReaderTest {
         thenTheEventIs(sample);
     }
 
+    @Test
+    void shouldTakeTheRouterAsNeverAskedInTheStatusOfAnOlderNjMule() {
+        whenTheStatusIsReadWithout("forwarding", "router");
+
+        thenTheRouterIsNeverAsked();
+    }
+
+    private void whenTheStatusIsReadWithout(String... names) {
+        ObjectNode status =
+                (ObjectNode) tree(ApiJson.write(g -> ApiJson.status(g, ApiSamples.status(true), empty(), empty())));
+        status.remove(List.of(names));
+        this.read = ApiReader.status(status);
+    }
+
     private void whenReadBack(Trip trip) {
         this.read = trip.back().get();
     }
@@ -125,6 +144,12 @@ class ApiReaderTest {
 
     private void thenItIs(Object expected) {
         assertThat(this.read).isEqualTo(expected);
+    }
+
+    private void thenTheRouterIsNeverAsked() {
+        EngineStatus status = (EngineStatus) this.read;
+        assertThat(status.forwarding()).isEqualTo(PortTest.Forwarding.OFF);
+        assertThat(status.router()).isEmpty();
     }
 
     private void thenTheEventIs(EngineEvent expected) {
