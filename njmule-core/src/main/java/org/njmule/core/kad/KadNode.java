@@ -38,6 +38,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.IntPredicate;
+import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 import org.njmule.core.api.FileComment;
@@ -226,22 +227,35 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
      *
      * @param trusted addresses taken although they are not public (tests, LANs)
      * @param blocked addresses the IP filter refuses, never taken as contacts
+     * @param options how others reach us (obfuscation, traversal through the routers), read each time it is told
      * @param udpPort the UDP port we listen on, 0 when unknown: the UDP firewall test needs it
      * @param ipv6 our public IPv6 address, read at each publish of a source
      */
     public record Settings(
             int tcpPort,
             Hash16 userHash,
-            int connectOptions,
+            IntSupplier options,
             IntPredicate trusted,
             IntPredicate blocked,
             int udpPort,
             Supplier<Optional<Inet6Address>> ipv6) {
         public Settings {
             Objects.requireNonNull(userHash, "userHash");
+            Objects.requireNonNull(options, "options");
             Objects.requireNonNull(trusted, "trusted");
             Objects.requireNonNull(blocked, "blocked");
             Objects.requireNonNull(ipv6, "ipv6");
+        }
+
+        public Settings(
+                int tcpPort,
+                Hash16 userHash,
+                int connectOptions,
+                IntPredicate trusted,
+                IntPredicate blocked,
+                int udpPort,
+                Supplier<Optional<Inet6Address>> ipv6) {
+            this(tcpPort, userHash, () -> connectOptions, trusted, blocked, udpPort, ipv6);
         }
 
         public Settings(
@@ -256,6 +270,11 @@ public final class KadNode implements KadPublisher.Node, KadNotes.Finder, AutoCl
 
         public Settings(int tcpPort, Hash16 userHash, int connectOptions, IntPredicate trusted, IntPredicate blocked) {
             this(tcpPort, userHash, connectOptions, trusted, blocked, 0);
+        }
+
+        /** The connect options as they are now. */
+        public int connectOptions() {
+            return this.options.getAsInt();
         }
     }
 
