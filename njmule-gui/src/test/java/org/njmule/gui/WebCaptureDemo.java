@@ -62,13 +62,15 @@ final class WebCaptureDemo {
                         + "limits.uploadKiBps=250\nlimits.downloadKiBps=0\nnet.upnp=false\nnotify.sound=false\n");
         try (NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs))) {
             engine.updateSchedule(CaptureDemo.schedule()).get(10, TimeUnit.SECONDS);
-            Map<String, Engines.Command> commands = new HashMap<>(CaptureDemo.commands(root));
+            Map<String, Engines.Command> commands = new HashMap<>(CaptureDemo.commands(root, engine::preferences));
             // Rates that move, so that the graphs drawn from a second's samples are not flat.
             commands.put("status", a -> {
                 double t = System.currentTimeMillis() / 1000.0;
                 double wave = Math.sin(t / 37.0) * 0.35 + Math.sin(t / 9.0) * 0.1 + 0.6;
                 return CompletableFuture.completedFuture(CaptureDemo.status(
-                        (long) (Math.max(0, wave) * 1_400_000), (long) (90_000 + Math.cos(t / 21.0) * 25_000)));
+                        (long) (Math.max(0, wave) * 1_400_000),
+                        (long) (90_000 + Math.cos(t / 21.0) * 25_000),
+                        engine.preferences()));
             });
             DemoEvents events = new DemoEvents(engine.events());
             // A search finds the demo's results a moment after it starts.

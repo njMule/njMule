@@ -155,8 +155,9 @@ class RemoteFolderActionsTest {
         this.test.show(owner);
         FxTesting.onFx(
                 () -> new CategoriesDialog(this.test.gui, owner.getScene().getWindow()).show());
+        Window first = FxTesting.onFx(() -> owner.getScene().getWindow());
         this.view = FxTesting.onFx(() -> Window.getWindows().stream()
-                .filter(w -> w.isShowing() && w != owner.getScene().getWindow())
+                .filter(w -> w.isShowing() && !w.equals(first))
                 .findFirst()
                 .orElseThrow()
                 .getScene()

@@ -257,7 +257,8 @@ class CaptureTour {
         // The log is the demo's: the real engine's lines may name this computer's addresses.
         NjMuleEngine shown = demo
                 ? Engines.withEvents(
-                        Engines.overriding(this.engine, CaptureDemo.commands(root)), withoutLog(this.engine.events()))
+                        Engines.overriding(this.engine, CaptureDemo.commands(root, this.engine::preferences)),
+                        withoutLog(this.engine.events()))
                 : this.engine;
         this.model = new EngineModel(shown, Platform::runLater);
         I18n i18n = I18n.of(language);
