@@ -22,6 +22,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import javafx.beans.binding.Bindings;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Control;
@@ -43,6 +44,10 @@ import org.njmule.gui.ui.Input;
  * to it, and what is wrong with the value typed.
  */
 final class SettingRow {
+
+    // The narrowest a name wraps to: JavaFX cannot lay out text wrapped narrower than a character, as a row is before
+    // its first layout.
+    private static final double NARROWEST_NAME = 120;
 
     private final Gui gui;
     private final String title;
@@ -176,7 +181,7 @@ final class SettingRow {
         head.setAlignment(Pos.CENTER_LEFT);
         head.setMinWidth(0);
         // A flow pane gives its children the width they ask for: a long name would run under the control.
-        this.name.maxWidthProperty().bind(head.widthProperty());
+        this.name.maxWidthProperty().bind(Bindings.max(head.widthProperty(), NARROWEST_NAME));
         VBox words = new VBox(2, head);
         words.setMinWidth(0);
         if (this.title.isEmpty()) {
