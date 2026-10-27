@@ -148,8 +148,8 @@ njMule can also run as the Windows service "njMule", headless with its web inter
 Windows before anyone logs in. `njmule --service=install` sets it up (Windows asks for the
 administrator's rights, then njMule for the web interface password; `--webui-lan` and the other web
 interface options apply). The service runs as the virtual account `NT SERVICE\njMule`, keeps its
-profile in `%ProgramData%\njMule`, and a firewall rule lets other clients in on private and domain
-networks. `--service=start`, `stop`, `status` and `uninstall` do the rest; uninstalling keeps the
+profile in `%ProgramData%\njMule`, which only the service and the administrators may read, and a
+firewall rule lets other clients in on private and domain networks. `--service=start`, `stop`, `status` and `uninstall` do the rest; uninstalling keeps the
 profile. A per-machine MSI installs the service at once with `NJMULE_SERVICE=1
 NJMULE_WEBUI_PASSWORD_FILE=<file>`, a file holding the password; it stops the service while
 upgrading and removes it with njMule.
@@ -465,8 +465,9 @@ njmule --remote help
 
 The desktop app shows and drives another njMule the same way, such as one on a NAS or a Windows
 service: *⋯ → Connect to a remote njMule* asks for the address of its web interface and the token,
-remembers them if asked (in a file of the profile that only its owner reads) and opens the window
-of that njMule beside the own one. `njmule-gui --remote-url <address>` opens it directly, with the
+remembers them if asked (in a file of the profile, which only its owner may read on Linux and
+macOS and which Windows keeps in the user's own folder) and opens the window of that njMule beside
+the own one. `njmule-gui --remote-url <address>` opens it directly, with the
 token remembered or in `NJMULE_API_TOKEN`. What only the own computer can do (adding a server.met
 or nodes.dat of this computer, previewing a download) ends with a message instead.
 
