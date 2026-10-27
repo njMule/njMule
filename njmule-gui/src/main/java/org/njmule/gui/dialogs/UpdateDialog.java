@@ -86,7 +86,7 @@ public final class UpdateDialog {
         this.received.getStyleClass().add(Styles.TEXT_MUTED);
         this.root = DialogFrame.frame(
                 DialogFrame.header(gui, gui.t("nj.update.title"), this.stage::close), this.body, new Region());
-        this.root.setPrefWidth(WIDTH);
+        this.body.setPrefWidth(WIDTH);
         Scene scene = new Scene(this.root);
         gui.attach(scene);
         this.stage.setScene(scene);
@@ -158,11 +158,10 @@ public final class UpdateDialog {
         close.setCancelButton(true);
         buttons.add(DialogFrame.role(close, ButtonBar.ButtonData.CANCEL_CLOSE));
         // The band says what the check sends, above the buttons that the state of the update offers: beside them
-        // the words would be left a column wide. The window is as wide as the buttons need.
+        // the words would be left a column wide. Without a width of its own the note leaves it to the body and
+        // the buttons, so the window is as wide as they need.
         note.setPrefWidth(0);
-        VBox footer = DialogFrame.footerBelow(note, buttons.toArray(Button[]::new));
-        this.root.getChildren().set(2, footer);
-        this.root.setPrefWidth(Math.max(WIDTH, DialogFrame.barWidth(footer)));
+        this.root.getChildren().set(2, DialogFrame.footerBelow(note, buttons.toArray(Button[]::new)));
         this.stage.sizeToScene();
     }
 

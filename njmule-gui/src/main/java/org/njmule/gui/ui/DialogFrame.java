@@ -34,8 +34,6 @@ import javafx.scene.layout.VBox;
 public final class DialogFrame {
 
     private static final double BUTTON_MIN_WIDTH = 64;
-    // The left and right padding of .dialog-footer in njmule.css.
-    private static final double BAND_PADDING = 36;
 
     private DialogFrame() {}
 
@@ -73,11 +71,6 @@ public final class DialogFrame {
         VBox footer = new VBox(8, note, bar(buttons));
         footer.getStyleClass().add("dialog-footer");
         return footer;
-    }
-
-    /** The width the buttons need, beside the padding of the band. */
-    public static double barWidth(VBox footer) {
-        return footer.getChildren().get(1).prefWidth(-1) + BAND_PADDING;
     }
 
     private static ButtonBar bar(Button... buttons) {
