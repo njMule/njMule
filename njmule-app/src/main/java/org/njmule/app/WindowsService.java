@@ -199,7 +199,7 @@ final class WindowsService {
             args.addAll(List.of(
                     "--webui-password-file",
                     setup.passwordFile().get().toAbsolutePath().toString()));
-        } else {
+        } else if (!setup.keepPassword()) {
             args.add("--webui-password");
         }
         return args;
@@ -207,6 +207,8 @@ final class WindowsService {
 
     private int install(LaunchOptions cli, Path program, Path folder) throws IOException, LaunchOptions.UsageException {
         Path host = folder.resolve(HOST);
+        // A service that runs reads its settings again only when it starts.
+        boolean running = this.system.run(List.of(host.toString(), "status")) == RUNNING;
         Path root = profile();
         Path config = AppDirectories.resolve(Optional.of(root)).config();
         Files.createDirectories(config);
@@ -235,6 +237,9 @@ final class WindowsService {
                         "enable=yes",
                         "profile=private,domain")),
                 "let other clients reach it through the firewall");
+        if (running) {
+            check(this.system.run(List.of(host.toString(), "stop")), "stop the service");
+        }
         check(this.system.run(List.of(host.toString(), "start")), "start the service");
         WebUiSettings settings = WebUiSettings.load(config);
         say("njMule runs as the Windows service \"njMule\", started with Windows, on the profile in " + root + ".");
@@ -244,18 +249,22 @@ final class WindowsService {
         return Main.EXIT_OK;
     }
 
+    // The options alone change the service's settings and keep its password, which is asked only when there is none.
     private void setPassword(LaunchOptions cli, Path config) throws IOException, LaunchOptions.UsageException {
         if (WebUiPassword.setFromFile(cli, config)) {
             return;
         }
-        if (cli.webUi().isEmpty() && !WebUiSettings.load(config).passwordHash().isEmpty()) {
+        Optional<LaunchOptions.WebUiSetup> setup = cli.webUi();
+        boolean keep = setup.map(LaunchOptions.WebUiSetup::keepPassword).orElse(true);
+        if (keep && !WebUiSettings.load(config).passwordHash().isEmpty()) {
+            if (setup.isPresent()) {
+                WebUiPassword.update(config, setup.get(), null);
+            }
             return;
         }
         say("The web interface of the service needs a password.");
         Main.setTypedWebUiPassword(
-                cli.webUi()
-                        .orElse(new LaunchOptions.WebUiSetup(
-                                Optional.empty(), false, false, Optional.empty(), List.of())),
+                setup.orElse(new LaunchOptions.WebUiSetup(Optional.empty(), false, false, Optional.empty(), List.of())),
                 config,
                 this.passwords);
     }
