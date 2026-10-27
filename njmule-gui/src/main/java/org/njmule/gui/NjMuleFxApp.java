@@ -17,6 +17,7 @@
 package org.njmule.gui;
 
 import java.io.IOException;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -43,10 +44,16 @@ public final class NjMuleFxApp extends Application {
                 + ". Use its web interface, or stop it with njmule --exit to open the desktop app.");
     }
 
+    /** What the window tells instead of opening, when a njMule without a window took this start's links. */
+    static Optional<String> headless() {
+        return Optional.ofNullable(HEADLESS.get());
+    }
+
     @Override
     public void init() throws Exception {
-        if (HEADLESS.get() != null) {
-            this.failure = new IOException(HEADLESS.get());
+        Optional<String> headless = headless();
+        if (headless.isPresent()) {
+            this.failure = new IOException(headless.get());
             return;
         }
         try {
@@ -56,6 +63,11 @@ public final class NjMuleFxApp extends Application {
             // Shown once the toolkit runs, for instance when njMule is already open.
             this.failure = e;
         }
+    }
+
+    /** Why the window only tells instead of opening, if it does. */
+    IOException failure() {
+        return this.failure;
     }
 
     @Override
