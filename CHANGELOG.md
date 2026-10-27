@@ -10,6 +10,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-27
+
+0.1.1 was tagged but its packages were never released, only its Docker image: the Windows service
+did not stop cleanly when uninstalled (see Fixed). This version carries the changes of 0.1.1 too.
+
 ### Added
 
 - The notes of each release link VirusTotal's report of every package.
