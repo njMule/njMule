@@ -543,7 +543,11 @@ class PortForwardingTest {
         assertThat(this.gateway.actions("AddPinhole")).hasSize(count);
     }
 
-    private void thenThePinholeOpenedIs(int index, String... parts) {
+    // The pinholes are opened off the test's thread: the one asked for may come a moment later.
+    private void thenThePinholeOpenedIs(int index, String... parts) throws InterruptedException {
+        assertThat(await(() -> this.gateway.actions("AddPinhole").size() > index))
+                .as("pinhole %d", index)
+                .isTrue();
         assertThat(this.gateway.actions("AddPinhole").get(index).body()).contains(parts);
     }
 
