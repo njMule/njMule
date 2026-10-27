@@ -110,6 +110,7 @@ public final class RemoteApi implements AutoCloseable {
     private static final String ADDRESS_KEY = "address";
     private static final String PRIORITY_KEY = "priority";
     private static final String CATEGORY_KEY = "category";
+    private static final String PAUSED_KEY = "paused";
     private static final String URL_KEY = "url";
     private static final long ENGINE_WAIT_SECONDS = 10;
     // The passwords the preferences hold, which never leave.
@@ -747,9 +748,13 @@ public final class RemoteApi implements AutoCloseable {
         }
         Optional<Integer> category =
                 c.body().has(CATEGORY_KEY) ? Optional.of(number(c.body(), CATEGORY_KEY)) : Optional.empty();
+        Optional<Boolean> paused =
+                c.body().has(PAUSED_KEY) ? Optional.of(flag(c.body(), PAUSED_KEY)) : Optional.empty();
         List<DownloadInfo> added = new ArrayList<>();
         for (Ed2kLink.FileLink link : links) {
-            DownloadInfo d = await(this.engine.addDownload(link));
+            DownloadInfo d = paused.isPresent()
+                    ? await(this.engine.addDownload(link, OptionalInt.empty(), paused.get()))
+                    : await(this.engine.addDownload(link));
             if (category.isPresent()) {
                 await(this.engine.setDownloadCategory(d.hash(), category.get()));
             }

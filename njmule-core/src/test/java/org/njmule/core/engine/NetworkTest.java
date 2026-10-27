@@ -839,6 +839,17 @@ class NetworkTest {
     }
 
     @Test
+    void shouldAddADownloadRunningWhenAskedSoAlthoughDownloadsAreAddedPaused() throws Exception {
+        givenDownloadsAreAddedPaused();
+        givenANetwork();
+        givenTheCategories(FILMS, MUSIC);
+
+        whenTheDownloadIsAddedRunningInCategory(CATEGORISED_FILM, 2);
+
+        thenTheDownloadAddedIs(2, DownloadInfo.Status.DOWNLOADING);
+    }
+
+    @Test
     void shouldLeaveDownloadsOfOtherCategoriesAndRunningOnesAloneByASchedulerRule() throws Exception {
         givenANetwork();
         givenTheCategories(FILMS, MUSIC);
@@ -1336,6 +1347,10 @@ class NetworkTest {
             this.network.setCategories(List.of(categories));
             return null;
         });
+    }
+
+    private void whenTheDownloadIsAddedRunningInCategory(Ed2kLink.FileLink link, int category) throws Exception {
+        this.reply = onLoop(() -> this.network.addDownload(link, OptionalInt.of(category), false));
     }
 
     private void whenTheDownloadIsAddedPausedInCategory(Ed2kLink.FileLink link, int category) throws Exception {

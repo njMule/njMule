@@ -172,14 +172,14 @@ public interface NjMuleEngine extends AutoCloseable {
     CompletableFuture<PeerInfo> hello(ServerAddress peer);
 
     /**
-     * Starts downloading the file of {@code link} into the temp directory; a file already being downloaded gets the
-     * link's sources.
+     * Starts downloading the file of {@code link} into the temp directory, paused when the preferences add downloads
+     * paused; a file already being downloaded gets the link's sources.
      */
     CompletableFuture<DownloadInfo> addDownload(Ed2kLink.FileLink link);
 
     /**
      * Adds a download in {@code category}, or in the one its name falls in when empty; {@code paused}, it asks no
-     * source until resumed. A download of the file already there keeps its own.
+     * source until resumed, whatever the preferences say. A download of the file already there keeps its own.
      */
     CompletableFuture<DownloadInfo> addDownload(Ed2kLink.FileLink link, OptionalInt category, boolean paused);
 

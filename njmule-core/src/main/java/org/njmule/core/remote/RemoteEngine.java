@@ -387,17 +387,22 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<DownloadInfo> addDownload(Ed2kLink.FileLink link) {
-        return addDownload(link, OptionalInt.empty(), false);
+        return add(link, OptionalInt.empty(), Optional.empty());
     }
 
     @Override
     public CompletableFuture<DownloadInfo> addDownload(Ed2kLink.FileLink link, OptionalInt category, boolean paused) {
+        return add(link, category, Optional.of(paused));
+    }
+
+    // Without paused, the other njMule's preferences decide.
+    private CompletableFuture<DownloadInfo> add(
+            Ed2kLink.FileLink link, OptionalInt category, Optional<Boolean> paused) {
         ObjectNode body = MAPPER.createObjectNode();
         body.putArray("links").add(link.toUri());
         category.ifPresent(c -> body.put("category", c));
-        CompletableFuture<DownloadInfo> added =
-                json("POST", "downloads", body).thenApply(n -> ApiReader.download(n.path(0), PartMap.EMPTY));
-        return paused ? added.thenCompose(d -> pauseDownload(d.hash()).thenApply(p -> d)) : added;
+        paused.ifPresent(p -> body.put("paused", p));
+        return json("POST", "downloads", body).thenApply(n -> ApiReader.download(n.path(0), PartMap.EMPTY));
     }
 
     @Override
