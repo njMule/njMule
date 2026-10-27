@@ -1164,14 +1164,15 @@ final class Network {
         this.searches.stop(id);
     }
 
+    // Paused as the preferences say; a caller that asks, as the dialog that adds links, says it itself.
     DownloadInfo addDownload(Ed2kLink.FileLink link) throws IOException {
-        return addDownload(link, OptionalInt.empty(), false);
+        return addDownload(link, OptionalInt.empty(), this.preferences.get().addDownloadsPaused());
     }
 
     DownloadInfo addDownload(Ed2kLink.FileLink link, OptionalInt category, boolean paused) throws IOException {
         boolean fresh = this.downloads.download(link.hash()).isEmpty();
         DownloadInfo info = this.downloads.add(link, category);
-        if (fresh && (paused || this.preferences.get().addDownloadsPaused())) {
+        if (fresh && paused) {
             this.downloads.pause(info.hash());
             info = this.downloads.download(info.hash()).orElse(info);
         }

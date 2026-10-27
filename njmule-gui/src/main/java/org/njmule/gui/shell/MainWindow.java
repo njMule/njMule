@@ -494,6 +494,7 @@ public final class MainWindow {
         about.setId("about");
         MenuItem incoming = Fx.menuItem(this.gui.t("IDS_OPENINC"), Icons.FOLDER_OPEN, this::openIncoming);
         incoming.setId("incoming");
+        incoming.setDisable(!this.gui.onThisComputer());
         MenuItem options = Fx.menuItem(this.gui.t("IDS_EM_PREFS"), Icons.OPTIONS, () -> show("settings"));
         options.setId("options");
         MenuItem theme = Fx.menuItem(this.gui.t("nj.top.theme"), Icons.THEME, this::toggleTheme);
@@ -902,7 +903,7 @@ public final class MainWindow {
     // Opens the folder of finished downloads in the system's file manager.
     private void openIncoming() {
         Preferences preferences = this.gui.model().preferencesProperty().get();
-        if (preferences == null) {
+        if (preferences == null || !this.gui.opensFoldersHere()) {
             return;
         }
         try {

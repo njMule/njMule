@@ -65,6 +65,7 @@ class LinkHandoffTest {
     private FileChannel lockChannel;
     private FileLock lock;
     private boolean delivered;
+    private LinkHandoff.Taker taker;
     private boolean gone;
     private boolean stillInterrupted;
     private String answer;
@@ -102,6 +103,25 @@ class LinkHandoffTest {
 
         thenTheLinksWereDelivered();
         thenTheRunningInstanceReceives();
+    }
+
+    @Test
+    void shouldTellThatTheRunningOneHasAWindowToShow() throws Exception {
+        givenARunningInstance();
+
+        whenALaterStartHandsOver(LINK);
+
+        thenTheTakerIs(LinkHandoff.Taker.WINDOW);
+    }
+
+    @Test
+    void shouldTellThatTheRunningOneHasNoWindow() throws Exception {
+        givenARunningHeadlessInstance();
+
+        whenALaterStartHandsOver(LINK);
+
+        thenTheTakerIs(LinkHandoff.Taker.HEADLESS);
+        thenTheRunningInstanceReceives(LINK);
     }
 
     @Test
@@ -351,6 +371,10 @@ class LinkHandoffTest {
         this.handoff = LinkHandoff.listen(this.dir, this.received::add);
     }
 
+    private void givenARunningHeadlessInstance() throws IOException {
+        this.handoff = LinkHandoff.listen(this.dir, true, this.received::add);
+    }
+
     private void givenARunningInstanceThatCannotFollowLinks() throws IOException {
         this.handoff = LinkHandoff.listen(this.dir, links -> {
             this.received.add(links);
@@ -429,6 +453,10 @@ class LinkHandoffTest {
                 catchThrowable(() -> this.handoff = LinkHandoff.listen(this.notADirectory, this.received::add));
     }
 
+    private void whenALaterStartHandsOver(String... links) {
+        this.taker = LinkHandoff.handOver(this.dir, List.of(links));
+    }
+
     private void whenALaterStartDelivers(String... links) {
         this.delivered = LinkHandoff.deliver(this.dir, List.of(links));
     }
@@ -458,6 +486,10 @@ class LinkHandoffTest {
         } finally {
             Thread.interrupted();
         }
+    }
+
+    private void thenTheTakerIs(LinkHandoff.Taker expected) {
+        assertThat(this.taker).isEqualTo(expected);
     }
 
     private void thenTheLinksWereDelivered() {

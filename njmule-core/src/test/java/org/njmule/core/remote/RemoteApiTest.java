@@ -168,6 +168,17 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldAddTheDownloadsRunningWhenAskedWhateverThePreferences() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineAddsDownloads();
+
+        whenCalled("POST", "/api/v1/downloads", "{\"links\":[\"" + LINK + "\"],\"paused\":false}");
+
+        thenTheStatusIs(201);
+        thenTheEngineWasAsked("addDownload talk.bin paused false");
+    }
+
+    @Test
     void shouldRefuseABodyThatIsNotALink() throws Exception {
         givenTheApiRuns();
 
@@ -937,7 +948,7 @@ class RemoteApiTest {
     private void givenTheEngineAddsDownloads() {
         this.fake.answer("addDownload", args -> {
             Ed2kLink.FileLink link = (Ed2kLink.FileLink) args[0];
-            this.calls.add("addDownload " + link.name());
+            this.calls.add("addDownload " + link.name() + (args.length == 3 ? " paused " + args[2] : ""));
             return CompletableFuture.completedFuture(download());
         });
     }

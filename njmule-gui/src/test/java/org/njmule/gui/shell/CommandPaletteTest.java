@@ -24,6 +24,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import org.njmule.gui.Engines;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.TestGui;
 
@@ -79,8 +80,26 @@ class CommandPaletteTest {
         thenTheFirstCommandIs("Download: film.mkv");
     }
 
+    @Test
+    void shouldTellThatTheIncomingFolderOfAnotherComputerIsThere() throws Exception {
+        givenTheWindowOnAnotherComputer();
+        givenTheShortcutPressed(KeyCode.K);
+        givenTyped("Open Incoming Folder");
+        givenTheFirstCommandIs("Open Incoming Folder");
+
+        whenEnterIsPressed();
+
+        thenTheUserIsTold("on its own computer");
+    }
+
     private void givenTheWindow() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
+        this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
+        this.test.show(this.window.root());
+    }
+
+    private void givenTheWindowOnAnotherComputer() throws Exception {
+        this.test = TestGui.start(this.dir.resolve("njmule"), Engines::elsewhere);
         this.window = FxTesting.onFx(() -> new MainWindow(this.test.gui));
         this.test.show(this.window.root());
     }
@@ -116,6 +135,10 @@ class CommandPaletteTest {
     private void thenTheFirstCommandIs(String text) throws Exception {
         assertThat(FxTesting.onFx(() -> this.window.palette().shown().getFirst().text()))
                 .isEqualTo(text);
+    }
+
+    private void thenTheUserIsTold(String part) {
+        assertThat(this.test.told).anyMatch(text -> text.contains(part));
     }
 
     private void thenTheScreenIs(String id) throws Exception {

@@ -296,6 +296,9 @@ public final class UpdateDialog {
     }
 
     private void reveal(Path file) {
+        if (!this.gui.opensFoldersHere()) {
+            return;
+        }
         try {
             Folders.reveal(file);
         } catch (IOException e) {

@@ -234,7 +234,7 @@ public final class SharedScreen implements Screen {
             int selected = Fx.selected(this.table).size();
             rename.setDisable(selected != 1);
             comment.setDisable(selected != 1);
-            folder.setDisable(selected != 1);
+            folder.setDisable(selected != 1 || !this.gui.onThisComputer());
             priority.setDisable(selected == 0);
             copy.setDisable(selected == 0);
             html.setDisable(selected == 0);
@@ -487,7 +487,7 @@ public final class SharedScreen implements Screen {
 
     private void openPlace() {
         Place place = chosen();
-        if (place.kind() != Kind.ALL) {
+        if (place.kind() != Kind.ALL && this.gui.opensFoldersHere()) {
             try {
                 Folders.open(place.path());
             } catch (IOException e) {
@@ -652,6 +652,9 @@ public final class SharedScreen implements Screen {
     }
 
     private void chooseDirectory() {
+        if (!this.gui.opensFoldersHere()) {
+            return;
+        }
         DirectoryChooser chooser = new DirectoryChooser();
         chooser.setTitle(this.gui.t("IDS_SHAREDIR"));
         var dir = chooser.showDialog(this.view.getScene().getWindow());
@@ -753,7 +756,7 @@ public final class SharedScreen implements Screen {
 
     void openFolder() {
         List<SharedFileInfo> selected = Fx.selected(this.table);
-        if (selected.size() == 1) {
+        if (selected.size() == 1 && this.gui.opensFoldersHere()) {
             try {
                 Folders.reveal(selected.getFirst().path());
             } catch (IOException e) {
