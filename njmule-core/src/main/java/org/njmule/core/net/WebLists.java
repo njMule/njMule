@@ -23,9 +23,7 @@ import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -45,18 +43,11 @@ import java.util.zip.ZipInputStream;
 import org.eclipse.jetty.client.CompletableResponseListener;
 import org.eclipse.jetty.client.ContentResponse;
 import org.eclipse.jetty.client.HttpClient;
-import org.eclipse.jetty.client.HttpProxy;
 import org.eclipse.jetty.client.InputStreamResponseListener;
 import org.eclipse.jetty.client.Request;
 import org.eclipse.jetty.client.Response;
-import org.eclipse.jetty.client.Socks5;
-import org.eclipse.jetty.client.Socks5Proxy;
-import org.eclipse.jetty.http.HttpField;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpVersion;
-import org.eclipse.jetty.util.thread.VirtualThreadPool;
-import org.njmule.core.api.NjMuleInfo;
-import org.njmule.core.config.ProxySettings;
 
 /**
  * Fetches a list (server.met, nodes.dat, an IP filter) from the web at the user's request, with Jetty's HTTP client:
@@ -71,13 +62,11 @@ public final class WebLists {
     public static final long MAX_SIZE = 50L * 1024 * 1024;
 
     private static final int MAX_REDIRECTS = 3;
-    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(90);
     // A download may take long on a slow line; it fails when nothing comes for a minute.
     private static final Duration DOWNLOAD_IDLE = Duration.ofSeconds(60);
     private static final Duration DOWNLOAD_TIMEOUT = Duration.ofHours(4);
     private static final int DOWNLOAD_BUFFER = 64 * 1024;
-    private static final String USER_AGENT = NjMuleInfo.NAME + "/" + NjMuleInfo.version();
     // What an archive holds the list as, by kind; any other file only when none of these is there.
     private static final Set<String> LIST_NAMES =
             Set.of("ipfilter.dat", "guarding.p2p", "guardian.p2p", "server.met", "nodes.dat");
@@ -130,14 +119,7 @@ public final class WebLists {
         if (Thread.currentThread().isInterrupted()) {
             throw new IOException("interrupted while fetching " + current.getHost());
         }
-        // A client for each fetch, as the proxy of the preferences may have changed since the last one.
-        HttpClient http = client(ProxyRoute.current(), TcpConnector.localAddress());
-        try {
-            http.start();
-        } catch (Exception e) {
-            stop(http);
-            throw new IOException("cannot start the HTTP client", e);
-        }
+        HttpClient http = HttpRoute.start();
         try {
             for (int hop = 0; ; hop++) {
                 check(current);
@@ -168,7 +150,7 @@ public final class WebLists {
                 return unpack(data);
             }
         } finally {
-            stop(http);
+            HttpRoute.stop(http);
         }
     }
 
@@ -186,13 +168,7 @@ public final class WebLists {
             throw new IllegalArgumentException("size " + size);
         }
         URI current = Objects.requireNonNull(uri, "uri");
-        HttpClient http = client(ProxyRoute.current(), TcpConnector.localAddress());
-        try {
-            http.start();
-        } catch (Exception e) {
-            stop(http);
-            throw new IOException("cannot start the HTTP client", e);
-        }
+        HttpClient http = HttpRoute.start();
         try {
             int hops = 0;
             boolean restarted = false;
@@ -244,7 +220,7 @@ public final class WebLists {
                 return;
             }
         } finally {
-            stop(http);
+            HttpRoute.stop(http);
         }
     }
 
@@ -263,7 +239,7 @@ public final class WebLists {
 
     private static Response headers(InputStreamResponseListener listener, URI uri) throws IOException {
         try {
-            return listener.get(CONNECT_TIMEOUT.plus(DOWNLOAD_IDLE).toMillis(), TimeUnit.MILLISECONDS);
+            return listener.get(HttpRoute.CONNECT_TIMEOUT.plus(DOWNLOAD_IDLE).toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("interrupted while downloading from " + uri.getHost());
@@ -319,42 +295,6 @@ public final class WebLists {
             throw new IOException(
                     "the download from " + uri.getHost() + " stopped at " + held + " of " + size + " bytes");
         }
-    }
-
-    private static void stop(HttpClient http) {
-        try {
-            http.stop();
-        } catch (Exception e) {
-            // The list came, or the failure that matters is already on its way.
-        }
-    }
-
-    // Redirects are ours to check; bodies come as sent, packed ones unpacked here within the size limit.
-    private static HttpClient client(ProxySettings proxy, InetAddress local) {
-        HttpClient http = new HttpClient();
-        if (local != null) {
-            http.setBindAddress(new InetSocketAddress(local, 0));
-        }
-        http.setExecutor(new VirtualThreadPool());
-        http.setFollowRedirects(false);
-        http.setConnectTimeout(CONNECT_TIMEOUT.toMillis());
-        http.setUserAgentField(new HttpField(HttpHeader.USER_AGENT, USER_AGENT));
-        http.getContentDecoderFactories().clear();
-        switch (proxy.type()) {
-            case NONE -> {
-                // Direct.
-            }
-            case HTTP -> http.getProxyConfiguration().addProxy(new HttpProxy(proxy.host(), proxy.port()));
-            case SOCKS -> {
-                Socks5Proxy socks = new Socks5Proxy(proxy.host(), proxy.port());
-                if (!proxy.user().isEmpty()) {
-                    socks.putAuthenticationFactory(new Socks5.UsernamePasswordAuthenticationFactory(
-                            proxy.user(), proxy.password(), StandardCharsets.UTF_8));
-                }
-                http.getProxyConfiguration().addProxy(socks);
-            }
-        }
-        return http;
     }
 
     private static ContentResponse answer(CompletableFuture<ContentResponse> answer, URI uri, Duration left)

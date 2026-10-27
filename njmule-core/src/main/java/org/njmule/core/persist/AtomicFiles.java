@@ -52,8 +52,9 @@ public final class AtomicFiles {
     private static final Logger logger = LoggerFactory.getLogger(AtomicFiles.class);
     private static final int MOVE_ATTEMPTS = 6;
     private static final long FIRST_RETRY_DELAY_MILLIS = 15;
+    private static final Set<PosixFilePermission> OWNER_READ_WRITE = PosixFilePermissions.fromString("rw-------");
     private static final FileAttribute<Set<PosixFilePermission>> OWNER_ONLY =
-            PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"));
+            PosixFilePermissions.asFileAttribute(OWNER_READ_WRITE);
 
     private AtomicFiles() {}
 
@@ -90,7 +91,7 @@ public final class AtomicFiles {
     /**
      * Replaces {@code target} atomically; on failure {@code target} is left unchanged.
      *
-     * @param secret readable by its owner only, where the file system has POSIX permissions
+     * @param secret the file and its backup readable by their owner only, where the file system has POSIX permissions
      */
     public static void write(Path target, Writer writer, boolean keepBackup, boolean secret) throws IOException {
         Objects.requireNonNull(writer, "writer");
@@ -101,7 +102,9 @@ public final class AtomicFiles {
         }
         Path tmp = tmpPath(absolute);
         FileAttribute<?>[] attributes = new FileAttribute<?>[0];
-        if (secret && tmp.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+        boolean ownerOnly =
+                secret && tmp.getFileSystem().supportedFileAttributeViews().contains("posix");
+        if (ownerOnly) {
             attributes = new FileAttribute<?>[] {OWNER_ONLY};
             // The permissions are set when the file is created, so not on a leftover.
             Files.deleteIfExists(tmp);
@@ -120,7 +123,7 @@ public final class AtomicFiles {
                 channel.force(true);
             }
             if (keepBackup && Files.exists(absolute)) {
-                backup(absolute, bakPath(absolute));
+                backup(absolute, bakPath(absolute), ownerOnly);
             }
             move(tmp, absolute);
         } catch (IOException | RuntimeException e) {
@@ -280,13 +283,17 @@ public final class AtomicFiles {
     }
 
     // A link costs nothing; FAT volumes have none, so they get a copy. Without a fresh backup the old one stays.
-    private static void backup(Path file, Path bak) {
+    private static void backup(Path file, Path bak, boolean ownerOnly) {
         try {
             Files.deleteIfExists(bak);
             try {
                 Files.createLink(bak, file);
             } catch (UnsupportedOperationException | FileSystemException e) {
                 Files.copy(file, bak, StandardCopyOption.REPLACE_EXISTING);
+            }
+            // The backup is the file being replaced, which an older version may have left readable by all.
+            if (ownerOnly) {
+                Files.setPosixFilePermissions(bak, OWNER_READ_WRITE);
             }
         } catch (IOException e) {
             logger.warn("Cannot refresh the backup {}", bak, e);

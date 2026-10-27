@@ -1726,6 +1726,8 @@ final class Network {
             if (this.kadRelay != null) {
                 this.kadRelay.use(now.proxy());
             }
+            // Behind a proxy our IPv6 address is not told, from the next hello on.
+            watchAddress();
         }
         if (tcp || udp || was.upnp() != now.upnp()) {
             restartForwarding();

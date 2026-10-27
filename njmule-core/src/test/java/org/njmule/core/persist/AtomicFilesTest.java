@@ -171,6 +171,18 @@ class AtomicFilesTest {
     }
 
     @Test
+    void shouldCloseTheBackupOfASecretFileLeftReadableByAll() throws IOException {
+        givenTheFile("njmule.properties");
+        givenPosixPermissions();
+        givenTheFileWrittenReadableByAll("proxy.password=1");
+
+        whenTheSecretIsWritten("proxy.password=2");
+
+        thenTheFileIsForItsOwnerOnly();
+        thenTheBackupIsForItsOwnerOnly();
+    }
+
+    @Test
     void shouldLeaveADirectoryInThePlaceOfTheFileAlone() throws IOException {
         givenADirectoryInThePlaceOfTheFile("server.met", "inside", "x");
 
@@ -369,6 +381,11 @@ class AtomicFilesTest {
 
     private void givenTheSecretWritten(String secret) throws IOException {
         AtomicFiles.writeSecret(this.file, secret.getBytes(UTF_8));
+    }
+
+    private void givenTheFileWrittenReadableByAll(String content) throws IOException {
+        Files.writeString(this.file, content);
+        Files.setPosixFilePermissions(this.file, PosixFilePermissions.fromString("rw-r--r--"));
     }
 
     private void givenADirectoryInThePlaceOfTheFile(String name, String inside, String insideContent)

@@ -18,6 +18,7 @@ package org.njmule.core.persist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -27,6 +28,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Optional;
 import java.util.Properties;
 import net.jqwik.api.Arbitraries;
@@ -86,6 +88,17 @@ class PreferencesCodecTest {
         thenTheFileContains("update.installAt=EXIT_OR_NIGHT");
         thenTheFileContains("update.nightHours=01\\:00-04\\:30");
         thenTheFileDoesNotContain("#Mon");
+    }
+
+    @Test
+    void shouldKeepThePasswordsForTheirOwnerOnly() throws IOException {
+        givenPosixPermissions();
+        givenTheFileReadableByAll("proxy.password=old\n");
+        givenPreferencesWithTheProxyCredentials("user", "secret");
+
+        whenThePreferencesAreSaved();
+
+        thenTheFileIsForItsOwnerOnly();
     }
 
     @Test
@@ -267,6 +280,15 @@ class PreferencesCodecTest {
         Files.write(this.file, content.getBytes(StandardCharsets.UTF_8));
     }
 
+    private void givenPosixPermissions() {
+        assumeTrue(this.dir.getFileSystem().supportedFileAttributeViews().contains("posix"), "POSIX permissions");
+    }
+
+    private void givenTheFileReadableByAll(String content) throws IOException {
+        givenTheFile(content);
+        Files.setPosixFilePermissions(this.file, PosixFilePermissions.fromString("rw-r--r--"));
+    }
+
     private void givenTheText(String content) {
         this.text = content;
     }
@@ -332,6 +354,11 @@ class PreferencesCodecTest {
 
     private void thenTheFileLoadsThePreferencesBack() throws IOException {
         assertThat(PreferencesCodec.load(this.file)).isEqualTo(this.preferences);
+    }
+
+    private void thenTheFileIsForItsOwnerOnly() throws IOException {
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(this.file)))
+                .isEqualTo("rw-------");
     }
 
     private void thenTheFileContains(String part) throws IOException {

@@ -58,9 +58,10 @@ waits.
 | Bound to the interface | Not bound |
 |---|---|
 | The TCP port other clients connect to, and the UDP ports | The [web interface](../web/overview.mdx), which listens as its own options say |
-| Connections to servers and clients | E-mail and web hook [notifications](../settings/notifications.mdx) |
-| Lists fetched from the web (`server.met`, `nodes.dat`, IP filters) | UPnP's search for the router, which looks on every local network |
+| Connections to servers and clients | UPnP's search for the router, which looks on every local network |
+| Lists fetched from the web (`server.met`, `nodes.dat`, IP filters) | |
 | The update check and update downloads, the country database | |
+| E-mail and web hook [notifications](../settings/notifications.mdx), which are not sent while the interface is gone | |
 
 While njMule is bound, it uses **no IPv6** at all: the interface is chosen by its IPv4 address,
 and IPv6 connections would leave around it (see [IPv6](./ipv6.mdx)).

@@ -48,8 +48,9 @@ Beyond what the protocol asks, njMule defends itself and its users in these ways
 - **Files**: personal and system folders, keys, backups and files other programs are still writing
   are never shared; names from the network lose control characters and direction overrides, and
   file names are made safe for every file system (reserved device names included).
-- **Storage**: saves are atomic with a backup, and keys and settings are readable by their owner
-  only on Linux and macOS.
+- **Storage**: saves are atomic with a backup, and keys and settings (proxy and mail passwords
+  included) are readable by their owner only on Linux and macOS; the profile of the Windows service
+  by the service and the administrators only.
 - **Web interface**: PBKDF2-hashed password, a login lockout (per /64 for IPv6), form tokens, origin
   and host checks against cross-site requests and DNS rebinding, HTTP-only same-site cookies,
   `Secure` over HTTPS, a strict Content-Security-Policy, and forwarded addresses believed only from

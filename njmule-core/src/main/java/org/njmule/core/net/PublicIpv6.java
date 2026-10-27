@@ -39,10 +39,11 @@ public final class PublicIpv6 {
     private PublicIpv6() {}
 
     /**
-     * Empty without a route to the IPv6 Internet, or while njMule keeps to an interface of its own, such as a VPN's.
+     * Empty without a route to the IPv6 Internet, while njMule keeps to an interface of its own, such as a VPN's, or
+     * while its connections go through a proxy.
      */
     public static Optional<Inet6Address> find() {
-        if (!(TcpConnector.currentBinding() instanceof BindInterface.Binding.Any)) {
+        if (!mayBeTold()) {
             return Optional.empty();
         }
         try (DatagramSocket probe = new DatagramSocket()) {
@@ -53,5 +54,11 @@ public final class PublicIpv6 {
         } catch (IOException | UncheckedIOException e) {
             return Optional.empty();
         }
+    }
+
+    // Peers reaching us straight at our address would bypass the VPN or the proxy that hides it.
+    static boolean mayBeTold() {
+        return TcpConnector.currentBinding() instanceof BindInterface.Binding.Any
+                && !ProxyRoute.current().isEnabled();
     }
 }
