@@ -1,0 +1,146 @@
+---
+title: Running headless
+description: Run njMule without a window on a server, a NAS or an always-on computer, drive it through its web interface, and stop it cleanly.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+njMule does not need a window. Its engine runs **headless** on a server, a NAS, a Raspberry Pi or a
+computer nobody sits at, and you drive it from a browser through its
+[web interface](../web/overview.mdx), from the command line through its
+[remote-control API](./remote-control.mdx), or from the desktop app of another computer. The
+headless engine is the same program as the desktop app's, with the same settings, files and
+network behaviour.
+
+## Start it
+
+Every package has the `njmule` command, which runs the engine headless until you stop it:
+
+<Tabs groupId="os">
+<TabItem value="windows" label="Windows" default>
+
+```powershell
+njmule
+```
+
+The installer puts `njmule.exe` on your `PATH`; from the zip archive, run it from its folder. It is
+a console program: closing its window stops njMule (it saves first). To run njMule without anyone
+signed in, make it a [Windows service](./windows-service.mdx).
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+/Applications/njMule.app/Contents/MacOS/njmule
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+```bash
+njmule
+```
+
+The deb and rpm packages install it in `/usr/bin`. The `.tar.xz` archive has it at its top, and the
+static headless archive (`njmule-<version>-linux-x64-static.tar.xz`) holds nothing else: it needs no
+library of the system and runs on any x64 Linux, Alpine or an old distribution included. To start
+njMule at login, or keep it running after you log out, use the
+[systemd user unit](./linux-service.mdx).
+
+</TabItem>
+</Tabs>
+
+`njmule-gui --headless` does the same through the desktop app's launcher. At start njMule prints
+its notice, then where its configuration and logs are and, when the web interface is on, its
+port; then it logs what happens until it stops.
+
+Before the first headless start, give the web interface a password, or you will have no way to
+look at what njMule does:
+
+```bash
+njmule --webui-password --webui-lan    # asks for the password twice, then exits
+njmule                                  # runs, with the web interface on port 4711
+```
+
+See [Web interface](../web/overview.mdx#turn-it-on) for the options, and
+[Web interface security](../web/security.mdx) before you turn on `--webui-lan`.
+
+## Where it keeps its data
+
+The headless engine uses the same folders as the desktop app on the same account: what one
+downloads, the other sees. The defaults follow each system's conventions (Linux: `~/.config/njmule`,
+`~/.local/share/njmule`, `~/.local/state/njmule/logs`, completed downloads in `~/Downloads/njMule`);
+[Where njMule keeps its files](../data/locations.mdx) lists them all.
+
+- `--config-dir <dir>` keeps everything below one folder instead (`config`, `data`, `temp`, `cache`,
+  `logs`, `gui` and `incoming`), to run a separate profile or to keep a server's data in one place:
+
+  ```bash
+  njmule --config-dir /srv/njmule
+  ```
+
+- A `portable.flag` file beside the programs of an archive does the same with a `data` folder next
+  to them ([Portable mode](../data/portable.mdx)).
+
+Only one njMule runs on one configuration at a time. A second headless start on the same
+configuration fails with *njMule is already running with the configuration in …*, and the desktop
+app started meanwhile only hands its ed2k links to the running engine: no window opens. Give one
+of them `--config-dir` if you want both at once.
+
+## Typical set-ups
+
+| Where | How | Page |
+|---|---|---|
+| Docker, any Linux server or NAS | The image `ghcr.io/njmule/njmule`: the headless engine and its web interface, data in a volume | [Docker](../getting-started/install-docker.mdx) |
+| Synology DSM 7 | The `.spk` package, started and stopped by the Package Center | [Synology](../getting-started/install-synology.mdx) |
+| Windows | The service "njMule", started with Windows before anyone signs in | [Windows service](./windows-service.mdx) |
+| Linux desktop or server | The systemd user unit of the deb and rpm packages | [Linux service](./linux-service.mdx) |
+| Anywhere, by hand | `njmule` in a terminal, `tmux` or `screen` | this page |
+
+## Drive it
+
+- **From a browser:** the [web interface](../web/overview.mdx) has every place of the desktop app.
+- **From the command line:** with the API turned on, `njmule --remote status`,
+  `njmule --remote add "ed2k://|file|…|/"` and the other [remote commands](./remote-control.mdx).
+- **From another computer's desktop app:** **⋯ → Connect to a remote njMule** shows the headless
+  njMule in a window of its own ([Remote njMule](../desktop/remote.mdx)).
+- **With links:** `njmule "ed2k://|file|…|/"` hands the links to the njMule running on the same
+  configuration, which downloads them.
+
+## Stop it
+
+njMule saves its downloads, lists and settings before it exits, which takes a few seconds. Any of
+these stops it cleanly:
+
+- <kbd>Ctrl</kbd>+<kbd>C</kbd> in its terminal, or the `SIGTERM` signal of `kill`, `docker stop` or
+  systemd;
+- `njmule --exit` from another terminal on the same computer and configuration (add `--config-dir`
+  if it runs with one). It waits until njMule has saved and stopped, 30 seconds at most, and fails
+  when no njMule runs there or when it still runs after that time;
+- `njmule --remote shutdown`, here or with `--remote-url` from another computer;
+- the stop of its supervisor: the Package Center, `njmule --service=stop`,
+  `systemctl --user stop njmule`.
+
+Give a supervisor the time to save: Docker's `--stop-timeout 30`, Compose's
+`stop_grace_period: 30s`.
+
+## Logs
+
+The headless engine logs to its console (standard output) and to `njmule.log` in the logs folder,
+which turns over every day and at 10 MB, and keeps 14 days and 200 MB at most. Under Docker,
+`docker logs njmule` shows the console; under systemd, `journalctl --user -u njmule`.
+
+- The level is `INFO` unless `log.level` in `njmule.properties` says otherwise;
+  `--log-level DEBUG` overrides it for one run (`ERROR`, `WARN`, `INFO`, `DEBUG` or `TRACE`).
+- The web interface shows the latest lines under **Network → Log**, and `njmule --remote log`
+  prints them.
+
+[Logs](../data/logs.mdx) tells more about the files and what they hold.
+
+## Related pages
+
+- [Command line](./cli.mdx): every option of `njmule`.
+- [Remote control](./remote-control.mdx): the commands and the API.
+- [Web interface](../web/overview.mdx)
+- [Updates](../updates.mdx): how a headless njMule is updated.

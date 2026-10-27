@@ -47,7 +47,7 @@ tasks.register<Sync>("iconTools") {
 }
 
 // The benchmarks (JMH and its dependencies) are not distributed; the web app is, inside the web interface's jar.
-val distributed = subprojects.filter { it.name != "njmule-bench" && it.name != "njmule-webapp" }
+val distributed = subprojects.filter { it.name !in setOf("njmule-bench", "njmule-webapp", "website") }
 
 // Software bill of materials, part of every release: ./gradlew cyclonedxBom → build/reports/cyclonedx/.
 // The third-party license report comes from the desktop app, whose runtime holds every distributed

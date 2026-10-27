@@ -21,3 +21,18 @@ updates:
           interval: weekly
       commit-message:
           prefix: "build(deps)"
+    # The documentation website's packages (website/package-lock.json); Docusaurus' packages move together.
+    - package-ecosystem: npm
+      directory: /website
+      schedule:
+          interval: weekly
+      commit-message:
+          prefix: "docs(deps)"
+      groups:
+          docusaurus:
+              patterns:
+                  - "@docusaurus/*"
+          openapi-docs:
+              patterns:
+                  - "docusaurus-plugin-openapi-docs"
+                  - "docusaurus-theme-openapi-docs"

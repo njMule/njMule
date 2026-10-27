@@ -1,0 +1,260 @@
+---
+title: The main window
+description: A tour of the njMule desktop window - the sidebar, the top bar, the command palette, the status strip, banners and messages.
+---
+
+The njMule window has the same frame on every screen: a **sidebar** of places on the left, a **top
+bar** with the screen's title, a field to type into, the rates and the state of the networks, the
+**screen** itself in the middle, and a **status strip** at the bottom. This page explains each part,
+so that you know where to look and what every element does.
+
+<Screenshot
+    id="transfers"
+    alt="The njMule window: the sidebar with Transfers, Search, Shared Files, Messages, Network, Statistics, Buy me a coffee and Options; the top bar with the title Transfers, the command field, the rates with their sparkline and the Connected button; the list of downloads; the status strip at the bottom"
+    caption="The main window, on the Transfers screen"
+/>
+
+## The sidebar
+
+The sidebar lists the places of njMule in three groups. Each one also opens with a shortcut, in the
+order of the sidebar (on macOS use <kbd>Cmd</kbd> instead of <kbd>Ctrl</kbd>):
+
+| Place | Shortcut | What it holds |
+|---|---|---|
+| **Transfers** | <kbd>Ctrl</kbd>+<kbd>1</kbd> | Downloads, uploads, the upload queue, banned and known clients: see [Transfers](./transfers.mdx) |
+| **Search** | <kbd>Ctrl</kbd>+<kbd>2</kbd> | Searches on eD2K and Kad, one tab each: see [Search](./search.mdx) |
+| **Shared Files** | <kbd>Ctrl</kbd>+<kbd>3</kbd> | The folders and files you share: see [Shared files](./shared-files.mdx) |
+| **Messages** | <kbd>Ctrl</kbd>+<kbd>4</kbd> | Chats and friends: see [Messages](./messages.mdx) |
+| **Network** | <kbd>Ctrl</kbd>+<kbd>5</kbd> | eD2K, Kad and your ports, the servers, Kad and the log: see [Network](./network.mdx) |
+| **Statistics** | <kbd>Ctrl</kbd>+<kbd>6</kbd> | Rates over time and every figure: see [Statistics](./statistics.mdx) |
+| **Options** | <kbd>Ctrl</kbd>+<kbd>7</kbd> | All the settings: see [Options](../settings/index.mdx) |
+
+The first four are what you do every day; **Network** and **Statistics** come after a line;
+**Options** stays at the bottom. A place tells what waits there:
+
+- **Transfers** shows the number of downloads running (up to `99+`).
+- **Messages** shows the number of messages that arrived while you were on another screen; opening
+  **Messages** clears it.
+- **Network** shows a dot: in the "connected" colour while eD2K or Kad is up, in the "connecting"
+  colour while njMule is trying, and empty while both are off. Its tooltip names the state of both
+  networks.
+
+The tooltip of every place repeats its name and its shortcut. njMule opens on the screen you left
+last time.
+
+### Folding the sidebar
+
+Press <kbd>Ctrl</kbd>+<kbd>B</kbd>, or the button at the top right of the sidebar (**Collapse the
+sidebar**), to fold the sidebar to its icons. Folded, the button under the logo (**Expand the
+sidebar**) opens it again, and the counts become small marks on the corner of the icons. njMule
+remembers your choice.
+
+In a window narrower than about 1000 pixels the sidebar folds by itself, and opens again as you left
+it once the window is wider. In such a narrow window the other parts keep to their essentials too:
+the tool buttons show only their icons, the summary under the title is hidden, the command field
+shows only its shortcut, and the rates show only the download rate.
+
+<Screenshot
+    id="sidebar-folded"
+    alt="The njMule window with the sidebar folded to its icons, the badge of Transfers shown as a small mark on the icon"
+    caption="The sidebar folded with Ctrl+B"
+/>
+
+### Buy me a coffee
+
+**Buy me a coffee**, just above **Options**, opens the page where you can support the development of
+njMule, in your system's browser. It never changes anything in njMule.
+
+## The top bar
+
+From left to right the top bar holds:
+
+1. **The title** of the screen, and under it a **summary** of what it holds, for example
+   `Downloading: 6 · ↓ 1.26 MB/s` on Transfers, `Searches: 2 · running: 0` on Search or
+   `eD2K: Lighthouse (HighID) · Kad: Open` on Network. Options says what applies at once.
+2. **The command field**, which opens the [command palette](#the-command-palette).
+3. **The rates**: the download and upload rates, with their last half minute drawn beside them as
+   two small lines. Click them to open the [speed limits](#speed-limits).
+4. **The network control**, which tells whether you are connected and opens the
+   [network menu](#the-network-menu).
+5. **⋯** (**More**), the [menu of tools](#the-more-menu).
+
+### The command palette
+
+The palette lets you do almost anything by typing. Open it with <kbd>Ctrl</kbd>+<kbd>K</kbd>, by
+clicking the field **Type a command, a search or an eD2K link** in the top bar, or simply by
+typing a letter while that field has the focus.
+
+<Screenshot
+    id="palette"
+    alt="The command palette over the window: a text box and a list with Transfers, Search, Shared Files, Messages, Network, Statistics and Options with their shortcuts, then Disconnect and Open Incoming Folder"
+    caption="The command palette (Ctrl+K)"
+/>
+
+What you type finds:
+
+- **The places** of the sidebar and **the commands** of the menus: connect or disconnect, **Open
+  Incoming Folder**, **Set up njMule**, **Import from eMule...**, **Light or dark**, **Collapse the
+  sidebar** or **Expand the sidebar**, **Keyboard shortcuts**, **Check for new version** and **About
+  njMule**. A command is listed when its name holds every word you typed.
+- **A search of the network**: the last line, **Search the network for “…”**, opens Search and
+  starts a search for the words typed, as the search box would.
+- **Downloads**: when you paste eD2K file links, the line **Download: …** names the files and adds
+  them as downloads at once.
+
+Use <kbd>↑</kbd> and <kbd>↓</kbd> to choose a line, <kbd>Enter</kbd> to run it, and <kbd>Esc</kbd>
+or a click outside the palette to close it.
+
+### Speed limits
+
+A click on the rates opens **Speed limits**, the same sliders as in the menu of the
+[notification area](./tray.mdx):
+
+- **Download** and **Upload** each have a slider, from **No limit** on the far left up to the
+  capacity of your line on the far right, on a logarithmic scale so that both a few KB/s and many
+  MB/s are easy to reach. The limit applies as soon as you let the slider go, and is written beside
+  it.
+- **Full speed** sets both limits to the capacity of your line.
+- **Slow down** sets both limits to the lowest value, `1.0 KB/s`.
+
+The capacity of your line and the limits are also options: see [Bandwidth](../settings/bandwidth.mdx).
+
+<Screenshot
+    id="topbar-limits"
+    alt="The Speed limits popup under the rates: a Download slider at No limit, an Upload slider at 250.0 KB/s, and the buttons Full speed and Slow down"
+    caption="The speed limits, under the rates"
+/>
+
+### The network menu
+
+The network control shows a dot, the overall state (**Connected**, **Connecting** or **Not
+Connected**) and, under it, a short detail such as `High ID · Kad: Open`. Its tooltip names the
+state of both networks. Click it to open its menu:
+
+- **eD2K**: the server you are on with `(HighID)` or `(LowID)`, its users and files, and a button
+  that reads **Connect**, **Cancel** (while connecting) or **Disconnect**.
+- **Kad**: its state (**Off**, **Not Connected**, **Open** or **Firewalled**, with `UDP open` or
+  `UDP firewalled` once Kad has tested it), the number of contacts, and **Connect** or
+  **Disconnect**.
+- **Choose another server…** opens the server list.
+- **Network** opens the Network place (<kbd>Ctrl</kbd>+<kbd>5</kbd>).
+- The wide button at the bottom acts on both networks: **Connect** connects to an eD2K server and
+  starts Kad (when Kad is on in the options), **Cancel** stops trying servers, **Disconnect** leaves
+  both. It stands out in the accent colour only while you are disconnected.
+
+A click on the eD2K or the Kad line opens the network at the servers or at Kad. To learn what the
+states mean, see [Servers and Kad](../network/servers-and-kad.mdx) and [Ports](../network/ports.mdx).
+
+<Screenshot
+    id="topbar-network"
+    alt="The network menu: eD2K: Lighthouse (HighID) with its users and files and a Disconnect button, Kad: Open with 1,243 contacts and a Disconnect button, then Choose another server, Network Ctrl+5 and a wide Disconnect button"
+    caption="The network menu of the top bar"
+/>
+
+### The More menu
+
+**⋯** (**More**) holds what the window does besides its places:
+
+| Item | What it does |
+|---|---|
+| **Open Incoming Folder** | Opens the folder of finished downloads in your file manager. |
+| **Options** | Opens the options (as <kbd>Ctrl</kbd>+<kbd>7</kbd>). |
+| **Set up njMule** | Opens the first-start wizard again, filled in with your current settings: see [First run](../getting-started/first-run.mdx). |
+| **Import from eMule...** | Opens the import of an eMule profile: see [Import from eMule](../getting-started/import-emule.mdx). |
+| **Connect to a remote njMule** | Shows and drives the njMule of another computer: see [Remote njMule](./remote.mdx). |
+| **Light or dark** | Switches between the light and the dark version of the theme: see [Appearance](./appearance.mdx). |
+| **Keyboard shortcuts** | Lists the shortcuts in a small window (<kbd>F1</kbd>): see [Keyboard shortcuts](./keyboard-shortcuts.mdx). |
+| **Check for new version** | Looks for a new version now: see [Updates](../updates.mdx). |
+| **About njMule** | The version, the copyright and the licence, with **Copy version details** to paste into a problem report. |
+
+## The banner
+
+A line above the screen tells of a state that lasts and needs you to do something. It shows two
+seconds after the state begins, so that a quick reconnection does not make it flicker:
+
+| Banner | Button |
+|---|---|
+| **Not connected: searches and downloads wait for a network.** Neither an eD2K server nor Kad is connected or being tried. | **Connect** connects both networks. |
+| **Others cannot reach you on port … (LowID): open it in your router, or turn on UPnP in the options.** You have a LowID on eD2K or Kad is firewalled, and no network reaches you. | **Options** opens the options. |
+| **The network interface … is not available: njMule stays offline until it is back.** njMule is bound to a network interface (such as a VPN) that is gone. | **Options** opens the options. |
+
+The cross closes the banner; it comes back only when the state changes. For the ports and the
+network interface, see [Ports](../network/ports.mdx) and [Network interface](../network/bind-interface.mdx).
+
+## Messages
+
+Short messages appear at the bottom of the window, above the status strip, at most two at a time: a
+new one pushes out the oldest. They come in three kinds:
+
+- **News**, such as **New message from …** or **Download added: …**, which go after six seconds.
+- **Successes**, such as **Download finished: …**, which go after six seconds too.
+- **Problems**, such as a connection refused, which stay until you close them with their cross.
+
+The same message again does not stack: the one shown counts up (`×2`). Some messages carry a
+button and stay ten seconds, so that you have time to press it: **Undo** after cancelling
+downloads, **Details** when a new version is out, **Restart now** when it is ready to install.
+
+When the window is hidden in the notification area of Windows, the messages also show there: see
+[Notification area](./tray.mdx). A finished download and a new chat message can also play a sound:
+see [General options](../settings/general.mdx).
+
+<Screenshot
+    id="toasts"
+    alt="Two messages at the bottom of the window: New message from Owl, and a problem in red, 203.0.113.11:4232: connection refused"
+    caption="A piece of news and a problem"
+/>
+
+## Questions and boxes
+
+When njMule asks something, the title of the question says what is decided, and the buttons say
+what they do, such as **Cancel download** and **Keep downloading**, in the order your system puts
+them. The default answer is ringed, and <kbd>Enter</kbd> chooses it. In a question about something
+that cannot be undone, such as cancelling downloads or removing every server, the default is the safe
+answer and the risky one is outlined in red. <kbd>Esc</kbd> cancels.
+
+Every box takes only its kind of value: a number within its limits, a time, an address, a folder,
+eD2K links or a search. Characters that cannot belong there are dropped as you type or paste them; a
+box whose text is not valid yet is marked, says in its tooltip what it takes, and keeps its button
+off until it is right.
+
+Sizes and rates are written in the units of your language; a rate switches to MB/s from a thousand
+KB/s on, and to GB/s from a thousand MB/s.
+
+## The status strip
+
+The strip at the bottom of the window shows, from left to right:
+
+- **The last event** of the log, such as `Download completed: …`. Click it to open the log.
+- **The update**, while a new version downloads (`Downloading njMule …: …%`) or once it is ready
+  (`njMule … is ready: restart to update`). Click it to open the Updates window.
+- **The users and files** of the networks: `Users … | Files …` adds up every server of your list
+  that answers while you are connected to eD2K; with Kad up too, Kad's estimate of its network
+  follows each figure in brackets. With Kad alone, the figures are Kad's estimate.
+- **The limits**, such as `Limits: ↓ No limit · ↑ 250.0 KB/s`. Click them to open the
+  [speed limits](#speed-limits) over the strip.
+- **The free space** of the disk where finished downloads go (`Free Space: …`), read every ten
+  seconds; the tooltip names the folder.
+
+## Adding downloads by dragging
+
+Drag eD2K file links from a web page or a text onto any part of the window: when the text starts
+with an `ed2k://|file|` link, every file link in it becomes a download, and a message names each one
+added. The other ways to add links are on [eD2K links](./ed2k-links.mdx).
+
+## Closing the window
+
+Closing the window ends njMule, and with it the downloads and uploads. By default njMule asks
+first: **Quit njMule?** with **Quit njMule** and **Keep running**. Tick **Do not ask me again** to
+stop the question, or turn **Prompt on exit** on or off in [General options](../settings/general.mdx).
+On Windows you can instead minimise njMule into the [notification area](./tray.mdx), where it keeps
+running.
+
+njMule remembers the size and place of the window, and whether it was maximised. It keeps the window
+large enough for every button to show; a window of 900×600 still shows them all.
+
+## Related pages
+
+- [Keyboard shortcuts](./keyboard-shortcuts.mdx)
+- [Appearance](./appearance.mdx)
+- [Notification area](./tray.mdx)
+- [Options](../settings/index.mdx)

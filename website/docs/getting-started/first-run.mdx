@@ -1,0 +1,155 @@
+---
+title: First start
+description: The set-up wizard that opens at njMule's first start, page by page, what each choice changes, and how to open it again.
+---
+
+The first time you open the desktop app, a short wizard sets njMule up: the language and the look,
+your nick, the folders, the connection and, if it finds one, an eMule profile to take over. It takes
+about two minutes, every page can be skipped, and everything it sets can be changed later in the
+**Options**. The web interface has a shorter version of it (see
+[In the web interface](#in-the-web-interface)).
+
+<Screenshot
+    id="dialog-wizard-1"
+    alt="The Set up njMule window on its first page, Start: the steps Start, Name, Folders, Connection and eMule on the left, the Language box and the Theme choice As the system, Light or Dark on the right, with Skip setup and Next at the bottom"
+    caption="The first page of the wizard, with its steps on the left"
+    width={640}
+/>
+
+## How the wizard works
+
+- The steps are listed on the left; a step you have done shows a check, and a click on it takes you
+  back there.
+- **Next** goes on once the fields of the page are right; **Back** returns to the page before.
+- **Skip setup** closes the wizard and changes nothing; so does closing its window.
+- **Finish**, on the last page, applies every page at once and saves your settings.
+
+Every page starts from your current settings, so going through it with **Next** only changes what
+you change.
+
+## Start
+
+| Field | What it sets |
+|---|---|
+| **Language** | the language of the desktop app: **As the system** or one of its 36 languages |
+| **Theme** | **As the system**, **Light** or **Dark**; it shows at once, on the wizard too |
+
+The language changes when you finish: njMule restarts in the new one.
+
+## Name
+
+<Screenshot
+    id="dialog-wizard-2"
+    alt="The Name page of the wizard: the Nick field holds Lupo, under the hint The name others see in their upload lists and in chats"
+    caption="Your nick"
+    width={640}
+/>
+
+**Nick** is the name other users see in their upload lists and in chats. It starts as `njMule`; it
+may be up to 50 characters long.
+
+## Folders
+
+<Screenshot
+    id="dialog-wizard-3"
+    alt="The Folders page of the wizard: the Incoming Files folder with its Browse button, and the shared folders, only the incoming folder for now, with a Share Directory button"
+    caption="Where downloads go, and what you share"
+    width={640}
+/>
+
+| Field | What it sets |
+|---|---|
+| **Incoming Files** | where finished downloads go; type a folder or choose one with **Browse...**. It is always shared. |
+| **Shared folders** | the folders others may download from you, each with its subfolders; add one with **Share Directory** and remove it with the cross on its line |
+
+Unless you change it, the incoming folder is the default one, `Downloads\njMule` or
+`Downloads/njMule` in your home folder (see [Data locations](../data/locations.mdx)).
+
+Before sharing a whole drive, your user folder or a system folder, njMule asks **Share everything
+in this folder?**, because everyone on eD2K and Kad could download what it holds: choose **Choose
+another folder** to pick one inside it, or **Share everything** if you mean it. The folders you add
+are shared when you finish. See [Shared files](../desktop/shared-files.mdx).
+
+## Connection
+
+<Screenshot
+    id="dialog-wizard-4"
+    alt="The Connection page of the wizard: the Line box, the download and upload capacity of the line in Mbit/s with the same speed in MB/s beside, the Client Port (TCP) and UDP fields, the Forward the ports with UPnP switch and the Test Ports button"
+    caption="The speed of your line and the ports"
+    width={640}
+/>
+
+| Field | What it sets |
+|---|---|
+| **Line** | fills both capacities with a usual line: 20/1, 100/20, 300/50, 1000/300 or 2500/1000 Mbit/s |
+| **Download capacity of the line**, **Upload capacity of the line** | the speeds of your Internet line, in Mbit/s as lines are sold (the same speed in bytes is shown beside); they tell njMule how much it may use |
+| **Client Port (TCP)** | the eD2K port other clients connect to, 4662 by default |
+| **UDP** | the client UDP port of eD2K and Kad, 4672 by default |
+| **Forward the ports with UPnP** | lets njMule ask your router to forward both ports; on by default, it works with most home routers |
+| **Test Ports** | checks at once whether others can reach you on these ports |
+
+**Test Ports** applies the ports and the UPnP switch as the page shows them, then tells, as it goes,
+what the router answered and whether the TCP and the UDP port can be reached from outside, with what
+to do about a closed one. Since it applies them first, the ports stay changed even if you skip the
+rest. If you are not sure about your router, keep the default ports and UPnP: see
+[Ports and firewalls](../network/ports.mdx).
+
+## eMule
+
+<Screenshot
+    id="dialog-wizard-5"
+    alt="The eMule page of the wizard: eMule profile found, with its folder, and the ticked box Open the import from eMule when I finish"
+    caption="An eMule profile found on this computer"
+    width={640}
+/>
+
+This page is there only when njMule finds an eMule profile on the computer (in
+`%LOCALAPPDATA%\eMule\config` or `%APPDATA%\eMule\config`). It shows where the profile is, and offers
+**Open the import from eMule when I finish**, ticked by default. Nothing in eMule's folders is
+changed. Close eMule before importing.
+
+With the box ticked, the **Import from eMule** window opens after **Finish**, where you check the
+profile first and then take it over: see [Import an eMule profile](import-emule.mdx).
+
+## What the wizard changes
+
+| Wizard field | Option | Key in `njmule.properties` |
+|---|---|---|
+| Language, Theme | **Options → General** | (kept with the desktop app's own settings) |
+| Nick | **Options → General** | `user.nick` |
+| Incoming Files | **Options → Directories** | `dirs.incoming` |
+| Shared folders | **Shared Files** | (the list of shared folders) |
+| Download and upload capacity | **Options → Bandwidth** | `limits.downloadCapacityKiBps`, `limits.uploadCapacityKiBps` |
+| Client Port (TCP), UDP | **Options → Connection** | `net.tcpPort`, `net.udpPort` |
+| Forward the ports with UPnP | **Options → Connection** | `net.upnp` |
+
+The capacities are kept in KiB/s. See [Options](../settings/index.mdx) for every option.
+
+## Open it again
+
+The wizard opens by itself at the first start only. To go through it again, choose **⋯ → Set up
+njMule** in the top bar, or press <kbd>Ctrl</kbd>+<kbd>K</kbd> and type `Set up`. It starts from
+your settings as they are now. To import an eMule profile without the rest, choose
+**⋯ → Import from eMule...**.
+
+## In the web interface
+
+The web interface has its own wizard, **Set up njMule**, with four steps: **Start** (the theme),
+**Name**, **Folders** and **Connection**, with the same fields as the desktop one. It opens by itself
+the first time you log in from a browser while the nick is still `njMule`, and again from the
+**Set up njMule** button of the **Options** page.
+
+It differs from the desktop wizard in a few ways:
+
+- there is no language step: the web interface speaks the language of your browser;
+- you type the folders' paths, as they are on the computer where njMule runs;
+- a shared folder is shared, or stops being shared, as soon as you add or remove it, and
+  **Test Ports** saves the ports and UPnP before it tests them; the other fields are saved at
+  **Finish**;
+- there is no eMule step: use **Options → Import from eMule...** instead.
+
+## Without a window
+
+The headless engine has no wizard. Set it up from the [web interface](../web/overview.mdx), which
+offers its own wizard, or with the [command line](../server/cli.mdx). See
+[Running headless](../server/headless.mdx).

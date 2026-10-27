@@ -10,6 +10,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A documentation website (`website/`, Docusaurus) for GitHub Pages: a user guide for the desktop
+  app, the web interface and servers, a developer guide and the remote-control API's reference, in
+  the brand's colours, with screenshots taken by the build; its text is under CC BY-SA 4.0.
+
 ### Security
 
 - The profile of the Windows service, `%ProgramData%\njMule`, is closed to the other users of the

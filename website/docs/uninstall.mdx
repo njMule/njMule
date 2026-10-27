@@ -1,0 +1,145 @@
+---
+title: Uninstall
+description: Remove njMule from Windows, macOS, Linux, Docker or a Synology NAS, with or without its settings and unfinished downloads; the completed downloads always stay.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+Uninstalling njMule removes its programs. Its **profile** (settings, server and contact lists, your
+identity and credits, unfinished downloads, caches and logs) stays unless you ask for it to go, so
+that a later installation finds everything again. Your **completed downloads** always stay where
+they are.
+
+## Before you uninstall
+
+1. Exit njMule, or stop it if it runs headless (`njmule --exit`).
+2. If you turned on **Start njMule when I log in**, turn it off in the options: the uninstallers
+   do not remove that entry.
+3. Move your completed downloads somewhere else if they are inside a folder you will delete by hand
+   (the Windows service's and the Docker volume's are).
+
+## Remove njMule
+
+<Tabs groupId="os">
+<TabItem value="windows" label="Windows" default>
+
+**Installed with the installer (MSI):**
+
+1. Open **Settings → Apps → Installed apps**, find **njMule** and choose **Uninstall** (or use
+   **Programs and Features** of the Control Panel).
+2. If njMule opens ed2k links, the uninstaller gives them back to the program that opened them
+   before, such as eMule, when it still has it.
+3. The window **Uninstall njMule** asks *Also delete your njMule data?* Tick **Delete my njMule
+   data** to move your profile (`%APPDATA%\njMule` and `%LOCALAPPDATA%\njMule`) to the Recycle Bin;
+   leave it unticked to keep it.
+
+A quiet uninstall (`msiexec /x … /quiet`) asks nothing and keeps the profile. Uninstalling an
+installation for every user also removes the [Windows service](./server/windows-service.mdx); the
+service's own profile in `%ProgramData%\njMule`, with its downloads, stays.
+
+**Unpacked from the zip archive:**
+
+1. If njMule opens ed2k links, give them back first: `njmule --restore-links`.
+2. If you set up the service from this folder: `njmule --service=uninstall`.
+3. To delete the profile too: `njmule --remove-profile` (in portable mode the profile is the `data`
+   folder beside the programs).
+4. Delete the folder.
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+1. Quit njMule.
+2. Open the njMule disk image and double-click **Uninstall njMule**.
+3. To delete your data too, select the line **Delete my njMule data: settings, server and contact
+   lists, identity and credits, unfinished downloads and logs**; leave it unselected to keep it.
+   Choose **Uninstall**.
+
+njMule.app goes to the Trash and, when you chose it, `~/Library/Application Support/njMule`,
+`~/Library/Caches/org.njmule.njMule` and `~/Library/Logs/njMule` with it. If njMule still runs, the
+uninstaller asks you to quit it first.
+
+Without the disk image, drag njMule from Applications to the Trash; to delete the data first, run
+`/Applications/njMule.app/Contents/MacOS/njmule --remove-profile`.
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+**deb and rpm packages:**
+
+1. If you use the [systemd user unit](./server/linux-service.mdx), stop it:
+   `systemctl --user disable --now njmule`.
+2. If njMule opens ed2k links, give them back: `njmule --restore-links`.
+3. To delete your profile, run `njmule --remove-profile` (each user for their own).
+4. Remove the package:
+
+   ```bash
+   sudo apt remove njmule    # Debian, Ubuntu
+   sudo dnf remove njmule    # Fedora, RHEL
+   ```
+
+The package touches no home folder: it tells where each user's profile stays, in `~/.config/njmule`,
+`~/.local/share/njmule`, `~/.local/state/njmule` and `~/.cache/njmule`. Delete those folders by hand
+later if you change your mind.
+
+**`.tar.xz` archives:** run steps 1 to 3 with the archive's `njmule` (the profile of a portable
+copy is its `data` folder), then delete the folder, and the desktop entry and icon if you copied
+them from its `share` folder.
+
+</TabItem>
+<TabItem value="docker" label="Docker">
+
+With Docker Compose, in the folder of the Compose file:
+
+```bash
+docker compose down              # removes the container; the volume stays
+docker compose down --volumes    # the same, and deletes the named volume with everything in it
+```
+
+With `docker run`:
+
+```bash
+docker stop njmule && docker rm njmule
+docker volume rm njmule          # deletes the volume with everything in it
+```
+
+Then remove the image: `docker image rm ghcr.io/njmule/njmule`.
+
+The folders of the host you mounted (such as `./incoming` for the completed downloads) stay. The
+named volume holds everything else, the completed downloads too unless they are in such a folder:
+copy them out before you delete it. See [Docker](./getting-started/install-docker.mdx).
+
+</TabItem>
+<TabItem value="synology" label="Synology">
+
+1. Open **Package Center**, choose **njMule**, then **Uninstall**.
+2. The wizard **Uninstall njMule** asks *Also delete njMule's data?* Tick **Delete njMule's data**
+   to delete the settings, server and contact lists, identity and credits, unfinished downloads and
+   logs; leave it unticked to keep them for a later installation.
+
+The shared folder `njmule`, with your downloaded files, always stays; delete it in **Control Panel
+→ Shared Folder** if you no longer want it. See [Synology](./getting-started/install-synology.mdx).
+
+</TabItem>
+</Tabs>
+
+## What stays
+
+| What | Where it stays |
+|---|---|
+| Completed downloads | Always, in the incoming folder (by default `Downloads/njMule` in your home, `incoming` for a service, a volume or a portable copy) |
+| Your profile | Unless you chose to delete it: see [Where njMule keeps its files](./data/locations.mdx) |
+| Unfinished downloads in a temporary folder you chose in the options | Always: only the default one belongs to the profile |
+| The Windows service's profile | In `%ProgramData%\njMule` |
+
+`njmule --remove-profile` lists the folders it will delete, says that the completed downloads stay,
+and asks before deleting (`--yes` skips the question). It refuses while njMule runs, and never
+deletes a folder that holds the completed downloads. See
+[Remove your profile](./data/remove-profile.mdx).
+
+## Related pages
+
+- [Remove your profile](./data/remove-profile.mdx)
+- [Where njMule keeps its files](./data/locations.mdx)
+- [Windows service](./server/windows-service.mdx)
+- [Linux service](./server/linux-service.mdx)

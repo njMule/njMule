@@ -1,0 +1,215 @@
+---
+title: Install with Docker
+description: Run njMule's headless engine and web interface in Docker or Docker Compose, with its volume, password secret, ports and host names.
+---
+
+The image `ghcr.io/njmule/njmule` ([its page on GitHub](https://github.com/njMule/njMule/pkgs/container/njmule))
+runs njMule's headless engine with its web interface, for a server, a NAS or any machine with
+Docker. This guide describes <DockerImage />. You use it from a browser, through the
+[web interface](../web/overview.mdx).
+
+## What the image holds
+
+The image holds only njMule's native executable: no Java, no shell, no package manager.
+
+| Platform | Executable | Base |
+|---|---|---|
+| `linux/amd64` | the static one, linked with musl | empty (`scratch`) |
+| `linux/arm64` | the glibc one | distroless |
+
+It runs as user and group 1000, keeps all its data in the volume `/njmule`, and exposes three
+ports: 4662/TCP (eD2K), 4672/UDP (eD2K and Kad) and 4711/TCP (web interface). By default it starts
+as:
+
+```bash
+njmule --config-dir /njmule --webui-password-file /run/secrets/njmule_webui_password --webui-lan
+```
+
+that is: the web interface password is read from a secret at every start, and the interface answers
+on every address of the container.
+
+## Image tags
+
+Each version is tagged with its number, such as <DockerImage />. A release is also tagged with its
+minor version (`0.1` for 0.1.x) and `latest`; a test version (alpha, beta or release candidate)
+gets its own number only, and does not move `latest`. The commands below use `latest`; name a
+version instead to choose when you move to the next one.
+
+```bash
+docker pull ghcr.io/njmule/njmule:latest
+```
+
+## Run it with docker run
+
+1. Make a folder for the completed downloads, and a file whose first line is the web interface
+   password (8 characters at least):
+
+   ```bash
+   mkdir -p ~/njmule/incoming
+   printf '%s\n' 'a password of 8 characters or more' > ~/njmule/webui_password
+   sudo chown -R 1000:1000 ~/njmule/incoming
+   ```
+
+2. Start the container:
+
+   ```bash
+   docker run -d --name njmule --restart unless-stopped --stop-timeout 30 \
+       -p 4662:4662/tcp -p 4672:4672/udp -p 4711:4711/tcp \
+       -v njmule:/njmule -v ~/njmule/incoming:/njmule/incoming \
+       -v ~/njmule/webui_password:/run/secrets/njmule_webui_password:ro \
+       ghcr.io/njmule/njmule
+   ```
+
+3. Open the web interface at the address of the host, for example `http://192.0.2.10:4711/`, and
+   log in with the password. The first time, a short set-up opens: see [First start](first-run.mdx).
+
+`-v njmule:/njmule` keeps the settings, lists, identity and unfinished downloads in a Docker volume
+named `njmule`; the completed downloads go to `~/njmule/incoming` on the host.
+
+## Run it with Docker Compose
+
+The repository holds a Compose file,
+[`packaging/docker/compose.yaml`](https://github.com/njMule/njMule/blob/main/packaging/docker/compose.yaml).
+Put it in a folder with the password in `webui_password.txt` beside it:
+
+```yaml
+services:
+    njmule:
+        image: ghcr.io/njmule/njmule:latest
+        restart: unless-stopped
+        # Time to save the downloads and settings once asked to stop.
+        stop_grace_period: 30s
+        ports:
+            - "4662:4662/tcp" # eD2K
+            - "4672:4672/udp" # eD2K and Kad
+            - "4711:4711/tcp" # web interface
+        volumes:
+            - njmule:/njmule
+            - ./incoming:/njmule/incoming
+            - ./temp:/njmule/temp
+        secrets:
+            - njmule_webui_password
+        command: ["--webui-password-file", "/run/secrets/njmule_webui_password", "--webui-lan"]
+
+volumes:
+    njmule:
+
+secrets:
+    njmule_webui_password:
+        file: ./webui_password.txt
+```
+
+Then, in that folder:
+
+```bash
+printf '%s\n' 'a password of 8 characters or more' > webui_password.txt
+mkdir -p incoming temp
+sudo chown 1000:1000 incoming temp
+docker compose up -d
+```
+
+## Data and permissions
+
+The volume `/njmule` holds everything: `config`, `data`, `temp` (unfinished downloads), `incoming`
+(completed downloads), `cache`, `logs` and `gui`. You can mount the unfinished and the completed
+downloads on their own, as the Compose file does; keep them on the same disk if you can, so that a
+finished file moves without being copied.
+
+njMule runs as UID 1000 in the container, so the host folders you mount must belong to UID 1000:
+
+```bash
+sudo chown -R 1000:1000 ~/njmule/incoming
+```
+
+To run as another user, add `--user <uid>:<gid>` (or `user:` in Compose) and mount a folder of that
+user on `/njmule` itself, instead of the named volume.
+
+## Ports and High ID
+
+The image publishes 4662/TCP, 4672/UDP and 4711/TCP. For a High ID, so that other clients can reach
+you, your router must forward 4662/TCP and 4672/UDP to the host. UPnP does not cross Docker's bridge
+network: to let njMule ask the router itself, run the container with `--network host` (then the
+`-p` options are not needed). If you change the ports in the options, publish the new ones unchanged,
+such as `-p 5000:5000/tcp`. See [Ports and firewalls](../network/ports.mdx).
+
+## Web interface options
+
+Options after the image name replace the default ones, so repeat those you keep:
+
+```bash
+docker run … ghcr.io/njmule/njmule \
+    --webui-password-file /run/secrets/njmule_webui_password --webui-lan --webui-host nas.local
+```
+
+In Compose, change `command:` the same way.
+
+- **Password.** It comes from the first line of the secret at every start; change the file and the
+  new password applies from the next start. njMule never prints or logs it, and keeps only a hash.
+- **Host names.** Against DNS rebinding, the interface answers to `localhost` and to IP addresses
+  only. To reach it by a name, such as `nas.local` or the public name of a reverse proxy, add
+  `--webui-host <name>` for each name.
+- **Reverse proxy.** Add `--webui-proxy <address>` for a proxy you trust to name its clients; see
+  [Behind a reverse proxy](../web/reverse-proxy.mdx).
+- **Remote-control API.** Add `--webui-api`; then the command line in the container drives njMule:
+
+  ```bash
+  docker exec njmule njmule --config-dir /njmule --remote status
+  ```
+
+  See [Remote control](../server/remote-control.mdx).
+
+:::warning
+
+Because the password file is read at every start, the LAN access, host names and trusted proxies are
+set again from the command line at every start too. Give them as options: host names or proxies added
+on the **Settings** page of the web interface last only until the container restarts.
+
+:::
+
+The interface is served over plain HTTP: keep it on a trusted network, or put a reverse proxy with
+HTTPS in front of it. See [Web interface security](../web/security.mdx).
+
+## Stop and logs
+
+`docker stop` asks njMule to save its state and exit (SIGTERM); `--stop-timeout 30` and
+`stop_grace_period: 30s` give it the time to. The container then ends with code 143, a requested
+stop. `docker logs njmule` shows what it printed; the full log is in the volume, under
+`/njmule/logs`.
+
+## Update
+
+njMule in Docker tells you when a new version is out, on the status page of the web interface and in
+its log, but never replaces itself: pull the new image and recreate the container.
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+With `docker run`, pull the image, remove the container (`docker stop njmule`, `docker rm njmule`)
+and run it again with the same options: the volume keeps your data. See [Updates](../updates.mdx).
+
+## Uninstall
+
+Remove the container, then the volume if you want to delete njMule's data too:
+
+```bash
+docker stop njmule && docker rm njmule
+docker volume rm njmule   # deletes the settings, identity and unfinished downloads
+```
+
+With Compose, `docker compose down` removes the container and `docker compose down --volumes` the
+volume too.
+
+The completed downloads in the folder you mounted stay. See [Uninstall](../uninstall.mdx).
+
+## Build the image yourself
+
+From a checkout of the repository:
+
+```bash
+docker build -f packaging/docker/Dockerfile -t njmule .
+```
+
+It compiles njMule from the sources inside the build, for the platform of the machine that builds
+it: on amd64 the static executable, with the musl toolchain it downloads and checks, on arm64 the
+glibc one. See [Building](/developer/building).

@@ -1,0 +1,41 @@
+---
+title: Extended
+description: Secure identification, the credit system, the search tabs kept between runs and the backups of the configuration.
+---
+
+The **Extended** page holds the settings most people never need to change: two switches about how
+njMule deals with other clients, whether your open searches come back at the next start, and how
+many backups of the configuration njMule keeps. The web interface has the same page.
+
+<Screenshot
+  id="settings-page-13"
+  alt="The Extended page: the Security section with Use secure identification and Use the credit system both on, and the Miscellaneous section with Remember open searches between restarts on and Configuration backups kept set to 3."
+  caption="The Extended page."
+/>
+
+Every option of this page applies at once and is kept in `njmule.properties`.
+
+## Security
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| **Use secure identification** | On | Secure identification proves to other clients, with a key of your own, that your user hash is yours, and checks theirs, so that nobody can take your credits or pass for a friend. Key `security.secureIdent`. Also in the web interface. |
+| **Use the credit system** | On | Credits reward the clients that uploaded to you: they move up faster in your upload queue. Key `upload.creditSystem`. Also in the web interface. |
+
+:::note
+In this version both switches are kept, and taken from an eMule profile, but njMule does not read
+them yet: it always uses secure identification and credits, whatever they say.
+:::
+
+## Miscellaneous
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| **Remember open searches between restarts** | On | The search tabs left open when you exit come back at the next start, with their results, kept in `StoredSearches.met`. Key `search.store`. Also in the web interface. |
+| **Configuration backups kept (0 for none)** | `3` | njMule writes a zip copy of its configuration folder at each exit and once a day, and keeps this many, removing the oldest. 0 writes none. A whole number from 0 to 50. Key `backup.copies`. Also in the web interface. |
+
+The copies are named `njmule-config-<date>-<time>.zip`, in UTC, in the `backups` folder of the data
+folder. They leave out the files njMule rebuilds by itself, such as the AICH hash sets and the Kad
+index, and the settings of the desktop app, which are kept in a folder of their own. Unless this
+option is 0, njMule also backs the configuration up before a new version of itself first uses it.
+[Backups](../data/backups.mdx) tells how to restore one.

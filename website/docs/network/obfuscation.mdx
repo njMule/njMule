@@ -1,0 +1,100 @@
+---
+title: Protocol obfuscation
+description: What protocol obfuscation hides, its four modes (Disabled, Supported, Requested, Required), how each affects servers, clients, Kad and UDP, and which one to choose.
+---
+
+Protocol obfuscation encrypts njMule's connections so that they do not look like eD2K traffic to
+equipment that inspects it, such as a provider that slows down or blocks file sharing. It is
+compatible with eMule's obfuscation, so it works with the servers and clients that support it.
+
+:::note
+Obfuscation is not anonymity. Servers and clients still see your IP address, and the client you
+exchange a file with knows what it is. It only keeps the traffic from being recognised on the
+way.
+:::
+
+## The four modes
+
+Choose the mode in **Options → Connection → Network → Protocol obfuscation** (in the web
+interface, **Options → Connection**). It applies as soon as it is chosen, to the connections
+opened from then on; an eMule profile you import brings its own choice. The preference is
+`security.obfuscation`.
+
+### Disabled
+
+njMule never obfuscates what it opens: servers, clients and server datagrams go plain, and clients
+that require obfuscation are not tried. It still answers clients that connect to it obfuscated.
+
+### Supported
+
+njMule tells servers and clients that it can obfuscate, accepts obfuscated connections, and
+obfuscates its own only towards clients that ask for it. Servers are connected to plainly.
+
+### Requested
+
+The default, and the usual setting on the network. njMule obfuscates every connection the other
+side supports, and still talks plainly with those that do not:
+
+- servers known to take obfuscated connections are tried that way first (those never pinged too,
+  on their main port, and remembered when they accept); only when none accepts is every server
+  tried plainly;
+- clients that support obfuscation get an obfuscated connection, the others a plain one.
+
+### Required
+
+njMule refuses everything plain:
+
+- plain connections from other clients are refused;
+- only clients that support obfuscation, and whose user hash is known, are connected to; the
+  others are neither connected to nor asked to call back;
+- only servers that take obfuscated connections are connected to, and global searches go only to
+  servers that take obfuscated UDP.
+
+It costs a lot: many sources and servers become unreachable, the sources servers tell over UDP
+are not used (they come without the user hash the encryption needs), Kad takes no
+[buddy](./servers-and-kad.mdx#buddies) while you are firewalled (callback requests cannot be
+obfuscated), [NAT traversal](./nat-traversal.mdx) is off, and sources are not asked again over
+IPv6 or through their buddy, which works only plainly.
+
+## What each mode does
+
+| | Disabled | Supported | Requested | Required |
+|---|---|---|---|---|
+| Connections to servers | Plain | Plain | Obfuscated first, plain if none accepts | Obfuscated only |
+| Connections from clients | Plain or obfuscated | Plain or obfuscated | Plain or obfuscated | Obfuscated only |
+| Connections to clients | Plain; not to those requiring it | Obfuscated if the client asks | Obfuscated if the client supports it | Obfuscated only, to clients that support it |
+| UDP to servers (global search, sources) | Plain | Obfuscated where the server takes it | Obfuscated where the server takes it | Only to servers that take it |
+| UDP to clients (asking a source again) | Plain | Obfuscated where the client takes it | Obfuscated where the client takes it | Obfuscated only |
+
+**Kad** obfuscates its own packets with every node recent enough to read them (Kad version 6 and
+later), whatever the mode; the mode tells other Kad nodes how to connect to you. Server
+datagrams are obfuscated only when the server gave a key for the address it sees you at, which it
+does once you are logged in.
+
+## Which mode to choose
+
+Keep **Requested**. It obfuscates almost everything, since most clients and many servers support
+it, and loses nothing.
+
+Choose **Required** only if your provider blocks or throttles plain eD2K traffic and you see that
+it helps; expect fewer sources. **Supported** and **Disabled** obfuscate less without any gain
+for you; they mirror eMule's settings, which an imported profile brings along.
+
+## See whether it works
+
+- **Network → Log → My Info** says, under **eD2K Server**, **Connections: Obfuscated** or
+  **Normal** for the server you are on.
+- The server list has an **Obfuscation** column: whether each server says it takes obfuscated
+  connections.
+
+<Screenshot
+    id="log-tab-my-info"
+    alt="Network, Log, My Info tab: eD2K Network with status, IP and port and High ID; eD2K Server with name, description, address, version, users, files and Connections Obfuscated; Kad Network with status Open, UDP status Open, buddy None; Web Interface disabled"
+    caption="My Info says whether the server connection is obfuscated"
+/>
+
+## Related pages
+
+- [Connection options](../settings/connection.mdx)
+- [Servers and Kad](./servers-and-kad.mdx)
+- [Privacy](../data/privacy.mdx)

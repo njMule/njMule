@@ -52,6 +52,8 @@ jobs:
                           - '!branding/generated/njmule-avatar-512.png'
                           - '!branding/generated/njmule-social-preview.png'
                           - '!tools/**'
+                          - '!website/**'
+                          - '!.github/workflows/docs.yml'
                       workflows:
                           - '.github/workflows/**'
             # Any of these files, unlike the build's filter where a file must pass every pattern: what can break the

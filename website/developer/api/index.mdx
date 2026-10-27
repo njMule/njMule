@@ -1,0 +1,184 @@
+---
+title: Remote-control API
+description: Drive a running njMule over HTTP with JSON and follow its events - turning the API on, the token, conventions, errors, the event stream and the OpenAPI document.
+---
+
+Every njMule with its web interface on can also answer a JSON API under `/api/v1`, with the
+engine's events as server-sent events. It is the API the web app calls, the one `njmule --remote`
+and the desktop app's remote window use, and the one your scripts and programs can use too: list
+and add downloads, search, manage servers and Kad, read the statistics and the log, change the
+preferences, look for updates.
+
+The API is described by an [OpenAPI 3.2](https://spec.openapis.org/oas/v3.2.0.html) document,
+[`openapi.yaml`](https://github.com/njMule/njMule/blob/main/njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml),
+which is its source: njMule routes every request by the document's paths and operations, and checks
+its parameters and body against the document's schemas (JSON Schema 2020-12) before anything runs.
+The tests hold every answer and every event to the same document. The
+[API reference](./reference/njmule-remote-control-api.info.mdx) in this guide is generated from it.
+
+## Turning it on
+
+The API lives in the web interface, so the web interface needs a password first. Callers with the
+API token are answered only once the API is turned on; it is off by default.
+
+- **From the command line**, add `--webui-api` when you set the password:
+  `njmule --webui-password --webui-api` asks for the password and exits, and
+  `njmule --webui-password-file <file> --webui-api` takes it from the first line of a file and runs
+  njMule ([Command line](/docs/server/cli)).
+- **In the desktop app**, tick **Answer the remote-control API too (njmule --remote; callers need its
+  token)** in the web interface options ([Web interface options](/docs/settings/web-interface)).
+- **In Docker**, add `--webui-api` to the container's arguments
+  ([Install with Docker](/docs/getting-started/install-docker)).
+
+The setting is kept as `api=true` in `webui.properties` of the configuration folder.
+
+The base URL is the web interface's address followed by `/api/v1`, by default
+`http://127.0.0.1:4711/api/v1`. The web interface listens on this computer only unless it is opened
+to the network (`--webui-lan`), and serves plain HTTP: reach it from other computers through a
+reverse proxy that serves HTTPS ([Reverse proxy](/docs/web/reverse-proxy)).
+
+## The token
+
+Every call sends the API token of the njMule it reaches as a bearer token:
+
+```text
+Authorization: Bearer <token>
+```
+
+The token is 256 random bits written as 43 characters of URL-safe Base64, kept in the file
+`api-token` of njMule's configuration folder ([Where njMule keeps its data](/docs/data/locations)),
+readable by its owner only where the file system can say so. It is made when the web interface
+starts with the API on, or by the first `njmule --api-token`.
+
+| Command | What it does |
+|---|---|
+| `njmule --api-token` | prints the token, making one if there is none |
+| `njmule --new-api-token` | replaces the token, prints the new one and exits; the old one stops working at once |
+
+The desktop app's web interface options have the same as buttons, **Copy the API token** and **New
+API token**. To reach another computer, run `njmule --api-token` there and take the token with you.
+
+The API uses no cookie, so pages of other sites cannot act through a browser. A missing or wrong
+token counts as a failed login of the caller's address (for IPv6, its /64 network), together with
+the web interface's password logins: after five, the address gets `429 Too Many Requests` until a
+minute has passed. Behind a reverse proxy that is trusted to name its client (`--webui-proxy`),
+the address is the client's, read from `X-Forwarded-For`.
+
+## Conventions
+
+- Requests and answers are JSON, in UTF-8; a request body may hold 1 MiB at most.
+- Enum values are lower case, with underscores between words: a source's state is `queued`,
+  `queue_full` or `no_needed_parts`, a priority `very_low` or `auto`.
+- Hashes are the 32 hexadecimal digits of an MD4 file or user hash.
+- Rates are in bytes per second (`downloadBytesPerSecond`); speed limits in KiB/s, as in the
+  options (`uploadKiBps`).
+- The preferences are read and changed by the keys of `njmule.properties`; the passwords they hold
+  (the proxy's, the SMTP server's) never leave njMule.
+- `GET /api/v1/` answers njMule's name and version and the version of the API, a number that grows
+  when calls are added.
+
+## Errors
+
+A failed call answers with an HTTP status and an `Error` object whose message is meant for the
+caller:
+
+```json
+{ "error": "Wrong token." }
+```
+
+| Status | When |
+|---|---|
+| 400 | the request does not follow the document, or names something the engine refuses |
+| 401 | no token or a wrong one; the answer carries `WWW-Authenticate: Bearer` |
+| 404 | an unknown path, or nothing of that name (a download, a search, a server) |
+| 405 | a method the path does not take; the `Allow` header lists those it does |
+| 409 | the engine's state does not allow it now, such as an automatic search while no network is connected |
+| 413 | the body is larger than 1 MiB |
+| 429 | too many wrong tokens from this address: wait a minute |
+| 500 | the request failed |
+| 501 | this njMule cannot be stopped through the API (`POST /shutdown`) |
+| 503 | the engine cannot answer in time, the token cannot be read, or too many event streams are open |
+
+## The event stream
+
+`GET /api/v1/events` answers a `text/event-stream` that lasts until you leave:
+
+- Each event has its name in `event:`, its JSON in `data:` and its number in the stream in `id:`.
+- An idle stream gets a comment every 15 seconds, which keeps proxies from closing it.
+- `types` picks the events by the prefixes of their names, separated by commas, such as
+  `?types=download,server.connected`; without it, every event comes.
+- At most eight streams are open at once; one more gets 503.
+- A caller that falls too far behind gets a `lost` event and is cut off: read the state again with
+  the ordinary calls, then reconnect. Events missed while disconnected are not sent again.
+
+The events are `started`, `stopping`, `preferences.changed`, `log`, `server.connecting`,
+`server.connected`, `server.disconnected`, `server.message`, `server.updated`, `servers.changed`,
+`search.results`, `search.ended`, `download.added`, `download.progress`, `download.completed`,
+`download.failed`, `download.removed`, `disk.space`, `message.received`, `captcha.requested`,
+`captcha.answered`, `message.failed`, `update.status`, `update.available`, `update.ready`,
+`update.restart` and `lost`. The [reference](./reference/stream-events.api.mdx) describes the data
+of each.
+
+## Examples with curl
+
+Take the token of the njMule on this computer, then read its state:
+
+```bash
+TOKEN=$(njmule --api-token)
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:4711/api/v1/status
+```
+
+Add a download from an eD2K link (`links` takes one link or a list):
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"links": "ed2k://|file|lumenos-4.1-desktop-amd64.iso|6217003008|E2B71C09A4F35D8E10C6A2B94D7F53E1|/"}' \
+    http://127.0.0.1:4711/api/v1/downloads
+```
+
+Pause it by its hash:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+    http://127.0.0.1:4711/api/v1/downloads/E2B71C09A4F35D8E10C6A2B94D7F53E1/pause
+```
+
+Search Kad, then read the results with the `id` the first call answers (`{"id": …}`):
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"query": "ubuntu iso", "scope": "kad"}' http://127.0.0.1:4711/api/v1/searches
+SEARCH_ID=…   # the id answered above
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:4711/api/v1/searches/$SEARCH_ID"
+```
+
+Follow the downloads' events as they happen (`-N` turns off curl's buffering):
+
+```bash
+curl -N -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:4711/api/v1/events?types=download"
+```
+
+## njMule as a client
+
+njMule itself is a client of this API:
+
+- `njmule --remote <command>` drives the njMule running on the same configuration, finding its
+  address and token by itself: `njmule --remote status`, `njmule --remote search kad ubuntu iso`,
+  `njmule --remote help` for the list ([Remote control](/docs/server/remote-control)).
+- With `--remote-url http://<host>:4711/api/v1`, the command runs on another computer, whose token
+  you put in the `NJMULE_API_TOKEN` environment variable.
+- The desktop app shows and drives another njMule in a window of its own through the same API
+  ([Remote njMule](/docs/desktop/remote)).
+
+## The OpenAPI document
+
+Every njMule serves its own document at `/api/v1/openapi.yaml`, with the token like any other call,
+so a client can always read the API of the version it talks to:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:4711/api/v1/openapi.yaml
+```
+
+Generate a client in your language from it with any tool that reads OpenAPI 3.2. The
+[API reference](./reference/njmule-remote-control-api.info.mdx) shows every call, grouped as in
+the document, with its parameters, bodies and answers.

@@ -1,0 +1,42 @@
+---
+title: Proxy
+description: Send njMule's connections through a SOCKS 4, SOCKS 5 or HTTP CONNECT proxy, with its host, port and credentials.
+---
+
+The **Proxy** page sends njMule's outgoing connections through a proxy, if you need one: a SOCKS 4 or
+SOCKS 5 proxy, with or without a user name and password, or an HTTP proxy that allows `CONNECT`. Most
+people need none. The web interface has the same page.
+
+<Screenshot
+  id="settings-page-05"
+  alt="The Proxy page: Type set to No proxy, and the fields Host and port (with 1080 in the port) and User name and password, all greyed out."
+  caption="The Proxy page."
+/>
+
+Every option of this page waits for **Apply and reconnect** (see
+[When a change applies](index.mdx#when-a-change-applies)): njMule then opens its next connections
+through the new proxy, without a restart. The proxy is kept in `njmule.properties` as one setting.
+
+## Options
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| **Type** | **No proxy** | **No proxy**, **SOCKS 4 or 5**, or **HTTP (CONNECT)**. With **No proxy** the other fields are off. Its **Reset to No proxy** link removes the whole proxy, host and credentials included. Key `proxy.type`: `NONE`, `SOCKS` or `HTTP`. Also in the web interface. |
+| **Host and port** | empty, `1080` | The proxy's host name or IP address, required with a proxy, and its port, a whole number from 1 to 65535. Keys `proxy.host` and `proxy.port`. Also in the web interface. |
+| **User name and password** | empty | The credentials of a SOCKS proxy, if it asks for them; leave them empty otherwise. The user name takes up to 255 characters. They go to a SOCKS proxy only, never to an HTTP proxy. Keys `proxy.user` and `proxy.password`. Also in the web interface, which never shows the stored password. |
+
+The password is kept in `njmule.properties` as you typed it, and never leaves njMule through the
+remote-control API.
+
+## What goes through the proxy
+
+- **TCP connections** to servers and clients, and the lists njMule fetches from the web (server
+  lists, IP filter lists, update checks), go through the proxy.
+- **UDP** (server pings, global searches, Kad, messages between clients) goes through the UDP relay of
+  a SOCKS 5 proxy. A proxy that relays no UDP, such as an HTTP or SOCKS 4 proxy, or one that refuses,
+  leaves UDP going straight to the network, and the log says so.
+- **Connections through routers** between firewalled clients are not made behind a proxy, whose
+  relay would show another address.
+
+The proxy carries what njMule sends out; other clients still connect to your own ports.
+[Proxy](../network/proxy.mdx) explains when a proxy helps and what it hides.
