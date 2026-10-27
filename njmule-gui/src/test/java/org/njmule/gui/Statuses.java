@@ -19,6 +19,7 @@ package org.njmule.gui;
 import java.util.Optional;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.PortTest;
 import org.njmule.core.api.ServerInfo;
 
 /** Engine states and servers the real engine cannot be brought to in a test. */
@@ -65,6 +66,38 @@ public final class Statuses {
                 false,
                 Optional.empty(),
                 Optional.of(ipv6));
+    }
+
+    /** No server nor Kad, listening on {@code tcpPort}, with what {@code router} answered through UPnP. */
+    public static EngineStatus forwarded(int tcpPort, PortTest.Forwarding answer, String router) {
+        return new EngineStatus(
+                Optional.empty(),
+                0,
+                false,
+                false,
+                Optional.empty(),
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                "",
+                tcpPort,
+                false,
+                Optional.empty(),
+                Optional.empty(),
+                0,
+                0,
+                answer,
+                router);
     }
 
     /** Kad running, connected or not, behind a firewall or not, at {@code ip} (empty when unknown). */

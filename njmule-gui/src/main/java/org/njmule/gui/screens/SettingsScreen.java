@@ -635,7 +635,8 @@ public final class SettingsScreen implements Screen {
                                 this.upnp::isSelected,
                                 this.upnp::setSelected,
                                 this::yesNo),
-                        new SettingRow(this.gui, this.gui.t("nj.network.testPorts"), this.portTest.node()).wide()),
+                        // The test's button names it.
+                        new SettingRow(this.gui, "", this.portTest.node()).wide()),
                 section(
                         "IDS_NETWORK",
                         toggle(

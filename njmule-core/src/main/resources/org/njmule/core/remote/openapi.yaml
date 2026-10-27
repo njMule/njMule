@@ -2418,6 +2418,15 @@ components:
         upnp:
           type: boolean
           description: Whether the router is asked to forward our ports.
+        forwarding:
+          type: string
+          enum: [off, asking, forwarded, partly, refused, no_router, failed]
+          description: >-
+            What the router answered when asked through UPnP to forward our ports: off while it is not asked, asking
+            until it answers.
+        router:
+          type: string
+          description: The host of the router that answered UPnP, empty when none did.
         routerTraversal:
           type: boolean
           description: >-

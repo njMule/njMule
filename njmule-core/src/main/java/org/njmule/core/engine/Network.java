@@ -290,6 +290,10 @@ final class Network {
     private CompletableFuture<Void> upnpChanges = CompletableFuture.completedFuture(null);
     // Whether mappings were last asked for; engine thread.
     private boolean forwardingWanted;
+    // What the router last answered, with its host, for the mappings asked last (their run); engine thread.
+    private PortTest.Forwarding upnpAnswer = PortTest.Forwarding.OFF;
+    private String upnpRouter = "";
+    private int upnpRun;
     // Touched only by the steps of upnpChanges.
     private PortForwarding forwarding;
     private final Totals totals;
@@ -978,7 +982,9 @@ final class Network {
                 this.ourIpv6.map(InetAddresses::toAddrString),
                 Traffic.overheadSent(),
                 // What came besides the files: the packets of file data count by their payload only.
-                Math.max(0, Traffic.received() - this.downloads.downloaded()));
+                Math.max(0, Traffic.received() - this.downloads.downloaded()),
+                this.upnpAnswer,
+                this.upnpRouter);
     }
 
     private long sessionSeconds() {
@@ -1763,6 +1769,9 @@ final class Network {
             return;
         }
         this.forwardingWanted = wanted;
+        int run = ++this.upnpRun;
+        this.upnpAnswer = wanted ? PortTest.Forwarding.ASKING : PortTest.Forwarding.OFF;
+        this.upnpRouter = "";
         int tcp = listenPort();
         OptionalInt udp = this.kadSocket == null ? OptionalInt.empty() : OptionalInt.of(this.kadSocket.port());
         changeMappings(() -> {
@@ -1778,7 +1787,7 @@ final class Network {
                                             ? LogLine.Level.SUCCESS
                                             : LogLine.Level.WARNING,
                                     line);
-                            forwardingOutcome(outcome, router);
+                            forwardingOutcome(run, outcome, router);
                         }),
                         () -> this.ourIpv6);
             }
@@ -2053,7 +2062,12 @@ final class Network {
         }
     }
 
-    private void forwardingOutcome(PortForwarding.Outcome outcome, String router) {
+    // An answer to mappings asked before the last ones no longer tells how the router stands.
+    private void forwardingOutcome(int run, PortForwarding.Outcome outcome, String router) {
+        if (run == this.upnpRun) {
+            this.upnpAnswer = PortCheck.forwarding(outcome);
+            this.upnpRouter = router;
+        }
         if (this.portCheck != null && !this.portCheck.isOver()) {
             this.portCheck.forwarded(outcome, router);
         }
