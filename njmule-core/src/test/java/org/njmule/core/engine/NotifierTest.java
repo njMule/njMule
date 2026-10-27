@@ -25,9 +25,11 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Authenticator;
+import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -37,6 +39,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.eclipse.jetty.client.HttpClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -50,6 +53,7 @@ import org.njmule.core.config.BindInterface;
 import org.njmule.core.config.EventCommands;
 import org.njmule.core.config.Notifications;
 import org.njmule.core.config.ProxySettings;
+import org.njmule.core.net.HttpRoute;
 import org.njmule.core.net.ProxyRoute;
 import org.njmule.core.net.TcpConnector;
 
@@ -70,6 +74,8 @@ class NotifierTest {
     private final AtomicBoolean reached = new AtomicBoolean();
     private ServerSocket proxy;
     private final List<String> proxySaw = new CopyOnWriteArrayList<>();
+    private ServerSocket hook;
+    private final List<String> hookGot = new CopyOnWriteArrayList<>();
     private Throwable exception;
 
     @AfterEach
@@ -79,6 +85,9 @@ class NotifierTest {
         }
         if (this.proxy != null) {
             this.proxy.close();
+        }
+        if (this.hook != null) {
+            this.hook.close();
         }
         ProxyRoute.install(() -> ProxySettings.NONE);
         Authenticator.setDefault(null);
@@ -159,6 +168,65 @@ class NotifierTest {
         thenExceptionOccurred(IOException.class, "STARTTLS");
         thenTheProxySaw("auth me:secret", "connect 192.0.2.25:587");
         thenNoMessageWasSent();
+    }
+
+    @Test
+    void shouldSendTheMailThroughTheHttpProxyOfThePreferences() throws Exception {
+        givenAnHttpProxyOfThePreferencesBeforeAnSmtpServerWithoutStartTls();
+
+        whenMailedTo("192.0.2.25", 587);
+
+        thenExceptionOccurred(IOException.class, "STARTTLS");
+        thenTheProxySaw("CONNECT 192.0.2.25:587 HTTP/1.1");
+    }
+
+    @Test
+    void shouldSendTheMailFromTheChosenInterfaceOnly() throws Exception {
+        givenAnSmtpServerWithoutStartTls();
+        givenTheChosenInterfaceHasAnAddressThisComputerLacks();
+
+        whenMailedTo("127.0.0.1", this.smtp.getLocalPort());
+
+        thenTheMailFailed();
+        thenNothingReachedTheServer();
+    }
+
+    @Test
+    void shouldPostTheTextWithItsTitleToTheWebHook() throws Exception {
+        givenAWebHookAnswering(200);
+
+        whenPostedAs(Notifications.WebhookFormat.TEXT);
+
+        thenNoExceptionOccurred();
+        thenTheWebHookGot("POST /notify HTTP/1.1", "Title: njMule: Test", "text/plain", "test");
+    }
+
+    @Test
+    void shouldPostTheTitleAndTheMessageAsJson() throws Exception {
+        givenAWebHookAnswering(200);
+
+        whenPostedAs(Notifications.WebhookFormat.JSON);
+
+        thenNoExceptionOccurred();
+        thenTheWebHookGot("application/json", "\"title\":\"njMule: Test\"", "\"message\":\"test\"");
+    }
+
+    @Test
+    void shouldAskForTheAddressOfTheWebHook() throws Exception {
+        givenTheSettings(channels(false, 25, true, ""));
+
+        whenTestedForReal();
+
+        thenTheResultsAre(new NotificationResult("webhook", Optional.of("Set the address of the web hook.")));
+    }
+
+    @Test
+    void shouldFailOnAWebHookThatAnswersAnError() throws Exception {
+        givenAWebHookAnswering(500);
+
+        whenPostedAs(Notifications.WebhookFormat.TEXT);
+
+        thenExceptionOccurred(IOException.class, "answered HTTP 500");
     }
 
     @Test
@@ -252,6 +320,70 @@ class NotifierTest {
         });
     }
 
+    // Takes the tunnel asked for, then the connection as the SMTP server it was asked for.
+    private void givenAnHttpProxyOfThePreferencesBeforeAnSmtpServerWithoutStartTls() throws IOException {
+        this.proxy = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+        int port = this.proxy.getLocalPort();
+        ProxyRoute.install(() -> new ProxySettings(ProxySettings.Type.HTTP, "127.0.0.1", port, "", ""));
+        Thread.ofVirtual().start(() -> {
+            try (Socket client = this.proxy.accept()) {
+                BufferedReader in =
+                        new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.US_ASCII));
+                this.proxySaw.add(in.readLine());
+                String line;
+                while ((line = in.readLine()) != null && !line.isEmpty()) {
+                    // The headers; the client says nothing more before the server greets it.
+                }
+                client.getOutputStream()
+                        .write("HTTP/1.1 200 Connection established\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+                talkSmtpWithoutStartTls(client);
+            } catch (IOException e) {
+                // The client went away, or the test closed the proxy.
+            }
+        });
+    }
+
+    // Notes the request, its headers and its body, and answers with {@code status}.
+    private void givenAWebHookAnswering(int status) throws IOException {
+        this.hook = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+        Thread.ofVirtual().start(() -> {
+            try (Socket client = this.hook.accept()) {
+                BufferedReader in =
+                        new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.UTF_8));
+                int length = 0;
+                String line;
+                while ((line = in.readLine()) != null && !line.isEmpty()) {
+                    this.hookGot.add(line);
+                    if (line.toLowerCase(Locale.ROOT).startsWith("content-length:")) {
+                        length = Integer.parseInt(
+                                line.substring(line.indexOf(':') + 1).strip());
+                    }
+                }
+                char[] body = new char[length];
+                int read = 0;
+                while (read < length) {
+                    int n = in.read(body, read, length - read);
+                    if (n < 0) {
+                        break;
+                    }
+                    read += n;
+                }
+                this.hookGot.add(new String(body, 0, read));
+                client.getOutputStream()
+                        .write(("HTTP/1.1 " + status + " X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                                .getBytes(StandardCharsets.US_ASCII));
+            } catch (IOException e) {
+                // The client went away, or the test closed the server.
+            }
+        });
+    }
+
+    // 192.0.2.1 is kept for documentation: no computer has it.
+    private void givenTheChosenInterfaceHasAnAddressThisComputerLacks() throws IOException {
+        Inet4Address address = (Inet4Address) InetAddress.getByAddress(new byte[] {(byte) 192, 0, 2, 1});
+        TcpConnector.useBinding(() -> new BindInterface.Binding.Bound(address));
+    }
+
     private void givenTheChosenInterfaceIsGone(String name) {
         TcpConnector.useBinding(() -> new BindInterface.Binding.Missing(name));
     }
@@ -274,6 +406,16 @@ class NotifierTest {
     private void whenTestedForReal() throws InterruptedException {
         Notifications n = this.settings;
         this.results = Notifier.create(() -> n).test();
+    }
+
+    private void whenPostedAs(Notifications.WebhookFormat body) throws IOException {
+        URI address = URI.create("http://127.0.0.1:" + this.hook.getLocalPort() + "/notify");
+        HttpClient http = HttpRoute.start();
+        try {
+            this.exception = catchThrowable(() -> Notifier.post(http, address, body, "njMule: Test", "test"));
+        } finally {
+            HttpRoute.stop(http);
+        }
     }
 
     private void whenMailed() {
@@ -334,6 +476,18 @@ class NotifierTest {
         assertThat(this.results)
                 .allSatisfy(result -> assertThat(result.error())
                         .hasValueSatisfying(error -> assertThat(error).contains(part)));
+    }
+
+    private void thenNoExceptionOccurred() {
+        assertThat(this.exception).isNull();
+    }
+
+    private void thenTheMailFailed() {
+        assertThat(this.exception).isInstanceOf(IOException.class);
+    }
+
+    private void thenTheWebHookGot(String... parts) {
+        assertThat(String.join("\n", this.hookGot)).contains(parts);
     }
 
     private void thenNothingReachedTheServer() {

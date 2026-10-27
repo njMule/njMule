@@ -115,14 +115,7 @@ final class Notifier implements Flow.Subscriber<EngineEvent> {
         return new Notifier(
                 settings,
                 Notifier::sendMail,
-                (n, title, text) -> {
-                    HttpClient http = HttpRoute.start();
-                    try {
-                        callHook(http, n, title, text);
-                    } finally {
-                        HttpRoute.stop(http);
-                    }
-                },
+                Notifier::callHook,
                 task -> Thread.ofVirtual().name("njmule-notify").start(task),
                 System::nanoTime);
     }
@@ -337,15 +330,26 @@ final class Notifier implements Flow.Subscriber<EngineEvent> {
         }
     }
 
-    static void callHook(HttpClient http, Notifications n, String title, String text)
-            throws IOException, InterruptedException {
+    // A client for each request, as the route may have changed since the last one.
+    private static void callHook(Notifications n, String title, String text) throws IOException, InterruptedException {
         if (n.webhookUrl().isEmpty()) {
             throw new IOException("Set the address of the web hook.");
         }
-        Request request = http.newRequest(URI.create(n.webhookUrl()))
+        HttpClient http = HttpRoute.start();
+        try {
+            post(http, URI.create(n.webhookUrl()), n.webhookBody(), title, text);
+        } finally {
+            HttpRoute.stop(http);
+        }
+    }
+
+    /** Posts the message to the web hook at {@code address}, which the preferences keep to https. */
+    static void post(HttpClient http, URI address, Notifications.WebhookFormat body, String title, String text)
+            throws IOException, InterruptedException {
+        Request request = http.newRequest(address)
                 .method(HttpMethod.POST)
                 .timeout(NETWORK_TIME.toMillis(), TimeUnit.MILLISECONDS);
-        switch (n.webhookBody()) {
+        switch (body) {
             case TEXT ->
                 request.headers(h -> h.put("Title", title))
                         .body(new StringRequestContent("text/plain; charset=utf-8", text, StandardCharsets.UTF_8));
