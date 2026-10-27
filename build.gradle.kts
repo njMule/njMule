@@ -53,7 +53,7 @@ val distributed = subprojects.filter { it.name !in setOf("njmule-bench", "njmule
 // The third-party license report comes from the desktop app, whose runtime holds every distributed
 // dependency: ./gradlew :njmule-gui:generateLicenseReport.
 
-// OWASP dependency vulnerability scan (needs NVD access; run weekly in CI):
+// OWASP dependency vulnerability scan, run by hand (needs an NVD API key in NVD_API_KEY):
 // ./gradlew dependencyCheckAggregate
 dependencyCheck {
     failBuildOnCVSS = 7f

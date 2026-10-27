@@ -120,7 +120,7 @@ njMule then makes its desktop entry, `org.njmule.njMule.desktop`, the default ha
 (in `ed2k-handler-previous`, in njMule's configuration folder), and turning the option off restores
 it, or takes njMule out of your `mimeapps.list` when there was none.
 
-Before you remove the deb or rpm package, turn the option off or run `njmule-gui --restore-links`.
+Before you remove the deb or rpm package, turn the option off or run `njmule --restore-links`.
 
 </TabItem>
 </Tabs>
@@ -131,13 +131,13 @@ links: …** and the switch shows the real state again.
 
 ### Giving the links back
 
-`njmule-gui --restore-links` gives the ed2k links back to what opened them before njMule took them,
+`njmule --restore-links` gives the ed2k links back to what opened them before njMule took them,
 if njMule still has them, then exits. It tells what it did: **ed2k links given back.**, **ed2k links
 open in another program: left as they are.**, or that this program does not open ed2k links here.
 The Windows uninstaller runs it for you.
 
 ```bash
-njmule-gui --restore-links
+njmule --restore-links
 ```
 
 ## The command line

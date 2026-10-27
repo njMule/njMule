@@ -136,12 +136,17 @@ The fully static Linux x64 executable, inside the Synology DSM package, the
 `njmule-<version>-linux-x64-static.tar.xz` archive and the `linux/amd64` Docker image, contains
 **musl libc** (MIT License) and **zlib** (zlib License). Their licence texts ship with it.
 
+The `linux/arm64` Docker image runs the glibc executable on Google's distroless base image, whose
+Debian packages (glibc, zlib, OpenSSL, the CA certificates, the time zone data) keep their own
+licences; their copyright files are in the image under `/usr/share/doc`.
+
 ## The complete list
 
 - **`NOTICE`**, the file of copyright, attribution and third-party notices, ships with the Windows
   installer and zip (as `NOTICE.txt` or `NOTICE`, beside the programs), the Linux packages (in
-  `/usr/share/doc/njmule`), the Linux archives, the Synology package and the Docker image (in
-  `/usr/share/doc/njmule`). Every njMule prints it with `njmule --notice`. Read it online in
+  `/usr/share/doc/njmule`), the Linux archives, the Synology package, the Docker image (in
+  `/usr/share/doc/njmule`) and the macOS app (in `njMule.app/Contents/Resources`, with `LICENSE`).
+  Every njMule prints it with `njmule --notice`. Read it online in
   [`NOTICE`](https://github.com/njMule/njMule/blob/main/NOTICE).
 - **The software bill of materials** of each release, `njmule-<version>-sbom.cdx.json` (CycloneDX),
   lists every component with its version.

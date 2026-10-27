@@ -63,6 +63,7 @@ All notable changes to this project are documented here. The format follows
 - On a phone the details of a download in the web interface show only once one is chosen, after the
   list instead of over it.
 - The smileys `:-p`, `:-O`, `:-o`, `:-|` and `:-*` show as emoji too.
+- The macOS app carries the license and the notices, as the other packages do.
 
 ### Removed
 
@@ -182,11 +183,11 @@ works with eMule and the other clients of the network.
   theme, and its controls named for screen readers; its own line icons and Manrope titles.
 - 36 languages with eMule's translations, mirrored for Arabic, Persian and Hebrew, with the sizes,
   rates and durations in each language's units.
-- A sidebar of places and a top bar with the rates, the state of eD2K and Kad and one field that
-  searches the network or takes eD2K links, beside a command palette (Ctrl+K): transfers with chips,
+- A sidebar of places and a top bar with the rates, the state of eD2K and Kad and a command
+  palette (Ctrl+K) that also searches the network or takes eD2K links: transfers with chips,
   sources under each download and a details pane; searches in tabs with filters; shared files by
   folder; conversations and friends; the network with its servers, Kad, log and our info;
-  statistics; options on twelve pages with a search.
+  statistics; options on thirteen pages with a search.
 - A first-start wizard, an icon in the Windows notification area with a small status window and
   speed sliders, the ed2k link handler on Windows, Linux and macOS, start at login and keeping the
   computer awake while files are transferred (both off by default), and a window onto another

@@ -54,8 +54,10 @@ The package lists its ports as njMule services in the DSM firewall:
 | njMule eD2K (TCP) | 4662/TCP |
 | njMule eD2K and Kad (UDP) | 4672/UDP |
 
-If the DSM firewall is on, allow them there. For a High ID, so that other clients can reach you, the
-router must forward 4662/TCP and 4672/UDP to the NAS, or njMule asks it to through UPnP. See
+If the DSM firewall is on, allow them there. These services name the default ports: if you change
+njMule's ports or the web interface's, allow the new ones in the DSM firewall by hand. For a High
+ID, so that other clients can reach you, the router must forward 4662/TCP and 4672/UDP (or your
+own ports) to the NAS, or njMule asks it to through UPnP. See
 [Ports and firewalls](../network/ports.mdx).
 
 :::note
@@ -73,8 +75,8 @@ before it exits (it is given up to a minute).
 ## Upgrade
 
 Install a newer `.spk` the same way, from **Manual Install**: the package is upgraded and keeps its
-settings and downloads. njMule tells you when a new version is out, on the status page of its web
-interface, and how to install it; it never replaces itself on DSM. See [Updates](../updates.mdx).
+settings and downloads. njMule tells you when a new version is out, in a banner of its web
+interface, and its **Options → General** tell how to install it; it never replaces itself on DSM. See [Updates](../updates.mdx).
 
 DSM versions are numbers only: Package Center shows njMule's version without its pre-release label
 (alpha, beta, release candidate), followed by a build number that grows with each package.

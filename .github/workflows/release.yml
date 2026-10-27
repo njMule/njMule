@@ -543,7 +543,7 @@ jobs:
                   mkdir -p "$app/MacOS" "$app/Resources" dist
                   cp -R njmule-gui/build/native/. "$app/MacOS/"
                   install -m 755 packaging/njmule.sh "$app/MacOS/njmule"
-                  cp branding/generated/njmule.icns "$app/Resources/"
+                  cp branding/generated/njmule.icns LICENSE NOTICE "$app/Resources/"
                   sed "s/@VERSION@/${VERSION%%-*}/g" packaging/macos/Info.plist > "$app/Info.plist"
                   printf 'kind=dmg\n' > "$app/Resources/install.properties"
                   plutil -lint "$app/Info.plist"
