@@ -21,6 +21,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Path;
 import java.util.List;
 import javafx.event.ActionEvent;
+import javafx.geometry.Bounds;
+import javafx.scene.control.Label;
+import javafx.scene.text.Text;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -123,8 +126,22 @@ class SettingsPagesTest {
         thenTheResetOfIsHidden("Nick");
     }
 
+    @Test
+    void shouldWrapALongNameInsteadOfRunningItUnderItsControl() throws Exception {
+        givenTheOptionsShown();
+        givenAWindowThisWide(800);
+
+        whenThePageIsShown("web");
+
+        thenTheNameIsWholeBesideItsControl("New password, twice (empty keeps the current one)");
+    }
+
     private void givenTheGui() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
+    }
+
+    private void givenAWindowThisWide(double width) throws Exception {
+        FxTesting.onFx(() -> this.screen.view().getScene().getWindow().setWidth(width));
     }
 
     private void givenTheOptionsShown() throws Exception {
@@ -146,6 +163,10 @@ class SettingsPagesTest {
         this.screen = FxTesting.onFx(() -> new SettingsScreen(this.test.gui));
         this.test.show(FxTesting.onFx(this.screen::view));
         FxTesting.onFx(this.screen::shown);
+    }
+
+    private void whenThePageIsShown(String id) throws Exception {
+        FxTesting.onFx(() -> this.screen.pagesView().show(id));
     }
 
     private void whenTheFindBoxReads(String words) throws Exception {
@@ -208,5 +229,18 @@ class SettingsPagesTest {
         FxTesting.assertEventually(
                 "no reset of " + option,
                 () -> !this.screen.pagesView().row(option).resetLink().isVisible());
+    }
+
+    // Wrapped, the name keeps all its words; run under the control, it would end past the control's start.
+    private void thenTheNameIsWholeBesideItsControl(String title) throws Exception {
+        FxTesting.assertEventually("the whole name of " + title + " beside its control", () -> {
+            SettingRow row = this.screen.pagesView().row(title);
+            Label name = row.nameLabel();
+            Bounds words = name.localToScene(name.getLayoutBounds());
+            Bounds control = row.control().localToScene(row.control().getLayoutBounds());
+            return name.lookup(".text") instanceof Text shown
+                    && shown.getText().equals(title)
+                    && words.getMaxX() <= control.getMinX();
+        });
     }
 }
