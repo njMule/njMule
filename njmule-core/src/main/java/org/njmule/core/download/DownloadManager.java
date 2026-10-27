@@ -115,6 +115,9 @@ public final class DownloadManager implements AutoCloseable {
          */
         default void corruptSender(InetAddress ip) {}
 
+        /** {@code part} of {@code download} failed its check and is downloaded again. */
+        default void corruptPart(DownloadInfo download, int part) {}
+
         /** Keeps the link of a download about to be deleted for receiving nothing; {@code false} keeps the download. */
         default boolean keepLink(Ed2kLink.FileLink link) {
             return false;
@@ -2837,6 +2840,10 @@ public final class DownloadManager implements AutoCloseable {
 
         @Override
         public void corrupt(DownloadQueue.Download download, int part) {
+            Entry entry = DownloadManager.this.entries.get(download.hash());
+            if (entry != null) {
+                DownloadManager.this.listener.corruptPart(DownloadManager.this.info(entry), part);
+            }
             DownloadManager.this.recover(download, part);
         }
 

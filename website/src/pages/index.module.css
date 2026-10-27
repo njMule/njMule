@@ -2,18 +2,23 @@
  * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * The home page, built on one shape: the part, the rectangle a download's strip is made of. Five type sizes, one
- * margin pair, square corners, flat colour; orange only on the action and the part being received.
+ * The home page, built around the part bar of a download. Soft shapes: rounded panels, cards and pictures inside one
+ * content width, flat colour; orange only on the actions and the part being received.
  */
 
 .page {
-    --step-xl: clamp(2.75rem, 6.2vw, 6.5rem);
-    --step-l: clamp(2rem, 3.6vw, 3.5rem);
+    --step-xl: clamp(2.5rem, 5vw, 4.5rem);
+    --step-l: clamp(1.875rem, 3.2vw, 3rem);
     --step-m: 1.25rem;
     --step-s: 1.0625rem;
     --step-xs: 0.875rem;
     --margin: clamp(1rem, 3vw, 2.5rem);
-    --gap: 8px;
+    --content: min(75rem, calc(100% - 2 * var(--margin)));
+    --inset: max(var(--margin), calc((100% - 75rem) / 2));
+    --space: clamp(4rem, 10vh, 6.5rem);
+    --radius-s: 10px;
+    --radius-m: 16px;
+    --radius-l: 24px;
     --field-brand: var(--nj-brand);
     --field-deep: var(--nj-brand-deep);
     --field-surface: var(--nj-surface);
@@ -21,9 +26,13 @@
     --on-brand: var(--nj-brand-mark);
     --ink: var(--ifm-font-color-base);
     --ink-soft: var(--ifm-color-content-secondary);
+    --ok: #a3be8c;
     --part-done: #f4f6fb;
     --part-asked: var(--nj-brand-accent);
     --part-none: #e8afb4;
+    --mark-0: var(--nj-brand);
+    --mark-1: var(--nj-brand-deep);
+    --mark-2: #4570ad;
     --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
     overflow-x: clip;
 }
@@ -33,20 +42,29 @@
     --field-deep: #162644;
     --field-soft: #34405a;
     --part-none: #a56a71;
+    --mark-0: #9db4e0;
+    --mark-1: #5b8cc6;
+    --mark-2: #7999d4;
 }
 
 .page h1,
 .page h2,
 .page h3 {
     font-family: 'Manrope', var(--ifm-font-family-base);
-    letter-spacing: -0.03em;
+    letter-spacing: -0.025em;
     margin: 0;
 }
 
 .page p {
     font-size: var(--step-s);
-    line-height: 1.55;
+    line-height: 1.6;
     margin: 0;
+}
+
+.sectionTitle {
+    font-size: var(--step-l);
+    font-weight: 800;
+    line-height: 1.08;
 }
 
 /* ---------------------------------------------------------------- actions */
@@ -55,7 +73,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 1.25rem 1.75rem;
+    gap: 1rem 1.75rem;
 }
 
 .primary,
@@ -70,7 +88,8 @@
 
 .primary {
     display: inline-block;
-    padding: 0.85rem 1.5rem;
+    padding: 0.8rem 1.5rem;
+    border-radius: var(--radius-s);
     background: var(--nj-brand-accent);
     color: var(--nj-on-accent);
 }
@@ -103,24 +122,23 @@
 .secondary:focus-visible {
     outline: 3px solid var(--nj-brand-accent);
     outline-offset: 3px;
+    border-radius: var(--radius-s);
 }
 
-/* ---------------------------------------------------------------- hero: the part bar, enormous */
+/* ---------------------------------------------------------------- hero: the words, and a download cut into parts */
 
 .hero {
     background: var(--field-brand);
     color: var(--on-brand);
-    padding: clamp(3rem, 8vh, 6rem) var(--margin) 0;
-    min-height: calc(100svh - var(--ifm-navbar-height));
+    padding: clamp(3rem, 8vh, 5.5rem) var(--inset) clamp(3rem, 8vh, 5rem);
+    border-radius: 0 0 var(--radius-l) var(--radius-l);
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    align-content: start;
-    gap: 2rem;
-    overflow: hidden;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 2.5rem clamp(2rem, 5vw, 4.5rem);
 }
 
 .heroText {
-    max-width: 62rem;
     display: grid;
     gap: 1.5rem;
 }
@@ -128,14 +146,14 @@
 .heroTitle {
     font-size: var(--step-xl);
     font-weight: 800;
-    line-height: 0.98;
-    max-width: 13ch;
+    line-height: 1.02;
+    max-width: 12ch;
     color: #ffffff;
 }
 
 .heroLead {
     font-size: var(--step-m) !important;
-    max-width: 44ch;
+    max-width: 40ch;
 }
 
 .heroText .secondary {
@@ -147,11 +165,12 @@
     color: var(--on-brand);
 }
 
-.heroFile {
+.fileCard {
     display: grid;
-    gap: 0.6rem;
-    max-width: 52rem;
-    margin-top: 1rem;
+    gap: 0.75rem;
+    padding: clamp(1.25rem, 2.5vw, 2rem);
+    border-radius: var(--radius-l);
+    background: rgb(244 246 251 / 8%);
 }
 
 .linkLabel {
@@ -166,8 +185,8 @@
     color: #ffffff;
     background: rgb(244 246 251 / 12%);
     border: 0;
-    border-bottom: 2px solid rgb(244 246 251 / 45%);
-    padding: 0.7rem 0.8rem;
+    border-radius: var(--radius-s);
+    padding: 0.7rem 0.85rem;
     transition: background-color 160ms var(--ease);
 }
 
@@ -176,8 +195,8 @@
 }
 
 .linkField:focus-visible {
-    outline: none;
-    border-bottom-color: var(--nj-brand-accent);
+    outline: 2px solid var(--nj-brand-accent);
+    outline-offset: 2px;
     background: rgb(244 246 251 / 18%);
 }
 
@@ -188,20 +207,26 @@
 
 .bar {
     display: flex;
-    gap: 4px;
-    height: clamp(7rem, 24vh, 15rem);
-    width: calc(100% + var(--margin) + 6vw);
-    margin-top: 0.5rem;
+    gap: 3px;
+    height: 3.25rem;
+    margin-top: 0.25rem;
 }
 
 .barTight {
     gap: 0;
+    border-radius: var(--radius-s);
+    overflow: hidden;
 }
 
 .bar > span {
     flex: 1 1 0;
     min-width: 0;
+    border-radius: 3px;
     transition: background-color 220ms linear;
+}
+
+.barTight > span {
+    border-radius: 0;
 }
 
 .part-done {
@@ -230,75 +255,69 @@
 
 .legend {
     list-style: none;
-    margin: -1rem 0 0;
-    padding: 1rem 0 2rem;
+    margin: 0;
+    padding: 0;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem 1.75rem;
+    gap: 0.4rem 1.25rem;
     font-size: var(--step-xs);
 }
 
 .legend li {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
 }
 
 .legend span {
     display: inline-block;
-    width: 0.9rem;
-    height: 0.9rem;
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 3px;
 }
 
-/* ---------------------------------------------------------------- one control, blown up */
+/* ---------------------------------------------------------------- desktop app or web interface */
 
+/* A tone darker than the pictures' own backgrounds, so that their edges show without a frame. */
 .faces {
-    position: relative;
-    background: var(--field-surface);
-    min-height: 92svh;
-    padding: clamp(4rem, 10vh, 7rem) var(--margin) 0;
+    width: var(--content);
+    margin: var(--space) auto 0;
+    padding: clamp(1.75rem, 4vw, 3.5rem);
+    border-radius: var(--radius-l);
+    background: var(--field-soft);
     display: grid;
-    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-    grid-template-rows: auto 1fr;
-    gap: 2.5rem var(--margin);
-    overflow: hidden;
-    transition: background-color 320ms var(--ease);
+    gap: 2.5rem;
 }
 
-.facesBrowser {
-    background: var(--field-soft);
+.facesHead {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 1.5rem 3rem;
 }
 
 .facesText {
     display: grid;
     gap: 1rem;
-    align-content: start;
-    max-width: 34rem;
-}
-
-.sectionTitle {
-    font-size: var(--step-l);
-    font-weight: 800;
-    line-height: 1.02;
+    max-width: 36rem;
 }
 
 .switch {
-    justify-self: end;
-    align-self: start;
     display: inline-flex;
+    padding: 4px;
+    border-radius: 999px;
     background: var(--ifm-background-color);
-    padding: 0.25em;
-    font-size: clamp(1.1rem, 2.4vw, 2.25rem);
-    margin-right: calc(-1 * var(--margin) - 0.4em);
 }
 
 .switchItem {
     font: inherit;
     font-family: 'Manrope', var(--ifm-font-family-base);
+    font-size: 1rem;
     font-weight: 700;
-    letter-spacing: -0.02em;
     border: 0;
-    padding: 0.45em 0.9em;
+    border-radius: 999px;
+    padding: 0.55rem 1.15rem;
     background: transparent;
     color: var(--ink-soft);
     cursor: pointer;
@@ -313,7 +332,7 @@
 
 .switchItem:focus-visible {
     outline: 3px solid var(--nj-brand-accent);
-    outline-offset: -3px;
+    outline-offset: 1px;
 }
 
 .switchOn {
@@ -330,22 +349,20 @@
     color: #1b2330;
 }
 
+/* Both pictures in one cell, the one shown over the other; never wider than they were taken. */
 .facesShot {
-    grid-column: 1 / -1;
-    position: relative;
-    align-self: end;
-    margin-right: calc(-1 * var(--margin) - 8vw);
-    margin-left: clamp(0rem, 8vw, 10rem);
-    aspect-ratio: 1280 / 800;
+    display: grid;
+    justify-self: center;
+    width: min(100%, 60rem);
 }
 
 .faceImage {
-    position: absolute;
-    inset: 0;
+    grid-area: 1 / 1;
     width: 100%;
     height: auto;
+    border-radius: var(--radius-m);
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(12px);
     transition:
         opacity 320ms var(--ease),
         transform 420ms var(--ease);
@@ -356,136 +373,133 @@
     transform: none;
 }
 
-/* ---------------------------------------------------------------- close-ups on a board */
+/* ---------------------------------------------------------------- what it does on the network */
 
 .board {
-    display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    grid-auto-rows: 104px;
-    gap: var(--gap);
-    padding: var(--gap) 10px;
-    background: var(--ifm-background-color);
+    width: var(--content);
+    margin: var(--space) auto 0;
 }
 
-.tile {
-    position: relative;
-    overflow: hidden;
-    grid-column: span 3;
-    grid-row: span 2;
-    padding: 1.25rem;
+.boardHead {
+    display: grid;
+    gap: 1rem;
+    max-width: 40rem;
+    margin-bottom: 2rem;
+}
+
+.cards {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.card {
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
-    gap: 0.25rem;
+    gap: 0.6rem;
+    min-height: 15rem;
+    padding: 1.5rem;
+    border-radius: var(--radius-m);
     background: var(--field-surface);
     color: var(--ink);
+    transition: transform 200ms var(--ease);
 }
 
-.tile h3 {
-    font-size: var(--step-m);
+.card:hover {
+    transform: translateY(-3px);
+}
+
+.card h3 {
+    margin-top: auto !important;
+    font-size: 1.25rem;
     font-weight: 700;
-    position: relative;
 }
 
-.tile p {
-    font-size: var(--step-s) !important;
-    max-width: 34ch;
-    position: relative;
+.card p {
+    font-size: 1rem !important;
+    line-height: 1.55;
 }
 
-.tileTitle {
-    grid-column: span 6;
-    justify-content: flex-start;
-    background: var(--ifm-background-color);
-    padding: 1.5rem 1.25rem;
-}
-
-.tileWide {
-    grid-column: span 6;
-}
-
-.tileTall {
-    grid-row: span 4;
-}
-
-.toneBrand {
+.tone-brand {
     background: var(--field-brand);
     color: var(--on-brand);
 }
 
-.toneDeep {
+.tone-deep {
     background: var(--field-deep);
     color: var(--on-brand);
 }
 
-.toneSurface {
+.tone-surface {
     background: var(--field-surface);
 }
 
-.toneSoft {
+.tone-soft {
     background: var(--field-soft);
 }
 
-.toneBrand h3,
-.toneDeep h3 {
+.tone-brand h3,
+.tone-deep h3 {
     color: #ffffff;
 }
 
-/* A real element of the interface, enlarged and pushed off-centre so the tile's edges crop it. */
-.closeUp {
-    position: absolute;
-    top: -0.15em;
-    right: -0.35em;
-    font-size: clamp(2.2rem, 4.4vw, 4rem);
-    font-weight: 700;
-    line-height: 1.1;
-    display: flex;
+/* A small piece of the interface: whole, at reading size, and wrapped rather than cut. */
+.sample {
+    align-self: flex-start;
+    max-width: 100%;
+    display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 0.3em;
-    white-space: nowrap;
-    opacity: 0.95;
+    gap: 0.35rem 0.55rem;
+    padding: 0.5rem 0.85rem;
+    border-radius: var(--radius-s);
+    background: rgb(46 52 64 / 7%);
+    font-family: 'Manrope', var(--ifm-font-family-base);
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
 }
 
-.closeUp small {
-    font-size: 0.45em;
+:global([data-theme='dark']) .sample,
+.tone-brand .sample,
+.tone-deep .sample {
+    background: rgb(244 246 251 / 12%);
+}
+
+.sample small {
+    font-family: var(--ifm-font-family-base);
+    font-size: 0.85rem;
     font-weight: 500;
-    opacity: 0.85;
+}
+
+.sample code {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: 1.05rem;
 }
 
 .statusDot {
-    width: 0.45em;
-    height: 0.45em;
-    background: #a3be8c;
-    display: inline-block;
-}
-
-.closeUpAddress {
-    left: 1.25rem;
-    right: auto;
-    top: 1.25rem;
-    font-size: clamp(1.3rem, 2.1vw, 2rem);
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    background: var(--ok);
 }
 
 .segments {
-    right: auto;
-    left: 1.25rem;
-    top: 1.25rem;
+    display: inline-flex;
+    gap: 2px;
+    font-size: 1rem;
 }
 
 .segments span {
-    font-size: 0.42em;
-    padding: 0.5em 0.8em;
-    background: rgb(46 52 64 / 6%);
-}
-
-:global([data-theme='dark']) .segments {
-    right: auto;
-    left: 1.25rem;
-    top: 1.25rem;
-}
-
-.segments span {
-    background: rgb(236 239 244 / 8%);
+    padding: 0.2rem 0.7rem;
+    border-radius: 999px;
 }
 
 .segments .segmentOn {
@@ -493,66 +507,83 @@
     color: var(--nj-brand-mark);
 }
 
-.toggleRow {
-    flex-direction: column;
-    align-items: flex-start;
-    right: auto;
-    left: 1.25rem;
-    top: 1.25rem;
-    font-size: clamp(2rem, 3.6vw, 3.4rem);
+:global([data-theme='dark']) .segments .segmentOn {
+    background: var(--ifm-color-primary);
+    color: #1b2330;
 }
 
 .toggle {
-    width: 2.2em;
-    height: 1.2em;
-    background: var(--nj-brand-accent);
     position: relative;
+    width: 2.4rem;
+    height: 1.35rem;
+    border-radius: 999px;
+    background: var(--nj-brand-accent);
 }
 
 .toggle::after {
     content: '';
     position: absolute;
-    top: 0.15em;
-    right: 0.15em;
-    width: 0.9em;
-    height: 0.9em;
+    top: 0.175rem;
+    right: 0.18rem;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
     background: var(--nj-on-accent);
 }
 
-.closeUpFigure {
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0;
-    font-size: clamp(2.6rem, 5vw, 4.6rem);
-}
-
 .keys {
-    gap: 0.2em;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 1rem;
 }
 
 .keys kbd {
-    font-size: 0.6em;
-    padding: 0.2em 0.45em;
+    font-size: 0.95rem;
+    padding: 0.15rem 0.5rem;
+}
+
+.tone-brand .keys kbd {
     background: rgb(244 246 251 / 16%);
+    border-color: rgb(244 246 251 / 35%);
     color: var(--on-brand);
-    border: 0;
-    border-radius: 0;
+}
+
+.check {
+    position: relative;
+    width: 1.15rem;
+    height: 1.15rem;
+    border-radius: 50%;
+    background: var(--ok);
+}
+
+.check::after {
+    content: '';
+    position: absolute;
+    left: 0.4rem;
+    top: 0.2rem;
+    width: 0.32rem;
+    height: 0.58rem;
+    border: solid var(--nj-on-accent);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
 }
 
 /* ---------------------------------------------------------------- moving from eMule */
 
 .stages {
+    width: var(--content);
+    margin: var(--space) auto 0;
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr auto;
-    min-height: 88svh;
-    margin-top: clamp(5rem, 12vh, 9rem);
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    border-radius: var(--radius-l);
+    overflow: hidden;
 }
 
 .stageClause {
     background: var(--field-brand);
     color: var(--on-brand);
-    padding: clamp(3rem, 8vh, 5rem) var(--margin) 2rem;
+    padding: clamp(2rem, 6vh, 3.5rem) clamp(1.5rem, 3vw, 2.5rem);
     display: grid;
     align-content: start;
     gap: 1.25rem;
@@ -572,25 +603,24 @@
 .stageTitle {
     font-size: var(--step-l);
     font-weight: 800;
-    line-height: 1.02;
+    line-height: 1.08;
     color: #ffffff;
-    max-width: 12ch;
-    min-height: 2.1em;
+    max-width: 13ch;
+    min-height: 2.2em;
 }
 
 .stageShot {
-    background: var(--field-surface);
-    position: relative;
+    background: var(--field-soft);
     display: grid;
     place-items: center;
-    padding: 2rem;
-    overflow: hidden;
+    padding: clamp(1.5rem, 3vw, 2.5rem);
 }
 
 .stageImage {
     grid-area: 1 / 1;
-    width: min(100%, 40rem);
+    width: min(100%, 36rem);
     height: auto;
+    border-radius: var(--radius-s);
     opacity: 0;
     transition: opacity 200ms linear;
 }
@@ -603,7 +633,7 @@
     grid-column: 1 / -1;
     background: var(--field-deep);
     color: var(--on-brand);
-    padding: 1.75rem 28px 1.5rem;
+    padding: 1.5rem clamp(1.5rem, 3vw, 2.5rem) 1.25rem;
 }
 
 .rangeWrap {
@@ -618,6 +648,7 @@
     right: 0;
     top: 12px;
     height: 8px;
+    border-radius: 999px;
     background: rgb(244 246 251 / 22%);
     pointer-events: none;
 }
@@ -627,6 +658,7 @@
     position: absolute;
     inset: 0 auto 0 0;
     width: calc(var(--at) * 100%);
+    border-radius: 999px;
     background: var(--part-done);
     transition: width 200ms var(--ease);
 }
@@ -653,20 +685,21 @@
 
 .range::-webkit-slider-thumb {
     appearance: none;
-    width: 32px;
-    height: 32px;
-    margin-top: -12px;
-    background: var(--nj-brand-accent);
+    width: 26px;
+    height: 26px;
+    margin-top: -9px;
     border: 0;
+    border-radius: 50%;
+    background: var(--nj-brand-accent);
     transition: transform 160ms var(--ease);
 }
 
 .range::-moz-range-thumb {
-    width: 32px;
-    height: 32px;
-    background: var(--nj-brand-accent);
+    width: 26px;
+    height: 26px;
     border: 0;
-    border-radius: 0;
+    border-radius: 50%;
+    background: var(--nj-brand-accent);
 }
 
 .range:hover::-webkit-slider-thumb {
@@ -676,6 +709,7 @@
 .range:focus-visible {
     outline: 3px solid var(--nj-brand-accent);
     outline-offset: 4px;
+    border-radius: 999px;
 }
 
 .stageNames {
@@ -705,8 +739,9 @@
     font-size: var(--step-s);
     background: none;
     border: 0;
+    border-radius: 6px;
     padding: 0.25rem 0;
-    color: rgb(244 246 251 / 70%);
+    color: rgb(244 246 251 / 75%);
     cursor: pointer;
 }
 
@@ -716,35 +751,22 @@
     font-weight: 600;
 }
 
-/* ---------------------------------------------------------------- install: the giant word and its bars */
+/* ---------------------------------------------------------------- install */
 
 .install {
-    container-type: inline-size;
-    width: min(40rem, calc(100% - 2 * var(--margin)));
-    margin: clamp(6rem, 16vh, 11rem) auto 0;
-}
-
-.giantWord {
-    font-size: 31cqw;
-    font-weight: 800;
-    line-height: 0.8;
-    letter-spacing: -0.055em;
-    margin-left: -0.04em !important;
-    color: var(--nj-brand);
-}
-
-:global([data-theme='dark']) .giantWord {
-    color: var(--ifm-color-primary);
+    width: min(44rem, calc(100% - 2 * var(--margin)));
+    margin: var(--space) auto 0;
 }
 
 .installLead {
-    margin: 1.5rem 0 1.25rem !important;
-    font-size: var(--step-s);
+    margin: 1.25rem 0 !important;
 }
 
 .platform {
     background: var(--field-surface);
-    margin-bottom: 6px;
+    border-radius: var(--radius-m);
+    margin-bottom: 8px;
+    overflow: hidden;
 }
 
 .platform summary {
@@ -753,11 +775,16 @@
     justify-content: space-between;
     align-items: center;
     min-height: 56px;
-    padding: 0 18px;
+    padding: 0 20px;
     font-size: var(--step-s);
     font-weight: 600;
     cursor: pointer;
     transition: background-color 160ms var(--ease);
+}
+
+/* What a closed platform holds is not there at all, not merely out of sight. */
+.platform:not([open]) > :not(summary) {
+    display: none;
 }
 
 .platform summary::-webkit-details-marker {
@@ -782,6 +809,7 @@
 .platform summary:focus-visible {
     outline: 3px solid var(--nj-brand-accent);
     outline-offset: -3px;
+    border-radius: var(--radius-m);
 }
 
 .platform dl {
@@ -816,14 +844,15 @@
 /* ---------------------------------------------------------------- find your way */
 
 .places {
-    margin: clamp(6rem, 16vh, 11rem) var(--margin) 0;
+    width: var(--content);
+    margin: var(--space) auto 0;
 }
 
 .placesBody {
     display: grid;
     grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-    gap: var(--margin);
-    margin-top: 2rem;
+    gap: clamp(1.5rem, 4vw, 3rem);
+    margin-top: 1.5rem;
     align-items: start;
 }
 
@@ -838,18 +867,22 @@
 }
 
 .placeList:hover li:not(:hover) {
-    opacity: 0.45;
+    opacity: 0.5;
 }
 
 .placeList a {
     display: grid;
     gap: 0.2rem;
-    padding: 0.9rem 0;
+    padding: 0.8rem 1rem;
+    margin-inline: -1rem;
+    border-radius: var(--radius-s);
     color: var(--ink);
+    transition: background-color 200ms var(--ease);
 }
 
 .placeList a:hover {
     text-decoration: none;
+    background: var(--field-surface);
 }
 
 .placeList a:focus-visible {
@@ -859,10 +892,10 @@
 
 .placeTitle {
     font-family: 'Manrope', var(--ifm-font-family-base);
-    font-size: clamp(1.5rem, 2.6vw, 2.25rem);
+    font-size: clamp(1.3rem, 2.1vw, 1.75rem);
     font-weight: 800;
-    letter-spacing: -0.03em;
-    line-height: 1.1;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
     transition: color 200ms var(--ease);
 }
 
@@ -884,7 +917,8 @@
     position: sticky;
     top: calc(var(--ifm-navbar-height) + 2rem);
     aspect-ratio: 1280 / 800;
-    background: var(--field-surface);
+    background: var(--field-soft);
+    border-radius: var(--radius-m);
     overflow: hidden;
 }
 
@@ -916,55 +950,30 @@
     padding: 2rem;
 }
 
-/* ---------------------------------------------------------------- the action tiles */
+/* ---------------------------------------------------------------- the closing call */
 
 .action {
+    width: var(--content);
+    margin: var(--space) auto 0;
     display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    gap: 12px;
-    margin: clamp(6rem, 16vh, 11rem) 0 0;
-    min-height: 360px;
-}
-
-.actionSide {
-    min-height: 360px;
-    overflow: hidden;
-}
-
-.actionPicture {
-    grid-column: 1 / 3;
-    margin-left: -6vw;
-    background: var(--field-surface);
-}
-
-.actionImage {
-    width: auto;
-    height: 100%;
-    max-width: none;
-    object-fit: cover;
-    object-position: right top;
-}
-
-.actionFlat {
-    grid-column: 11 / 13;
-    margin-right: -6vw;
-    background: var(--field-soft);
+    grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+    align-items: center;
+    gap: clamp(1.5rem, 4vw, 3rem);
+    padding: clamp(1.75rem, 4vw, 3.5rem);
+    border-radius: var(--radius-l);
+    background: var(--field-brand);
+    color: var(--on-brand);
 }
 
 .actionMain {
-    grid-column: 3 / 11;
-    background: var(--field-brand);
-    color: var(--on-brand);
-    padding: 40px;
     display: grid;
-    align-content: center;
     gap: 1.25rem;
 }
 
 .actionMain h2 {
     font-size: var(--step-l);
     font-weight: 800;
-    line-height: 1.02;
+    line-height: 1.08;
     color: #ffffff;
 }
 
@@ -976,19 +985,32 @@
     color: var(--on-brand);
 }
 
+.actionPicture {
+    border-radius: var(--radius-m);
+    overflow: hidden;
+    line-height: 0;
+}
+
+.actionImage {
+    width: 100%;
+    height: auto;
+}
+
 /* ---------------------------------------------------------------- the mark, built of parts */
 
 .mark {
-    margin-top: clamp(6rem, 16vh, 11rem);
-    padding: 0 var(--margin) clamp(3rem, 8vh, 5rem);
+    width: var(--content);
+    margin: var(--space) auto 0;
+    padding-bottom: clamp(3rem, 8vh, 5rem);
 }
 
 .markBlocks {
     display: flex;
     align-items: flex-end;
-    gap: 4px;
-    height: 34svh;
-    min-height: 12rem;
+    gap: 6px;
+    height: 24svh;
+    min-height: 9rem;
+    max-height: 15rem;
 }
 
 .markBlocks span {
@@ -997,36 +1019,25 @@
     display: flex;
     align-items: flex-end;
     justify-content: center;
+    border-radius: var(--radius-m) var(--radius-m) 6px 6px;
     font-family: 'Manrope', var(--ifm-font-family-base);
     font-weight: 800;
-    font-size: clamp(4rem, 14vw, 13rem);
+    font-size: clamp(3rem, 9vw, 8rem);
     line-height: 0.8;
     color: var(--ifm-background-color);
     overflow: hidden;
 }
 
 .block0 {
-    background: var(--nj-brand);
+    background: var(--mark-0);
 }
 
 .block1 {
-    background: var(--nj-brand-deep);
+    background: var(--mark-1);
 }
 
 .block2 {
-    background: #4570ad;
-}
-
-:global([data-theme='dark']) .block0 {
-    background: #9db4e0;
-}
-
-:global([data-theme='dark']) .block1 {
-    background: #5b8cc6;
-}
-
-:global([data-theme='dark']) .block2 {
-    background: #7999d4;
+    background: var(--mark-2);
 }
 
 .markNote {
@@ -1075,7 +1086,7 @@
     .stageImage,
     .placePreview,
     .primary,
-    .faces {
+    .card {
         transition: none;
     }
 
@@ -1085,84 +1096,35 @@
     }
 }
 
-/* ---------------------------------------------------------------- phones and tablets */
+/* ---------------------------------------------------------------- tablets and phones */
 
-@media (max-width: 600px) {
-    /* A phone has no room for a strip of thin parts: they become a field of square ones. */
-    .bar {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(18px, 1fr));
-        grid-auto-rows: 18px;
-        gap: 4px;
-        height: auto;
-        width: 100%;
+@media (max-width: 1100px) {
+    .cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .barTight {
-        grid-template-columns: repeat(auto-fill, minmax(8px, 1fr));
-        grid-auto-rows: 8px;
-        gap: 2px;
+    .card {
+        min-height: 12rem;
     }
 }
 
 @media (max-width: 996px) {
-    .faces {
+    .hero {
         grid-template-columns: minmax(0, 1fr);
-        min-height: 86svh;
-    }
-
-    .switch {
-        justify-self: start;
-        margin-right: 0;
-        font-size: clamp(1.1rem, 5vw, 1.6rem);
-    }
-
-    .facesShot {
-        margin-left: 0;
-        margin-right: calc(-1 * var(--margin) - 30vw);
-    }
-
-    .board {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-auto-rows: 28vw;
-        gap: 6px;
-        padding: 6px;
-    }
-
-    .tile {
-        grid-column: span 1;
-        grid-row: span 2;
-    }
-
-    .tileTitle,
-    .tileWide,
-    .tileTall {
-        grid-column: span 2;
-        grid-row: span 2;
-    }
-
-    .tileTall {
-        grid-row: span 3;
     }
 
     .stages {
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: auto;
     }
 
     .stageShot {
         order: -1;
-        min-height: 46svh;
-    }
-
-    .stageRail {
-        order: 0;
     }
 
     .stageRail .range::-webkit-slider-thumb {
-        width: 40px;
-        height: 40px;
-        margin-top: -16px;
+        width: 36px;
+        height: 36px;
+        margin-top: -14px;
     }
 
     .stageNames {
@@ -1187,32 +1149,58 @@
         display: block;
         aspect-ratio: 1280 / 800;
         overflow: hidden;
-        background: var(--field-surface);
+        background: var(--field-soft);
+        border-radius: var(--radius-m);
         margin-bottom: 1rem;
     }
 
     .action {
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .cards {
+        grid-template-columns: minmax(0, 1fr);
     }
 
-    .actionMain {
-        grid-column: 1 / -1;
-        grid-row: 1;
-        padding: 28px var(--margin);
-        min-height: 300px;
+    .card {
+        min-height: 0;
     }
 
-    .actionPicture,
-    .actionFlat {
-        grid-column: auto;
-        grid-row: 2;
-        min-height: 120px;
-        margin: 0;
+    .card h3 {
+        margin-top: 0.5rem !important;
+    }
+
+    /* A phone has no room for a strip of thin parts: they become a field of small squares. */
+    .bar {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(16px, 1fr));
+        grid-auto-rows: 16px;
+        gap: 4px;
+        height: auto;
+    }
+
+    .barTight {
+        grid-template-columns: repeat(auto-fill, minmax(8px, 1fr));
+        grid-auto-rows: 8px;
+        gap: 2px;
+        border-radius: 0;
+        overflow: visible;
+    }
+
+    .barTight > span {
+        border-radius: 2px;
     }
 
     .markBlocks {
-        height: 22svh;
+        gap: 4px;
+        height: 18svh;
+        min-height: 7rem;
+    }
+
+    .markBlocks span {
+        border-radius: var(--radius-s) var(--radius-s) 4px 4px;
     }
 }
 
@@ -1229,7 +1217,8 @@
         display: block;
         aspect-ratio: 1280 / 800;
         overflow: hidden;
-        background: var(--field-surface);
+        background: var(--field-soft);
+        border-radius: var(--radius-m);
         margin-bottom: 1rem;
     }
 

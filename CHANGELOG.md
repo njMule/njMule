@@ -28,6 +28,15 @@ All notable changes to this project are documented here. The format follows
   tells how to install the new version for each kind of installation (the package manager's
   command, the Docker image to pull, the Synology Package Center) and no longer offers a download
   that cannot work.
+- Kad tells that clients reach us through the routers (uTP, QUIC) only where we take such
+  connections, no longer with obfuscation required, and follows a change of obfuscation or proxy
+  without a restart.
+- A Kad search no longer drops every result when the complete sources filter is set: Kad counts
+  none, so the filter is left out there; the filters' note says so instead of claiming that Kad
+  ignores size and type.
+- A download waiting for disk space offers to pause instead of a resume that did nothing, and its
+  note says that it goes on by itself once there is room.
+- A part found corrupt is told in the app's log too, not only in the log file.
 - `njmule --restore-links`, which the Windows uninstaller runs and now the macOS one too, also
   turns the start at login off; `njmule --remove-profile` does both before it deletes the profile,
   which keeps the program the ed2k links go back to. A Linux start at login whose program was

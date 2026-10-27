@@ -158,7 +158,7 @@ function Hero(): ReactNode {
                 </div>
                 <p className={styles.release}>Version {version}: Windows, macOS, Linux, Docker and Synology DSM</p>
             </div>
-            <div className={styles.heroFile}>
+            <div className={styles.fileCard}>
                 <label className={styles.linkLabel} htmlFor="hero-link">
                     Paste an eD2K link to see how njMule cuts the file into parts
                 </label>
@@ -184,22 +184,22 @@ function Hero(): ReactNode {
                         </>
                     )}
                 </p>
+                <PartBar parts={file.parts} seed={seed} label={file.name} />
+                <ul className={styles.legend}>
+                    <li>
+                        <span className={styles['part-done']} /> Received
+                    </li>
+                    <li>
+                        <span className={styles['part-asked']} /> Being received
+                    </li>
+                    <li>
+                        <span className={styles['part-3']} /> To come, brighter with more sources
+                    </li>
+                    <li>
+                        <span className={styles['part-0']} /> No source yet
+                    </li>
+                </ul>
             </div>
-            <PartBar parts={file.parts} seed={seed} label={file.name} />
-            <ul className={styles.legend}>
-                <li>
-                    <span className={styles['part-done']} /> Received
-                </li>
-                <li>
-                    <span className={styles['part-asked']} /> Being received
-                </li>
-                <li>
-                    <span className={styles['part-3']} /> To come, brighter with more sources
-                </li>
-                <li>
-                    <span className={styles['part-0']} /> No source yet
-                </li>
-            </ul>
         </header>
     );
 }
@@ -225,24 +225,26 @@ function Faces(): ReactNode {
     const [face, setFace] = useState<keyof typeof FACES>('desktop');
     const shown = FACES[face];
     return (
-        <section className={clsx(styles.faces, face === 'browser' && styles.facesBrowser)} data-reveal>
-            <div className={styles.facesText}>
-                <h2 className={styles.sectionTitle}>Run it {shown.word}</h2>
-                <p>{shown.text}</p>
-            </div>
-            <div className={styles.switch} data-ui role="radiogroup" aria-label="Show njMule">
-                {(Object.keys(FACES) as (keyof typeof FACES)[]).map((key) => (
-                    <button
-                        key={key}
-                        type="button"
-                        role="radio"
-                        aria-checked={face === key}
-                        className={clsx(styles.switchItem, face === key && styles.switchOn)}
-                        onClick={() => setFace(key)}
-                    >
-                        {key === 'desktop' ? 'Desktop app' : 'Web interface'}
-                    </button>
-                ))}
+        <section className={styles.faces} data-reveal>
+            <div className={styles.facesHead}>
+                <div className={styles.facesText}>
+                    <h2 className={styles.sectionTitle}>Run it {shown.word}</h2>
+                    <p>{shown.text}</p>
+                </div>
+                <div className={styles.switch} data-ui role="radiogroup" aria-label="Show njMule">
+                    {(Object.keys(FACES) as (keyof typeof FACES)[]).map((key) => (
+                        <button
+                            key={key}
+                            type="button"
+                            role="radio"
+                            aria-checked={face === key}
+                            className={clsx(styles.switchItem, face === key && styles.switchOn)}
+                            onClick={() => setFace(key)}
+                        >
+                            {key === 'desktop' ? 'Desktop app' : 'Web interface'}
+                        </button>
+                    ))}
+                </div>
             </div>
             <div className={styles.facesShot}>
                 {(Object.keys(FACES) as (keyof typeof FACES)[]).map((key) => (
@@ -258,74 +260,109 @@ function Faces(): ReactNode {
     );
 }
 
-// ---------------------------------------------------------------- close-ups on a board
+// ---------------------------------------------------------------- what it does on the network
+
+// Each card shows a small piece of the interface that tells the feature, whole and at reading size.
+const FEATURES: { tone: 'brand' | 'surface' | 'soft' | 'deep'; title: string; text: string; sample: ReactNode }[] = [
+    {
+        tone: 'brand',
+        title: 'Reachable',
+        text: 'UPnP, NAT-PMP and PCP open your ports; the port test says whether others can reach you.',
+        sample: (
+            <>
+                <span className={styles.statusDot} aria-hidden="true" /> Connected <small>High ID · Kad open</small>
+            </>
+        ),
+    },
+    {
+        tone: 'surface',
+        title: 'IPv6 and NAT traversal',
+        text: 'Clients reach each other over IPv6, and two firewalled ones through uTP or QUIC.',
+        sample: <code>2001:db8:7a1::4f2</code>,
+    },
+    {
+        tone: 'soft',
+        title: 'Obfuscated',
+        text: 'Hides eD2K and Kad traffic from simple filters, or refuses clients that do not hide it.',
+        sample: (
+            <span className={styles.segments}>
+                <span>Supported</span>
+                <span className={styles.segmentOn}>Required</span>
+            </span>
+        ),
+    },
+    {
+        tone: 'deep',
+        title: 'VPN kill switch',
+        text: 'Bound to your VPN’s network interface, njMule goes offline the moment the VPN drops.',
+        sample: (
+            <>
+                <span className={styles.toggle} aria-hidden="true" /> Only through the VPN
+            </>
+        ),
+    },
+    {
+        tone: 'surface',
+        title: 'Proxies, UDP included',
+        text: 'SOCKS 4 and 5 or HTTP CONNECT; through SOCKS 5, Kad and server searches travel too.',
+        sample: (
+            <>
+                SOCKS 5 <small>UDP relayed</small>
+            </>
+        ),
+    },
+    {
+        tone: 'brand',
+        title: 'Command palette',
+        text: 'Places, commands, searches and links, all from one field.',
+        sample: (
+            <span className={styles.keys}>
+                <kbd>Ctrl</kbd> + <kbd>K</kbd>
+            </span>
+        ),
+    },
+    {
+        tone: 'soft',
+        title: 'In your language',
+        text: 'Thirty-six of them, the right-to-left ones mirrored as they should be.',
+        sample: (
+            <>
+                36 <small>languages</small>
+            </>
+        ),
+    },
+    {
+        tone: 'deep',
+        title: 'Signed updates',
+        text: 'New versions are checked against their signature before they install, and roll back if they fail.',
+        sample: (
+            <>
+                <span className={styles.check} aria-hidden="true" /> Signature verified
+            </>
+        ),
+    },
+];
 
 function Board(): ReactNode {
     return (
         <section className={styles.board} data-reveal aria-labelledby="board-title">
-            <div className={clsx(styles.tile, styles.tileTitle)}>
+            <div className={styles.boardHead}>
                 <h2 id="board-title" className={styles.sectionTitle}>
                     Made for today’s internet
                 </h2>
+                <p>Behind a router, a firewall or a VPN, njMule finds its way to the network and keeps you private.</p>
             </div>
-            <div className={clsx(styles.tile, styles.tileWide, styles.toneBrand)}>
-                <div className={styles.closeUp} data-ui>
-                    <span className={styles.statusDot} /> Connected <small>High ID · Kad: Open</small>
-                </div>
-                <h3>Reachable</h3>
-                <p>UPnP, NAT-PMP and PCP open your ports; the port test says whether others can reach you.</p>
-            </div>
-            <div className={clsx(styles.tile, styles.tileTall, styles.toneSurface)}>
-                <div className={clsx(styles.closeUp, styles.closeUpAddress)} data-ui>
-                    2001:db8:7a1::4f2
-                </div>
-                <h3>IPv6 and NAT traversal</h3>
-                <p>Clients reach each other over IPv6, and two firewalled ones through uTP.</p>
-            </div>
-            <div className={clsx(styles.tile, styles.toneSoft)}>
-                <div className={clsx(styles.closeUp, styles.segments)} data-ui>
-                    <span>Supported</span>
-                    <span className={styles.segmentOn}>Required</span>
-                </div>
-                <h3>Obfuscated</h3>
-                <p>Hides eD2K and Kad traffic from simple filters.</p>
-            </div>
-            <div className={clsx(styles.tile, styles.tileTall, styles.toneDeep)}>
-                <div className={clsx(styles.closeUp, styles.toggleRow)} data-ui>
-                    <span className={styles.toggle} aria-hidden="true" /> wg0
-                </div>
-                <h3>VPN kill switch</h3>
-                <p>Bound to your VPN’s interface, njMule goes offline the moment it disappears.</p>
-            </div>
-            <div className={clsx(styles.tile, styles.tileWide, styles.toneSurface)}>
-                <div className={clsx(styles.closeUp, styles.closeUpFigure)} data-ui>
-                    SOCKS5 <small>UDP relayed</small>
-                </div>
-                <h3>Proxies, UDP included</h3>
-                <p>SOCKS 4 and 5 or HTTP CONNECT; through SOCKS5, Kad and server searches travel too.</p>
-            </div>
-            <div className={clsx(styles.tile, styles.toneBrand)}>
-                <div className={clsx(styles.closeUp, styles.keys)} data-ui>
-                    <kbd>Ctrl</kbd>
-                    <kbd>K</kbd>
-                </div>
-                <h3>Command palette</h3>
-                <p>Places, commands, searches and links from one field.</p>
-            </div>
-            <div className={clsx(styles.tile, styles.toneSoft)}>
-                <div className={clsx(styles.closeUp, styles.closeUpFigure)} data-ui>
-                    36 <small>languages</small>
-                </div>
-                <h3>In your language</h3>
-                <p>Right-to-left ones included, mirrored as they should be.</p>
-            </div>
-            <div className={clsx(styles.tile, styles.tileWide, styles.toneDeep)}>
-                <div className={clsx(styles.closeUp, styles.closeUpFigure)} data-ui>
-                    minisign <small>signature good</small>
-                </div>
-                <h3>Signed updates</h3>
-                <p>New versions are checked against their signature before they install, and roll back if they fail.</p>
-            </div>
+            <ul className={styles.cards}>
+                {FEATURES.map((f) => (
+                    <li key={f.title} className={clsx(styles.card, styles[`tone-${f.tone}`])}>
+                        <div className={styles.sample} data-ui>
+                            {f.sample}
+                        </div>
+                        <h3>{f.title}</h3>
+                        <p>{f.text}</p>
+                    </li>
+                ))}
+            </ul>
         </section>
     );
 }
@@ -425,10 +462,9 @@ const PLATFORMS: { name: string; page: string; link?: string; items: [string, st
         name: 'Windows',
         page: '/docs/getting-started/install-windows',
         items: [
-            ['MSI installer', 'for you alone, no administrator'],
-            ['MSI for every user', 'MSIINSTALLPERUSER=""'],
+            ['MSI installer', 'double-click it or run msiexec /i, no administrator'],
             ['Zip archive', 'unzip and run'],
-            ['Windows service', 'njmule --service=install'],
+            ['Windows service', 'headless, started with Windows'],
             ['Arm64', 'the x64 build, in emulation'],
         ],
     },
@@ -482,7 +518,7 @@ const PLATFORMS: { name: string; page: string; link?: string; items: [string, st
 function Install(): ReactNode {
     return (
         <section className={styles.install} data-reveal aria-labelledby="install-title">
-            <h2 id="install-title" className={styles.giantWord}>
+            <h2 id="install-title" className={styles.sectionTitle}>
                 Install
             </h2>
             <p className={styles.installLead}>
@@ -612,9 +648,6 @@ function Preview({ place }: { place: (typeof PLACES)[number] }): ReactNode {
 function Action(): ReactNode {
     return (
         <section className={styles.action} data-reveal aria-labelledby="action-title">
-            <div className={clsx(styles.actionSide, styles.actionPicture)}>
-                <ThemedShot id="statistics" alt="The statistics of njMule" className={styles.actionImage} />
-            </div>
             <div className={styles.actionMain}>
                 <h2 id="action-title">Start sharing in minutes</h2>
                 <p>
@@ -630,7 +663,9 @@ function Action(): ReactNode {
                     </Link>
                 </div>
             </div>
-            <div className={clsx(styles.actionSide, styles.actionFlat)} />
+            <div className={styles.actionPicture}>
+                <ThemedShot id="statistics" alt="The statistics of njMule" className={styles.actionImage} />
+            </div>
         </section>
     );
 }

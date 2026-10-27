@@ -112,6 +112,8 @@ val docsCaptures =
         systemProperty("njmule.capture", docsCapturesDir.get().asFile.path)
         systemProperty("njmule.capture.sets", "en-light-docs,en-dark-docs,en-contrast-screens")
         systemProperty("njmule.capture.stable", "true")
+        // Twice the pixels, sharp on screens of high density; the website draws them at half their size.
+        systemProperty("njmule.capture.scale", "2")
         // The pictures show the profile's folders: outside Windows a plain path that names nobody.
         if (!System.getProperty("os.name").lowercase().startsWith("windows")) {
             systemProperty("njmule.capture.profiles", "/tmp/njmule-docs")

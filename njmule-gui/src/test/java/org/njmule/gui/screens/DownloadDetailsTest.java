@@ -29,6 +29,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import javafx.event.EventType;
 import javafx.geometry.Bounds;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableView;
@@ -114,6 +115,16 @@ class DownloadDetailsTest {
 
         thenTheDetailsTell("film.mkv", "High", "50.0 %");
         thenTheSettingsRemember(true);
+    }
+
+    @Test
+    void shouldOfferToPauseADownloadShortOfDiskSpaceWhichGoesOnByItself() throws Exception {
+        givenTheTransfersWith(withStatus(FILM, DownloadInfo.Status.NO_SPACE));
+
+        whenTheDownloadIsChosen();
+
+        thenTheDetailsTell("goes on by itself");
+        thenTheButtonsAre("Pause", "Open Incoming Folder");
     }
 
     @Test
@@ -425,6 +436,23 @@ class DownloadDetailsTest {
         return this.screen.details().newName();
     }
 
+    private static DownloadInfo withStatus(DownloadInfo d, DownloadInfo.Status status) {
+        return new DownloadInfo(
+                d.hash(),
+                d.name(),
+                d.size(),
+                d.completed(),
+                status,
+                d.priority(),
+                d.category(),
+                d.sources(),
+                d.transferring(),
+                d.bytesPerSecond(),
+                d.parts(),
+                d.previewFirst(),
+                d.autoSwap());
+    }
+
     private static SourceInfo source(Hash16 file, int n, String name) {
         return new SourceInfo(
                 file,
@@ -486,6 +514,15 @@ class DownloadDetailsTest {
 
     private void thenTheDetailsTell(String... texts) throws Exception {
         detailsTell(texts);
+    }
+
+    private void thenTheButtonsAre(String... texts) throws Exception {
+        FxTesting.assertEventually(
+                "the buttons " + List.of(texts),
+                () -> this.screen.details().stateButtons().stream()
+                        .map(Button::getText)
+                        .toList()
+                        .equals(List.of(texts)));
     }
 
     private void thenTheSettingsRemember(boolean shown) throws Exception {
