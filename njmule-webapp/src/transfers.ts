@@ -86,15 +86,16 @@ export type DetailsAction = 'pause' | 'resume' | 'stop' | 'addSource';
 
 export function detailsActions(state: Shown): DetailsAction[] {
     switch (state) {
+        // A download short of disk space still runs: it goes on by itself once there is room.
         case 'downloading':
         case 'waiting':
+        case 'noSpace':
             return ['pause', 'stop'];
         case 'noSources':
             return ['pause', 'addSource'];
         case 'paused':
             return ['resume', 'stop'];
         case 'stopped':
-        case 'noSpace':
         case 'error':
             return ['resume'];
         case 'complete':

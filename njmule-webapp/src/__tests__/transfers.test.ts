@@ -125,7 +125,7 @@ describe('details', () => {
         ['noSources', ['pause', 'addSource']],
         ['paused', ['resume', 'stop']],
         ['stopped', ['resume']],
-        ['noSpace', ['resume']],
+        ['noSpace', ['pause', 'stop']],
         ['error', ['resume']],
         ['complete', []],
     ] as [Shown, DetailsAction[]][])('should offer for a %s download %j', (state, expected) => {

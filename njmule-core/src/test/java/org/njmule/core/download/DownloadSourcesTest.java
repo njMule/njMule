@@ -404,6 +404,13 @@ class DownloadSourcesTest {
     }
 
     @Test
+    void shouldTellOfAPartThatArrivedCorrupt() throws Exception {
+        whenAPartArrivesWithABadByte();
+
+        thenItWasToldThatThePartIsCorrupt(0);
+    }
+
+    @Test
     void shouldDownloadThePartAgainWholeWithRecoveryDataThatProvesNothing() throws Exception {
         givenADownloadWithACorruptPartHeldForItsRecoveryData(6);
         givenTheSecondSourceAskedForRecoveryData();
@@ -1078,6 +1085,14 @@ class DownloadSourcesTest {
         this.recovery = recovery(seed);
         this.hash = this.recovery.link.hash();
         this.data = this.recovery.data;
+    }
+
+    private void whenAPartArrivesWithABadByte() throws Exception {
+        this.recovery = recovery(8);
+    }
+
+    private void thenItWasToldThatThePartIsCorrupt(int part) throws InterruptedException {
+        assertThat(await("corrupt")).startsWith("corrupt part " + part + " of ");
     }
 
     private void givenTheSecondSourceAskedForRecoveryData() throws Exception {
@@ -1894,6 +1909,11 @@ class DownloadSourcesTest {
         @Override
         public void diskSpace(boolean enough) {
             DownloadSourcesTest.this.events.add(enough ? "space enough" : "space short");
+        }
+
+        @Override
+        public void corruptPart(DownloadInfo download, int part) {
+            DownloadSourcesTest.this.events.add("corrupt part " + part + " of " + download.name());
         }
     }
 }

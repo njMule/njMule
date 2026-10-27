@@ -18,6 +18,7 @@ package org.njmule.core.search;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.njmule.core.files.FileTypes;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
@@ -87,6 +88,42 @@ public final class SearchTreeCodec {
                     && (a.value().equals(FileTypes.ARCHIVE) || a.value().equals(FileTypes.DISC_IMAGE)) ->
                 new StringAttr(a.tag(), FileTypes.PROGRAM);
             default -> expr;
+        };
+    }
+
+    /**
+     * The tree to send to Kad: {@code expr} with its {@link #indexedTypes types}, and the conditions on complete
+     * sources taken as met, since Kad counts none and would match no file against them; empty when nothing is left to
+     * ask.
+     */
+    public static Optional<SearchExpr> forKad(SearchExpr expr) {
+        return withoutCompleteSources(expr).map(SearchTreeCodec::indexedTypes);
+    }
+
+    private static Optional<SearchExpr> withoutCompleteSources(SearchExpr expr) {
+        return switch (expr) {
+            case And e -> {
+                Optional<SearchExpr> left = withoutCompleteSources(e.left());
+                Optional<SearchExpr> right = withoutCompleteSources(e.right());
+                yield left.isEmpty() || right.isEmpty()
+                        ? left.or(() -> right)
+                        : Optional.of(new And(left.get(), right.get()));
+            }
+            case Or e -> {
+                Optional<SearchExpr> left = withoutCompleteSources(e.left());
+                Optional<SearchExpr> right = withoutCompleteSources(e.right());
+                yield left.isEmpty() || right.isEmpty()
+                        ? Optional.empty()
+                        : Optional.of(new Or(left.get(), right.get()));
+            }
+            // "a NOT b" without b is a; without a there is nothing to match the rest against.
+            case Not e -> {
+                Optional<SearchExpr> left = withoutCompleteSources(e.left());
+                Optional<SearchExpr> right = withoutCompleteSources(e.right());
+                yield left.isEmpty() || right.isEmpty() ? left : Optional.of(new Not(left.get(), right.get()));
+            }
+            case NumericAttr a when a.tag() == FileTag.COMPLETE_SOURCES -> Optional.empty();
+            default -> Optional.of(expr);
         };
     }
 

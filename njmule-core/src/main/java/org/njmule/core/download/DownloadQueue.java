@@ -797,7 +797,7 @@ public final class DownloadQueue implements AutoCloseable {
             return;
         }
         if (failure != null || !expected.equals(actual)) {
-            logger.warn("Part {} of {} is corrupt, downloading it again", part, download.file.name());
+            logger.debug("Part {} of {} is corrupt, downloading it again", part, download.file.name());
             download.file.corrupt(part);
             download.corrupted.set(part);
             download.sinceIch.remove(part);

@@ -67,7 +67,8 @@ to you directly, even if your TCP port is closed.
 
 After a failed QUIC connection with a client, njMule uses uTP with it for two minutes.
 
-Your hello and your Kad publishes tell other clients that you take such connections. Only
+Your hello and your Kad publishes tell other clients that you take such connections, only while
+you do (see below); they follow a change of obfuscation or proxy at once. Only
 clients that support it can use it; njMule does, so two njMule users behind routers can trade
 with each other.
 
