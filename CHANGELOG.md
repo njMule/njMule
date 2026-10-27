@@ -45,6 +45,14 @@ All notable changes to this project are documented here. The format follows
   Folder* and *Open Incoming Folder* off.
 - A desktop app started while a headless njMule runs on the same profile says that the links went
   to it, instead of closing without a word.
+- `njmule --restore-links`, which the Windows uninstaller runs and now the macOS one too, also
+  turns the start at login off; `njmule --remove-profile` does both before it deletes the profile,
+  which keeps the program the ed2k links go back to. A Linux start at login whose program was
+  removed is skipped.
+- The import no longer copies eMule files njMule does not read (`statistics.ini`,
+  `AC_BootstrapIPs.dat`, `AC_IPFilterUpdateURLs.dat`), and the first start no longer says that it
+  takes eMule's statistics over.
+- On Windows the completed downloads go to the Downloads folder where the user moved it.
 - The macOS app carries the license and the notices, as the other packages do.
 
 ### Security

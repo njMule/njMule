@@ -95,7 +95,7 @@ To import into another profile of njMule, add `--config-dir <dir>`. See
 | `shareddir.dat` and eMule's incoming folder | the shared folders, each without its subfolders, as eMule shares them | at once |
 | `Category.ini` | the categories, with their numbers, names, folders, comments, colours and file name patterns, when njMule has none of its own | at once |
 | `addresses.dat` | the server list addresses used to update the server list at start | at once |
-| `AC_ServerMetURLs.dat`, `AC_IPFilterUpdateURLs.dat`, `AC_SearchStrings.dat` | the addresses and searches typed in eMule's boxes, offered again by njMule's | at once |
+| `AC_ServerMetURLs.dat`, `AC_SearchStrings.dat` | the server list addresses and the searches typed in eMule's boxes, offered again by njMule's | at once |
 | `ipfilter.dat` | the IP filter, when njMule has none of its own | next start |
 | `emfriends.met` | your friends | next start |
 | `cancelled.met` | the files you cancelled, shown as such in search results | next start |
@@ -106,8 +106,9 @@ To import into another profile of njMule, add `--config-dir <dir>`. See
 
 A file of which njMule already has its own copy is left out ("we have our own"), so a second import
 does not overwrite what you changed since. That is why the best time to import is right after
-installing njMule, before it keeps lists of its own. `statistics.ini` and `AC_BootstrapIPs.dat` are
-copied into njMule's profile too.
+installing njMule, before it keeps lists of its own. eMule's statistics (`statistics.ini`), the
+history of its IP filter and bootstrap boxes (`AC_IPFilterUpdateURLs.dat`, `AC_BootstrapIPs.dat`)
+are not taken: njMule counts its own statistics.
 
 These are never taken:
 

@@ -14,6 +14,7 @@ case "$1" in
         echo "njMule is removed. Each user's profile stays in their home: ~/.config/njmule, ~/.local/share/njmule,"
         echo "~/.local/state/njmule and ~/.cache/njmule (the completed downloads stay where they are)."
         echo "Delete those folders to remove it; before uninstalling, njmule --remove-profile does it."
+        echo "njmule --restore-links, before uninstalling, gives the ed2k links back to the program that had them."
         ;;
 esac
 exit 0

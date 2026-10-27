@@ -400,6 +400,15 @@ class EmuleImporterTest {
     }
 
     @Test
+    void shouldLeaveTheEmuleFilesNjmuleDoesNotRead() throws IOException {
+        givenTheEmuleFiles("statistics.ini", "AC_BootstrapIPs.dat", "AC_IPFilterUpdateURLs.dat");
+
+        whenTheProfileIsImported(new ImportOptions(false, false, false));
+
+        thenNothingIsTakenOf("statistics.ini", "AC_BootstrapIPs.dat", "AC_IPFilterUpdateURLs.dat");
+    }
+
+    @Test
     void shouldTakeTheIdentityAndTheDownloadsOnlyWhenAsked() throws IOException {
         whenTheProfileIsImported(new ImportOptions(false, false, false));
 
@@ -1285,6 +1294,20 @@ class EmuleImporterTest {
 
     private void thenTheColourIs(int colour, String name) {
         assertThat(this.colour).as(name).isEqualTo(colour);
+    }
+
+    private void givenTheEmuleFiles(String... names) throws IOException {
+        for (String name : names) {
+            Files.writeString(this.emule.config.resolve(name), "[General]\nx=1\n");
+        }
+    }
+
+    private void thenNothingIsTakenOf(String... names) {
+        for (String name : names) {
+            thenThereIsNoOutcomeFor(name);
+            thenOurFileDoesNotExist(name);
+            thenTheFileDoesNotWaitForTheNextStart(name);
+        }
     }
 
     private void thenOurFileExists(String name) {

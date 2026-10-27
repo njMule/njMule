@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,7 +78,8 @@ public record AppDirectories(
                 System.getenv(),
                 Path.of(System.getProperty("user.home")),
                 overrideRoot,
-                nativeExecutableDir());
+                nativeExecutableDir(),
+                KnownFolders::downloads);
     }
 
     // Only a native executable has a meaningful directory for the portable-mode marker; on the
@@ -96,6 +98,20 @@ public record AppDirectories(
             Path home,
             Optional<Path> overrideRoot,
             Optional<Path> executableDir) {
+        return resolve(os, env, home, overrideRoot, executableDir, variables -> Optional.empty());
+    }
+
+    /**
+     * As {@link #resolve(OsFamily, Map, Path, Optional, Optional)}, with the Downloads folder Windows keeps for the
+     * user, moved maybe, as {@code windowsDownloads} finds it from the environment.
+     */
+    static AppDirectories resolve(
+            OsFamily os,
+            Map<String, String> env,
+            Path home,
+            Optional<Path> overrideRoot,
+            Optional<Path> executableDir,
+            Function<Map<String, String>, Optional<Path>> windowsDownloads) {
         if (overrideRoot.isPresent()) {
             return underRoot(overrideRoot.get(), false);
         }
@@ -103,7 +119,7 @@ public record AppDirectories(
             return underRoot(executableDir.get().resolve("data"), true);
         }
         return switch (os) {
-            case WINDOWS -> windows(env, home);
+            case WINDOWS -> windows(env, home, windowsDownloads.apply(env));
             case MACOS -> macos(home);
             case LINUX -> linux(env, home);
         };
@@ -119,7 +135,7 @@ public record AppDirectories(
         }
     }
 
-    private static AppDirectories windows(Map<String, String> env, Path home) {
+    private static AppDirectories windows(Map<String, String> env, Path home, Optional<Path> downloads) {
         Path roaming = absoluteEnv(env, "APPDATA")
                 .orElse(home.resolve("AppData").resolve("Roaming"))
                 .resolve(APP_DIR);
@@ -134,9 +150,7 @@ public record AppDirectories(
                 local.resolve("cache"),
                 local.resolve("logs"),
                 roaming.resolve("gui"),
-                // Default location; a relocated Downloads Known Folder is honoured once the desktop
-                // integration reads it through SHGetKnownFolderPath.
-                profile.resolve("Downloads").resolve(APP_DIR),
+                downloads.orElse(profile.resolve("Downloads")).resolve(APP_DIR),
                 false);
     }
 

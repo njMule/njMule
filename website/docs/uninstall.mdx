@@ -14,9 +14,7 @@ they are.
 ## Before you uninstall
 
 1. Exit njMule, or stop it if it runs headless (`njmule --exit`).
-2. If you turned on **Start njMule when I log in**, turn it off in the options: the uninstallers
-   do not remove that entry.
-3. Move your completed downloads somewhere else if they are inside a folder you will delete by hand
+2. Move your completed downloads somewhere else if they are inside a folder you will delete by hand
    (the Windows service's and the Docker volume's are).
 
 ## Remove njMule
@@ -29,7 +27,7 @@ they are.
 1. Open **Settings → Apps → Installed apps**, find **njMule** and choose **Uninstall** (or use
    **Programs and Features** of the Control Panel).
 2. If njMule opens ed2k links, the uninstaller gives them back to the program that opened them
-   before, such as eMule, when it still has it.
+   before, such as eMule, when it still has it, and turns **Start njMule when I log in** off.
 3. The window **Uninstall njMule** asks *Also delete your njMule data?* Tick **Delete my njMule
    data** to move your profile (`%APPDATA%\njMule` and `%LOCALAPPDATA%\njMule`) to the Recycle Bin;
    leave it unticked to keep it.
@@ -40,7 +38,7 @@ service's own profile in `%ProgramData%\njMule`, with its downloads, stays.
 
 **Unpacked from the zip archive:**
 
-1. If njMule opens ed2k links, give them back first: `njmule --restore-links`.
+1. Give the ed2k links back and turn the start at login off first: `njmule --restore-links`.
 2. If you set up the service from this folder: `njmule --service=uninstall`.
 3. To delete the profile too: `njmule --remove-profile` (in portable mode the profile is the `data`
    folder beside the programs).
@@ -55,7 +53,8 @@ service's own profile in `%ProgramData%\njMule`, with its downloads, stays.
    lists, identity and credits, unfinished downloads and logs**; leave it unselected to keep it.
    Choose **Uninstall**.
 
-njMule.app goes to the Trash and, when you chose it, `~/Library/Application Support/njMule`,
+The uninstaller gives the ed2k links back and turns the start at login off, then njMule.app goes to
+the Trash and, when you chose it, `~/Library/Application Support/njMule`,
 `~/Library/Caches/org.njmule.njMule` and `~/Library/Logs/njMule` with it. If njMule still runs, the
 uninstaller asks you to quit it first.
 
@@ -69,7 +68,8 @@ Without the disk image, drag njMule from Applications to the Trash; to delete th
 
 1. If you use the [systemd user unit](./server/linux-service.mdx), stop it:
    `systemctl --user disable --now njmule`.
-2. If njMule opens ed2k links, give them back: `njmule --restore-links`.
+2. Give the ed2k links back and turn the start at login off: `njmule --restore-links` (each user
+   for their own; the package cannot reach your home folder).
 3. To delete your profile, run `njmule --remove-profile` (each user for their own).
 4. Remove the package:
 

@@ -283,14 +283,10 @@ public final class EmuleImporter {
                 data -> phrase("servers", TextFiles.staticServers(data).size()));
         kept("addresses.dat", data -> phrase("addresses", TextFiles.lines(data).size()));
         // The addresses typed in eMule's boxes, which the interface offers again.
-        for (String history : List.of(
-                "AC_ServerMetURLs.dat", "AC_IPFilterUpdateURLs.dat", "AC_BootstrapIPs.dat", "AC_SearchStrings.dat")) {
+        for (String history : List.of("AC_ServerMetURLs.dat", "AC_SearchStrings.dat")) {
             kept(history, data -> phrase("entries", TextFiles.entries(data).size()));
         }
         categories(ini);
-        kept(
-                "statistics.ini",
-                data -> phrase("sections", IniFile.parse(data).sections().size()));
         for (String name : List.of("key_index.dat", "src_index.dat", "load_index.dat")) {
             Path file = this.emule.resolve(name);
             if (Files.exists(file)) {

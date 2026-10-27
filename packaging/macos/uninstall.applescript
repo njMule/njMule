@@ -13,6 +13,10 @@ on run
     set profileBox to "Delete my njMule data: settings, server and contact lists, identity and credits, unfinished downloads and logs"
     set chosen to choose from list {profileBox} with title dialogTitle with prompt "njMule goes to the Trash. Select the line below to also delete your data; leave it unselected to keep it for a later installation. Your completed downloads are always kept." OK button name "Uninstall" cancel button name "Cancel" with empty selection allowed
     if chosen is false then return
+    -- What njMule set up for the user goes first: the ed2k links back to their previous program, no start at login.
+    try
+        do shell script quoted form of ((POSIX path of (path to application id appId)) & "Contents/MacOS/njmule-gui") & " --restore-links"
+    end try
     set doomed to {}
     try
         set end of doomed to (path to application id appId)
