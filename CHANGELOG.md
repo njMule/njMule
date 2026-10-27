@@ -14,6 +14,11 @@ All notable changes to this project are documented here. The format follows
 
 - The notes of each release link VirusTotal's report of every package.
 
+### Fixed
+
+- `njmule --service=uninstall` stops the Windows service before it takes its account's rights away,
+  so that njMule saves and stops, instead of being ended a minute later without saving.
+
 ## [0.1.1] - 2026-10-27
 
 ### Added
