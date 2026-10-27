@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { themes as prismThemes } from 'prism-react-renderer';
 
 const repository = 'https://github.com/njMule/njMule';
+const baseUrl = '/njMule/';
 // The version being documented: the project's, from gradle.properties, its single source.
 const version =
     process.env.NJMULE_VERSION ??
@@ -20,7 +21,7 @@ const config: Config = {
     tagline: 'A modern eD2K and Kad client, compatible with the eMule network',
     favicon: 'img/brand/njmule-icon.svg',
     url: 'https://njmule.github.io',
-    baseUrl: '/njMule/',
+    baseUrl,
     organizationName: 'njMule',
     projectName: 'njMule',
     trailingSlash: false,
@@ -126,9 +127,9 @@ const config: Config = {
             items: [
                 { type: 'docSidebar', sidebarId: 'guide', position: 'left', label: 'User guide' },
                 {
-                    type: 'docSidebar',
-                    sidebarId: 'developer',
-                    docsPluginId: 'developer',
+                    // The API reference is in the developer guide's sidebar, but it has an item of its own.
+                    to: '/developer',
+                    activeBaseRegex: `^${baseUrl}developer(?:/(?!api(?:/|$)).*)?$`,
                     position: 'left',
                     label: 'Developers',
                 },
