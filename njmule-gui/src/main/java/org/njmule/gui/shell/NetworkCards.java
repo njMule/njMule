@@ -91,7 +91,7 @@ final class NetworkCards {
         this.recheck.setId("card-kad-recheck");
         // The ports as they are set: the test changes none of them.
         this.portTest = new PortTestPane(gui, UnaryOperator::identity);
-        this.test = Fx.button(gui.t("nj.network.testPorts"), Icons.PORT_TEST, this::testPorts);
+        this.test = Fx.button(gui.t("IDS_STARTTEST"), Icons.PORT_TEST, this::testPorts);
         this.test.setId("card-ports-test");
         Button options = flat(Fx.button(gui.t("IDS_EM_PREFS"), Icons.OPTIONS, () -> show.accept("settings")));
         this.ed2k = new Card("card-ed2k", "eD2K", Icons.SERVER, this.ed2kAction, other);
@@ -174,13 +174,15 @@ final class NetworkCards {
         this.kadAction.setText(this.gui.t(this.kadRuns ? "IDS_MAIN_BTN_DISCONNECT" : "IDS_MAIN_BTN_CONNECT"));
         this.kadAction.setGraphic(new Icon(this.kadRuns ? Icons.LINK_OFF : Icons.LINK));
         this.recheck.setDisable(kadInfo.isEmpty());
-        // Ports: the words say which; the numbers read left to right in every language.
-        String numbers =
-                "TCP " + preferences.tcpPort() + (preferences.udpEnabled() ? " · UDP " + preferences.udpPort() : "");
+        // Ports: the words say which; the numbers read left to right in every language. UDP is open while Kad runs.
+        String numbers = "TCP " + preferences.tcpPort()
+                + kadInfo.map(k -> " · UDP " + k.udpPort()).orElse("");
         this.ports.state(numbers, "", null, "");
         this.ports.headline.setNodeOrientation(NodeOrientation.LEFT_TO_RIGHT);
-        // Then our IPv6 address, and whether firewalled clients are met through the routers, which needs Kad.
-        StringBuilder ports = new StringBuilder(this.gui.t("IDS_UPNP") + ": " + yesNo(preferences.upnp()));
+        // Then what the router answered through UPnP, our IPv6 address, and whether firewalled clients are met
+        // through the routers, which needs Kad.
+        StringBuilder ports = new StringBuilder(
+                this.gui.f("nj.ports.forwarding." + status.forwarding().name(), status.router()));
         status.publicIpv6()
                 .ifPresent(ip -> ports.append("\nIPv6: ").append(this.gui.i18n().embed(ip)));
         ports.append('\n')
@@ -198,7 +200,7 @@ final class NetworkCards {
     private void testPorts() {
         if (this.testPopover == null) {
             this.testPopover = new Popover(this.portTest.node());
-            this.testPopover.setTitle(this.gui.t("nj.network.testPorts"));
+            this.testPopover.setTitle(this.gui.t("IDS_STARTTEST"));
             this.testPopover.setHeaderAlwaysVisible(true);
             this.testPopover.setDetachable(false);
             this.testPopover.setArrowLocation(

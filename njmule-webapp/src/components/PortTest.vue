@@ -9,11 +9,12 @@ import { api } from '../api';
 import { status } from '../engine';
 import { t } from '../i18n';
 import { attempt } from '../notify';
+import { type Forwarding, forwardingText } from '../ports';
 
 interface Test {
     tcpPort: number;
     udpPort: number;
-    forwarding: 'off' | 'asking' | 'forwarded' | 'partly' | 'refused' | 'no_router' | 'failed';
+    forwarding: Forwarding;
     router: string;
     tcp: Reach;
     udp: Reach;
@@ -21,16 +22,6 @@ interface Test {
 }
 
 type Reach = 'testing' | 'open' | 'closed' | 'unknown';
-
-const FORWARDING: Record<Test['forwarding'], string> = {
-    off: 'nj.ports.forwarding.OFF',
-    asking: 'nj.ports.forwarding.ASKING',
-    forwarded: 'nj.ports.forwarding.FORWARDED',
-    partly: 'nj.ports.forwarding.PARTLY',
-    refused: 'nj.ports.forwarding.REFUSED',
-    no_router: 'nj.ports.forwarding.NO_ROUTER',
-    failed: 'nj.ports.forwarding.FAILED',
-};
 
 const REACH: Record<Reach, string> = {
     testing: 'nj.ports.reach.TESTING',
@@ -64,9 +55,9 @@ onUnmounted(() => window.clearInterval(timer));
 </script>
 
 <template>
-    <el-button size="small" @click="start">{{ t('nj.network.testPorts') }}</el-button>
+    <el-button size="small" @click="start">{{ t('IDS_STARTTEST') }}</el-button>
     <ul v-if="test" class="lines">
-        <li>{{ t(FORWARDING[test.forwarding], test.router) }}</li>
+        <li>{{ forwardingText(test.forwarding, test.router) }}</li>
         <li :class="test.tcp">{{ t(REACH[test.tcp], 'TCP', String(test.tcpPort)) }}</li>
         <li v-if="status?.kad" :class="test.udp">
             {{ t(REACH[test.udp], 'UDP', String(test.udpPort)) }}

@@ -24,7 +24,7 @@ import SettingsExtras from '../components/SettingsExtras.vue';
 import UpdatePanel from '../components/UpdatePanel.vue';
 import { t } from '../i18n';
 import { attempt, told } from '../notify';
-import { matches, PAGES, type Page, type Row } from '../settings';
+import { label, matches, PAGES, type Page, type Row } from '../settings';
 
 type Values = Record<string, string>;
 
@@ -134,7 +134,7 @@ async function applyHeld(): Promise<void> {
                 <template v-for="row in section.rows" :key="row.key">
                     <div v-if="visible(row, current)" class="row" :class="{ wide: row.kind === 'lines' }">
                         <label :for="`nj-${row.key}`">
-                            {{ t(row.label) }}
+                            {{ label(t(row.label)) }}
                             <small v-if="row.hint">{{ t(row.hint) }}</small>
                         </label>
                         <el-switch

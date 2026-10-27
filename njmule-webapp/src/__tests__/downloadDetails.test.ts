@@ -3,6 +3,7 @@
 
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { narrow } from '../narrow';
 import DownloadDetails from '../screens/transfers/DownloadDetails.vue';
 import type { Download, Source } from '../types';
 
@@ -44,12 +45,29 @@ describe('download details', () => {
     let sources: Source[] = [];
     let details: VueWrapper | undefined;
 
-    afterEach(() => details?.unmount());
+    afterEach(() => {
+        details?.unmount();
+        narrow.value = false;
+    });
 
     it('should say how to see the details when no download is chosen', async () => {
         givenTheDownloadsChosen();
         await whenTheDetailsShow();
         thenTheyRead('[nj.details.none]');
+    });
+
+    it('should keep out of the way on a phone while no download is chosen', async () => {
+        givenAPhone();
+        givenTheDownloadsChosen();
+        await whenTheDetailsShow();
+        thenNothingShows();
+    });
+
+    it('should follow the list on a phone, as tall as they need', async () => {
+        givenAPhone();
+        givenTheDownloadsChosen(FILM);
+        await whenTheDetailsShow();
+        thenTheyFollowTheList();
     });
 
     it('should tell how many downloads are chosen when there are several', async () => {
@@ -78,6 +96,10 @@ describe('download details', () => {
         thenTheyAskedToBeClosed();
     });
 
+    function givenAPhone(): void {
+        narrow.value = true;
+    }
+
     function givenTheDownloadsChosen(...downloads: Download[]): void {
         chosen = downloads;
     }
@@ -93,6 +115,17 @@ describe('download details', () => {
 
     async function whenTheCrossIsPressed(): Promise<void> {
         await details!.find('.tabs .close').trigger('click');
+    }
+
+    function thenNothingShows(): void {
+        expect(details!.find('.download-details').exists()).toBe(false);
+    }
+
+    function thenTheyFollowTheList(): void {
+        const section = details!.find('.download-details');
+        expect(section.classes()).toContain('phone');
+        expect(section.attributes('style') ?? '').not.toContain('height');
+        expect(section.find('.grip').exists()).toBe(false);
     }
 
     function thenTheyRead(text: string): void {

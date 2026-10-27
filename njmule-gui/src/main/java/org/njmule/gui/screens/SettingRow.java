@@ -22,6 +22,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import javafx.beans.binding.Bindings;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Control;
@@ -44,6 +45,10 @@ import org.njmule.gui.ui.Input;
  */
 final class SettingRow {
 
+    // The narrowest a name wraps to: JavaFX cannot lay out text wrapped narrower than a character, as a row is before
+    // its first layout.
+    private static final double NARROWEST_NAME = 120;
+
     private final Gui gui;
     private final String title;
     private final Node control;
@@ -53,6 +58,7 @@ final class SettingRow {
     private BooleanSupplier changed = () -> false;
     private Runnable reset = () -> {};
     private Supplier<String> defaultText = () -> "";
+    private final Label name = new Label();
     private final Label changedMark = new Label();
     private final Hyperlink resetLink = new Hyperlink();
     private final Label error = new Label();
@@ -119,6 +125,10 @@ final class SettingRow {
         return this.inputs;
     }
 
+    Label nameLabel() {
+        return this.name;
+    }
+
     Hyperlink resetLink() {
         return this.resetLink;
     }
@@ -144,16 +154,16 @@ final class SettingRow {
 
     // The name with its marks, the line and the error on the start side, the control on the end side or below.
     private Region build() {
-        Label name = new Label(this.title);
-        name.getStyleClass().add("setting-title");
-        Fx.wrap(name);
-        name.setMinHeight(Region.USE_PREF_SIZE);
+        this.name.setText(this.title);
+        this.name.getStyleClass().add("setting-title");
+        Fx.wrap(this.name);
+        this.name.setMinHeight(Region.USE_PREF_SIZE);
         if (this.control instanceof Control target) {
-            name.setLabelFor(target);
+            this.name.setLabelFor(target);
         }
         // The name of a switch turns it too, as a check box's text does.
         if (this.control instanceof ToggleSwitch toggle) {
-            name.setOnMouseClicked(e -> {
+            this.name.setOnMouseClicked(e -> {
                 if (!toggle.isDisabled()) {
                     toggle.setSelected(!toggle.isSelected());
                 }
@@ -167,9 +177,11 @@ final class SettingRow {
             this.reset.run();
             refresh();
         });
-        FlowPane head = new FlowPane(8, 2, name, this.changedMark, this.resetLink);
+        FlowPane head = new FlowPane(8, 2, this.name, this.changedMark, this.resetLink);
         head.setAlignment(Pos.CENTER_LEFT);
         head.setMinWidth(0);
+        // A flow pane gives its children the width they ask for: a long name would run under the control.
+        this.name.maxWidthProperty().bind(Bindings.max(head.widthProperty(), NARROWEST_NAME));
         VBox words = new VBox(2, head);
         words.setMinWidth(0);
         if (this.title.isEmpty()) {

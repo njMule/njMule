@@ -102,7 +102,10 @@ final class ApiReader {
                 optional(n, "missingInterface"),
                 optional(n, "publicIpv6"),
                 n.path("overheadUploaded").asLong(),
-                n.path("overheadDownloaded").asLong());
+                n.path("overheadDownloaded").asLong(),
+                // An njMule older than the router's answer in its status tells none.
+                n.has("forwarding") ? constant(PortTest.Forwarding.class, n, "forwarding") : PortTest.Forwarding.OFF,
+                n.has("router") ? text(n, "router") : "");
     }
 
     static ServerInfo server(JsonNode n) {

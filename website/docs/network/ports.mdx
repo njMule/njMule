@@ -88,11 +88,11 @@ The top of **Network** holds three cards, each with what to do next:
 |---|---|---|
 | **eD2K** | Reachable or not (HighID or LowID), the server, its users and files | **Connect** / **Disconnect**, **Choose another server…** |
 | **Kad** | Reachable or not (open or firewalled), the contacts, the UDP state | **Connect** / **Disconnect**, **Recheck Firewall** |
-| **Ports** | `TCP 4662 · UDP 4672`, whether **UPnP** is on, your IPv6 address when you have one, whether **NAT traversal** is on | **Test the ports**, **Options** |
+| **Ports** | `TCP 4662 · UDP 4672` (UDP while Kad runs), what the router answered through **UPnP**, your IPv6 address when you have one, whether **NAT traversal** is on | **Test Ports**, **Options** |
 
 <Screenshot
     id="servers"
-    alt="The network screen: the eD2K card says Reachable from outside on the server Lighthouse, the Kad card Reachable from outside with 1,243 contacts, the Ports card TCP 25955 · UDP 24078 with UPnP No and NAT traversal Yes"
+    alt="The network screen: the eD2K card says Reachable from outside on the server Lighthouse, the Kad card Reachable from outside with 1,243 contacts, the Ports card TCP 25955 · UDP 24078 with UPnP is off and NAT traversal Yes"
     caption="The eD2K, Kad and Ports cards at the top of the network"
 />
 
@@ -102,7 +102,7 @@ IPv4 address on the **Ports** card as well.
 ## Port test
 
 **Test Ports** finds out whether others reach you, without waiting for the next login. You find it
-in three places: on the **Ports** card (**Test the ports**), in **Options → Connection → Ports**,
+in three places: on the **Ports** card, in **Options → Connection → Ports**,
 and on the **Connection** page of the first-start wizard. In the options and in the wizard the
 ports typed in the fields are applied first.
 

@@ -256,10 +256,10 @@ export const PAGES: Page[] = [
                             { value: 'HTTP', label: 'nj.proxy.http' },
                         ],
                     },
-                    { key: 'proxy.host', label: 'nj.proxy.host', kind: 'text', max: 255, held: true },
-                    { key: 'proxy.port', label: 'IDS_PW_CLIENTPORT', kind: 'number', min: 1, max: 65535, held: true },
-                    { key: 'proxy.user', label: 'nj.proxy.user', kind: 'text', max: 255, held: true },
-                    { key: 'proxy.password', label: 'nj.input.password', kind: 'password', held: true },
+                    { key: 'proxy.host', label: 'IDS_PROXY_HOST', kind: 'text', max: 255, held: true },
+                    { key: 'proxy.port', label: 'IDS_PROXY_PORT', kind: 'number', min: 1, max: 65535, held: true },
+                    { key: 'proxy.user', label: 'IDS_QL_USERNAME', kind: 'text', max: 255, held: true },
+                    { key: 'proxy.password', label: 'IDS_WS_PASS', kind: 'password', held: true },
                 ],
             },
         ],
@@ -408,8 +408,8 @@ export const PAGES: Page[] = [
                             { value: 'TLS', label: 'nj.notify.tls' },
                         ],
                     },
-                    { key: 'notify.smtpUser', label: 'nj.proxy.user', kind: 'text', max: 255 },
-                    { key: 'notify.smtpPassword', label: 'nj.input.password', kind: 'password' },
+                    { key: 'notify.smtpUser', label: 'IDS_QL_USERNAME', kind: 'text', max: 255 },
+                    { key: 'notify.smtpPassword', label: 'IDS_WS_PASS', kind: 'password' },
                     { key: 'notify.mailFrom', label: 'nj.notify.from', kind: 'text', max: 255 },
                     { key: 'notify.mailTo', label: 'nj.notify.to', kind: 'text', max: 255 },
                 ],
@@ -448,13 +448,6 @@ export const PAGES: Page[] = [
         summary: 'nj.settings.page.advanced',
         sections: [
             {
-                title: 'IDS_SECURITY',
-                rows: [
-                    { key: 'security.secureIdent', label: 'nj.settings.secureIdent', kind: 'switch' },
-                    { key: 'upload.creditSystem', label: 'nj.settings.credits', kind: 'switch' },
-                ],
-            },
-            {
                 title: 'IDS_PW_MISC',
                 rows: [
                     { key: 'search.store', label: 'IDS_STORESEARCHES', kind: 'switch' },
@@ -464,6 +457,11 @@ export const PAGES: Page[] = [
         ],
     },
 ];
+
+/** A label without the colon some translations end it with, as the desktop app shows it. */
+export function label(text: string): string {
+    return text.replace(/\s*:\s*$/, '');
+}
 
 /** Whether {@code row} matches the words looked for, in its label, its hint or its page. */
 export function matches(row: Row, page: Page, words: string, t: (key: string) => string): boolean {

@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.KadInfo;
+import org.njmule.core.api.PortTest;
 import org.njmule.core.config.Preferences;
 import org.njmule.gui.FxTesting;
 import org.njmule.gui.Statuses;
@@ -41,7 +42,7 @@ class NetworkCardsTest {
             .tcpPort(4662)
             .udpPort(4672)
             .udpEnabled(true)
-            .upnp(false)
+            .upnp(true)
             .build();
 
     @TempDir
@@ -103,13 +104,43 @@ class NetworkCardsTest {
     }
 
     @Test
-    void shouldShowThePortsAsTheyAreSet() throws Exception {
+    void shouldShowTheTcpPortAloneWhileKadDoesNotRun() throws Exception {
         givenTheCards();
 
         whenTheStateIs(EngineModel.Connection.DISCONNECTED, Statuses.kadOnly(Optional.empty(), 4662));
 
+        thenTheHeadlineReads("ports", "TCP 4662", "");
+    }
+
+    @Test
+    void shouldShowTheUdpPortOfKadWhileItRuns() throws Exception {
+        givenTheCards();
+
+        whenTheStateIs(
+                EngineModel.Connection.DISCONNECTED,
+                Statuses.kadOnly(Optional.of(Statuses.kad(true, false, "198.51.100.7")), 4662));
+
         thenTheHeadlineReads("ports", "TCP 4662 · UDP 4672", "");
-        thenTheDetailHolds("ports", "UPnP: No");
+    }
+
+    @Test
+    void shouldTellWhatTheRouterAnsweredThroughUpnp() throws Exception {
+        givenTheCards();
+
+        whenTheStateIs(
+                EngineModel.Connection.DISCONNECTED,
+                Statuses.forwarded(4662, PortTest.Forwarding.REFUSED, "192.168.1.1"));
+
+        thenTheDetailHolds("ports", "The router at 192.168.1.1 refused to forward the ports");
+    }
+
+    @Test
+    void shouldTellThatUpnpIsOffWhileTheRouterIsNotAsked() throws Exception {
+        givenTheCards();
+
+        whenTheStateIs(EngineModel.Connection.DISCONNECTED, Statuses.kadOnly(Optional.empty(), 4662));
+
+        thenTheDetailHolds("ports", "UPnP is off");
     }
 
     @Test

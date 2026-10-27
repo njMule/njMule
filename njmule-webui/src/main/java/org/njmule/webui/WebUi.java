@@ -567,7 +567,8 @@ public final class WebUi implements AutoCloseable {
                 "Log in",
                 (error.isEmpty() ? "" : "<p class=\"error\">" + Html.text(error) + "</p>")
                         + "<form method=\"post\" action=\"login\">"
-                        + "<input type=\"password\" name=\"password\" autofocus aria-label=\"Password\""
+                        + "<label for=\"password\">Password</label>"
+                        + "<input type=\"password\" id=\"password\" name=\"password\" autofocus"
                         + " autocomplete=\"current-password\"> "
                         + "<button class=\"main\">Log in</button></form>");
     }

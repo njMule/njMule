@@ -37,7 +37,7 @@ changed from its default.
 | [Programs run on events](events.mdx) | Your own programs, started when a download ends or fails, a message arrives or the disk runs short |
 | [Notifications](notifications.mdx) | E-mails and web hook messages (ntfy, Gotify) when something happens |
 | [Web Interface](web-interface.mdx) | The web interface and the remote-control API of this computer |
-| [Extended](extended.mdx) | Secure identification, credits, searches kept between runs, configuration backups |
+| [Extended](extended.mdx) | Searches kept between runs, configuration backups |
 
 ## Find an option
 
@@ -65,10 +65,9 @@ it works together with the words you typed.
 
 A few rows have no reset link: switches whose state lives in the system (start at login, ed2k
 links), the password fields of the web interface, the scheduler's rules, and rows that are only
-buttons. njMule keeps the proxy and the notifications each as one setting, so their reset links act
-on the whole page: on the [Proxy](proxy.mdx) page only **Type** has one, and it removes the whole
-proxy; on the [Notifications](notifications.mdx) page every row is marked **Changed** as soon as
-anything there differs from the defaults, and any of its **Reset** links puts the whole page back.
+buttons. On the [Proxy](proxy.mdx) and [Notifications](notifications.mdx) pages, kept each as one
+setting, a row is marked and reset by what it shows: resetting **Host and port** leaves the type
+and the credentials as they are.
 
 ## When a change applies
 

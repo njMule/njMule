@@ -35,6 +35,8 @@ import java.util.Optional;
  * @param publicIpv6 our public IPv6 address, at which clients may reach us, when we have one
  * @param overheadUploaded the bytes of packets sent this session besides file data
  * @param overheadDownloaded the bytes of packets received this session besides file data
+ * @param forwarding what the router answered when asked through UPnP to forward our ports
+ * @param router the host of the router that answered UPnP, empty when none did
  */
 public record EngineStatus(
         Optional<ServerInfo> server,
@@ -61,7 +63,9 @@ public record EngineStatus(
         Optional<String> missingInterface,
         Optional<String> publicIpv6,
         long overheadUploaded,
-        long overheadDownloaded) {
+        long overheadDownloaded,
+        PortTest.Forwarding forwarding,
+        String router) {
 
     public EngineStatus {
         Objects.requireNonNull(server, "server");
@@ -69,6 +73,65 @@ public record EngineStatus(
         Objects.requireNonNull(publicIp, "publicIp");
         Objects.requireNonNull(missingInterface, "missingInterface");
         Objects.requireNonNull(publicIpv6, "publicIpv6");
+        Objects.requireNonNull(forwarding, "forwarding");
+        Objects.requireNonNull(router, "router");
+    }
+
+    /** A status of a router never asked through UPnP. */
+    public EngineStatus(
+            Optional<ServerInfo> server,
+            long clientId,
+            boolean lowId,
+            boolean obfuscated,
+            Optional<KadInfo> kad,
+            long downloadBytesPerSecond,
+            long uploadBytesPerSecond,
+            long downloaded,
+            long uploaded,
+            int downloads,
+            int uploads,
+            int queued,
+            int sharedFiles,
+            long totalDownloaded,
+            long totalUploaded,
+            long sessions,
+            long sessionSeconds,
+            long totalSeconds,
+            String publicIp,
+            int tcpPort,
+            boolean relatedSearch,
+            Optional<String> missingInterface,
+            Optional<String> publicIpv6,
+            long overheadUploaded,
+            long overheadDownloaded) {
+        this(
+                server,
+                clientId,
+                lowId,
+                obfuscated,
+                kad,
+                downloadBytesPerSecond,
+                uploadBytesPerSecond,
+                downloaded,
+                uploaded,
+                downloads,
+                uploads,
+                queued,
+                sharedFiles,
+                totalDownloaded,
+                totalUploaded,
+                sessions,
+                sessionSeconds,
+                totalSeconds,
+                publicIp,
+                tcpPort,
+                relatedSearch,
+                missingInterface,
+                publicIpv6,
+                overheadUploaded,
+                overheadDownloaded,
+                PortTest.Forwarding.OFF,
+                "");
     }
 
     /** A status without the overhead of the session. */

@@ -129,7 +129,11 @@ final class ApiSamples {
                 4662,
                 true,
                 connected ? Optional.of("eth9") : Optional.empty(),
-                connected ? Optional.of("2001:db8::23") : Optional.empty());
+                connected ? Optional.of("2001:db8::23") : Optional.empty(),
+                0,
+                0,
+                connected ? PortTest.Forwarding.FORWARDED : PortTest.Forwarding.OFF,
+                connected ? "192.0.2.1" : "");
     }
 
     static DownloadInfo download() {
