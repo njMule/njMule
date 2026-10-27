@@ -19,7 +19,6 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -65,10 +64,8 @@ class SettingsBindInterfaceTest {
 
     private void givenNjMuleBoundTo(String choice) throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
-        this.test
-                .engine
-                .updatePreferences(p -> p.toBuilder().bindInterface(choice).build())
-                .get(10, TimeUnit.SECONDS);
+        FxTesting.await(this.test.engine.updatePreferences(
+                p -> p.toBuilder().bindInterface(choice).build()));
     }
 
     private void givenTheSettingsShow() throws Exception {

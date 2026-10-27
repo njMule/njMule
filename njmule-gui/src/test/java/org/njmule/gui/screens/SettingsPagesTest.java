@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import javafx.event.ActionEvent;
 import javafx.geometry.Bounds;
@@ -244,7 +243,7 @@ class SettingsPagesTest {
     }
 
     private void givenThePreferences(UnaryOperator<Preferences> change) throws Exception {
-        Preferences now = this.test.engine.updatePreferences(change).get(10, TimeUnit.SECONDS);
+        Preferences now = FxTesting.await(this.test.engine.updatePreferences(change));
         FxTesting.await(
                 "the new preferences",
                 () -> this.test.model.preferencesProperty().get().equals(now));

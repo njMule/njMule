@@ -31,7 +31,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.event.Event;
@@ -551,10 +550,8 @@ class SearchResultsTest {
     }
 
     private void givenTheSettingsKeepNoSearches() throws Exception {
-        this.test
-                .engine
-                .updatePreferences(p -> p.toBuilder().storeSearches(false).build())
-                .get(10, TimeUnit.SECONDS);
+        FxTesting.await(this.test.engine.updatePreferences(
+                p -> p.toBuilder().storeSearches(false).build()));
         FxTesting.onFx(
                 () -> this.test.model.handle(new EngineEvent.PreferencesChanged(this.test.engine.preferences())));
     }
@@ -909,7 +906,7 @@ class SearchResultsTest {
     }
 
     private void thenTheEngineDownloads(String... names) throws Exception {
-        assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS))
+        assertThat(FxTesting.await(this.test.engine.downloads()))
                 .extracting(DownloadInfo::name)
                 .containsExactly(names);
     }
@@ -992,7 +989,7 @@ class SearchResultsTest {
     }
 
     private void thenTheSearchKeptIs(String expression, String resultName) throws Exception {
-        assertThat(this.test.engine.savedSearches().get(10, TimeUnit.SECONDS))
+        assertThat(FxTesting.await(this.test.engine.savedSearches()))
                 .singleElement()
                 .satisfies(s -> {
                     assertThat(s.request().expression()).isEqualTo(expression);
@@ -1001,7 +998,7 @@ class SearchResultsTest {
     }
 
     private void thenNoSearchIsKept() throws Exception {
-        assertThat(this.test.engine.savedSearches().get(10, TimeUnit.SECONDS)).isEmpty();
+        assertThat(FxTesting.await(this.test.engine.savedSearches())).isEmpty();
     }
 
     private void thenTheUserIsToldOnly(String message) {

@@ -29,7 +29,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ListCell;
@@ -977,11 +976,8 @@ class ScreensTest {
     private void givenAKeptServerSearchFor(String expression) throws Exception {
         SearchResult film = new SearchResult(
                 Hash16.parseHex("0123456789ABCDEF0123456789ABCDEF"), "film.mkv", 700_000_000, 4, 1, Optional.empty());
-        this.test
-                .engine
-                .saveSearches(List.of(
-                        new SavedSearch("", new SearchRequest(expression, SearchRequest.Scope.SERVER), List.of(film))))
-                .get(10, TimeUnit.SECONDS);
+        FxTesting.await(this.test.engine.saveSearches(List.of(
+                new SavedSearch("", new SearchRequest(expression, SearchRequest.Scope.SERVER), List.of(film)))));
     }
 
     private void givenTheSearchScreenShownWithItsTab() throws Exception {
@@ -1525,7 +1521,7 @@ class ScreensTest {
     }
 
     private void thenNoSearchIsKept() throws Exception {
-        assertThat(this.test.engine.savedSearches().get(10, TimeUnit.SECONDS))
+        assertThat(FxTesting.await(this.test.engine.savedSearches()))
                 .as("the tabs closed before the exit are not kept")
                 .isEmpty();
     }
@@ -1537,8 +1533,7 @@ class ScreensTest {
     }
 
     private void thenTheEngineCanRecheckTheFirewall() throws Exception {
-        assertThat(this.test.engine.recheckKadFirewall().get(10, TimeUnit.SECONDS))
-                .isTrue();
+        assertThat(FxTesting.await(this.test.engine.recheckKadFirewall())).isTrue();
     }
 
     private void thenKadIsOff() {

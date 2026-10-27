@@ -19,7 +19,6 @@ package org.njmule.gui.shell;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -81,7 +80,7 @@ class DropLinksTest {
     private void thenTheDownloadsAre(String... names) throws Exception {
         FxTesting.assertEventually(
                 "the downloads", () -> this.test.engine.downloads().join().size() == names.length);
-        assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS))
+        assertThat(FxTesting.await(this.test.engine.downloads()))
                 .extracting(DownloadInfo::name)
                 .containsExactlyInAnyOrder(names);
     }

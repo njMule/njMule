@@ -27,7 +27,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.UnaryOperator;
 import javafx.application.Platform;
@@ -574,14 +573,12 @@ class TrayWindowsTest {
 
     // Changed past the menu, as the settings screen or the scheduler do.
     private void limits(int capacity, int limit) throws Exception {
-        this.engine
-                .updatePreferences(p -> p.toBuilder()
-                        .downloadCapacityKiBps(capacity)
-                        .uploadCapacityKiBps(capacity)
-                        .maxDownloadKiBps(limit)
-                        .maxUploadKiBps(limit)
-                        .build())
-                .get(10, TimeUnit.SECONDS);
+        FxTesting.await(this.engine.updatePreferences(p -> p.toBuilder()
+                .downloadCapacityKiBps(capacity)
+                .uploadCapacityKiBps(capacity)
+                .maxDownloadKiBps(limit)
+                .maxUploadKiBps(limit)
+                .build()));
         FxTesting.await(
                 "the new limits", () -> this.model.preferencesProperty().get().maxDownloadKiBps() == limit);
     }

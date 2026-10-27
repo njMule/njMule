@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import javafx.event.ActionEvent;
 import org.junit.jupiter.api.AfterEach;
@@ -222,12 +221,8 @@ class SettingsScreenTest {
     private void givenTheUploadLimitRaisedMeanwhileBy(int kiBps) throws Exception {
         int before = this.test.engine.preferences().maxUploadKiBps();
         this.uploadLimitSetMeanwhile = before + kiBps;
-        this.test
-                .engine
-                .updatePreferences(p -> p.toBuilder()
-                        .maxUploadKiBps(this.uploadLimitSetMeanwhile)
-                        .build())
-                .get(10, TimeUnit.SECONDS);
+        FxTesting.await(this.test.engine.updatePreferences(
+                p -> p.toBuilder().maxUploadKiBps(this.uploadLimitSetMeanwhile).build()));
     }
 
     // A second apply starts from what this one wrote.

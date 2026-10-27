@@ -252,7 +252,7 @@ class CaptureTour {
                         + "net.upnp=false\nnotify.sound=false\n");
         this.engine = NjMuleEngine.start(new EngineConfig(dirs));
         if (demo) {
-            this.engine.updateSchedule(CaptureDemo.schedule()).get(10, TimeUnit.SECONDS);
+            FxTesting.await(this.engine.updateSchedule(CaptureDemo.schedule()));
         }
         // The log is the demo's: the real engine's lines may name this computer's addresses.
         NjMuleEngine shown = demo
