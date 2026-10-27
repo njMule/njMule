@@ -37,6 +37,21 @@ All notable changes to this project are documented here. The format follows
 - A download waiting for disk space offers to pause instead of a resume that did nothing, and its
   note says that it goes on by itself once there is room.
 - A part found corrupt is told in the app's log too, not only in the log file.
+- The *Ports* card tells what the router answered through UPnP instead of whether UPnP is on, and
+  the UDP port while Kad runs, which listens on it; the port test is *Test Ports* everywhere.
+- In the options of the desktop app a long name wraps instead of running under its control, and each
+  row of the *Proxy* and *Notifications* pages is marked and reset by what it shows, no longer by the
+  whole page.
+- The options of the web interface name the proxy's port, user and password and the mail password
+  as such, without a placeholder in the text; its sign-in page names the password field in sight.
+- On a phone the details of a download in the web interface show only once one is chosen, after the
+  list instead of over it.
+- The smileys `:-p`, `:-O`, `:-o`, `:-|` and `:-*` show as emoji too.
+
+### Removed
+
+- The *Use secure identification* and *Use the credit system* switches: njMule always uses both and
+  never read them. Their keys stay in `njmule.properties`.
 
 ### Security
 

@@ -1,31 +1,27 @@
 ---
 title: Extended
-description: Secure identification, the credit system, the search tabs kept between runs and the backups of the configuration.
+description: The search tabs kept between runs and the backups of the configuration.
 ---
 
-The **Extended** page holds the settings most people never need to change: two switches about how
-njMule deals with other clients, whether your open searches come back at the next start, and how
-many backups of the configuration njMule keeps. The web interface has the same page.
+The **Extended** page holds the settings most people never need to change: whether your open
+searches come back at the next start, and how many backups of the configuration njMule keeps. The
+web interface has the same page.
 
 <Screenshot
   id="settings-page-13"
-  alt="The Extended page: the Security section with Use secure identification and Use the credit system both on, and the Miscellaneous section with Remember open searches between restarts on and Configuration backups kept set to 3."
+  alt="The Extended page: the Miscellaneous section with Remember open searches between restarts on and Configuration backups kept set to 3."
   caption="The Extended page."
 />
 
 Every option of this page applies at once and is kept in `njmule.properties`.
 
-## Security
+## Secure identification and credits
 
-| Option | Default | What it does |
-| --- | --- | --- |
-| **Use secure identification** | On | Secure identification proves to other clients, with a key of your own, that your user hash is yours, and checks theirs, so that nobody can take your credits or pass for a friend. Key `security.secureIdent`. Also in the web interface. |
-| **Use the credit system** | On | Credits reward the clients that uploaded to you: they move up faster in your upload queue. Key `upload.creditSystem`. Also in the web interface. |
-
-:::note
-In this version both switches are kept, and taken from an eMule profile, but njMule does not read
-them yet: it always uses secure identification and credits, whatever they say.
-:::
+njMule always uses [secure identification](../glossary.mdx#secure-identification-sui), which proves
+to other clients that your user hash is yours and checks theirs, and
+[credits](../glossary.mdx#credits), which move the clients that uploaded to you up your upload
+queue. Neither can be turned off. The keys `security.secureIdent` and `upload.creditSystem` stay in
+`njmule.properties`, taken from an eMule profile too, but nothing reads them.
 
 ## Miscellaneous
 
