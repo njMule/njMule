@@ -7,6 +7,7 @@ import type { Options as DocsOptions } from '@docusaurus/plugin-content-docs';
 import type * as OpenApiPlugin from 'docusaurus-plugin-openapi-docs';
 import { readFileSync } from 'node:fs';
 import { themes as prismThemes } from 'prism-react-renderer';
+import screens from './plugins/screens';
 
 const repository = 'https://github.com/njMule/njMule';
 const baseUrl = '/njMule/';
@@ -69,6 +70,7 @@ const config: Config = {
     ],
 
     plugins: [
+        screens,
         [
             '@docusaurus/plugin-content-docs',
             {

@@ -4,6 +4,7 @@
 import type { ReactNode } from 'react';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import ThemedImage from '@theme/ThemedImage';
+import { useScreenSize } from './screenSize';
 
 /**
  * A screenshot of njMule in the theme the page is read in, without a frame, for layouts of their own (the home
@@ -22,11 +23,13 @@ export default function ThemedShot({
 }): ReactNode {
     const light = useBaseUrl(`/img/screens/light/${id}.png`);
     const dark = useBaseUrl(`/img/screens/dark/${id}.png`);
+    const size = useScreenSize('light', id);
     return (
         <ThemedImage
             className={className}
             alt={alt}
             sources={{ light, dark }}
+            {...size}
             loading={eager ? 'eager' : 'lazy'}
             decoding="async"
         />
