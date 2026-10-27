@@ -265,33 +265,20 @@ class KnownFilesTest {
     // No scan runs: what was read is saved again as it is.
     private void whenTheSharesOpenAndCloseAtOnce() throws Exception {
         onLoop(() -> {
-            SharedFiles.open(
-                            this.loop,
-                            this.config,
-                            () -> List.of(this.incoming),
-                            () -> List.of(this.dir.resolve("temp")),
-                            new SharedFiles.Listener() {
-                                @Override
-                                public void shared(SharedFiles.SharedFile file) {}
-
-                                @Override
-                                public void unshared(SharedFiles.SharedFile file) {}
-                            })
-                    .close();
+            openOnLoop().close();
             return null;
         });
     }
 
-    // The hashing of its own tree cannot report before the close.
+    // One task of the loop: neither the first scan nor the hashing for its tree can build that tree before the close.
     private void whenItFinishesAndTheSharesCloseAtOnce(String name) throws Exception {
-        this.shares = open();
         Path file = this.incoming.resolve(name);
         onLoop(() -> {
-            this.shares.finished(file, this.finished);
-            this.shares.close();
+            SharedFiles opened = openOnLoop();
+            opened.finished(file, this.finished);
+            opened.close();
             return null;
         });
-        this.shares = null;
     }
 
     private void whenTheFilesAreShared() throws Exception {
@@ -426,7 +413,11 @@ class KnownFilesTest {
     }
 
     private SharedFiles open() throws Exception {
-        return onLoop(() -> SharedFiles.open(
+        return onLoop(this::openOnLoop);
+    }
+
+    private SharedFiles openOnLoop() {
+        return SharedFiles.open(
                 this.loop,
                 this.config,
                 () -> List.of(this.incoming),
@@ -437,7 +428,7 @@ class KnownFilesTest {
 
                     @Override
                     public void unshared(SharedFiles.SharedFile file) {}
-                }));
+                });
     }
 
     private void closeShares() throws Exception {
