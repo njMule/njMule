@@ -1727,6 +1727,8 @@ final class Network {
             if (this.kadRelay != null) {
                 this.kadRelay.use(now.proxy());
             }
+            // Behind a proxy our IPv6 address is not told, from the next hello on.
+            watchAddress();
         }
         if (tcp || udp || was.upnp() != now.upnp()) {
             restartForwarding();
@@ -2227,10 +2229,7 @@ final class Network {
                     new KadNode.Settings(
                             listenPort(),
                             this.userHash,
-                            cryptOptions(prefs.obfuscation()) >>> 7
-                                    | (prefs.proxy().isEnabled()
-                                            ? 0
-                                            : NatTraversalMessages.OPTION_UTP | NatTraversalMessages.OPTION_QUIC),
+                            () -> kadOptions(this.preferences.get()),
                             ip -> Ipv4.isLan(ip) && !this.preferences.get().filterLanAddresses(),
                             ip -> this.ipFilter.blocks(ip),
                             this.kadSocket.port(),
@@ -2508,6 +2507,12 @@ final class Network {
 
     private boolean mayTraverse() {
         return this.preferences.get().routerTraversal();
+    }
+
+    // What Kad tells of how to reach us, as the preferences say now: traversal only where we take it.
+    static int kadOptions(Preferences prefs) {
+        return cryptOptions(prefs.obfuscation()) >>> 7
+                | (prefs.routerTraversal() ? NatTraversalMessages.OPTION_UTP | NatTraversalMessages.OPTION_QUIC : 0);
     }
 
     // A connection through the routers: one a client opened counts as coming in, one we asked for as ours.
@@ -3255,6 +3260,13 @@ final class Network {
             Network.this.uploads.ban(ip, "it sent corrupt data");
             Network.this.userLog.log(
                     LogLine.Level.WARNING, "Banned " + ip.getHostAddress() + " for two hours: it sent corrupt data");
+        }
+
+        @Override
+        public void corruptPart(DownloadInfo download, int part) {
+            Network.this.userLog.log(
+                    LogLine.Level.WARNING,
+                    "Part " + part + " of " + download.name() + " is corrupt: downloading it again");
         }
 
         @Override

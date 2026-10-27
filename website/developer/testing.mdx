@@ -201,9 +201,10 @@ it-light-full,it-dark-screens,en-light-screens,ar-light-screens,it-light-empty
 ```
 
 Each set gets a folder of numbered pictures, and `index.tsv` lists them all with their size and
-what they show. With `-Pnjmule.capture.stable=true` each
-picture is named by what it shows alone, without its number: `./gradlew :njmule-gui:docsCaptures`
-uses that for this site ([Documentation](documentation.mdx#screenshots)).
+what they show. With `-Pnjmule.capture.stable=true` each picture is named by what it shows alone,
+without its number, and with `-Pnjmule.capture.scale=2` it is drawn with twice the pixels, sharp on
+screens of high density: `./gradlew :njmule-gui:docsCaptures` uses both for this site
+([Documentation](documentation.mdx#screenshots)).
 
 ## Web app tests
 

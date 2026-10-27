@@ -532,7 +532,12 @@ final class DownloadDetails {
                 action(this.first, "IDS_DL_RESUME", Icons.PLAY, this.actions.resume());
                 action(this.second, null, null, null);
             }
-            case NO_SPACE, ERROR -> {
+            // Short of disk space it still runs, and goes on by itself once there is room.
+            case NO_SPACE -> {
+                action(this.first, "IDS_DL_PAUSE", Icons.PAUSE, this.actions.pause());
+                action(this.second, "IDS_OPENINC", Icons.FOLDER_OPEN, this.actions.openFolder());
+            }
+            case ERROR -> {
                 action(this.first, "IDS_DL_RESUME", Icons.PLAY, this.actions.resume());
                 action(this.second, "IDS_OPENINC", Icons.FOLDER_OPEN, this.actions.openFolder());
             }

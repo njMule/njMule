@@ -19,6 +19,8 @@ if (!launcherFile || !output) {
 }
 const launcher = JSON.parse(readFileSync(launcherFile, 'utf8'));
 const VIEWPORT = { width: 1280, height: 800 };
+// Twice the pixels, as the desktop app's pictures: sharp on screens of high density, drawn at half their size.
+const CONTEXT = { viewport: VIEWPORT, deviceScaleFactor: 2, locale: 'en-US' };
 const SETTLE = 900;
 const missed = [];
 
@@ -79,7 +81,7 @@ async function signIn(page, url, password) {
 async function scheme(browser, info, colorScheme) {
     const folder = join(output, colorScheme);
     mkdirSync(folder, { recursive: true });
-    const context = await browser.newContext({ viewport: VIEWPORT, colorScheme, locale: 'en-US' });
+    const context = await browser.newContext({ ...CONTEXT, colorScheme });
     // The set-up asked once in a browser is already done; the theme follows the scheme of the system.
     await context.addInitScript(() => {
         localStorage.setItem('njmule.setup', 'done');
@@ -185,7 +187,7 @@ async function scheme(browser, info, colorScheme) {
     await context.close();
 
     // A guest sees, and changes, nothing but what it may look at.
-    const guest = await browser.newContext({ viewport: VIEWPORT, colorScheme, locale: 'en-US' });
+    const guest = await browser.newContext({ ...CONTEXT, colorScheme });
     const guestPage = await guest.newPage();
     await step('web-guest', async () => {
         await signIn(guestPage, info.url, info.guest);

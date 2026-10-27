@@ -270,11 +270,12 @@ public final class PreferencesCodec {
     }
 
     /**
-     * Writes the preferences; keys of the file this version does not know stay, so that an older version loses none.
+     * Writes the preferences, for their owner only as they hold the proxy and mail passwords; keys of the file this
+     * version does not know stay, so that an older version loses none.
      */
     public static void save(Path file, Preferences preferences) throws IOException {
         Properties unknown = unknownKeys(file);
-        AtomicFiles.write(file, out -> {
+        AtomicFiles.Writer content = out -> {
             Writer w = new OutputStreamWriter(out, StandardCharsets.UTF_8);
             format(preferences, w);
             if (!unknown.isEmpty()) {
@@ -285,7 +286,8 @@ public final class PreferencesCodec {
                 w.write(kept.toString());
             }
             w.flush();
-        });
+        };
+        AtomicFiles.write(file, content, true, true);
     }
 
     private static Properties unknownKeys(Path file) {

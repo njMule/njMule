@@ -28,6 +28,15 @@ All notable changes to this project are documented here. The format follows
   tells how to install the new version for each kind of installation (the package manager's
   command, the Docker image to pull, the Synology Package Center) and no longer offers a download
   that cannot work.
+- Kad tells that clients reach us through the routers (uTP, QUIC) only where we take such
+  connections, no longer with obfuscation required, and follows a change of obfuscation or proxy
+  without a restart.
+- A Kad search no longer drops every result when the complete sources filter is set: Kad counts
+  none, so the filter is left out there; the filters' note says so instead of claiming that Kad
+  ignores size and type.
+- A download waiting for disk space offers to pause instead of a resume that did nothing, and its
+  note says that it goes on by itself once there is room.
+- A part found corrupt is told in the app's log too, not only in the log file.
 - The dialog that adds links finds them inside other text too, as it says, and its paused box wins
   over the option that adds downloads paused; the remote-control API takes `paused` when it adds
   downloads.
@@ -36,6 +45,18 @@ All notable changes to this project are documented here. The format follows
   Folder* and *Open Incoming Folder* off.
 - A desktop app started while a headless njMule runs on the same profile says that the links went
   to it, instead of closing without a word.
+
+### Security
+
+- The profile of the Windows service, `%ProgramData%\njMule`, is closed to the other users of the
+  computer before its web interface password is written; a service installed before gets it at its
+  next `njmule --service=install`.
+- `njmule.properties`, which holds the proxy and mail passwords, and its backup are readable by
+  their owner only on Linux and macOS.
+- Our public IPv6 address is no longer told to other clients and to Kad while a proxy carries the
+  connections.
+- E-mail and web hook notifications go through the proxy of the preferences and from the network
+  interface chosen, and are not sent while that interface is gone.
 
 ## [0.1.0] - 2026-10-26
 

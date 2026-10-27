@@ -9,6 +9,8 @@
 
 .frame {
     display: block;
+    width: fit-content;
+    max-width: 100%;
     border: 1px solid var(--nj-border);
     border-radius: 10px;
     overflow: hidden;
@@ -18,7 +20,8 @@
 }
 
 .frame img {
-    width: 100%;
+    display: block;
+    max-width: 100%;
     height: auto;
 }
 

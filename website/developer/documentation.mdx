@@ -18,6 +18,7 @@ broken link. Change a page in the same branch as the user-visible change it desc
 | `website/docs/_generated/`, `website/developer/_generated/` | partials generated from the repository: the changelog, the security policy, the contributing guide, the code of conduct, the pull request template, `njmule --help` and `njmule --remote help` (not committed) |
 | `website/src/` | the home page (`pages/index.tsx`), the components (`Screenshot`, `ThemedShot`, `NjIcon`), the components every page gets without importing them (`theme/MDXComponents.tsx`) and the styles (`css/custom.css`) |
 | `website/scripts/` | `prepare.mjs`, which puts in place what the site takes from the repository, and `capture-web.mjs`, which pictures the web interface |
+| `website/plugins/` | `screens.ts`, which tells the pages the size of each screenshot |
 | `website/static/` | static files served as they are |
 | `sidebars.ts`, `sidebarsDeveloper.ts` | the order of the pages of each guide; a new page must be listed there |
 | `docusaurus.config.ts` | the site: address, plugins, navigation, footer, search |
@@ -36,13 +37,14 @@ The site lands in `website/build/site`. The task runs, in order of need:
 
 1. **`:njmule-gui:docsCaptures`**: the [capture tour](testing.mdx#the-capture-tour) on its example
    data, in the sets `en-light-docs`, `en-dark-docs` and `en-contrast-screens`, each picture named
-   by what it shows (`njmule.capture.stable`), into `njmule-gui/build/docs-captures/<set>/`.
+   by what it shows (`njmule.capture.stable`) and drawn with twice the pixels
+   (`njmule.capture.scale`), into `njmule-gui/build/docs-captures/<set>/`.
 2. **`:njmule-gui:webCaptureArgs`** and **`:website:webScreenshots`**: `scripts/capture-web.mjs`
    starts the web interface on the same example data (`WebCaptureDemo`), signs in, and pictures each
-   place in light and dark at 1280×800, a phone-sized page and a guest's page, into
-   `website/build/web-captures/`. It drives the Chrome or Edge already installed on your computer
-   through Playwright, which downloads no browser; set `NJMULE_CAPTURE_BROWSER` to the path of
-   another Chromium-based browser. A step that fails is reported as "not pictured" and the others
+   place in light and dark at 1280×800 with twice the pixels, a phone-sized page and a guest's
+   page, into `website/build/web-captures/`. It drives the Chrome or Edge already installed on your
+   computer through Playwright, which downloads no browser; set `NJMULE_CAPTURE_BROWSER` to the path
+   of another Chromium-based browser. A step that fails is reported as "not pictured" and the others
    go on.
 3. **`:njmule-app:cliHelp`**: what `njmule --help` and `njmule --remote help` print.
 4. **`:website:prepare`**: `scripts/prepare.mjs --strict` copies the brand's images and the
@@ -142,7 +144,9 @@ Every page can show a screenshot without importing anything:
 | `set` | `contrast` for a picture in Windows' high contrast scheme, which has no light or dark version |
 
 The component shows the light or the dark picture as the reader's theme is set; a click opens it at
-full size. `prepare.mjs` copies only the pictures the pages name, so a page can name any picture the
+full size. The pictures have twice the pixels they are drawn with, so that they stay sharp on screens
+of high density: the component draws each at half its size in pixels, as `plugins/screens.ts` reads
+it, and never wider than the page. `prepare.mjs` copies only the pictures the pages name, so a page can name any picture the
 build makes:
 
 - **Desktop app**: the names of the capture tour, in `njmule-gui/build/docs-captures/<set>/index.tsv`

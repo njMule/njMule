@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import { useColorMode } from '@docusaurus/theme-common';
 import ThemedImage from '@theme/ThemedImage';
+import { useScreenSize } from './screenSize';
 import styles from './Screenshot.module.css';
 
 export interface ScreenshotProps {
@@ -26,6 +27,7 @@ export default function Screenshot({ id, alt, caption, set = 'themed', width }: 
     const light = useBaseUrl(`/img/screens/${set === 'contrast' ? 'contrast' : 'light'}/${id}.png`);
     const dark = useBaseUrl(`/img/screens/${set === 'contrast' ? 'contrast' : 'dark'}/${id}.png`);
     const { colorMode } = useColorMode();
+    const size = useScreenSize(set === 'contrast' ? 'contrast' : 'light', id);
     return (
         <figure className={styles.figure} style={width ? { maxWidth: width } : undefined}>
             <a
@@ -35,7 +37,7 @@ export default function Screenshot({ id, alt, caption, set = 'themed', width }: 
                 rel="noreferrer"
                 title="Open at full size"
             >
-                <ThemedImage alt={alt} sources={{ light, dark }} loading="lazy" decoding="async" />
+                <ThemedImage alt={alt} sources={{ light, dark }} {...size} loading="lazy" decoding="async" />
             </a>
             {caption ? <figcaption className={styles.caption}>{caption}</figcaption> : null}
         </figure>
