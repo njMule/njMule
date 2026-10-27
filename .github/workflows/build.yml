@@ -192,8 +192,8 @@ jobs:
                   }
                   tar -xf "$env:RUNNER_TEMP\graalvm.zip" -C $env:RUNNER_TEMP
                   "GRAALVM_HOME=$env:RUNNER_TEMP\graalvm-community-25.4.4.1.1+1.1" >> $env:GITHUB_ENV
-            - name: Build the native executable
-              run: ./gradlew :njmule-app:nativeCompile '-Pnative.optimization=-Ob'
+            - name: Build the native executable and the service
+              run: ./gradlew :njmule-app:nativeCompile :njmule-gui:nativeService '-Pnative.optimization=-Ob'
             - name: Smoke test
               shell: pwsh
               run: |
@@ -201,6 +201,13 @@ jobs:
                   if (-not ((njmule-app/build/native/nativeCompile/njmule.exe --license) -match "GNU GENERAL PUBLIC LICENSE")) {
                       throw "license text missing"
                   }
+            # The runner is an administrator: the real service, as the release checks it before packing, so that a
+            # pull request that breaks it fails here rather than on a tag.
+            - name: Service test
+              shell: pwsh
+              run: |
+                  Copy-Item njmule-gui/build/launcher/njmule-service.exe njmule-app/build/native/nativeCompile/
+                  ./.github/scripts/windows-service-test.ps1 njmule-app/build/native/nativeCompile/njmule.exe
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: njmule-windows-x64
