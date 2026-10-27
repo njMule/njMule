@@ -1,11 +1,14 @@
 ---
 title: Install on Windows
-description: Install njMule on Windows with the MSI installer, for your user or for every user, or run it from the zip archive.
+description: Install njMule on Windows from its MSI installer, with a double-click or with msiexec, or run it from the zip archive; for administrators, an installation for every user, as a service or unattended.
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 njMule for Windows comes as an MSI installer and as a zip archive, both for x64 processors. The
-installer is the usual choice: it needs no administrator rights, adds shortcuts and keeps njMule up
-to date. The zip runs from any folder, a USB drive included.
+installer is the usual choice: a double-click or one command installs it, with no administrator
+rights, adds shortcuts and keeps njMule up to date. The zip runs from any folder, a USB drive included.
 
 ## Download
 
@@ -16,13 +19,39 @@ can [check the download](verify-downloads.mdx) before you open it.
 
 ## Install with the MSI
 
+<Tabs groupId="windows-install">
+<TabItem value="double-click" label="Double-click" default>
+
 1. Download the `.msi` file above.
-2. Open it. If Windows SmartScreen says it protected your PC, choose **More info**, then
-   **Run anyway** (see [SmartScreen](#smartscreen) below).
-3. The installer runs for your user only: it asks for no administrator rights and finishes on its
-   own.
+2. Double-click it, in your **Downloads** folder or in the browser's list of downloads. If Windows
+   SmartScreen says it protected your PC, choose **More info**, then **Run anyway** (see
+   [SmartScreen](#smartscreen) below).
+3. There is nothing to choose: the installer finishes on its own in a few seconds, for your user,
+   without asking for administrator rights.
 4. Start njMule from the **Start** menu or from the **njMule** shortcut on the desktop. At the first
    start, a wizard helps you set it up: see [First start](first-run.mdx).
+
+</TabItem>
+<TabItem value="msiexec" label="From a terminal">
+
+1. Download the `.msi` file above.
+2. In PowerShell or the Command Prompt, in the folder that holds it, run:
+
+   ```powershell
+   msiexec /i njmule-<version>-windows-x64.msi
+   ```
+
+   The installer finishes on its own, for your user, without asking for administrator rights; add
+   `/qn` to show no window at all. The installation is the same as with a double-click.
+3. Start njMule from the **Start** menu, from the **njMule** shortcut on the desktop, or with
+   `njmule-gui` in a new terminal. At the first start, a wizard helps you set it up: see
+   [First start](first-run.mdx).
+
+To install for every user, as a service or from a script, see
+[For administrators](#for-administrators).
+
+</TabItem>
+</Tabs>
 
 The installer:
 
@@ -48,52 +77,12 @@ Your settings and downloads are not in the program folder: see
 [Data locations](../data/locations.mdx). By default, completed downloads go to
 `%USERPROFILE%\Downloads\njMule`.
 
-### For every user
-
-A per-machine installation, in `C:\Program Files\njMule` for all the users of the computer, needs
-administrator rights. Run the installer from a terminal opened as administrator:
-
-```powershell
-msiexec /i njmule-<version>-windows-x64.msi MSIINSTALLPERUSER=""
-```
-
-Each user still has a profile of their own.
-
-### As a Windows service
-
-njMule can also run as the Windows service **njMule**: headless, with its web interface, started
-with Windows before anyone logs in. A per-machine installation sets the service up at once when you
-give it `NJMULE_SERVICE=1` and a file whose first line is the web interface password (8 characters
-at least):
-
-```powershell
-msiexec /i njmule-<version>-windows-x64.msi MSIINSTALLPERUSER="" NJMULE_SERVICE=1 NJMULE_WEBUI_PASSWORD_FILE=C:\Users\you\webui-password.txt
-```
-
-The installer refuses `NJMULE_SERVICE=1` without administrator rights or without the password
-file. njMule keeps only a hash of the password, so you can delete the file afterwards. An upgrade
-stops the service while it replaces the files and starts it again; uninstalling njMule removes the
-service and keeps its profile in `%ProgramData%\njMule`.
-
-You can also set the service up later from a terminal with `njmule --service=install`: Windows asks
-for the administrator's rights, then njMule for the web interface password. Everything about it is
-in [Windows service](../server/windows-service.mdx).
-
-### Unattended installation
-
-`msiexec` installs without any window with `/qn`, for your user unless you add
-`MSIINSTALLPERUSER=""`:
-
-```powershell
-msiexec /i njmule-<version>-windows-x64.msi /qn
-```
-
 ## Run from the zip
 
 1. Download `njmule-<version>-windows-x64.zip`.
 2. Unpack it into a folder of your own, such as `C:\Users\you\Apps`: a folder you can write to lets
    njMule [update itself](../updates.mdx) there.
-3. Open `njmule-gui.exe` in the folder `njmule-<version>-windows-x64`.
+3. Double-click `njmule-gui.exe` in the folder `njmule-<version>-windows-x64`.
 
 The zip holds the same programs as the installer, and adds nothing to the Start menu, the desktop or
 the `PATH`. In a terminal, run the command line from its folder:
@@ -131,12 +120,12 @@ programs)** in **Options → General**. See [eD2K links](../desktop/ed2k-links.m
 
 ## Upgrade
 
-- **Installer**: install a newer MSI the same way; it replaces the old version and keeps your
-  settings and downloads. An older MSI refuses to replace a newer version.
+- **Installer**: double-click a newer MSI, or run `msiexec /i` on it; it replaces the old version
+  and keeps your settings and downloads. An older MSI refuses to replace a newer version.
 - **Zip**: unpack the new archive in place of the old one, or let njMule do it.
 
-njMule tells you when a new version is out and can download and install it for you, through
-msiexec for the installer and file by file for the zip: see [Updates](../updates.mdx).
+njMule tells you when a new version is out and can download and install it for you, running the new
+installer or replacing the files of the zip: see [Updates](../updates.mdx).
 
 ## Uninstall
 
@@ -152,3 +141,56 @@ Uninstall njMule from **Settings → Apps**, as any other program. The uninstall
 Your completed downloads always stay. For the zip, delete its folder; `njmule --remove-profile`
 deletes your profile first, after asking. See [Uninstall](../uninstall.mdx) and
 [Remove your profile](../data/remove-profile.mdx).
+
+## For administrators
+
+What follows is for those who install njMule for all the users of a computer, as a service or from
+a script. The installer has no window in which to choose these, so they take a command in a
+terminal.
+
+### As a Windows service
+
+njMule can also run as the Windows service **njMule**: headless, with its web interface, started
+with Windows before anyone logs in. Install njMule with a double-click as above, then run in a
+terminal:
+
+```powershell
+njmule --service=install
+```
+
+Windows asks for the administrator's rights, then njMule for the web interface password. Everything
+about it is in [Windows service](../server/windows-service.mdx).
+
+### For every user
+
+A per-machine installation, in `C:\Program Files\njMule` for all the users of the computer, needs
+administrator rights. Run the installer from a terminal opened as administrator:
+
+```powershell
+msiexec /i njmule-<version>-windows-x64.msi MSIINSTALLPERUSER=""
+```
+
+Each user still has a profile of their own. The same installation can set the service up at once
+when you also give it `NJMULE_SERVICE=1` and a file whose first line is the web interface password
+(8 characters at least):
+
+```powershell
+msiexec /i njmule-<version>-windows-x64.msi MSIINSTALLPERUSER="" NJMULE_SERVICE=1 NJMULE_WEBUI_PASSWORD_FILE=C:\Users\you\webui-password.txt
+```
+
+Add `NJMULE_WEBUI_LAN=1` to let the other computers of the network reach its web interface, which
+otherwise answers on this computer only.
+
+The installer refuses `NJMULE_SERVICE=1` without administrator rights or without the password
+file. njMule keeps only a hash of the password, so you can delete the file afterwards. An upgrade
+stops the service while it replaces the files and starts it again; uninstalling njMule removes the
+service and keeps its profile in `%ProgramData%\njMule`.
+
+### Unattended installation
+
+`msiexec` installs without any window with `/qn`, for your user unless you add
+`MSIINSTALLPERUSER=""`:
+
+```powershell
+msiexec /i njmule-<version>-windows-x64.msi /qn
+```

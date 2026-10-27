@@ -53,6 +53,7 @@ val pages =
         fileTree("docs") { exclude("_generated/**") },
         fileTree("developer") { exclude("_generated/**", "api/reference/**") },
         "src",
+        "plugins",
         "static",
     )
 val configFiles =
@@ -140,7 +141,9 @@ val siteCheck =
         group = "verification"
         dependsOn(tasks.npmInstall, apiDocs)
         npmCommand = listOf("run", "check")
-        inputs.files("src", "scripts", configFiles, ".prettierrc.json").withPathSensitivity(PathSensitivity.RELATIVE)
+        inputs
+            .files("src", "plugins", "scripts", configFiles, ".prettierrc.json")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
         outputs.cacheIf { true }
         val done = layout.buildDirectory.file("site-check.done")
         outputs.file(done)

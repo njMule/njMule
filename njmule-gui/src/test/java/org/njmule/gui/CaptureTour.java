@@ -47,9 +47,11 @@ import java.util.stream.Stream;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Bounds;
+import javafx.geometry.Rectangle2D;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.SnapshotParameters;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
@@ -79,6 +81,7 @@ import javafx.scene.input.ContextMenuEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.Region;
+import javafx.scene.transform.Transform;
 import javafx.stage.PopupWindow;
 import javafx.stage.Stage;
 import javafx.stage.Window;
@@ -122,7 +125,8 @@ import org.njmule.testkit.FreePorts;
  * {@code ./gradlew :njmule-gui:test --tests CaptureTour -Pnjmule.capture=build/gui-capture};
  * {@code -Pnjmule.capture.sets} picks the sets (see {@link #SETS}) and {@code -Pnjmule.capture.stable=true} names each
  * picture by what it shows alone, without its number, as the documentation refers to them ({@code ./gradlew
- * :njmule-gui:docsCaptures}).
+ * :njmule-gui:docsCaptures}); {@code -Pnjmule.capture.scale=2} draws them with twice the pixels, for screens of high
+ * density.
  */
 @Timeout(1800)
 @EnabledIfSystemProperty(named = "njmule.capture", matches = ".+")
@@ -167,6 +171,7 @@ class CaptureTour {
     private String set;
     private int counter;
     private boolean stable;
+    private double scale;
     private final List<String> index = new ArrayList<>();
     private final List<String> missed = new ArrayList<>();
     private final Set<Object> seen = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -192,6 +197,7 @@ class CaptureTour {
         String asked = System.getProperty("njmule.capture.sets", "");
         this.sets = List.of((asked.isBlank() ? SETS : asked).split(","));
         this.stable = Boolean.getBoolean("njmule.capture.stable");
+        this.scale = Double.parseDouble(System.getProperty("njmule.capture.scale", "1"));
         // The documentation's pictures show the profile's folders: a plain path instead of the test's own.
         String plain = System.getProperty("njmule.capture.profiles", "");
         this.profiles = plain.isBlank() ? this.dir : Files.createDirectories(Path.of(plain));
@@ -1348,8 +1354,8 @@ class CaptureTour {
         List<double[]> places = new ArrayList<>();
         for (Window w : others) {
             BufferedImage img = image(w.getScene());
-            double x = w.getX() + w.getScene().getX() - ox;
-            double y = w.getY() + w.getScene().getY() - oy;
+            double x = (w.getX() + w.getScene().getX() - ox) * this.scale;
+            double y = (w.getY() + w.getScene().getY() - oy) * this.scale;
             images.add(img);
             places.add(new double[] {x, y, w instanceof Stage ? 1 : 0});
             minX = Math.min(minX, x);
@@ -1363,6 +1369,8 @@ class CaptureTour {
         g.setColor(new Color(0x9AA3AF));
         g.fillRect(0, 0, picture.getWidth(), picture.getHeight());
         g.drawImage(base, (int) -minX, (int) -minY, null);
+        int dropX = (int) Math.round(6 * this.scale);
+        int dropY = (int) Math.round(8 * this.scale);
         for (int i = 0; i < images.size(); i++) {
             double[] at = places.get(i);
             int x = (int) Math.round(at[0] - minX);
@@ -1372,7 +1380,7 @@ class CaptureTour {
                 // A window gets a shadow and a frame, as the headless platform draws no decorations.
                 g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.25f));
                 g.setColor(Color.BLACK);
-                g.fillRect(x + 6, y + 8, img.getWidth(), img.getHeight());
+                g.fillRect(x + dropX, y + dropY, img.getWidth(), img.getHeight());
                 g.setComposite(AlphaComposite.SrcOver);
                 g.setColor(new Color(0x6B7280));
                 g.drawRect(x - 1, y - 1, img.getWidth() + 1, img.getHeight() + 1);
@@ -1383,8 +1391,17 @@ class CaptureTour {
         return picture;
     }
 
-    private static BufferedImage image(Scene scene) {
-        return toBuffered(scene.snapshot(null));
+    private BufferedImage image(Scene scene) {
+        if (Double.compare(this.scale, 1) == 0) {
+            return toBuffered(scene.snapshot(null));
+        }
+        // The scene drawn again with more pixels, not an enlarged picture of it.
+        SnapshotParameters params = new SnapshotParameters();
+        params.setTransform(Transform.scale(this.scale, this.scale));
+        params.setFill(scene.getFill());
+        params.setViewport(new Rectangle2D(
+                0, 0, Math.ceil(scene.getWidth() * this.scale), Math.ceil(scene.getHeight() * this.scale)));
+        return toBuffered(scene.getRoot().snapshot(params, null));
     }
 
     private static BufferedImage toBuffered(WritableImage image) {

@@ -15,6 +15,6 @@
         },
         "types": ["@docusaurus/module-type-aliases", "@docusaurus/theme-classic", "node"]
     },
-    "include": ["src", "scripts", "docusaurus.config.ts", "sidebars.ts", "sidebarsDeveloper.ts"],
+    "include": ["src", "plugins", "scripts", "docusaurus.config.ts", "sidebars.ts", "sidebarsDeveloper.ts"],
     "exclude": [".docusaurus", "build", "node_modules"]
 }

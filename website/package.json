@@ -16,8 +16,8 @@
         "clear": "docusaurus clear",
         "api": "docusaurus clean-api-docs all && docusaurus gen-api-docs all && node scripts/api-labels.mjs",
         "typecheck": "tsc",
-        "lint": "prettier --check src scripts docusaurus.config.ts sidebars.ts sidebarsDeveloper.ts",
-        "format": "prettier --write src scripts docusaurus.config.ts sidebars.ts sidebarsDeveloper.ts",
+        "lint": "prettier --check src plugins scripts docusaurus.config.ts sidebars.ts sidebarsDeveloper.ts",
+        "format": "prettier --write src plugins scripts docusaurus.config.ts sidebars.ts sidebarsDeveloper.ts",
         "check": "npm run lint && npm run typecheck"
     },
     "dependencies": {
@@ -32,6 +32,7 @@
         "docusaurus-plugin-openapi-docs": "5.2.0",
         "docusaurus-plugin-sass": "0.2.7",
         "docusaurus-theme-openapi-docs": "5.2.0",
+        "image-size": "2.0.4",
         "prism-react-renderer": "2.4.1",
         "react": "19.3.1",
         "react-dom": "19.3.1",
