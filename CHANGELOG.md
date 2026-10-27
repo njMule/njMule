@@ -10,6 +10,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The desktop app's Updates window shows the note on what the check sends above its buttons, as a
+  readable paragraph, and is as wide as the buttons need, in every language.
+
 ## [0.1.2] - 2026-10-27
 
 0.1.1 was tagged but its packages were never released, only its Docker image: the Windows service

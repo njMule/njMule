@@ -59,6 +59,7 @@ import org.njmule.gui.ui.Icons;
  */
 public final class UpdateDialog {
 
+    private static final double WIDTH = 560;
     private static final String DOCKER_IMAGE = "ghcr.io/njmule/njmule";
 
     private final Gui gui;
@@ -85,7 +86,7 @@ public final class UpdateDialog {
         this.received.getStyleClass().add(Styles.TEXT_MUTED);
         this.root = DialogFrame.frame(
                 DialogFrame.header(gui, gui.t("nj.update.title"), this.stage::close), this.body, new Region());
-        this.root.setPrefWidth(560);
+        this.body.setPrefWidth(WIDTH);
         Scene scene = new Scene(this.root);
         gui.attach(scene);
         this.stage.setScene(scene);
@@ -156,8 +157,11 @@ public final class UpdateDialog {
         Button close = Fx.button(this.gui.t("IDS_FD_CLOSE"), Icons.CLOSE, this.stage::close);
         close.setCancelButton(true);
         buttons.add(DialogFrame.role(close, ButtonBar.ButtonData.CANCEL_CLOSE));
-        // The band says what the check sends, beside the buttons that the state of the update offers.
-        this.root.getChildren().set(2, DialogFrame.footer(note, buttons.toArray(Button[]::new)));
+        // The band says what the check sends, above the buttons that the state of the update offers: beside them
+        // the words would be left a column wide. Without a width of its own the note leaves it to the body and
+        // the buttons, so the window is as wide as they need.
+        note.setPrefWidth(0);
+        this.root.getChildren().set(2, DialogFrame.footerBelow(note, buttons.toArray(Button[]::new)));
         this.stage.sizeToScene();
     }
 

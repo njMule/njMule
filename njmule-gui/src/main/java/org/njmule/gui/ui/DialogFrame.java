@@ -59,15 +59,31 @@ public final class DialogFrame {
 
     /** The band: {@code start} on the leading side (words, or a button apart), then the buttons, given their roles. */
     public static HBox footer(Node start, Button... buttons) {
+        ButtonBar bar = bar(buttons);
+        HBox.setHgrow(start, Priority.ALWAYS);
+        HBox footer = new HBox(8, start, bar);
+        footer.getStyleClass().add("dialog-footer");
+        return footer;
+    }
+
+    /** The band with {@code note} above the buttons, for a note too long to share the line with them. */
+    public static VBox footerBelow(Node note, Button... buttons) {
+        // Each button as wide as its words: made as wide as the widest, several would not fit the window.
+        for (Button button : buttons) {
+            ButtonBar.setButtonUniformSize(button, false);
+        }
+        VBox footer = new VBox(8, note, bar(buttons));
+        footer.getStyleClass().add("dialog-footer");
+        return footer;
+    }
+
+    private static ButtonBar bar(Button... buttons) {
         ButtonBar bar = new ButtonBar();
         bar.setButtonMinWidth(BUTTON_MIN_WIDTH);
         bar.getButtons().addAll(buttons);
         // The words beside give way, never the buttons.
         bar.setMinWidth(Region.USE_PREF_SIZE);
-        HBox.setHgrow(start, Priority.ALWAYS);
-        HBox footer = new HBox(8, start, bar);
-        footer.getStyleClass().add("dialog-footer");
-        return footer;
+        return bar;
     }
 
     /** A field with its name above it, which a screen reader reads with it. */
