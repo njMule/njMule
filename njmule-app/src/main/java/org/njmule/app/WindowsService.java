@@ -291,7 +291,9 @@ final class WindowsService {
             return Main.EXIT_OK;
         }
         Path root = profile();
-        // The account's rights go first: once the service is gone, its name no longer resolves.
+        // Stopped while the account still reaches its profile, where njMule saves and its exit is asked; the rights go
+        // next, before the service: once it is gone, the account's name no longer resolves.
+        check(this.system.run(List.of(host.toString(), "stop")), "stop the service");
         this.system.run(List.of("icacls", folder.toString(), "/remove", ACCOUNT, "/T", "/Q"));
         this.system.run(List.of("icacls", root.toString(), "/remove", ACCOUNT, "/T", "/Q"));
         check(this.system.run(List.of(host.toString(), "uninstall")), "remove the service");

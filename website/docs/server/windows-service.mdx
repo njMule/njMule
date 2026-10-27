@@ -151,7 +151,8 @@ with `njmule --service=stop`, upgrade, then start it again. See [Updates](../upd
 njmule --service=uninstall
 ```
 
-It removes the service, its account's rights and the firewall rule. Uninstalling an installation
+It stops the service, which saves on its way out, then removes it, its account's rights and the
+firewall rule. Uninstalling an installation
 for every user removes the service too. The profile in `%ProgramData%\njMule` always stays, with
 its downloads; delete that folder yourself to remove them, after moving the completed downloads of
 its `incoming` folder somewhere else.

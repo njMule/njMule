@@ -184,11 +184,24 @@ class WindowsServiceTest {
         thenTheExitCodeIs(Main.EXIT_OK);
         thenTheCommandsWere(
                 List.of(host(), "status"),
+                List.of(host(), "stop"),
                 List.of("icacls", app().toString(), "/remove", "NT SERVICE\\njMule", "/T", "/Q"),
                 List.of("icacls", profile().toString(), "/remove", "NT SERVICE\\njMule", "/T", "/Q"),
                 List.of(host(), "uninstall"),
                 List.of("netsh", "advfirewall", "firewall", "delete", "rule", "name=njMule (service)"));
         thenItSaid("its profile stays in " + profile());
+    }
+
+    @Test
+    void shouldKeepTheServiceAndItsRightsWhenItDoesNotStop() throws Exception {
+        givenTheServiceIs(4);
+        givenTheServiceFailsTo("stop", 1053);
+
+        whenRun("--service=uninstall");
+
+        thenTheExitCodeIs(Main.EXIT_FAILURE);
+        thenItComplained("Windows error 1053");
+        thenTheCommandsWere(List.of(host(), "status"), List.of(host(), "stop"));
     }
 
     @Test
