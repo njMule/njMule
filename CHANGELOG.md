@@ -28,6 +28,14 @@ All notable changes to this project are documented here. The format follows
   tells how to install the new version for each kind of installation (the package manager's
   command, the Docker image to pull, the Synology Package Center) and no longer offers a download
   that cannot work.
+- The dialog that adds links finds them inside other text too, as it says, and its paused box wins
+  over the option that adds downloads paused; the remote-control API takes `paused` when it adds
+  downloads.
+- A desktop window on a remote njMule marks spam through it, tells that a preview and the folders
+  of the other njMule are on its own computer instead of opening this computer's, and turns *Open
+  Folder* and *Open Incoming Folder* off.
+- A desktop app started while a headless njMule runs on the same profile says that the links went
+  to it, instead of closing without a word.
 
 ## [0.1.0] - 2026-10-26
 
