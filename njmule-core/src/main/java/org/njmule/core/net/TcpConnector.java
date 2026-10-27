@@ -96,7 +96,7 @@ public final class TcpConnector {
     }
 
     /** The local address to bind a socket for the interface chosen now: null for any; none at all while it is gone. */
-    static InetAddress localAddress() throws IOException {
+    public static InetAddress localAddress() throws IOException {
         return switch (binding.get()) {
             case BindInterface.Binding.Any _ -> null;
             case BindInterface.Binding.Bound bound -> bound.address();

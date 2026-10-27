@@ -20,9 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.BufferedReader;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.Authenticator;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -44,8 +46,12 @@ import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NotificationResult;
 import org.njmule.core.api.PartMap;
+import org.njmule.core.config.BindInterface;
 import org.njmule.core.config.EventCommands;
 import org.njmule.core.config.Notifications;
+import org.njmule.core.config.ProxySettings;
+import org.njmule.core.net.ProxyRoute;
+import org.njmule.core.net.TcpConnector;
 
 @Timeout(30)
 class NotifierTest {
@@ -61,6 +67,9 @@ class NotifierTest {
     private ServerSocket smtp;
     private final AtomicBoolean dataSent = new AtomicBoolean();
     private final List<String> greetings = new CopyOnWriteArrayList<>();
+    private final AtomicBoolean reached = new AtomicBoolean();
+    private ServerSocket proxy;
+    private final List<String> proxySaw = new CopyOnWriteArrayList<>();
     private Throwable exception;
 
     @AfterEach
@@ -68,6 +77,12 @@ class NotifierTest {
         if (this.smtp != null) {
             this.smtp.close();
         }
+        if (this.proxy != null) {
+            this.proxy.close();
+        }
+        ProxyRoute.install(() -> ProxySettings.NONE);
+        Authenticator.setDefault(null);
+        TcpConnector.useBinding(BindInterface.Binding.Any::new);
     }
 
     @Test
@@ -125,6 +140,40 @@ class NotifierTest {
         thenTheGreetingNamedNoComputer();
     }
 
+    @Test
+    void shouldCallTheWebHookThroughTheHttpProxyOfThePreferences() throws Exception {
+        givenAnHttpProxyOfThePreferences();
+        givenTheSettings(channels(false, 25, true, "https://192.0.2.80/notify"));
+
+        whenTestedForReal();
+
+        thenTheProxySaw("CONNECT 192.0.2.80:443 HTTP/1.1");
+    }
+
+    @Test
+    void shouldSendTheMailThroughTheSocksProxyOfThePreferencesWithItsCredentials() throws Exception {
+        givenASocksProxyOfThePreferencesBeforeAnSmtpServerWithoutStartTls("me", "secret");
+
+        whenMailedTo("192.0.2.25", 587);
+
+        thenExceptionOccurred(IOException.class, "STARTTLS");
+        thenTheProxySaw("auth me:secret", "connect 192.0.2.25:587");
+        thenNoMessageWasSent();
+    }
+
+    @Test
+    void shouldSendNothingWhileTheChosenInterfaceIsGone() throws Exception {
+        givenAnSmtpServerWithoutStartTls();
+        givenTheChosenInterfaceIsGone("wg0");
+        givenTheSettings(
+                channels(true, this.smtp.getLocalPort(), true, "https://127.0.0.1:" + this.smtp.getLocalPort()));
+
+        whenTestedForReal();
+
+        thenEachResultFailedFor("wg0");
+        thenNothingReachedTheServer();
+    }
+
     private void givenTheSettings(Notifications value) {
         this.settings = value;
     }
@@ -135,35 +184,76 @@ class NotifierTest {
         };
     }
 
-    // Greets and answers EHLO without offering STARTTLS; it takes anything that follows as the message.
     private void givenAnSmtpServerWithoutStartTls() throws IOException {
         this.smtp = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
         Thread.ofVirtual().start(() -> {
-            try (Socket client = this.smtp.accept();
-                    BufferedReader in = new BufferedReader(
-                            new InputStreamReader(client.getInputStream(), StandardCharsets.US_ASCII))) {
-                OutputStream out = client.getOutputStream();
-                out.write("220 test ESMTP\r\n".getBytes(StandardCharsets.US_ASCII));
-                String line;
-                while ((line = in.readLine()) != null) {
-                    String command = line.toUpperCase(Locale.ROOT);
-                    if (command.startsWith("EHLO")) {
-                        this.greetings.add(line);
-                        out.write("250 test\r\n".getBytes(StandardCharsets.US_ASCII));
-                    } else if (command.startsWith("DATA")) {
-                        this.dataSent.set(true);
-                        out.write("354 go on\r\n".getBytes(StandardCharsets.US_ASCII));
-                    } else if (command.startsWith("QUIT")) {
-                        out.write("221 bye\r\n".getBytes(StandardCharsets.US_ASCII));
-                        return;
-                    } else {
-                        out.write("250 ok\r\n".getBytes(StandardCharsets.US_ASCII));
-                    }
-                }
+            try (Socket client = this.smtp.accept()) {
+                this.reached.set(true);
+                talkSmtpWithoutStartTls(client);
             } catch (IOException e) {
-                // The client went away.
+                // The client went away, or the test closed the server.
             }
         });
+    }
+
+    // Notes the tunnel asked for and refuses it: where the hook was to be reached is all the test needs to see.
+    private void givenAnHttpProxyOfThePreferences() throws IOException {
+        this.proxy = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+        int port = this.proxy.getLocalPort();
+        ProxyRoute.install(() -> new ProxySettings(ProxySettings.Type.HTTP, "127.0.0.1", port, "", ""));
+        Thread.ofVirtual().start(() -> {
+            try (Socket client = this.proxy.accept();
+                    BufferedReader in = new BufferedReader(
+                            new InputStreamReader(client.getInputStream(), StandardCharsets.US_ASCII))) {
+                this.proxySaw.add(in.readLine());
+                String line;
+                while ((line = in.readLine()) != null && !line.isEmpty()) {
+                    // The headers.
+                }
+                client.getOutputStream()
+                        .write("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                                .getBytes(StandardCharsets.US_ASCII));
+            } catch (IOException e) {
+                // The client went away, or the test closed the proxy.
+            }
+        });
+    }
+
+    // Asks for the user name and password, then takes the connection as the SMTP server it was asked for.
+    private void givenASocksProxyOfThePreferencesBeforeAnSmtpServerWithoutStartTls(String user, String password)
+            throws IOException {
+        this.proxy = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+        int port = this.proxy.getLocalPort();
+        ProxyRoute.install(() -> new ProxySettings(ProxySettings.Type.SOCKS, "127.0.0.1", port, user, password));
+        Thread.ofVirtual().start(() -> {
+            try (Socket client = this.proxy.accept()) {
+                DataInputStream in = new DataInputStream(client.getInputStream());
+                OutputStream out = client.getOutputStream();
+                in.readUnsignedByte();
+                in.readFully(new byte[in.readUnsignedByte()]);
+                out.write(new byte[] {5, 2});
+                in.readUnsignedByte();
+                String name = new String(in.readNBytes(in.readUnsignedByte()), StandardCharsets.US_ASCII);
+                String secret = new String(in.readNBytes(in.readUnsignedByte()), StandardCharsets.US_ASCII);
+                this.proxySaw.add("auth " + name + ":" + secret);
+                out.write(new byte[] {1, 0});
+                in.readFully(new byte[3]);
+                int kind = in.readUnsignedByte();
+                String host = kind == 3
+                        ? new String(in.readNBytes(in.readUnsignedByte()), StandardCharsets.US_ASCII)
+                        : InetAddress.getByAddress(in.readNBytes(kind == 1 ? 4 : 16))
+                                .getHostAddress();
+                this.proxySaw.add("connect " + host + ":" + in.readUnsignedShort());
+                out.write(new byte[] {5, 0, 0, 1, 127, 0, 0, 1, 0, 0});
+                talkSmtpWithoutStartTls(client);
+            } catch (IOException e) {
+                // The client went away, or the test closed the proxy.
+            }
+        });
+    }
+
+    private void givenTheChosenInterfaceIsGone(String name) {
+        TcpConnector.useBinding(() -> new BindInterface.Binding.Missing(name));
     }
 
     private void whenTold(EngineEvent event) {
@@ -181,11 +271,20 @@ class NotifierTest {
         this.results = notifier().test();
     }
 
+    private void whenTestedForReal() throws InterruptedException {
+        Notifications n = this.settings;
+        this.results = Notifier.create(() -> n).test();
+    }
+
     private void whenMailed() {
+        whenMailedTo("127.0.0.1", this.smtp.getLocalPort());
+    }
+
+    private void whenMailedTo(String host, int port) {
         Notifications n = new Notifications(
                 true,
-                "127.0.0.1",
-                this.smtp.getLocalPort(),
+                host,
+                port,
                 Notifications.SmtpSecurity.STARTTLS,
                 "",
                 "",
@@ -226,6 +325,21 @@ class NotifierTest {
         assertThat(this.dataSent).isFalse();
     }
 
+    private void thenTheProxySaw(String... lines) {
+        assertThat(this.proxySaw).containsExactly(lines);
+    }
+
+    private void thenEachResultFailedFor(String part) {
+        assertThat(this.results).extracting(NotificationResult::channel).containsExactly("email", "webhook");
+        assertThat(this.results)
+                .allSatisfy(result -> assertThat(result.error())
+                        .hasValueSatisfying(error -> assertThat(error).contains(part)));
+    }
+
+    private void thenNothingReachedTheServer() {
+        assertThat(this.reached).isFalse();
+    }
+
     private Notifier notifier() {
         Notifications n = this.settings;
         List<Long> ticks = new ArrayList<>();
@@ -238,6 +352,46 @@ class NotifierTest {
                     ticks.add(0L);
                     return ticks.size();
                 });
+    }
+
+    // Greets and answers EHLO without offering STARTTLS; it takes anything that follows as the message.
+    private void talkSmtpWithoutStartTls(Socket client) throws IOException {
+        BufferedReader in =
+                new BufferedReader(new InputStreamReader(client.getInputStream(), StandardCharsets.US_ASCII));
+        OutputStream out = client.getOutputStream();
+        out.write("220 test ESMTP\r\n".getBytes(StandardCharsets.US_ASCII));
+        String line;
+        while ((line = in.readLine()) != null) {
+            String command = line.toUpperCase(Locale.ROOT);
+            if (command.startsWith("EHLO")) {
+                this.greetings.add(line);
+                out.write("250 test\r\n".getBytes(StandardCharsets.US_ASCII));
+            } else if (command.startsWith("DATA")) {
+                this.dataSent.set(true);
+                out.write("354 go on\r\n".getBytes(StandardCharsets.US_ASCII));
+            } else if (command.startsWith("QUIT")) {
+                out.write("221 bye\r\n".getBytes(StandardCharsets.US_ASCII));
+                return;
+            } else {
+                out.write("250 ok\r\n".getBytes(StandardCharsets.US_ASCII));
+            }
+        }
+    }
+
+    private static Notifications channels(boolean email, int smtpPort, boolean webhook, String hook) {
+        return new Notifications(
+                email,
+                "127.0.0.1",
+                smtpPort,
+                Notifications.SmtpSecurity.STARTTLS,
+                "",
+                "",
+                "",
+                "me@example.org",
+                webhook,
+                hook,
+                Notifications.WebhookFormat.TEXT,
+                Notifications.NONE.events());
     }
 
     // The completed download's text goes on with its size and file, which the test leaves out.

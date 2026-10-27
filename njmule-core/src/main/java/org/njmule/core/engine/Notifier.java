@@ -23,10 +23,8 @@ import jakarta.mail.Transport;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -40,24 +38,36 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import org.eclipse.jetty.client.ContentResponse;
+import org.eclipse.jetty.client.HttpClient;
+import org.eclipse.jetty.client.Request;
+import org.eclipse.jetty.client.StringRequestContent;
+import org.eclipse.jetty.http.HttpMethod;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.NotificationResult;
 import org.njmule.core.config.EventCommands;
 import org.njmule.core.config.Notifications;
+import org.njmule.core.config.ProxySettings;
+import org.njmule.core.net.HttpRoute;
+import org.njmule.core.net.ProxyRoute;
+import org.njmule.core.net.TcpConnector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tells of engine events by e-mail and through a web hook, as the notification preferences say. Each message goes on a
- * thread of its own, a few at once, and at most {@value #BURST} in {@link #WINDOW}: a flood of chat messages does not
- * become a flood of e-mails.
+ * Tells of engine events by e-mail and through a web hook, as the notification preferences say, from the network
+ * interface chosen and through the proxy of the preferences. Each message goes on a thread of its own, a few at once,
+ * and at most {@value #BURST} in {@link #WINDOW}: a flood of chat messages does not become a flood of e-mails.
  */
 final class Notifier implements Flow.Subscriber<EngineEvent> {
 
@@ -106,9 +116,11 @@ final class Notifier implements Flow.Subscriber<EngineEvent> {
                 settings,
                 Notifier::sendMail,
                 (n, title, text) -> {
-                    try (HttpClient http =
-                            HttpClient.newBuilder().connectTimeout(NETWORK_TIME).build()) {
+                    HttpClient http = HttpRoute.start();
+                    try {
                         callHook(http, n, title, text);
+                    } finally {
+                        HttpRoute.stop(http);
                     }
                 },
                 task -> Thread.ofVirtual().name("njmule-notify").start(task),
@@ -284,6 +296,7 @@ final class Notifier implements Flow.Subscriber<EngineEvent> {
             properties.setProperty(prefix + "starttls.enable", "true");
             properties.setProperty(prefix + "starttls.required", "true");
         }
+        route(properties, prefix);
         Session session = Session.getInstance(properties);
         try {
             MimeMessage message = new MimeMessage(session);
@@ -305,27 +318,55 @@ final class Notifier implements Flow.Subscriber<EngineEvent> {
         }
     }
 
+    // The route of the other connections, and none while the interface chosen is gone. A SOCKS proxy gets the user
+    // name and password from the authenticator of the proxy route; an HTTP one gets none, as for the other connections.
+    private static void route(Properties properties, String prefix) throws IOException {
+        InetAddress local = TcpConnector.localAddress();
+        if (local != null) {
+            properties.setProperty(prefix + "localaddress", local.getHostAddress());
+        }
+        ProxySettings proxy = ProxyRoute.current();
+        String kind = switch (proxy.type()) {
+            case NONE -> "";
+            case SOCKS -> "socks.";
+            case HTTP -> "proxy.";
+        };
+        if (!kind.isEmpty()) {
+            properties.setProperty(prefix + kind + "host", proxy.host());
+            properties.setProperty(prefix + kind + "port", String.valueOf(proxy.port()));
+        }
+    }
+
     static void callHook(HttpClient http, Notifications n, String title, String text)
             throws IOException, InterruptedException {
         if (n.webhookUrl().isEmpty()) {
             throw new IOException("Set the address of the web hook.");
         }
-        HttpRequest.Builder request =
-                HttpRequest.newBuilder(URI.create(n.webhookUrl())).timeout(NETWORK_TIME);
+        Request request = http.newRequest(URI.create(n.webhookUrl()))
+                .method(HttpMethod.POST)
+                .timeout(NETWORK_TIME.toMillis(), TimeUnit.MILLISECONDS);
         switch (n.webhookBody()) {
             case TEXT ->
-                request.header("Content-Type", "text/plain; charset=utf-8")
-                        .header("Title", title)
-                        .POST(HttpRequest.BodyPublishers.ofString(text, StandardCharsets.UTF_8));
+                request.headers(h -> h.put("Title", title))
+                        .body(new StringRequestContent("text/plain; charset=utf-8", text, StandardCharsets.UTF_8));
             case JSON ->
-                request.header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(
-                                JsonMapper.shared().writeValueAsString(Map.of("title", title, "message", text)),
-                                StandardCharsets.UTF_8));
+                request.body(new StringRequestContent(
+                        "application/json",
+                        JsonMapper.shared().writeValueAsString(Map.of("title", title, "message", text)),
+                        StandardCharsets.UTF_8));
         }
-        HttpResponse<Void> answer = http.send(request.build(), HttpResponse.BodyHandlers.discarding());
-        if (answer.statusCode() / 100 != 2) {
-            throw new IOException("The web hook answered HTTP " + answer.statusCode() + ".");
+        ContentResponse answer;
+        try {
+            answer = request.send();
+        } catch (TimeoutException e) {
+            throw new IOException("The web hook did not answer in time.", e);
+        } catch (ExecutionException e) {
+            throw e.getCause() instanceof IOException io
+                    ? io
+                    : new IOException(String.valueOf(e.getCause().getMessage()), e.getCause());
+        }
+        if (answer.getStatus() / 100 != 2) {
+            throw new IOException("The web hook answered HTTP " + answer.getStatus() + ".");
         }
     }
 }
