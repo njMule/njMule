@@ -18,8 +18,10 @@ package org.njmule.gui.infra;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.stream.Stream;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class SmileysTest {
 
@@ -39,8 +41,27 @@ class SmileysTest {
         thenItIs(expected);
     }
 
+    @ParameterizedTest
+    @MethodSource("everySmileyFound")
+    void shouldShowEverySmileyItFindsAsAnEmoji(String smiley) {
+        whenShown(smiley);
+
+        thenItIsNoLonger(smiley);
+    }
+
+    // Each smiley the pattern finds: a colon with or without a nose before each mouth, and the others.
+    static Stream<String> everySmileyFound() {
+        Stream<String> faces =
+                Stream.of(":", ":-").flatMap(eyes -> ")(DPpOo|*".chars().mapToObj(mouth -> eyes + (char) mouth));
+        return Stream.concat(faces, Stream.of(";)", ";-)", ":'(", "8)", "<3"));
+    }
+
     private void whenShown(String text) {
         this.shown = Smileys.show(text);
+    }
+
+    private void thenItIsNoLonger(String smiley) {
+        assertThat(this.shown).isNotEqualTo(smiley);
     }
 
     private void thenItIs(String expected) {

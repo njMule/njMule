@@ -19,8 +19,23 @@ describe('smileys', () => {
         thenItIs('http://example.org/:) [::1]:4662 f(x:D)');
     });
 
+    // Each smiley the pattern finds: a colon with or without a nose before each mouth, and the others.
+    const FOUND = [':', ':-']
+        .flatMap((eyes) => [...')(DPpOo|*'].map((mouth) => eyes + mouth))
+        .concat([';)', ';-)', ":'(", '8)', '<3']);
+
+    it.each(FOUND)('should show the smiley %s as an emoji', (smiley) => {
+        whenShown(smiley);
+
+        thenItIsNoLonger(smiley);
+    });
+
     function whenShown(text: string): void {
         shown = smileys(text);
+    }
+
+    function thenItIsNoLonger(smiley: string): void {
+        expect(shown).not.toBe(smiley);
     }
 
     function thenItIs(expected: string): void {

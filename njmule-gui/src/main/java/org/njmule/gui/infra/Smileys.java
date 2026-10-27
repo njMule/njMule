@@ -38,12 +38,17 @@ public final class Smileys {
             Map.entry(":P", "😛"),
             Map.entry(":p", "😛"),
             Map.entry(":-P", "😛"),
+            Map.entry(":-p", "😛"),
             Map.entry(":O", "😮"),
             Map.entry(":o", "😮"),
+            Map.entry(":-O", "😮"),
+            Map.entry(":-o", "😮"),
             Map.entry(":'(", "😢"),
             Map.entry(":|", "😐"),
+            Map.entry(":-|", "😐"),
             Map.entry("8)", "😎"),
             Map.entry(":*", "😘"),
+            Map.entry(":-*", "😘"),
             Map.entry("<3", "❤"));
 
     private static final Pattern SMILEY = Pattern.compile("(?<=^|\\s)(:-?[)(DPpOo|*]|;-?\\)|:'\\(|8\\)|<3)(?=$|\\s)");
