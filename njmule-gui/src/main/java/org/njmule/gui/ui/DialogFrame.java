@@ -34,6 +34,8 @@ import javafx.scene.layout.VBox;
 public final class DialogFrame {
 
     private static final double BUTTON_MIN_WIDTH = 64;
+    // The left and right padding of .dialog-footer in njmule.css.
+    private static final double BAND_PADDING = 36;
 
     private DialogFrame() {}
 
@@ -59,15 +61,32 @@ public final class DialogFrame {
 
     /** The band: {@code start} on the leading side (words, or a button apart), then the buttons, given their roles. */
     public static HBox footer(Node start, Button... buttons) {
+        ButtonBar bar = bar(buttons);
+        HBox.setHgrow(start, Priority.ALWAYS);
+        HBox footer = new HBox(8, start, bar);
+        footer.getStyleClass().add("dialog-footer");
+        return footer;
+    }
+
+    /** The band with {@code note} above the buttons, for a note too long to share the line with them. */
+    public static VBox footerBelow(Node note, Button... buttons) {
+        VBox footer = new VBox(8, note, bar(buttons));
+        footer.getStyleClass().add("dialog-footer");
+        return footer;
+    }
+
+    /** The width the buttons need, beside the padding of the band. */
+    public static double barWidth(VBox footer) {
+        return footer.getChildren().get(1).prefWidth(-1) + BAND_PADDING;
+    }
+
+    private static ButtonBar bar(Button... buttons) {
         ButtonBar bar = new ButtonBar();
         bar.setButtonMinWidth(BUTTON_MIN_WIDTH);
         bar.getButtons().addAll(buttons);
         // The words beside give way, never the buttons.
         bar.setMinWidth(Region.USE_PREF_SIZE);
-        HBox.setHgrow(start, Priority.ALWAYS);
-        HBox footer = new HBox(8, start, bar);
-        footer.getStyleClass().add("dialog-footer");
-        return footer;
+        return bar;
     }
 
     /** A field with its name above it, which a screen reader reads with it. */

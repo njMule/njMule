@@ -218,6 +218,16 @@ class UpdateDialogTest {
     }
 
     @Test
+    void shouldKeepTheNoteReadableAndTheButtonsInsideTheWindowWhenThereAreSeveral() throws Exception {
+        givenTheCheckFinds(available(InstallKind.MSI, false));
+
+        whenTheUserChecksForUpdates();
+
+        thenTheNoteIsAtLeastWide(300);
+        thenTheButtonsAreInsideTheWindow();
+    }
+
+    @Test
     void shouldTellThatThisIsTheNewestVersion() throws Exception {
         givenTheCheckFinds(status(Optional.empty(), Optional.empty()));
 
@@ -300,6 +310,26 @@ class UpdateDialogTest {
         });
         // In the order of the platform's dialogs.
         assertThat(shown).containsExactlyInAnyOrder(ids);
+    }
+
+    private void thenTheNoteIsAtLeastWide(double width) throws Exception {
+        assertThat(FxTesting.onFx(
+                        () -> ((Labeled) this.dialog.stage().getScene().lookup(".dialog-hint")).getWidth()))
+                .isGreaterThanOrEqualTo(width);
+    }
+
+    private void thenTheButtonsAreInsideTheWindow() throws Exception {
+        double window = FxTesting.onFx(() -> this.dialog.stage().getScene().getWidth());
+        List<Double> rights = FxTesting.onFx(() -> {
+            List<Double> found = new ArrayList<>();
+            collect(this.dialog.stage().getScene().getRoot(), n -> {
+                if (n instanceof Button b && b.getId() != null) {
+                    found.add(b.localToScene(b.getBoundsInLocal()).getMaxX());
+                }
+            });
+            return found;
+        });
+        assertThat(rights).isNotEmpty().allSatisfy(right -> assertThat(right).isLessThanOrEqualTo(window));
     }
 
     private void thenTheEngineWasToldToSkip(String version) throws Exception {
