@@ -40,6 +40,7 @@ import org.njmule.webui.WebUiSettings;
 class WindowsServiceTest {
 
     private static final String PASSWORD = "correct horse";
+    private static final String KEPT_HASH = "pbkdf2-sha512$1$AA$AA";
 
     @TempDir
     Path dir;
@@ -55,6 +56,7 @@ class WindowsServiceTest {
     private Path program;
     private Path passwordFile;
     private boolean settingsWhenClosed = true;
+    private boolean asked;
     private int code;
     private String line;
 
@@ -73,6 +75,7 @@ class WindowsServiceTest {
 
         thenTheExitCodeIs(Main.EXIT_OK);
         thenTheCommandsWere(
+                List.of(host(), "status"),
                 closingTheProfile(),
                 List.of(host(), "install"),
                 List.of("icacls", profile().toString(), "/grant", "NT SERVICE\\njMule:(OI)(CI)M", "/T", "/Q"),
@@ -103,6 +106,38 @@ class WindowsServiceTest {
 
         thenTheProfileWasClosedWithoutAPasswordInIt();
         thenTheProfileHasAWebInterfacePassword();
+    }
+
+    @Test
+    void shouldRestartAServiceThatRunsSoThatItTakesItsNewSettings() throws Exception {
+        givenAPasswordFile();
+        givenTheServiceIs(4);
+
+        whenRun("--service=install", "--webui-password-file", this.passwordFile.toString());
+
+        thenTheExitCodeIs(Main.EXIT_OK);
+        thenTheServiceWasStoppedAndStartedAgain();
+    }
+
+    @Test
+    void shouldChangeTheWebInterfaceOfTheServiceAndKeepItsPassword() throws Exception {
+        givenTheProfileHasAWebInterfacePassword();
+
+        whenRun("--service=install", "--webui-lan");
+
+        thenTheExitCodeIs(Main.EXIT_OK);
+        thenNoPasswordWasAsked();
+        thenTheProfileKeepsItsPassword();
+        thenTheWebInterfaceIsOpenToOtherComputers();
+    }
+
+    @Test
+    void shouldAskForTheRightsWithTheWebInterfaceOptionsAlone() throws Exception {
+        givenNoAdministratorsRights();
+
+        whenRun("--service=install", "--webui-lan");
+
+        thenItAskedForTheRightsWith("--service=install", "--webui-lan", "--service-output");
     }
 
     @Test
@@ -205,6 +240,11 @@ class WindowsServiceTest {
         this.passwordFile = Files.writeString(this.dir.resolve("password.txt"), PASSWORD + "\n");
     }
 
+    private void givenTheProfileHasAWebInterfacePassword() throws IOException {
+        Path config = AppDirectories.resolve(Optional.of(profile())).config();
+        new WebUiSettings(true, 4711, false, KEPT_HASH, false).save(config);
+    }
+
     private void givenNoAdministratorsRights() {
         this.elevated = false;
     }
@@ -231,7 +271,10 @@ class WindowsServiceTest {
                         new FakeWindows(),
                         new PrintStream(this.out, true, StandardCharsets.UTF_8),
                         new PrintStream(this.err, true, StandardCharsets.UTF_8),
-                        prompt -> PASSWORD.toCharArray())
+                        prompt -> {
+                            this.asked = true;
+                            return PASSWORD.toCharArray();
+                        })
                 .run(cli);
     }
 
@@ -250,6 +293,26 @@ class WindowsServiceTest {
     private void thenTheProfileWasClosedWithoutAPasswordInIt() {
         assertThat(this.commands).contains(closingTheProfile());
         assertThat(this.settingsWhenClosed).isFalse();
+    }
+
+    private void thenTheServiceWasStoppedAndStartedAgain() {
+        int size = this.commands.size();
+        assertThat(this.commands.subList(size - 2, size))
+                .isEqualTo(List.of(List.of(host(), "stop"), List.of(host(), "start")));
+    }
+
+    private void thenNoPasswordWasAsked() {
+        assertThat(this.asked).isFalse();
+    }
+
+    private void thenTheProfileKeepsItsPassword() {
+        Path config = AppDirectories.resolve(Optional.of(profile())).config();
+        assertThat(WebUiSettings.load(config).passwordHash()).isEqualTo(KEPT_HASH);
+    }
+
+    private void thenTheWebInterfaceIsOpenToOtherComputers() {
+        Path config = AppDirectories.resolve(Optional.of(profile())).config();
+        assertThat(WebUiSettings.load(config).lan()).isTrue();
     }
 
     private void thenTheProfileHasAWebInterfacePassword() {

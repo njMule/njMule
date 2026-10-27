@@ -130,9 +130,11 @@ Never run eMule and njMule with the same identity at once. See
 | `--webui-proxy <address>` | A reverse proxy trusted to name its client in `X-Forwarded-For`: an address, a CIDR block or a range (repeatable, or separated by commas) |
 | `--webui-api` | Lets the remote-control API answer too, to holders of its token |
 
-The last five only come with `--webui-password` or `--webui-password-file`, which set LAN access,
-the host names and the proxies anew each time (what you leave out is turned off; the port and the
-API stay as they were).
+The last five only come with `--webui-password`, `--webui-password-file` or `--service=install`.
+With `--webui-password` they set LAN access, the host names and the proxies anew (what you leave
+out is turned off; the port and the API stay as they were). With `--webui-password-file` alone, at
+every start, or with `--service=install` alone, only what you give changes: the rest keeps what was
+saved, the host names set in the web interface included.
 
 ```bash
 njmule --webui-password --webui-lan --webui-host nas.local --webui-api
@@ -205,7 +207,7 @@ njMule refuses, with a usage error, options that would be silently ignored toget
 - `--global` and `--kad` need `--search`, and not both.
 - `--dry-run`, `--adopt-emule-identity` and `--import-downloads` need `--import-emule`.
 - `--webui-port`, `--webui-lan`, `--webui-host`, `--webui-proxy` and `--webui-api` need
-  `--webui-password` or `--webui-password-file`.
+  `--webui-password`, `--webui-password-file` or `--service=install`.
 - `--service` comes alone, besides `--log-level` and, for `install`, the web interface options.
 
 ## Exit codes

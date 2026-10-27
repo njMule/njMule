@@ -76,12 +76,13 @@ What happens in step 3 depends on how njMule was installed:
 | Windows installer, for every user | The same, after Windows asks for the administrator's rights; never on its own |
 | Windows zip, Linux `.tar.xz` (the static one too) | Replaces the files of its folder, then starts njMule again |
 | macOS disk image | Replaces the whole `njMule.app`, then starts it again |
-| Debian or RPM package | Downloads and checks the package; you install it with `sudo apt install ./…deb` or `sudo dnf install ./…rpm` |
-| Synology package | Downloads and checks the `.spk`; you install the new package in the Package Center with **Manual Install** |
-| Docker image | Nothing to download: pull the new image with `docker compose pull && docker compose up -d` |
+| Debian or RPM package | Downloads and checks the package, and tells where it is; you install it with `sudo apt install ./…deb` or `sudo dnf install ./…rpm` |
+| Synology package | Nothing to download on the NAS, as the Package Center installs from your computer: download the new `.spk` from the release page and install it in the Package Center with **Manual Install** |
+| Docker image | Nothing to download: pull the new image with `docker pull ghcr.io/njmule/njmule` (or `docker compose pull && docker compose up -d`) and create the container again |
 
-The desktop app's **Updates** window and `njmule --check-update` or `njmule --update` tell how to
-install the new version on your kind of installation. An archive or an app njMule may not write to
+The desktop app's **Updates** window, the **Updates** part of the web interface's settings and
+`njmule --check-update` or `njmule --update` tell how to install the new version on your kind of
+installation. An archive or an app njMule may not write to
 (unpacked by an administrator into a system folder, say) is treated like a package: njMule
 downloads the new version and leaves its installation to you.
 

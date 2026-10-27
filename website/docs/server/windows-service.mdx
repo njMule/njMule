@@ -23,19 +23,21 @@ it runs `njmule-service.exe`, which lies beside `njmule.exe`.
    ```
 
    To let other computers reach the web interface, or to set its port or host names, give the web
-   interface options with `--webui-password`:
+   interface options; add `--webui-password` to set a new password too:
 
    ```powershell
-   njmule --service=install --webui-password --webui-lan
-   njmule --service=install --webui-password --webui-lan --webui-port 8080 --webui-host homepc --webui-api
+   njmule --service=install --webui-lan
+   njmule --service=install --webui-lan --webui-port 8080 --webui-host homepc --webui-api
    ```
 
 3. Windows asks for the administrator's rights. A new window opens and asks for the web interface
-   password twice (at least 8 characters), unless the service's profile already has one and you
-   gave no web interface option.
+   password twice (at least 8 characters) when the service's profile has none yet, or when you
+   gave `--webui-password`; otherwise the password stays and only the options given change.
 4. njMule registers the service, gives its account its profile and the right to run njMule's
-   programs, adds the firewall rule, starts the service and prints the address of its web
-   interface.
+   programs, adds the firewall rule, starts the service (or restarts it, if it was running, so that
+   it takes the new settings) and prints the address of its web interface.
+
+Run the same command again whenever you want to change those options.
 
 To take the password from a file instead, as a script would:
 
@@ -129,11 +131,12 @@ msiexec /i njmule-<version>-windows-x64.msi MSIINSTALLPERUSER="" NJMULE_SERVICE=
 | `MSIINSTALLPERUSER=""` | Installs for every user, in the programs folder; required for the service |
 | `NJMULE_SERVICE=1` | Runs `njmule --service=install` once the files are in place |
 | `NJMULE_WEBUI_PASSWORD_FILE` | The file holding the web interface password; required with `NJMULE_SERVICE=1` |
+| `NJMULE_WEBUI_LAN=1` | Lets the other computers of the network reach the web interface (`--webui-lan`) |
 
 Without the two required properties the installer stops with a message. Delete the password file
-afterwards: njMule keeps only a hash of the password. The web interface set up this way answers on
-this computer only; to open it to the network, run
-`njmule --service=install --webui-password --webui-lan` and restart the service as shown above.
+afterwards: njMule keeps only a hash of the password. Without `NJMULE_WEBUI_LAN=1` the web interface
+answers on this computer only; to open it to the network later, run
+`njmule --service=install --webui-lan`, which restarts the service.
 
 ### Upgrades
 
@@ -159,8 +162,8 @@ its `incoming` folder somewhere else.
   `njmule.exe` of the installer or of the zip archive, not a copy elsewhere.
 - The service stops at once: look at its log in `%ProgramData%\njMule\logs`, and at the System log
   of the Event Viewer.
-- The web interface does not answer from another computer: install it again with `--webui-lan`,
-  restart it, and check that nothing else uses the port.
+- The web interface does not answer from another computer: run `njmule --service=install
+  --webui-lan` again, which restarts the service, and check that nothing else uses the port.
 - On Linux and macOS, `--service` answers that it is for Windows: use the
   [systemd user unit](./linux-service.mdx), Docker or the Synology package instead.
 

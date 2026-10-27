@@ -115,6 +115,7 @@ public record LaunchOptions(
      * @param hosts the host names the interface answers to besides localhost, as {@link WebUiSettings#hostName} keeps
      *     them
      * @param proxies the reverse proxies trusted to name their client, as {@link WebUiSettings#proxy} keeps them
+     * @param keepPassword the password stays as it is: no password option, which only {@code --service=install} allows
      */
     public record WebUiSetup(
             Optional<Integer> port,
@@ -122,10 +123,22 @@ public record LaunchOptions(
             boolean api,
             Optional<Path> passwordFile,
             List<String> hosts,
-            List<String> proxies) {
+            List<String> proxies,
+            boolean keepPassword) {
         public WebUiSetup {
             hosts = List.copyOf(hosts);
             proxies = List.copyOf(proxies);
+        }
+
+        /** A setup with a new password. */
+        public WebUiSetup(
+                Optional<Integer> port,
+                boolean lan,
+                boolean api,
+                Optional<Path> passwordFile,
+                List<String> hosts,
+                List<String> proxies) {
+            this(port, lan, api, passwordFile, hosts, proxies, false);
         }
 
         /** A setup that trusts no proxy. */
@@ -232,7 +245,8 @@ public record LaunchOptions(
     private static final String WAIT_OPTION = "--wait";
 
     // What --webui-port, --webui-lan, --webui-api, --webui-host and --webui-proxy apply to.
-    private static final String WEBUI_SETUP = WEBUI_PASSWORD_OPTION + " or " + WEBUI_PASSWORD_FILE_OPTION;
+    private static final String WEBUI_SETUP =
+            WEBUI_PASSWORD_OPTION + ", " + WEBUI_PASSWORD_FILE_OPTION + " or " + SERVICE_OPTION + "=install";
 
     // What --exit and --restore-links may come with: where and how to run, nothing to do.
     private static final Set<String> ALONG =
@@ -325,7 +339,7 @@ public record LaunchOptions(
                 files,
                 result.hasMatchedOption(HEADLESS_OPTION),
                 network,
-                webUi(result),
+                webUi(result, service),
                 links(result.matchedPositionalValue(0, List.<String>of())),
                 remote(result),
                 applyUpdate(result),
@@ -448,7 +462,8 @@ public record LaunchOptions(
                 WEBUI_PASSWORD_FILE_OPTION,
                 "<file>",
                 "the web interface password is the first line of <file> (a Docker or systemd secret, for example):"
-                        + " set at each start, turning the interface on, or with "
+                        + " set at each start, turning the interface on and keeping its other options as saved unless"
+                        + " given too, or with "
                         + WEBUI_PASSWORD_OPTION
                         + " set without asking"));
         spec.addOption(valued(WEBUI_PORT_OPTION, "<port>", "with " + WEBUI_SETUP + ": the port of the web interface"));
@@ -515,10 +530,11 @@ public record LaunchOptions(
         spec.addOption(valued(
                 SERVICE_OPTION,
                 "<action>",
-                "install, uninstall, start, stop or show (status) njMule as a Windows service, which runs it"
-                        + " headless with its web interface on the profile in %%ProgramData%%\\njMule as the virtual"
-                        + " account NT SERVICE\\njMule (Windows asks for the administrator's rights); install"
-                        + " takes the web interface options, and asks for its password when none is set"));
+                "install, uninstall, start, stop or status of njMule as a Windows service, which runs it headless"
+                        + " with its web interface on the profile in %%ProgramData%%\\njMule as the virtual account"
+                        + " NT SERVICE\\njMule (Windows asks for the administrator's rights); install takes the web"
+                        + " interface options, asks for its password when none is set, and restarts a service that"
+                        + " runs"));
         spec.addOption(flag(
                 REMOVE_PROFILE_OPTION,
                 "delete this njMule's settings, lists, identity, unfinished downloads, caches and logs, after asking,"
@@ -648,7 +664,8 @@ public record LaunchOptions(
         }
     }
 
-    private static Optional<WebUiSetup> webUi(ParseResult result) throws UsageException {
+    // The service keeps the password it has when install comes with the other options only.
+    private static Optional<WebUiSetup> webUi(ParseResult result, Optional<ServiceTask> service) throws UsageException {
         boolean port = result.hasMatchedOption(WEBUI_PORT_OPTION);
         boolean lan = result.hasMatchedOption(WEBUI_LAN_OPTION);
         boolean api = result.hasMatchedOption(WEBUI_API_OPTION);
@@ -658,12 +675,14 @@ public record LaunchOptions(
         if (result.hasMatchedOption(WEBUI_PASSWORD_FILE_OPTION)) {
             passwordFile = Optional.of(toFile(result.matchedOptionValue(WEBUI_PASSWORD_FILE_OPTION, "")));
         }
-        if (!result.hasMatchedOption(WEBUI_PASSWORD_OPTION) && passwordFile.isEmpty()) {
-            if (port || lan || api || host || proxy) {
-                throw new UsageException(WEBUI_PORT_OPTION + ", " + WEBUI_LAN_OPTION + ", " + WEBUI_API_OPTION + ", "
-                        + WEBUI_HOST_OPTION + " and " + WEBUI_PROXY_OPTION + " apply to " + WEBUI_SETUP);
-            }
+        boolean keepPassword = !result.hasMatchedOption(WEBUI_PASSWORD_OPTION) && passwordFile.isEmpty();
+        if (keepPassword && !(port || lan || api || host || proxy)) {
             return Optional.empty();
+        }
+        if (keepPassword
+                && service.map(task -> task.action() != ServiceAction.INSTALL).orElse(true)) {
+            throw new UsageException(WEBUI_PORT_OPTION + ", " + WEBUI_LAN_OPTION + ", " + WEBUI_API_OPTION + ", "
+                    + WEBUI_HOST_OPTION + " and " + WEBUI_PROXY_OPTION + " apply to " + WEBUI_SETUP);
         }
         List<String> hosts = new ArrayList<>();
         for (String name : result.matchedOptionValue(WEBUI_HOST_OPTION, List.<String>of())) {
@@ -693,7 +712,7 @@ public record LaunchOptions(
                 throw new UsageException("Invalid port for " + WEBUI_PORT_OPTION + ": " + value);
             }
         }
-        return Optional.of(new WebUiSetup(number, lan, api, passwordFile, hosts, proxies));
+        return Optional.of(new WebUiSetup(number, lan, api, passwordFile, hosts, proxies, keepPassword));
     }
 
     private static Optional<Path> applyUpdate(ParseResult result) throws UsageException {

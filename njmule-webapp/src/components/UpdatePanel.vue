@@ -10,19 +10,7 @@ import { usePoll } from '../engine';
 import { size } from '../format';
 import { language, t } from '../i18n';
 import { attempt } from '../notify';
-
-export interface Update {
-    current: string;
-    canInstall: boolean;
-    checking: boolean;
-    lastCheck?: string;
-    failure?: string;
-    available: { version: string; published: string; critical: boolean; notes: string; page: string } | null;
-    skipped?: string;
-    download: { received: number; size: number } | null;
-    ready: boolean;
-    install: 'asked' | 'at_exit' | 'restart';
-}
+import { downloadLabel, howToInstall, offersDownload, type Text, type Update } from '../updates';
 
 const update = usePoll(() => api.get<Update>('/update'), 3000, null as Update | null);
 const u = computed(() => update.data.value);
@@ -34,6 +22,10 @@ async function act(path: string, body?: unknown): Promise<void> {
 
 function when(time: string): string {
     return new Date(time).toLocaleString(language.value);
+}
+
+function text([key, ...args]: Text): string {
+    return t(key, ...args);
 }
 </script>
 
@@ -55,6 +47,10 @@ function when(time: string): string {
                 <el-progress :percentage="Math.floor((u.download.received * 100) / Math.max(1, u.download.size))" />
                 <p>{{ t('nj.update.downloading', size(u.download.received), size(u.download.size)) }}</p>
             </template>
+            <template v-else>
+                <p v-if="u.ready && !u.canInstall && u.readyFile">{{ t('nj.update.how.file', u.readyFile) }}</p>
+                <p>{{ text(howToInstall(u)) }}</p>
+            </template>
             <div class="buttons">
                 <template v-if="u.ready && u.canInstall">
                     <el-button type="primary" @click="act('/update/install', { restart: true })">
@@ -63,10 +59,9 @@ function when(time: string): string {
                     <el-button v-if="u.install !== 'at_exit'" @click="act('/update/install', { restart: false })">
                         {{ t('nj.update.atExit') }}
                     </el-button>
-                    <span v-else>{{ t('nj.update.willInstall') }}</span>
                 </template>
-                <el-button v-else-if="!u.ready && !u.download" type="primary" @click="act('/update/download')">
-                    {{ u.canInstall ? t('nj.update.downloadInstall') : t('nj.update.download') }}
+                <el-button v-else-if="offersDownload(u)" type="primary" @click="act('/update/download')">
+                    {{ t(downloadLabel(u)) }}
                 </el-button>
                 <el-button
                     v-if="!u.available.critical && u.skipped !== u.available.version"
