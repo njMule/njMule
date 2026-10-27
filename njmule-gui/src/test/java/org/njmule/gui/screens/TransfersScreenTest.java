@@ -25,7 +25,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
@@ -239,7 +238,7 @@ class TransfersScreenTest {
     private void givenTheEngine() throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
         // The model's first reading of the downloads would take away a row an event adds before it lands.
-        this.test.engine.downloads().get(10, TimeUnit.SECONDS);
+        FxTesting.await(this.test.engine.downloads());
         FxTesting.onFx(() -> {});
     }
 
@@ -250,7 +249,7 @@ class TransfersScreenTest {
                     this.cleared.add((Hash16) args[0]);
                     return CompletableFuture.completedFuture(true);
                 })));
-        this.test.engine.downloads().get(10, TimeUnit.SECONDS);
+        FxTesting.await(this.test.engine.downloads());
         FxTesting.onFx(() -> {});
     }
 
@@ -289,10 +288,8 @@ class TransfersScreenTest {
     }
 
     private void givenTheVideoPlayer(String player) throws Exception {
-        Preferences prefs = this.test
-                .engine
-                .updatePreferences(p -> p.toBuilder().videoPlayer(player).build())
-                .get(10, TimeUnit.SECONDS);
+        Preferences prefs = FxTesting.await(this.test.engine.updatePreferences(
+                p -> p.toBuilder().videoPlayer(player).build()));
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.PreferencesChanged(prefs)));
     }
 

@@ -29,7 +29,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.Node;
@@ -633,13 +632,10 @@ class TransfersMenusTest {
 
     private void givenTheVideoPlayer(String name, String args) throws Exception {
         Path player = this.dir.resolve(name);
-        Preferences prefs = this.test
-                .engine
-                .updatePreferences(p -> p.toBuilder()
-                        .videoPlayer(player.toString())
-                        .videoPlayerArgs(args)
-                        .build())
-                .get(10, TimeUnit.SECONDS);
+        Preferences prefs = FxTesting.await(this.test.engine.updatePreferences(p -> p.toBuilder()
+                .videoPlayer(player.toString())
+                .videoPlayerArgs(args)
+                .build()));
         FxTesting.onFx(() -> this.test.model.handle(new EngineEvent.PreferencesChanged(prefs)));
     }
 

@@ -31,7 +31,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
@@ -517,7 +516,7 @@ class EngineModelTest {
     // On a connection the model asks the engine for its servers; the answer, coming later, would replace the list.
     // The engine answers in turn: once a later question is answered, the model's is too.
     private void givenTheEngineAnsweredTheServerListTheModelAskedFor() throws Exception {
-        this.engine.servers().get(10, TimeUnit.SECONDS);
+        FxTesting.await(this.engine.servers());
     }
 
     private void givenTheServersListed(int count) {
@@ -791,7 +790,7 @@ class EngineModelTest {
     }
 
     private void thenTheEngineHasNoDownload() throws Exception {
-        assertThat(this.engine.downloads().get(5, TimeUnit.SECONDS)).isEmpty();
+        assertThat(FxTesting.await(this.engine.downloads())).isEmpty();
     }
 
     private void thenTheModelKeepsRates(int count) throws Exception {

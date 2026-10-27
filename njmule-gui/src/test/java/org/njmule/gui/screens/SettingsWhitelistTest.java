@@ -19,7 +19,6 @@ package org.njmule.gui.screens;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -93,11 +92,8 @@ class SettingsWhitelistTest {
 
     private void givenTheEngineAlwaysAllows(String whitelist) throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
-        this.test
-                .engine
-                .updatePreferences(
-                        p -> p.toBuilder().ipFilterWhitelist(whitelist).build())
-                .get(10, TimeUnit.SECONDS);
+        FxTesting.await(this.test.engine.updatePreferences(
+                p -> p.toBuilder().ipFilterWhitelist(whitelist).build()));
         FxTesting.await(
                 "the new preferences",
                 () -> this.test

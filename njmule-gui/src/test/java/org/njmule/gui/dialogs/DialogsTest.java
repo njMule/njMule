@@ -25,7 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import javafx.stage.Stage;
 import org.junit.jupiter.api.AfterEach;
@@ -208,7 +207,7 @@ class DialogsTest {
     }
 
     private void givenTheEngineKeptTheCategory(int id, String matchingFile) throws Exception {
-        assertThat(this.test.engine.categories().get(10, TimeUnit.SECONDS))
+        assertThat(FxTesting.await(this.test.engine.categories()))
                 .singleElement()
                 .satisfies(c -> {
                     assertThat(c.id()).isEqualTo(id);

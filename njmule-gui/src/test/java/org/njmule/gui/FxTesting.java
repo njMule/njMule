@@ -59,8 +59,9 @@ import org.njmule.testkit.FreePorts;
 public final class FxTesting {
 
     private static final Object LOCK = new Object();
-    // The first window a test fork shows pays JavaFX's cold start, which took over 30 s on the Windows runner; the
-    // tests' own timeout of 60 s still stops a task that never ends.
+    // The first window a test fork shows pays JavaFX's cold start, which took over 30 s on the Windows runner, and the
+    // macOS runner once stalled a whole test JVM for over 10 s; the tests' own timeouts still stop a task that never
+    // ends.
     private static final long FX_WAIT_SECONDS = 55;
     private static boolean started;
 
@@ -101,8 +102,15 @@ public final class FxTesting {
                 result.completeExceptionally(e);
             }
         });
+        return await(result);
+    }
+
+    /**
+     * Waits for {@code work}, such as an answer of the engine, as long as {@link #onFx} does, and returns its result.
+     */
+    public static <T> T await(CompletableFuture<T> work) throws Exception {
         try {
-            return result.get(FX_WAIT_SECONDS, TimeUnit.SECONDS);
+            return work.get(FX_WAIT_SECONDS, TimeUnit.SECONDS);
         } catch (java.util.concurrent.ExecutionException e) {
             if (e.getCause() instanceof Exception cause) {
                 throw cause;

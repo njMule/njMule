@@ -22,7 +22,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.OptionalInt;
-import java.util.concurrent.TimeUnit;
 import javafx.geometry.NodeOrientation;
 import javafx.scene.control.CheckBox;
 import org.junit.jupiter.api.AfterEach;
@@ -95,7 +94,7 @@ class AddLinksDialogTest {
 
     private void givenTheFileDownloadingAlready(Ed2kLink.FileLink link) throws Exception {
         this.test = TestGui.start(this.dir.resolve("njmule"));
-        this.test.engine.addDownload(link).get(10, TimeUnit.SECONDS);
+        FxTesting.await(this.test.engine.addDownload(link));
         FxTesting.onFx(() -> {
             this.test.model.addDownload(link);
             return null;
@@ -156,7 +155,7 @@ class AddLinksDialogTest {
     private void thenTheOnlyDownloadIs(Ed2kLink.FileLink link, int category, DownloadInfo.Status status)
             throws Exception {
         FxTesting.await("the download", () -> this.test.model.downloads().contains(link.hash()));
-        assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS))
+        assertThat(FxTesting.await(this.test.engine.downloads()))
                 .singleElement()
                 .satisfies(d -> {
                     assertThat(d.hash()).isEqualTo(link.hash());

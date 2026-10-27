@@ -61,7 +61,7 @@ final class WebCaptureDemo {
                         + "\nnet.kad.enabled=false\nsecurity.filterLan=false\nsearch.store=true\nuser.nick=Lupo\n"
                         + "limits.uploadKiBps=250\nlimits.downloadKiBps=0\nnet.upnp=false\nnotify.sound=false\n");
         try (NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs))) {
-            engine.updateSchedule(CaptureDemo.schedule()).get(10, TimeUnit.SECONDS);
+            FxTesting.await(engine.updateSchedule(CaptureDemo.schedule()));
             Map<String, Engines.Command> commands = new HashMap<>(CaptureDemo.commands(root, engine::preferences));
             // Rates that move, so that the graphs drawn from a second's samples are not flat.
             commands.put("status", a -> {

@@ -27,7 +27,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -291,7 +290,7 @@ class DesktopAppFlowsTest {
     }
 
     private void givenTheDownloadsOfTheEngineAre(String... names) throws Exception {
-        assertThat(this.app.engine().downloads().get(10, TimeUnit.SECONDS))
+        assertThat(FxTesting.await(this.app.engine().downloads()))
                 .extracting(DownloadInfo::name)
                 .containsExactly(names);
     }

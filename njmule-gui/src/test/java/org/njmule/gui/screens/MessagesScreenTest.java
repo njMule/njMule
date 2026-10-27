@@ -164,7 +164,7 @@ class MessagesScreenTest {
     }
 
     private void givenBobAnswers(String text) throws Exception {
-        this.bob.sendMessage(ServerAddress.parse(this.got.address()), text).get(5, TimeUnit.SECONDS);
+        FxTesting.await(this.bob.sendMessage(ServerAddress.parse(this.got.address()), text));
     }
 
     private void givenTheAnswerShows() throws Exception {

@@ -25,7 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.scene.control.Button;
 import javafx.scene.control.ListView;
@@ -195,7 +194,7 @@ class PeerDialogsTest {
     }
 
     private void givenTheEngineDownloads(String... names) throws Exception {
-        assertThat(this.test.engine.downloads().get(10, TimeUnit.SECONDS))
+        assertThat(FxTesting.await(this.test.engine.downloads()))
                 .extracting(DownloadInfo::name)
                 .containsExactly(names);
     }
