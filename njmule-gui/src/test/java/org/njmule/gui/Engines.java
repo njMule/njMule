@@ -50,6 +50,21 @@ public final class Engines {
                 });
     }
 
+    /** {@code real}, as a window on a njMule of another computer sees it. */
+    public static NjMuleEngine elsewhere(NjMuleEngine real) {
+        return (NjMuleEngine) Proxy.newProxyInstance(
+                NjMuleEngine.class.getClassLoader(), new Class<?>[] {NjMuleEngine.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("onThisComputer")) {
+                        return false;
+                    }
+                    try {
+                        return method.invoke(real, args);
+                    } catch (InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+    }
+
     /** {@code real}, except that the commands named in {@code commands} answer as those do. */
     @SuppressWarnings("FutureReturnValueIgnored") // a proxy returns each answer as Object; the caller checks it
     public static NjMuleEngine overriding(NjMuleEngine real, Map<String, Command> commands) {

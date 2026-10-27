@@ -754,11 +754,12 @@
 /* ---------------------------------------------------------------- install */
 
 .install {
-    width: min(44rem, calc(100% - 2 * var(--margin)));
+    width: var(--content);
     margin: var(--space) auto 0;
 }
 
 .installLead {
+    max-width: 44rem;
     margin: 1.25rem 0 !important;
 }
 
@@ -818,8 +819,8 @@
 }
 
 .platform dl div {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(8rem, 1fr) minmax(0, 3fr);
     gap: 1rem;
     padding: 7px 0;
     font-size: var(--step-s);
@@ -831,7 +832,6 @@
 
 .platform dd {
     margin: 0;
-    text-align: end;
     color: var(--ink-soft);
 }
 

@@ -238,6 +238,9 @@ public final class CategoriesDialog {
 
     private Button browse() {
         return Fx.button(this.gui.t("IDS_PW_BROWSE"), Icons.FOLDER_OPEN, () -> {
+            if (!this.gui.opensFoldersHere()) {
+                return;
+            }
             DirectoryChooser chooser = new DirectoryChooser();
             var dir = chooser.showDialog(this.stage);
             if (dir != null) {

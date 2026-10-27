@@ -54,9 +54,7 @@ public final class GuiMain {
         }
         // A start after an update waits for the njMule it replaces: its lock and its links are free only then.
         Updating.awaitEnd(cli.waitFor());
-        // A running njMule takes the links, or just shows its window, instead of failing on its lock.
-        List<String> links = cli.links().stream().map(Ed2kLink::toUri).toList();
-        if (cli.remoteDesktop().isEmpty() && LinkHandoff.deliver(DesktopApp.configDir(cli), links)) {
+        if (handedOver(cli)) {
             System.exit(0);
         }
         if (LinuxProcessName.applies()) {
@@ -79,5 +77,21 @@ public final class GuiMain {
         // The window has closed and the engine stopped: a new version goes in place now, if one is due. The
         // notification area keeps AWT threads alive.
         System.exit(NjMuleFxApp.handOver());
+    }
+
+    /**
+     * Whether a running njMule took the links, or just shows its window, so that this start has nothing to do: it does
+     * not fail on its lock instead. A headless one has no window to show, and this start's window tells so.
+     */
+    static boolean handedOver(LaunchOptions cli) {
+        if (cli.remoteDesktop().isPresent()) {
+            return false;
+        }
+        List<String> links = cli.links().stream().map(Ed2kLink::toUri).toList();
+        LinkHandoff.Taker taker = LinkHandoff.handOver(DesktopApp.configDir(cli), links);
+        if (taker == LinkHandoff.Taker.HEADLESS) {
+            NjMuleFxApp.headlessRuns(!links.isEmpty());
+        }
+        return taker == LinkHandoff.Taker.WINDOW;
     }
 }
