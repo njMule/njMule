@@ -141,11 +141,19 @@
 
         <!-- njMule as the Windows service "njMule" (as with njmule's service option), for an installation for
              every user: msiexec /i njmule.msi MSIINSTALLPERUSER="" NJMULE_SERVICE=1
-             NJMULE_WEBUI_PASSWORD_FILE=<a file holding the web interface password>. The service is
-             stopped while its files are replaced, started again after an upgrade, and removed with
-             njMule; its profile in %ProgramData%\njMule stays. -->
+             NJMULE_WEBUI_PASSWORD_FILE=<a file holding the web interface password>, and
+             NJMULE_WEBUI_LAN=1 to let the other computers of the network reach its web interface. The
+             service is stopped while its files are replaced, started again after an upgrade, and
+             removed with njMule; its profile in %ProgramData%\njMule stays. -->
         <Property Id="NJMULE_SERVICE" Secure="yes"/>
         <Property Id="NJMULE_WEBUI_PASSWORD_FILE" Secure="yes"/>
+        <Property Id="NJMULE_WEBUI_LAN" Secure="yes"/>
+        <SetProperty
+                Id="NjmuleWebUiLanOption"
+                Value="--webui-lan"
+                Before="InstallService"
+                Sequence="execute"
+                Condition="NJMULE_WEBUI_LAN"/>
         <Launch
                 Condition="NOT NJMULE_SERVICE OR (Privileged AND NJMULE_WEBUI_PASSWORD_FILE)"
                 Message="NJMULE_SERVICE=1 installs for every user (MSIINSTALLPERUSER=&quot;&quot;) and needs NJMULE_WEBUI_PASSWORD_FILE, a file holding the web interface password."/>
@@ -164,7 +172,7 @@
         <CustomAction
                 Id="InstallService"
                 Directory="INSTALLFOLDER"
-                ExeCommand="&quot;[INSTALLFOLDER]njmule.exe&quot; --service=install --webui-password-file &quot;[NJMULE_WEBUI_PASSWORD_FILE]&quot;"
+                ExeCommand="&quot;[INSTALLFOLDER]njmule.exe&quot; --service=install --webui-password-file &quot;[NJMULE_WEBUI_PASSWORD_FILE]&quot; [NjmuleWebUiLanOption]"
                 Execute="deferred"
                 Impersonate="no"
                 Return="check"/>

@@ -158,11 +158,12 @@ In Compose, change `command:` the same way.
 
   See [Remote control](../server/remote-control.mdx).
 
-:::warning
+:::note
 
-Because the password file is read at every start, the LAN access, host names and trusted proxies are
-set again from the command line at every start too. Give them as options: host names or proxies added
-on the **Settings** page of the web interface last only until the container restarts.
+The password file sets only the password at every start: the host names added on the **Settings**
+page of the web interface stay across restarts. An option on the command line wins over what was
+saved: `--webui-lan` and `--webui-api` turn their setting on, and the `--webui-host` or
+`--webui-proxy` names given replace the saved ones.
 
 :::
 

@@ -16,6 +16,19 @@ All notable changes to this project are documented here. The format follows
   app, the web interface and servers, a developer guide and the remote-control API's reference, in
   the brand's colours, with screenshots taken by the build; its text is under CC BY-SA 4.0.
 
+### Fixed
+
+- With `--webui-password-file` at each start, as in the Docker image, only the password is set
+  again: LAN access, host names, trusted proxies and the API keep their saved values, such as the
+  host names added in the browser, unless the command line gives them.
+- `njmule --service=install` takes `--webui-lan` and the other web interface options without a
+  password option, keeping the service's password, and restarts a service that runs so that it
+  takes them; the MSI's `NJMULE_WEBUI_LAN=1` opens the service's web interface to the network.
+- The update panel of the web interface offers *Download and install* where njMule installs itself,
+  tells how to install the new version for each kind of installation (the package manager's
+  command, the Docker image to pull, the Synology Package Center) and no longer offers a download
+  that cannot work.
+
 ## [0.1.0] - 2026-10-26
 
 The first release of njMule, a new client for the eD2K and Kad networks written in Java 25, which

@@ -3603,6 +3603,7 @@ components:
         - skipped
         - download
         - ready
+        - readyFile
         - install
       properties:
         state:
@@ -3662,6 +3663,11 @@ components:
         ready:
           type: boolean
           description: Whether the package of the new version is downloaded and checked.
+        readyFile:
+          type: [string, "null"]
+          description: |
+            Where that package is on njMule's computer, to be installed by hand where njMule cannot
+            install it (`canInstall` false); null while none is ready.
         install:
           type: string
           enum: [asked, at_exit, restart]

@@ -63,7 +63,10 @@ njmule --webui-password-file ~/njmule-webui-password --webui-lan
 ```
 
 njMule reads only the first line of the file (UTF-8 text of 4096 bytes at most) and never prints
-or logs it.
+or logs it. Set at every start, the file changes only the password and the options given with it:
+the rest stays as saved, the host names added in the browser included.
+With `--webui-password` it is a set-up of its own: LAN access, host names and trusted proxies are
+those of the command line, and the ones left out are dropped.
 Used without `--webui-password`, the file sets the password, the LAN access, the host names and the
 trusted proxies of the command line **at every start**: give all the options you need each time.
 This is how the [Docker image](../getting-started/install-docker.mdx) starts.

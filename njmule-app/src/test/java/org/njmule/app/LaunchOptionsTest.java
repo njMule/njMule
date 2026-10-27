@@ -462,6 +462,15 @@ class LaunchOptionsTest {
     }
 
     @Test
+    void shouldTakeTheWebInterfaceOptionsOfTheServiceWithoutAPassword() {
+        whenTheArgumentsAreParsed("--service=install", "--webui-lan");
+
+        thenTheActionIs(Action.SERVICE);
+        thenTheWebInterfaceSetupIs(new LaunchOptions.WebUiSetup(
+                Optional.empty(), true, false, Optional.empty(), List.of(), List.of(), true));
+    }
+
+    @Test
     void shouldRefuseTheWebInterfacePortWithoutThePassword() {
         whenTheArgumentsAreParsed("--webui-port", "8080");
 

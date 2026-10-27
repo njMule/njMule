@@ -46,7 +46,9 @@ public final class WebUiPassword {
     private WebUiPassword() {}
 
     /**
-     * Sets the password of {@code --webui-password-file}, when the command line names one.
+     * Sets the password of {@code --webui-password-file}, when the command line names one: with
+     * {@code --webui-password} as a set-up of its own, otherwise as at each start, where the options the command line
+     * does not give stay as the web interface saved them.
      *
      * @return whether it named one
      * @throws LaunchOptions.UsageException when the file cannot be read or holds no valid password
@@ -60,7 +62,11 @@ public final class WebUiPassword {
         Path file = setup.get().passwordFile().get();
         char[] password = read(file);
         try {
-            save(config, setup.get(), password);
+            if (cli.action() == LaunchOptions.Action.WEBUI_PASSWORD) {
+                save(config, setup.get(), password);
+            } else {
+                update(config, setup.get(), password);
+            }
             logger.info("Web interface password set from {}", file);
             return true;
         } finally {
@@ -82,6 +88,25 @@ public final class WebUiPassword {
                 setup.api() || old.api(),
                 setup.hosts(),
                 setup.proxies(),
+                old.guestPasswordHash());
+        settings.save(config);
+        return settings;
+    }
+
+    /**
+     * Turns the web interface on with {@code password}, the saved one when null, changing only the choices
+     * {@code setup} gives: what was set in the web interface itself stays.
+     */
+    static WebUiSettings update(Path config, LaunchOptions.WebUiSetup setup, char[] password) throws IOException {
+        WebUiSettings old = WebUiSettings.load(config);
+        WebUiSettings settings = new WebUiSettings(
+                true,
+                setup.port().orElse(old.port()),
+                setup.lan() || old.lan(),
+                password == null ? old.passwordHash() : Passwords.hash(password, new SecureRandom()),
+                setup.api() || old.api(),
+                setup.hosts().isEmpty() ? old.hosts() : setup.hosts(),
+                setup.proxies().isEmpty() ? old.proxies() : setup.proxies(),
                 old.guestPasswordHash());
         settings.save(config);
         return settings;
