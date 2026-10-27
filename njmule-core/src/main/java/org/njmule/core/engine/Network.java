@@ -765,18 +765,7 @@ final class Network {
 
     // When we move, the server or Kad sees the new address first; the other one has to look again.
     private void watchAddress() {
-        Optional<Inet6Address> ipv6 = PublicIpv6.find();
-        if (!ipv6.equals(this.ourIpv6)) {
-            boolean moved = this.ourIpv6.isPresent() && ipv6.isPresent();
-            this.ourIpv6 = ipv6;
-            this.userLog.log(
-                    LogLine.Level.INFO,
-                    ipv6.map(a -> "Clients may reach us at the IPv6 address " + a.getHostAddress())
-                            .orElse("No IPv6 address to be reached at any more"));
-            if (moved) {
-                tellIpv6(ipv6.get());
-            }
-        }
+        watchIpv6();
         KadNode node = this.kad;
         int kadIp = node == null ? 0 : node.publicIp();
         int serverIp = addressSeenByServer();
@@ -800,6 +789,21 @@ final class Network {
             }
             case NONE -> {
                 // Nothing moved, or nothing can tell.
+            }
+        }
+    }
+
+    private void watchIpv6() {
+        Optional<Inet6Address> ipv6 = PublicIpv6.find();
+        if (!ipv6.equals(this.ourIpv6)) {
+            boolean moved = this.ourIpv6.isPresent() && ipv6.isPresent();
+            this.ourIpv6 = ipv6;
+            this.userLog.log(
+                    LogLine.Level.INFO,
+                    ipv6.map(a -> "Clients may reach us at the IPv6 address " + a.getHostAddress())
+                            .orElse("No IPv6 address to be reached at any more"));
+            if (moved) {
+                tellIpv6(ipv6.get());
             }
         }
     }
@@ -1726,6 +1730,8 @@ final class Network {
             if (this.kadRelay != null) {
                 this.kadRelay.use(now.proxy());
             }
+            // Behind a proxy our IPv6 address is not told, from the next hello on.
+            watchIpv6();
         }
         if (tcp || udp || was.upnp() != now.upnp()) {
             restartForwarding();
