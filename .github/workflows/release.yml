@@ -89,32 +89,10 @@ jobs:
                   if (-not $gui.WaitForExit(180000)) { $gui.Kill(); throw "the GUI tour did not finish" }
                   if (-not (Select-String -Quiet "Tour finished" "$tour\logs\*.log")) { throw "the GUI tour failed" }
             # The runner is an administrator: the service is installed, answers on its web interface and is
-            # removed again, its networks off as in the Docker smoke test.
+            # removed again; build.yml runs the same script on pull requests.
             - name: Service test
               shell: pwsh
-              run: |
-                  $exe = (Resolve-Path njmule-gui/build/native/njmule.exe).Path
-                  $data = Join-Path $env:ProgramData njMule
-                  $config = Join-Path $data config
-                  New-Item -ItemType Directory -Force $config | Out-Null
-                  Set-Content -Encoding ascii (Join-Path $config njmule.properties) "net.ed2k.enabled=false`nnet.kad.enabled=false`nnet.upnp=false"
-                  Set-Content -Encoding ascii "$env:RUNNER_TEMP\service-password" "service-test-password"
-                  & $exe --service=install --webui-password-file "$env:RUNNER_TEMP\service-password"
-                  if ($LASTEXITCODE -ne 0) { throw "the service was not installed" }
-                  $answered = $false
-                  foreach ($i in 1..60) {
-                      try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:4711/login | Out-Null; $answered = $true; break } catch { Start-Sleep 1 }
-                  }
-                  & $exe --service=status
-                  if ($LASTEXITCODE -ne 0) { throw "the service does not run" }
-                  if (-not $answered) { throw "the service's web interface does not answer" }
-                  & $exe --service=uninstall
-                  if ($LASTEXITCODE -ne 0) { throw "the service was not removed" }
-                  & $exe --service=status
-                  if ($LASTEXITCODE -ne 1) { throw "the service is still there" }
-                  if (-not (Select-String -Quiet "Stopping njMule" (Join-Path $data "logs\*.log"))) { throw "njMule did not stop cleanly" }
-                  Remove-Item -Recurse -Force $data
-                  exit 0
+              run: ./.github/scripts/windows-service-test.ps1 njmule-gui/build/native/njmule.exe
             - name: Pack
               shell: pwsh
               run: |

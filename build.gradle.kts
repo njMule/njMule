@@ -68,6 +68,8 @@ sonar {
         property("sonar.organization", "njmule")
         property("sonar.projectKey", "njMule_njMule")
         property("sonar.projectName", "njMule")
+        // The CI's own scripts run only on the runners, where no test measures them; their issues are still reported.
+        property("sonar.coverage.exclusions", ".github/**")
         // MD5 and SHA-1 are mandated by the eD2K and Kad protocols and file formats (hashes, key
         // derivation, signatures), as in config/spotbugs/exclude.xml; RC4 is the protocol obfuscation
         // key stream, not a security cipher.
