@@ -256,6 +256,7 @@ class DownloadQueueTest {
 
         thenNoEventComesWithin(Duration.ofSeconds(1));
         thenNothingIsCompleted();
+        thenItsFilesAreGoneOnceTheQueueCloses();
     }
 
     @Test
@@ -369,6 +370,7 @@ class DownloadQueueTest {
 
         thenTheDownloadProgresses();
         thenTheDownloadDoesNotComplete();
+        thenItsFilesAreGoneOnceTheQueueCloses();
     }
 
     @Test
@@ -380,6 +382,7 @@ class DownloadQueueTest {
 
         thenTheNextEventIs("added");
         thenNoEventComesWithin(Duration.ofMillis(500));
+        thenItsFilesAreGoneOnceTheQueueCloses();
     }
 
     @Test
@@ -1130,6 +1133,13 @@ class DownloadQueueTest {
 
     private void thenNothingIsCompleted() throws Exception {
         assertThat(onLoop(() -> this.download.file().completedBytes())).isZero();
+    }
+
+    // What a cancel leaves to other threads (the queued writes and checks, the save, the set-aside, the deletes) may
+    // outlast the test, then race JUnit's deletion of the directory; closing waits for it.
+    private void thenItsFilesAreGoneOnceTheQueueCloses() throws Exception {
+        closeTheQueue();
+        thenNothingIsLeftInTheTempDirectory();
     }
 
     private void thenTheLeftoverPartFileIsKept() {
