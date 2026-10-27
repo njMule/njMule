@@ -121,15 +121,29 @@ class WebUiPasswordTest {
         thenTheWebInterfaceIsOpenToOtherComputers();
     }
 
+    // What the web interface set for itself survives the next start of a container.
     @Test
-    void shouldKeepThePortAndTheApiNotGivenAndTakeLanAccessFromTheCommandLine() throws IOException {
+    void shouldKeepTheSettingsTheCommandLineDoesNotGiveAtEachStart() throws IOException {
         givenTheWebInterfaceSettings(new WebUiSettings(true, 8080, true, "pbkdf2-sha512$1$AA$AA", true));
         givenThePasswordFile(PASSWORD);
 
         whenTheCommandLineSetsThePasswordFromTheFile();
 
         thenTheWebInterfaceIsOnWithThePassword(PASSWORD);
+        thenTheSavedSettingsAre(8080, true, true);
+    }
+
+    @Test
+    void shouldSetTheWebInterfaceUpAnewWithThePasswordCommand() throws IOException {
+        givenTheWebInterfaceSettings(
+                new WebUiSettings(true, 8080, true, "pbkdf2-sha512$1$AA$AA", true, List.of("old.example")));
+        givenThePasswordFile(PASSWORD);
+
+        whenThePasswordCommandSetsThePasswordFromTheFile();
+
+        thenTheWebInterfaceIsOnWithThePassword(PASSWORD);
         thenTheSavedSettingsAre(8080, false, true);
+        thenTheSavedHostNamesAre();
     }
 
     @Test
@@ -143,16 +157,15 @@ class WebUiPasswordTest {
         thenTheSavedHostNamesAre("nas.local", "njmule.example.com");
     }
 
-    // As LAN access, the names follow the command line: one left out is no longer trusted.
     @Test
-    void shouldDropTheSavedHostNamesTheCommandLineDoesNotGive() throws IOException {
+    void shouldKeepTheSavedHostNamesTheCommandLineDoesNotGive() throws IOException {
         givenTheWebInterfaceSettings(
                 new WebUiSettings(true, 8080, true, "pbkdf2-sha512$1$AA$AA", false, List.of("old.example")));
         givenThePasswordFile(PASSWORD);
 
         whenTheCommandLineSetsThePasswordFromTheFile();
 
-        thenTheSavedHostNamesAre();
+        thenTheSavedHostNamesAre("old.example");
     }
 
     @Test
@@ -205,6 +218,10 @@ class WebUiPasswordTest {
         List<String> args = new ArrayList<>(List.of("--webui-password-file", this.file.toString()));
         args.addAll(List.of(options));
         whenTheCommandLineSetsThePassword(args);
+    }
+
+    private void whenThePasswordCommandSetsThePasswordFromTheFile() {
+        whenTheCommandLineSetsThePassword(List.of("--webui-password", "--webui-password-file", this.file.toString()));
     }
 
     private void whenTheCommandLineSetsNoPasswordFile() {

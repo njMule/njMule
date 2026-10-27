@@ -18,6 +18,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- With `--webui-password-file` at each start, as in the Docker image, only the password is set
+  again: LAN access, host names, trusted proxies and the API keep their saved values, such as the
+  host names added in the browser, unless the command line gives them.
+- `njmule --service=install` takes `--webui-lan` and the other web interface options without a
+  password option, keeping the service's password, and restarts a service that runs so that it
+  takes them; the MSI's `NJMULE_WEBUI_LAN=1` opens the service's web interface to the network.
+- The update panel of the web interface offers *Download and install* where njMule installs itself,
+  tells how to install the new version for each kind of installation (the package manager's
+  command, the Docker image to pull, the Synology Package Center) and no longer offers a download
+  that cannot work.
 - Kad tells that clients reach us through the routers (uTP, QUIC) only where we take such
   connections, no longer with obfuscation required, and follows a change of obfuscation or proxy
   without a restart.

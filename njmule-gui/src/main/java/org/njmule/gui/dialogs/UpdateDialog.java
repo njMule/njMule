@@ -59,6 +59,8 @@ import org.njmule.gui.ui.Icons;
  */
 public final class UpdateDialog {
 
+    private static final String DOCKER_IMAGE = "ghcr.io/njmule/njmule";
+
     private final Gui gui;
     private final Stage stage = new Stage();
     private final VBox body = new VBox(10);
@@ -209,7 +211,8 @@ public final class UpdateDialog {
                                             ? "nj.update.how.elevated"
                                             : "nj.update.how.self"),
                     null));
-            if (v.download().isPresent()) {
+            // The Package Center installs a package from the browser's computer, not from the NAS.
+            if (v.download().isPresent() && status.installation() != InstallKind.SYNOLOGY) {
                 Button download = Fx.primary(Fx.button(
                         this.gui.t(
                                 status.installer() == Installer.NONE
@@ -278,6 +281,8 @@ public final class UpdateDialog {
             case WINDOWS_ZIP, TAR, STATIC_TAR -> this.gui.t("nj.update.how.archive");
             case DEB -> this.gui.f("nj.update.how.package", "sudo apt install ./" + file);
             case RPM -> this.gui.f("nj.update.how.package", "sudo dnf install ./" + file);
+            case DOCKER -> this.gui.f("nj.update.how.docker", "docker pull " + DOCKER_IMAGE);
+            case SYNOLOGY -> this.gui.t("nj.update.how.synology");
             default -> this.gui.t("nj.update.how.page");
         };
     }

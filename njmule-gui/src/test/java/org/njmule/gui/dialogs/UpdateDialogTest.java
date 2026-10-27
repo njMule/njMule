@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
@@ -82,6 +83,26 @@ class UpdateDialogTest {
                 "Added\n\n• Updates.",
                 "Install the download with your package manager: sudo apt install ./njmule_0.2.0_amd64.deb");
         thenTheButtonsAre("update-download", "update-skip");
+    }
+
+    @Test
+    void shouldTellADockerContainerToPullTheNewImage() throws Exception {
+        givenTheCheckFinds(available(InstallKind.DOCKER, false));
+
+        whenTheUserChecksForUpdates();
+
+        thenTheDialogShows("Pull the new image with docker pull ghcr.io/njmule/njmule and create the container again");
+        thenTheButtonsAre("update-skip");
+    }
+
+    @Test
+    void shouldSendASynologyNasToThePackageCenterWithoutDownloadingThere() throws Exception {
+        givenTheCheckFinds(available(InstallKind.SYNOLOGY, false));
+
+        whenTheUserChecksForUpdates();
+
+        thenTheDialogShows("install it in the Package Center with Manual Install");
+        thenTheButtonsAre("update-skip");
     }
 
     @Test
@@ -326,18 +347,24 @@ class UpdateDialogTest {
 
     private static UpdateStatus available(InstallKind installation, boolean critical) {
         String file = installation == InstallKind.DEB ? "njmule_0.2.0_amd64.deb" : "njmule-0.2.0-windows-x64.msi";
+        // A release has no package for a Docker container, which pulls its image.
+        Optional<NewVersion.Download> download = installation == InstallKind.DOCKER
+                ? Optional.empty()
+                : Optional.of(
+                        new NewVersion.Download(URI.create(RELEASE + "download/v0.2.0/" + file), 1, "0".repeat(64)));
         NewVersion v = new NewVersion(
                 "0.2.0",
                 Instant.parse("2026-11-02T10:00:00Z"),
                 critical,
                 "### Added\n\n- Updates.",
                 URI.create(RELEASE + "tag/v0.2.0"),
-                Optional.of(
-                        new NewVersion.Download(URI.create(RELEASE + "download/v0.2.0/" + file), 1, "0".repeat(64))));
+                download);
+        boolean managed = Set.of(InstallKind.DEB, InstallKind.DOCKER, InstallKind.SYNOLOGY)
+                .contains(installation);
         return new UpdateStatus(
                 "0.1.0",
                 installation,
-                installation == InstallKind.DEB ? UpdateStatus.Installer.NONE : UpdateStatus.Installer.SELF,
+                managed ? UpdateStatus.Installer.NONE : UpdateStatus.Installer.SELF,
                 false,
                 Optional.of(CHECKED),
                 Optional.empty(),
