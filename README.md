@@ -147,12 +147,13 @@ msiexec /i njmule-<version>-windows-x64.msi MSIINSTALLPERUSER=""
 njMule can also run as the Windows service "njMule", headless with its web interface, started with
 Windows before anyone logs in. `njmule --service=install` sets it up (Windows asks for the
 administrator's rights, then njMule for the web interface password; `--webui-lan` and the other web
-interface options apply). The service runs as the virtual account `NT SERVICE\njMule`, keeps its
-profile in `%ProgramData%\njMule`, and a firewall rule lets other clients in on private and domain
-networks. `--service=start`, `stop`, `status` and `uninstall` do the rest; uninstalling keeps the
-profile. A per-machine MSI installs the service at once with `NJMULE_SERVICE=1
-NJMULE_WEBUI_PASSWORD_FILE=<file>`, a file holding the password; it stops the service while
-upgrading and removes it with njMule.
+interface options apply). Run again, it keeps the password, takes the options given and restarts
+the service. The service runs as the virtual account `NT SERVICE\njMule`, keeps its profile in
+`%ProgramData%\njMule`, and a firewall rule lets other clients in on private and domain networks.
+`--service=start`, `stop`, `status` and `uninstall` do the rest; uninstalling keeps the profile. A
+per-machine MSI installs the service at once with `NJMULE_SERVICE=1
+NJMULE_WEBUI_PASSWORD_FILE=<file>`, a file holding the password, and `NJMULE_WEBUI_LAN=1` to open
+its web interface to the network; it stops the service while upgrading and removes it with njMule.
 
 The `.zip` archive contains the same executables and runs from any directory. The executables are
 not code-signed yet, so SmartScreen may require confirmation (*More info → Run anyway*). GraalVM
@@ -270,7 +271,8 @@ secrets:
 - Host directories mounted in the container must belong to UID 1000
   (`sudo chown -R 1000:1000 ~/njmule/incoming`). To run as another user, add `--user <uid>:<gid>`
   and mount a directory of that user on `/njmule` itself.
-- A changed secret is the new password from the next start. Arguments replace the default ones
+- A changed secret is the new password from the next start; what the web interface's own options
+  set (host names, trusted proxies, the API) stays across restarts. Arguments replace the default ones
   (`--webui-password-file /run/secrets/njmule_webui_password --webui-lan`): add `--webui-api` to
   them for the remote-control API, then `docker exec njmule njmule --config-dir /njmule --remote
   status` drives it.
@@ -407,7 +409,8 @@ njmule --webui-password [--webui-port <port>] [--webui-lan]
 Scripts and services read the password from the first line of a file instead, such as a Docker or
 systemd secret: with `--webui-password`, `--webui-password-file <file>` sets it without asking; on
 its own, it sets the password at every start, so that the file stays the reference, and runs
-njMule.
+njMule. The other web interface options given with it are set too, and those left out keep what
+the web interface saved.
 
 It starts together with the engine, headless or with the desktop application, on
 `http://localhost:4711/`, and is laid out as the desktop application: the places in a sidebar, a
