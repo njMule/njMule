@@ -27,6 +27,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -38,6 +39,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
@@ -53,6 +55,8 @@ import org.njmule.core.persist.PreferencesCodec;
 class RemoteEngineTest {
 
     private static final Hash16 HASH = Hash16.parseHex(ApiSamples.HASH);
+    private static final Ed2kLink.FileLink LINK =
+            (Ed2kLink.FileLink) Ed2kLink.parse("ed2k://|file|talk.bin|5000|" + ApiSamples.HASH + "|/");
 
     @TempDir
     Path dir;
@@ -205,6 +209,74 @@ class RemoteEngineTest {
     }
 
     @Test
+    void shouldTellThatAResultOfNoSearchItFollowsIsGone() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenConnected();
+
+        whenAsked(this.remote.markSpam(List.of(ApiSamples.result()), true));
+
+        thenExceptionOccurred(IllegalStateException.class, "That result is gone");
+    }
+
+    @Test
+    void shouldForgetTheResultsOfASearchItStopped() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItSearches(new SearchId(7));
+        givenItStopsSearches();
+        givenConnected();
+        givenTheEventsAreFollowed();
+        givenASearchStartedThroughTheRemote();
+        givenTheOtherNjmuleFound(new SearchId(7), ApiSamples.result());
+        givenTheSearchStopped(new SearchId(7));
+
+        whenAsked(this.remote.markSpam(List.of(ApiSamples.result()), true));
+
+        thenExceptionOccurred(IllegalStateException.class, "That result is gone");
+    }
+
+    @Test
+    void shouldLeaveThePreviewToTheComputerThatDownloads() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenConnected();
+
+        whenAsked(this.remote.downloadData(HASH));
+
+        thenExceptionOccurred(UnsupportedOperationException.class, "a preview");
+    }
+
+    @Test
+    void shouldSayItDoesNotRunOnThisComputer() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenConnected();
+
+        whenAskedWhereItRuns();
+
+        thenTheAnswerIs(false);
+    }
+
+    @Test
+    void shouldLetTheOtherNjmulesPreferencesPauseADownloadAddedWithoutAChoice() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItAddsDownloads();
+        givenConnected();
+
+        whenAsked(this.remote.addDownload(LINK));
+
+        thenTheOtherNjmuleWasAsked("addDownload as the preferences say");
+    }
+
+    @Test
+    void shouldAddADownloadPausedAsChosen() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItAddsDownloads();
+        givenConnected();
+
+        whenAsked(this.remote.addDownload(LINK, OptionalInt.empty(), true));
+
+        thenTheOtherNjmuleWasAsked("addDownload paused true");
+    }
+
+    @Test
     void shouldSayHelloToAClientThroughTheOtherNjmule() throws Exception {
         givenTheOtherNjmuleRuns();
         givenItAnswers("hello", ApiSamples.peer());
@@ -254,6 +326,22 @@ class RemoteEngineTest {
             this.asked.add(
                     "markSpam " + results.stream().map(SearchResult::hash).toList() + " " + args[1]);
             return CompletableFuture.completedFuture(ApiSamples.spamMarks());
+        });
+    }
+
+    private void givenItStopsSearches() {
+        this.fake.answer("stopSearch", args -> CompletableFuture.completedFuture(null));
+    }
+
+    private void givenTheSearchStopped(SearchId search) {
+        this.remote.stopSearch(search).join();
+    }
+
+    // Without a choice the call takes the link alone; with one, the category and whether paused too.
+    private void givenItAddsDownloads() {
+        this.fake.answer("addDownload", args -> {
+            this.asked.add(args.length == 1 ? "addDownload as the preferences say" : "addDownload paused " + args[2]);
+            return CompletableFuture.completedFuture(ApiSamples.download());
         });
     }
 
@@ -356,6 +444,10 @@ class RemoteEngineTest {
         if (this.exception != null && this.exception.getCause() != null) {
             this.exception = this.exception.getCause();
         }
+    }
+
+    private void whenAskedWhereItRuns() {
+        this.answer = this.remote.onThisComputer();
     }
 
     private void whenConnectedWith(String wrong) {
