@@ -40,6 +40,7 @@ import java.util.OptionalInt;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 import javax.imageio.ImageIO;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
@@ -71,6 +72,7 @@ import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.SpamMarks;
 import org.njmule.core.api.UploadInfo;
 import org.njmule.core.api.UploadPriority;
+import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 
 /** Example data for the capture tour: free files and documentation addresses (RFC 5737) only. */
@@ -452,7 +454,8 @@ final class CaptureDemo {
         return list;
     }
 
-    static KadInfo kad() {
+    // Kad on the UDP port of the profile, as its options show it.
+    static KadInfo kad(int udpPort) {
         return new KadInfo(
                 true,
                 1243,
@@ -460,24 +463,24 @@ final class CaptureDemo {
                 false,
                 "8F3C2A1D90B44E6E9A0C7E51D2B3F4A5",
                 "198.51.100.23",
-                4672,
+                udpPort,
                 false,
                 true,
                 KadInfo.Buddy.NONE);
     }
 
-    static EngineStatus status() {
-        return status(1_322_500, 98_100);
+    static EngineStatus status(Preferences profile) {
+        return status(1_322_500, 98_100, profile);
     }
 
-    // The status with the rates of this moment, in bytes a second.
-    static EngineStatus status(long down, long up) {
+    // The status with the rates of this moment, in bytes a second, on the ports of the profile.
+    static EngineStatus status(long down, long up, Preferences profile) {
         return new EngineStatus(
                 Optional.of(server(0)),
                 0x17643C6AL,
                 false,
                 true,
-                Optional.of(kad()),
+                Optional.of(kad(profile.udpPort())),
                 down,
                 up,
                 2_576_980_378L,
@@ -492,7 +495,7 @@ final class CaptureDemo {
                 3 * 3600 + 42 * 60,
                 1_911L * 3600,
                 "198.51.100.23",
-                4662,
+                profile.tcpPort(),
                 true);
     }
 
@@ -836,7 +839,8 @@ final class CaptureDemo {
         return bmp.toByteArray();
     }
 
-    static Map<String, Engines.Command> commands(Path dir) {
+    /** The demo's answers, on the ports of the profile the real engine runs with. */
+    static Map<String, Engines.Command> commands(Path dir, Supplier<Preferences> profile) {
         Map<String, Engines.Command> c = new HashMap<>();
         c.put("downloads", a -> CompletableFuture.completedFuture(downloads()));
         c.put("categories", a -> CompletableFuture.completedFuture(categories()));
@@ -844,8 +848,11 @@ final class CaptureDemo {
         c.put("sources", a -> CompletableFuture.completedFuture(sources()));
         c.put("bans", a -> CompletableFuture.completedFuture(bans()));
         c.put("servers", a -> CompletableFuture.completedFuture(servers()));
-        c.put("status", a -> CompletableFuture.completedFuture(status()));
-        c.put("kad", a -> CompletableFuture.completedFuture(Optional.of(kad())));
+        c.put("status", a -> CompletableFuture.completedFuture(status(profile.get())));
+        c.put(
+                "kad",
+                a -> CompletableFuture.completedFuture(
+                        Optional.of(kad(profile.get().udpPort()))));
         c.put("kadContacts", a -> CompletableFuture.completedFuture(kadContacts()));
         c.put("kadSearches", a -> CompletableFuture.completedFuture(kadSearches()));
         c.put("sharedFiles", a -> CompletableFuture.completedFuture(shared()));
