@@ -236,7 +236,8 @@ public final class SearchManager {
         KadSearches searches = this.kad.get().orElseThrow(() -> new IllegalStateException("Kad is not running"));
         String keyword = kadKeyword(expression);
         Search search = new Search(new SearchId(this.nextId++), expression, request.scope());
-        Optional<Runnable> started = searches.search(keyword, SearchTreeCodec.indexedTypes(expression), results -> {
+        SearchExpr asked = SearchTreeCodec.forKad(expression).orElseGet(() -> new SearchExpr.Keyword(keyword));
+        Optional<Runnable> started = searches.search(keyword, asked, results -> {
             if (!search.ended) {
                 SearchResult.Origin kad = new SearchResult.Origin(Set.of(), true, Set.of(), "");
                 mergeResults(

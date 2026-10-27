@@ -22,6 +22,7 @@ import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
@@ -59,6 +60,7 @@ class SearchParserTest {
     private SearchExpr parsed;
     private SearchExpr search;
     private SearchExpr serverSearch;
+    private Optional<SearchExpr> kadSearch = Optional.empty();
     private SearchExpr sent;
     private byte[] encoded;
     private String kadKeyword;
@@ -309,6 +311,33 @@ class SearchParserTest {
     }
 
     @Test
+    void shouldAskKadWithoutTheCompleteSourcesItDoesNotCount() {
+        givenTheSearch("linux @complete>=3 @size>1g");
+
+        whenItIsPreparedForKad();
+
+        thenKadIsAskedFor(new And(kw("linux"), new NumericAttr(FileTag.FILESIZE, Comparison.GREATER, 1L << 30)));
+    }
+
+    @Test
+    void shouldAskKadForTheKeywordAloneWhenTheCompleteSourcesWereAllElse() {
+        givenTheSearch("linux OR @complete>=3");
+
+        whenItIsPreparedForKad();
+
+        thenKadIsAskedForNothingMore();
+    }
+
+    @Test
+    void shouldAskKadForTheIndexedTypeAsServersAre() {
+        givenTheSearch("linux @type=arc");
+
+        whenItIsPreparedForKad();
+
+        thenKadIsAskedFor(new And(kw("linux"), new StringAttr(FileTag.FILETYPE, "Pro")));
+    }
+
+    @Test
     void shouldSendOtherSearchesAsTheyAre() {
         givenTheSearch("a OR b");
 
@@ -502,6 +531,10 @@ class SearchParserTest {
         this.serverSearch = SearchTreeCodec.forServer(this.search);
     }
 
+    private void whenItIsPreparedForKad() {
+        this.kadSearch = SearchTreeCodec.forKad(this.search);
+    }
+
     private void whenItIsSentToAServer() throws DecodeException {
         PacketWriter out = new PacketWriter();
         SearchTreeCodec.write(out, SearchTreeCodec.forServer(this.search), false);
@@ -580,6 +613,14 @@ class SearchParserTest {
 
     private void thenTheServerSearchIsTheSearchItself() {
         assertThat(this.serverSearch).isSameAs(this.search);
+    }
+
+    private void thenKadIsAskedFor(SearchExpr expected) {
+        assertThat(this.kadSearch).contains(expected);
+    }
+
+    private void thenKadIsAskedForNothingMore() {
+        assertThat(this.kadSearch).isEmpty();
     }
 
     private void thenTheServerIsAskedFor(SearchExpr expected) {
