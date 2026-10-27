@@ -16,6 +16,18 @@ All notable changes to this project are documented here. The format follows
   app, the web interface and servers, a developer guide and the remote-control API's reference, in
   the brand's colours, with screenshots taken by the build; its text is under CC BY-SA 4.0.
 
+### Fixed
+
+- Kad tells that clients reach us through the routers (uTP, QUIC) only where we take such
+  connections, no longer with obfuscation required, and follows a change of obfuscation or proxy
+  without a restart.
+- A Kad search no longer drops every result when the complete sources filter is set: Kad counts
+  none, so the filter is left out there; the filters' note says so instead of claiming that Kad
+  ignores size and type.
+- A download waiting for disk space offers to pause instead of a resume that did nothing, and its
+  note says that it goes on by itself once there is room.
+- A part found corrupt is told in the app's log too, not only in the log file.
+
 ## [0.1.0] - 2026-10-26
 
 The first release of njMule, a new client for the eD2K and Kad networks written in Java 25, which
