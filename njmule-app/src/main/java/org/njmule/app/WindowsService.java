@@ -41,6 +41,10 @@ final class WindowsService {
     static final String FIREWALL_RULE = "njMule (service)";
     static final String HOST = "njmule-service.exe";
 
+    // By SID: the names of the built-in accounts are translated.
+    private static final String LOCAL_SYSTEM = "*S-1-5-18";
+    private static final String ADMINISTRATORS = "*S-1-5-32-544";
+
     // What njmule-service.exe returns: a state of the service for "status", else a Windows error.
     private static final int STOPPED = 1;
     private static final int STARTING = 2;
@@ -210,6 +214,17 @@ final class WindowsService {
         Path root = profile();
         Path config = AppDirectories.resolve(Optional.of(root)).config();
         Files.createDirectories(config);
+        // Before any secret is written: what ProgramData holds, every user of this computer may read.
+        check(
+                this.system.run(List.of(
+                        "icacls",
+                        root.toString(),
+                        "/inheritance:r",
+                        "/grant:r",
+                        LOCAL_SYSTEM + ":(OI)(CI)F",
+                        ADMINISTRATORS + ":(OI)(CI)F",
+                        "/Q")),
+                "close the profile to the other users");
         setPassword(cli, config);
         check(this.system.run(List.of(host.toString(), "install")), "register the service");
         // The virtual account reads njMule's programs and keeps its profile, and nothing else of this computer.
