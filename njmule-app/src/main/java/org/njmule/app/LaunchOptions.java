@@ -473,7 +473,7 @@ public record LaunchOptions(
         spec.addOption(flag(
                 RESTORE_LINKS_OPTION,
                 "give ed2k links back to what opened them before the desktop app took them, if it still has them,"
-                        + " and exit (the uninstaller runs it)"));
+                        + " stop it from starting at login, and exit (the uninstallers run it)"));
         spec.addOption(flag(
                 WEBUI_LAN_OPTION, "with " + WEBUI_SETUP + ": let other computers connect (otherwise only this one)"));
         spec.addOption(flag(

@@ -34,8 +34,7 @@ public final class UrlBox {
 
     private static final Logger logger = LoggerFactory.getLogger(UrlBox.class);
     // The files eMule keeps its box histories in, copied by the import.
-    private static final Map<String, String> EMULE_HISTORIES =
-            Map.of("serverMet", "AC_ServerMetURLs.dat", "ipFilter", "AC_IPFilterUpdateURLs.dat");
+    private static final Map<String, String> EMULE_HISTORIES = Map.of("serverMet", "AC_ServerMetURLs.dat");
     // Well-known lists filled in while none was used: fetched only when the user asks.
     static final Map<String, String> SUGGESTED = Map.of(
             "serverMet", "https://upd.emule-security.org/server.met",

@@ -267,6 +267,8 @@ abstract sealed class SystemAutostart implements Autostart {
                     + "Name=njMule\n"
                     + "Comment=eD2K and Kad file sharing\n"
                     + "Exec=" + String.join(" ", exec) + "\n"
+                    // Desktops skip an entry whose program a removed package took along.
+                    + "TryExec=" + this.command.getFirst().replace("\\", "\\\\") + "\n"
                     + "Icon=" + ID + "\n"
                     + "Terminal=false\n"
                     + "X-GNOME-Autostart-enabled=true\n";

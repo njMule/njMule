@@ -29,6 +29,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.function.Function;
 import org.njmule.core.config.AppDirectories;
@@ -47,6 +48,20 @@ final class ProfileRemoval {
 
     /** Removes the profile of {@code cli}, after asking through {@code ask} (null: no answer) unless confirmed. */
     static int run(LaunchOptions cli, PrintStream out, PrintStream err, Function<String, String> ask) {
+        return run(cli, out, err, ask, LinkAssociation::forThisSystem, Main::autostart);
+    }
+
+    /**
+     * As {@link #run(LaunchOptions, PrintStream, PrintStream, Function)}: first the ed2k links go back and the start at
+     * login goes, as at an uninstallation, since the profile keeps the handler the links go back to.
+     */
+    static int run(
+            LaunchOptions cli,
+            PrintStream out,
+            PrintStream err,
+            Function<String, String> ask,
+            Function<Path, Optional<LinkAssociation>> associations,
+            Function<Path, Optional<Autostart>> autostarts) {
         AppDirectories dirs = AppDirectories.resolve(cli.configDir());
         if (!LinkHandoff.awaitGone(dirs.config(), Duration.ZERO)) {
             err.println("njMule runs on this profile: stop it first (njmule --exit).");
@@ -69,7 +84,12 @@ final class ProfileRemoval {
                 return Main.EXIT_OK;
             }
         }
-        int code = Main.EXIT_OK;
+        // The profile keeps the program the links go back to: without it they could not go back later.
+        int code = Main.restoreLinks(dirs.config(), associations, autostarts, out, err);
+        if (code != Main.EXIT_OK) {
+            err.println("Nothing was deleted.");
+            return code;
+        }
         for (Path folder : folders) {
             try {
                 MoreFiles.deleteRecursively(folder, RecursiveDeleteOption.ALLOW_INSECURE);

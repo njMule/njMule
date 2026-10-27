@@ -178,8 +178,8 @@ njMule running, ask it instead: `njmule --remote update check`. See [Updates](..
 | Option | What it does |
 |---|---|
 | `--service=<action>` | Windows only: `install`, `uninstall`, `start`, `stop` or `status` of the service "njMule" ([Windows service](./windows-service.mdx)) |
-| `--restore-links` | Gives ed2k links back to the program that opened them before the desktop app took them, if it still has them, and exits; the Windows uninstaller runs it |
-| `--remove-profile` | Deletes this profile's settings, lists, identity, unfinished downloads, caches and logs after asking, and exits; the completed downloads stay. Stop njMule first |
+| `--restore-links` | Gives ed2k links back to the program that opened them before the desktop app took them, if it still has them, turns the start at login off, and exits; the uninstallers of Windows and macOS run it |
+| `--remove-profile` | Deletes this profile's settings, lists, identity, unfinished downloads, caches and logs after asking, and exits, giving the ed2k links back and turning the start at login off first; the completed downloads stay. Stop njMule first |
 | `--yes` | With `--remove-profile`: does not ask |
 
 ```bash
