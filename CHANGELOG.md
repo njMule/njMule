@@ -19,8 +19,8 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 
 - With `--webui-password-file` at each start, as in the Docker image, only the password is set
-  again: LAN access, host names, trusted proxies and the API keep what the web interface saved
-  unless the command line gives them.
+  again: LAN access, host names, trusted proxies and the API keep their saved values, such as the
+  host names added in the browser, unless the command line gives them.
 - `njmule --service=install` takes `--webui-lan` and the other web interface options without a
   password option, keeping the service's password, and restarts a service that runs so that it
   takes them; the MSI's `NJMULE_WEBUI_LAN=1` opens the service's web interface to the network.
