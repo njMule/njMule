@@ -15,7 +15,6 @@ import { current, PLACES, searchRequest, shortcut, withShortcutKey } from './pla
 import { searches } from './search';
 import { chats, friends, unreadTotal } from './chats';
 import type { Platform } from './platform';
-import PlaceholderScreen from './screens/PlaceholderScreen.vue';
 import SearchScreen from './screens/SearchScreen.vue';
 import MessagesScreen from './screens/MessagesScreen.vue';
 import NetworkScreen from './screens/NetworkScreen.vue';
@@ -297,8 +296,7 @@ onUnmounted(() => {
                         <MessagesScreen v-else-if="current === 'messages'" />
                         <NetworkScreen v-else-if="current === 'network'" @ed2k="ed2k" @kad="kad" />
                         <StatisticsScreen v-else-if="current === 'statistics'" />
-                        <SettingsScreen v-else-if="current === 'settings'" />
-                        <PlaceholderScreen v-else :place="current" />
+                        <SettingsScreen v-else />
                     </main>
                 </div>
             </div>
