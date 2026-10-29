@@ -666,12 +666,6 @@ onMounted(() => void readDirectories());
     gap: 6px;
 }
 
-.button.small {
-    height: 30px;
-    padding: 0 8px;
-    font-size: 0.92em;
-}
-
 .note {
     margin: 0;
 }

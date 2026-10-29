@@ -8,7 +8,7 @@ import { rate, size } from '../format';
 import { t } from '../i18n';
 import { lastLog, preferences, servers, status } from '../model/engine';
 import { networkCounts } from '../network';
-import { current } from '../places';
+import { current, networkPart } from '../places';
 import Tip from '../ui/Tip.vue';
 
 // The status strip: the last line of the log (which opens the log), the networks' users and files, the limits and the
@@ -29,7 +29,15 @@ const freeSpace = computed(() => status.value?.freeSpace?.incoming);
 <template>
     <footer class="status-strip">
         <Tip :text="t('IDS_SV_LOG')">
-            <button class="status-link last-log ellipsis" @click="current = 'network'">{{ lastLog }}</button>
+            <button
+                class="status-link last-log ellipsis"
+                @click="
+                    networkPart = 'log';
+                    current = 'network';
+                "
+            >
+                {{ lastLog }}
+            </button>
         </Tip>
         <span class="status-text">{{ networkCounts(status, servers) }}</span>
         <Tip :text="t('IDS_SPEED_LIMITS')">

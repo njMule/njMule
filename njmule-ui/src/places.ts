@@ -68,6 +68,9 @@ window.addEventListener('hashchange', () => {
     }
 });
 
+/** The part of the network shown: the servers, Kad or the log; the network's place opens the one shown last. */
+export const networkPart = ref<'servers' | 'kad' | 'log'>('servers');
+
 /** Words to search the network for, asked from elsewhere (the palette); the search screen takes and clears them. */
 export const searchRequest = ref('');
 

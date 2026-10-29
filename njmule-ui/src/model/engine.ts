@@ -46,6 +46,8 @@ export const rates = shallowRef<RateSample[]>([]);
 export const connection = ref<Connection>('disconnected');
 export const serverName = ref('');
 export const lastLog = ref('');
+/** What the servers said in this window's time: each line with the server's name. */
+export const serverNotes = shallowRef<{ time: string; server: string; text: string }[]>([]);
 /** Why the engine could not be read, empty while it answers. */
 export const unreachable = ref('');
 
@@ -72,6 +74,7 @@ export function follow(): void {
             'server.connecting',
             'server.connected',
             'server.disconnected',
+            'server.message',
             'download.added',
             'download.removed',
             'download.completed',
@@ -109,6 +112,18 @@ function react<K extends EventName>(name: K, data: EventData[K]): void {
         case 'preferences.changed':
             void readPreferences();
             break;
+        case 'server.message': {
+            const note = data as EventData['server.message'];
+            serverNotes.value = [
+                ...serverNotes.value,
+                {
+                    time: new Date().toISOString(),
+                    server: note.server?.name || note.server?.address || '',
+                    text: note.text ?? '',
+                },
+            ].slice(-500);
+            break;
+        }
         case 'log':
             lastLog.value = (data as EventData['log']).message ?? '';
             break;

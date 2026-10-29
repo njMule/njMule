@@ -94,3 +94,79 @@ export function networkCounts(status: Status | null, servers: Server[]): string 
     }
     return format(t('nj.status.server'), [count(users), count(files)]);
 }
+
+// What the router answered through UPnP, by the answer's name in the API.
+const FORWARDING: Record<NonNullable<Status['forwarding']>, string> = {
+    off: 'nj.ports.forwarding.OFF',
+    asking: 'nj.ports.forwarding.ASKING',
+    forwarded: 'nj.ports.forwarding.FORWARDED',
+    partly: 'nj.ports.forwarding.PARTLY',
+    refused: 'nj.ports.forwarding.REFUSED',
+    no_router: 'nj.ports.forwarding.NO_ROUTER',
+    failed: 'nj.ports.forwarding.FAILED',
+};
+
+/** A card of the network screen: its headline, the icon and tone beside it, and the lines under it. */
+export interface Card {
+    headline: string;
+    icon: 'CHECK_CIRCLE' | 'WARNING' | 'HOURGLASS' | 'CLOUD_OFF' | '';
+    tone: 'success' | 'warning' | 'connecting' | '';
+    detail: string[];
+}
+
+/** The state of eD2K, Kad and the ports in plain words, as the network screen's cards tell it. */
+export function networkCards(
+    connection: Connection,
+    status: Status | null,
+    serverName: string,
+    preferences: Record<string, string>,
+): { ed2k: Card; kad: Card; ports: Card } {
+    let ed2k: Card;
+    if (connection === 'connected') {
+        const low = status?.lowId ?? false;
+        const s = status?.server;
+        ed2k = {
+            headline: t(low ? 'nj.network.unreachable' : 'nj.network.reachable'),
+            icon: low ? 'WARNING' : 'CHECK_CIRCLE',
+            tone: low ? 'warning' : 'success',
+            detail: [serverName, ...(s ? [t('nj.status.server', count(s.users), count(s.files))] : [])],
+        };
+    } else if (connection === 'connecting') {
+        ed2k = { headline: t('IDS_CONNECTING'), icon: 'HOURGLASS', tone: 'connecting', detail: [serverName] };
+    } else {
+        ed2k = { headline: t('IDS_NOTCONNECTED'), icon: 'CLOUD_OFF', tone: '', detail: [] };
+    }
+    const k = status?.kad ?? null;
+    let kad: Card;
+    if (k === null) {
+        kad = { headline: t('nj.kad.off'), icon: 'CLOUD_OFF', tone: '', detail: [] };
+    } else if (!k.connected) {
+        kad = { headline: t('IDS_CONNECTING'), icon: 'HOURGLASS', tone: 'connecting', detail: [] };
+    } else {
+        // Behind a TCP firewall, whether UDP gets through tells if others still reach us, once tested.
+        kad = {
+            headline: t(k.firewalled ? 'nj.network.unreachable' : 'nj.network.reachable'),
+            icon: k.firewalled ? 'WARNING' : 'CHECK_CIRCLE',
+            tone: k.firewalled ? 'warning' : 'success',
+            detail: [
+                `${t('IDS_KADCONTACTLAB')}: ${count(k.contacts)}`,
+                ...(k.firewalled && (k.udpVerified || k.udpFirewalled)
+                    ? [t(k.udpFirewalled ? 'nj.kad.udpFirewalled' : 'nj.kad.udpOpen')]
+                    : []),
+            ],
+        };
+    }
+    // The numbers read left to right in every language; UDP is open while Kad runs.
+    const forwarding = FORWARDING[status?.forwarding ?? 'off'];
+    const ports: Card = {
+        headline: `TCP ${preferences['net.tcpPort'] ?? status?.tcpPort ?? ''}${k ? ` · UDP ${k.udpPort}` : ''}`,
+        icon: '',
+        tone: '',
+        detail: [
+            t(forwarding, status?.router ?? ''),
+            ...(status?.publicIpv6 ? [`IPv6: ${status.publicIpv6}`] : []),
+            `${t('nj.network.natTraversal')}: ${t(status?.routerTraversal && k !== null ? 'IDS_YES' : 'IDS_NO')}`,
+        ],
+    };
+    return { ed2k, kad, ports };
+}

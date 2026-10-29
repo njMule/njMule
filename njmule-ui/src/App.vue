@@ -18,6 +18,7 @@ import type { Platform } from './platform';
 import PlaceholderScreen from './screens/PlaceholderScreen.vue';
 import SearchScreen from './screens/SearchScreen.vue';
 import MessagesScreen from './screens/MessagesScreen.vue';
+import NetworkScreen from './screens/NetworkScreen.vue';
 import SharedScreen from './screens/SharedScreen.vue';
 import TransfersScreen from './screens/TransfersScreen.vue';
 import AskDialog from './shell/AskDialog.vue';
@@ -283,6 +284,7 @@ onUnmounted(() => {
                         <SearchScreen v-else-if="current === 'search'" />
                         <SharedScreen v-else-if="current === 'shared'" :platform="platform" />
                         <MessagesScreen v-else-if="current === 'messages'" />
+                        <NetworkScreen v-else-if="current === 'network'" @ed2k="ed2k" @kad="kad" />
                         <PlaceholderScreen v-else :place="current" />
                     </main>
                 </div>

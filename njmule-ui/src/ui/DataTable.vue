@@ -60,6 +60,8 @@ const props = defineProps<{
     /** Classes and styles of a row besides the table's own, such as the colour of what a search result is to us. */
     rowClass?: (row: T) => string | string[];
     rowStyle?: (row: T) => Record<string, string>;
+    /** The columns keep their own widths and the list scrolls sideways, rather than filling its width. */
+    fixedWidths?: boolean;
 }>();
 const emit = defineEmits<{ activate: [row: T]; keydown: [event: KeyboardEvent] }>();
 const selected = defineModel<string[]>('selected', { required: true });
@@ -146,7 +148,9 @@ const total = computed(() => (table as any).getTotalSize() as number);
 // As the desktop app's tables, the columns fill the list's width, wider or narrower in proportion to their own, never
 // narrower than their least; the list scrolls sideways only when even that does not fit.
 const room = ref(0);
-const stretch = computed(() => (total.value > 0 && room.value > 0 ? room.value / total.value : 1));
+const stretch = computed(() =>
+    !props.fixedWidths && total.value > 0 && room.value > 0 ? room.value / total.value : 1,
+);
 const width = computed(() =>
     (table as any).getVisibleLeafColumns().reduce((sum: number, c: any) => sum + columnWidth(c), 0),
 );

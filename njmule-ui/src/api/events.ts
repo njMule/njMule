@@ -15,6 +15,7 @@ export interface EventData {
     'server.connecting': { server?: { name?: string; address?: string } };
     'server.connected': { server?: { name?: string; address?: string } };
     'server.disconnected': unknown;
+    'server.message': { server?: { name?: string; address?: string }; text?: string };
     'message.received': { nick?: string; address?: string };
     'preferences.changed': unknown;
     log: { message?: string; level?: string };

@@ -203,6 +203,13 @@ select {
     background: var(--color-bg-subtle);
 }
 
+.button.small {
+    gap: 6px;
+    height: 29px;
+    padding: 0 8px;
+    font-size: 0.8em;
+}
+
 .button.icon-only {
     width: 36px;
     padding: 0;

@@ -736,12 +736,6 @@ onUnmounted(() => window.clearInterval(timer));
     grid-column: 1 / 2;
 }
 
-.button.small {
-    height: 30px;
-    padding: 0 8px;
-    font-size: 0.92em;
-}
-
 .stop-search {
     --nj-icon-color: var(--nj-accent-strong);
 }
