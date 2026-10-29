@@ -20,6 +20,7 @@ import java.io.BufferedReader;
 import java.io.Console;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -52,6 +53,7 @@ import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.remote.ApiToken;
 import org.njmule.webui.ApiClient;
+import org.njmule.webui.ControlEndpoint;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.UpdateHelp;
 import org.njmule.webui.WebUi;
@@ -72,6 +74,9 @@ public final class Main {
 
     /** How long --exit waits for the running instance to stop. */
     private static final Duration EXIT_WAIT = Duration.ofSeconds(30);
+    // Set by the desktop shell that starts njMule for its window; the line it reads the API from starts with this.
+    private static final String CONTROL_ENDPOINT_VARIABLE = "NJMULE_CONTROL_ENDPOINT";
+    private static final String CONTROL_LINE = "njmule-control ";
 
     private static final Duration REMOTE_SEARCH_WAIT = Duration.ofSeconds(10);
 
@@ -563,6 +568,35 @@ public final class Main {
         }
     }
 
+    /**
+     * For the desktop shell that started njMule (NJMULE_CONTROL_ENDPOINT=1): the API on the loopback address with a
+     * token of this run, both on one line of the output; njMule stops when the shell closes its input.
+     */
+    private static Optional<ControlEndpoint> startControlEndpoint(
+            NjMuleEngine engine, PrintStream out, CompletableFuture<Void> stop) {
+        if (!"1".equals(System.getenv(CONTROL_ENDPOINT_VARIABLE))) {
+            return Optional.empty();
+        }
+        try {
+            ControlEndpoint endpoint = ControlEndpoint.start(engine, () -> stop.complete(null));
+            out.println(CONTROL_LINE + "{\"url\":\"" + endpoint.url() + "\",\"token\":\"" + endpoint.token() + "\"}");
+            out.flush();
+            Thread.ofPlatform().daemon().name("njmule-shell-watch").start(() -> {
+                try {
+                    System.in.transferTo(OutputStream.nullOutputStream());
+                } catch (IOException e) {
+                    // Gone as well.
+                }
+                stop.complete(null);
+            });
+            return Optional.of(endpoint);
+        } catch (IOException e) {
+            logger.error("Cannot start the control endpoint: {}", e.toString());
+            stop.complete(null);
+            return Optional.empty();
+        }
+    }
+
     private static int runEngine(
             LaunchOptions cli, List<String> args, PrintStream out, PrintStream err, CompletableFuture<Void> stop) {
         AppDirectories dirs = AppDirectories.resolve(cli.configDir());
@@ -645,6 +679,7 @@ public final class Main {
         // A new version installed now: everything is saved and the engine stops, as on exit.
         Updating.onRestart(engine, () -> stop.complete(null));
         Optional<WebUi> web = startWebUi(engine, dirs, out, stop);
+        Optional<ControlEndpoint> control = startControlEndpoint(engine, out, stop);
         for (Ed2kLink link : cli.links()) {
             follow(engine, link, err);
         }
@@ -652,6 +687,7 @@ public final class Main {
         Runnable shutdown = () -> {
             handoff.ifPresent(LinkHandoff::close);
             web.ifPresent(WebUi::close);
+            control.ifPresent(ControlEndpoint::close);
             engine.close();
         };
         Thread hook = Thread.ofPlatform().name("njmule-shutdown").unstarted(() -> {
