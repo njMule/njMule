@@ -99,6 +99,28 @@ export function bestLanguage(wanted: readonly string[]): string {
 
 const LANGUAGE_KEY = 'njmule.language';
 
+/** The language chosen in the options, empty while the system's decides. */
+export function keptLanguage(): string {
+    try {
+        return localStorage.getItem(LANGUAGE_KEY) ?? '';
+    } catch {
+        return '';
+    }
+}
+
+/** Keeps {@code tag} as the language of the next windows, empty to follow the system. */
+export function keepLanguage(tag: string): void {
+    try {
+        if (tag === '') {
+            localStorage.removeItem(LANGUAGE_KEY);
+        } else {
+            localStorage.setItem(LANGUAGE_KEY, tag);
+        }
+    } catch {
+        // The system's language then.
+    }
+}
+
 /**
  * The language of the window: one asked for in the address (?lang=it, kept from then on), the one chosen before, or
  * the best of ours for the system's.

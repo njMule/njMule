@@ -19,6 +19,7 @@ import PlaceholderScreen from './screens/PlaceholderScreen.vue';
 import SearchScreen from './screens/SearchScreen.vue';
 import MessagesScreen from './screens/MessagesScreen.vue';
 import NetworkScreen from './screens/NetworkScreen.vue';
+import SettingsScreen from './screens/SettingsScreen.vue';
 import SharedScreen from './screens/SharedScreen.vue';
 import StatisticsScreen from './screens/StatisticsScreen.vue';
 import TransfersScreen from './screens/TransfersScreen.vue';
@@ -70,6 +71,9 @@ const summary = computed(() => {
     }
     if (current.value === 'shared') {
         return shared.value.length === 0 ? '' : t('nj.summary.shared', shared.value.length, uploads.value.length);
+    }
+    if (current.value === 'settings') {
+        return t('nj.settings.subtitle');
     }
     if (current.value === 'statistics') {
         const s = status.value;
@@ -293,6 +297,7 @@ onUnmounted(() => {
                         <MessagesScreen v-else-if="current === 'messages'" />
                         <NetworkScreen v-else-if="current === 'network'" @ed2k="ed2k" @kad="kad" />
                         <StatisticsScreen v-else-if="current === 'statistics'" />
+                        <SettingsScreen v-else-if="current === 'settings'" />
                         <PlaceholderScreen v-else :place="current" />
                     </main>
                 </div>
