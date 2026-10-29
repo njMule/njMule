@@ -18,9 +18,11 @@ package org.njmule.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.download.DownloadManager;
 import org.njmule.core.kad.KadNode;
 import org.njmule.core.kad.UInt128;
 import org.njmule.core.protocol.ed2k.NatTraversalMessages;
@@ -37,7 +39,7 @@ class KadSourceFilterTest {
     private boolean callable = true;
     private boolean traversing;
     private KadNode.Source source;
-    private boolean kept;
+    private List<DownloadManager.KadSource> kept = List.of();
 
     @Test
     void shouldKeepAFirewalledSourceMetThroughTheRouters() {
@@ -123,10 +125,10 @@ class KadSourceFilterTest {
     }
 
     private void whenTheSourceIsChecked() {
-        this.kept = Network.keepsKadSource(this.source, this.callable, this.traversing);
+        this.kept = Network.keptKadSources(List.of(this.source), this.callable, this.traversing);
     }
 
     private void thenTheSourceIsKept(boolean expected) {
-        assertThat(this.kept).isEqualTo(expected);
+        assertThat(this.kept).hasSize(expected ? 1 : 0);
     }
 }

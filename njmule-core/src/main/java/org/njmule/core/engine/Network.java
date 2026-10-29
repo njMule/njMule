@@ -2716,14 +2716,7 @@ final class Network {
                 return node.findSources(file, size, found -> {
                     boolean callable =
                             !node.isFirewalled() || Network.this.context.clientId() >= ServerMessages.LOW_ID_LIMIT;
-                    boolean traversing = Network.this.natTraversal != null && mayTraverse();
-                    List<DownloadManager.KadSource> converted = new ArrayList<>();
-                    for (KadNode.Source s : found) {
-                        if (keepsKadSource(s, callable, traversing)) {
-                            converted.add(kadSource(s));
-                        }
-                    }
-                    sources.accept(converted);
+                    sources.accept(keptKadSources(found, callable, mayTraverse()));
                 });
             }
 
@@ -2742,12 +2735,19 @@ final class Network {
 
     // A firewalled source can only connect to us: useless while we cannot be called back, unless we are both met
     // through the routers, which takes its buddy and its uTP.
-    static boolean keepsKadSource(KadNode.Source source, boolean callable, boolean traversing) {
-        return !source.isFirewalled()
-                || callable
-                || (traversing
-                        && source.buddy().isPresent()
-                        && (source.connectOptions() & NatTraversalMessages.OPTION_UTP) != 0);
+    static List<DownloadManager.KadSource> keptKadSources(
+            List<KadNode.Source> found, boolean callable, boolean traversing) {
+        List<DownloadManager.KadSource> kept = new ArrayList<>();
+        for (KadNode.Source s : found) {
+            if (!s.isFirewalled()
+                    || callable
+                    || (traversing
+                            && s.buddy().isPresent()
+                            && (s.connectOptions() & NatTraversalMessages.OPTION_UTP) != 0)) {
+                kept.add(kadSource(s));
+            }
+        }
+        return kept;
     }
 
     private static DownloadManager.KadSource kadSource(KadNode.Source s) {
