@@ -9,13 +9,14 @@ import { answer, api } from './api/client';
 import { rate } from './format';
 import { t } from './i18n';
 import { fileLinks } from './links';
-import { connection, on, preferences, running, serverName, status } from './model/engine';
+import { connection, on, preferences, running, serverName, shared, status, uploads } from './model/engine';
 import { networkWords } from './network';
 import { current, PLACES, searchRequest, shortcut, withShortcutKey } from './places';
 import { searches } from './search';
 import type { Platform } from './platform';
 import PlaceholderScreen from './screens/PlaceholderScreen.vue';
 import SearchScreen from './screens/SearchScreen.vue';
+import SharedScreen from './screens/SharedScreen.vue';
 import TransfersScreen from './screens/TransfersScreen.vue';
 import AskDialog from './shell/AskDialog.vue';
 import CommandPalette, { type Command } from './shell/CommandPalette.vue';
@@ -58,6 +59,9 @@ const summary = computed(() => {
         return searches.value.length === 0
             ? ''
             : t('nj.summary.search', searches.value.length, searches.value.filter((s) => s.running).length);
+    }
+    if (current.value === 'shared') {
+        return shared.value.length === 0 ? '' : t('nj.summary.shared', shared.value.length, uploads.value.length);
     }
     return current.value === 'network' ? `${words.value.ed2k} · ${words.value.kad}` : '';
 });
@@ -272,6 +276,7 @@ onUnmounted(() => {
                     <main class="content">
                         <TransfersScreen v-if="current === 'transfers'" :platform="platform" />
                         <SearchScreen v-else-if="current === 'search'" />
+                        <SharedScreen v-else-if="current === 'shared'" :platform="platform" />
                         <PlaceholderScreen v-else :place="current" />
                     </main>
                 </div>

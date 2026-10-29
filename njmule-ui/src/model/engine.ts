@@ -17,6 +17,8 @@ export type Ban = Schemas['Ban'];
 export type KnownClient = Schemas['KnownClient'];
 export type Category = Schemas['Category'];
 export type Server = Schemas['Server'];
+export type SharedFile = Schemas['SharedFile'];
+export type SharedDirectory = Schemas['SharedDirectory'];
 
 /** Whether we are on an eD2K server, trying one, or on none. */
 export type Connection = 'disconnected' | 'connecting' | 'connected';
@@ -37,6 +39,7 @@ export const uploads = shallowRef<Upload[]>([]);
 export const bans = shallowRef<Ban[]>([]);
 export const known = shallowRef<KnownClient[]>([]);
 export const servers = shallowRef<Server[]>([]);
+export const shared = shallowRef<SharedFile[]>([]);
 export const categories = shallowRef<Category[]>([]);
 export const preferences = shallowRef<Record<string, string>>({});
 export const rates = shallowRef<RateSample[]>([]);
@@ -129,6 +132,9 @@ async function tick(): Promise<void> {
     if (ticks % 10 === 0) {
         void read(api().GET('/servers'), servers);
     }
+    if (ticks % 15 === 0) {
+        void read(api().GET('/shared'), shared);
+    }
     if (ticks % 30 === 0) {
         void read(api().GET('/clients/known'), known);
     }
@@ -143,6 +149,7 @@ async function readAll(): Promise<void> {
         read(api().GET('/bans'), bans),
         read(api().GET('/servers'), servers),
         read(api().GET('/clients/known'), known),
+        read(api().GET('/shared'), shared),
         read(api().GET('/categories'), categories),
         readPreferences(),
         readRates(),
@@ -214,6 +221,11 @@ async function readLastLog(): Promise<void> {
 /** Reads the categories again, after they changed. */
 export function readCategories(): Promise<void> {
     return read(api().GET('/categories'), categories);
+}
+
+/** Reads the shared files again at once, after a change of ours. */
+export function readShared(): Promise<void> {
+    return read(api().GET('/shared'), shared);
 }
 
 /** Reads the downloads again at once, after a change of ours. */
