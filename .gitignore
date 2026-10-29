@@ -10,6 +10,9 @@ node_modules/
 # Output folders of the former Maven build, still present in older checkouts.
 target/
 
+# The desktop shell's schemas, made by Tauri at each build.
+njmule-desktop/src-tauri/gen/
+
 # --- Java / JVM --------------------------------------------------------------
 *.class
 hs_err_pid*

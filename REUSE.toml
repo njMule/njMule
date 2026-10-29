@@ -25,6 +25,10 @@ path = [
     "njmule-gui/native/**/*.json",
     "njmule-webapp/*.json",
     "njmule-ui/*.json",
+    "njmule-desktop/*.json",
+    "njmule-desktop/src-tauri/*.json",
+    "njmule-desktop/src-tauri/Cargo.lock",
+    "njmule-desktop/src-tauri/capabilities/*.json",
     "website/*.json",
 ]
 precedence = "aggregate"

@@ -31,6 +31,7 @@ include(
     "njmule-testkit",
     "njmule-webapp",
     "njmule-ui",
+    "njmule-desktop",
     "njmule-webui",
     "njmule-app",
     "njmule-gui",
