@@ -128,6 +128,7 @@ class RemoteApiContractTest {
                 "/api/v1/bans",
                 "/api/v1/update",
                 "/api/v1/preferences",
+                "/api/v1/preferences/defaults",
                 "/api/v1/schedule",
                 "/api/v1/rates",
                 "/api/v1/rates?span=86400",

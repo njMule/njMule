@@ -223,6 +223,7 @@ public final class RemoteApi implements AutoCloseable {
                 entry("getStatus", this::getStatus),
                 entry("getLimits", c -> limits(c, this.engine.preferences())),
                 entry("getPreferences", c -> preferences(c, this.engine.preferences())),
+                entry("getPreferenceDefaults", c -> preferences(c, Preferences.defaults())),
                 entry("getRates", this::getRates),
                 entry("importEmule", this::importEmule),
                 entry(

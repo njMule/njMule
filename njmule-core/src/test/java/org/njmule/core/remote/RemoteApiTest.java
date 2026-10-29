@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -71,6 +72,7 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
+import org.njmule.core.persist.PreferencesCodec;
 
 /** The remote-control API against an engine the test controls. */
 @Timeout(60)
@@ -476,6 +478,19 @@ class RemoteApiTest {
         givenTheEngineKeepsPreferences();
 
         whenCalled("GET", "/api/v1/preferences", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"user.nick\":\"njMule\"", "\"net.tcpPort\":\"4662\"");
+        thenTheBodyDoesNotContain("proxy.password");
+    }
+
+    @Test
+    void shouldGiveTheDefaultPreferencesWhateverWasChanged() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+        givenTheNickWasChanged();
+
+        whenCalled("GET", "/api/v1/preferences/defaults", "");
 
         thenTheStatusIs(200);
         thenTheBodyContains("\"user.nick\":\"njMule\"", "\"net.tcpPort\":\"4662\"");
@@ -1135,6 +1150,11 @@ class RemoteApiTest {
     }
 
     @SuppressWarnings("unchecked")
+    private void givenTheNickWasChanged() {
+        this.preferences = PreferencesCodec.apply(this.preferences, Map.of("user.nick", "Night Owl"));
+        this.fake.value("preferences", this.preferences);
+    }
+
     private void givenTheEngineKeepsPreferences() {
         this.fake.value("preferences", this.preferences);
         this.fake.answer("updatePreferences", args -> {

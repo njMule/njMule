@@ -176,6 +176,20 @@ paths:
           $ref: "#/components/responses/BadRequest"
         default:
           $ref: "#/components/responses/Error"
+  /preferences/defaults:
+    get:
+      operationId: getPreferenceDefaults
+      tags: [engine]
+      summary: Every preference as it is before anyone changes it, written as the preferences are.
+      responses:
+        "200":
+          description: The default preferences by key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preferences"
+        default:
+          $ref: "#/components/responses/Error"
   /schedule:
     get:
       operationId: getSchedule
