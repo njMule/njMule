@@ -2714,12 +2714,12 @@ final class Network {
             @Override
             public boolean find(Hash16 file, long size, Consumer<List<DownloadManager.KadSource>> sources) {
                 return node.findSources(file, size, found -> {
-                    // A firewalled source can only connect to us: useless while we are firewalled too.
                     boolean callable =
                             !node.isFirewalled() || Network.this.context.clientId() >= ServerMessages.LOW_ID_LIMIT;
+                    boolean traversing = Network.this.natTraversal != null && mayTraverse();
                     List<DownloadManager.KadSource> converted = new ArrayList<>();
                     for (KadNode.Source s : found) {
-                        if (!s.isFirewalled() || callable) {
+                        if (keepsKadSource(s, callable, traversing)) {
                             converted.add(kadSource(s));
                         }
                     }
@@ -2738,6 +2738,16 @@ final class Network {
                 return node.isFirewalled() ? 0 : node.publicIp();
             }
         };
+    }
+
+    // A firewalled source can only connect to us: useless while we cannot be called back, unless we are both met
+    // through the routers, which takes its buddy and its uTP.
+    static boolean keepsKadSource(KadNode.Source source, boolean callable, boolean traversing) {
+        return !source.isFirewalled()
+                || callable
+                || (traversing
+                        && source.buddy().isPresent()
+                        && (source.connectOptions() & NatTraversalMessages.OPTION_UTP) != 0);
     }
 
     private static DownloadManager.KadSource kadSource(KadNode.Source s) {
