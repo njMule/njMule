@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
 
 - The desktop app's Updates window shows the note on what the check sends above its buttons, as a
   readable paragraph, and is as wide as the buttons need, in every language.
+- Firewalled on Kad with a LowID, njMule keeps the firewalled Kad sources that have a buddy and take
+  uTP, and meets them through the routers, instead of leaving them out before the rendezvous.
 
 ## [0.1.2] - 2026-10-27
 
