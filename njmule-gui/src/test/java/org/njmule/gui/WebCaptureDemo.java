@@ -38,6 +38,7 @@ import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.testkit.FreePorts;
+import org.njmule.webui.ControlEndpoint;
 import org.njmule.webui.Passwords;
 import org.njmule.webui.WebUi;
 import org.njmule.webui.WebUiSettings;
@@ -81,6 +82,15 @@ final class WebCaptureDemo {
                 return CompletableFuture.completedFuture(CaptureDemo.LIVE_SEARCH);
             });
             NjMuleEngine shown = Engines.withEvents(Engines.overriding(engine, commands), events);
+            if (Boolean.getBoolean("njmule.capture.control")) {
+                // The desktop shell's endpoint instead, for the interface of njmule-ui: its address and token.
+                try (ControlEndpoint control = ControlEndpoint.start(shown, () -> {})) {
+                    System.out.println("{\"url\":\"" + control.url() + "\",\"token\":\"" + control.token() + "\"}");
+                    System.out.flush();
+                    waitForTheEndOfInput(System.in);
+                }
+                return;
+            }
             String password = secret();
             String guest = secret();
             int port = FreePorts.tcp();
