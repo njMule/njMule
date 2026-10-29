@@ -50,6 +50,8 @@
     --nj-graph-up: #5e8a4a;
     --nj-dot-useless: var(--color-neutral-emphasis);
     --nj-scrim: rgba(46, 52, 64, 0.18);
+    /* The plate under a CAPTCHA: light in every theme, as its letters are drawn for a light page. */
+    --nj-captcha-paper: #ffffff;
     --nj-row: 32px;
     color-scheme: light;
 }
@@ -77,6 +79,7 @@
     --nj-graph-up: #7d9f57;
     --nj-dot-useless: #81889a;
     --nj-scrim: rgba(0, 0, 0, 0.35);
+    --nj-captcha-paper: #eceff4;
     color-scheme: dark;
 }
 

@@ -8,6 +8,7 @@ import App from './App.vue';
 import { connect } from './api/client';
 import { loadLanguage, t, windowLanguage } from './i18n';
 import { follow } from './model/engine';
+import { followChats } from './chats';
 import { currentPlatform } from './platform';
 import { followTheme } from './theme';
 
@@ -24,4 +25,5 @@ connect(await platform.endpoint(), () => {
 await loadLanguage(windowLanguage(navigator.languages));
 platform.localize({ show: t('nj.tray.show'), exit: t('IDS_EXIT') });
 follow();
+followChats();
 createApp(App, { platform }).mount('#app');

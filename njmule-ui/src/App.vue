@@ -13,9 +13,11 @@ import { connection, on, preferences, running, serverName, shared, status, uploa
 import { networkWords } from './network';
 import { current, PLACES, searchRequest, shortcut, withShortcutKey } from './places';
 import { searches } from './search';
+import { chats, friends, unreadTotal } from './chats';
 import type { Platform } from './platform';
 import PlaceholderScreen from './screens/PlaceholderScreen.vue';
 import SearchScreen from './screens/SearchScreen.vue';
+import MessagesScreen from './screens/MessagesScreen.vue';
 import SharedScreen from './screens/SharedScreen.vue';
 import TransfersScreen from './screens/TransfersScreen.vue';
 import AskDialog from './shell/AskDialog.vue';
@@ -45,7 +47,6 @@ const collapsed = computed(() => narrow.value || userCollapsed.value);
 const paletteOpen = ref(false);
 const paletteText = ref('');
 const shortcutsOpen = ref(false);
-const unread = ref(0);
 
 const words = computed(() => networkWords(connection.value, status.value, serverName.value));
 const title = computed(() => t(PLACES.find((p) => p.id === current.value)?.title ?? ''));
@@ -59,6 +60,11 @@ const summary = computed(() => {
         return searches.value.length === 0
             ? ''
             : t('nj.summary.search', searches.value.length, searches.value.filter((s) => s.running).length);
+    }
+    if (current.value === 'messages') {
+        return chats.value.length === 0 && friends.value.length === 0
+            ? ''
+            : t('nj.summary.messages', chats.value.length, friends.value.length);
     }
     if (current.value === 'shared') {
         return shared.value.length === 0 ? '' : t('nj.summary.shared', shared.value.length, uploads.value.length);
@@ -234,7 +240,6 @@ onMounted(() => {
     on('download.completed', (d) => success(t('nj.transfers.completed', d.download?.name ?? '')));
     on('message.received', (m) => {
         if (current.value !== 'messages') {
-            unread.value++;
             message(t('nj.chat.from', m.nick || m.address || ''));
         }
     });
@@ -255,7 +260,7 @@ onUnmounted(() => {
             <div class="frame">
                 <Sidebar
                     :collapsed="collapsed"
-                    :counts="{ transfers: running, messages: current === 'messages' ? 0 : unread }"
+                    :counts="{ transfers: running, messages: unreadTotal }"
                     :network="{ up: words.up, trying: words.trying, state: `${words.ed2k}\n${words.kad}` }"
                     @toggle="toggleSidebar"
                 />
@@ -277,6 +282,7 @@ onUnmounted(() => {
                         <TransfersScreen v-if="current === 'transfers'" :platform="platform" />
                         <SearchScreen v-else-if="current === 'search'" />
                         <SharedScreen v-else-if="current === 'shared'" :platform="platform" />
+                        <MessagesScreen v-else-if="current === 'messages'" />
                         <PlaceholderScreen v-else :place="current" />
                     </main>
                 </div>
