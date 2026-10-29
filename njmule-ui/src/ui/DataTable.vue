@@ -57,6 +57,9 @@ const props = defineProps<{
     label: string;
     /** The name of the menu that shows and hides the columns. */
     columnsLabel: string;
+    /** Classes and styles of a row besides the table's own, such as the colour of what a search result is to us. */
+    rowClass?: (row: T) => string | string[];
+    rowStyle?: (row: T) => Record<string, string>;
 }>();
 const emit = defineEmits<{ activate: [row: T]; keydown: [event: KeyboardEvent] }>();
 const selected = defineModel<string[]>('selected', { required: true });
@@ -140,15 +143,18 @@ const virtualizer = useVirtualizer(
     })),
 );
 const total = computed(() => (table as any).getTotalSize() as number);
-// As the desktop app's tables, the columns share the room the list has beyond their widths, in proportion.
+// As the desktop app's tables, the columns fill the list's width, wider or narrower in proportion to their own, never
+// narrower than their least; the list scrolls sideways only when even that does not fit.
 const room = ref(0);
-const stretch = computed(() => (total.value > 0 && room.value > total.value ? room.value / total.value : 1));
-const width = computed(() => Math.floor(total.value * stretch.value));
+const stretch = computed(() => (total.value > 0 && room.value > 0 ? room.value / total.value : 1));
+const width = computed(() =>
+    (table as any).getVisibleLeafColumns().reduce((sum: number, c: any) => sum + columnWidth(c), 0),
+);
 const header = ref<HTMLElement | null>(null);
 let observer: ResizeObserver | null = null;
 
 function columnWidth(column: any): number {
-    return Math.floor((column.getSize() as number) * stretch.value);
+    return Math.max(column.columnDef.minSize ?? 24, Math.floor((column.getSize() as number) * stretch.value));
 }
 
 onMounted(() => {
@@ -301,13 +307,19 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
                             :ref="(el) => el && virtualizer.measureElement(el as Element)"
                             :data-index="item.index"
                             class="row"
-                            :class="{
-                                selected: selected.includes(tableRows[item.index].id),
-                                opened: below?.(tableRows[item.index].original),
-                            }"
+                            :class="[
+                                rowClass?.(tableRows[item.index].original),
+                                {
+                                    selected: selected.includes(tableRows[item.index].id),
+                                    opened: below?.(tableRows[item.index].original),
+                                },
+                            ]"
                             role="row"
                             :aria-selected="selected.includes(tableRows[item.index].id)"
-                            :style="{ transform: `translateY(${item.start}px)` }"
+                            :style="{
+                                ...rowStyle?.(tableRows[item.index].original),
+                                transform: `translateY(${item.start}px)`,
+                            }"
                             @click="choose(tableRows[item.index], $event)"
                             @dblclick="emit('activate', tableRows[item.index].original)"
                             @contextmenu="menuOn(tableRows[item.index])"
@@ -321,7 +333,7 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
                                     role="gridcell"
                                     :style="{ width: `${columnWidth(cell.column)}px` }"
                                 >
-                                    <FlexRender :cell="cell" />
+                                    <span class="cell-content"><FlexRender :cell="cell" /></span>
                                 </div>
                             </div>
                             <slot
@@ -479,6 +491,19 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
 .numeric {
     justify-content: flex-end;
     direction: ltr;
+}
+
+/* What a cell cannot show whole ends in an ellipsis, as in the desktop app. */
+.cell-content {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.numeric .cell-content {
+    text-align: end;
 }
 
 .placeholder {

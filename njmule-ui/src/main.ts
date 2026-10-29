@@ -6,7 +6,7 @@ import './styles/njmule.css';
 import { createApp } from 'vue';
 import App from './App.vue';
 import { connect } from './api/client';
-import { bestLanguage, loadLanguage, t } from './i18n';
+import { loadLanguage, t, windowLanguage } from './i18n';
 import { follow } from './model/engine';
 import { currentPlatform } from './platform';
 import { followTheme } from './theme';
@@ -21,7 +21,7 @@ connect(await platform.endpoint(), () => {
         window.location.assign('login');
     }
 });
-await loadLanguage(bestLanguage(navigator.languages));
+await loadLanguage(windowLanguage(navigator.languages));
 platform.localize({ show: t('nj.tray.show'), exit: t('IDS_EXIT') });
 follow();
 createApp(App, { platform }).mount('#app');

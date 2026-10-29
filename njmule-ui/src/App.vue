@@ -11,9 +11,11 @@ import { t } from './i18n';
 import { fileLinks } from './links';
 import { connection, on, preferences, running, serverName, status } from './model/engine';
 import { networkWords } from './network';
-import { current, PLACES, shortcut, withShortcutKey } from './places';
+import { current, PLACES, searchRequest, shortcut, withShortcutKey } from './places';
+import { searches } from './search';
 import type { Platform } from './platform';
 import PlaceholderScreen from './screens/PlaceholderScreen.vue';
+import SearchScreen from './screens/SearchScreen.vue';
 import TransfersScreen from './screens/TransfersScreen.vue';
 import AskDialog from './shell/AskDialog.vue';
 import CommandPalette, { type Command } from './shell/CommandPalette.vue';
@@ -51,6 +53,11 @@ const summary = computed(() => {
         return running.value === 0 && (status.value?.downloads ?? 0) === 0
             ? ''
             : t('nj.summary.transfers', running.value, rate(status.value?.downloadBytesPerSecond ?? 0));
+    }
+    if (current.value === 'search') {
+        return searches.value.length === 0
+            ? ''
+            : t('nj.summary.search', searches.value.length, searches.value.filter((s) => s.running).length);
     }
     return current.value === 'network' ? `${words.value.ed2k} · ${words.value.kad}` : '';
 });
@@ -205,7 +212,16 @@ function typed(text: string): Command[] {
     if (text.toLowerCase().startsWith('ed2k://')) {
         return [];
     }
-    return [{ title: t('nj.palette.search', text), keys: '', run: () => (current.value = 'search') }];
+    return [
+        {
+            title: t('nj.palette.search', text),
+            keys: '',
+            run: () => {
+                searchRequest.value = text;
+                current.value = 'search';
+            },
+        },
+    ];
 }
 
 onMounted(() => {
@@ -255,6 +271,7 @@ onUnmounted(() => {
                     />
                     <main class="content">
                         <TransfersScreen v-if="current === 'transfers'" :platform="platform" />
+                        <SearchScreen v-else-if="current === 'search'" />
                         <PlaceholderScreen v-else :place="current" />
                     </main>
                 </div>

@@ -97,6 +97,32 @@ export function bestLanguage(wanted: readonly string[]): string {
     return 'en';
 }
 
+const LANGUAGE_KEY = 'njmule.language';
+
+/**
+ * The language of the window: one asked for in the address (?lang=it, kept from then on), the one chosen before, or
+ * the best of ours for the system's.
+ */
+export function windowLanguage(wanted: readonly string[]): string {
+    const ours: readonly string[] = LANGUAGES;
+    const asked = new URLSearchParams(window.location.search).get('lang');
+    try {
+        if (asked !== null && ours.includes(asked)) {
+            localStorage.setItem(LANGUAGE_KEY, asked);
+        }
+        const kept = localStorage.getItem(LANGUAGE_KEY);
+        if (kept !== null && ours.includes(kept)) {
+            return kept;
+        }
+    } catch {
+        // No storage: the address or the system decides.
+        if (asked !== null && ours.includes(asked)) {
+            return asked;
+        }
+    }
+    return bestLanguage(wanted);
+}
+
 async function texts(tag: string): Promise<Record<string, string>> {
     const answer = await fetch(`i18n/${tag}.json`);
     return answer.ok ? ((await answer.json()) as Record<string, string>) : {};

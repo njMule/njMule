@@ -68,6 +68,9 @@ window.addEventListener('hashchange', () => {
     }
 });
 
+/** Words to search the network for, asked from elsewhere (the palette); the search screen takes and clears them. */
+export const searchRequest = ref('');
+
 /** The shortcut of the place at {@code index}, as the platform writes it: Ctrl+1, or ⌘1. */
 export function shortcut(index: number): string {
     return `${mac() ? '⌘' : 'Ctrl+'}${index + 1}`;
