@@ -89,6 +89,16 @@ export function percent(part: number, whole: number): string {
     return `${decimals(ratio * 100, 1)} %`;
 }
 
+/** A ratio with two decimals: 2.50. */
+export function ratio(value: number): string {
+    return decimals(value, 2);
+}
+
+/** The hour and minute of {@code time}, on a 24-hour clock as the desktop app writes them: 22:09. */
+export function clock(time: Date): string {
+    return time.toLocaleTimeString(language.value, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+}
+
 export function count(value: number): string {
     return value.toLocaleString(language.value);
 }

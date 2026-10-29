@@ -48,6 +48,7 @@
     --nj-cat-8: #e6b3cf;
     --nj-graph-down: #4570ad;
     --nj-graph-up: #5e8a4a;
+    --nj-graph-grid: var(--color-border-muted);
     --nj-dot-useless: var(--color-neutral-emphasis);
     --nj-scrim: rgba(46, 52, 64, 0.18);
     /* The plate under a CAPTCHA: light in every theme, as its letters are drawn for a light page. */
@@ -96,6 +97,9 @@
         --nj-accent-strong: LinkText;
         --nj-bar-sources-max: Highlight;
         --nj-bar-complete: Highlight;
+        --nj-graph-down: LinkText;
+        --nj-graph-up: Highlight;
+        --nj-graph-grid: GrayText;
     }
 }
 

@@ -6,7 +6,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 import { TooltipProvider } from 'reka-ui';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { answer, api } from './api/client';
-import { rate } from './format';
+import { duration, rate, size } from './format';
 import { t } from './i18n';
 import { fileLinks } from './links';
 import { connection, on, preferences, running, serverName, shared, status, uploads } from './model/engine';
@@ -20,6 +20,7 @@ import SearchScreen from './screens/SearchScreen.vue';
 import MessagesScreen from './screens/MessagesScreen.vue';
 import NetworkScreen from './screens/NetworkScreen.vue';
 import SharedScreen from './screens/SharedScreen.vue';
+import StatisticsScreen from './screens/StatisticsScreen.vue';
 import TransfersScreen from './screens/TransfersScreen.vue';
 import AskDialog from './shell/AskDialog.vue';
 import CommandPalette, { type Command } from './shell/CommandPalette.vue';
@@ -69,6 +70,12 @@ const summary = computed(() => {
     }
     if (current.value === 'shared') {
         return shared.value.length === 0 ? '' : t('nj.summary.shared', shared.value.length, uploads.value.length);
+    }
+    if (current.value === 'statistics') {
+        const s = status.value;
+        return s === null
+            ? ''
+            : t('nj.summary.statistics', duration(s.sessionSeconds), size(s.downloaded), size(s.uploaded));
     }
     return current.value === 'network' ? `${words.value.ed2k} · ${words.value.kad}` : '';
 });
@@ -285,6 +292,7 @@ onUnmounted(() => {
                         <SharedScreen v-else-if="current === 'shared'" :platform="platform" />
                         <MessagesScreen v-else-if="current === 'messages'" />
                         <NetworkScreen v-else-if="current === 'network'" @ed2k="ed2k" @kad="kad" />
+                        <StatisticsScreen v-else-if="current === 'statistics'" />
                         <PlaceholderScreen v-else :place="current" />
                     </main>
                 </div>

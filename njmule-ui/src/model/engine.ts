@@ -48,6 +48,8 @@ export const serverName = ref('');
 export const lastLog = ref('');
 /** What the servers said in this window's time: each line with the server's name. */
 export const serverNotes = shallowRef<{ time: string; server: string; text: string }[]>([]);
+/** The downloads completed while this window was open. */
+export const completedCount = ref(0);
 /** Why the engine could not be read, empty while it answers. */
 export const unreachable = ref('');
 
@@ -104,9 +106,12 @@ function react<K extends EventName>(name: K, data: EventData[K]): void {
             connection.value = 'disconnected';
             serverName.value = '';
             break;
+        case 'download.completed':
+            completedCount.value++;
+            void read(api().GET('/downloads'), downloads);
+            break;
         case 'download.added':
         case 'download.removed':
-        case 'download.completed':
             void read(api().GET('/downloads'), downloads);
             break;
         case 'preferences.changed':
