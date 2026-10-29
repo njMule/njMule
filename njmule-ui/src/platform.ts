@@ -1,0 +1,53 @@
+// SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import type { Endpoint } from './api/client';
+
+// What differs between the desktop app's window, where the shell (Tauri) does what the system offers, and a browser
+// page of the web interface, which keeps to what a page may do.
+
+export interface Platform {
+    /** Whether the interface runs in the desktop app's window. */
+    readonly desktop: boolean;
+    /** Where the engine answers and how to prove this interface to it. */
+    endpoint(): Promise<Endpoint>;
+    /** A folder of the computer the engine runs on, chosen by the user; null when none is or none can be. */
+    chooseFolder(title: string): Promise<string | null>;
+    /** eD2K links the system hands over, such as a link clicked in a browser. */
+    onLinks(handler: (links: string[]) => void): void;
+    /** Opens a folder in the system's file manager; false where it cannot. */
+    openFolder(path: string): Promise<boolean>;
+    /** Words the shell shows itself, such as its tray's menu, in the interface's language. */
+    localize(words: { show: string; exit: string }): void;
+}
+
+const browser: Platform = {
+    desktop: false,
+    endpoint: async () =>
+        // A development server may reach an engine with a token instead of a login session.
+        import.meta.env.VITE_NJMULE_TOKEN
+            ? { url: 'api/v1', token: import.meta.env.VITE_NJMULE_TOKEN as string }
+            : {
+                  url: 'api/v1',
+                  csrf: document.querySelector<HTMLMetaElement>('meta[name="njmule-csrf"]')?.content ?? '',
+              },
+    // A page reaches no folder: the user types the path of the engine's computer.
+    chooseFolder: async () => null,
+    onLinks: () => {},
+    openFolder: async () => false,
+    localize: () => {},
+};
+
+/** Whether the page runs in the desktop shell's window. */
+export function inDesktopShell(): boolean {
+    return '__TAURI_INTERNALS__' in window;
+}
+
+/** The platform the interface runs on; the shell's own module is loaded only there. */
+export async function currentPlatform(): Promise<Platform> {
+    if (!inDesktopShell()) {
+        return browser;
+    }
+    const { desktop } = await import('./desktop');
+    return desktop;
+}

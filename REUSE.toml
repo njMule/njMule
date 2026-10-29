@@ -24,6 +24,7 @@ path = [
     "njmule-gui/native/*.args",
     "njmule-gui/native/**/*.json",
     "njmule-webapp/*.json",
+    "njmule-ui/*.json",
     "website/*.json",
 ]
 precedence = "aggregate"
@@ -48,7 +49,7 @@ SPDX-License-Identifier = "Apache-2.0"
 # Manrope, the face of titles and of the wordmark: its static Bold and ExtraBold, downloaded unchanged on
 # 17 October 2026 from https://github.com/googlefonts/manrope at commit 468c0dbe38efa331b80bfe9448256abe27be44c3.
 [[annotations]]
-path = ["njmule-gui/src/main/resources/org/njmule/gui/fonts/*.ttf"]
+path = ["njmule-gui/src/main/resources/org/njmule/gui/fonts/*.ttf", "njmule-ui/src/assets/fonts/*.ttf"]
 precedence = "override"
 SPDX-FileCopyrightText = "2018 The Manrope Project Authors (https://github.com/googlefonts/manrope)"
 SPDX-License-Identifier = "OFL-1.1"

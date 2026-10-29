@@ -30,6 +30,7 @@ include(
     "njmule-core",
     "njmule-testkit",
     "njmule-webapp",
+    "njmule-ui",
     "njmule-webui",
     "njmule-app",
     "njmule-gui",
