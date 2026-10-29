@@ -120,7 +120,11 @@ const config: Config = {
 
     themeConfig: {
         image: 'img/brand/njmule-social-preview.png',
-        metadata: [{ name: 'keywords', content: 'njMule, eMule, eD2K, eDonkey, Kad, Kademlia, P2P, file sharing' }],
+        metadata: [
+            { name: 'keywords', content: 'njMule, eMule, eD2K, eDonkey, Kad, Kademlia, P2P, file sharing' },
+            // Proves to Google Search Console that the maintainer owns https://njmule.github.io/njMule/.
+            { name: 'google-site-verification', content: 'Ud_z740LIbT-6GxLyezwGmOfIitT5Gomwv6G0Ssl4_A' },
+        ],
         colorMode: { defaultMode: 'light', respectPrefersColorScheme: true },
         docs: { sidebar: { hideable: true, autoCollapseCategories: true } },
         navbar: {
