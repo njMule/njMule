@@ -68,8 +68,32 @@ window.addEventListener('hashchange', () => {
     }
 });
 
-/** The part of the network shown: the servers, Kad or the log; the network's place opens the one shown last. */
-export const networkPart = ref<'servers' | 'kad' | 'log'>('servers');
+type NetworkPart = 'servers' | 'kad' | 'log';
+
+const PART_KEY = 'njmule.networkPart';
+
+function savedPart(): NetworkPart {
+    try {
+        const part = localStorage.getItem(PART_KEY);
+        return part === 'kad' || part === 'log' ? part : 'servers';
+    } catch {
+        return 'servers';
+    }
+}
+
+/**
+ * The part of the network shown: the servers, Kad or the log; the network's place opens the one shown last, in this
+ * window and the next.
+ */
+export const networkPart = ref<NetworkPart>(savedPart());
+
+watch(networkPart, (part) => {
+    try {
+        localStorage.setItem(PART_KEY, part);
+    } catch {
+        // The next window opens on the servers.
+    }
+});
 
 /** Counts the times the log was asked to show its own tab rather than the servers' messages or ours. */
 export const logTabRequest = ref(0);
