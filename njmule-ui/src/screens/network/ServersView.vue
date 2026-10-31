@@ -510,7 +510,7 @@ function connectOrDisconnect(s: Server): Promise<void> {
     flex: 0 1 224px;
 }
 
-.add-servers {
+:deep(.add-servers) {
     display: flex;
     flex-direction: column;
     gap: 6px;

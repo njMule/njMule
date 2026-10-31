@@ -304,7 +304,7 @@ const OUTCOMES: Record<
     box-shadow: inset 0 0 0 1px var(--color-accent-emphasis);
 }
 
-.port-test {
+:deep(.port-test) {
     display: flex;
     flex-direction: column;
     gap: 8px;

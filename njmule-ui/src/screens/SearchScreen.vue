@@ -685,7 +685,7 @@ onUnmounted(() => window.clearInterval(timer));
     color: var(--color-fg-muted);
 }
 
-.search-parameters {
+:deep(.search-parameters) {
     display: flex;
     flex-direction: column;
     gap: 10px;
