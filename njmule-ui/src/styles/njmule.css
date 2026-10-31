@@ -125,6 +125,44 @@ body {
     overflow: hidden;
 }
 
+/* Scroll bars as the theme draws them: thin, with no arrows, the thumb in the muted text colour, half faded until
+   pointed at. */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: color-mix(in srgb, var(--color-border-subtle) 50%, transparent);
+}
+
+::-webkit-scrollbar-thumb {
+    border-radius: 1px;
+    background: color-mix(in srgb, var(--color-fg-muted) 50%, transparent);
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+    background: var(--color-fg-muted);
+}
+
+::-webkit-scrollbar-button {
+    display: none;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* Browsers without those take the standard thin bar in the same colours. */
+@supports not selector(::-webkit-scrollbar) {
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: color-mix(in srgb, var(--color-fg-muted) 50%, transparent)
+            color-mix(in srgb, var(--color-border-subtle) 50%, transparent);
+    }
+}
+
 button,
 input,
 select {
