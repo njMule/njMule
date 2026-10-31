@@ -208,29 +208,32 @@ input[type='radio'] {
     transform: scaleX(-1);
 }
 
-/* Buttons: the theme's outline and fill (its subtle background, as the desktop app's), a flat one only on hover; the
-   main action in the logo's orange. */
+/* Buttons: the theme's own button colours, as the desktop app's, a flat one only on hover; the main action in the
+   logo's orange. */
 .button {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     height: 36px;
     padding: 0 12px;
-    border: 1px solid var(--color-border-default);
+    border: 1px solid var(--color-button-border);
     border-radius: 6px;
-    background: var(--color-bg-subtle);
-    color: var(--color-fg-default);
+    background: var(--color-button-bg);
+    color: var(--color-button-fg);
     white-space: nowrap;
     cursor: pointer;
 }
 
 .button:hover {
-    background: var(--color-base-1);
+    border-color: var(--color-button-border-hover);
+    background: var(--color-button-bg-hover);
+    color: var(--color-button-fg-hover);
 }
 
 .button:active {
-    border-color: transparent;
-    background: var(--color-bg-subtle);
+    border-color: var(--color-button-border-pressed);
+    background: var(--color-button-bg-pressed);
+    color: var(--color-button-fg-pressed);
 }
 
 .button:focus-visible,
@@ -277,9 +280,9 @@ input[type='radio'] {
 }
 
 .button:disabled {
-    background: var(--color-bg-subtle);
+    background: var(--color-button-bg);
     color: var(--color-fg-muted);
-    border-color: var(--color-border-default);
+    border-color: var(--color-button-border);
     cursor: default;
 }
 
@@ -403,7 +406,12 @@ select:disabled {
 }
 
 .menu-item[data-highlighted] {
-    background: var(--color-base-1);
+    background: var(--color-menu-item-bg-focused);
+    color: var(--color-menu-item-fg-focused);
+}
+
+.menu-item[data-highlighted] .menu-end {
+    color: inherit;
 }
 
 .menu-item[data-disabled] {

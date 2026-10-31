@@ -30,7 +30,7 @@ const value = defineModel<V>({ required: true });
 .segments {
     display: inline-flex;
     flex: none;
-    border: 1px solid var(--color-border-default);
+    border: 1px solid var(--color-button-border);
     border-radius: 6px;
     overflow: hidden;
 }
@@ -42,13 +42,13 @@ const value = defineModel<V>({ required: true });
     height: 34px;
     padding: 0 12px;
     border: 0;
-    background: var(--color-bg-subtle);
+    background: var(--color-button-bg);
     white-space: nowrap;
     cursor: pointer;
 }
 
 .segment:hover {
-    background: var(--color-base-1);
+    background: var(--color-button-bg-hover);
 }
 
 /* A chosen segment is a pastel fill inside an accent outline, its text in the usual colour. */

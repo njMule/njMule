@@ -106,14 +106,28 @@ abstract class Themes : DefaultTask() {
             for (name in names) {
                 val entry = zip.getEntry("atlantafx/base/theme/$name.css") ?: error("No theme $name in $jar")
                 val text = zip.getInputStream(entry).reader(Charsets.UTF_8).readText()
-                // The first rule of each theme is its root, which declares every colour.
-                val root = text.substringAfter(".root {").substringBefore("}")
-                css.append(":root[data-theme='$name'] {\n")
-                for (line in root.lines()) {
-                    val m = declaration.find(line) ?: continue
-                    val value = m.groupValues[2].trim().replace(Regex("""-color-[a-z0-9-]+""")) { "var(-${it.value})" }
-                    css.append("    -${m.groupValues[1]}: $value;\n")
+                fun rule(selector: String) =
+                    Regex("""(?m)^${Regex.escape(selector)} \{([^}]*)}""").find(text)?.groupValues?.get(1)
+                        ?: error("No rule $selector in theme $name")
+                fun declare(property: String, value: String) {
+                    val colour = value.trim().replace(Regex("""-color-[a-z0-9-]+""")) { "var(-${it.value})" }
+                    css.append("    -$property: $colour;\n")
                 }
+                css.append(":root[data-theme='$name'] {\n")
+                // The first rule of each theme is its root, which declares every colour.
+                for (line in rule(".root").lines()) {
+                    val m = declaration.find(line) ?: continue
+                    declare(m.groupValues[1], m.groupValues[2])
+                }
+                // Buttons and menu items take their own shades in each theme: a dark theme's hover is no light one's.
+                for (line in rule(".button").lines()) {
+                    val m = declaration.find(line)?.takeIf { it.groupValues[1].startsWith("-color-button-") } ?: continue
+                    declare(m.groupValues[1], m.groupValues[2])
+                }
+                val focused = Regex("""-fx-background-color:\s*([^,;]+)""").find(rule(".menu-item:focused"))
+                val label = Regex("""-fx-text-fill:\s*([^;]+)""").find(rule(".menu-item:focused > .label"))
+                declare("-color-menu-item-bg-focused", focused?.groupValues?.get(1) ?: error("No menu item in $name"))
+                declare("-color-menu-item-fg-focused", label?.groupValues?.get(1) ?: error("No menu label in $name"))
                 css.append("}\n")
             }
         }
