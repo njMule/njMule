@@ -5,7 +5,7 @@ import type { Schemas } from './api/client';
 import { count } from './format';
 import { format, t } from './i18n';
 import type { IconName } from './icons';
-import type { Connection, Server, Status } from './model/engine';
+import type { Connection, Server, ServerNote, Status } from './model/engine';
 
 // The networks' state in words, as the network's control, its place and the status strip tell it.
 
@@ -255,4 +255,104 @@ export function portLines(test: PortTest): PortLine[] {
         portLine(test.tcp, t(REACH[test.tcp], 'TCP', String(test.tcpPort))),
         udp,
     ];
+}
+
+// host:port, the host a name, an IPv4 address or an IPv6 address in brackets.
+const HOST_PORT = /^(\[[0-9A-Fa-f:.]+\]|[^\s:/?#[\]@\\]+):(\d{1,5})$/;
+
+/** {@code text} as host:port when it is an address of a server or a node, null otherwise. */
+export function hostPort(text: string): string | null {
+    const m = HOST_PORT.exec(text.trim());
+    const port = Number(m?.[2] ?? 0);
+    if (m === null || port < 1 || port > 65_535) {
+        return null;
+    }
+    try {
+        // The platform's parser of web addresses checks the host: an IP address or a well-formed name.
+        new URL(`http://${m[1]}/`);
+    } catch {
+        return null;
+    }
+    return `${m[1]}:${port}`;
+}
+
+/** {@code text} as an http or https address with a host, null otherwise. */
+export function webAddress(text: string): URL | null {
+    try {
+        const url = new URL(text.trim());
+        return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname !== '' ? url : null;
+    } catch {
+        return null;
+    }
+}
+
+/** The well-known lists offered while no address of one was used. */
+export const SUGGESTED_URLS = {
+    serverMet: 'https://upd.emule-security.org/server.met',
+    nodesDat: 'https://upd.emule-security.org/nodes.dat',
+} as const;
+
+export type UrlHistory = keyof typeof SUGGESTED_URLS;
+
+const URL_HISTORY_SIZE = 10;
+
+/** The addresses of the lists that worked, the latest first. */
+export function urlHistory(name: UrlHistory): string[] {
+    try {
+        const saved = JSON.parse(localStorage.getItem(`njmule.history.${name}`) ?? '[]') as unknown;
+        return Array.isArray(saved) ? saved.filter((h): h is string => typeof h === 'string') : [];
+    } catch {
+        return [];
+    }
+}
+
+/** Remembers {@code url}, which worked, at the top of its history. */
+export function rememberUrl(name: UrlHistory, url: string): void {
+    const next = [url, ...urlHistory(name).filter((h) => h !== url)].slice(0, URL_HISTORY_SIZE);
+    try {
+        localStorage.setItem(`njmule.history.${name}`, JSON.stringify(next));
+    } catch {
+        // Not kept beyond this window.
+    }
+}
+
+/** A server, or a server list to fetch, found in an eD2K link. */
+export type ServerLinkFound = { kind: 'server'; address: string } | { kind: 'list'; url: string };
+
+const SERVER_LINK = /ed2k:\/\/\|server\|([^|\s]+)\|(\d{1,5})\||ed2k:\/\/\|serverlist\|([^|\s]+)\|/gi;
+
+/** The servers and server lists of the eD2K links in {@code text}, in their order. */
+export function serverLinks(text: string): ServerLinkFound[] {
+    const found: ServerLinkFound[] = [];
+    for (const m of text.matchAll(SERVER_LINK)) {
+        if (m[1] !== undefined) {
+            const address = hostPort(`${m[1].includes(':') ? `[${m[1]}]` : m[1]}:${m[2]}`);
+            if (address !== null) {
+                found.push({ kind: 'server', address });
+            }
+        } else if (m[3] !== undefined && webAddress(m[3]) !== null) {
+            found.push({ kind: 'list', url: m[3] });
+        }
+    }
+    return found;
+}
+
+/** The eD2K link of the server at {@code address}, host:port. */
+export function serverLink(address: string): string {
+    const at = address.lastIndexOf(':');
+    const host = address.substring(0, at).replace(/^\[(.*)\]$/, '$1');
+    return `ed2k://|server|${host}|${address.substring(at + 1)}|/`;
+}
+
+/** The last four lines the server said since the latest session started, in {@code notes}. */
+export function lastSaid(notes: readonly ServerNote[]): string[] {
+    let lines: string[] = [];
+    for (const n of notes) {
+        if (n.kind === 'message') {
+            lines.push(n.text);
+        } else {
+            lines = [];
+        }
+    }
+    return lines.slice(-4);
 }

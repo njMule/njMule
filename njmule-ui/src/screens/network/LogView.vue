@@ -194,7 +194,7 @@ onUnmounted(() => window.clearInterval(timer));
         <div v-else-if="tab === 'server'" class="lines" tabindex="0">
             <div v-for="(n, i) in serverNotes" :key="i" class="line">
                 <span class="line-icon" />
-                <span dir="ltr">{{ when(n.time) }}: </span><span dir="auto">{{ n.server }}: {{ n.text }}</span>
+                <span dir="ltr">{{ when(n.time) }}: </span><span dir="auto">{{ n.text }}</span>
             </div>
         </div>
         <div v-else class="mine">

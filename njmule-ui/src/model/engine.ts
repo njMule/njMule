@@ -45,9 +45,29 @@ export const preferences = shallowRef<Record<string, string>>({});
 export const rates = shallowRef<RateSample[]>([]);
 export const connection = ref<Connection>('disconnected');
 export const serverName = ref('');
+/** The server we are on or trying, as host:port; empty on none. */
+export const serverAddress = ref('');
 export const lastLog = ref('');
-/** What the servers said in this window's time: each line with the server's name. */
-export const serverNotes = shallowRef<{ time: string; server: string; text: string }[]>([]);
+
+/** A line of what the servers said: a session's start on a server (its name and address), or a line it sent. */
+export interface ServerNote {
+    sequence: number;
+    time: string;
+    kind: 'connected' | 'obfuscated' | 'message';
+    text: string;
+}
+
+/** What the servers said in this window's time, with the start of each session. */
+export const serverNotes = shallowRef<ServerNote[]>([]);
+let noteSequence = 0;
+
+function note(kind: ServerNote['kind'], text: string): void {
+    serverNotes.value = [
+        ...serverNotes.value,
+        { sequence: ++noteSequence, time: new Date().toISOString(), kind, text },
+    ].slice(-500);
+}
+
 /** The downloads completed while this window was open. */
 export const completedCount = ref(0);
 /** Why the engine could not be read, empty while it answers. */
@@ -100,11 +120,17 @@ function react<K extends EventName>(name: K, data: EventData[K]): void {
             const server = (data as EventData['server.connected']).server;
             connection.value = name === 'server.connected' ? 'connected' : 'connecting';
             serverName.value = server?.name || server?.address || '';
+            serverAddress.value = server?.address ?? '';
+            if (name === 'server.connected') {
+                const obfuscated = (data as { obfuscated?: boolean }).obfuscated === true;
+                note(obfuscated ? 'obfuscated' : 'connected', `${server?.name ?? ''} (${server?.address ?? ''})`);
+            }
             break;
         }
         case 'server.disconnected':
             connection.value = 'disconnected';
             serverName.value = '';
+            serverAddress.value = '';
             break;
         case 'download.completed':
             completedCount.value++;
@@ -117,18 +143,9 @@ function react<K extends EventName>(name: K, data: EventData[K]): void {
         case 'preferences.changed':
             void readPreferences();
             break;
-        case 'server.message': {
-            const note = data as EventData['server.message'];
-            serverNotes.value = [
-                ...serverNotes.value,
-                {
-                    time: new Date().toISOString(),
-                    server: note.server?.name || note.server?.address || '',
-                    text: note.text ?? '',
-                },
-            ].slice(-500);
+        case 'server.message':
+            note('message', (data as EventData['server.message']).text ?? '');
             break;
-        }
         case 'log':
             lastLog.value = (data as EventData['log']).message ?? '';
             break;
@@ -190,9 +207,11 @@ async function readStatus(poll: number): Promise<void> {
         if (s.server !== null && connection.value !== 'connected') {
             connection.value = 'connected';
             serverName.value = s.server.name || s.server.address;
+            serverAddress.value = s.server.address;
         } else if (s.server === null && connection.value === 'connected') {
             connection.value = 'disconnected';
             serverName.value = '';
+            serverAddress.value = '';
         }
         const next = [...rates.value, { down: s.downloadBytesPerSecond, up: s.uploadBytesPerSecond }];
         rates.value = next.length > RATE_HISTORY ? next.slice(next.length - RATE_HISTORY) : next;
