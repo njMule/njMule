@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 <script setup lang="ts">
 import { TooltipProvider } from 'reka-ui';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { answer, api } from './api/client';
+import { answer, api, endpoint } from './api/client';
 import { duration, rate, size } from './format';
 import { t } from './i18n';
 import { fileLinks } from './links';
@@ -15,7 +15,7 @@ import { current, PLACES, searchRequest, shortcut, withShortcutKey } from './pla
 import { searches } from './search';
 import { chats, friends, unreadTotal } from './chats';
 import type { Command } from './palette';
-import type { Platform } from './platform';
+import { engineHere, type Platform } from './platform';
 import SearchScreen from './screens/SearchScreen.vue';
 import MessagesScreen from './screens/MessagesScreen.vue';
 import NetworkScreen from './screens/NetworkScreen.vue';
@@ -197,14 +197,20 @@ async function kad(): Promise<void> {
     }
 }
 
+// The folder of finished downloads in the system's file manager; the engine's default one is not told.
 async function openIncoming(): Promise<void> {
     const folder = preferences.value['dirs.incoming'];
-    if (folder && !(await props.platform.openFolder(folder))) {
-        problem(folder);
+    if (folder) {
+        try {
+            await props.platform.showFolder(folder);
+        } catch (e) {
+            problem((e as Error).message);
+        }
     }
 }
 
-const canOpenFolders = computed(() => props.platform.desktop);
+// The folders open where they are: in the desktop app's window on the engine's own computer.
+const canOpenFolders = computed(() => props.platform.desktop && engineHere(endpoint().url));
 
 // What the palette offers: the places, then the commands of the bar and the menus; those whose dialog this window has
 // not yet show disabled.

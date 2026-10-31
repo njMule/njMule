@@ -206,9 +206,10 @@ async fn choose_folder(app: AppHandle, title: String) -> Result<Option<String>, 
     .map_err(|e| e.to_string())
 }
 
+/// Opens a folder in the system's file manager, or tells the system's reason it could not.
 #[tauri::command]
-fn open_folder(app: AppHandle, path: String) -> bool {
-    app.opener().open_path(path, None::<&str>).is_ok()
+fn open_folder(app: AppHandle, path: String) -> Result<(), String> {
+    app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
 
 /// The words of the tray's menu, in the interface's language.

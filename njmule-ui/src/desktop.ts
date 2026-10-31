@@ -21,6 +21,18 @@ export const desktop: Platform = {
             }
         });
     },
-    openFolder: (path) => invoke<boolean>('open_folder', { path }),
+    openFolder: (path) =>
+        invoke('open_folder', { path }).then(
+            () => true,
+            () => false,
+        ),
+    // The shell fails with the system's words, which the window shows as they are.
+    showFolder: async (path) => {
+        try {
+            await invoke('open_folder', { path });
+        } catch (e) {
+            throw new Error(String(e));
+        }
+    },
     localize: (words) => void invoke('tray_texts', words),
 };
