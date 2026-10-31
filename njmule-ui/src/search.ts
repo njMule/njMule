@@ -3,6 +3,7 @@
 
 import { ref } from 'vue';
 import type { Schemas } from './api/client';
+import { fileLink } from './links';
 
 // The searches and how their results show, as the desktop app's search screen does it.
 
@@ -87,7 +88,7 @@ export function words(expression: string): string {
 
 /** The eD2K link of a result. */
 export function link(r: Pick<Result, 'name' | 'size' | 'hash'>): string {
-    return `ed2k://|file|${encodeURIComponent(r.name)}|${r.size}|${r.hash}|/`;
+    return fileLink(r.name, r.size, r.hash);
 }
 
 /** How many sources have the whole file, as a percentage of all; unknown where the network does not tell. */
