@@ -342,6 +342,60 @@ select {
     background: var(--color-border-muted);
 }
 
+/* A popover's arrow in its fill and border; its base covers the popover's border where they meet. */
+.popover-arrow {
+    fill: var(--color-bg-overlay);
+    stroke: var(--color-border-default);
+}
+
+.popover-arrow path {
+    vector-effect: non-scaling-stroke;
+}
+
+/* A slider as the theme draws one: a square track and an upright thumb in the accent. */
+.slider {
+    appearance: none;
+    height: 20px;
+    margin: 0;
+    background: none;
+}
+
+.slider::-webkit-slider-runnable-track {
+    height: 20px;
+    background: linear-gradient(var(--color-border-muted), var(--color-border-muted)) center / 100% 8px no-repeat;
+}
+
+.slider::-moz-range-track {
+    height: 8px;
+    background: var(--color-border-muted);
+}
+
+.slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 8px;
+    height: 20px;
+    border: none;
+    border-radius: 0;
+    background: var(--color-accent-emphasis);
+}
+
+.slider::-moz-range-thumb {
+    width: 8px;
+    height: 20px;
+    border: none;
+    border-radius: 0;
+    background: var(--color-accent-emphasis);
+}
+
+.slider:focus-visible {
+    outline: 2px solid var(--color-accent-emphasis);
+    outline-offset: 2px;
+}
+
+.slider:disabled {
+    opacity: 0.6;
+}
+
 .tooltip {
     padding: 4px 8px;
     border-radius: 6px;

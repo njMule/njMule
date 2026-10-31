@@ -13,6 +13,7 @@ import { networkCards, networkWords } from '../network';
 import { current, networkPart } from '../places';
 import { problem } from '../toasts';
 import Icon from '../ui/Icon.vue';
+import PopoverHeader from '../ui/PopoverHeader.vue';
 import PortTestPane from '../ui/PortTestPane.vue';
 import Tip from '../ui/Tip.vue';
 import KadView from './network/KadView.vue';
@@ -151,8 +152,8 @@ async function testPorts(): Promise<void> {
                             </button>
                         </PopoverAnchor>
                         <PopoverPortal>
-                            <PopoverContent class="menu port-test-popup" align="start" :side-offset="6">
-                                <strong>{{ t('IDS_STARTTEST') }}</strong>
+                            <PopoverContent class="menu port-test-popup" align="start" :side-offset="2">
+                                <PopoverHeader :title="t('IDS_STARTTEST')" />
                                 <PortTestPane ref="portTest" />
                             </PopoverContent>
                         </PopoverPortal>
@@ -322,10 +323,8 @@ async function testPorts(): Promise<void> {
 }
 
 :deep(.port-test-popup) {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
     max-width: 440px;
-    padding: 12px;
+    padding: 14px;
+    border-radius: 6px;
 }
 </style>

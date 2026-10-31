@@ -990,10 +990,10 @@ onUnmounted(() => {
                     <PopoverContent
                         class="menu search-parameters"
                         align="end"
-                        :side-offset="8"
+                        :side-offset="2"
                         :reference="filtersTrigger?.$el"
                     >
-                        <PopoverArrow class="popover-arrow" :width="14" :height="7" />
+                        <PopoverArrow class="popover-arrow" :width="24" :height="12" />
                         <div class="popover-head">
                             <strong>{{ t('nj.search.filters') }}</strong>
                             <button type="button" class="button flat small" @click="filters = { ...NO_FILTERS }">
@@ -1350,10 +1350,6 @@ onUnmounted(() => {
 }
 
 /* The popup points at its button, as the desktop app's. */
-:deep(.popover-arrow) {
-    fill: var(--color-bg-overlay);
-}
-
 /* In a narrow window the tools keep to their icons; the words are the tooltip and the accessible name. */
 @media (max-width: 999.98px) {
     .tool-text {

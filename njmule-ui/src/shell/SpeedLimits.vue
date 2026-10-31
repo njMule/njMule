@@ -10,6 +10,7 @@ import { kibAt, limitsOf, limitText, positionOf, setLimits, setPreset, STEPS } f
 import { preferences } from '../model/engine';
 import { problem } from '../toasts';
 import Icon from '../ui/Icon.vue';
+import PopoverHeader from '../ui/PopoverHeader.vue';
 
 // The speed limits over the rates or the status strip, as in the notification area's menu: a slider for each way,
 // applied as it is let go, the limit written beside, and two presets. It goes inside the PopoverRoot of its trigger.
@@ -98,20 +99,21 @@ async function preset(fast: boolean): Promise<void> {
     <PopoverPortal>
         <PopoverContent
             class="menu limits-popover"
+            :class="{ 'in-strip': side === 'top' }"
             :side="side"
             align="center"
-            :side-offset="6"
+            :side-offset="2"
             :reference="reference"
             :aria-label="t('nj.tray.limits')"
         >
-            <strong class="popover-title">{{ t('nj.tray.limits') }}</strong>
+            <PopoverHeader :title="t('nj.tray.limits')" />
             <div class="speeds">
                 <template v-for="way in ways" :key="way.id">
                     <Icon :name="way.icon" :class="way.id" />
                     <span class="speed-name">{{ way.label }}</span>
                     <input
                         type="range"
-                        class="speed-slider"
+                        class="slider speed-slider"
                         min="0"
                         :max="STEPS"
                         step="1"
@@ -138,14 +140,13 @@ async function preset(fast: boolean): Promise<void> {
 
 <style scoped>
 :deep(.limits-popover) {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 10px 12px 12px;
+    padding: 14px;
+    border-radius: 6px;
 }
 
-.popover-title {
-    font-size: 1.05em;
+/* Over the status strip it takes the strip's smaller text, as in the desktop app. */
+:deep(.limits-popover.in-strip) {
+    font-size: 0.9em;
 }
 
 /* An arrow in the colour of its line, the way's name, the slider, then the limit. */
@@ -154,6 +155,7 @@ async function preset(fast: boolean): Promise<void> {
     grid-template-columns: auto auto 140px auto;
     align-items: center;
     gap: 6px 8px;
+    margin-bottom: 10px;
 }
 
 .speeds .down {
@@ -171,8 +173,6 @@ async function preset(fast: boolean): Promise<void> {
 
 .speed-slider {
     width: 140px;
-    margin: 0;
-    accent-color: var(--color-accent-emphasis);
 }
 
 .presets {

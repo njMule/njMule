@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui';
+import { PopoverArrow, PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui';
 import { ref } from 'vue';
 import { t } from '../i18n';
 import type { NetworkWords } from '../network';
@@ -61,7 +61,8 @@ function show(part?: 'servers' | 'kad'): void {
             </PopoverTrigger>
         </Tip>
         <PopoverPortal>
-            <PopoverContent class="menu network-menu" align="end" :side-offset="6" :reference="trigger?.$el">
+            <PopoverContent class="menu network-menu" align="end" :side-offset="2" :reference="trigger?.$el">
+                <PopoverArrow class="popover-arrow" :width="24" :height="12" />
                 <div class="network-row">
                     <div class="network-words">
                         <Tip :text="t('IDS_NETWORK')">

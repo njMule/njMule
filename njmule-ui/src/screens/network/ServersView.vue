@@ -47,6 +47,7 @@ import { message, problem } from '../../toasts';
 import DataTable, { type ColumnMeta } from '../../ui/DataTable.vue';
 import EmptyState from '../../ui/EmptyState.vue';
 import Icon from '../../ui/Icon.vue';
+import PopoverHeader from '../../ui/PopoverHeader.vue';
 import Tip from '../../ui/Tip.vue';
 
 // The servers: the list narrowed by its words, the one in use in bold behind an accent bar, the one being tried in
@@ -482,8 +483,8 @@ onUnmounted(() => observer?.disconnect());
                     >
                 </Tip>
                 <PopoverPortal>
-                    <PopoverContent class="menu add-servers" align="end" :side-offset="6" :reference="addTrigger?.$el">
-                        <strong>{{ t('nj.servers.add') }}</strong>
+                    <PopoverContent class="menu add-servers" align="end" :side-offset="2" :reference="addTrigger?.$el">
+                        <PopoverHeader :title="t('nj.servers.add')" />
                         <div class="ways">
                             <label for="server-met">{{ t('IDS_SV_MET') }}</label>
                             <Tip :text="t('nj.input.url')">
@@ -729,9 +730,9 @@ onUnmounted(() => observer?.disconnect());
 :deep(.add-servers) {
     display: flex;
     flex-direction: column;
-    gap: 10px;
     width: 520px;
     max-width: calc(100vw - 32px);
+    border-radius: 6px;
     padding: 14px;
 }
 
