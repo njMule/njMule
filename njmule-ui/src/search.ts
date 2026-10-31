@@ -97,6 +97,8 @@ export interface ResultRow {
     result: Result;
     file: Result;
     isName: boolean;
+    /** The place of the row while no column sorts: files as they came, each with its names under it. */
+    place: number;
 }
 
 /** Whether a result was found under several names, which its row can open to show. */
@@ -109,22 +111,131 @@ export function hasNames(r: Pick<Result, 'names'>): boolean {
  * several names, one for each name: the file as found under that name, with its own sources.
  */
 export function resultRows(results: Result[], open: ReadonlySet<string> = new Set()): ResultRow[] {
-    return results.flatMap((file) => {
-        const row: ResultRow = { id: file.hash, result: file, file, isName: false };
-        if (!open.has(file.hash) || !hasNames(file)) {
-            return [row];
+    return results
+        .flatMap((file) => {
+            const row = { id: file.hash, result: file, file, isName: false };
+            if (!open.has(file.hash) || !hasNames(file)) {
+                return [row];
+            }
+            return [
+                row,
+                ...file.names.map((n) => ({
+                    // A name has no line break: it keeps the row of a name apart from its file's.
+                    id: `${file.hash}\n${n.name}`,
+                    result: {
+                        ...file,
+                        name: n.name,
+                        sources: n.sources,
+                        completeSources: n.completeSources,
+                        names: [],
+                    },
+                    file,
+                    isName: true,
+                })),
+            ];
+        })
+        .map((row, place) => ({ ...row, place }));
+}
+
+/** A column a list is sorted by, and which way. */
+export interface ColumnSort {
+    id: string;
+    desc: boolean;
+}
+
+/** How the values of a column compare, the least first; those a result lacks go last whichever way it sorts. */
+export interface ColumnOrder {
+    compare: (a: Result, b: Result) => number;
+    missing?: (r: Result) => boolean;
+}
+
+// Columns chosen before that still break ties.
+const EARLIER = 3;
+
+function sameSorting(a: ColumnSort[], b: ColumnSort[]): boolean {
+    return a.length === b.length && a.every((s, i) => s.id === b[i]?.id && s.desc === b[i]?.desc);
+}
+
+/** What a list was sorted by: the columns chosen before those that sort it now still break their ties. */
+export class SortMemory {
+    private chosen: ColumnSort[] = [];
+    private before: ColumnSort[] = [];
+
+    /** The columns chosen before {@code now}, the latest first, each the way it sorted when it was left. */
+    earlier(now: ColumnSort[]): ColumnSort[] {
+        if (!sameSorting(now, this.chosen)) {
+            for (const left of this.chosen.filter((c) => !now.some((n) => n.id === c.id))) {
+                this.before = [left, ...this.before.filter((e) => e.id !== left.id)];
+            }
+            this.before = this.before.filter((e) => !now.some((n) => n.id === e.id)).slice(0, EARLIER);
+            this.chosen = now.map((s) => ({ ...s }));
         }
-        return [
-            row,
-            ...file.names.map((n) => ({
-                // A name has no line break: it keeps the row of a name apart from its file's.
-                id: `${file.hash}\n${n.name}`,
-                result: { ...file, name: n.name, sources: n.sources, completeSources: n.completeSources, names: [] },
-                file,
-                isName: true,
-            })),
-        ];
+        return this.before;
+    }
+}
+
+/**
+ * The order of the rows of a list sorted by {@code sorting}: spam last in either direction, then by the columns
+ * chosen and those chosen before, then as the files came. The names of a file stay under it: by name when that column
+ * sorts first, else most sources first, turned round when the first column sorts the other way.
+ */
+export function rowOrder(
+    sorting: ColumnSort[],
+    earlier: ColumnSort[],
+    columns: Record<string, ColumnOrder>,
+): (a: ResultRow, b: ResultRow) => number {
+    const by = [...sorting, ...earlier].flatMap((s) => {
+        const column = columns[s.id];
+        return column === undefined ? [] : [{ column, way: s.desc ? -1 : 1 }];
     });
+    const files = (a: Result, b: Result): number => {
+        if (a.spam !== b.spam) {
+            return a.spam ? 1 : -1;
+        }
+        for (const { column, way } of by) {
+            const noA = column.missing?.(a) ?? false;
+            const noB = column.missing?.(b) ?? false;
+            const order = noA || noB ? Number(noA) - Number(noB) : way * column.compare(a, b);
+            if (order !== 0) {
+                return order;
+            }
+        }
+        return 0;
+    };
+    const first = sorting[0];
+    const names = (a: Result, b: Result): number =>
+        (first?.desc ? -1 : 1) * (first?.id === 'name' ? (columns['name']?.compare(a, b) ?? 0) : b.sources - a.sources);
+    return (a, b) => {
+        if (a.file.hash !== b.file.hash) {
+            return files(a.file, b.file) || a.place - b.place;
+        }
+        if (a.isName !== b.isName) {
+            return a.isName ? 1 : -1;
+        }
+        return (a.isName ? names(a.result, b.result) : 0) || a.place - b.place;
+    };
+}
+
+/** The type of a file, then its extension, which files without one follow. */
+export function kindOrder(a: Pick<Result, 'type' | 'name'>, b: Pick<Result, 'type' | 'name'>): number {
+    const typeA = a.type ?? '';
+    const typeB = b.type ?? '';
+    if (typeA !== typeB) {
+        return typeA < typeB ? -1 : 1;
+    }
+    const extA = extension(a.name);
+    const extB = extension(b.name);
+    if ((extA === '') !== (extB === '')) {
+        return extA === '' ? 1 : -1;
+    }
+    const x = extA.toLowerCase();
+    const y = extB.toLowerCase();
+    return x < y ? -1 : x > y ? 1 : 0;
+}
+
+function extension(name: string): string {
+    const dot = name.lastIndexOf('.');
+    return dot < 0 ? '' : name.substring(dot + 1);
 }
 
 /** The eD2K link of a result. */

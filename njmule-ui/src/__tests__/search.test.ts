@@ -3,12 +3,15 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+    type ColumnOrder,
+    type ColumnSort,
     completePercent,
     completeness,
     expression,
     type Filters,
     filterCount,
     isMedia,
+    kindOrder,
     type Known,
     knownOf,
     merged,
@@ -16,6 +19,8 @@ import {
     type Result,
     type ResultRow,
     resultRows,
+    rowOrder,
+    SortMemory,
     tone,
     type Tone,
     words,
@@ -304,5 +309,120 @@ describe('the rows of the names of a file', () => {
 
     function thenTheSourcesAre(...sources: number[]): void {
         expect(rows.map((r) => r.result.sources)).toEqual(sources);
+    }
+});
+
+describe('the order of sorted results', () => {
+    const ORDERS: Record<string, ColumnOrder> = {
+        name: { compare: (a, b) => a.name.localeCompare(b.name) },
+        sources: { compare: (a, b) => a.sources - b.sources },
+        size: { compare: (a, b) => a.size - b.size },
+        artist: {
+            compare: (a, b) => (a.media?.artist ?? '').localeCompare(b.media?.artist ?? ''),
+            missing: (r) => !r.media?.artist,
+        },
+    };
+    const memory = new SortMemory();
+    let rows: ResultRow[] = [];
+    let sorting: ColumnSort[] = [];
+
+    it('should put spam last whichever way a column sorts', () => {
+        givenTheRows(result('A', { sources: 1, spam: true }), result('B', { sources: 5 }), result('C', { sources: 3 }));
+        whenSortedBy({ id: 'sources', desc: true });
+        thenTheOrderIs('B', 'C', 'A');
+    });
+
+    it('should put the values a result lacks last whichever way a column sorts', () => {
+        givenTheRows(result('A'), result('B', { media: media('b') }), result('C', { media: media('c') }));
+        whenSortedBy({ id: 'artist', desc: true });
+        thenTheOrderIs('C', 'B', 'A');
+    });
+
+    it('should keep the order the results came in where the column ties', () => {
+        givenTheRows(result('C'), result('A'), result('B'));
+        whenSortedBy({ id: 'size', desc: false });
+        thenTheOrderIs('C', 'A', 'B');
+    });
+
+    it('should break ties by the column chosen before', () => {
+        givenTheRows(result('A', { sources: 1 }), result('B', { sources: 2 }), result('C', { sources: 3 }));
+        givenSortedBefore({ id: 'sources', desc: true });
+        whenSortedBy({ id: 'size', desc: false });
+        thenTheOrderIs('C', 'B', 'A');
+    });
+
+    it('should keep the names of a file under it, most sources first', () => {
+        givenTheRows(
+            result('A', {
+                sources: 1,
+                names: [
+                    { name: 'few', sources: 1, completeSources: 0 },
+                    { name: 'many', sources: 9, completeSources: 0 },
+                ],
+            }),
+            result('B', { sources: 2 }),
+        );
+        givenTheNamesOpen('A');
+        whenSortedBy({ id: 'sources', desc: false });
+        thenTheNamesAre('A.iso', 'many', 'few', 'B.iso');
+    });
+
+    function media(artist: string): Result['media'] {
+        return { artist, album: '', title: '', length: 0, bitrate: 0, codec: '' };
+    }
+
+    function givenTheRows(...results: Result[]): void {
+        rows = resultRows(results);
+    }
+
+    function givenTheNamesOpen(hash: string): void {
+        rows = resultRows(
+            rows.map((r) => r.file),
+            new Set([hash.padEnd(32, '0')]),
+        );
+    }
+
+    function givenSortedBefore(...before: ColumnSort[]): void {
+        memory.earlier(before);
+    }
+
+    function whenSortedBy(...now: ColumnSort[]): void {
+        sorting = now;
+        rows = [...rows].sort(rowOrder(sorting, memory.earlier(sorting), ORDERS));
+    }
+
+    function thenTheOrderIs(...hashes: string[]): void {
+        expect(rows.map((r) => r.result.hash[0])).toEqual(hashes);
+    }
+
+    function thenTheNamesAre(...names: string[]): void {
+        expect(rows.map((r) => r.result.name)).toEqual(names);
+    }
+});
+
+describe('the order of file types', () => {
+    let order = 0;
+
+    it('should order by type first', () => {
+        whenTheKindsAreCompared({ type: 'Audio', name: 'z.mp3' }, { type: 'Video', name: 'a.avi' });
+        thenTheFirstComes(true);
+    });
+
+    it('should put a file without extension after one with', () => {
+        whenTheKindsAreCompared({ type: 'Pro', name: 'setup' }, { type: 'Pro', name: 'setup.exe' });
+        thenTheFirstComes(false);
+    });
+
+    it('should order extensions in any case', () => {
+        whenTheKindsAreCompared({ type: 'Pro', name: 'a.ZIP' }, { type: 'Pro', name: 'b.rar' });
+        thenTheFirstComes(false);
+    });
+
+    function whenTheKindsAreCompared(a: Pick<Result, 'type' | 'name'>, b: Pick<Result, 'type' | 'name'>): void {
+        order = kindOrder(a, b);
+    }
+
+    function thenTheFirstComes(first: boolean): void {
+        expect(order < 0).toBe(first);
     }
 });

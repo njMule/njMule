@@ -23,7 +23,7 @@ import {
 import { computed, h, nextTick, onMounted, onUnmounted, ref, watch, type VNode } from 'vue';
 import { answer, api, ApiError } from '../api/client';
 import { count, size } from '../format';
-import { t } from '../i18n';
+import { language, t } from '../i18n';
 import { htmlLinks } from '../links';
 import type { IconName } from '../icons';
 import { downloads, preferences, readDownloads, shared as sharedFiles } from '../model/engine';
@@ -34,6 +34,8 @@ import {
     expression,
     filterCount,
     hasNames,
+    KNOWN,
+    kindOrder,
     history,
     isMedia,
     knownOf,
@@ -43,11 +45,15 @@ import {
     playingTime,
     remember,
     resultRows,
+    rowOrder,
+    SortMemory,
     searches,
     shade,
     tone,
     words,
     type FileType,
+    type ColumnOrder,
+    type ColumnSort,
     type Filters,
     type Known,
     type Ours,
@@ -216,7 +222,7 @@ function namesKeys(s: Search, e: KeyboardEvent): void {
 }
 
 function columns(s: Search): ColumnDef<any, ResultRow, any>[] {
-    return [
+    const all: ColumnDef<any, ResultRow, any>[] = [
         {
             id: 'name',
             header: t('IDS_DL_FILENAME'),
@@ -326,6 +332,51 @@ function columns(s: Search): ColumnDef<any, ResultRow, any>[] {
             cell: ({ getValue }: any) => leftToRight(getValue()),
         },
     ];
+    // Every column sorts the rows as the desktop app does, the least first at the first click.
+    return all.map((c) => ({ ...c, sortFn: sortRows, sortDescFirst: false }));
+}
+
+// Names and texts in the order of the interface's language, case aside; values a result lacks go last.
+const collator = computed(() => new Intl.Collator(language.value, { sensitivity: 'accent' }));
+const text = (a: string, b: string) => collator.value.compare(a, b);
+const ORDERS: Record<string, ColumnOrder> = {
+    name: { compare: (a, b) => text(a.name, b.name) },
+    size: { compare: (a, b) => a.size - b.size },
+    sources: { compare: (a, b) => a.sources - b.sources },
+    complete: { compare: (a, b) => completePercent(a) - completePercent(b) },
+    type: { compare: kindOrder },
+    known: { compare: (a, b) => KNOWN.indexOf(known(a)!) - KNOWN.indexOf(known(b)!) },
+    hash: { compare: (a, b) => (a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0) },
+    artist: { compare: (a, b) => text(a.media?.artist ?? '', b.media?.artist ?? ''), missing: (r) => !r.media?.artist },
+    album: { compare: (a, b) => text(a.media?.album ?? '', b.media?.album ?? ''), missing: (r) => !r.media?.album },
+    title: { compare: (a, b) => text(a.media?.title ?? '', b.media?.title ?? ''), missing: (r) => !r.media?.title },
+    length: { compare: (a, b) => (a.media?.length ?? 0) - (b.media?.length ?? 0), missing: (r) => !r.media?.length },
+    bitrate: {
+        compare: (a, b) => (a.media?.bitrate ?? 0) - (b.media?.bitrate ?? 0),
+        missing: (r) => !r.media?.bitrate,
+    },
+    codec: { compare: (a, b) => text(a.media?.codec ?? '', b.media?.codec ?? ''), missing: (r) => !r.media?.codec },
+};
+
+// What each table was sorted by, and the order of its rows for the sorting it has now.
+const sorted = new WeakMap<
+    object,
+    { memory: SortMemory; sorting?: unknown; order?: (a: ResultRow, b: ResultRow) => number }
+>();
+
+// The table asks the first column it sorts by; the order covers them all, turned for that column's way, which the
+// table turns back.
+function sortRows(a: any, b: any, columnId: string): number {
+    const table = a.table;
+    const sorting: ColumnSort[] = table.atoms.sorting?.get() ?? [];
+    const state = sorted.get(table) ?? { memory: new SortMemory() };
+    sorted.set(table, state);
+    if (state.sorting !== sorting || state.order === undefined) {
+        state.sorting = sorting;
+        state.order = rowOrder(sorting, state.memory.earlier(sorting), ORDERS);
+    }
+    const order = state.order(a.original as ResultRow, b.original as ResultRow);
+    return sorting.find((s) => s.id === columnId)?.desc ? -order : order;
 }
 
 /** What the screen reaches of a tab's table: its columns, through which the media columns are shown or hidden. */
