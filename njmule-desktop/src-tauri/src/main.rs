@@ -14,6 +14,7 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
+use tauri::ipc::Response;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, Window, WindowEvent, Wry};
@@ -37,6 +38,8 @@ struct Endpoint {
 
 /// The id of njMule's icon in the notification area.
 const TRAY: &str = "main";
+/// A notification sound lasts a few seconds: a larger file is not one.
+const MAX_SOUND: u64 = 16 * 1024 * 1024;
 
 /// What the shell knows of its window and its icon in the notification area.
 #[derive(Default)]
@@ -238,6 +241,19 @@ fn open_folder(app: AppHandle, path: String) -> Result<(), String> {
     app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// A WAV file the window plays with a notification, read whole; a huge one is never read into memory.
+#[tauri::command]
+async fn sound(path: String) -> Result<Response, String> {
+    let path = PathBuf::from(path);
+    if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("wav")) {
+        return Err(format!("{} is not a WAV file", path.display()));
+    }
+    if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() > MAX_SOUND {
+        return Err(format!("{} is larger than {MAX_SOUND} bytes", path.display()));
+    }
+    std::fs::read(&path).map(Response::new).map_err(|e| e.to_string())
+}
+
 /// The window listens: closing it asks whether to quit from now on.
 #[tauri::command]
 fn window_ready(shell: State<'_, Shell>) {
@@ -369,6 +385,7 @@ fn main() {
             open_folder,
             tray_texts,
             tray_state,
+            sound,
             window_ready,
             quit
         ])

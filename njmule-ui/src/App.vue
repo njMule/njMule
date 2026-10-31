@@ -294,6 +294,15 @@ function typed(text: string): Command[] {
     ];
 }
 
+// The sound of a notification of an event, when the options ask for one; not for the replies to the user. The file is
+// on the engine's computer, so only a window on that computer plays it.
+function chime(): void {
+    const file = preferences.value['notify.soundFile'] ?? '';
+    if (preferences.value['notify.sound'] === 'true' && file !== '' && canOpenFolders.value) {
+        props.platform.playSound(file);
+    }
+}
+
 // Closing the window ends njMule, asked first unless the question was turned off.
 async function quitIfWanted(): Promise<void> {
     let asks = true;
@@ -349,11 +358,15 @@ watch(
 onMounted(() => {
     window.addEventListener('keydown', key);
     window.addEventListener('resize', resize);
-    on('download.completed', (d) => success(t('nj.transfers.completed', d.download?.name ?? '')));
+    on('download.completed', (d) => {
+        success(t('nj.transfers.completed', d.download?.name ?? ''));
+        chime();
+    });
     on('message.received', (m) => {
         if (current.value !== 'messages') {
             unread.value++;
             message(t('nj.chat.from', m.nick || m.address || ''));
+            chime();
         }
     });
     // Links clicked in a browser or opened by the system come to this window: files, servers and lists.
