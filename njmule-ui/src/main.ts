@@ -32,7 +32,13 @@ connect(await platform.endpoint(), () => {
     }
 });
 await loadLanguage(windowLanguage(navigator.languages));
-platform.localize({ show: t('nj.tray.show'), exit: t('IDS_EXIT') });
+platform.localize({
+    fullSpeed: t('nj.tray.fullSpeed'),
+    slowDown: t('nj.tray.slowDown'),
+    show: t('nj.tray.show'),
+    options: t('IDS_EM_PREFS'),
+    quit: t('nj.exit.quit'),
+});
 follow();
 followChats();
 createApp(App, { platform }).mount('#app');

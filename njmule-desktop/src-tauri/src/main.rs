@@ -7,16 +7,16 @@
 // A window program on Windows, with no console of its own.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, Window, WindowEvent, Wry};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
@@ -35,11 +35,15 @@ struct Endpoint {
     token: String,
 }
 
-/// What the shell knows of its window.
+/// The id of njMule's icon in the notification area.
+const TRAY: &str = "main";
+
+/// What the shell knows of its window and its icon in the notification area.
 #[derive(Default)]
 struct Shell {
     // Set once the window listens: closing it then asks first, in the window's language; until then it just closes.
     asks: AtomicBool,
+    tray: Mutex<Option<TrayMenu>>,
 }
 
 /// The engine the shell started, or the one it reaches elsewhere.
@@ -176,11 +180,25 @@ fn window_title(version: &str, remote: Option<&str>) -> String {
     }
 }
 
+/// Brings the window back, from the notification area too, whose icon then goes.
 fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+    }
+    if let Some(tray) = app.tray_by_id(TRAY) {
+        let _ = tray.set_visible(false);
+    }
+}
+
+/// A minimised window hides in the notification area, next to the clock, where its icon brings it back. Only on
+/// Windows; elsewhere the window minimises as usual.
+fn hide_to_tray(window: &Window) {
+    if let Some(tray) = window.app_handle().tray_by_id(TRAY) {
+        if tray.set_visible(true).is_ok() {
+            let _ = window.hide();
+        }
     }
 }
 
@@ -233,19 +251,100 @@ fn quit(app: AppHandle) {
 }
 
 /// The words of the tray's menu, in the interface's language.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrayWords {
+    full_speed: String,
+    slow_down: String,
+    show: String,
+    options: String,
+    quit: String,
+}
+
 #[tauri::command]
-fn tray_texts(app: AppHandle, show: String, exit: String) -> Result<(), String> {
-    let menu = tray_menu(&app, &show, &exit).map_err(|e| e.to_string())?;
-    if let Some(tray) = app.tray_by_id("main") {
-        tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
+fn tray_texts(shell: State<'_, Shell>, words: TrayWords) -> Result<(), String> {
+    if let Some(menu) = shell.tray.lock().unwrap().as_ref() {
+        for (item, text) in [
+            (&menu.full_speed, &words.full_speed),
+            (&menu.slow_down, &words.slow_down),
+            (&menu.show, &words.show),
+            (&menu.options, &words.options),
+            (&menu.quit, &words.quit),
+        ] {
+            item.set_text(text).map_err(|e| e.to_string())?;
+        }
     }
     Ok(())
 }
 
-fn tray_menu(app: &AppHandle, show: &str, exit: &str) -> tauri::Result<Menu<tauri::Wry>> {
-    let show = MenuItem::with_id(app, "show", show, true, None::<&str>)?;
-    let exit = MenuItem::with_id(app, "exit", exit, true, None::<&str>)?;
-    Menu::with_items(app, &[&show, &exit])
+/// njMule's state and rates at the head of the tray's menu and on its icon, and what the connection item does now.
+#[tauri::command]
+fn tray_state(app: AppHandle, shell: State<'_, Shell>, state: String, connect: String, tooltip: String) {
+    if let Some(menu) = shell.tray.lock().unwrap().as_ref() {
+        let _ = menu.state.set_text(state);
+        let _ = menu.connect.set_text(connect);
+    }
+    if let Some(tray) = app.tray_by_id(TRAY) {
+        let _ = tray.set_tooltip(Some(tooltip));
+    }
+}
+
+/// The items of the tray's menu whose words change.
+struct TrayMenu {
+    state: MenuItem<Wry>,
+    full_speed: MenuItem<Wry>,
+    slow_down: MenuItem<Wry>,
+    show: MenuItem<Wry>,
+    connect: MenuItem<Wry>,
+    options: MenuItem<Wry>,
+    quit: MenuItem<Wry>,
+}
+
+/// The tray's menu, as the desktop app's: njMule's state, the two speed presets, the window (its default), connecting
+/// or disconnecting, the options and quitting. In English until the window gives its words.
+fn tray_menu(app: &AppHandle) -> tauri::Result<(Menu<Wry>, TrayMenu)> {
+    let item = |id: &str, text: &str, enabled: bool| MenuItem::with_id(app, id, text, enabled, None::<&str>);
+    let items = TrayMenu {
+        state: item("state", "njMule", false)?,
+        full_speed: item("full-speed", "Full speed", true)?,
+        slow_down: item("slow-down", "Slow down", true)?,
+        show: item("show", "Show njMule", true)?,
+        connect: item("connect", "Connect", true)?,
+        options: item("options", "Options", true)?,
+        quit: item("quit", "Quit njMule", true)?,
+    };
+    let menu = Menu::with_items(
+        app,
+        &[
+            &items.state,
+            &PredefinedMenuItem::separator(app)?,
+            &items.full_speed,
+            &items.slow_down,
+            &PredefinedMenuItem::separator(app)?,
+            &items.show,
+            &items.connect,
+            &items.options,
+            &PredefinedMenuItem::separator(app)?,
+            &items.quit,
+        ],
+    )?;
+    Ok((menu, items))
+}
+
+/// What an item of the tray's menu does: the window shows itself; the rest is the window's to do, the options and
+/// quitting over the window shown again (quitting asks first).
+fn tray_chosen(app: &AppHandle, id: &str) {
+    match id {
+        "show" => show_window(app),
+        "quit" if !app.state::<Shell>().asks.load(Ordering::Relaxed) => app.exit(0),
+        "options" | "quit" => {
+            show_window(app);
+            let _ = app.emit("tray", id);
+        }
+        _ => {
+            let _ = app.emit("tray", id);
+        }
+    }
 }
 
 fn main() {
@@ -269,6 +368,7 @@ fn main() {
             choose_folder,
             open_folder,
             tray_texts,
+            tray_state,
             window_ready,
             quit
         ])
@@ -283,34 +383,39 @@ fn main() {
             app.deep_link().on_open_url(move |event| {
                 hand_over(&handle, event.urls().iter().map(|u| u.to_string()).collect());
             });
-            TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().cloned().expect("the window's icon"))
-                .tooltip("njMule")
-                .menu(&tray_menu(app.handle(), "njMule", "Exit")?)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => show_window(app),
-                    "exit" => app.exit(0),
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } =
-                        event
-                    {
-                        show_window(tray.app_handle());
-                    }
-                })
-                .build(app)?;
+            // The notification area, as the desktop app uses it: only on Windows, its icon there while the window hides.
+            if cfg!(windows) {
+                let (menu, items) = tray_menu(app.handle())?;
+                let tray = TrayIconBuilder::with_id(TRAY)
+                    .icon(app.default_window_icon().cloned().expect("the window's icon"))
+                    .tooltip("njMule")
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(|app, event| tray_chosen(app, event.id.as_ref()))
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left, button_state: MouseButtonState::Up, ..
+                        } = event
+                        {
+                            show_window(tray.app_handle());
+                        }
+                    })
+                    .build(app)?;
+                tray.set_visible(false)?;
+                *app.state::<Shell>().tray.lock().unwrap() = Some(items);
+            }
             Ok(())
         })
-        // Closing the window ends njMule, once the window asked whether to quit.
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            // Closing the window ends njMule, once the window asked whether to quit.
+            WindowEvent::CloseRequested { api, .. } => {
                 if window.state::<Shell>().asks.load(Ordering::Relaxed) {
                     api.prevent_close();
                     let _ = window.emit("close-requested", ());
                 }
             }
+            WindowEvent::Resized(_) if window.is_minimized().unwrap_or(false) => hide_to_tray(window),
+            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("njMule's window");

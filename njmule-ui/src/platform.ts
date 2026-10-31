@@ -6,6 +6,18 @@ import type { Endpoint } from './api/client';
 // What differs between the desktop app's window, where the shell (Tauri) does what the system offers, and a browser
 // page of the web interface, which keeps to what a page may do.
 
+/** The words of the tray's menu. */
+export interface TrayWords {
+    fullSpeed: string;
+    slowDown: string;
+    show: string;
+    options: string;
+    quit: string;
+}
+
+/** What the tray's menu leaves to the window. */
+export type TrayChoice = 'full-speed' | 'slow-down' | 'connect' | 'options' | 'quit';
+
 export interface Platform {
     /** Whether the interface runs in the desktop app's window. */
     readonly desktop: boolean;
@@ -19,8 +31,12 @@ export interface Platform {
     openFolder(path: string): Promise<boolean>;
     /** Opens a folder in the system's file manager, or fails with the system's reason. */
     showFolder(path: string): Promise<void>;
-    /** Words the shell shows itself, such as its tray's menu, in the interface's language. */
-    localize(words: { show: string; exit: string }): void;
+    /** Words the shell shows itself, its tray's menu, in the interface's language. */
+    localize(words: TrayWords): void;
+    /** Runs {@code handler} with what was chosen in the tray's menu that the window does itself. */
+    onTray(handler: (chosen: TrayChoice) => void): void;
+    /** njMule's state at the head of the tray's menu, what its connection item does now, and its icon's tooltip. */
+    trayState(state: { state: string; connect: string; tooltip: string }): void;
     /** Runs {@code handler} instead of closing when the window is closed, so that it asks first. */
     onCloseAsked(handler: () => void): void;
     /** Ends njMule: the engine saves and stops with the window. */
@@ -45,6 +61,8 @@ const browser: Platform = {
         throw new Error('');
     },
     localize: () => {},
+    onTray: () => {},
+    trayState: () => {},
     // A page closes as the browser's tabs do; the engine goes on serving it.
     onCloseAsked: () => {},
     quit: () => {},

@@ -32,6 +32,7 @@ import Sidebar from './shell/Sidebar.vue';
 import StatusStrip from './shell/StatusStrip.vue';
 import Toasts from './shell/Toasts.vue';
 import TopBar from './shell/TopBar.vue';
+import { setPreset } from './limits';
 import { toggleDark } from './theme';
 import { message, problem, success } from './toasts';
 import { addLinks } from './transfers-actions';
@@ -322,6 +323,28 @@ async function quitIfWanted(): Promise<void> {
     props.platform.quit();
 }
 
+// The tray's menu and icon tell njMule's state and rates, and connect or disconnect eD2K as its state calls for.
+watch(
+    [connection, status, () => words.value.up],
+    () => {
+        const down = rate(status.value?.downloadBytesPerSecond ?? 0);
+        const up = rate(status.value?.uploadBytesPerSecond ?? 0);
+        const state = t(
+            connection.value === 'connected' || words.value.kadUp
+                ? 'IDS_CONNECTED'
+                : connection.value === 'connecting'
+                  ? 'IDS_CONNECTING'
+                  : 'IDS_NOTCONNECTED',
+        );
+        props.platform.trayState({
+            state: `${state} · ↓ ${down} · ↑ ${up}`,
+            connect: t(connection.value === 'disconnected' ? 'IDS_MAIN_BTN_CONNECT' : 'IDS_MAIN_BTN_DISCONNECT'),
+            tooltip: `njMule - ${t('IDS_PW_CON_DOWNLBL')}: ${down} | ${t('IDS_PW_CON_UPLBL')}: ${up}`,
+        });
+    },
+    { immediate: true },
+);
+
 onMounted(() => {
     window.addEventListener('keydown', key);
     window.addEventListener('resize', resize);
@@ -335,6 +358,17 @@ onMounted(() => {
     // Links clicked in a browser or opened by the system come to this window.
     props.platform.onLinks((links) => void addLinks(links.join('\n')));
     props.platform.onCloseAsked(() => void quitIfWanted());
+    props.platform.onTray((chosen) => {
+        if (chosen === 'connect') {
+            void ed2k();
+        } else if (chosen === 'options') {
+            current.value = 'settings';
+        } else if (chosen === 'quit') {
+            void quitIfWanted();
+        } else {
+            setPreset(chosen === 'full-speed').catch((e: Error) => problem(e.message));
+        }
+    });
 });
 
 onUnmounted(() => {

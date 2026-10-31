@@ -6,7 +6,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 import { PopoverContent, PopoverPortal } from 'reka-ui';
 import { ref, watch } from 'vue';
 import { t } from '../i18n';
-import { kibAt, limitsOf, limitText, positionOf, setLimits, STEPS } from '../limits';
+import { kibAt, limitsOf, limitText, positionOf, setLimits, setPreset, STEPS } from '../limits';
 import { preferences } from '../model/engine';
 import { problem } from '../toasts';
 import Icon from '../ui/Icon.vue';
@@ -84,12 +84,12 @@ function chosen(way: Way): void {
     }
 }
 
-// The two settings one reaches for: the whole line, or as little as a limit can be.
 async function preset(fast: boolean): Promise<void> {
-    const l = limitsOf(preferences.value);
-    await apply(
-        fast ? { downloadKiBps: l.downCapacity, uploadKiBps: l.upCapacity } : { downloadKiBps: 1, uploadKiBps: 1 },
-    );
+    try {
+        await setPreset(fast);
+    } catch (e) {
+        problem((e as Error).message);
+    }
     load();
 }
 </script>

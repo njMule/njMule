@@ -78,3 +78,11 @@ export async function setLimits(change: { downloadKiBps?: number; uploadKiBps?: 
         'limits.uploadKiBps': String(now.uploadKiBps),
     };
 }
+
+/** The two settings one reaches for: the line's whole capacity, or as little as a limit can be. */
+export function setPreset(fast: boolean): Promise<void> {
+    const l = limitsOf(preferences.value);
+    return setLimits(
+        fast ? { downloadKiBps: l.downCapacity, uploadKiBps: l.upCapacity } : { downloadKiBps: 1, uploadKiBps: 1 },
+    );
+}

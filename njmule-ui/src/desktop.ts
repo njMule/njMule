@@ -4,7 +4,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Endpoint } from './api/client';
-import type { Platform } from './platform';
+import type { Platform, TrayChoice } from './platform';
 
 // The desktop app's window: the shell started the engine (or found it running) and does what the system offers.
 
@@ -34,7 +34,9 @@ export const desktop: Platform = {
             throw new Error(String(e));
         }
     },
-    localize: (words) => void invoke('tray_texts', words),
+    localize: (words) => void invoke('tray_texts', { words }),
+    onTray: (handler) => void listen<TrayChoice>('tray', (e) => handler(e.payload)),
+    trayState: (state) => void invoke('tray_state', state),
     // Once the window listens, the shell leaves closing to it.
     onCloseAsked: (handler) => {
         void listen('close-requested', () => handler()).then(() => invoke('window_ready'));
