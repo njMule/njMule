@@ -14,7 +14,7 @@ on:
             - "njmule-gui/src/main/**"
             - "njmule-gui/src/test/java/org/njmule/gui/Capture*.java"
             - "njmule-gui/src/test/java/org/njmule/gui/WebCaptureDemo.java"
-            - "njmule-webapp/src/**"
+            - "njmule-ui/src/**"
             - "njmule-webui/src/main/**"
             - "njmule-app/src/main/java/org/njmule/app/LaunchOptions.java"
             - "njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml"
@@ -28,6 +28,7 @@ on:
     pull_request:
         paths:
             - "website/**"
+            - "njmule-ui/src/**"
             - "njmule-gui/src/test/java/org/njmule/gui/Capture*.java"
             - "njmule-gui/src/test/java/org/njmule/gui/WebCaptureDemo.java"
             - "njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml"

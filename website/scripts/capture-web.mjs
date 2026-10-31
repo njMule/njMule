@@ -71,28 +71,31 @@ async function step(name, run) {
     }
 }
 
+// The app is shown once its top bar is; its stream of events stays open, so the network is never idle.
+async function shown(page) {
+    await page.locator('.top-bar').waitFor({ timeout: 60_000 });
+}
+
 async function signIn(page, url, password) {
     await page.goto(url);
     await page.locator('input[name="password"]').fill(password);
-    await Promise.all([page.waitForURL(/#\//), page.locator('input[name="password"]').press('Enter')]);
-    await page.waitForLoadState('networkidle');
+    await page.locator('input[name="password"]').press('Enter');
+    await shown(page);
 }
 
 async function scheme(browser, info, colorScheme) {
     const folder = join(output, colorScheme);
     mkdirSync(folder, { recursive: true });
     const context = await browser.newContext({ ...CONTEXT, colorScheme });
-    // The set-up asked once in a browser is already done; the theme follows the scheme of the system.
+    // The theme follows the scheme of the system; the list alone, without the details under it.
     await context.addInitScript(() => {
-        localStorage.setItem('njmule.setup', 'done');
         localStorage.removeItem('njmule.theme');
-        // The list alone, without the details under it (shown until a viewer hides them).
-        localStorage.setItem('njmule.details.shown', 'false');
+        localStorage.setItem('njmule.transfers.details', 'false');
     });
     const page = await context.newPage();
     const go = async (route) => {
         await page.goto(`${info.url}#${route}`);
-        await page.waitForLoadState('networkidle');
+        await shown(page);
         await page.keyboard.press('Escape');
     };
 
@@ -109,7 +112,7 @@ async function scheme(browser, info, colorScheme) {
     });
     await step('web-transfers-sources', async () => {
         await go('/transfers');
-        await page.locator('.el-table__body tr.el-table__row').first().dblclick();
+        await page.locator('.data-table .row').first().dblclick();
         await shot(page, folder, 'web-transfers-sources');
     });
     for (const [index, name] of [
@@ -120,21 +123,21 @@ async function scheme(browser, info, colorScheme) {
     ]) {
         await step(name, async () => {
             await go('/transfers');
-            await page.locator('.shelves .el-segmented__item').nth(index).click();
+            await page.locator('.segments .segment').nth(index).click();
             await shot(page, folder, name);
         });
     }
     await step('web-add-links', async () => {
         await go('/transfers');
         // The segment chosen last is remembered: back to the downloads, where the button is.
-        await page.locator('.shelves .el-segmented__item').first().click();
+        await page.locator('.segments .segment').first().click();
         await page
             .getByRole('button', { name: /add links/i })
             .filter({ visible: true })
             .first()
             .click();
         await page
-            .locator('#nj-links')
+            .locator('#links-text')
             .fill(
                 'ed2k://|file|Harbor.Lights.2024.4K.mkv|4939212800|9C4E2A07B1D35F8E61A0C2D47E93B5F1|/\n' +
                     'ed2k://|file|lumenos-4.1-desktop-amd64.iso|6217003008|E2B71C09A4F35D8E10C6A2B94D7F53E1|/',
@@ -144,7 +147,7 @@ async function scheme(browser, info, colorScheme) {
     await step('web-search', async () => {
         await go('/search');
         await shot(page, folder, 'web-search-empty');
-        const query = page.locator('form input[type="text"], form input:not([type])').first();
+        const query = page.locator('#search-query');
         await query.fill('paper boats');
         await query.press('Enter');
         await page.waitForTimeout(1500);
@@ -158,9 +161,10 @@ async function scheme(browser, info, colorScheme) {
         await go('/messages');
         await shot(page, folder, 'web-messages');
     });
-    for (const part of ['servers', 'kad', 'log']) {
+    for (const [index, part] of ['servers', 'kad', 'log'].entries()) {
         await step(`web-network-${part}`, async () => {
-            await go(`/network/${part}`);
+            await go('/network');
+            await page.locator('.segments .segment').nth(index).click();
             await shot(page, folder, `web-network-${part}`);
         });
     }
@@ -192,7 +196,7 @@ async function scheme(browser, info, colorScheme) {
     await step('web-guest', async () => {
         await signIn(guestPage, info.url, info.guest);
         await guestPage.goto(`${info.url}#/transfers`);
-        await guestPage.waitForLoadState('networkidle');
+        await shown(guestPage);
         await shot(guestPage, folder, 'web-guest');
     });
     await guest.close();
