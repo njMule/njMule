@@ -448,6 +448,10 @@ public final class RemoteApi implements AutoCloseable {
                                         this.engine::addKadContacts,
                                         this.engine::addKadContacts))),
                 entry("startSearch", this::startSearch),
+                entry("checkSearch", c -> {
+                    SearchRequest.checkExpression(text(c.body(), "query").strip());
+                    ok(c.exchange(), 200);
+                }),
                 entry("listSearches", this::listSearches),
                 entry("getSearchResults", this::getSearchResults),
                 entry("stopSearch", this::stopSearch),

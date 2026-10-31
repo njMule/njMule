@@ -213,6 +213,7 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/messages", "{\"to\":\"198.51.100.9:4662\",\"text\":\"hi\"}", 200),
                 Arguments.of("DELETE", "/api/v1/bans/192.0.2.200", "", 200),
                 Arguments.of("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"global\"}", 201),
+                Arguments.of("POST", "/api/v1/searches/check", "{\"query\":\"talk\"}", 200),
                 Arguments.of("POST", "/api/v1/notifications/test", "", 200),
                 Arguments.of("POST", "/api/v1/update/check", "", 200),
                 Arguments.of("POST", "/api/v1/update/skip", "{\"version\":\"0.2.0\"}", 200),
@@ -321,6 +322,7 @@ class RemoteApiContractTest {
                 Arguments.of("DELETE", "/api/v1/conversations/198.51.100.99:4662", "", 404),
                 Arguments.of("POST", "/api/v1/searches/7/spam", "{\"hashes\":[\"" + HASH + "\"]}", 404),
                 Arguments.of("POST", "/api/v1/ipfilter/lists", "", 409),
+                Arguments.of("POST", "/api/v1/searches/check", "{\"query\":\"talk OR\"}", 400),
                 Arguments.of("POST", "/api/v1/import/emule", "{\"path\":\"relative\"}", 400));
     }
 

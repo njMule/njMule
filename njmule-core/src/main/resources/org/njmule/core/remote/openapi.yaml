@@ -1822,6 +1822,34 @@ paths:
                 $ref: "#/components/schemas/Error"
         default:
           $ref: "#/components/responses/Error"
+  /searches/check:
+    post:
+      operationId: checkSearch
+      tags: [searches]
+      summary: Tells whether a search would take an expression, before it starts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  minLength: 1
+                  description: Words, with AND, OR and NOT between them as wanted, and attributes.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          description: The expression is malformed; the error tells what is wrong and where.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          $ref: "#/components/responses/Error"
   /searches/saved:
     get:
       operationId: listSavedSearches

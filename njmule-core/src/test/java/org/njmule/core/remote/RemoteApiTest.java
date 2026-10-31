@@ -1008,6 +1008,25 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldTakeAWellFormedSearchExpression() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("POST", "/api/v1/searches/check", "{\"query\":\"talk AND (night OR day) @size>10m\"}");
+
+        thenTheStatusIs(200);
+    }
+
+    @Test
+    void shouldTellWhatIsWrongWithAMalformedSearchExpression() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("POST", "/api/v1/searches/check", "{\"query\":\"talk AND\"}");
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("AND");
+    }
+
+    @Test
     void shouldListTheNetworkInterfacesOfTheEnginesComputer() throws Exception {
         givenTheApiRuns();
 
