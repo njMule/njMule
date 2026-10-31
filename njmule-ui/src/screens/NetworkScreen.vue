@@ -6,7 +6,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
 import { PopoverAnchor, PopoverContent, PopoverPortal, PopoverRoot } from 'reka-ui';
 import { computed, nextTick, ref } from 'vue';
 import { answer, api } from '../api/client';
-import { count } from '../format';
 import { t } from '../i18n';
 import { connection, preferences, serverName, servers, status } from '../model/engine';
 import { networkCards, networkWords } from '../network';
@@ -181,7 +180,7 @@ async function testPorts(): Promise<void> {
                 @click="networkPart = p.value"
             >
                 <Icon :name="p.icon" />{{ p.title
-                }}<span v-if="p.count !== null" class="segment-count">{{ count(p.count) }}</span>
+                }}<span v-if="p.count !== null" class="segment-count">{{ p.count }}</span>
             </button>
         </div>
         <ServersView v-if="networkPart === 'servers'" />
