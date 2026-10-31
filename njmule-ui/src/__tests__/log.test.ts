@@ -14,7 +14,8 @@ describe('the time of a log line', () => {
 
     it('should follow the clock of the locale', () => {
         whenWritten('2026-10-31T09:05:07Z', 'de-DE');
-        thenItReads(/^\d{1,2}\.\d{1,2}\.2026, \d{2}:\d{2}:07$/);
+        // A 24-hour clock without AM or PM; the hour has one digit or two as the time zone puts it.
+        thenItReads(/^\d{1,2}\.\d{1,2}\.2026, \d{1,2}:\d{2}:07$/);
     });
 
     function whenWritten(time: string, locale: string): void {
