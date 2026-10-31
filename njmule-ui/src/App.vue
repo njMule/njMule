@@ -4,7 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
 import { TooltipProvider } from 'reka-ui';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { answer, api, endpoint } from './api/client';
 import { duration, rate, size } from './format';
 import { t } from './i18n';
@@ -40,14 +40,16 @@ import { addLinks } from './transfers-actions';
 
 const props = defineProps<{ platform: Platform }>();
 
-// Below this width of the window the sidebar shows only its icons and the top bar keeps to its essentials.
+// Below this width of the window the sidebar shows only its icons and the top bar keeps to its essentials; higher when
+// the top bar needs more to show all it holds.
 const FOLD_BELOW = 1000;
 const SIDEBAR_KEY = 'njmule.sidebar.collapsed';
 
 const width = ref(window.innerWidth);
-const narrow = computed(() => width.value < FOLD_BELOW);
-const userCollapsed = ref(readCollapsed());
-const collapsed = computed(() => narrow.value || userCollapsed.value);
+const foldBelow = ref(FOLD_BELOW);
+const narrow = computed(() => width.value < foldBelow.value);
+// Folded while narrow, or as the user left it once wide; open for a while in a narrow window when asked.
+const collapsed = ref(narrow.value || readCollapsed());
 const paletteOpen = ref(false);
 const paletteText = ref('');
 const shortcutsOpen = ref(false);
@@ -95,14 +97,24 @@ function readCollapsed(): boolean {
 
 /** Folds or opens the sidebar, remembered while the window is wide. */
 function toggleSidebar(): void {
-    if (narrow.value) {
-        return;
+    collapsed.value = !collapsed.value;
+    if (!narrow.value) {
+        try {
+            localStorage.setItem(SIDEBAR_KEY, String(collapsed.value));
+        } catch {
+            // Folded until the window closes.
+        }
     }
-    userCollapsed.value = !userCollapsed.value;
-    try {
-        localStorage.setItem(SIDEBAR_KEY, String(userCollapsed.value));
-    } catch {
-        // Folded until the window closes.
+}
+
+// The window turned narrow or wide: the sidebar folds, or opens again as the user left it.
+watch(narrow, (now) => (collapsed.value = now || readCollapsed()));
+
+// A top bar that cannot show all it holds turns the window narrow from this width up, as the desktop app folds below
+// the width its wide layout needs.
+function crowded(): void {
+    if (!narrow.value) {
+        foldBelow.value = width.value + 1;
     }
 }
 
@@ -312,6 +324,7 @@ onUnmounted(() => {
                         @both="both"
                         @shortcuts="shortcutsOpen = true"
                         @incoming="openIncoming"
+                        @crowded="crowded"
                     />
                     <Banner @connect="connectIfOff" />
                     <!-- A place keeps what it shows while another is open: its filters, choice, scroll and pending options. -->

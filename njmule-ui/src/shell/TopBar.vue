@@ -13,7 +13,7 @@ import {
     PopoverRoot,
     PopoverTrigger,
 } from 'reka-ui';
-import { ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { rate } from '../format';
 import { t } from '../i18n';
 import { rates, status } from '../model/engine';
@@ -35,10 +35,33 @@ const emit = defineEmits<{
     both: [];
     shortcuts: [];
     incoming: [];
+    /** The bar cannot show all it holds at its width. */
+    crowded: [];
 }>();
 const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 const ratesTrigger = ref<InstanceType<typeof PopoverTrigger> | null>(null);
 const limitsOpen = ref(false);
+const bar = ref<HTMLElement | null>(null);
+const titleBox = ref<HTMLElement | null>(null);
+// The title is never cut: the summary gives way first.
+const titleWidth = ref(0);
+let observer: ResizeObserver | null = null;
+
+onMounted(() => {
+    observer = new ResizeObserver(() => {
+        titleWidth.value = Math.ceil(titleBox.value?.getBoundingClientRect().width ?? 0);
+        const b = bar.value;
+        if (b !== null && b.scrollWidth > b.clientWidth) {
+            emit('crowded');
+        }
+    });
+    for (const watched of [bar.value, titleBox.value, ...(bar.value?.children ?? [])]) {
+        if (watched) {
+            observer.observe(watched);
+        }
+    }
+});
+onUnmounted(() => observer?.disconnect());
 
 // A letter typed on the field starts the text of the palette.
 function typed(e: KeyboardEvent): void {
@@ -50,9 +73,9 @@ function typed(e: KeyboardEvent): void {
 </script>
 
 <template>
-    <header class="top-bar">
-        <div class="heading">
-            <h1 class="screen-title display">{{ title }}</h1>
+    <header ref="bar" class="top-bar">
+        <div class="heading" :style="{ minWidth: `${titleWidth}px` }">
+            <h1 ref="titleBox" class="screen-title display">{{ title }}</h1>
             <div v-if="summary && !narrow" class="screen-summary ellipsis">{{ summary }}</div>
         </div>
         <div class="spacer" />
@@ -166,7 +189,9 @@ function typed(e: KeyboardEvent): void {
     flex-shrink: 1;
 }
 
+/* As wide as its words, which give the heading its smallest width. */
 .screen-title {
+    width: max-content;
     margin: 0;
     font-size: 1.55em;
     line-height: 1.2;
