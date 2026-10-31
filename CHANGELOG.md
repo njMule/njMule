@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-31
+
 ### Fixed
 
 - The desktop app's Updates window shows the note on what the check sends above its buttons, as a
