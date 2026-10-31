@@ -36,6 +36,7 @@ import {
 } from 'reka-ui';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { language, t } from '../i18n';
+import { type ColumnSpan, dragColumn, fitColumns, MAX_WIDTH } from './column-widths';
 import Icon from './Icon.vue';
 
 // A table as the desktop app's: rows of 32 px drawn only where they show, sorted by a click on a header (ascending
@@ -148,7 +149,7 @@ const table = useTable({
     })),
     onSortingChange: update(sorting),
     onColumnVisibilityChange: update(visibility),
-    onColumnSizingChange: update(sizing),
+    onColumnSizingChange: sized,
     onColumnOrderChange: update(order),
     // Every column sorts ascending first, figures too, then descending, then not at all.
     sortDescFirst: false,
@@ -171,35 +172,53 @@ const virtualizer = useVirtualizer(
 const gutter = ref(0);
 const MENU_ROOM = 16;
 const room = ref(0);
-// As the desktop app's tables (flex the last column), the columns fill the list's width: the last takes what is left,
-// or gives it back down to its least width, then the one before it and so on; the list scrolls sideways only when
-// even their least widths do not fit.
+// JavaFX's width for a column given none: such a column starts fitted to its header, as the desktop app's.
+const DEFAULT_WIDTH = 80;
+
+function visibleColumns(): any[] {
+    return (table as any).getVisibleLeafColumns() as any[];
+}
+
+// A column's width as the user left it (or as preferred), the one it prefers, and its limits.
+function spanOf(c: any): ColumnSpan {
+    const min = (c.columnDef.minSize as number | undefined) ?? 24;
+    const max = (c.columnDef.maxSize as number | undefined) ?? MAX_WIDTH;
+    const declared = (c.columnDef.size as number | undefined) ?? DEFAULT_WIDTH;
+    const wanted = declared === DEFAULT_WIDTH ? Math.max(declared, headerNeeds.value[c.id] ?? 0) : declared;
+    const pref = Math.min(max, Math.max(min, wanted));
+    const kept = sizing.value[c.id];
+    return { size: kept === undefined ? pref : Math.min(max, Math.max(min, kept)), pref, min, max };
+}
+
+// As the desktop app's tables, the columns fill the list's width, a change of it shared among them all; the list
+// scrolls sideways only when even their least widths do not fit.
 const widths = computed(() => {
-    const columns = (table as any).getVisibleLeafColumns() as any[];
-    const least = (c: any): number => c.columnDef.minSize ?? 24;
-    // A column the user never sized is at least as wide as its header, as the desktop app sizes it at first.
-    const start = (c: any): number => (c.id in sizing.value ? 0 : (headerNeeds.value[c.id] ?? 0));
-    const out = new Map<string, number>(
-        columns.map((c) => [c.id as string, Math.max(least(c), c.getSize() as number, start(c))]),
-    );
-    if (props.fixedWidths || room.value <= 0 || columns.length === 0) {
-        return out;
-    }
-    let left = room.value - [...out.values()].reduce((sum, w) => sum + w, 0);
-    if (left > 0) {
-        const last = columns.at(-1).id as string;
-        out.set(last, out.get(last)! + left);
-    }
-    for (const c of [...columns].reverse()) {
-        if (left >= 0) {
-            break;
-        }
-        const given = Math.min(out.get(c.id)! - least(c), -left);
-        out.set(c.id, out.get(c.id)! - given);
-        left += given;
-    }
-    return out;
+    const columns = visibleColumns();
+    const spans = columns.map(spanOf);
+    const out = props.fixedWidths || room.value <= 0 ? spans.map((s) => s.size) : fitColumns(spans, room.value);
+    return new Map<string, number>(columns.map((c, i) => [c.id as string, out[i]!]));
 });
+
+// The widths shown kept as the user's, so that dragging an edge starts from what is seen.
+function holdWidths(): void {
+    if (!props.fixedWidths) {
+        sizing.value = Object.fromEntries(widths.value);
+    }
+}
+
+// An edge dragged, or a column fitted: the columns after it give or take the difference, as in the desktop app.
+function sized(next: Updater<ColumnSizingState>): void {
+    const wanted = typeof next === 'function' ? next(sizing.value) : next;
+    const columns = visibleColumns();
+    const index = columns.findIndex((c) => wanted[c.id] !== undefined && wanted[c.id] !== sizing.value[c.id]);
+    if (props.fixedWidths || index < 0) {
+        sizing.value = wanted;
+        return;
+    }
+    const spans = columns.map((c) => ({ ...spanOf(c), size: widths.value.get(c.id as string)! }));
+    const out = dragColumn(spans, index, wanted[columns[index].id]!);
+    sizing.value = { ...wanted, ...Object.fromEntries(columns.map((c, i) => [c.id as string, out[i]!])) };
+}
 const width = computed(() => [...widths.value.values()].reduce((sum, w) => sum + w, 0));
 const header = ref<HTMLElement | null>(null);
 // What each header's words take, with the cell's padding and the room of the sort mark.
@@ -262,7 +281,9 @@ let resizing = false;
 
 function resizeFrom(handler: (e: Event) => void, e: Event): void {
     resizing = true;
-    handler(e);
+    holdWidths();
+    // The drag starts from the widths held, once the table has taken them.
+    void nextTick(() => handler(e));
 }
 
 function resized(): void {
@@ -278,7 +299,8 @@ function fit(column: any): void {
     ];
     // The cells' padding, and the header's room for its sort mark.
     const need = Math.max(0, ...contents.map((c) => c.scrollWidth)) + HEADER_ROOM;
-    sizing.value = { ...sizing.value, [column.id]: Math.max(column.columnDef.minSize ?? 24, Math.ceil(need)) };
+    holdWidths();
+    sized((old) => ({ ...old, [column.id]: Math.max(column.columnDef.minSize ?? 24, Math.ceil(need)) }));
 }
 
 // A header dragged onto another moves its column before or after it, as the side of the pointer says.
