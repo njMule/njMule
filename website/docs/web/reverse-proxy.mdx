@@ -20,8 +20,8 @@ flowchart LR
 
 1. **Its public name, listed.** Against DNS rebinding the interface answers only names it knows
    (see [Host names](./security.mdx#host-names)). List the proxy's public name with
-   `--webui-host njmule.example.com`, in **Options → Web Interface → Host names** of the desktop
-   app, or on the Web Interface page of the options in the browser.
+   `--webui-host njmule.example.com`, or in **Options → Web Interface → Host names** of the desktop
+   app on njMule's computer; a browser cannot change the web interface's settings.
 2. **The browser's host name in the `Host` header.** Traefik and Caddy pass it on as it is; nginx
    needs `proxy_set_header Host $host;`, otherwise it sends the address of its upstream.
 3. **The root of a name, or a path the proxy strips.** The pages link to one another, to their
@@ -56,7 +56,7 @@ njmule --webui-password --webui-host njmule.example.com --webui-proxy 127.0.0.1
 
 `--webui-password` asks for the password; LAN access stays off. Restart njMule to apply it. The
 same can be done in the desktop app's **Options → Web Interface** (**Host names** and **Trusted
-proxies**).
+proxies**) on njMule's computer, where it applies at once.
 
 ## Example configurations
 
@@ -179,8 +179,8 @@ secrets:
 ```
 
 Traefik passes the `Host` header on and adds the client to `X-Forwarded-For`. The image starts
-with `--webui-password-file` at every start, so the host name and the proxy must be given in
-`command` each time: names added later in the browser's options last only until the next start.
+with `--webui-password-file` at every start, and a browser cannot change the web interface's
+settings, so the host name and the proxy are given in `command`, each time.
 
 </TabItem>
 </Tabs>

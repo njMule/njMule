@@ -15,8 +15,9 @@ holds its token can do everything njMule can, so it is off until you turn it on.
 The API is part of the web interface, which needs a password first
 ([Web interface](../web/overview.mdx#turn-it-on)). Then either:
 
-- in the desktop app, switch on **Options → Web Interface → Answer the remote-control API too
-  (njmule --remote; callers need its token)**;
+- in the desktop app on njMule's computer, switch on **Options → Web Interface → Answer the
+  remote-control API too (njmule --remote; callers need its token)** (in a browser, and in a window
+  on another computer's njMule, these options show disabled);
 - or add `--webui-api` when you set the password:
 
   ```bash
@@ -24,8 +25,9 @@ The API is part of the web interface, which needs a password first
   njmule --webui-password-file /run/secrets/njmule_webui_password --webui-lan --webui-api
   ```
 
-Like the other web interface settings, it applies from the next start of njMule. The command line
-only turns it on; to turn it off, use the switch in the desktop app.
+Like the other web interface settings, the switch applies at once, and the command line from the
+next start of njMule. The command line only turns it on; to turn it off, use the switch in the
+desktop app.
 
 ## The API token
 
@@ -38,8 +40,8 @@ njmule --api-token        # prints it, making one if there is none
 njmule --new-api-token    # replaces it: whoever holds the old one is refused from now on
 ```
 
-The desktop app has **Copy the API token** and **New API token** under the switch. A new token
-applies at once, without a restart.
+The desktop app on njMule's computer has **Copy the API token** and **New API token** under the
+switch. A new token applies at once, without a restart.
 
 :::warning
 The token gives full control of njMule, without the limits of a [guest](../web/guest.mdx). Keep it
@@ -118,8 +120,9 @@ $env:NJMULE_API_TOKEN = 'the token of that njMule'
 njmule --remote-url http://192.0.2.10:4711/api/v1 --remote status
 ```
 
-`--remote-url` without `--remote` opens the desktop app on that njMule instead: see
-[Remote njMule](../desktop/remote.mdx), which also covers **⋯ → Connect to a remote njMule**.
+`njmule-gui --remote-url <url>`, without `--remote`, opens the desktop app's window on that njMule
+instead: see [Remote njMule](../desktop/remote.mdx), which also covers **⋯ → Connect to a remote
+njMule**.
 
 ## The HTTP API
 

@@ -5,8 +5,7 @@ description: The download and upload capacity of your line, the speed limits, th
 
 The **Bandwidth** page says what your line can carry and how much of it njMule may use. The
 **capacities** describe your line: they limit nothing, but set the top of the speed sliders. The
-**limits** are what njMule really keeps to. The web interface has the same page, with the speeds
-typed in KB/s.
+**limits** are what njMule really keeps to. The web interface has the same page.
 
 <Screenshot
   id="settings-page-03"
@@ -20,8 +19,8 @@ Every option of this page applies at once and is kept in `njmule.properties`, in
 
 | Option | Default | What it does |
 | --- | --- | --- |
-| **Download capacity of the line** | 83.9 Mbit/s (10,240 KB/s) | What your line can download, typed in Mbit/s as providers sell it; beside it njMule shows the same speed in bytes (≈ 10.00 MB/s). The top of the download slider, and what **Full speed** sets the download limit to. From 1 KB/s to 10,000,000 KB/s. Key `limits.downloadCapacityKiBps`. Also in the web interface, in KB/s. |
-| **Upload capacity of the line** | 8.4 Mbit/s (1,024 KB/s) | What your line can upload, in Mbit/s; the top of the upload slider, and what **Full speed** sets the upload limit to. Same range. Key `limits.uploadCapacityKiBps`. Also in the web interface, in KB/s. |
+| **Download capacity of the line** | 83.9 Mbit/s (10,240 KB/s) | What your line can download, typed in Mbit/s as providers sell it; beside it njMule shows the same speed in bytes (≈ 10.00 MB/s). The top of the download slider, and what **Full speed** sets the download limit to. From 1 KB/s to 10,000,000 KB/s. Key `limits.downloadCapacityKiBps`. Also in the web interface. |
+| **Upload capacity of the line** | 8.4 Mbit/s (1,024 KB/s) | What your line can upload, in Mbit/s; the top of the upload slider, and what **Full speed** sets the upload limit to. Same range. Key `limits.uploadCapacityKiBps`. Also in the web interface. |
 
 The defaults stand for a common home line, about 80 Mbit/s down and 8 up. The first-start wizard
 offers presets for them, and the [import from eMule](../getting-started/import-emule.mdx) takes
@@ -31,7 +30,7 @@ eMule's capacities.
 
 | Option | Default | What it does |
 | --- | --- | --- |
-| **Download limit** | **No limit** | The most njMule downloads, all downloads together: a number in **KB/s** or **MB/s**, decimals allowed, or **No limit**. From 1 KB/s to 10,000,000 KB/s. Key `limits.downloadKiBps`, `0` for no limit. Also in the web interface, in KB/s, `0` for no limit. |
+| **Download limit** | **No limit** | The most njMule downloads, all downloads together: a number in **KB/s** or **MB/s**, decimals allowed, or **No limit**. From 1 KB/s to 10,000,000 KB/s. Key `limits.downloadKiBps`, `0` for no limit. Also in the web interface. |
 | **Upload limit** | **No limit** | The most njMule uploads, all uploads together, in the same way. The number of upload slots follows it. Key `limits.uploadKiBps`, `0` for no limit. Also in the web interface. |
 
 Leave some of your upload free: a line whose upload is full slows its downloads down too, because

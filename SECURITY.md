@@ -22,8 +22,9 @@ Until 1.0.0 only the latest `0.y.z` release receives security fixes.
 ## Scope
 
 In scope: remote input handling (eD2K/Kad packets, server lists, links), file parsing, the web
-interface, credential and identity storage. Out of scope: weaknesses that are part of the eD2K
-protocol itself (e.g. obfuscation is not encryption) unless njMule makes them worse.
+interface, the remote-control API, the desktop window's control endpoint, credential and identity
+storage. Out of scope: weaknesses that are part of the eD2K protocol itself (e.g. obfuscation is
+not encryption) unless njMule makes them worse.
 
 ## Hardening
 
@@ -55,6 +56,15 @@ Beyond what the protocol asks, njMule defends itself and its users in these ways
   and host checks against cross-site requests and DNS rebinding, HTTP-only same-site cookies,
   `Secure` over HTTPS, a strict Content-Security-Policy, and forwarded addresses believed only from
   the proxies named as trusted.
+- **Remote-control API**: callers with the API token are answered only when the web interface's
+  settings allow them; the token holds 256 random bits, is compared in constant time, and a wrong
+  one counts as a failed login of its address. A guest's session may only read, whatever its page
+  asks. Only the desktop window on njMule's computer may change the web interface's settings, read
+  the API token, or make njMule start at login and open eD2K links.
+- **Desktop window**: the engine it starts answers it on the loopback address only, at a port chosen
+  for that start, and only with a random token made for that start, which the window reads from the
+  engine's output; a request from a page of any other origin is refused, and the window's own pages
+  run under a strict Content-Security-Policy.
 - **Updates**: update information is taken only when signed by a key built into njMule, a package
   only when its length and SHA-256 match it, and the old version comes back if the new one does not
   start.

@@ -1,6 +1,6 @@
 ---
 title: Shared files
-description: Choose the folders you share with the eD2K and Kad networks, set upload priorities, rename and comment shared files, and read their statistics in the njMule desktop app.
+description: Choose the folders you share with the eD2K and Kad networks, set upload priorities, rename and comment shared files, and read their statistics in njMule.
 ---
 
 **Shared Files** (<kbd>Ctrl</kbd>+<kbd>3</kbd>) shows what you share with the eD2K and Kad networks:
@@ -24,11 +24,14 @@ The tree lists:
   files.
 
 Each place shows how many files it holds. Choose one to see its files; under the tree, a panel names
-it, tells its files and their size (as `18 files · 16.81 GB`), and offers what applies to it:
+it and tells its files and their size (as `18 files · 16.81 GB`). For a folder you share, the panel
+has the switch **Share with Subdirectories**: share its subfolders too, those made later included,
+or the folder alone.
 
-- **Share with Subdirectories** (a switch, for a folder you share): share its subfolders too, those
-  made later included, or the folder alone.
-- **Open Folder**: opens it in your file manager.
+Right-click a place for its menu:
+
+- **Open Folder**: opens it in your file manager. This works in the desktop app on njMule's
+  computer; elsewhere njMule says that the folders of this njMule are on its own computer.
 - **Unshare Directory** (for a folder you share): stops sharing it. Its files stay on your disk.
 
 njMule watches the shared folders: files added or changed show within seconds, once they are hashed.
@@ -36,16 +39,20 @@ njMule watches the shared folders: files added or changed show within seconds, o
 ## Sharing a folder
 
 1. Press **Share a folder**, at the top of the tree (also offered while nothing is shared).
-2. Choose the folder.
+2. Choose the folder in your system's dialog. In the web interface there is none: type the path of
+   the folder, as njMule's computer writes it, in the question that follows.
 3. njMule asks **Share this folder?** and names it. Leave **Share with Subdirectories** ticked to
    share its subfolders too.
 4. Press **Share**.
+
+In a window on a [remote njMule](./remote.mdx), **Share a folder** says that the folders of that
+njMule are on its own computer: share them from there, or from its web interface.
 
 ### Folders that need a second thought
 
 Some folders may hold personal or system files. For them njMule warns **Share everything in this
 folder?**: sharing them is **Share everything**, in red, and the safe answer, the default, is
-**Choose another folder**, which opens the folder chooser again.
+**Choose another folder**, which asks for a folder again.
 
 <Screenshot
     id="dialog-share-sensitive"
@@ -96,7 +103,7 @@ Right-click the files chosen, or use the buttons above them:
 
 | Command | What it does |
 |---|---|
-| **Open Folder** | Opens the file's folder in your file manager, with the file selected (one file). |
+| **Open Folder** | Opens the file's folder in your file manager, with the file selected (one file; in the desktop app on njMule's computer). |
 | **Rename** | Renames the file on disk: see [renaming](#renaming-a-shared-file) (one file). |
 | **Comments...** | Your comment and rating of the file: see [comments](#comments-and-ratings) (one file). |
 | **Priority** ▸ | **Very Low**, **Low**, **Normal**, **High**, **Release** or **Auto**. |

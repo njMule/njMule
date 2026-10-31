@@ -117,10 +117,14 @@ in a header, and reconnects by itself; after a break the screens read everything
 `platform.ts` tells where the interface runs: in the desktop shell's web view, or in a browser. In
 the desktop window, `desktop.ts` reaches the shell through Tauri's `invoke` for what a page cannot
 do: folder and file choosers, eD2K links the system hands over, the tray icon's menu and MiniMule,
-notifications and sounds, the system's icons of the kinds of files, the clipboard watch, and windows
-on another computer's njMule. In a browser the same calls do nothing or answer that they cannot, so
-a screen asks the platform before it offers them. The tray's menu and MiniMule are small windows of
-the shell showing one view of the interface, chosen by `?view=` in their address (`popups/`).
+notifications and sounds, the system's icons of the kinds of files, the clipboard and its watch,
+the options only the shell applies (start minimised, hide in the notification area, ask before
+quitting, watch the clipboard: `desktop-options.ts`), opening files and folders and starting the
+preview player (`files.ts`, only while the engine runs on the same computer), and windows on
+another computer's njMule. In a browser the same calls do nothing or answer that they cannot, so a
+screen asks the platform before it offers them: a browser types the paths and shows the shell's
+options disabled. The tray's menu and MiniMule are small windows of the shell showing one view of
+the interface, chosen by `?view=` in their address (`popups/`).
 
 ## Texts and languages
 
@@ -156,20 +160,25 @@ variables only; the rules are in [Code style](code-style.mdx#ui-colours).
 ## The guest role
 
 The web interface can have a second password, for guests who may only look
-([Guest access](/docs/web/guest)). A guest's page has `njmule-role` set to `guest`, and:
+([Guest access](/docs/web/guest)). A guest's page has `njmule-role` set to `guest`, which `guest`
+in `role.ts` reads:
 
-- the interface opens only the transfers, the searches, the network (without the log) and the
-  statistics (`GUEST_PLACES` in `role.ts`), and leaves out every control that changes something;
-- the server enforces it whatever the page does: a guest's API calls may only read the transfers,
-  the searches made, the servers, Kad and the statistics, and follow the events of the engine's
-  start and stop, servers, searches, downloads and disk space (`GUEST_READS` and `GUEST_EVENTS` in
-  `RemoteApi`, `njmule-core`).
+- the server enforces the role whatever the page does: a guest's API calls may only read the
+  transfers, the searches made, the servers, Kad and the statistics, and follow the events of the
+  engine's start and stop, servers, searches, downloads and disk space (`GUEST_READS` and
+  `GUEST_EVENTS` in `RemoteApi`, `njmule-core`); any other call answers 403;
+- the interface never opens the first-start wizard for a guest, disables the wizard and the import
+  from eMule, and shows nothing of updates. `GUEST_PLACES` and `allowed()` in `role.ts` name the
+  places a guest may open (the transfers, the searches, the network without its log, the
+  statistics), but the sidebar does not use them yet: a guest's page shows every place and control,
+  and the server refuses what they would change.
 
-<Screenshot id="web-guest" alt="The interface as a guest sees it: a sidebar with only Transfers, Search, Network and Statistics, a Guest badge in the top bar, and the downloads without buttons that change them." caption="A guest's page: fewer places, no controls that change anything." />
+<Screenshot id="web-guest" alt="The interface as a guest sees it: the sidebar with every place, and the list of downloads with its Add links button, as on the owner's page." caption="A guest's page: the server refuses any change it asks for." />
 
 When you add a screen or a control, decide what a guest sees, and keep the server's list in
-`RemoteApi` in step with `role.ts`. A few calls, such as the web interface's options and the API
-token, answer only the desktop window on njMule's own computer (`LOCAL_ONLY` in `RemoteApi`).
+`RemoteApi` in step with `role.ts`. A few calls answer only the desktop window on njMule's own
+computer (`LOCAL_ONLY` in `RemoteApi`): the web interface's options, the API token, and whether
+njMule starts at login and opens the eD2K links; a browser shows those options disabled.
 
 ## Working on the interface
 

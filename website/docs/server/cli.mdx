@@ -11,9 +11,12 @@ an import, a remote command), it does that and exits. It is `njmule.exe` on Wind
 after the installer), `/Applications/njMule.app/Contents/MacOS/njmule` on macOS and `njmule` in
 `/usr/bin` with the Linux packages.
 
-The desktop app, `njmule-gui`, takes the same options: started plainly or with ed2k links it opens
-its window (or hands the links to the njMule already running), while a task that ends, such as a
-search, a hash, an import or a remote command, runs as on the command line.
+The desktop app, `njmule-gui`, is the window that starts `njmule` beside it and shows its interface.
+It takes only a few options: ed2k links, which it hands to the desktop window already open (or
+opens one with them); `--config-dir <dir>`, the profile of the engine it starts;
+`--remote-url <url>`, which shows another njMule instead ([Remote njMule](../desktop/remote.mdx));
+`--version`; and `--restore-links`, which it passes to the engine. The installer and njMule's updates run a few
+more of its own. Every other task runs with `njmule`.
 
 :::tip[Quote the links]
 ed2k links contain `|`, which shells read as a pipe. Always put them in quotes:
@@ -31,7 +34,7 @@ This is what `njmule --help` prints for this version:
 | Option | What it does |
 |---|---|
 | (none) | Runs the engine headless until <kbd>Ctrl</kbd>+<kbd>C</kbd>, `SIGTERM` or `njmule --exit` |
-| `--headless` | Runs without a window; it is what `njmule` adds when it starts the desktop app's executable |
+| `--headless` | Changes nothing: `njmule` always runs without a window. It is still accepted, for the scripts and units that give it |
 | `--config-dir <dir>` | Keeps all data below `<dir>` (`config`, `data`, `temp`, `cache`, `logs`, `gui`, `incoming`) instead of the system's folders |
 | `--log-level <level>` | `ERROR`, `WARN`, `INFO`, `DEBUG` or `TRACE` for this run, whatever the options say |
 | `--share <dir>...` | Shares these folders too, besides the incoming one, and remembers them |
@@ -149,7 +152,7 @@ See [Web interface](../web/overview.mdx), [Security](../web/security.mdx) and
 | Option | What it does |
 |---|---|
 | `--remote <command>...` | Runs a command in the njMule running on this configuration through its API; `--remote help` lists the commands |
-| `--remote-url <url>` | The API of another njMule, as `http://192.0.2.10:4711/api/v1`: with `--remote` the command runs there; without it the desktop app shows that njMule |
+| `--remote-url <url>` | The API of another njMule, as `http://192.0.2.10:4711/api/v1`: with `--remote` the command runs there. Without it `njmule` refuses it: `njmule-gui --remote-url <url>` shows that njMule in the desktop app's window |
 | `--api-token` | Prints the API token, making one if there is none |
 | `--new-api-token` | Replaces the API token, prints the new one and exits; the old one stops working |
 
@@ -224,7 +227,7 @@ njMule refuses, with a usage error, options that would be silently ignored toget
 
 | Variable | What it does |
 |---|---|
-| `NJMULE_API_TOKEN` | The API token of the other njMule, for `--remote-url` (and for `njmule-gui --remote-url` when no connection is remembered) |
+| `NJMULE_API_TOKEN` | The API token of the other njMule, for `--remote-url` (and for `njmule-gui --remote-url`, before the token of a connection it remembers) |
 | `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` | Linux: where the configuration, data, logs and cache go, when set to an absolute path (`njmule` is the folder inside each) |
 | `XDG_DOWNLOAD_DIR` | Linux: the folder in which the completed downloads' folder `njMule` is made; otherwise the one of `~/.config/user-dirs.dirs`, else `~/Downloads` |
 | `NJMULE_INSTALL_KIND` | Set by the Docker image (`docker`), so that the update check tells to pull a new image; leave it alone |

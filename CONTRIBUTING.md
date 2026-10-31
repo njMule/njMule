@@ -33,8 +33,10 @@ LGPL, GPL-2.0-or-later, …), keep their original notices, and record them in `R
 3. Commit with [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
    messages: `<type>[scope][!]: <description>` — types `feat`, `fix`, `build`, `ci`, `docs`,
    `perf`, `refactor`, `style`, `test`, `chore`, `revert`.
-4. Run `./gradlew build` (formatting, Checkstyle, Error Prone, tests, coverage, SpotBugs). A new
-   or updated dependency also needs its lock files and checksums rewritten (see the README).
+4. Run `./gradlew build` (formatting, Checkstyle, Error Prone, tests, coverage, SpotBugs, and the
+   interface's type check, tests and Prettier check). A new or updated dependency also needs its
+   lock files and checksums rewritten (see
+   [Dependencies](https://njmule.github.io/njMule/developer/dependencies)).
 5. Open a pull request whose **title** is a Conventional Commits header; fill in the template.
    PRs are squash-merged.
 
@@ -46,14 +48,16 @@ LGPL, GPL-2.0-or-later, …), keep their original notices, and record them in `R
 - Always qualify instance fields with `this.`, and call the object's own methods without it
   (both enforced by Checkstyle).
 - LF line endings, UTF-8, the SPDX header from `config/license/header-java.txt` on every Java file.
+- The interface (`njmule-ui`) is formatted with Prettier (`npm run format` there), the desktop
+  window's Rust code (`njmule-desktop/src-tauri`) with `cargo fmt`.
 - Comments explain *why*, not *what*; keep them short.
 - Optional hook: `git config core.hooksPath .githooks`.
 
 ## Tests
 
-New behaviour needs tests (JUnit 5, AssertJ; jqwik for codecs and parsers). Never commit personal
-data: copies of a real eMule profile, captures or screenshots belong in the git-ignored
-`fixtures-private/` folder.
+New behaviour needs tests (JUnit Jupiter, AssertJ; jqwik for codecs and parsers; Vitest for the
+interface; `cargo test` for the desktop window). Never commit personal data: copies of a real eMule
+profile, captures or screenshots belong in the git-ignored `fixtures-private/` folder.
 
 Tests follow the given/when/then form of Gherkin inside plain JUnit classes (no Cucumber):
 

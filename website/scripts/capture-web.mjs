@@ -9,6 +9,7 @@
 
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { chromium } from 'playwright-core';
@@ -253,9 +254,15 @@ async function desktopPictures(page, folder, info, go) {
         await go('/transfers');
         await more(/Import from eMule/);
         await shotOf(dialog(), folder, 'dialog-import');
+        // The demo's eMule folder is made up, and the engine checks a folder only where one is: the check names one
+        // that exists, while the field keeps showing the made-up one.
+        await page.route('**/import/emule', (route) =>
+            route.continue({ postData: JSON.stringify({ ...route.request().postDataJSON(), path: tmpdir() }) }),
+        );
         await dialog().getByRole('button', { name: 'Check' }).click();
         await page.waitForTimeout(1500);
         await shotOf(dialog(), folder, 'dialog-import-report');
+        await page.unroute('**/import/emule');
     });
     await step('dialog-wizard', async () => {
         await go('/transfers');

@@ -353,7 +353,7 @@ const STAGES = [
         name: 'Install',
         clause: 'First, it finds your eMule',
         text: 'At its first start njMule looks for an eMule profile on this computer and offers to bring it along.',
-        shot: 'dialog-wizard-1',
+        shot: 'dialog-wizard-5',
         alt: 'The first-start wizard, offering to import the eMule found',
     },
     {

@@ -292,8 +292,8 @@ public final class WebUi implements AutoCloseable {
                     exchange,
                     421,
                     TEXT,
-                    "Unknown host name: open the interface by this computer's address and add the name under"
-                            + " Settings.");
+                    "Unknown host name: open the interface by this computer's address, and add the name to the"
+                            + " web interface's host names.");
             return;
         }
         if (!method.equals(GET) && !trustedOrigin(exchange.header("Origin"), exchange.header("Host"), names)) {

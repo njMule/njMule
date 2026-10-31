@@ -22,8 +22,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The web interface's own settings, which its host keeps apart from the engine's preferences and follows from the next
- * start. The API gives them to any admin, and changes them only for the desktop app's window on njMule's computer.
+ * The web interface's own settings, which its host keeps apart from the engine's preferences and follows at once. The
+ * API gives them to any admin, and changes them only for the desktop app's window on njMule's computer.
  */
 public interface WebInterface {
 

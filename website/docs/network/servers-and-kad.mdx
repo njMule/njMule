@@ -26,8 +26,8 @@ The list is kept in `server.met` in the configuration folder, in eMule's format 
 
 ### Add servers
 
-Open **Network → Servers** and click **Add servers** (the same choices show while the list is
-empty):
+Open **Network → Servers** and click **Add servers** (while the list is empty, it also offers
+**Update**, which fetches the address in the first box at once):
 
 - **Update server.met from URL**: type or choose the address of a `server.met` and click
   **Update**. The box offers the addresses you used before; while you never used one it suggests
@@ -35,7 +35,8 @@ empty):
   servers you do not have yet are added, and the log says `12 new servers from …`.
 - **IP or Address**: type `host:port` and click **Connect to address**: the server is added and
   njMule connects to it.
-- **Add servers from server.met…**: choose a `server.met` file on your computer.
+- **Add servers from server.met…**: choose a `server.met` file. The desktop app on the computer
+  njMule runs on opens the system's dialog there; a browser sends a file of its own computer.
 
 <Screenshot
     id="servers-add"
@@ -69,7 +70,11 @@ Right-click a server to:
 Static servers are the ones you want to keep: they are never removed as dead, and they are kept
 in `staticservers.dat` (eMule's format: `host:port,priority,name` per line). The server you are on
 stands out in bold, with an accent bar and the tooltip **Connected to this server**; one being
-tried is in italics.
+tried is in italics, with the tooltip **Connecting to this server**.
+
+The first column, **Country**, shows the flag and code of each server's country, its name in the
+tooltip, while **Show the country of other clients** is on (**Options → General**, on by default);
+the details of a server show them after its address.
 
 ### Connecting
 
@@ -137,7 +142,7 @@ connected):
 - **Nodes.dat from URL:** type or choose the address of a `nodes.dat` and click **Download**.
   While you never used one, the box suggests `https://upd.emule-security.org/nodes.dat`, fetched
   only when you click.
-- **Add contacts from nodes.dat…**: choose a `nodes.dat` file.
+- **Add contacts from nodes.dat…**: choose a `nodes.dat` file, as for a `server.met`.
 - **From a client you know:** type its address and UDP port (`host:UDP port`, such as a running
   eMule's `192.168.1.30:4672`) and click **Bootstrap**. On the command line:
   `njmule --kad-bootstrap=<host:port>`.
@@ -157,10 +162,10 @@ known, every 15 otherwise) only until Kad connects.
 
 The Kad view shows your node's facts (**State**, **UDP state**, **Buddy**, **Contacts**,
 **Verified contacts**, **KadID**), the contacts drawn by distance from the closest to the
-farthest, the **Contacts** of the routing table (ID, type, distance, address, version) and the
-**Current Searches**. Kad counts as connected while packets keep coming in. It also estimates the
-size of the network: the status strip shows the users and files of the servers and, in brackets,
-those Kad estimates.
+farthest, the **Contacts** of the routing table (ID, type, distance, address with the flag and
+code of its country, Kad version) and the **Current Searches**. Kad counts as connected while
+packets keep coming in. It also estimates the size of the network: the status strip shows the
+users and files of the servers and, in brackets, those Kad estimates.
 
 **Connect** and **Disconnect** on the **Kad** card (or in the top bar's network menu) start and
 stop Kad by hand; stopped by hand, it stays off until you connect it again or restart njMule.

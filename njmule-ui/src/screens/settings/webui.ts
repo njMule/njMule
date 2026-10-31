@@ -5,8 +5,8 @@ import { shallowRef } from 'vue';
 import { answer, api, type Schemas } from '../../api/client';
 import { isValidHost } from './inputs';
 
-// The web interface's own settings, kept apart from the engine's preferences and followed from the next start; only
-// the desktop app's window on njMule's computer changes them.
+// The web interface's own settings, kept apart from the engine's preferences and followed at once; only the desktop
+// app's window on njMule's computer changes them.
 
 export type WebSettings = Schemas['WebInterface'];
 

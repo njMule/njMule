@@ -26,20 +26,21 @@ other request of njMule.
 
 When a newer version is out:
 
-- the desktop app shows a notice with **Details**, which opens its **Updates** window with what
-  changed;
-- the web interface shows a banner, *njMule … is available*, whose **Details** opens the options;
-- the headless engine writes *njMule … is available* with the release page to its log;
+- the desktop app and the web interface show a notice, *njMule … is available*, whose **Details**
+  opens the **Updates** window with what changed; the status strip shows its download, then that
+  it is ready;
+- the engine writes *njMule … is available* with the release page to its log;
 - the remote-control API sends the `update.available` event.
 
-You can also look at any time: **⋯ → Check for new version** or the command palette in the desktop
-app, **Check for new version** under **Options → General → Updates** in the desktop app and in the
-browser, `njmule --check-update` or `njmule --remote update check`.
+A guest of the web interface is told nothing. You can also look at any time: **⋯ → Check for new
+version** in the top bar, the command palette, or **Check for new version** under
+**Options → General → Updates**, in the desktop app and in the web interface;
+`njmule --check-update` or `njmule --remote update check`.
 
 ## Choose what njMule does
 
-The **Updates** section of **Options → General**, in the desktop app and in the browser, holds four
-choices, which are also keys of `njmule.properties`:
+The **Updates** section of **Options → General**, in the desktop app and in the web interface,
+holds four choices, which are also keys of `njmule.properties`:
 
 | Option | Key | Choices | Default |
 |---|---|---|---|
@@ -80,11 +81,10 @@ What happens in step 3 depends on how njMule was installed:
 | Synology package | Nothing to download on the NAS, as the Package Center installs from your computer: download the new `.spk` from the release page and install it in the Package Center with **Manual Install** |
 | Docker image | Nothing to download: pull the new image with `docker pull ghcr.io/njmule/njmule` (or `docker compose pull && docker compose up -d`) and create the container again |
 
-The desktop app's **Updates** window, the **Updates** part of the web interface's settings and
-`njmule --check-update` or `njmule --update` tell how to install the new version on your kind of
-installation. An archive or an app njMule may not write to
-(unpacked by an administrator into a system folder, say) is treated like a package: njMule
-downloads the new version and leaves its installation to you.
+The **Updates** window, in the desktop app and in the web interface, and `njmule --check-update` or
+`njmule --update` tell how to install the new version on your kind of installation. An archive or
+an app njMule may not write to (unpacked by an administrator into a system folder, say) is treated
+like a package: njMule downloads the new version and leaves its installation to you.
 
 ### If something goes wrong
 

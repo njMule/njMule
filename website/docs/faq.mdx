@@ -80,11 +80,12 @@ since two clients with one identity spoil their credits. See [Ports and firewall
 
 ### Can it handle ed2k links?
 
-Yes. Paste them into the field at the top or into **Add links**, drop them on the window, or let
-njMule watch the clipboard (**Watch clipboard for eD2K file links**, off by default). To have links
-clicked in the browser open in njMule, turn on **Open ed2k links with njMule (from browsers and other
-programs)** in **Options → General** on Windows and Linux; turned off, it gives them back to the
-program that had them, such as eMule. On macOS the app takes them by itself. See
+Yes. Paste them into the field at the top, into **Add links** or with <kbd>Ctrl</kbd>+<kbd>V</kbd> on
+the Transfers screen, drop them on the window, or let the desktop app watch the clipboard (**Watch
+clipboard for eD2K file links**, off by default). To have links clicked in the browser open in
+njMule, turn on **Open ed2k links with njMule (from browsers and other programs)** in **Options →
+General** of the desktop app on Windows and Linux; turned off, it gives them back to the program
+that had them, such as eMule. On macOS the app takes them by itself. See
 [eD2K links](desktop/ed2k-links.mdx).
 
 ## Installing and running
@@ -124,12 +125,12 @@ no system library, a [Windows service](server/windows-service.mdx) and a
 
 ### Can I use it from my phone?
 
-Yes, through the web interface, which has a layout for phones. Turn it on with a password, allow
-other computers to connect (**Let other computers connect (otherwise only this one)** or
-`--webui-lan`), then open the computer's address with port 4711 on the phone, such as
-`http://192.0.2.10:4711/`. The interface is plain HTTP: outside your home network, reach it only
-through a reverse proxy that serves HTTPS. See [Web interface](web/overview.mdx) and
-[Reverse proxy](web/reverse-proxy.mdx).
+Yes, through the web interface, the same interface as the desktop app, whose sidebar folds to its
+icons on a narrow screen. Turn it on with a password, allow other computers to connect (**Let other
+computers connect (otherwise only this one)** or `--webui-lan`), then open the computer's address
+with port 4711 on the phone, such as `http://192.0.2.10:4711/`. The interface is plain HTTP:
+outside your home network, reach it only through a reverse proxy that serves HTTPS. See
+[Web interface](web/overview.mdx) and [Reverse proxy](web/reverse-proxy.mdx).
 
 ### How much memory and CPU?
 
@@ -164,8 +165,8 @@ are complete:
 | Finished | `%USERPROFILE%\Downloads\njMule` | `~/Downloads/njMule` | `~/Downloads/njMule` |
 | Unfinished | `%LOCALAPPDATA%\njMule\temp` | `~/Library/Application Support/njMule/temp` | `~/.local/share/njmule/temp` |
 
-**⋯ → Open Incoming Folder** opens it. Change both in **Options → Directories**; a
-[category](desktop/categories.mdx) can have an incoming folder of its own. See
+**⋯ → Open Incoming Folder** in the desktop app opens it. Change both in **Options →
+Directories**; a [category](desktop/categories.mdx) can have an incoming folder of its own. See
 [Data locations](data/locations.mdx).
 
 ### How do I change the ports?
@@ -184,8 +185,9 @@ queues; being reachable from outside (a HighID) and sharing files help. See
 
 ### Can it open torrents?
 
-No. njMule is a client for eD2K and Kad only. It takes `ed2k://` links and the magnet links that
-carry an eD2K hash (`urn:ed2k:` or `urn:ed2khash:`), not BitTorrent's.
+No. njMule is a client for eD2K and Kad only. It takes `ed2k://` links and, on the `njmule`
+command line, the magnet links that carry an eD2K hash (`urn:ed2k:` or `urn:ed2khash:`), not
+BitTorrent's.
 
 ### Can I use it without servers?
 
@@ -196,8 +198,9 @@ in **Options → Connection**. See [Servers and Kad](network/servers-and-kad.mdx
 ### Which languages does it speak?
 
 The desktop app and the web interface come in 36 languages, right-to-left ones with a mirrored
-layout, and follow the system's language. Choose another in **Options → General → Language**, then
-**Apply and restart**. To help with a translation, see [Translations](/developer/translations).
+layout, and follow the system's language (the browser's, in the web interface). Choose another in
+**Options → General → Language**, then **Apply and restart**; each browser keeps its own choice. To
+help with a translation, see [Translations](/developer/translations).
 
 ## Your data
 

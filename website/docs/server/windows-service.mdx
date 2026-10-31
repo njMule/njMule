@@ -80,15 +80,15 @@ settings, server list, downloads and identity, and you change them in its web in
 ### Change its web interface
 
 The port, LAN access, the password, the host names, the trusted proxies and the API are set like at
-the installation, then take effect at the next start of the service:
+the installation; installing again restarts the service, which takes them at once:
 
 ```powershell
 njmule --service=install --webui-password --webui-lan --webui-host homepc
-njmule --service=stop
-njmule --service=start
 ```
 
-Installing again keeps the profile and its downloads.
+For the service, the **Web Interface** page of the options shows them disabled, in a browser and in
+a desktop window alike: they change only on the command line. Installing again keeps the profile
+and its downloads.
 
 ### Downloads in another folder
 

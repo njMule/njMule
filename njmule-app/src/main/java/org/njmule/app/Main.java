@@ -165,7 +165,8 @@ public final class Main {
             }
             case RUN -> {
                 if (cli.remoteDesktop().isPresent()) {
-                    err.println("--remote-url without --remote opens the desktop app on that njMule.");
+                    err.println(
+                            "--remote-url needs --remote here; njmule-gui --remote-url <url> opens the desktop app on that njMule.");
                     return EXIT_USAGE;
                 }
                 Updating.awaitEnd(cli.waitFor());

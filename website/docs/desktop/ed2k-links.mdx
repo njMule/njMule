@@ -21,7 +21,7 @@ the links you click in a browser.
 | Server list | `ed2k://\|serverlist\|https://…/server.met\|/` | Downloads the `server.met` and adds its servers. |
 | Nodes list | `ed2k://\|nodeslist\|https://…/nodes.dat\|/` | Downloads the `nodes.dat` and adds its Kad contacts. |
 | Search | `ed2k://\|search\|words\|/` | Understood, but not acted upon yet. |
-| Magnet | `magnet:?xt=urn:ed2k:hash&xl=size&dn=name` | The eD2K form of a magnet link: adds a download, as a file link does. |
+| Magnet | `magnet:?xt=urn:ed2k:hash&xl=size&dn=name` | The eD2K form of a magnet link: given to `njmule` on the command line, adds a download, as a file link does. The window takes `ed2k://` links only. |
 
 A file link may carry more after its hash, which njMule uses when it is there:
 
@@ -31,9 +31,10 @@ A file link may carry more after its hash, which njMule uses when it is there:
 - after the closing `/`, a list of sources: `|sources,198.51.100.7:4662,…|/`, at most 32,767 of
   them; a list dated with `@` and a date (`|sources@261231,…|/`) is left out from that date on.
 
-A file may be up to 256 GiB. Links whose separators a browser escaped (`%7C` for `|`) are read too.
-A magnet link is taken only in its eD2K form (`urn:ed2k:` or `urn:ed2khash:`, with a name and a
-size); the magnet links of BitTorrent stay with the programs made for them.
+A file may be up to 256 GiB. The `njmule` command line also reads links whose separators a browser
+escaped (`%7C` for `|`). A magnet link is taken only in its eD2K form (`urn:ed2k:` or
+`urn:ed2khash:`, with a name and a size); the magnet links of BitTorrent stay with the programs made
+for them.
 
 ## Adding file links
 
@@ -42,14 +43,16 @@ There are several ways to add eD2K file links as downloads:
 | Way | How |
 |---|---|
 | **Add links** | In [Transfers](./transfers.mdx), press **Add links** and paste the links: see [below](#the-add-downloads-dialog). |
+| Pasting in Transfers | Press <kbd>Ctrl</kbd>+<kbd>V</kbd> on the Transfers screen, outside its fields: the links go into the category shown. |
 | The command palette | Press <kbd>Ctrl</kbd>+<kbd>K</kbd>, paste the links and choose **Download: …**. |
 | Drag and drop | Drag links from a web page or a text onto the njMule window. |
 | A browser | Click a link, once njMule opens ed2k links: see [Opening links from a browser](#opening-links-from-a-browser). |
 | The command line | `njmule-gui "ed2k://\|file\|…\|/"`: see [The command line](#the-command-line). |
-| The clipboard | Copy links anywhere, while njMule watches the clipboard: see [Watching the clipboard](#watching-the-clipboard). |
+| The clipboard | Copy links anywhere, while the desktop app watches the clipboard: see [Watching the clipboard](#watching-the-clipboard). |
 
-The palette, drag and drop and the clipboard take a text that **starts** with an `ed2k://|file|`
-link: every file link in it, apart by spaces or lines, becomes a download. Each download goes into
+Pasting in Transfers, the palette and drag and drop find every `ed2k://|file|` link in the text,
+apart by spaces or lines, and each becomes a download; the clipboard is watched for a text that
+**starts** with such a link. Each download goes into
 the first category whose names it matches (see [Categories](./categories.mdx)), and starts paused
 when **Add files to download in paused mode** is on in [Directories](../settings/directories.mdx).
 A message names each one added (**Download added: …**). Adding the link of a file you already
@@ -70,16 +73,16 @@ the clipboard are already in it.
 1. Type or paste the links in **eD2K links, one per line**; **Paste** adds what is on the clipboard
    after what is there. Links inside other text, such as a page's text or its HTML, are found too.
 2. Under **Files found: …** every file appears once, with its size and what njMule knows of it
-   already: **Already downloading**, **Shared**, **Completed** (downloaded before) or **Cancelled**.
-   Untick the files you do not want: those you download or share already start unticked.
+   already: **Already downloading** or **Shared**. Untick the files you do not want: those you
+   download or share already start unticked.
 3. Choose the **Category**: **By the rules of the categories** (the default unless Transfers shows
    one category), **(Unassign)**, or one of your categories.
 4. Tick **Add files to download in paused mode** to add them paused. It starts ticked when the
    option of [Directories](../settings/directories.mdx) is on, and what you choose here wins over it.
 5. The line at the bottom counts the files and their total size. Press **Download**.
 
-**Download** stays off while no file is ticked. The box takes file links only: put each link on a
-line of its own, or separate them with spaces, starting with a link.
+**Download** stays off while no file is ticked. The box takes file links only, wherever they are in
+the text.
 
 ## Opening links from a browser
 
@@ -125,9 +128,10 @@ Before you remove the deb or rpm package, turn the option off or run `njmule --r
 </TabItem>
 </Tabs>
 
-The option shows only in the installed desktop app, on Windows and Linux; a development build does
-not show it. If changing the handler fails, njMule says **Cannot change which program opens ed2k
-links: …** and the switch shows the real state again.
+The option works only in the installed desktop app on njMule's computer, on Windows and Linux: it is
+greyed out on macOS, in a development build, in the web interface and in a window on a
+[remote njMule](./remote.mdx). If changing the handler fails, njMule says **Cannot change which
+program opens ed2k links: …** and the switch shows the real state again.
 
 ### Giving the links back
 
@@ -149,16 +153,16 @@ link, as the `|` in it means something to the shells:
 njmule-gui "ed2k://|file|Example.iso|734003200|0123456789ABCDEF0123456789ABCDEF|/"
 ```
 
-If njMule already runs with the same configuration (the same `--config-dir`, or the same portable
-folder), the links go to the running njMule, whose window comes to the front, and the new start ends
-at once. Started without links, a second njMule only brings the running window to the front. A text
-that is not an eD2K link is refused with **Not an ed2k link: …**. For the other options of the
-command line, see [Command line](../server/cli.mdx).
+If the desktop app already runs, the links go to it, its window comes to the front, and the new
+start ends at once. Started without links, a second start only brings the running window to the
+front. Words that are not eD2K links are left out. For the other options of the command line, see
+[Command line](../server/cli.mdx).
 
 ## Watching the clipboard
 
-njMule can notice eD2K file links you copy in other programs. Turn on **Watch clipboard for eD2K
-file links** in [General options](../settings/general.mdx) (off by default). Then:
+The desktop app can notice eD2K file links you copy in other programs. Turn on **Watch clipboard for
+eD2K file links** in [General options](../settings/general.mdx) (off by default; greyed out in the
+web interface). Then:
 
 1. Copy a text that starts with an eD2K file link, in a browser or elsewhere.
 2. njMule asks **Add these eD2K file links to download?**, naming the files (up to ten).
