@@ -40,6 +40,7 @@ import {
 } from '../transfers';
 import { cancel, categorize, clearCompleted, copyLinks, each, prioritize } from '../transfers-actions';
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
+import EmptyState from '../ui/EmptyState.vue';
 import FilterChips from '../ui/FilterChips.vue';
 import Icon from '../ui/Icon.vue';
 import Segments from '../ui/Segments.vue';
@@ -446,18 +447,14 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                     @keydown="tableKey"
                 >
                     <template #empty>
-                        <div class="empty-state">
-                            <Icon name="DOWNLOAD" />
-                            <p>{{ t('nj.transfers.none') }}</p>
-                            <div class="empty-actions">
-                                <button class="button" @click="current = 'search'">
-                                    <Icon name="SEARCH" />{{ t('IDS_EM_SEARCH') }}
-                                </button>
-                                <button class="button" @click="adding = true">
-                                    <Icon name="PASTE" />{{ t('IDS_SW_DIRECTDOWNLOAD') }}
-                                </button>
-                            </div>
-                        </div>
+                        <EmptyState icon="DOWNLOAD" :text="t('nj.transfers.none')">
+                            <button class="button" @click="current = 'search'">
+                                <Icon name="SEARCH" />{{ t('IDS_EM_SEARCH') }}
+                            </button>
+                            <button class="button" @click="adding = true">
+                                <Icon name="PASTE" />{{ t('IDS_SW_DIRECTDOWNLOAD') }}
+                            </button>
+                        </EmptyState>
                     </template>
                     <template #below="{ row, columns: shownColumns }">
                         <div class="source-lines">
@@ -708,23 +705,5 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
     padding: 2px 4px 2px 36px;
     color: var(--color-fg-muted);
     font-size: 0.92em;
-}
-
-.empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    color: var(--color-fg-muted);
-    --nj-icon-size: 40px;
-}
-
-.empty-actions {
-    display: flex;
-    gap: 8px;
-}
-
-.empty-actions .button {
-    --nj-icon-size: 16px;
 }
 </style>

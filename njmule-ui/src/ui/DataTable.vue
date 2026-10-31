@@ -510,9 +510,13 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
     text-align: end;
 }
 
+/* What an empty list shows, in the middle of the part in sight however far its columns scroll. */
 .placeholder {
-    position: absolute;
-    inset: 0;
+    position: sticky;
+    top: 0;
+    inset-inline-start: 0;
+    width: 100%;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;

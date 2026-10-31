@@ -33,6 +33,7 @@ import { t } from '../../i18n';
 import { connection, serverNotes, servers, status, type Server } from '../../model/engine';
 import { message, problem, success } from '../../toasts';
 import DataTable, { type ColumnMeta } from '../../ui/DataTable.vue';
+import EmptyState from '../../ui/EmptyState.vue';
 import Icon from '../../ui/Icon.vue';
 import Tip from '../../ui/Tip.vue';
 
@@ -43,6 +44,8 @@ const filter = ref('');
 const selected = ref<string[]>([]);
 const address = ref('');
 const metUrl = ref('https://upd.emule-security.org/server.met');
+// The ways to add servers, under their button, also opened from the empty list.
+const adding = ref(false);
 const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 
 const inUse = computed(() => status.value?.server?.address ?? '');
@@ -310,7 +313,7 @@ function connectOrDisconnect(s: Server): Promise<void> {
                 <Icon name="FILTER" />
                 <input v-model="filter" :placeholder="t('nj.servers.filter')" @keydown.esc="filter = ''" />
             </label>
-            <PopoverRoot>
+            <PopoverRoot v-model:open="adding">
                 <PopoverTrigger class="button"><Icon name="ADD" />{{ t('nj.servers.add') }}</PopoverTrigger>
                 <PopoverPortal>
                     <PopoverContent class="menu add-servers" align="end" :side-offset="6">
@@ -351,7 +354,12 @@ function connectOrDisconnect(s: Server): Promise<void> {
                 @activate="connectTo"
             >
                 <template #empty>
-                    <span class="muted">{{ t('nj.servers.none') }}</span>
+                    <EmptyState icon="SERVER" :text="t('nj.servers.none')">
+                        <button class="button" @click="update"><Icon name="REFRESH" />{{ t('IDS_SV_UPDATE') }}</button>
+                        <button class="button" @click="adding = true">
+                            <Icon name="ADD" />{{ t('nj.servers.add') }}
+                        </button>
+                    </EmptyState>
                 </template>
                 <template #menu>
                     <ContextMenuItem

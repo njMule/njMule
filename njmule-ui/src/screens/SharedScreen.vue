@@ -29,6 +29,7 @@ import { holds, nameOf, parentOf, places, type Place } from '../shared';
 import { problem } from '../toasts';
 import { kindIcon } from '../transfers';
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
+import EmptyState from '../ui/EmptyState.vue';
 import Icon from '../ui/Icon.vue';
 import Segments from '../ui/Segments.vue';
 import Tip from '../ui/Tip.vue';
@@ -521,13 +522,11 @@ onMounted(() => void readDirectories());
                 :columns-label="t('IDS_DL_FILENAME')"
             >
                 <template #empty>
-                    <div class="empty-state">
-                        <Icon name="SHARED" />
-                        <p>{{ t('nj.shared.none') }}</p>
+                    <EmptyState icon="SHARED" :text="t('nj.shared.none')">
                         <button class="button" @click="chooseDirectory">
                             <Icon name="FOLDER_ADD" />{{ t('IDS_SHAREDIR') }}
                         </button>
-                    </div>
+                    </EmptyState>
                 </template>
                 <template #menu>
                     <ContextMenuItem
@@ -705,14 +704,6 @@ onMounted(() => void readDirectories());
 
 :deep(.file-kind) {
     --nj-icon-color: var(--color-fg-muted);
-}
-
-.empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    color: var(--color-fg-muted);
 }
 
 /* A switch as the desktop app's: a pill whose knob moves to the end when on. */
