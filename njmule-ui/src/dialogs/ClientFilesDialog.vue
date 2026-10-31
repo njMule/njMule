@@ -13,6 +13,7 @@ import { addLinks } from '../transfers-actions';
 import { actsFirst, byName } from '../transfers';
 import DataTable from '../ui/DataTable.vue';
 import DialogHeader from '../ui/DialogHeader.vue';
+import FileIcon from '../ui/FileIcon.vue';
 import Icon from '../ui/Icon.vue';
 
 // The files another client shares, as it lists them when asked; the chosen ones can be downloaded.
@@ -64,7 +65,11 @@ const columns: ColumnDef<any, ClientFile, any>[] = [
         accessorFn: (f: ClientFile) => f.name,
         size: 380,
         sortFn: byText,
-        cell: ({ getValue }: any) => h('span', { class: 'ellipsis', dir: 'auto' }, getValue()),
+        cell: ({ getValue }: any) =>
+            h('span', { class: 'name-cell' }, [
+                h(FileIcon, { name: getValue() }),
+                h('span', { class: 'ellipsis', dir: 'auto' }, getValue()),
+            ]),
     },
     {
         id: 'size',
@@ -136,5 +141,14 @@ async function download(): Promise<void> {
     display: flex;
     flex: 1;
     min-height: 0;
+}
+
+/* A file's name beside the icon of its kind. */
+:deep(.name-cell) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
 }
 </style>

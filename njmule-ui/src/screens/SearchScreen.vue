@@ -82,6 +82,7 @@ import {
 import { isSearchExpression, MAX_EXPRESSION } from '../search-syntax';
 import { problem } from '../toasts';
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
+import FileIcon from '../ui/FileIcon.vue';
 import Icon from '../ui/Icon.vue';
 import Segments from '../ui/Segments.vue';
 import Tip from '../ui/Tip.vue';
@@ -277,7 +278,11 @@ function nameCell(s: Search, row: ResultRow): VNode {
         },
         opens ? [h(Icon, { name: open ? 'CHEVRON_DOWN' : 'CHEVRON_RIGHT' })] : [],
     );
-    return h('span', { class: 'name-cell' }, [sign, h('span', { class: 'ellipsis', dir: 'auto' }, row.result.name)]);
+    return h('span', { class: 'name-cell' }, [
+        sign,
+        h(FileIcon, { name: row.result.name }),
+        h('span', { class: 'ellipsis', dir: 'auto' }, row.result.name),
+    ]);
 }
 
 function openNames(s: Search, hashes: string[], open: boolean): void {
@@ -1604,6 +1609,10 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     min-width: 0;
+}
+
+.search-results :deep(.name-cell .file-kind) {
+    margin-inline-end: 6px;
 }
 
 .search-results :deep(.names-sign) {

@@ -550,6 +550,91 @@ fn place_popup(window: &WebviewWindow, at: Place, width: f64, height: f64) -> ta
     window.set_focus()
 }
 
+/// The icon Windows shows for files with `extension`, which the program that opens them gives (a film shows the
+/// player's), as for a file that does not exist yet: its width and height as two 32-bit numbers, then four bytes a
+/// pixel (blue, green, red, alpha), row by row from the top. An older icon with no alpha takes it from its mask.
+#[cfg(windows)]
+fn system_icon(extension: &str) -> Option<Vec<u8>> {
+    use std::ffi::c_void;
+    use windows_sys::Win32::Graphics::Gdi::{
+        DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+        DIB_RGB_COLORS, HBITMAP,
+    };
+    use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL;
+    use windows_sys::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+    use windows_sys::Win32::UI::Shell::{
+        SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
+
+    /// The pixels of `bitmap`, at its own size, top row first.
+    unsafe fn pixels(bitmap: HBITMAP) -> Option<(i32, i32, Vec<u8>)> {
+        let mut size: BITMAP = std::mem::zeroed();
+        if GetObjectW(bitmap, std::mem::size_of::<BITMAP>() as i32, &mut size as *mut BITMAP as *mut c_void) == 0 {
+            return None;
+        }
+        let (width, height) = (size.bmWidth, size.bmHeight.abs());
+        let mut header: BITMAPINFO = std::mem::zeroed();
+        header.bmiHeader = BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: width,
+            // Negative: from the top row down.
+            biHeight: -height,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB,
+            ..std::mem::zeroed()
+        };
+        let mut out = vec![0u8; (width * height * 4) as usize];
+        let dc = GetDC(std::ptr::null_mut());
+        let lines = GetDIBits(dc, bitmap, 0, height as u32, out.as_mut_ptr().cast(), &mut header, DIB_RGB_COLORS);
+        ReleaseDC(std::ptr::null_mut(), dc);
+        (lines == height).then_some((width, height, out))
+    }
+
+    let name: Vec<u16> = format!("file.{extension}").encode_utf16().chain(Some(0)).collect();
+    // SAFETY: calls of the shell and of GDI on structures and buffers of their own sizes; every icon and bitmap got is
+    // freed, and the thread's COM is ended as it was begun.
+    unsafe {
+        let com = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+        let mut info: SHFILEINFOW = std::mem::zeroed();
+        let found = SHGetFileInfoW(
+            name.as_ptr(),
+            FILE_ATTRIBUTE_NORMAL,
+            &mut info,
+            std::mem::size_of::<SHFILEINFOW>() as u32,
+            SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES,
+        );
+        let mut icon = None;
+        if found != 0 && !info.hIcon.is_null() {
+            let mut parts: ICONINFO = std::mem::zeroed();
+            if GetIconInfo(info.hIcon, &mut parts) != 0 {
+                icon = pixels(parts.hbmColor).map(|(width, height, mut bgra)| {
+                    if bgra.chunks(4).all(|p| p[3] == 0) {
+                        if let Some((_, _, mask)) = pixels(parts.hbmMask) {
+                            for (pixel, masked) in bgra.chunks_mut(4).zip(mask.chunks(4)) {
+                                pixel[3] = if masked[0] == 0 { 255 } else { 0 };
+                            }
+                        }
+                    }
+                    let mut out = Vec::with_capacity(8 + bgra.len());
+                    out.extend_from_slice(&(width as u32).to_le_bytes());
+                    out.extend_from_slice(&(height as u32).to_le_bytes());
+                    out.extend(bgra);
+                    out
+                });
+                DeleteObject(parts.hbmColor);
+                DeleteObject(parts.hbmMask);
+            }
+            DestroyIcon(info.hIcon);
+        }
+        if com >= 0 {
+            CoUninitialize();
+        }
+        icon
+    }
+}
+
 /// The system's longest time between the two clicks of a double click.
 fn double_click_time() -> Duration {
     #[cfg(windows)]
@@ -791,6 +876,26 @@ fn preview(player: String, args: String, file: String) -> Result<(), String> {
         .map_err(|e| format!("{program}: {e}"))?;
     std::thread::spawn(move || child.wait());
     Ok(())
+}
+
+/// The icon of the program that opens files with `extension` (see `system_icon`), on a thread of its own, which the
+/// shell's COM wants; none but on Windows.
+#[tauri::command]
+async fn file_icon(extension: String) -> Result<Response, String> {
+    if extension.is_empty() || extension.len() > 16 || !extension.chars().all(char::is_alphanumeric) {
+        return Err(format!("{extension} is no extension"));
+    }
+    #[cfg(windows)]
+    {
+        let icon = tauri::async_runtime::spawn_blocking(move || {
+            std::thread::spawn(move || system_icon(&extension)).join().ok().flatten()
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        icon.map(Response::new).ok_or_else(|| "The system has no icon for it.".into())
+    }
+    #[cfg(not(windows))]
+    Err("The system's icons are read on Windows only.".into())
 }
 
 /// The text on the clipboard, empty when it holds none: read by the shell, as the web view asks the user before a page
@@ -1060,7 +1165,8 @@ fn main() {
             open_file,
             reveal_file,
             app_menu_texts,
-            read_clipboard
+            read_clipboard,
+            file_icon
         ])
         .setup(move |app| {
             match &remote {
@@ -1297,5 +1403,21 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
         assert!(text.contains(r"http\://nas.local\:4711/api/v1=first"), "{text}");
         assert_eq!(again, all);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn should_read_the_icon_windows_shows_for_a_kind_of_file() {
+        let icon = system_icon("txt").expect("an icon for text files");
+        then_the_icon_holds_its_pixels(&icon);
+    }
+
+    #[cfg(windows)]
+    fn then_the_icon_holds_its_pixels(icon: &[u8]) {
+        let width = u32::from_le_bytes(icon[0..4].try_into().unwrap()) as usize;
+        let height = u32::from_le_bytes(icon[4..8].try_into().unwrap()) as usize;
+        assert!(width > 0 && height > 0);
+        assert_eq!(icon.len(), 8 + width * height * 4);
+        assert!(icon[8..].chunks(4).any(|pixel| pixel[3] != 0), "a transparent icon");
     }
 }

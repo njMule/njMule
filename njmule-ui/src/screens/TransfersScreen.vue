@@ -64,6 +64,7 @@ import {
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
 import EmptyState from '../ui/EmptyState.vue';
 import FilterChips from '../ui/FilterChips.vue';
+import FileIcon from '../ui/FileIcon.vue';
 import Icon from '../ui/Icon.vue';
 import Segments from '../ui/Segments.vue';
 import Tip from '../ui/Tip.vue';
@@ -347,7 +348,7 @@ const columns: ColumnDef<any, Download, any>[] = [
             const color = categoryColor(d.category);
             return h(Tip, { text: d.category === 0 ? d.name : `${d.name}\n${categoryName(d.category)}` }, () =>
                 h('span', { class: 'name-cell' }, [
-                    h(Icon, { name: kindIcon(d.kind), class: 'file-kind' }),
+                    h(FileIcon, { name: d.name, kind: kindIcon(d.kind) }),
                     d.category !== 0 ? h('span', { class: ['category-dot', color > 0 ? `cat-${color}` : ''] }) : null,
                     h('span', { class: 'ellipsis', dir: 'auto' }, d.name),
                 ]),

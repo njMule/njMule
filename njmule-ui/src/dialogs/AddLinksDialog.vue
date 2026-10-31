@@ -12,6 +12,7 @@ import { categories, downloads, preferences, shared } from '../model/engine';
 import { actsFirst, kindIcon, kindOf, knownAs } from '../transfers';
 import { addLinks } from '../transfers-actions';
 import DialogHeader from '../ui/DialogHeader.vue';
+import FileIcon from '../ui/FileIcon.vue';
 import Icon from '../ui/Icon.vue';
 
 // eD2K file links to download, typed or pasted in a box: the files found in it, each with what is known of it already,
@@ -138,7 +139,7 @@ async function add(): Promise<void> {
                             :checked="!unticked.has(l.hash)"
                             @change="tick(l.hash, ($event.target as HTMLInputElement).checked)"
                         />
-                        <Icon class="file-kind" :name="kindIcon(kindOf(l.name))" />
+                        <FileIcon :name="l.name" :kind="kindIcon(kindOf(l.name))" />
                         <span class="ellipsis grow" dir="auto">{{ l.name }}</span>
                         <span v-if="knownAs(l.hash, downloading, sharing)" class="state-chip neutral"
                             ><Icon name="INFO" />{{ t(knownAs(l.hash, downloading, sharing)!) }}</span

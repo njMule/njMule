@@ -13,6 +13,7 @@ import { engineHere, type Platform } from '../platform';
 import { isFullPath } from '../screens/settings/inputs';
 import { problem } from '../toasts';
 import DataTable from '../ui/DataTable.vue';
+import FileIcon from '../ui/FileIcon.vue';
 import Icon from '../ui/Icon.vue';
 import Tip from '../ui/Tip.vue';
 
@@ -130,7 +131,11 @@ const columns: ColumnDef<any, Row, any>[] = [
         header: t('IDS_DL_FILENAME'),
         accessorFn: (r: Row) => r.file,
         size: 150,
-        cell: ({ getValue }: any) => h('span', { class: 'ellipsis', dir: 'ltr' }, getValue() as string),
+        cell: ({ getValue }: any) =>
+            h('span', { class: 'name-cell' }, [
+                h(FileIcon, { name: getValue() as string }),
+                h('span', { class: 'ellipsis', dir: 'ltr' }, getValue() as string),
+            ]),
     },
     {
         id: 'detail',
@@ -388,5 +393,14 @@ const columns: ColumnDef<any, Row, any>[] = [
 
 .uniform .button {
     justify-content: center;
+}
+
+/* A file's name beside the icon of its kind. */
+:deep(.name-cell) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
 }
 </style>

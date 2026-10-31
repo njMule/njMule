@@ -59,6 +59,7 @@ import {
     swapSource,
 } from '../../transfers-actions';
 import EmptyState from '../../ui/EmptyState.vue';
+import FileIcon from '../../ui/FileIcon.vue';
 import Icon from '../../ui/Icon.vue';
 import PartBar from '../../ui/PartBar.vue';
 import Tip from '../../ui/Tip.vue';
@@ -606,7 +607,11 @@ defineExpose({ neededHeight });
                                 @click="pickedName = n.name"
                                 @dblclick="takeOver(n.name)"
                             >
-                                <span class="ellipsis" role="gridcell" dir="auto">{{ n.name }}</span>
+                                <span class="name-cell" role="gridcell"
+                                    ><FileIcon :name="n.name" /><span class="ellipsis" dir="auto">{{
+                                        n.name
+                                    }}</span></span
+                                >
                                 <span class="count" role="gridcell">{{ n.sources }}</span>
                             </div>
                         </div>
@@ -1037,5 +1042,14 @@ defineExpose({ neededHeight });
 .danger-item {
     color: var(--color-danger-fg);
     --nj-icon-color: var(--color-danger-fg);
+}
+
+/* A name the sources gave beside the icon of its kind, taking the room the count leaves. */
+.names-row .name-cell {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
 }
 </style>

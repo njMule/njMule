@@ -14,6 +14,7 @@ import { bans, known, uploads, type Ban, type KnownClient, type Upload } from '.
 import { problem } from '../../toasts';
 import { byName, withoutColon } from '../../transfers';
 import DataTable, { type ColumnMeta } from '../../ui/DataTable.vue';
+import FileIcon from '../../ui/FileIcon.vue';
 import Icon from '../../ui/Icon.vue';
 import Country from './Country.vue';
 
@@ -81,7 +82,8 @@ const uploadColumns: ColumnDef<any, Upload, any>[] = [
         accessorFn: (u: Upload) => u.file,
         size: 260,
         sortFn: byText,
-        cell: ({ getValue }: any) => named(getValue()),
+        cell: ({ getValue }: any) =>
+            h('span', { class: 'name-cell' }, [h(FileIcon, { name: getValue() }), named(getValue())]),
     },
     {
         id: 'speed',
@@ -277,3 +279,14 @@ const label = computed(
     </DataTable>
     <ClientFilesDialog v-model:open="browsing" :client="browsed" />
 </template>
+
+<style scoped>
+/* A file's name beside the icon of its kind. */
+:deep(.name-cell) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+}
+</style>

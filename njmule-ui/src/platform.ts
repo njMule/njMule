@@ -46,6 +46,8 @@ export interface Platform {
     trayState(state: { tooltip: string; glance: Glance }): void;
     /** Plays the WAV file at {@code path} of this computer, unless a sound plays already. */
     playSound(path: string): void;
+    /** The image of the icon the system shows for files with {@code extension}; null where it gives none. */
+    fileIcon(extension: string): Promise<string | null>;
     /** Runs {@code handler} instead of closing when the window is closed, so that it asks first. */
     onCloseAsked(handler: () => void): void;
     /** Ends njMule: the engine saves and stops with the window. */
@@ -100,8 +102,9 @@ const browser: Platform = {
     },
     onTray: () => {},
     trayState: () => {},
-    // A page reaches no file of the engine's computer.
+    // A page reaches no file of the engine's computer, nor the icons of the system it runs on.
     playSound: () => {},
+    fileIcon: async () => null,
     // A page closes as the browser's tabs do; the engine goes on serving it.
     onCloseAsked: () => {},
     quit: () => {},

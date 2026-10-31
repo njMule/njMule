@@ -4,6 +4,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Endpoint } from './api/client';
+import { iconPixels } from './file-icons';
 import { t } from './i18n';
 import type { AppMenuChoice, DesktopSettings, Platform, TrayChoice } from './platform';
 import { unreachable } from './remote';
@@ -81,6 +82,20 @@ if (navigator.clipboard) {
     navigator.clipboard.readText = () => invoke<string>('read_clipboard');
 }
 
+// The shell's pixels of an icon as an image the page shows.
+function iconImage(data: Uint8Array): string | null {
+    const icon = iconPixels(data);
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (icon === null || context === null) {
+        return null;
+    }
+    canvas.width = icon.width;
+    canvas.height = icon.height;
+    context.putImageData(new ImageData(icon.rgba, icon.width, icon.height), 0, 0);
+    return canvas.toDataURL('image/png');
+}
+
 export const desktop: Platform = {
     desktop: true,
     endpoint: reached,
@@ -117,6 +132,13 @@ export const desktop: Platform = {
     onTray: (handler) => void listen<TrayChoice>('tray', (e) => handler(e.payload)),
     trayState: (state) => void invoke('tray_state', state),
     playSound: (path) => void play(path),
+    fileIcon: async (extension) => {
+        try {
+            return iconImage(new Uint8Array(await invoke<ArrayBuffer>('file_icon', { extension })));
+        } catch {
+            return null;
+        }
+    },
     // Once the window listens, the shell leaves closing to it.
     onCloseAsked: (handler) => {
         void listen('close-requested', () => handler()).then(() => invoke('window_ready'));

@@ -9,6 +9,7 @@ import { connect } from './api/client';
 import { loadLanguage, windowLanguage } from './i18n';
 import { follow } from './model/engine';
 import { followChats } from './chats';
+import { readSystemIcons } from './file-icons';
 import { currentPlatform } from './platform';
 import { followTheme } from './theme';
 
@@ -28,6 +29,7 @@ const view = new URLSearchParams(window.location.search).get('view');
 if (view === null) {
     follow();
     followChats();
+    readSystemIcons(platform);
     createApp(App, { platform }).mount('#app');
 } else {
     const { mountPopup } = await import('./popups/mount');

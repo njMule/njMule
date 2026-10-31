@@ -46,6 +46,7 @@ import { kindIcon } from '../transfers';
 import CommentDialog from '../dialogs/CommentDialog.vue';
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
 import EmptyState from '../ui/EmptyState.vue';
+import FileIcon from '../ui/FileIcon.vue';
 import Icon from '../ui/Icon.vue';
 import Segments from '../ui/Segments.vue';
 import Tip from '../ui/Tip.vue';
@@ -182,7 +183,10 @@ const columns: ColumnDef<any, SharedFile, any>[] = [
         cell: ({ row }: any) =>
             h(Tip, { text: (row.original as SharedFile).name }, () =>
                 h('span', { class: 'name-cell' }, [
-                    h(Icon, { name: kindIcon(fileKind((row.original as SharedFile).name)), class: 'file-kind' }),
+                    h(FileIcon, {
+                        name: (row.original as SharedFile).name,
+                        kind: kindIcon(fileKind((row.original as SharedFile).name)),
+                    }),
                     h('span', { class: 'ellipsis', dir: 'auto' }, (row.original as SharedFile).name),
                 ]),
             ),
