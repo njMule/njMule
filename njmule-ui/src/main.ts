@@ -7,7 +7,6 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import { connect } from './api/client';
 import { loadLanguage, windowLanguage } from './i18n';
-import { trayWords } from './language';
 import { follow } from './model/engine';
 import { followChats } from './chats';
 import { currentPlatform } from './platform';
@@ -24,7 +23,13 @@ connect(await platform.endpoint(), () => {
     }
 });
 await loadLanguage(windowLanguage(navigator.languages));
-platform.localize(trayWords());
-follow();
-followChats();
-createApp(App, { platform }).mount('#app');
+// The shell's small windows of the notification area's icon show one view of the interface.
+const view = new URLSearchParams(window.location.search).get('view');
+if (view === null) {
+    follow();
+    followChats();
+    createApp(App, { platform }).mount('#app');
+} else {
+    const { mountPopup } = await import('./popups/mount');
+    mountPopup(view);
+}

@@ -46,7 +46,8 @@ export function toggleDark(): void {
     setTheme(family.value, dark.value ? 'light' : 'dark');
 }
 
-export function followTheme(): void {
+/** Shows the look kept, as chosen here or in another window. */
+export function readTheme(): void {
     try {
         const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}') as { family?: Family; mode?: Mode };
         family.value = saved.family ?? 'nord';
@@ -54,9 +55,13 @@ export function followTheme(): void {
     } catch {
         // The default theme.
     }
+    apply();
+}
+
+export function followTheme(): void {
+    readTheme();
     system.addEventListener('change', (e) => {
         systemDark.value = e.matches;
         apply();
     });
-    apply();
 }

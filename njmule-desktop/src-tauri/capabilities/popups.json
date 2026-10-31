@@ -1,0 +1,7 @@
+{
+    "$schema": "../gen/schemas/desktop-schema.json",
+    "identifier": "popups",
+    "description": "What the menu of njMule's icon in the notification area and MiniMule may ask the shell",
+    "windows": ["tray", "minimule"],
+    "permissions": ["core:default"]
+}

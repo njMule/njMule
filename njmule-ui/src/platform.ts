@@ -2,21 +2,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { Endpoint } from './api/client';
+import type { Glance } from './tray';
 
 // What differs between the desktop app's window, where the shell (Tauri) does what the system offers, and a browser
 // page of the web interface, which keeps to what a page may do.
 
-/** The words of the tray's menu. */
-export interface TrayWords {
-    fullSpeed: string;
-    slowDown: string;
-    show: string;
-    options: string;
-    quit: string;
-}
+/** What the tray's menu and MiniMule leave to the window. */
+export type TrayChoice = 'full-speed' | 'slow-down' | 'connect' | 'options' | 'quit' | 'incoming';
 
-/** What the tray's menu leaves to the window. */
-export type TrayChoice = 'full-speed' | 'slow-down' | 'connect' | 'options' | 'quit';
+/** The options of the desktop app that only its shell applies. */
+export interface DesktopSettings {
+    startMinimized: boolean;
+    minimizeToTray: boolean;
+    confirmExit: boolean;
+    watchClipboard: boolean;
+}
 
 export interface Platform {
     /** Whether the interface runs in the desktop app's window. */
@@ -36,18 +36,29 @@ export interface Platform {
     openFolder(path: string): Promise<boolean>;
     /** Opens a folder in the system's file manager, or fails with the system's reason. */
     showFolder(path: string): Promise<void>;
-    /** Words the shell shows itself, its tray's menu, in the interface's language. */
-    localize(words: TrayWords): void;
-    /** Runs {@code handler} with what was chosen in the tray's menu that the window does itself. */
+    /** Runs {@code handler} with what was chosen in the tray's menu or MiniMule that the window does itself. */
     onTray(handler: (chosen: TrayChoice) => void): void;
-    /** njMule's state at the head of the tray's menu, what its connection item does now, and its icon's tooltip. */
-    trayState(state: { state: string; connect: string; tooltip: string }): void;
+    /** The tray icon's tooltip, and njMule at a glance for its menu and MiniMule. */
+    trayState(state: { tooltip: string; glance: Glance }): void;
     /** Plays the WAV file at {@code path} of this computer, unless a sound plays already. */
     playSound(path: string): void;
     /** Runs {@code handler} instead of closing when the window is closed, so that it asks first. */
     onCloseAsked(handler: () => void): void;
     /** Ends njMule: the engine saves and stops with the window. */
     quit(): void;
+    /** Brings the window back, from the notification area too. */
+    showWindow(): void;
+    /** Shows {@code text} as a notification of the system while the window hides in the notification area. */
+    notify(text: string): void;
+    /** The options only the shell applies, and whether there is a notification area; null where none apply. */
+    desktopSettings(): Promise<{ settings: DesktopSettings; tray: boolean } | null>;
+    /** Keeps the options only the shell applies. */
+    setDesktopSettings(settings: DesktopSettings): Promise<void>;
+    /**
+     * Runs {@code handler} with each new text of the clipboard while the options ask for it: whole when it starts with
+     * an eD2K file link, empty otherwise.
+     */
+    onClipboard(handler: (text: string) => void): void;
 }
 
 const browser: Platform = {
@@ -68,7 +79,6 @@ const browser: Platform = {
     showFolder: async () => {
         throw new Error('');
     },
-    localize: () => {},
     onTray: () => {},
     trayState: () => {},
     // A page reaches no file of the engine's computer.
@@ -76,6 +86,12 @@ const browser: Platform = {
     // A page closes as the browser's tabs do; the engine goes on serving it.
     onCloseAsked: () => {},
     quit: () => {},
+    showWindow: () => {},
+    notify: () => {},
+    // A page has no notification area, starts as the browser does and reads no clipboard on its own.
+    desktopSettings: async () => null,
+    setDesktopSettings: async () => {},
+    onClipboard: () => {},
 };
 
 /** Whether the engine at the API address {@code url} runs on this computer: its folders are ours to open. */

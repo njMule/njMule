@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { close, message, offer, problem, toasts } from '../toasts';
+import { close, message, offer, problem, success, toasts, whileHidden } from '../toasts';
 
 describe('the messages over the window', () => {
     beforeEach(() => {
@@ -106,5 +106,44 @@ describe('the messages over the window', () => {
     function thenTheMessagesAreAfter(ms: number, expected: [string, number][]): void {
         vi.advanceTimersByTime(ms);
         thenTheMessagesAre(expected);
+    }
+});
+
+describe('the messages while the window hides', () => {
+    let shown: string[] = [];
+
+    beforeEach(() => {
+        shown = [];
+        whileHidden((text) => shown.push(text));
+    });
+
+    afterEach(() => {
+        whileHidden(() => {});
+    });
+
+    it('should show every kind of message elsewhere too', () => {
+        whenMessagesOfEachKind();
+        thenShownElsewhere(['started', 'finished', 'removed', 'failed']);
+    });
+
+    it('should show the same message elsewhere each time it comes', () => {
+        whenTheSameMessageTwice('Download finished: a.iso');
+        thenShownElsewhere(['Download finished: a.iso', 'Download finished: a.iso']);
+    });
+
+    function whenMessagesOfEachKind(): void {
+        message('started');
+        success('finished');
+        offer('removed', 'Undo', () => {});
+        problem('failed');
+    }
+
+    function whenTheSameMessageTwice(text: string): void {
+        message(text);
+        message(text);
+    }
+
+    function thenShownElsewhere(expected: string[]): void {
+        expect(shown).toEqual(expected);
     }
 });

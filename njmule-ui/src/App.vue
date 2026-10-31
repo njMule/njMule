@@ -40,12 +40,16 @@ import { setupPending } from './setup';
 import { handOver } from './handover';
 import { setPreset } from './limits';
 import { toggleDark } from './theme';
-import { message, problem, success } from './toasts';
+import { message, problem, success, whileHidden } from './toasts';
 import { addLinks } from './transfers-actions';
 import { showAbout } from './about';
 import AboutDialog from './dialogs/AboutDialog.vue';
 import UpdateDialog from './dialogs/UpdateDialog.vue';
 import { checkNow, followUpdates } from './updates';
+import { watchClipboard } from './clipboard';
+import { completedCount, rates } from './model/engine';
+import { readDesktopSettings, setDesktopOption } from './desktop-options';
+import { glanceOf, tooltipOf } from './tray';
 
 // The window's content: the sidebar of places, the top bar with the screen's title, the field to search or paste links,
 // the rates and the networks, the current screen, the status strip, and messages floating over it all.
@@ -56,7 +60,6 @@ const props = defineProps<{ platform: Platform }>();
 // the top bar needs more to show all it holds.
 const FOLD_BELOW = 1000;
 const SIDEBAR_KEY = 'njmule.sidebar.collapsed';
-const CONFIRM_EXIT_KEY = 'njmule.confirmExit';
 
 const width = ref(window.innerWidth);
 const foldBelow = ref(FOLD_BELOW);
@@ -327,54 +330,32 @@ function chime(): void {
     }
 }
 
-// Closing the window ends njMule, asked first unless the question was turned off.
+// Closing the window ends njMule, asked first: the shell leaves it to the window only while the options ask for it.
 async function quitIfWanted(): Promise<void> {
-    let asks = true;
-    try {
-        asks = localStorage.getItem(CONFIRM_EXIT_KEY) !== 'false';
-    } catch {
-        // Asked each time.
+    const answer = await ask({
+        title: t('nj.exit.title'),
+        text: t('nj.exit.text'),
+        check: { label: t('IDS_DONOTASKAGAIN'), value: false },
+        yes: t('nj.exit.quit'),
+        no: t('nj.exit.stay'),
+    });
+    if (answer === null) {
+        return;
     }
-    if (asks) {
-        const answer = await ask({
-            title: t('nj.exit.title'),
-            text: t('nj.exit.text'),
-            check: { label: t('IDS_DONOTASKAGAIN'), value: false },
-            yes: t('nj.exit.quit'),
-            no: t('nj.exit.stay'),
+    if (answer.check) {
+        await setDesktopOption(props.platform, 'confirmExit', false).catch(() => {
+            // Asked again next time.
         });
-        if (answer === null) {
-            return;
-        }
-        if (answer.check) {
-            try {
-                localStorage.setItem(CONFIRM_EXIT_KEY, 'false');
-            } catch {
-                // Asked again next time.
-            }
-        }
     }
     props.platform.quit();
 }
 
-// The tray's menu and icon tell njMule's state and rates, and connect or disconnect eD2K as its state calls for.
+// The tray's icon, its menu and MiniMule tell njMule's state and rates, the downloads completed and the free space.
 watch(
-    [connection, status, () => words.value.up],
+    [connection, status, () => words.value.up, completedCount, rates],
     () => {
-        const down = rate(status.value?.downloadBytesPerSecond ?? 0);
-        const up = rate(status.value?.uploadBytesPerSecond ?? 0);
-        const state = t(
-            connection.value === 'connected' || words.value.kadUp
-                ? 'IDS_CONNECTED'
-                : connection.value === 'connecting'
-                  ? 'IDS_CONNECTING'
-                  : 'IDS_NOTCONNECTED',
-        );
-        props.platform.trayState({
-            state: `${state} · ↓ ${down} · ↑ ${up}`,
-            connect: t(connection.value === 'disconnected' ? 'IDS_MAIN_BTN_CONNECT' : 'IDS_MAIN_BTN_DISCONNECT'),
-            tooltip: `njMule - ${t('IDS_PW_CON_DOWNLBL')}: ${down} | ${t('IDS_PW_CON_UPLBL')}: ${up}`,
-        });
+        const glance = glanceOf(connection.value, words.value.up, status.value, completedCount.value, rates.value);
+        props.platform.trayState({ tooltip: tooltipOf(glance, t, rate), glance });
     },
     { immediate: true },
 );
@@ -382,7 +363,7 @@ watch(
 // After the questions of the first start: the language chosen, at once, then the import of the eMule found if chosen.
 async function wizardDone(outcome: WizardOutcome): Promise<void> {
     if (outcome.language !== undefined) {
-        await switchLanguage(outcome.language, props.platform);
+        await switchLanguage(outcome.language);
     }
     if (outcome.importEmule) {
         importOpen.value = true;
@@ -410,6 +391,10 @@ onMounted(() => {
     props.platform.onLinks((links) => void handOver(links));
     // New versions told, and in the desktop app's window the end of njMule when one installs now.
     followUpdates(props.platform);
+    // While the window hides in the notification area, its messages show as the system's notifications.
+    whileHidden((text) => props.platform.notify(text));
+    void readDesktopSettings(props.platform);
+    watchClipboard(props.platform);
     props.platform.onCloseAsked(() => void quitIfWanted());
     props.platform.onTray((chosen) => {
         if (chosen === 'connect') {
@@ -418,6 +403,8 @@ onMounted(() => {
             current.value = 'settings';
         } else if (chosen === 'quit') {
             void quitIfWanted();
+        } else if (chosen === 'incoming') {
+            void openIncoming();
         } else {
             setPreset(chosen === 'full-speed').catch((e: Error) => problem(e.message));
         }
