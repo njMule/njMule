@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { rate, shortTime } from '../format';
 import type { RateSample } from '../model/engine';
 import { scaleTop } from '../stats';
@@ -91,7 +91,9 @@ const times = computed(() =>
     }),
 );
 
-// The sample under the pointer, its time and rates beside a mark.
+// The sample under the pointer, its time and rates beside a mark, on the side with room: after it while it fits.
+const readout = ref<HTMLElement | null>(null);
+const readoutWidth = ref(0);
 const pointed = computed(() => {
     const all = shown.value;
     if (pointer.value < 0 || all.length === 0) {
@@ -104,11 +106,20 @@ const pointed = computed(() => {
     const sample = all[index]!;
     const x = Math.round(width.value - (all.length - 1 - index) * stepWidth.value) + 0.5;
     const when = new Date(props.newest - (all.length - 1 - index) * props.step * 1000);
-    return { x, text: `${shortTime(when)}  ↓ ${rate(sample.down)}  ↑ ${rate(sample.up)}`, before: x > width.value / 2 };
+    const left = x + 8 + readoutWidth.value <= width.value ? x + 8 : Math.max(0, x - 8 - readoutWidth.value);
+    return { x, left, text: `${shortTime(when)}  ↓ ${rate(sample.down)}  ↑ ${rate(sample.up)}` };
 });
 
+watch(
+    () => pointed.value?.text,
+    () => (readoutWidth.value = readout.value?.offsetWidth ?? 0),
+    { flush: 'post' },
+);
+
+// Measured from the graph itself: over a word of the scale or a time, the pointer's own offset is the word's.
 function moved(e: MouseEvent): void {
-    pointer.value = e.offsetX;
+    const graph = box.value;
+    pointer.value = graph === null ? -1 : e.clientX - graph.getBoundingClientRect().left - graph.clientLeft;
 }
 </script>
 
@@ -141,12 +152,9 @@ function moved(e: MouseEvent): void {
             >{{ time }}</span
         >
         <span v-if="quiet" class="empty" :style="{ top: `${plot / 2}px` }">{{ empty }}</span>
-        <span
-            v-if="pointed"
-            class="pointed"
-            :style="pointed.before ? { right: `${width - pointed.x + 8}px` } : { left: `${pointed.x + 8}px` }"
-            >{{ pointed.text }}</span
-        >
+        <span v-if="pointed" ref="readout" class="pointed" :style="{ left: `${pointed.left}px` }">{{
+            pointed.text
+        }}</span>
     </div>
 </template>
 
