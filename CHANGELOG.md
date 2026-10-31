@@ -10,6 +10,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- One interface for the desktop app and the web interface (`njmule-ui`, Vue 3 and TypeScript), which
+  reaches njMule only through its remote-control API, and a desktop window for it built with Tauri 2
+  (`njmule-desktop`) that starts the native engine; the window is not in the packages yet.
+- In that interface: the program's own icon beside every file name in the desktop window, Ctrl+V to
+  add the eD2K links on the clipboard in Transfers, Enter to download the search results chosen, the
+  downloads reordered by dragging them, and Browse for the preview player and the event programs.
+- The remote-control API answers what the interface needs: the folders and network interfaces of
+  njMule's computer, the check of a folder and of a search, the defaults of the preferences and
+  whether each password is set, the first start's questions, the web interface's settings and API
+  token for the desktop window, the data of a download for a player, server.met and nodes.dat files
+  sent from a browser, and the country of servers and Kad contacts.
+
+### Changed
+
+- The web interface is the desktop app's interface in the browser: the same screens, menus, dialogs
+  and colours, with the browser's ways for what needs njMule's computer, such as folders typed.
+- The country of other clients, servers and Kad contacts is shown by default (`geo.countries`); its
+  database is fetched as soon as the option is on.
+- Changed from the desktop window, the web interface follows its settings at once, without a
+  restart.
+
 ## [0.1.3] - 2026-10-31
 
 ### Fixed
