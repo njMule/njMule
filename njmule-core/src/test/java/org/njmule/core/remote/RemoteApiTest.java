@@ -743,6 +743,37 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldTellWhereTheDataOfADownloadIs() throws Exception {
+        givenTheApiRuns();
+        givenTheDataOfTheDownloadIn(Optional.of(this.dir.resolve("001.part")));
+
+        whenCalled("GET", "/api/v1/downloads/" + HASH + "/data", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"path\":\"" + jsonPath(this.dir.resolve("001.part")) + "\"");
+    }
+
+    @Test
+    void shouldFindNoDataOfADownloadWhoseStartHasNotCome() throws Exception {
+        givenTheApiRuns();
+        givenTheDataOfTheDownloadIn(Optional.empty());
+
+        whenCalled("GET", "/api/v1/downloads/" + HASH + "/data", "");
+
+        thenTheStatusIs(404);
+    }
+
+    @Test
+    void shouldRefuseTheDataOfADownloadToAGuest() throws Exception {
+        givenTheApiRuns();
+        givenTheDataOfTheDownloadIn(Optional.of(this.dir.resolve("001.part")));
+
+        whenCalledAsGuest("GET", "/api/v1/downloads/" + HASH + "/data");
+
+        thenTheStatusIs(403);
+    }
+
+    @Test
     void shouldSwapTheSharedSourcesToADownload() throws Exception {
         givenTheApiRuns();
         givenTheEngineSwapsSources(3);
@@ -1332,6 +1363,10 @@ class RemoteApiTest {
 
     private void givenTheEngineDownloads(DownloadInfo download) {
         this.fake.answer("downloads", args -> CompletableFuture.completedFuture(List.of(download)));
+    }
+
+    private void givenTheDataOfTheDownloadIn(Optional<Path> data) {
+        this.fake.answer("downloadData", args -> CompletableFuture.completedFuture(data));
     }
 
     private void givenTheEngineAddsDownloads() {

@@ -901,6 +901,33 @@ paths:
           $ref: "#/components/responses/NotFound"
         default:
           $ref: "#/components/responses/Error"
+  /downloads/{hash}/data:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    get:
+      operationId: getDownloadData
+      tags: [downloads]
+      summary: Where the data of a download is, which a player on njMule's computer can show while it grows.
+      responses:
+        "200":
+          description: The data file, once the start of the file has come.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [path]
+                properties:
+                  path:
+                    type: string
+                    description: The file on njMule's computer.
+        "404":
+          description: An unknown download, or one whose start has not come yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          $ref: "#/components/responses/Error"
   /downloads/{hash}/autoswap:
     parameters:
       - $ref: "#/components/parameters/Hash"

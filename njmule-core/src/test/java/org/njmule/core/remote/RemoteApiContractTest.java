@@ -138,6 +138,7 @@ class RemoteApiContractTest {
                 "/api/v1/ports/test",
                 "/api/v1/servers/lists",
                 "/api/v1/downloads/" + HASH + "/parts",
+                "/api/v1/downloads/" + HASH + "/data",
                 "/api/v1/downloads/" + HASH + "/comments",
                 "/api/v1/files/" + HASH + "/comment",
                 "/api/v1/files/" + HASH + "/notes",
@@ -429,6 +430,7 @@ class RemoteApiContractTest {
         answerWith("spamMarks", ApiSamples.spamMarks());
         answerWith("emuleProfile", Optional.of(Path.of(System.getProperty("java.io.tmpdir"))));
         answerWith("setupPending", true);
+        answerWith("downloadData", Optional.of(Path.of("001.part").toAbsolutePath()));
         this.fake.value("schedule", ApiSamples.schedule());
         this.fake.value("activeRule", ApiSamples.schedule().rules().stream().findFirst());
         this.fake.value("preferences", Preferences.defaults());

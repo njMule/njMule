@@ -313,6 +313,7 @@ public final class RemoteApi implements AutoCloseable {
                 entry("stopDownload", c -> changed(c, this.engine.stopDownload(hash(c)))),
                 entry("restoreDownload", c -> changed(c, this.engine.restoreDownload(hash(c)))),
                 entry("getDownloadParts", this::getDownloadParts),
+                entry("getDownloadData", this::getDownloadData),
                 entry(
                         "listPeerComments",
                         c -> list(
@@ -1351,6 +1352,16 @@ public final class RemoteApi implements AutoCloseable {
                 .findFirst()
                 .orElseThrow(RemoteApi::notFound);
         reply(c.exchange(), 200, g -> ApiJson.downloadWithParts(g, d));
+    }
+
+    private void getDownloadData(Call c) throws IOException {
+        Path data = await(this.engine.downloadData(hash(c)))
+                .orElseThrow(() -> new Failure(404, "The start of the file has not come yet."));
+        reply(c.exchange(), 200, g -> {
+            g.writeStartObject();
+            g.writeStringProperty("path", data.toAbsolutePath().toString());
+            g.writeEndObject();
+        });
     }
 
     private void download(Call c, int status) throws IOException {
