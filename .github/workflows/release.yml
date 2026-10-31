@@ -3,10 +3,10 @@
 #
 # Native executables and installers for Windows x64 (MSI, zip; checked on arm64 too), Linux x64
 # and arm64 (deb, rpm, tar.xz; a static headless tar.xz for x64), macOS arm64 (dmg), Synology
-# DSM x86_64 (spk) and a Docker image (linux/amd64, linux/arm64). Each desktop package carries one
-# native executable: on Linux and macOS njmule, the command line, is a script that runs njmule-gui
-# headless (packaging/njmule.sh); on Windows the executable is the console program njmule.exe, which
-# njmule-gui.exe, a small GUI program, starts for the desktop (as javaw.exe stands for java.exe).
+# DSM x86_64 (spk) and a Docker image (linux/amd64, linux/arm64). Each desktop package carries the
+# native engine njmule (njmule.exe), also the command line, and the desktop window njmule-gui
+# (njmule-gui.exe), a Tauri shell that starts the engine beside it and shows its interface; on
+# Windows also njmule-service.exe, which runs the engine as a service.
 # A pushed tag vX.Y.Z that matches the project version also opens a draft GitHub release with
 # them, an SBOM, SHA-256 sums and njmule-update.json (what the update check of njMule reads), both
 # signed with minisign, and notes that link each package's VirusTotal report, and pushes the image
@@ -75,30 +75,35 @@ jobs:
                   tar -xf "$env:RUNNER_TEMP\graalvm.zip" -C $env:RUNNER_TEMP
                   "GRAALVM_HOME=$env:RUNNER_TEMP\graalvm-community-25.4.4.1.1+1.1" >> $env:GITHUB_ENV
                   dotnet tool install --global wix --version 5.0.2
+            - name: Install the pinned Rust
+              shell: bash
+              working-directory: njmule-desktop/src-tauri
+              run: |
+                  channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+                  rustup toolchain install "$channel" --profile minimal
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
-            - name: Build the native executable, its launcher and the service
-              run: ./gradlew :njmule-gui:nativeGui :njmule-gui:nativeLauncher :njmule-gui:nativeService '-Pnative.optimization=-O2'
-            - name: Smoke test
+            - name: Build the engine, the desktop window and the service
+              run: ./gradlew :njmule-app:nativeCompile :njmule-desktop:shell :njmule-gui:nativeService '-Pnative.optimization=-O2'
+            - name: Gather the programs
               shell: pwsh
               run: |
-                  Copy-Item njmule-gui/build/launcher/njmule-gui.exe, njmule-gui/build/launcher/njmule-service.exe njmule-gui/build/native/
-                  njmule-gui/build/native/njmule.exe --version
-                  $tour = "$env:RUNNER_TEMP\tour"
-                  Copy-Item -Recurse njmule-gui/native/tour $tour
-                  $gui = Start-Process njmule-gui/build/native/njmule-gui.exe -ArgumentList @("-Dnjmule.gui.tour=true", "--config-dir", $tour) -PassThru
-                  if (-not $gui.WaitForExit(180000)) { $gui.Kill(); throw "the GUI tour did not finish" }
-                  if (-not (Select-String -Quiet "Tour finished" "$tour\logs\*.log")) { throw "the GUI tour failed" }
+                  New-Item -ItemType Directory -Force stage\bin | Out-Null
+                  Copy-Item njmule-app/build/native/nativeCompile/*, njmule-desktop/src-tauri/target/release/njmule-gui.exe, njmule-gui/build/launcher/njmule-service.exe stage\bin
+                  stage\bin\njmule.exe --version
+            - name: Smoke test
+              shell: pwsh
+              run: ./.github/scripts/desktop-smoke-test.ps1 stage\bin
             # The runner is an administrator: the service is installed, answers on its web interface and is
             # removed again; build.yml runs the same script on pull requests.
             - name: Service test
               shell: pwsh
-              run: ./.github/scripts/windows-service-test.ps1 njmule-gui/build/native/njmule.exe
+              run: ./.github/scripts/windows-service-test.ps1 stage\bin\njmule.exe
             - name: Pack
               shell: pwsh
               run: |
                   $name = "njmule-$env:VERSION-windows-x64"
                   New-Item -ItemType Directory -Force "stage\$name", dist | Out-Null
-                  Copy-Item njmule-gui/build/native/* "stage\$name"
+                  Copy-Item stage\bin\* "stage\$name"
                   # Absolute paths: WiX resolves relative ones from the .wxs file's directory.
                   $bin = (Resolve-Path "stage\$name").Path
                   $docs = (Resolve-Path .).Path
@@ -183,11 +188,12 @@ jobs:
             NFPM_SHA256: ${{ matrix.nfpm-sha256 }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - name: Install GraalVM, GTK and nfpm
+            - name: Install GraalVM, the web view and nfpm
               run: |
                   sudo apt-get update -qq
                   sudo apt-get install -y -qq --no-install-recommends build-essential zlib1g-dev \
-                      xvfb libgtk-3-0t64 libxtst6 libgl1 libglx-mesa0 libgl1-mesa-dri fonts-dejavu-core
+                      libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev \
+                      xvfb fonts-dejavu-core
                   curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/graalvm.tar.gz" \
                       "$GRAALVM_RELEASE/${GRAALVM_NAME}_${{ matrix.graalvm }}_bin.tar.gz"
                   echo "$GRAALVM_SHA256  $RUNNER_TEMP/graalvm.tar.gz" | sha256sum -c -
@@ -201,29 +207,31 @@ jobs:
             - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
+            - name: Install the pinned Rust
+              shell: bash
+              working-directory: njmule-desktop/src-tauri
+              run: |
+                  channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+                  rustup toolchain install "$channel" --profile minimal
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
-            - name: Build the native executables
-              run: ./gradlew :njmule-app:nativeCompile :njmule-gui:nativeGui '-Pnative.optimization=-O2'
+            - name: Build the engine and the desktop window
+              run: ./gradlew :njmule-app:nativeCompile :njmule-desktop:shell '-Pnative.optimization=-O2'
             - name: Smoke test
               run: |
-                  njmule-app/build/native/nativeCompile/njmule --version
-                  tour="$RUNNER_TEMP/tour"
-                  cp -r njmule-gui/native/tour "$tour"
-                  timeout 180 xvfb-run -a njmule-gui/build/native/njmule-gui -Dnjmule.gui.tour=true --config-dir "$tour"
-                  grep -q "Tour finished" "$tour"/logs/*.log
+                  mkdir -p stage/gui
+                  install -m 755 njmule-app/build/native/nativeCompile/njmule njmule-desktop/src-tauri/target/release/njmule-gui stage/gui/
+                  stage/gui/njmule --version
+                  timeout 300 xvfb-run -a bash .github/scripts/desktop-smoke-test.sh stage/gui
             - name: Pack
               run: |
                   name="njmule-${VERSION}-linux-${{ matrix.arch }}"
-                  mkdir -p stage/gui stage/doc dist headless "archive/${name}/share"
-                  cp -r njmule-gui/build/native/. stage/gui/
+                  mkdir -p stage/doc dist headless "archive/${name}/share"
                   cp README.md CHANGELOG.md NOTICE stage/doc/
                   "$RUNNER_TEMP/nfpm" package -f packaging/linux/nfpm.yaml -p deb -t dist/
                   "$RUNNER_TEMP/nfpm" package -f packaging/linux/nfpm.yaml -p rpm -t dist/
-                  install -m 755 packaging/njmule.sh "archive/${name}/njmule"
                   cp -r stage/gui/. LICENSE NOTICE README.md CHANGELOG.md "archive/${name}/"
                   cp packaging/linux/org.njmule.njMule.* branding/njmule-icon.svg "archive/${name}/share/"
                   printf 'kind=tar\n' > "archive/${name}/install.properties"
-                  # The command line runs the desktop executable headless.
                   "archive/${name}/njmule" --version
                   tar -C archive -cJf "dist/${name}.tar.xz" "${name}"
                   # The headless executable alone goes into the Docker image only.
@@ -414,8 +422,8 @@ jobs:
                   provenance: mode=max
                   sbom: true
 
-    # GraalVM and JavaFX have no Windows arm64 build yet: the x64 installer runs there under the
-    # system's x64 emulation, which this job checks on an arm64 runner.
+    # GraalVM has no Windows arm64 build yet: the x64 installer runs there under the system's x64
+    # emulation, which this job checks on an arm64 runner.
     windows-arm64:
         name: windows-arm64 (x64 under emulation)
         needs: [version, windows-x64]
@@ -426,6 +434,7 @@ jobs:
         env:
             VERSION: ${{ needs.version.outputs.version }}
         steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - name: Fetch the x64 installer
               env:
                   GH_TOKEN: ${{ github.token }}
@@ -448,12 +457,7 @@ jobs:
                   & (Join-Path $dir "njmule.exe") --version
                   # The update check tells an installed copy by this file.
                   if ((Get-Content (Join-Path $dir "install.properties") -Raw) -notmatch "kind=msi") { throw "install.properties does not say msi" }
-                  $tour = "$env:RUNNER_TEMP\tour"
-                  New-Item -ItemType Directory -Force "$tour\config" | Out-Null
-                  Set-Content "$tour\config\njmule.properties" "net.ed2k.enabled=false`nnet.kad.enabled=false`nnet.upnp=false"
-                  $gui = Start-Process (Join-Path $dir "njmule-gui.exe") -ArgumentList @("-Dnjmule.gui.tour=true", "--config-dir", $tour) -PassThru
-                  if (-not $gui.WaitForExit(300000)) { $gui.Kill(); throw "the GUI tour did not finish" }
-                  if (-not (Select-String -Quiet "Tour finished" "$tour\logs\*.log")) { throw "the GUI tour failed" }
+                  ./.github/scripts/desktop-smoke-test.ps1 $dir
                   # As if the desktop app had taken the ed2k links from another program: the
                   # uninstaller must give them back.
                   $command = "HKCU:\Software\Classes\ed2k\shell\open\command"
@@ -488,48 +492,28 @@ jobs:
             - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
-            # The committed metadata comes from Windows and Linux: the tour adds macOS's first. JavaFX's Metal pipeline
-            # crashes now and then on the runner's virtual GPU, which has no OpenGL: the tour gets three tries.
-            - name: Trace the GUI tour
+            - name: Install the pinned Rust
+              shell: bash
+              working-directory: njmule-desktop/src-tauri
               run: |
-                  for attempt in 1 2 3; do
-                      ./gradlew :njmule-gui:nativeTour && exit 0
-                      echo "::warning::The GUI tour failed (attempt $attempt of 3)"
-                  done
-                  exit 1
+                  channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+                  rustup toolchain install "$channel" --profile minimal
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
-            - name: Build the native executable
-              run: ./gradlew :njmule-gui:nativeGui '-Pnative.optimization=-O2'
-            - name: Smoke test
-              run: |
-                  njmule-gui/build/native/njmule-gui --headless --version
-                  tour="$RUNNER_TEMP/tour"
-                  cp -r njmule-gui/native/tour "$tour"
-                  # Drawn in software: the runner's virtual GPU crashes Metal now and then and has no OpenGL.
-                  njmule-gui/build/native/njmule-gui -Dnjmule.gui.tour=true -Dprism.verbose=true -Dprism.order=sw \
-                      --config-dir "$tour" > "$RUNNER_TEMP/gui.out" 2>&1 &
-                  gui=$!
-                  ( sleep 180 && kill -QUIT "$gui" && sleep 5 && kill "$gui" ) 2>/dev/null &
-                  wait "$gui" || true
-                  if ! grep -q "Tour finished" "$tour"/logs/*.log; then
-                      cat "$RUNNER_TEMP/gui.out"
-                      cat "$tour"/logs/*.log
-                      exit 1
-                  fi
+            - name: Build the engine and the desktop window
+              run: ./gradlew :njmule-app:nativeCompile :njmule-desktop:shell '-Pnative.optimization=-O2'
             - name: Pack
               run: |
                   app=stage/njMule.app/Contents
                   mkdir -p "$app/MacOS" "$app/Resources" dist
-                  cp -R njmule-gui/build/native/. "$app/MacOS/"
-                  install -m 755 packaging/njmule.sh "$app/MacOS/njmule"
+                  install -m 755 njmule-app/build/native/nativeCompile/njmule njmule-desktop/src-tauri/target/release/njmule-gui "$app/MacOS/"
                   cp branding/generated/njmule.icns LICENSE NOTICE "$app/Resources/"
                   sed "s/@VERSION@/${VERSION%%-*}/g" packaging/macos/Info.plist > "$app/Info.plist"
                   printf 'kind=dmg\n' > "$app/Resources/install.properties"
                   plutil -lint "$app/Info.plist"
                   codesign --force --deep --sign - stage/njMule.app
                   codesign --verify --deep --strict stage/njMule.app
-                  # The command line runs the desktop executable headless.
                   "$app/MacOS/njmule" --version
+                  bash .github/scripts/desktop-smoke-test.sh "$app/MacOS"
                   # Beside the app: moves it to the Trash, and the user's profile too when its box is ticked.
                   osacompile -o "stage/Uninstall njMule.app" packaging/macos/uninstall.applescript
                   codesign --force --deep --sign - "stage/Uninstall njMule.app"
@@ -585,8 +569,10 @@ jobs:
                   name: e2e-update
                   path: e2e/
 
-    # The MSI of the test build, installed for this user, updates to this run's MSI through the launcher
-    # copied out of its folder and msiexec; the zip of the test build swaps its files for this run's zip.
+    # The MSI of the test build, installed for this user, updates to this run's MSI through the desktop
+    # window's program copied out of its folder and msiexec; the zip of the test build swaps its files
+    # for this run's zip. The test build is this run's engine with the key of the run; its window is
+    # this run's, which the update needs only to run msiexec.
     e2e-windows:
         name: e2e update (Windows MSI and zip)
         if: github.event_name == 'workflow_dispatch'
@@ -627,7 +613,8 @@ jobs:
               shell: bash
               run: |
                   cat e2e/e2e.pub >> njmule-core/src/main/resources/org/njmule/core/update/keys.pub
-                  ./gradlew :njmule-gui:nativeGui :njmule-gui:nativeLauncher -Pversion=0.0.0-e2e.0 '-Pnative.optimization=-Ob'
+                  ./gradlew :njmule-app:nativeCompile -Pversion=0.0.0-e2e.0 '-Pnative.optimization=-Ob'
+                  unzip -j -o "dist/njmule-${VERSION}-windows-x64.zip" '*/njmule-gui.exe' -d window
             - name: Update the installed MSI and the unpacked zip
               shell: pwsh
               run: |
@@ -637,7 +624,7 @@ jobs:
                   # The installer: the test version for this user, then njmule --update.
                   $old = "$env:RUNNER_TEMP\old"
                   New-Item -ItemType Directory -Force $old | Out-Null
-                  Copy-Item njmule-gui/build/native/*, njmule-gui/build/launcher/njmule-gui.exe $old
+                  Copy-Item njmule-app/build/native/nativeCompile/*, window/njmule-gui.exe $old
                   wix build packaging/windows/njmule.wxs -wx -arch x64 -pdbtype none -d "Version=0.0.0" -d "BinDir=$((Resolve-Path $old).Path)" -d "DocDir=$((Resolve-Path .).Path)" -d Gui=yes -o "$env:RUNNER_TEMP\old.msi"
                   $p = Start-Process msiexec.exe -ArgumentList @("/i", "`"$env:RUNNER_TEMP\old.msi`"", "/qn") -PassThru -Wait
                   if ($p.ExitCode -ne 0) { throw "the test version did not install: $($p.ExitCode)" }
@@ -663,7 +650,7 @@ jobs:
                   # The zip: the test version unpacked, then njmule --update swaps its files.
                   $zip = "$env:RUNNER_TEMP\zip"
                   New-Item -ItemType Directory -Force $zip | Out-Null
-                  Copy-Item njmule-gui/build/native/*, njmule-gui/build/launcher/njmule-gui.exe $zip
+                  Copy-Item njmule-app/build/native/nativeCompile/*, window/njmule-gui.exe $zip
                   Set-Content -Encoding ascii "$zip\install.properties" "kind=zip"
                   $profile = "$env:RUNNER_TEMP\zip-profile"
                   New-Item -ItemType Directory -Force "$profile\config" | Out-Null
@@ -716,13 +703,15 @@ jobs:
             - name: Build the test version
               run: |
                   cat e2e/e2e.pub >> njmule-core/src/main/resources/org/njmule/core/update/keys.pub
-                  ./gradlew :njmule-gui:nativeGui -Pversion=0.0.0-e2e.0 '-Pnative.optimization=-Ob'
+                  ./gradlew :njmule-app:nativeCompile -Pversion=0.0.0-e2e.0 '-Pnative.optimization=-Ob'
             - name: Update the unpacked archive in a container
               run: |
                   test="$RUNNER_TEMP/test"
                   mkdir -p "$test/install" "$test/profile/config"
-                  cp -r njmule-gui/build/native/. "$test/install/"
-                  install -m 755 packaging/njmule.sh "$test/install/njmule"
+                  install -m 755 njmule-app/build/native/nativeCompile/njmule "$test/install/"
+                  tar -xJf "dist/njmule-${VERSION}-linux-x64.tar.xz" -C "$test" --strip-components=1 \
+                      "njmule-${VERSION}-linux-x64/njmule-gui"
+                  mv "$test/njmule-gui" "$test/install/"
                   printf 'kind=tar\n' > "$test/install/install.properties"
                   printf 'net.ed2k.enabled=false\nnet.kad.enabled=false\nnet.upnp=false\nupdate.url=http://127.0.0.1:8765\nupdate.channel=PRERELEASE\n' \
                       > "$test/profile/config/njmule.properties"
@@ -731,7 +720,7 @@ jobs:
                       sh -c '/test/install/njmule --config-dir /test/profile --update && /test/install/njmule --version' \
                       | tee "$RUNNER_TEMP/update.out"
                   grep -q "njMule ${VERSION} " "$RUNNER_TEMP/update.out"
-                  test -e "$test/install/njmule-gui.old"
+                  test -e "$test/install/njmule.old"
 
     # The macOS app of the test version, in a folder of applications it may write to, swaps its bundle for
     # the one in this run's disk image.
@@ -768,14 +757,17 @@ jobs:
             - name: Build the test version
               run: |
                   cat e2e/e2e.pub >> njmule-core/src/main/resources/org/njmule/core/update/keys.pub
-                  ./gradlew :njmule-gui:nativeGui -Pversion=0.0.0-e2e.0 '-Pnative.optimization=-Ob'
+                  ./gradlew :njmule-app:nativeCompile -Pversion=0.0.0-e2e.0 '-Pnative.optimization=-Ob'
             - name: Update the app bundle
               run: |
                   apps="$RUNNER_TEMP/Applications"
                   app="$apps/njMule.app/Contents"
                   mkdir -p "$app/MacOS" "$app/Resources" "$RUNNER_TEMP/profile/config"
-                  cp -R njmule-gui/build/native/. "$app/MacOS/"
-                  install -m 755 packaging/njmule.sh "$app/MacOS/njmule"
+                  install -m 755 njmule-app/build/native/nativeCompile/njmule "$app/MacOS/"
+                  # The window of this run's disk image: the bundle's program, which the update replaces too.
+                  hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" "dist/njmule-${VERSION}-macos-arm64.dmg"
+                  install -m 755 "$RUNNER_TEMP/dmg/njMule.app/Contents/MacOS/njmule-gui" "$app/MacOS/"
+                  hdiutil detach "$RUNNER_TEMP/dmg"
                   sed "s/@VERSION@/0.0.0/g" packaging/macos/Info.plist > "$app/Info.plist"
                   printf 'kind=dmg\n' > "$app/Resources/install.properties"
                   codesign --force --deep --sign - "$apps/njMule.app"
