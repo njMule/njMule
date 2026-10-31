@@ -13,22 +13,30 @@ import {
 import { computed, nextTick, ref, watch } from 'vue';
 import { answer, api } from '../api/client';
 import {
+    addressTyped,
+    besideName,
+    chatAddress,
     chats,
+    entriesOf,
+    entryName,
+    entryWhere,
+    forgetChat,
     friends,
-    friendOf,
     initials,
+    isListed,
+    lineText,
+    listMove,
     markRead,
-    nameOf,
+    openChat,
+    preview,
     readChats,
     readFriends,
+    shortTime,
     slot,
     unread,
-    type Chat,
-    type Friend,
-    type Line,
+    type Entry,
 } from '../chats';
-import { language, t } from '../i18n';
-import { smileys } from '../smileys';
+import { t } from '../i18n';
 import { message, problem } from '../toasts';
 import Icon from '../ui/Icon.vue';
 import Segments from '../ui/Segments.vue';
@@ -36,12 +44,6 @@ import Tip from '../ui/Tip.vue';
 
 // The messages: the conversations and the friends in one list beside the conversation chosen, its lines as bubbles,
 // a CAPTCHA to answer when the other side asks for one, and the box to write in.
-
-interface Entry {
-    key: string;
-    chat?: Chat;
-    friend?: Friend;
-}
 
 type Show = 'all' | 'friends';
 
@@ -53,25 +55,19 @@ const chosenKey = ref('');
 const text = ref('');
 const letters = ref('');
 const linesBox = ref<HTMLElement | null>(null);
+const list = ref<HTMLElement | null>(null);
+const addressBox = ref<HTMLInputElement | null>(null);
 const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 
-// The conversations of this run, the latest news first, then the friends with none.
-const entries = computed<Entry[]>(() => {
-    const latest = (c: Chat) => c.lines.at(-1)?.time ?? '';
-    const list: Entry[] = [...chats.value]
-        .sort((a, b) => (latest(b) > latest(a) ? 1 : latest(b) < latest(a) ? -1 : 0))
-        .map((c) => ({ key: c.address, chat: c, friend: friendOf(c) }));
-    for (const f of friends.value) {
-        if (!list.some((e) => e.friend?.userHash === f.userHash)) {
-            list.push({ key: `friend:${f.userHash}`, friend: f });
-        }
-    }
-    return list;
-});
+const entries = computed(() => entriesOf(chats.value, friends.value));
 
 const SHOWS = computed(() => [
-    { value: 'all' as const, title: t('IDS_ALL'), count: entries.value.length },
-    { value: 'friends' as const, title: t('IDS_FRIENDLIST'), count: friends.value.length },
+    { value: 'all' as const, title: t('nj.all'), count: entries.value.length },
+    {
+        value: 'friends' as const,
+        title: t('IDS_FRIENDLIST'),
+        count: entries.value.filter((e) => e.friend !== undefined).length,
+    },
 ]);
 
 const shown = computed(() => {
@@ -88,41 +84,75 @@ const shown = computed(() => {
 });
 
 const chosen = computed(() => entries.value.find((e) => e.key === chosenKey.value));
+const chosenIndex = computed(() => shown.value.findIndex((e) => e.key === chosenKey.value));
 
-function name(e: Entry): string {
-    return e.chat ? nameOf(e.chat) : (e.friend?.name ?? '');
-}
-
-function where(e: Entry): string {
-    return e.chat?.address ?? e.friend?.address ?? '';
-}
+const name = entryName;
+const where = entryWhere;
 
 function last(e: Entry): string {
-    const line = e.chat?.lines.filter((l) => l.author !== 'notice').at(-1);
-    if (line === undefined) {
-        return where(e) !== name(e) ? where(e) : '';
-    }
-    return line.author === 'us' ? t('nj.chat.you', line.text) : line.text;
+    const line = e.chat?.lines.at(-1);
+    return line === undefined ? besideName(e) : preview(line);
 }
 
 function when(time: string | undefined): string {
-    return time === undefined
-        ? ''
-        : new Date(time).toLocaleTimeString(language.value, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    return time === undefined ? '' : shortTime(time);
 }
 
-function lineText(l: Line): string {
-    switch (l.notice) {
-        case 'captcha_passed':
-            return t('IDS_CAPTCHASOLVED');
-        case 'captcha_wrong':
-            return t('IDS_CAPTCHAFAILED');
-        case 'not_delivered':
-            return t('nj.chat.failed', l.text);
-        default:
-            return smileys(l.text);
+// A row out of sight, hidden by the words to find or by the friends only, shows again when it is chosen.
+function choose(key: string): void {
+    if (!shown.value.some((e) => e.key === key)) {
+        find.value = '';
+        show.value = 'all';
     }
+    chosenKey.value = key;
 }
+
+// With nothing chosen, the newest conversation shows: when the list first comes, and when a conversation opens.
+let known: string[] | null = null;
+watch(
+    () => chats.value.map((c) => c.address),
+    (now) => {
+        const opened = known === null || now.some((a) => !known!.includes(a));
+        known = now;
+        const newest = shown.value.find((e) => e.chat !== undefined);
+        if (opened && chosen.value === undefined && newest !== undefined) {
+            choose(newest.key);
+        }
+    },
+    { immediate: true },
+);
+
+// The list is one stop of the Tab key, whose arrows, Home, End and page keys move the choice.
+async function listKey(e: KeyboardEvent): Promise<void> {
+    const box = list.value;
+    const row = box?.querySelector<HTMLElement>('.entry');
+    const page = box && row ? Math.max(1, Math.floor(box.clientHeight / row.offsetHeight)) : 1;
+    const next = listMove(e.key, shown.value.length, chosenIndex.value, page);
+    if (next === null) {
+        return;
+    }
+    e.preventDefault();
+    chosenKey.value = shown.value[next]!.key;
+    await nextTick();
+    document.getElementById(`conversation-${next}`)?.scrollIntoView({ block: 'nearest' });
+}
+
+// The address typed keeps only what an address holds; a wrong one is marked, unless the box is empty.
+watch(newAddress, (now) => {
+    const kept = addressTyped(now);
+    if (kept !== now) {
+        newAddress.value = kept;
+    }
+});
+const address = computed(() => chatAddress(newAddress.value));
+const addressWrong = computed(() => newAddress.value.trim() !== '' && address.value === null);
+
+watch(asking, async (now) => {
+    if (now) {
+        await nextTick();
+        addressBox.value?.focus();
+    }
+});
 
 // The lines of the conversation shown are read, and it scrolls to the newest as they come.
 watch(
@@ -159,7 +189,7 @@ async function sendText(): Promise<void> {
     }
     if (await send(text.value, to)) {
         text.value = '';
-        chosenKey.value = to;
+        choose(to);
     }
 }
 
@@ -170,20 +200,20 @@ async function sendLetters(): Promise<void> {
     }
 }
 
-// Chats reach eD2K clients on IPv4 addresses: a new one is opened by choosing it, then writing.
+// Chats reach eD2K clients on IPv4 addresses: a new one is opened and chosen, then written in.
 function start(): void {
-    const to = newAddress.value.trim();
-    if (to.startsWith('[') || (to.match(/:/g) ?? []).length > 1) {
-        message(t('nj.chat.ipv4Only', to));
+    const typed = newAddress.value.trim();
+    const to = address.value;
+    if (to === null) {
+        message(t('nj.servers.badAddress', typed));
         return;
     }
-    if (!/^[^:\s]+:\d{1,5}$/.test(to)) {
+    if (to.ipv6) {
+        message(t('nj.chat.ipv4Only', typed));
         return;
     }
-    if (!chats.value.some((c) => c.address === to)) {
-        chats.value = [...chats.value, { address: to, lines: [] }];
-    }
-    chosenKey.value = to;
+    openChat(`${to.host}:${to.port}`);
+    choose(`${to.host}:${to.port}`);
     asking.value = false;
     newAddress.value = '';
 }
@@ -235,7 +265,11 @@ async function close(): Promise<void> {
     const chat = chosen.value?.chat;
     if (chat) {
         try {
-            await answer(api().DELETE('/conversations/{address}', { params: { path: { address: chat.address } } }));
+            // One opened here and never written in is only in this window.
+            if (isListed(chat.address)) {
+                await answer(api().DELETE('/conversations/{address}', { params: { path: { address: chat.address } } }));
+            }
+            forgetChat(chat.address);
             await readChats();
         } catch (e) {
             problem((e as Error).message);
@@ -267,32 +301,46 @@ async function close(): Promise<void> {
             <form v-if="asking" class="new-conversation" @submit.prevent="start">
                 <label for="chat-address">{{ t('IDS_SV_ADDRESS') }}</label>
                 <div class="row">
-                    <input
-                        id="chat-address"
-                        v-model="newAddress"
-                        class="field"
-                        dir="ltr"
-                        :placeholder="t('nj.servers.addressPrompt')"
-                    />
-                    <button class="button" type="submit" :disabled="!/^[^:\s]+:\d{1,5}$/.test(newAddress.trim())">
+                    <Tip :text="t('nj.input.address')">
+                        <input
+                            id="chat-address"
+                            ref="addressBox"
+                            v-model="newAddress"
+                            class="field"
+                            :class="{ wrong: addressWrong }"
+                            dir="ltr"
+                            :aria-invalid="addressWrong"
+                            :placeholder="t('nj.servers.addressPrompt')"
+                        />
+                    </Tip>
+                    <button class="button" type="submit" :disabled="address === null">
                         <Icon name="MESSAGE" />{{ t('nj.chat.open') }}
                     </button>
                 </div>
             </form>
             <div><Segments v-model="show" :items="SHOWS" :label="t('IDS_EM_MESSAGES')" /></div>
-            <ul id="conversations" class="conversations">
+            <ul
+                id="conversations"
+                ref="list"
+                class="conversations focusable"
+                :class="{ empty: shown.length === 0 }"
+                role="listbox"
+                tabindex="0"
+                :aria-activedescendant="chosenIndex < 0 ? undefined : `conversation-${chosenIndex}`"
+                @keydown="listKey"
+            >
                 <li v-if="shown.length === 0" class="muted placeholder">
-                    {{ t(show === 'friends' && find === '' ? 'nj.chat.noFriends' : 'nj.chat.none') }}
+                    {{ t(show === 'friends' && find.trim() === '' ? 'nj.chat.noFriends' : 'nj.chat.none') }}
                 </li>
                 <li
-                    v-for="e in shown"
+                    v-for="(e, i) in shown"
+                    :id="`conversation-${i}`"
                     :key="e.key"
                     class="entry"
                     :class="{ 'has-news': e.chat && unread(e.chat) > 0 }"
+                    role="option"
                     :aria-selected="e.key === chosenKey"
-                    tabindex="0"
                     @click="chosenKey = e.key"
-                    @keydown.enter="chosenKey = e.key"
                 >
                     <span class="avatar">
                         <template v-if="initials(name(e))">{{ initials(name(e)) }}</template>
@@ -448,6 +496,11 @@ async function close(): Promise<void> {
     min-width: 0;
 }
 
+/* An address that is none, as the desktop app marks a wrong value. */
+.field.wrong {
+    border-color: var(--color-danger-emphasis);
+}
+
 .conversations {
     flex: 1;
     min-height: 0;
@@ -460,8 +513,15 @@ async function close(): Promise<void> {
     background: var(--color-bg-default);
 }
 
+/* The words of an empty list, wrapped and centred in it. */
+.conversations.empty {
+    display: flex;
+}
+
 .placeholder {
+    margin: auto;
     padding: 16px;
+    text-align: center;
 }
 
 /* The conversations and the friends in one list: the person's letters on a pastel disc, the name bold while it has
