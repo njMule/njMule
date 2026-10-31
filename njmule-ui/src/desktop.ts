@@ -35,4 +35,9 @@ export const desktop: Platform = {
         }
     },
     localize: (words) => void invoke('tray_texts', words),
+    // Once the window listens, the shell leaves closing to it.
+    onCloseAsked: (handler) => {
+        void listen('close-requested', () => handler()).then(() => invoke('window_ready'));
+    },
+    quit: () => void invoke('quit'),
 };

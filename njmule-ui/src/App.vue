@@ -6,6 +6,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 import { TooltipProvider } from 'reka-ui';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { answer, api, endpoint } from './api/client';
+import { ask } from './ask';
 import { duration, rate, size } from './format';
 import { t } from './i18n';
 import { fileLinks } from './links';
@@ -44,6 +45,7 @@ const props = defineProps<{ platform: Platform }>();
 // the top bar needs more to show all it holds.
 const FOLD_BELOW = 1000;
 const SIDEBAR_KEY = 'njmule.sidebar.collapsed';
+const CONFIRM_EXIT_KEY = 'njmule.confirmExit';
 
 const width = ref(window.innerWidth);
 const foldBelow = ref(FOLD_BELOW);
@@ -290,6 +292,36 @@ function typed(text: string): Command[] {
     ];
 }
 
+// Closing the window ends njMule, asked first unless the question was turned off.
+async function quitIfWanted(): Promise<void> {
+    let asks = true;
+    try {
+        asks = localStorage.getItem(CONFIRM_EXIT_KEY) !== 'false';
+    } catch {
+        // Asked each time.
+    }
+    if (asks) {
+        const answer = await ask({
+            title: t('nj.exit.title'),
+            text: t('nj.exit.text'),
+            check: { label: t('IDS_DONOTASKAGAIN'), value: false },
+            yes: t('nj.exit.quit'),
+            no: t('nj.exit.stay'),
+        });
+        if (answer === null) {
+            return;
+        }
+        if (answer.check) {
+            try {
+                localStorage.setItem(CONFIRM_EXIT_KEY, 'false');
+            } catch {
+                // Asked again next time.
+            }
+        }
+    }
+    props.platform.quit();
+}
+
 onMounted(() => {
     window.addEventListener('keydown', key);
     window.addEventListener('resize', resize);
@@ -302,6 +334,7 @@ onMounted(() => {
     });
     // Links clicked in a browser or opened by the system come to this window.
     props.platform.onLinks((links) => void addLinks(links.join('\n')));
+    props.platform.onCloseAsked(() => void quitIfWanted());
 });
 
 onUnmounted(() => {

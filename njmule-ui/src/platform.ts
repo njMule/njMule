@@ -21,6 +21,10 @@ export interface Platform {
     showFolder(path: string): Promise<void>;
     /** Words the shell shows itself, such as its tray's menu, in the interface's language. */
     localize(words: { show: string; exit: string }): void;
+    /** Runs {@code handler} instead of closing when the window is closed, so that it asks first. */
+    onCloseAsked(handler: () => void): void;
+    /** Ends njMule: the engine saves and stops with the window. */
+    quit(): void;
 }
 
 const browser: Platform = {
@@ -41,6 +45,9 @@ const browser: Platform = {
         throw new Error('');
     },
     localize: () => {},
+    // A page closes as the browser's tabs do; the engine goes on serving it.
+    onCloseAsked: () => {},
+    quit: () => {},
 };
 
 /** Whether the engine at the API address {@code url} runs on this computer: its folders are ours to open. */

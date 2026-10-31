@@ -11,6 +11,7 @@ use serde::Serialize;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
@@ -32,6 +33,13 @@ const STOP_WAIT: Duration = Duration::from_secs(30);
 struct Endpoint {
     url: String,
     token: String,
+}
+
+/// What the shell knows of its window.
+#[derive(Default)]
+struct Shell {
+    // Set once the window listens: closing it then asks first, in the window's language; until then it just closes.
+    asks: AtomicBool,
 }
 
 /// The engine the shell started, or the one it reaches elsewhere.
@@ -212,6 +220,18 @@ fn open_folder(app: AppHandle, path: String) -> Result<(), String> {
     app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// The window listens: closing it asks whether to quit from now on.
+#[tauri::command]
+fn window_ready(shell: State<'_, Shell>) {
+    shell.asks.store(true, Ordering::Relaxed);
+}
+
+/// Ends njMule, as the window decided: the engine then saves and stops.
+#[tauri::command]
+fn quit(app: AppHandle) {
+    app.exit(0);
+}
+
 /// The words of the tray's menu, in the interface's language.
 #[tauri::command]
 fn tray_texts(app: AppHandle, show: String, exit: String) -> Result<(), String> {
@@ -242,7 +262,16 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(engine.clone())
-        .invoke_handler(tauri::generate_handler![endpoint, pending_links, choose_folder, open_folder, tray_texts])
+        .manage(Shell::default())
+        .invoke_handler(tauri::generate_handler![
+            endpoint,
+            pending_links,
+            choose_folder,
+            open_folder,
+            tray_texts,
+            window_ready,
+            quit
+        ])
         .setup(move |app| {
             start_engine(engine.clone());
             if let Some(window) = app.get_webview_window("main") {
@@ -274,11 +303,13 @@ fn main() {
                 .build(app)?;
             Ok(())
         })
-        // Closing the window keeps njMule running in the tray; Exit in the tray's menu ends it.
+        // Closing the window ends njMule, once the window asked whether to quit.
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                if window.state::<Shell>().asks.load(Ordering::Relaxed) {
+                    api.prevent_close();
+                    let _ = window.emit("close-requested", ());
+                }
             }
         })
         .build(tauri::generate_context!())
