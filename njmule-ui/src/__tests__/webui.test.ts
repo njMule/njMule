@@ -2,12 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { describe, expect, it } from 'vitest';
-import { hostNamesValid, names, passwordValid, usable } from '../screens/settings/webui';
+import {
+    changedWebOptions,
+    hostNamesValid,
+    names,
+    passwordValid,
+    usable,
+    type WebSettings,
+} from '../screens/settings/webui';
 
 describe('the web interface settings', () => {
     let text = '';
     let list: string[] = [];
     let valid = false;
+    let changed = 0;
 
     it('should split the names by commas and white space', () => {
         givenTheText(' nas.local,  njmule.example.com\t10.0.0.2 ');
@@ -44,6 +52,22 @@ describe('the web interface settings', () => {
         thenItIsValid(false);
     });
 
+    it('should count the options changed from their defaults, the passwords aside', () => {
+        whenTheChangesAreCounted({
+            changeable: true,
+            enabled: true,
+            port: 8080,
+            lan: false,
+            hosts: ['nas.local'],
+            proxies: [],
+            api: false,
+            hasPassword: true,
+            hasGuest: true,
+            url: 'http://127.0.0.1:8080/',
+        });
+        thenTheChangesAre(3);
+    });
+
     function givenTheText(value: string): void {
         text = value;
     }
@@ -62,6 +86,14 @@ describe('the web interface settings', () => {
 
     function whenItsStateIsTold(enabled: boolean, hasPassword: boolean): void {
         valid = usable({ enabled, hasPassword });
+    }
+
+    function whenTheChangesAreCounted(web: WebSettings): void {
+        changed = changedWebOptions(web);
+    }
+
+    function thenTheChangesAre(expected: number): void {
+        expect(changed).toBe(expected);
     }
 
     function thenTheNamesAre(...expected: string[]): void {

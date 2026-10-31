@@ -51,6 +51,7 @@ import { readPasswords } from './settings/passwords';
 import SchedulerPage from './settings/SchedulerPage.vue';
 import ServerListsDialog from './settings/ServerListsDialog.vue';
 import WebPage from './settings/WebPage.vue';
+import { changedWebOptions, readWebSettings, WEB_WORDS, webSettings } from './settings/webui';
 import SettingRow from './settings/SettingRow.vue';
 import PortTestPane from '../ui/PortTestPane.vue';
 
@@ -163,6 +164,10 @@ function special(page: Page): boolean {
 }
 
 function pageShown(page: Page): boolean {
+    if (page.id === 'web') {
+        const words = [t(page.title), ...WEB_WORDS.map((k) => t(k))].join(' ');
+        return (!changedOnly.value || changedWebOptions(webSettings.value) > 0) && holdsWords(words, find.value);
+    }
     if (special(page)) {
         return !changedOnly.value && holdsWords(t(page.title), find.value);
     }
@@ -170,10 +175,15 @@ function pageShown(page: Page): boolean {
 }
 
 function pageChanged(page: Page): boolean {
+    if (page.id === 'web') {
+        return changedWebOptions(webSettings.value) > 0;
+    }
     return page.sections.some((s) => s.rows.some(isChanged));
 }
 
-const changedCount = computed(() => PLACES.filter((p) => isChanged(p.row)).length);
+const changedCount = computed(
+    () => PLACES.filter((p) => isChanged(p.row)).length + changedWebOptions(webSettings.value),
+);
 
 const shownPages = computed(() => PAGES.filter(pageShown));
 const current = computed(() => shownPages.value.find((p) => p.id === pageId.value) ?? shownPages.value[0]);
@@ -298,6 +308,7 @@ onActivated(() => {
     // The interfaces up now, as a VPN comes and goes; which passwords are set.
     void readInterfaces();
     void readPasswords();
+    void readWebSettings();
     if (heldCount.value === 0 && !restartPending.value) {
         dropDrafts();
     }

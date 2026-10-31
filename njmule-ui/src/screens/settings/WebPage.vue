@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { answer, api, ApiError, type Schemas } from '../../api/client';
 import { t } from '../../i18n';
 import { message, problem } from '../../toasts';
@@ -20,8 +20,9 @@ import {
     MIN_PASSWORD,
     names,
     passwordValid,
+    readWebSettings,
     WEB_DEFAULTS,
-    type WebSettings,
+    webSettings as web,
 } from './webui';
 
 // The web interface's page of the Options: its settings, kept in a file of their own and followed from the next start,
@@ -31,7 +32,6 @@ import {
 type Change = Schemas['WebInterfaceChange'];
 type Text = 'port' | 'hosts' | 'proxies';
 
-const web = shallowRef<WebSettings | undefined>();
 const typed = ref<Partial<Record<Text, string>>>({});
 // The fields whose value the engine refused, such as a proxy that is no address: wrong as one typed wrong.
 const refused = ref<Partial<Record<Text, boolean>>>({});
@@ -50,15 +50,7 @@ const PASSWORD_SIZE = { width: '180px' };
 const changeable = computed(() => web.value?.changeable === true);
 const portRules = computed(() => numberRules(1, 65535, t));
 
-async function read(): Promise<void> {
-    try {
-        web.value = await answer(api().GET('/webui'));
-    } catch (e) {
-        problem((e as Error).message);
-    }
-}
-
-onMounted(read);
+onMounted(readWebSettings);
 
 async function change(body: Change): Promise<boolean> {
     try {
