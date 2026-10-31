@@ -478,140 +478,155 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
 </script>
 
 <template>
-    <ContextMenuRoot>
-        <!-- Without a menu of its own, a list has none, as the desktop app's. -->
-        <ContextMenuTrigger as-child :disabled="!$slots.menu">
-            <div class="data-table" v-bind="$attrs" role="grid" :aria-label="label" :aria-rowcount="tableRows.length">
-                <div class="header">
-                    <div
-                        ref="header"
-                        class="header-scroll"
-                        :style="{ marginInlineEnd: `${Math.max(gutter, MENU_ROOM)}px` }"
-                    >
-                        <div class="header-row" :style="{ width: `${width}px` }" role="row">
-                            <div
-                                v-for="header in (table as any).getHeaderGroups()[0].headers"
-                                :key="header.id"
-                                class="header-cell"
-                                :class="[{ moving: dragged === header.column.id }, dropSide(header.column.id)]"
-                                role="columnheader"
-                                draggable="true"
-                                :data-column="header.column.id"
-                                :aria-sort="
-                                    header.column.getIsSorted() === 'asc'
-                                        ? 'ascending'
-                                        : header.column.getIsSorted() === 'desc'
-                                          ? 'descending'
-                                          : undefined
-                                "
-                                :style="{ width: `${columnWidth(header.column)}px` }"
-                                @click="header.column.getToggleSortingHandler()?.($event)"
-                                @dragstart="dragStart(header.column, $event)"
-                                @dragover="dragOver(header.column, $event)"
-                                @drop.prevent="drop"
-                                @dragend="dragEnd"
+    <!-- The list is the root, so that the styles of the screen that holds it reach it. -->
+    <div class="data-table" v-bind="$attrs" role="grid" :aria-label="label" :aria-rowcount="tableRows.length">
+        <ContextMenuRoot>
+            <!-- Without a menu of its own, a list has none, as the desktop app's. -->
+            <ContextMenuTrigger as-child :disabled="!$slots.menu">
+                <div class="table-content">
+                    <div class="header">
+                        <div
+                            ref="header"
+                            class="header-scroll"
+                            :style="{ marginInlineEnd: `${Math.max(gutter, MENU_ROOM)}px` }"
+                        >
+                            <div class="header-row" :style="{ width: `${width}px` }" role="row">
+                                <div
+                                    v-for="header in (table as any).getHeaderGroups()[0].headers"
+                                    :key="header.id"
+                                    class="header-cell"
+                                    :class="[{ moving: dragged === header.column.id }, dropSide(header.column.id)]"
+                                    role="columnheader"
+                                    draggable="true"
+                                    :data-column="header.column.id"
+                                    :aria-sort="
+                                        header.column.getIsSorted() === 'asc'
+                                            ? 'ascending'
+                                            : header.column.getIsSorted() === 'desc'
+                                              ? 'descending'
+                                              : undefined
+                                    "
+                                    :style="{ width: `${columnWidth(header.column)}px` }"
+                                    @click="header.column.getToggleSortingHandler()?.($event)"
+                                    @dragstart="dragStart(header.column, $event)"
+                                    @dragover="dragOver(header.column, $event)"
+                                    @drop.prevent="drop"
+                                    @dragend="dragEnd"
+                                >
+                                    <span class="ellipsis header-words"><FlexRender :header="header" /></span>
+                                    <span class="sort">{{ sortIcon(header.column) }}</span>
+                                    <span
+                                        class="resizer"
+                                        @mousedown.stop="resizeFrom(header.getResizeHandler(), $event)"
+                                        @touchstart.stop="resizeFrom(header.getResizeHandler(), $event)"
+                                        @click.stop
+                                        @dblclick.stop="fit(header.column)"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <DropdownMenuRoot>
+                            <DropdownMenuTrigger
+                                class="column-menu"
+                                :style="{ width: `${Math.max(gutter, MENU_ROOM)}px` }"
+                                :aria-label="t('nj.table.columns')"
+                                >⋮</DropdownMenuTrigger
                             >
-                                <span class="ellipsis header-words"><FlexRender :header="header" /></span>
-                                <span class="sort">{{ sortIcon(header.column) }}</span>
-                                <span
-                                    class="resizer"
-                                    @mousedown.stop="resizeFrom(header.getResizeHandler(), $event)"
-                                    @touchstart.stop="resizeFrom(header.getResizeHandler(), $event)"
-                                    @click.stop
-                                    @dblclick.stop="fit(header.column)"
+                            <DropdownMenuPortal>
+                                <DropdownMenuContent class="menu" align="end">
+                                    <DropdownMenuCheckboxItem
+                                        v-for="column in (table as any).getAllLeafColumns()"
+                                        :key="column.id"
+                                        class="menu-item"
+                                        :model-value="column.getIsVisible()"
+                                        @update:model-value="column.toggleVisibility($event)"
+                                    >
+                                        <span class="menu-check"
+                                            ><DropdownMenuItemIndicator><Icon name="CHECK" /></DropdownMenuItemIndicator
+                                        ></span>
+                                        {{ column.columnDef.header }}
+                                    </DropdownMenuCheckboxItem>
+                                </DropdownMenuContent>
+                            </DropdownMenuPortal>
+                        </DropdownMenuRoot>
+                    </div>
+                    <div
+                        :ref="holdScroller"
+                        class="body-scroll focusable"
+                        tabindex="0"
+                        @keydown="key"
+                        @scroll="scrolled"
+                    >
+                        <div v-if="tableRows.length === 0" class="placeholder"><slot name="empty" /></div>
+                        <div class="sheet" :style="{ height: `${virtualizer.getTotalSize()}px`, width: `${width}px` }">
+                            <div
+                                v-for="item in virtualizer.getVirtualItems()"
+                                :key="String(item.key)"
+                                :ref="(el) => el && virtualizer.measureElement(el as Element)"
+                                :data-index="item.index"
+                                class="row"
+                                :class="[
+                                    rowClass?.(tableRows[item.index].original),
+                                    {
+                                        selected: selected.includes(tableRows[item.index].id),
+                                        lead: lead === tableRows[item.index].id,
+                                        opened: below?.(tableRows[item.index].original),
+                                    },
+                                ]"
+                                role="row"
+                                :aria-selected="selected.includes(tableRows[item.index].id)"
+                                :style="{
+                                    ...rowStyle?.(tableRows[item.index].original),
+                                    transform: `translateY(${item.start}px)`,
+                                }"
+                                @click="choose(tableRows[item.index], $event)"
+                                @dblclick="emit('activate', tableRows[item.index].original)"
+                                @contextmenu="menuOn(tableRows[item.index])"
+                            >
+                                <div class="cells">
+                                    <div
+                                        v-for="cell in tableRows[item.index].getVisibleCells()"
+                                        :key="cell.id"
+                                        class="cell"
+                                        :class="{ numeric: numeric(cell.column) }"
+                                        role="gridcell"
+                                        :data-column="cell.column.id"
+                                        :style="{ width: `${columnWidth(cell.column)}px` }"
+                                    >
+                                        <span class="cell-content"><FlexRender :cell="cell" /></span>
+                                    </div>
+                                </div>
+                                <slot
+                                    v-if="below?.(tableRows[item.index].original)"
+                                    name="below"
+                                    :row="tableRows[item.index].original"
+                                    :columns="
+                                        tableRows[item.index].getVisibleCells().map((c: any) => ({
+                                            id: c.column.id as string,
+                                            width: columnWidth(c.column),
+                                        }))
+                                    "
                                 />
                             </div>
                         </div>
                     </div>
-                    <DropdownMenuRoot>
-                        <DropdownMenuTrigger
-                            class="column-menu"
-                            :style="{ width: `${Math.max(gutter, MENU_ROOM)}px` }"
-                            :aria-label="t('nj.table.columns')"
-                            >⋮</DropdownMenuTrigger
-                        >
-                        <DropdownMenuPortal>
-                            <DropdownMenuContent class="menu" align="end">
-                                <DropdownMenuCheckboxItem
-                                    v-for="column in (table as any).getAllLeafColumns()"
-                                    :key="column.id"
-                                    class="menu-item"
-                                    :model-value="column.getIsVisible()"
-                                    @update:model-value="column.toggleVisibility($event)"
-                                >
-                                    <span class="menu-check"
-                                        ><DropdownMenuItemIndicator><Icon name="CHECK" /></DropdownMenuItemIndicator
-                                    ></span>
-                                    {{ column.columnDef.header }}
-                                </DropdownMenuCheckboxItem>
-                            </DropdownMenuContent>
-                        </DropdownMenuPortal>
-                    </DropdownMenuRoot>
                 </div>
-                <div :ref="holdScroller" class="body-scroll focusable" tabindex="0" @keydown="key" @scroll="scrolled">
-                    <div v-if="tableRows.length === 0" class="placeholder"><slot name="empty" /></div>
-                    <div class="sheet" :style="{ height: `${virtualizer.getTotalSize()}px`, width: `${width}px` }">
-                        <div
-                            v-for="item in virtualizer.getVirtualItems()"
-                            :key="String(item.key)"
-                            :ref="(el) => el && virtualizer.measureElement(el as Element)"
-                            :data-index="item.index"
-                            class="row"
-                            :class="[
-                                rowClass?.(tableRows[item.index].original),
-                                {
-                                    selected: selected.includes(tableRows[item.index].id),
-                                    lead: lead === tableRows[item.index].id,
-                                    opened: below?.(tableRows[item.index].original),
-                                },
-                            ]"
-                            role="row"
-                            :aria-selected="selected.includes(tableRows[item.index].id)"
-                            :style="{
-                                ...rowStyle?.(tableRows[item.index].original),
-                                transform: `translateY(${item.start}px)`,
-                            }"
-                            @click="choose(tableRows[item.index], $event)"
-                            @dblclick="emit('activate', tableRows[item.index].original)"
-                            @contextmenu="menuOn(tableRows[item.index])"
-                        >
-                            <div class="cells">
-                                <div
-                                    v-for="cell in tableRows[item.index].getVisibleCells()"
-                                    :key="cell.id"
-                                    class="cell"
-                                    :class="{ numeric: numeric(cell.column) }"
-                                    role="gridcell"
-                                    :data-column="cell.column.id"
-                                    :style="{ width: `${columnWidth(cell.column)}px` }"
-                                >
-                                    <span class="cell-content"><FlexRender :cell="cell" /></span>
-                                </div>
-                            </div>
-                            <slot
-                                v-if="below?.(tableRows[item.index].original)"
-                                name="below"
-                                :row="tableRows[item.index].original"
-                                :columns="
-                                    tableRows[item.index]
-                                        .getVisibleCells()
-                                        .map((c: any) => ({ id: c.column.id as string, width: columnWidth(c.column) }))
-                                "
-                            />
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </ContextMenuTrigger>
-        <ContextMenuPortal>
-            <ContextMenuContent class="menu">
-                <slot name="menu" />
-            </ContextMenuContent>
-        </ContextMenuPortal>
-    </ContextMenuRoot>
+            </ContextMenuTrigger>
+            <ContextMenuPortal>
+                <ContextMenuContent class="menu">
+                    <slot name="menu" />
+                </ContextMenuContent>
+            </ContextMenuPortal>
+        </ContextMenuRoot>
+    </div>
 </template>
 
 <style scoped>
+/* The header and the rows lay out in the list itself; this box only takes the right click. */
+.table-content {
+    display: contents;
+}
+
 .data-table {
     position: relative;
     display: flex;
