@@ -7,16 +7,7 @@ import { computed, onActivated, onDeactivated, onUnmounted, ref, shallowRef, wat
 import { answer, api } from '../api/client';
 import { count, duration, rate, size } from '../format';
 import { t } from '../i18n';
-import {
-    completedCount,
-    preferences,
-    type RateSample,
-    servers,
-    shared,
-    sources,
-    status,
-    uploads,
-} from '../model/engine';
+import { completedCount, folders, type RateSample, servers, shared, sources, status, uploads } from '../model/engine';
 import { peaks } from '../peaks';
 import { statsTree } from '../stats';
 import Icon from '../ui/Icon.vue';
@@ -158,7 +149,7 @@ const tree = computed(() => {
         completed: completedCount.value,
         maxDown: peaks.value.down,
         maxUp: peaks.value.up,
-        dirs: { temp: preferences.value['dirs.temp'] ?? '', incoming: preferences.value['dirs.incoming'] ?? '' },
+        dirs: { temp: folders.value.temp, incoming: folders.value.incoming },
     });
 });
 </script>

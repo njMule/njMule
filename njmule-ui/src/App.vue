@@ -10,7 +10,7 @@ import { ask } from './ask';
 import { duration, rate, size } from './format';
 import { t } from './i18n';
 import { fileLinks } from './links';
-import { connection, on, preferences, running, serverName, shared, status, uploads } from './model/engine';
+import { connection, folders, on, preferences, running, serverName, shared, status, uploads } from './model/engine';
 import { networkWords } from './network';
 import { current, PLACES, searchRequest, shortcut, withShortcutKey } from './places';
 import { searches } from './search';
@@ -227,9 +227,9 @@ async function kad(): Promise<void> {
     }
 }
 
-// The folder of finished downloads in the system's file manager; the engine's default one is not told.
+// The folder of finished downloads in the system's file manager, the engine's default one included.
 async function openIncoming(): Promise<void> {
-    const folder = preferences.value['dirs.incoming'];
+    const folder = folders.value.incoming;
     if (folder) {
         try {
             await props.platform.showFolder(folder);

@@ -8,7 +8,7 @@ import { computed, ref } from 'vue';
 import { size } from '../format';
 import { t } from '../i18n';
 import { limitsOf, limitText } from '../limits';
-import { lastLog, preferences, servers, status } from '../model/engine';
+import { folders, lastLog, preferences, servers, status } from '../model/engine';
 import { networkCounts } from '../network';
 import { showLog } from '../places';
 import Tip from '../ui/Tip.vue';
@@ -38,8 +38,8 @@ const limitsTrigger = ref<InstanceType<typeof PopoverTrigger> | null>(null);
             </Tip>
             <SpeedLimits :open="limitsOpen" side="top" :reference="limitsTrigger?.$el" />
         </PopoverRoot>
-        <!-- The folder where downloads end up, when the options name one; the engine's default is not told. -->
-        <Tip v-if="freeSpace !== undefined" :text="preferences['dirs.incoming'] ?? ''">
+        <!-- The folder where downloads end up, the engine's default one included. -->
+        <Tip v-if="freeSpace !== undefined" :text="folders.incoming">
             <span class="status-text">{{ t('IDS_STATS_FREESPACE') }}: {{ size(freeSpace) }}</span>
         </Tip>
     </footer>
