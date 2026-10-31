@@ -215,6 +215,7 @@ class RemoteApiContractTest {
                 Arguments.of("DELETE", "/api/v1/bans/192.0.2.200", "", 200),
                 Arguments.of("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"global\"}", 201),
                 Arguments.of("POST", "/api/v1/searches/check", "{\"query\":\"talk\"}", 200),
+                Arguments.of("POST", "/api/v1/folders/check", "{\"path\":\"" + TEMP + "\"}", 200),
                 Arguments.of("POST", "/api/v1/notifications/test", "", 200),
                 Arguments.of("POST", "/api/v1/update/check", "", 200),
                 Arguments.of("POST", "/api/v1/update/skip", "{\"version\":\"0.2.0\"}", 200),

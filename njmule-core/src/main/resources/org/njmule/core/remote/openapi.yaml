@@ -225,6 +225,43 @@ paths:
                 $ref: "#/components/schemas/Folders"
         default:
           $ref: "#/components/responses/Error"
+  /folders/check:
+    post:
+      operationId: checkFolder
+      tags: [engine]
+      summary: Tells what a path names on the engine's computer, as a folder option is typed.
+      description: >-
+        A folder the options name need not exist yet, as it is made when it is needed; a file, or text
+        that is no path there, cannot be one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+                  minLength: 1
+                  maxLength: 4096
+      responses:
+        "200":
+          description: What the path names.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kind]
+                properties:
+                  kind:
+                    type: string
+                    enum: [folder, file, missing, invalid]
+                    description: >-
+                      A folder, a file or nothing there; invalid for text that is no path on the
+                      engine's computer.
+        default:
+          $ref: "#/components/responses/Error"
   /interfaces:
     get:
       operationId: listNetworkInterfaces

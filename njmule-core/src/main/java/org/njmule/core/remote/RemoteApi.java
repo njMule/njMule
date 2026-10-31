@@ -265,6 +265,14 @@ public final class RemoteApi implements AutoCloseable {
                             200,
                             g -> ApiJson.folders(g, p.effectiveIncomingDir(dirs), p.effectiveTempDir(dirs)));
                 }),
+                entry("checkFolder", c -> {
+                    String kind = pathKind(text(c.body(), "path"));
+                    reply(c.exchange(), 200, g -> {
+                        g.writeStartObject();
+                        g.writeStringProperty("kind", kind);
+                        g.writeEndObject();
+                    });
+                }),
                 entry("getRates", this::getRates),
                 entry("importEmule", this::importEmule),
                 entry("findEmuleProfile", this::findEmuleProfile),
@@ -917,6 +925,20 @@ public final class RemoteApi implements AutoCloseable {
                 .findFirst()
                 .orElseThrow(RemoteApi::notFound);
         done(c, this.engine.unshareDirectory(dir));
+    }
+
+    // What a path typed names here: a relative one is taken from where njMule runs, as the preferences take it.
+    private static String pathKind(String text) {
+        Path path;
+        try {
+            path = Path.of(text.strip()).toAbsolutePath();
+        } catch (InvalidPathException e) {
+            return "invalid";
+        }
+        if (Files.isDirectory(path)) {
+            return "folder";
+        }
+        return Files.exists(path) ? "file" : "missing";
     }
 
     // An existing folder of this computer, by its absolute path.

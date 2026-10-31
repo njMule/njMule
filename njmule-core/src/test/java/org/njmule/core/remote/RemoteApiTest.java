@@ -1051,6 +1051,27 @@ class RemoteApiTest {
         thenTheBodyContains("AND");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"folder", "file", "missing"})
+    void shouldTellWhatAPathNamesOnTheEnginesComputer(String kind) throws Exception {
+        givenTheApiRuns();
+        givenAFile("talk.met");
+
+        whenCalled("POST", "/api/v1/folders/check", "{\"path\":\"" + jsonPath(pathOf(kind)) + "\"}");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{\"kind\":\"" + kind + "\"}");
+    }
+
+    @Test
+    void shouldRefuseToCheckAFolderForAGuest() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledAsGuest("POST", "/api/v1/folders/check");
+
+        thenTheStatusIs(403);
+    }
+
     @Test
     void shouldListTheNetworkInterfacesOfTheEnginesComputer() throws Exception {
         givenTheApiRuns();
@@ -1191,6 +1212,14 @@ class RemoteApiTest {
 
     private void givenAFile(String name) throws IOException {
         Files.write(this.dir.resolve(name), new byte[] {0x0E, 0, 0, 0, 0});
+    }
+
+    private Path pathOf(String kind) {
+        return switch (kind) {
+            case "folder" -> this.dir;
+            case "file" -> this.dir.resolve("talk.met");
+            default -> this.dir.resolve("nothing here");
+        };
     }
 
     private void givenTheWebInterfaceHasNoPassword() {
