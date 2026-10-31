@@ -1,7 +1,14 @@
 {
     "$schema": "../gen/schemas/desktop-schema.json",
     "identifier": "default",
-    "description": "What the interface in njMule's window may ask the shell",
+    "description": "What the interface in njMule's window may ask the shell; web links open in the system's browser",
     "windows": ["main"],
-    "permissions": ["core:default", "deep-link:default"]
+    "permissions": [
+        "core:default",
+        "deep-link:default",
+        {
+            "identifier": "opener:allow-open-url",
+            "allow": [{ "url": "https://*" }]
+        }
+    ]
 }
