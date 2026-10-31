@@ -10,14 +10,20 @@ import {
     byName,
     byPriority,
     byState,
+    completeParts,
     countryName,
+    headActions,
     keeps,
-    rating,
     named,
+    PART_SIZE,
+    partsHad,
     priorityKey,
+    rating,
     remaining,
     shown,
+    sourceNames,
     sourceProgram,
+    stateNote,
     withoutColon,
     type Shown,
     type StateFilter,
@@ -378,5 +384,111 @@ describe('a source under its download', () => {
 
     function thenItShows(expected: string): void {
         expect(shownProgram).toBe(expected);
+    }
+});
+
+describe('the names the sources give a download', () => {
+    let names: { name: string; sources: number }[] = [];
+
+    it('should list the most given first, each once, for that download only', () => {
+        whenTheNamesAreCounted([
+            { file: 'A', reportedName: 'b.iso' },
+            { file: 'A', reportedName: 'a.iso' },
+            { file: 'A', reportedName: 'b.iso' },
+            { file: 'B', reportedName: 'c.iso' },
+            { file: 'A', reportedName: null },
+        ]);
+        thenTheNamesAre([
+            { name: 'b.iso', sources: 2 },
+            { name: 'a.iso', sources: 1 },
+        ]);
+    });
+
+    function whenTheNamesAreCounted(all: { file: string; reportedName: string | null }[]): void {
+        names = sourceNames(all, 'A');
+    }
+
+    function thenTheNamesAre(expected: { name: string; sources: number }[]): void {
+        expect(names).toEqual(expected);
+    }
+});
+
+describe('the parts of a download', () => {
+    let had: number | undefined;
+
+    it('should count only the parts with no byte missing', () => {
+        whenThePartsAreCounted(download({ size: 3 * PART_SIZE }), [[PART_SIZE - 10, PART_SIZE + 10]]);
+        thenThereAre(1);
+    });
+
+    it('should count the bytes done without a map of the parts', () => {
+        whenThePartsAreCounted(download({ size: 3 * PART_SIZE, completed: 2 * PART_SIZE + 5 }), null);
+        thenThereAre(2);
+    });
+
+    it('should count every part of a complete download', () => {
+        whenThePartsAreCounted(download({ size: 3 * PART_SIZE - 1, status: 'complete' }), [[0, 1]]);
+        thenThereAre(3);
+    });
+
+    function whenThePartsAreCounted(d: Download, missing: number[][] | null): void {
+        had = partsHad(d, missing);
+    }
+
+    function thenThereAre(expected: number): void {
+        expect(had).toBe(expected);
+    }
+});
+
+describe('the parts a gap leaves out', () => {
+    let complete: number | undefined;
+
+    it('should leave out each part a gap crosses', () => {
+        whenTheGapsAreCounted([[10, 2 * PART_SIZE + 1]], 4);
+        thenThePartsCompleteAre(1);
+    });
+
+    function whenTheGapsAreCounted(missing: number[][], total: number): void {
+        complete = completeParts(missing, total);
+    }
+
+    function thenThePartsCompleteAre(expected: number): void {
+        expect(complete).toBe(expected);
+    }
+});
+
+describe('what the details offer for a state', () => {
+    let actions: string[] = [];
+    let note: { key: string; problem: boolean } | null = null;
+
+    it('should offer to add a source to a download without any', () => {
+        whenTheDetailsShow('noSources');
+        thenTheyOffer(['pause', 'addSource']);
+        thenTheNoteIs({ key: 'nj.details.noSourcesNote', problem: false });
+    });
+
+    it('should offer the incoming folder when the disk is full', () => {
+        whenTheDetailsShow('noSpace');
+        thenTheyOffer(['pause', 'openIncoming']);
+        thenTheNoteIs({ key: 'nj.details.diskFullNote', problem: true });
+    });
+
+    it('should offer only to resume a stopped download, without a note', () => {
+        whenTheDetailsShow('stopped');
+        thenTheyOffer(['resume']);
+        thenTheNoteIs(null);
+    });
+
+    function whenTheDetailsShow(state: Shown): void {
+        actions = headActions(state);
+        note = stateNote(state);
+    }
+
+    function thenTheyOffer(expected: string[]): void {
+        expect(actions).toEqual(expected);
+    }
+
+    function thenTheNoteIs(expected: { key: string; problem: boolean } | null): void {
+        expect(note).toEqual(expected);
     }
 });

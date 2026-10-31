@@ -203,6 +203,35 @@ export async function askSource(d: Download): Promise<void> {
     }
 }
 
+/** Asks the source at {@code address}, asked for another download, for {@code file} next. */
+export async function swapSource(file: string, address: string): Promise<void> {
+    try {
+        const { moved } = await answer(
+            api().POST('/downloads/{hash}/sources/swap', { params: { path: { hash: file } }, body: { address } }),
+        );
+        if (!moved) {
+            problem(t('nj.a4af.cannotSwap'));
+        }
+    } catch (e) {
+        problem((e as Error).message);
+    }
+}
+
+/** Renames a download; the engine makes the name safe for any file system. */
+export async function rename(d: Download, name: string): Promise<void> {
+    await run([answer(api().PUT('/downloads/{hash}/name', { params: { path: { hash: d.hash } }, body: { name } }))]);
+}
+
+/** {@code name} without the words the preferences take out of new names; as it was when the engine cannot say. */
+export async function cleanName(name: string): Promise<string> {
+    try {
+        return (await answer(api().POST('/names/cleanup', { body: { name } }))).name;
+    } catch (e) {
+        problem((e as Error).message);
+        return name;
+    }
+}
+
 async function run(calls: Promise<unknown>[]): Promise<void> {
     const outcomes = await Promise.allSettled(calls);
     for (const o of outcomes) {

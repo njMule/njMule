@@ -177,6 +177,93 @@ export function sourceProgram(s: Pick<Source, 'software' | 'queueRank'>): string
     return s.queueRank > 0 ? `${s.software} QR: ${s.queueRank}` : s.software;
 }
 
+/** A name the sources give a download, and how many give it. */
+export interface SourceName {
+    name: string;
+    sources: number;
+}
+
+/** The names the sources of {@code file} give it, the most given first. */
+export function sourceNames(all: Pick<Source, 'file' | 'reportedName'>[], file: string): SourceName[] {
+    const counts = new Map<string, number>();
+    for (const s of all) {
+        if (s.file === file && s.reportedName) {
+            counts.set(s.reportedName, (counts.get(s.reportedName) ?? 0) + 1);
+        }
+    }
+    return [...counts]
+        .map(([name, sources]) => ({ name, sources }))
+        .sort((a, b) => b.sources - a.sources || byName(a.name, b.name));
+}
+
+/** The size of a part of an eD2K file. */
+export const PART_SIZE = 9_728_000;
+
+/** The parts of a file of {@code size} bytes. */
+export function partCount(size: number): number {
+    return Math.ceil(size / PART_SIZE);
+}
+
+/** The parts of {@code total} with no byte {@code missing}, given as [start, end) spans. */
+export function completeParts(missing: number[][], total: number): number {
+    const lacking = new Set<number>();
+    for (const [start = 0, end = 0] of missing) {
+        const last = Math.floor(Math.max(start, end - 1) / PART_SIZE);
+        for (let p = Math.floor(start / PART_SIZE); p <= last && p < total; p++) {
+            lacking.add(p);
+        }
+    }
+    return total - lacking.size;
+}
+
+/** The parts of a download complete: all once it is, else as its map tells, or as its bytes do without one. */
+export function partsHad(d: Pick<Download, 'size' | 'completed' | 'status'>, missing: number[][] | null): number {
+    const total = partCount(d.size);
+    if (d.status === 'complete') {
+        return total;
+    }
+    return missing === null ? Math.floor(d.completed / PART_SIZE) : completeParts(missing, total);
+}
+
+/** The note a state that wants the user shows in the details; a real problem is told in red, else in yellow. */
+export function stateNote(state: Shown): { key: string; problem: boolean } | null {
+    switch (state) {
+        case 'noSources':
+            return { key: 'nj.details.noSourcesNote', problem: false };
+        case 'noSpace':
+            return { key: 'nj.details.diskFullNote', problem: true };
+        case 'error':
+            return { key: 'nj.details.errorNote', problem: true };
+        default:
+            return null;
+    }
+}
+
+/** What the details offer to do now. */
+export type HeadAction = 'pause' | 'resume' | 'stop' | 'addSource' | 'openIncoming';
+
+/** What the details offer to do now, as the state asks: pause or resume, stop, find a source, see the folder. */
+export function headActions(state: Shown): HeadAction[] {
+    switch (state) {
+        case 'downloading':
+        case 'waiting':
+            return ['pause', 'stop'];
+        case 'noSources':
+            return ['pause', 'addSource'];
+        case 'paused':
+            return ['resume', 'stop'];
+        case 'stopped':
+            return ['resume'];
+        // Short of disk space it still runs, and goes on by itself once there is room.
+        case 'noSpace':
+            return ['pause', 'openIncoming'];
+        case 'error':
+            return ['resume', 'openIncoming'];
+        case 'complete':
+            return ['openIncoming'];
+    }
+}
+
 // The order the status column sorts the states in: from what runs to what is done.
 const STATE_ORDER: Shown[] = [
     'downloading',

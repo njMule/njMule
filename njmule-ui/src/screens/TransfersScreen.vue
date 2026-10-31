@@ -14,7 +14,7 @@ import {
     ContextMenuSubTrigger,
     ContextMenuPortal,
 } from 'reka-ui';
-import { computed, h, nextTick, ref, watch } from 'vue';
+import { computed, h, nextTick, onUnmounted, ref, watch } from 'vue';
 import AddLinksDialog from '../dialogs/AddLinksDialog.vue';
 import CategoriesDialog from '../dialogs/CategoriesDialog.vue';
 import CommentDialog from '../dialogs/CommentDialog.vue';
@@ -89,6 +89,13 @@ const props = defineProps<{ platform: Platform }>();
 type Shelf = 'downloads' | 'uploads' | 'queue' | 'banned' | 'known';
 const SHOW_ALL = -1;
 const DETAILS_KEY = 'njmule.transfers.details';
+const DETAILS_HEIGHT_KEY = 'njmule.transfers.detailsHeight';
+// The details at first, until the user drags the divider; the room under the buttons of the download; what the list
+// keeps at least; the gap to drag.
+const DETAILS_HEIGHT = 300;
+const DETAILS_MARGIN = 16;
+const LEAST_HEIGHT = 120;
+const DIVIDER = 10;
 
 const shelf = ref<Shelf>('downloads');
 const stateFilter = ref<StateFilter>('all');
@@ -102,6 +109,12 @@ const commenting = ref(false);
 const categorizing = ref(false);
 const commented = ref<Download | null>(null);
 const filterBox = ref<HTMLInputElement | null>(null);
+const splitBox = ref<HTMLElement | null>(null);
+const details = ref<InstanceType<typeof DownloadDetails> | null>(null);
+const splitHeight = ref(0);
+const neededHeight = ref(0);
+// Only a height the user leaves with the mouse is remembered, not one a layout gives.
+const wantedHeight = ref(readHeight());
 
 function readDetails(): boolean {
     try {
@@ -109,6 +122,62 @@ function readDetails(): boolean {
     } catch {
         return false;
     }
+}
+
+function readHeight(): number {
+    try {
+        return Number(localStorage.getItem(DETAILS_HEIGHT_KEY)) || DETAILS_HEIGHT;
+    } catch {
+        return DETAILS_HEIGHT;
+    }
+}
+
+// As tall as the user left them, and tall enough for the buttons of the download; the list keeps some rows in any case.
+const detailsHeight = computed(() => {
+    const h = splitHeight.value - DIVIDER;
+    const wanted = Math.max(wantedHeight.value, neededHeight.value);
+    return h <= 0
+        ? wanted
+        : Math.min(Math.max(wanted, Math.min(LEAST_HEIGHT, h / 2)), Math.max(h - LEAST_HEIGHT, h / 2));
+});
+
+let observer: ResizeObserver | null = null;
+watch(splitBox, (box) => {
+    observer?.disconnect();
+    if (box !== null) {
+        observer = new ResizeObserver(() => (splitHeight.value = box.clientHeight));
+        observer.observe(box);
+    }
+});
+onUnmounted(() => observer?.disconnect());
+
+// The head of the download chosen decides how low the divider may go.
+watch([selected, downloads, detailsShown], async () => {
+    await nextTick();
+    neededHeight.value = (details.value?.neededHeight() ?? 0) + DETAILS_MARGIN;
+});
+
+// Where the user lets the divider go is how tall the details are wanted from then on.
+function dragDivider(e: PointerEvent): void {
+    const divider = e.currentTarget as HTMLElement;
+    const startY = e.clientY;
+    const start = detailsHeight.value;
+    divider.setPointerCapture(e.pointerId);
+    const move = (m: PointerEvent): void => {
+        wantedHeight.value = start - (m.clientY - startY);
+    };
+    const release = (): void => {
+        divider.removeEventListener('pointermove', move);
+        divider.removeEventListener('pointerup', release);
+        wantedHeight.value = detailsHeight.value;
+        try {
+            localStorage.setItem(DETAILS_HEIGHT_KEY, String(Math.round(wantedHeight.value)));
+        } catch {
+            // As the user left it until the window closes.
+        }
+    };
+    divider.addEventListener('pointermove', move);
+    divider.addEventListener('pointerup', release);
 }
 
 // All categories, then each one with its dot; a category gone shows them all again.
@@ -513,7 +582,7 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                     <span class="shortcut-key">{{ withShortcutKey('F') }}</span>
                 </label>
             </div>
-            <div class="split">
+            <div ref="splitBox" class="split">
                 <DataTable
                     v-model:selected="selected"
                     name="downloads"
@@ -746,7 +815,17 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                         </ContextMenuItem>
                     </template>
                 </DataTable>
-                <DownloadDetails v-if="detailsShown" :chosen="chosen" @close="detailsShown = false" />
+                <template v-if="detailsShown">
+                    <div class="divider" role="separator" aria-orientation="horizontal" @pointerdown="dragDivider" />
+                    <DownloadDetails
+                        ref="details"
+                        :style="{ height: `${detailsHeight}px` }"
+                        :chosen="chosen"
+                        :platform="platform"
+                        @close="detailsShown = false"
+                        @comment="(d) => comment([d])"
+                    />
+                </template>
             </div>
         </template>
         <ClientLists v-else :shelf="shelf" />
@@ -783,6 +862,14 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
     display: none;
 }
 
+/* The divider between the downloads and their details is a gap to drag. */
+.divider {
+    flex: none;
+    height: 10px;
+    cursor: row-resize;
+    touch-action: none;
+}
+
 .narrowing {
     display: flex;
     align-items: center;
@@ -806,7 +893,6 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
 .split {
     display: flex;
     flex-direction: column;
-    gap: 10px;
     flex: 1;
     min-height: 0;
     min-width: 0;
