@@ -17,6 +17,7 @@ import { message, problem } from '../../toasts';
 import DataTable from '../../ui/DataTable.vue';
 import Icon from '../../ui/Icon.vue';
 import Tip from '../../ui/Tip.vue';
+import Country from '../transfers/Country.vue';
 
 // Kad: its state in plain words with what to do, the contacts by distance and the facts, the ways to join it, and
 // the contacts and the lookups running, read every few seconds while shown.
@@ -104,6 +105,26 @@ function leftToRight({ getValue }: any) {
     return h('span', { dir: 'ltr' }, String(getValue()));
 }
 
+// The address after the flag and code of its country, as the servers' country; the others keep that room once any has
+// one, so that the addresses line up.
+const anyCountry = computed(() => contacts.value.some((c) => c.country));
+const COUNTRY_ROOM = '46px';
+
+function addressCell({ row }: any) {
+    const c = row.original as Contact;
+    const where = anyCountry.value
+        ? h(
+              'span',
+              { style: { width: COUNTRY_ROOM, flex: 'none' } },
+              c.country ? [h(Country, { code: c.country })] : [],
+          )
+        : null;
+    return h('span', { dir: 'ltr', style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } }, [
+        where,
+        c.address,
+    ]);
+}
+
 const contactColumns: ColumnDef<any, Contact, any>[] = [
     { id: 'id', header: t('IDS_ID'), accessorFn: (c: Contact) => c.id, size: 260, cell: leftToRight },
     { id: 'type', header: t('IDS_TYPE'), accessorFn: (c: Contact) => c.type, size: 60, cell: leftToRight },
@@ -114,7 +135,7 @@ const contactColumns: ColumnDef<any, Contact, any>[] = [
         size: 260,
         cell: leftToRight,
     },
-    { id: 'address', header: t('IDS_IP'), accessorFn: (c: Contact) => c.address, size: 160, cell: leftToRight },
+    { id: 'address', header: t('IDS_IP'), accessorFn: (c: Contact) => c.address, size: 180, cell: addressCell },
     { id: 'version', header: 'Kad', accessorFn: (c: Contact) => c.version, size: 50, cell: leftToRight },
 ];
 
