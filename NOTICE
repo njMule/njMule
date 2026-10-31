@@ -76,12 +76,15 @@ license of each component to THIRD-PARTY.txt.
     RichTextFX, Flowless,       BSD 2-Clause License (RichTextFX also
     ReactFX, UndoFX,            GPL-2.0 WITH Classpath-exception-2.0); used
     WellBehavedFX               under BSD 2-Clause
-    Vue, Vue Router,            MIT License (the web interface's browser
-    Element Plus and the        app; their license texts are shipped beside
-    packages they bundle        it, in THIRD-PARTY.md)
-    (VueUse, Floating UI,
-    lodash-es, Day.js and
+    Vue, Reka UI, TanStack      MIT License (the interface the web interface
+    Table and Virtual,          serves; their license texts are shipped
+    openapi-fetch,              beside it, in THIRD-PARTY.md)
+    eventsource-parser and the
+    packages they bundle
+    (VueUse, Floating UI and
     others)
+    Tauri API (@tauri-apps/api) Apache License 2.0 OR MIT License; used
+                                under the MIT License
     GraalVM Native Image        GPL-2.0 WITH Classpath-exception-2.0
     (Substrate VM runtime embedded in the native executables)
     musl libc                   MIT License
@@ -96,8 +99,13 @@ license of each component to THIRD-PARTY.txt.
                                 are in the image under /usr/share/doc
 
 Test-only dependencies (JUnit, AssertJ, jqwik, Jimfs, openapi-parser) and the
-web app's build tools (Node.js, Vite, TypeScript, Vitest, Prettier) are not
-distributed.
+interface's build tools (Node.js, Vite, TypeScript, vue-tsc, Vitest, Prettier,
+openapi-typescript) are not distributed.
+
+The desktop window (njmule-desktop), not in the packages yet, is built with
+Tauri and the Rust crates its Cargo.lock lists (Tauri and its plugins, arboard,
+serde, java-properties, encoding_rs, windows-sys and the crates they pull in),
+each under its own license; the packages will list them once they ship it.
 
 
 Shipped server list and Kad contacts
