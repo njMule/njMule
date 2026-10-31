@@ -14,6 +14,7 @@ import {
     DropdownMenuRadioItem,
     DropdownMenuRoot,
     DropdownMenuTrigger,
+    PopoverArrow,
     PopoverClose,
     PopoverContent,
     PopoverPortal,
@@ -107,6 +108,12 @@ const tabElements = new Map<string, HTMLElement>();
 const overflowing = ref(false);
 // The searches typed before, the latest first, in a list under the search box: from its arrow, F4 or Alt+Down.
 const past = ref(history());
+const filtersTrigger = ref<InstanceType<typeof PopoverTrigger> | null>(null);
+// The button of the filters tells how many ask for something, as "Filters (2)".
+const filtersLabel = computed(() => {
+    const used = filterCount(filters.value);
+    return used === 0 ? t('nj.search.filters') : `${t('nj.search.filters')} (${used})`;
+});
 const historyOpen = ref(false);
 const queryBox = ref<HTMLElement | null>(null);
 const queryInput = ref<HTMLInputElement | null>(null);
@@ -935,12 +942,25 @@ onUnmounted(() => {
             </Tip>
             <Segments v-model="scope" :items="SCOPES" :label="t('IDS_SEARCH_TEXT')" />
             <PopoverRoot>
-                <PopoverTrigger id="search-parameters" type="button" class="button">
-                    <Icon name="FILTER" />{{ t('nj.search.filters')
-                    }}<span v-if="filterCount(filters) > 0" class="segment-count">{{ filterCount(filters) }}</span>
-                </PopoverTrigger>
+                <Tip :text="t('nj.search.filters')">
+                    <PopoverTrigger
+                        id="search-parameters"
+                        ref="filtersTrigger"
+                        type="button"
+                        class="button"
+                        :aria-label="filtersLabel"
+                    >
+                        <Icon name="FILTER" /><span class="tool-text">{{ filtersLabel }}</span>
+                    </PopoverTrigger>
+                </Tip>
                 <PopoverPortal>
-                    <PopoverContent class="menu search-parameters" align="end" :side-offset="8">
+                    <PopoverContent
+                        class="menu search-parameters"
+                        align="end"
+                        :side-offset="8"
+                        :reference="filtersTrigger?.$el"
+                    >
+                        <PopoverArrow class="popover-arrow" :width="14" :height="7" />
                         <div class="popover-head">
                             <strong>{{ t('nj.search.filters') }}</strong>
                             <button type="button" class="button flat small" @click="filters = { ...NO_FILTERS }">
@@ -994,9 +1014,11 @@ onUnmounted(() => {
                     </PopoverContent>
                 </PopoverPortal>
             </PopoverRoot>
-            <button type="submit" class="button accent" :disabled="!queryValid">
-                <Icon name="SEARCH" />{{ t('nj.search.start') }}
-            </button>
+            <Tip :text="t('nj.search.start')">
+                <button type="submit" class="button accent" :aria-label="t('nj.search.start')" :disabled="!queryValid">
+                    <Icon name="SEARCH" /><span class="tool-text">{{ t('nj.search.start') }}</span>
+                </button>
+            </Tip>
         </form>
 
         <div v-if="searches.length === 0" id="search-empty" class="empty-state">
@@ -1285,17 +1307,24 @@ onUnmounted(() => {
     border-color: var(--color-danger-emphasis);
 }
 
-.segment-count {
-    margin-inline-start: 4px;
-    color: var(--color-fg-muted);
-}
-
 :deep(.search-parameters) {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    width: 400px;
+    width: 440px;
     padding: 16px;
+}
+
+/* The popup points at its button, as the desktop app's. */
+:deep(.popover-arrow) {
+    fill: var(--color-bg-overlay);
+}
+
+/* In a narrow window the tools keep to their icons; the words are the tooltip and the accessible name. */
+@media (max-width: 999.98px) {
+    .tool-text {
+        display: none;
+    }
 }
 
 .popover-head,
@@ -1344,7 +1373,7 @@ onUnmounted(() => {
 }
 
 .numbers .wide {
-    grid-column: 1 / 2;
+    grid-column: 1 / -1;
 }
 
 .stop-search {
