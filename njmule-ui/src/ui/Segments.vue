@@ -42,13 +42,13 @@ const value = defineModel<V>({ required: true });
     height: 34px;
     padding: 0 12px;
     border: 0;
-    background: var(--color-bg-default);
+    background: var(--color-bg-subtle);
     white-space: nowrap;
     cursor: pointer;
 }
 
 .segment:hover {
-    background: var(--color-bg-subtle);
+    background: var(--color-base-1);
 }
 
 /* A chosen segment is a pastel fill inside an accent outline, its text in the usual colour. */
