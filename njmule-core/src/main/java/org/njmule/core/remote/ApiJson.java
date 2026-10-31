@@ -181,6 +181,26 @@ final class ApiJson {
         g.writeEndObject();
     }
 
+    static void webInterface(JsonGenerator g, WebInterface.Settings s) {
+        g.writeStartObject();
+        g.writeBooleanProperty("enabled", s.enabled());
+        g.writeNumberProperty("port", s.port());
+        g.writeBooleanProperty("lan", s.lan());
+        strings(g, "hosts", s.hosts());
+        strings(g, "proxies", s.proxies());
+        g.writeBooleanProperty("api", s.api());
+        g.writeBooleanProperty("hasPassword", s.hasPassword());
+        g.writeBooleanProperty("hasGuest", s.hasGuest());
+        optional(g, "url", s.url());
+        g.writeEndObject();
+    }
+
+    private static void strings(JsonGenerator g, String name, List<String> values) {
+        g.writeArrayPropertyStart(name);
+        values.forEach(g::writeString);
+        g.writeEndArray();
+    }
+
     static void update(JsonGenerator g, UpdateStatus s) {
         g.writeStartObject();
         g.writeStringProperty("state", name(s.phase()));

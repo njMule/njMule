@@ -29,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalTime;
@@ -139,6 +140,13 @@ public final class RemoteApi implements AutoCloseable {
             "getSearchResults",
             "listCategories");
 
+    // What only the desktop app's window on njMule's computer may do: a browser's session or a token sent from
+    // elsewhere
+    // must not open the web interface wider, or take the API token with it.
+    private static final Set<String> LOCAL_ONLY = Set.of("updateWebInterface", "getApiToken", "renewApiToken");
+
+    private static final SecureRandom RANDOM = new SecureRandom();
+
     // The events a guest follows, by the prefixes of their names.
     private static final List<String> GUEST_EVENTS =
             List.of("started", "stopping", "server", "search", "download", "disk");
@@ -152,6 +160,7 @@ public final class RemoteApi implements AutoCloseable {
     private final Thread sampler;
     private final EventStreams streams;
     private final Optional<Runnable> exit;
+    private final Optional<WebInterface> web;
     private final ApiSpecification specification;
     private final Map<String, Handler> handlers;
 
@@ -173,6 +182,17 @@ public final class RemoteApi implements AutoCloseable {
     /** As the other constructor, with event streams that send a comment every {@code heartbeat} while idle. */
     public RemoteApi(
             NjMuleEngine engine, RecentEvents recent, Guard guard, Optional<Runnable> exit, Duration heartbeat) {
+        this(engine, recent, guard, exit, heartbeat, Optional.empty());
+    }
+
+    /** As the other constructors, giving and changing the settings of the web interface {@code web}, when given. */
+    public RemoteApi(
+            NjMuleEngine engine,
+            RecentEvents recent,
+            Guard guard,
+            Optional<Runnable> exit,
+            Duration heartbeat,
+            Optional<WebInterface> web) {
         this.engine = engine;
         this.guard = guard;
         this.searches = recent.searches();
@@ -181,6 +201,7 @@ public final class RemoteApi implements AutoCloseable {
         this.sampler = Thread.ofVirtual().name("njmule-api-rates").start(this::sampleRates);
         this.streams = new EventStreams(engine, heartbeat);
         this.exit = exit;
+        this.web = web;
         this.specification = Shipped.DOCUMENT;
         this.handlers = handlers();
         if (!this.handlers.keySet().equals(this.specification.operations().keySet())) {
@@ -210,6 +231,13 @@ public final class RemoteApi implements AutoCloseable {
 
     /** A request matched to an operation, with its parameters and body checked against the document. */
     private record Call(Exchange exchange, Map<String, JsonNode> parameters, JsonNode body, boolean guest) {}
+
+    /** Who calls: a guest, an admin, or the desktop app's window on this computer. */
+    private enum Caller {
+        GUEST,
+        ADMIN,
+        LOCAL
+    }
 
     @FunctionalInterface
     private interface Handler {
@@ -444,12 +472,23 @@ public final class RemoteApi implements AutoCloseable {
                     boolean restart = c.body().path("restart").asBoolean(true);
                     updateWork(c, this.engine.installUpdate(restart));
                 }),
+                entry("getWebInterface", c -> webSettings(c, webInterface().settings())),
+                entry("updateWebInterface", this::updateWebInterface),
+                entry(
+                        "getApiToken",
+                        c -> apiToken(
+                                c,
+                                ApiToken.loadOrCreate(this.engine.directories().config(), RANDOM))),
+                entry(
+                        "renewApiToken",
+                        c -> apiToken(
+                                c, ApiToken.renew(this.engine.directories().config(), RANDOM))),
                 entry("unban", c -> known(c, this.engine.unban(text(c.parameters(), ADDRESS_KEY)))));
     }
 
     /** Answers a request whose path starts with {@value #PREFIX}, from a caller that sends the API token. */
     public void handle(Exchange exchange) throws IOException {
-        serve(exchange, true, false);
+        serve(exchange, true, Caller.ADMIN);
     }
 
     /**
@@ -457,7 +496,15 @@ public final class RemoteApi implements AutoCloseable {
      * logged-in browser whose request carried its session's token.
      */
     public void handleTrusted(Exchange exchange) throws IOException {
-        serve(exchange, false, false);
+        serve(exchange, false, Caller.ADMIN);
+    }
+
+    /**
+     * Answers the desktop app's window on this computer, which the host has let in with the token it made for it: every
+     * operation, the changes of the web interface's settings included.
+     */
+    public void handleLocal(Exchange exchange) throws IOException {
+        serve(exchange, false, Caller.LOCAL);
     }
 
     /**
@@ -465,15 +512,15 @@ public final class RemoteApi implements AutoCloseable {
      * statistics only, with their events.
      */
     public void handleGuest(Exchange exchange) throws IOException {
-        serve(exchange, false, true);
+        serve(exchange, false, Caller.GUEST);
     }
 
-    private void serve(Exchange exchange, boolean needsToken, boolean guest) throws IOException {
+    private void serve(Exchange exchange, boolean needsToken, Caller caller) throws IOException {
         try {
             if (needsToken) {
                 authorize(exchange);
             }
-            route(exchange, guest);
+            route(exchange, caller);
         } catch (Failure e) {
             error(exchange, e.status, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -493,7 +540,7 @@ public final class RemoteApi implements AutoCloseable {
 
     // No Host check for token callers: browsers never send the token by themselves, so a page reaching us through DNS
     // rebinding cannot act, and other computers may use any name of this one.
-    private void route(Exchange exchange, boolean guest) throws IOException {
+    private void route(Exchange exchange, Caller caller) throws IOException {
         List<String> segments = segments(exchange.rawPath());
         ApiSpecification.Route route = this.specification.route(segments).orElseThrow(RemoteApi::notFound);
         ApiSpecification.Operation operation = route.operation(exchange.method())
@@ -501,8 +548,12 @@ public final class RemoteApi implements AutoCloseable {
                     exchange.setHeader("Allow", route.allowed());
                     return new Failure(405, "Method not allowed.");
                 });
+        boolean guest = caller == Caller.GUEST;
         if (guest && !GUEST_READS.contains(operation.id())) {
             throw new Failure(403, "A guest can only look at the transfers, searches, servers, Kad and statistics.");
+        }
+        if (caller != Caller.LOCAL && LOCAL_ONLY.contains(operation.id())) {
+            throw new Failure(403, "Only the desktop app's window on njMule's computer can do this.");
         }
         Map<String, JsonNode> parameters = operation.arguments(route.values(segments), exchange.query());
         JsonNode body = operation.body().isPresent() ? operation.body(read(exchange)) : null;
@@ -932,6 +983,50 @@ public final class RemoteApi implements AutoCloseable {
         lists.forEach(u -> g.writeString(u.toString()));
         g.writeEndArray();
         g.writeEndObject();
+    }
+
+    private WebInterface webInterface() {
+        return this.web.orElseThrow(() -> new Failure(501, "This njMule has no web interface."));
+    }
+
+    private void webSettings(Call c, WebInterface.Settings now) throws IOException {
+        reply(c.exchange(), 200, g -> ApiJson.webInterface(g, now));
+    }
+
+    // What the body names changes; a wrong value changes nothing.
+    private void updateWebInterface(Call c) throws IOException {
+        JsonNode b = c.body();
+        WebInterface.Change change = new WebInterface.Change(
+                optionalFlag(b, "enabled"),
+                b.has("port") ? Optional.of(number(b, "port")) : Optional.empty(),
+                optionalFlag(b, "lan"),
+                optionalTexts(b, "hosts"),
+                optionalTexts(b, "proxies"),
+                optionalFlag(b, "api"),
+                b.has("password") ? Optional.of(text(b, "password")) : Optional.empty(),
+                b.has("guestPassword") ? Optional.of(text(b, "guestPassword")) : Optional.empty());
+        webSettings(c, webInterface().change(change));
+    }
+
+    private static Optional<Boolean> optionalFlag(JsonNode values, String name) {
+        return values.has(name) ? Optional.of(flag(values, name)) : Optional.empty();
+    }
+
+    private static Optional<List<String>> optionalTexts(JsonNode values, String name) {
+        if (!values.has(name)) {
+            return Optional.empty();
+        }
+        List<String> texts = new ArrayList<>();
+        values.get(name).values().forEach(v -> texts.add(v.asString()));
+        return Optional.of(texts);
+    }
+
+    private void apiToken(Call c, String token) throws IOException {
+        reply(c.exchange(), 200, g -> {
+            g.writeStartObject();
+            g.writeStringProperty("token", token);
+            g.writeEndObject();
+        });
     }
 
     private void listKnownClients(Call c) throws IOException {

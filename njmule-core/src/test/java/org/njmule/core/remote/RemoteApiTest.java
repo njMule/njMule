@@ -94,6 +94,7 @@ class RemoteApiTest {
     private final List<String> calls = new CopyOnWriteArrayList<>();
     private final CountDownLatch exited = new CountDownLatch(1);
     private final AtomicInteger attempts = new AtomicInteger();
+    private final FakeWebInterface web = new FakeWebInterface();
     private RemoteApi api;
     private ApiServer server;
     private String token;
@@ -970,6 +971,87 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldGiveTheWebInterfaceSettingsWithoutThePasswords() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("GET", "/api/v1/webui", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"enabled\":false", "\"port\":4711", "\"hasPassword\":true", "\"url\":null");
+    }
+
+    @Test
+    void shouldRefuseTheWebInterfaceSettingsToAGuest() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledAsGuest("GET", "/api/v1/webui");
+
+        thenTheStatusIs(403);
+    }
+
+    @Test
+    void shouldChangeTheWebInterfaceForTheDesktopWindow() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledBy(ApiServer.LOCAL, "PATCH", "/api/v1/webui", "{\"enabled\":true,\"hosts\":[\"nas.local\"]}");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"enabled\":true", "\"hosts\":[\"nas.local\"]", "\"url\":\"http://127.0.0.1:4711/\"");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {ApiServer.SESSION, "Authorization"})
+    void shouldRefuseToChangeTheWebInterfaceFromABrowserOrATokenHolder(String caller) throws Exception {
+        givenTheApiRuns();
+
+        whenCalledBy(caller, "PATCH", "/api/v1/webui", "{\"lan\":true}");
+
+        thenTheStatusIs(403);
+        thenTheWebInterfaceIsOnlyForThisComputer();
+    }
+
+    @Test
+    void shouldRefuseAWebInterfaceTheEngineRefuses() throws Exception {
+        givenTheApiRuns();
+        givenTheWebInterfaceHasNoPassword();
+
+        whenCalledBy(ApiServer.LOCAL, "PATCH", "/api/v1/webui", "{\"enabled\":true}");
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("needs a password");
+    }
+
+    @Test
+    void shouldGiveTheApiTokenToTheDesktopWindow() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledBy(ApiServer.LOCAL, "GET", "/api/v1/webui/token", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"token\":\"" + this.token + "\"");
+    }
+
+    @Test
+    void shouldRefuseTheApiTokenToABrowser() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledBy(ApiServer.SESSION, "GET", "/api/v1/webui/token", "");
+
+        thenTheStatusIs(403);
+        thenTheBodyDoesNotContain(this.token);
+    }
+
+    @Test
+    void shouldRefuseTheOldTokenOnceTheDesktopWindowRenewedIt() throws Exception {
+        givenTheApiRuns();
+        givenTheDesktopWindowRenewedTheToken();
+
+        whenCalled("GET", "/api/v1/status", "");
+
+        thenTheStatusIs(401);
+    }
+
+    @Test
     void shouldStopNjMuleWhenAsked() throws Exception {
         givenTheApiRuns();
 
@@ -991,8 +1073,19 @@ class RemoteApiTest {
                 RecentEvents.follow(engine),
                 client -> this.attempts.incrementAndGet() <= ALLOWED_ATTEMPTS,
                 Optional.of(this.exited::countDown),
-                Duration.ofSeconds(1));
+                Duration.ofSeconds(1),
+                Optional.of(this.web));
         this.server = ApiServer.start(this.api);
+    }
+
+    private void givenTheWebInterfaceHasNoPassword() {
+        this.web.forget();
+    }
+
+    private void givenTheDesktopWindowRenewedTheToken() throws Exception {
+        whenCalledBy(ApiServer.LOCAL, "POST", "/api/v1/webui/token", "");
+        thenTheStatusIs(200);
+        thenTheBodyDoesNotContain(this.token);
     }
 
     private void givenWrongTokensSent(int count) throws Exception {
@@ -1332,6 +1425,16 @@ class RemoteApiTest {
                 request(path, token).method(method, content).build(), HttpResponse.BodyHandlers.ofString());
     }
 
+    // A caller named by the header the test server knows it by; the token's header is a caller with the token.
+    private void whenCalledBy(String caller, String method, String path, String body) throws Exception {
+        HttpRequest.BodyPublisher content =
+                body.isEmpty() ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body);
+        HttpRequest.Builder request = caller.equals("Authorization")
+                ? request(path, Optional.of(this.token))
+                : request(path, Optional.empty()).header(caller, "1");
+        this.answer = this.http.send(request.method(method, content).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
     private void whenCalledAsGuest(String method, String path) throws Exception {
         this.answer = this.http.send(
                 request(path, Optional.empty())
@@ -1404,6 +1507,10 @@ class RemoteApiTest {
             line = this.stream.readLine();
         }
         assertThat(line).isNull();
+    }
+
+    private void thenTheWebInterfaceIsOnlyForThisComputer() {
+        assertThat(this.web.settings().lan()).isFalse();
     }
 
     private void thenTheUploadLimitIs(int kibps) {

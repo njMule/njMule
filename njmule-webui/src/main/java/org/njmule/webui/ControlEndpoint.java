@@ -86,7 +86,13 @@ public final class ControlEndpoint implements AutoCloseable {
         connector.open();
         RecentEvents recent = RecentEvents.follow(engine);
         // Only the shell knows the token, and nobody can guess it: no attempts to count.
-        RemoteApi api = new RemoteApi(engine, recent, client -> true, Optional.of(exit));
+        RemoteApi api = new RemoteApi(
+                engine,
+                recent,
+                client -> true,
+                Optional.of(exit),
+                RemoteApi.HEARTBEAT,
+                Optional.of(new SettingsFile(() -> engine.directories().config())));
         ControlEndpoint endpoint = new ControlEndpoint(server, recent, api, token, connector.getLocalPort());
         server.setHandler(new Handler.Abstract() {
             @Override
@@ -158,7 +164,8 @@ public final class ControlEndpoint implements AutoCloseable {
             exchange.sendHeaders(401, -1);
             return;
         }
-        this.api.handleTrusted(exchange);
+        // The window of this computer: it may change the web interface's settings too.
+        this.api.handleLocal(exchange);
     }
 
     @Override

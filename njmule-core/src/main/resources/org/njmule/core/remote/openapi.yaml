@@ -204,6 +204,63 @@ paths:
                 $ref: "#/components/schemas/Folders"
         default:
           $ref: "#/components/responses/Error"
+  /webui:
+    get:
+      operationId: getWebInterface
+      tags: [engine]
+      summary: The web interface's own settings, which it follows from the next start.
+      description: The password hashes are never given, only whether there are passwords.
+      responses:
+        "200":
+          $ref: "#/components/responses/WebInterface"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateWebInterface
+      tags: [engine]
+      summary: Changes the web interface's settings named; the others stay.
+      description: >-
+        Only the desktop app's window on njMule's computer may: a browser's session or a caller with
+        the API token is refused. A wrong value, or an interface turned on without a password, changes
+        nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebInterfaceChange"
+      responses:
+        "200":
+          $ref: "#/components/responses/WebInterface"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/Error"
+  /webui/token:
+    get:
+      operationId: getApiToken
+      tags: [engine]
+      summary: The API token, made now if there is none; for the desktop app's window on njMule's computer only.
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiToken"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: renewApiToken
+      tags: [engine]
+      summary: Replaces the API token, whose holders are refused from now on; for the desktop app's window only.
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiToken"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/Error"
   /schedule:
     get:
       operationId: getSchedule
@@ -2367,6 +2424,29 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The caller may not do this, such as a change only the desktop app's window may make.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    WebInterface:
+      description: The web interface's settings now.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebInterface"
+    ApiToken:
+      description: The API token.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [token]
+            properties:
+              token:
+                type: string
+                pattern: "^[A-Za-z0-9_-]{43}$"
     Error:
       description: |
         Any other failure: 401 without the right token (with `WWW-Authenticate: Bearer`), 404 for an
@@ -3107,6 +3187,78 @@ components:
         temp:
           type: string
           description: Where the downloads' parts are kept until they are finished.
+    WebInterface:
+      type: object
+      required: [enabled, port, lan, hosts, proxies, api, hasPassword, hasGuest, url]
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the web interface runs; it needs a password too.
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        lan:
+          type: boolean
+          description: Whether other computers may connect, rather than this one only.
+        hosts:
+          type: array
+          description: Names besides localhost under which browsers open the interface.
+          items:
+            type: string
+        proxies:
+          type: array
+          description: Reverse proxies trusted to name their client in X-Forwarded-For.
+          items:
+            type: string
+        api:
+          type: boolean
+          description: Whether the remote-control API answers callers with its token too.
+        hasPassword:
+          type: boolean
+        hasGuest:
+          type: boolean
+          description: Whether a guest, who may only look, can log in.
+        url:
+          type: [string, "null"]
+          description: Where a browser opens the interface, while it is on with a password.
+    WebInterfaceChange:
+      type: object
+      minProperties: 1
+      properties:
+        enabled:
+          type: boolean
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        lan:
+          type: boolean
+        hosts:
+          type: array
+          maxItems: 64
+          description: Host names or IP addresses.
+          items:
+            type: string
+            maxLength: 255
+        proxies:
+          type: array
+          maxItems: 64
+          description: Addresses, CIDR blocks or ranges.
+          items:
+            type: string
+            maxLength: 255
+        api:
+          type: boolean
+        password:
+          type: string
+          minLength: 8
+          maxLength: 1024
+          description: The admin's new password.
+        guestPassword:
+          type: string
+          maxLength: 1024
+          description: The guest's new password, of 8 characters at least, or an empty one to let no guest in.
     Schedule:
       type: object
       required: [rules]

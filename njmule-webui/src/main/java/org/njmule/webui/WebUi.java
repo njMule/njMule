@@ -143,7 +143,12 @@ public final class WebUi implements AutoCloseable {
         // The app calls it with the login session; callers with the API token too when the settings allow them. A
         // wrong API token counts as a failed login of its address.
         this.api = new RemoteApi(
-                engine, this.recent, client -> this.sessions.mayTry(Sessions.clientKey(client)), exit, heartbeat);
+                engine,
+                this.recent,
+                client -> this.sessions.mayTry(Sessions.clientKey(client)),
+                exit,
+                heartbeat,
+                Optional.of(new SettingsFile(() -> engine.directories().config())));
     }
 
     /** Starts the interface; it must be enabled and have a password. The API cannot stop njMule. */

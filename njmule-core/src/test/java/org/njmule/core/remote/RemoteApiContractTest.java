@@ -142,7 +142,8 @@ class RemoteApiContractTest {
                 "/api/v1/files/" + HASH + "/comment",
                 "/api/v1/files/" + HASH + "/notes",
                 "/api/v1/import/emule",
-                "/api/v1/setup");
+                "/api/v1/setup",
+                "/api/v1/webui");
     }
 
     @ParameterizedTest
@@ -268,8 +269,31 @@ class RemoteApiContractTest {
         thenTheAnswerFollowsTheDocument();
     }
 
+    static Stream<Arguments> windowCalls() {
+        return Stream.of(
+                Arguments.of(
+                        "PATCH", "/api/v1/webui", "{\"enabled\":true,\"port\":8080,\"hosts\":[\"nas.local\"]}", 200),
+                Arguments.of("PATCH", "/api/v1/webui", "{\"password\":\"short\"}", 400),
+                Arguments.of("GET", "/api/v1/webui/token", "", 200),
+                Arguments.of("POST", "/api/v1/webui/token", "", 200));
+    }
+
+    @ParameterizedTest
+    @MethodSource("windowCalls")
+    void shouldAnswerTheDesktopWindowAsTheDocumentDescribesIt(String verb, String call, String body, int status)
+            throws Exception {
+        givenTheApiRuns();
+
+        whenTheWindowCalls(verb, call, body);
+
+        thenTheStatusIs(status);
+        thenTheAnswerFollowsTheDocument();
+    }
+
     static Stream<Arguments> refusals() {
         return Stream.of(
+                Arguments.of("PATCH", "/api/v1/webui", "{\"lan\":true}", 403),
+                Arguments.of("GET", "/api/v1/webui/token", "", 403),
                 Arguments.of("GET", "/api/v1/nothing", "", 404),
                 Arguments.of("DELETE", "/api/v1/status", "", 405),
                 Arguments.of("GET", "/api/v1/downloads/talk", "", 400),
@@ -491,7 +515,13 @@ class RemoteApiContractTest {
         this.token = ApiToken.loadOrCreate(dirs.config(), new SecureRandom());
         NjMuleEngine engine = this.fake.engine();
         this.recent = RecentEvents.follow(engine);
-        this.api = new RemoteApi(engine, this.recent, client -> true, Optional.of(() -> {}), Duration.ofSeconds(1));
+        this.api = new RemoteApi(
+                engine,
+                this.recent,
+                client -> true,
+                Optional.of(() -> {}),
+                Duration.ofSeconds(1),
+                Optional.of(new FakeWebInterface()));
         this.server = ApiServer.start(this.api);
     }
 
@@ -539,6 +569,19 @@ class RemoteApiContractTest {
                 body.isEmpty() ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body);
         this.answer =
                 this.http.send(request(target).method(verb, content).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private void whenTheWindowCalls(String verb, String target, String body) throws Exception {
+        this.method = verb;
+        this.path = target;
+        HttpRequest.BodyPublisher content =
+                body.isEmpty() ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body);
+        this.answer = this.http.send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.server.port() + target))
+                        .header(ApiServer.LOCAL, "1")
+                        .method(verb, content)
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     private void whenCalledWithoutTheToken(String verb, String target) throws Exception {

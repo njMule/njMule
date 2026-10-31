@@ -27,11 +27,14 @@ import org.eclipse.jetty.util.thread.VirtualThreadPool;
 
 /**
  * The remote-control API on a bare Jetty server of the loopback, served as a front end serves it: a request with the
- * header {@value #GUEST} as from a guest it let in.
+ * header {@value #GUEST} as from a guest it let in, with {@value #SESSION} as from a browser's session, with
+ * {@value #LOCAL} as from the desktop app's window.
  */
 final class ApiServer implements AutoCloseable {
 
     static final String GUEST = "X-Test-Guest";
+    static final String SESSION = "X-Test-Session";
+    static final String LOCAL = "X-Test-Local";
 
     private final Server server;
     private final int port;
@@ -54,6 +57,10 @@ final class ApiServer implements AutoCloseable {
                 try {
                     if (exchange.header(GUEST) != null) {
                         api.handleGuest(exchange);
+                    } else if (exchange.header(SESSION) != null) {
+                        api.handleTrusted(exchange);
+                    } else if (exchange.header(LOCAL) != null) {
+                        api.handleLocal(exchange);
                     } else {
                         api.handle(exchange);
                     }

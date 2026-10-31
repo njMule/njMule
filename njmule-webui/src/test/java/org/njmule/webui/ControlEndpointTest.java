@@ -102,6 +102,16 @@ class ControlEndpointTest {
     }
 
     @Test
+    void shouldLetTheWindowTurnTheWebInterfaceOn() throws Exception {
+        givenTheEndpointRuns();
+
+        whenTheWindowSends("PATCH", "/api/v1/webui", "{\"enabled\":true,\"password\":\"long enough\"}");
+
+        thenTheStatusIs(200);
+        thenTheWebInterfaceStartsNextTime();
+    }
+
+    @Test
     void shouldStopNjMuleWhenTheWindowAsks() throws Exception {
         givenTheEndpointRuns();
 
@@ -135,7 +145,23 @@ class ControlEndpointTest {
                 HttpResponse.BodyHandlers.ofString());
     }
 
+    private void whenTheWindowSends(String method, String path, String body) throws Exception {
+        this.answer = this.http.send(
+                HttpRequest.newBuilder(URI.create(this.endpoint.url().replace("/api/v1", "") + path))
+                        .header("Authorization", "Bearer " + this.endpoint.token())
+                        .header("Origin", SHELL_PAGE)
+                        .method(method, HttpRequest.BodyPublishers.ofString(body))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
     // Then
+
+    private void thenTheWebInterfaceStartsNextTime() {
+        assertThat(WebUiSettings.load(AppDirectories.underRoot(this.dir, true).config())
+                        .usable())
+                .isTrue();
+    }
 
     private void thenItsAddressStartsWith(String start) {
         assertThat(this.endpoint.url()).startsWith(start).endsWith("/api/v1");
