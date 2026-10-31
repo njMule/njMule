@@ -22,36 +22,41 @@ A few things are not covered by these packages:
 
 - **Intel Macs**: there is no macOS build for x64 processors. The Docker image runs on Docker
   Desktop for Mac as an alternative, with the web interface.
-- **Windows on Arm** runs the x64 package under emulation: GraalVM and JavaFX, which njMule is built
-  with, have no Windows Arm build yet. The release workflow installs, runs and uninstalls the x64
+- **Windows on Arm** runs the x64 package under emulation: GraalVM, which njMule's engine is built
+  with, has no Windows Arm build yet. The release workflow installs, runs and uninstalls the x64
   package on an Arm machine to check that it works.
 - **Synology NAS with an ARM processor**: the package is built for x86_64 models only (those with a
   Celeron or Atom processor included).
 - **32-bit systems** are not supported.
 
-Every desktop package holds two programs: `njmule-gui`, the desktop app, and `njmule`, the command
-line, which also runs the engine headless. See [Install on Windows](install-windows.mdx),
+Every desktop package holds two programs: `njmule`, the engine, which is also the command line and
+runs headless, and `njmule-gui`, the desktop app's window, which starts the engine beside it and
+shows its interface in the system's web view. See [Install on Windows](install-windows.mdx),
 [macOS](install-macos.mdx), [Linux](install-linux.mdx), [Docker](install-docker.mdx) or
 [Synology](install-synology.mdx).
 
-## Linux libraries
+## Web view
 
-The desktop app uses the system's GTK 3, libXtst and OpenGL libraries. The `.deb` and `.rpm`
-packages depend on them, so the package manager installs them for you:
+The desktop app's window shows its interface in the web view of the system:
+
+- **Windows**: Microsoft Edge WebView2, part of Windows 11 and installed with Microsoft Edge on
+  Windows 10. If it is missing, the free Evergreen runtime from Microsoft adds it.
+- **macOS**: WebKit, part of the system.
+- **Linux**: WebKitGTK 4.1 and GTK 3. The `.deb` and `.rpm` packages depend on them, so the package
+  manager installs them for you:
 
 | Package | Dependencies |
 |---|---|
-| `.deb` (Debian, Ubuntu) | `libgtk-3-0t64` or `libgtk-3-0`, `libxtst6`, `libgl1` |
-| `.rpm` (Fedora, RHEL) | `gtk3`, `libXtst`, `mesa-libGL` |
+| `.deb` (Debian, Ubuntu) | `libwebkit2gtk-4.1-0`, `libgtk-3-0t64` or `libgtk-3-0` |
+| `.rpm` (Fedora, RHEL) | `webkit2gtk4.1`, `gtk3` |
 
-With the `.tar.xz` archive, install the same libraries yourself. The command line, `njmule`, runs
-the same executable without a window and needs none of them.
+With the `.tar.xz` archive, install the same libraries yourself. The engine, `njmule`, needs none of
+them.
 
 The Linux executables are built on Ubuntu 24.04 and need the system's C library (glibc). On a
 distribution with an older C library, or one built on musl such as Alpine, they may not start: use
 the static archive `njmule-<version>-linux-x64-static.tar.xz` there. It is linked statically, needs
-no library of the system at all, and uses less memory than the desktop executable running headless,
-but it has no desktop app.
+no library of the system at all, but it has no desktop app.
 
 ## Screen
 

@@ -65,9 +65,9 @@ class HandOverTest {
     }
 
     @Test
-    void shouldStartAgainThroughTheLauncherOfTheWindowsDesktop() throws IOException {
+    void shouldStartAgainThroughTheDesktopWindow() throws IOException {
         givenAnInstallation();
-        givenTheWindowsDesktop();
+        givenTheDesktopWindow();
 
         whenHandedOver();
 
@@ -90,7 +90,7 @@ class HandOverTest {
     void shouldHandAnInstallerPackageToACopyOfTheLauncher() throws IOException {
         givenAnInstallation();
         givenTheKind(InstallKind.MSI);
-        givenTheWindowsDesktop();
+        givenTheDesktopWindow();
 
         whenHandedOver();
 
@@ -177,7 +177,7 @@ class HandOverTest {
         this.installer = chosen;
     }
 
-    private void givenTheWindowsDesktop() {
+    private void givenTheDesktopWindow() {
         this.desktop = true;
     }
 

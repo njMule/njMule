@@ -358,7 +358,7 @@ class LinkAssociationTest {
     }
 
     @Test
-    void shouldStartTheLauncherBesideTheConsoleProgramOnWindows() {
+    void shouldStartTheWindowBesideTheEngineOnWindows() {
         givenAFile("C:\\Program Files\\njMule\\njmule-gui.exe");
 
         whenTheDesktopProgramIsLookedFor("C:\\Program Files\\njMule\\njmule.exe", "Windows 11");
@@ -367,19 +367,26 @@ class LinkAssociationTest {
     }
 
     @Test
-    void shouldKeepAConsoleProgramWithoutLauncherBesideOnWindows() {
+    void shouldKeepAnEngineWithoutWindowBesideOnWindows() {
         whenTheDesktopProgramIsLookedFor("C:\\njmule\\njmule.exe", "Windows 11");
 
         thenTheDesktopProgramIs("C:\\njmule\\njmule.exe");
     }
 
     @Test
-    void shouldKeepTheDesktopProgramOnLinux() {
+    void shouldStartTheWindowBesideTheEngineOnLinux() {
         givenAFile("/usr/lib/njmule/njmule-gui");
 
         whenTheDesktopProgramIsLookedFor("/usr/lib/njmule/njmule", "Linux");
 
-        thenTheDesktopProgramIs("/usr/lib/njmule/njmule");
+        thenTheDesktopProgramIs("/usr/lib/njmule/njmule-gui");
+    }
+
+    @Test
+    void shouldKeepAnEngineWithoutWindowBesideOnLinux() {
+        whenTheDesktopProgramIsLookedFor("/opt/njmule/njmule", "Linux");
+
+        thenTheDesktopProgramIs("/opt/njmule/njmule");
     }
 
     @Test
@@ -551,7 +558,11 @@ class LinkAssociationTest {
     }
 
     private void whenTheDesktopProgramIsLookedFor(String command, String os) {
-        this.desktopProgram = LinkAssociation.desktopProgram(command, os, path -> this.files.contains(path.toString()));
+        // As paths, so that a Linux path compares on Windows too.
+        this.desktopProgram = LinkAssociation.desktopProgram(
+                command,
+                os,
+                path -> this.files.stream().anyMatch(file -> Path.of(file).equals(path)));
     }
 
     private void whenTheAssociationOfThisSystemIsLookedFor() {

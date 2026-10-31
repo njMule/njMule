@@ -64,8 +64,8 @@ license of each component to THIRD-PARTY.txt.
     Jakarta Activation, Angus   BSD-3-Clause (EDL 1.0)
     Activation
     Logback (classic, core)     EPL-1.0 OR LGPL-2.1; used under LGPL-2.1
-    OpenJFX (JavaFX)            GPL-2.0 WITH Classpath-exception-2.0
-    AtlantaFX                   MIT License
+    AtlantaFX                   MIT License (the colours of its themes, which
+                                the interface takes)
     flag-icons (country flags,  MIT License
     rendered to PNG)
     DB-IP IP to Country Lite    CC BY 4.0, downloaded by njMule when the
@@ -73,18 +73,24 @@ license of each component to THIRD-PARTY.txt.
                                 DB-IP (https://db-ip.com)
     Manrope (font, Bold and     SIL Open Font License 1.1
     ExtraBold)
-    RichTextFX, Flowless,       BSD 2-Clause License (RichTextFX also
-    ReactFX, UndoFX,            GPL-2.0 WITH Classpath-exception-2.0); used
-    WellBehavedFX               under BSD 2-Clause
-    Vue, Reka UI, TanStack      MIT License (the interface the web interface
-    Table and Virtual,          serves; their license texts are shipped
-    openapi-fetch,              beside it, in THIRD-PARTY.md)
-    eventsource-parser and the
+    Vue, Reka UI, TanStack      MIT License (the interface of the desktop
+    Table and Virtual,          window and the web interface; their license
+    openapi-fetch,              texts are shipped beside it, in
+    eventsource-parser and the  THIRD-PARTY.md)
     packages they bundle
     (VueUse, Floating UI and
     others)
     Tauri API (@tauri-apps/api) Apache License 2.0 OR MIT License; used
                                 under the MIT License
+    Tauri, its plugins and the  mostly MIT License OR Apache License 2.0 (the
+    Rust crates they use, as    desktop window); among them cssparser,
+    njmule-desktop/src-tauri/   selectors, dtoa-short and option-ext are under
+    Cargo.lock lists them       the Mozilla Public License 2.0, whose sources
+                                are on crates.io, the ICU4X crates under the
+                                Unicode License v3, clipboard-win and
+                                error-code under the Boost Software License
+                                1.0, and a few under BSD, Zlib or ISC
+                                licenses
     GraalVM Native Image        GPL-2.0 WITH Classpath-exception-2.0
     (Substrate VM runtime embedded in the native executables)
     musl libc                   MIT License
@@ -99,13 +105,9 @@ license of each component to THIRD-PARTY.txt.
                                 are in the image under /usr/share/doc
 
 Test-only dependencies (JUnit, AssertJ, jqwik, Jimfs, openapi-parser) and the
-interface's build tools (Node.js, Vite, TypeScript, vue-tsc, Vitest, Prettier,
-openapi-typescript) are not distributed.
-
-The desktop window (njmule-desktop), not in the packages yet, is built with
-Tauri and the Rust crates its Cargo.lock lists (Tauri and its plugins, arboard,
-serde, java-properties, encoding_rs, windows-sys and the crates they pull in),
-each under its own license; the packages will list them once they ship it.
+interface's and the desktop window's build tools (Node.js, Vite, TypeScript,
+vue-tsc, Vitest, Prettier, openapi-typescript, the Tauri command line, Rust and
+Cargo) are not distributed.
 
 
 Shipped server list and Kad contacts

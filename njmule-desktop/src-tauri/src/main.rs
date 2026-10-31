@@ -7,6 +7,8 @@
 // A window program on Windows, with no console of its own.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod verbs;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -40,6 +42,11 @@ const STOP_WAIT: Duration = Duration::from_secs(30);
 
 /// The option that opens the window on another computer's njMule, at the address of its API.
 const REMOTE_OPTION: &str = "--remote-url";
+/// The option that names the profile, as the start at login passes it.
+const CONFIG_OPTION: &str = "--config-dir";
+/// The id Windows groups the window, its shortcuts and its notifications by, as the installer names it.
+#[cfg(windows)]
+const APP_USER_MODEL_ID: &str = "org.njmule.njMule";
 /// Where the token of the other njMule's API comes from, else from a connection remembered.
 const TOKEN_VARIABLE: &str = "NJMULE_API_TOKEN";
 /// Set for a window on another njMule opened from the dialog of this one, which waits to hear that it reached it.
@@ -140,6 +147,8 @@ struct Engine {
     input: Mutex<Option<ChildStdin>>,
     // eD2K links received before the window asked for them.
     links: Mutex<Vec<String>>,
+    // Set once the window closes: the engine stops because it was asked to.
+    stopping: AtomicBool,
 }
 
 impl Engine {
@@ -163,6 +172,7 @@ impl Engine {
 
     /// Stops the engine started here: its input closes, then it gets the time to save.
     fn stop(&self) {
+        self.stopping.store(true, Ordering::Relaxed);
         self.input.lock().unwrap().take();
         if let Some(mut child) = self.child.lock().unwrap().take() {
             let deadline = Instant::now() + STOP_WAIT;
@@ -179,14 +189,10 @@ impl Engine {
 
 /// The engine to start: NJMULE_CORE in development, otherwise the njmule program beside the shell.
 fn engine_program() -> PathBuf {
-    if let Ok(path) = std::env::var("NJMULE_CORE") {
-        return PathBuf::from(path);
-    }
-    let name = if cfg!(windows) { "njmule.exe" } else { "njmule" };
-    std::env::current_exe().ok().and_then(|exe| exe.parent().map(|dir| dir.join(name))).unwrap_or(name.into())
+    std::env::var("NJMULE_CORE").map(PathBuf::from).unwrap_or_else(|_| verbs::engine_beside())
 }
 
-fn start_engine(engine: Arc<Engine>) {
+fn start_engine(app: AppHandle, engine: Arc<Engine>) {
     let program = engine_program();
     let mut command = if program.extension().is_some_and(|e| e.eq_ignore_ascii_case("bat")) {
         let mut c = Command::new("cmd");
@@ -198,8 +204,11 @@ fn start_engine(engine: Arc<Engine>) {
     if let Ok(dir) = std::env::var("NJMULE_CONFIG_DIR") {
         command.arg("--config-dir").arg(dir);
     }
+    // The desktop app's engine: a new version installed now waits for this program to end too, then starts it again
+    // rather than the engine alone; the start at login and the eD2K links name this program too.
     command
         .env("NJMULE_CONTROL_ENDPOINT", "1")
+        .env("NJMULE_DESKTOP", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
@@ -209,9 +218,6 @@ fn start_engine(engine: Arc<Engine>) {
         // No console window for the engine.
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         command.creation_flags(CREATE_NO_WINDOW);
-        // The desktop app's engine, as the launcher this program replaces marks it: a new version installed now waits
-        // for this program to end too, then starts it again rather than the engine alone.
-        command.env("NJMULE_DESKTOP", "1");
     }
     let mut child = match command.spawn() {
         Ok(child) => child,
@@ -246,8 +252,50 @@ fn start_engine(engine: Arc<Engine>) {
         }
         if !told {
             engine.found(Err("njMule stopped while starting: see its log.".into()));
+            return;
         }
+        // The engine ended by itself, as it does to install a new version: the window goes with it, which a failure
+        // tells first. Its input closes first when the window asked it to stop, so that waiting here holds nothing up.
+        if engine.stopping.load(Ordering::Relaxed) {
+            return;
+        }
+        let ended = engine.child.lock().unwrap().as_mut().map(|child| child.wait());
+        if engine.stopping.load(Ordering::Relaxed) {
+            return;
+        }
+        if !matches!(ended, Some(Ok(status)) if status.success()) {
+            app.dialog()
+                .message("njMule stopped unexpectedly: see its log.")
+                .kind(MessageDialogKind::Error)
+                .title("njMule")
+                .blocking_show();
+        }
+        app.exit(0);
     });
+}
+
+/// The profile --config-dir names, if it does.
+fn config_dir(args: &[String]) -> Option<String> {
+    let mut words = args.iter().skip(1);
+    while let Some(word) = words.next() {
+        if word == CONFIG_OPTION {
+            return words.next().cloned();
+        }
+        if let Some(dir) = word.strip_prefix(CONFIG_OPTION).and_then(|w| w.strip_prefix('=')) {
+            return Some(dir.to_owned());
+        }
+    }
+    None
+}
+
+/// Groups the window with the installer's shortcuts and notifications on Windows.
+fn set_app_user_model_id() {
+    #[cfg(windows)]
+    {
+        let id: Vec<u16> = APP_USER_MODEL_ID.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: the id ends with a null and outlives the call, which copies it.
+        unsafe { windows_sys::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(id.as_ptr()) };
+    }
 }
 
 /// The eD2K links among the words of a command line.
@@ -641,7 +689,7 @@ fn double_click_time() -> Duration {
     // SAFETY: a plain query of a system setting.
     let millis = unsafe { windows_sys::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() };
     #[cfg(not(windows))]
-    let millis = 500;
+    let millis: u32 = 500;
     Duration::from_millis(u64::from(millis))
 }
 
@@ -1118,13 +1166,30 @@ fn single_window(builder: tauri::Builder<Wry>, local: bool) -> tauri::Builder<Wr
 
 fn main() {
     let args: Vec<_> = std::env::args().collect();
+    let mut context = tauri::generate_context!();
+    // A command, from the installer or the engine, runs before anything else: a window already open would take it.
+    if let Some(verb) = verbs::verb(&args) {
+        let code = match verb {
+            Ok(verb) => verbs::run(verb, &context.package_info().version.to_string()),
+            Err(e) => {
+                verbs::fail(&format!("njMule was started wrongly: {e}"));
+                2
+            }
+        };
+        std::process::exit(code);
+    }
+    // Started again after an update that could not install: the old njMule ends first, so that this one is the window.
+    verbs::await_ended(&verbs::waits(&args));
+    if let Some(dir) = config_dir(&args) {
+        std::env::set_var("NJMULE_CONFIG_DIR", dir);
+    }
+    set_app_user_model_id();
     let remote = remote_url(&args);
     let checked = remote.is_some() && std::env::var_os(CHECK_VARIABLE).is_some();
     let engine = Arc::new(Engine::default());
     if remote.is_none() {
         engine.links.lock().unwrap().extend(links(&args));
     }
-    let mut context = tauri::generate_context!();
     if let Some(url) = &remote {
         allow_api(context.config_mut(), url);
     }
@@ -1175,7 +1240,7 @@ fn main() {
         .setup(move |app| {
             match &remote {
                 Some(url) => engine.found(remote_endpoint(app.handle(), url)),
-                None => start_engine(engine.clone()),
+                None => start_engine(app.handle().clone(), engine.clone()),
             }
             let shell = app.state::<Shell>();
             if let Some(file) = settings_file(app.handle()) {

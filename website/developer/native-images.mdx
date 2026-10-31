@@ -130,11 +130,10 @@ library in it and runs `njmule --version`.
 ./gradlew :njmule-gui:nativeGui
 ```
 
-The executable lands in `njmule-gui/build/native/`, next to the JDK shared libraries it loads:
-
-- on Linux and macOS it is `njmule-gui`; the packages add `njmule`, a script that runs it without a
-  window (`packaging/njmule.sh`);
-- on Windows it is `njmule.exe`, a console program, which is the command line too.
+The executable lands in `njmule-gui/build/native/`, next to the JDK shared libraries it loads: on
+Linux and macOS it is `njmule-gui`, on Windows `njmule.exe`, a console program, which is the command
+line too. The packages no longer carry it: they hold the headless engine of `njmule-app` and the
+desktop window of `njmule-desktop` ([Packaging](packaging.mdx)).
 
 The build passes the arguments of `njmule-gui/native/<os>.args` and keeps only the date and number
 formats of the regions of the interface's languages: all the JDK's locales would add 37 MiB. Build
@@ -143,15 +142,15 @@ both native executables at once with `./gradlew :njmule-app:nativeCompile :njmul
 ### The Windows launcher and service
 
 A console program opens a console window when started from the desktop. On Windows two small C
-programs, compiled with the Visual C++ tools, complete the desktop app:
+programs, compiled with the Visual C++ tools, go with the native executables:
 
 | Task | Result | What it is |
 |---|---|---|
-| `./gradlew :njmule-gui:nativeLauncher` | `njmule-gui/build/launcher/njmule-gui.exe` | the GUI program that shortcuts, ed2k links and the uninstaller run: it starts `njmule.exe` beside it without a console, with `NJMULE_DESKTOP=1` and the same arguments, waits for it and returns its exit code, as `javaw.exe` stands for `java.exe` |
+| `./gradlew :njmule-gui:nativeLauncher` | `njmule-gui/build/launcher/njmule-gui.exe` | the JavaFX app's GUI program: it starts `njmule.exe` beside it without a console, with `NJMULE_DESKTOP=1`; the packages carry the desktop window under that name instead, which answers the same commands (`--apply-update`, `--keep-awake`, `--uninstall-profile`, `--restore-links`) |
 | `./gradlew :njmule-gui:nativeService` | `njmule-gui/build/launcher/njmule-service.exe` | the Windows service host that runs `njmule.exe` headless once `njmule --service=install` set the service up |
 
-Copy both next to `njmule.exe` to run them. GraalVM and JavaFX have no Windows on Arm build yet: the
-x64 programs run there under the system's x64 emulation.
+Copy them next to `njmule.exe` to run them. GraalVM has no Windows on Arm build yet: the x64
+programs run there under the system's x64 emulation.
 
 ## Reachability metadata
 

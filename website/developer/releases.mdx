@@ -145,12 +145,12 @@ job adds to the notes a link to each report, by the package's SHA-256. Only the 
 
 A manual run proves that installed copies update themselves to the packages it built. One job makes
 a signing key for that run only and signs update information for the new packages with it. Then, on
-Windows, Linux and macOS, a test build (version `0.0.0-e2e.0`, which trusts that key besides
-njMule's own) is installed, pointed at a local release server (`tools/e2e-update-server.sh`, on
+Windows, Linux and macOS, a test build (an engine of version `0.0.0-e2e.0`, which trusts that key
+besides njMule's own, beside the desktop window of the run's packages) is installed, pointed at a local release server (`tools/e2e-update-server.sh`, on
 `127.0.0.1:8765`, through `update.url`) and told to update itself:
 
-- **Windows**: the per-user MSI updates through its launcher and `msiexec`, and the zip by swapping
-  its files;
+- **Windows**: the per-user MSI updates through the desktop window's program (`--apply-update`) and
+  `msiexec`, and the zip by swapping its files;
 - **Linux**: the `.tar.xz` archive swaps its files inside a plain Debian container;
 - **macOS**: the app swaps its whole bundle.
 

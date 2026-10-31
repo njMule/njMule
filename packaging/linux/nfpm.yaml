@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # deb and rpm packages (nfpm), run from the repository root: VERSION and ARCH (amd64 or arm64)
-# come from the environment, the programs from stage/ (gui/ with the desktop executable and its
-# shared libraries, doc/ with the documents). njmule, the command line, runs that same executable
-# headless (packaging/njmule.sh).
+# come from the environment, the programs from stage/ (gui/ with the engine njmule, also the
+# command line, and the desktop window njmule-gui; doc/ with the documents).
 #   VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/
 name: njmule
 arch: ${ARCH}
@@ -33,24 +32,21 @@ rpm:
 overrides:
   deb:
     depends:
+      - libwebkit2gtk-4.1-0
       - libgtk-3-0t64 | libgtk-3-0
-      - libxtst6
-      - libgl1
   rpm:
     depends:
+      - webkit2gtk4.1
       - gtk3
-      - libXtst
-      - mesa-libGL
 
 contents:
-  - src: packaging/njmule.sh
-    dst: /usr/bin/njmule
-    file_info:
-      mode: 0755
-  # The desktop executable finds its shared libraries in its own directory.
+  # The engine, also the command line, and the desktop window that starts the engine beside it.
   - src: stage/gui/
     dst: /usr/lib/njmule/
     type: tree
+  - src: /usr/lib/njmule/njmule
+    dst: /usr/bin/njmule
+    type: symlink
   - src: /usr/lib/njmule/njmule-gui
     dst: /usr/bin/njmule-gui
     type: symlink

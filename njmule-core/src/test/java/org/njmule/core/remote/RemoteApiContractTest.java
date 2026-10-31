@@ -282,7 +282,10 @@ class RemoteApiContractTest {
                         "PATCH", "/api/v1/webui", "{\"enabled\":true,\"port\":8080,\"hosts\":[\"nas.local\"]}", 200),
                 Arguments.of("PATCH", "/api/v1/webui", "{\"password\":\"short\"}", 400),
                 Arguments.of("GET", "/api/v1/webui/token", "", 200),
-                Arguments.of("POST", "/api/v1/webui/token", "", 200));
+                Arguments.of("POST", "/api/v1/webui/token", "", 200),
+                Arguments.of("GET", "/api/v1/desktop", "", 200),
+                Arguments.of("PATCH", "/api/v1/desktop", "{\"links\":true}", 200),
+                Arguments.of("PATCH", "/api/v1/desktop", "{\"autostart\":true}", 400));
     }
 
     @ParameterizedTest
@@ -301,6 +304,8 @@ class RemoteApiContractTest {
         return Stream.of(
                 Arguments.of("PATCH", "/api/v1/webui", "{\"lan\":true}", 403),
                 Arguments.of("GET", "/api/v1/webui/token", "", 403),
+                Arguments.of("GET", "/api/v1/desktop", "", 403),
+                Arguments.of("PATCH", "/api/v1/desktop", "{\"links\":true}", 403),
                 Arguments.of("GET", "/api/v1/nothing", "", 404),
                 Arguments.of("DELETE", "/api/v1/status", "", 405),
                 Arguments.of("GET", "/api/v1/downloads/talk", "", 400),
@@ -530,7 +535,8 @@ class RemoteApiContractTest {
                 client -> true,
                 Optional.of(() -> {}),
                 Duration.ofSeconds(1),
-                Optional.of(new FakeWebInterface()));
+                Optional.of(new FakeWebInterface()),
+                Optional.of(new FakeDesktop()));
         this.server = ApiServer.start(this.api);
     }
 
