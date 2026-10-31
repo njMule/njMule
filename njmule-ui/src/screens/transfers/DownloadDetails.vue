@@ -24,7 +24,7 @@ import { answer, api, type Schemas } from '../../api/client';
 import ClientFilesDialog from '../../dialogs/ClientFilesDialog.vue';
 import { duration, percent, rate, size } from '../../format';
 import { t } from '../../i18n';
-import { categories, preferences, sources, type Download, type Source } from '../../model/engine';
+import { categories, folders, sources, type Download, type Source } from '../../model/engine';
 import { withShortcutKey } from '../../places';
 import type { Platform } from '../../platform';
 import { problem } from '../../toasts';
@@ -254,7 +254,7 @@ async function act(action: HeadAction): Promise<void> {
 
 // Where finished downloads go, in the system's file manager.
 async function openIncoming(): Promise<void> {
-    const folder = preferences.value['dirs.incoming'];
+    const folder = folders.value.incoming;
     if (folder && !(await props.platform.openFolder(folder))) {
         problem(folder);
     }

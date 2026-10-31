@@ -25,7 +25,7 @@ import {
     categories,
     downloads,
     known,
-    preferences,
+    folders,
     sources,
     uploads,
     type Download,
@@ -337,8 +337,7 @@ const unfinished = computed(() => chosen.value.length > 0 && cancellable.value.l
 
 // The folder a completed download went to: its category's own, else the incoming folder.
 async function openFolderOf(d: Download): Promise<void> {
-    const folder =
-        categories.value.find((c) => c.id === d.category)?.incoming || preferences.value['dirs.incoming'] || '';
+    const folder = categories.value.find((c) => c.id === d.category)?.incoming || folders.value.incoming;
     if (folder !== '' && !(await props.platform.openFolder(folder))) {
         problem(folder);
     }
