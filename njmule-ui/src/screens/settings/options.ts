@@ -19,6 +19,7 @@ import {
     type InputRules,
     type RateUnit,
 } from './inputs';
+import { checkPath, checkPathSoon, folderTakes, pathKinds } from './folders';
 import { overMask, PASSWORD_MASK, passwordsSet, readPasswords } from './passwords';
 
 // The options as the screen shows them: the saved preferences, what waits for Apply, and what is typed and not set
@@ -130,6 +131,7 @@ export function rulesOf(field: Field): InputRules | undefined {
                     max: field.max,
                     required: required(field),
                     placeholders: field.placeholders,
+                    folder: (text) => folderTakes(text, pathKinds.value[text]),
                 });
             }
             // A cap only, with nothing to say.
@@ -264,6 +266,9 @@ export function type(field: Field, text: string): void {
     // The first change of the dots keeps only what was typed: a password set is replaced, or cleared.
     const kept = masked(field) ? overMask(text) : text;
     typed.value = { ...typed.value, [field.key]: kept };
+    if (field.check === 'folder') {
+        checkPathSoon(kept.trim());
+    }
 }
 
 // A speed left as it was shown gives back the exact KiB/s it was shown for.
@@ -296,6 +301,9 @@ export async function commit(row: Row, field: Field): Promise<void> {
         return;
     }
     const text = field.kind === 'password' ? draft : draft.trim();
+    if (field.check === 'folder') {
+        await checkPath(text);
+    }
     if (rulesOf(field)?.valid(text) === false) {
         return;
     }

@@ -427,11 +427,14 @@ export function rateRules(unit: RateUnit, min: number, optional: boolean, t: Tra
     } satisfies InputRules;
 }
 
-/** The rules of the checks the options name. */
+/**
+ * The rules of the checks the options name; a folder is checked by {@code options.folder}, which knows what a path
+ * names on the engine's computer.
+ */
 export function checkRules(
     check: string,
     t: Translate,
-    options: { max?: number; required?: boolean; placeholders?: string[] } = {},
+    options: { max?: number; required?: boolean; placeholders?: string[]; folder?: (text: string) => boolean } = {},
 ): InputRules {
     switch (check) {
         case 'nick':
@@ -450,8 +453,12 @@ export function checkRules(
         case 'soundFile':
             return { allowed: printable, max: MAX_TEXT, hint: t('nj.input.soundFile'), valid: isFullPath };
         case 'folder':
-            // The folder is on the engine's computer, which the engine checks when it is saved.
-            return { allowed: printable, max: MAX_TEXT, hint: t('nj.input.folder'), valid: () => true };
+            return {
+                allowed: printable,
+                max: MAX_TEXT,
+                hint: t('nj.input.folder'),
+                valid: (text) => options.folder?.(text) ?? true,
+            };
         case 'commandLine':
             return {
                 allowed: printable,
