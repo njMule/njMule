@@ -53,21 +53,44 @@ val nativeResourceSources =
         val version = project.version.toString()
         inputs.property("version", version)
         from("native/windows") {
-            include("njmule.rc")
+            include("njmule.rc", "njmule-service.rc")
             filter { line -> line.replace("\${project.version}", version) }
         }
         from(layout.settingsDirectory.file("branding/generated/njmule.ico"))
         into(layout.buildDirectory.dir("native-res"))
     }
-val nativeResources =
-    tasks.register<Exec>("nativeResources") {
+
+fun registerResources(name: String, program: String) =
+    tasks.register<Exec>(name) {
         dependsOn(nativeResourceSources)
         val dir = layout.buildDirectory.dir("native-res")
         workingDir(dir)
         val rc = layout.settingsDirectory.file("packaging/windows/rc.cmd").asFile.path
-        commandLine("cmd", "/c", rc, "njmule.rc", "njmule.res", project.version)
-        outputs.file(dir.map { it.file("njmule.res") })
+        commandLine("cmd", "/c", rc, "$program.rc", "$program.res", project.version)
+        inputs.file(dir.map { it.file("$program.rc") })
+        outputs.file(dir.map { it.file("$program.res") })
     }
+
+val nativeResources = registerResources("nativeResources", "njmule")
+val serviceResources = registerResources("nativeServiceResources", "njmule-service")
+
+// ./gradlew :njmule-app:nativeService → build/launcher/njmule-service.exe (native/windows/service.c), the host of the
+// Windows service that runs njmule.exe headless (njmule --service=install), compiled with the Visual C++ tools.
+tasks.register<Exec>("nativeService") {
+    group = "build"
+    description = "Builds njmule-service.exe, the Windows service of njMule."
+    dependsOn(serviceResources)
+    val code = file("native/windows/service.c")
+    val dir = layout.buildDirectory.dir("native-res")
+    val exe = layout.buildDirectory.file("launcher/njmule-service.exe")
+    val cl = layout.settingsDirectory.file("packaging/windows/cl.cmd").asFile
+    inputs.files(code, cl)
+    inputs.file(dir.map { it.file("njmule-service.res") })
+    outputs.file(exe)
+    workingDir(dir)
+    commandLine("cmd", "/c", cl.path, exe.get().asFile.path, code.path, "njmule-service.res")
+    doFirst { exe.get().asFile.parentFile.mkdirs() }
+}
 if (windows) {
     tasks.named("nativeCompile") { dependsOn(nativeResources) }
 }

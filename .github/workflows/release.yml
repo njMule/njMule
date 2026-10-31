@@ -83,12 +83,12 @@ jobs:
                   rustup toolchain install "$channel" --profile minimal
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
             - name: Build the engine, the desktop window and the service
-              run: ./gradlew :njmule-app:nativeCompile :njmule-desktop:shell :njmule-gui:nativeService '-Pnative.optimization=-O2'
+              run: ./gradlew :njmule-app:nativeCompile :njmule-desktop:shell :njmule-app:nativeService '-Pnative.optimization=-O2'
             - name: Gather the programs
               shell: pwsh
               run: |
                   New-Item -ItemType Directory -Force stage\bin | Out-Null
-                  Copy-Item njmule-app/build/native/nativeCompile/*, njmule-desktop/src-tauri/target/release/njmule-gui.exe, njmule-gui/build/launcher/njmule-service.exe stage\bin
+                  Copy-Item njmule-app/build/native/nativeCompile/*, njmule-desktop/src-tauri/target/release/njmule-gui.exe, njmule-app/build/launcher/njmule-service.exe stage\bin
                   stage\bin\njmule.exe --version
             - name: Smoke test
               shell: pwsh
