@@ -73,6 +73,8 @@ import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 import org.njmule.core.persist.PreferencesCodec;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /** The remote-control API against an engine the test controls. */
 @Timeout(60)
@@ -495,6 +497,27 @@ class RemoteApiTest {
         thenTheStatusIs(200);
         thenTheBodyContains("\"user.nick\":\"njMule\"", "\"net.tcpPort\":\"4662\"");
         thenTheBodyDoesNotContain("proxy.password");
+    }
+
+    @Test
+    void shouldGiveTheFoldersWithTheDefaultsOfThoseLeftEmpty() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+
+        whenCalled("GET", "/api/v1/folders", "");
+
+        thenTheStatusIs(200);
+        thenTheFoldersAre(AppDirectories.underRoot(this.dir, true));
+    }
+
+    @Test
+    void shouldRefuseTheFoldersToAGuest() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+
+        whenCalledAsGuest("GET", "/api/v1/folders");
+
+        thenTheStatusIs(403);
     }
 
     @Test
@@ -927,6 +950,13 @@ class RemoteApiTest {
 
     private void thenTheBodyIs(String body) {
         assertThat(this.answer.body()).isEqualTo(body);
+    }
+
+    private void thenTheFoldersAre(AppDirectories dirs) {
+        JsonNode folders = JsonMapper.shared().readTree(this.answer.body());
+        assertThat(folders.path("incoming").asString())
+                .isEqualTo(dirs.downloads().toString());
+        assertThat(folders.path("temp").asString()).isEqualTo(dirs.temp().toString());
     }
 
     private void givenAClientSharing(String client, String name) {

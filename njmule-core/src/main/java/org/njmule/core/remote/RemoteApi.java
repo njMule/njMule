@@ -78,6 +78,7 @@ import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadPriority;
+import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 import org.njmule.core.persist.PreferencesCodec;
@@ -224,6 +225,14 @@ public final class RemoteApi implements AutoCloseable {
                 entry("getLimits", c -> limits(c, this.engine.preferences())),
                 entry("getPreferences", c -> preferences(c, this.engine.preferences())),
                 entry("getPreferenceDefaults", c -> preferences(c, Preferences.defaults())),
+                entry("getFolders", c -> {
+                    Preferences p = this.engine.preferences();
+                    AppDirectories dirs = this.engine.directories();
+                    reply(
+                            c.exchange(),
+                            200,
+                            g -> ApiJson.folders(g, p.effectiveIncomingDir(dirs), p.effectiveTempDir(dirs)));
+                }),
                 entry("getRates", this::getRates),
                 entry("importEmule", this::importEmule),
                 entry(

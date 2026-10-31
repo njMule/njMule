@@ -190,6 +190,20 @@ paths:
                 $ref: "#/components/schemas/Preferences"
         default:
           $ref: "#/components/responses/Error"
+  /folders:
+    get:
+      operationId: getFolders
+      tags: [engine]
+      summary: The folders the engine uses, the defaults of those the preferences leave empty included.
+      responses:
+        "200":
+          description: The folders, as absolute paths on the engine's computer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Folders"
+        default:
+          $ref: "#/components/responses/Error"
   /schedule:
     get:
       operationId: getSchedule
@@ -3021,6 +3035,16 @@ components:
       additionalProperties:
         type: string
         maxLength: 16384
+    Folders:
+      type: object
+      required: [incoming, temp]
+      properties:
+        incoming:
+          type: string
+          description: Where the finished downloads go, always shared.
+        temp:
+          type: string
+          description: Where the downloads' parts are kept until they are finished.
     Schedule:
       type: object
       required: [rules]

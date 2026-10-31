@@ -17,6 +17,7 @@
 package org.njmule.core.remote;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
@@ -170,6 +171,13 @@ final class ApiJson {
         g.writeStringProperty("version", s.version());
         g.writeBooleanProperty("obfuscation", s.supportsObfuscation());
         g.writeBooleanProperty("static", s.isStatic());
+        g.writeEndObject();
+    }
+
+    static void folders(JsonGenerator g, Path incoming, Path temp) {
+        g.writeStartObject();
+        g.writeStringProperty("incoming", incoming.toString());
+        g.writeStringProperty("temp", temp.toString());
         g.writeEndObject();
     }
 
