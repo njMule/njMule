@@ -35,22 +35,27 @@ export interface Search {
 /** The searches of the window, kept while it moves between places. */
 export const searches = ref<Search[]>([]);
 
+// A number field asks for something only with a number in it: one typed and emptied again holds an empty text.
+function given(n: number | undefined): n is number {
+    return typeof n === 'number' && Number.isFinite(n);
+}
+
 /** The words of the search box with the filters as the attributes of the search expression. */
 export function expression(words: string, f: Filters): string {
     let e = words.trim();
     if (f.type !== '') {
         e += ` @type=${f.type}`;
     }
-    if (f.minMb !== undefined) {
+    if (given(f.minMb)) {
         e += ` @size>=${f.minMb}m`;
     }
-    if (f.maxMb !== undefined) {
+    if (given(f.maxMb)) {
         e += ` @size<=${f.maxMb}m`;
     }
-    if (f.availability !== undefined) {
+    if (given(f.availability)) {
         e += ` @sources>=${f.availability}`;
     }
-    if (f.complete !== undefined) {
+    if (given(f.complete)) {
         e += ` @complete>=${f.complete}`;
     }
     const ext = f.extension.trim();
@@ -64,10 +69,10 @@ export function expression(words: string, f: Filters): string {
 export function filterCount(f: Filters): number {
     return [
         f.type !== '',
-        f.minMb !== undefined,
-        f.maxMb !== undefined,
-        f.availability !== undefined,
-        f.complete !== undefined,
+        given(f.minMb),
+        given(f.maxMb),
+        given(f.availability),
+        given(f.complete),
         f.extension.trim() !== '',
     ].filter((on) => on).length;
 }
