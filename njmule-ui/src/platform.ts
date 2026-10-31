@@ -59,6 +59,13 @@ export interface Platform {
      * an eD2K file link, empty otherwise.
      */
     onClipboard(handler: (text: string) => void): void;
+    /** The API addresses of the remote njMules remembered on this computer, in order. */
+    remoteConnections(): Promise<string[]>;
+    /**
+     * Opens njMule on the remote one whose API is at {@code url}, in a window of its own once that reached it, and
+     * remembers the connection when asked; fails with the reason. An empty token is the one remembered.
+     */
+    openRemote(url: string, token: string, remember: boolean): Promise<void>;
 }
 
 const browser: Platform = {
@@ -92,6 +99,11 @@ const browser: Platform = {
     desktopSettings: async () => null,
     setDesktopSettings: async () => {},
     onClipboard: () => {},
+    // A page is already on its engine.
+    remoteConnections: async () => [],
+    openRemote: async () => {
+        throw new Error('');
+    },
 };
 
 /** Whether the engine at the API address {@code url} runs on this computer: its folders are ours to open. */

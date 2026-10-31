@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -17,12 +17,13 @@ use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::ipc::Response;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::utils::config::{Csp, CspDirectiveSources};
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, RunEvent, State, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, WindowEvent,
+    WebviewWindowBuilder, WindowEvent, Wry,
 };
 use tauri_plugin_deep_link::DeepLinkExt;
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::StateFlags;
@@ -34,11 +35,26 @@ const START_WAIT: Duration = Duration::from_secs(120);
 /// How long the engine may take to save and stop once the shell closes.
 const STOP_WAIT: Duration = Duration::from_secs(30);
 
+/// The option that opens the window on another computer's njMule, at the address of its API.
+const REMOTE_OPTION: &str = "--remote-url";
+/// Where the token of the other njMule's API comes from, else from a connection remembered.
+const TOKEN_VARIABLE: &str = "NJMULE_API_TOKEN";
+/// Set for a window on another njMule opened from the dialog of this one, which waits to hear that it reached it.
+const CHECK_VARIABLE: &str = "NJMULE_REMOTE_CHECK";
+/// The line such a window writes once it reached the other njMule, followed by null or, as JSON, why it could not.
+const CHECKED_LINE: &str = "njmule-remote ";
+/// How long the dialog waits for the new window to reach the other njMule.
+const OPEN_WAIT: Duration = Duration::from_secs(60);
+/// The connections remembered, address and token, in the desktop app's folder of the profile (a Java properties file).
+const REMOTES_FILE: &str = "remotes.properties";
+
 /// Where the engine's API answers and the token that proves the window to it.
 #[derive(Clone, Serialize)]
 struct Endpoint {
     url: String,
     token: String,
+    // The engine of another computer, which the window reaches first before it shows.
+    remote: bool,
 }
 
 /// The id of njMule's icon in the notification area.
@@ -97,6 +113,10 @@ struct Shell {
     clicks: AtomicU64,
     // The button let go after a double click, which is no click of its own.
     after_double: AtomicBool,
+    // The API of the other computer's njMule the window shows, if it does.
+    remote: Option<String>,
+    // Whether the window opened from another one's dialog, which waits to hear that it reached the other njMule.
+    checked: bool,
 }
 
 impl Shell {
@@ -162,11 +182,6 @@ fn engine_program() -> PathBuf {
 }
 
 fn start_engine(engine: Arc<Engine>) {
-    // A remote njMule, as the desktop app's --remote-url: nothing to start.
-    if let (Ok(url), Ok(token)) = (std::env::var("NJMULE_REMOTE_URL"), std::env::var("NJMULE_API_TOKEN")) {
-        engine.found(Ok(Endpoint { url, token }));
-        return;
-    }
     let program = engine_program();
     let mut command = if program.extension().is_some_and(|e| e.eq_ignore_ascii_case("bat")) {
         let mut c = Command::new("cmd");
@@ -217,6 +232,7 @@ fn start_engine(engine: Arc<Engine>) {
                             Some(Endpoint {
                                 url: v.get("url")?.as_str()?.to_owned(),
                                 token: v.get("token")?.as_str()?.to_owned(),
+                                remote: false,
                             })
                         })
                         .ok_or_else(|| "njMule gave no address.".to_owned()),
@@ -263,6 +279,154 @@ fn save_settings(file: &Path, settings: &DesktopSettings) -> std::io::Result<()>
     let next = file.with_extension("json.tmp");
     std::fs::write(&next, serde_json::to_vec_pretty(settings)?)?;
     std::fs::rename(next, file)
+}
+
+/// The API of another computer's njMule this start shows, as --remote-url names it, or else NJMULE_REMOTE_URL.
+fn remote_url(args: &[String]) -> Option<String> {
+    let mut words = args.iter().skip(1);
+    let named = loop {
+        let Some(word) = words.next() else { break None };
+        if word == REMOTE_OPTION {
+            break words.next().cloned();
+        }
+        if let Some(url) = word.strip_prefix(REMOTE_OPTION).and_then(|w| w.strip_prefix('=')) {
+            break Some(url.to_owned());
+        }
+    };
+    named.or_else(|| std::env::var("NJMULE_REMOTE_URL").ok()).filter(|url| !url.trim().is_empty())
+}
+
+/// The scheme and authority of an address, as a page's origin.
+fn origin(url: &str) -> Option<String> {
+    let (scheme, rest) = url.split_once("://")?;
+    let authority = rest.split(['/', '?', '#']).next().filter(|a| !a.is_empty())?;
+    Some(format!("{}://{authority}", scheme.to_ascii_lowercase()))
+}
+
+/// Lets the window's page reach the API at `url` too: the policy of its pages names the engines it may call.
+fn allow_api(config: &mut tauri::Config, url: &str) {
+    if let (Some(origin), Some(csp)) = (origin(url), config.app.security.csp.take()) {
+        let mut directives: HashMap<String, CspDirectiveSources> = csp.into();
+        directives.entry("connect-src".into()).or_default().push(origin);
+        config.app.security.csp = Some(Csp::DirectiveMap(directives));
+    }
+}
+
+/// The desktop app's folder of the profile the engine uses, as the engine finds it: the one --config-dir names, the
+/// portable one beside the engine, or the system's place for the user's settings.
+fn gui_dir(app: &AppHandle) -> Option<PathBuf> {
+    if let Ok(root) = std::env::var("NJMULE_CONFIG_DIR") {
+        return Some(PathBuf::from(root).join("gui"));
+    }
+    let core = engine_program();
+    if let Some(dir) = core.parent().filter(|d| d.join("portable.flag").is_file()) {
+        return Some(dir.join("data").join("gui"));
+    }
+    let name = if cfg!(target_os = "linux") { "njmule" } else { "njMule" };
+    app.path().config_dir().ok().map(|dir| dir.join(name).join("gui"))
+}
+
+/// The connections remembered in `file`, the token of each address of an API; none when it cannot be read.
+fn read_remotes(file: &Path) -> HashMap<String, String> {
+    let mut all = HashMap::new();
+    if let Ok(input) = std::fs::File::open(file) {
+        let read = java_properties::PropertiesIter::new_with_encoding(BufReader::new(input), encoding_rs::UTF_8)
+            .read_into(|address, token| {
+                all.insert(address, token);
+            });
+        if read.is_err() {
+            all.clear();
+        }
+    }
+    all
+}
+
+/// Replaces the connections remembered in `file` with `all`, in a file that only its owner may read where the system
+/// says so.
+fn write_remotes(file: &Path, all: &HashMap<String, String>) -> Result<(), String> {
+    let mut addresses: Vec<_> = all.keys().collect();
+    addresses.sort();
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let mut tmp = file.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let _ = std::fs::remove_file(&tmp);
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let output = options.open(&tmp).map_err(|e| e.to_string())?;
+    let mut out = java_properties::PropertiesWriter::new_with_encoding(output, encoding_rs::UTF_8);
+    out.write_comment("njMule remote connections").map_err(|e| e.to_string())?;
+    for address in addresses {
+        out.write(address, &all[address]).map_err(|e| e.to_string())?;
+    }
+    out.finish().map_err(|e| e.to_string())?;
+    drop(out);
+    std::fs::rename(&tmp, file).map_err(|e| e.to_string())
+}
+
+/// The connections remembered on this computer.
+fn remembered(app: &AppHandle) -> HashMap<String, String> {
+    gui_dir(app).map(|dir| read_remotes(&dir.join(REMOTES_FILE))).unwrap_or_default()
+}
+
+/// Remembers the token of the API at `url` for the next connections.
+fn remember_connection(app: &AppHandle, url: &str, token: &str) -> Result<(), String> {
+    let file = gui_dir(app).ok_or("no folder for the desktop app's files")?.join(REMOTES_FILE);
+    let mut all = read_remotes(&file);
+    all.insert(url.to_owned(), token.to_owned());
+    write_remotes(&file, &all)
+}
+
+/// The other njMule's API and its token: the environment's, else the one remembered for that address.
+fn remote_endpoint(app: &AppHandle, url: &str) -> Result<Endpoint, String> {
+    let token = std::env::var(TOKEN_VARIABLE)
+        .ok()
+        .map(|t| t.trim().to_owned())
+        .filter(|t| !t.is_empty())
+        .or_else(|| remembered(app).remove(url))
+        .ok_or_else(|| format!("No token for {url}: set {TOKEN_VARIABLE} or connect from the menu."))?;
+    Ok(Endpoint { url: url.to_owned(), token, remote: true })
+}
+
+/// Starts this program again on the API at `url`, the token in its environment rather than on its command line, and
+/// waits until its window reached the other njMule; otherwise why it could not.
+fn open_window_on(url: &str, token: &str) -> Result<(), String> {
+    let program = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut child = Command::new(program)
+        .arg(REMOTE_OPTION)
+        .arg(url)
+        .env(TOKEN_VARIABLE, token)
+        .env(CHECK_VARIABLE, "1")
+        .env_remove("NJMULE_REMOTE_URL")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let output = child.stdout.take().expect("piped output");
+    let (told, heard) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let answer = BufReader::new(output).lines().map_while(Result::ok).find_map(|line| {
+            let json = line.strip_prefix(CHECKED_LINE)?.to_owned();
+            Some(serde_json::from_str::<Option<String>>(&json).unwrap_or(Some(json)))
+        });
+        let _ = told.send(answer);
+    });
+    let answer = heard.recv_timeout(OPEN_WAIT);
+    if !matches!(answer, Ok(Some(None))) {
+        let _ = child.kill();
+    }
+    // Waited for, so that it leaves nothing behind once it ends.
+    std::thread::spawn(move || child.wait());
+    match answer {
+        Ok(Some(None)) => Ok(()),
+        Ok(Some(Some(problem))) => Err(problem),
+        Ok(None) => Err("The new window ended before it reached the other njMule.".into()),
+        Err(_) => Err("The other njMule did not answer in time.".into()),
+    }
 }
 
 /// Brings the window back, from the notification area too, whose icon then goes with what it opened.
@@ -541,6 +705,56 @@ fn quit(app: AppHandle) {
     app.exit(0);
 }
 
+/// The addresses of the remote connections remembered, in order.
+#[tauri::command]
+fn remote_connections(app: AppHandle) -> Vec<String> {
+    let mut addresses: Vec<_> = remembered(&app).into_keys().collect();
+    addresses.sort();
+    addresses
+}
+
+/// Opens njMule on another computer in a window of its own, once that window reached the other njMule's API, and
+/// remembers the connection if asked; otherwise why it could not. An empty token is the one remembered.
+#[tauri::command]
+async fn open_remote(app: AppHandle, url: String, token: String, remember: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let given = token.trim();
+        let token = match given {
+            "" => remembered(&app).remove(&url).ok_or_else(|| format!("No token for {url}."))?,
+            _ => given.to_owned(),
+        };
+        open_window_on(&url, &token)?;
+        if remember {
+            remember_connection(&app, &url, &token)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The window on another njMule reached it, or could not: it shows, or njMule ends, telling why to the dialog that
+/// opened it, or else to the user. The window on this computer's own engine has nothing to tell.
+#[tauri::command]
+fn connected(app: AppHandle, shell: State<'_, Shell>, problem: Option<String>) {
+    if shell.remote.is_none() {
+        return;
+    }
+    if shell.checked {
+        let mut out = std::io::stdout();
+        let _ = writeln!(out, "{CHECKED_LINE}{}", serde_json::to_string(&problem).unwrap_or_default());
+        let _ = out.flush();
+    }
+    match problem {
+        None => show_window(&app),
+        Some(_) if shell.checked => app.exit(1),
+        Some(problem) => {
+            let handle = app.clone();
+            app.dialog().message(problem).title("njMule").kind(MessageDialogKind::Error).show(move |_| handle.exit(1));
+        }
+    }
+}
+
 /// Brings the window back, from the notification area too.
 #[tauri::command]
 fn show_main(app: AppHandle) {
@@ -618,28 +832,49 @@ fn set_desktop_settings(shell: State<'_, Shell>, settings: DesktopSettings) -> R
     shell.settings_file.get().map_or(Ok(()), |file| save_settings(file, &settings).map_err(|e| e.to_string()))
 }
 
-fn main() {
-    let engine = Arc::new(Engine::default());
-    engine.links.lock().unwrap().extend(links(&std::env::args().collect::<Vec<_>>()));
-    let app = tauri::Builder::default()
-        // First: a second start hands its links to this window and ends.
+/// The plugins of the window on this computer's njMule alone: a second start hands its links to it and ends (first,
+/// before anything else starts), and the system's links come to it. A window on another computer's njMule is a start
+/// of its own, which leaves them to this computer's njMule.
+fn single_window(builder: tauri::Builder<Wry>, local: bool) -> tauri::Builder<Wry> {
+    if !local {
+        return builder;
+    }
+    builder
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             hand_over(app, links(&args));
             show_window(app);
         }))
         .plugin(tauri_plugin_deep_link::init())
+}
+
+fn main() {
+    let args: Vec<_> = std::env::args().collect();
+    let remote = remote_url(&args);
+    let checked = remote.is_some() && std::env::var_os(CHECK_VARIABLE).is_some();
+    let engine = Arc::new(Engine::default());
+    if remote.is_none() {
+        engine.links.lock().unwrap().extend(links(&args));
+    }
+    let mut context = tauri::generate_context!();
+    if let Some(url) = &remote {
+        allow_api(context.config_mut(), url);
+    }
+    // The window shows as the options say, and the small windows of the icon where they are asked for; a window on
+    // another computer's njMule keeps a place and size of its own, apart from the one on this computer's.
+    let window_state = match remote {
+        None => tauri_plugin_window_state::Builder::default(),
+        Some(_) => tauri_plugin_window_state::Builder::default().with_filename("remote-window-state.json"),
+    }
+    .with_state_flags(StateFlags::all() - StateFlags::VISIBLE)
+    .with_denylist(&[TRAY_MENU, MINIMULE]);
+    let shell = Shell { remote: remote.clone(), checked, ..Shell::default() };
+    let app = single_window(tauri::Builder::default(), remote.is_none())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        // The window shows as the options say, and the small windows of the icon where they are asked for.
-        .plugin(
-            tauri_plugin_window_state::Builder::default()
-                .with_state_flags(StateFlags::all() - StateFlags::VISIBLE)
-                .with_denylist(&[TRAY_MENU, MINIMULE])
-                .build(),
-        )
+        .plugin(window_state.build())
         .manage(engine.clone())
-        .manage(Shell::default())
+        .manage(shell)
         .invoke_handler(tauri::generate_handler![
             endpoint,
             pending_links,
@@ -657,24 +892,31 @@ fn main() {
             tray_choice,
             notify,
             desktop_settings,
-            set_desktop_settings
+            set_desktop_settings,
+            remote_connections,
+            open_remote,
+            connected
         ])
         .setup(move |app| {
-            start_engine(engine.clone());
+            match &remote {
+                Some(url) => engine.found(remote_endpoint(app.handle(), url)),
+                None => start_engine(engine.clone()),
+            }
             let shell = app.state::<Shell>();
             if let Some(file) = settings_file(app.handle()) {
                 *shell.settings.lock().unwrap() = load_settings(&file);
                 let _ = shell.settings_file.set(file);
             }
             let window = app.get_webview_window("main").expect("njMule's window");
-            let remote = std::env::var("NJMULE_REMOTE_URL").ok();
             window.set_title(&window_title(&app.package_info().version.to_string(), remote.as_deref()))?;
             // macOS hands links over as events rather than arguments.
-            let handle = app.handle().clone();
-            app.deep_link().on_open_url(move |event| {
-                hand_over(&handle, event.urls().iter().map(|u| u.to_string()).collect());
-                show_window(&handle);
-            });
+            if remote.is_none() {
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    hand_over(&handle, event.urls().iter().map(|u| u.to_string()).collect());
+                    show_window(&handle);
+                });
+            }
             // The notification area, as the desktop app uses it: only on Windows, its icon there while the window hides.
             if cfg!(windows) {
                 let tray = TrayIconBuilder::with_id(TRAY)
@@ -685,7 +927,9 @@ fn main() {
                 tray.set_visible(false)?;
             }
             let settings = shell.settings();
-            if !settings.start_minimized {
+            if checked {
+                // Opened from a dialog, it shows once it reached the other njMule; the dialog waits for that.
+            } else if !settings.start_minimized {
                 window.show()?;
             } else if cfg!(windows) && settings.minimize_to_tray {
                 hide_to_tray(app.handle());
@@ -721,7 +965,7 @@ fn main() {
             }
             _ => {}
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("njMule's window");
     app.run(|app, event| {
         if let RunEvent::Exit = event {
@@ -811,5 +1055,65 @@ mod tests {
 
     fn then_the_place_is(place: i32, expected: i32) {
         assert_eq!(place, expected);
+    }
+
+    fn words(all: &[&str]) -> Vec<String> {
+        all.iter().map(|w| w.to_string()).collect()
+    }
+
+    #[test]
+    fn should_take_the_remote_api_from_the_command_line() {
+        let named = remote_url(&words(&["njmule-gui", "--remote-url", "http://nas.local:4711/api/v1"]));
+        let joined = remote_url(&words(&["njmule-gui", "--remote-url=https://nas.example.org/api/v1"]));
+
+        assert_eq!(named.as_deref(), Some("http://nas.local:4711/api/v1"));
+        assert_eq!(joined.as_deref(), Some("https://nas.example.org/api/v1"));
+    }
+
+    #[test]
+    fn should_let_the_page_reach_the_other_api_besides_this_computers() {
+        let mut config = tauri::Config::default();
+        config.app.security.csp = Some(Csp::Policy("default-src 'self'; connect-src 'self' http://127.0.0.1:*".into()));
+
+        allow_api(&mut config, "HTTPS://nas.example.org:8443/njmule/api/v1");
+
+        let policy: HashMap<String, CspDirectiveSources> = config.app.security.csp.unwrap().into();
+        assert_eq!(
+            Vec::<String>::from(policy["connect-src"].clone()),
+            ["'self'", "http://127.0.0.1:*", "https://nas.example.org:8443"]
+        );
+        assert_eq!(Vec::<String>::from(policy["default-src"].clone()), ["'self'"]);
+    }
+
+    #[test]
+    fn should_read_the_connections_the_desktop_app_remembered() {
+        let dir = std::env::temp_dir().join(format!("njmule-remotes-read-{}", std::process::id()));
+        let file = dir.join(REMOTES_FILE);
+        std::fs::create_dir_all(&dir).unwrap();
+        let java = "#njMule remote connections\n#Sat Oct 31 15:00:00 CET 2026\n";
+        std::fs::write(&file, format!("{java}{}\n", r"http\://nas.local\:4711/api/v1=Tok_en-1")).unwrap();
+
+        let all = read_remotes(&file);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(all, HashMap::from([("http://nas.local:4711/api/v1".to_owned(), "Tok_en-1".to_owned())]));
+    }
+
+    #[test]
+    fn should_remember_connections_as_the_desktop_app_reads_them() {
+        let dir = std::env::temp_dir().join(format!("njmule-remotes-write-{}", std::process::id()));
+        let file = dir.join("gui").join(REMOTES_FILE);
+        let all = HashMap::from([
+            ("http://nas.local:4711/api/v1".to_owned(), "first".to_owned()),
+            ("https://nas.example.org/api/v1".to_owned(), "second".to_owned()),
+        ]);
+
+        write_remotes(&file, &all).unwrap();
+
+        let text = std::fs::read_to_string(&file).unwrap();
+        let again = read_remotes(&file);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(text.contains(r"http\://nas.local\:4711/api/v1=first"), "{text}");
+        assert_eq!(again, all);
     }
 }

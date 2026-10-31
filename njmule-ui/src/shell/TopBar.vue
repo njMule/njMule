@@ -30,7 +30,15 @@ import Sparkline from './Sparkline.vue';
 import SpeedLimits from './SpeedLimits.vue';
 
 // The top bar: the screen's title and summary, the field to search or paste links, the rates, the networks, More.
-defineProps<{ title: string; summary: string; narrow: boolean; words: NetworkWords; canOpenFolders: boolean }>();
+defineProps<{
+    title: string;
+    summary: string;
+    narrow: boolean;
+    words: NetworkWords;
+    canOpenFolders: boolean;
+    /** Whether the window is the desktop app's, which can open another one on a remote njMule. */
+    desktop: boolean;
+}>();
 const emit = defineEmits<{
     palette: [typed: string];
     ed2k: [];
@@ -38,6 +46,7 @@ const emit = defineEmits<{
     both: [];
     shortcuts: [];
     incoming: [];
+    remote: [];
     /** The bar cannot show all it holds at its width. */
     crowded: [];
     import: [];
@@ -152,7 +161,7 @@ function typed(e: KeyboardEvent): void {
                     <DropdownMenuItem id="import" class="menu-item" :disabled="guest" @select="emit('import')">
                         <Icon name="IMPORT" />{{ t('nj.import.title') }}
                     </DropdownMenuItem>
-                    <DropdownMenuItem id="remote" class="menu-item" disabled>
+                    <DropdownMenuItem id="remote" class="menu-item" :disabled="!desktop" @select="emit('remote')">
                         <Icon name="LINK" />{{ t('nj.remote.title') }}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator class="menu-separator" />

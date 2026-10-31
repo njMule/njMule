@@ -24,6 +24,7 @@ import SettingsScreen from './screens/SettingsScreen.vue';
 import SharedScreen from './screens/SharedScreen.vue';
 import StatisticsScreen from './screens/StatisticsScreen.vue';
 import TransfersScreen from './screens/TransfersScreen.vue';
+import RemoteDialog from './dialogs/RemoteDialog.vue';
 import AskDialog from './shell/AskDialog.vue';
 import Banner from './shell/Banner.vue';
 import CommandPalette from './shell/CommandPalette.vue';
@@ -71,6 +72,7 @@ const paletteText = ref('');
 const shortcutsOpen = ref(false);
 const importOpen = ref(false);
 const wizardOpen = ref(false);
+const remoteOpen = ref(false);
 
 const words = computed(() => networkWords(connection.value, status.value, serverName.value));
 const title = computed(() => t(PLACES.find((p) => p.id === current.value)?.title ?? ''));
@@ -441,12 +443,14 @@ onUnmounted(() => {
                         :narrow="narrow"
                         :words="words"
                         :can-open-folders="canOpenFolders"
+                        :desktop="platform.desktop"
                         @palette="showPalette"
                         @ed2k="ed2k"
                         @kad="kad"
                         @both="both"
                         @shortcuts="shortcutsOpen = true"
                         @incoming="openIncoming"
+                        @remote="remoteOpen = true"
                         @crowded="crowded"
                         @import="importOpen = true"
                         @wizard="wizardOpen = true"
@@ -475,6 +479,7 @@ onUnmounted(() => {
             <AskDialog />
             <AboutDialog />
             <UpdateDialog :platform="platform" :can-open-folders="canOpenFolders" />
+            <RemoteDialog v-model:open="remoteOpen" :platform="platform" />
         </div>
     </TooltipProvider>
 </template>
