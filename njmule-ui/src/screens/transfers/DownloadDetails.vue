@@ -460,7 +460,11 @@ defineExpose({ neededHeight });
                                             </DropdownMenuSubContent>
                                         </DropdownMenuPortal>
                                     </DropdownMenuSub>
-                                    <DropdownMenuItem class="menu-item" @select="askSource(one)">
+                                    <DropdownMenuItem
+                                        class="menu-item"
+                                        :disabled="one.status === 'complete'"
+                                        @select="askSource(one)"
+                                    >
                                         <Icon name="PERSON_ADD" />{{ t('IDS_ADDSRCMANUALLY') }}
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator class="menu-separator" />
@@ -503,8 +507,14 @@ defineExpose({ neededHeight });
                             :aria-label="t('IDS_DL_SOURCES')"
                             @keydown="sourceKeys"
                         >
+                            <!-- A complete download needs no sources: nothing to ask for them. -->
                             <EmptyState
-                                v-if="itsSources.length === 0"
+                                v-if="itsSources.length === 0 && one.status === 'complete'"
+                                icon="CHECK_CIRCLE"
+                                :text="t('nj.transfers.completeSources')"
+                            />
+                            <EmptyState
+                                v-else-if="itsSources.length === 0"
                                 icon="NO_SOURCES"
                                 :text="t('nj.transfers.noSources')"
                             >
