@@ -793,6 +793,19 @@ fn preview(player: String, args: String, file: String) -> Result<(), String> {
     Ok(())
 }
 
+/// The text on the clipboard, empty when it holds none: read by the shell, as the web view asks the user before a page
+/// reads it.
+#[tauri::command]
+async fn read_clipboard() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(|| match arboard::Clipboard::new().and_then(|mut board| board.get_text()) {
+        Ok(text) => Ok(text),
+        Err(arboard::Error::ContentNotAvailable) => Ok(String::new()),
+        Err(e) => Err(e.to_string()),
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Opens a file with the program the system opens its kind with: false when the file is not there, or the system's
 /// reason it could not.
 #[tauri::command]
@@ -1046,7 +1059,8 @@ fn main() {
             preview,
             open_file,
             reveal_file,
-            app_menu_texts
+            app_menu_texts,
+            read_clipboard
         ])
         .setup(move |app| {
             match &remote {
