@@ -10,7 +10,7 @@ import { t } from '../i18n';
 import { limitsOf, limitText } from '../limits';
 import { lastLog, preferences, servers, status } from '../model/engine';
 import { networkCounts } from '../network';
-import { current, networkPart } from '../places';
+import { showLog } from '../places';
 import Tip from '../ui/Tip.vue';
 import SpeedLimits from './SpeedLimits.vue';
 
@@ -29,15 +29,7 @@ const limitsTrigger = ref<InstanceType<typeof PopoverTrigger> | null>(null);
 <template>
     <footer class="status-strip">
         <Tip :text="t('IDS_SV_LOG')">
-            <button
-                class="status-link last-log ellipsis"
-                @click="
-                    networkPart = 'log';
-                    current = 'network';
-                "
-            >
-                {{ lastLog }}
-            </button>
+            <button class="status-link last-log ellipsis" @click="showLog()">{{ lastLog }}</button>
         </Tip>
         <span class="status-text">{{ networkCounts(status, servers) }}</span>
         <PopoverRoot v-model:open="limitsOpen">
@@ -46,9 +38,10 @@ const limitsTrigger = ref<InstanceType<typeof PopoverTrigger> | null>(null);
             </Tip>
             <SpeedLimits :open="limitsOpen" side="top" :reference="limitsTrigger?.$el" />
         </PopoverRoot>
-        <span v-if="freeSpace !== undefined" class="status-text"
-            >{{ t('IDS_STATS_FREESPACE') }}: {{ size(freeSpace) }}</span
-        >
+        <!-- The folder where downloads end up, when the options name one; the engine's default is not told. -->
+        <Tip v-if="freeSpace !== undefined" :text="preferences['dirs.incoming'] ?? ''">
+            <span class="status-text">{{ t('IDS_STATS_FREESPACE') }}: {{ size(freeSpace) }}</span>
+        </Tip>
     </footer>
 </template>
 
