@@ -765,7 +765,7 @@ async fn choose_folder(app: AppHandle, title: String) -> Result<Option<String>, 
     .map_err(|e| e.to_string())
 }
 
-/// A file of this computer named `kind`, with one of the `extensions`, chosen with the system's dialog.
+/// A file of this computer chosen with the system's dialog, among those named `kind` with one of the `extensions`.
 #[tauri::command]
 async fn choose_file(
     app: AppHandle,
@@ -775,12 +775,10 @@ async fn choose_file(
 ) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let extensions: Vec<&str> = extensions.iter().map(String::as_str).collect();
-        app.dialog()
-            .file()
-            .set_title(title)
-            .add_filter(kind, &extensions)
-            .blocking_pick_file()
-            .map(|file| file.to_string())
+        let dialog = app.dialog().file().set_title(title);
+        // Without extensions any file will do.
+        let dialog = if extensions.is_empty() { dialog } else { dialog.add_filter(kind, &extensions) };
+        dialog.blocking_pick_file().map(|file| file.to_string())
     })
     .await
     .map_err(|e| e.to_string())

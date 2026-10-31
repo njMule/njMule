@@ -4,6 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
 import { computed } from 'vue';
+import { filesHere } from '../../files';
 import { rate } from '../../format';
 import { t } from '../../i18n';
 import type { IconName } from '../../icons';
@@ -12,7 +13,7 @@ import { label, words, type Action, type Field, type Row } from '../../settings'
 import Icon from '../../ui/Icon.vue';
 import Switch from '../../ui/Switch.vue';
 import FieldInput from './FieldInput.vue';
-import { rateKib } from './inputs';
+import { rateKib, withProgram } from './inputs';
 import { interfaceChoices, interfaceName, interfaces } from './interfaces';
 import {
     commit,
@@ -99,19 +100,42 @@ function focused(field: Field, e: FocusEvent): void {
     }
 }
 
+// A path typed or chosen: a folder or a command line of the engine's computer, a sound or a program of this one.
+function browsable(field: Field): boolean {
+    return ['folder', 'command', 'sound', 'program'].includes(field.kind);
+}
+
+function canBrowse(field: Field): boolean {
+    const platform = props.platform;
+    if (platform === undefined || !enabled(field)) {
+        return false;
+    }
+    return field.kind === 'command' ? filesHere(platform) : platform.desktop;
+}
+
 async function browse(field: Field): Promise<void> {
-    const chosen =
-        field.kind === 'sound'
-            ? await props.platform?.chooseFile(props.title, 'WAV, MP3', SOUND_EXTENSIONS)
-            : await props.platform?.chooseFolder(props.title);
+    const platform = props.platform;
+    if (platform === undefined) {
+        return;
+    }
+    let chosen: string | null;
+    if (field.kind === 'sound') {
+        chosen = await platform.chooseFile(props.title, 'WAV, MP3', SOUND_EXTENSIONS);
+    } else if (field.kind === 'program' || field.kind === 'command') {
+        chosen = await platform.chooseFile(props.title, 'EXE', PROGRAM_EXTENSIONS);
+    } else {
+        chosen = await platform.chooseFolder(props.title);
+    }
     if (chosen) {
-        type(field, chosen);
+        // A program chosen for a command line takes the place of the one typed, before the same arguments.
+        type(field, field.kind === 'command' ? withProgram(shown(field), chosen) : chosen);
         await commit(props.row, field);
     }
 }
 
-// The kinds of sound the window plays.
+// The kinds of sound the window plays; the programs of Windows, any file elsewhere.
 const SOUND_EXTENSIONS = ['wav', 'mp3'];
+const PROGRAM_EXTENSIONS = navigator.platform.startsWith('Win') ? ['exe'] : [];
 
 // The sound as the notifications would play it, applied or not.
 function hear(field: Field): void {
@@ -221,10 +245,10 @@ function hear(field: Field): void {
             />
             <span v-if="field.unit">{{ t(field.unit) }}</span>
             <button
-                v-if="field.kind === 'folder' || field.kind === 'sound'"
+                v-if="browsable(field)"
                 type="button"
                 class="button"
-                :disabled="!platform?.desktop || !enabled(field)"
+                :disabled="!canBrowse(field)"
                 @click="browse(field)"
             >
                 <Icon name="FOLDER_OPEN" />{{ t('IDS_PW_BROWSE') }}

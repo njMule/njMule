@@ -36,6 +36,10 @@ export type Kind =
     | 'folder'
     // A sound file of this computer, typed or chosen, which can be heard; empty for none.
     | 'sound'
+    // A program of this computer, typed or chosen; empty for none.
+    | 'program'
+    // A command line the engine runs, its program typed or chosen.
+    | 'command'
     // A network interface of the engine's computer, by its name or an address; empty for any.
     | 'interface';
 
@@ -489,7 +493,7 @@ export const PAGES: Page[] = [
                         label: 'IDS_PW_VIDEOPLAYER',
                         wide: true,
                         fields: [
-                            { key: 'preview.player', kind: 'text', ltr: true, grow: true, columns: 26 },
+                            { key: 'preview.player', kind: 'program', ltr: true, grow: true, columns: 26 },
                             {
                                 key: 'preview.args',
                                 kind: 'text',
@@ -604,7 +608,7 @@ export const PAGES: Page[] = [
                         { key: `events.${e.id}.enabled`, kind: 'switch' },
                         {
                             key: `events.${e.id}.command`,
-                            kind: 'text',
+                            kind: 'command',
                             check: 'commandLine',
                             ltr: true,
                             grow: true,

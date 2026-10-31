@@ -309,17 +309,41 @@ export function isCommandLine(text: string): boolean {
     return quote === '';
 }
 
+/** {@code command} run by {@code program}: the path quoted in place of its first word, the arguments kept. */
+export function withProgram(command: string, program: string): string {
+    const text = command.trimStart();
+    let quote = '';
+    let end = 0;
+    for (; end < text.length; end++) {
+        const c = text.charAt(end);
+        if (quote !== '') {
+            if (c === quote && text.charAt(end + 1) === quote) {
+                end++;
+            } else if (c === quote) {
+                quote = '';
+            }
+        } else if (c === '"' || c === "'") {
+            quote = c;
+        } else if (/\s/.test(c)) {
+            break;
+        }
+    }
+    const quoted = `"${program.replaceAll('"', '""')}"`;
+    const args = text.slice(end).trim();
+    return args === '' ? quoted : `${quoted} ${args}`;
+}
+
 /** Nothing, or the full path of a file on the engine's computer, Windows or not. */
+export function isFullPath(text: string): boolean {
+    return text === '' || /^([A-Za-z]:[\\/]|[\\/]{2}|\/)/.test(text);
+}
+
 /** Whether {@code text} is the full path of a sound the window plays, a WAV or MP3 file, or empty for none. */
 export function isSoundFile(text: string): boolean {
     return text.trim() === '' || (isFullPath(text) && SOUND_FILE.test(text.trim()));
 }
 
 const SOUND_FILE = /\.(wav|mp3)$/i;
-
-export function isFullPath(text: string): boolean {
-    return text === '' || /^([A-Za-z]:[\\/]|[\\/]{2}|\/)/.test(text);
-}
 
 // ------------------------------------------------------------------ speeds
 

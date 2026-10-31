@@ -127,6 +127,8 @@ export function rulesOf(field: Field): InputRules | undefined {
         case 'lines':
         case 'folder':
         case 'sound':
+        case 'program':
+        case 'command':
             if (field.check !== undefined) {
                 return checkRules(field.check, t, {
                     max: field.max,

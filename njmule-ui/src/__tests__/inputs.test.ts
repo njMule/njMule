@@ -23,6 +23,7 @@ import {
     rateText,
     timeOfDay,
     webAddresses,
+    withProgram,
     type RateUnit,
 } from '../screens/settings/inputs';
 
@@ -160,6 +161,16 @@ describe('inputs', () => {
     });
 
     it.each([
+        ['', 'C:\\Players\\vlc.exe', '"C:\\Players\\vlc.exe"'],
+        ['notify %NAME', '/usr/bin/notify-send', '"/usr/bin/notify-send" %NAME'],
+        ['"C:\\Old Path\\a.exe"  %FILE %HASH', 'D:\\b.exe', '"D:\\b.exe" %FILE %HASH'],
+        ["'it''s here' %FILE", '/opt/say"it', '"/opt/say""it" %FILE'],
+    ])('should run %s with the program chosen, %s, as %s', (command, program, expected) => {
+        whenTheProgramIsChosen(command, program);
+        thenTheFieldHolds(expected);
+    });
+
+    it.each([
         ['1,5', 'MB', 1, 1536],
         ['1.5', 'MB', 1, 1536],
         ['100', 'KB', 1, 100],
@@ -259,6 +270,10 @@ describe('inputs', () => {
 
     function whenTheSoundIsChecked(path: string): void {
         valid = isSoundFile(path);
+    }
+
+    function whenTheProgramIsChosen(command: string, program: string): void {
+        kept = withProgram(command, program);
     }
 
     function whenTheSpeedIsRead(typed: string, unit: RateUnit, min: number): void {
