@@ -133,6 +133,9 @@ fn start_engine(engine: Arc<Engine>) {
         // No console window for the engine.
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         command.creation_flags(CREATE_NO_WINDOW);
+        // The desktop app's engine, as the launcher this program replaces marks it: a new version installed now waits
+        // for this program to end too, then starts it again rather than the engine alone.
+        command.env("NJMULE_DESKTOP", "1");
     }
     let mut child = match command.spawn() {
         Ok(child) => child,
