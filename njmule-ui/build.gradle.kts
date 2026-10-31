@@ -23,7 +23,7 @@ node {
 }
 
 /**
- * The desktop app's translations as JSON, one file per language, holding only the keys the interface uses. The texts
+ * The translations as JSON, one file per language, holding only the keys the interface uses. The texts
  * keep their Java format placeholders (%s, %d, %1$s), which the interface fills in itself.
  */
 @CacheableTask
@@ -121,17 +121,17 @@ abstract class Compress : DefaultTask() {
 
 
 val translations = tasks.register<Translations>("translations") {
-    description = "Converts the desktop app's translations the interface uses to JSON."
-    bundles.from(fileTree(rootDir.resolve("njmule-gui/src/main/resources/org/njmule/gui/i18n")) {
+    description = "Converts the translations the interface uses to JSON."
+    bundles.from(fileTree("i18n") {
         include("*.properties")
     })
     sources.from(fileTree("src") { include("**/*.ts", "**/*.vue") })
     output = layout.buildDirectory.dir("translations/i18n")
 }
 
-// The desktop app's country flags.
+// The country flags, rendered to PNG by tools/FlagGen.java.
 val flags = tasks.register<Sync>("flags") {
-    from(rootDir.resolve("njmule-gui/src/main/resources/org/njmule/gui/flags")) { include("*.png") }
+    from("flags") { include("*.png") }
     into(layout.buildDirectory.dir("flags/flags"))
 }
 
