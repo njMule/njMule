@@ -70,8 +70,16 @@ import PortTestPane from '../ui/PortTestPane.vue';
 // take effect when njMule connects again or starts, which wait in a bar for Apply.
 
 const PAGE_KEY = 'njmule.settings.page';
-const FAMILIES: Family[] = ['nord', 'primer', 'cupertino', 'dracula'];
-const MODES: Mode[] = ['system', 'light', 'dark'];
+// The names of the themes and their modes, keys written out: the translations keep only the keys the code holds whole.
+const FAMILY_NAMES: Record<Family, string> = {
+    nord: 'nj.theme.nord',
+    primer: 'nj.theme.primer',
+    cupertino: 'nj.theme.cupertino',
+    dracula: 'nj.theme.dracula',
+};
+const MODE_NAMES: Record<Mode, string> = { system: 'nj.mode.system', light: 'nj.mode.light', dark: 'nj.mode.dark' };
+const FAMILIES = Object.keys(FAMILY_NAMES) as Family[];
+const MODES = Object.keys(MODE_NAMES) as Mode[];
 
 const find = ref('');
 const changedOnly = ref(false);
@@ -482,7 +490,7 @@ function act(row: Row, action: Action): void {
                                             @change="setTheme(chosen($event) as Family, mode)"
                                         >
                                             <option v-for="f in FAMILIES" :key="f" :value="f">
-                                                {{ t(`nj.theme.${f}`) }}
+                                                {{ t(FAMILY_NAMES[f]) }}
                                             </option>
                                         </select>
                                         <select
@@ -492,7 +500,7 @@ function act(row: Row, action: Action): void {
                                             @change="setTheme(family, chosen($event) as Mode)"
                                         >
                                             <option v-for="m in MODES" :key="m" :value="m">
-                                                {{ t(`nj.mode.${m}`) }}
+                                                {{ t(MODE_NAMES[m]) }}
                                             </option>
                                         </select>
                                     </template>

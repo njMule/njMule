@@ -119,13 +119,19 @@ export interface EventKind {
     id: string;
     placeholders: string[];
 }
+    /** Its name, a key written out: the translations keep only the keys the code holds whole. */
+    label: string;
 
 // The events a program can be run on, with the words filled in.
 export const EVENTS: EventKind[] = [
-    { id: 'downloadCompleted', placeholders: ['%NAME', '%FILE', '%HASH', '%SIZE'] },
-    { id: 'downloadFailed', placeholders: ['%NAME', '%HASH', '%SIZE', '%MESSAGE'] },
-    { id: 'chatMessage', placeholders: ['%SENDER', '%MESSAGE'] },
-    { id: 'diskSpaceShort', placeholders: ['%FILE'] },
+    {
+        id: 'downloadCompleted',
+        label: 'nj.events.downloadCompleted',
+        placeholders: ['%NAME', '%FILE', '%HASH', '%SIZE'],
+    },
+    { id: 'downloadFailed', label: 'nj.events.downloadFailed', placeholders: ['%NAME', '%HASH', '%SIZE', '%MESSAGE'] },
+    { id: 'chatMessage', label: 'nj.events.chatMessage', placeholders: ['%SENDER', '%MESSAGE'] },
+    { id: 'diskSpaceShort', label: 'nj.events.diskSpaceShort', placeholders: ['%FILE'] },
 ];
 
 const PORT = { kind: 'number', min: 1, max: 65535 } as const;
@@ -590,7 +596,7 @@ export const PAGES: Page[] = [
         sections: [
             {
                 rows: EVENTS.map((e): Row => ({
-                    label: `nj.events.${e.id}`,
+                    label: e.label,
                     wide: true,
                     fields: [
                         { key: `events.${e.id}.enabled`, kind: 'switch' },
@@ -684,7 +690,7 @@ export const PAGES: Page[] = [
                         {
                             key: 'notify.events',
                             kind: 'flags',
-                            options: EVENTS.map((e) => ({ value: e.id, label: `nj.events.${e.id}` })),
+                            options: EVENTS.map((e) => ({ value: e.id, label: e.label })),
                         },
                         { label: 'nj.notify.events', wide: true },
                     ),
