@@ -512,6 +512,31 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldTellWhichPasswordsAreSetWithoutGivingThem() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+        givenTheProxyPasswordIs("hunter22");
+
+        whenCalled("GET", "/api/v1/preferences/passwords", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{\"notify.smtpPassword\":false,\"proxy.password\":true}");
+    }
+
+    @Test
+    void shouldClearAPasswordSetEmpty() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+        givenTheProxyPasswordIs("hunter22");
+
+        whenCalled("PATCH", "/api/v1/preferences", "{\"proxy.password\":\"\"}");
+
+        thenTheStatusIs(200);
+        thenTheBodyDoesNotContain("proxy.password");
+        thenTheProxyPasswordIsEmpty();
+    }
+
+    @Test
     void shouldGiveTheDefaultPreferencesWhateverWasChanged() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -1474,6 +1499,15 @@ class RemoteApiTest {
     private void givenTheNickWasChanged() {
         this.preferences = PreferencesCodec.apply(this.preferences, Map.of("user.nick", "Night Owl"));
         this.fake.value("preferences", this.preferences);
+    }
+
+    private void givenTheProxyPasswordIs(String password) {
+        this.preferences = PreferencesCodec.apply(this.preferences, Map.of("proxy.password", password));
+        this.fake.value("preferences", this.preferences);
+    }
+
+    private void thenTheProxyPasswordIsEmpty() {
+        assertThat(this.preferences.proxy().password()).isEmpty();
     }
 
     private void givenTheEngineKeepsPreferences() {

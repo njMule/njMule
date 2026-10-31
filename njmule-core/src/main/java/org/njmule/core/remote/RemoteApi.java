@@ -256,6 +256,7 @@ public final class RemoteApi implements AutoCloseable {
                 entry("getLimits", c -> limits(c, this.engine.preferences())),
                 entry("getPreferences", c -> preferences(c, this.engine.preferences())),
                 entry("getPreferenceDefaults", c -> preferences(c, Preferences.defaults())),
+                entry("getPreferencePasswords", this::getPreferencePasswords),
                 entry("getFolders", c -> {
                     Preferences p = this.engine.preferences();
                     AppDirectories dirs = this.engine.directories();
@@ -763,6 +764,18 @@ public final class RemoteApi implements AutoCloseable {
                     g.writeStringProperty(key, value);
                 }
             });
+            g.writeEndObject();
+        });
+    }
+
+    // Whether each is set, so that a form shows one is without ever holding it.
+    private void getPreferencePasswords(Call c) throws IOException {
+        Map<String, String> values = PreferencesCodec.values(this.engine.preferences());
+        reply(c.exchange(), 200, g -> {
+            g.writeStartObject();
+            new TreeSet<>(SECRETS)
+                    .forEach(key -> g.writeBooleanProperty(
+                            key, !values.getOrDefault(key, "").isEmpty()));
             g.writeEndObject();
         });
     }

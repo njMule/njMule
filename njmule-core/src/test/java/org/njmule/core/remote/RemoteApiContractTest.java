@@ -144,7 +144,8 @@ class RemoteApiContractTest {
                 "/api/v1/import/emule",
                 "/api/v1/setup",
                 "/api/v1/webui",
-                "/api/v1/interfaces");
+                "/api/v1/interfaces",
+                "/api/v1/preferences/passwords");
     }
 
     @ParameterizedTest

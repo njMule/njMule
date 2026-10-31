@@ -140,7 +140,9 @@ paths:
       operationId: getPreferences
       tags: [engine]
       summary: Every preference, as njMule's njmule.properties file writes it.
-      description: The proxy password is never given.
+      description: >-
+        The passwords, of the proxy and of the mail server, are never given; /preferences/passwords
+        tells which are set.
       responses:
         "200":
           description: The preferences by key.
@@ -174,6 +176,25 @@ paths:
                 $ref: "#/components/schemas/Preferences"
         "400":
           $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /preferences/passwords:
+    get:
+      operationId: getPreferencePasswords
+      tags: [engine]
+      summary: Whether each password of the preferences is set, the passwords themselves never given.
+      description: >-
+        By the keys of the passwords, proxy.password and notify.smtpPassword. Changing the preferences
+        replaces a password, and an empty one clears it.
+      responses:
+        "200":
+          description: Whether each password is set, by its key.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: boolean
         default:
           $ref: "#/components/responses/Error"
   /preferences/defaults:
