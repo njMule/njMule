@@ -11,17 +11,56 @@ export interface FileLink {
 
 // ed2k://|file|name|size|hash|, then the link's other fields up to the next space, wherever it stands in the text.
 const FILE_LINK = /ed2k:\/\/\|file\|([^|\r\n]+)\|(\d{1,20})\|([0-9a-fA-F]{32})\|[^\s"'<>]*/g;
+// The same with its separators escaped, as browsers hand links over to the program they open with.
+const ESCAPED_LINK = /ed2k:\/\/%7c[^\s"'<>|]*/gi;
+// A magnet link, whose parameters name an eD2K file or not.
+const MAGNET_LINK = /magnet:\?[^\s"'<>]+/gi;
 
-/** The distinct file links of {@code text}, in their order, one for each file hash. */
+/**
+ * The distinct file links of {@code text}, in their order, one for each file hash: eD2K links, escaped or not, and the
+ * magnet links of eD2K files.
+ */
 export function fileLinks(text: string): FileLink[] {
+    const plain = text.replace(ESCAPED_LINK, (link) => link.replace(/%7c/gi, '|'));
+    const links: { at: number; link: FileLink | null }[] = [
+        ...[...plain.matchAll(FILE_LINK)].map((m) => ({
+            at: m.index,
+            link: { link: m[0], name: decoded(m[1] ?? ''), size: Number(m[2]), hash: (m[3] ?? '').toUpperCase() },
+        })),
+        ...[...plain.matchAll(MAGNET_LINK)].map((m) => ({ at: m.index, link: magnetLink(m[0]) })),
+    ];
     const found = new Map<string, FileLink>();
-    for (const m of text.matchAll(FILE_LINK)) {
-        const hash = (m[3] ?? '').toUpperCase();
-        if (!found.has(hash)) {
-            found.set(hash, { link: m[0], name: decoded(m[1] ?? ''), size: Number(m[2]), hash });
+    for (const { link } of links.sort((a, b) => a.at - b.at)) {
+        if (link !== null && !found.has(link.hash)) {
+            found.set(link.hash, link);
         }
     }
     return [...found.values()];
+}
+
+// The file a magnet link names by its eD2K hash (xt), name (dn) and size (xl); null for any other magnet link. An empty
+// parameter ends the list.
+function magnetLink(link: string): FileLink | null {
+    let name = '';
+    let size = '';
+    let hash: string | undefined;
+    for (const param of link.substring(link.indexOf('?') + 1).split('&')) {
+        if (param === '') {
+            break;
+        }
+        const value = param.substring(3);
+        if (param.startsWith('dn=')) {
+            name = decoded(value).trim();
+        } else if (param.startsWith('xl=')) {
+            size = value;
+        } else if (param.startsWith('xt=urn:ed2k:') || param.startsWith('xt=urn:ed2khash:')) {
+            hash = value.substring(value.lastIndexOf(':') + 1);
+        }
+    }
+    if (hash === undefined || !/^[0-9a-fA-F]{32}$/.test(hash) || !/^\d{1,15}$/.test(size) || name === '') {
+        return null;
+    }
+    return { link, name, size: Number(size), hash: hash.toUpperCase() };
 }
 
 function decoded(name: string): string {

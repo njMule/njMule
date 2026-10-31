@@ -5,7 +5,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { fileLink, fileLinks, htmlLinks, type FileLink } from '../links';
 
 describe('links', () => {
-    const LINK = 'ed2k://|file|My%20File.iso|1048576|0123456789ABCDEF0123456789ABCDEF|/';
+    const HASH = '0123456789ABCDEF0123456789ABCDEF';
+    const OTHER_HASH = 'FEDCBA9876543210FEDCBA9876543210';
+    const LINK = `ed2k://|file|My%20File.iso|1048576|${HASH}|/`;
+    const MAGNET = `magnet:?xt=urn:ed2k:${HASH.toLowerCase()}&xl=1048576&dn=My%20File.iso`;
     let text = '';
     let found: FileLink[] = [];
 
@@ -27,6 +30,45 @@ describe('links', () => {
         thenTheFirstSizeIs(1048576);
     });
 
+    it('should take a link a browser handed over with its separators escaped', () => {
+        givenTheText(LINK.replaceAll('|', '%7C'));
+        whenTheLinksAreFound();
+        thenTheFilesAre('My File.iso');
+        thenTheLinksAre(LINK);
+    });
+
+    it('should take the magnet link of an eD2K file as it is', () => {
+        givenTheText(`get ${MAGNET} now`);
+        whenTheLinksAreFound();
+        thenTheFilesAre('My File.iso');
+        thenTheFirstSizeIs(1048576);
+        thenTheLinksAre(MAGNET);
+    });
+
+    it('should take the eD2K hash of a magnet link that names it the long way', () => {
+        givenTheText(MAGNET.replace('urn:ed2k:', 'urn:ed2khash:'));
+        whenTheLinksAreFound();
+        thenTheFilesAre('My File.iso');
+    });
+
+    it('should leave a magnet link of another network', () => {
+        givenTheText('magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&dn=Other&xl=10');
+        whenTheLinksAreFound();
+        thenTheFilesAre();
+    });
+
+    it('should keep the order of eD2K and magnet links', () => {
+        givenTheText(`${MAGNET.replace(HASH.toLowerCase(), OTHER_HASH).replace('My%20File', 'First')}\n${LINK}`);
+        whenTheLinksAreFound();
+        thenTheFilesAre('First.iso', 'My File.iso');
+    });
+
+    it('should keep one link for a file named by an eD2K and a magnet link', () => {
+        givenTheText(`${LINK}\n${MAGNET}`);
+        whenTheLinksAreFound();
+        thenTheLinksAre(LINK);
+    });
+
     function givenTheText(value: string): void {
         text = value;
     }
@@ -37,6 +79,10 @@ describe('links', () => {
 
     function thenTheFilesAre(...names: string[]): void {
         expect(found.map((f) => f.name)).toEqual(names);
+    }
+
+    function thenTheLinksAre(...links: string[]): void {
+        expect(found.map((f) => f.link)).toEqual(links);
     }
 
     function thenTheFirstSizeIs(bytes: number): void {
