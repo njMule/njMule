@@ -4,6 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts" generic="T extends Record<string, any>">
 import {
+    columnOrderingFeature,
     columnResizingFeature,
     columnSizingFeature,
     columnVisibilityFeature,
@@ -14,6 +15,7 @@ import {
     tableFeatures,
     useTable,
     type ColumnDef,
+    type ColumnOrderState,
     type ColumnSizingState,
     type ColumnVisibilityState,
     type SortingState,
@@ -35,9 +37,11 @@ import {
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import Icon from './Icon.vue';
 
-// A table as the desktop app's: rows of 32 px drawn only where they show, sorted by a click on a header, columns
-// resized by their edge and shown or hidden from the menu at the header's end, all kept in this window for the next
-// time. A click chooses a row, Ctrl or Cmd adds one, Shift a range; the context menu acts on the rows chosen.
+// A table as the desktop app's: rows of 32 px drawn only where they show, sorted by a click on a header (ascending
+// first), columns moved by dragging their header, resized by their edge (a double click fits them to their content)
+// and shown or hidden from the menu at the header's end, all kept in this window for the next time. A click chooses a
+// row, Ctrl or Cmd adds one, Shift a range; the keys move and extend the choice; the context menu acts on the rows
+// chosen, from the rows as from the header.
 
 export interface ColumnMeta {
     /** Figures align to the end, in the order of their digits whatever the language. */
@@ -62,8 +66,12 @@ const props = defineProps<{
     rowStyle?: (row: T) => Record<string, string>;
     /** The columns keep their own widths and the list scrolls sideways, rather than filling its width. */
     fixedWidths?: boolean;
+    /** Enter does not act on the row chosen, as in the search's results. */
+    noEnterAction?: boolean;
 }>();
 const emit = defineEmits<{ activate: [row: T]; keydown: [event: KeyboardEvent] }>();
+// The classes a screen gives go to the table, inside the context menu's root.
+defineOptions({ inheritAttrs: false });
 const selected = defineModel<string[]>('selected', { required: true });
 
 const ROW = 32;
@@ -73,6 +81,7 @@ interface Layout {
     sorting?: SortingState;
     visibility?: ColumnVisibilityState;
     sizing?: ColumnSizingState;
+    order?: ColumnOrderState;
 }
 
 function read(): Layout {
@@ -92,12 +101,18 @@ const visibility = ref<ColumnVisibilityState>(
         ),
 );
 const sizing = ref<ColumnSizingState>(saved.sizing ?? {});
+const order = ref<ColumnOrderState>(saved.order ?? []);
 
-watch([sorting, visibility, sizing], () => {
+watch([sorting, visibility, sizing, order], () => {
     try {
         localStorage.setItem(
             layoutKey,
-            JSON.stringify({ sorting: sorting.value, visibility: visibility.value, sizing: sizing.value }),
+            JSON.stringify({
+                sorting: sorting.value,
+                visibility: visibility.value,
+                sizing: sizing.value,
+                order: order.value,
+            }),
         );
     } catch {
         // Kept until the window closes.
@@ -115,6 +130,7 @@ const features = tableFeatures({
     columnVisibilityFeature,
     columnSizingFeature,
     columnResizingFeature,
+    columnOrderingFeature,
     sortedRowModel: createSortedRowModel(),
     sortFns,
 });
@@ -125,10 +141,18 @@ const table = useTable({
     // A computed, not a getter: the adapter unwraps refs only.
     data: computed(() => props.rows),
     getRowId: (row: T) => props.rowId(row),
-    state: computed(() => ({ sorting: sorting.value, columnVisibility: visibility.value, columnSizing: sizing.value })),
+    state: computed(() => ({
+        sorting: sorting.value,
+        columnVisibility: visibility.value,
+        columnSizing: sizing.value,
+        columnOrder: order.value,
+    })),
     onSortingChange: update(sorting),
     onColumnVisibilityChange: update(visibility),
     onColumnSizingChange: update(sizing),
+    onColumnOrderChange: update(order),
+    // Every column sorts ascending first, figures too, then descending, then not at all.
+    sortDescFirst: false,
     columnResizeMode: 'onChange',
     enableColumnResizing: true,
 } as any);
@@ -144,31 +168,149 @@ const virtualizer = useVirtualizer(
         overscan: 8,
     })),
 );
-const total = computed(() => (table as any).getTotalSize() as number);
-// As the desktop app's tables, the columns fill the list's width, wider or narrower in proportion to their own, never
-// narrower than their least; the list scrolls sideways only when even that does not fit.
+// The vertical bar's room, which the column menu takes above it as the desktop app's corner button does.
+const gutter = ref(0);
+const MENU_ROOM = 16;
 const room = ref(0);
-const stretch = computed(() =>
-    !props.fixedWidths && total.value > 0 && room.value > 0 ? room.value / total.value : 1,
-);
-const width = computed(() =>
-    (table as any).getVisibleLeafColumns().reduce((sum: number, c: any) => sum + columnWidth(c), 0),
-);
+// As the desktop app's tables (flex the last column), the columns fill the list's width: the last takes what is left,
+// or gives it back down to its least width, then the one before it and so on; the list scrolls sideways only when
+// even their least widths do not fit.
+const widths = computed(() => {
+    const columns = (table as any).getVisibleLeafColumns() as any[];
+    const least = (c: any): number => c.columnDef.minSize ?? 24;
+    const out = new Map<string, number>(
+        columns.map((c) => [c.id as string, Math.max(least(c), c.getSize() as number)]),
+    );
+    if (props.fixedWidths || room.value <= 0 || columns.length === 0) {
+        return out;
+    }
+    let left = room.value - [...out.values()].reduce((sum, w) => sum + w, 0);
+    if (left > 0) {
+        const last = columns.at(-1).id as string;
+        out.set(last, out.get(last)! + left);
+    }
+    for (const c of [...columns].reverse()) {
+        if (left >= 0) {
+            break;
+        }
+        const given = Math.min(out.get(c.id)! - least(c), -left);
+        out.set(c.id, out.get(c.id)! - given);
+        left += given;
+    }
+    return out;
+});
+const width = computed(() => [...widths.value.values()].reduce((sum, w) => sum + w, 0));
 const header = ref<HTMLElement | null>(null);
-let observer: ResizeObserver | null = null;
 
 function columnWidth(column: any): number {
-    return Math.max(column.columnDef.minSize ?? 24, Math.floor((column.getSize() as number) * stretch.value));
+    return widths.value.get(column.id as string) ?? (column.getSize() as number);
 }
 
-onMounted(() => {
-    observer = new ResizeObserver(() => (room.value = scroller.value?.clientWidth ?? 0));
-    if (scroller.value) {
-        observer.observe(scroller.value);
+function measure(): void {
+    const s = scroller.value;
+    if (s) {
+        gutter.value = s.offsetWidth - s.clientWidth;
+        room.value = s.clientWidth - Math.max(0, MENU_ROOM - gutter.value);
     }
+}
+
+const observer = new ResizeObserver(measure);
+
+onMounted(() => window.addEventListener('mouseup', resized));
+
+// The list comes inside the context menu's trigger: it is measured from the moment it is there.
+function holdScroller(element: unknown): void {
+    const now = element instanceof HTMLElement ? element : null;
+    if (now === scroller.value) {
+        return;
+    }
+    if (scroller.value) {
+        observer.unobserve(scroller.value);
+    }
+    scroller.value = now;
+    if (now) {
+        observer.observe(now);
+    }
+}
+
+onUnmounted(() => {
+    observer.disconnect();
+    window.removeEventListener('mouseup', resized);
 });
 
-onUnmounted(() => observer?.disconnect());
+// A column's edge being dragged is no header to move.
+let resizing = false;
+
+function resizeFrom(handler: (e: Event) => void, e: Event): void {
+    resizing = true;
+    handler(e);
+}
+
+function resized(): void {
+    resizing = false;
+}
+
+// A double click on a column's edge fits it to the widest of its header and of its rows in sight.
+function fit(column: any): void {
+    const id = CSS.escape(column.id as string);
+    const contents = [
+        ...(header.value?.querySelectorAll<HTMLElement>(`[data-column="${id}"] .header-words`) ?? []),
+        ...(scroller.value?.querySelectorAll<HTMLElement>(`[data-column="${id}"] .cell-content`) ?? []),
+    ];
+    // The cells' padding, and the header's room for its sort mark.
+    const need = Math.max(0, ...contents.map((c) => c.scrollWidth)) + 16 + 14;
+    sizing.value = { ...sizing.value, [column.id]: Math.max(column.columnDef.minSize ?? 24, Math.ceil(need)) };
+}
+
+// A header dragged onto another moves its column before or after it, as the side of the pointer says.
+const dragged = ref<string | null>(null);
+const dropAt = ref<{ id: string; after: boolean } | null>(null);
+
+function dragStart(column: any, e: DragEvent): void {
+    if (resizing) {
+        e.preventDefault();
+        return;
+    }
+    dragged.value = column.id as string;
+    if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', column.id as string);
+    }
+}
+
+function dragOver(column: any, e: DragEvent): void {
+    if (dragged.value === null || dragged.value === column.id) {
+        return;
+    }
+    e.preventDefault();
+    const cell = e.currentTarget as HTMLElement;
+    const r = cell.getBoundingClientRect();
+    const second = e.clientX > r.left + r.width / 2;
+    dropAt.value = { id: column.id as string, after: getComputedStyle(cell).direction === 'rtl' ? !second : second };
+}
+
+function drop(): void {
+    const from = dragged.value;
+    const to = dropAt.value;
+    if (from !== null && to !== null) {
+        const all = ((table as any).getAllLeafColumns() as any[]).map((c) => c.id as string);
+        const now = [...order.value.filter((id) => all.includes(id)), ...all.filter((id) => !order.value.includes(id))];
+        const moved = now.filter((id) => id !== from);
+        moved.splice(moved.indexOf(to.id) + (to.after ? 1 : 0), 0, from);
+        order.value = moved;
+    }
+    dragEnd();
+}
+
+function dragEnd(): void {
+    dragged.value = null;
+    dropAt.value = null;
+}
+
+function dropSide(id: string): string {
+    const at = dropAt.value;
+    return at === null || at.id !== id ? '' : at.after ? 'drop-after' : 'drop-before';
+}
 
 // The header follows the rows sideways.
 function scrolled(): void {
@@ -177,23 +319,36 @@ function scrolled(): void {
     }
 }
 
-// The row the next Shift+click goes from.
+// The row a Shift+click or Shift+key extends from, and the row the keys are on.
 let anchor: string | null = null;
+const lead = ref<string | null>(null);
+
+function between(from: string, to: string): string[] {
+    const ids = tableRows.value.map((r) => r.id as string);
+    const [a, b] = [ids.indexOf(from), ids.indexOf(to)].sort((x, y) => x - y);
+    return a! < 0 ? [to] : ids.slice(a, b! + 1);
+}
+
+function toggle(id: string): void {
+    selected.value = selected.value.includes(id) ? selected.value.filter((s) => s !== id) : [...selected.value, id];
+}
 
 function choose(row: any, e: MouseEvent): void {
     const id = row.id as string;
+    const ctrl = e.ctrlKey || e.metaKey;
     if (e.shiftKey && anchor !== null) {
-        const ids = tableRows.value.map((r) => r.id as string);
-        const [from, to] = [ids.indexOf(anchor), ids.indexOf(id)].sort((a, b) => a - b);
-        selected.value = ids.slice(from, (to ?? 0) + 1);
-        return;
-    }
-    if (e.ctrlKey || e.metaKey) {
-        selected.value = selected.value.includes(id) ? selected.value.filter((s) => s !== id) : [...selected.value, id];
+        // With Ctrl as well, the range joins the rows already chosen.
+        const range = between(anchor, id);
+        selected.value = ctrl ? [...new Set([...selected.value, ...range])] : range;
     } else {
-        selected.value = [id];
+        if (ctrl) {
+            toggle(id);
+        } else {
+            selected.value = [id];
+        }
+        anchor = id;
     }
-    anchor = id;
+    lead.value = id;
 }
 
 // A right click on a row not chosen chooses it alone, as the context menu acts on the rows chosen.
@@ -201,24 +356,54 @@ function menuOn(row: any): void {
     if (!selected.value.includes(row.id)) {
         selected.value = [row.id];
         anchor = row.id;
+        lead.value = row.id;
     }
 }
 
+// The keys of the desktop app's tables: arrows, pages, Home and End move the choice, with Shift they extend it, with
+// Ctrl they move only the row they are on, which Space chooses (with Ctrl, adds or takes); Ctrl+A chooses all.
 function key(e: KeyboardEvent): void {
     const ids = tableRows.value.map((r) => r.id as string);
-    const at = ids.indexOf(selected.value.at(-1) ?? '');
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        const next = ids[Math.max(0, Math.min(ids.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))];
-        if (next !== undefined) {
-            selected.value = [next];
-            anchor = next;
+    const ctrl = e.ctrlKey || e.metaKey;
+    const page = Math.max(1, Math.floor((scroller.value?.clientHeight ?? ROW) / ROW) - 1);
+    const moves: Record<string, number> = {
+        ArrowDown: 1,
+        ArrowUp: -1,
+        PageDown: page,
+        PageUp: -page,
+        Home: -ids.length,
+        End: ids.length,
+    };
+    const move = moves[e.key];
+    if (move !== undefined && !e.altKey) {
+        if (ids.length > 0) {
+            const at = ids.indexOf(lead.value ?? selected.value.at(-1) ?? '');
+            const from = at >= 0 ? at : move > 0 ? -1 : ids.length;
+            const next = ids[Math.max(0, Math.min(ids.length - 1, from + move))]!;
+            lead.value = next;
+            if (e.shiftKey) {
+                selected.value = between(anchor ?? next, next);
+            } else if (!ctrl) {
+                selected.value = [next];
+                anchor = next;
+            }
             virtualizer.value.scrollToIndex(ids.indexOf(next));
         }
         e.preventDefault();
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+    } else if (e.key === ' ' && !e.altKey) {
+        if (lead.value !== null && ids.includes(lead.value)) {
+            if (ctrl) {
+                toggle(lead.value);
+            } else {
+                selected.value = [lead.value];
+            }
+            anchor = lead.value;
+        }
+        e.preventDefault();
+    } else if (ctrl && !e.altKey && e.key.toLowerCase() === 'a') {
         selected.value = ids;
         e.preventDefault();
-    } else if (e.key === 'Enter' && selected.value.length === 1) {
+    } else if (e.key === 'Enter' && !e.altKey && !props.noEnterAction && selected.value.length === 1) {
         const row = tableRows.value.find((r) => r.id === selected.value[0]);
         if (row) {
             emit('activate', row.original as T);
@@ -229,9 +414,11 @@ function key(e: KeyboardEvent): void {
     }
 }
 
+// The direction of a sorted column, with its rank when several sort the rows.
 function sortIcon(column: any): string {
     const sorted = column.getIsSorted();
-    return sorted === 'asc' ? '▲' : sorted === 'desc' ? '▼' : '';
+    const arrow = sorted === 'asc' ? '▲' : sorted === 'desc' ? '▼' : '';
+    return arrow !== '' && sorting.value.length > 1 ? `${arrow}${(column.getSortIndex() as number) + 1}` : arrow;
 }
 
 function numeric(column: any): boolean {
@@ -250,59 +437,77 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
 </script>
 
 <template>
-    <div class="data-table" role="grid" :aria-label="label" :aria-rowcount="tableRows.length">
-        <div class="header">
-            <div ref="header" class="header-scroll">
-                <div class="header-row" :style="{ width: `${width}px` }" role="row">
+    <ContextMenuRoot>
+        <!-- Without a menu of its own, a list has none, as the desktop app's. -->
+        <ContextMenuTrigger as-child :disabled="!$slots.menu">
+            <div class="data-table" v-bind="$attrs" role="grid" :aria-label="label" :aria-rowcount="tableRows.length">
+                <div class="header">
                     <div
-                        v-for="header in (table as any).getHeaderGroups()[0].headers"
-                        :key="header.id"
-                        class="header-cell"
-                        role="columnheader"
-                        :aria-sort="
-                            header.column.getIsSorted() === 'asc'
-                                ? 'ascending'
-                                : header.column.getIsSorted() === 'desc'
-                                  ? 'descending'
-                                  : undefined
-                        "
-                        :style="{ width: `${columnWidth(header.column)}px` }"
-                        @click="header.column.getToggleSortingHandler()?.($event)"
+                        ref="header"
+                        class="header-scroll"
+                        :style="{ marginInlineEnd: `${Math.max(gutter, MENU_ROOM)}px` }"
                     >
-                        <span class="ellipsis"><FlexRender :header="header" /></span>
-                        <span class="sort">{{ sortIcon(header.column) }}</span>
-                        <span
-                            class="resizer"
-                            @mousedown.stop="header.getResizeHandler()($event)"
-                            @touchstart.stop="header.getResizeHandler()($event)"
-                            @click.stop
-                        />
+                        <div class="header-row" :style="{ width: `${width}px` }" role="row">
+                            <div
+                                v-for="header in (table as any).getHeaderGroups()[0].headers"
+                                :key="header.id"
+                                class="header-cell"
+                                :class="[{ moving: dragged === header.column.id }, dropSide(header.column.id)]"
+                                role="columnheader"
+                                draggable="true"
+                                :data-column="header.column.id"
+                                :aria-sort="
+                                    header.column.getIsSorted() === 'asc'
+                                        ? 'ascending'
+                                        : header.column.getIsSorted() === 'desc'
+                                          ? 'descending'
+                                          : undefined
+                                "
+                                :style="{ width: `${columnWidth(header.column)}px` }"
+                                @click="header.column.getToggleSortingHandler()?.($event)"
+                                @dragstart="dragStart(header.column, $event)"
+                                @dragover="dragOver(header.column, $event)"
+                                @drop.prevent="drop"
+                                @dragend="dragEnd"
+                            >
+                                <span class="ellipsis header-words"><FlexRender :header="header" /></span>
+                                <span class="sort">{{ sortIcon(header.column) }}</span>
+                                <span
+                                    class="resizer"
+                                    @mousedown.stop="resizeFrom(header.getResizeHandler(), $event)"
+                                    @touchstart.stop="resizeFrom(header.getResizeHandler(), $event)"
+                                    @click.stop
+                                    @dblclick.stop="fit(header.column)"
+                                />
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
-            <DropdownMenuRoot>
-                <DropdownMenuTrigger class="column-menu" :aria-label="columnsLabel">⋮</DropdownMenuTrigger>
-                <DropdownMenuPortal>
-                    <DropdownMenuContent class="menu" align="end">
-                        <DropdownMenuCheckboxItem
-                            v-for="column in (table as any).getAllLeafColumns()"
-                            :key="column.id"
-                            class="menu-item"
-                            :model-value="column.getIsVisible()"
-                            @update:model-value="column.toggleVisibility($event)"
+                    <DropdownMenuRoot>
+                        <DropdownMenuTrigger
+                            class="column-menu"
+                            :style="{ width: `${Math.max(gutter, MENU_ROOM)}px` }"
+                            :aria-label="columnsLabel"
+                            >⋮</DropdownMenuTrigger
                         >
-                            <span class="menu-check"
-                                ><DropdownMenuItemIndicator><Icon name="CHECK" /></DropdownMenuItemIndicator
-                            ></span>
-                            {{ column.columnDef.header }}
-                        </DropdownMenuCheckboxItem>
-                    </DropdownMenuContent>
-                </DropdownMenuPortal>
-            </DropdownMenuRoot>
-        </div>
-        <ContextMenuRoot>
-            <ContextMenuTrigger as-child>
-                <div ref="scroller" class="body-scroll focusable" tabindex="0" @keydown="key" @scroll="scrolled">
+                        <DropdownMenuPortal>
+                            <DropdownMenuContent class="menu" align="end">
+                                <DropdownMenuCheckboxItem
+                                    v-for="column in (table as any).getAllLeafColumns()"
+                                    :key="column.id"
+                                    class="menu-item"
+                                    :model-value="column.getIsVisible()"
+                                    @update:model-value="column.toggleVisibility($event)"
+                                >
+                                    <span class="menu-check"
+                                        ><DropdownMenuItemIndicator><Icon name="CHECK" /></DropdownMenuItemIndicator
+                                    ></span>
+                                    {{ column.columnDef.header }}
+                                </DropdownMenuCheckboxItem>
+                            </DropdownMenuContent>
+                        </DropdownMenuPortal>
+                    </DropdownMenuRoot>
+                </div>
+                <div :ref="holdScroller" class="body-scroll focusable" tabindex="0" @keydown="key" @scroll="scrolled">
                     <div v-if="tableRows.length === 0" class="placeholder"><slot name="empty" /></div>
                     <div class="sheet" :style="{ height: `${virtualizer.getTotalSize()}px`, width: `${width}px` }">
                         <div
@@ -315,6 +520,7 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
                                 rowClass?.(tableRows[item.index].original),
                                 {
                                     selected: selected.includes(tableRows[item.index].id),
+                                    lead: lead === tableRows[item.index].id,
                                     opened: below?.(tableRows[item.index].original),
                                 },
                             ]"
@@ -335,6 +541,7 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
                                     class="cell"
                                     :class="{ numeric: numeric(cell.column) }"
                                     role="gridcell"
+                                    :data-column="cell.column.id"
                                     :style="{ width: `${columnWidth(cell.column)}px` }"
                                 >
                                     <span class="cell-content"><FlexRender :cell="cell" /></span>
@@ -353,14 +560,14 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
                         </div>
                     </div>
                 </div>
-            </ContextMenuTrigger>
-            <ContextMenuPortal>
-                <ContextMenuContent class="menu">
-                    <slot name="menu" />
-                </ContextMenuContent>
-            </ContextMenuPortal>
-        </ContextMenuRoot>
-    </div>
+            </div>
+        </ContextMenuTrigger>
+        <ContextMenuPortal>
+            <ContextMenuContent class="menu">
+                <slot name="menu" />
+            </ContextMenuContent>
+        </ContextMenuPortal>
+    </ContextMenuRoot>
 </template>
 
 <style scoped>
@@ -413,6 +620,27 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
     color: var(--color-fg-muted);
 }
 
+/* A header being moved, and the edge of the one it would land beside. */
+.header-cell.moving {
+    opacity: 0.5;
+}
+
+.header-cell.drop-before {
+    box-shadow: inset 2px 0 0 var(--color-accent-emphasis);
+}
+
+.header-cell.drop-after {
+    box-shadow: inset -2px 0 0 var(--color-accent-emphasis);
+}
+
+.header-cell.drop-before:dir(rtl) {
+    box-shadow: inset -2px 0 0 var(--color-accent-emphasis);
+}
+
+.header-cell.drop-after:dir(rtl) {
+    box-shadow: inset 2px 0 0 var(--color-accent-emphasis);
+}
+
 .resizer {
     position: absolute;
     top: 0;
@@ -423,13 +651,13 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
     z-index: 1;
 }
 
+/* Above the vertical bar, clear of the last header and its edge. */
 .column-menu {
     position: absolute;
     inset-inline-end: 0;
     top: 0;
     height: 34px;
-    background: var(--color-bg-subtle);
-    width: 16px;
+    padding: 0;
     border: 0;
     background: transparent;
     cursor: pointer;
@@ -451,12 +679,19 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
     min-width: 100%;
 }
 
+/* Rows are chosen, not their words selected, also by Shift and double clicks. */
 .row {
     position: absolute;
     top: 0;
     left: 0;
     min-width: 100%;
     border-bottom: 1px solid var(--color-border-muted);
+    user-select: none;
+}
+
+/* The row the keys are on, while the list has the focus. */
+.body-scroll:focus .row.lead > .cells {
+    box-shadow: inset 0 0 0 1px var(--color-accent-emphasis);
 }
 
 /* A chosen row stands out also once its list has lost the focus. */
