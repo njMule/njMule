@@ -575,6 +575,17 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldAnswerATestOfThePortsWithoutWaitingForItsEnd() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineTestsThePortsForMinutes();
+
+        whenCalled("POST", "/api/v1/ports/test", "");
+
+        thenTheStatusIs(202);
+        thenTheBodyContains("\"tcp\":\"open\"", "\"udp\":\"testing\"", "\"done\":false");
+    }
+
+    @Test
     void shouldReplaceTheCategories() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsCategories();
@@ -1086,6 +1097,12 @@ class RemoteApiTest {
                         PortTest.Reach.TESTING,
                         PortTest.Reach.TESTING,
                         false)));
+    }
+
+    // Its future completes only at the end of the test, long after a call waits.
+    private void givenTheEngineTestsThePortsForMinutes() {
+        this.fake.answer("testPorts", args -> new CompletableFuture<PortTest>());
+        this.fake.answer("portTest", args -> CompletableFuture.completedFuture(Optional.of(ApiSamples.portTest())));
     }
 
     private void givenTheEngineKeepsCategories() {

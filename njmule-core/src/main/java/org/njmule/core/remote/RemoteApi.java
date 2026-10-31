@@ -356,9 +356,7 @@ public final class RemoteApi implements AutoCloseable {
                     }
                     known(c, this.engine.setStaticServer(address(text(c.parameters(), ADDRESS_KEY)), on.asBoolean()));
                 }),
-                entry(
-                        "testPorts",
-                        c -> reply(c.exchange(), 202, g -> ApiJson.portTest(g, await(this.engine.testPorts())))),
+                entry("testPorts", this::testPorts),
                 entry("getPortTest", c -> {
                     Optional<PortTest> test = await(this.engine.portTest());
                     reply(c.exchange(), 200, g -> {
@@ -941,6 +939,15 @@ public final class RemoteApi implements AutoCloseable {
         UpdateStatus answer = status;
         boolean goesOn = answer.download().isPresent() || answer.install() == UpdateStatus.Install.RESTART;
         reply(c.exchange(), goesOn ? 202 : 200, g -> ApiJson.update(g, answer));
+    }
+
+    // A test lasts minutes, longer than a call waits: the answer is the test as it starts, read again until done. The
+    // engine starts it before it reads it, so a test refused or over at once answers with its outcome.
+    private void testPorts(Call c) throws IOException {
+        CompletableFuture<PortTest> test = this.engine.testPorts();
+        Optional<PortTest> started = test.isDone() ? Optional.empty() : await(this.engine.portTest());
+        PortTest answer = test.isDone() || started.isEmpty() ? await(test) : started.get();
+        reply(c.exchange(), 202, g -> ApiJson.portTest(g, answer));
     }
 
     // A check that takes longer than a call waits for goes on: the caller reads its outcome later.

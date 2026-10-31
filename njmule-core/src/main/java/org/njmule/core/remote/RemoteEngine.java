@@ -39,8 +39,10 @@ import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
 import java.util.concurrent.SubmissionPublisher;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
@@ -103,6 +105,7 @@ public final class RemoteEngine implements NjMuleEngine {
     private static final Logger logger = LoggerFactory.getLogger(RemoteEngine.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
     private static final Duration RETRY = Duration.ofSeconds(5);
+    private static final Duration PORT_TEST_READ = Duration.ofSeconds(1);
     private static final JsonMapper MAPPER = JsonMapper.shared();
 
     private final String api;
@@ -591,7 +594,19 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<PortTest> testPorts() {
-        return json("POST", "ports/test", null).thenApply(ApiReader::portTest);
+        return json("POST", "ports/test", null).thenApply(ApiReader::portTest).thenCompose(this::untilOver);
+    }
+
+    // The other njMule answers as the test starts: it is read again until over, when this engine's future completes.
+    private CompletableFuture<PortTest> untilOver(PortTest test) {
+        if (test.done()) {
+            return CompletableFuture.completedFuture(test);
+        }
+        Executor later = CompletableFuture.delayedExecutor(PORT_TEST_READ.toMillis(), TimeUnit.MILLISECONDS);
+        return CompletableFuture.runAsync(() -> {}, later)
+                .thenCompose(nothing -> portTest())
+                .thenCompose(
+                        read -> read.map(this::untilOver).orElseGet(() -> CompletableFuture.completedFuture(test)));
     }
 
     @Override
