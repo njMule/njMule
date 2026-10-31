@@ -203,7 +203,13 @@ public final class WebUi implements AutoCloseable {
             public boolean handle(Request request, Response response, Callback callback) {
                 Exchange exchange = new Exchange(request, response, ui.proxies);
                 try {
-                    if (tokens && exchange.path().startsWith(API_PATH) && exchange.header("Authorization") != null) {
+                    boolean tokenPath = tokens && exchange.path().startsWith(API_PATH);
+                    // The desktop app's window on this njMule from another computer calls across origins with the
+                    // token, which no page sends by itself.
+                    boolean shell = tokenPath && ControlEndpoint.allowShell(exchange);
+                    if (shell && exchange.method().equals("OPTIONS")) {
+                        ControlEndpoint.preflight(exchange);
+                    } else if (tokenPath && exchange.header("Authorization") != null) {
                         api.handle(exchange);
                     } else {
                         ui.handle(exchange);

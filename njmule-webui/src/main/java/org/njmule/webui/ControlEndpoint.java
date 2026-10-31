@@ -128,20 +128,34 @@ public final class ControlEndpoint implements AutoCloseable {
         return this.token;
     }
 
-    private void handle(Exchange exchange) throws IOException {
+    /** Lets a page of the desktop shell read the answer: whether the request comes from one. */
+    static boolean allowShell(Exchange exchange) {
         String origin = exchange.header("Origin");
         boolean shell = origin != null && SHELL_ORIGINS.contains(origin);
         if (shell) {
             exchange.setHeader("Access-Control-Allow-Origin", origin);
             exchange.setHeader("Vary", "Origin");
         }
+        return shell;
+    }
+
+    /** Tells a browser what a page of the desktop shell may send across origins. */
+    static void preflight(Exchange exchange) throws IOException {
+        exchange.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE");
+        exchange.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept");
+        exchange.setHeader("Access-Control-Max-Age", "600");
+        exchange.sendHeaders(204, -1);
+    }
+
+    private void handle(Exchange exchange) throws IOException {
+        String origin = exchange.header("Origin");
+        boolean shell = allowShell(exchange);
         if (exchange.method().equals("OPTIONS")) {
             if (shell) {
-                exchange.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE");
-                exchange.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept");
-                exchange.setHeader("Access-Control-Max-Age", "600");
+                preflight(exchange);
+            } else {
+                exchange.sendHeaders(403, -1);
             }
-            exchange.sendHeaders(shell ? 204 : 403, -1);
             return;
         }
         // A page of any other origin is refused outright, whatever it sends.
