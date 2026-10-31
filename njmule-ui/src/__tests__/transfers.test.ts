@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { Download } from '../model/engine';
 import {
     actsFirst,
+    appliesTo,
     byName,
     countryName,
     keeps,
@@ -256,5 +257,34 @@ describe('the order of the buttons of a dialog', () => {
 
     function thenTheOneThatActsIsFirst(expected: boolean): void {
         expect(first).toBe(expected);
+    }
+});
+
+describe('the downloads a command applies to', () => {
+    let given: Download[] = [];
+    let changed: Download['status'][] = [];
+
+    it('should pause only the running ones, leaving a stopped one stopped', () => {
+        givenDownloads('downloading', 'stopped', 'complete');
+        whenTheCommandIsGiven('pause');
+        thenItChanges(['downloading']);
+    });
+
+    it('should stop all but the stopped and the complete ones', () => {
+        givenDownloads('downloading', 'paused', 'stopped', 'complete');
+        whenTheCommandIsGiven('stop');
+        thenItChanges(['downloading', 'paused']);
+    });
+
+    function givenDownloads(...statuses: Download['status'][]): void {
+        given = statuses.map((status) => download({ status }));
+    }
+
+    function whenTheCommandIsGiven(command: 'pause' | 'resume' | 'stop'): void {
+        changed = appliesTo(command, given).map((d) => d.status);
+    }
+
+    function thenItChanges(expected: Download['status'][]): void {
+        expect(changed).toEqual(expected);
     }
 });

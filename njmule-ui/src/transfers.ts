@@ -97,6 +97,20 @@ export function stoppable(d: Pick<Download, 'status'>): boolean {
     return d.status !== 'stopped' && d.status !== 'complete';
 }
 
+/** What can be done to a download's run. */
+export type Command = 'pause' | 'resume' | 'stop';
+
+const APPLIES: Record<Command, (d: Pick<Download, 'status'>) => boolean> = {
+    pause: pausable,
+    resume: resumable,
+    stop: stoppable,
+};
+
+/** The ones of {@code downloads} {@code command} changes: pausing a stopped download would make it paused. */
+export function appliesTo<T extends Pick<Download, 'status'>>(command: Command, downloads: T[]): T[] {
+    return downloads.filter(APPLIES[command]);
+}
+
 /** The priority a download acts with: an automatic one follows its rarity. */
 export function effectivePriority(d: Pick<Download, 'priority' | 'sources'>): 'low' | 'normal' | 'high' {
     if (d.priority !== 'auto') {

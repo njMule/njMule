@@ -13,7 +13,6 @@ import {
     ContextMenuPortal,
 } from 'reka-ui';
 import { computed, h, ref, watch } from 'vue';
-import { askRisky } from '../ask';
 import AddLinksDialog from '../dialogs/AddLinksDialog.vue';
 import { amount, duration, percent, rate, size } from '../format';
 import { t } from '../i18n';
@@ -38,7 +37,15 @@ import {
     stoppable,
     type StateFilter,
 } from '../transfers';
-import { cancel, categorize, clearCompleted, copyLinks, each, prioritize } from '../transfers-actions';
+import {
+    askCancel,
+    categorize,
+    clearCompleted,
+    clearCompletedOf,
+    copyLinks,
+    each,
+    prioritize,
+} from '../transfers-actions';
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
 import EmptyState from '../ui/EmptyState.vue';
 import FilterChips from '../ui/FilterChips.vue';
@@ -55,8 +62,6 @@ defineProps<{ platform: Platform }>();
 
 type Shelf = 'downloads' | 'uploads' | 'queue' | 'banned' | 'known';
 const SHOW_ALL = -1;
-// The names a cancel question lists at most.
-const CANCEL_NAMES_SHOWN = 5;
 const DETAILS_KEY = 'njmule.transfers.details';
 
 const shelf = ref<Shelf>('downloads');
@@ -169,7 +174,8 @@ function isOpened(d: Download): boolean {
 // their links; the arrows open and close their sources.
 function tableKey(e: KeyboardEvent): void {
     if (e.key === 'Delete') {
-        void askCancel();
+        void clearCompletedOf(chosen.value);
+        void askCancel(chosen.value);
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
         void copyLinks(chosen.value);
     } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
@@ -200,26 +206,8 @@ function screenKey(e: KeyboardEvent): void {
     }
 }
 
-// A cancel deletes what was downloaded: asked first. The completed ones leave the list with their files kept.
+// A cancel deletes what was downloaded: asked first. Delete also takes the completed ones off the list, files kept.
 const cancellable = computed(() => chosen.value.filter((d) => d.status !== 'complete'));
-
-async function askCancel(): Promise<void> {
-    const list = cancellable.value;
-    if (list.length === 0) {
-        return;
-    }
-    const names = list.slice(0, CANCEL_NAMES_SHOWN).map((d) => d.name);
-    const yes = await askRisky(
-        list.length === 1 ? t('nj.transfers.cancelTitleOne') : t('nj.transfers.cancelTitleMany', list.length),
-        t('nj.transfers.cancelText'),
-        list.length > CANCEL_NAMES_SHOWN ? [...names, '…'] : names,
-        t(list.length === 1 ? 'nj.transfers.cancelOne' : 'nj.transfers.cancelMany'),
-        t('nj.transfers.keepDownloading'),
-    );
-    if (yes) {
-        await cancel(list);
-    }
-}
 
 const anyComplete = computed(() => downloads.value.some((d) => d.status === 'complete'));
 
@@ -512,7 +500,11 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                         >
                             <Icon name="STOP" />{{ t('IDS_DL_STOP') }}
                         </ContextMenuItem>
-                        <ContextMenuItem class="menu-item" :disabled="cancellable.length === 0" @select="askCancel()">
+                        <ContextMenuItem
+                            class="menu-item"
+                            :disabled="cancellable.length === 0"
+                            @select="askCancel(chosen)"
+                        >
                             <Icon name="DELETE" />{{ t('nj.transfers.cancelOne') }}
                         </ContextMenuItem>
                         <ContextMenuSeparator class="menu-separator" />
