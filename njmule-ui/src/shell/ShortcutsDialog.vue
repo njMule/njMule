@@ -16,6 +16,7 @@ const rows = [
     ...PLACES.map((p, i) => [shortcut(i), t(p.title)]),
     [withShortcutKey('F'), transfers + t('nj.transfers.filter')],
     ['Alt+Enter', transfers + t('IDS_DETAILS')],
+    [withShortcutKey('V'), transfers + t('IDS_SW_DIRECTDOWNLOAD')],
     [withShortcutKey('K'), t('nj.palette.prompt')],
     [withShortcutKey('B'), `${t('nj.sidebar.collapse')} / ${t('nj.sidebar.expand')}`],
     ['F1', t('nj.shortcuts.title')],

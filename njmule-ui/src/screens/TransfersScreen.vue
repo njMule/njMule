@@ -14,13 +14,14 @@ import {
     ContextMenuSubTrigger,
     ContextMenuPortal,
 } from 'reka-ui';
-import { computed, h, nextTick, onUnmounted, ref, watch } from 'vue';
+import { computed, h, nextTick, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue';
 import AddLinksDialog from '../dialogs/AddLinksDialog.vue';
 import CategoriesDialog from '../dialogs/CategoriesDialog.vue';
 import CommentDialog from '../dialogs/CommentDialog.vue';
 import { completedFile, filesHere, openFile, preview, revealFile } from '../files';
 import { amount, duration, percent, rate, size } from '../format';
 import { t } from '../i18n';
+import { fileLinks } from '../links';
 import { bans, categories, downloads, known, sources, uploads, type Download, type Source } from '../model/engine';
 import { current, withShortcutKey } from '../places';
 import type { Platform } from '../platform';
@@ -49,6 +50,7 @@ import {
     type StateFilter,
 } from '../transfers';
 import {
+    addLinks,
     askCancel,
     askSource,
     categorize,
@@ -299,6 +301,23 @@ function tableKey(e: KeyboardEvent): void {
     }
     e.preventDefault();
 }
+
+// Ctrl+V adds the downloads of the eD2K file links on the clipboard, in the category shown, unless a field or a dialog
+// takes the text.
+function pasted(e: ClipboardEvent): void {
+    if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable], [role=dialog]')) {
+        return;
+    }
+    const text = e.clipboardData?.getData('text/plain') ?? '';
+    if (fileLinks(text).length > 0) {
+        e.preventDefault();
+        void addLinks(text, category.value === SHOW_ALL ? undefined : category.value);
+    }
+}
+
+// The window pastes into the document when nothing has the keys, as on an empty list.
+onActivated(() => document.addEventListener('paste', pasted));
+onDeactivated(() => document.removeEventListener('paste', pasted));
 
 // Ctrl+F narrows the downloads by name, from any list; Alt+Enter shows the details of the chosen one, before the list
 // takes Enter to open the download.
