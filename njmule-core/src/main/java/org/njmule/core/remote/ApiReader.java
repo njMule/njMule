@@ -383,7 +383,8 @@ final class ApiReader {
                 n.path("type").asInt(),
                 text(n, "distance"),
                 n.path("version").asInt(),
-                n.path("verified").asBoolean());
+                n.path("verified").asBoolean(),
+                optional(n, "country"));
     }
 
     static KadSearchInfo kadSearch(JsonNode n) {

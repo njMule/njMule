@@ -1491,7 +1491,14 @@ public final class Engine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<List<KadContactInfo>> kadContacts() {
-        return this.loop.submit(this.network::kadContacts);
+        return this.loop.submit(this.network::kadContacts).thenApply(list -> {
+            CountryTable table = this.countries;
+            return table.size() == 0
+                    ? list
+                    : list.stream()
+                            .map(c -> c.withCountry(table.countryOf(c.address())))
+                            .toList();
+        });
     }
 
     @Override

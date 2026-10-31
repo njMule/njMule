@@ -695,6 +695,7 @@ final class ApiJson {
         g.writeStringProperty("distance", c.distance());
         g.writeNumberProperty("version", c.version());
         g.writeBooleanProperty("verified", c.verified());
+        optional(g, "country", c.country());
         g.writeEndObject();
     }
 

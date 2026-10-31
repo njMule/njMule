@@ -3643,6 +3643,10 @@ components:
           type: integer
         verified:
           type: boolean
+        country:
+          type: [string, "null"]
+          pattern: "^[a-z]{2}$"
+          description: The contact's country (ISO 3166-1, lower case), when the countries are shown and it is known.
     KadSearch:
       type: object
       required: [target, kind, answers]

@@ -63,6 +63,7 @@ import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
+import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.PortTest;
@@ -195,6 +196,17 @@ class RemoteApiTest {
 
         thenTheStatusIs(200);
         thenTheBodyContains("\"name\":\"Lighthouse\"", "\"country\":\"nl\"");
+    }
+
+    @Test
+    void shouldGiveTheCountryOfAKadContactWhenItIsKnown() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKnowsTheKadContact(ApiSamples.kadContact().withCountry(Optional.of("nl")));
+
+        whenCalled("GET", "/api/v1/kad/contacts", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"address\":\"198.51.100.40:4672\"", "\"country\":\"nl\"");
     }
 
     @Test
@@ -1375,6 +1387,10 @@ class RemoteApiTest {
 
     private void givenTheEngineKnowsTheServer(ServerInfo server) {
         this.fake.answer("servers", args -> CompletableFuture.completedFuture(List.of(server)));
+    }
+
+    private void givenTheEngineKnowsTheKadContact(KadContactInfo contact) {
+        this.fake.answer("kadContacts", args -> CompletableFuture.completedFuture(List.of(contact)));
     }
 
     private void givenTheEngineDownloads(DownloadInfo download) {

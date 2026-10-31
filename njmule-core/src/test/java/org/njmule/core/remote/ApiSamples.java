@@ -289,7 +289,8 @@ final class ApiSamples {
     }
 
     static KadContactInfo kadContact() {
-        return new KadContactInfo("8F3C2A1D90B44E6E9A0C7E51D2B3F4A5", "198.51.100.40:4672", 2, "8F3C2A1D…", 9, true);
+        return new KadContactInfo(
+                "8F3C2A1D90B44E6E9A0C7E51D2B3F4A5", "198.51.100.40:4672", 2, "8F3C2A1D…", 9, true, Optional.of("jp"));
     }
 
     static KadSearchInfo kadSearch() {
