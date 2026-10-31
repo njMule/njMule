@@ -8,6 +8,8 @@
 param([Parameter(Mandatory = $true)] [string] $Folder)
 
 $ErrorActionPreference = "Stop"
+# Whole, as Windows names the running engine.
+$Folder = (Resolve-Path $Folder).Path
 $window = Join-Path $Folder "njmule-gui.exe"
 $engine = Join-Path $Folder "njmule.exe"
 
@@ -21,17 +23,19 @@ New-Item -ItemType Directory -Force (Join-Path $data "config") | Out-Null
 Set-Content -Encoding ascii (Join-Path $data "config\njmule.properties") `
     "net.ed2k.enabled=false`nnet.kad.enabled=false`nnet.upnp=false`nupdate.mode=OFF"
 
+# The engine makes its log folder as it starts.
+$logs = Join-Path $data "logs"
 $gui = Start-Process $window -ArgumentList @("--config-dir", "`"$data`"") -PassThru
 $started = $false
 foreach ($i in 1..120) {
-    if (Select-String -Quiet "Control endpoint for the desktop app" (Join-Path $data "logs\*.log") -ErrorAction SilentlyContinue) {
+    if ((Test-Path $logs) -and (Select-String -Quiet "Control endpoint for the desktop app" (Join-Path $logs "*.log"))) {
         $started = $true
         break
     }
     Start-Sleep 1
 }
 if (-not $started) {
-    Get-Content (Join-Path $data "logs\*.log") -ErrorAction SilentlyContinue | Select-Object -Last 40
+    if (Test-Path $logs) { Get-Content (Join-Path $logs "*.log") | Select-Object -Last 40 }
     Stop-Process -Id $gui.Id -Force -ErrorAction SilentlyContinue
     throw "the desktop window did not start the engine"
 }
