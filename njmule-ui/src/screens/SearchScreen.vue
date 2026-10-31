@@ -26,7 +26,7 @@ import { count, size } from '../format';
 import { language, t } from '../i18n';
 import { htmlLinks } from '../links';
 import type { IconName } from '../icons';
-import { downloads, preferences, readDownloads, shared as sharedFiles } from '../model/engine';
+import { downloads, preferences, readDownloads, shared as sharedFiles, status } from '../model/engine';
 import { searchRequest } from '../places';
 import {
     completePercent,
@@ -62,7 +62,7 @@ import {
     type Scope,
     type Search,
 } from '../search';
-import { message, problem } from '../toasts';
+import { problem } from '../toasts';
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
 import Icon from '../ui/Icon.vue';
 import Segments from '../ui/Segments.vue';
@@ -127,7 +127,13 @@ const TEXTS: Record<string, { key: string; text: (r: Result) => string }> = {
     album: { key: 'IDS_ALBUM', text: (r) => r.media?.album ?? '' },
     title: { key: 'IDS_TITLE', text: (r) => r.media?.title ?? '' },
     codec: { key: 'IDS_CODEC', text: (r) => r.media?.codec ?? '' },
+    complete: { key: 'IDS_COMPLETE', text: (r) => completeness(r, t('IDS_YES')) },
+    known: { key: 'nj.search.known', text: (r) => knownText(r) },
+    length: { key: 'IDS_LENGTH', text: (r) => lengthText(r.media?.length ?? 0) },
+    bitrate: { key: 'IDS_BITRATE', text: (r) => bitrateText(r.media?.bitrate ?? 0) },
 };
+// The columns the filter can look in: those the tab shown shows, in their order, when its menu opens.
+const filterColumns = ref<{ id: string; title: string }[]>([]);
 
 const rowsByTab = computed<Record<string, ResultRow[]>>(() =>
     Object.fromEntries(searches.value.map((s) => [s.key, resultRows(s.results, new Set(openByTab.value[s.key]))])),
@@ -164,6 +170,35 @@ const STATES: Record<Known, { key: string; icon: IconName; tone: string }> = {
 
 function known(r: Result): Known | undefined {
     return knownOf(r, ours.value);
+}
+
+function knownText(r: Result): string {
+    const k = known(r);
+    return k === undefined ? '' : t(STATES[k].key);
+}
+
+function lengthText(seconds: number): string {
+    return seconds === 0 ? '' : playingTime(seconds);
+}
+
+function bitrateText(kbits: number): string {
+    return kbits === 0 ? '' : `${count(kbits)} ${t('IDS_KBITSSEC')}`;
+}
+
+// The rules of the desktop app's menu: Download while a file chosen is not ours yet, Search Related Files where the
+// server finds them, and each spam mark where it changes something.
+const canDownload = computed(() => chosen.value.some((r) => known(r) !== 'downloading' && known(r) !== 'shared'));
+const canRelate = computed(() => chosen.value.length > 0 && (status.value?.relatedSearch ?? false));
+const canMarkSpam = computed(() => chosen.value.some((r) => !r.spam) && shown.value?.id !== null);
+const canMarkNotSpam = computed(() => chosen.value.some((r) => r.spam) && shown.value?.id !== null);
+
+function listFilterColumns(open: boolean): void {
+    if (open) {
+        filterColumns.value = (tables.get(shownKey.value)?.visibleColumns() ?? []).map((c) => ({
+            id: c.id as string,
+            title: String(c.columnDef.header),
+        }));
+    }
 }
 
 // Names and media texts may be in any language: each reads in the direction of its first letter. Figures, hashes and
@@ -312,7 +347,7 @@ function columns(s: Search): ColumnDef<any, ResultRow, any>[] {
             accessorFn: (r: ResultRow) => r.result.media?.length ?? 0,
             size: 60,
             meta: media,
-            cell: ({ getValue }: any) => leftToRight((getValue() as number) === 0 ? '' : playingTime(getValue())),
+            cell: ({ getValue }: any) => leftToRight(lengthText(getValue())),
         },
         {
             id: 'bitrate',
@@ -320,8 +355,7 @@ function columns(s: Search): ColumnDef<any, ResultRow, any>[] {
             accessorFn: (r: ResultRow) => r.result.media?.bitrate ?? 0,
             size: 80,
             meta: media,
-            cell: ({ getValue }: any) =>
-                leftToRight((getValue() as number) === 0 ? '' : `${count(getValue())} ${t('IDS_KBITSSEC')}`),
+            cell: ({ getValue }: any) => leftToRight(bitrateText(getValue())),
         },
         {
             id: 'codec',
@@ -605,18 +639,41 @@ async function stop(): Promise<void> {
     }
 }
 
+// A file chosen with its names downloads once, under the first name chosen, without a word as in the desktop app.
 async function download(results: Result[]): Promise<void> {
+    const files = new Map<string, Result>();
     for (const r of results) {
+        if (!files.has(r.hash)) {
+            files.set(r.hash, r);
+        }
+    }
+    for (const r of files.values()) {
         try {
-            const d = await answer(api().POST('/downloads', { body: { links: [link(r)] } }));
-            for (const added of d) {
-                message(t('nj.transfers.added', added.name));
-            }
+            await addDownload(shown.value, r);
         } catch (err) {
             problem((err as Error).message);
         }
     }
     await readDownloads();
+}
+
+// Through the search while the engine still has it, which adds the file's AICH hash; under another name, or once the
+// engine forgot the search, from the file's link.
+async function addDownload(s: Search | undefined, r: Result): Promise<void> {
+    const file = s?.results.find((f) => f.hash === r.hash);
+    if (s !== undefined && s.id !== null && file?.name === r.name) {
+        try {
+            await answer(
+                api().POST('/searches/{id}/download', { params: { path: { id: s.id } }, body: { hash: r.hash } }),
+            );
+            return;
+        } catch (err) {
+            if (!(err instanceof ApiError && err.status === 404)) {
+                throw err;
+            }
+        }
+    }
+    await answer(api().POST('/downloads', { body: { links: [link(r)] } }));
 }
 
 // The files related to those chosen, which only some servers find.
@@ -663,9 +720,12 @@ async function refresh(s: Search): Promise<void> {
         // The engine lists them by sources; the desktop app keeps the order they came in until a column sorts them.
         s.results = merged(s.results, got.results);
         s.running = got.running;
-    } catch {
-        // A search the engine forgot keeps the results it showed.
+    } catch (err) {
+        // A search the engine forgot keeps the results it showed, as one brought back from the last exit.
         s.running = false;
+        if (err instanceof ApiError && err.status === 404) {
+            s.id = null;
+        }
     }
 }
 
@@ -890,7 +950,7 @@ onUnmounted(() => {
                     <Icon name="STOP" />{{ t('IDS_DL_STOP') }}
                 </button>
                 <div class="field results-filter">
-                    <DropdownMenuRoot>
+                    <DropdownMenuRoot @update:open="listFilterColumns">
                         <Tip :text="t('nj.search.filterColumn')">
                             <DropdownMenuTrigger
                                 ref="columnTrigger"
@@ -904,13 +964,15 @@ onUnmounted(() => {
                             <DropdownMenuContent class="menu" align="start" :reference="columnTrigger?.$el">
                                 <DropdownMenuRadioGroup v-model="filterColumn">
                                     <DropdownMenuRadioItem
-                                        v-for="(c, id) in TEXTS"
-                                        :key="id"
+                                        v-for="c in filterColumns"
+                                        :key="c.id"
                                         class="menu-item"
-                                        :value="id"
+                                        :value="c.id"
                                     >
-                                        <span class="menu-check"><Icon v-if="filterColumn === id" name="CHECK" /></span
-                                        >{{ t(c.key) }}
+                                        <span class="menu-check"
+                                            ><Icon v-if="filterColumn === c.id" name="CHECK"
+                                        /></span>
+                                        {{ c.title }}
                                     </DropdownMenuRadioItem>
                                 </DropdownMenuRadioGroup>
                             </DropdownMenuContent>
@@ -923,6 +985,15 @@ onUnmounted(() => {
                             @keydown.esc="filter = ''"
                         />
                     </Tip>
+                    <button
+                        v-if="filter !== ''"
+                        type="button"
+                        class="filter-clear"
+                        :aria-label="t('IDS_PW_RESET')"
+                        @click="filter = ''"
+                    >
+                        <Icon name="CLOSE" />
+                    </button>
                 </div>
             </div>
             <strong class="results-count">{{ t('nj.search.count', counted) }}</strong>
@@ -954,14 +1025,9 @@ onUnmounted(() => {
                             <span class="muted">{{ t('nj.search.waiting') }}</span>
                         </template>
                         <template #menu>
-                            <ContextMenuItem
-                                class="menu-item default-item"
-                                :disabled="chosen.length === 0"
-                                @select="download(chosen)"
-                            >
+                            <ContextMenuItem class="menu-item" :disabled="!canDownload" @select="download(chosen)">
                                 <Icon name="DOWNLOAD" />{{ t('IDS_DOWNLOAD') }}
                             </ContextMenuItem>
-                            <ContextMenuSeparator class="menu-separator" />
                             <ContextMenuItem
                                 class="menu-item"
                                 :disabled="chosen.length === 0"
@@ -976,22 +1042,14 @@ onUnmounted(() => {
                             >
                                 <Icon name="CODE" />{{ t('IDS_DL_LINK2') }}
                             </ContextMenuItem>
-                            <ContextMenuItem class="menu-item" :disabled="chosen.length === 0" @select="searchRelated">
+                            <ContextMenuItem class="menu-item" :disabled="!canRelate" @select="searchRelated">
                                 <Icon name="SEARCH" />{{ t('IDS_SEARCHRELATED') }}
                             </ContextMenuItem>
                             <ContextMenuSeparator class="menu-separator" />
-                            <ContextMenuItem
-                                class="menu-item"
-                                :disabled="chosen.length === 0 || s.id === null"
-                                @select="markSpam(true)"
-                            >
+                            <ContextMenuItem class="menu-item" :disabled="!canMarkSpam" @select="markSpam(true)">
                                 <Icon name="BLOCK" />{{ t('IDS_MARKSPAM') }}
                             </ContextMenuItem>
-                            <ContextMenuItem
-                                class="menu-item"
-                                :disabled="chosen.length === 0 || s.id === null"
-                                @select="markSpam(false)"
-                            >
+                            <ContextMenuItem class="menu-item" :disabled="!canMarkNotSpam" @select="markSpam(false)">
                                 <Icon name="CHECK" />{{ t('IDS_MARKNOTSPAM') }}
                             </ContextMenuItem>
                         </template>
@@ -1006,7 +1064,7 @@ onUnmounted(() => {
                     >· {{ size(chosen[0]!.size) }} · {{ t('IDS_DL_SOURCES') }}: {{ chosen[0]!.sources }}</span
                 >
                 <span class="spacer" />
-                <button class="button accent" @click="download(chosen)">
+                <button class="button" @click="download(chosen)">
                     <Icon name="DOWNLOAD" />{{ t('IDS_DOWNLOAD') }}
                 </button>
                 <Tip :text="t('nj.copyLink')">
@@ -1232,6 +1290,20 @@ onUnmounted(() => {
     width: 260px;
     flex: none;
     margin-bottom: 4px;
+}
+
+.filter-clear {
+    display: inline-flex;
+    padding: 2px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    --nj-icon-size: 14px;
+}
+
+.filter-clear:hover {
+    background: var(--color-bg-inset);
 }
 
 .results-filter input {
