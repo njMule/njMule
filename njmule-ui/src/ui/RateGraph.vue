@@ -4,7 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { clock, rate } from '../format';
+import { rate, shortTime } from '../format';
 import type { RateSample } from '../model/engine';
 import { scaleTop } from '../stats';
 
@@ -87,7 +87,7 @@ const up = computed(() => paths((s) => s.up));
 const times = computed(() =>
     Array.from({ length: TICKS }, (_, i) => {
         const back = (props.span * (TICKS - 1 - i)) / (TICKS - 1);
-        return clock(new Date(props.newest - back * 1000));
+        return shortTime(new Date(props.newest - back * 1000));
     }),
 );
 
@@ -104,7 +104,7 @@ const pointed = computed(() => {
     const sample = all[index]!;
     const x = Math.round(width.value - (all.length - 1 - index) * stepWidth.value) + 0.5;
     const when = new Date(props.newest - (all.length - 1 - index) * props.step * 1000);
-    return { x, text: `${clock(when)}  ↓ ${rate(sample.down)}  ↑ ${rate(sample.up)}`, before: x > width.value / 2 };
+    return { x, text: `${shortTime(when)}  ↓ ${rate(sample.down)}  ↑ ${rate(sample.up)}`, before: x > width.value / 2 };
 });
 
 function moved(e: MouseEvent): void {

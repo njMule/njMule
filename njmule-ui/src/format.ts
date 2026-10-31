@@ -99,6 +99,11 @@ export function clock(time: Date): string {
     return time.toLocaleTimeString(language.value, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 
+/** The time of the day of {@code time} without seconds, as the language writes it: 22:09, or 10:09 PM in English. */
+export function shortTime(time: Date): string {
+    return time.toLocaleTimeString(language.value, { timeStyle: 'short' });
+}
+
 // The thousands are grouped from four digits on, as the desktop app's figures: languages such as Italian group only
 // from five by default. The value 'always' is newer than the TypeScript library in use.
 const GROUPED = { useGrouping: 'always' } as unknown as Intl.NumberFormatOptions;

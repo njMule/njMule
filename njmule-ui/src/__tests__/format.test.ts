@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { count, duration, rate, size } from '../format';
+import { count, duration, rate, shortTime, size } from '../format';
 import { language } from '../i18n';
 
 describe('format', () => {
@@ -70,5 +70,38 @@ describe('format', () => {
 
     function thenItReads(text: string): void {
         expect(shown).toBe(text);
+    }
+});
+
+describe('the time of the day', () => {
+    let shown = '';
+
+    afterEach(() => {
+        language.value = 'en';
+    });
+
+    it('should write the time on a 12-hour clock in English', () => {
+        givenTheLanguage('en');
+        whenTheTimeIsWritten(new Date(2026, 9, 31, 22, 9, 41));
+        thenItReads('10:09 PM');
+    });
+
+    it('should write the time on a 24-hour clock in Italian', () => {
+        givenTheLanguage('it');
+        whenTheTimeIsWritten(new Date(2026, 9, 31, 22, 9, 41));
+        thenItReads('22:09');
+    });
+
+    function givenTheLanguage(tag: string): void {
+        language.value = tag;
+    }
+
+    function whenTheTimeIsWritten(time: Date): void {
+        shown = shortTime(time);
+    }
+
+    // The language may put a narrow space before AM and PM.
+    function thenItReads(text: string): void {
+        expect(shown.replace(/\s/g, ' ')).toBe(text);
     }
 });
