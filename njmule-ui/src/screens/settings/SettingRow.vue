@@ -61,9 +61,11 @@ const emit = defineEmits<{ reset: [] }>();
     gap: 8px;
 }
 
+/* The words fill the row's height from its top, beside a control centred in it. */
 .words {
     display: flex;
     flex-direction: column;
+    align-self: stretch;
     gap: 2px;
     flex: 1;
     min-width: 0;
