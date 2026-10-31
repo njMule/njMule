@@ -105,6 +105,10 @@ More in [Import an eMule profile](getting-started/import-emule.mdx).
 
 ## Desktop app
 
+The desktop app starts the engine and shows njMule's interface in a window of its own, through the
+system's web view (WebView2 on Windows, WebKit on macOS, WebKitGTK on Linux). The interface is the
+same one the web interface shows:
+
 - A **sidebar** of places, a **top bar** with the rates and the state of both networks, a **command
   palette** (<kbd>Ctrl</kbd>+<kbd>K</kbd>) that finds a place or a command, searches the network or
   takes eD2K links, and a status strip. The window works down to 900 × 600.
@@ -113,12 +117,18 @@ More in [Import an eMule profile](getting-started/import-emule.mdx).
 - **36 languages**, right-to-left ones with a mirrored layout, following the system's language.
 - **Accessible**: text contrast measured in every theme, and screen readers hear the progress bars,
   states and graphs.
+- **eD2K links** pasted, dropped on the window or typed in the palette.
+- **Keep the computer awake** while files are transferred, off by default.
+
+What only the desktop app does, on the computer that runs njMule:
+
 - **Notification area** on Windows, with MiniMule, a small status window, and the speed limits in
   its menu; minimising hides the window there.
-- **Start at login** and **keep the computer awake** while files are transferred, both off by
-  default.
+- **Start at login**, off by default.
 - **eD2K links** from the browser (an option on Windows and Linux; on macOS the app is registered
-  for them), dropped on the window, or watched on the clipboard if you want.
+  for them), or watched on the clipboard if you want.
+- **The system's dialogs** to choose folders and files, files and folders opened in their programs,
+  and on Windows the icon of the program of each kind of file beside its name.
 - **A remote njMule**, such as one on a NAS or a Windows service, shown and driven in a window of its
   own.
 
@@ -129,19 +139,20 @@ More in [The interface](desktop/interface.mdx), [Appearance](desktop/appearance.
 
 ## Web interface
 
-The desktop app in a browser, laid out the same way: transfers, searches with filters, shared
-folders, messages and friends, the network with its servers, Kad and log, statistics and the
-options, in the same 36 languages, light or dark.
+The desktop app's interface in a browser: the same places, menus and dialogs, from the transfers to
+the options, the set-up wizard and the eMule import, in the same 36 languages, light or dark. What
+needs njMule's computer (choosing and opening its files, the notification area, the web
+interface's own settings) stays with the desktop app.
 
 - Behind a password, on this computer only unless you allow other computers; host names for a LAN
   name or a reverse proxy.
 - A **guest** password of its own lets someone look without changing anything.
-- A layout for phones, notices of finished downloads and new messages, and its own set-up wizard
-  and eMule import.
+- Each browser keeps its own theme and language; on a narrow screen, as a phone's, the sidebar folds
+  to its icons.
 
 <Screenshot
     id="web-transfers"
-    alt="The transfers in the web interface: the sidebar of places, the downloads with their progress, speed, sources and status, filters by state, and the buttons Resume, Pause, Stop, Priority, Category and Copy eD2K link"
+    alt="The transfers in the web interface: the sidebar of places, the segments of the lists, the chips by state, the category list and the filter, and the downloads with their progress, speed, sources and status"
     caption="The transfers in the web interface"
 />
 

@@ -24,7 +24,8 @@ open it: to this computer only (the default), to your home network, or to the in
 - The [guest password](./guest.mdx), if you set one, must differ from yours.
 
 To change the password, set a new one as you set the first
-([Turn it on](./overview.mdx#turn-it-on)); it applies from the next start of njMule.
+([Turn it on](./overview.mdx#turn-it-on)): in the desktop app it applies at once, on the command
+line from the next start of njMule.
 
 ## Failed logins
 
@@ -46,8 +47,8 @@ limit.
 
 Logging in opens a session, kept in memory by njMule; restarting njMule ends every session.
 
-- A session ends after **30 minutes without a request**, or at once with **Logout**. An open page
-  keeps asking for news, so it stays signed in while it is open.
+- A session ends after **30 minutes without a request**. An open page keeps asking for news, so it
+  stays signed in while it is open.
 - The session cookie is named `njmule-session-<port>`, so that two njMule on one computer keep
   their own sessions. It is **HttpOnly** (no script can read it), **SameSite=Strict** (no other
   site's page can send it) and **Secure** when you logged in over HTTPS, as through a reverse
@@ -60,7 +61,7 @@ Logging in opens a session, kept in memory by njMule; restarting njMule ends eve
 Another site's page open in your browser must not be able to act on your njMule:
 
 - Every change the interface makes carries the session's own token in a header, which no page of
-  another site can send; the logout form carries it as a field.
+  another site can send.
 - A request that changes anything and comes with the `Origin` of another site is refused with
   *Cross-site request refused.* Browsers always send it with such requests; the interface accepts
   its own origin and those of its [host names](#host-names), on any port, over HTTP or HTTPS.
@@ -83,9 +84,9 @@ answers only requests whose `Host` is:
   name under which DSM opens the interface;
 - a name you listed.
 
-Any other name gets *Unknown host name: open the interface by this computer's address and add the
-name under Settings.* To open the interface by a LAN name such as `nas.local`, or by the public
-name of a reverse proxy, list it:
+Any other name gets *Unknown host name: open the interface by this computer's address, and add the
+name to the web interface's host names.* To open the interface by a LAN name such as `nas.local`,
+or by the public name of a reverse proxy, list it:
 
 - on the command line, with `--webui-host` beside `--webui-password` or `--webui-password-file`
   (repeat it, or separate the names with commas):
@@ -94,10 +95,12 @@ name of a reverse proxy, list it:
   njmule --webui-password --webui-lan --webui-host nas.local,nas
   ```
 
-- in the desktop app, in **Options → Web Interface → Host names**;
-- in the browser, in **Options → Web Interface → Host names**, opened by an address that already
-  works. It applies at once, and keeps the name the page is open under, so that you cannot lock
-  yourself out.
+- in the desktop app on the computer that runs njMule, in **Options → Web Interface → Host
+  names**, which applies at once.
+
+A browser shows that page greyed out: only the desktop app on njMule's computer changes the web
+interface's settings, so a headless njMule, Docker or Synology takes its names from the command
+line.
 
 Give names without a port or a scheme; an international name goes in its ASCII form (`xn--…`).
 

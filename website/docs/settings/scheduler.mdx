@@ -6,8 +6,7 @@ description: Rules that change the speed limits and connection limits at the tim
 The **Scheduler** changes njMule's limits at the times you choose: slower uploads during office
 hours, no download limit at night, fewer connections at the weekend. Each rule has days of the
 week, a window of time and the limits it sets; when it begins, it can also stop the downloads of
-one category and resume those of another. The web interface has the same scheduler, under
-**Options → Scheduler**.
+one category and resume those of another. The web interface has the same page.
 
 <Screenshot
   id="settings-page-09"
@@ -60,7 +59,7 @@ A rule applies as soon as you add, replace or remove it; there is nothing else t
   empty keeps the option's value. The options stay as you set them and apply again as soon as no
   rule holds. A limit you set meanwhile from the top bar changes the options, which the rule still
   overrides until it ends.
-- **The times are your computer's local time.**
+- **The times are the local time of the computer njMule runs on.**
 - **A window past midnight belongs to the day it starts on.** A rule from `22:00` to `06:00` with
   only Friday ticked holds from Friday 22:00 to Saturday 06:00.
 - **Categories are acted on once, when the rule begins.** Nothing is stopped or resumed again while
@@ -95,9 +94,3 @@ rule.2.stopCategory=2
 
 The limits are in KiB/s, `0` for no limit. The categories are their numbers, `0` for the downloads
 in none (see [Categories](../desktop/categories.mdx)).
-
-## In the web interface
-
-**Options → Scheduler** in the web interface shows the rule that applies now, the same list and the
-same form. There a new rule starts with every day ticked, the times are chosen in steps of 15
-minutes, and the limits are typed in KB/s, `0` for no limit.

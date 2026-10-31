@@ -8,9 +8,9 @@ your own mail server, a message to a web hook such as an [ntfy](https://ntfy.sh)
 [Gotify](https://gotify.net) server, or both. You choose which events are told: a completed or failed
 download, a chat message, or a temporary disk short of space. Both ways are off by default. The
 engine sends them, so they work with the headless njMule too, and the web interface has the same
-page, with its **Test** button. They take the route of njMule's other connections: through the
-[proxy](../network/proxy.mdx) and from the [network interface](../network/bind-interface.mdx) of the
-options, and none is sent while that interface is gone.
+page. They take the route of njMule's other connections: through the [proxy](../network/proxy.mdx)
+and from the [network interface](../network/bind-interface.mdx) of the options, and none is sent
+while that interface is gone.
 
 <Screenshot
   id="settings-page-11"
@@ -32,7 +32,7 @@ page; programs of your own are on [Programs run on events](events.mdx).
 | **Enable email notifications** | Off | Sends an e-mail for each event chosen under **Tell of**. Key `notify.email`. Also in the web interface. |
 | **SMTP server** | empty, `587` | The host name or IP address of your outgoing mail server, required while e-mails are on, and its port, a whole number from 1 to 65535. Keys `notify.smtpHost` and `notify.smtpPort`. Also in the web interface. |
 | **Encryption** | **STARTTLS (usually port 587)** | How the connection to the server is encrypted: **STARTTLS (usually port 587)**, or **TLS from the start (usually port 465)**. Choosing one does not change the port: set the one your provider gives. Key `notify.smtpSecurity`: `STARTTLS` or `TLS`. Also in the web interface. |
-| **User name and password** | empty | The login of your mail account; with no user name njMule sends without logging in. Up to 255 characters each. Keys `notify.smtpUser` and `notify.smtpPassword`. Also in the web interface, which never shows the stored password. |
+| **User name and password** | empty | The login of your mail account; with no user name njMule sends without logging in. Up to 255 characters each. Keys `notify.smtpUser` and `notify.smtpPassword`. Also in the web interface. The stored password is never shown: its field shows dots while one is set, and what you type over them replaces it. |
 | **Sender address (empty: the first recipient)** | empty | The address the e-mails come from. Key `notify.mailFrom`. Also in the web interface. |
 | **Recipient addresses, apart by commas** | empty | Where the e-mails go: one address, or several apart by commas. Up to 255 characters. Key `notify.mailTo`. Also in the web interface. |
 

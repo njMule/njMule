@@ -1,12 +1,17 @@
 ---
 title: The main window
-description: A tour of the njMule desktop window - the sidebar, the top bar, the command palette, the status strip, banners and messages.
+description: A tour of the njMule window, in the desktop app and in the web interface - the sidebar, the top bar, the command palette, the status strip, banners and messages.
 ---
 
 The njMule window has the same frame on every screen: a **sidebar** of places on the left, a **top
 bar** with the screen's title, a field to type into, the rates and the state of the networks, the
 **screen** itself in the middle, and a **status strip** at the bottom. This page explains each part,
 so that you know where to look and what every element does.
+
+The desktop app and the [web interface](../web/overview.mdx) show the same window, with the same
+places, menus and dialogs. What needs the computer njMule runs on (opening its files and folders,
+choosing them with the system's dialogs, the notification area) works only in the desktop app on
+that computer; elsewhere those commands are greyed out or say so.
 
 <Screenshot
     id="transfers"
@@ -157,11 +162,11 @@ states mean, see [Servers and Kad](../network/servers-and-kad.mdx) and [Ports](.
 
 | Item | What it does |
 |---|---|
-| **Open Incoming Folder** | Opens the folder of finished downloads in your file manager. |
+| **Open Incoming Folder** | Opens the folder of finished downloads in your file manager (in the desktop app on njMule's computer; greyed out elsewhere). |
 | **Options** | Opens the options (as <kbd>Ctrl</kbd>+<kbd>7</kbd>). |
 | **Set up njMule** | Opens the first-start wizard again, filled in with your current settings: see [First run](../getting-started/first-run.mdx). |
 | **Import from eMule...** | Opens the import of an eMule profile: see [Import from eMule](../getting-started/import-emule.mdx). |
-| **Connect to a remote njMule** | Shows and drives the njMule of another computer: see [Remote njMule](./remote.mdx). |
+| **Connect to a remote njMule** | Shows and drives the njMule of another computer: see [Remote njMule](./remote.mdx). Only in the desktop app. |
 | **Light or dark** | Switches between the light and the dark version of the theme: see [Appearance](./appearance.mdx). |
 | **Keyboard shortcuts** | Lists the shortcuts in a small window (<kbd>F1</kbd>): see [Keyboard shortcuts](./keyboard-shortcuts.mdx). |
 | **Check for new version** | Looks for a new version now: see [Updates](../updates.mdx). |
@@ -195,8 +200,8 @@ button and stay ten seconds, so that you have time to press it: **Undo** after c
 downloads, **Details** when a new version is out, **Restart now** when it is ready to install.
 
 When the window is hidden in the notification area of Windows, the messages also show there: see
-[Notification area](./tray.mdx). A finished download and a new chat message can also play a sound:
-see [General options](../settings/general.mdx).
+[Notification area](./tray.mdx). In the desktop app on njMule's computer, a finished download and a
+new chat message can also play a sound: see [General options](../settings/general.mdx).
 
 <Screenshot
     id="toasts"
@@ -237,20 +242,21 @@ The strip at the bottom of the window shows, from left to right:
 
 ## Adding downloads by dragging
 
-Drag eD2K file links from a web page or a text onto any part of the window: when the text starts
-with an `ed2k://|file|` link, every file link in it becomes a download, and a message names each one
-added. The other ways to add links are on [eD2K links](./ed2k-links.mdx).
+Drag eD2K file links from a web page or a text onto any part of the window outside its fields: every
+`ed2k://|file|` link in the text becomes a download, and a message names each one added. The other
+ways to add links are on [eD2K links](./ed2k-links.mdx).
 
 ## Closing the window
 
-Closing the window ends njMule, and with it the downloads and uploads. By default njMule asks
-first: **Quit njMule?** with **Quit njMule** and **Keep running**. Tick **Do not ask me again** to
-stop the question, or turn **Prompt on exit** on or off in [General options](../settings/general.mdx).
-On Windows you can instead minimise njMule into the [notification area](./tray.mdx), where it keeps
-running.
+Closing the desktop app's window ends njMule, and with it the downloads and uploads. By default
+njMule asks first: **Quit njMule?** with **Quit njMule** and **Keep running**. Tick **Do not ask me
+again** to stop the question, or turn **Prompt on exit** on or off in
+[General options](../settings/general.mdx). On Windows you can instead minimise njMule into the
+[notification area](./tray.mdx), where it keeps running. Closing a browser's tab of the web
+interface only closes the page: njMule goes on.
 
-njMule remembers the size and place of the window, and whether it was maximised. It keeps the window
-large enough for every button to show; a window of 900×600 still shows them all.
+The desktop app remembers the size and place of the window, and whether it was maximised. It keeps
+the window large enough for every button to show; a window of 900×600 still shows them all.
 
 ## Related pages
 

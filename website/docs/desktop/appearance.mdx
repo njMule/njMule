@@ -1,11 +1,15 @@
 ---
 title: Appearance and language
-description: Choose the theme of the njMule desktop app, light, dark or as the system, use Windows high contrast, and pick one of its 36 languages, right-to-left ones included.
+description: Choose the theme of njMule's window, light, dark or as the system, use Windows high contrast, and pick one of its 36 languages, right-to-left ones included.
 ---
 
-The look and the language of the desktop app are set in **Options** → **General** → **Display**.
+The look and the language of njMule's window are set in **Options** → **General** → **Display**.
 Both start as your system is: njMule follows its light or dark scheme and speaks its language when it
 is one of the 36 it has.
+
+The window keeps both itself, not the engine: the desktop app keeps its own, and each browser that
+opens the [web interface](../web/overview.mdx) keeps its own, which follow the browser's scheme and
+languages until you choose others there.
 
 <Screenshot
     id="settings-page-01"
@@ -22,7 +26,8 @@ is one of the 36 it has.
 2. **The mode**: **Light**, **Dark**, or **As the system** (the default), which follows the light or
    dark scheme of your system as it changes.
 
-A change applies at once, to every window of njMule. **⋯** → **Light or dark** (also in the command
+A change applies at once, to the window and to the small windows of the notification area; other
+windows take it when they open next. **⋯** → **Light or dark** (also in the command
 palette) switches straight between the light and the dark version of your theme; it sets **Light**
 or **Dark**, so choose **As the system** in the options to follow the system again. The link **Reset
 to Nord, As the system** beside a changed theme brings the default back.
@@ -62,15 +67,17 @@ Ukrainian, Arabic, Persian, Hebrew, Simplified Chinese, Traditional Chinese, Jap
 
 </details>
 
-With **As the system**, njMule speaks your system's language when it has it, and English otherwise:
+With **As the system**, njMule speaks the first of your system's languages (a browser's own list
+in the web interface) that it has, and English when it has none of them:
 
-- Chinese written in the traditional script (as set for Taiwan, Hong Kong or Macao) gets Traditional
-  Chinese, any other Chinese Simplified Chinese.
-- Portuguese gets Brazilian Portuguese in Brazil and European Portuguese elsewhere.
-- Norwegian and Nynorsk get Norwegian Bokmål.
+- Chinese for Taiwan (`zh-TW`) gets Traditional Chinese, any other Chinese Simplified Chinese.
+- Portuguese for Portugal (`pt-PT`) gets European Portuguese, any other Portuguese Brazilian
+  Portuguese.
+- Norwegian Bokmål (`nb`) gets Norwegian Bokmål; Norwegian set as `no` or Nynorsk (`nn`) is not one
+  of the 36, so the next language of the list decides.
 
-Sizes, rates and durations use the units of the language, as `Ko/s` in French; numbers always use
-Latin digits, Persian included. Dates and times follow the format of your system.
+Sizes, rates and durations use the units of the language, as `Ko/s` in French. Numbers, dates and
+times are written as the language writes them, Persian with its own digits.
 
 ### Right-to-left languages
 

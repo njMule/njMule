@@ -28,7 +28,11 @@ const sidebars: SidebarsConfig = {
         {
             type: 'category',
             label: 'Desktop app',
-            link: { type: 'generated-index', slug: '/desktop', description: 'Every part of the desktop app.' },
+            link: {
+                type: 'generated-index',
+                slug: '/desktop',
+                description: 'Every part of the interface, in the desktop app and in the web interface.',
+            },
             items: [
                 'desktop/interface',
                 'desktop/transfers',

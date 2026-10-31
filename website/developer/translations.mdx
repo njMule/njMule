@@ -116,9 +116,10 @@ Then:
    in the same order: English first, then the languages by their own names, as the lists are.
 4. **Right to left?** Add its code to the list in `loadLanguage()` of `i18n.ts`, which sets the
    page's direction.
-5. **Update the documents**: the count of languages in the `README.md`, the list of languages on
-   this page and in the user guide's [Appearance and language](/docs/desktop/appearance) page, and a
-   line in `CHANGELOG.md`.
+5. **Update the documents**: the count of languages in the `README.md`, on the home page
+   (`website/src/pages/index.tsx`) and in the user guide (search its pages for it), the list of
+   languages on this page and in the user guide's [Appearance and language](/docs/desktop/appearance)
+   page, and a line in `CHANGELOG.md`.
 
 The rest follows by itself: the build makes a JSON file for every `nj_<lang>.properties`, with that
 language's `emule_<lang>.properties` beneath it.

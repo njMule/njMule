@@ -41,8 +41,9 @@ opens: see [First start](first-run.mdx).
 
 The interface answers to the addresses of the NAS, to its name (`<name>` and `<name>.local`, set at
 installation) and to the QuickConnect name of the address under which DSM opens it. Against DNS
-rebinding it refuses other names: add them, such as the public name of a reverse proxy, on the
-**Settings** page of the web interface. See [Web interface security](../web/security.mdx).
+rebinding it refuses other names. Its own settings, the host names among them, change here only
+with the command line over SSH (`--webui-host`), never from a browser: see
+[Web interface security](../web/security.mdx).
 
 ## Firewall and router
 
@@ -75,8 +76,9 @@ before it exits (it is given up to a minute).
 ## Upgrade
 
 Install a newer `.spk` the same way, from **Manual Install**: the package is upgraded and keeps its
-settings and downloads. njMule tells you when a new version is out, in a banner of its web
-interface, and its **Options → General** tell how to install it; it never replaces itself on DSM. See [Updates](../updates.mdx).
+settings and downloads. njMule tells you when a new version is out, in a notice of its web
+interface whose **Details** tell how to install it; it never replaces itself on DSM. See
+[Updates](../updates.mdx).
 
 DSM versions are numbers only: Package Center shows njMule's version without its pre-release label
 (alpha, beta, release candidate), followed by a build number that grows with each package.

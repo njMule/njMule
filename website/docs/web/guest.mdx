@@ -12,21 +12,15 @@ most one guest password, shared by everyone you give it to.
 
 The guest password needs at least 8 characters and must differ from yours.
 
-### In the desktop app
+Only the desktop app on the computer that runs njMule sets it:
 
 1. Open **Options → Web Interface**.
 2. Type the password twice in **Guest password, twice (a guest may only look)**.
 3. The web interface takes the guest password at once.
 
-**No guest** takes the guest away, again at once.
-
-### In the browser
-
-1. Sign in with your own password and open **Options → Web Interface**.
-2. Type the password twice under **Guest password, twice (a guest may only look)** and choose
-   **Save**. It applies at once; the page then says *A guest can log in.*
-
-**No guest** takes the guest away at once. A guest cannot open this page.
+**No guest** takes the guest away, again at once. In a browser, even signed in with your own
+password, the page shows these settings greyed out: *Only the desktop app on njMule's computer
+changes these settings.*
 
 On the command line there is no guest option, but setting your own password with
 `--webui-password` or `--webui-password-file` keeps the guest password as it is.
@@ -41,7 +35,7 @@ The guest signs in on the same page as you, with the guest password. The top bar
 | Place | What the guest sees | What it cannot do |
 |---|---|---|
 | **Transfers** | The downloads with their details, sources, names and comments; the uploads and the queue | Any action on a download; the banned and the known clients |
-| **Search** | The searches made through the web interface, with their results | Start, close or download a search |
+| **Search** | The searches open in njMule, with their results | Start, close or download a search |
 | **Network** | The eD2K, Kad and port cards; the servers; Kad's state, contacts and searches | Connect, add or change servers, join Kad, test the ports; the log |
 | **Statistics** | The rates and figures | |
 
@@ -59,8 +53,8 @@ otherwise follows the same rules as yours: the same [lockout](./security.mdx#fai
 wrong passwords, the same idle time of 30 minutes. njMule logs each guest login with its address.
 
 :::note
-A guest sees the names of the files you download and the searches made through the web
-interface. Give the password only to people who may know them.
+A guest sees the names of the files you download and the searches open in njMule. Give the
+password only to people who may know them.
 :::
 
 ## Related pages
