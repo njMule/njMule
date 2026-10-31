@@ -14,6 +14,7 @@ import { networkWords } from './network';
 import { current, PLACES, searchRequest, shortcut, withShortcutKey } from './places';
 import { searches } from './search';
 import { chats, friends, unreadTotal } from './chats';
+import type { Command } from './palette';
 import type { Platform } from './platform';
 import SearchScreen from './screens/SearchScreen.vue';
 import MessagesScreen from './screens/MessagesScreen.vue';
@@ -24,7 +25,7 @@ import StatisticsScreen from './screens/StatisticsScreen.vue';
 import TransfersScreen from './screens/TransfersScreen.vue';
 import AskDialog from './shell/AskDialog.vue';
 import Banner from './shell/Banner.vue';
-import CommandPalette, { type Command } from './shell/CommandPalette.vue';
+import CommandPalette from './shell/CommandPalette.vue';
 import ShortcutsDialog from './shell/ShortcutsDialog.vue';
 import Sidebar from './shell/Sidebar.vue';
 import StatusStrip from './shell/StatusStrip.vue';
@@ -203,20 +204,27 @@ async function openIncoming(): Promise<void> {
     }
 }
 
-// What the palette offers: the places, then the commands of the bar and the menus.
+const canOpenFolders = computed(() => props.platform.desktop);
+
+// What the palette offers: the places, then the commands of the bar and the menus; those whose dialog this window has
+// not yet show disabled.
 const commands = computed<Command[]>(() => [
     ...PLACES.map((p, i) => ({ title: t(p.title), keys: shortcut(i), run: () => (current.value = p.id) })),
+    // What eD2K's state calls for, as on the networks' button for both.
     {
         title: t(
-            words.value.up
+            connection.value === 'connected'
                 ? 'IDS_MAIN_BTN_DISCONNECT'
-                : words.value.trying
+                : connection.value === 'connecting'
                   ? 'IDS_MAIN_BTN_CANCEL'
                   : 'IDS_MAIN_BTN_CONNECT',
         ),
         keys: '',
         run: () => void both(),
     },
+    { title: t('IDS_OPENINC'), keys: '', run: () => void openIncoming(), disabled: !canOpenFolders.value },
+    { title: t('nj.wizard.title'), keys: '', run: () => {}, disabled: true },
+    { title: t('nj.import.title'), keys: '', run: () => {}, disabled: true },
     { title: t('nj.top.theme'), keys: '', run: toggleDark },
     {
         title: t(collapsed.value ? 'nj.sidebar.expand' : 'nj.sidebar.collapse'),
@@ -224,6 +232,8 @@ const commands = computed<Command[]>(() => [
         run: toggleSidebar,
     },
     { title: t('nj.shortcuts.title'), keys: 'F1', run: () => (shortcutsOpen.value = true) },
+    { title: t('IDS_CHECK4UPDATE'), keys: '', run: () => {}, disabled: true },
+    { title: t('nj.about.title'), keys: '', run: () => {}, disabled: true },
 ]);
 
 // What the text typed is itself: eD2K links to download, or else words to search the network for.
@@ -289,7 +299,7 @@ onUnmounted(() => {
                         :summary="summary"
                         :narrow="narrow"
                         :words="words"
-                        :can-open-folders="platform.desktop"
+                        :can-open-folders="canOpenFolders"
                         @palette="showPalette"
                         @ed2k="ed2k"
                         @kad="kad"
