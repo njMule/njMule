@@ -18,7 +18,7 @@ The archives run from any folder on any distribution; the static one holds the h
 alone, for any x64 Linux whatever its C library. Older versions are on the
 [GitHub releases page](https://github.com/njMule/njMule/releases). You can
 [check the download](verify-downloads.mdx) before you install it. The desktop app needs
-GTK 3, libXtst and OpenGL; the packages bring them in (see [Requirements](requirements.mdx)).
+WebKitGTK 4.1 and GTK 3; the packages bring them in (see [Requirements](requirements.mdx)).
 
 With the [GitHub CLI](https://cli.github.com/) you can also fetch the files of the latest release
 from a terminal, for example the Debian package of a 64-bit PC with its checksums:
@@ -48,9 +48,8 @@ sudo dnf install ./njmule-*.x86_64.rpm   # on arm64: ./njmule-*.aarch64.rpm
 
 The package installs:
 
-- `njmule-gui`, the desktop app, and `njmule`, the command line, in `/usr/bin`; the desktop app and
-  its shared libraries live in `/usr/lib/njmule`, and `njmule` runs that same executable without a
-  window;
+- `njmule-gui`, the desktop app, and `njmule`, the engine and command line, in `/usr/bin`; both
+  live in `/usr/lib/njmule`, where the desktop app's window starts the engine beside it;
 - a desktop entry, AppStream metadata and icons, so that njMule appears in your applications menu;
 - a systemd user unit, `njmule.service`, to run the engine headless (see
   [Run it as a service](#run-it-as-a-service)).
@@ -80,7 +79,7 @@ tar -C ~/Apps -xJf njmule-<version>-linux-x64.tar.xz
 ```
 
 Unpack it into a folder you can write to, such as `~/Apps`: njMule can then
-[update itself](../updates.mdx) there. Install GTK 3, libXtst and OpenGL yourself if the desktop app
+[update itself](../updates.mdx) there. Install WebKitGTK 4.1 and GTK 3 yourself if the desktop app
 does not start. The command line is `njmule` in the same folder.
 
 To keep all of njMule's data beside the programs, on a removable drive for example, put an empty

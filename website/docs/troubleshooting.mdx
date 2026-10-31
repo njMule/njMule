@@ -44,15 +44,15 @@ See [Install on macOS](getting-started/install-macos.mdx).
 
 **What you see:** `njmule-gui` exits at once, or complains about a missing library.
 
-**Why:** the desktop app needs GTK 3, libXtst and OpenGL. The `.deb` and `.rpm` packages install
-them as dependencies; the `.tar.xz` archive installs nothing, so they must already be there. The
-command line (`njmule`) needs none of them.
+**Why:** the desktop app's window needs WebKitGTK 4.1 and GTK 3. The `.deb` and `.rpm` packages
+install them as dependencies; the `.tar.xz` archive installs nothing, so they must already be there.
+The engine and command line (`njmule`) needs none of them.
 
 **What to do:** install the libraries with your package manager:
 
 ```bash
-sudo apt install libgtk-3-0 libxtst6 libgl1     # Debian, Ubuntu (newer releases: libgtk-3-0t64)
-sudo dnf install gtk3 libXtst mesa-libGL         # Fedora, RHEL
+sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0   # Debian, Ubuntu (newer releases: libgtk-3-0t64)
+sudo dnf install webkit2gtk4.1 gtk3                # Fedora, RHEL
 ```
 
 On a computer without a desktop (a server reached over SSH, a NAS) run the engine headless with

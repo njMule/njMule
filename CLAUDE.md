@@ -186,8 +186,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `njmule-app/build/native-static/njmule`.
 - Native optimization: `-O2` by default (property `native.optimization`). Checks may build faster
   with `-Pnative.optimization=-Ob`, as the CI does; releases always pass `-O2`, never `-Ob`.
-- Native desktop app (GluonFX does not support Java 25/JavaFX 27): `native-image` on the module path
-  through `./gradlew :njmule-gui:nativeGui` → `njmule-gui/build/native/` (exe plus the JDK
+- Native JavaFX app, no longer in the packages (GluonFX does not support Java 25/JavaFX 27):
+  `native-image` on the module path through `./gradlew :njmule-gui:nativeGui` → `njmule-gui/build/native/` (exe plus the JDK
   libraries it loads). On Windows that exe is `njmule.exe`, a console program and the command line
   too; `./gradlew :njmule-gui:nativeLauncher` builds `build/launcher/njmule-gui.exe`
   (`native/windows/launcher.c`), the GUI program that starts it for the desktop with
@@ -199,7 +199,12 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   Linux with `tools/native-gui-docker.sh` (Ubuntu container, GraalVM Linux archive mounted at
   `/graalvm`); macOS adds its own in CI. Only GraalVM Community: Oracle GraalVM (PGO) is under GFTC,
   not compatible with distributing GPL binaries.
-- Installers: WiX **5** (`dotnet tool install --global wix --version 5.0.2`; v6+ need the OSMF EULA)
+- Installers: every desktop package carries the headless engine `njmule(.exe)` of
+  `:njmule-app:nativeCompile`, also the command line, and the desktop window `njmule-gui(.exe)` of
+  `:njmule-desktop:shell`, which starts the engine beside it and answers the old Windows launcher's
+  commands (`--apply-update`, `--keep-awake`, `--uninstall-profile`, `--restore-links`); Windows adds
+  `njmule-service.exe`. `.github/scripts/desktop-smoke-test.*` checks the window starts the engine.
+  WiX **5** (`dotnet tool install --global wix --version 5.0.2`; v6+ need the OSMF EULA)
   builds the per-user MSI from `packaging/windows/njmule.wxs`; nfpm builds deb/rpm from
   `packaging/linux/nfpm.yaml`; macOS gets an ad-hoc signed `.app` in a DMG; Synology DSM 7 gets an
   x86_64 `.spk` from `packaging/synology/build-spk.sh` around the static musl executable. All in

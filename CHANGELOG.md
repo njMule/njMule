@@ -14,7 +14,7 @@ All notable changes to this project are documented here. The format follows
 
 - One interface for the desktop app and the web interface (`njmule-ui`, Vue 3 and TypeScript), which
   reaches njMule only through its remote-control API, and a desktop window for it built with Tauri 2
-  (`njmule-desktop`) that starts the native engine; the window is not in the packages yet.
+  (`njmule-desktop`) that starts the native engine.
 - In that interface: the program's own icon beside every file name in the desktop window, Ctrl+V to
   add the eD2K links on the clipboard in Transfers, Enter to download the search results chosen, the
   downloads reordered by dragging them, and Browse for the preview player and the event programs.
@@ -22,9 +22,15 @@ All notable changes to this project are documented here. The format follows
   njMule's computer, the check of a folder and of a search, the defaults of the preferences and
   whether each password is set, the first start's questions, the web interface's settings and API
   token for the desktop window, the data of a download for a player, server.met and nodes.dat files
-  sent from a browser, and the country of servers and Kad contacts.
+  sent from a browser, the country of servers and Kad contacts, and, for the desktop window, the
+  ed2k links and the start at login of njMule's computer.
 
 ### Changed
+
+- The desktop packages carry the new desktop window in place of the JavaFX app, beside the headless
+  engine, which is also the command line: the MSI, the deb, rpm and tar archives and the macOS app.
+  The window shows the interface in the system's web view: WebView2 on Windows, WebKit on macOS,
+  and WebKitGTK 4.1, which the deb and rpm packages depend on, on Linux.
 
 - The web interface is the desktop app's interface in the browser: the same screens, menus, dialogs
   and colours, with the browser's ways for what needs njMule's computer, such as folders typed.
