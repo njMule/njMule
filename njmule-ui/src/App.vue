@@ -289,14 +289,17 @@ onUnmounted(() => {
                         @shortcuts="shortcutsOpen = true"
                         @incoming="openIncoming"
                     />
+                    <!-- A place keeps what it shows while another is open: its filters, choice, scroll and pending options. -->
                     <main class="content">
-                        <TransfersScreen v-if="current === 'transfers'" :platform="platform" />
-                        <SearchScreen v-else-if="current === 'search'" />
-                        <SharedScreen v-else-if="current === 'shared'" :platform="platform" />
-                        <MessagesScreen v-else-if="current === 'messages'" />
-                        <NetworkScreen v-else-if="current === 'network'" @ed2k="ed2k" @kad="kad" />
-                        <StatisticsScreen v-else-if="current === 'statistics'" />
-                        <SettingsScreen v-else />
+                        <KeepAlive>
+                            <TransfersScreen v-if="current === 'transfers'" :platform="platform" />
+                            <SearchScreen v-else-if="current === 'search'" />
+                            <SharedScreen v-else-if="current === 'shared'" :platform="platform" />
+                            <MessagesScreen v-else-if="current === 'messages'" />
+                            <NetworkScreen v-else-if="current === 'network'" @ed2k="ed2k" @kad="kad" />
+                            <StatisticsScreen v-else-if="current === 'statistics'" />
+                            <SettingsScreen v-else />
+                        </KeepAlive>
                     </main>
                 </div>
             </div>

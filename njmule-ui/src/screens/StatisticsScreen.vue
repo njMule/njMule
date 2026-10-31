@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { computed, onActivated, onDeactivated, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { answer, api } from '../api/client';
 import { count, duration, rate, size } from '../format';
 import { t } from '../i18n';
@@ -68,7 +68,8 @@ function follow(): void {
 }
 
 watch(span, follow);
-onMounted(follow);
+onActivated(follow);
+onDeactivated(() => window.clearInterval(timer));
 onUnmounted(() => window.clearInterval(timer));
 
 const graphLabel = computed(() => {

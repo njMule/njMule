@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue';
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef } from 'vue';
 import { answer, api, type Schemas } from '../../api/client';
 import { count } from '../../format';
 import { language, t } from '../../i18n';
@@ -152,11 +152,16 @@ async function read(): Promise<void> {
     }
 }
 
+// The log is read while it shows: from its part's opening or the network's coming back, until either goes.
 let timer = 0;
-onMounted(() => {
+function follow(): void {
+    window.clearInterval(timer);
     void read();
     timer = window.setInterval(() => void read(), 2000);
-});
+}
+onMounted(follow);
+onActivated(follow);
+onDeactivated(() => window.clearInterval(timer));
 onUnmounted(() => window.clearInterval(timer));
 </script>
 
