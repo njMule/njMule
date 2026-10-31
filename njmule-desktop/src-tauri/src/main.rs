@@ -28,7 +28,7 @@ use tauri::{
     WebviewWindowBuilder, WindowEvent, Wry,
 };
 use tauri_plugin_deep_link::DeepLinkExt;
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::StateFlags;
@@ -39,11 +39,17 @@ const CONTROL_LINE: &str = "njmule-control ";
 const START_WAIT: Duration = Duration::from_secs(120);
 /// How long the engine may take to save and stop once the shell closes.
 const STOP_WAIT: Duration = Duration::from_secs(30);
+/// How many lines of the engine's error output tell why it could not start: its usage follows a wrong option.
+const ERROR_LINES: usize = 8;
+/// How long the rest of the engine's error output may take once its other output ended.
+const ERROR_WAIT: Duration = Duration::from_secs(5);
 
 /// The option that opens the window on another computer's njMule, at the address of its API.
 const REMOTE_OPTION: &str = "--remote-url";
 /// The option that names the profile, as the start at login passes it.
 const CONFIG_OPTION: &str = "--config-dir";
+/// The option that sets how much the log says, which the engine started here takes as well.
+const LOG_LEVEL_OPTION: &str = "--log-level";
 /// The folder of njMule's profile in the system's places, as the engine names it.
 const APP_DIR: &str = if cfg!(target_os = "linux") { "njmule" } else { "njMule" };
 /// The id Windows groups the window, its shortcuts and its notifications by, as the installer names it.
@@ -194,7 +200,9 @@ fn engine_program() -> PathBuf {
     std::env::var("NJMULE_CORE").map(PathBuf::from).unwrap_or_else(|_| verbs::engine_beside())
 }
 
-fn start_engine(app: AppHandle, engine: Arc<Engine>) {
+/// Starts the engine with `options` of the window's command line besides its profile.
+fn start_engine(app: AppHandle, engine: Arc<Engine>, options: Vec<String>) {
+    report_failed_start(app.clone(), engine.clone());
     let program = engine_program();
     let mut command = if program.extension().is_some_and(|e| e.eq_ignore_ascii_case("bat")) {
         let mut c = Command::new("cmd");
@@ -209,11 +217,12 @@ fn start_engine(app: AppHandle, engine: Arc<Engine>) {
     // The desktop app's engine: a new version installed now waits for this program to end too, then starts it again
     // rather than the engine alone; the start at login and the eD2K links name this program too.
     command
+        .args(options)
         .env("NJMULE_CONTROL_ENDPOINT", "1")
         .env("NJMULE_DESKTOP", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -229,8 +238,13 @@ fn start_engine(app: AppHandle, engine: Arc<Engine>) {
         }
     };
     let output = child.stdout.take().expect("piped output");
+    let error_output = child.stderr.take().expect("piped errors");
     *engine.input.lock().unwrap() = child.stdin.take();
     *engine.child.lock().unwrap() = Some(child);
+    let (read_errors, errors) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = read_errors.send(first_errors(error_output));
+    });
     std::thread::spawn(move || {
         let mut told = false;
         // Read to the end: an output nobody reads would stop the engine once its pipe is full.
@@ -253,7 +267,8 @@ fn start_engine(app: AppHandle, engine: Arc<Engine>) {
             }
         }
         if !told {
-            engine.found(Err("njMule stopped while starting: see its log.".into()));
+            let errors = errors.recv_timeout(ERROR_WAIT).unwrap_or_default();
+            engine.found(Err(start_failure(&errors, logs_dir(&app).as_deref())));
             return;
         }
         // The engine ended by itself, as it does to install a new version: the window goes with it, which a failure
@@ -276,18 +291,107 @@ fn start_engine(app: AppHandle, engine: Arc<Engine>) {
     });
 }
 
-/// The profile --config-dir names, if it does.
-fn config_dir(args: &[String]) -> Option<String> {
+/// The window's page shows nothing until the engine started here tells its API: when it cannot, the shell says why,
+/// over the window or alone while it hides in the notification area, and ends.
+fn report_failed_start(app: AppHandle, engine: Arc<Engine>) {
+    std::thread::spawn(move || {
+        let Err(problem) = engine.wait() else { return };
+        let mut dialog = app
+            .dialog()
+            .message(problem)
+            .kind(MessageDialogKind::Error)
+            .title("njMule")
+            .buttons(MessageDialogButtons::OkCustom("Close".into()));
+        if let Some(window) = app.get_webview_window("main").filter(|w| w.is_visible().unwrap_or(false)) {
+            dialog = dialog.parent(&window);
+        }
+        dialog.blocking_show();
+        app.exit(1);
+    });
+}
+
+/// The first lines of the engine's error output, read to its end so that the engine never waits for room in it.
+fn first_errors(output: impl std::io::Read) -> String {
+    let mut output = BufReader::new(output);
+    let (mut first, mut line) = (Vec::new(), Vec::new());
+    while output.read_until(b'\n', &mut line).is_ok_and(|read| read > 0) {
+        let text = output_text(&line);
+        if first.len() < ERROR_LINES && !text.trim().is_empty() {
+            first.push(text.trim_end().to_owned());
+        }
+        line.clear();
+    }
+    first.join("\n")
+}
+
+/// A line of the engine's output, in UTF-8 or else in the system's code page, which Java writes in on Windows when it
+/// has no console.
+fn output_text(bytes: &[u8]) -> String {
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return text.to_owned();
+    }
+    #[cfg(windows)]
+    if let Some(text) = code_page_text(bytes) {
+        return text;
+    }
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+/// `bytes` in the system's code page, as Windows converts them.
+#[cfg(windows)]
+fn code_page_text(bytes: &[u8]) -> Option<String> {
+    use windows_sys::Win32::Globalization::{MultiByteToWideChar, CP_ACP};
+    let length = i32::try_from(bytes.len()).ok()?;
+    // SAFETY: the first call only measures; the second writes at most that many units into a buffer of that size.
+    unsafe {
+        let units = MultiByteToWideChar(CP_ACP, 0, bytes.as_ptr(), length, std::ptr::null_mut(), 0);
+        if units <= 0 {
+            return None;
+        }
+        let mut wide = vec![0u16; units as usize];
+        let written = MultiByteToWideChar(CP_ACP, 0, bytes.as_ptr(), length, wide.as_mut_ptr(), units);
+        (written > 0).then(|| String::from_utf16_lossy(&wide[..written as usize]))
+    }
+}
+
+/// What the user reads when the engine ended before it told its API: why, in its own words, and where its log is.
+fn start_failure(errors: &str, logs: Option<&Path>) -> String {
+    let mut text = String::from("njMule stopped while starting.");
+    if !errors.is_empty() {
+        text.push_str("\n\n");
+        text.push_str(errors);
+    }
+    match logs {
+        Some(dir) => text.push_str(&format!("\n\nIts log is in {}.", dir.display())),
+        None => text.push_str("\n\nSee its log."),
+    }
+    text
+}
+
+/// The value of `option` on a command line, as the next word or after `=`, the first time it comes.
+fn option_value(args: &[String], option: &str) -> Option<String> {
     let mut words = args.iter().skip(1);
     while let Some(word) = words.next() {
-        if word == CONFIG_OPTION {
+        if word == option {
             return words.next().cloned();
         }
-        if let Some(dir) = word.strip_prefix(CONFIG_OPTION).and_then(|w| w.strip_prefix('=')) {
-            return Some(dir.to_owned());
+        if let Some(value) = word.strip_prefix(option).and_then(|w| w.strip_prefix('=')) {
+            return Some(value.to_owned());
         }
     }
     None
+}
+
+/// The profile --config-dir names, if it does.
+fn config_dir(args: &[String]) -> Option<String> {
+    option_value(args, CONFIG_OPTION)
+}
+
+/// The options of the window's command line the engine it starts takes as well; the profile goes apart.
+fn engine_options(args: &[String]) -> Vec<String> {
+    option_value(args, LOG_LEVEL_OPTION)
+        .map(|level| vec![LOG_LEVEL_OPTION.to_owned(), level])
+        .unwrap_or_default()
 }
 
 /// Groups the window with the installer's shortcuts and notifications on Windows.
@@ -335,17 +439,9 @@ fn save_settings(file: &Path, settings: &DesktopSettings) -> std::io::Result<()>
 
 /// The API of another computer's njMule this start shows, as --remote-url names it, or else NJMULE_REMOTE_URL.
 fn remote_url(args: &[String]) -> Option<String> {
-    let mut words = args.iter().skip(1);
-    let named = loop {
-        let Some(word) = words.next() else { break None };
-        if word == REMOTE_OPTION {
-            break words.next().cloned();
-        }
-        if let Some(url) = word.strip_prefix(REMOTE_OPTION).and_then(|w| w.strip_prefix('=')) {
-            break Some(url.to_owned());
-        }
-    };
-    named.or_else(|| std::env::var("NJMULE_REMOTE_URL").ok()).filter(|url| !url.trim().is_empty())
+    option_value(args, REMOTE_OPTION)
+        .or_else(|| std::env::var("NJMULE_REMOTE_URL").ok())
+        .filter(|url| !url.trim().is_empty())
 }
 
 /// The scheme and authority of an address, as a page's origin.
@@ -390,6 +486,25 @@ fn webview_dir(app: &AppHandle) -> Option<PathBuf> {
         None => app.path().local_data_dir().ok()?.join(APP_DIR).join("data"),
     };
     Some(data.join("webview"))
+}
+
+/// The engine's folder of logs in the profile it uses, as the engine finds it, written whole for the user to find.
+fn logs_dir(app: &AppHandle) -> Option<PathBuf> {
+    if let Some(root) = profile_root() {
+        return Some(std::path::absolute(&root).unwrap_or(root).join("logs"));
+    }
+    let path = app.path();
+    if cfg!(windows) {
+        path.local_data_dir().ok().map(|dir| dir.join(APP_DIR).join("logs"))
+    } else if cfg!(target_os = "macos") {
+        path.home_dir().ok().map(|home| home.join("Library").join("Logs").join(APP_DIR))
+    } else {
+        std::env::var_os("XDG_STATE_HOME")
+            .map(PathBuf::from)
+            .filter(|dir| dir.is_absolute())
+            .or_else(|| path.home_dir().ok().map(|home| home.join(".local").join("state")))
+            .map(|dir| dir.join(APP_DIR).join("logs"))
+    }
 }
 
 /// The connections remembered in `file`, the token of each address of an API; none when it cannot be read.
@@ -908,7 +1023,8 @@ async fn open_remote(app: AppHandle, url: String, token: String, remember: bool)
 }
 
 /// The window on another njMule reached it, or could not: it shows, or njMule ends, telling why to the dialog that
-/// opened it, or else to the user. The window on this computer's own engine has nothing to tell.
+/// opened it, or else to the user. The window on this computer's own engine has nothing to tell: the shell itself says
+/// why that engine did not start.
 #[tauri::command]
 fn connected(app: AppHandle, shell: State<'_, Shell>, problem: Option<String>) {
     if shell.remote.is_none() {
@@ -1202,6 +1318,7 @@ fn main() {
     set_app_user_model_id();
     let remote = remote_url(&args);
     let checked = remote.is_some() && std::env::var_os(CHECK_VARIABLE).is_some();
+    let options = engine_options(&args);
     let engine = Arc::new(Engine::default());
     if remote.is_none() {
         engine.links.lock().unwrap().extend(links(&args));
@@ -1247,7 +1364,7 @@ fn main() {
         .setup(move |app| {
             match &remote {
                 Some(url) => engine.found(remote_endpoint(app.handle(), url)),
-                None => start_engine(app.handle().clone(), engine.clone()),
+                None => start_engine(app.handle().clone(), engine.clone(), options),
             }
             let shell = app.state::<Shell>();
             if let Some(file) = settings_file(app.handle()) {
@@ -1436,6 +1553,72 @@ mod tests {
 
     fn words(all: &[&str]) -> Vec<String> {
         all.iter().map(|w| w.to_string()).collect()
+    }
+
+    #[test]
+    fn should_pass_the_log_level_on_to_the_engine() {
+        let options = engine_options(&words(&["njmule-gui", "--config-dir", "/data", "--log-level=DEBUG", LINK]));
+        then_the_options_are(&options, &["--log-level", "DEBUG"]);
+    }
+
+    #[test]
+    fn should_pass_the_log_level_given_apart_on_to_the_engine() {
+        let options = engine_options(&words(&["njmule-gui", "--log-level", "TRACE"]));
+        then_the_options_are(&options, &["--log-level", "TRACE"]);
+    }
+
+    #[test]
+    fn should_pass_nothing_more_on_to_the_engine_without_a_log_level() {
+        let options = engine_options(&words(&["njmule-gui", "--config-dir", "/data", LINK]));
+        then_the_options_are(&options, &[]);
+    }
+
+    #[test]
+    fn should_keep_the_first_lines_of_the_engines_errors() {
+        let output: String = (1..=12).map(|n| format!("error {n}\r\n\r\n")).collect();
+        let errors = first_errors(output.as_bytes());
+        then_the_errors_are(&errors, &(1..=ERROR_LINES).map(|n| format!("error {n}")).collect::<Vec<_>>().join("\n"));
+    }
+
+    #[test]
+    fn should_keep_an_error_line_not_written_in_utf8() {
+        let errors = first_errors(&b"Cannot hash C:\\f\xe9.txt\r\nnext\n"[..]);
+        then_the_errors_hold(&errors, "Cannot hash C:\\f", "next");
+    }
+
+    #[test]
+    fn should_tell_why_the_engine_stopped_while_starting_and_where_its_log_is() {
+        let text = start_failure(
+            "Cannot start njMule: njMule is already running with the configuration in /p/config",
+            Some(Path::new("/p/logs")),
+        );
+        then_the_errors_are(
+            &text,
+            "njMule stopped while starting.\n\n\
+             Cannot start njMule: njMule is already running with the configuration in /p/config\n\n\
+             Its log is in /p/logs.",
+        );
+    }
+
+    #[test]
+    fn should_still_tell_the_engine_stopped_without_errors_nor_log_folder() {
+        let text = start_failure("", None);
+        then_the_errors_are(&text, "njMule stopped while starting.\n\nSee its log.");
+    }
+
+    fn then_the_options_are(options: &[String], expected: &[&str]) {
+        assert_eq!(options, words(expected));
+    }
+
+    fn then_the_errors_are(errors: &str, expected: &str) {
+        assert_eq!(errors, expected);
+    }
+
+    fn then_the_errors_hold(errors: &str, start: &str, next: &str) {
+        let lines: Vec<_> = errors.lines().collect();
+        assert_eq!(lines.len(), 2, "{errors}");
+        assert!(lines[0].starts_with(start) && lines[0].ends_with("txt"), "{errors}");
+        assert_eq!(lines[1], next);
     }
 
     #[test]
