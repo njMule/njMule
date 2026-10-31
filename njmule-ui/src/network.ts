@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { ref } from 'vue';
 import type { Schemas } from './api/client';
 import { count } from './format';
 import { format, t } from './i18n';
@@ -355,4 +356,22 @@ export function lastSaid(notes: readonly ServerNote[]): string[] {
         }
     }
     return lines.slice(-4);
+}
+
+/** The last line of the log reset, kept while the window is open: the log shows only the lines after it. */
+export const logFrom = ref(0);
+
+/** The last note of the servers reset, kept while the window is open: their information shows only those after it. */
+export const notesFrom = ref(0);
+
+/** The date and time of a log line, as the system writes them. */
+export function logTime(time: string, locale?: string): string {
+    return new Date(time).toLocaleString(locale, {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+    });
 }

@@ -3,18 +3,21 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef } from 'vue';
+import { ContextMenuContent, ContextMenuItem, ContextMenuPortal, ContextMenuRoot, ContextMenuTrigger } from 'reka-ui';
+import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { answer, api, type Schemas } from '../../api/client';
 import { count } from '../../format';
-import { language, t } from '../../i18n';
+import { t } from '../../i18n';
 import { addressNumber, buddyState, udpState } from '../../kad';
-import { connection, type Connection, serverNotes, status } from '../../model/engine';
+import { connection, type Connection, type ServerNote, serverNotes, status } from '../../model/engine';
+import { logFrom, logTime, notesFrom } from '../../network';
 import { inDesktopShell } from '../../platform';
+import { problem } from '../../toasts';
 import FilterChips from '../../ui/FilterChips.vue';
 import Icon from '../../ui/Icon.vue';
 
-// The log of this run narrowed by level, what the servers said, and what we are on the networks; the lines can be
-// selected and copied.
+// The log of this run narrowed by level, what the servers said, and what we are on the networks. Both logs read left to
+// right in every language, follow new lines unless some text is chosen, and are chosen with the mouse and copied.
 
 type Entry = Schemas['LogEntry'];
 type Level = 'all' | 'error' | 'warning' | 'info';
@@ -22,11 +25,13 @@ type Level = 'all' | 'error' | 'warning' | 'info';
 const lines = shallowRef<Entry[]>([]);
 const level = ref<Level>('all');
 const tab = ref<'log' | 'server' | 'mine'>('log');
-// Lines before this one are not shown since Reset.
-const from = ref(0);
+// njMule and its version, at the top of what the servers said until that is reset.
+const title = ref('');
 let after = 0;
 
-const shown = computed(() => lines.value.filter((l) => l.sequence > from.value));
+const shown = computed(() => lines.value.filter((l) => l.sequence > logFrom.value));
+const kept = computed(() => shown.value.filter((e) => keeps(e, level.value)));
+const notes = computed(() => serverNotes.value.filter((n) => n.sequence > notesFrom.value));
 
 // Successes and the details go with the news.
 function keeps(l: Entry, which: Level): boolean {
@@ -61,16 +66,80 @@ const ICONS: Partial<Record<Entry['level'], 'ERROR' | 'WARNING' | 'CHECK_CIRCLE'
     success: 'CHECK_CIRCLE',
 };
 
-function when(time: string): string {
-    return new Date(time).toLocaleString(language.value, {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hourCycle: 'h23',
-    });
+// A session's start on a server, after its date and time.
+function sessionLine(n: ServerNote): string {
+    return `${logTime(n.time)}: ${
+        n.kind === 'obfuscated' ? t('IDS_CONNECTEDTOOBFUSCATED', n.text) : t('IDS_CONNECTEDTO', n.text)
+    }`;
+}
+
+// Reset empties the log, or what the servers said; My Info has nothing to reset.
+function reset(): void {
+    if (tab.value === 'server') {
+        notesFrom.value = serverNotes.value.at(-1)?.sequence ?? notesFrom.value;
+        title.value = '';
+    } else {
+        logFrom.value = lines.value.at(-1)?.sequence ?? logFrom.value;
+    }
+}
+
+// The log or the server information shown, whichever tab is chosen.
+const area = ref<HTMLElement | null>(null);
+// The text chosen as the menu opened, which Copy takes.
+const chosenText = ref('');
+
+function selectionIn(element: HTMLElement): Selection | null {
+    const selection = window.getSelection();
+    return selection !== null &&
+        !selection.isCollapsed &&
+        selection.rangeCount > 0 &&
+        element.contains(selection.getRangeAt(0).commonAncestorContainer)
+        ? selection
+        : null;
+}
+
+// New lines show at the bottom, unless some text is chosen.
+async function follow(): Promise<void> {
+    await nextTick();
+    const element = area.value;
+    if (element !== null && selectionIn(element) === null) {
+        element.scrollTop = element.scrollHeight;
+    }
+}
+
+watch([kept, notes, tab], () => void follow());
+
+function menuOpening(): void {
+    const selection = area.value === null ? null : selectionIn(area.value);
+    chosenText.value = selection === null ? '' : selection.toString();
+}
+
+async function copy(): Promise<void> {
+    try {
+        await navigator.clipboard.writeText(chosenText.value);
+    } catch (e) {
+        problem((e as Error).message);
+    }
+}
+
+function selectAll(): void {
+    const element = area.value;
+    const selection = window.getSelection();
+    if (element === null || selection === null) {
+        return;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    selection.removeAllRanges();
+    selection.addRange(range);
+}
+
+// Ctrl+A chooses the lines of the log, not the whole window.
+function key(e: KeyboardEvent): void {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        selectAll();
+        e.preventDefault();
+    }
 }
 
 // What we are on the networks, in sections side by side; the web interface's settings are not in the API, so its
@@ -152,25 +221,38 @@ async function read(): Promise<void> {
     }
 }
 
+async function readTitle(): Promise<void> {
+    try {
+        const info = await answer(api().GET('/'));
+        title.value = notesFrom.value === 0 ? `${info.name} ${info.version}` : '';
+    } catch {
+        // No title.
+    }
+}
+
 // The log is read while it shows: from its part's opening or the network's coming back, until either goes.
 let timer = 0;
-function follow(): void {
+function start(): void {
     window.clearInterval(timer);
     void read();
     timer = window.setInterval(() => void read(), 2000);
+    void follow();
 }
-onMounted(follow);
-onActivated(follow);
+onMounted(() => {
+    void readTitle();
+    start();
+});
+onActivated(start);
 onDeactivated(() => window.clearInterval(timer));
 onUnmounted(() => window.clearInterval(timer));
 </script>
 
 <template>
     <div class="log">
-        <div class="tool-row" :class="{ unused: tab !== 'log' }">
-            <FilterChips v-model="level" :items="chips" :label="t('IDS_SV_LOG')" />
+        <div class="tool-row">
+            <FilterChips v-model="level" :class="{ unused: tab !== 'log' }" :items="chips" :label="t('IDS_SV_LOG')" />
             <span class="spacer" />
-            <button class="button flat" @click="from = lines.at(-1)?.sequence ?? 0">
+            <button class="button flat" :class="{ unused: tab === 'mine' }" @click="reset">
                 <Icon name="CLEAR_ALL" />{{ t('IDS_PW_RESET') }}
             </button>
         </div>
@@ -185,18 +267,61 @@ onUnmounted(() => window.clearInterval(timer));
                 {{ t('IDS_MYINFO') }}
             </button>
         </div>
-        <div v-if="tab === 'log'" class="lines" tabindex="0">
-            <div v-for="l in shown.filter((e) => keeps(e, level))" :key="l.sequence" class="line" :class="l.level">
-                <span class="line-icon"><Icon v-if="ICONS[l.level]" :name="ICONS[l.level]!" /></span>
-                <span dir="ltr">{{ when(l.time) }}: </span><span dir="auto">{{ l.message }}</span>
-            </div>
-        </div>
-        <div v-else-if="tab === 'server'" class="lines" tabindex="0">
-            <div v-for="(n, i) in serverNotes" :key="i" class="line">
-                <span class="line-icon" />
-                <span dir="ltr">{{ when(n.time) }}: </span><span dir="auto">{{ n.text }}</span>
-            </div>
-        </div>
+        <ContextMenuRoot v-if="tab !== 'mine'">
+            <ContextMenuTrigger as-child>
+                <div
+                    v-if="tab === 'log'"
+                    ref="area"
+                    class="lines focusable"
+                    dir="ltr"
+                    tabindex="0"
+                    @keydown="key"
+                    @contextmenu="menuOpening"
+                >
+                    <div v-for="l in kept" :key="l.sequence" class="line" :class="l.level">
+                        <span class="line-icon"><Icon v-if="ICONS[l.level]" :name="ICONS[l.level]!" /></span>
+                        <span class="text"
+                            >{{ `${logTime(l.time)}: ` }}<bdi>{{ l.message }}</bdi></span
+                        >
+                    </div>
+                </div>
+                <div
+                    v-else
+                    ref="area"
+                    class="lines focusable"
+                    dir="ltr"
+                    tabindex="0"
+                    @keydown="key"
+                    @contextmenu="menuOpening"
+                >
+                    <div v-if="title" class="line">
+                        <span class="text">{{ title }}</span>
+                    </div>
+                    <template v-for="n in notes" :key="n.sequence">
+                        <div v-if="n.kind === 'message'" class="line">
+                            <bdi class="text">{{ n.text }}</bdi>
+                        </div>
+                        <template v-else>
+                            <!-- An empty line before each session. -->
+                            <div class="line"><span class="text">&nbsp;</span></div>
+                            <div class="line success">
+                                <span class="text">{{ sessionLine(n) }}</span>
+                            </div>
+                        </template>
+                    </template>
+                </div>
+            </ContextMenuTrigger>
+            <ContextMenuPortal>
+                <ContextMenuContent class="menu">
+                    <ContextMenuItem class="menu-item" :disabled="chosenText === ''" @select="copy">
+                        <Icon name="COPY" />{{ t('IDS_COPY') }}
+                    </ContextMenuItem>
+                    <ContextMenuItem class="menu-item" @select="selectAll">
+                        <Icon name="SELECT_ALL" />{{ t('IDS_SELECTALL') }}
+                    </ContextMenuItem>
+                </ContextMenuContent>
+            </ContextMenuPortal>
+        </ContextMenuRoot>
         <div v-else class="mine">
             <section v-for="section in mine" :key="section.title" class="mine-section">
                 <strong>{{ section.title }}</strong>
@@ -231,6 +356,11 @@ onUnmounted(() => window.clearInterval(timer));
     flex: 1;
 }
 
+/* The levels are the log's, Reset is not My Info's: they keep their room under the other tabs. */
+.unused {
+    visibility: hidden;
+}
+
 .tabs {
     display: flex;
     gap: 4px;
@@ -251,30 +381,39 @@ onUnmounted(() => window.clearInterval(timer));
     box-shadow: inset 0 2px 0 var(--nj-accent-strong);
 }
 
-/* Registers can be selected and copied. */
+/* A line a paragraph, tight; the text is chosen with the mouse, also across lines. */
 .lines {
     flex: 1;
     min-height: 0;
+    padding: 2px 6px;
     overflow-y: auto;
+    background: var(--color-bg-default);
+    font-size: 0.92em;
     user-select: text;
+    overflow-wrap: anywhere;
 }
 
 .line {
     display: flex;
-    gap: 4px;
     padding: 1px 0;
 }
 
+/* The text of a line as it came, spaces and all. */
+.text {
+    white-space: pre-wrap;
+}
+
+/* Lines without an icon keep the indent of those with one. */
 .line-icon {
-    width: 22px;
+    width: 19px;
     flex: none;
     display: inline-flex;
     align-items: center;
-    --nj-icon-size: 14px;
+    --nj-icon-size: 13px;
 }
 
 .line.debug {
-    color: var(--color-fg-muted);
+    color: var(--color-fg-subtle);
 }
 
 .line.success {
@@ -296,7 +435,7 @@ onUnmounted(() => window.clearInterval(timer));
     gap: 12px 32px;
     padding: 8px 12px;
     overflow-y: auto;
-    user-select: text;
+    user-select: none;
 }
 
 .mine-section {
@@ -316,10 +455,5 @@ onUnmounted(() => window.clearInterval(timer));
 .mine dd {
     margin: 0;
     overflow-wrap: anywhere;
-}
-
-/* The levels and Reset keep their room under the other tabs, which they do not act on. */
-.tool-row.unused {
-    visibility: hidden;
 }
 </style>
