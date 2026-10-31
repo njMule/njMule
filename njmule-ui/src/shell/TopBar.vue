@@ -14,7 +14,7 @@ import {
 import { ref } from 'vue';
 import { rate } from '../format';
 import { t } from '../i18n';
-import { connection, rates, status } from '../model/engine';
+import { rates, status } from '../model/engine';
 import type { NetworkWords } from '../network';
 import { current, withShortcutKey } from '../places';
 import { toggleDark } from '../theme';
@@ -83,14 +83,7 @@ function typed(e: KeyboardEvent): void {
                 </span>
             </button>
         </Tip>
-        <NetworkControl
-            :words="words"
-            :connecting="connection === 'connecting'"
-            :compact="narrow"
-            @ed2k="emit('ed2k')"
-            @kad="emit('kad')"
-            @both="emit('both')"
-        />
+        <NetworkControl :words="words" :compact="narrow" @ed2k="emit('ed2k')" @kad="emit('kad')" @both="emit('both')" />
         <DropdownMenuRoot>
             <Tip :text="t('IDS_MORE')">
                 <DropdownMenuTrigger

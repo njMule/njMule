@@ -3,39 +3,50 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import {
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuPortal,
-    DropdownMenuRoot,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from 'reka-ui';
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui';
 import { ref } from 'vue';
 import { t } from '../i18n';
 import type { NetworkWords } from '../network';
-import { current, shortcut } from '../places';
+import { current, networkPart, shortcut } from '../places';
 import Icon from '../ui/Icon.vue';
 import Tip from '../ui/Tip.vue';
 
-// The networks' control: neutral, never the accent, the state in words beside its dot; its menu connects each network.
-const props = defineProps<{ words: NetworkWords; connecting: boolean; compact: boolean }>();
+// The networks' control: neutral, never the accent, the state in words beside its dot. Its popup connects or
+// disconnects each network, stays open to show what follows, and leaves for the network or another server.
+const props = defineProps<{ words: NetworkWords; compact: boolean }>();
 const emit = defineEmits<{ ed2k: []; kad: []; both: [] }>();
-const trigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
+const open = ref(false);
+const trigger = ref<InstanceType<typeof PopoverTrigger> | null>(null);
 
 function dot(): string {
     return props.words.up ? 'connected' : props.words.trying ? 'connecting' : '';
 }
 
-function action(running: boolean): string {
-    return t(running ? 'IDS_MAIN_BTN_DISCONNECT' : 'IDS_MAIN_BTN_CONNECT');
+// What eD2K's state calls for, on its own line and on the button for both networks.
+function ed2kAction(): string {
+    return t(
+        props.words.ed2kTone === 'connected'
+            ? 'IDS_MAIN_BTN_DISCONNECT'
+            : props.words.ed2kTone === 'connecting'
+              ? 'IDS_MAIN_BTN_CANCEL'
+              : 'IDS_MAIN_BTN_CONNECT',
+    );
+}
+
+// The network's place, at the part a state tells of, or where it was left.
+function show(part?: 'servers' | 'kad'): void {
+    open.value = false;
+    if (part) {
+        networkPart.value = part;
+    }
+    current.value = 'network';
 }
 </script>
 
 <template>
-    <DropdownMenuRoot>
-        <Tip :text="t('IDS_NETWORK')">
-            <DropdownMenuTrigger
+    <PopoverRoot v-model:open="open">
+        <Tip :text="`${words.ed2k}\n${words.kad}`">
+            <PopoverTrigger
                 id="network-control"
                 ref="trigger"
                 class="button network-control"
@@ -47,52 +58,60 @@ function action(running: boolean): string {
                     <span v-if="words.detail" class="network-detail">{{ words.detail }}</span>
                 </span>
                 <Icon name="CHEVRON_DOWN" />
-            </DropdownMenuTrigger>
+            </PopoverTrigger>
         </Tip>
-        <DropdownMenuPortal>
-            <DropdownMenuContent class="menu network-menu" align="end" :side-offset="6" :reference="trigger?.$el">
+        <PopoverPortal>
+            <PopoverContent class="menu network-menu" align="end" :side-offset="6" :reference="trigger?.$el">
                 <div class="network-row">
-                    <span class="connection-chip" :class="words.ed2kUp ? 'connected' : connecting ? 'connecting' : ''">
-                        <span class="network-dot" />{{ words.ed2k }}
-                    </span>
-                    <DropdownMenuItem class="menu-item" @select="emit('ed2k')">
-                        {{ connecting ? t('IDS_MAIN_BTN_CANCEL') : action(words.ed2kUp) }}
-                    </DropdownMenuItem>
+                    <div class="network-words">
+                        <Tip :text="t('IDS_NETWORK')">
+                            <button
+                                type="button"
+                                class="connection-chip"
+                                :class="words.ed2kTone"
+                                @click="show('servers')"
+                            >
+                                <span class="network-dot" />{{ words.ed2k }}
+                            </button>
+                        </Tip>
+                        <span v-if="words.ed2kNote" class="network-note">{{ words.ed2kNote }}</span>
+                    </div>
+                    <button id="network-ed2k" type="button" class="button small" @click="emit('ed2k')">
+                        {{ ed2kAction() }}
+                    </button>
                 </div>
                 <div class="network-row">
-                    <span
-                        class="connection-chip"
-                        :class="words.kadUp ? 'connected' : words.kadRuns ? 'connecting' : ''"
-                    >
-                        <span class="network-dot" />{{ words.kad }}
-                    </span>
-                    <DropdownMenuItem class="menu-item" @select="emit('kad')">{{
-                        action(words.kadRuns)
-                    }}</DropdownMenuItem>
+                    <div class="network-words">
+                        <Tip :text="t('IDS_NETWORK')">
+                            <button type="button" class="connection-chip" :class="words.kadTone" @click="show('kad')">
+                                <span class="network-dot" />{{ words.kad }}
+                            </button>
+                        </Tip>
+                        <span v-if="words.kadNote" class="network-note">{{ words.kadNote }}</span>
+                    </div>
+                    <button id="network-kad" type="button" class="button small" @click="emit('kad')">
+                        {{ t(words.kadRuns ? 'IDS_MAIN_BTN_DISCONNECT' : 'IDS_MAIN_BTN_CONNECT') }}
+                    </button>
                 </div>
-                <DropdownMenuSeparator class="menu-separator" />
-                <DropdownMenuItem class="menu-item" @select="emit('both')">
-                    <Icon :name="words.up || words.trying ? 'POWER' : 'LINK'" />
-                    {{
-                        t(
-                            words.up
-                                ? 'IDS_MAIN_BTN_DISCONNECT'
-                                : words.trying
-                                  ? 'IDS_MAIN_BTN_CANCEL'
-                                  : 'IDS_MAIN_BTN_CONNECT',
-                        )
-                    }}
-                </DropdownMenuItem>
-                <DropdownMenuItem class="menu-item" @select="current = 'network'">
-                    <Icon name="SERVER" />{{ t('nj.network.otherServer') }}
-                </DropdownMenuItem>
-                <DropdownMenuItem class="menu-item" @select="current = 'network'">
-                    <Icon name="NETWORK" />{{ t('IDS_NETWORK') }}
-                    <span class="menu-end shortcut-key">{{ shortcut(4) }}</span>
-                </DropdownMenuItem>
-            </DropdownMenuContent>
-        </DropdownMenuPortal>
-    </DropdownMenuRoot>
+                <div class="menu-separator" role="separator" />
+                <button id="network-servers" type="button" class="network-item" @click="show('servers')">
+                    {{ t('nj.network.otherServer') }}
+                </button>
+                <button id="network-open" type="button" class="network-item" @click="show()">
+                    {{ t('IDS_NETWORK') }}<span class="network-keys shortcut-key">{{ shortcut(4) }}</span>
+                </button>
+                <button
+                    id="connect"
+                    type="button"
+                    class="button both"
+                    :class="{ accent: words.ed2kTone === '' }"
+                    @click="emit('both')"
+                >
+                    <Icon :name="words.ed2kTone === '' ? 'LINK' : 'POWER'" />{{ ed2kAction() }}
+                </button>
+            </PopoverContent>
+        </PopoverPortal>
+    </PopoverRoot>
 </template>
 
 <style scoped>
@@ -108,6 +127,7 @@ function action(running: boolean): string {
     flex-direction: column;
     align-items: flex-start;
     line-height: 1.15;
+    min-width: 0;
 }
 
 .network-state {
@@ -137,22 +157,73 @@ function action(running: boolean): string {
     background: var(--color-warning-emphasis);
 }
 
-.network-menu {
+:deep(.network-menu) {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
     min-width: 320px;
+    padding: 4px;
 }
 
 .network-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
-    padding: 6px 4px 6px 10px;
+    padding: 6px 4px;
 }
 
+.network-row .network-words {
+    flex: 1;
+    gap: 2px;
+}
+
+/* A network's state, which opens the network at its part. */
 .connection-chip {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
     font-weight: bold;
+    text-align: start;
+    cursor: pointer;
+}
+
+.network-note {
+    padding-inline-start: 16px;
+    color: var(--color-fg-muted);
+    font-size: 0.9em;
+}
+
+/* A line of the popup: a flat button its width, with its keys after the words. */
+.network-item {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
+.network-item:hover,
+.network-item:focus-visible {
+    background: var(--color-bg-subtle);
+}
+
+.network-keys {
+    font-size: 0.85em;
+}
+
+.both {
+    justify-content: center;
+    width: 100%;
 }
 </style>

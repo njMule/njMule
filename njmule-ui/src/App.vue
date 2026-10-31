@@ -147,10 +147,10 @@ function drop(e: DragEvent): void {
     }
 }
 
-// Connect and Disconnect act on both networks; Cancel only stops trying servers.
+// Connect and Disconnect act on both networks, as eD2K's state says which; Cancel only stops trying servers.
 async function both(): Promise<void> {
     try {
-        if (connection.value === 'disconnected' && !words.value.kadUp) {
+        if (connection.value === 'disconnected') {
             await answer(api().POST('/servers/connect', { body: {} }));
             if (!words.value.kadRuns && preferences.value['net.kad.enabled'] !== 'false') {
                 await answer(api().POST('/kad/connect'));

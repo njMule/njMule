@@ -7,6 +7,8 @@ import type { Connection, Server, Status } from './model/engine';
 
 // The networks' state in words, as the network's control, its place and the status strip tell it.
 
+export type Tone = 'connected' | 'connecting' | '';
+
 export interface NetworkWords {
     /** Connected, Connecting or Not connected, for both networks together. */
     state: string;
@@ -14,6 +16,13 @@ export interface NetworkWords {
     detail: string;
     ed2k: string;
     kad: string;
+    /** The server's users and files while connected, empty otherwise. */
+    ed2kNote: string;
+    /** Kad's contacts while it is up, empty otherwise. */
+    kadNote: string;
+    /** The tone of each network's dot: connected, partly (connecting, or Kad behind a firewall) or neither. */
+    ed2kTone: Tone;
+    kadTone: Tone;
     up: boolean;
     trying: boolean;
     ed2kUp: boolean;
@@ -62,6 +71,13 @@ export function networkWords(connection: Connection, status: Status | null, serv
         detail: up || trying ? `${ed2kShort} · ${kadText}` : '',
         ed2k,
         kad: kadText,
+        ed2kNote:
+            connection === 'connected' && status?.server
+                ? t('nj.status.server', count(status.server.users), count(status.server.files))
+                : '',
+        kadNote: kadUp ? `${t('IDS_KADCONTACTLAB')}: ${count(kad.contacts)}` : '',
+        ed2kTone: connection === 'disconnected' ? '' : connection,
+        kadTone: kad === null ? '' : kadUp && !kad.firewalled ? 'connected' : 'connecting',
         up,
         trying,
         ed2kUp: connection === 'connected',
