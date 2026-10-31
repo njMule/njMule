@@ -54,9 +54,9 @@ export function linkText(text: string): string {
     return out;
 }
 
-/** The eD2K link of a file. */
-export function fileLink(name: string, size: number, hash: string): string {
-    return `ed2k://|file|${linkText(name)}|${size}|${hash}|/`;
+/** The eD2K link of a file, with the root of its AICH tree when it is known. */
+export function fileLink(name: string, size: number, hash: string, aich?: string | null): string {
+    return `ed2k://|file|${linkText(name)}|${size}|${hash}|${aich ? `h=${aich}|` : ''}/`;
 }
 
 /** The links as HTML, one anchor named after its file per line. */

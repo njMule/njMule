@@ -283,9 +283,9 @@ function extension(name: string): string {
     return dot < 0 ? '' : name.substring(dot + 1);
 }
 
-/** The eD2K link of a result. */
-export function link(r: Pick<Result, 'name' | 'size' | 'hash'>): string {
-    return fileLink(r.name, r.size, r.hash);
+/** The eD2K link of a result, which carries its AICH hash so that a download from it can check and repair the file. */
+export function link(r: Pick<Result, 'name' | 'size' | 'hash' | 'aich'>): string {
+    return fileLink(r.name, r.size, r.hash, r.aich);
 }
 
 // The size of a part: a file of one part is whole wherever it is shared.

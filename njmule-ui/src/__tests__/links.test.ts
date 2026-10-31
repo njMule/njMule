@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { fileLink, fileLinks, htmlLinks, type FileLink } from '../links';
 
 describe('links', () => {
@@ -46,8 +46,14 @@ describe('links', () => {
 
 describe('the links written for files', () => {
     const HASH = '0123456789ABCDEF0123456789ABCDEF';
+    const AICH = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     let name = '';
+    let aich: string | undefined;
     let written = '';
+
+    beforeEach(() => {
+        aich = undefined;
+    });
 
     it('should encode spaces, percent signs and bars of a name', () => {
         givenTheName('a b%c|d');
@@ -67,6 +73,13 @@ describe('the links written for files', () => {
         thenTheLinkIs(`ed2k://|file|citt%C3%A0%20%E6%97%A5|10|${HASH}|/`);
     });
 
+    it('should carry the AICH hash of a file when it is known', () => {
+        givenTheName('a.iso');
+        givenTheAichHash(AICH);
+        whenTheLinkIsWritten();
+        thenTheLinkIs(`ed2k://|file|a.iso|10|${HASH}|h=${AICH}|/`);
+    });
+
     it('should write the links as HTML with named entities', () => {
         whenTheLinksAreWrittenAsHtml([{ link: 'ed2k://|file|a&b|/', name: `<"it's">` }]);
         thenTheLinkIs('<a href="ed2k://|file|a&amp;b|/">&lt;&quot;it&#39;s&quot;&gt;</a>');
@@ -76,8 +89,12 @@ describe('the links written for files', () => {
         name = value;
     }
 
+    function givenTheAichHash(value: string): void {
+        aich = value;
+    }
+
     function whenTheLinkIsWritten(): void {
-        written = fileLink(name, 10, HASH);
+        written = fileLink(name, 10, HASH, aich);
     }
 
     function whenTheLinksAreWrittenAsHtml(links: { link: string; name: string }[]): void {
