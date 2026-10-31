@@ -373,28 +373,32 @@ select:disabled {
     z-index: 20;
 }
 
+/* A menu as the theme's context menu: nearly square, a lighter border, a closer shadow; popovers keep the frame above. */
+.menu[role='menu'] {
+    padding: 5px;
+    border-color: var(--color-border-muted);
+    border-radius: 1px;
+    box-shadow: 0 2px 6px var(--color-shadow-default);
+}
+
+/* A row as high as its words and icon with the theme's room, the one pointed at in a grey band across the menu; its
+   icon in the colour of its words. */
 .menu-item {
     display: flex;
     align-items: center;
     gap: 10px;
-    height: 30px;
-    padding: 0 10px;
-    border-radius: 6px;
+    padding: 6px 12px;
     cursor: default;
     outline: none;
     user-select: none;
 }
 
 .menu-item[data-highlighted] {
-    background: var(--color-accent-subtle);
+    background: var(--color-base-1);
 }
 
 .menu-item[data-disabled] {
-    color: var(--color-fg-subtle);
-}
-
-.menu-item .nj-icon {
-    --nj-icon-color: var(--color-fg-muted);
+    opacity: 0.6;
 }
 
 .menu-item .menu-end {
@@ -409,7 +413,7 @@ select:disabled {
 
 .menu-separator {
     height: 1px;
-    margin: 4px 6px;
+    margin: 0.25em 0.5em;
     background: var(--color-border-muted);
 }
 
