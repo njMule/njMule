@@ -88,9 +88,11 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 |---|---|
 | `njmule-core` (`org.njmule.core`) | engine and remote-control API; exports only `api`, `config` and `remote` |
 | `njmule-app` (`org.njmule.app`) | headless launcher/CLI, Logback set-up (`logging.internal` is not exported) |
-| `njmule-gui` (`org.njmule.gui`) | JavaFX 27 + AtlantaFX desktop app, with its own SVG line icons |
-| `njmule-webui` (`org.njmule.webui`) | web interface on Jetty (password, sessions, CSRF); serves the core's remote-control API |
-| `njmule-webapp` | the web interface's browser app (Vue 3, Element Plus, TypeScript, Vite); built into njmule-webui's jar |
+| `njmule-gui` (`org.njmule.gui`) | JavaFX 27 + AtlantaFX desktop app, still in the packages until `njmule-desktop` replaces it; it holds the translation bundles and flags `njmule-ui` reads |
+| `njmule-ui` | the one interface of the desktop window and the web interface (Vue 3, TypeScript, Vite, Reka UI, TanStack Table/Virtual); reaches njMule only through the remote-control API; built into njmule-webui's jar |
+| `njmule-desktop` | the desktop window: a Tauri 2 shell (Rust, `src-tauri/`) that starts the native engine with a control endpoint and shows `njmule-ui`; not packaged yet |
+| `njmule-webui` (`org.njmule.webui`) | web interface on Jetty (password, sessions, CSRF); serves `njmule-ui` and the core's remote-control API |
+| `njmule-webapp` | the former browser app (Vue 3, Element Plus); no longer served, to be removed |
 | `njmule-testkit` (`org.njmule.testkit`) | test doubles (fake server and peers, from M2) |
 | `njmule-bench` | JMH benchmarks; classpath build so it reaches internal core packages; not distributed |
 | `build-logic/` | Gradle convention plugin shared by the modules (`njmule.java-conventions`) |
@@ -134,15 +136,23 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `./gradlew :njmule-core:test --tests '*TagCodecTest'`. Speed of the transfers on the loopback
   (prints MiB/s): `./gradlew :njmule-testkit:test --tests '*ThroughputTest' '-Ptest.tags=perf'
   '-Ptest.excludedTags=interop'`.
-- Web app (`njmule-webapp`): Gradle downloads Node.js (`nodejs` in `libs.versions.toml`, checked
+- Interface (`njmule-ui`): Gradle downloads Node.js (`nodejs` in `libs.versions.toml`, checked
   in `verification-metadata.xml` for every platform) and runs `npm ci` from `package-lock.json`
   without install scripts (`.npmrc`); `bundle` type-checks and builds it, `unitTest` runs Vitest,
-  `formatCheck` runs Prettier (fix with `npm run format` there). Its texts are the desktop app's
-  translation keys (`t('IDS_…')`, `t('nj.…')`), converted to JSON at build time; only literal keys
-  are found. Its icons are the desktop app's (`src/icons.ts`).
+  `formatCheck` runs Prettier (fix with `npm run format` there). The API's types come from
+  `openapi.yaml` (`npm run api`). Its texts are the translation keys of `njmule-gui`'s bundles
+  (`t('IDS_…')`, `t('nj.…')`), converted to JSON at build time; only literal keys are found. The
+  `themes` task turns the AtlantaFX themes into CSS custom properties. A task that runs `npm ci`
+  empties `node_modules`: stop a Vite dev server first.
+- Desktop window (`njmule-desktop`): Rust and Cargo from rustup, at the version
+  `src-tauri/rust-toolchain.toml` pins; the Tauri command line comes from npm.
+  `./gradlew :njmule-desktop:shell` builds `src-tauri/target/release/njmule-gui(.exe)`, which starts
+  the `njmule` executable beside it (or on the `PATH`) and shows `njmule-ui`. In `src-tauri`:
+  `cargo test` runs its tests, `cargo fmt` formats it (`rustfmt.toml`: 120 columns).
 - Documentation website (`website/`, Docusaurus, not part of `build`): `./gradlew :website:site` →
   `website/build/site` (it takes the desktop app's screenshots with `:njmule-gui:docsCaptures`, the web
-  interface's with the installed Chrome or Edge, the CLI help with `:njmule-app:cliHelp`, and makes
+  interface's (`njmule-ui`) with the installed Chrome or Edge through `website/scripts/capture-web.mjs`,
+  the CLI help with `:njmule-app:cliHelp`, and makes
   the API reference from `openapi.yaml`); `./gradlew :website:siteCheck` checks its code (Prettier,
   TypeScript). Preview: `./gradlew :website:prepare`, then `npm start` in `website/`. Pages are MDX
   in English, text under CC BY-SA 4.0; screenshots are never committed (`<Screenshot id="…">`). A
@@ -153,7 +163,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   dependency-check, needs `NVD_API_KEY`), `:njmule-app:nativeCompile` (GraalVM native image).
 - Run headless: `./gradlew :njmule-app:run --args="--help"` (module path), or
   `./gradlew :njmule-app:installDist` and `njmule-app/build/install/njmule/bin/njmule`. Run the GUI:
-  `./gradlew :njmule-gui:run`.
+  `./gradlew :njmule-gui:run` (JavaFX); the desktop window: `./gradlew :njmule-app:nativeCompile
+  :njmule-desktop:shell`, with `njmule(.exe)` copied beside `njmule-gui(.exe)`.
 - Benchmarks: `./gradlew :njmule-bench:shadowJar`, then
   `java -jar njmule-bench/build/libs/benchmarks.jar` (for the throughput benchmarks one operation is
   1 MiB, so ops/s = MiB/s).
@@ -269,7 +280,9 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   scheme; the other AtlantaFX themes stay selectable.
 - Use only AtlantaFX looked-up colours (`-color-bg-*`, `-color-fg-*`, `-color-accent-*`,
   `-color-success-*`, …) and the `-nj-*` tokens of `docs/PLAN.md` §6.7; no colour literals in
-  Java or CSS outside the token definitions.
+  Java or CSS outside the token definitions. In `njmule-ui` the same colours are CSS custom
+  properties: the `--color-*` its `themes` task makes from each AtlantaFX theme and the `--nj-*`
+  tokens of `src/styles/njmule.css`.
 - Pastel tones for fills and surfaces (`*-subtle`/`*-muted`, bars, charts, chips); text uses the
   theme's `-color-fg-*` and `-color-*-fg` tokens, never a pastel tone.
 - Accessibility (WCAG 2.2 AA): text contrast ≥ 4.5:1 (≥ 3:1 for large text), essential icons and
