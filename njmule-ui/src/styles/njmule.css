@@ -168,6 +168,15 @@ select {
     color: inherit;
 }
 
+/* Check boxes and radio buttons in the theme's accent and about its size, as the desktop app's, rather than the
+   system's. */
+input[type='checkbox'],
+input[type='radio'] {
+    width: calc(0.75em + 7px);
+    height: calc(0.75em + 7px);
+    accent-color: var(--color-accent-emphasis);
+}
+
 .display {
     font-family: 'Manrope', system-ui, sans-serif;
     font-weight: 700;
@@ -295,7 +304,9 @@ select {
     background: var(--color-bg-default);
 }
 
-.field:focus-within {
+.field:focus-within,
+textarea:focus-visible,
+select:focus-visible {
     border-color: var(--color-accent-emphasis);
     outline: 1px solid var(--color-accent-emphasis);
 }
