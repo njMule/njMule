@@ -13,6 +13,7 @@ import { connection, type Connection, type ServerNote, serverNotes, status } fro
 import { logFrom, logTime, notesFrom } from '../../network';
 import { logTabRequest } from '../../places';
 import { inDesktopShell } from '../../platform';
+import { usable, type WebSettings } from '../settings/webui';
 import { problem } from '../../toasts';
 import FilterChips from '../../ui/FilterChips.vue';
 import Icon from '../../ui/Icon.vue';
@@ -145,8 +146,8 @@ function key(e: KeyboardEvent): void {
     }
 }
 
-// What we are on the networks, in sections side by side; the web interface's settings are not in the API, so its
-// section shows only in a browser, which it serves.
+// What we are on the networks, in sections side by side, and the web interface as its settings say; a guest, who may
+// not read them, sees the one serving it.
 interface Section {
     title: string;
     rows: [string, string][];
@@ -194,7 +195,14 @@ const mine = computed<Section[]>(() => {
         kad.rows.push([state, t(k ? 'IDS_CONNECTING' : 'IDS_DISCONNECTED')]);
     }
     sections.push(kad);
-    if (!inDesktopShell()) {
+    const w = web.value;
+    if (w !== undefined) {
+        const rows: [string, string][] = [[state, t(usable(w) ? 'IDS_ENABLED' : 'IDS_DISABLED')]];
+        if (w.url) {
+            rows.push(['URL:', w.url]);
+        }
+        sections.push({ title: t('IDS_WEBSRV'), rows });
+    } else if (!inDesktopShell()) {
         sections.push({
             title: t('IDS_WEBSRV'),
             rows: [
@@ -224,6 +232,17 @@ async function read(): Promise<void> {
     }
 }
 
+// The web interface's settings, which change in the Options: read again as the log shows.
+const web = shallowRef<WebSettings | undefined>();
+
+async function readWeb(): Promise<void> {
+    try {
+        web.value = await answer(api().GET('/webui'));
+    } catch {
+        web.value = undefined;
+    }
+}
+
 async function readTitle(): Promise<void> {
     try {
         const info = await answer(api().GET('/'));
@@ -236,6 +255,7 @@ async function readTitle(): Promise<void> {
 // The log is read while it shows: from its part's opening or the network's coming back, until either goes.
 let timer = 0;
 function start(): void {
+    void readWeb();
     window.clearInterval(timer);
     void read();
     timer = window.setInterval(() => void read(), 2000);

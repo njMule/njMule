@@ -50,6 +50,7 @@ import { readInterfaces } from './settings/interfaces';
 import { readPasswords } from './settings/passwords';
 import SchedulerPage from './settings/SchedulerPage.vue';
 import ServerListsDialog from './settings/ServerListsDialog.vue';
+import WebPage from './settings/WebPage.vue';
 import SettingRow from './settings/SettingRow.vue';
 import PortTestPane from '../ui/PortTestPane.vue';
 
@@ -406,6 +407,7 @@ function act(row: Row, action: Action): void {
                     <p class="page-description">{{ t(current.summary) }}</p>
                     <!-- The rules keep their form and their choice while another page shows. -->
                     <KeepAlive><SchedulerPage v-if="current.id === 'scheduler'" /></KeepAlive>
+                    <WebPage v-if="current.id === 'web'" />
                     <template v-for="(section, i) in current.sections" :key="i">
                         <section v-if="section.rows.some((r) => rowShown(r, section, current!))" class="settings-card">
                             <strong v-if="section.title" class="card-title">{{ t(section.title) }}</strong>
