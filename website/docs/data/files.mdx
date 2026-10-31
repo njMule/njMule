@@ -101,8 +101,8 @@ Copy these together, or not at all: a user hash with another key fails every ide
 
 | Folder | Files |
 |---|---|
-| **gui** | `gui.properties`: what the desktop app remembers (theme, language, window, screen, columns, the addresses typed before). `remotes.properties`: the remote njMule you connect to, with their tokens, readable by its owner only on Linux and macOS; on Windows your own profile folder keeps it from the other users. |
-| **data** | `backups/njmule-config-<date>-<time>.zip`: the [configuration backups](./backups.mdx). |
+| **gui** | `desktop.json`: the desktop window's options (start minimised, notification area, prompt on exit, watch the clipboard). `.window-state.json` and `remote-window-state.json`: the place and size of the window, on this njMule and on another. `remotes.properties`: the remote njMule you connect to, with their tokens, readable by its owner only on Linux and macOS; on Windows your own profile folder keeps it from the other users. |
+| **data** | `backups/njmule-config-<date>-<time>.zip`: the [configuration backups](./backups.mdx). `webview/`: what the desktop window's page remembers (theme, language, the lists' columns, the screen and the words typed before) and its caches; on macOS the system keeps them in its own place instead. |
 | **temp** | Each download in progress as `001.part` (its data, with gaps where nothing came yet) and `001.part.met` (its hashes, the parts done, its priority, category and best sources), in eMule's format with a few tags of njMule's own. |
 | **cache** | `countries.dat`: the country database, when countries are shown. `update/`: the packages of new versions being downloaded or waiting to be installed. |
 | **logs** | `njmule.log` and the older ones, `njmule.2026-10-15.0.log.gz` and so on; `remote/` for a desktop window that drives another njMule. See [Logs](./logs.mdx). |

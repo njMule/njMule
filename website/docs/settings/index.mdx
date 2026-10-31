@@ -138,11 +138,12 @@ describes each file and [Locations](../data/locations.mdx) says where the folder
 | `addresses.dat` | configuration | The addresses of the server lists of the [Server](server.mdx) page |
 | `webui.properties` | configuration | The [Web Interface](web-interface.mdx) page, with the password hashes |
 | `api-token` | configuration | The token of the remote-control API |
-| `gui.properties` | desktop app (`gui`) | Language, theme, start minimised, notification area, prompt on exit, watch the clipboard |
+| `desktop.json` | desktop app (`gui`) | Start minimised, notification area, prompt on exit, watch the clipboard |
 
 Two options of the [General](general.mdx) page are kept by the system itself, not in a file: **Start
 njMule when I log in** and **Open ed2k links with njMule**. njMule reads them back from the system
-each time the screen opens.
+each time the screen opens. The language and the theme are kept by the interface: the desktop
+window's in the profile's `data/webview`, and each browser its own for the web interface.
 
 ### Editing njmule.properties
 

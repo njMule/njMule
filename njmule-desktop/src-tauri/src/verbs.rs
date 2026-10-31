@@ -330,10 +330,11 @@ mod windows {
     /// At uninstall: lets the user choose to delete their njMule data too, moved to the Recycle Bin; the completed
     /// downloads, in the Downloads folder, stay.
     pub fn uninstall_profile() -> i32 {
+        // njMule's folders, and those the desktop window's toolkit names after its identifier.
         let folders: Vec<_> = ["APPDATA", "LOCALAPPDATA"]
             .iter()
             .filter_map(std::env::var_os)
-            .map(|dir| std::path::Path::new(&dir).join("njMule"))
+            .flat_map(|dir| ["njMule", "org.njmule.njMule"].map(|name| std::path::Path::new(&dir).join(name)))
             .filter(|dir| dir.is_dir())
             .collect();
         if folders.is_empty() || !profile_ticked() {

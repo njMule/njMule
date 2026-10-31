@@ -29,8 +29,9 @@ they are.
 2. If njMule opens ed2k links, the uninstaller gives them back to the program that opened them
    before, such as eMule, when it still has it, and turns **Start njMule when I log in** off.
 3. The window **Uninstall njMule** asks *Also delete your njMule data?* Tick **Delete my njMule
-   data** to move your profile (`%APPDATA%\njMule` and `%LOCALAPPDATA%\njMule`) to the Recycle Bin;
-   leave it unticked to keep it.
+   data** to move your profile (`%APPDATA%\njMule` and `%LOCALAPPDATA%\njMule`) to the Recycle Bin,
+   with the `org.njmule.njMule` folders the desktop window may have left beside them; leave it
+   unticked to keep it.
 
 A quiet uninstall (`msiexec /x … /quiet`) asks nothing and keeps the profile. Uninstalling an
 installation for every user also removes the [Windows service](./server/windows-service.mdx); the
