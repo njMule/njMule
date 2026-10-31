@@ -216,6 +216,43 @@ export function completeParts(missing: number[][], total: number): number {
     return total - lacking.size;
 }
 
+/** Sources at which the blue of a missing part reaches its strongest tone. */
+export const FULL_SOURCES = 10;
+
+/** A span of the part bar, in pixels; {@code tone} is how far toward the strongest blue (0 to 100), null for red. */
+export interface BarSpan {
+    x: number;
+    width: number;
+    tone: number | null;
+}
+
+/**
+ * The missing spans of a part map on a bar {@code width} pixels wide, cut where a gap crosses parts, each with its own
+ * sources: none red, else bluer the more have it. A span is at least one pixel wide, so a small gap still shows.
+ */
+export function missingSpans(map: { size: number; missing: number[][]; sources: number[] }, width: number): BarSpan[] {
+    if (map.size <= 0 || width < 1) {
+        return [];
+    }
+    const scale = width / map.size;
+    const spans: BarSpan[] = [];
+    for (const [from = 0, to = 0] of map.missing) {
+        let start = from;
+        while (start < to) {
+            const part = Math.floor(start / PART_SIZE);
+            const end = Math.min(to, (part + 1) * PART_SIZE);
+            const sources = map.sources[part] ?? 0;
+            spans.push({
+                x: start * scale,
+                width: Math.max(1, (end - start) * scale),
+                tone: sources === 0 ? null : Math.round(100 * Math.min(1, sources / FULL_SOURCES)),
+            });
+            start = end;
+        }
+    }
+    return spans;
+}
+
 /** The parts of a download complete: all once it is, else as its map tells, or as its bytes do without one. */
 export function partsHad(d: Pick<Download, 'size' | 'completed' | 'status'>, missing: number[][] | null): number {
     const total = partCount(d.size);

@@ -369,7 +369,11 @@ defineExpose({ neededHeight });
                             <span>{{ rateLine }}</span>
                         </span>
                     </div>
-                    <PartBar :parts="parts ?? NO_PARTS" :completed="one.completed" />
+                    <PartBar
+                        :parts="parts ?? NO_PARTS"
+                        :completed="one.completed"
+                        :text="`${percent(one.completed, one.size)}, ${had}/${partCount(one.size)}`"
+                    />
                     <p v-if="note" class="details-note" :class="note.problem ? 'danger' : 'warning'">
                         <Icon :name="note.problem ? 'ERROR' : 'WARNING'" /><span>{{ t(note.key) }}</span>
                     </p>

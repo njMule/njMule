@@ -12,8 +12,10 @@ import {
     byState,
     completeParts,
     countryName,
+    FULL_SOURCES,
     headActions,
     keeps,
+    missingSpans,
     named,
     PART_SIZE,
     partsHad,
@@ -490,5 +492,35 @@ describe('what the details offer for a state', () => {
 
     function thenTheNoteIs(expected: { key: string; problem: boolean } | null): void {
         expect(note).toEqual(expected);
+    }
+});
+
+describe('the missing spans of the part bar', () => {
+    let spans: { x: number; width: number; tone: number | null }[] = [];
+
+    it('should cut a gap where it crosses parts, each in the tone of its sources', () => {
+        whenTheBarIsDrawn({ size: 2 * PART_SIZE, missing: [[0, 2 * PART_SIZE]], sources: [0, FULL_SOURCES / 2] }, 200);
+        thenTheSpansAre([
+            { x: 0, width: 100, tone: null },
+            { x: 100, width: 100, tone: 50 },
+        ]);
+    });
+
+    it('should keep the strongest blue from as many sources on', () => {
+        whenTheBarIsDrawn({ size: PART_SIZE, missing: [[0, PART_SIZE]], sources: [3 * FULL_SOURCES] }, 100);
+        thenTheSpansAre([{ x: 0, width: 100, tone: 100 }]);
+    });
+
+    it('should show a small gap one pixel wide', () => {
+        whenTheBarIsDrawn({ size: PART_SIZE, missing: [[0, 10]], sources: [1] }, 100);
+        thenTheSpansAre([{ x: 0, width: 1, tone: 10 }]);
+    });
+
+    function whenTheBarIsDrawn(map: { size: number; missing: number[][]; sources: number[] }, width: number): void {
+        spans = missingSpans(map, width);
+    }
+
+    function thenTheSpansAre(expected: { x: number; width: number; tone: number | null }[]): void {
+        expect(spans).toEqual(expected);
     }
 });

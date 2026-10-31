@@ -3,80 +3,89 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type { Schemas } from '../api/client';
 import { t } from '../i18n';
+import { missingSpans } from '../transfers';
 
-// The map of a download's parts: what is here dark, what is missing bluer the more sources have it, rose where none
-// has it, what is asked for now in yellow; the share completed as a line along the top.
+// The bar of a download, with eMule's meaning in njMule's colours: what we have, what is missing (bluer the more sources
+// have it, red when none has), the blocks being requested, and a thin strip on top for the completed share. Drawn in
+// pixels, so that a small gap still shows; the start of the file stays on the left in every language.
 
-const props = defineProps<{ parts: Schemas['PartMap']; completed: number }>();
+/** {@code text} tells the share and the parts for those who do not see the bar. */
+const props = defineProps<{ parts: Schemas['PartMap']; completed: number; text?: string }>();
 
-const PART = 9_728_000;
-const WIDTH = 1000;
-const HEIGHT = 36;
-const TOP_LINE = 4;
+const HEIGHT = 22;
+const STRIP = 3;
 
-function x(offset: number): number {
-    return props.parts.size > 0 ? (offset / props.parts.size) * WIDTH : 0;
-}
+const svg = ref<SVGSVGElement | null>(null);
+const width = ref(0);
+let observer: ResizeObserver | null = null;
 
-const most = computed(() => Math.max(1, ...props.parts.sources));
+onMounted(() => {
+    observer = new ResizeObserver(() => (width.value = svg.value?.clientWidth ?? 0));
+    if (svg.value) {
+        observer.observe(svg.value);
+    }
+});
 
-const missing = computed(() =>
-    props.parts.missing.map(([start = 0, end = 0]) => {
-        const sources = props.parts.sources[Math.floor(start / PART)] ?? 0;
-        return {
-            x: x(start),
-            width: Math.max(0.5, x(end) - x(start)),
-            kind: sources === 0 ? 'none' : 'available',
-            // Bluer the more sources have the part, from the lightest tint to the strongest.
-            mix: sources === 0 ? 0 : Math.round((100 * sources) / most.value),
-        };
-    }),
-);
+onUnmounted(() => observer?.disconnect());
 
+const scale = computed(() => (props.parts.size > 0 ? width.value / props.parts.size : 0));
+const missing = computed(() => missingSpans(props.parts, width.value));
 const requested = computed(() =>
-    props.parts.requested.map(([start = 0, end = 0]) => ({ x: x(start), width: Math.max(0.5, x(end) - x(start)) })),
+    props.parts.requested.map(([start = 0, end = 0]) => ({
+        x: start * scale.value,
+        width: Math.max(1, (end - start) * scale.value),
+    })),
 );
-
 const share = computed(() => (props.parts.size > 0 ? Math.min(1, props.completed / props.parts.size) : 0));
 </script>
 
 <template>
     <div class="part-bar">
         <svg
+            ref="svg"
             class="bar"
-            :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
+            :viewBox="`0 0 ${Math.max(1, width)} ${HEIGHT}`"
             preserveAspectRatio="none"
-            role="img"
+            role="progressbar"
             :aria-label="t('IDS_DL_PROGRESS')"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            :aria-valuenow="Math.round(share * 100)"
+            :aria-valuetext="text"
         >
-            <rect class="have" x="0" y="0" :width="WIDTH" :height="HEIGHT" />
-            <rect
-                v-for="(r, i) in missing"
-                :key="`m${i}`"
-                :class="r.kind"
-                :x="r.x"
-                y="0"
-                :width="r.width"
-                :height="HEIGHT"
-                :style="
-                    r.kind === 'available'
-                        ? { fill: `color-mix(in srgb, var(--nj-bar-sources-max) ${r.mix}%, var(--nj-bar-sources-min))` }
-                        : undefined
-                "
-            />
-            <rect
-                v-for="(r, i) in requested"
-                :key="`r${i}`"
-                class="requested"
-                :x="r.x"
-                y="0"
-                :width="r.width"
-                :height="HEIGHT"
-            />
-            <rect class="done" x="0" y="0" :width="share * WIDTH" :height="TOP_LINE" />
+            <rect class="track" x="0" y="0" :width="width" :height="HEIGHT" />
+            <template v-if="parts.size > 0">
+                <rect class="have" x="0" :y="STRIP" :width="width" :height="HEIGHT - STRIP" />
+                <rect
+                    v-for="(r, i) in missing"
+                    :key="`m${i}`"
+                    :class="r.tone === null ? 'none' : 'available'"
+                    :x="r.x"
+                    :y="STRIP"
+                    :width="r.width"
+                    :height="HEIGHT - STRIP"
+                    :style="
+                        r.tone === null
+                            ? undefined
+                            : {
+                                  fill: `color-mix(in srgb, var(--nj-bar-sources-max) ${r.tone}%, var(--nj-bar-sources-min))`,
+                              }
+                    "
+                />
+                <rect
+                    v-for="(r, i) in requested"
+                    :key="`r${i}`"
+                    class="requested"
+                    :x="r.x"
+                    :y="STRIP"
+                    :width="r.width"
+                    :height="HEIGHT - STRIP"
+                />
+                <rect class="done" x="0" y="0" :width="share * width" :height="STRIP" />
+            </template>
         </svg>
         <ul class="legend">
             <li><span class="swatch have" />{{ t('nj.legend.have') }}</li>
@@ -89,11 +98,21 @@ const share = computed(() => (props.parts.size > 0 ? Math.min(1, props.completed
 </template>
 
 <style scoped>
+.part-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
 .bar {
     display: block;
     width: 100%;
-    height: 36px;
-    border-radius: 3px;
+    height: 22px;
+    direction: ltr;
+}
+
+.track {
+    fill: var(--nj-bar-bg);
 }
 
 .have {
@@ -120,15 +139,16 @@ const share = computed(() => (props.parts.size > 0 ? Math.min(1, props.completed
     background: var(--nj-bar-complete);
 }
 
+/* What each colour means, flowing over as many lines as the pane needs: the words are there, not only the colours. */
 .legend {
     display: flex;
     flex-wrap: wrap;
     gap: 4px 12px;
-    margin: 6px 0 0;
+    margin: 0;
     padding: 0;
     list-style: none;
     color: var(--color-fg-muted);
-    font-size: 0.92em;
+    font-size: 0.85em;
 }
 
 .legend li {
@@ -138,8 +158,8 @@ const share = computed(() => (props.parts.size > 0 ? Math.min(1, props.completed
 }
 
 .swatch {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
     border-radius: 2px;
 }
 </style>
