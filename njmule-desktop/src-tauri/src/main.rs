@@ -689,7 +689,7 @@ fn double_click_time() -> Duration {
     // SAFETY: a plain query of a system setting.
     let millis = unsafe { windows_sys::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() };
     #[cfg(not(windows))]
-    let millis = 500;
+    let millis: u32 = 500;
     Duration::from_millis(u64::from(millis))
 }
 

@@ -21,8 +21,10 @@ const MAX_WAITS: usize = 8;
 /// How long a start waits for each process it was told to.
 const WAIT: Duration = Duration::from_secs(60);
 
-/// A command of the desktop program, from its command line.
+/// A command of the desktop program, from its command line; those of Windows Installer and its computer only run
+/// there.
 #[derive(Debug, PartialEq)]
+#[cfg_attr(not(windows), allow(dead_code))]
 pub enum Verb {
     Version,
     RestoreLinks(Vec<String>),
@@ -33,6 +35,7 @@ pub enum Verb {
 
 /// A Windows Installer package to install for an update, as njMule asked for it.
 #[derive(Debug, Default, PartialEq)]
+#[cfg_attr(not(windows), allow(dead_code))]
 pub struct Update {
     pub msi: String,
     pub waits: Vec<u32>,
@@ -112,6 +115,7 @@ fn update(args: &[String]) -> Result<Update, String> {
 }
 
 /// The arguments of msiexec for `update`, but the property that installs for every user (written as is).
+#[cfg(any(windows, test))]
 pub fn msiexec_args(update: &Update) -> Vec<String> {
     let mut args = vec!["/i".to_owned(), update.msi.clone()];
     args.push(if update.quiet { "/quiet" } else { "/passive" }.to_owned());
