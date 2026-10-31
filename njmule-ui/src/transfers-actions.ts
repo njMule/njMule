@@ -9,17 +9,27 @@ import { message, problem } from './toasts';
 
 // What the transfers ask the engine to do to the downloads, telling the user how it went.
 
-/** Adds the eD2K file links in {@code text} as downloads, telling each one added; returns how many it found. */
-export async function addLinks(text: string, category?: number, paused = false): Promise<number> {
+/**
+ * Adds the eD2K file links in {@code text} as downloads, in {@code category} or that of their names, paused or as the
+ * preferences say, telling each one added when {@code tell}; returns how many it found. Links handed over by the system
+ * are told; those chosen in a dialog are not, as in the desktop app.
+ */
+export async function addLinks(text: string, category?: number, paused?: boolean, tell = true): Promise<number> {
     const links = fileLinks(text).map((l) => l.link);
     if (links.length === 0) {
         return 0;
     }
     try {
         const added = await answer(
-            api().POST('/downloads', { body: { links, ...(category === undefined ? {} : { category }), paused } }),
+            api().POST('/downloads', {
+                body: {
+                    links,
+                    ...(category === undefined ? {} : { category }),
+                    ...(paused === undefined ? {} : { paused }),
+                },
+            }),
         );
-        for (const d of added) {
+        for (const d of tell ? added : []) {
             message(t('nj.transfers.added', d.name));
         }
     } catch (e) {

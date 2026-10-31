@@ -48,6 +48,7 @@ async function add(): Promise<void> {
         fresh.join('\n'),
         chosenCategory.value === BY_RULES ? undefined : chosenCategory.value,
         paused.value,
+        false,
     );
 }
 </script>
