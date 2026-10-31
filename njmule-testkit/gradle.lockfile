@@ -3,8 +3,8 @@
 # This file is expected to be part of source control.
 # To regenerate this file, run: ./gradlew :njmule-testkit:dependencies --write-locks
 at.favre.lib:hkdf:2.0.0=aggregateCodeCoverageReportResults,runtimeClasspath,testRuntimeClasspath
-ch.qos.logback:logback-classic:1.6.5=aggregateCodeCoverageReportResults,runtimeClasspath,testRuntimeClasspath
-ch.qos.logback:logback-core:1.6.5=aggregateCodeCoverageReportResults,runtimeClasspath,testRuntimeClasspath
+ch.qos.logback:logback-classic:1.6.6=aggregateCodeCoverageReportResults,runtimeClasspath,testRuntimeClasspath
+ch.qos.logback:logback-core:1.6.6=aggregateCodeCoverageReportResults,runtimeClasspath,testRuntimeClasspath
 com.ethlo.time:itu:1.14.0=aggregateCodeCoverageReportResults,runtimeClasspath,testRuntimeClasspath
 com.fasterxml.jackson.core:jackson-annotations:2.22=aggregateCodeCoverageReportResults,runtimeClasspath,testRuntimeClasspath
 com.github.ben-manes.caffeine:caffeine:3.3.0=annotationProcessor,testAnnotationProcessor
