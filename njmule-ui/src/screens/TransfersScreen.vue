@@ -5,7 +5,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 <script setup lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
 import {
+    ContextMenuCheckboxItem,
     ContextMenuItem,
+    ContextMenuItemIndicator,
     ContextMenuSeparator,
     ContextMenuSub,
     ContextMenuSubContent,
@@ -18,9 +20,20 @@ import CategoriesDialog from '../dialogs/CategoriesDialog.vue';
 import CommentDialog from '../dialogs/CommentDialog.vue';
 import { amount, duration, percent, rate, size } from '../format';
 import { t } from '../i18n';
-import { bans, categories, downloads, known, sources, uploads, type Download, type Source } from '../model/engine';
+import {
+    bans,
+    categories,
+    downloads,
+    known,
+    preferences,
+    sources,
+    uploads,
+    type Download,
+    type Source,
+} from '../model/engine';
 import { current, withShortcutKey } from '../places';
 import type { Platform } from '../platform';
+import { problem } from '../toasts';
 import {
     byCategory,
     byName,
@@ -45,12 +58,16 @@ import {
 } from '../transfers';
 import {
     askCancel,
+    askSource,
     categorize,
     clearCompleted,
     clearCompletedOf,
     copyLinks,
     each,
     prioritize,
+    setAutoSwap,
+    setPreviewFirst,
+    swapSources,
 } from '../transfers-actions';
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
 import EmptyState from '../ui/EmptyState.vue';
@@ -65,7 +82,7 @@ import DotSelect from './transfers/DotSelect.vue';
 // The transfers: the downloads, narrowed by state, category and name, with the details of the chosen one under them;
 // and, one list at a time, the clients we upload to, those waiting, the banned and the clients met.
 
-defineProps<{ platform: Platform }>();
+const props = defineProps<{ platform: Platform }>();
 
 type Shelf = 'downloads' | 'uploads' | 'queue' | 'banned' | 'known';
 const SHOW_ALL = -1;
@@ -238,6 +255,19 @@ function comment(list: Download[]): void {
 
 // A cancel deletes what was downloaded: asked first. Delete also takes the completed ones off the list, files kept.
 const cancellable = computed(() => chosen.value.filter((d) => d.status !== 'complete'));
+
+// The one unfinished download chosen, which a source can be added to; the chosen ones when none is complete.
+const active = computed(() => chosen.value.length === 1 && chosen.value[0]!.status !== 'complete');
+const unfinished = computed(() => chosen.value.length > 0 && cancellable.value.length === chosen.value.length);
+
+// The folder a completed download went to: its category's own, else the incoming folder.
+async function openFolderOf(d: Download): Promise<void> {
+    const folder =
+        categories.value.find((c) => c.id === d.category)?.incoming || preferences.value['dirs.incoming'] || '';
+    if (folder !== '' && !(await props.platform.openFolder(folder))) {
+        problem(folder);
+    }
+}
 
 const anyComplete = computed(() => downloads.value.some((d) => d.status === 'complete'));
 
@@ -562,6 +592,7 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                         <ContextMenuItem
                             class="menu-item"
                             :disabled="!platform.desktop || chosen.length !== 1 || chosen[0]!.status !== 'complete'"
+                            @select="openFolderOf(chosen[0]!)"
                         >
                             <Icon name="FOLDER_OPEN" />{{ t('IDS_OPENFOLDER') }}
                         </ContextMenuItem>
@@ -608,16 +639,86 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                                 </ContextMenuSubContent>
                             </ContextMenuPortal>
                         </ContextMenuSub>
-                        <ContextMenuItem class="menu-item" disabled
-                            ><Icon name="MORE" />{{ t('IDS_MORE') }}</ContextMenuItem
-                        >
+                        <!-- The rarer, in plain words. A client that has the files of several downloads is asked
+                             for one at a time: its sources can move. -->
+                        <ContextMenuSub>
+                            <ContextMenuSubTrigger class="menu-item">
+                                <Icon name="MORE" />{{ t('IDS_MORE') }}<Icon class="menu-end" name="CHEVRON_RIGHT" />
+                            </ContextMenuSubTrigger>
+                            <ContextMenuPortal>
+                                <ContextMenuSubContent class="menu">
+                                    <ContextMenuItem
+                                        class="menu-item"
+                                        :disabled="!active"
+                                        @select="askSource(chosen[0]!)"
+                                    >
+                                        <Icon name="PERSON_ADD" />{{ t('IDS_ADDSRCMANUALLY') }}
+                                    </ContextMenuItem>
+                                    <ContextMenuCheckboxItem
+                                        class="menu-item"
+                                        :model-value="unfinished && chosen.every((d) => d.previewFirst)"
+                                        :disabled="!unfinished"
+                                        @update:model-value="(on) => setPreviewFirst(chosen, on === true)"
+                                    >
+                                        <span class="menu-check"
+                                            ><ContextMenuItemIndicator><Icon name="CHECK" /></ContextMenuItemIndicator
+                                        ></span>
+                                        {{ t('IDS_DOWNLOADMOVIECHUNKS') }}
+                                    </ContextMenuCheckboxItem>
+                                    <ContextMenuSub>
+                                        <ContextMenuSubTrigger class="menu-item">
+                                            <Icon name="SWAP" />{{ t('nj.a4af.menu')
+                                            }}<Icon class="menu-end" name="CHEVRON_RIGHT" />
+                                        </ContextMenuSubTrigger>
+                                        <ContextMenuPortal>
+                                            <ContextMenuSubContent class="menu">
+                                                <!-- Sources move only to a download that runs. -->
+                                                <ContextMenuItem
+                                                    class="menu-item"
+                                                    :disabled="
+                                                        chosen.length === 0 ||
+                                                        chosen.some((d) => d.status !== 'downloading')
+                                                    "
+                                                    @select="swapSources(chosen, 'here')"
+                                                >
+                                                    {{ t('nj.a4af.toThis') }}
+                                                </ContextMenuItem>
+                                                <ContextMenuCheckboxItem
+                                                    class="menu-item"
+                                                    :model-value="unfinished && chosen.every((d) => d.autoSwap)"
+                                                    :disabled="!unfinished"
+                                                    @update:model-value="(on) => setAutoSwap(chosen, on === true)"
+                                                >
+                                                    <span class="menu-check"
+                                                        ><ContextMenuItemIndicator
+                                                            ><Icon name="CHECK" /></ContextMenuItemIndicator
+                                                    ></span>
+                                                    {{ t('nj.a4af.auto') }}
+                                                </ContextMenuCheckboxItem>
+                                                <ContextMenuItem
+                                                    class="menu-item"
+                                                    :disabled="!unfinished"
+                                                    @select="swapSources(chosen, 'away')"
+                                                >
+                                                    {{ t('nj.a4af.toOther') }}
+                                                </ContextMenuItem>
+                                            </ContextMenuSubContent>
+                                        </ContextMenuPortal>
+                                    </ContextMenuSub>
+                                </ContextMenuSubContent>
+                            </ContextMenuPortal>
+                        </ContextMenuSub>
                         <ContextMenuSeparator class="menu-separator" />
                         <ContextMenuItem class="menu-item" :disabled="chosen.length === 0" @select="copyLinks(chosen)">
                             <Icon name="COPY" />{{ t('nj.copyLink') }}
                         </ContextMenuItem>
-                        <ContextMenuItem class="menu-item" disabled
-                            ><Icon name="CODE" />{{ t('IDS_DL_LINK2') }}</ContextMenuItem
+                        <ContextMenuItem
+                            class="menu-item"
+                            :disabled="chosen.length === 0"
+                            @select="copyLinks(chosen, true)"
                         >
+                            <Icon name="CODE" />{{ t('IDS_DL_LINK2') }}
+                        </ContextMenuItem>
                         <ContextMenuSeparator class="menu-separator" />
                         <ContextMenuItem class="menu-item" :disabled="!anyComplete" @select="clearCompleted()">
                             <Icon name="CLEAR_ALL" />{{ t('IDS_DL_CLEAR') }}

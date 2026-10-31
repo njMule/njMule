@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { answer, api } from './api/client';
-import { askRisky } from './ask';
+import { answer, api, ApiError } from './api/client';
+import { ask, askRisky } from './ask';
 import { t } from './i18n';
-import { fileLinks } from './links';
+import { fileLinks, htmlLinks } from './links';
 import { readDownloads, type Download } from './model/engine';
 import { message, offer, problem } from './toasts';
 import { appliesTo, type Command } from './transfers';
@@ -125,15 +125,81 @@ export async function clearCompleted(): Promise<void> {
     await run([answer(api().DELETE('/downloads/completed'))]);
 }
 
-/** Puts the links of {@code downloads} on the clipboard, one a line; with none chosen it stays as it was. */
-export async function copyLinks(downloads: Download[]): Promise<void> {
+/**
+ * Puts the links of {@code downloads} on the clipboard, one a line, as HTML anchors named after their files when
+ * {@code html}; with none chosen it stays as it was.
+ */
+export async function copyLinks(downloads: Download[], html = false): Promise<void> {
     if (downloads.length === 0) {
         return;
     }
     try {
-        await navigator.clipboard.writeText(downloads.map((d) => d.link).join('\n'));
+        await navigator.clipboard.writeText(html ? htmlLinks(downloads) : downloads.map((d) => d.link).join('\n'));
     } catch (e) {
         problem((e as Error).message);
+    }
+}
+
+/** Asks for the first and last parts of {@code downloads} first, so that their files can be previewed early, or not. */
+export async function setPreviewFirst(downloads: Download[], previewFirst: boolean): Promise<void> {
+    await run(
+        downloads.map((d) =>
+            answer(
+                api().PUT('/downloads/{hash}/preview', { params: { path: { hash: d.hash } }, body: { previewFirst } }),
+            ),
+        ),
+    );
+}
+
+/** Whether sources asked for other files come to {@code downloads} whenever they are free to move. */
+export async function setAutoSwap(downloads: Download[], autoSwap: boolean): Promise<void> {
+    await run(
+        downloads.map((d) =>
+            answer(api().PUT('/downloads/{hash}/autoswap', { params: { path: { hash: d.hash } }, body: { autoSwap } })),
+        ),
+    );
+}
+
+/**
+ * Moves the sources {@code downloads} share with other files to them now ({@code here}), or theirs to the other files,
+ * telling how many moved for each.
+ */
+export async function swapSources(downloads: Download[], direction: 'here' | 'away'): Promise<void> {
+    await run(
+        downloads.map(async (d) => {
+            const moved = await answer(
+                api().POST('/downloads/{hash}/swap', { params: { path: { hash: d.hash } }, body: { direction } }),
+            );
+            message(t('nj.a4af.swapped', moved.added));
+        }),
+    );
+}
+
+/** Adds a source the user knows of, typed as host:port, to {@code d}. */
+export async function askSource(d: Download): Promise<void> {
+    const typed = await ask({
+        title: t('nj.transfers.addSourceTitle'),
+        text: t('nj.transfers.sourceFor', d.name),
+        field: { label: t('nj.transfers.sourceAddress'), value: '', hint: t('nj.transfers.sourceHint') },
+        yes: t('nj.transfers.addSource'),
+        no: t('IDS_CANCEL'),
+    });
+    const address = typed?.field.trim() ?? '';
+    if (address === '') {
+        return;
+    }
+    try {
+        await answer(
+            api().POST('/downloads/{hash}/sources', { params: { path: { hash: d.hash } }, body: { address } }),
+        );
+        message(t('nj.transfers.sourceAdded', address));
+    } catch (e) {
+        // An odd address is refused as such; a source known already or refused by the IP filter is not added.
+        problem(
+            e instanceof ApiError && e.status === 400
+                ? t('nj.servers.badAddress', address)
+                : t('nj.transfers.sourceRefused', address),
+        );
     }
 }
 
