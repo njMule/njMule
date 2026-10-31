@@ -398,6 +398,19 @@ onMounted(() => {
     void readDesktopSettings(props.platform);
     watchClipboard(props.platform);
     props.platform.onCloseAsked(() => void quitIfWanted());
+    // The application menu of macOS: About, Settings, and Quit asking first as closing the window does.
+    props.platform.onAppMenu(
+        { about: t('nj.about.title'), settings: `${t('IDS_EM_PREFS')}…`, quit: t('nj.exit.quit') },
+        (chosen) => {
+            if (chosen === 'about') {
+                showAbout();
+            } else if (chosen === 'settings') {
+                current.value = 'settings';
+            } else {
+                void quitIfWanted();
+            }
+        },
+    );
     props.platform.onTray((chosen) => {
         if (chosen === 'connect') {
             void ed2k();

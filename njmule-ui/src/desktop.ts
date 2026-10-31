@@ -5,7 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Endpoint } from './api/client';
 import { t } from './i18n';
-import type { DesktopSettings, Platform, TrayChoice } from './platform';
+import type { AppMenuChoice, DesktopSettings, Platform, TrayChoice } from './platform';
 import { unreachable } from './remote';
 import { message } from './toasts';
 
@@ -126,4 +126,8 @@ export const desktop: Platform = {
     preview: (player, args, file) => saying(invoke<void>('preview', { player, args, file })),
     openFile: (path) => saying(invoke<boolean>('open_file', { path })),
     revealFile: (path) => saying(invoke<boolean>('reveal_file', { path })),
+    onAppMenu: (words, handler) => {
+        void listen<AppMenuChoice>('app-menu', (e) => handler(e.payload));
+        void invoke('app_menu_texts', { ...words });
+    },
 };

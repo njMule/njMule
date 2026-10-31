@@ -18,6 +18,10 @@ export interface DesktopSettings {
     watchClipboard: boolean;
 }
 
+/** What the application menu of macOS leaves to the window, and the words of its items. */
+export type AppMenuChoice = 'about' | 'settings' | 'quit';
+export type AppMenuWords = Record<AppMenuChoice, string>;
+
 export interface Platform {
     /** Whether the interface runs in the desktop app's window. */
     readonly desktop: boolean;
@@ -72,6 +76,8 @@ export interface Platform {
     openFile(path: string): Promise<boolean>;
     /** Shows the folder of a file of this computer, the file selected where the file manager can; false when gone. */
     revealFile(path: string): Promise<boolean>;
+    /** Runs {@code handler} with what was chosen in the application menu of macOS, whose items say {@code words}. */
+    onAppMenu(words: AppMenuWords, handler: (chosen: AppMenuChoice) => void): void;
 }
 
 const browser: Platform = {
@@ -115,6 +121,7 @@ const browser: Platform = {
     },
     openFile: async () => false,
     revealFile: async () => false,
+    onAppMenu: () => {},
 };
 
 /** Whether the engine at the API address {@code url} runs on this computer: its folders are ours to open. */

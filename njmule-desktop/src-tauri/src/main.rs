@@ -16,6 +16,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::ipc::Response;
+use tauri::menu::MenuItem;
+#[cfg(target_os = "macos")]
+use tauri::menu::{Menu, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::utils::config::{Csp, CspDirectiveSources};
 use tauri::{
@@ -117,6 +120,8 @@ struct Shell {
     remote: Option<String>,
     // Whether the window opened from another one's dialog, which waits to hear that it reached the other njMule.
     checked: bool,
+    // About, Settings and Quit in the application menu of macOS.
+    app_menu: Mutex<Vec<MenuItem<Wry>>>,
 }
 
 impl Shell {
@@ -587,13 +592,18 @@ fn tray_clicked(app: &AppHandle, event: TrayIconEvent) {
     }
 }
 
+/// Whether quitting asks first: once the window listens, while the options want it asked.
+fn asks_to_quit(shell: &Shell) -> bool {
+    shell.asks.load(Ordering::Relaxed) && shell.settings().confirm_exit
+}
+
 /// What was chosen in the menu or MiniMule: the window shows itself; the rest is the window's to do, the options over
 /// the window shown again, quitting too when it asks first.
 fn tray_chosen(app: &AppHandle, id: &str) {
     let shell = app.state::<Shell>();
     match id {
         "show" => show_window(app),
-        "quit" if !shell.asks.load(Ordering::Relaxed) || !shell.settings().confirm_exit => app.exit(0),
+        "quit" if !asks_to_quit(&shell) => app.exit(0),
         "options" | "quit" => {
             show_window(app);
             let _ = app.emit_to("main", "tray", id);
@@ -803,6 +813,85 @@ fn reveal_file(app: AppHandle, path: String) -> Result<bool, String> {
     app.opener().reveal_item_in_dir(path).map(|_| true).map_err(|e| e.to_string())
 }
 
+/// The words of the application menu's own items (macOS), in the interface's language.
+#[tauri::command]
+fn app_menu_texts(shell: State<'_, Shell>, about: String, settings: String, quit: String) -> Result<(), String> {
+    for (item, text) in shell.app_menu.lock().unwrap().iter().zip([about, settings, quit]) {
+        item.set_text(text).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// The application menu of macOS: About, Settings and Quit are the window's to do; the system's items stay, with the
+/// Edit menu whose shortcuts the fields need. In English until the window gives its words.
+#[cfg(target_os = "macos")]
+fn app_menu(app: &AppHandle) -> tauri::Result<(Menu<Wry>, Vec<MenuItem<Wry>>)> {
+    use tauri::menu::Submenu;
+    let name = app.package_info().name.clone();
+    let about = MenuItem::with_id(app, "app-about", format!("About {name}"), true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "app-settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
+    let quit = MenuItem::with_id(app, "app-quit", format!("Quit {name}"), true, Some("CmdOrCtrl+Q"))?;
+    let separator = || PredefinedMenuItem::separator(app);
+    let own = Submenu::with_items(
+        app,
+        &name,
+        true,
+        &[
+            &about,
+            &separator()?,
+            &settings,
+            &separator()?,
+            &PredefinedMenuItem::services(app, None)?,
+            &separator()?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &separator()?,
+            &quit,
+        ],
+    )?;
+    let edit = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &separator()?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let window = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+            &separator()?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+    Ok((Menu::with_items(app, &[&own, &edit, &window])?, vec![about, settings, quit]))
+}
+
+/// What an item of the application menu does, over the window shown: the window's to do (quitting asks first, once
+/// the window listens).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn app_menu_chosen(app: &AppHandle, id: &str) {
+    match id {
+        "quit" if !asks_to_quit(&app.state::<Shell>()) => app.exit(0),
+        "about" | "settings" | "quit" => {
+            show_window(app);
+            let _ = app.emit_to("main", "app-menu", id);
+        }
+        _ => {}
+    }
+}
+
 /// Brings the window back, from the notification area too.
 #[tauri::command]
 fn show_main(app: AppHandle) {
@@ -946,7 +1035,8 @@ fn main() {
             connected,
             preview,
             open_file,
-            reveal_file
+            reveal_file,
+            app_menu_texts
         ])
         .setup(move |app| {
             match &remote {
@@ -966,6 +1056,17 @@ fn main() {
                 app.deep_link().on_open_url(move |event| {
                     hand_over(&handle, event.urls().iter().map(|u| u.to_string()).collect());
                     show_window(&handle);
+                });
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let (menu, items) = app_menu(app.handle())?;
+                app.set_menu(menu)?;
+                *app.state::<Shell>().app_menu.lock().unwrap() = items;
+                app.on_menu_event(|app, event| {
+                    if let Some(id) = event.id.as_ref().strip_prefix("app-") {
+                        app_menu_chosen(app, id);
+                    }
                 });
             }
             // The notification area, as the desktop app uses it: only on Windows, its icon there while the window hides.
@@ -995,7 +1096,7 @@ fn main() {
             // Closing the window ends njMule, once the window asked whether to quit, when the options want it asked.
             ("main", WindowEvent::CloseRequested { api, .. }) => {
                 let shell = window.state::<Shell>();
-                if shell.asks.load(Ordering::Relaxed) && shell.settings().confirm_exit {
+                if asks_to_quit(&shell) {
                     api.prevent_close();
                     let _ = window.emit_to("main", "close-requested", ());
                 }
