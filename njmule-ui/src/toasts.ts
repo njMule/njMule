@@ -4,7 +4,8 @@
 import { ref } from 'vue';
 import type { IconName } from './icons';
 
-// Short messages floating over the window: two at most, the newest at the bottom.
+// Short messages floating over the window: two at most, the newest at the bottom; the same message again counts up on
+// the one shown instead of pushing another out.
 
 export interface Toast {
     id: number;
@@ -12,24 +13,47 @@ export interface Toast {
     icon: IconName;
     tone: 'info' | 'success' | 'danger';
     action?: { label: string; run: () => void };
+    /** How many times the same message came, shown as ×2, ×3 and so on. */
+    count: number;
 }
 
 const SHOWN = 2;
 const SHORT_MS = 6000;
+// Within the time the engine keeps what an undo needs.
 const OFFER_MS = 10000;
 
 export const toasts = ref<Toast[]>([]);
 let next = 0;
+const timers = new Map<number, number>();
 
-function add(toast: Omit<Toast, 'id'>, ms: number | null): void {
-    const id = ++next;
-    toasts.value = [...toasts.value, { ...toast, id }].slice(-SHOWN);
+function fadeLater(id: number, ms: number | null): void {
+    window.clearTimeout(timers.get(id));
     if (ms !== null) {
-        window.setTimeout(() => close(id), ms);
+        timers.set(
+            id,
+            window.setTimeout(() => close(id), ms),
+        );
     }
 }
 
+function add(toast: Omit<Toast, 'id' | 'count'>, ms: number | null): void {
+    // The same message again goes last, nearest the eye, and stays its whole time again; an offer is never the same.
+    const same = toast.action
+        ? undefined
+        : toasts.value.find((t) => !t.action && t.text === toast.text && t.tone === toast.tone);
+    const shown = same ? { ...same, count: same.count + 1 } : { ...toast, id: ++next, count: 1 };
+    const all = [...toasts.value.filter((t) => t.id !== shown.id), shown];
+    for (const gone of all.slice(0, Math.max(0, all.length - SHOWN))) {
+        window.clearTimeout(timers.get(gone.id));
+        timers.delete(gone.id);
+    }
+    toasts.value = all.slice(-SHOWN);
+    fadeLater(shown.id, ms);
+}
+
 export function close(id: number): void {
+    window.clearTimeout(timers.get(id));
+    timers.delete(id);
     toasts.value = toasts.value.filter((t) => t.id !== id);
 }
 

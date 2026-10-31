@@ -14,7 +14,9 @@ import Icon from '../ui/Icon.vue';
     <div class="toasts" role="status" aria-live="polite">
         <div v-for="toast in toasts" :key="toast.id" class="toast" :class="toast.tone">
             <Icon :name="toast.icon" />
-            <span class="toast-text">{{ toast.text }}</span>
+            <span class="toast-text"
+                >{{ toast.text }}<span v-if="toast.count > 1" class="toast-count">×{{ toast.count }}</span></span
+            >
             <button
                 v-if="toast.action"
                 class="button flat"
@@ -49,8 +51,8 @@ import Icon from '../ui/Icon.vue';
     display: flex;
     align-items: center;
     gap: 10px;
-    min-width: 320px;
-    max-width: 560px;
+    /* One width for all, as the desktop app's: a longer text wraps. */
+    width: min(400px, calc(100vw - 32px));
     padding: 4px 4px 4px 14px;
     border: 1px solid var(--color-border-default);
     border-radius: 10px;
@@ -62,6 +64,12 @@ import Icon from '../ui/Icon.vue';
 
 .toast-text {
     flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.toast-count {
+    margin-inline-start: 0.6em;
 }
 
 .toast.success {
