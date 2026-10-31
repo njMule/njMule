@@ -10,7 +10,6 @@ import { t } from '../i18n';
 import {
     completedCount,
     preferences,
-    rates,
     type RateSample,
     servers,
     shared,
@@ -18,6 +17,7 @@ import {
     status,
     uploads,
 } from '../model/engine';
+import { peaks } from '../peaks';
 import { statsTree } from '../stats';
 import Icon from '../ui/Icon.vue';
 import RateGraph from '../ui/RateGraph.vue';
@@ -130,8 +130,8 @@ const tree = computed(() => {
         servers: servers.value,
         shared: shared.value,
         completed: completedCount.value,
-        maxDown: rates.value.reduce((m, r) => Math.max(m, r.down), 0),
-        maxUp: rates.value.reduce((m, r) => Math.max(m, r.up), 0),
+        maxDown: peaks.value.down,
+        maxUp: peaks.value.up,
         dirs: { temp: preferences.value['dirs.temp'] ?? '', incoming: preferences.value['dirs.incoming'] ?? '' },
     });
 });

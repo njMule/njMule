@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Source, Upload } from '../model/engine';
 import {
     clientsBySoftware,
+    highest,
     scaleTop,
     type StatsEntry,
     type TreeMove,
@@ -112,6 +113,31 @@ describe('the clients by software', () => {
 
     function thenTheSoftwareIs(expected: [string, number][]): void {
         expect(counted?.bySoftware).toEqual(expected);
+    }
+});
+
+describe('the highest rates since the start', () => {
+    let peak = { down: 0, up: 0 };
+
+    it('should keep a peak gone out of the rates kept', () => {
+        givenThePeak(900, 50);
+        whenTheRatesCome([
+            { down: 100, up: 80 },
+            { down: 300, up: 20 },
+        ]);
+        thenThePeakIs(900, 80);
+    });
+
+    function givenThePeak(down: number, up: number): void {
+        peak = { down, up };
+    }
+
+    function whenTheRatesCome(samples: { down: number; up: number }[]): void {
+        peak = highest(peak, samples);
+    }
+
+    function thenThePeakIs(down: number, up: number): void {
+        expect(peak).toEqual({ down, up });
     }
 });
 

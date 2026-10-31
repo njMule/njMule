@@ -270,3 +270,20 @@ export function treeKey(rows: TreeRow[], chosen: string, key: string): TreeMove 
             return null;
     }
 }
+
+/** Download and upload rates, bytes per second. */
+export interface Peaks {
+    down: number;
+    up: number;
+}
+
+/** The higher of {@code peak} and every sample's rates. */
+export function highest(peak: Peaks, samples: Peaks[]): Peaks {
+    let down = peak.down;
+    let up = peak.up;
+    for (const s of samples) {
+        down = Math.max(down, s.down);
+        up = Math.max(up, s.up);
+    }
+    return down === peak.down && up === peak.up ? peak : { down, up };
+}
