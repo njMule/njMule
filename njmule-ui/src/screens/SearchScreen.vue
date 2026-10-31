@@ -21,7 +21,7 @@ import {
     PopoverRoot,
     PopoverTrigger,
 } from 'reka-ui';
-import { computed, h, nextTick, onMounted, onUnmounted, ref, watch, type VNode } from 'vue';
+import { computed, h, nextTick, onMounted, onUnmounted, ref, shallowRef, watch, type VNode } from 'vue';
 import { answer, api, ApiError } from '../api/client';
 import { count, size } from '../format';
 import { language, t } from '../i18n';
@@ -146,11 +146,18 @@ const TYPES: { value: FileType; key: string }[] = [
 ];
 
 const shown = computed(() => searches.value.find((s) => s.key === shownKey.value));
-// The files of ours now: what a result is to us follows them as they come and go.
-const ours = computed<Ours>(() => ({
-    downloading: new Set(downloads.value.map((d) => d.hash.toUpperCase())),
-    shared: new Set(sharedFiles.value.map((f) => f.hash.toUpperCase())),
-}));
+// The files of ours now: what a result is to us follows them as they come and go, not as they progress.
+function oursNow(): Ours {
+    return {
+        downloading: new Set(downloads.value.map((d) => d.hash.toUpperCase())),
+        shared: new Set(sharedFiles.value.map((f) => f.hash.toUpperCase())),
+    };
+}
+const ours = shallowRef<Ours>(oursNow());
+watch(
+    () => `${downloads.value.map((d) => d.hash).join()}|${sharedFiles.value.map((f) => f.hash).join()}`,
+    () => (ours.value = oursNow()),
+);
 
 // The text of each column the filter can look in.
 const TEXTS: Record<string, { key: string; text: (r: Result) => string }> = {
@@ -171,9 +178,13 @@ const TEXTS: Record<string, { key: string; text: (r: Result) => string }> = {
 // The columns the filter can look in: those the tab shown shows, in their order, when its menu opens.
 const filterColumns = ref<{ id: string; title: string }[]>([]);
 
-const rowsByTab = computed<Record<string, ResultRow[]>>(() =>
-    Object.fromEntries(searches.value.map((s) => [s.key, resultRows(s.results, new Set(openByTab.value[s.key]))])),
-);
+const rowsByTab = computed<Record<string, ResultRow[]>>(() => {
+    // Made again when the files of ours change, so that their state is read again: the list holds its values.
+    void ours.value;
+    return Object.fromEntries(
+        searches.value.map((s) => [s.key, resultRows(s.results, new Set(openByTab.value[s.key]))]),
+    );
+});
 // The filter beside the tabs narrows every list, by the text of the file each row shows.
 const visibleByTab = computed<Record<string, ResultRow[]>>(() => {
     const text = TEXTS[filterColumn.value]?.text ?? ((r: Result) => r.name);
