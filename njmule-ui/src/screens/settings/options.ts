@@ -19,6 +19,7 @@ import {
     type InputRules,
     type RateUnit,
 } from './inputs';
+import { overMask, PASSWORD_MASK, passwordsSet, readPasswords } from './passwords';
 
 // The options as the screen shows them: the saved preferences, what waits for Apply, and what is typed and not set
 // yet. A field applies when it is left or on Enter, a switch or a list at once; the ports, the proxy and the network
@@ -46,6 +47,10 @@ export interface Place {
 
 export const PLACES: Place[] = PAGES.flatMap((page) =>
     page.sections.flatMap((section) => section.rows.map((row) => ({ page, section, row }))),
+);
+
+const PASSWORD_KEYS = new Set(
+    PLACES.flatMap((p) => p.row.fields.filter((f) => f.kind === 'password').map((f) => f.key)),
 );
 
 function without<T>(map: Record<string, T>, key: string): Record<string, T> {
@@ -143,8 +148,8 @@ export function shown(field: Field): string {
         return draft;
     }
     if (field.kind === 'password') {
-        // The engine never gives a password: only one typed shows.
-        return held.value[field.key] ?? '';
+        // The engine never gives a password: one typed, or dots while one is set.
+        return held.value[field.key] ?? (masked(field) ? PASSWORD_MASK : '');
     }
     if (rated(field)) {
         const kib = value(field.key);
@@ -206,6 +211,9 @@ export function firstWrong(): { place: Place; field: Field } | undefined {
 async function save(changes: Record<string, string>): Promise<boolean> {
     try {
         preferences.value = await answer(api().PATCH('/preferences', { body: changes }));
+        if (Object.keys(changes).some((key) => PASSWORD_KEYS.has(key))) {
+            void readPasswords();
+        }
         return true;
     } catch (e) {
         problem((e as Error).message);
@@ -242,8 +250,20 @@ export async function setValues(row: Row, values: Record<string, string>): Promi
     }
 }
 
+/** Whether a password field shows the dots of a password set, nothing being typed or waiting. */
+export function masked(field: Field): boolean {
+    return (
+        field.kind === 'password' &&
+        passwordsSet.value[field.key] === true &&
+        held.value[field.key] === undefined &&
+        typed.value[field.key] === undefined
+    );
+}
+
 export function type(field: Field, text: string): void {
-    typed.value = { ...typed.value, [field.key]: text };
+    // The first change of the dots keeps only what was typed: a password set is replaced, or cleared.
+    const kept = masked(field) ? overMask(text) : text;
+    typed.value = { ...typed.value, [field.key]: kept };
 }
 
 // A speed left as it was shown gives back the exact KiB/s it was shown for.

@@ -47,6 +47,7 @@ import {
 import { checkNow } from '../updates';
 import RowControls from './settings/RowControls.vue';
 import { readInterfaces } from './settings/interfaces';
+import { readPasswords } from './settings/passwords';
 import SchedulerPage from './settings/SchedulerPage.vue';
 import ServerListsDialog from './settings/ServerListsDialog.vue';
 import SettingRow from './settings/SettingRow.vue';
@@ -293,8 +294,9 @@ function discard(): void {
 
 // Coming back while nothing waits, the fields show the saved values again, as a wrong value typed is dropped.
 onActivated(() => {
-    // The interfaces up now, as a VPN comes and goes.
+    // The interfaces up now, as a VPN comes and goes; which passwords are set.
     void readInterfaces();
+    void readPasswords();
     if (heldCount.value === 0 && !restartPending.value) {
         dropDrafts();
     }

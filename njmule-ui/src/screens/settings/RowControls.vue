@@ -18,6 +18,7 @@ import {
     commit,
     enabled,
     flags,
+    masked,
     nextChoice,
     nextOn,
     rulesOf,
@@ -89,6 +90,13 @@ function about(field: Field): string {
     const saved = value(field.key);
     const kib = draft === undefined ? (saved === '' ? undefined : Number(saved)) : rateKib(draft, 'MBIT', 0);
     return kib === null || kib === undefined ? '' : `≈ ${rate(kib * 1024)}`;
+}
+
+// Typing in the dots of a password set replaces it whole.
+function focused(field: Field, e: FocusEvent): void {
+    if (masked(field)) {
+        (e.target as HTMLInputElement).select();
+    }
 }
 
 async function browse(field: Field): Promise<void> {
@@ -196,6 +204,7 @@ async function browse(field: Field): Promise<void> {
                 :disabled="!enabled(field)"
                 :aria-label="named"
                 :style="size(field)"
+                @focus="focused(field, $event)"
                 @update:model-value="type(field, $event)"
                 @commit="commit(row, field)"
             />
