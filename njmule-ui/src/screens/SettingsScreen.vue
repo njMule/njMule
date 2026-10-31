@@ -25,6 +25,16 @@ import {
 import { family, type Family, mode, type Mode, setTheme } from '../theme';
 import { message, problem } from '../toasts';
 import Icon from '../ui/Icon.vue';
+import Switch from '../ui/Switch.vue';
+import {
+    DESKTOP_DEFAULTS,
+    type DesktopOption,
+    desktopSettings,
+    isDesktopOption,
+    setDesktopOption,
+    trayAvailable,
+    usable,
+} from '../desktop-options';
 import {
     applyPorts,
     changed,
@@ -105,7 +115,21 @@ onMounted(async () => {
 const themeChanged = computed(() => family.value !== 'nord' || mode.value !== 'system');
 const languageChanged = computed(() => startLanguage !== '');
 
+// The options of the desktop app's shell, set at once; a browser page shows them disabled.
+function desktopValue(option: DesktopOption): boolean {
+    return (desktopSettings.value ?? DESKTOP_DEFAULTS)[option];
+}
+
+function setDesktop(option: DesktopOption, value: boolean): void {
+    if (platform.value !== undefined) {
+        setDesktopOption(platform.value, option, value).catch((e: unknown) => problem(String(e)));
+    }
+}
+
 function isChanged(row: Row): boolean {
+    if (isDesktopOption(row.local)) {
+        return desktopSettings.value !== null && desktopValue(row.local) !== DESKTOP_DEFAULTS[row.local];
+    }
     if (row.local === 'language') {
         return languageChanged.value;
     }
@@ -131,6 +155,9 @@ function controlOf(row: Row): string | undefined {
 }
 
 function defaultTextOf(row: Row): string {
+    if (isDesktopOption(row.local)) {
+        return t(DESKTOP_DEFAULTS[row.local] ? 'IDS_YES' : 'IDS_NO');
+    }
     if (row.local === 'language') {
         return t('nj.settings.systemLanguage');
     }
@@ -141,7 +168,9 @@ function defaultTextOf(row: Row): string {
 }
 
 function resetRow(row: Row): void {
-    if (row.local === 'language') {
+    if (isDesktopOption(row.local)) {
+        setDesktop(row.local, DESKTOP_DEFAULTS[row.local]);
+    } else if (row.local === 'language') {
         languageChoice.value = '';
     } else if (row.local === 'theme') {
         setTheme('nord', 'system');
@@ -467,6 +496,16 @@ function act(row: Row, action: Action): void {
                                             </option>
                                         </select>
                                     </template>
+                                    <Switch
+                                        v-else-if="isDesktopOption(row.local)"
+                                        :id="`option-${row.local}`"
+                                        :model-value="desktopValue(row.local)"
+                                        :label="rowTitle(row, t)"
+                                        :disabled="!usable(row.local, desktopSettings, trayAvailable)"
+                                        @update:model-value="
+                                            (on: boolean) => setDesktop(row.local as DesktopOption, on)
+                                        "
+                                    />
                                     <PortTestPane v-else-if="row.portTest" :apply="applyPorts" :ports="portChoice" />
                                     <RowControls
                                         v-else

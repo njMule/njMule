@@ -96,8 +96,8 @@ export interface Row {
     /** The default in the reset link: the value itself, or a translation key; by the kind of control otherwise. */
     defaultWords?: 'value' | string;
     action?: Action;
-    /** An option of this window rather than of the engine. */
-    local?: 'language' | 'theme';
+    /** An option of this window rather than of the engine; of the desktop app's shell for the others. */
+    local?: 'language' | 'theme' | 'startMinimized' | 'minimizeToTray' | 'confirmExit' | 'watchClipboard';
     /** The test of the ports, run on the ports as their fields give them. */
     portTest?: boolean;
 }
@@ -176,6 +176,8 @@ export const PAGES: Page[] = [
             {
                 title: 'IDS_STARTUP',
                 rows: [
+                    { label: 'IDS_PREF_STARTMIN', fields: [], local: 'startMinimized' },
+                    { label: 'nj.settings.tray', fields: [], local: 'minimizeToTray' },
                     toggle('system.preventSleep', 'nj.settings.preventSleep'),
                     toggle('geo.countries', 'nj.settings.countries', { hint: 'nj.settings.countriesHint' }),
                 ],
@@ -235,6 +237,13 @@ export const PAGES: Page[] = [
                         { label: 'nj.update.nightHours', hint: 'nj.update.nightHours.hint', defaultWords: 'value' },
                     ),
                     { label: 'IDS_CHECK4UPDATE', fields: [], action: 'checkUpdate' },
+                ],
+            },
+            {
+                title: 'IDS_PW_MISC',
+                rows: [
+                    { label: 'IDS_PW_PROMPT', fields: [], local: 'confirmExit' },
+                    { label: 'IDS_PF_WATCHCB', fields: [], local: 'watchClipboard' },
                 ],
             },
             {
