@@ -62,6 +62,8 @@ const shownKey = ref(searches.value.at(-1)?.key ?? '');
 const filter = ref('');
 const filterColumn = ref('name');
 const selected = ref<string[]>([]);
+const columnTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
+const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 const past = ref(history());
 let next = 0;
 
@@ -512,12 +514,16 @@ onUnmounted(() => window.clearInterval(timer));
                 <div class="field results-filter">
                     <DropdownMenuRoot>
                         <Tip :text="t('nj.search.filterColumn')">
-                            <DropdownMenuTrigger class="column-choice" :aria-label="t('nj.search.filterColumn')">
+                            <DropdownMenuTrigger
+                                ref="columnTrigger"
+                                class="column-choice"
+                                :aria-label="t('nj.search.filterColumn')"
+                            >
                                 <Icon name="SEARCH" />
                             </DropdownMenuTrigger>
                         </Tip>
                         <DropdownMenuPortal>
-                            <DropdownMenuContent class="menu" align="start">
+                            <DropdownMenuContent class="menu" align="start" :reference="columnTrigger?.$el">
                                 <DropdownMenuRadioGroup v-model="filterColumn">
                                     <DropdownMenuRadioItem
                                         v-for="(c, id) in TEXTS"
@@ -625,12 +631,12 @@ onUnmounted(() => window.clearInterval(timer));
                 </Tip>
                 <DropdownMenuRoot>
                     <Tip :text="t('IDS_MORE')">
-                        <DropdownMenuTrigger class="button icon-only" :aria-label="t('IDS_MORE')"
+                        <DropdownMenuTrigger ref="moreTrigger" class="button icon-only" :aria-label="t('IDS_MORE')"
                             ><Icon name="MORE"
                         /></DropdownMenuTrigger>
                     </Tip>
                     <DropdownMenuPortal>
-                        <DropdownMenuContent class="menu" align="end">
+                        <DropdownMenuContent class="menu" align="end" :reference="moreTrigger?.$el">
                             <DropdownMenuItem class="menu-item" @select="copyLinks(true)"
                                 ><Icon name="CODE" />{{ t('IDS_DL_LINK2') }}</DropdownMenuItem
                             >

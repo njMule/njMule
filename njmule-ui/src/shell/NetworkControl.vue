@@ -11,6 +11,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from 'reka-ui';
+import { ref } from 'vue';
 import { t } from '../i18n';
 import type { NetworkWords } from '../network';
 import { current, shortcut } from '../places';
@@ -20,6 +21,7 @@ import Tip from '../ui/Tip.vue';
 // The networks' control: neutral, never the accent, the state in words beside its dot; its menu connects each network.
 const props = defineProps<{ words: NetworkWords; connecting: boolean; compact: boolean }>();
 const emit = defineEmits<{ ed2k: []; kad: []; both: [] }>();
+const trigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 
 function dot(): string {
     return props.words.up ? 'connected' : props.words.trying ? 'connecting' : '';
@@ -35,6 +37,7 @@ function action(running: boolean): string {
         <Tip :text="t('IDS_NETWORK')">
             <DropdownMenuTrigger
                 id="network-control"
+                ref="trigger"
                 class="button network-control"
                 :aria-label="`${t('IDS_NETWORK')}: ${words.state}. ${words.detail}`"
             >
@@ -47,7 +50,7 @@ function action(running: boolean): string {
             </DropdownMenuTrigger>
         </Tip>
         <DropdownMenuPortal>
-            <DropdownMenuContent class="menu network-menu" align="end" :side-offset="6">
+            <DropdownMenuContent class="menu network-menu" align="end" :side-offset="6" :reference="trigger?.$el">
                 <div class="network-row">
                     <span class="connection-chip" :class="words.ed2kUp ? 'connected' : connecting ? 'connecting' : ''">
                         <span class="network-dot" />{{ words.ed2k }}

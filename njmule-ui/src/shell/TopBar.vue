@@ -11,6 +11,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from 'reka-ui';
+import { ref } from 'vue';
 import { rate } from '../format';
 import { t } from '../i18n';
 import { connection, rates, status } from '../model/engine';
@@ -32,6 +33,7 @@ const emit = defineEmits<{
     shortcuts: [];
     incoming: [];
 }>();
+const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 
 // A letter typed on the field starts the text of the palette.
 function typed(e: KeyboardEvent): void {
@@ -91,12 +93,17 @@ function typed(e: KeyboardEvent): void {
         />
         <DropdownMenuRoot>
             <Tip :text="t('IDS_MORE')">
-                <DropdownMenuTrigger id="more" class="button flat icon-only more" :aria-label="t('IDS_MORE')">
+                <DropdownMenuTrigger
+                    id="more"
+                    ref="moreTrigger"
+                    class="button flat icon-only more"
+                    :aria-label="t('IDS_MORE')"
+                >
                     <Icon name="MORE" />
                 </DropdownMenuTrigger>
             </Tip>
             <DropdownMenuPortal>
-                <DropdownMenuContent class="menu" align="end" :side-offset="6">
+                <DropdownMenuContent class="menu" align="end" :side-offset="6" :reference="moreTrigger?.$el">
                     <DropdownMenuItem
                         id="incoming"
                         class="menu-item"

@@ -46,6 +46,7 @@ const chosenPlace = ref<{ kind: Place['kind']; path: string }>({ kind: 'all', pa
 const counter = ref<Counter>('session');
 const filter = ref('');
 const selected = ref<string[]>([]);
+const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 const filterBox = ref<HTMLInputElement | null>(null);
 
 const PRIORITIES: { value: Priority; key: string }[] = [
@@ -476,6 +477,7 @@ onMounted(() => void readDirectories());
                 <DropdownMenuRoot>
                     <Tip :text="t('IDS_MORE')">
                         <DropdownMenuTrigger
+                            ref="moreTrigger"
                             class="button icon-only"
                             :disabled="chosen.length === 0"
                             :aria-label="t('IDS_MORE')"
@@ -484,7 +486,7 @@ onMounted(() => void readDirectories());
                         </DropdownMenuTrigger>
                     </Tip>
                     <DropdownMenuPortal>
-                        <DropdownMenuContent class="menu" align="end">
+                        <DropdownMenuContent class="menu" align="end" :reference="moreTrigger?.$el">
                             <DropdownMenuItem
                                 class="menu-item"
                                 :disabled="chosen.length !== 1 || !platform.desktop"

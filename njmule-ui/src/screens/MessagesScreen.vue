@@ -53,6 +53,7 @@ const chosenKey = ref('');
 const text = ref('');
 const letters = ref('');
 const linesBox = ref<HTMLElement | null>(null);
+const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 
 // The conversations of this run, the latest news first, then the friends with none.
 const entries = computed<Entry[]>(() => {
@@ -338,12 +339,12 @@ async function close(): Promise<void> {
                     </button>
                     <DropdownMenuRoot>
                         <Tip :text="t('IDS_MORE')">
-                            <DropdownMenuTrigger class="button icon-only" :aria-label="t('IDS_MORE')">
+                            <DropdownMenuTrigger ref="moreTrigger" class="button icon-only" :aria-label="t('IDS_MORE')">
                                 <Icon name="MORE" />
                             </DropdownMenuTrigger>
                         </Tip>
                         <DropdownMenuPortal>
-                            <DropdownMenuContent class="menu" align="end">
+                            <DropdownMenuContent class="menu" align="end" :reference="moreTrigger?.$el">
                                 <DropdownMenuItem class="menu-item" :disabled="!chosen.friend" @select="removeFriend">
                                     <Icon name="DELETE" />{{ t('IDS_REMOVEFRIEND') }}
                                 </DropdownMenuItem>

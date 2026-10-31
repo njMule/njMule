@@ -6,6 +6,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 import { TooltipContent, TooltipPortal, TooltipRoot, TooltipTrigger } from 'reka-ui';
 
 // A tooltip after a moment under the pointer, as the desktop app's; nothing when the text is empty.
+// A menu's trigger inside takes the tooltip's anchor, not its menu's (Reka anchors to the nearest popper): that menu's
+// content needs its trigger as `reference`, or it never shows.
 defineProps<{ text?: string }>();
 </script>
 

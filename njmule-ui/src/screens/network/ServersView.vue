@@ -43,6 +43,7 @@ const filter = ref('');
 const selected = ref<string[]>([]);
 const address = ref('');
 const metUrl = ref('https://upd.emule-security.org/server.met');
+const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 
 const inUse = computed(() => status.value?.server?.address ?? '');
 const shown = computed(() => {
@@ -422,12 +423,16 @@ function connectOrDisconnect(s: Server): Promise<void> {
                         </div>
                         <DropdownMenuRoot>
                             <Tip :text="t('IDS_MORE')">
-                                <DropdownMenuTrigger class="button icon-only" :aria-label="t('IDS_MORE')">
+                                <DropdownMenuTrigger
+                                    ref="moreTrigger"
+                                    class="button icon-only"
+                                    :aria-label="t('IDS_MORE')"
+                                >
                                     <Icon name="MORE" />
                                 </DropdownMenuTrigger>
                             </Tip>
                             <DropdownMenuPortal>
-                                <DropdownMenuContent class="menu" align="end">
+                                <DropdownMenuContent class="menu" align="end" :reference="moreTrigger?.$el">
                                     <DropdownMenuSub>
                                         <DropdownMenuSubTrigger class="menu-item">
                                             <Icon name="PRIORITY" />{{ t('IDS_PRIORITY')
