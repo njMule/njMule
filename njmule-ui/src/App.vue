@@ -159,7 +159,8 @@ function resize(): void {
     width.value = window.innerWidth;
 }
 
-// eD2K links dragged from a page or a text onto the window become downloads.
+// eD2K links dragged from a page or a text onto the window become downloads. What is dragged can be read only once
+// dropped, so any text is let in; a field takes it as fields do.
 function dragOver(e: DragEvent): void {
     if (e.dataTransfer?.types.includes('text/plain') || e.dataTransfer?.types.includes('text/uri-list')) {
         e.preventDefault();
@@ -167,9 +168,13 @@ function dragOver(e: DragEvent): void {
 }
 
 function drop(e: DragEvent): void {
+    if (e.target instanceof Element && e.target.closest('input, textarea, [contenteditable="true"]')) {
+        return;
+    }
+    // Never the page's own way with a link dropped, which would leave njMule for that address.
+    e.preventDefault();
     const text = e.dataTransfer?.getData('text/plain') || e.dataTransfer?.getData('text/uri-list') || '';
     if (fileLinks(text).length > 0) {
-        e.preventDefault();
         void addLinks(text);
     }
 }
