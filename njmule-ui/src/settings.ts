@@ -33,7 +33,9 @@ export type Kind =
     // The next download to start: a switch, and the categories it takes while on; NONE while off.
     | 'next'
     // A folder of the engine's computer, typed or chosen; empty for the default one.
-    | 'folder';
+    | 'folder'
+    // A network interface of the engine's computer, by its name or an address; empty for any.
+    | 'interface';
 
 /** A check of the value typed, as the desktop app's Inputs: see screens/settings/inputs.ts. */
 export type Check =
@@ -290,16 +292,8 @@ export const PAGES: Page[] = [
                         },
                         { label: 'nj.settings.obfuscation' },
                     ),
-                    // The engine does not list the interfaces up: a name or an address is typed, nothing for any.
                     one(
-                        {
-                            key: 'net.bindInterface',
-                            kind: 'text',
-                            max: 256,
-                            ltr: true,
-                            columns: 20,
-                            placeholder: 'nj.settings.bindInterface.any',
-                        },
+                        { key: 'net.bindInterface', kind: 'interface' },
                         {
                             label: 'nj.settings.bindInterface',
                             hint: 'nj.settings.bindInterface.hint',

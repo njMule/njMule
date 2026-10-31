@@ -13,6 +13,7 @@ import Icon from '../../ui/Icon.vue';
 import Switch from '../../ui/Switch.vue';
 import FieldInput from './FieldInput.vue';
 import { rateKib } from './inputs';
+import { interfaceChoices, interfaceName, interfaces } from './interfaces';
 import {
     commit,
     enabled,
@@ -140,6 +141,19 @@ async function browse(field: Field): Promise<void> {
                 @update:model-value="(on: boolean) => setNextOn(row, field, on)"
             />
         </template>
+        <select
+            v-else-if="field.kind === 'interface'"
+            :id="id(field)"
+            class="field choice interface"
+            :value="value(field.key)"
+            :disabled="!enabled(field)"
+            :aria-label="named"
+            @change="setValues(row, { [field.key]: chosen($event) })"
+        >
+            <option v-for="c in interfaceChoices(value(field.key), interfaces)" :key="c" :value="c">
+                {{ interfaceName(c, interfaces, t) }}
+            </option>
+        </select>
         <div v-else-if="field.kind === 'flags'" :id="id(field)" class="flags" role="group" :aria-label="title">
             <label v-for="o in field.options" :key="o.value" class="check">
                 <input
@@ -213,6 +227,12 @@ async function browse(field: Field): Promise<void> {
 .choice {
     min-width: 176px;
     max-width: 320px;
+}
+
+/* The desktop app's width for an interface named with its addresses. */
+.interface {
+    width: 260px;
+    min-width: 140px;
 }
 
 /* A button beside a list of lines keeps to its top. */
