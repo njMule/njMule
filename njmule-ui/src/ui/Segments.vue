@@ -13,6 +13,7 @@ const value = defineModel<V>({ required: true });
         <button
             v-for="item in items"
             :key="item.value"
+            type="button"
             class="segment"
             role="tab"
             :aria-selected="value === item.value"
