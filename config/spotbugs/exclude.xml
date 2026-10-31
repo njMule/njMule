@@ -108,7 +108,7 @@
          (WebUiPartsTest, WebUiTest), and the Content-Security-Policy forbids scripts. -->
     <Match>
         <Bug pattern="POTENTIAL_XML_INJECTION"/>
-        <Package name="org.njmule.webui"/>
+        <Package name="org.njmule.http"/>
     </Match>
 
     <!-- The launch agent that starts njMule at login on macOS is written from fixed markup and our

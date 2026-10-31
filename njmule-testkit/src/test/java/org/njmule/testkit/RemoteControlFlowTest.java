@@ -42,9 +42,9 @@ import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.util.Ipv4;
-import org.njmule.webui.Passwords;
-import org.njmule.webui.WebUi;
-import org.njmule.webui.WebUiSettings;
+import org.njmule.http.Passwords;
+import org.njmule.http.WebUi;
+import org.njmule.http.WebUiSettings;
 
 /** The command line driving a running engine through the remote-control API, against a fake server. */
 @Timeout(120)

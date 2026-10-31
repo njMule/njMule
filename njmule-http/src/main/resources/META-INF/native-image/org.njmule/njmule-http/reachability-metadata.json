@@ -1,0 +1,32 @@
+{
+    "resources": [
+        {
+            "glob": "org/njmule/http/favicon.svg"
+        },
+        {
+            "glob": "org/njmule/http/favicon.png"
+        },
+        {
+            "glob": "org/njmule/http/style.css"
+        },
+        {
+            "glob": "org/njmule/http/app/**"
+        },
+        {
+            "module": "org.njmule.http",
+            "glob": "org/njmule/http/favicon.svg"
+        },
+        {
+            "module": "org.njmule.http",
+            "glob": "org/njmule/http/favicon.png"
+        },
+        {
+            "module": "org.njmule.http",
+            "glob": "org/njmule/http/style.css"
+        },
+        {
+            "module": "org.njmule.http",
+            "glob": "org/njmule/http/app/**"
+        }
+    ]
+}

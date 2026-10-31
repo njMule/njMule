@@ -88,9 +88,9 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 |---|---|
 | `njmule-core` (`org.njmule.core`) | engine and remote-control API; exports only `api`, `config` and `remote` |
 | `njmule-app` (`org.njmule.app`) | headless launcher/CLI, Logback set-up (`logging.internal` is not exported) |
-| `njmule-ui` | the one interface of the desktop window and the web interface (Vue 3, TypeScript, Vite, Reka UI, TanStack Table/Virtual); reaches njMule only through the remote-control API; built into njmule-webui's jar; holds the translation bundles (`i18n/`) and flags (`flags/`) |
+| `njmule-ui` | the one interface of the desktop window and the web interface (Vue 3, TypeScript, Vite, Reka UI, TanStack Table/Virtual); reaches njMule only through the remote-control API; built into njmule-http's jar; holds the translation bundles (`i18n/`) and flags (`flags/`) |
 | `njmule-desktop` | the desktop window: a Tauri 2 shell (Rust, `src-tauri/`) that starts the native engine with a control endpoint and shows `njmule-ui` |
-| `njmule-webui` (`org.njmule.webui`) | web interface on Jetty (password, sessions, CSRF); serves `njmule-ui` and the core's remote-control API |
+| `njmule-http` (`org.njmule.http`) | njMule over HTTP on Jetty: the web interface (password, sessions, CSRF), which serves `njmule-ui` and the core's remote-control API, and the desktop window's control endpoint |
 | `njmule-testkit` (`org.njmule.testkit`) | test doubles (fake server and peers, from M2) |
 | `njmule-bench` | JMH benchmarks; classpath build so it reaches internal core packages; not distributed |
 | `build-logic/` | Gradle convention plugin shared by the modules (`njmule.java-conventions`) |

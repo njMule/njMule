@@ -28,7 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import org.njmule.core.config.AppDirectories;
-import org.njmule.webui.WebUiSettings;
+import org.njmule.http.WebUiSettings;
 
 /**
  * {@code --service}: njMule as the Windows service "njMule", which njmule-service.exe beside njmule.exe runs headless

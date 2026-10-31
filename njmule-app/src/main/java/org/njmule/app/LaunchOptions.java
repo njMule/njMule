@@ -29,7 +29,7 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ServerAddress;
 import org.njmule.core.config.Preferences;
-import org.njmule.webui.WebUiSettings;
+import org.njmule.http.WebUiSettings;
 import picocli.CommandLine;
 import picocli.CommandLine.Help;
 import picocli.CommandLine.Model.CommandSpec;

@@ -8,7 +8,7 @@ import TabItem from '@theme/TabItem';
 
 njMule has one interface, written in Vue 3 and TypeScript in the `njmule-ui` project. The desktop
 window, a Tauri shell, shows it in the system's web view and starts the engine beside it; the web
-interface (`njmule-webui`) serves it to browsers behind its login page. The interface holds no
+interface (`njmule-http`) serves it to browsers behind its login page. The interface holds no
 engine logic: it calls the [remote-control API](api/index.mdx) and shows what it answers, the same
 way in both.
 
@@ -64,8 +64,8 @@ Gradle downloads the pinned Node.js, checks it against its SHA-256, and runs `np
 | `:njmule-ui:formatCheck` | checks the Prettier formatting (`npm run lint`) |
 
 `assemble` runs `compress` and `site`, and `check` runs `unitTest` and `formatCheck`, so
-`./gradlew build` covers them all. `njmule-webui` takes the result of `compress` into its jar, under
-`org/njmule/webui/app`; `:njmule-desktop:shell` embeds the result of `site`, which
+`./gradlew build` covers them all. `njmule-http` takes the result of `compress` into its jar, under
+`org/njmule/http/app`; `:njmule-desktop:shell` embeds the result of `site`, which
 `src-tauri/tauri.conf.json` names as its `frontendDist`.
 
 The web interface reads those files once and keeps them. It sends the gzipped files as they are to
@@ -101,7 +101,7 @@ check. How the interface proves itself depends on where it runs (`platform.ts`):
   (`--webui-api`) is on.
 - **In the desktop window**, the shell starts the engine with a control endpoint: the engine answers
   on the loopback address, at a free port, only the token made for this run, which it prints for the
-  shell (`ControlEndpoint` in `njmule-webui`). The interface sends that token as a bearer token, and
+  shell (`ControlEndpoint` in `njmule-http`). The interface sends that token as a bearer token, and
   no cookie. A window on another computer's njMule uses that njMule's API token the same way.
 
 An error answer's `error` field becomes an `ApiError` whose message is meant for the user.
@@ -177,12 +177,12 @@ token, answer only the desktop window on njMule's own computer (`LOCAL_ONLY` in 
 Gradle through a web interface of its own, with no network and nothing of your profile:
 
 ```bash
-./gradlew :njmule-webui:webCaptureArgs
-java @njmule-webui/build/web-capture/java.args
+./gradlew :njmule-http:webCaptureArgs
+java @njmule-http/build/web-capture/java.args
 ```
 
 The first command builds everything the interface needs and writes the arguments file; run the
-second with a Java 25 `java` (the one `njmule-webui/build/web-capture/launcher.json` names, for
+second with a Java 25 `java` (the one `njmule-http/build/web-capture/launcher.json` names, for
 example). It prints one line of JSON with the address, the password and the guest password, then
 serves until its standard input closes: press <kbd>Ctrl</kbd>+<kbd>D</kbd> (on Windows
 <kbd>Ctrl</kbd>+<kbd>Z</kbd> then <kbd>Enter</kbd>). Run both commands again after each change.
@@ -193,8 +193,8 @@ translations and flags the build makes. Start the demo with the desktop window's
 instead of the web interface:
 
 ```bash
-./gradlew :njmule-webui:webCaptureArgs :njmule-ui:translations :njmule-ui:flags
-java -Dnjmule.capture.control=true @njmule-webui/build/web-capture/java.args
+./gradlew :njmule-http:webCaptureArgs :njmule-ui:translations :njmule-ui:flags
+java -Dnjmule.capture.control=true @njmule-http/build/web-capture/java.args
 ```
 
 It prints the endpoint's address and token, `{"url":"http://127.0.0.1:<port>/api/v1","token":"…"}`.

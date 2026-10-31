@@ -15,7 +15,7 @@ dependencies {
     runtimeOnly(project(":njmule-app"))
 
     testImplementation(project(":njmule-app"))
-    testImplementation(project(":njmule-webui"))
+    testImplementation(project(":njmule-http"))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
 }

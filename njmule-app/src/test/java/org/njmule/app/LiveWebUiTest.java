@@ -26,7 +26,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.njmule.webui.WebUiSettings;
+import org.njmule.http.WebUiSettings;
 
 class LiveWebUiTest {
 

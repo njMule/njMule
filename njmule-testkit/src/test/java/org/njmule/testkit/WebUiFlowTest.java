@@ -43,9 +43,9 @@ import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.protocol.ed2k.FileEntry;
 import org.njmule.core.util.Ipv4;
-import org.njmule.webui.Passwords;
-import org.njmule.webui.WebUi;
-import org.njmule.webui.WebUiSettings;
+import org.njmule.http.Passwords;
+import org.njmule.http.WebUi;
+import org.njmule.http.WebUiSettings;
 
 /** The web interface's app calls driving an engine against a fake server: log in, connect, search, download. */
 @Timeout(120)

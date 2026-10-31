@@ -32,8 +32,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.njmule.webui.Passwords;
-import org.njmule.webui.WebUiSettings;
+import org.njmule.http.Passwords;
+import org.njmule.http.WebUiSettings;
 import org.slf4j.LoggerFactory;
 
 class WebUiPasswordTest {

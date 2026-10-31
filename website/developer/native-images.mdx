@@ -144,7 +144,7 @@ Native Image must know at build time what the code reaches by reflection, JNI, r
 - `njmule-core` declares its own, and initializes the class that holds the Windows-1252 charset at
   build time, so that the charset is in the image (about 12 KB instead of the 6 MB of all
   charsets).
-- `njmule-webui` declares the resources it serves: the interface's files and the browser icons.
+- `njmule-http` declares the resources it serves: the interface's files and the browser icons.
 - The libraries' own metadata comes from the GraalVM reachability metadata repository, which the
   Native Build Tools plugin reads.
 

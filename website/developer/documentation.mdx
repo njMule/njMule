@@ -36,9 +36,9 @@ folders above. Screenshots are never committed.
 
 The site lands in `website/build/site`. The task runs, in order of need:
 
-1. **`:njmule-webui:webCaptureArgs`** and **`:website:webScreenshots`**: `scripts/capture-web.mjs`
+1. **`:njmule-http:webCaptureArgs`** and **`:website:webScreenshots`**: `scripts/capture-web.mjs`
    starts the web interface on a demo engine with example data (`WebCaptureDemo`, in
-   `njmule-webui`'s tests; [Testing](testing.mdx#pictures-of-the-interface)), signs in, and pictures
+   `njmule-http`'s tests; [Testing](testing.mdx#pictures-of-the-interface)), signs in, and pictures
    the interface at 1280×800 with twice the pixels: each place, menu and dialog the pages show, the
    options pages, a phone-sized page and a guest's page, in light and in dark, and the transfers in
    forced colours. The pictures of the desktop app's pages come from the same interface in the

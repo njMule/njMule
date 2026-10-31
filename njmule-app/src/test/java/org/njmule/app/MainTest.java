@@ -60,8 +60,8 @@ import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.ServerInfo;
 import org.njmule.core.config.AppDirectories;
-import org.njmule.webui.Passwords;
-import org.njmule.webui.WebUiSettings;
+import org.njmule.http.Passwords;
+import org.njmule.http.WebUiSettings;
 import org.slf4j.LoggerFactory;
 
 @Timeout(30)
