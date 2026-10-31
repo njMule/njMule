@@ -1,6 +1,6 @@
 ---
 title: Transfers
-description: Follow and manage your downloads in the njMule desktop app - states, progress bars, sources, details, menus - and see uploads, the queue, bans and the clients met.
+description: Follow and manage your downloads in njMule - states, progress bars, sources, details, menus - and see uploads, the queue, bans and the clients met.
 ---
 
 **Transfers** (<kbd>Ctrl</kbd>+<kbd>1</kbd>) is where your downloads are, and where you see who
@@ -20,14 +20,16 @@ The summary under the title tells how many downloads run and the total download 
 
 <Screenshot
     id="transfers"
-    alt="The Transfers screen: the segments Downloads 11, Uploads 3, On Queue 7, Banned 2 and Known Clients 0; the chips All, Downloading, Waiting, No sources, Paused, Erroneous and Complete; the category list and the filter; the list of downloads, the first one opened onto its eight sources"
-    caption="The downloads, the first one opened onto its sources"
+    alt="The Transfers screen: the segments Downloads 11, Uploads 3, On Queue 7, Banned 2 and Known Clients 0; the chips All, Downloading, Waiting, No sources, Paused, Erroneous and Complete; the category list and the filter; the list of downloads with their progress, speed, sources, state and time left"
+    caption="The downloads"
 />
 
 ## Adding downloads
 
 - Press **Add links** (top right) and paste eD2K links into the dialog that opens; links already on
   the clipboard are in it. See [eD2K links](./ed2k-links.mdx#the-add-downloads-dialog).
+- Press <kbd>Ctrl</kbd>+<kbd>V</kbd> on the screen, outside its fields: the eD2K file links on the
+  clipboard become downloads at once, in the category shown.
 - Download a result of a [search](./search.mdx).
 - Paste links in the command palette (<kbd>Ctrl</kbd>+<kbd>K</kbd>), drag them onto the window, or
   click them in a browser: see [eD2K links](./ed2k-links.mdx).
@@ -52,7 +54,7 @@ Above the list:
 
 | Column | What it shows |
 |---|---|
-| **File Name** | The name, after an icon of what the file holds and the dot of its category (the tooltip names the category). On Windows the icon is the one Windows gives the kind of file, that of the program that opens it. |
+| **File Name** | The name, after an icon of what the file holds and the dot of its category (the tooltip names the category). In the desktop app on Windows the icon is the one Windows gives the kind of file, that of the program that opens it. |
 | **Size** | The size of the file. |
 | **Progress** | A thin bar of what is downloaded, in the colour of the state, with the percentage beside it. |
 | **Speed** | The rate it downloads at now, or `—`. |
@@ -132,17 +134,20 @@ A completed download stays in the list, also after a restart, until you take it 
 - **Double-click** it, or press <kbd>Enter</kbd>, to open its file in the program your system uses
   for that kind of file.
 - **Open Folder** in its menu opens its folder in your file manager, with the file selected.
-- **Clear Completed** (top right, or at the bottom of the menu) takes every completed download off
-  the list. <kbd>Delete</kbd> takes off the completed downloads chosen. Their files always stay where
-  they are.
+- **Clear Completed** at the bottom of the menu takes every completed download off the list.
+  <kbd>Delete</kbd> takes off the completed downloads chosen. Their files always stay where they
+  are.
 
-If the file was moved or deleted since, njMule says **Requested file not found**.
+If the file was moved or deleted since, njMule says **Requested file not found**. Opening the file
+or its folder works in the desktop app on njMule's computer only: in a browser, or in a window on a
+[remote njMule](./remote.mdx), **Open Folder** is greyed out and a double click says that the
+folders of this njMule are on its own computer.
 
 ## The details pane
 
-**Details** (top right, or <kbd>Alt</kbd>+<kbd>Enter</kbd>) shows the details of the download
-chosen under the list. Drag the divider to give them more or less room: njMule remembers the height,
-and keeps it tall enough for the buttons. The cross at the end of the tabs, or **Details** again,
+**Details** in the menu of the downloads, or <kbd>Alt</kbd>+<kbd>Enter</kbd>, shows the details of
+the download chosen under the list. Drag the divider to give them more or less room: njMule
+remembers the height, and keeps it tall enough for the buttons. The cross at the end of the tabs
 hides them.
 
 <Screenshot
@@ -163,7 +168,8 @@ On the left is the download itself:
 - Two buttons for what the state asks: **Pause** and **Stop** while it downloads or waits, **Pause**
   and **Add Sources...** with no source, **Resume** and **Stop** while paused, **Resume** once
   stopped, **Resume** and **Open Incoming Folder** after an error, **Pause** and **Open Incoming
-  Folder** with a full disk, **Open Incoming Folder** once complete.
+  Folder** with a full disk, **Open Incoming Folder** once complete. **Open Incoming Folder** opens
+  the folder in the desktop app on njMule's computer; elsewhere it only names the folder.
 - The copy button (**Copy eD2K link**, <kbd>Ctrl</kbd>+<kbd>C</kbd>) and **⋯** with **Preview**,
   **Comments...**, **Priority**, **Category**, **Add Sources...** and **Cancel download**.
 
@@ -232,7 +238,7 @@ Right-click the downloads chosen. The commands that do not apply are greyed out,
 | **Cancel download** | Cancels the download after a question, deleting what was downloaded; see [Cancelling](#cancelling-and-undo). |
 | **Details** | Shows the [details pane](#the-details-pane). |
 | **Preview** | Opens what is downloaded so far in your video player; see [Preview](#preview). |
-| **Open Folder** | For a completed download: opens its folder, the file selected. |
+| **Open Folder** | For a completed download: opens its folder, the file selected (in the desktop app on njMule's computer). |
 | **Comments...** | Your comment and rating of the file, and those of others; see [Comments](#comments-and-ratings). |
 | **Priority** ▸ | **Low**, **Normal**, **High** or **Auto**. Higher priorities ask for sources and start transfers first; **Auto** gives rare files a higher one. |
 | **Category** ▸ | **(Unassign)** or one of your categories; see [Categories](./categories.mdx). |
@@ -261,7 +267,8 @@ refused by the IP filter**. A source at a LAN address can be added this way too.
 
 ### Preview
 
-**Preview** starts the video player chosen in the options with what is downloaded so far. Choose the
+**Preview** starts the video player chosen in the options with what is downloaded so far. It works
+in the desktop app on njMule's computer, where the data is; elsewhere it is greyed out. Choose the
 player, and its arguments if needed, under **Video Player** in [Directories](../settings/directories.mdx);
 without one njMule says **Choose a video player in the settings first**. Until the start of the
 file has arrived, it says **The start of the file has not arrived yet: try the preview again later**.

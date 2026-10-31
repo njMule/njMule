@@ -17,10 +17,17 @@
             profile without changing it.
         </p>
         <p>
-            Besides the desktop interface it offers a password-protected web interface, a proxy,
-            a weekly scheduler of the limits and UPnP port forwarding.
+            Its desktop window and its password-protected web interface show the same interface.
+            It also works through SOCKS and HTTP proxies, follows a weekly schedule of its speed
+            limits and opens its ports with UPnP, NAT-PMP or PCP.
         </p>
     </description>
+    <screenshots>
+        <screenshot type="default">
+            <caption>The transfers, a download opened onto its sources</caption>
+            <image>https://raw.githubusercontent.com/njMule/njMule/main/.github/assets/njmule-transfers-light.png</image>
+        </screenshot>
+    </screenshots>
     <launchable type="desktop-id">org.njmule.njMule.desktop</launchable>
     <url type="homepage">https://github.com/njMule/njMule</url>
     <url type="bugtracker">https://github.com/njMule/njMule/issues</url>

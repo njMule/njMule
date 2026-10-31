@@ -86,7 +86,9 @@ njmule --config-dir /home/you/njmule-test --exit
 Use it to try something without touching your profile, to keep two identities apart, or to run a
 second njMule beside the first one. Two njMule on one computer need their own profiles and their
 own ports (**Options → Connection**, and the web interface's port if both have one); a second start
-on a profile already in use only hands its links to the running one. Every command that acts on a
+of `njmule` on a profile already in use only hands its links to the running one. Only one desktop
+window runs at a time, whatever its profile: `njmule-gui` started again brings that window forward
+and hands it its links, so run the second njMule with `njmule`. Every command that acts on a
 running njMule (`--exit`, `--remote`, links) must be given the same `--config-dir` to find it.
 
 The [Windows service](../server/windows-service.mdx), the

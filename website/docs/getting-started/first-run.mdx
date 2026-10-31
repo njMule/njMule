@@ -3,10 +3,10 @@ title: First start
 description: The set-up wizard that opens at njMule's first start, page by page, what each choice changes, and how to open it again.
 ---
 
-The first time you open the desktop app, a short wizard sets njMule up: the language and the look,
-your nick, the folders, the connection and, if it finds one, an eMule profile to take over. It takes
-about two minutes, every page can be skipped, and everything it sets can be changed later in the
-**Options**. The web interface has a shorter version of it (see
+The first time you open njMule, in the desktop app or in the web interface, a short wizard sets it
+up: the language and the look, your nick, the folders, the connection and, if it finds one, an eMule
+profile to take over. It takes about two minutes, every page can be skipped, and everything it sets
+can be changed later in the **Options**. In a browser a few things work differently (see
 [In the web interface](#in-the-web-interface)).
 
 <Screenshot
@@ -21,7 +21,7 @@ about two minutes, every page can be skipped, and everything it sets can be chan
 - The steps are listed on the left; a step you have done shows a check, and a click on it takes you
   back there.
 - **Next** goes on once the fields of the page are right; **Back** returns to the page before.
-- **Skip setup** closes the wizard and changes nothing; so does closing its window.
+- **Skip setup**, on every page but the last, closes the wizard and changes nothing.
 - **Finish**, on the last page, applies every page at once and saves your settings.
 
 Every page starts from your current settings, so going through it with **Next** only changes what
@@ -31,10 +31,10 @@ you change.
 
 | Field | What it sets |
 |---|---|
-| **Language** | the language of the desktop app: **As the system** or one of its 36 languages |
+| **Language** | the language of the interface: **As the system** or one of its 36 languages |
 | **Theme** | **As the system**, **Light** or **Dark**; it shows at once, on the wizard too |
 
-The language changes when you finish: njMule restarts in the new one.
+The language changes when you finish, at once.
 
 ## Name
 
@@ -115,7 +115,7 @@ profile first and then take it over: see [Import an eMule profile](import-emule.
 
 | Wizard field | Option | Key in `njmule.properties` |
 |---|---|---|
-| Language, Theme | **Options → General** | (kept with the desktop app's own settings) |
+| Language, Theme | **Options → General** | (kept by the interface: the desktop app's window, or each browser) |
 | Nick | **Options → General** | `user.nick` |
 | Incoming Files | **Options → Directories** | `dirs.incoming` |
 | Shared folders | **Shared Files** | (the list of shared folders) |
@@ -134,22 +134,20 @@ your settings as they are now. To import an eMule profile without the rest, choo
 
 ## In the web interface
 
-The web interface has its own wizard, **Set up njMule**, with four steps: **Start** (the theme),
-**Name**, **Folders** and **Connection**, with the same fields as the desktop one. It opens by itself
-the first time you log in from a browser while the nick is still `njMule`, and again from the
-**Set up njMule** button of the **Options** page.
+The web interface shows the same wizard, with the same pages. It opens by itself in the first window
+that reaches njMule, the desktop app's or a browser's, until it is finished or skipped, and again
+from **⋯ → Set up njMule**; a guest never sees it. In a browser:
 
-It differs from the desktop wizard in a few ways:
-
-- there is no language step: the web interface speaks the language of your browser;
-- you type the folders' paths, as they are on the computer where njMule runs;
-- a shared folder is shared, or stops being shared, as soon as you add or remove it, and
-  **Test Ports** saves the ports and UPnP before it tests them; the other fields are saved at
-  **Finish**;
-- there is no eMule step: use **Options → Import from eMule...** instead.
+- the language and the theme are kept by that browser, each browser its own; **As the system**
+  follows the browser's languages;
+- **Browse...** is disabled: type the incoming folder's path as it is on the computer where njMule
+  runs, and **Share a folder** asks for a path the same way;
+- the eMule page shows when njMule finds an eMule profile on its own computer, which may not be the
+  one you browse from.
 
 ## Without a window
 
-The headless engine has no wizard. Set it up from the [web interface](../web/overview.mdx), which
-offers its own wizard, or with the [command line](../server/cli.mdx). See
+The headless engine has no window of its own. Set it up from the
+[web interface](../web/overview.mdx), which shows the same wizard, or with the
+[command line](../server/cli.mdx). See
 [Running headless](../server/headless.mdx).

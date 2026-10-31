@@ -32,10 +32,11 @@ Every file type follows the same basics, set in `.editorconfig` and `.gitattribu
 | Java, Kotlin: at most 120 columns | Markdown is wrapped at about 100 columns |
 
 The interface's and this site's TypeScript and Vue files are formatted with Prettier (120 columns,
-4 spaces, single quotes, LF), checked by the build too
-([Interface](interface.mdx#formatting-and-types)). The desktop window's Rust code is formatted with
-`cargo fmt` (120 columns, `rustfmt.toml`) and linted with Clippy, which the CI runs with warnings as
-errors.
+4 spaces, single quotes, LF), checked by the build for the interface
+([Interface](interface.mdx#formatting-and-types)) and by `./gradlew :website:siteCheck` for this
+site ([Documentation](documentation.mdx#building-the-site)). The desktop window's Rust code is
+formatted with `cargo fmt` (120 columns, `rustfmt.toml`) and linted with Clippy, which the CI runs
+with warnings as errors.
 
 ## Fields and own methods
 

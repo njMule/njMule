@@ -23,7 +23,7 @@ through the new proxy, without a restart. The proxy is kept in `njmule.propertie
 | --- | --- | --- |
 | **Type** | **No proxy** | **No proxy**, **SOCKS 4 or 5**, or **HTTP (CONNECT)**. With **No proxy** the other fields are off. Its **Reset to No proxy** link changes the type alone. Key `proxy.type`: `NONE`, `SOCKS` or `HTTP`. Also in the web interface. |
 | **Host and port** | empty, `1080` | The proxy's host name or IP address, required with a proxy, and its port, a whole number from 1 to 65535. Keys `proxy.host` and `proxy.port`. Also in the web interface. |
-| **User name and password** | empty | The credentials of a SOCKS proxy, if it asks for them; leave them empty otherwise. The user name takes up to 255 characters. They go to a SOCKS proxy only, never to an HTTP proxy. Keys `proxy.user` and `proxy.password`. Also in the web interface, which never shows the stored password. |
+| **User name and password** | empty | The credentials of a SOCKS proxy, if it asks for them; leave them empty otherwise. The user name takes up to 255 characters. They go to a SOCKS proxy only, never to an HTTP proxy. Keys `proxy.user` and `proxy.password`. Also in the web interface. The stored password is never shown: its field shows dots while one is set, and what you type over them replaces it. |
 
 The password is kept in `njmule.properties` as you typed it, and never leaves njMule through the
 remote-control API.

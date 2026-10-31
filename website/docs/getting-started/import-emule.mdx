@@ -9,7 +9,7 @@ credits and copies of your unfinished downloads. njMule only reads eMule's folde
 ever changed, moved or deleted.
 
 You can import from the [first-start wizard](#from-the-first-start-wizard), the
-[desktop app](#from-the-desktop-app), the [web interface](#from-the-web-interface) or the
+[desktop app or the web interface](#from-the-desktop-app-or-the-web-interface) or the
 [command line](#from-the-command-line). Each of them can check the profile first and show what would
 happen, before anything is taken.
 
@@ -31,12 +31,13 @@ When njMule finds an eMule profile at its first start, the wizard's last page of
 **Open the import from eMule when I finish**. Leave it ticked and choose **Finish**: the
 **Import from eMule** window opens. Go on as below. See [First start](first-run.mdx).
 
-## From the desktop app
+## From the desktop app or the web interface
 
 1. Choose **⋯ → Import from eMule...** in the top bar (or press <kbd>Ctrl</kbd>+<kbd>K</kbd> and
    type `Import`).
 2. Check the **eMule configuration folder**, filled in when njMule found one, or choose it with
-   **Browse...**.
+   **Browse...**. In a browser, **Browse...** is disabled: type the path of the folder as it is on
+   the computer where njMule runs, which may not be the one you browse from.
 3. If you want them, tick one or both of:
    - **Also take eMule's identity (user hash, key and credits) from the next start** (see
      [Your identity](#your-identity));
@@ -47,14 +48,10 @@ When njMule finds an eMule profile at its first start, the wizard's last page of
    changed yet.
 5. Read the list, then choose **Import**. If you change a box, choose **Check again** first.
 
-The list then shows what was taken. If eMule started when you logged in, the desktop app now does
-too, and tells you so; turn that off in eMule so that only one of them starts.
-
-## From the web interface
-
-Open **Options → Import from eMule...**. The page has the same boxes, **Check** and **Import**.
-Type the path of eMule's configuration folder as it is on the computer where njMule runs, which may
-not be the one you browse from.
+The list then shows what was taken. If eMule started when you logged in, the detail of
+`preferences.ini` says *start at login*: to have njMule start so instead, turn on **Start njMule
+when I log in** in **Options → General** of the desktop app, and turn the same option off in eMule
+so that only one of them starts.
 
 ## From the command line
 

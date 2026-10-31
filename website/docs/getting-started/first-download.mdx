@@ -5,7 +5,8 @@ description: A short tutorial - connect to eD2K and Kad, search for a file, down
 
 This tutorial takes you from a freshly set up njMule to a finished download in the desktop app:
 connect, search, download, watch the progress and open the file. It ends with the other way to
-start a download, an eD2K link. The [web interface](#in-the-web-interface) works the same way.
+start a download, an eD2K link. The [web interface](#in-the-web-interface) works almost the same
+way.
 
 :::note
 
@@ -65,6 +66,7 @@ cancelled before, faded ones are marked as spam; the others turn bluer the more 
 To download a result, do one of these:
 
 - double-click it;
+- choose it and press <kbd>Enter</kbd>;
 - choose it, then **Download** in the bar under the results, which also shows its size and sources;
 - right-click it and choose **Download**.
 
@@ -138,22 +140,25 @@ need to search:
 
 Other ways to add a link:
 
+- press <kbd>Ctrl</kbd>+<kbd>V</kbd> in **Transfers**: the links on the clipboard become
+  downloads at once, in the category shown;
 - paste it in the field at the top (<kbd>Ctrl</kbd>+<kbd>K</kbd>) and choose to download it;
 - drop it on njMule's window;
 - click it in your browser, once njMule opens ed2k links: turn on **Open ed2k links with njMule
   (from browsers and other programs)** in **Options → General** (Windows and Linux; on macOS the
   app is registered for them already);
-- pass it to the desktop app: `njmule-gui "ed2k://|file|…|/"` hands it to the njMule already
-  running, or starts one with it.
+- pass it to the desktop app: `njmule-gui "ed2k://|file|…|/"` hands it to the desktop window
+  already open, or opens one with it.
 
 See [eD2K links](../desktop/ed2k-links.mdx).
 
 ## In the web interface
 
-The web interface has the same places: **Search** with the same box, methods, **Filters** and
-**Start**, then **Download** on the chosen results; **Transfers** with **Add links** and the same
-states. <kbd>Ctrl</kbd>+<kbd>K</kbd> searches the network or downloads the links you paste. See
-[Web interface](../web/overview.mdx).
+The web interface is the same interface, with the same places, menus and keys: connecting,
+searching, downloading, following the progress and adding links work there the same way. What needs
+the files and programs of the computer njMule runs on stays with the desktop app on that computer:
+opening a completed file, its folder or the incoming folder, and taking the ed2k links clicked in a
+browser. See [Web interface](../web/overview.mdx).
 
 ## From the command line
 

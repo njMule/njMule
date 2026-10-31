@@ -55,8 +55,8 @@ The package installs:
   [Run it as a service](#run-it-as-a-service)).
 
 Start njMule from your applications menu, or run `njmule-gui`. The desktop entry starts it under the
-name `njMule`, which process lists then show, however it was started, and your desktop matches its
-window to its menu entry and icon. At the first start, a wizard helps you set it up: see
+name `njMule`, which process lists then show, and your desktop matches its window to its menu entry
+and icon. At the first start, a wizard helps you set it up: see
 [First start](first-run.mdx).
 
 The desktop entry also declares njMule as a program for `ed2k://` links. To make it the one that
@@ -108,8 +108,8 @@ archive through their links, so its folder can stay where it is.
 
 Where the executables above do not start, on a distribution with an older C library or one built on
 musl such as Alpine, use `njmule-<version>-linux-x64-static.tar.xz`. It holds a single program,
-`njmule`, linked statically: it needs no library of the system and uses less memory than the desktop
-executable running headless. It has no desktop app: you use it from the
+`njmule`, linked statically: it needs no library of the system. It has no desktop app: you use it
+from the
 [web interface](../web/overview.mdx) and the [command line](../server/cli.mdx).
 
 ```bash
@@ -136,9 +136,10 @@ loginctl enable-linger                 # optional: keep it running while you are
 journalctl --user -u njmule            # its log
 ```
 
-The unit and the desktop app use the same configuration, so only one of them runs at a time: stop
-the service before you open the desktop app, and use the [web interface](../web/overview.mdx) to
-control the headless engine. Set the web interface password first, with `njmule --webui-password`.
+The unit and the desktop app use the same configuration, so only one of them runs at a time: the
+desktop app starts an engine of its own, which cannot run beside the unit's. Stop the service
+before you open the desktop app, and use the [web interface](../web/overview.mdx) to control the
+headless engine. Set the web interface password first, with `njmule --webui-password`.
 Everything else is in [Linux service](../server/linux-service.mdx).
 
 ## Firewall

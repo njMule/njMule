@@ -50,7 +50,7 @@ Two kinds of benchmarks report two kinds of numbers:
 | `BlockDeflateBench` | zlib (level 1) of one 180 KiB upload block, of text and of random data |
 | `PartPickBench` | the scan behind each block request of a 4 GiB download (442 parts) |
 | `IpFilterBench` | an IP filter of 200,000 ranges, the size of the public lists: a lookup per connection, and building it |
-| `HtmlEscapeBench` | escaping one table cell of the web interface |
+| `HtmlEscapeBench` | escaping one text for the web interface's own HTML (`Html.text`), Guava against the hand-written code it replaced |
 | `KadTextBench` | small per-message Kad work: search words, result keywords, the hex form of an ID, a socket address |
 | `UploadQueueBench` | the engine thread's cost of a full upload queue of 1,000 and 5,000 clients |
 

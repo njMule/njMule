@@ -160,10 +160,11 @@ In Compose, change `command:` the same way.
 
 :::note
 
-The password file sets only the password at every start: the host names added on the **Settings**
-page of the web interface stay across restarts. An option on the command line wins over what was
-saved: `--webui-lan` and `--webui-api` turn their setting on, and the `--webui-host` or
-`--webui-proxy` names given replace the saved ones.
+The password file sets only the password at every start: the other settings of the web interface
+stay as they were saved. An option on the command line wins over what was saved: `--webui-lan` and
+`--webui-api` turn their setting on, and the `--webui-host` or `--webui-proxy` names given replace
+the saved ones. The web interface's own settings change only in the desktop app on njMule's
+computer, never in a browser, so a container takes them from its command line.
 
 :::
 
@@ -179,9 +180,9 @@ stop. `docker logs njmule` shows what it printed; the full log is in the volume,
 
 ## Update
 
-njMule in Docker tells you when a new version is out, in a banner of the web interface (its
-**Options → General** tell how to install it) and in its log, but never replaces itself: pull the
-new image and recreate the container.
+njMule in Docker tells you when a new version is out, in a notice of the web interface (its
+**Details** open the **Updates** window, which tells how to install it) and in its log, but never
+replaces itself: pull the new image and recreate the container.
 
 ```bash
 docker compose pull && docker compose up -d

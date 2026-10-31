@@ -20,11 +20,11 @@ instead of falling back to your own connection (a *kill switch*).
    default, lets the system choose.
 4. Click **Apply and reconnect** in the bar under the page.
 
-The list holds the interfaces that are up, have an IPv4 address and are not the loopback. A
-choice that is not there now shows as **wg0 (not available)**.
+The list holds the interfaces of the computer njMule runs on that are up, have an IPv4 address
+and are not the loopback; the web interface shows the same list. A choice that is not there now
+shows as **wg0 (not available)**.
 
-In the web interface the same option is a text box (**Options → Connection → Network
-interface**), and in `njmule.properties` it is `net.bindInterface`. It takes:
+In `njmule.properties` the option is `net.bindInterface`, which takes:
 
 | You write | njMule binds to |
 |---|---|
@@ -81,7 +81,9 @@ yourself, run `ipconfig` and look for the adapter holding the VPN's address.
 
 VPN tunnels show as `utun` interfaces (`utun3`, for example), whose number may change from one
 connection to the next. Run `ifconfig` while the VPN is connected to find the one with the VPN's
-address. If the number changes, bind to the VPN's address instead, if your provider keeps it.
+address. If the number changes, bind to the VPN's address instead, if your provider keeps it:
+write it in `net.bindInterface` of `njmule.properties` while njMule is stopped, since the list
+offers interfaces only.
 
   </TabItem>
   <TabItem value="linux" label="Linux">
@@ -93,7 +95,7 @@ OpenVPN usually uses `tun0`. Check with:
 ip -4 addr show
 ```
 
-then write that name in **Network interface**, or choose it from the list.
+then choose that interface in **Network interface**.
 
   </TabItem>
 </Tabs>

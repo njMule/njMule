@@ -51,9 +51,9 @@ njMule at login, or keep it running after you log out, use the
 </TabItem>
 </Tabs>
 
-`njmule-gui --headless` does the same through the desktop app's launcher. At start njMule prints
-its notice, then where its configuration and logs are and, when the web interface is on, its
-port; then it logs what happens until it stops.
+The desktop app's window, `njmule-gui`, starts this same program for itself; on its own, `njmule`
+needs no window and no desktop. At start njMule prints its notice, then where its configuration and
+logs are and, when the web interface is on, its port; then it logs what happens until it stops.
 
 Before the first headless start, give the web interface a password, or you will have no way to
 look at what njMule does:
@@ -84,9 +84,9 @@ downloads, the other sees. The defaults follow each system's conventions (Linux:
   to them ([Portable mode](../data/portable.mdx)).
 
 Only one njMule runs on one configuration at a time. A second headless start on the same
-configuration fails with *njMule is already running with the configuration in …*, and the desktop
-app started meanwhile only hands its ed2k links to the running engine: it tells so in a message and
-opens no window. Give one of them `--config-dir` if you want both at once.
+configuration fails with *njMule is already running with the configuration in …*, and so does the
+engine of a desktop app started meanwhile: the window cannot show njMule then. Give one of them
+`--config-dir` if you want both at once, or [drive](#drive-it) the headless one instead.
 
 ## Typical set-ups
 

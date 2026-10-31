@@ -87,17 +87,16 @@ must belong to that user.
 
 ### The window does not open
 
-**What you see:** you start the desktop app and nothing appears, or an error says
-`njMule is already running with the configuration in …`.
+**What you see:** you start the desktop app and its window stays empty, and the [log](#logs) says
+that `njMule is already running with the configuration in …`.
 
 **Why:** only one njMule may use a profile at a time; two would write the same downloads and lists.
-The first one locks the file `njmule.lock` in the configuration folder. A second start does not
-fail on that lock: it hands its eD2K links to the njMule already running and asks it to show its
-window, then ends. When the njMule already running is the headless engine (`njmule` in a terminal,
-or the systemd user unit), it has no window to show: the desktop app says so, and that the links
-went to it, then ends. The
-error appears when the profile is held by an njMule that takes no links, such as a command-line
-task (`njmule --search`, `njmule --import-emule`) that is still running.
+The first one locks the file `njmule.lock` in the configuration folder. A second start of the
+desktop app never gets that far: it hands its eD2K links to the desktop app already running, brings
+its window to the front, then ends. But when another njMule holds the profile, such as the headless
+engine (`njmule` in a terminal, or the systemd user unit) or a command-line task (`njmule --search`,
+`njmule --import-emule`) that is still running, the engine the desktop app starts cannot take the
+profile and stops.
 
 **What to do:**
 
@@ -370,9 +369,9 @@ being asked or sends data* means try again shortly. See [Transfers](desktop/tran
 
 Check, in this order:
 
-1. **It is on.** In **Options → Web Interface**, **Turn the web interface on** and set a password;
-   or run `njmule --webui-password`. The web interface follows its settings from the next start:
-   restart njMule after changing them.
+1. **It is on.** In **Options → Web Interface** of the desktop app on njMule's computer, **Turn the
+   web interface on** and set a password: it follows them at once. Or run `njmule --webui-password`,
+   which applies from the next start: restart njMule then.
 2. **The address is right.** It is plain `http://`, not `https://`, on port 4711 unless you changed
    **Port**: `http://localhost:4711/` on the same computer.
 3. **Other computers may connect.** Without **Let other computers connect (otherwise only this
@@ -389,15 +388,16 @@ See [Web interface](web/overview.mdx).
 ### "Unknown host name"
 
 **What you see:** the browser shows *Unknown host name: open the interface by this computer's
-address and add the name under Settings.*
+address, and add the name to the web interface's host names.*
 
 **Why:** against DNS rebinding the web interface answers only to `localhost`, to IP addresses when
 other computers may connect, and to the host names you listed. A name such as `nas.local` or a
 reverse proxy's public name must be listed first.
 
-**What to do:** open the interface by the address, then add the name under **Host names** in its
-Settings page, or in **Options → Web Interface** of the desktop app, or start njMule with
-`--webui-host nas.local` (repeat it, or separate names with commas). Behind nginx, also pass the
+**What to do:** open the interface by the address meanwhile, and add the name in the desktop app on
+njMule's computer, under **Options → Web Interface → Host names**. A headless njMule, Docker or
+Synology takes it on the command line: `--webui-host nas.local` (repeat it, or separate names with
+commas). A browser cannot change the web interface's settings. Behind nginx, also pass the
 browser's host name on with `proxy_set_header Host $host;`. See
 [Reverse proxy](web/reverse-proxy.mdx).
 
@@ -418,7 +418,8 @@ with the address they came from. See [Web interface security](web/security.mdx).
 
 The password is kept only as a hash, so it cannot be read back: set a new one.
 
-- **Desktop app:** **Options → Web Interface → New password, twice**, then restart njMule.
+- **Desktop app:** on njMule's computer, **Options → Web Interface → New password, twice**: it
+  applies at once.
 - **Command line:** run `njmule --webui-password` and type the new password twice, then restart
   njMule. Give it the web interface options you use again, such as `--webui-lan` and
   `--webui-host`: it sets them as given, keeping only the port, the API setting and the guest. Add
@@ -440,7 +441,7 @@ The password is kept only as a hash, so it cannot be read back: set a new one.
   and the browser then sends it over HTTPS only. Opening the same interface over plain `http://`
   asks you to sign in again: keep to one address.
 - *Cross-site request refused.* means a form came from a name the interface does not know: add that
-  name under **Host names**.
+  name to the host names, as for [Unknown host name](#unknown-host-name).
 
 Two njMule on one computer keep separate sessions: the cookie's name carries the port.
 
@@ -491,17 +492,17 @@ njMule writes its log to `njmule.log` in the logs folder. Each day, or at 10 MB,
 | Synology DSM | `/var/packages/njmule/var/logs` |
 | systemd user unit | the folder of Linux above; `journalctl --user -u njmule` shows the console |
 
-The desktop app shows the main events in **Network → Log**, where chips keep only the errors,
-warnings or news; the web interface has the same under **Network**, and `njmule --remote log`
-prints the latest lines when the remote-control API is on. A window connected to a remote njMule
-keeps its own log in `logs/remote`. See [Logs](data/logs.mdx).
+The desktop app and the web interface show the main events in **Network → Log**, where chips keep
+only the errors, warnings or news, and `njmule --remote log` prints the latest lines when the
+remote-control API is on. A window connected to a remote njMule writes no log: that njMule logs on
+its own computer. See [Logs](data/logs.mdx).
 
 ### Raise the log level
 
 The levels are `ERROR`, `WARN`, `INFO` (the default), `DEBUG` and `TRACE`.
 
-- For one run, start njMule with `--log-level DEBUG`: `njmule-gui --log-level DEBUG` for the
-  desktop app, `njmule --log-level DEBUG` headless.
+- For one run of the headless engine, start it with `njmule --log-level DEBUG`. The desktop app
+  does not pass the option to its engine: use `log.level` for it.
 - To keep it, quit njMule and set `log.level=DEBUG` in `njmule.properties`, in the configuration
   folder (see [Data locations](data/locations.mdx)).
 
@@ -518,7 +519,7 @@ report**. The form asks for:
 
 | Field | What to give |
 |---|---|
-| njMule version | The output of `njmule --version`, or **⋯ → About njMule → Copy version details** in the desktop app |
+| njMule version | The output of `njmule --version`, or **⋯ → About njMule → Copy version details** in the desktop app or the web interface |
 | Operating system | Windows, macOS or Linux |
 | What happened and what did you expect? | In a few sentences |
 | Steps to reproduce | Numbered, from a fresh start when possible |

@@ -62,9 +62,9 @@ ExecStart=/usr/bin/njmule --headless --webui-password-file %h/.config/njmule-web
 The unit and the desktop app share your configuration, and only one njMule runs on a configuration
 at a time:
 
-- While the unit runs, starting the desktop app only hands its ed2k links to the headless njMule:
-  no window opens. Drive it through the web interface, or stop the unit first with
-  `systemctl --user stop njmule`.
+- While the unit runs, the desktop app cannot start its own engine on that configuration, so its
+  window cannot show njMule. Drive the headless njMule through the web interface, or stop the unit
+  first with `systemctl --user stop njmule`.
 - While the desktop app runs, the unit cannot start; after five tries in five minutes systemd
   gives up. Once the desktop app is closed, run `systemctl --user reset-failed njmule`, then start
   the unit again.

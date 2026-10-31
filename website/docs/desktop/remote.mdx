@@ -44,9 +44,8 @@ njMule first tries the address and the token: if the other njMule does not answe
 token, the dialog says **Cannot connect: …** and stays open. Otherwise a new njMule window opens on
 the other computer's njMule, its address in the title bar (as `njMule 0.1.0 - nas.local:4711`).
 
-The new window is a second start of the installed njMule. A development build cannot start itself and
-says so: **This njMule cannot open another window: start the installed njMule with --remote-url and
-the token in NJMULE_API_TOKEN.**
+The new window is a second start of the desktop app, `njmule-gui` with `--remote-url`, which starts
+no engine of its own.
 
 ## Connecting from the command line
 
@@ -78,8 +77,8 @@ NJMULE_API_TOKEN="<the token>" njmule-gui --remote-url http://nas.local:4711/api
 </TabItem>
 </Tabs>
 
-The address must be a full `http://` or `https://` address of the API. Without a token njMule does not
-start, and tells you to set `NJMULE_API_TOKEN` or connect from the menu.
+The address must be a full `http://` or `https://` address of the API. Without a token the window
+does not open, and tells you to set `NJMULE_API_TOKEN` or connect from the menu.
 
 ## Remembered connections
 
@@ -97,14 +96,18 @@ this computer can do does not work:
 
 | What | What happens |
 |---|---|
-| **Add servers from server.met...** and **Add contacts from nodes.dat...** | A file of this computer cannot reach the other njMule: njMule says so. Use **Update server.met from URL** and **Nodes.dat from URL:** instead. |
-| **Preview** | Not available, as the data of the download stays on the other computer: njMule says so. |
-| Opening files and folders | **Open Folder** and **Open Incoming Folder** are off, and opening a completed download tells that the folders of the other njMule are on its own computer. |
-| Choosing a folder | **Browse...** (sharing a folder, a category's or the options' folders) tells the same: type a path of the other computer in the box instead. |
+| **Preview** | Greyed out, as the data of the download stays on the other computer. |
+| Opening files and folders | **Open Folder** and **Open Incoming Folder** are greyed out or tell that the folders of the other njMule are on its own computer, as opening a completed download does. |
+| Choosing a folder | **Browse...** for a category's or the options' folders tells the same: type a path of the other computer in the box instead. **Share a folder** tells it too: share the folder from that computer, or from its web interface. |
+| That computer's system | **Start njMule when I log in**, **Open ed2k links with njMule** and the web interface's settings are greyed out. |
 
-What belongs to this computer stays local: the look and language of the window, links clicked in
-your browser (they go to your own njMule) and its log, written apart in the `remote` folder of your
-logs.
+**Add servers from server.met...** and **Add contacts from nodes.dat...** take a file of this
+computer and send it to the other njMule.
+
+What belongs to this computer stays local: the look and language of the window, the desktop app's
+own options (start minimised, the notification area, the question on exit, the clipboard), and the
+links clicked in your browser, which go to your own njMule. The window writes no log of its own: the
+other njMule logs on its computer.
 
 ## Related pages
 

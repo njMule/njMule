@@ -15,21 +15,23 @@ It is not affiliated with or endorsed by the eMule project.
 
 Everything njMule does happens in one engine, which knows nothing of windows. Around it:
 
-- **the desktop app**, for Windows, macOS and Linux, with themes, 36 languages and keyboard
-  shortcuts;
 - **the headless engine and its command line**, `njmule`, for a server, a NAS or a script;
-- **the web interface**, the desktop app in a browser, behind a password;
-- **the remote-control API**, in JSON, which the command line and the desktop app can also use to
-  drive an njMule on another computer.
+- **the remote-control API**, in JSON, through which every window reaches the engine;
+- **the desktop app**, for Windows, macOS and Linux, with themes, 36 languages and keyboard
+  shortcuts: a window that starts the engine and shows the interface;
+- **the web interface**, the same interface in a browser, behind a password.
+
+The desktop app can also show an njMule running on another computer, and the command line can
+drive one, through the same API.
 
 ```mermaid
 flowchart LR
     engine["njMule engine<br/>eD2K and Kad"]
-    engine --- desktop["Desktop app"]
     engine --- cli["Command line"]
-    engine --- web["Web interface<br/>and JSON API"]
-    web --- browser["Browser"]
-    web --- remote["njmule --remote,<br/>desktop app of another computer"]
+    engine --- api["Remote-control API<br/>JSON over HTTP"]
+    api --- window["Desktop app"]
+    api --- browser["Browser<br/>(web interface)"]
+    api --- remote["njmule --remote,<br/>a desktop app on another computer"]
 ```
 
 njMule is shipped as native executables, built with GraalVM: you install it like any other

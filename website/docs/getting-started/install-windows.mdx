@@ -69,9 +69,11 @@ The folder holds:
 | `njmule-service.exe` | the program of the [Windows service](../server/windows-service.mdx) |
 | `LICENSE.txt`, `NOTICE.txt`, `README.md` | the license, the notices and the read-me |
 
-`njmule-gui.exe` is a small program that starts `njmule.exe` for the desktop, as `javaw.exe` does
-for `java.exe`; both carry the njMule icon and version, as Explorer and Task Manager show. The other
-files beside them are libraries the programs load.
+`njmule-gui.exe` is the desktop app's window: it starts `njmule.exe`, the engine, beside it and
+shows its interface in Microsoft Edge WebView2 (see [Requirements](requirements.mdx#web-view)); both
+carry the njMule icon and version, as Explorer and Task Manager show. The other files beside them
+are a library the engine loads and `install.properties`, which tells njMule's update check how it
+was installed.
 
 Your settings and downloads are not in the program folder: see
 [Data locations](../data/locations.mdx). By default, completed downloads go to

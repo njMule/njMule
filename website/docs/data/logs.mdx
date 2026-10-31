@@ -22,8 +22,8 @@ Open **Network → Log** (or click the last event in the status strip). Three ta
 - **My Info**: your addresses, IDs and the state of eD2K, Kad and the web interface.
 
 Select text with the mouse and copy it with the system's shortcut or the context menu (**Copy**,
-**Select All**). **Reset** clears the tab shown, not the files. The app keeps the latest 5,000
-lines of each tab.
+**Select All**). **Reset** clears the tab shown, not the files. The app shows the latest 2,000
+lines of the **Log** and 500 of **Server Info**.
 
 <Screenshot
     id="log-tab-log"
@@ -31,7 +31,7 @@ lines of each tab.
     caption="The log, with its chips by level"
 />
 
-The web interface has the same log on its **Network → Log** page, and
+The web interface has the same **Network → Log**, and
 `njmule --remote log` prints the latest lines of a running njMule (see
 [Remote control](../server/remote-control.mdx)).
 
@@ -59,8 +59,8 @@ njMule that wrote it:
 ```
 
 Line breaks inside messages are replaced, so nothing received from the network can forge a log
-line. A desktop window that drives [another njMule](../desktop/remote.mdx) writes its own log in
-`logs/remote`.
+line. A desktop window that drives [another njMule](../desktop/remote.mdx) runs no engine and
+writes no log: that njMule logs on its own computer.
 
 The files hold the addresses of servers and clients and the names of files: share them with care.
 
@@ -76,8 +76,8 @@ The files hold the addresses of servers and clients and the names of files: shar
 
 There is no option for it in the options pages. Choose it:
 
-- **for one run**, with `--log-level`: `njmule --log-level DEBUG` or
-  `njmule-gui --log-level DEBUG`;
+- **for one run**, with `--log-level`: `njmule --log-level DEBUG` (the desktop app's window does
+  not pass it to its engine: use `log.level` for it);
 - **for good**, with `log.level` in `njmule.properties` (edit it while njMule is stopped, or change
   it through the remote-control API); it takes effect at the next start.
 
