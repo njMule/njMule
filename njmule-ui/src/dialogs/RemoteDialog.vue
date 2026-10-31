@@ -116,7 +116,7 @@ async function connect(): Promise<void> {
 </template>
 
 <style scoped>
-/* As the desktop app's dialogs: the title and its close button, the fields, then a band with the state and buttons. */
+/* The title and its close button, the fields, then a band with the state and buttons. */
 .remote {
     width: min(560px, calc(100vw - 32px));
     padding: 0;

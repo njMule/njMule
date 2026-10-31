@@ -7,8 +7,8 @@ import { PopoverArrow, PopoverClose } from 'reka-ui';
 import { t } from '../i18n';
 import Icon from './Icon.vue';
 
-// The head of a popover with a title, as the desktop app draws one: the arrow toward what opened it, the title in the
-// middle and a cross that closes it. It goes first inside a PopoverContent.
+// The head of a popover with a title: the arrow toward what opened it, the title in the middle and a cross that closes
+// it. It goes first inside a PopoverContent.
 defineProps<{ title: string }>();
 </script>
 

@@ -260,7 +260,7 @@ watch(
 
 async function chooseDirectory(): Promise<void> {
     const chosenFolder = await props.platform.chooseFolder(t('nj.shared.shareFolder'));
-    // The desktop app's dialog gives none when it is cancelled.
+    // The system's dialog gives none when it is cancelled.
     if (chosenFolder === null && props.platform.desktop) {
         return;
     }
@@ -584,7 +584,7 @@ onMounted(() => void readDirectories());
                     </Tip>
                     <DropdownMenuPortal>
                         <DropdownMenuContent class="menu" align="end" :reference="moreTrigger?.$el">
-                            <!-- As the desktop app's: the button needs a choice, its items act on one file only. -->
+                            <!-- The button needs a choice: its items act on one file only. -->
                             <DropdownMenuItem class="menu-item" @select="openFolder">
                                 <Icon name="FOLDER_OPEN" />{{ t('IDS_OPENFOLDER') }}
                             </DropdownMenuItem>
@@ -779,7 +779,7 @@ onMounted(() => void readDirectories());
     min-width: 140px;
 }
 
-/* In a narrow window the Priority button shows only its icons, its name as tooltip, as the desktop app's tool row. */
+/* In a narrow window the Priority button shows only its icons, its name as tooltip. */
 .njmule.narrow .tool-text {
     display: none;
 }
@@ -795,7 +795,7 @@ onMounted(() => void readDirectories());
     --nj-icon-color: var(--color-fg-muted);
 }
 
-/* A switch as the desktop app's: a pill whose knob moves to the end when on. */
+/* A switch: a pill whose knob moves to the end when on. */
 .switch {
     appearance: none;
     width: 36px;

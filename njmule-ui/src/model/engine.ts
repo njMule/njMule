@@ -5,9 +5,9 @@ import { computed, ref, shallowRef } from 'vue';
 import { answer, api, ApiError, type Schemas } from '../api/client';
 import { followEvents, type EventData, type EventName } from '../api/events';
 
-// What the screens show of the engine: read through the API at the desktop app's pace (the status and the downloads
-// every second, the uploads and the sources every two, the servers every ten, the clients met every thirty) and kept
-// current between two readings by the engine's events.
+// What the screens show of the engine: read through the API at fixed paces (the status and the downloads every second,
+// the uploads and the sources every two, the servers every ten, the clients met every thirty) and kept current between
+// two readings by the engine's events.
 
 export type Status = Schemas['Status'];
 export type Download = Schemas['Download'];

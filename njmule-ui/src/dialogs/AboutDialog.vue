@@ -78,7 +78,7 @@ async function copyVersion(): Promise<void> {
 </template>
 
 <style scoped>
-/* The body on its own padding and the band of the buttons across the whole width, as the desktop app's About. */
+/* The body on its own padding and the band of the buttons across the whole width. */
 .about {
     width: min(520px, calc(100vw - 32px));
     gap: 0;

@@ -9,8 +9,7 @@ import type { IconName } from '../icons';
 import { kindIcon, kindOf } from '../transfers';
 import Icon from './Icon.vue';
 
-// The icon beside a file's name: the system's for its kind in the desktop window, as the desktop app's lists show
-// it, or else the app's own icon of the kind.
+// The icon beside a file's name: the system's for its kind in the desktop window, else njMule's own icon of the kind.
 const props = defineProps<{ name: string; kind?: IconName }>();
 const program = computed(() => systemIconOf(props.name));
 </script>

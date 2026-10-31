@@ -77,8 +77,7 @@ async function reached(): Promise<Endpoint> {
     return { url: found.url, token: found.token };
 }
 
-// The web view asks the user before a page reads the clipboard, which the desktop app never did: this window's page
-// reads it through the shell.
+// The web view asks the user before a page reads the clipboard: this window's page reads it through the shell.
 if (navigator.clipboard) {
     navigator.clipboard.readText = () => invoke<string>('read_clipboard');
 }

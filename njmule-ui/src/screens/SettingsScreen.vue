@@ -276,7 +276,7 @@ watch(
     },
 );
 
-// The list is one stop of the keyboard, its arrows choosing the page, as a list of the desktop app.
+// The list is one stop of the keyboard, its arrows choosing the page.
 function listKey(e: KeyboardEvent): void {
     const pages = shownPages.value;
     const at = pages.findIndex((p) => p.id === current.value?.id);

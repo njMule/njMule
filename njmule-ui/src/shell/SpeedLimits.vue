@@ -59,7 +59,7 @@ async function preset(fast: boolean): Promise<void> {
     border-radius: 6px;
 }
 
-/* Over the status strip it takes the strip's smaller text, as in the desktop app. */
+/* Over the status strip it takes the strip's smaller text. */
 :deep(.limits-popover.in-strip) {
     font-size: 0.9em;
 }

@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// The kinds of values the options ask for, as the desktop app's Inputs: the characters each field keeps, the longest
-// text it takes, what it takes in words and whether a text is one. The checks are the engine's, so that a value is
-// refused while it is typed rather than when it is saved.
+// The kinds of values the options ask for: the characters each field keeps, the longest text it takes, what it takes in
+// words and whether a text is one. The checks are the engine's, so that a value is refused while it is typed rather
+// than when it is saved.
 
 /** A field's rules: the characters it keeps, its longest text, its hint and its check. */
 export interface InputRules {

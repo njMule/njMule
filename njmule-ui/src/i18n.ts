@@ -3,7 +3,7 @@
 
 import { ref } from 'vue';
 
-// The desktop app's languages, whose translations the build converts to i18n/<tag>.json.
+// The languages of the interface, whose translations the build converts to i18n/<tag>.json.
 export const LANGUAGES = [
     'en',
     'ca',
@@ -56,7 +56,7 @@ export function t(key: string, ...args: unknown[]): string {
     return args.length === 0 ? pattern : format(pattern, args);
 }
 
-/** Fills in Java's %s, %d, %.1f, %1$s and %% placeholders, as the desktop app's texts use them. */
+/** Fills in Java's %s, %d, %.1f, %1$s and %% placeholders, which the texts use. */
 export function format(pattern: string, args: unknown[]): string {
     let next = 0;
     return pattern.replace(/%(?:(\d+)\$)?(\.\d+)?([sdfcx%])/g, (whole, position, precision, kind) => {

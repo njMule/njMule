@@ -12,13 +12,13 @@ describe('format', () => {
         language.value = 'en';
     });
 
-    it('should group the thousands of a four-digit count, as the desktop app', () => {
+    it('should group the thousands of a four-digit count', () => {
         givenTheLanguage('it');
         whenTheCountIsWritten(1243);
         thenItReads('1.243');
     });
 
-    it('should group the thousands of a size of four digits, as the desktop app', () => {
+    it('should group the thousands of a size of four digits', () => {
         givenTheLanguage('it');
         whenTheSizeIsWritten(1018 * 1024 * 1024 * 1024);
         thenItReads('1.018 GB');

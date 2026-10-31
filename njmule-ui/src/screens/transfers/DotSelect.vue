@@ -15,8 +15,8 @@ import {
 import { computed } from 'vue';
 import Icon from '../../ui/Icon.vue';
 
-// A choice among categories or their tints, each with its dot beside its name, as the desktop app's boxes show them:
-// the tint is never the only cue. An item without a colour has no dot, such as "All categories".
+// A choice among categories or their tints, each with its dot beside its name: the tint is never the only cue. An item
+// without a colour has no dot, such as "All categories".
 
 export interface DotItem {
     value: number;

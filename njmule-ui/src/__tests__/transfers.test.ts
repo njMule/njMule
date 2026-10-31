@@ -234,7 +234,7 @@ describe('the name of a country', () => {
 describe('the order of names', () => {
     let order: string[] = [];
 
-    it('should put capitals before small letters, as the desktop app does', () => {
+    it('should put capitals before small letters', () => {
         whenTheNamesAreSorted(['beta.iso', 'Alpha.iso', 'alpha.iso']);
         thenTheOrderIs(['Alpha.iso', 'alpha.iso', 'beta.iso']);
     });

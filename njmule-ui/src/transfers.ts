@@ -4,7 +4,7 @@
 import type { IconName } from './icons';
 import type { Download, Source } from './model/engine';
 
-// How the transfers show a download and what can be done to it, as the desktop app does.
+// How the transfers show a download and what can be done to it.
 
 /** The state a download shows: a running one is downloading, waiting for its sources or without any. */
 export type Shown = 'downloading' | 'waiting' | 'noSources' | 'paused' | 'stopped' | 'noSpace' | 'error' | 'complete';
@@ -328,12 +328,12 @@ export function byPriority(a: Pick<Download, 'priority' | 'sources'>, b: typeof 
     );
 }
 
-/** Downloads by the number of their category, as the desktop app sorts them, not by its name. */
+/** Downloads by the number of their category, not by its name. */
 export function byCategory(a: Pick<Download, 'category'>, b: typeof a): number {
     return a.category - b.category;
 }
 
-/** Words in the order of their characters, capitals first, as the desktop app sorts names. */
+/** Words in the order of their characters, capitals first. */
 export function byName(a: string, b: string): number {
     return a < b ? -1 : a > b ? 1 : 0;
 }

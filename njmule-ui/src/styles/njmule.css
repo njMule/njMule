@@ -2,9 +2,9 @@
  * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * njMule's colour tokens and component styles, as the desktop app's njmule.css. Generic colours come from the theme
- * (--color-*, generated from AtlantaFX); every --nj-* token has a light and a dark value. Sizes keep to a 4 px scale,
- * corners to 6 (controls), 8 (panels) and 10 (cards, menus), table rows to 32 px.
+ * njMule's colour tokens and component styles. Generic colours come from the theme (--color-*, the colours of the
+ * AtlantaFX themes in themes.css); every --nj-* token has a light and a dark value. Sizes keep to a 4 px scale, corners
+ * to 6 (controls), 8 (panels) and 10 (cards, menus), table rows to 32 px.
  */
 
 @font-face {
@@ -168,8 +168,7 @@ select {
     color: inherit;
 }
 
-/* Check boxes and radio buttons in the theme's accent and about its size, as the desktop app's, rather than the
-   system's. */
+/* Check boxes and radio buttons in the theme's accent and about its size, rather than the system's. */
 input[type='checkbox'],
 input[type='radio'] {
     width: calc(0.75em + 7px);
@@ -208,8 +207,7 @@ input[type='radio'] {
     transform: scaleX(-1);
 }
 
-/* Buttons: the theme's own button colours, as the desktop app's, a flat one only on hover; the main action in the
-   logo's orange. */
+/* Buttons: the theme's own button colours, a flat one only on hover; the main action in the logo's orange. */
 .button {
     display: inline-flex;
     align-items: center;
@@ -423,7 +421,7 @@ select:disabled {
     color: var(--color-fg-muted);
 }
 
-/* A command's keys written plainly at the end of its row, in the colour of its words, as the desktop app's menus. */
+/* A command's keys written plainly at the end of its row, in the colour of its words. */
 .menu-item .menu-end.keys {
     padding-inline-start: 2em;
     color: inherit;
@@ -508,15 +506,14 @@ select:disabled {
     z-index: 30;
 }
 
-/* Under a dialog the window stays as it is, as under the desktop app's dialog windows; it only takes no clicks. */
+/* Under a dialog the window stays as it is; it only takes no clicks. */
 .scrim {
     position: fixed;
     inset: 0;
     z-index: 15;
 }
 
-/* A dialog as one of the desktop app's in its own window: the title and its cross, the words and fields, then the
-   buttons on a band across its foot. */
+/* A dialog: the title and its cross, the words and fields, then the buttons on a band across its foot. */
 .dialog {
     position: fixed;
     top: 50%;

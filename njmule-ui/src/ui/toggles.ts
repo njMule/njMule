@@ -4,8 +4,8 @@
 const STEPS: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
 
 /**
- * Moves the focus to the next or previous button of a group, as the arrows do in the desktop app's groups of toggles:
- * the focus moves, Space or Enter chooses. Right and left follow the direction of the text.
+ * Moves the focus to the next or previous button of a group of toggles with the arrows: the focus moves, Space or Enter
+ * chooses. Right and left follow the direction of the text.
  */
 export function moveAlong(e: KeyboardEvent): void {
     const step = STEPS[e.key];

@@ -40,11 +40,11 @@ import { type ColumnSpan, dragColumn, fitColumns, MAX_WIDTH } from './column-wid
 import Icon from './Icon.vue';
 import { movedRows } from './row-order';
 
-// A table as the desktop app's: rows of 32 px drawn only where they show, sorted by a click on a header (ascending
-// first), columns moved by dragging their header, resized by their edge (a double click fits them to their content)
-// and shown or hidden from the menu at the header's end, all kept in this window for the next time. A click chooses a
-// row, Ctrl or Cmd adds one, Shift a range; the keys move and extend the choice; the context menu acts on the rows
-// chosen, from the rows as from the header. A table whose rows move takes them dragged onto another row.
+// A table: rows of 32 px drawn only where they show, sorted by a click on a header (ascending first), columns moved by
+// dragging their header, resized by their edge (a double click fits them to their content) and shown or hidden from the
+// menu at the header's end, all kept in this window for the next time. A click chooses a row, Ctrl or Cmd adds one,
+// Shift a range; the keys move and extend the choice; the context menu acts on the rows chosen, from the rows as from
+// the header. A table whose rows move takes them dragged onto another row.
 
 export interface ColumnMeta {
     /** Figures align to the end, in the order of their digits whatever the language. */
@@ -176,11 +176,11 @@ const virtualizer = useVirtualizer(
         overscan: 8,
     })),
 );
-// The vertical bar's room, which the column menu takes above it as the desktop app's corner button does.
+// The vertical bar's room, which the column menu takes above it.
 const gutter = ref(0);
 const MENU_ROOM = 16;
 const room = ref(0);
-// JavaFX's width for a column given none: such a column starts fitted to its header, as the desktop app's.
+// The width of a column given none: such a column starts fitted to its header.
 const DEFAULT_WIDTH = 80;
 
 function visibleColumns(): any[] {
@@ -198,8 +198,8 @@ function spanOf(c: any): ColumnSpan {
     return { size: kept === undefined ? pref : Math.min(max, Math.max(min, kept)), pref, min, max };
 }
 
-// As the desktop app's tables, the columns fill the list's width, a change of it shared among them all; the list
-// scrolls sideways only when even their least widths do not fit.
+// The columns fill the list's width, a change of it shared among them all; the list scrolls sideways only when even
+// their least widths do not fit.
 const widths = computed(() => {
     const columns = visibleColumns();
     const spans = columns.map(spanOf);
@@ -214,7 +214,7 @@ function holdWidths(): void {
     }
 }
 
-// An edge dragged, or a column fitted: the columns after it give or take the difference, as in the desktop app.
+// An edge dragged, or a column fitted: the columns after it give or take the difference.
 function sized(next: Updater<ColumnSizingState>): void {
     const wanted = typeof next === 'function' ? next(sizing.value) : next;
     const columns = visibleColumns();
@@ -481,8 +481,8 @@ function menuOn(row: any): void {
     }
 }
 
-// The keys of the desktop app's tables: arrows, pages, Home and End move the choice, with Shift they extend it, with
-// Ctrl they move only the row they are on, which Space chooses (with Ctrl, adds or takes); Ctrl+A chooses all.
+// The keys of a table: arrows, pages, Home and End move the choice, with Shift they extend it, with Ctrl they move only
+// the row they are on, which Space chooses (with Ctrl, adds or takes); Ctrl+A chooses all.
 function key(e: KeyboardEvent): void {
     const ids = tableRows.value.map((r) => r.id as string);
     const ctrl = e.ctrlKey || e.metaKey;
@@ -561,7 +561,7 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
     <!-- The list is the root, so that the styles of the screen that holds it reach it. -->
     <div class="data-table" v-bind="$attrs" role="grid" :aria-label="label" :aria-rowcount="tableRows.length">
         <ContextMenuRoot>
-            <!-- Without a menu of its own, a list has none, as the desktop app's. -->
+            <!-- Without a menu of its own, a list has none. -->
             <ContextMenuTrigger as-child :disabled="!$slots.menu">
                 <div class="table-content">
                     <div class="header">
@@ -895,7 +895,7 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
     direction: ltr;
 }
 
-/* What a cell cannot show whole ends in an ellipsis, as in the desktop app. */
+/* What a cell cannot show whole ends in an ellipsis. */
 .cell-content {
     flex: 1;
     min-width: 0;

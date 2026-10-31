@@ -4,8 +4,8 @@
 import { shallowRef } from 'vue';
 import { answer, api } from '../../api/client';
 
-// The passwords of the preferences, which the engine never gives: a field shows dots while one is set, as the desktop
-// app's masked field does, and what is typed over them replaces it, an emptied field clearing it.
+// The passwords of the preferences, which the engine never gives: a field shows dots while one is set, and what is
+// typed over them replaces it, an emptied field clearing it.
 
 const DOT = '•';
 

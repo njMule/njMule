@@ -551,7 +551,7 @@ async function close(): Promise<void> {
     min-width: 0;
 }
 
-/* An address that is none, as the desktop app marks a wrong value. */
+/* A wrong value: an address that is none. */
 .field.wrong {
     border-color: var(--color-danger-emphasis);
 }

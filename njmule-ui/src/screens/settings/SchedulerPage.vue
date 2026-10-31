@@ -411,7 +411,6 @@ function setCount(which: 'connections' | 'sources', text: string): void {
     padding-block: 12px;
 }
 
-/* As high as the desktop app's list of rules. */
 .rules {
     display: flex;
     flex-direction: column;
@@ -436,7 +435,7 @@ function setCount(which: 'connections' | 'sources', text: string): void {
     gap: 4px 8px;
 }
 
-/* Fields in columns of a wide letter, as the desktop app sizes them. */
+/* Fields in columns of a wide letter. */
 .line :deep(.name) {
     width: calc(12 * 0.94em + 18px);
 }

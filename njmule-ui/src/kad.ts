@@ -11,8 +11,7 @@ export const BARS = 24;
 const ID_BITS = 128;
 
 /**
- * Our Kad contacts by their distance, the XOR of their id and ours in hexadecimal, from the closest to the farthest,
- * as the desktop app counts them.
+ * Our Kad contacts by their distance, the XOR of their id and ours in hexadecimal, from the closest to the farthest.
  */
 export function distanceBars(contacts: { distance: string }[]): number[] {
     const counts = new Array<number>(BARS).fill(0);

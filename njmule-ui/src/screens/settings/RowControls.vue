@@ -70,7 +70,7 @@ function id(field: Field): string {
 // A name for a control that shares its row with others; a lone control has the row's name.
 const named = computed(() => (props.row.fields.length > 1 || props.row.label === '' ? props.title : undefined));
 
-// The desktop app sizes fields in columns of a wide letter; a field that grows takes the row's room.
+// Fields are sized in columns of a wide letter; a field that grows takes the row's room.
 function size(field: Field): Record<string, string> {
     const columns = field.columns ?? (field.kind === 'number' ? 6 : 12);
     const width = `calc(${columns} * 0.94em + 18px)`;
@@ -282,7 +282,7 @@ function hear(field: Field): void {
     max-width: 320px;
 }
 
-/* The desktop app's width for an interface named with its addresses. */
+/* The width for an interface named with its addresses. */
 .interface {
     width: 260px;
     min-width: 140px;

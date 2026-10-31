@@ -3,8 +3,8 @@
 
 import type { IconName } from './icons';
 
-// The settings pages of the desktop app as rows bound to the keys of njmule.properties; the scheduler and the web
-// interface are pages of their own.
+// The settings pages as rows bound to the keys of njmule.properties; the scheduler and the web interface are pages of
+// their own.
 
 export interface Option {
     value: string;
@@ -43,7 +43,7 @@ export type Kind =
     // A network interface of the engine's computer, by its name or an address; empty for any.
     | 'interface';
 
-/** A check of the value typed, as the desktop app's Inputs: see screens/settings/inputs.ts. */
+/** A check of the value typed: see screens/settings/inputs.ts. */
 export type Check =
     | 'nick'
     | 'name'
@@ -71,7 +71,7 @@ export interface Field {
     ltr?: boolean;
     /** A word after the field, such as its unit. */
     unit?: string;
-    /** The width in characters, as the desktop app's columns. */
+    /** The width in characters. */
     columns?: number;
     /** Takes the width the row leaves. */
     grow?: boolean;
@@ -781,7 +781,7 @@ export const LANGUAGE_NAMES: Record<string, string> = {
 
 type Translate = (key: string, ...args: unknown[]) => string;
 
-/** A label without the colon some translations end it with, as the desktop app shows it. */
+/** A label without the colon some translations end it with. */
 export function label(text: string): string {
     return text.replace(/\s*:\s*$/, '');
 }
