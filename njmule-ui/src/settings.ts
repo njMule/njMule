@@ -96,6 +96,8 @@ export interface Row {
     action?: Action;
     /** An option of this window rather than of the engine. */
     local?: 'language' | 'theme';
+    /** The test of the ports, run on the ports as their fields give them. */
+    portTest?: boolean;
 }
 
 export interface Section {
@@ -264,6 +266,8 @@ export const PAGES: Page[] = [
                     one({ key: 'net.tcpPort', ...PORT }, { label: 'IDS_PW_CLIENTPORT', suffix: ' (TCP)', held: true }),
                     one({ key: 'net.udpPort', ...PORT }, { label: 'UDP', held: true }),
                     toggle('net.upnp', 'nj.settings.upnp', { held: true }),
+                    // The test's button names it.
+                    { label: '', fields: [], wide: true, portTest: true },
                 ],
             },
             {

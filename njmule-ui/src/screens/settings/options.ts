@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import { answer, api } from '../../api/client';
 import { rate } from '../../format';
 import { language, t } from '../../i18n';
@@ -282,6 +282,27 @@ export async function commit(row: Row, field: Field): Promise<void> {
     await setValues(row, { [field.key]: field.kind === 'number' ? String(Number(text)) : text });
     if (typed.value[field.key] === draft) {
         typed.value = without(typed.value, field.key);
+    }
+}
+
+const PORTS = ['net.tcpPort', 'net.udpPort', 'net.upnp'];
+
+/** The ports as their fields give them: a change while a test runs lets a new one start. */
+export const portChoice = computed(() => PORTS.map((key) => typed.value[key] ?? held.value[key] ?? saved(key)).join());
+
+/**
+ * Applies the ports as their fields give them, as the desktop app does before testing them; the other options keep
+ * waiting for Apply.
+ */
+export async function applyPorts(): Promise<void> {
+    for (const { row } of PLACES) {
+        for (const field of row.fields.filter((f) => PORTS.includes(f.key))) {
+            await commit(row, field);
+        }
+    }
+    const ports = Object.fromEntries(Object.entries(held.value).filter(([key]) => PORTS.includes(key)));
+    if (Object.keys(ports).length > 0 && (await save(ports))) {
+        held.value = Object.fromEntries(Object.entries(held.value).filter(([key]) => !PORTS.includes(key)));
     }
 }
 

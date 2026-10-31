@@ -26,6 +26,7 @@ import { family, type Family, mode, type Mode, setTheme } from '../theme';
 import { message, problem } from '../toasts';
 import Icon from '../ui/Icon.vue';
 import {
+    applyPorts,
     changed,
     commit,
     commitAll,
@@ -34,6 +35,7 @@ import {
     firstWrong,
     held,
     PLACES,
+    portChoice,
     readDefaults,
     reset,
     rowError,
@@ -46,6 +48,7 @@ import RowControls from './settings/RowControls.vue';
 import SchedulerPage from './settings/SchedulerPage.vue';
 import ServerListsDialog from './settings/ServerListsDialog.vue';
 import SettingRow from './settings/SettingRow.vue';
+import PortTestPane from '../ui/PortTestPane.vue';
 
 // The options one page at a time, chosen from a list beside them, with a box that finds options by their words on
 // every page and a chip that keeps only those changed from their defaults. Changes apply at once, except those that
@@ -461,6 +464,7 @@ function act(row: Row, action: Action): void {
                                             </option>
                                         </select>
                                     </template>
+                                    <PortTestPane v-else-if="row.portTest" :apply="applyPorts" :ports="portChoice" />
                                     <RowControls
                                         v-else
                                         :row="row"
