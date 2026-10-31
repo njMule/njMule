@@ -36,7 +36,7 @@ import {
     treeMove,
     type Place,
 } from '../shared';
-import { problem } from '../toasts';
+import { message, problem } from '../toasts';
 import { kindIcon } from '../transfers';
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
 import EmptyState from '../ui/EmptyState.vue';
@@ -58,6 +58,7 @@ const counter = ref<Counter>('session');
 const filter = ref('');
 const selected = ref<string[]>([]);
 const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
+const priorityTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 const filterBox = ref<HTMLInputElement | null>(null);
 
 const PRIORITIES: { value: Priority; key: string }[] = [
@@ -343,16 +344,25 @@ async function subfolders(on: boolean): Promise<void> {
     }
 }
 
-async function openPlace(): Promise<void> {
-    if (place.value.kind !== 'all' && !(await props.platform.openFolder(place.value.path))) {
-        problem(place.value.path);
+// A page cannot open the folders of the computer njMule runs on: it says so.
+async function openHere(folder: string): Promise<void> {
+    if (!props.platform.desktop) {
+        message(t('nj.remote.elsewhere'));
+    } else if (!(await props.platform.openFolder(folder))) {
+        problem(folder);
     }
 }
 
+async function openPlace(): Promise<void> {
+    if (place.value.kind !== 'all') {
+        await openHere(place.value.path);
+    }
+}
+
+// One file at a time, as renaming.
 async function openFolder(): Promise<void> {
-    const f = chosen.value[0];
-    if (f !== undefined && !(await props.platform.openFolder(parentOf(f.path)))) {
-        problem(parentOf(f.path));
+    if (chosen.value.length === 1) {
+        await openHere(parentOf(chosen.value[0]!.path));
     }
 }
 
@@ -371,7 +381,7 @@ async function prioritize(priority: Priority): Promise<void> {
 
 async function rename(): Promise<void> {
     const f = chosen.value[0];
-    if (f === undefined) {
+    if (f === undefined || chosen.value.length !== 1) {
         return;
     }
     const a = await ask({
@@ -401,8 +411,8 @@ async function copyLinks(html: boolean): Promise<void> {
     }
 }
 
-// Ctrl+F finds among the files, as in the transfers.
-function screenKey(e: KeyboardEvent): void {
+// Ctrl+F finds among the files, as in the transfers, while the focus is with them.
+function filesKey(e: KeyboardEvent): void {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
         filterBox.value?.focus();
         e.preventDefault();
@@ -413,7 +423,7 @@ onMounted(() => void readDirectories());
 </script>
 
 <template>
-    <div class="screen" @keydown="screenKey">
+    <div class="screen">
         <aside class="shared-side">
             <button id="share-folder" class="button accent wide" @click="chooseDirectory">
                 <Icon name="FOLDER_ADD" />{{ t('nj.shared.shareFolder') }}
@@ -471,12 +481,7 @@ onMounted(() => void readDirectories());
                     />
                 </label>
                 <div class="place-buttons">
-                    <button
-                        v-if="place.kind !== 'all'"
-                        class="button small"
-                        :disabled="!platform.desktop"
-                        @click="openPlace"
-                    >
+                    <button v-if="place.kind !== 'all'" class="button small" @click="openPlace">
                         <Icon name="FOLDER_OPEN" />{{ t('IDS_OPENFOLDER') }}
                     </button>
                     <button
@@ -491,7 +496,7 @@ onMounted(() => void readDirectories());
                 <p v-if="place.kind === 'incoming'" class="muted note">{{ t('nj.shared.incomingNote') }}</p>
             </div>
         </aside>
-        <section class="files">
+        <section class="files" @keydown="filesKey">
             <div class="tool-row">
                 <label class="field filter">
                     <Icon name="FILTER" />
@@ -507,11 +512,19 @@ onMounted(() => void readDirectories());
                 <Segments v-model="counter" :items="COUNTERS" :label="t('IDS_SF_TRANSFERRED')" />
                 <span class="spacer" />
                 <DropdownMenuRoot>
-                    <DropdownMenuTrigger class="button" :disabled="chosen.length === 0">
-                        <Icon name="PRIORITY" />{{ t('IDS_PRIORITY') }}<Icon name="CHEVRON_DOWN" />
-                    </DropdownMenuTrigger>
+                    <Tip :text="t('IDS_PRIORITY')">
+                        <DropdownMenuTrigger
+                            ref="priorityTrigger"
+                            class="button"
+                            :disabled="chosen.length === 0"
+                            :aria-label="t('IDS_PRIORITY')"
+                        >
+                            <Icon name="PRIORITY" /><span class="tool-text">{{ t('IDS_PRIORITY') }}</span
+                            ><Icon name="CHEVRON_DOWN" />
+                        </DropdownMenuTrigger>
+                    </Tip>
                     <DropdownMenuPortal>
-                        <DropdownMenuContent class="menu" align="end">
+                        <DropdownMenuContent class="menu" align="end" :reference="priorityTrigger?.$el">
                             <DropdownMenuItem
                                 v-for="p in PRIORITIES"
                                 :key="p.value"
@@ -546,14 +559,11 @@ onMounted(() => void readDirectories());
                     </Tip>
                     <DropdownMenuPortal>
                         <DropdownMenuContent class="menu" align="end" :reference="moreTrigger?.$el">
-                            <DropdownMenuItem
-                                class="menu-item"
-                                :disabled="chosen.length !== 1 || !platform.desktop"
-                                @select="openFolder"
-                            >
+                            <!-- As the desktop app's: the button needs a choice, its items act on one file only. -->
+                            <DropdownMenuItem class="menu-item" @select="openFolder">
                                 <Icon name="FOLDER_OPEN" />{{ t('IDS_OPENFOLDER') }}
                             </DropdownMenuItem>
-                            <DropdownMenuItem class="menu-item" :disabled="chosen.length !== 1" @select="rename">
+                            <DropdownMenuItem class="menu-item" @select="rename">
                                 <Icon name="EDIT" />{{ t('IDS_RENAME') }}
                             </DropdownMenuItem>
                             <DropdownMenuItem class="menu-item" disabled
@@ -748,6 +758,11 @@ onMounted(() => void readDirectories());
 .filter {
     flex: 0 1 260px;
     min-width: 140px;
+}
+
+/* In a narrow window the Priority button shows only its icons, its name as tooltip, as the desktop app's tool row. */
+.njmule.narrow .tool-text {
+    display: none;
 }
 
 :deep(.name-cell) {
