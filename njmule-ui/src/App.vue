@@ -23,6 +23,7 @@ import SharedScreen from './screens/SharedScreen.vue';
 import StatisticsScreen from './screens/StatisticsScreen.vue';
 import TransfersScreen from './screens/TransfersScreen.vue';
 import AskDialog from './shell/AskDialog.vue';
+import Banner from './shell/Banner.vue';
 import CommandPalette, { type Command } from './shell/CommandPalette.vue';
 import ShortcutsDialog from './shell/ShortcutsDialog.vue';
 import Sidebar from './shell/Sidebar.vue';
@@ -144,6 +145,13 @@ function drop(e: DragEvent): void {
     if (fileLinks(text).length > 0) {
         e.preventDefault();
         void addLinks(text);
+    }
+}
+
+// The banner's way out of being offline: what Connect does then.
+function connectIfOff(): void {
+    if (connection.value === 'disconnected') {
+        void both();
     }
 }
 
@@ -289,6 +297,7 @@ onUnmounted(() => {
                         @shortcuts="shortcutsOpen = true"
                         @incoming="openIncoming"
                     />
+                    <Banner @connect="connectIfOff" />
                     <!-- A place keeps what it shows while another is open: its filters, choice, scroll and pending options. -->
                     <main class="content">
                         <KeepAlive>
