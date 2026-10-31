@@ -41,7 +41,7 @@ export function size(bytes: number): string {
     }
     // The form follows the rounded value: 99.995 shows as 100.0, 999.95 as 1,000.
     if (value >= 999.95) {
-        return `${Math.round(value).toLocaleString(language.value)} ${units[u]}`;
+        return `${count(Math.round(value))} ${units[u]}`;
     }
     return `${decimals(value, value < 99.995 ? 2 : 1)} ${units[u]}`;
 }

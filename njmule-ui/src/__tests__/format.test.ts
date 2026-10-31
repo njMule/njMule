@@ -18,6 +18,12 @@ describe('format', () => {
         thenItReads('1.243');
     });
 
+    it('should group the thousands of a size of four digits, as the desktop app', () => {
+        givenTheLanguage('it');
+        whenTheSizeIsWritten(1018 * 1024 * 1024 * 1024);
+        thenItReads('1.018 GB');
+    });
+
     it('should write small sizes in bytes', () => {
         whenTheSizeIsWritten(999);
         thenItReads('999 B');
