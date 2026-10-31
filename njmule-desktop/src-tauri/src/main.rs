@@ -382,6 +382,7 @@ fn main() {
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
                 hand_over(&handle, event.urls().iter().map(|u| u.to_string()).collect());
+                show_window(&handle);
             });
             // The notification area, as the desktop app uses it: only on Windows, its icon there while the window hides.
             if cfg!(windows) {

@@ -32,6 +32,7 @@ import Sidebar from './shell/Sidebar.vue';
 import StatusStrip from './shell/StatusStrip.vue';
 import Toasts from './shell/Toasts.vue';
 import TopBar from './shell/TopBar.vue';
+import { handOver } from './handover';
 import { setPreset } from './limits';
 import { toggleDark } from './theme';
 import { message, problem, success } from './toasts';
@@ -355,8 +356,8 @@ onMounted(() => {
             message(t('nj.chat.from', m.nick || m.address || ''));
         }
     });
-    // Links clicked in a browser or opened by the system come to this window.
-    props.platform.onLinks((links) => void addLinks(links.join('\n')));
+    // Links clicked in a browser or opened by the system come to this window: files, servers and lists.
+    props.platform.onLinks((links) => void handOver(links));
     props.platform.onCloseAsked(() => void quitIfWanted());
     props.platform.onTray((chosen) => {
         if (chosen === 'connect') {
