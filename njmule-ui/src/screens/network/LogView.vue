@@ -11,6 +11,7 @@ import { t } from '../../i18n';
 import { addressNumber, buddyState, udpState } from '../../kad';
 import { connection, type Connection, type ServerNote, serverNotes, status } from '../../model/engine';
 import { logFrom, logTime, notesFrom } from '../../network';
+import { logTabRequest } from '../../places';
 import { inDesktopShell } from '../../platform';
 import { problem } from '../../toasts';
 import FilterChips from '../../ui/FilterChips.vue';
@@ -25,6 +26,8 @@ type Level = 'all' | 'error' | 'warning' | 'info';
 const lines = shallowRef<Entry[]>([]);
 const level = ref<Level>('all');
 const tab = ref<'log' | 'server' | 'mine'>('log');
+// The status strip's last line opens the log at its own tab, whichever was shown.
+watch(logTabRequest, () => (tab.value = 'log'));
 // njMule and its version, at the top of what the servers said until that is reset.
 const title = ref('');
 let after = 0;
