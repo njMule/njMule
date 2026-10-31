@@ -108,6 +108,29 @@ export function places(
     return top;
 }
 
+/** What a file holds, as its extension tells it. */
+export type FileKind = 'video' | 'audio' | 'image' | 'document' | 'archive' | 'disc_image' | 'program' | 'other';
+
+// The engine's file types, the eD2K types' extensions; the API reports the kind of downloads only. The programs' type
+// holds the archives and the disc images too, which get their own icons.
+const EXTENSIONS: Record<Exclude<FileKind, 'other'>, string> = {
+    audio: 'aac ac3 aiff ape au flac m4a mid midi mp2 mp3 mpc ogg opus ra wav wma',
+    video: '3gp asf avi divx flv m2ts m4v mkv mov mp4 mpeg mpg ogm rm rmvb ts vob webm wmv xvid',
+    image: 'bmp gif ico jpeg jpg png psd svg tif tiff webp',
+    document: 'chm csv doc docx epub htm html nfo odt pdf ppt pptx rtf txt xls xlsx',
+    archive: '7z ace bz2 cab gz rar tar tgz xz zip',
+    disc_image: 'bin cue dmg img iso mdf mds nrg',
+    program: 'apk bat com deb exe jar msi rpm',
+};
+
+/** What the file {@code name} holds, by its extension. */
+export function fileKind(name: string): FileKind {
+    const dot = name.lastIndexOf('.');
+    const extension = dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
+    const found = Object.entries(EXTENSIONS).find(([, extensions]) => extensions.split(' ').includes(extension));
+    return (found?.[0] as FileKind | undefined) ?? 'other';
+}
+
 /** What tells a place from the others, as long as the tree changes. */
 export function placeKey(place: Pick<Place, 'kind' | 'path'>): string {
     return `${place.kind}:${place.path}`;

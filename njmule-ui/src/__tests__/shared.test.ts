@@ -2,7 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { holds, mayHoldPersonalFiles, placeKey, places, treeMove, type Place, type TreeMove } from '../shared';
+import {
+    fileKind,
+    holds,
+    mayHoldPersonalFiles,
+    placeKey,
+    places,
+    treeMove,
+    type FileKind,
+    type Place,
+    type TreeMove,
+} from '../shared';
 
 describe('the places of the shared files', () => {
     const files = ['D:\\Shared\\Books\\a.epub', 'D:\\Shared\\Films\\b.mkv', 'D:\\Shared\\c.iso', 'E:\\Music\\d.mp3'];
@@ -203,5 +213,32 @@ describe('a folder to share', () => {
 
     function thenItIsWarnedAbout(expected: boolean): void {
         expect(warned).toBe(expected);
+    }
+});
+
+describe('the kind of a shared file', () => {
+    let kind: FileKind | undefined;
+
+    it.each([
+        ['film.m2ts', 'video'],
+        ['song.MIDI', 'audio'],
+        ['logo.psd', 'image'],
+        ['notes.nfo', 'document'],
+        ['backup.cab', 'archive'],
+        ['disc.mds', 'disc_image'],
+        ['setup.bat', 'program'],
+        ['comic.cbz', 'other'],
+        ['README', 'other'],
+    ])('should tell that %s holds %s, as the engine does', (name, expected) => {
+        whenItsKindIsTold(name);
+        thenTheKindIs(expected as FileKind);
+    });
+
+    function whenItsKindIsTold(name: string): void {
+        kind = fileKind(name);
+    }
+
+    function thenTheKindIs(expected: FileKind): void {
+        expect(kind).toBe(expected);
     }
 });

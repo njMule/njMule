@@ -26,6 +26,7 @@ import { htmlLinks } from '../links';
 import { preferences, readShared, shared, type SharedDirectory, type SharedFile } from '../model/engine';
 import type { Platform } from '../platform';
 import {
+    fileKind,
     holds,
     mayHoldPersonalFiles,
     nameOf,
@@ -175,7 +176,7 @@ const columns: ColumnDef<any, SharedFile, any>[] = [
         cell: ({ row }: any) =>
             h(Tip, { text: (row.original as SharedFile).name }, () =>
                 h('span', { class: 'name-cell' }, [
-                    h(Icon, { name: kindIcon(kindOf((row.original as SharedFile).name)), class: 'file-kind' }),
+                    h(Icon, { name: kindIcon(fileKind((row.original as SharedFile).name)), class: 'file-kind' }),
                     h('span', { class: 'ellipsis', dir: 'auto' }, (row.original as SharedFile).name),
                 ]),
             ),
@@ -189,10 +190,16 @@ const columns: ColumnDef<any, SharedFile, any>[] = [
         cell: ({ getValue }: any) => size(getValue()),
     },
     {
+        // Sorted by level, from Very low to Release, then Auto.
         id: 'priority',
         header: t('IDS_PRIORITY'),
-        accessorFn: (f: SharedFile) => t(PRIORITIES.find((p) => p.value === f.priority)?.key ?? 'IDS_PRIONORMAL'),
+        accessorFn: (f: SharedFile) =>
+            Math.max(
+                0,
+                PRIORITIES.findIndex((p) => p.value === f.priority),
+            ),
         size: 95,
+        cell: ({ getValue }: any) => t(PRIORITIES[getValue() as number]!.key),
     },
     {
         id: 'requests',
@@ -222,26 +229,10 @@ const columns: ColumnDef<any, SharedFile, any>[] = [
         accessorFn: (f: SharedFile) => parentOf(f.path),
         size: 260,
         meta: { hidden: true } satisfies ColumnMeta,
+        // A path reads left to right in every language.
+        cell: ({ getValue }: any) => h('span', { dir: 'ltr' }, getValue() as string),
     },
 ];
-
-// What a file holds, as its extension tells; the API reports it for downloads only.
-function kindOf(
-    name: string,
-): 'video' | 'audio' | 'image' | 'document' | 'archive' | 'disc_image' | 'program' | 'other' {
-    const ext = name.substring(name.lastIndexOf('.') + 1).toLowerCase();
-    const kinds: Record<string, string[]> = {
-        video: ['avi', 'mkv', 'mp4', 'mov', 'wmv', 'mpg', 'mpeg', 'webm', 'm4v', 'ogm', 'divx', 'flv'],
-        audio: ['mp3', 'flac', 'ogg', 'wav', 'm4a', 'm4b', 'aac', 'wma', 'opus', 'ape'],
-        image: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tif', 'tiff', 'svg'],
-        document: ['pdf', 'epub', 'txt', 'doc', 'docx', 'odt', 'rtf', 'mobi', 'djvu', 'cbr', 'cbz'],
-        archive: ['zip', 'rar', '7z', 'gz', 'tar', 'bz2', 'xz', 'tgz'],
-        disc_image: ['iso', 'img', 'bin', 'cue', 'nrg', 'mdf', 'dmg'],
-        program: ['exe', 'msi', 'apk', 'deb', 'rpm', 'appimage', 'jar'],
-    };
-    const found = Object.entries(kinds).find(([, exts]) => exts.includes(ext));
-    return (found?.[0] ?? 'other') as ReturnType<typeof kindOf>;
-}
 
 async function readDirectories(): Promise<void> {
     try {
