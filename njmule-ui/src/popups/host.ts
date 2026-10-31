@@ -37,7 +37,8 @@ const shell: PopupHost = {
         void listen('popup-show', () => handler());
         handler();
     },
-    ready: (width, height) => void invoke('popup_ready', { width, height }),
+    // The pixels of the screen each CSS pixel takes, which the system's text size grows too.
+    ready: (width, height) => void invoke('popup_ready', { width, height, ratio: window.devicePixelRatio }),
     done: () => void invoke('popup_done'),
     choose: (choice) => void invoke('tray_choice', { choice }),
     notify: (text) => void invoke('notify', { text }),

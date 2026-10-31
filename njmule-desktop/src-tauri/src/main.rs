@@ -918,11 +918,21 @@ fn glance(shell: State<'_, Shell>) -> serde_json::Value {
     shell.glance.lock().unwrap().clone()
 }
 
-/// The page of a small window drew what it shows now, `width` × `height` CSS pixels: it opens where it was asked to.
+/// The page of a small window drew what it shows now, `width` × `height` CSS pixels each `ratio` pixels of the screen:
+/// it opens where it was asked to.
 #[tauri::command]
-fn popup_ready(window: WebviewWindow, shell: State<'_, Shell>, width: f64, height: f64) -> Result<(), String> {
+fn popup_ready(
+    window: WebviewWindow,
+    shell: State<'_, Shell>,
+    width: f64,
+    height: f64,
+    ratio: f64,
+) -> Result<(), String> {
     let at = shell.asked.lock().unwrap().remove(window.label());
-    at.map_or(Ok(()), |at| place_popup(&window, at, width, height).map_err(|e| e.to_string()))
+    // What the web view grows the page by besides the screen's scale, such as the system's text size.
+    let zoom =
+        window.scale_factor().ok().filter(|scale| *scale > 0.0 && ratio > 0.0).map_or(1.0, |scale| ratio / scale);
+    at.map_or(Ok(()), |at| place_popup(&window, at, width * zoom, height * zoom).map_err(|e| e.to_string()))
 }
 
 /// The small window is done with: Escape, or an item chosen.
