@@ -955,7 +955,14 @@ public final class Engine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<List<ServerInfo>> servers() {
-        return this.loop.submit(this.network::servers);
+        return this.loop.submit(this.network::servers).thenApply(list -> {
+            CountryTable table = this.countries;
+            return table.size() == 0
+                    ? list
+                    : list.stream()
+                            .map(s -> s.withCountry(table.countryOf(s.address())))
+                            .toList();
+        });
     }
 
     @Override

@@ -69,6 +69,7 @@ import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
@@ -183,6 +184,17 @@ class RemoteApiTest {
                 "\"name\":\"talk.bin\"",
                 "\"status\":\"paused\"",
                 "\"priority\":\"normal\"");
+    }
+
+    @Test
+    void shouldGiveTheCountryOfAServerWhenItIsKnown() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKnowsTheServer(ApiSamples.server().withCountry(Optional.of("nl")));
+
+        whenCalled("GET", "/api/v1/servers", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"name\":\"Lighthouse\"", "\"country\":\"nl\"");
     }
 
     @Test
@@ -1359,6 +1371,10 @@ class RemoteApiTest {
             this.calls.add("finish setup");
             return CompletableFuture.completedFuture(null);
         });
+    }
+
+    private void givenTheEngineKnowsTheServer(ServerInfo server) {
+        this.fake.answer("servers", args -> CompletableFuture.completedFuture(List.of(server)));
     }
 
     private void givenTheEngineDownloads(DownloadInfo download) {

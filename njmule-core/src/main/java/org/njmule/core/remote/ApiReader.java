@@ -125,7 +125,8 @@ final class ApiReader {
                 n.path("lowIdUsers").asLong(),
                 text(n, "version"),
                 n.path("obfuscation").asBoolean(),
-                n.path("static").asBoolean());
+                n.path("static").asBoolean(),
+                optional(n, "country"));
     }
 
     static KadInfo kad(JsonNode n) {

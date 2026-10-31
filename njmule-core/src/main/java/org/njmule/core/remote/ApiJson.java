@@ -173,6 +173,7 @@ final class ApiJson {
         g.writeStringProperty("version", s.version());
         g.writeBooleanProperty("obfuscation", s.supportsObfuscation());
         g.writeBooleanProperty("static", s.isStatic());
+        optional(g, "country", s.country());
         g.writeEndObject();
     }
 
