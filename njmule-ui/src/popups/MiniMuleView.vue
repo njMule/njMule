@@ -19,8 +19,8 @@ import type { PopupHost } from './host';
 const props = defineProps<{ host: PopupHost }>();
 
 // The width of the window, as the sparkline is drawn the width of its rows.
-const WIDTH = 300;
-const PADDING = 12;
+const WIDTH = 260;
+const PADDING = 10;
 
 const root = ref<HTMLElement | null>(null);
 const glance = shallowRef<Glance>(glanceOf('disconnected', false, null, 0, []));
@@ -81,13 +81,13 @@ onMounted(() => {
 
 <style scoped>
 /* The state with its dot, the rates with their last half minute, then the buttons. */
-/* The theme's size for windows of their own, as the desktop app's. */
+/* Compact, as the tray's menu: the interface's text size, the rows close together. */
 .minimule {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    font-size: 14px;
-    line-height: 20px;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 17px;
 }
 
 .minimule-state {
@@ -111,14 +111,14 @@ onMounted(() => {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 6px 12px;
+    gap: 4px 10px;
 }
 
 .minimule-name {
     display: flex;
     align-items: center;
     gap: 4px;
-    --nj-icon-size: 14px;
+    --nj-icon-size: 12px;
 }
 
 .minimule-name.down {
@@ -144,13 +144,14 @@ onMounted(() => {
 .minimule-buttons {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 5px;
 }
 
 /* The theme's small buttons. */
 .minimule-buttons .button {
     height: auto;
-    padding: 5.7px 8.6px;
+    padding: 4px 7px;
+    font-size: 11px;
     line-height: normal;
 }
 </style>
