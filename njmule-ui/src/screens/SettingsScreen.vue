@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onActivated, onMounted, ref, shallowRef, watch } from 'vue';
 import { answer, api } from '../api/client';
 import { rate } from '../format';
 import { keepLanguage, keptLanguage, LANGUAGES, t } from '../i18n';
@@ -14,28 +14,33 @@ import {
     LANGUAGE_NAMES,
     matches,
     PAGES,
+    pendingWords,
     rowTitle,
     type Action,
+    type Field,
     type Page,
     type Row,
     type Section,
 } from '../settings';
 import { family, type Family, mode, type Mode, setTheme } from '../theme';
-import { message, problem, success } from '../toasts';
+import { message, problem } from '../toasts';
 import Icon from '../ui/Icon.vue';
 import {
     changed,
     commit,
     commitAll,
     defaults,
+    dropDrafts,
+    firstWrong,
     held,
     PLACES,
     readDefaults,
     reset,
     rowError,
+    rulesOf,
     saveHeld,
-    typed,
     wrong,
+    type Place,
 } from './settings/options';
 import RowControls from './settings/RowControls.vue';
 import SchedulerPage from './settings/SchedulerPage.vue';
@@ -59,6 +64,8 @@ const platform = shallowRef<Platform | undefined>();
 // Who installs a new version: where a package manager does, njMule only downloads it.
 const installer = ref('');
 const listsOpen = ref(false);
+const pageList = ref<HTMLElement | null>(null);
+const pageView = ref<HTMLElement | null>(null);
 
 function readPage(): string {
     try {
@@ -86,9 +93,9 @@ onMounted(async () => {
     }
 });
 
-// The language and the look, kept by this window rather than the engine.
+// The language and the look, kept by this window rather than the engine; the language as it is saved.
 const themeChanged = computed(() => family.value !== 'nord' || mode.value !== 'system');
-const languageChanged = computed(() => languageChoice.value !== '');
+const languageChanged = computed(() => startLanguage !== '');
 
 function isChanged(row: Row): boolean {
     if (row.local === 'language') {
@@ -164,26 +171,127 @@ const changedCount = computed(() => PLACES.filter((p) => isChanged(p.row)).lengt
 const shownPages = computed(() => PAGES.filter(pageShown));
 const current = computed(() => shownPages.value.find((p) => p.id === pageId.value) ?? shownPages.value[0]);
 
+// A page the filters hide gives way to the first shown, which stays chosen once the filters are cleared.
+watch(shownPages, (pages) => {
+    if (pages.length > 0 && !pages.some((p) => p.id === pageId.value)) {
+        pageId.value = pages[0]!.id;
+    }
+});
+
+// Another page shows from its top.
+watch(
+    () => current.value?.id,
+    async () => {
+        await nextTick();
+        if (pageView.value) {
+            pageView.value.scrollTop = 0;
+        }
+    },
+);
+
+// The list is one stop of the keyboard, its arrows choosing the page, as a list of the desktop app.
+function listKey(e: KeyboardEvent): void {
+    const pages = shownPages.value;
+    const at = pages.findIndex((p) => p.id === current.value?.id);
+    const to =
+        e.key === 'ArrowDown'
+            ? at + 1
+            : e.key === 'ArrowUp'
+              ? at - 1
+              : e.key === 'Home'
+                ? 0
+                : e.key === 'End'
+                  ? pages.length - 1
+                  : undefined;
+    if (to === undefined) {
+        return;
+    }
+    e.preventDefault();
+    const next = pages[Math.max(0, Math.min(pages.length - 1, to))];
+    if (next !== undefined) {
+        pageId.value = next.id;
+        void nextTick(() => document.getElementById(`settings-page-${next.id}`)?.scrollIntoView({ block: 'nearest' }));
+    }
+}
+
+function pageName(page: Page): string {
+    return pageChanged(page) ? `${t(page.title)}, ${t('nj.settings.changed')}` : t(page.title);
+}
+
+// Escape empties the box, the down arrow goes to the list, Enter to the first option shown.
+function findKey(e: KeyboardEvent): void {
+    if (e.key === 'Escape') {
+        find.value = '';
+    } else if (e.key === 'ArrowDown' && shownPages.value.length > 0) {
+        e.preventDefault();
+        pageList.value?.focus();
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        pageView.value
+            ?.querySelector<HTMLElement>('.control :is(input, select, textarea, button):not(:disabled)')
+            ?.focus();
+    }
+}
+
 const heldCount = computed(() => Object.keys(held.value).length);
 const restartPending = computed(() => languageChoice.value !== startLanguage);
-const heldWrong = computed(() => Object.keys(typed.value).length > 0);
+const firstWrongOption = computed(firstWrong);
+const pending = computed(() =>
+    pendingWords(
+        heldCount.value > 0,
+        restartPending.value,
+        firstWrongOption.value === undefined ? undefined : rowTitle(firstWrongOption.value.place.row, t),
+        t,
+    ),
+);
 
+// The page of an option, the filters cleared if they hide it, and the cursor in its field.
+async function reveal(place: Place, field: Field): Promise<void> {
+    if (!rowShown(place.row, place.section, place.page)) {
+        find.value = '';
+        changedOnly.value = false;
+    }
+    pageId.value = place.page.id;
+    await nextTick();
+    document.getElementById(`option-${field.key}`)?.focus();
+}
+
+// Every option as its field gives it first; a wrong value is shown instead of applying anything.
 async function apply(): Promise<void> {
+    await commitAll();
+    const wrongOne = firstWrong();
+    if (wrongOne !== undefined) {
+        await reveal(wrongOne.place, wrongOne.field);
+        const name = rowTitle(wrongOne.place.row, t);
+        problem(t('nj.settings.invalid', `${name}: ${rulesOf(wrongOne.field)?.hint ?? ''}`));
+        return;
+    }
+    const network = heldCount.value > 0;
     if (!(await saveHeld())) {
         return;
+    }
+    if (network) {
+        message(t('nj.settings.saved'));
     }
     if (restartPending.value) {
         keepLanguage(languageChoice.value);
         window.location.reload();
-        return;
     }
-    success(t('nj.settings.saved'));
 }
 
+// Back to what is saved: what waits, and what is typed in every field.
 function discard(): void {
     held.value = {};
+    dropDrafts();
     languageChoice.value = startLanguage;
 }
+
+// Coming back while nothing waits, the fields show the saved values again, as a wrong value typed is dropped.
+onActivated(() => {
+    if (heldCount.value === 0 && !restartPending.value) {
+        dropDrafts();
+    }
+});
 
 // ------------------------------------------------------------------ the buttons of the rows
 
@@ -268,27 +376,38 @@ function act(row: Row, action: Action): void {
                     v-model="find"
                     :placeholder="t('nj.settings.find')"
                     :aria-label="t('nj.settings.find')"
-                    @keydown.esc="find = ''"
+                    @keydown="findKey"
                 />
             </label>
             <button class="chip" :aria-pressed="changedOnly" @click="changedOnly = !changedOnly">
                 {{ t('nj.settings.changedOnly') }}<span class="chip-count">{{ changedCount }}</span>
             </button>
-            <nav class="pages" :aria-label="t('IDS_EM_PREFS')">
-                <button
+            <div
+                ref="pageList"
+                class="pages"
+                role="listbox"
+                tabindex="0"
+                :aria-label="t('IDS_EM_PREFS')"
+                :aria-activedescendant="current ? `settings-page-${current.id}` : undefined"
+                @keydown="listKey"
+            >
+                <div
                     v-for="p in shownPages"
+                    :id="`settings-page-${p.id}`"
                     :key="p.id"
                     class="page-item"
-                    :aria-current="p.id === current?.id ? 'page' : undefined"
+                    role="option"
+                    :aria-selected="p.id === current?.id"
+                    :aria-label="pageName(p)"
                     @click="pageId = p.id"
                 >
                     <Icon :name="p.icon" /><span class="page-name">{{ t(p.title) }}</span
-                    ><span v-if="pageChanged(p)" class="dot" :title="t('nj.settings.changed')" />
-                </button>
-            </nav>
+                    ><Icon v-if="pageChanged(p)" class="dot filled" name="DOT" />
+                </div>
+            </div>
         </aside>
         <div class="page-column">
-            <div class="page">
+            <div ref="pageView" class="page">
                 <template v-if="current">
                     <h2 class="page-title display">{{ t(current.title) }}</h2>
                     <p class="page-description">{{ t(current.summary) }}</p>
@@ -357,13 +476,11 @@ function act(row: Row, action: Action): void {
             </div>
             <div v-if="heldCount > 0 || restartPending" class="pending-bar" role="status">
                 <Icon name="INFO" />
-                <span class="pending-text">{{
-                    t(restartPending ? 'nj.settings.pendingRestart' : 'nj.settings.pendingReconnect')
-                }}</span>
+                <span class="pending-text">{{ pending }}</span>
                 <button class="button flat" @click="discard">
                     <Icon name="CLOSE" />{{ t('nj.settings.discard') }}
                 </button>
-                <button class="button accent" :disabled="heldWrong" @click="apply">
+                <button class="button accent" :disabled="firstWrongOption !== undefined" @click="apply">
                     {{ t(restartPending ? 'nj.settings.applyRestart' : 'nj.settings.applyReconnect') }}
                 </button>
             </div>
@@ -421,29 +538,33 @@ function act(row: Row, action: Action): void {
     min-height: 0;
     overflow-y: auto;
     border: 1px solid var(--color-border-default);
-    background: var(--color-bg-default);
+    background: transparent;
+    outline: none;
+}
+
+.pages:focus-visible {
+    border-color: var(--color-accent-emphasis);
+    box-shadow: 0 0 0 1px var(--color-accent-emphasis);
 }
 
 .page-item {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     flex: none;
-    height: 34px;
-    padding: 0 12px;
-    border: 0;
+    height: 2.4em;
+    padding: 0 10px;
     border-radius: 6px;
-    background: none;
-    text-align: start;
     cursor: pointer;
     --nj-icon-color: var(--color-fg-muted);
+    --nj-icon-size: 18px;
 }
 
 .page-item:hover {
     background: var(--color-bg-subtle);
 }
 
-.page-item[aria-current='page'] {
+.page-item[aria-selected='true'] {
     background: var(--color-accent-muted);
     font-weight: bold;
 }
@@ -456,13 +577,10 @@ function act(row: Row, action: Action): void {
     white-space: nowrap;
 }
 
-/* A page with options changed from their defaults; the chip and the rows say it in words. */
+/* A page with options changed from their defaults; the chip, the rows and the page's name say it in words. */
 .dot {
-    flex: none;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--color-fg-muted);
+    --nj-icon-size: 10px;
+    --nj-icon-color: var(--color-accent-emphasis);
 }
 
 .page-column {
@@ -474,23 +592,27 @@ function act(row: Row, action: Action): void {
     min-height: 0;
 }
 
+/* The page scrolls up and down only. */
 .page {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     flex: 1;
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
-    padding-inline-end: 8px;
+    padding: 2px 8px 16px 0;
+    padding-inline: 0 8px;
 }
 
 .page-title {
     margin: 0;
-    font-size: 1.5em;
+    font-size: 1.4em;
 }
 
 .page-description {
-    margin: 0 0 4px;
+    margin: 0;
+    padding-bottom: 8px;
     color: var(--color-fg-muted);
 }
 
@@ -498,14 +620,14 @@ function act(row: Row, action: Action): void {
     display: flex;
     flex-direction: column;
     flex: none;
-    padding: 8px 16px;
+    padding: 4px 16px;
     border: 1px solid var(--color-border-muted);
     border-radius: 8px;
     background: var(--color-bg-default);
 }
 
 .card-title {
-    padding-top: 10px;
+    padding: 10px 0 2px;
 }
 
 .field.choice {
@@ -522,7 +644,7 @@ function act(row: Row, action: Action): void {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 10px 12px 10px 16px;
+    padding: 10px 12px;
     border: 1px solid var(--color-border-default);
     border-radius: 8px;
     background: var(--color-bg-subtle);
