@@ -24,6 +24,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -51,6 +52,7 @@ import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadPriority;
+import org.njmule.core.api.EmuleHistory;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.config.BindInterface;
@@ -131,6 +133,10 @@ public final class EmuleImporter {
     private static final long UNLIMITED = 65_535;
     // Far beyond the files of real profiles, and still well within the memory of the engine.
     private static final long MAX_FILE_SIZE = 256L * 1024 * 1024;
+    private static final String SERVER_LIST_HISTORY = "AC_ServerMetURLs.dat";
+    private static final String SEARCH_HISTORY = "AC_SearchStrings.dat";
+    // A box offers a few entries: more are of no use, from a damaged file too.
+    private static final int MAX_TYPED = 50;
     private static final String KAD_KEY_FILE = "kadudpkey.dat";
     private static final String KEY_FILE = "cryptkey.dat";
     private static final List<String> IDENTITY =
@@ -185,6 +191,29 @@ public final class EmuleImporter {
             }
         }
         return Optional.empty();
+    }
+
+    /** What was typed in eMule's boxes, as an import kept it in njMule's configuration directory {@code config}. */
+    public static EmuleHistory history(Path config) {
+        return new EmuleHistory(typed(config.resolve(SEARCH_HISTORY)), typed(config.resolve(SERVER_LIST_HISTORY)));
+    }
+
+    // A box's entries, the newest first and each once; none when the file is not there or cannot be read.
+    private static List<String> typed(Path file) {
+        try {
+            if (Files.size(file) > MAX_FILE_SIZE) {
+                throw new IOException("too large to be eMule's");
+            }
+            return TextFiles.entries(Files.readAllBytes(file)).stream()
+                    .distinct()
+                    .limit(MAX_TYPED)
+                    .toList();
+        } catch (NoSuchFileException e) {
+            return List.of();
+        } catch (IOException e) {
+            logger.warn("Cannot read {}: {}", file, e.toString());
+            return List.of();
+        }
     }
 
     /** Whether an eMule runs on this computer. */
@@ -304,8 +333,8 @@ public final class EmuleImporter {
                 "staticservers.dat",
                 data -> phrase("servers", TextFiles.staticServers(data).size()));
         kept("addresses.dat", data -> phrase("addresses", TextFiles.lines(data).size()));
-        // The addresses typed in eMule's boxes, which the interface offers again.
-        for (String history : List.of("AC_ServerMetURLs.dat", "AC_SearchStrings.dat")) {
+        // The addresses and searches typed in eMule's boxes, which history(Path) gives the interfaces to offer again.
+        for (String history : List.of(SERVER_LIST_HISTORY, SEARCH_HISTORY)) {
             kept(history, data -> phrase("entries", TextFiles.entries(data).size()));
         }
         categories(ini);

@@ -49,9 +49,13 @@ When njMule finds an eMule profile at its first start, the wizard's last page of
 5. Read the list, then choose **Import**. If you change a box, choose **Check again** first.
 
 The list then shows what was taken. If eMule started when you logged in, the detail of
-`preferences.ini` says *start at login*: to have njMule start so instead, turn on **Start njMule
-when I log in** in **Options → General** of the desktop app, and turn the same option off in eMule
-so that only one of them starts.
+`preferences.ini` says *start at login*, and the desktop app on njMule's computer now starts when
+you log in too and tells you so (or why your system refused); turn that off in eMule so that only
+one of them starts. In a browser, or in a window on another computer's njMule, turn on **Start
+njMule when I log in** yourself in **Options → General** of the desktop app on njMule's computer.
+
+The searches and the server list addresses typed in eMule's boxes are offered again in njMule's,
+as long as these have none of their own: see [What is imported](#what-is-imported).
 
 ## From the command line
 
@@ -92,7 +96,7 @@ To import into another profile of njMule, add `--config-dir <dir>`. See
 | `shareddir.dat` and eMule's incoming folder | the shared folders, each without its subfolders, as eMule shares them | at once |
 | `Category.ini` | the categories, with their numbers, names, folders, comments, colours and file name patterns, when njMule has none of its own | at once |
 | `addresses.dat` | the server list addresses used to update the server list at start | at once |
-| `AC_ServerMetURLs.dat`, `AC_SearchStrings.dat` | the server list addresses and the searches typed in eMule's boxes, offered again by njMule's | at once |
+| `AC_ServerMetURLs.dat`, `AC_SearchStrings.dat` | the server list addresses and the searches typed in eMule's boxes, offered under njMule's server list address box and search box while those have no history of their own | at once |
 | `ipfilter.dat` | the IP filter, when njMule has none of its own | next start |
 | `emfriends.met` | your friends | next start |
 | `cancelled.met` | the files you cancelled, shown as such in search results | next start |

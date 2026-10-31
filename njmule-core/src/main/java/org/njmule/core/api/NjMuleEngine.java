@@ -383,6 +383,9 @@ public interface NjMuleEngine extends AutoCloseable {
     /** The configuration folder of the eMule of the user njMule runs as, on njMule's computer, if one is there. */
     CompletableFuture<Optional<Path>> emuleProfile();
 
+    /** What was typed in the boxes of the eMule whose profile was imported, as the import kept it; none before one. */
+    CompletableFuture<EmuleHistory> emuleHistory();
+
     /**
      * Whether njMule waits to be set up: the start that created its configuration asks for the questions of the first
      * start, until {@link #finishSetup()}.

@@ -38,6 +38,7 @@ import FirstRunWizard, { type WizardOutcome } from './dialogs/FirstRunWizard.vue
 import { switchLanguage } from './language';
 import { guest } from './role';
 import { setupPending } from './setup';
+import { takeEmuleHistory } from './import';
 import { handOver } from './handover';
 import { setPreset } from './limits';
 import { toggleDark } from './theme';
@@ -427,6 +428,8 @@ onMounted(() => {
     // At the first start a few questions set njMule up; never for a guest, who may change nothing.
     if (!guest) {
         void setupPending().then((pending) => (wizardOpen.value ||= pending));
+        // The boxes of a window used for the first time offer what was typed in those of the eMule imported.
+        void takeEmuleHistory();
     }
 });
 

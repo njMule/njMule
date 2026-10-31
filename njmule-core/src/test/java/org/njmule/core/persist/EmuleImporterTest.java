@@ -45,6 +45,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.njmule.core.api.Category;
+import org.njmule.core.api.EmuleHistory;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
@@ -83,6 +84,7 @@ class EmuleImporterTest {
     private int colour;
     private int filesApplied;
     private boolean identityApplied;
+    private EmuleHistory typed;
 
     /** Records what the importer asks for. */
     private final class Recorder implements EmuleImporter.Target {
@@ -406,6 +408,25 @@ class EmuleImporterTest {
         whenTheProfileIsImported(new ImportOptions(false, false, false));
 
         thenNothingIsTakenOf("statistics.ini", "AC_BootstrapIPs.dat", "AC_IPFilterUpdateURLs.dat");
+    }
+
+    @Test
+    void shouldOfferAgainWhatWasTypedInTheBoxesOfTheEmuleImported() throws IOException {
+        givenTheEmuleFile("AC_SearchStrings.dat", TextFiles.writeLines(List.of("linux iso", "talk", "linux iso")));
+        givenTheEmuleFile("AC_ServerMetURLs.dat", TextFiles.writeLines(List.of("http://example.org/server.met")));
+        givenTheProfileWasImported(new ImportOptions(false, false, false));
+
+        whenWhatWasTypedIsRead();
+
+        thenTheSearchesTypedAre("linux iso", "talk");
+        thenTheServerListsTypedAre("http://example.org/server.met");
+    }
+
+    @Test
+    void shouldOfferNothingTypedBeforeAnImport() {
+        whenWhatWasTypedIsRead();
+
+        thenNothingTypedIsOffered();
     }
 
     @Test
@@ -1026,9 +1047,29 @@ class EmuleImporterTest {
         this.preferencesIni = text;
     }
 
+    private void givenTheProfileWasImported(ImportOptions options) {
+        this.report = run(options);
+    }
+
     private void whenTheProfileIsImported(ImportOptions options) {
         this.report = run(options);
         this.preferences = this.target.preferences;
+    }
+
+    private void whenWhatWasTypedIsRead() {
+        this.typed = EmuleImporter.history(this.ours);
+    }
+
+    private void thenTheSearchesTypedAre(String... searches) {
+        assertThat(this.typed.searches()).containsExactly(searches);
+    }
+
+    private void thenTheServerListsTypedAre(String... urls) {
+        assertThat(this.typed.serverLists()).containsExactly(urls);
+    }
+
+    private void thenNothingTypedIsOffered() {
+        assertThat(this.typed).isEqualTo(EmuleHistory.NONE);
     }
 
     private void whenThePendingFilesAreApplied() {

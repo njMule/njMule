@@ -21,7 +21,7 @@ import {
     PopoverRoot,
     PopoverTrigger,
 } from 'reka-ui';
-import { computed, h, nextTick, onMounted, onUnmounted, ref, shallowRef, watch, type VNode } from 'vue';
+import { computed, h, nextTick, onActivated, onMounted, onUnmounted, ref, shallowRef, watch, type VNode } from 'vue';
 import { answer, api, ApiError } from '../api/client';
 import { count, size } from '../format';
 import { language, t } from '../i18n';
@@ -109,6 +109,8 @@ const tabElements = new Map<string, HTMLElement>();
 const overflowing = ref(false);
 // The searches typed before, the latest first, in a list under the search box: from its arrow, F4 or Alt+Down.
 const past = ref(history());
+// An import from eMule may have started an empty history since this place was last shown.
+onActivated(() => (past.value = history()));
 const filtersTrigger = ref<InstanceType<typeof PopoverTrigger> | null>(null);
 // The button of the filters tells how many ask for something, as "Filters (2)".
 const filtersLabel = computed(() => {

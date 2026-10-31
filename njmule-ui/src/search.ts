@@ -405,9 +405,19 @@ export function history(): string[] {
 }
 
 export function remember(query: string): void {
-    const next = [query, ...history().filter((h) => h !== query)].slice(0, HISTORY_SIZE);
+    keepHistory([query, ...history().filter((h) => h !== query)]);
+}
+
+/** Starts an empty history with {@code typed}, the newest first, such as the searches of the eMule imported. */
+export function seedHistory(typed: string[]): void {
+    if (history().length === 0) {
+        keepHistory([...new Set(typed.map((h) => h.trim()).filter((h) => h !== ''))]);
+    }
+}
+
+function keepHistory(searches: string[]): void {
     try {
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(searches.slice(0, HISTORY_SIZE)));
     } catch {
         // Not kept beyond this window.
     }

@@ -57,6 +57,7 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
+import org.njmule.core.api.EmuleHistory;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.FileHistory;
@@ -914,6 +915,18 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldTellWhatWasTypedInTheBoxesOfTheEmuleImported() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeptTheEmuleHistory(
+                new EmuleHistory(List.of("talk", "linux iso"), List.of("http://example.org/server.met")));
+
+        whenCalled("GET", "/api/v1/import/emule/history", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{\"searches\":[\"talk\",\"linux iso\"],\"serverLists\":[\"http://example.org/server.met\"]}");
+    }
+
+    @Test
     void shouldTellThatNjMuleWaitsToBeSetUp() throws Exception {
         givenTheApiRuns();
         givenTheEngineWaitsToBeSetUp(true);
@@ -936,11 +949,12 @@ class RemoteApiTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/api/v1/setup", "/api/v1/import/emule"})
+    @ValueSource(strings = {"/api/v1/setup", "/api/v1/import/emule", "/api/v1/import/emule/history"})
     void shouldRefuseTheFirstStartToAGuest(String path) throws Exception {
         givenTheApiRuns();
         givenTheEngineWaitsToBeSetUp(true);
         givenTheEngineFindsAnEmuleProfile(Optional.of(this.dir));
+        givenTheEngineKeptTheEmuleHistory(new EmuleHistory(List.of("talk"), List.of()));
 
         whenCalledAsGuest("GET", path);
 
@@ -1375,6 +1389,10 @@ class RemoteApiTest {
 
     private void givenTheEngineFindsAnEmuleProfile(Optional<Path> profile) {
         this.fake.answer("emuleProfile", args -> CompletableFuture.completedFuture(profile));
+    }
+
+    private void givenTheEngineKeptTheEmuleHistory(EmuleHistory typed) {
+        this.fake.answer("emuleHistory", args -> CompletableFuture.completedFuture(typed));
     }
 
     private void givenTheEngineWaitsToBeSetUp(boolean pending) {
