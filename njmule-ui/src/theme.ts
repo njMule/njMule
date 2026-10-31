@@ -3,7 +3,7 @@
 
 import { computed, ref } from 'vue';
 
-// The AtlantaFX family and light or dark, as the desktop app's Themes: Nord following the system by default.
+// The theme family and light or dark, Nord following the system by default; the colours are in styles/themes.css.
 
 export type Mode = 'system' | 'light' | 'dark';
 export type Family = 'nord' | 'primer' | 'cupertino' | 'dracula';

@@ -59,7 +59,7 @@ Logging in opens a session, kept in memory by njMule; restarting njMule ends eve
 
 Another site's page open in your browser must not be able to act on your njMule:
 
-- Every change the web app makes carries the session's own token in a header, which no page of
+- Every change the interface makes carries the session's own token in a header, which no page of
   another site can send; the logout form carries it as a field.
 - A request that changes anything and comes with the `Origin` of another site is refused with
   *Cross-site request refused.* Browsers always send it with such requests; the interface accepts

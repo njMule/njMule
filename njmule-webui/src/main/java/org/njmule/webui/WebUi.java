@@ -57,10 +57,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The web interface: the browser app of njmule-webapp behind a password, and the remote-control API it calls with the
- * login session, every change carrying the session's token in a header. The login page runs no script; no page can be
- * framed, and the session cookie is HTTP-only, same-site and, over HTTPS, secure. When its settings ask for it, the API
- * also answers callers with the API token, under {@value RemoteApi#PREFIX}.
+ * The web interface: the interface of njmule-ui behind a password, and the remote-control API it calls with the login
+ * session, every change carrying the session's token in a header. The login page runs no script; no page can be framed,
+ * and the session cookie is HTTP-only, same-site and, over HTTPS, secure. When its settings ask for it, the API also
+ * answers callers with the API token, under {@value RemoteApi#PREFIX}.
  */
 public final class WebUi implements AutoCloseable {
 

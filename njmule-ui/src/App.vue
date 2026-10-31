@@ -138,8 +138,8 @@ watch(current, (place) => {
 // The window turned narrow or wide: the sidebar folds, or opens again as the user left it.
 watch(narrow, (now) => (collapsed.value = now || readCollapsed()));
 
-// A top bar that cannot show all it holds turns the window narrow from this width up, as the desktop app folds below
-// the width its wide layout needs.
+// A top bar that cannot show all it holds turns the window narrow from this width up: it folds below the width its wide
+// layout needs.
 function crowded(): void {
     if (!narrow.value) {
         foldBelow.value = width.value + 1;
@@ -315,8 +315,8 @@ function typed(text: string): Command[] {
     ];
 }
 
-// As in the desktop app, only the lists and the fields have a menu of their own: in its window a right click elsewhere
-// opens none, rather than the webview's (Back, Reload, Print...).
+// Only the lists and the fields have a menu of their own: in the desktop app's window a right click elsewhere opens
+// none, rather than the webview's (Back, Reload, Print...).
 function noWebviewMenu(e: MouseEvent): void {
     if (!(e.target instanceof Element && e.target.closest('input, textarea, [contenteditable="true"]'))) {
         e.preventDefault();

@@ -14,7 +14,7 @@ Original artwork of the njMule project (no eMule asset is used), licensed GPL-3.
 | `generated/njmule-social-preview.png` | 1280×640 repository social preview (GitHub Settings → Social preview) |
 
 Brand colours: a deep blue with warm orange accents. The user interface itself keeps sober pastel
-tones compatible with the AtlantaFX themes.
+tones compatible with its themes.
 
 | Role | Colour | Note |
 |---|---|---|
@@ -22,8 +22,8 @@ tones compatible with the AtlantaFX themes.
 | Mark | `#F4F6FB` | off-white strokes, 9.1:1 against the brand blue |
 | Accent | `#F5A65B` | warm orange for forelock, eyes and nostrils, 4.9:1 against the brand blue; dark badge text on it reads at 6.3:1 |
 
-Regenerate after editing the master (the GUI build packages the 16–512 px PNGs of `generated/` as
-its window icons, see `njmule-gui/build.gradle.kts`):
+Regenerate after editing the master (the desktop window takes its icons from `generated/`, see
+`njmule-desktop/src-tauri/tauri.conf.json`):
 
 ```bash
 ./gradlew -q iconTools

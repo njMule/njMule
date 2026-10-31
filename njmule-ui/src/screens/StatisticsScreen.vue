@@ -89,7 +89,7 @@ const tiles = computed(() => {
     ];
 });
 
-// The tiles take one width, the widest one's, in as many columns as fit, as the desktop app's.
+// The tiles take one width, the widest one's, in as many columns as fit.
 const tilesBox = ref<HTMLElement | null>(null);
 const tileWidth = ref(TILE_MIN);
 

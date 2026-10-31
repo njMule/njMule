@@ -6,10 +6,10 @@ description: Build njMule from its sources with the Gradle Wrapper, run its qual
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-njMule builds with the Gradle Wrapper on a Java 25 toolchain. One command formats-checks, compiles,
-analyses and tests every module; another starts the desktop app or the headless engine straight from
-the build. This page covers the JVM build; the native executables and the installers have pages of
-their own ([Native images](native-images.mdx), [Packaging](packaging.mdx)).
+njMule builds with the Gradle Wrapper on a Java 25 toolchain. One command format-checks, compiles,
+analyses and tests every module, the interface included; another starts the headless engine straight
+from the build. This page covers that build and the desktop window; the native executables and the
+installers have pages of their own ([Native images](native-images.mdx), [Packaging](packaging.mdx)).
 
 ## Prerequisites
 
@@ -25,8 +25,8 @@ their own ([Native images](native-images.mdx), [Packaging](packaging.mdx)).
 
 You do not install Gradle or Node.js yourself: the Gradle Wrapper (`gradlew`, `gradlew.bat`)
 downloads the Gradle version the project pins, and Gradle downloads the Node.js release that builds
-the web app and this site, checked against its SHA-256 like every other download
-([Dependencies](dependencies.mdx)).
+the interface, the desktop window's Tauri command line and this site, checked against its SHA-256
+like every other download ([Dependencies](dependencies.mdx)).
 
 ## Build and test
 
@@ -64,10 +64,12 @@ The rest of this guide writes `./gradlew`; on Windows use `.\gradlew.bat`.
   end-to-end tests, which SonarQube Cloud reads too.
 - **SpotBugs with FindSecBugs**: maximum effort, medium confidence, on the production code; the
   few exclusions are in `config/spotbugs/exclude.xml`, each with its reason.
-- For the web app (`njmule-webapp`): a type check and the Vite bundle, the Vitest tests and the
-  Prettier check ([Web app](web-app.mdx)).
+- For the interface (`njmule-ui`): the API's types generated from `openapi.yaml`, a type check
+  (`vue-tsc`) and the Vite bundle, the Vitest tests and the Prettier check
+  ([Interface](interface.mdx)).
 
-The documentation site is not part of `build`: see [Documentation](documentation.mdx).
+The desktop window, which needs Rust, is not part of `build` (see [below](#the-desktop-window)), nor
+is the documentation site ([Documentation](documentation.mdx)).
 
 ### Format the sources
 
@@ -77,8 +79,9 @@ Format before you commit, or the build stops at the first unformatted file:
 ./gradlew spotlessApply
 ```
 
-The web app's TypeScript and Vue files are formatted with Prettier instead: run `npm run format` in
-`njmule-webapp` ([Web app](web-app.mdx#formatting-and-types)).
+The interface's TypeScript and Vue files are formatted with Prettier instead: run `npm run format`
+in `njmule-ui` ([Interface](interface.mdx#formatting-and-types)). The desktop window's Rust code is
+formatted with `cargo fmt` in `njmule-desktop/src-tauri`.
 
 ### Incremental builds
 
@@ -98,28 +101,39 @@ The command line and headless engine, from the module path:
 `./gradlew :njmule-app:installDist` also installs it with a launcher script in
 `njmule-app/build/install/njmule/`; run `njmule-app/build/install/njmule/bin/njmule`.
 
-The desktop window, a Tauri shell that starts the native engine beside it:
+It uses your normal njMule profile. To keep your own settings and downloads out of the way, give it
+a profile of its own with `--config-dir`, for example
+`./gradlew :njmule-app:run --args="--config-dir /home/you/njmule-dev"`. The options are those of the
+[command line](/docs/server/cli). With a web interface password it also serves the interface in your
+browser ([Interface](interface.mdx#working-on-the-interface)).
+
+### The desktop window
+
+The desktop window is a Tauri 2 shell written in Rust, in `njmule-desktop/src-tauri`: it starts the
+native engine beside it, which opens a control endpoint for it, and shows the interface, which it
+embeds. Build both:
 
 ```bash
 ./gradlew :njmule-app:nativeCompile :njmule-desktop:shell
 ```
 
-It lands in `njmule-desktop/src-tauri/target/release/njmule-gui` (`njmule-gui.exe` on Windows);
-copy `njmule-app/build/native/nativeCompile/njmule` (`njmule.exe`, with the files beside it) next to
-it, or point `NJMULE_CORE` at the engine to start, and run it. `--config-dir <folder>` gives it a
-profile of its own. In `njmule-desktop/src-tauri`, `cargo test` runs the shell's tests and
-`cargo fmt` formats it.
+`shell` builds the interface (`:njmule-ui:site`) and runs `tauri build` with the Rust toolchain
+that `njmule-desktop/src-tauri/rust-toolchain.toml` pins. The window lands in
+`njmule-desktop/src-tauri/target/release/njmule-gui` (`njmule-gui.exe` on Windows); copy
+`njmule-app/build/native/nativeCompile/njmule` (`njmule.exe`, with the files beside it) next to it,
+or point `NJMULE_CORE` at the engine to start, and run it. `--config-dir <folder>` gives it a
+profile of its own.
 
-The JavaFX desktop app, which the packages no longer carry:
+Cargo checks the shell as the CI does, in `njmule-desktop/src-tauri` once
+`./gradlew :njmule-ui:site` has built the interface it embeds:
 
 ```bash
-./gradlew :njmule-gui:run
+cargo fmt --check
+cargo clippy --locked --release --all-targets -- -D warnings
+cargo test --locked --release
 ```
 
-They use your normal njMule profile. To keep your own settings and downloads out of the way, give
-them a profile of their own with `--config-dir`, for example
-`./gradlew :njmule-gui:run --args="--config-dir /home/you/njmule-dev"`. The options are those of the
-[command line](/docs/server/cli).
+`cargo fmt` formats it at 120 columns (`rustfmt.toml`).
 
 ## Test options
 
@@ -130,7 +144,7 @@ Gradle properties (`-P`) choose which tests run and how:
 | `test.excludedTags` | `interop,private-fixtures,perf` | JUnit tags left out of the run |
 | `test.tags` | none | run only the tests with these tags |
 | `test.forks` | `4` | JVMs that run one module's test classes at once; `1` runs them one after the other |
-| `test.maxHeap` | `4g` | heap of each test JVM: within Gradle's own 512 MiB the window tests slow down to a time-out |
+| `test.maxHeap` | `4g` | heap of each test JVM, instead of Gradle's own 512 MiB |
 | `test.parallelModules` | no limit | modules whose tests run at the same time; `1` suits machines with few cores (the CI uses it on its four CPUs) |
 | `njmule.<name>` | none | passed to the tests as the system property `njmule.<name>`, for example `-Pnjmule.interop.kadPort=14897` |
 | `jacoco.minimum.line.coverage` | `0.70` | the share of `njmule-core`'s lines the tests must cover |
@@ -146,18 +160,19 @@ PowerShell splits an unquoted argument at its first dot, so `-Ptest.forks=1` rea
 arguments. Quote every such option: `'-Ptest.forks=1'`, `'-Ptest.tags=perf'`.
 :::
 
-The tags, the test kit and the GUI tests are explained in [Testing](testing.mdx).
+The tags, the test kit and the interface's tests are explained in [Testing](testing.mdx).
 
 ## Other tasks
 
 | Task | What it makes |
 |---|---|
-| `./gradlew :njmule-gui:generateLicenseReport` | `build/reports/licenses/THIRD-PARTY.txt`, the third-party licenses of the desktop app's runtime, which holds every distributed dependency |
+| `./gradlew :njmule-app:generateLicenseReport` | `build/reports/licenses/THIRD-PARTY.txt`, the third-party licenses of the engine's runtime, which holds every distributed Java dependency |
 | `./gradlew cyclonedxBom` | the CycloneDX software bill of materials in `build/reports/cyclonedx` |
 | `./gradlew dependencyCheckAggregate` | the OWASP dependency-check report; fails on a vulnerability scored 7 or more; needs an NVD API key in `NVD_API_KEY` |
 | `./gradlew build sonar -Dsonar.token=<token>` | a SonarQube Cloud analysis (organisation `njmule`, project `njMule_njMule`); in CI the `sonar` job runs it once the `SONAR_TOKEN` secret is set |
 | `./gradlew iconTools` | copies the JSVG jar the icon tools need into `build/tools` (see `branding/README.md`) |
 | `./gradlew :njmule-app:nativeCompile` | the native command-line executable ([Native images](native-images.mdx)) |
+| `./gradlew :njmule-app:nativeService` | the Windows service host `njmule-service.exe` ([Native images](native-images.mdx#the-windows-service-host)) |
 | `./gradlew :website:site` | this site ([Documentation](documentation.mdx)) |
 
 ## Related pages

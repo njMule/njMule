@@ -6,9 +6,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 import Tip from '../../ui/Tip.vue';
 import { keepTyped } from './inputs';
 
-// A text field or area that holds one kind of value, as the desktop app's Input: typing and pasting keep only the
-// characters the value can have and never make it longer than it may be; a wrong value marks the field, and the
-// tooltip says what it takes. It applies when it is left, or on Enter in a field.
+// A text field or area that holds one kind of value: typing and pasting keep only the characters the value can have and
+// never make it longer than it may be; a wrong value marks the field, and the tooltip says what it takes. It applies
+// when it is left, or on Enter in a field.
 
 defineOptions({ inheritAttrs: false });
 
@@ -72,7 +72,7 @@ function input(e: Event): void {
     resize: vertical;
 }
 
-/* A wrong value: the danger state, as the desktop app's fields. */
+/* A wrong value: the danger state. */
 .field[aria-invalid='true'] {
     border-color: var(--color-danger-emphasis);
 }

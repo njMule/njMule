@@ -40,7 +40,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -981,23 +980,6 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Boolean> addServer(ServerAddress server) {
         return onServer(server, this.network::addServer);
-    }
-
-    @Override
-    public CompletableFuture<Integer> removeServers(Collection<ServerAddress> servers) {
-        // A name that cannot be resolved names no server of the list: the others are removed all the same.
-        List<CompletableFuture<Optional<ServerList.Address>>> addresses = new ArrayList<>();
-        for (ServerAddress server : servers) {
-            addresses.add(serverAddress(server).thenApply(Optional::of).exceptionally(failure -> {
-                logger.debug("Cannot resolve {}: {}", server, failure.toString());
-                return Optional.empty();
-            }));
-        }
-        return CompletableFuture.allOf(addresses.toArray(CompletableFuture<?>[]::new))
-                .thenCompose(done -> this.loop.submit(() -> this.network.removeServers(addresses.stream()
-                        .map(CompletableFuture::join)
-                        .flatMap(Optional::stream)
-                        .toList())));
     }
 
     @Override

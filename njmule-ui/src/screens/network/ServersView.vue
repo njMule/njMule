@@ -888,7 +888,7 @@ dl {
     margin: 0;
 }
 
-/* A value too long for its column ends in an ellipsis, as in the desktop app: a figure never breaks. */
+/* A value too long for its column ends in an ellipsis: a figure never breaks. */
 dd {
     min-width: 0;
     margin: 0;

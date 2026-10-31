@@ -96,7 +96,7 @@ const filters = ref<Filters>({ ...NO_FILTERS });
 const shownKey = ref(searches.value.at(-1)?.key ?? '');
 const filter = ref('');
 const filterColumn = ref('name');
-// Each search keeps its own table, with what is chosen in it and how far it scrolled, as the desktop app's tabs do.
+// Each search keeps its own table, with what is chosen in it and how far it scrolled.
 const selectedByTab = ref<Record<string, string[]>>({});
 // For each tab, the files found under several names that are open to show them.
 const openByTab = ref<Record<string, string[]>>({});
@@ -233,7 +233,7 @@ function bitrateText(kbits: number): string {
     return kbits === 0 ? '' : `${count(kbits)} ${t('IDS_KBITSSEC')}`;
 }
 
-// The rules of the desktop app's menu: Download while a file chosen is not ours yet, Search Related Files where the
+// The rules of the menu: Download while a file chosen is not ours yet, Search Related Files where the
 // server finds them, and each spam mark where it changes something.
 const canDownload = computed(() => chosen.value.some((r) => known(r) !== 'downloading' && known(r) !== 'shared'));
 const canRelate = computed(() => chosen.value.length > 0 && (status.value?.relatedSearch ?? false));
@@ -425,7 +425,7 @@ function columns(s: Search): ColumnDef<any, ResultRow, any>[] {
             cell: ({ getValue }: any) => leftToRight(getValue()),
         },
     ];
-    // Every column sorts the rows as the desktop app does, the least first at the first click.
+    // Every column sorts the rows the same way, the least first at the first click.
     return all.map((c) => ({ ...c, sortFn: sortRows, sortDescFirst: false }));
 }
 
@@ -556,7 +556,7 @@ function shownAt(): number {
     return searches.value.findIndex((s) => s.key === shownKey.value);
 }
 
-// Shows the tab at {@code index}, going round past either end, and gives it the focus as the desktop app's tabs do.
+// Shows the tab at {@code index}, going round past either end, and gives it the focus.
 function showTab(index: number): void {
     const all = searches.value.length;
     const s = searches.value[((index % all) + all) % all];
@@ -623,7 +623,7 @@ watch(
     () => void nextTick(measureTabs),
 );
 
-// The tab shown is scrolled into sight, as the desktop app's tab row does.
+// The tab shown is scrolled into sight.
 watch(
     shownKey,
     (key) => void nextTick(() => tabElements.get(key)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })),
@@ -788,7 +788,7 @@ async function stop(): Promise<void> {
     }
 }
 
-// A file chosen with its names downloads once, under the first name chosen, without a word as in the desktop app.
+// A file chosen with its names downloads once, under the first name chosen, without a word.
 async function download(results: Result[]): Promise<void> {
     const files = new Map<string, Result>();
     for (const r of results) {
@@ -866,7 +866,7 @@ async function refresh(s: Search): Promise<void> {
     }
     try {
         const got = await answer(api().GET('/searches/{id}', { params: { path: { id: s.id } } }));
-        // The engine lists them by sources; the desktop app keeps the order they came in until a column sorts them.
+        // The engine lists them by sources; the order they came in is kept until a column sorts them.
         s.results = merged(s.results, got.results);
         s.running = got.running;
     } catch (err) {
@@ -903,8 +903,8 @@ async function restore(): Promise<void> {
     restored = true;
 }
 
-// The tabs left open come back at the next start with their results, as the desktop app keeps them at its exit; a
-// page is not told when it closes, so they are kept a moment after each change. With the option off none are kept.
+// The tabs left open come back at the next start with their results. A page is not told when it closes, so they are
+// kept a moment after each change. With the option off none are kept.
 let restored = false;
 let keeping = 0;
 
@@ -1365,7 +1365,6 @@ onUnmounted(() => {
     max-width: var(--reka-popper-anchor-width);
 }
 
-/* A field holding no valid value, as the desktop app marks it. */
 .field.invalid,
 .field[aria-invalid='true'] {
     border-color: var(--color-danger-emphasis);
@@ -1379,7 +1378,6 @@ onUnmounted(() => {
     padding: 16px;
 }
 
-/* The popup points at its button, as the desktop app's. */
 /* In a narrow window the tools keep to their icons; the words are the tooltip and the accessible name. */
 @media (max-width: 999.98px) {
     .tool-text {
@@ -1460,7 +1458,7 @@ onUnmounted(() => {
     scrollbar-width: none;
 }
 
-/* The tabs as the desktop app draws them: the chosen one raised, with the strong accent along its top. */
+/* The tabs: the chosen one raised, with the strong accent along its top. */
 .search-tab {
     display: flex;
     align-items: center;

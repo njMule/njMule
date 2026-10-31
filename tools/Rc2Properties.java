@@ -36,7 +36,7 @@ import java.util.regex.Pattern;
  * become Java ones.
  *
  * <p>Usage: {@code java tools/Rc2Properties.java <english .rc> <out dir> [<lang>=<.rc>...]}, e.g.
- * {@code ... emule.rc njmule-gui/src/main/resources/org/njmule/gui/i18n it=lang/it_IT.rc}.
+ * {@code ... emule.rc njmule-ui/i18n it=lang/it_IT.rc}.
  */
 public final class Rc2Properties {
 

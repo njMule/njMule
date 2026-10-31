@@ -11,7 +11,7 @@ import { problem } from '../../toasts';
 import { webAddresses } from './inputs';
 import DialogHeader from '../../ui/DialogHeader.vue';
 
-// The addresses of the server.met lists the update at start takes, one per line, as the desktop app asks for them.
+// The addresses of the server.met lists the update at start takes, one per line.
 
 const open = defineModel<boolean>('open', { required: true });
 const text = ref('');

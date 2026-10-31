@@ -4,10 +4,11 @@ description: Drive a running njMule over HTTP with JSON and follow its events - 
 ---
 
 Every njMule with its web interface on can also answer a JSON API under `/api/v1`, with the
-engine's events as server-sent events. It is the API the web app calls, the one `njmule --remote`
-and the desktop app's remote window use, and the one your scripts and programs can use too: list
-and add downloads, search, manage servers and Kad, read the statistics and the log, change the
-preferences, look for updates.
+engine's events as server-sent events. It is the API njMule's own interface calls, in the web
+interface and in the desktop window, the one `njmule --remote` and the desktop app's windows on
+another njMule use, and the one your scripts and programs can use too: list and add downloads,
+search, manage servers and Kad, read the statistics and the log, change the preferences, look for
+updates.
 
 The API is described by an [OpenAPI 3.2](https://spec.openapis.org/oas/v3.2.0.html) document,
 [`openapi.yaml`](https://github.com/njMule/njMule/blob/main/njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml),

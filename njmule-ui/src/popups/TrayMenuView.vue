@@ -47,7 +47,7 @@ async function show(): Promise<void> {
     }
 }
 
-// Escape closes the menu; the arrows go from item to item, as between the buttons of the desktop app's.
+// Escape closes the menu; the arrows go from item to item.
 function key(e: KeyboardEvent): void {
     if (e.key === 'Escape') {
         props.host.done();
@@ -136,7 +136,7 @@ onMounted(() => {
     color: var(--nj-brand-mark);
 }
 
-/* The heights of the desktop app's labels, the name's font taller than the text's. */
+/* The heights of the labels, the name's font taller than the text's. */
 .tray-words {
     display: flex;
     flex-direction: column;

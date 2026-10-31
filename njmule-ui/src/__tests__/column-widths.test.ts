@@ -8,7 +8,7 @@ describe('column widths', () => {
     let columns: ColumnSpan[] = [];
     let widths: number[] = [];
 
-    it('should share a large growth among all the columns, as the desktop app lays out its downloads', () => {
+    it('should share a large growth among all the columns', () => {
         givenColumnsAtTheirPreferredWidths([220, 94, 120, 90, 70, 128, 130]);
         whenTheyFill(933);
         thenTheWidthsAre([231, 106, 132, 101, 82, 139, 142]);

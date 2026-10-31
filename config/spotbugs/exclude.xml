@@ -118,17 +118,6 @@
         <Class name="org.njmule.app.SystemAutostart$MacOs"/>
     </Match>
 
-    <!-- The desktop interface shares observable state on purpose: JavaFX views bind to the
-         model's properties and lists, and screens hand out their nodes; all of it lives on the FX
-         thread. -->
-    <Match>
-        <Or>
-            <Bug pattern="EI_EXPOSE_REP"/>
-            <Bug pattern="EI_EXPOSE_REP2"/>
-        </Or>
-        <Package name="~org\.njmule\.gui(\..*)?"/>
-    </Match>
-
     <!-- Later starts hand their links to the running njMule over the loopback interface only, and
          must prove they can read the secret in the user's configuration directory: nothing leaves
          the computer, so TLS would protect nothing. -->
@@ -140,13 +129,11 @@
         <Class name="org.njmule.app.LinkHandoff"/>
     </Match>
 
-    <!-- The link association, the folder opener, the Windows service, keeping the computer awake, the
-         lookups of the default gateway and of a moved Downloads folder run fixed system tools (reg,
-         xdg-mime, the file manager, icacls, netsh, PowerShell, caffeinate, systemd-inhibit, route) or
-         njMule's own programs with
-         arguments built from our own paths and constants, never from the network; the preview runs the
-         player the user chose in the settings on one of our own data files. The command line is a list,
-         so no shell parses it. -->
+    <!-- The link association, the Windows service, keeping the computer awake, the lookups of the
+         default gateway and of a moved Downloads folder run fixed system tools (reg, xdg-mime, icacls,
+         netsh, PowerShell, caffeinate, systemd-inhibit, route) or njMule's own programs with arguments
+         built from our own paths and constants, never from the network. The command line is a list, so
+         no shell parses it. -->
     <Match>
         <Bug pattern="COMMAND_INJECTION"/>
         <Or>
@@ -155,22 +142,18 @@
             <Class name="org.njmule.core.config.KnownFolders"/>
             <Class name="org.njmule.core.engine.KeepAwake"/>
             <Class name="org.njmule.core.upnp.DefaultGateway"/>
-            <Class name="org.njmule.gui.infra.Folders"/>
-            <Class name="org.njmule.gui.infra.Preview"/>
         </Or>
     </Match>
 
     <!-- The updates run fixed system tools (hdiutil, ditto, codesign, msiexec through the launcher) and
          njMule's own programs, the installed ones or those unpacked from a package checked against its
-         signed update information, with arguments built from our own paths; a window on a remote njMule
-         is the installed desktop program again, given the address the user typed. The command line is
-         a list, so no shell parses it. -->
+         signed update information, with arguments built from our own paths. The command line is a list,
+         so no shell parses it. -->
     <Match>
         <Bug pattern="COMMAND_INJECTION"/>
         <Or>
             <Class name="org.njmule.core.update.Commands"/>
             <Class name="org.njmule.core.update.Launcher"/>
-            <Class name="org.njmule.gui.infra.RemoteConnections"/>
         </Or>
     </Match>
 

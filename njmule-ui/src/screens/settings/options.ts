@@ -115,7 +115,7 @@ export function unlimited(field: Field): boolean {
     return field.kind === 'limit' && !limited.value[field.key] && value(field.key) === '0';
 }
 
-/** What a field takes and holds, as the desktop app's inputs; none for a switch or a list. */
+/** What a field takes and holds; none for a switch or a list. */
 export function rulesOf(field: Field): InputRules | undefined {
     switch (field.kind) {
         case 'number':
@@ -322,8 +322,7 @@ const PORTS = ['net.tcpPort', 'net.udpPort', 'net.upnp'];
 export const portChoice = computed(() => PORTS.map((key) => typed.value[key] ?? held.value[key] ?? saved(key)).join());
 
 /**
- * Applies the ports as their fields give them, as the desktop app does before testing them; the other options keep
- * waiting for Apply.
+ * Applies the ports as their fields give them, before testing them; the other options keep waiting for Apply.
  */
 export async function applyPorts(): Promise<void> {
     for (const { row } of PLACES) {

@@ -51,7 +51,7 @@ import Icon from '../ui/Icon.vue';
     display: flex;
     align-items: center;
     gap: 10px;
-    /* One width for all, as the desktop app's: a longer text wraps. */
+    /* One width for all: a longer text wraps. */
     width: min(400px, calc(100vw - 32px));
     padding: 4px 4px 4px 14px;
     border: 1px solid var(--color-border-default);

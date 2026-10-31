@@ -88,11 +88,9 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 |---|---|
 | `njmule-core` (`org.njmule.core`) | engine and remote-control API; exports only `api`, `config` and `remote` |
 | `njmule-app` (`org.njmule.app`) | headless launcher/CLI, Logback set-up (`logging.internal` is not exported) |
-| `njmule-gui` (`org.njmule.gui`) | JavaFX 27 + AtlantaFX desktop app, still in the packages until `njmule-desktop` replaces it; it holds the translation bundles and flags `njmule-ui` reads |
-| `njmule-ui` | the one interface of the desktop window and the web interface (Vue 3, TypeScript, Vite, Reka UI, TanStack Table/Virtual); reaches njMule only through the remote-control API; built into njmule-webui's jar |
-| `njmule-desktop` | the desktop window: a Tauri 2 shell (Rust, `src-tauri/`) that starts the native engine with a control endpoint and shows `njmule-ui`; not packaged yet |
+| `njmule-ui` | the one interface of the desktop window and the web interface (Vue 3, TypeScript, Vite, Reka UI, TanStack Table/Virtual); reaches njMule only through the remote-control API; built into njmule-webui's jar; holds the translation bundles (`i18n/`) and flags (`flags/`) |
+| `njmule-desktop` | the desktop window: a Tauri 2 shell (Rust, `src-tauri/`) that starts the native engine with a control endpoint and shows `njmule-ui` |
 | `njmule-webui` (`org.njmule.webui`) | web interface on Jetty (password, sessions, CSRF); serves `njmule-ui` and the core's remote-control API |
-| `njmule-webapp` | the former browser app (Vue 3, Element Plus); no longer served, to be removed |
 | `njmule-testkit` (`org.njmule.testkit`) | test doubles (fake server and peers, from M2) |
 | `njmule-bench` | JMH benchmarks; classpath build so it reaches internal core packages; not distributed |
 | `build-logic/` | Gradle convention plugin shared by the modules (`njmule.java-conventions`) |
@@ -115,7 +113,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   and worktrees share the build cache in `~/.gradle`. `clean` is never needed for a correct build.
 - Dependencies are locked and verified: every resolved version is in the `gradle.lockfile` of each
   project (and `buildscript-`/`settings-gradle.lockfile`), every downloaded artifact is checked
-  against its SHA-256 in `gradle/verification-metadata.xml` (the OpenJFX jars of all five platforms
+  against its SHA-256 in `gradle/verification-metadata.xml` (the Node.js archives of every platform
   included), and any difference fails the build. After changing a version (`libs.versions.toml`, a
   plugin, Gradle itself) rewrite both, then delete the entries of the versions no longer used and
   review the new checksums; Dependabot's pull requests need the same step. Without
@@ -125,11 +123,10 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   ```bash
   ./gradlew --no-configuration-cache --refresh-dependencies --write-verification-metadata sha256 \
       --write-locks spotlessCheck :njmule-app:collectReachabilityMetadata \
-      :njmule-gui:generateLicenseReport cyclonedxBom
+      :njmule-app:generateLicenseReport cyclonedxBom
   ```
 - Test options (`-P`): `test.excludedTags` (default `interop,private-fixtures,perf`), `test.tags`,
-  `test.forks` (JVMs per module, default 4), `test.maxHeap` (default 4g: Gradle's own 512 MiB slows
-  the window tests to a time-out) and `test.parallelModules=1` (one module's tests at a time, for
+  `test.forks` (JVMs per module, default 4), `test.maxHeap` (default 4g) and `test.parallelModules=1` (one module's tests at a time, for
   machines with few cores; the CI's verify and Sonar jobs use it on their four CPUs). Any
   `-Pnjmule.<name>=<value>` reaches the tests as a system property. PowerShell splits an unquoted
   option at its first dot: write `'-Ptest.forks=1'`. One class:
@@ -140,31 +137,31 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   in `verification-metadata.xml` for every platform) and runs `npm ci` from `package-lock.json`
   without install scripts (`.npmrc`); `bundle` type-checks and builds it, `unitTest` runs Vitest,
   `formatCheck` runs Prettier (fix with `npm run format` there). The API's types come from
-  `openapi.yaml` (`npm run api`). Its texts are the translation keys of `njmule-gui`'s bundles
+  `openapi.yaml` (`npm run api`). Its texts are the translation keys of its bundles in `i18n/`
   (`t('IDS_…')`, `t('nj.…')`), converted to JSON at build time; only literal keys are found. The
-  `themes` task turns the AtlantaFX themes into CSS custom properties. A task that runs `npm ci`
-  empties `node_modules`: stop a Vite dev server first.
+  themes' colours are CSS custom properties in `src/styles/themes.css`, converted once from
+  AtlantaFX. A task that runs `npm ci` empties `node_modules`: stop a Vite dev server first.
 - Desktop window (`njmule-desktop`): Rust and Cargo from rustup, at the version
   `src-tauri/rust-toolchain.toml` pins; the Tauri command line comes from npm.
   `./gradlew :njmule-desktop:shell` builds `src-tauri/target/release/njmule-gui(.exe)`, which starts
   the `njmule` executable beside it (or on the `PATH`) and shows `njmule-ui`. In `src-tauri`:
   `cargo test` runs its tests, `cargo fmt` formats it (`rustfmt.toml`: 120 columns).
 - Documentation website (`website/`, Docusaurus, not part of `build`): `./gradlew :website:site` →
-  `website/build/site` (it takes the desktop app's screenshots with `:njmule-gui:docsCaptures`, the web
-  interface's (`njmule-ui`) with the installed Chrome or Edge through `website/scripts/capture-web.mjs`,
-  the CLI help with `:njmule-app:cliHelp`, and makes
+  `website/build/site` (it takes the interface's screenshots on a demo engine with the installed
+  Chrome or Edge through `website/scripts/capture-web.mjs`, the CLI help with `:njmule-app:cliHelp`,
+  and makes
   the API reference from `openapi.yaml`); `./gradlew :website:siteCheck` checks its code (Prettier,
   TypeScript). Preview: `./gradlew :website:prepare`, then `npm start` in `website/`. Pages are MDX
   in English, text under CC BY-SA 4.0; screenshots are never committed (`<Screenshot id="…">`). A
   user-visible change updates its page in the same branch. `.github/workflows/docs.yml` builds it
   on changes and publishes on GitHub Pages only on a manual run with `deploy` or a `v*` tag.
-- Other tasks: `:njmule-gui:generateLicenseReport` (THIRD-PARTY.txt in `build/reports/licenses`),
+- Other tasks: `:njmule-app:generateLicenseReport` (THIRD-PARTY.txt in `build/reports/licenses`),
   `cyclonedxBom` (SBOM in `build/reports/cyclonedx`), `dependencyCheckAggregate` (OWASP
   dependency-check, needs `NVD_API_KEY`), `:njmule-app:nativeCompile` (GraalVM native image).
 - Run headless: `./gradlew :njmule-app:run --args="--help"` (module path), or
-  `./gradlew :njmule-app:installDist` and `njmule-app/build/install/njmule/bin/njmule`. Run the GUI:
-  `./gradlew :njmule-gui:run` (JavaFX); the desktop window: `./gradlew :njmule-app:nativeCompile
-  :njmule-desktop:shell`, with `njmule(.exe)` copied beside `njmule-gui(.exe)`.
+  `./gradlew :njmule-app:installDist` and `njmule-app/build/install/njmule/bin/njmule`. Run the
+  desktop window: `./gradlew :njmule-app:nativeCompile :njmule-desktop:shell`, with `njmule(.exe)`
+  copied beside `njmule-gui(.exe)`.
 - Benchmarks: `./gradlew :njmule-bench:shadowJar`, then
   `java -jar njmule-bench/build/libs/benchmarks.jar` (for the throughput benchmarks one operation is
   1 MiB, so ops/s = MiB/s).
@@ -186,19 +183,9 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `njmule-app/build/native-static/njmule`.
 - Native optimization: `-O2` by default (property `native.optimization`). Checks may build faster
   with `-Pnative.optimization=-Ob`, as the CI does; releases always pass `-O2`, never `-Ob`.
-- Native JavaFX app, no longer in the packages (GluonFX does not support Java 25/JavaFX 27):
-  `native-image` on the module path through `./gradlew :njmule-gui:nativeGui` → `njmule-gui/build/native/` (exe plus the JDK
-  libraries it loads). On Windows that exe is `njmule.exe`, a console program and the command line
-  too; `./gradlew :njmule-gui:nativeLauncher` builds `build/launcher/njmule-gui.exe`
-  (`native/windows/launcher.c`), the GUI program that starts it for the desktop with
-  `NJMULE_DESKTOP=1`, as `javaw.exe` stands for `java.exe`. Its reachability metadata comes from
-  the GUI tour (`GuiTour`, system property `njmule.gui.tour`): `./gradlew :njmule-gui:nativeTour`
-  runs it under the tracing agent (accelerated and software rendering) and merges into
-  `src/main/resources/META-INF/native-image/org.njmule/njmule-gui/tour`; `manual/` holds the JNI
-  entries the tour cannot reach (file choosers). Regenerate after GUI changes on Windows, and for
-  Linux with `tools/native-gui-docker.sh` (Ubuntu container, GraalVM Linux archive mounted at
-  `/graalvm`); macOS adds its own in CI. Only GraalVM Community: Oracle GraalVM (PGO) is under GFTC,
-  not compatible with distributing GPL binaries.
+- Only GraalVM Community: Oracle GraalVM (PGO) is under GFTC, not compatible with distributing GPL
+  binaries. `./gradlew :njmule-app:nativeService` builds the Windows service host
+  `build/launcher/njmule-service.exe` (`native/windows/service.c`).
 - Installers: every desktop package carries the headless engine `njmule(.exe)` of
   `:njmule-app:nativeCompile`, also the command line, and the desktop window `njmule-gui(.exe)` of
   `:njmule-desktop:shell`, which starts the engine beside it and answers the old Windows launcher's
@@ -280,16 +267,15 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 
 ## UI colours
 
-- Sober palette with **pastel tints**, always compatible with the AtlantaFX theme in use. The
-  default theme is **Nord Light / Nord Dark** (itself a pastel palette), following the OS colour
-  scheme; the other AtlantaFX themes stay selectable.
-- Use only AtlantaFX looked-up colours (`-color-bg-*`, `-color-fg-*`, `-color-accent-*`,
-  `-color-success-*`, …) and the `-nj-*` tokens of `docs/PLAN.md` §6.7; no colour literals in
-  Java or CSS outside the token definitions. In `njmule-ui` the same colours are CSS custom
-  properties: the `--color-*` its `themes` task makes from each AtlantaFX theme and the `--nj-*`
-  tokens of `src/styles/njmule.css`.
+- Sober palette with **pastel tints**, always compatible with the theme in use. The default theme
+  is **Nord Light / Nord Dark** (itself a pastel palette), following the OS colour scheme; the other
+  themes (Primer, Cupertino, Dracula) stay selectable.
+- Use only the theme's colours (`--color-bg-*`, `--color-fg-*`, `--color-accent-*`,
+  `--color-success-*`, …, in `njmule-ui/src/styles/themes.css`) and the `--nj-*` tokens of
+  `njmule-ui/src/styles/njmule.css`; no colour literals in TypeScript, Vue or CSS outside the token
+  definitions.
 - Pastel tones for fills and surfaces (`*-subtle`/`*-muted`, bars, charts, chips); text uses the
-  theme's `-color-fg-*` and `-color-*-fg` tokens, never a pastel tone.
+  theme's `--color-fg-*` and `--color-*-fg` tokens, never a pastel tone.
 - Accessibility (WCAG 2.2 AA): text contrast ≥ 4.5:1 (≥ 3:1 for large text), essential icons and
   graphics ≥ 3:1; colour is never the only cue (add icon, tooltip, legend or pattern).
 - Every token has a light and a dark value; saturated colours only for real errors and warnings.
@@ -302,7 +288,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   (GPL-3.0-compatible license, native-image friendly) before writing a utility, codec, parser or
   algorithm. Write our own only for eD2K/Kad-specific code or when no suitable library exists or
   fits the constraints, and say why in a comment or the commit message.
-- `njmule-core` must never depend on JavaFX/AWT or any GUI module.
+- `njmule-core` must never depend on AWT or any interface module.
 - Code must stay GraalVM native-image friendly: no undeclared reflection, no dynamic proxies,
   register resources and `ServiceLoader` providers in the reachability metadata.
 - Log only through SLF4J with `{}` placeholders; never use external data as a format string.

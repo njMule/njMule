@@ -46,12 +46,12 @@ tasks.register<Sync>("iconTools") {
     into(layout.buildDirectory.dir("tools"))
 }
 
-// The benchmarks (JMH and its dependencies) are not distributed; the web app is, inside the web interface's jar.
-val distributed = subprojects.filter { it.name !in setOf("njmule-bench", "njmule-webapp", "website") }
+// The benchmarks (JMH and its dependencies) are not distributed.
+val distributed = subprojects.filter { it.name !in setOf("njmule-bench", "website") }
 
 // Software bill of materials, part of every release: ./gradlew cyclonedxBom → build/reports/cyclonedx/.
-// The third-party license report comes from the desktop app, whose runtime holds every distributed
-// dependency: ./gradlew :njmule-gui:generateLicenseReport.
+// The third-party license report comes from the app, whose runtime holds every distributed Java
+// dependency: ./gradlew :njmule-app:generateLicenseReport.
 
 // OWASP dependency vulnerability scan, run by hand (needs an NVD API key in NVD_API_KEY):
 // ./gradlew dependencyCheckAggregate

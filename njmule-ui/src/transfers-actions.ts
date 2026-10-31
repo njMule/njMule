@@ -14,7 +14,7 @@ import { appliesTo, type Command } from './transfers';
 /**
  * Adds the eD2K file links in {@code text} as downloads, in {@code category} or that of their names, paused or as the
  * preferences say, telling each one added when {@code tell}; returns how many it found. Links handed over by the system
- * are told; those chosen in a dialog are not, as in the desktop app.
+ * are told; those chosen in a dialog are not.
  */
 export async function addLinks(text: string, category?: number, paused?: boolean, tell = true): Promise<number> {
     const links = fileLinks(text).map((l) => l.link);

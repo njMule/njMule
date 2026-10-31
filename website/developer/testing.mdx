@@ -1,6 +1,6 @@
 ---
 title: Testing
-description: How njMule's tests are written and run - the given/when/then style, tags, the test kit, GUI tests on JavaFX's headless platform, the capture tour, web app tests and the CI.
+description: How njMule's tests are written and run - the given/when/then style, tags, the test kit, the interface's and the desktop window's tests, the documentation's pictures and the CI.
 ---
 
 Every change to njMule comes with tests, and every test reads as a short scenario. This page shows
@@ -16,10 +16,12 @@ not run by default, and what the CI runs on every push.
 | jqwik | property-based tests of codecs and parsers |
 | Jimfs | in-memory file systems for simulations whose many nodes would otherwise wait on the disk |
 | openapi-parser | checking that the API's document is a valid OpenAPI 3.2 description |
-| Vitest with happy-dom | the web app's tests |
+| Vitest with happy-dom | the interface's tests |
+| `cargo test` | the desktop window's tests, in Rust |
 
-New behaviour needs tests: unit tests next to the code in each module's `src/test/java`, and flows
-across modules in the test kit (see [The test kit](#the-test-kit)).
+New behaviour needs tests: unit tests next to the code in each module's `src/test/java`, flows
+across modules in the test kit (see [The test kit](#the-test-kit)), and the interface's logic in its
+Vitest tests (see [Interface tests](#interface-tests)).
 
 ## The given/when/then style
 
@@ -83,7 +85,7 @@ class BytesTest {
 ```
 
 The fields are qualified with `this.` and the steps are called without it, as everywhere in the code
-([Code style](code-style.mdx#fields-and-own-methods)). The web app's Vitest tests follow the same
+([Code style](code-style.mdx#fields-and-own-methods)). The interface's Vitest tests follow the same
 form, with `given...`, `when...` and `then...` functions inside each `describe` block.
 
 ## Running tests
@@ -102,7 +104,7 @@ The options that choose and spread the tests (`test.tags`, `test.excludedTags`, 
 
 Each module's test classes are spread over a few JVMs, each running many classes one after the
 other: what a class leaves in static state, the next one finds, so tests and the engine take back
-what they set. In every test JVM the build also sets three system properties, so that no test
+what they set. In every test JVM the build also sets four system properties, so that no test
 reaches outside your machine by accident:
 
 | Property | Effect |
@@ -110,6 +112,7 @@ reaches outside your machine by accident:
 | `njmule.upnp.disabled=true` | UPnP stays off: a test never changes your router's port mappings |
 | `njmule.defaultlists.disabled=true` | a new profile starts without the shipped server list and Kad contacts, so no test reaches real servers or nodes |
 | `njmule.update.disabled=true` | njMule never looks for new versions on GitHub |
+| `njmule.countries.disabled=true` | the country database a profile asks for by default is never downloaded |
 
 ### Tags
 
@@ -157,64 +160,54 @@ The eD2K and AICH hashes and the protocol obfuscation are also checked against g
 by an independent Python implementation (`tools/golden/`), stored in
 `njmule-core/src/test/resources/golden/`.
 
-## GUI tests
+## Interface tests
 
-The desktop app's tests run on JavaFX's headless platform with software rendering
-(`glass.platform=Headless`, `prism.order=sw`): they need no display, on your machine or in CI.
-
-- `FxTesting` starts the toolkit and offers helpers to drive it from tests. Each test JVM unpacks
-  JavaFX's native libraries under `njmule-gui/build/javafx-cache`.
-- `FxTesting.snapshot(node, name)` saves a picture of a node as `name.png` under
-  `njmule-gui/build/gui-snapshots`, handy to look at what a test saw.
-- Window tests wait a bounded time for each step on the JavaFX thread (`FxTesting` allows 55 seconds,
-  within the tests' own 60-second time-out), so a busy machine can time them out. On a machine with
-  few cores, run with `'-Ptest.parallelModules=1'`, and keep `test.maxHeap` at 4g or more.
-- `TokenContrastTest` checks that the colours drawn with keep text at 4.5:1 and meaningful lines and
-  marks at 3:1 in every theme, `HighContrastTest` that the system's high contrast colours take the
-  theme's place while high contrast is on, and `LanguagesTest` and its neighbours guard the
-  [translations](translations.mdx#the-tests-that-guard-them).
-
-### The capture tour
-
-`CaptureTour` pictures every screen, tab, menu, sub-menu, context menu, drop-down list, column menu,
-icon-button tooltip and dialog of the interface, on example data (`CaptureDemo`: free files and
-documentation addresses only), for design reviews and for this site. It runs only when you give it
-a folder:
+The interface's tests are in `njmule-ui/src/__tests__/*.test.ts`, run by Vitest on happy-dom, a
+browser's document without a browser. They test the interface's logic, such as the formatting of
+sizes and rates, the search syntax, the texts and languages, the places a guest may open, the
+options and the command palette, against the API's types generated from `openapi.yaml`:
 
 ```bash
-./gradlew :njmule-gui:test --tests CaptureTour '-Pnjmule.capture=build/gui-capture'
+./gradlew :njmule-ui:unitTest
 ```
 
-The folder is relative to `njmule-gui`. `-Pnjmule.capture.sets` picks the sets, each named
-`<language>-<scheme>-<depth>`:
+`./gradlew build` runs them too, with the Prettier check; in `njmule-ui`, `npm run test` runs them
+alone. See [Interface](interface.mdx).
 
-- **language**: a language tag (`en`, `it`, `ar`, …);
-- **scheme**: `light`, `dark` or `contrast` (a dark high contrast scheme);
-- **depth**: `full` for everything, `screens` for the screens and their tabs, `empty` for a profile
-  without data, `readme` for the transfers alone, or `docs` for the README's picture and then
-  everything.
+## Desktop window tests
 
-Without `njmule.capture.sets` it pictures these sets:
-
-```text
-it-light-full,it-dark-screens,en-light-screens,ar-light-screens,it-light-empty
-```
-
-Each set gets a folder of numbered pictures, and `index.tsv` lists them all with their size and
-what they show. With `-Pnjmule.capture.stable=true` each picture is named by what it shows alone,
-without its number, and with `-Pnjmule.capture.scale=2` it is drawn with twice the pixels, sharp on
-screens of high density: `./gradlew :njmule-gui:docsCaptures` uses both for this site
-([Documentation](documentation.mdx#screenshots)).
-
-## Web app tests
-
-The web app's tests are in `njmule-webapp/src/__tests__/*.test.ts`, run by Vitest on happy-dom:
+The desktop window's shell has Rust unit tests beside its code in `njmule-desktop/src-tauri/src`:
+the eD2K links it is handed, its options, the window's place on the screen, the connections to
+other njMules it remembers, and the commands of the installer and of an update. They are not part
+of `./gradlew build`, which needs no Rust; run them in `njmule-desktop/src-tauri` once
+`./gradlew :njmule-ui:site` has built the interface the shell embeds:
 
 ```bash
-./gradlew :njmule-webapp:unitTest
+cargo test --locked --release
 ```
 
-`./gradlew build` runs them too, with the Prettier check. See [Web app](web-app.mdx).
+The CI runs them, with `cargo fmt --check` and Clippy, on Linux, Windows and macOS
+([Building](building.mdx#the-desktop-window)). Before packing, the release workflow also starts each
+desktop window with `.github/scripts/desktop-smoke-test.ps1` or `desktop-smoke-test.sh`: the window
+tells its version, starts the engine on a profile of its own and takes it along when closed
+([Packaging](packaging.mdx)).
+
+## Pictures of the interface
+
+This site's screenshots are taken from the interface itself, on a demo engine: `WebCaptureDemo`, in
+`njmule-webui`'s tests, starts a real engine in a temporary profile with no network, answers some of
+its commands with the example data of `CaptureDemo` (free files and documentation addresses only),
+and serves it through the web interface. `website/scripts/capture-web.mjs` then drives the Chrome or
+Edge installed on your computer through Playwright and pictures the places, menus and dialogs the
+pages show, in light and in dark, and the transfers in forced colours (high contrast):
+
+```bash
+./gradlew :website:webScreenshots
+```
+
+The pictures land in `website/build/web-captures/`, one folder per set. They are no test: a step
+that fails is reported as "not pictured" and the others go on, while the site's build fails on a
+picture a page names but the run did not make ([Documentation](documentation.mdx#screenshots)).
 
 ## Throughput tests
 
@@ -237,7 +230,8 @@ request, and once a week on everything:
 | Job | What it does |
 |---|---|
 | verify | `./gradlew build --continue '-Ptest.parallelModules=1'` on Ubuntu, Windows and macOS; on a failure, the test reports are kept as an artifact |
-| native image | the native command-line executable on Linux x64 (in the pinned GraalVM container), Windows x64 and macOS arm64, built with `-Ob`, then started with `--version` and `--license` |
+| desktop shell | on Ubuntu, Windows and macOS: builds the interface, then `cargo fmt --check`, Clippy with warnings as errors, and `cargo test`; only when the desktop window, the interface, the generated icons or the workflow change, and weekly |
+| native image | the native command-line executable on Linux x64 (in the pinned GraalVM container), Windows x64 and macOS arm64, built with `-Ob`, then started with `--version` and `--license`; on Windows also the service host, installed as a real service, tried and removed |
 | synology package | the static musl executable and the `.spk` around it, checked entry by entry; only when the build, the dependencies, the native configuration or the package's files change, and weekly |
 | REUSE compliance | `reuse lint` over the repository |
 | actionlint | lints the workflows when they change |

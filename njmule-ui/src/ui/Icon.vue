@@ -6,7 +6,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 import { computed } from 'vue';
 import { ICONS, type Icon, type IconName } from '../icons';
 
-// One of the desktop app's line icons; decorative unless a label says what it means.
+// One of njMule's line icons; decorative unless a label says what it means.
 const props = defineProps<{ name: IconName; label?: string }>();
 const icon = computed<Icon>(() => ICONS[props.name]);
 </script>

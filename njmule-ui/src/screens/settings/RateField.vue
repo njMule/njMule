@@ -7,8 +7,8 @@ import { t } from '../../i18n';
 import FieldInput from './FieldInput.vue';
 import { MAX_RATE_TEXT, rateChar, type RateUnit } from './inputs';
 
-// A speed typed in the unit beside it, KB/s or MB/s with decimals, or the speed of a line in Mbit/s, as the desktop
-// app's RateField; a limit can also be no limit at all, which leaves the number and the unit aside.
+// A speed typed in the unit beside it, KB/s or MB/s with decimals, or the speed of a line in Mbit/s; a limit can also
+// be no limit at all, which leaves the number and the unit aside.
 
 defineProps<{
     id?: string;
@@ -78,7 +78,7 @@ function unitName(unit: RateUnit): string {
     gap: 8px;
 }
 
-/* Seven columns, the figures at the end, as the desktop app's. */
+/* Seven columns, the figures at the end. */
 .rate :deep(.amount) {
     width: calc(7 * 0.94em + 18px);
     text-align: end;

@@ -160,13 +160,6 @@ class EngineTest {
     }
 
     @Test
-    void shouldRunOnThisComputer() throws IOException {
-        whenTheEngineStarts();
-
-        thenItRunsOnThisComputer();
-    }
-
-    @Test
     void shouldWaitToBeSetUpWhenItsStartCreatedTheConfiguration() throws Exception {
         whenTheEngineStarts();
 
@@ -619,10 +612,6 @@ class EngineTest {
 
     private void thenTheEngineRuns() {
         assertThat(this.engine.isRunning()).isTrue();
-    }
-
-    private void thenItRunsOnThisComputer() {
-        assertThat(this.engine.onThisComputer()).isTrue();
     }
 
     private void thenTheEngineDoesNotRun() {

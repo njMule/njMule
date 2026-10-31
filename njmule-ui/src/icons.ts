@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// The line icons of the desktop app (njmule-gui's Icons): SVG path data on a 24 by 24 grid, drawn with a round 1.75
-// stroke. A filled icon is painted instead; a directional one is mirrored for right-to-left languages.
+// njMule's line icons: SVG path data on a 24 by 24 grid, drawn with a round 1.75 stroke. A filled icon is painted
+// instead; a directional one is mirrored for right-to-left languages.
 
 export interface Icon {
     path: string;

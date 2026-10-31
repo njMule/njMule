@@ -3,8 +3,8 @@
 
 import { shallowRef } from 'vue';
 
-// A question in one style, as the desktop app's Ask: answers that tell the outcome in the platform's order, the safe
-// one the default, a risky one red at its outline; a field or a check box when the answer needs one.
+// A question in one style: answers that tell the outcome in the platform's order, the safe one the default, a risky one
+// red at its outline; a field or a check box when the answer needs one.
 
 export interface Question {
     title: string;

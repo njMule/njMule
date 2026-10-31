@@ -6,7 +6,7 @@ import { rate } from './format';
 import { t } from './i18n';
 import { preferences } from './model/engine';
 
-// The download and upload limits as sliders over the line's capacity, as the desktop app's speed limits.
+// The download and upload limits as sliders over the line's capacity.
 
 /**
  * The slider's positions: the first is no limit, the others go from 1 KiB/s to the top on a logarithmic scale, so that

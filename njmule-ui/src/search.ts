@@ -5,7 +5,7 @@ import { ref } from 'vue';
 import type { Schemas } from './api/client';
 import { fileLink } from './links';
 
-// The searches and how their results show, as the desktop app's search screen does it.
+// The searches and how their results show.
 
 export type Result = Schemas['SearchResult'];
 export type Scope = Schemas['SearchScope'];
@@ -390,7 +390,6 @@ export function narrowed<T>(results: T[], filter: string, text: (r: T) => string
 }
 
 const HISTORY_KEY = 'njmule.search.history';
-// The desktop app keeps the last ten.
 const HISTORY_SIZE = 10;
 
 /** The searches typed before, the newest first. */

@@ -83,8 +83,8 @@ val includedTags = listProperty("test.tags")
 val testForks = providers.gradleProperty("test.forks").map(String::toInt)
 val testSettings = providers.gradlePropertiesPrefixedBy("njmule.")
 
-// The window tests wait at most 55 s for each step on the FX thread: on a machine with few cores, next to
-// the test forks of the other modules, -Ptest.parallelModules=1 runs one module's tests at a time.
+// On a machine with few cores, next to the test forks of the other modules, -Ptest.parallelModules=1 runs
+// one module's tests at a time.
 val testSlots =
     gradle.sharedServices.registerIfAbsent("testSlots", TestSlots::class) {
         providers.gradleProperty("test.parallelModules").orNull?.let { maxParallelUsages = it.toInt() }
@@ -99,8 +99,7 @@ tasks.withType<Test>().configureEach {
     // Test classes spread over a few JVMs, each running many classes one after the other: what a class
     // leaves in static state, the next one finds, so tests and the engine take back what they set.
     maxParallelForks = testForks.getOrElse(4)
-    // Gradle gives test JVMs 512 MiB unless told otherwise: within 1 GiB the window tests slow down to a
-    // time-out.
+    // Gradle gives test JVMs 512 MiB unless told otherwise.
     maxHeapSize = providers.gradleProperty("test.maxHeap").get()
     jvmArgs("-XX:+EnableDynamicAgentLoading", "-Dfile.encoding=UTF-8")
     // UPnP stays off in every test: it would change the router's port mappings.

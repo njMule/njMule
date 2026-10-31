@@ -20,14 +20,9 @@ node {
     npmInstallCommand = "ci"
 }
 
-// What the site takes from the other projects: the desktop app's pictures, how to start the web interface on example
-// data, and the command line's help. The site is not part of `build`: ./gradlew :website:site builds it.
-val guiCaptures = configurations.dependencyScope("docsScreenshotsDeclared")
-val docsScreenshots =
-    configurations.resolvable("docsScreenshots") {
-        attributes { attribute(Usage.USAGE_ATTRIBUTE, objects.named("njmule-docs-screenshots")) }
-        extendsFrom(guiCaptures.get())
-    }
+// What the site takes from the other projects: how to start the web interface on example data, whose pictures stand
+// for the desktop app's too, and the command line's help. The site is not part of `build`: ./gradlew :website:site
+// builds it.
 val webCaptureDeclared = configurations.dependencyScope("webCaptureDeclared")
 val webCapture =
     configurations.resolvable("webCapture") {
@@ -42,8 +37,7 @@ val cliHelp =
     }
 
 dependencies {
-    guiCaptures(project(":njmule-gui"))
-    webCaptureDeclared(project(":njmule-gui"))
+    webCaptureDeclared(project(":njmule-webui"))
     cliHelpDeclared(project(":njmule-app"))
 }
 
@@ -96,13 +90,12 @@ val prepare =
         // The developer guide's sidebar reads the generated API reference: a preview needs it too.
         dependsOn(tasks.npmInstall, webScreenshots, apiDocs)
         script = file("scripts/prepare.mjs")
-        val gui = docsScreenshots.map { it.singleFile.path }
         val web = layout.buildDirectory.dir("web-captures").map { it.asFile.path }
         val help = cliHelp.map { it.singleFile.resolve("help.txt").path }
         val remote = cliHelp.map { it.singleFile.resolve("remote.txt").path }
-        args = gui.zip(web) { g, w -> listOf("--strict", "--gui", g, "--web", w) }
+        args = web.map { listOf("--strict", "--web", it) }
             .zip(help.zip(remote) { h, r -> listOf("--cli", h, "--remote", r) }) { a, b -> a + b }
-        inputs.files(docsScreenshots, cliHelp, webScreenshots).withPropertyName("generated")
+        inputs.files(cliHelp, webScreenshots).withPropertyName("generated")
         inputs.files(pages).withPathSensitivity(PathSensitivity.RELATIVE)
         inputs.files(
             layout.settingsDirectory.dir("branding"),

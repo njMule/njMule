@@ -3,7 +3,7 @@
 
 [versions]
 java = "25"
-# Node.js for the web app (njmule-webapp): an LTS line
+# Node.js for the interface (njmule-ui) and the site: an LTS line
 nodejs = "24.22.1"
 
 # Runtime dependencies
@@ -13,9 +13,6 @@ jackson = "3.2.4"
 json-schema-validator = "3.0.8"
 jetty = "12.1.14"
 logback = "1.6.5"
-javafx = "27.0.1"
-atlantafx = "3.0.0"
-richtextfx = "0.11.7"
 bouncycastle = "1.86"
 kwik = "0.12.1"
 guava = "33.7.2-jre"
@@ -55,9 +52,6 @@ jetty-client = { module = "org.eclipse.jetty:jetty-client" }
 jetty-server = { module = "org.eclipse.jetty:jetty-server" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 logback-core = { module = "ch.qos.logback:logback-core", version.ref = "logback" }
-javafx-controls = { module = "org.openjfx:javafx-controls", version.ref = "javafx" }
-atlantafx-base = { module = "io.github.mkpaz:atlantafx-base", version.ref = "atlantafx" }
-richtextfx = { module = "org.fxmisc.richtext:richtextfx", version.ref = "richtextfx" }
 bouncycastle-prov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 kwik = { module = "tech.kwik:kwik", version.ref = "kwik" }
 guava = { module = "com.google.guava:guava", version.ref = "guava" }

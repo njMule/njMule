@@ -28,8 +28,8 @@ import {
     type UpdateView,
 } from '../updates';
 
-// What is known of new versions of njMule, following the status while it shows. As the desktop app's, it leaves the
-// window usable behind it: a download can run while one goes on with the transfers.
+// What is known of new versions of njMule, following the status while it shows. It leaves the window usable behind it:
+// a download can run while one goes on with the transfers.
 const props = defineProps<{ platform: Platform; canOpenFolders: boolean }>();
 
 const content = ref<InstanceType<typeof DialogContent> | null>(null);
@@ -228,8 +228,8 @@ function escape(e: KeyboardEvent): void {
 </template>
 
 <style scoped>
-/* The header, the body and the band of a dialog with a window of its own, as the desktop app's. It is as wide as the
-   buttons the state offers need on one line, and no narrower than the body: the words wrap within that. */
+/* The header, the body and the band of a dialog. It is as wide as the buttons the state offers need on one line, and no
+   narrower than the body: the words wrap within that. */
 .updates {
     width: max-content;
     min-width: min(560px, calc(100vw - 32px));

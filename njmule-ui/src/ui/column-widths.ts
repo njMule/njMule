@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// The widths of a list's columns as the desktop app's tables lay them out (JavaFX's constrained resize policy, flexing
-// the last column): a change of the list's width is shared among all the columns, and the edge of a column dragged by
-// the user moves the columns after it, the last first. Written here: the browser's tables have no such layout.
+// The widths of a list's columns: a change of the list's width is shared among all the columns, the last one flexing,
+// and the edge of a column dragged by the user moves the columns after it, the last first. Written here: the browser's
+// tables have no such layout.
 
 /** A column's width now, the one it prefers, and the least and most it may take. */
 export interface ColumnSpan {
@@ -13,7 +13,7 @@ export interface ColumnSpan {
     max: number;
 }
 
-/** A column with no limit of its own takes no more than this, as in the desktop app. */
+/** A column with no limit of its own takes no more than this. */
 export const MAX_WIDTH = 5000;
 
 // A change up to this many pixels goes a pixel at a time to the column furthest from where it tends.

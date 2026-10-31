@@ -217,56 +217,24 @@ function Hero(): ReactNode {
 
 // ---------------------------------------------------------------- one control, blown up
 
-const FACES = {
-    desktop: {
-        word: 'on your desktop',
-        text: 'A native app with every screen redrawn: transfers with their sources, search, shared files, messages, the network and statistics, in 36 languages.',
-        shot: 'transfers-details',
-        alt: 'The desktop app: the transfers, with the details of a download',
-    },
-    browser: {
-        word: 'in your browser',
-        text: 'The web interface does what the desktop app does, from any browser on your network or behind your own reverse proxy, with a read-only guest if you like.',
-        shot: 'web-transfers-sources',
-        alt: 'The web interface: the transfers, a download open on its sources',
-    },
-} as const;
-
+// The desktop app and the web interface are one interface: a single picture, no choice between them.
 function Faces(): ReactNode {
-    const [face, setFace] = useState<keyof typeof FACES>('desktop');
-    const shown = FACES[face];
     return (
         <section className={styles.faces} data-reveal>
-            <div className={styles.facesHead}>
-                <div className={styles.facesText}>
-                    <h2 className={styles.sectionTitle}>Run it {shown.word}</h2>
-                    <p>{shown.text}</p>
-                </div>
-                <div className={styles.switch} data-ui role="radiogroup" aria-label="Show njMule">
-                    {(Object.keys(FACES) as (keyof typeof FACES)[]).map((key) => (
-                        <button
-                            key={key}
-                            type="button"
-                            role="radio"
-                            aria-checked={face === key}
-                            className={clsx(styles.switchItem, face === key && styles.switchOn)}
-                            onClick={() => setFace(key)}
-                        >
-                            {key === 'desktop' ? 'Desktop app' : 'Web interface'}
-                        </button>
-                    ))}
-                </div>
+            <div className={styles.facesText}>
+                <h2 className={styles.sectionTitle}>Run it on your desktop or in your browser</h2>
+                <p>
+                    One interface with every screen: transfers with their sources, search, shared files, messages, the
+                    network and statistics, in 36 languages. The desktop app shows it in its own window, the web
+                    interface in any browser on your network or behind your own reverse proxy, with a read-only guest if
+                    you like.
+                </p>
             </div>
-            <div className={styles.facesShot}>
-                {(Object.keys(FACES) as (keyof typeof FACES)[]).map((key) => (
-                    <ThemedShot
-                        key={key}
-                        id={FACES[key].shot}
-                        alt={FACES[key].alt}
-                        className={clsx(styles.faceImage, face === key && styles.faceImageOn)}
-                    />
-                ))}
-            </div>
+            <ThemedShot
+                id="transfers-details"
+                alt="njMule's transfers, with the details of a download"
+                className={styles.facesShot}
+            />
         </section>
     );
 }
@@ -663,7 +631,7 @@ const SYSTEMS: {
             steps: [
                 { text: 'Go into the folder the clone made:', command: 'cd njMule' },
                 { text: 'Build it and run every check:', command: './gradlew build' },
-                { text: 'Start the desktop app:', command: './gradlew :njmule-gui:run' },
+                { text: 'Start the command line:', command: './gradlew :njmule-app:run --args="--help"' },
             ],
         }),
     },

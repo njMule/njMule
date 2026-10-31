@@ -42,7 +42,7 @@ const again = ref('');
 const guest = ref('');
 const guestAgain = ref('');
 
-// Sized as the desktop app's fields; the field's own element takes no style of this page.
+// Sized in columns of a wide letter; the field's own element takes no style of this page.
 const PORT_SIZE = { width: 'calc(6 * 0.94em + 18px)' };
 const NAMES_SIZE = { flex: '1 1 auto', minWidth: '0' };
 const PASSWORD_SIZE = { width: '180px' };

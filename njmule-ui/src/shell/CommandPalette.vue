@@ -41,7 +41,7 @@ function run(command: Command | undefined): void {
     }
 }
 
-// The arrows go round past either end, as the desktop app's list does.
+// The arrows go round past either end.
 function move(by: number): void {
     chosen.value = step(shown.value, chosen.value, by);
     void nextTick(() => list.value?.children[chosen.value]?.scrollIntoView({ block: 'nearest' }));
@@ -117,7 +117,7 @@ function key(e: KeyboardEvent): void {
     list-style: none;
 }
 
-/* The chosen command is a list's chosen row, as in the desktop app's palette. */
+/* The chosen command looks like a list's chosen row. */
 .menu-item[data-highlighted] {
     background: var(--color-accent-muted);
 }

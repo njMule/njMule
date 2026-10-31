@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CSSProperties, ReactNode } from 'react';
-import { ICONS } from '../../../njmule-webapp/src/icons';
+import { ICONS } from '../../../njmule-ui/src/icons';
 
 // The few icons only the site needs, drawn on the apps' grid and stroke: the systems njMule installs on. They show the
 // kind of machine, not a vendor's logo.
@@ -26,7 +26,7 @@ const ALL_ICONS = { ...ICONS, ...SITE_ICONS };
 
 export type IconName = keyof typeof ALL_ICONS;
 
-/** One of njMule's own line icons (the web app's src/icons.ts, drawn as the apps draw them). */
+/** One of njMule's own line icons (njmule-ui's src/icons.ts, drawn as the interface draws them). */
 export default function NjIcon({
     name,
     size = 24,

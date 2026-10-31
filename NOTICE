@@ -36,7 +36,7 @@ Third-party components
 Binary distributions of njMule include the following components. Their
 licenses are compatible with the GNU GPL version 3. The complete list with
 versions is the software bill of materials (CycloneDX) attached to every
-release; ./gradlew :njmule-gui:generateLicenseReport writes it with the
+release; ./gradlew :njmule-app:generateLicenseReport writes it with the
 license of each component to THIRD-PARTY.txt.
 
     SLF4J API                   MIT License

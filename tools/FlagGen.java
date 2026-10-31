@@ -33,7 +33,7 @@ import javax.imageio.ImageIO;
  * desktop app shows them beside clients, and the web interface serves the same files.
  *
  * <p>Usage: {@code java -cp build/tools/jsvg-<version>.jar tools/FlagGen.java <flag-icons>/flags/4x3
- * njmule-gui/src/main/resources/org/njmule/gui/flags}.
+ * njmule-ui/flags}.
  */
 public final class FlagGen {
 

@@ -7,7 +7,7 @@ import { DialogClose, DialogTitle } from 'reka-ui';
 import { t } from '../i18n';
 import Icon from './Icon.vue';
 
-// The head of a dialog, as the desktop app's dialogs in their own window: the title in bold, a cross that closes it.
+// The head of a dialog: the title in bold, a cross that closes it.
 // It goes first inside a DialogContent; the slot holds a title with more than words.
 defineProps<{ title?: string }>();
 </script>

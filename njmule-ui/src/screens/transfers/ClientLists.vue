@@ -24,7 +24,7 @@ const props = defineProps<{ shelf: 'uploads' | 'queue' | 'banned' | 'known' }>()
 const selected = ref<string[]>([]);
 const numeric: ColumnMeta = { numeric: true };
 
-// Words in the order of their characters, as the desktop app sorts them.
+// Words in the order of their characters.
 function byText(a: any, b: any, id: string): number {
     return byName(String(a.getValue(id)), String(b.getValue(id)));
 }
@@ -38,7 +38,7 @@ function leftToRight(text: string) {
     return h('span', { class: 'ellipsis', dir: 'ltr' }, text);
 }
 
-// The date and time of a moment given in seconds, as the desktop app writes them.
+// The date and time of a moment given in seconds.
 function dateTime(seconds: number): string {
     return new Date(seconds * 1000).toLocaleString(language.value, {
         day: '2-digit',

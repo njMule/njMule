@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// The places of the shared files as the desktop app shows them: all of them, the incoming folder, then each folder
-// shared with the subfolders that hold files. Paths are those of the computer njMule runs on, with its separator.
+// The places of the shared files: all of them, the incoming folder, then each folder shared with the subfolders that
+// hold files. Paths are those of the computer njMule runs on, with its separator.
 
 export type PlaceKind = 'all' | 'incoming' | 'folder' | 'subfolder';
 

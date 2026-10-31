@@ -5,8 +5,8 @@ description: How njMule's installers, archives, Synology package and Docker imag
 
 njMule's packages wrap the [native executables](native-images.mdx): the desktop packages carry the
 headless engine `njmule` (which is also the command line) and the desktop app's window
-`njmule-gui`, a Tauri shell ([Building](building.mdx)) that starts the engine beside it; the server
-packages carry the headless engine alone.
+`njmule-gui`, a Tauri shell ([Building](building.mdx#the-desktop-window)) that starts the engine
+beside it; the server packages carry the headless engine alone.
 The [release workflow](releases.mdx) builds every package on its own target system, and is the
 reference for the exact steps; this page explains each format and how to make it on your machine.
 
@@ -58,12 +58,12 @@ What the installer does:
   `--apply-update`, before it opens any window.
 
 To build it, stage the engine, the desktop window and the service host, then run WiX from the root of
-the repository (the window needs Rust, see [Building](building.mdx)):
+the repository (the window needs Rust, see [Building](building.mdx#the-desktop-window)):
 
 ```powershell
-./gradlew :njmule-app:nativeCompile :njmule-desktop:shell :njmule-gui:nativeService
+./gradlew :njmule-app:nativeCompile :njmule-desktop:shell :njmule-app:nativeService
 New-Item -ItemType Directory -Force stage\njmule | Out-Null
-Copy-Item njmule-app\build\native\nativeCompile\*, njmule-desktop\src-tauri\target\release\njmule-gui.exe, njmule-gui\build\launcher\njmule-service.exe stage\njmule
+Copy-Item njmule-app\build\native\nativeCompile\*, njmule-desktop\src-tauri\target\release\njmule-gui.exe, njmule-app\build\launcher\njmule-service.exe stage\njmule
 wix build packaging\windows\njmule.wxs -wx -arch x64 -d Version=1.2.3 -d Gui=yes -d "BinDir=$PWD\stage\njmule" -d "DocDir=$PWD" -o njmule.msi
 ```
 
@@ -188,7 +188,7 @@ docker build -f packaging/docker/Dockerfile -t njmule .
 
 The release workflow compiles nothing in Docker: it hands the executables of its Linux jobs over as
 the build context `binary`, builds both platforms from them, tries the amd64 image (wrong and right
-password, the browser app, an API call, a clean stop with `docker stop`, no password in the log),
+password, the interface, an API call, a clean stop with `docker stop`, no password in the log),
 and pushes both to the GitHub Container Registry for a tag. `packaging/docker/compose.yaml` is the
 Compose file users start from ([Install with Docker](/docs/getting-started/install-docker)).
 

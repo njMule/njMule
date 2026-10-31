@@ -1,6 +1,6 @@
 ---
 title: Dependencies
-description: How njMule picks, pins, locks and verifies its libraries, plugins, Node.js packages and build tools, and how to update them.
+description: How njMule picks, pins, locks and verifies its libraries, plugins, npm packages, Rust crates and build tools, and how to update them.
 ---
 
 Every library njMule uses is pinned to one version, locked, and checked against a known SHA-256
@@ -12,9 +12,9 @@ welcome, and the exact steps after you change a version.
 [`gradle/libs.versions.toml`](https://github.com/njMule/njMule/blob/main/gradle/libs.versions.toml)
 is the version catalog of the whole build:
 
-- `[versions]`: Java (`java = "25"`), the Node.js release of the web app and this site (`nodejs`, an
-  LTS line), the runtime and test libraries, and the build tools (Checkstyle,
-  palantir-java-format, Error Prone, SpotBugs, FindSecBugs, JaCoCo).
+- `[versions]`: Java (`java = "25"`), the Node.js release of the interface, the desktop window's
+  Tauri command line and this site (`nodejs`, an LTS line), the runtime and test libraries, and the
+  build tools (Checkstyle, palantir-java-format, Error Prone, SpotBugs, FindSecBugs, JaCoCo).
 - `[libraries]`: every library, including the Gradle plugins that the convention plugin in
   `build-logic/` applies (Spotless, Error Prone, SpotBugs).
 - `[plugins]`: the other Gradle plugins (GraalVM Native Build Tools, Shadow, CycloneDX, the license
@@ -56,11 +56,9 @@ Two mechanisms make every build resolve exactly the same files:
 - **Dependency verification.** Every downloaded artifact, POMs and Gradle module metadata included,
   is checked against its SHA-256 in
   [`gradle/verification-metadata.xml`](https://github.com/njMule/njMule/blob/main/gradle/verification-metadata.xml).
-  Any difference fails the build. The file lists the OpenJFX jars of all five platforms (Windows,
-  Linux x64 and arm64, macOS x64 and arm64), not only yours: the GUI module resolves them in a
-  configuration of their own for that purpose. It also lists the Node.js archives of the five
-  platforms the web app may be built on, with the checksums Node.js publishes in its
-  `SHASUMS256.txt`.
+  Any difference fails the build. The file also lists the Node.js archives of the five platforms
+  the interface and the site may be built on (Windows x64, Linux x64 and arm64, macOS x64 and
+  arm64), not only yours, with the checksums Node.js publishes in its `SHASUMS256.txt`.
 
 ### After changing a version
 
@@ -71,7 +69,7 @@ When you change `libs.versions.toml`, a plugin version or Gradle itself:
    ```bash
    ./gradlew --no-configuration-cache --refresh-dependencies --write-verification-metadata sha256 \
        --write-locks spotlessCheck :njmule-app:collectReachabilityMetadata \
-       :njmule-gui:generateLicenseReport cyclonedxBom
+       :njmule-app:generateLicenseReport cyclonedxBom
    ```
 
    The tasks in the command make Gradle resolve what a plain build may not: the formatter that
@@ -93,11 +91,11 @@ Dependabot's pull requests change versions without these steps: run the same com
 branch, commit the rewritten files there, and squash-merge the pull request like any other once its
 checks pass.
 
-## Web app and site packages
+## npm packages
 
-The web app (`njmule-webapp`) and this site (`website`) are npm projects inside the Gradle build.
-Gradle downloads the pinned Node.js and runs `npm ci`, which installs exactly what
-`package-lock.json` holds. Their `.npmrc` files set:
+The interface (`njmule-ui`), the desktop window's Tauri command line (`njmule-desktop`) and this site
+(`website`) are npm projects inside the Gradle build. Gradle downloads the pinned Node.js and runs
+`npm ci`, which installs exactly what `package-lock.json` holds. Their `.npmrc` files set:
 
 | Setting | Effect |
 |---|---|
@@ -108,7 +106,16 @@ Gradle downloads the pinned Node.js and runs `npm ci`, which installs exactly wh
 
 To add or update a package, run npm in that folder (with the Node.js Gradle downloaded into its
 `.gradle/nodejs` folder, or your own Node.js 24 or newer), then commit `package.json` and
-`package-lock.json` together.
+`package-lock.json` together. A task that runs `npm ci` empties `node_modules` first: stop a Vite
+development server before you run one.
+
+## Rust crates
+
+The desktop window's shell (`njmule-desktop/src-tauri`) is a Cargo project. Rust itself is pinned by
+`rust-toolchain.toml`, which rustup installs on first use, with `rustfmt` and Clippy. The crates are
+pinned in `Cargo.toml`, the Tauri crates and plugins to exact versions (`=2.12.5`), and locked with
+their checksums in `Cargo.lock`, which the CI enforces with `--locked`. After changing a crate, let
+Cargo rewrite `Cargo.lock` and commit both files together.
 
 ## Dependabot
 
@@ -121,8 +128,9 @@ for updates once a week:
 | GitHub Actions | the workflows, whose actions are pinned by commit hash | `ci(deps)` |
 | Docker | the base images of `packaging/docker`, pinned by digest | `build(deps)` |
 | npm | `website/package-lock.json`, with the Docusaurus packages and the two OpenAPI docs packages grouped | `docs(deps)` |
-
-The web app's npm packages (`njmule-webapp`) are not on that list: update them by hand.
+| npm | `njmule-ui/package-lock.json`, with the Vue, TanStack and Vite/Vitest packages grouped | `chore(deps)` |
+| npm | `njmule-desktop/package-lock.json`, the Tauri command line | `chore(deps)` |
+| Cargo | `njmule-desktop/src-tauri/Cargo.lock`, with the Tauri crates grouped | `chore(deps)` |
 
 The downloads the workflows make outside Gradle (GraalVM, the musl toolchain, nfpm) are pinned too,
 each checked against its SHA-256 in the workflow file.
@@ -140,8 +148,9 @@ When you add third-party code or an asset:
   components of the binary distributions.
 
 The full lists with versions are generated: `THIRD-PARTY.txt` by
-`./gradlew :njmule-gui:generateLicenseReport`, and the web app's `THIRD-PARTY.md` by its Vite build,
-which ships it beside the app. Test-only libraries and build tools are not distributed.
+`./gradlew :njmule-app:generateLicenseReport`, and the interface's `THIRD-PARTY.md` by its Vite
+build, which ships it beside the interface. Test-only libraries and build tools are not
+distributed.
 
 ## Related pages
 

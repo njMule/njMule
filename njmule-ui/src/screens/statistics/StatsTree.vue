@@ -7,9 +7,9 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { type StatsEntry, treeKey, treeRows } from '../../stats';
 import Icon from '../../ui/Icon.vue';
 
-// The statistics as a tree, as the desktop app's: a line is chosen by a click or the arrows, a branch opens or closes
-// by its arrow, a double click or the right and left keys. The branches keep their state while the figures change, as
-// they are kept by their place; the main ones are open the first time.
+// The statistics as a tree: a line is chosen by a click or the arrows, a branch opens or closes by its arrow, a double
+// click or the right and left keys. The branches keep their state while the figures change, as they are kept by their
+// place; the main ones are open the first time.
 const props = defineProps<{ entries: StatsEntry[]; label: string }>();
 
 const opened = ref<Set<string>>(new Set());

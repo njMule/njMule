@@ -3,7 +3,7 @@
 
 import { language, t } from './i18n';
 
-// Sizes, rates and durations as the desktop app writes them, with the units of the language.
+// Sizes, rates and durations with the units of the language.
 
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;
@@ -94,7 +94,7 @@ export function ratio(value: number): string {
     return decimals(value, 2);
 }
 
-/** The hour and minute of {@code time}, on a 24-hour clock as the desktop app writes them: 22:09. */
+/** The hour and minute of {@code time}, on a 24-hour clock: 22:09. */
 export function clock(time: Date): string {
     return time.toLocaleTimeString(language.value, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
@@ -104,8 +104,8 @@ export function shortTime(time: Date): string {
     return time.toLocaleTimeString(language.value, { timeStyle: 'short' });
 }
 
-// The thousands are grouped from four digits on, as the desktop app's figures: languages such as Italian group only
-// from five by default. The value 'always' is newer than the TypeScript library in use.
+// The thousands are grouped from four digits on: languages such as Italian group only from five by default. The value
+// 'always' is newer than the TypeScript library in use.
 const GROUPED = { useGrouping: 'always' } as unknown as Intl.NumberFormatOptions;
 
 export function count(value: number): string {
