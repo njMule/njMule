@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+    automaticScope,
     type ColumnOrder,
     type ColumnSort,
     completePercent,
@@ -12,6 +13,11 @@ import {
     filterCount,
     isMedia,
     kindOrder,
+    lowestMaxSize,
+    MAX_SIZE_MB,
+    NO_FILTERS,
+    optionalExtension,
+    optionalNumber,
     type Known,
     knownOf,
     merged,
@@ -27,30 +33,36 @@ import {
 } from '../search';
 
 describe('the search filters', () => {
-    let filters: Filters = { type: '', extension: '' };
+    let filters: Filters = { ...NO_FILTERS };
     let made = '';
     let counted = 0;
 
     it('should add the sizes asked for to the expression', () => {
-        givenTheFilters({ minMb: 10, maxMb: 700 });
+        givenTheFilters({ minMb: '10', maxMb: '700' });
         whenTheExpressionIsMade('debian netinst');
         thenTheExpressionIs('debian netinst @size>=10m @size<=700m');
     });
 
     it('should leave out a size field typed in and emptied again', () => {
-        givenTheFilters({ minMb: '' as unknown as number });
+        givenTheFilters({ minMb: '' });
         whenTheExpressionIsMade('debian netinst');
         thenTheExpressionIs('debian netinst');
     });
 
-    it('should not count a field emptied again among the filters asked for', () => {
-        givenTheFilters({ availability: '' as unknown as number, extension: 'iso' });
+    it('should add the type and the extension without its dot', () => {
+        givenTheFilters({ type: 'cd', extension: '.iso' });
+        whenTheExpressionIsMade('debian');
+        thenTheExpressionIs('debian @type=cd @ext=iso');
+    });
+
+    it('should count each field typed in among the filters asked for', () => {
+        givenTheFilters({ type: 'video', availability: '0', extension: 'iso' });
         whenTheFiltersAreCounted();
-        thenTheCountIs(1);
+        thenTheCountIs(3);
     });
 
     function givenTheFilters(asked: Partial<Filters>): void {
-        filters = { type: '', extension: '', ...asked };
+        filters = { ...NO_FILTERS, ...asked };
     }
 
     function whenTheExpressionIsMade(words: string): void {
@@ -67,6 +79,86 @@ describe('the search filters', () => {
 
     function thenTheCountIs(expected: number): void {
         expect(counted).toBe(expected);
+    }
+});
+
+describe('the fields of the filters', () => {
+    let valid = false;
+
+    it('should take an empty number field', () => {
+        whenTheNumberIsChecked('', 1, 10);
+        thenItIsValid(true);
+    });
+
+    it('should refuse a number out of its range', () => {
+        whenTheNumberIsChecked('0', 1, 10);
+        thenItIsValid(false);
+    });
+
+    it('should keep the maximum size from going below the minimum', () => {
+        whenTheNumberIsChecked('5', lowestMaxSize('8'), MAX_SIZE_MB);
+        thenItIsValid(false);
+    });
+
+    it('should take an extension with its dot', () => {
+        whenTheExtensionIsChecked('.mkv');
+        thenItIsValid(true);
+    });
+
+    it('should refuse an extension with two dots', () => {
+        whenTheExtensionIsChecked('tar.gz');
+        thenItIsValid(false);
+    });
+
+    function whenTheNumberIsChecked(text: string, min: number, max: number): void {
+        valid = optionalNumber(text, min, max);
+    }
+
+    function whenTheExtensionIsChecked(text: string): void {
+        valid = optionalExtension(text);
+    }
+
+    function thenItIsValid(expected: boolean): void {
+        expect(valid).toBe(expected);
+    }
+});
+
+describe('the network of an automatic search', () => {
+    const SMALL = { users: 100, files: 1000, static: false };
+    const BIG = { users: 50_000, files: 6_000_000, static: false };
+    let scope: string | undefined;
+
+    it('should go to Kad when both networks are connected', () => {
+        whenTheScopeIsPicked(true, true, SMALL, 100);
+        thenItGoesTo('kad');
+    });
+
+    it('should stay on a big server of a short list', () => {
+        whenTheScopeIsPicked(true, true, BIG, 10);
+        thenItGoesTo('server');
+    });
+
+    it('should stay on a static server', () => {
+        whenTheScopeIsPicked(true, true, { ...SMALL, static: true }, 100);
+        thenItGoesTo('server');
+    });
+
+    it('should go nowhere with neither network', () => {
+        whenTheScopeIsPicked(false, false, null, 100);
+        thenItGoesTo(undefined);
+    });
+
+    function whenTheScopeIsPicked(
+        server: boolean,
+        kad: boolean,
+        info: { users: number; files: number; static: boolean } | null,
+        known: number,
+    ): void {
+        scope = automaticScope(server, kad, info, known);
+    }
+
+    function thenItGoesTo(expected: string | undefined): void {
+        expect(scope).toBe(expected);
     }
 });
 

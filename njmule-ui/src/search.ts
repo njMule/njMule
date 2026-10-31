@@ -11,15 +11,22 @@ export type Result = Schemas['SearchResult'];
 export type Scope = Schemas['SearchScope'];
 export type FileType = '' | 'archive' | 'audio' | 'cd' | 'image' | 'program' | 'video' | 'document';
 
-/** What the filters of a search ask for besides its words. */
+/** The filters of a search besides its words, as typed in their fields. */
 export interface Filters {
     type: FileType;
-    minMb?: number;
-    maxMb?: number;
-    availability?: number;
-    complete?: number;
+    minMb: string;
+    maxMb: string;
+    availability: string;
+    complete: string;
     extension: string;
 }
+
+export const NO_FILTERS: Filters = { type: '', minMb: '', maxMb: '', availability: '', complete: '', extension: '' };
+
+/** The largest size a filter takes, in MB, and the most sources. */
+export const MAX_SIZE_MB = 256 * 1024;
+export const MAX_SOURCES = 1_000_000;
+export const MAX_EXTENSION = 10;
 
 /** A search shown in a tab: its title, its words, and its results as the engine gathered them. */
 export interface Search {
@@ -36,28 +43,41 @@ export interface Search {
 /** The searches of the window, kept while it moves between places. */
 export const searches = ref<Search[]>([]);
 
-// A number field asks for something only with a number in it: one typed and emptied again holds an empty text.
-function given(n: number | undefined): n is number {
-    return typeof n === 'number' && Number.isFinite(n);
+/** Whether {@code text} is empty or a whole number from {@code min} to {@code max}. */
+export function optionalNumber(text: string, min: number, max: number): boolean {
+    const n = text.trim();
+    return n === '' || (/^\d+$/.test(n) && Number(n) >= min && Number(n) <= max);
+}
+
+/** The least a maximum size takes: never below the minimum typed. */
+export function lowestMaxSize(minMb: string): number {
+    return minMb.trim() !== '' && optionalNumber(minMb, 0, MAX_SIZE_MB) ? Math.max(1, Number(minMb)) : 1;
+}
+
+/** Whether {@code text} is empty or a file extension of letters and digits, which may start with a dot. */
+export function optionalExtension(text: string): boolean {
+    const ext = text.trim();
+    return ext === '' || /^\.?[\p{L}\p{Nd}]+$/u.test(ext);
 }
 
 /** The words of the search box with the filters as the attributes of the search expression. */
 export function expression(words: string, f: Filters): string {
     let e = words.trim();
+    const number = (text: string) => Number(text.trim());
     if (f.type !== '') {
         e += ` @type=${f.type}`;
     }
-    if (given(f.minMb)) {
-        e += ` @size>=${f.minMb}m`;
+    if (f.minMb.trim() !== '') {
+        e += ` @size>=${number(f.minMb)}m`;
     }
-    if (given(f.maxMb)) {
-        e += ` @size<=${f.maxMb}m`;
+    if (f.maxMb.trim() !== '') {
+        e += ` @size<=${number(f.maxMb)}m`;
     }
-    if (given(f.availability)) {
-        e += ` @sources>=${f.availability}`;
+    if (f.availability.trim() !== '') {
+        e += ` @sources>=${number(f.availability)}`;
     }
-    if (given(f.complete)) {
-        e += ` @complete>=${f.complete}`;
+    if (f.complete.trim() !== '') {
+        e += ` @complete>=${number(f.complete)}`;
     }
     const ext = f.extension.trim();
     if (ext !== '') {
@@ -68,14 +88,38 @@ export function expression(words: string, f: Filters): string {
 
 /** How many of the filters ask for something, for their button. */
 export function filterCount(f: Filters): number {
-    return [
-        f.type !== '',
-        given(f.minMb),
-        given(f.maxMb),
-        given(f.availability),
-        given(f.complete),
-        f.extension.trim() !== '',
-    ].filter((on) => on).length;
+    return (
+        [f.minMb, f.maxMb, f.availability, f.complete, f.extension].filter((v) => v.trim() !== '').length +
+        (f.type === '' ? 0 : 1)
+    );
+}
+
+// A big server is worth more than Kad, but only in a short server list: a long one may be full of fake servers.
+const BIG_SERVER_MIN_USERS = 40_000;
+const BIG_SERVER_MAX_USERS = 2_000_000;
+const BIG_SERVER_MIN_FILES = 5_000_000;
+const SHORT_SERVER_LIST = 40;
+
+/**
+ * Where an automatic search goes: the network connected, and Kad when both are, unless the server is a static one or
+ * a big one in a short list; nowhere with neither.
+ */
+export function automaticScope(
+    serverConnected: boolean,
+    kadConnected: boolean,
+    server: { users: number; files: number; static: boolean } | null,
+    knownServers: number,
+): 'server' | 'kad' | undefined {
+    if (!serverConnected) {
+        return kadConnected ? 'kad' : undefined;
+    }
+    const big =
+        server !== null &&
+        server.users > BIG_SERVER_MIN_USERS &&
+        server.users < BIG_SERVER_MAX_USERS &&
+        server.files > BIG_SERVER_MIN_FILES &&
+        knownServers < SHORT_SERVER_LIST;
+    return !kadConnected || server?.static === true || big ? 'server' : 'kad';
 }
 
 /** The words of an expression, without its attributes, for a tab's title. */

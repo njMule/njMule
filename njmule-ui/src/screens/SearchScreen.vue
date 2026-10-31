@@ -26,9 +26,18 @@ import { count, size } from '../format';
 import { language, t } from '../i18n';
 import { htmlLinks } from '../links';
 import type { IconName } from '../icons';
-import { downloads, preferences, readDownloads, shared as sharedFiles, status } from '../model/engine';
+import {
+    connection,
+    downloads,
+    preferences,
+    readDownloads,
+    servers,
+    shared as sharedFiles,
+    status,
+} from '../model/engine';
 import { searchRequest } from '../places';
 import {
+    automaticScope,
     completePercent,
     completeness,
     expression,
@@ -36,6 +45,13 @@ import {
     hasNames,
     KNOWN,
     kindOrder,
+    lowestMaxSize,
+    MAX_EXTENSION,
+    MAX_SIZE_MB,
+    MAX_SOURCES,
+    NO_FILTERS,
+    optionalExtension,
+    optionalNumber,
     history,
     isMedia,
     knownOf,
@@ -62,6 +78,7 @@ import {
     type Scope,
     type Search,
 } from '../search';
+import { isSearchExpression, MAX_EXPRESSION } from '../search-syntax';
 import { problem } from '../toasts';
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
 import Icon from '../ui/Icon.vue';
@@ -73,7 +90,7 @@ import Tip from '../ui/Tip.vue';
 
 const query = ref('');
 const scope = ref<Scope>('automatic');
-const filters = ref<Filters>({ type: '', extension: '' });
+const filters = ref<Filters>({ ...NO_FILTERS });
 const shownKey = ref(searches.value.at(-1)?.key ?? '');
 const filter = ref('');
 const filterColumn = ref('name');
@@ -90,6 +107,14 @@ const tabElements = new Map<string, HTMLElement>();
 const overflowing = ref(false);
 const past = ref(history());
 let next = 0;
+
+// The number fields of the filters, two by row.
+const NUMBER_FIELDS = [
+    { id: 'minMb', label: 'IDS_SEARCHMINSIZE', max: MAX_SIZE_MB },
+    { id: 'maxMb', label: 'IDS_SEARCHMAXSIZE', max: MAX_SIZE_MB },
+    { id: 'availability', label: 'IDS_SEARCHAVAIL', max: MAX_SOURCES },
+    { id: 'complete', label: 'IDS_COMPLSOURCES', max: MAX_SOURCES },
+] as const;
 
 const SCOPES = computed(() => [
     { value: 'automatic' as const, title: t('IDS_AUTOMATIC') },
@@ -572,14 +597,86 @@ function open(search: Search): void {
     shownKey.value = search.key;
 }
 
+// The search box and the filters are checked as they are typed: each field keeps only what it can take, is marked
+// while it holds no valid value and tells in its tooltip what it takes.
+const CONTROLS = /[\u0000-\u001F\u007F-\u009F]/g;
+const queryValid = computed(() => isSearchExpression(query.value.trim()));
+const numberHint = (min: number, max: number) => t('nj.input.optionalNumber', String(min), String(max));
+const checks = computed(() => {
+    const f = filters.value;
+    const lowest = lowestMaxSize(f.minMb);
+    return {
+        minMb: { valid: optionalNumber(f.minMb, 0, MAX_SIZE_MB), hint: numberHint(0, MAX_SIZE_MB) },
+        // The maximum is never below the minimum, which its hint tells.
+        maxMb: { valid: optionalNumber(f.maxMb, lowest, MAX_SIZE_MB), hint: numberHint(lowest, MAX_SIZE_MB) },
+        availability: { valid: optionalNumber(f.availability, 1, MAX_SOURCES), hint: numberHint(1, MAX_SOURCES) },
+        complete: { valid: optionalNumber(f.complete, 1, MAX_SOURCES), hint: numberHint(1, MAX_SOURCES) },
+        extension: { valid: optionalExtension(f.extension), hint: t('nj.input.extension') },
+    };
+});
+
+watch(query, (typed) => {
+    const kept = typed.replace(CONTROLS, '').substring(0, MAX_EXPRESSION);
+    if (kept !== typed) {
+        query.value = kept;
+    }
+});
+
+watch(
+    filters,
+    (f) => {
+        const digits = (text: string, max: number) => text.replace(/\D/g, '').substring(0, String(max).length);
+        const kept: Filters = {
+            ...f,
+            minMb: digits(f.minMb, MAX_SIZE_MB),
+            maxMb: digits(f.maxMb, MAX_SIZE_MB),
+            availability: digits(f.availability, MAX_SOURCES),
+            complete: digits(f.complete, MAX_SOURCES),
+            extension: f.extension.replace(/[^\p{L}\p{Nd}.]/gu, '').substring(0, MAX_EXTENSION),
+        };
+        if (Object.entries(kept).some(([key, value]) => f[key as keyof Filters] !== value)) {
+            filters.value = kept;
+        }
+    },
+    { deep: true },
+);
+
+// Automatic: the network connected, Kad when both are unless the server is a static or a big one.
+function where(): Exclude<Scope, 'automatic'> | undefined {
+    if (scope.value !== 'automatic') {
+        return scope.value;
+    }
+    return automaticScope(
+        connection.value === 'connected',
+        status.value?.kad?.connected ?? false,
+        status.value?.server ?? null,
+        servers.value.length,
+    );
+}
+
 async function start(): Promise<void> {
     const words = query.value.trim();
     if (words === '') {
         return;
     }
+    if (!queryValid.value) {
+        problem(t('nj.input.search'));
+        return;
+    }
+    const wrong = Object.values(checks.value).find((c) => !c.valid);
+    if (wrong !== undefined) {
+        problem(wrong.hint);
+        return;
+    }
+    const scopeNow = where();
+    if (scopeNow === undefined) {
+        problem(t('IDS_NOTCONNECTEDANY'));
+        return;
+    }
     remember(words);
     past.value = history();
-    await search(expression(words, filters.value), scope.value);
+    query.value = words;
+    await search(expression(words, filters.value), scopeNow);
 }
 
 async function search(e: string, where: Scope): Promise<void> {
@@ -789,18 +886,22 @@ onUnmounted(() => {
 <template>
     <div class="screen">
         <form class="tool-row" @submit.prevent="start">
-            <div class="field query">
-                <input
-                    id="search-query"
-                    v-model="query"
-                    list="search-history"
-                    :placeholder="t('IDS_SEARCH_TEXT')"
-                    :aria-label="t('IDS_SEARCH_TEXT')"
-                />
-                <datalist id="search-history">
-                    <option v-for="h in past" :key="h" :value="h" />
-                </datalist>
-            </div>
+            <Tip :text="t('nj.input.search')">
+                <div class="field query" :class="{ invalid: query !== '' && !queryValid }">
+                    <input
+                        id="search-query"
+                        v-model="query"
+                        list="search-history"
+                        :maxlength="MAX_EXPRESSION"
+                        :placeholder="t('IDS_SEARCH_TEXT')"
+                        :aria-label="t('IDS_SEARCH_TEXT')"
+                        :aria-invalid="query !== '' && !queryValid"
+                    />
+                    <datalist id="search-history">
+                        <option v-for="h in past" :key="h" :value="h" />
+                    </datalist>
+                </div>
+            </Tip>
             <Segments v-model="scope" :items="SCOPES" :label="t('IDS_SEARCH_TEXT')" />
             <PopoverRoot>
                 <PopoverTrigger id="search-parameters" type="button" class="button">
@@ -811,11 +912,7 @@ onUnmounted(() => {
                     <PopoverContent class="menu search-parameters" align="end" :side-offset="8">
                         <div class="popover-head">
                             <strong>{{ t('nj.search.filters') }}</strong>
-                            <button
-                                type="button"
-                                class="button flat small"
-                                @click="filters = { type: '', extension: '' }"
-                            >
+                            <button type="button" class="button flat small" @click="filters = { ...NO_FILTERS }">
                                 <Icon name="REFRESH" />{{ t('IDS_PW_RESET') }}
                             </button>
                         </div>
@@ -834,26 +931,30 @@ onUnmounted(() => {
                             </button>
                         </div>
                         <div class="numbers">
-                            <label
-                                ><span class="field-label">{{ t('IDS_SEARCHMINSIZE') }}</span
-                                ><input v-model.number="filters.minMb" class="field" type="number" min="0"
-                            /></label>
-                            <label
-                                ><span class="field-label">{{ t('IDS_SEARCHMAXSIZE') }}</span
-                                ><input v-model.number="filters.maxMb" class="field" type="number" min="0"
-                            /></label>
-                            <label
-                                ><span class="field-label">{{ t('IDS_SEARCHAVAIL') }}</span
-                                ><input v-model.number="filters.availability" class="field" type="number" min="1"
-                            /></label>
-                            <label
-                                ><span class="field-label">{{ t('IDS_COMPLSOURCES') }}</span
-                                ><input v-model.number="filters.complete" class="field" type="number" min="1"
-                            /></label>
-                            <label class="wide"
-                                ><span class="field-label">{{ t('IDS_SEARCHEXTENTION') }}</span
-                                ><input v-model="filters.extension" class="field" maxlength="10"
-                            /></label>
+                            <label v-for="f in NUMBER_FIELDS" :key="f.id">
+                                <span class="field-label">{{ t(f.label) }}</span>
+                                <Tip :text="checks[f.id].hint">
+                                    <input
+                                        v-model="filters[f.id]"
+                                        class="field"
+                                        inputmode="numeric"
+                                        :maxlength="String(f.max).length"
+                                        :aria-invalid="!checks[f.id].valid"
+                                    />
+                                </Tip>
+                            </label>
+                            <label class="wide">
+                                <span class="field-label">{{ t('IDS_SEARCHEXTENTION') }}</span>
+                                <Tip :text="checks.extension.hint">
+                                    <input
+                                        v-model="filters.extension"
+                                        class="field"
+                                        dir="ltr"
+                                        :maxlength="MAX_EXTENSION"
+                                        :aria-invalid="!checks.extension.valid"
+                                    />
+                                </Tip>
+                            </label>
                         </div>
                         <div class="popover-foot">
                             <span class="muted">{{ t('nj.search.filtersNote') }}</span>
@@ -862,7 +963,7 @@ onUnmounted(() => {
                     </PopoverContent>
                 </PopoverPortal>
             </PopoverRoot>
-            <button type="submit" class="button accent" :disabled="query.trim() === ''">
+            <button type="submit" class="button accent" :disabled="!queryValid">
                 <Icon name="SEARCH" />{{ t('nj.search.start') }}
             </button>
         </form>
@@ -1126,6 +1227,12 @@ onUnmounted(() => {
 .query {
     flex: 1 1 320px;
     min-width: 120px;
+}
+
+/* A field holding no valid value, as the desktop app marks it. */
+.field.invalid,
+.field[aria-invalid='true'] {
+    border-color: var(--color-danger-emphasis);
 }
 
 .segment-count {
