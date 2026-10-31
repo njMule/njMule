@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { describe, expect, it } from 'vitest';
-import { folderTakes, type PathKind } from '../screens/settings/folders';
+import { connect } from '../api/client';
+import type { Platform } from '../platform';
+import { browsesHere, folderTakes, type PathKind } from '../screens/settings/folders';
 import { checkRules } from '../screens/settings/inputs';
+import type { Kind } from '../settings';
 
 const t = (key: string) => key;
 
@@ -64,5 +67,52 @@ describe('a folder option', () => {
 
     function thenItTakesIt(expected: boolean): void {
         expect(takes).toBe(expected);
+    }
+});
+
+describe('the Browse button of a path', () => {
+    const HERE = 'http://127.0.0.1:4711/api/v1';
+    const ELSEWHERE = 'http://nas.local:4711/api/v1';
+    let platform: Platform;
+    let browses = false;
+
+    it.each<Kind>(['folder', 'command', 'sound', 'program'])(
+        'should choose a %s in the desktop window on the engine computer',
+        (kind) => {
+            givenAWindow(true, HERE);
+            whenAskedWhetherItBrowses(kind);
+            thenItBrowses(true);
+        },
+    );
+
+    it.each<Kind>(['folder', 'command'])('should leave a %s of another computer typed', (kind) => {
+        givenAWindow(true, ELSEWHERE);
+        whenAskedWhetherItBrowses(kind);
+        thenItBrowses(false);
+    });
+
+    it.each<Kind>(['sound', 'program'])('should choose a %s of this computer in a window on another', (kind) => {
+        givenAWindow(true, ELSEWHERE);
+        whenAskedWhetherItBrowses(kind);
+        thenItBrowses(true);
+    });
+
+    it.each<Kind>(['folder', 'sound'])('should leave a %s typed in a browser', (kind) => {
+        givenAWindow(false, HERE);
+        whenAskedWhetherItBrowses(kind);
+        thenItBrowses(false);
+    });
+
+    function givenAWindow(desktop: boolean, url: string): void {
+        platform = { desktop } as Platform;
+        connect({ url, token: 'secret' }, () => {});
+    }
+
+    function whenAskedWhetherItBrowses(kind: Kind): void {
+        browses = browsesHere(kind, platform);
+    }
+
+    function thenItBrowses(expected: boolean): void {
+        expect(browses).toBe(expected);
     }
 });
