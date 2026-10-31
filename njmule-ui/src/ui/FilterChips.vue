@@ -3,16 +3,19 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts" generic="V extends string">
+import { moveAlong } from './toggles';
+
 // Rounded chips that narrow a list, each with how many rows it keeps; one is chosen at a time.
 defineProps<{ items: { value: V; title: string; count: number }[]; label: string }>();
 const value = defineModel<V>({ required: true });
 </script>
 
 <template>
-    <div class="filter-chips" role="radiogroup" :aria-label="label">
+    <div class="filter-chips" role="radiogroup" :aria-label="label" @keydown="moveAlong">
         <button
             v-for="item in items"
             :key="item.value"
+            type="button"
             class="filter-chip"
             role="radio"
             :aria-checked="value === item.value"

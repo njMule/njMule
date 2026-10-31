@@ -3,13 +3,15 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts" generic="V extends string">
+import { moveAlong } from './toggles';
+
 // One of a few lists or views, chosen by joined buttons that tell how many rows each has.
 defineProps<{ items: { value: V; title: string; count?: number }[]; label: string }>();
 const value = defineModel<V>({ required: true });
 </script>
 
 <template>
-    <div class="segments" role="tablist" :aria-label="label">
+    <div class="segments" role="tablist" :aria-label="label" @keydown="moveAlong">
         <button
             v-for="item in items"
             :key="item.value"
