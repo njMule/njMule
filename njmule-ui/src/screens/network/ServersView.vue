@@ -147,6 +147,14 @@ function byFlag(flag: (s: Server) => boolean) {
 const numeric: ColumnMeta = { numeric: true };
 
 const columns: ColumnDef<any, Server, any>[] = [
+    // First its flag and code, as the clients': known once the countries are shown.
+    {
+        id: 'country',
+        header: t('nj.clients.country'),
+        accessorFn: (s: Server) => s.country ?? '',
+        size: 70,
+        cell: ({ getValue }: any) => h(Country, { code: getValue() as string }),
+    },
     {
         id: 'name',
         header: t('IDS_SL_SERVERNAME'),
@@ -155,14 +163,6 @@ const columns: ColumnDef<any, Server, any>[] = [
         cell: words('auto'),
     },
     { id: 'address', header: t('IDS_IP'), accessorFn: (s: Server) => s.address, size: 150, cell: words('ltr') },
-    // Its flag and code, as the clients': known once the countries are shown.
-    {
-        id: 'country',
-        header: t('nj.clients.country'),
-        accessorFn: (s: Server) => s.country ?? '',
-        size: 70,
-        cell: ({ getValue }: any) => h(Country, { code: getValue() as string }),
-    },
     {
         id: 'description',
         header: t('IDS_DESCRIPTION'),
