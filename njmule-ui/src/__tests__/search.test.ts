@@ -2,7 +2,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { describe, expect, it } from 'vitest';
-import { expression, type Filters, filterCount, merged, type Result, words } from '../search';
+import {
+    completePercent,
+    completeness,
+    expression,
+    type Filters,
+    filterCount,
+    isMedia,
+    type Known,
+    knownOf,
+    merged,
+    type Ours,
+    type Result,
+    tone,
+    type Tone,
+    words,
+} from '../search';
 
 describe('the search filters', () => {
     let filters: Filters = { type: '', extension: '' };
@@ -110,5 +125,133 @@ describe('the title of a search', () => {
 
     function thenTheTitleIs(expected: string): void {
         expect(title).toBe(expected);
+    }
+});
+
+describe('the complete sources of a result', () => {
+    let given = result('A');
+    let shown = '';
+    let percent = 0;
+
+    it('should show the share of the sources with the whole file', () => {
+        givenTheResult({ sources: 3, completeSources: 2 });
+        whenItIsShown();
+        thenItShows('66%', 66);
+    });
+
+    it('should tell a file of one part whole where the network does not count', () => {
+        givenTheResult({ size: 9_000_000, completeSources: null });
+        whenItIsShown();
+        thenItShows('Yes', 100);
+    });
+
+    it('should not know a bigger file the network does not count', () => {
+        givenTheResult({ size: 20_000_000, completeSources: null });
+        whenItIsShown();
+        thenItShows('?', -1);
+    });
+
+    it('should tell a file whole with complete sources but none counted', () => {
+        givenTheResult({ sources: 0, completeSources: 1 });
+        whenItIsShown();
+        thenItShows('Yes', 0);
+    });
+
+    function givenTheResult(fields: Partial<Result>): void {
+        given = result('A', fields);
+    }
+
+    function whenItIsShown(): void {
+        shown = completeness(given, 'Yes');
+        percent = completePercent(given);
+    }
+
+    function thenItShows(text: string, share: number): void {
+        expect(shown).toBe(text);
+        expect(percent).toBe(share);
+    }
+});
+
+describe('what a result is to us', () => {
+    const OURS: Ours = { downloading: new Set(['D'.padEnd(32, '0')]), shared: new Set(['S'.padEnd(32, '0')]) };
+    let given = result('A');
+    let state: Known | undefined;
+
+    it('should tell a file being downloaded before its spam mark', () => {
+        givenTheResult(result('D', { spam: true }));
+        whenWhatItIsIsTold();
+        thenItIs('downloading', 'ours');
+    });
+
+    it('should tell a shared file', () => {
+        givenTheResult(result('S'));
+        whenWhatItIsIsTold();
+        thenItIs('shared', 'ours');
+    });
+
+    it('should tell a file downloaded before', () => {
+        givenTheResult(result('A', { known: 'downloaded', spam: true }));
+        whenWhatItIsIsTold();
+        thenItIs('downloaded', 'known');
+    });
+
+    it('should tell spam', () => {
+        givenTheResult(result('A', { spam: true }));
+        whenWhatItIsIsTold();
+        thenItIs('spam', 'spam');
+    });
+
+    it('should leave a new result unmarked', () => {
+        givenTheResult(result('A'));
+        whenWhatItIsIsTold();
+        thenItIs(undefined, 'fresh');
+    });
+
+    function givenTheResult(r: Result): void {
+        given = r;
+    }
+
+    function whenWhatItIsIsTold(): void {
+        state = knownOf(given, OURS);
+    }
+
+    function thenItIs(expected: Known | undefined, colour: Tone): void {
+        expect(state).toBe(expected);
+        expect(tone(state)).toBe(colour);
+    }
+});
+
+describe('the media columns', () => {
+    let given = result('A');
+    let media = false;
+
+    it('should show for a result of the audio type', () => {
+        givenTheResult({ type: 'Audio' });
+        whenItIsChecked();
+        thenItIsMedia(true);
+    });
+
+    it('should show for a result with media details', () => {
+        givenTheResult({ type: 'Pro', media: { artist: 'x', album: '', title: '', length: 0, bitrate: 0, codec: '' } });
+        whenItIsChecked();
+        thenItIsMedia(true);
+    });
+
+    it('should not show for a program', () => {
+        givenTheResult({ type: 'Pro' });
+        whenItIsChecked();
+        thenItIsMedia(false);
+    });
+
+    function givenTheResult(fields: Partial<Result>): void {
+        given = result('A', fields);
+    }
+
+    function whenItIsChecked(): void {
+        media = isMedia(given);
+    }
+
+    function thenItIsMedia(expected: boolean): void {
+        expect(media).toBe(expected);
     }
 });

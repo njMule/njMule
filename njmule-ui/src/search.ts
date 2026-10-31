@@ -109,12 +109,32 @@ export function link(r: Pick<Result, 'name' | 'size' | 'hash'>): string {
     return fileLink(r.name, r.size, r.hash);
 }
 
-/** How many sources have the whole file, as a percentage of all; unknown where the network does not tell. */
-export function completeness(r: Pick<Result, 'sources' | 'completeSources'>): string {
+// The size of a part: a file of one part is whole wherever it is shared.
+const PART_SIZE = 9_728_000;
+
+/** The share of a result's sources with the whole file, in percent; -1 where the network does not tell (Kad). */
+export function completePercent(r: Pick<Result, 'size' | 'sources' | 'completeSources'>): number {
     if (r.completeSources === null) {
-        return '?';
+        return r.size <= PART_SIZE ? 100 : -1;
     }
-    return r.sources > 0 ? `${Math.round((Math.min(r.completeSources, r.sources) * 100) / r.sources)}%` : '0%';
+    return r.sources <= 0 ? 0 : Math.trunc((100 * r.completeSources) / r.sources);
+}
+
+/** The share of complete sources as shown: a percentage, "?" when unknown, or {@code yes} when whole without a count. */
+export function completeness(r: Pick<Result, 'size' | 'sources' | 'completeSources'>, yes: string): string {
+    if (r.completeSources === null) {
+        return r.size <= PART_SIZE ? yes : '?';
+    }
+    if (r.completeSources > 0) {
+        return r.sources > 0 ? `${completePercent(r)}%` : yes;
+    }
+    return '0%';
+}
+
+/** Whether a result is a song or a film: its type says so, or it has media details. */
+export function isMedia(r: Pick<Result, 'type' | 'media'>): boolean {
+    const type = (r.type ?? '').toLowerCase();
+    return type === 'audio' || type === 'video' || r.media !== undefined;
 }
 
 /** A playing time as 1:02:03 or 3:25. */
@@ -125,17 +145,47 @@ export function playingTime(seconds: number): string {
     return s >= 3600 ? `${Math.floor(s / 3600)}:${rest}` : `${Math.floor(s / 60)}:${two(s % 60)}`;
 }
 
+/** What we did or do with a result's file, in the order the states go when sorted; spam last. */
+export const KNOWN = ['downloading', 'shared', 'downloaded', 'cancelled', 'spam'] as const;
+export type Known = (typeof KNOWN)[number];
+
+/** The files of ours now, by hash in capitals: those downloading and those shared. */
+export interface Ours {
+    downloading: Set<string>;
+    shared: Set<string>;
+}
+
+/** What a result is to us: what we did with its file tells more than a spam mark. */
+export function knownOf(r: Pick<Result, 'hash' | 'known' | 'spam'>, ours: Ours): Known | undefined {
+    const hash = r.hash.toUpperCase();
+    if (ours.downloading.has(hash) || r.known === 'downloading') {
+        return 'downloading';
+    }
+    if (ours.shared.has(hash) || r.known === 'shared') {
+        return 'shared';
+    }
+    if (r.known === 'downloaded' || r.known === 'cancelled') {
+        return r.known;
+    }
+    return r.spam ? 'spam' : undefined;
+}
+
 /** What a result is to us, which tells its colour: ours already, known from before, spam, or new. */
 export type Tone = 'ours' | 'known' | 'spam' | 'fresh';
 
-export function tone(r: Pick<Result, 'spam' | 'known'>, downloading: boolean): Tone {
-    if (r.spam) {
-        return 'spam';
+export function tone(known: Known | undefined): Tone {
+    switch (known) {
+        case 'downloading':
+        case 'shared':
+            return 'ours';
+        case 'downloaded':
+        case 'cancelled':
+            return 'known';
+        case 'spam':
+            return 'spam';
+        default:
+            return 'fresh';
     }
-    if (downloading || r.known === 'downloading' || r.known === 'shared') {
-        return 'ours';
-    }
-    return r.known === 'downloaded' || r.known === 'cancelled' ? 'known' : 'fresh';
 }
 
 /** How far a new result's colour goes from the text's towards the accent's: one source or none keeps the text's. */

@@ -20,18 +20,22 @@ import {
     PopoverRoot,
     PopoverTrigger,
 } from 'reka-ui';
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch, type VNode } from 'vue';
 import { answer, api, ApiError } from '../api/client';
 import { count, size } from '../format';
 import { t } from '../i18n';
 import { htmlLinks } from '../links';
-import { downloads, preferences, readDownloads } from '../model/engine';
+import type { IconName } from '../icons';
+import { downloads, preferences, readDownloads, shared as sharedFiles } from '../model/engine';
 import { searchRequest } from '../places';
 import {
+    completePercent,
     completeness,
     expression,
     filterCount,
     history,
+    isMedia,
+    knownOf,
     link,
     merged,
     narrowed,
@@ -44,6 +48,8 @@ import {
     words,
     type FileType,
     type Filters,
+    type Known,
+    type Ours,
     type Result,
     type ResultRow,
     type Scope,
@@ -95,7 +101,11 @@ const TYPES: { value: FileType; key: string }[] = [
 ];
 
 const shown = computed(() => searches.value.find((s) => s.key === shownKey.value));
-const downloading = computed(() => new Set(downloads.value.map((d) => d.hash.toUpperCase())));
+// The files of ours now: what a result is to us follows them as they come and go.
+const ours = computed<Ours>(() => ({
+    downloading: new Set(downloads.value.map((d) => d.hash.toUpperCase())),
+    shared: new Set(sharedFiles.value.map((f) => f.hash.toUpperCase())),
+}));
 
 // The text of each column the filter can look in.
 const TEXTS: Record<string, { key: string; text: (r: Result) => string }> = {
@@ -134,97 +144,201 @@ const chosen = computed(() => {
 });
 const running = computed(() => searches.value.filter((s) => s.running).length);
 
-const KNOWN: Record<NonNullable<Result['known']> | 'spam', string> = {
-    downloading: 'IDS_DOWNLOADING',
-    shared: 'IDS_SHARED',
-    downloaded: 'IDS_DOWNLOADED',
-    cancelled: 'IDS_CANCELLED',
-    spam: 'IDS_SPAM',
+// What a result is to us in words, on a chip of its tone with an icon of its own: the colour is never the only cue.
+const STATES: Record<Known, { key: string; icon: IconName; tone: string }> = {
+    downloading: { key: 'IDS_DOWNLOADING', icon: 'DOWNLOAD', tone: 'accent' },
+    shared: { key: 'IDS_SHARED', icon: 'SHARED', tone: 'success' },
+    downloaded: { key: 'IDS_DOWNLOADED', icon: 'CHECK_CIRCLE', tone: 'neutral' },
+    cancelled: { key: 'IDS_CANCELLED', icon: 'BLOCK', tone: 'neutral' },
+    spam: { key: 'IDS_SPAM', icon: 'SPAM', tone: 'warning' },
 };
 
-function knownText(r: Result): string {
-    if (downloading.value.has(r.hash.toUpperCase())) {
-        return t(KNOWN.downloading);
-    }
-    return r.known !== undefined ? t(KNOWN[r.known]) : r.spam ? t(KNOWN.spam) : '';
+function known(r: Result): Known | undefined {
+    return knownOf(r, ours.value);
 }
 
-function hasMedia(s: Search): boolean {
-    return s.results.some((r) => r.media !== undefined);
+// Names and media texts may be in any language: each reads in the direction of its first letter. Figures, hashes and
+// codecs read left to right in every language; both keep to the side where the layout starts.
+function ownDirection(text: string): VNode {
+    return h('span', { dir: 'auto' }, text);
 }
 
-function columns(media: boolean): ColumnDef<any, ResultRow, any>[] {
-    const all: ColumnDef<any, ResultRow, any>[] = [
+function leftToRight(text: string): VNode {
+    return h('span', { dir: 'ltr' }, text);
+}
+
+// The columns of the songs and films, shown while a list holds some until its column menu shows or hides one.
+const MEDIA = ['artist', 'album', 'title', 'length', 'bitrate', 'codec'];
+const media: ColumnMeta = { hidden: true };
+
+function columns(): ColumnDef<any, ResultRow, any>[] {
+    return [
         {
             id: 'name',
             header: t('IDS_DL_FILENAME'),
             accessorFn: (r: ResultRow) => r.result.name,
             size: 380,
             minSize: 100,
+            cell: ({ getValue }: any) => ownDirection(getValue()),
         },
         {
             id: 'size',
             header: t('IDS_DL_SIZE'),
             accessorFn: (r: ResultRow) => r.result.size,
             size: 90,
-            cell: ({ getValue }: any) => size(getValue()),
+            cell: ({ getValue }: any) => leftToRight(size(getValue())),
         },
-        { id: 'sources', header: t('IDS_SEARCHAVAIL'), accessorFn: (r: ResultRow) => r.result.sources, size: 90 },
+        {
+            id: 'sources',
+            header: t('IDS_SEARCHAVAIL'),
+            accessorFn: (r: ResultRow) => r.result.sources,
+            size: 90,
+            cell: ({ getValue }: any) => leftToRight(String(getValue())),
+        },
         {
             id: 'complete',
             header: t('IDS_COMPLETE'),
-            accessorFn: (r: ResultRow) => (r.result.completeSources ?? -1) / Math.max(1, r.result.sources),
+            accessorFn: (r: ResultRow) => completePercent(r.result),
             size: 90,
-            cell: ({ row }: any) => completeness((row.original as ResultRow).result),
+            cell: ({ row }: any) => leftToRight(completeness((row.original as ResultRow).result, t('IDS_YES'))),
         },
-        { id: 'type', header: t('nj.search.type'), accessorFn: (r: ResultRow) => r.result.type ?? '', size: 90 },
-        { id: 'known', header: t('nj.search.known'), accessorFn: (r: ResultRow) => knownText(r.result), size: 150 },
+        {
+            id: 'type',
+            header: t('nj.search.type'),
+            accessorFn: (r: ResultRow) => r.result.type ?? '',
+            size: 90,
+            cell: ({ getValue }: any) => leftToRight(getValue()),
+        },
+        {
+            id: 'known',
+            header: t('nj.search.known'),
+            accessorFn: (r: ResultRow) => known(r.result) ?? '',
+            size: 150,
+            cell: ({ getValue }: any) => {
+                const state = STATES[getValue() as Known];
+                return state === undefined
+                    ? ''
+                    : h('span', { class: ['state-chip', state.tone] }, [
+                          h(Icon, { name: state.icon }),
+                          h('span', { class: 'ellipsis' }, t(state.key)),
+                      ]);
+            },
+        },
         {
             id: 'hash',
             header: t('IDS_FILEID'),
             accessorFn: (r: ResultRow) => r.result.hash,
             size: 220,
             meta: { hidden: true } satisfies ColumnMeta,
+            cell: ({ getValue }: any) => leftToRight(getValue()),
         },
-    ];
-    if (!media) {
-        return all;
-    }
-    return [
-        ...all,
         {
             id: 'artist',
             header: t('IDS_ARTIST'),
             accessorFn: (r: ResultRow) => r.result.media?.artist ?? '',
             size: 100,
+            meta: media,
+            cell: ({ getValue }: any) => ownDirection(getValue()),
         },
-        { id: 'album', header: t('IDS_ALBUM'), accessorFn: (r: ResultRow) => r.result.media?.album ?? '', size: 100 },
-        { id: 'title', header: t('IDS_TITLE'), accessorFn: (r: ResultRow) => r.result.media?.title ?? '', size: 100 },
+        {
+            id: 'album',
+            header: t('IDS_ALBUM'),
+            accessorFn: (r: ResultRow) => r.result.media?.album ?? '',
+            size: 100,
+            meta: media,
+            cell: ({ getValue }: any) => ownDirection(getValue()),
+        },
+        {
+            id: 'title',
+            header: t('IDS_TITLE'),
+            accessorFn: (r: ResultRow) => r.result.media?.title ?? '',
+            size: 100,
+            meta: media,
+            cell: ({ getValue }: any) => ownDirection(getValue()),
+        },
         {
             id: 'length',
             header: t('IDS_LENGTH'),
             accessorFn: (r: ResultRow) => r.result.media?.length ?? 0,
             size: 60,
-            cell: ({ getValue }: any) => ((getValue() as number) === 0 ? '' : playingTime(getValue())),
+            meta: media,
+            cell: ({ getValue }: any) => leftToRight((getValue() as number) === 0 ? '' : playingTime(getValue())),
         },
         {
             id: 'bitrate',
             header: t('IDS_BITRATE'),
             accessorFn: (r: ResultRow) => r.result.media?.bitrate ?? 0,
             size: 80,
+            meta: media,
             cell: ({ getValue }: any) =>
-                (getValue() as number) === 0 ? '' : `${count(getValue())} ${t('IDS_KBITSSEC')}`,
+                leftToRight((getValue() as number) === 0 ? '' : `${count(getValue())} ${t('IDS_KBITSSEC')}`),
         },
-        { id: 'codec', header: t('IDS_CODEC'), accessorFn: (r: ResultRow) => r.result.media?.codec ?? '', size: 60 },
+        {
+            id: 'codec',
+            header: t('IDS_CODEC'),
+            accessorFn: (r: ResultRow) => r.result.media?.codec ?? '',
+            size: 60,
+            meta: media,
+            cell: ({ getValue }: any) => leftToRight(getValue()),
+        },
     ];
 }
+
+/** What the screen reaches of a tab's table: its columns, through which the media columns are shown or hidden. */
+interface TableHandle {
+    visibleColumns: () => any[];
+}
+
+const tables = new Map<string, TableHandle>();
+const followed = new WeakSet<TableHandle>();
+// For each tab: the media columns' visibility set last by the results, until the column menu chose otherwise.
+const mediaShown = new Map<string, { set: boolean | null; chosen: boolean }>();
+
+function keepTable(s: Search, table: unknown): void {
+    if (table !== null && typeof (table as TableHandle).visibleColumns === 'function') {
+        tables.set(s.key, table as TableHandle);
+        // A function ref comes again at each update: a table follows its results from the first time only.
+        if (!followed.has(table as TableHandle)) {
+            followed.add(table as TableHandle);
+            void nextTick(() => followMedia(s));
+        }
+    } else {
+        tables.delete(s.key);
+    }
+}
+
+// The media columns of a list show while it holds songs or films, until its column menu shows or hides one of them.
+function followMedia(s: Search): void {
+    const state = mediaShown.get(s.key) ?? { set: null, chosen: false };
+    mediaShown.set(s.key, state);
+    const table = tables.get(s.key)?.visibleColumns()[0]?.table;
+    if (state.chosen || table === undefined) {
+        return;
+    }
+    const all = MEDIA.flatMap((id) => table.getColumn(id) ?? []);
+    if (state.set !== null && all.some((c: any) => c.getIsVisible() !== state.set)) {
+        state.chosen = true;
+        return;
+    }
+    const wanted = s.results.some(isMedia);
+    for (const c of all) {
+        if (c.getIsVisible() !== wanted) {
+            c.toggleVisibility(wanted);
+        }
+    }
+    state.set = wanted;
+}
+
+watch(
+    () => searches.value.map((s) => s.results),
+    () => searches.value.forEach(followMedia),
+);
 
 // Ours already in red, known from before in green, spam muted; a new result from the text's colour towards the
 // accent's as it has more sources. A file being downloaded stands out in bold.
 function rowClass(row: ResultRow): string[] {
-    const r = row.result;
-    const ours = downloading.value.has(r.hash.toUpperCase());
-    return [`result-${tone(r, ours)}`, ours || r.known === 'downloading' ? 'result-downloading' : ''];
+    const k = known(row.result);
+    return [`result-${tone(k)}`, k === 'downloading' ? 'result-downloading' : ''];
 }
 
 function rowStyle(row: ResultRow): Record<string, string> {
@@ -724,12 +838,12 @@ onUnmounted(() => {
                     role="tabpanel"
                 >
                     <DataTable
-                        :key="hasMedia(s) ? 'media' : 'plain'"
+                        :ref="(table) => keepTable(s, table)"
                         :selected="selection(s.key)"
                         class="search-results"
                         name="search"
                         :rows="visibleByTab[s.key] ?? []"
-                        :columns="columns(hasMedia(s))"
+                        :columns="columns()"
                         :row-id="(r: ResultRow) => r.id"
                         :row-class="rowClass"
                         :row-style="rowStyle"
