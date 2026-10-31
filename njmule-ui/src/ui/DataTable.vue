@@ -34,8 +34,8 @@ import {
     DropdownMenuRoot,
     DropdownMenuTrigger,
 } from 'reka-ui';
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { t } from '../i18n';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { language, t } from '../i18n';
 import Icon from './Icon.vue';
 
 // A table as the desktop app's: rows of 32 px drawn only where they show, sorted by a click on a header (ascending
@@ -177,8 +177,10 @@ const room = ref(0);
 const widths = computed(() => {
     const columns = (table as any).getVisibleLeafColumns() as any[];
     const least = (c: any): number => c.columnDef.minSize ?? 24;
+    // A column the user never sized is at least as wide as its header, as the desktop app sizes it at first.
+    const start = (c: any): number => (c.id in sizing.value ? 0 : (headerNeeds.value[c.id] ?? 0));
     const out = new Map<string, number>(
-        columns.map((c) => [c.id as string, Math.max(least(c), c.getSize() as number)]),
+        columns.map((c) => [c.id as string, Math.max(least(c), c.getSize() as number, start(c))]),
     );
     if (props.fixedWidths || room.value <= 0 || columns.length === 0) {
         return out;
@@ -200,6 +202,23 @@ const widths = computed(() => {
 });
 const width = computed(() => [...widths.value.values()].reduce((sum, w) => sum + w, 0));
 const header = ref<HTMLElement | null>(null);
+// What each header's words take, with the cell's padding and the room of the sort mark.
+const headerNeeds = ref<Record<string, number>>({});
+const HEADER_ROOM = 16 + 14;
+
+function measureHeaders(): void {
+    const needs: Record<string, number> = {};
+    for (const words of header.value?.querySelectorAll<HTMLElement>('[data-column] .header-words') ?? []) {
+        const id = words.closest<HTMLElement>('[data-column]')?.dataset.column;
+        if (id) {
+            needs[id] = Math.ceil(words.scrollWidth) + HEADER_ROOM;
+        }
+    }
+    headerNeeds.value = needs;
+}
+
+// Other words, other widths.
+watch(language, () => void nextTick(measureHeaders));
 
 function columnWidth(column: any): number {
     return widths.value.get(column.id as string) ?? (column.getSize() as number);
@@ -211,6 +230,7 @@ function measure(): void {
         gutter.value = s.offsetWidth - s.clientWidth;
         room.value = s.clientWidth - Math.max(0, MENU_ROOM - gutter.value);
     }
+    measureHeaders();
 }
 
 const observer = new ResizeObserver(measure);
@@ -257,7 +277,7 @@ function fit(column: any): void {
         ...(scroller.value?.querySelectorAll<HTMLElement>(`[data-column="${id}"] .cell-content`) ?? []),
     ];
     // The cells' padding, and the header's room for its sort mark.
-    const need = Math.max(0, ...contents.map((c) => c.scrollWidth)) + 16 + 14;
+    const need = Math.max(0, ...contents.map((c) => c.scrollWidth)) + HEADER_ROOM;
     sizing.value = { ...sizing.value, [column.id]: Math.max(column.columnDef.minSize ?? 24, Math.ceil(need)) };
 }
 
