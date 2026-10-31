@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { Schemas } from './api/client';
 import { count } from './format';
 import { format, t } from './i18n';
+import type { IconName } from './icons';
 import type { Connection, Server, Status } from './model/engine';
 
 // The networks' state in words, as the network's control, its place and the status strip tell it.
@@ -185,4 +187,61 @@ export function networkCards(
         ],
     };
     return { ed2k, kad, ports };
+}
+
+export type PortTest = Schemas['PortTest'];
+
+/** What a test of the ports found of one thing: its kind, which gives the icon and its tone, and its words. */
+export interface PortLine {
+    kind: 'open' | 'closed' | 'testing' | 'unknown' | 'warning' | 'off';
+    icon: IconName;
+    text: string;
+}
+
+const PORT_ICONS: Record<PortLine['kind'], IconName> = {
+    open: 'CHECK_CIRCLE',
+    closed: 'BLOCK',
+    testing: 'HOURGLASS',
+    unknown: 'HELP',
+    warning: 'WARNING',
+    off: 'REMOVE_CIRCLE',
+};
+
+const REACH: Record<PortTest['tcp'], string> = {
+    testing: 'nj.ports.reach.TESTING',
+    open: 'nj.ports.reach.OPEN',
+    closed: 'nj.ports.reach.CLOSED',
+    unknown: 'nj.ports.reach.UNKNOWN',
+};
+
+function portLine(kind: PortLine['kind'], text: string): PortLine {
+    return { kind, icon: PORT_ICONS[kind], text };
+}
+
+/**
+ * What {@code test} found as far as it went: the router's answer through UPnP, then whether others reach the TCP and
+ * the UDP port; Kad's slow UDP test says so while it runs.
+ */
+export function portLines(test: PortTest): PortLine[] {
+    const forwarding =
+        test.forwarding === 'off'
+            ? 'off'
+            : test.forwarding === 'asking'
+              ? 'testing'
+              : test.forwarding === 'forwarded'
+                ? 'open'
+                : 'warning';
+    const udp =
+        test.udpPort === 0
+            ? portLine('off', t('nj.ports.noKad'))
+            : portLine(
+                  test.udp,
+                  t(REACH[test.udp], 'UDP', String(test.udpPort)) +
+                      (test.udp === 'testing' ? ` ${t('nj.ports.udpSlow')}` : ''),
+              );
+    return [
+        portLine(forwarding, t(FORWARDING[test.forwarding], test.router)),
+        portLine(test.tcp, t(REACH[test.tcp], 'TCP', String(test.tcpPort))),
+        udp,
+    ];
 }

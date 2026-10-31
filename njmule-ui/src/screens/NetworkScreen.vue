@@ -3,15 +3,16 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui';
-import { computed, ref } from 'vue';
-import { answer, api, type Schemas } from '../api/client';
+import { PopoverAnchor, PopoverContent, PopoverPortal, PopoverRoot } from 'reka-ui';
+import { computed, nextTick, ref } from 'vue';
+import { answer, api } from '../api/client';
 import { t } from '../i18n';
 import { connection, preferences, serverName, status } from '../model/engine';
 import { networkCards, networkWords } from '../network';
 import { current, networkPart } from '../places';
 import { problem } from '../toasts';
 import Icon from '../ui/Icon.vue';
+import PortTestPane from '../ui/PortTestPane.vue';
 import Tip from '../ui/Tip.vue';
 import KadView from './network/KadView.vue';
 import LogView from './network/LogView.vue';
@@ -24,7 +25,8 @@ const emit = defineEmits<{ ed2k: []; kad: [] }>();
 
 const cards = computed(() => networkCards(connection.value, status.value, serverName.value, preferences.value));
 const words = computed(() => networkWords(connection.value, status.value, serverName.value));
-const test = ref<Schemas['PortTest'] | null>(null);
+const testShown = ref(false);
+const portTest = ref<InstanceType<typeof PortTestPane> | null>(null);
 
 const PARTS = [
     { value: 'servers' as const, key: 'IDS_EM_SERVER', icon: 'SERVER' as const },
@@ -40,29 +42,13 @@ async function recheck(): Promise<void> {
     }
 }
 
-// The test of the ports runs a while: its outcome is read until it is done.
+// The test of the ports in a popup under its button, its outcomes coming in as they are known; the button shows it
+// again and tests anew, never closes it.
 async function testPorts(): Promise<void> {
-    try {
-        test.value = await answer(api().POST('/ports/test'));
-        while (test.value !== null && !test.value.done) {
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            test.value = await answer(api().GET('/ports/test'));
-        }
-    } catch (e) {
-        problem((e as Error).message);
-    }
+    testShown.value = true;
+    await nextTick();
+    await portTest.value?.test();
 }
-
-// What a test found of a port: the words say it, the icon's tone tells the kind.
-const OUTCOMES: Record<
-    Schemas['PortTest']['tcp'],
-    { key: string; icon: 'HOURGLASS' | 'CHECK_CIRCLE' | 'ERROR' | 'INFO' }
-> = {
-    testing: { key: 'nj.ports.reach.TESTING', icon: 'HOURGLASS' },
-    open: { key: 'nj.ports.reach.OPEN', icon: 'CHECK_CIRCLE' },
-    closed: { key: 'nj.ports.reach.CLOSED', icon: 'ERROR' },
-    unknown: { key: 'nj.ports.reach.UNKNOWN', icon: 'INFO' },
-};
 </script>
 
 <template>
@@ -134,27 +120,16 @@ const OUTCOMES: Record<
                     <div v-for="line in cards.ports.detail" :key="line">{{ line }}</div>
                 </div>
                 <div class="card-actions">
-                    <PopoverRoot>
-                        <PopoverTrigger class="button small" @click="testPorts">
-                            <Icon name="PORT_TEST" />{{ t('IDS_STARTTEST') }}
-                        </PopoverTrigger>
+                    <PopoverRoot v-model:open="testShown">
+                        <PopoverAnchor as-child>
+                            <button class="button small" @click="testPorts">
+                                <Icon name="PORT_TEST" />{{ t('IDS_STARTTEST') }}
+                            </button>
+                        </PopoverAnchor>
                         <PopoverPortal>
-                            <PopoverContent class="menu port-test" :side-offset="6">
+                            <PopoverContent class="menu port-test-popup" align="start" :side-offset="6">
                                 <strong>{{ t('IDS_STARTTEST') }}</strong>
-                                <template v-if="test">
-                                    <div class="port-line" :class="`port-${test.tcp}`">
-                                        <Icon :name="OUTCOMES[test.tcp].icon" />{{
-                                            t(OUTCOMES[test.tcp].key, 'TCP', test.tcpPort)
-                                        }}
-                                    </div>
-                                    <div v-if="status?.kad" class="port-line" :class="`port-${test.udp}`">
-                                        <Icon :name="OUTCOMES[test.udp].icon" />{{
-                                            t(OUTCOMES[test.udp].key, 'UDP', test.udpPort)
-                                        }}
-                                    </div>
-                                    <div v-else class="port-line">{{ t('nj.ports.noKad') }}</div>
-                                    <span class="muted">{{ t('nj.ports.udpSlow') }}</span>
-                                </template>
+                                <PortTestPane ref="portTest" />
                             </PopoverContent>
                         </PopoverPortal>
                     </PopoverRoot>
@@ -304,29 +279,11 @@ const OUTCOMES: Record<
     box-shadow: inset 0 0 0 1px var(--color-accent-emphasis);
 }
 
-:deep(.port-test) {
+:deep(.port-test-popup) {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
+    max-width: 440px;
     padding: 12px;
-}
-
-.port-line {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    --nj-icon-color: var(--color-fg-muted);
-}
-
-.port-open {
-    --nj-icon-color: var(--color-success-fg);
-}
-
-.port-closed {
-    --nj-icon-color: var(--color-danger-fg);
-}
-
-.port-testing {
-    --nj-icon-color: var(--nj-accent-strong);
 }
 </style>
