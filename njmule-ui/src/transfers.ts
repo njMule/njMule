@@ -389,3 +389,25 @@ const KIND_ICONS: Record<NonNullable<Download['kind']>, IconName> = {
 export function kindIcon(kind: Download['kind']): IconName {
     return KIND_ICONS[kind ?? 'other'];
 }
+
+const KIND_EXTENSIONS: [NonNullable<Download['kind']>, string[]][] = [
+    ['video', ['avi', 'mkv', 'mp4', 'mov', 'wmv', 'mpg', 'mpeg', 'webm', 'm4v', 'ogm', 'divx', 'flv']],
+    ['audio', ['mp3', 'flac', 'ogg', 'wav', 'm4a', 'm4b', 'aac', 'wma', 'opus', 'ape']],
+    ['image', ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tif', 'tiff', 'svg']],
+    ['document', ['pdf', 'epub', 'txt', 'doc', 'docx', 'odt', 'rtf', 'mobi', 'djvu', 'cbr', 'cbz']],
+    ['archive', ['zip', 'rar', '7z', 'gz', 'tar', 'bz2', 'xz', 'tgz']],
+    ['disc_image', ['iso', 'img', 'bin', 'cue', 'nrg', 'mdf', 'dmg']],
+    ['program', ['exe', 'msi', 'apk', 'deb', 'rpm', 'appimage', 'jar']],
+];
+
+/** What a file holds, as the extension of its name tells, for files the API reports no kind of, such as links. */
+export function kindOf(name: string): NonNullable<Download['kind']> {
+    const extension = name.substring(name.lastIndexOf('.') + 1).toLowerCase();
+    return KIND_EXTENSIONS.find(([, extensions]) => extensions.includes(extension))?.[0] ?? 'other';
+}
+
+/** What is known of a file to add already, for a word beside it: being downloaded, or shared; null for neither. */
+export function knownAs(hash: string, downloading: Set<string>, sharing: Set<string>): string | null {
+    const key = hash.toUpperCase();
+    return downloading.has(key) ? 'IDS_IMP_ALRDWL' : sharing.has(key) ? 'IDS_SHARED' : null;
+}

@@ -15,6 +15,8 @@ import {
     FULL_SOURCES,
     headActions,
     keeps,
+    kindOf,
+    knownAs,
     missingSpans,
     named,
     PART_SIZE,
@@ -522,5 +524,38 @@ describe('the missing spans of the part bar', () => {
 
     function thenTheSpansAre(expected: { x: number; width: number; tone: number | null }[]): void {
         expect(spans).toEqual(expected);
+    }
+});
+
+describe('a file to add', () => {
+    let kind: string | undefined;
+    let note: string | null = null;
+
+    it('should hold what its extension tells, in any case', () => {
+        whenTheFileIsLookedAt('Lumenos-4.2-DVD.ISO', 'AA');
+        thenItHolds('disc_image');
+    });
+
+    it('should be told as being downloaded before being shared', () => {
+        whenTheFileIsLookedAt('a.iso', 'aa');
+        thenItIsKnownAs('IDS_IMP_ALRDWL');
+    });
+
+    it('should be told as shared when only shared', () => {
+        whenTheFileIsLookedAt('a.iso', 'bb');
+        thenItIsKnownAs('IDS_SHARED');
+    });
+
+    function whenTheFileIsLookedAt(name: string, hash: string): void {
+        kind = kindOf(name);
+        note = knownAs(hash, new Set(['AA']), new Set(['AA', 'BB']));
+    }
+
+    function thenItHolds(expected: string): void {
+        expect(kind).toBe(expected);
+    }
+
+    function thenItIsKnownAs(expected: string): void {
+        expect(note).toBe(expected);
     }
 });
