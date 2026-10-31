@@ -971,6 +971,25 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldListTheNetworkInterfacesOfTheEnginesComputer() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("GET", "/api/v1/interfaces", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyIsAList();
+    }
+
+    @Test
+    void shouldRefuseTheNetworkInterfacesToAGuest() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledAsGuest("GET", "/api/v1/interfaces");
+
+        thenTheStatusIs(403);
+    }
+
+    @Test
     void shouldGiveTheWebInterfaceSettingsWithoutThePasswords() throws Exception {
         givenTheApiRuns();
 
@@ -1507,6 +1526,10 @@ class RemoteApiTest {
             line = this.stream.readLine();
         }
         assertThat(line).isNull();
+    }
+
+    private void thenTheBodyIsAList() throws Exception {
+        assertThat(JsonMapper.shared().readTree(this.answer.body()).isArray()).isTrue();
     }
 
     private void thenTheWebInterfaceIsOnlyForThisComputer() {

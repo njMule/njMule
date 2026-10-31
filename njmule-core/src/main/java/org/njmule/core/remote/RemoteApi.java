@@ -80,6 +80,7 @@ import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadPriority;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.config.BindInterface;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 import org.njmule.core.persist.PreferencesCodec;
@@ -472,6 +473,9 @@ public final class RemoteApi implements AutoCloseable {
                     boolean restart = c.body().path("restart").asBoolean(true);
                     updateWork(c, this.engine.installUpdate(restart));
                 }),
+                entry(
+                        "listNetworkInterfaces",
+                        c -> reply(c.exchange(), 200, g -> ApiJson.array(g, BindInterface.choices(), ApiJson::nic))),
                 entry("getWebInterface", c -> webSettings(c, webInterface().settings())),
                 entry("updateWebInterface", this::updateWebInterface),
                 entry(

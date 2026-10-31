@@ -55,6 +55,7 @@ import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.SpamMarks;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadInfo;
+import org.njmule.core.config.BindInterface;
 import org.njmule.core.config.Schedule;
 import tools.jackson.core.JsonEncoding;
 import tools.jackson.core.JsonGenerator;
@@ -178,6 +179,16 @@ final class ApiJson {
         g.writeStartObject();
         g.writeStringProperty("incoming", incoming.toString());
         g.writeStringProperty("temp", temp.toString());
+        g.writeEndObject();
+    }
+
+    static void nic(JsonGenerator g, BindInterface.Candidate c) {
+        g.writeStartObject();
+        g.writeStringProperty("name", c.name());
+        g.writeStringProperty("displayName", c.displayName());
+        g.writeArrayPropertyStart("addresses");
+        c.addresses().forEach(a -> g.writeString(a.getHostAddress()));
+        g.writeEndArray();
         g.writeEndObject();
     }
 

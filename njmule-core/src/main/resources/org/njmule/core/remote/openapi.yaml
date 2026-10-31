@@ -204,6 +204,25 @@ paths:
                 $ref: "#/components/schemas/Folders"
         default:
           $ref: "#/components/responses/Error"
+  /interfaces:
+    get:
+      operationId: listNetworkInterfaces
+      tags: [engine]
+      summary: The network interfaces of the engine's computer that njMule's connections may be bound to.
+      description: >-
+        Those up now, with an IPv4 address, the loopback left out. The preference net.bindInterface
+        names one by its name, or one of its addresses.
+      responses:
+        "200":
+          description: The interfaces.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NetworkInterface"
+        default:
+          $ref: "#/components/responses/Error"
   /webui:
     get:
       operationId: getWebInterface
@@ -3187,6 +3206,20 @@ components:
         temp:
           type: string
           description: Where the downloads' parts are kept until they are finished.
+    NetworkInterface:
+      type: object
+      required: [name, displayName, addresses]
+      properties:
+        name:
+          type: string
+          description: The name the system gives the interface, as net.bindInterface takes it.
+        displayName:
+          type: string
+        addresses:
+          type: array
+          description: Its IPv4 addresses.
+          items:
+            type: string
     WebInterface:
       type: object
       required: [enabled, port, lan, hosts, proxies, api, hasPassword, hasGuest, url]
