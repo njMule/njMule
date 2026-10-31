@@ -143,11 +143,6 @@ public record ImportReport(boolean dryRun, List<Item> items, boolean startAtLogi
         public String english() {
             return String.format(Locale.ROOT, TEMPLATES.get(this.key), this.args.toArray());
         }
-
-        /** Every phrase's English text by key, which the interfaces' translations follow. */
-        public static Map<String, String> englishTexts() {
-            return Map.copyOf(TEMPLATES);
-        }
     }
 
     public ImportReport {

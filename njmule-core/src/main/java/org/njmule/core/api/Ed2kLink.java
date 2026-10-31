@@ -16,8 +16,6 @@
  */
 package org.njmule.core.api;
 
-import com.google.common.escape.Escaper;
-import com.google.common.html.HtmlEscapers;
 import com.google.common.net.HostAndPort;
 import java.util.List;
 import java.util.Objects;
@@ -94,12 +92,6 @@ public sealed interface Ed2kLink {
 
         public static FileLink of(String name, long size, Hash16 hash) {
             return new FileLink(name, size, hash, Optional.empty(), List.of(), List.of(), List.of());
-        }
-
-        /** The link as an HTML anchor named after the file, for a web page. */
-        public String toHtml() {
-            Escaper html = HtmlEscapers.htmlEscaper();
-            return "<a href=\"" + html.escape(toUri()) + "\">" + html.escape(this.name) + "</a>";
         }
 
         @Override

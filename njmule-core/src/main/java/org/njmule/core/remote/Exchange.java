@@ -178,10 +178,6 @@ public final class Exchange {
         this.response.getHeaders().put(name, value);
     }
 
-    public void addHeader(String name, String value) {
-        this.response.getHeaders().add(name, value);
-    }
-
     /** Whether an answer has started. */
     public boolean started() {
         return this.started;

@@ -44,6 +44,8 @@ const STOP_WAIT: Duration = Duration::from_secs(30);
 const REMOTE_OPTION: &str = "--remote-url";
 /// The option that names the profile, as the start at login passes it.
 const CONFIG_OPTION: &str = "--config-dir";
+/// The folder of njMule's profile in the system's places, as the engine names it.
+const APP_DIR: &str = if cfg!(target_os = "linux") { "njmule" } else { "njMule" };
 /// The id Windows groups the window, its shortcuts and its notifications by, as the installer names it.
 #[cfg(windows)]
 const APP_USER_MODEL_ID: &str = "org.njmule.njMule";
@@ -311,12 +313,9 @@ fn window_title(version: &str, remote: Option<&str>) -> String {
     }
 }
 
-/// Where the shell keeps its options: beside the engine's with NJMULE_CONFIG_DIR, otherwise in its own folder.
+/// Where the shell keeps its options: in the desktop app's folder of the profile, with its other files.
 fn settings_file(app: &AppHandle) -> Option<PathBuf> {
-    std::env::var_os("NJMULE_CONFIG_DIR")
-        .map(PathBuf::from)
-        .or_else(|| app.path().app_config_dir().ok())
-        .map(|dir| dir.join(SETTINGS_FILE))
+    gui_dir(app).map(|dir| dir.join(SETTINGS_FILE))
 }
 
 /// The options kept, their defaults for those missing or unreadable.
@@ -365,18 +364,32 @@ fn allow_api(config: &mut tauri::Config, url: &str) {
     }
 }
 
-/// The desktop app's folder of the profile the engine uses, as the engine finds it: the one --config-dir names, the
-/// portable one beside the engine, or the system's place for the user's settings.
+/// The root of the profile the engine uses when it is not in the system's places: the one --config-dir names, or the
+/// portable one beside the engine.
+fn profile_root() -> Option<PathBuf> {
+    if let Some(root) = std::env::var_os("NJMULE_CONFIG_DIR") {
+        return Some(PathBuf::from(root));
+    }
+    engine_program().parent().filter(|d| d.join("portable.flag").is_file()).map(|d| d.join("data"))
+}
+
+/// The desktop app's folder of the profile the engine uses, as the engine finds it.
 fn gui_dir(app: &AppHandle) -> Option<PathBuf> {
-    if let Ok(root) = std::env::var("NJMULE_CONFIG_DIR") {
-        return Some(PathBuf::from(root).join("gui"));
+    match profile_root() {
+        Some(root) => Some(root.join("gui")),
+        None => app.path().config_dir().ok().map(|dir| dir.join(APP_DIR).join("gui")),
     }
-    let core = engine_program();
-    if let Some(dir) = core.parent().filter(|d| d.join("portable.flag").is_file()) {
-        return Some(dir.join("data").join("gui"));
-    }
-    let name = if cfg!(target_os = "linux") { "njmule" } else { "njMule" };
-    app.path().config_dir().ok().map(|dir| dir.join(name).join("gui"))
+}
+
+/// Where the web view keeps its storage and caches: the engine's data folder of the same profile, local to the
+/// computer on Windows, unlike the desktop app's folder. macOS keeps them in its own place whatever is asked.
+fn webview_dir(app: &AppHandle) -> Option<PathBuf> {
+    let data = match profile_root() {
+        Some(root) => root.join("data"),
+        None if cfg!(target_os = "linux") => app.path().local_data_dir().ok()?.join(APP_DIR),
+        None => app.path().local_data_dir().ok()?.join(APP_DIR).join("data"),
+    };
+    Some(data.join("webview"))
 }
 
 /// The connections remembered in `file`, the token of each address of an API; none when it cannot be read.
@@ -533,13 +546,16 @@ fn popup(app: &AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
     if let Some(window) = app.get_webview_window(label) {
         return Ok(window);
     }
-    let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App(format!("index.html?view={label}").into()))
+    let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App(format!("index.html?view={label}").into()))
         .visible(false)
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
         .maximizable(false)
         .minimizable(false);
+    if let Some(dir) = webview_dir(app) {
+        builder = builder.data_directory(dir);
+    }
     if label == TRAY_MENU {
         // A menu of its own drawing, with its border and no frame.
         builder.title("njMule").decorations(false).shadow(false).inner_size(320.0, 360.0).build()
@@ -1193,20 +1209,11 @@ fn main() {
     if let Some(url) = &remote {
         allow_api(context.config_mut(), url);
     }
-    // The window shows as the options say, and the small windows of the icon where they are asked for; a window on
-    // another computer's njMule keeps a place and size of its own, apart from the one on this computer's.
-    let window_state = match remote {
-        None => tauri_plugin_window_state::Builder::default(),
-        Some(_) => tauri_plugin_window_state::Builder::default().with_filename("remote-window-state.json"),
-    }
-    .with_state_flags(StateFlags::all() - StateFlags::VISIBLE)
-    .with_denylist(&[TRAY_MENU, MINIMULE]);
     let shell = Shell { remote: remote.clone(), checked, ..Shell::default() };
     let app = single_window(tauri::Builder::default(), remote.is_none())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(window_state.build())
         .manage(engine.clone())
         .manage(shell)
         .invoke_handler(tauri::generate_handler![
@@ -1247,7 +1254,26 @@ fn main() {
                 *shell.settings.lock().unwrap() = load_settings(&file);
                 let _ = shell.settings_file.set(file);
             }
-            let window = app.get_webview_window("main").expect("njMule's window");
+            // The window shows as the options say, and the small windows of the icon where they are asked for; a window
+            // on another computer's njMule keeps a place and size of its own, apart from the one on this computer's.
+            let state_file =
+                if remote.is_none() { tauri_plugin_window_state::DEFAULT_FILENAME } else { "remote-window-state.json" };
+            let mut window_state = tauri_plugin_window_state::Builder::default()
+                .with_state_flags(StateFlags::all() - StateFlags::VISIBLE)
+                .with_denylist(&[TRAY_MENU, MINIMULE]);
+            // shortcut: given a whole path, the plugin keeps its file there but still makes its own folder, empty;
+            // save the windows' places ourselves if that folder matters.
+            if let Some(dir) = gui_dir(app.handle()) {
+                std::fs::create_dir_all(&dir)?;
+                window_state = window_state.with_filename(dir.join(state_file).to_string_lossy());
+            }
+            app.handle().plugin(window_state.build())?;
+            // Made here, not from the configuration at start, so that its web view keeps its data in the profile.
+            let mut main = WebviewWindowBuilder::from_config(app.handle(), &app.config().app.windows[0])?;
+            if let Some(dir) = webview_dir(app.handle()) {
+                main = main.data_directory(dir);
+            }
+            let window = main.build()?;
             window.set_title(&window_title(&app.package_info().version.to_string(), remote.as_deref()))?;
             // macOS hands links over as events rather than arguments.
             if remote.is_none() {

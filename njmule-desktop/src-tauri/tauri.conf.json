@@ -10,6 +10,7 @@
         "windows": [
             {
                 "label": "main",
+                "create": false,
                 "title": "njMule",
                 "width": 1180,
                 "height": 760,
