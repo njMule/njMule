@@ -185,6 +185,28 @@ class RemoteEngineTest {
     }
 
     @Test
+    void shouldFindTheEmuleProfileOnTheComputerOfTheOtherNjmule() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItAnswers("emuleProfile", Optional.of(this.dir));
+        givenConnected();
+
+        whenAsked(this.remote.emuleProfile());
+
+        thenTheAnswerIs(Optional.of(this.dir));
+    }
+
+    @Test
+    void shouldAskWhetherTheOtherNjmuleWaitsToBeSetUp() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItAnswers("setupPending", true);
+        givenConnected();
+
+        whenAsked(this.remote.setupPending());
+
+        thenTheAnswerIs(true);
+    }
+
+    @Test
     void shouldKeepTheSearchesOnTheOtherNjmule() throws Exception {
         givenTheOtherNjmuleRuns();
         givenItKeepsTheSearches();

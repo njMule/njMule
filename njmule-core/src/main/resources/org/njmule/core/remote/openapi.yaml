@@ -283,6 +283,22 @@ paths:
         default:
           $ref: "#/components/responses/Error"
   /import/emule:
+    get:
+      operationId: findEmuleProfile
+      tags: [engine]
+      summary: The configuration folder of an eMule on njMule's computer, where eMule keeps it.
+      responses:
+        "200":
+          description: The folder of the eMule of the user njMule runs as; no path when there is none.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
     post:
       operationId: importEmule
       tags: [engine]
@@ -358,6 +374,38 @@ paths:
                                   type: [string, integer]
         "400":
           $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /setup:
+    get:
+      operationId: getSetup
+      tags: [engine]
+      summary: Whether njMule waits for the questions of its first start.
+      description: >-
+        The start that created njMule's configuration marks it to be set up; it stays so, across
+        starts, until an interface asks the questions and `POST /setup/done` says they were answered
+        or put aside.
+      responses:
+        "200":
+          description: Whether the questions are still to be asked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pending]
+                properties:
+                  pending:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /setup/done:
+    post:
+      operationId: finishSetup
+      tags: [engine]
+      summary: Marks the questions of the first start answered or put aside.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
         default:
           $ref: "#/components/responses/Error"
   /ipfilter:

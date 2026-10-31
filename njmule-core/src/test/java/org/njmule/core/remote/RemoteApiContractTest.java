@@ -140,7 +140,9 @@ class RemoteApiContractTest {
                 "/api/v1/downloads/" + HASH + "/parts",
                 "/api/v1/downloads/" + HASH + "/comments",
                 "/api/v1/files/" + HASH + "/comment",
-                "/api/v1/files/" + HASH + "/notes");
+                "/api/v1/files/" + HASH + "/notes",
+                "/api/v1/import/emule",
+                "/api/v1/setup");
     }
 
     @ParameterizedTest
@@ -214,6 +216,7 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/update/install", "", 202),
                 Arguments.of("POST", "/api/v1/update/install", "{\"restart\":false}", 200),
                 Arguments.of("POST", "/api/v1/import/emule", "{\"path\":\"" + TEMP + "\",\"dryRun\":true}", 200),
+                Arguments.of("POST", "/api/v1/setup/done", "", 200),
                 Arguments.of("POST", "/api/v1/shutdown", "", 202),
                 Arguments.of("PATCH", "/api/v1/preferences", "{\"user.nick\":\"Night Owl\"}", 200),
                 Arguments.of(
@@ -393,6 +396,8 @@ class RemoteApiContractTest {
         answerWith("kadNotes", List.of(ApiSamples.kadNote()));
         answerWith("savedSearches", List.of(ApiSamples.savedSearch()));
         answerWith("spamMarks", ApiSamples.spamMarks());
+        answerWith("emuleProfile", Optional.of(Path.of(System.getProperty("java.io.tmpdir"))));
+        answerWith("setupPending", true);
         this.fake.value("schedule", ApiSamples.schedule());
         this.fake.value("activeRule", ApiSamples.schedule().rules().stream().findFirst());
         this.fake.value("preferences", Preferences.defaults());
@@ -445,7 +450,8 @@ class RemoteApiContractTest {
                 "setCategories",
                 "setServerListAddresses",
                 "setFileComment",
-                "addFriend")) {
+                "addFriend",
+                "finishSetup")) {
             this.fake.answer(done, args -> CompletableFuture.completedFuture(null));
         }
         for (String counted : List.of("addServers", "addKadContacts", "updateIpFilter")) {

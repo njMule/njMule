@@ -739,6 +739,24 @@ public final class RemoteEngine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Optional<Path>> emuleProfile() {
+        return json("GET", "import/emule", null).thenApply(n -> {
+            JsonNode path = n.path("path");
+            return path.isString() ? Optional.of(Path.of(path.asString())) : Optional.empty();
+        });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setupPending() {
+        return json("GET", "setup", null).thenApply(n -> n.path("pending").asBoolean(false));
+    }
+
+    @Override
+    public CompletableFuture<Void> finishSetup() {
+        return done("POST", "setup/done", null);
+    }
+
+    @Override
     public CompletableFuture<Void> sendMessage(ServerAddress to, String text) {
         return done("POST", "messages", body("to", to.toString()).put("text", text));
     }

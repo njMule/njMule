@@ -810,6 +810,62 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldTellTheEmuleProfileFoundOnItsComputer() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineFindsAnEmuleProfile(Optional.of(this.dir));
+
+        whenCalled("GET", "/api/v1/import/emule", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{\"path\":\"" + jsonPath(this.dir) + "\"}");
+    }
+
+    @Test
+    void shouldTellNoPathWhenItsComputerHasNoEmuleProfile() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineFindsAnEmuleProfile(Optional.empty());
+
+        whenCalled("GET", "/api/v1/import/emule", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{}");
+    }
+
+    @Test
+    void shouldTellThatNjMuleWaitsToBeSetUp() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineWaitsToBeSetUp(true);
+
+        whenCalled("GET", "/api/v1/setup", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{\"pending\":true}");
+    }
+
+    @Test
+    void shouldMarkTheSetupDone() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineWaitsToBeSetUp(true);
+
+        whenCalled("POST", "/api/v1/setup/done", "");
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("finish setup");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/v1/setup", "/api/v1/import/emule"})
+    void shouldRefuseTheFirstStartToAGuest(String path) throws Exception {
+        givenTheApiRuns();
+        givenTheEngineWaitsToBeSetUp(true);
+        givenTheEngineFindsAnEmuleProfile(Optional.of(this.dir));
+
+        whenCalledAsGuest("GET", path);
+
+        thenTheStatusIs(403);
+    }
+
+    @Test
     void shouldTellTheResultsWhoseFilesAreDownloadedAlready() throws Exception {
         givenTheApiRuns();
         givenTheEngineSearchesAs(7);
@@ -1018,6 +1074,18 @@ class RemoteApiTest {
 
     private static String jsonPath(Path path) {
         return path.toString().replace("\\", "\\\\");
+    }
+
+    private void givenTheEngineFindsAnEmuleProfile(Optional<Path> profile) {
+        this.fake.answer("emuleProfile", args -> CompletableFuture.completedFuture(profile));
+    }
+
+    private void givenTheEngineWaitsToBeSetUp(boolean pending) {
+        this.fake.answer("setupPending", args -> CompletableFuture.completedFuture(pending));
+        this.fake.answer("finishSetup", args -> {
+            this.calls.add("finish setup");
+            return CompletableFuture.completedFuture(null);
+        });
     }
 
     private void givenTheEngineDownloads(DownloadInfo download) {

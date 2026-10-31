@@ -235,6 +235,16 @@ public final class RemoteApi implements AutoCloseable {
                 }),
                 entry("getRates", this::getRates),
                 entry("importEmule", this::importEmule),
+                entry("findEmuleProfile", this::findEmuleProfile),
+                entry("getSetup", c -> {
+                    boolean pending = await(this.engine.setupPending());
+                    reply(c.exchange(), 200, g -> {
+                        g.writeStartObject();
+                        g.writeBooleanProperty("pending", pending);
+                        g.writeEndObject();
+                    });
+                }),
+                entry("finishSetup", c -> done(c, this.engine.finishSetup())),
                 entry(
                         "getSchedule",
                         c -> reply(
@@ -607,6 +617,15 @@ public final class RemoteApi implements AutoCloseable {
                 c.body().path("downloads").asBoolean(false));
         ImportReport report = await(this.engine.importFromEmule(folder(text(c.body(), "path")), options));
         reply(c.exchange(), 200, g -> ApiJson.importReport(g, report));
+    }
+
+    private void findEmuleProfile(Call c) throws IOException {
+        Optional<Path> profile = await(this.engine.emuleProfile());
+        reply(c.exchange(), 200, g -> {
+            g.writeStartObject();
+            profile.ifPresent(p -> g.writeStringProperty("path", p.toString()));
+            g.writeEndObject();
+        });
     }
 
     private void setLimits(Call c) throws IOException {

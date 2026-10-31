@@ -377,6 +377,18 @@ public interface NjMuleEngine extends AutoCloseable {
      */
     CompletableFuture<ImportReport> importFromEmule(Path emuleConfigDir, ImportOptions options);
 
+    /** The configuration folder of the eMule of the user njMule runs as, on njMule's computer, if one is there. */
+    CompletableFuture<Optional<Path>> emuleProfile();
+
+    /**
+     * Whether njMule waits to be set up: the start that created its configuration asks for the questions of the first
+     * start, until {@link #finishSetup()}.
+     */
+    CompletableFuture<Boolean> setupPending();
+
+    /** Marks the questions of the first start answered or put aside, from now on. */
+    CompletableFuture<Void> finishSetup();
+
     /**
      * Sends {@code text} to the client listening at {@code to}; the answer comes as an event. A CAPTCHA's solution is
      * sent the same way.

@@ -292,6 +292,7 @@ public final class Engine implements NjMuleEngine {
         try {
             Path prefsFile = dirs.config().resolve(PreferencesCodec.FILE_NAME);
             AtomicFiles.cleanupInterruptedWrite(prefsFile);
+            boolean created = !Files.exists(prefsFile);
             Preferences prefs = PreferencesCodec.load(prefsFile);
             // Where the downloads go, complete and in parts, which need not be the default folders.
             Files.createDirectories(prefs.effectiveIncomingDir(dirs));
@@ -301,6 +302,9 @@ public final class Engine implements NjMuleEngine {
                 backUp(dirs, prefs.backupCopies());
             }
             PreferencesCodec.save(prefsFile, prefs);
+            if (created) {
+                SetupMark.make(dirs.config());
+            }
             EmuleImporter.applyPendingIdentity(dirs.config(), emuleRunning);
             EmuleImporter.applyPendingFiles(dirs.config());
 
@@ -1474,6 +1478,26 @@ public final class Engine implements NjMuleEngine {
             }
         });
         return report;
+    }
+
+    @Override
+    public CompletableFuture<Optional<Path>> emuleProfile() {
+        return CompletableFuture.completedFuture(EmuleImporter.findConfigDirectory(System.getenv()));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setupPending() {
+        return CompletableFuture.completedFuture(SetupMark.present(this.directories.config()));
+    }
+
+    @Override
+    public CompletableFuture<Void> finishSetup() {
+        try {
+            SetupMark.remove(this.directories.config());
+            return CompletableFuture.completedFuture(null);
+        } catch (IOException e) {
+            return CompletableFuture.failedFuture(e);
+        }
     }
 
     /** Applies an import on the engine thread; called from the import thread. */
