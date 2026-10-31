@@ -38,12 +38,13 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { language, t } from '../i18n';
 import { type ColumnSpan, dragColumn, fitColumns, MAX_WIDTH } from './column-widths';
 import Icon from './Icon.vue';
+import { movedRows } from './row-order';
 
 // A table as the desktop app's: rows of 32 px drawn only where they show, sorted by a click on a header (ascending
 // first), columns moved by dragging their header, resized by their edge (a double click fits them to their content)
 // and shown or hidden from the menu at the header's end, all kept in this window for the next time. A click chooses a
 // row, Ctrl or Cmd adds one, Shift a range; the keys move and extend the choice; the context menu acts on the rows
-// chosen, from the rows as from the header.
+// chosen, from the rows as from the header. A table whose rows move takes them dragged onto another row.
 
 export interface ColumnMeta {
     /** Figures align to the end, in the order of their digits whatever the language. */
@@ -68,8 +69,15 @@ const props = defineProps<{
     fixedWidths?: boolean;
     /** Enter does not act on the row chosen, as in the search's results. */
     noEnterAction?: boolean;
+    /** The rows move by dragging, before or after the row they are dropped on; the columns' sort is undone. */
+    movable?: boolean;
 }>();
-const emit = defineEmits<{ activate: [row: T]; keydown: [event: KeyboardEvent] }>();
+const emit = defineEmits<{
+    activate: [row: T];
+    keydown: [event: KeyboardEvent];
+    /** The ids of the rows shown, in the order a drag left them. */
+    move: [ids: string[]];
+}>();
 // The classes a screen gives go to the table, inside the context menu's root.
 defineOptions({ inheritAttrs: false });
 const selected = defineModel<string[]>('selected', { required: true });
@@ -353,6 +361,78 @@ function dropSide(id: string): string {
     return at === null || at.id !== id ? '' : at.after ? 'drop-after' : 'drop-before';
 }
 
+// Rows dragged onto another go before or after it, as the half of the row the pointer is in says: the rows chosen
+// when the one dragged is among them, that one alone otherwise.
+const ROWS_TYPE = 'application/x-njmule-rows';
+const movingRows = ref<string[] | null>(null);
+const rowDropAt = ref<{ id: string; after: boolean } | null>(null);
+
+function rowDragStart(row: any, e: DragEvent): void {
+    if (!props.movable) {
+        return;
+    }
+    const id = row.id as string;
+    // The choice reaches the model only once the screen takes it: the rows moving are read from the row dragged.
+    const chosen = new Set(selected.value.includes(id) ? selected.value : [id]);
+    if (!selected.value.includes(id)) {
+        selected.value = [id];
+        anchor = id;
+        lead.value = id;
+    }
+    movingRows.value = tableRows.value.map((r) => r.id as string).filter((x) => chosen.has(x));
+    if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData(ROWS_TYPE, movingRows.value.join('\n'));
+    }
+}
+
+function rowDragOver(row: any, e: DragEvent): void {
+    const moving = movingRows.value;
+    if (moving === null) {
+        return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    const id = row.id as string;
+    if (moving.includes(id)) {
+        rowDropAt.value = null;
+        return;
+    }
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    rowDropAt.value = { id, after: e.clientY > r.top + r.height / 2 };
+}
+
+function rowDrop(e: DragEvent): void {
+    const moving = movingRows.value;
+    const to = rowDropAt.value;
+    if (moving === null) {
+        return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    if (to !== null) {
+        const next = movedRows(
+            tableRows.value.map((r) => r.id as string),
+            moving,
+            to.id,
+            to.after,
+        );
+        sorting.value = [];
+        emit('move', next);
+    }
+    rowDragEnd();
+}
+
+function rowDragEnd(): void {
+    movingRows.value = null;
+    rowDropAt.value = null;
+}
+
+function rowDropSide(id: string): string {
+    const at = rowDropAt.value;
+    return at === null || at.id !== id ? '' : at.after ? 'drop-after' : 'drop-before';
+}
+
 // The header follows the rows sideways.
 function scrolled(): void {
     if (header.value && scroller.value) {
@@ -567,6 +647,7 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
                                 class="row"
                                 :class="[
                                     rowClass?.(tableRows[item.index].original),
+                                    rowDropSide(tableRows[item.index].id),
                                     {
                                         selected: selected.includes(tableRows[item.index].id),
                                         lead: lead === tableRows[item.index].id,
@@ -579,9 +660,14 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
                                     ...rowStyle?.(tableRows[item.index].original),
                                     transform: `translateY(${item.start}px)`,
                                 }"
+                                :draggable="movable ? 'true' : undefined"
                                 @click="choose(tableRows[item.index], $event)"
                                 @dblclick="emit('activate', tableRows[item.index].original)"
                                 @contextmenu="menuOn(tableRows[item.index])"
+                                @dragstart="rowDragStart(tableRows[item.index], $event)"
+                                @dragover="rowDragOver(tableRows[item.index], $event)"
+                                @drop="rowDrop"
+                                @dragend="rowDragEnd"
                             >
                                 <div class="cells">
                                     <div
@@ -679,6 +765,27 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
 /* A header being moved, and the edge of the one it would land beside. */
 .header-cell.moving {
     opacity: 0.5;
+}
+
+/* Where rows dragged would go: a line in the accent above or under the row pointed at. */
+.row.drop-before::before,
+.row.drop-after::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--color-accent-emphasis);
+    z-index: 1;
+    pointer-events: none;
+}
+
+.row.drop-before::before {
+    top: 0;
+}
+
+.row.drop-after::after {
+    bottom: 0;
 }
 
 .header-cell.drop-before {

@@ -69,6 +69,7 @@ import FilterChips from '../ui/FilterChips.vue';
 import FileIcon from '../ui/FileIcon.vue';
 import Icon from '../ui/Icon.vue';
 import Segments from '../ui/Segments.vue';
+import { inOrder, reordered } from '../ui/row-order';
 import Tip from '../ui/Tip.vue';
 import DownloadDetails from './transfers/DownloadDetails.vue';
 import ClientLists from './transfers/ClientLists.vue';
@@ -82,6 +83,7 @@ const props = defineProps<{ platform: Platform }>();
 type Shelf = 'downloads' | 'uploads' | 'queue' | 'banned' | 'known';
 const SHOW_ALL = -1;
 const DETAILS_KEY = 'njmule.transfers.details';
+const ORDER_KEY = 'njmule.transfers.order';
 const DETAILS_HEIGHT_KEY = 'njmule.transfers.detailsHeight';
 // The details at first, until the user drags the divider; the room under the buttons of the download; what the list
 // keeps at least; the gap to drag.
@@ -108,6 +110,28 @@ const splitHeight = ref(0);
 const neededHeight = ref(0);
 // Only a height the user leaves with the mouse is remembered, not one a layout gives.
 const wantedHeight = ref(readHeight());
+
+// The downloads in the order they were dragged into, new ones after them; kept in this window for the next time.
+const order = ref<string[]>(readOrder());
+
+function readOrder(): string[] {
+    try {
+        const saved: unknown = JSON.parse(localStorage.getItem(ORDER_KEY) ?? '[]');
+        return Array.isArray(saved) ? saved.filter((h): h is string => typeof h === 'string') : [];
+    } catch {
+        return [];
+    }
+}
+
+function moved(shown: string[]): void {
+    const all = inOrder(downloads.value, order.value, (d) => d.hash).map((d) => d.hash);
+    order.value = reordered(all, shown);
+    try {
+        localStorage.setItem(ORDER_KEY, JSON.stringify(order.value));
+    } catch {
+        // Kept until the window closes.
+    }
+}
 
 function readDetails(): boolean {
     try {
@@ -220,10 +244,11 @@ const chips = computed(() =>
 
 const shownDownloads = computed(() => {
     const byName = named(filter.value);
-    return downloads.value.filter(
+    const shown = downloads.value.filter(
         (d) =>
             (category.value === SHOW_ALL || d.category === category.value) && keeps(stateFilter.value, d) && byName(d),
     );
+    return inOrder(shown, order.value, (d) => d.hash);
 });
 
 const chosen = computed(() => downloads.value.filter((d) => selected.value.includes(d.hash)));
@@ -576,8 +601,10 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                     :row-id="(d: Download) => d.hash"
                     :below="isOpened"
                     :label="t('IDS_TW_DOWNLOADS')"
+                    movable
                     @activate="activate"
                     @keydown="tableKey"
+                    @move="moved"
                 >
                     <template #empty>
                         <EmptyState icon="DOWNLOAD" :text="t('nj.transfers.none')">
