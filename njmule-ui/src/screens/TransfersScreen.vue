@@ -14,6 +14,7 @@ import {
 } from 'reka-ui';
 import { computed, h, ref, watch } from 'vue';
 import AddLinksDialog from '../dialogs/AddLinksDialog.vue';
+import CategoriesDialog from '../dialogs/CategoriesDialog.vue';
 import CommentDialog from '../dialogs/CommentDialog.vue';
 import { amount, duration, percent, rate, size } from '../format';
 import { t } from '../i18n';
@@ -59,6 +60,7 @@ import Segments from '../ui/Segments.vue';
 import Tip from '../ui/Tip.vue';
 import DownloadDetails from './transfers/DownloadDetails.vue';
 import ClientLists from './transfers/ClientLists.vue';
+import DotSelect from './transfers/DotSelect.vue';
 
 // The transfers: the downloads, narrowed by state, category and name, with the details of the chosen one under them;
 // and, one list at a time, the clients we upload to, those waiting, the banned and the clients met.
@@ -78,6 +80,7 @@ const opened = ref(new Set<string>());
 const detailsShown = ref(readDetails());
 const adding = ref(false);
 const commenting = ref(false);
+const categorizing = ref(false);
 const commented = ref<Download | null>(null);
 const filterBox = ref<HTMLInputElement | null>(null);
 
@@ -88,6 +91,18 @@ function readDetails(): boolean {
         return false;
     }
 }
+
+// All categories, then each one with its dot; a category gone shows them all again.
+const categoryChoices = computed(() => [
+    { value: SHOW_ALL, label: t('nj.transfers.allCategories') },
+    ...categories.value.map((c) => ({ value: c.id, label: c.name, color: c.color ?? 0 })),
+]);
+
+watch(categories, (now) => {
+    if (category.value !== SHOW_ALL && !now.some((c) => c.id === category.value)) {
+        category.value = SHOW_ALL;
+    }
+});
 
 watch(detailsShown, (now) => {
     try {
@@ -418,12 +433,19 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
         <template v-if="shelf === 'downloads'">
             <div class="narrowing">
                 <FilterChips v-model="stateFilter" :items="chips" :label="t('nj.transfers.status')" />
-                <select id="category" v-model.number="category" class="field category" :aria-label="t('IDS_CAT')">
-                    <option :value="SHOW_ALL">{{ t('nj.transfers.allCategories') }}</option>
-                    <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-                </select>
+                <DotSelect
+                    id="category"
+                    v-model="category"
+                    class="category"
+                    :items="categoryChoices"
+                    :label="t('IDS_CAT')"
+                />
                 <Tip :text="t('nj.categories.title')">
-                    <button class="button flat icon-only" :aria-label="t('nj.categories.title')" disabled>
+                    <button
+                        class="button flat icon-only"
+                        :aria-label="t('nj.categories.title')"
+                        @click="categorizing = true"
+                    >
                         <Icon name="CATEGORY" />
                     </button>
                 </Tip>
@@ -606,6 +628,7 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
             </div>
         </template>
         <ClientLists v-else :shelf="shelf" />
+        <CategoriesDialog v-model:open="categorizing" :platform="platform" />
         <CommentDialog v-model:open="commenting" :file="commented" download />
         <AddLinksDialog v-model:open="adding" :category="category === SHOW_ALL ? undefined : category" />
     </div>
