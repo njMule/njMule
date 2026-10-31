@@ -318,6 +318,37 @@ select {
     --nj-icon-color: var(--color-fg-muted);
 }
 
+/* A field that is itself the box keeps the theme's room before its text. */
+input.field {
+    padding-inline: 12px;
+}
+
+/* A choice drawn as the theme's: no system arrow, a small solid triangle at its end, made of two halves. */
+select,
+select.field {
+    appearance: none;
+    padding-inline: 12px 28px;
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--color-fg-muted) 50%),
+        linear-gradient(135deg, var(--color-fg-muted) 50%, transparent 50%);
+    background-position:
+        right 12px center,
+        right 8px center;
+    background-size: 4px 4px;
+    background-repeat: no-repeat;
+}
+
+:root[dir='rtl'] select,
+:root[dir='rtl'] select.field {
+    background-position:
+        left 8px center,
+        left 12px center;
+}
+
+select:disabled {
+    opacity: 0.6;
+}
+
 /* Keys written as keys: beside a command, in a field. */
 .shortcut-key {
     padding: 0 5px;
