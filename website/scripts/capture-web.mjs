@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Pictures the interface for the documentation, the web interface's and the desktop app's pages alike: starts it on
-// example data (njmule-webui's WebCaptureDemo, as its webCaptureArgs task says), signs in and pictures each place,
+// example data (njmule-http's WebCaptureDemo, as its webCaptureArgs task says), signs in and pictures each place,
 // light, dark and in high contrast, with the browser already on this computer (Chrome, Edge or the one
 // NJMULE_CAPTURE_BROWSER names): Playwright downloads none. Usage: node scripts/capture-web.mjs <launcher.json> <output
 // folder>

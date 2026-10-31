@@ -31,7 +31,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.NjMuleInfo;
-import org.njmule.webui.ApiClient;
+import org.njmule.http.ApiClient;
 
 /**
  * The commands of {@code njmule --remote}: they act on a running njMule through its remote-control API and print what

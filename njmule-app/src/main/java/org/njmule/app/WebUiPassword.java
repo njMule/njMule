@@ -30,8 +30,8 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Optional;
-import org.njmule.webui.Passwords;
-import org.njmule.webui.WebUiSettings;
+import org.njmule.http.Passwords;
+import org.njmule.http.WebUiSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

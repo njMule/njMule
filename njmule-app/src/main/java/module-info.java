@@ -16,7 +16,7 @@
  */
 module org.njmule.app {
     requires transitive org.njmule.core;
-    requires org.njmule.webui;
+    requires org.njmule.http;
     requires com.google.common;
     requires info.picocli;
     requires org.slf4j;

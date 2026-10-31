@@ -15,7 +15,7 @@ description = "njMule App"
 
 dependencies {
     api(project(":njmule-core"))
-    implementation(project(":njmule-webui"))
+    implementation(project(":njmule-http"))
     implementation(libs.guava)
     implementation(libs.picocli)
     implementation(libs.slf4j.api)

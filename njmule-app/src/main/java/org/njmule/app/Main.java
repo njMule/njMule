@@ -52,11 +52,11 @@ import org.njmule.core.api.UpdateHandOver;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.remote.ApiToken;
-import org.njmule.webui.ApiClient;
-import org.njmule.webui.ControlEndpoint;
-import org.njmule.webui.Passwords;
-import org.njmule.webui.UpdateHelp;
-import org.njmule.webui.WebUiSettings;
+import org.njmule.http.ApiClient;
+import org.njmule.http.ControlEndpoint;
+import org.njmule.http.Passwords;
+import org.njmule.http.UpdateHelp;
+import org.njmule.http.WebUiSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

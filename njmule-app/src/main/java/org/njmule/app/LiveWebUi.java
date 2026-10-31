@@ -20,8 +20,8 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.util.Optional;
 import org.njmule.core.api.NjMuleEngine;
-import org.njmule.webui.WebUi;
-import org.njmule.webui.WebUiSettings;
+import org.njmule.http.WebUi;
+import org.njmule.http.WebUiSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

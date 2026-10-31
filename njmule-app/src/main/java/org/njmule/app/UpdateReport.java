@@ -24,7 +24,7 @@ import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.NewVersion;
 import org.njmule.core.api.NjMuleInfo;
 import org.njmule.core.api.UpdateStatus;
-import org.njmule.webui.UpdateHelp;
+import org.njmule.http.UpdateHelp;
 
 /**
  * What the command line says of new versions, from the engine's status or from a running njMule's API.

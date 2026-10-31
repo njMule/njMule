@@ -37,7 +37,7 @@ val cliHelp =
     }
 
 dependencies {
-    webCaptureDeclared(project(":njmule-webui"))
+    webCaptureDeclared(project(":njmule-http"))
     cliHelpDeclared(project(":njmule-app"))
 }
 

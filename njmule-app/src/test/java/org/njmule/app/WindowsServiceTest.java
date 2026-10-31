@@ -35,7 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.njmule.core.config.AppDirectories;
-import org.njmule.webui.WebUiSettings;
+import org.njmule.http.WebUiSettings;
 
 class WindowsServiceTest {
 
