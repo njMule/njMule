@@ -34,13 +34,25 @@ function tip(place: Place, title: string): string {
     return place === 'network' ? `${props.network.state}\n${keys}` : `${title}  ${keys}`;
 }
 
+// What waits on a place, said to a screen reader: the downloads running, the new messages, the networks' state.
+function help(place: Place): string | undefined {
+    const value = props.counts[place] ?? 0;
+    if (place === 'network') {
+        return props.network.state;
+    }
+    if (value === 0) {
+        return undefined;
+    }
+    return place === 'transfers' ? t('nj.rail.active', value) : t('nj.rail.unread', value);
+}
+
 function dot(): string {
     return props.network.up ? 'connected' : props.network.trying ? 'connecting' : '';
 }
 </script>
 
 <template>
-    <nav class="nav-rail" :class="{ collapsed }" :aria-label="t('IDS_NETWORK')">
+    <nav class="nav-rail" :class="{ collapsed }">
         <div class="rail-head">
             <img class="rail-logo" :src="logo" alt="" width="28" height="28" />
             <template v-if="!collapsed">
@@ -83,6 +95,7 @@ function dot(): string {
                     :class="{ selected: current === place.id }"
                     :aria-current="current === place.id ? 'page' : undefined"
                     :aria-label="collapsed ? t(place.title) : undefined"
+                    :aria-description="help(place.id)"
                     @click="current = place.id"
                 >
                     <span class="rail-graphic">

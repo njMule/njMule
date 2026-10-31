@@ -13,7 +13,7 @@ import { connection, on, preferences, running, serverName, shared, status, uploa
 import { networkWords } from './network';
 import { current, PLACES, searchRequest, shortcut, withShortcutKey } from './places';
 import { searches } from './search';
-import { chats, friends, unreadTotal } from './chats';
+import { chats, friends } from './chats';
 import type { Command } from './palette';
 import { engineHere, type Platform } from './platform';
 import SearchScreen from './screens/SearchScreen.vue';
@@ -106,6 +106,14 @@ function toggleSidebar(): void {
         }
     }
 }
+
+// The messages that came while the messages did not show, on their place until they show.
+const unread = ref(0);
+watch(current, (place) => {
+    if (place === 'messages') {
+        unread.value = 0;
+    }
+});
 
 // The window turned narrow or wide: the sidebar folds, or opens again as the user left it.
 watch(narrow, (now) => (collapsed.value = now || readCollapsed()));
@@ -287,6 +295,7 @@ onMounted(() => {
     on('download.completed', (d) => success(t('nj.transfers.completed', d.download?.name ?? '')));
     on('message.received', (m) => {
         if (current.value !== 'messages') {
+            unread.value++;
             message(t('nj.chat.from', m.nick || m.address || ''));
         }
     });
@@ -307,7 +316,7 @@ onUnmounted(() => {
             <div class="frame">
                 <Sidebar
                     :collapsed="collapsed"
-                    :counts="{ transfers: running, messages: unreadTotal }"
+                    :counts="{ transfers: running, messages: unread }"
                     :network="{ up: words.up, trying: words.trying, state: `${words.ed2k}\n${words.kad}` }"
                     @toggle="toggleSidebar"
                 />
