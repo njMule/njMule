@@ -410,7 +410,7 @@ public record LaunchOptions(
         spec.addOption(valued(CONFIG_DIR_OPTION, "<dir>", "keep all data below <dir> instead of the system locations"));
         spec.addOption(
                 valued(LOG_LEVEL_OPTION, "<level>", "ERROR, WARN, INFO, DEBUG or TRACE (overrides the preferences)"));
-        spec.addOption(flag(HEADLESS_OPTION, "run without a window (the launcher of the desktop app)"));
+        spec.addOption(flag(HEADLESS_OPTION, "accepted for older start commands: njmule never opens a window"));
         spec.addOption(valued(ADD_SERVERS_OPTION, "<server.met>", "add the servers of another client's server.met"));
         spec.addOption(valued(
                 CONNECT_SERVER_OPTION,
@@ -515,9 +515,9 @@ public record LaunchOptions(
         spec.addOption(valued(
                 REMOTE_URL_OPTION,
                 "<url>",
-                "the API of another njMule, as http://host:4711/api/v1: with " + REMOTE_OPTION + " the command runs"
-                        + " there, without it the desktop app shows and drives that njMule; the token comes from the"
-                        + " NJMULE_API_TOKEN environment variable or, for the desktop app, a connection it remembers"));
+                "the API of another njMule, as http://host:4711/api/v1, where the command of " + REMOTE_OPTION
+                        + " runs; the token comes from the NJMULE_API_TOKEN environment variable (njmule-gui"
+                        + " --remote-url <url> shows that njMule in the desktop app)"));
         spec.addOption(flag(
                 CHECK_UPDATE_OPTION,
                 "look for a new version of njMule on GitHub, print it and exit: 0 when this one is the newest,"
