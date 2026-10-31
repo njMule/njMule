@@ -50,7 +50,6 @@
     --nj-graph-up: #5e8a4a;
     --nj-graph-grid: var(--color-border-muted);
     --nj-dot-useless: var(--color-neutral-emphasis);
-    --nj-scrim: rgba(46, 52, 64, 0.18);
     /* The plate under a CAPTCHA: light in every theme, as its letters are drawn for a light page. */
     --nj-captcha-paper: #ffffff;
     --nj-row: 32px;
@@ -79,7 +78,6 @@
     --nj-graph-down: #5b8cc6;
     --nj-graph-up: #7d9f57;
     --nj-dot-useless: #81889a;
-    --nj-scrim: rgba(0, 0, 0, 0.35);
     --nj-captcha-paper: #eceff4;
     color-scheme: dark;
 }
@@ -485,13 +483,15 @@ select:disabled {
     z-index: 30;
 }
 
+/* Under a dialog the window stays as it is, as under the desktop app's dialog windows; it only takes no clicks. */
 .scrim {
     position: fixed;
     inset: 0;
-    background: var(--nj-scrim);
     z-index: 15;
 }
 
+/* A dialog as one of the desktop app's in its own window: the title and its cross, the words and fields, then the
+   buttons on a band across its foot. */
 .dialog {
     position: fixed;
     top: 50%;
@@ -499,26 +499,34 @@ select:disabled {
     transform: translate(-50%, -50%);
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
     width: min(640px, calc(100vw - 32px));
     max-height: calc(100vh - 64px);
-    padding: 20px;
+    padding: 16px 18px 0;
     border: 1px solid var(--color-border-default);
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--color-bg-overlay);
     box-shadow: 0 8px 32px var(--color-shadow-default);
+    overflow: hidden;
     z-index: 16;
 }
 
 .dialog-title {
     margin: 0;
-    font-size: 1.3em;
+    font-family: inherit;
+    font-size: 1.15em;
+    font-weight: bold;
 }
 
 .dialog-buttons {
     display: flex;
+    flex: none;
     justify-content: flex-end;
     gap: 8px;
+    margin: 4px -18px 0;
+    padding: 12px 18px;
+    border-top: 1px solid var(--color-border-muted);
+    background: var(--color-bg-subtle);
 }
 
 /* A state on a pastel pill of its tone: the words in the theme's colour, the icon in the tone. */

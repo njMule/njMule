@@ -4,7 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
+import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import { computed, h, ref, shallowRef, watch } from 'vue';
 import { answer, api } from '../api/client';
 import { size } from '../format';
@@ -12,6 +12,7 @@ import { t } from '../i18n';
 import { addLinks } from '../transfers-actions';
 import { actsFirst, byName } from '../transfers';
 import DataTable from '../ui/DataTable.vue';
+import DialogHeader from '../ui/DialogHeader.vue';
 import Icon from '../ui/Icon.vue';
 
 // The files another client shares, as it lists them when asked; the chosen ones can be downloaded.
@@ -95,9 +96,7 @@ async function download(): Promise<void> {
         <DialogPortal>
             <DialogOverlay class="scrim" />
             <DialogContent class="dialog client-files" :aria-describedby="undefined">
-                <DialogTitle class="dialog-title display">{{
-                    `${t('IDS_VIEWFILES')}: ${client?.name ?? ''}`
-                }}</DialogTitle>
+                <DialogHeader :title="`${t('IDS_VIEWFILES')}: ${client?.name ?? ''}`" />
                 <span class="muted">{{ state }}</span>
                 <div class="table">
                     <DataTable

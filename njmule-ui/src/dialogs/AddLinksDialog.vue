@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
+import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import { computed, nextTick, ref, watch } from 'vue';
 import { size } from '../format';
 import { t } from '../i18n';
@@ -11,6 +11,7 @@ import { fileLinks } from '../links';
 import { categories, downloads, preferences, shared } from '../model/engine';
 import { actsFirst, kindIcon, kindOf, knownAs } from '../transfers';
 import { addLinks } from '../transfers-actions';
+import DialogHeader from '../ui/DialogHeader.vue';
 import Icon from '../ui/Icon.vue';
 
 // eD2K file links to download, typed or pasted in a box: the files found in it, each with what is known of it already,
@@ -113,7 +114,7 @@ async function add(): Promise<void> {
         <DialogPortal>
             <DialogOverlay class="scrim" />
             <DialogContent class="dialog add-links" :aria-describedby="undefined">
-                <DialogTitle class="dialog-title display">{{ t('nj.addLinks.title') }}</DialogTitle>
+                <DialogHeader :title="t('nj.addLinks.title')" />
                 <div class="prompt-row">
                     <label class="field-label" for="links-text">{{ t('nj.addLinks.prompt') }}</label>
                     <button class="button flat" @click="paste"><Icon name="PASTE" />{{ t('IDS_PASTE') }}</button>

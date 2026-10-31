@@ -3,20 +3,13 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import {
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogOverlay,
-    DialogPortal,
-    DialogRoot,
-    DialogTitle,
-} from 'reka-ui';
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import { ref, watch } from 'vue';
 import { answer, api } from '../../api/client';
 import { t } from '../../i18n';
 import { problem } from '../../toasts';
 import { webAddresses } from './inputs';
+import DialogHeader from '../../ui/DialogHeader.vue';
 
 // The addresses of the server.met lists the update at start takes, one per line, as the desktop app asks for them.
 
@@ -51,7 +44,7 @@ async function save(): Promise<void> {
         <DialogPortal>
             <DialogOverlay class="scrim" />
             <DialogContent class="dialog">
-                <DialogTitle class="dialog-title display">{{ t('nj.settings.addressesTitle') }}</DialogTitle>
+                <DialogHeader :title="t('nj.settings.addressesTitle')" />
                 <DialogDescription>{{ t('nj.settings.serverListAddresses') }}</DialogDescription>
                 <textarea
                     v-model="text"

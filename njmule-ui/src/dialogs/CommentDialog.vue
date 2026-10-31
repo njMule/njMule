@@ -3,12 +3,13 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
+import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import { computed, ref, shallowRef, watch } from 'vue';
 import { answer, api, type Schemas } from '../api/client';
 import { t } from '../i18n';
 import { problem } from '../toasts';
 import { actsFirst, rating, RATINGS } from '../transfers';
+import DialogHeader from '../ui/DialogHeader.vue';
 import Icon from '../ui/Icon.vue';
 import Tip from '../ui/Tip.vue';
 
@@ -124,7 +125,7 @@ function line(c: Comment): string {
         <DialogPortal>
             <DialogOverlay class="scrim" />
             <DialogContent class="dialog comments" :aria-describedby="undefined">
-                <DialogTitle class="dialog-title display">{{ t('nj.comments.title') }}</DialogTitle>
+                <DialogHeader :title="t('nj.comments.title')" />
                 <span class="file muted"
                     ><Icon name="FILE" /><span class="ellipsis" dir="auto">{{ file?.name }}</span></span
                 >

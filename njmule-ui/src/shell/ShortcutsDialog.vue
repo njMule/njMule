@@ -3,9 +3,10 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui';
+import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import { t } from '../i18n';
 import { PLACES, shortcut, withShortcutKey } from '../places';
+import DialogHeader from '../ui/DialogHeader.vue';
 import Icon from '../ui/Icon.vue';
 
 // The keys that do something, with what they do.
@@ -26,7 +27,7 @@ const rows = [
         <DialogPortal>
             <DialogOverlay class="scrim" />
             <DialogContent class="dialog shortcuts" :aria-describedby="undefined">
-                <DialogTitle class="dialog-title display">{{ t('nj.shortcuts.title') }}</DialogTitle>
+                <DialogHeader :title="t('nj.shortcuts.title')" />
                 <dl>
                     <template v-for="[keys, what] in rows" :key="keys">
                         <dt>
