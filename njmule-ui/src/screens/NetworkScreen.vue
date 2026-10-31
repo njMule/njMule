@@ -6,8 +6,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 import { PopoverAnchor, PopoverContent, PopoverPortal, PopoverRoot } from 'reka-ui';
 import { computed, nextTick, ref } from 'vue';
 import { answer, api } from '../api/client';
+import { count } from '../format';
 import { t } from '../i18n';
-import { connection, preferences, serverName, status } from '../model/engine';
+import { connection, preferences, serverName, servers, status } from '../model/engine';
 import { networkCards, networkWords } from '../network';
 import { current, networkPart } from '../places';
 import { problem } from '../toasts';
@@ -28,11 +29,17 @@ const words = computed(() => networkWords(connection.value, status.value, server
 const testShown = ref(false);
 const portTest = ref<InstanceType<typeof PortTestPane> | null>(null);
 
-const PARTS = [
-    { value: 'servers' as const, key: 'IDS_EM_SERVER', icon: 'SERVER' as const },
-    { value: 'kad' as const, key: 'IDS_EM_KADEMLIA', icon: 'KAD' as const },
-    { value: 'log' as const, key: 'IDS_SV_LOG', icon: 'LOG' as const },
-];
+// The parts, each named with how many it holds once it tells: the servers known, Kad's contacts while it runs.
+const parts = computed(() => [
+    { value: 'servers' as const, title: t('IDS_EM_SERVER'), icon: 'SERVER' as const, count: servers.value.length },
+    {
+        value: 'kad' as const,
+        title: t('IDS_EM_KADEMLIA'),
+        icon: 'KAD' as const,
+        count: status.value?.kad ? status.value.kad.contacts : null,
+    },
+    { value: 'log' as const, title: t('IDS_SV_LOG'), icon: 'LOG' as const, count: null },
+]);
 
 async function recheck(): Promise<void> {
     try {
@@ -59,9 +66,11 @@ async function testPorts(): Promise<void> {
                     <span class="card-tile"><Icon name="SERVER" /></span>
                     <div>
                         <div class="card-title">eD2K</div>
-                        <div class="card-headline">
-                            <Icon v-if="cards.ed2k.icon" :name="cards.ed2k.icon" />{{ cards.ed2k.headline }}
-                        </div>
+                        <Tip :text="cards.ed2k.term">
+                            <div class="card-headline">
+                                <Icon v-if="cards.ed2k.icon" :name="cards.ed2k.icon" />{{ cards.ed2k.headline }}
+                            </div>
+                        </Tip>
                     </div>
                 </div>
                 <div class="card-detail">
@@ -79,9 +88,15 @@ async function testPorts(): Promise<void> {
                             )
                         }}
                     </button>
-                    <button class="button flat small card-other" @click="networkPart = 'servers'">
-                        <Icon name="SERVER" />{{ t('nj.network.otherServer') }}
-                    </button>
+                    <Tip :text="t('nj.network.otherServer')">
+                        <button
+                            class="button flat small card-other"
+                            :aria-label="t('nj.network.otherServer')"
+                            @click="networkPart = 'servers'"
+                        >
+                            <Icon name="SERVER" /><span class="label">{{ t('nj.network.otherServer') }}</span>
+                        </button>
+                    </Tip>
                 </div>
             </section>
             <section class="network-card" :class="cards.kad.tone">
@@ -89,9 +104,11 @@ async function testPorts(): Promise<void> {
                     <span class="card-tile"><Icon name="KAD" /></span>
                     <div>
                         <div class="card-title">Kad</div>
-                        <div class="card-headline">
-                            <Icon v-if="cards.kad.icon" :name="cards.kad.icon" />{{ cards.kad.headline }}
-                        </div>
+                        <Tip :text="cards.kad.term">
+                            <div class="card-headline">
+                                <Icon v-if="cards.kad.icon" :name="cards.kad.icon" />{{ cards.kad.headline }}
+                            </div>
+                        </Tip>
                     </div>
                 </div>
                 <div class="card-detail">
@@ -103,9 +120,16 @@ async function testPorts(): Promise<void> {
                             t(words.kadRuns ? 'IDS_MAIN_BTN_DISCONNECT' : 'IDS_MAIN_BTN_CONNECT')
                         }}
                     </button>
-                    <button class="button flat small card-other" :disabled="!words.kadRuns" @click="recheck">
-                        <Icon name="SHIELD" />{{ t('IDS_KAD_RECHECKFW') }}
-                    </button>
+                    <Tip :text="t('IDS_KAD_RECHECKFW')">
+                        <button
+                            class="button flat small card-other"
+                            :aria-label="t('IDS_KAD_RECHECKFW')"
+                            :disabled="!words.kadRuns"
+                            @click="recheck"
+                        >
+                            <Icon name="SHIELD" /><span class="label">{{ t('IDS_KAD_RECHECKFW') }}</span>
+                        </button>
+                    </Tip>
                 </div>
             </section>
             <section class="network-card">
@@ -133,23 +157,31 @@ async function testPorts(): Promise<void> {
                             </PopoverContent>
                         </PopoverPortal>
                     </PopoverRoot>
-                    <button class="button flat small card-other" @click="current = 'settings'">
-                        <Icon name="OPTIONS" />{{ t('IDS_EM_PREFS') }}
-                    </button>
+                    <Tip :text="t('IDS_EM_PREFS')">
+                        <button
+                            class="button flat small card-other"
+                            :aria-label="t('IDS_EM_PREFS')"
+                            @click="current = 'settings'"
+                        >
+                            <Icon name="OPTIONS" /><span class="label">{{ t('IDS_EM_PREFS') }}</span>
+                        </button>
+                    </Tip>
                 </div>
             </section>
         </div>
         <div class="segments" role="tablist" :aria-label="t('IDS_NETWORK')">
-            <Tip v-for="p in PARTS" :key="p.value" :text="t(p.key)">
-                <button
-                    class="segment"
-                    role="tab"
-                    :aria-selected="networkPart === p.value"
-                    @click="networkPart = p.value"
-                >
-                    <Icon :name="p.icon" />{{ t(p.key) }}
-                </button>
-            </Tip>
+            <button
+                v-for="p in parts"
+                :key="p.value"
+                class="segment"
+                role="tab"
+                :aria-selected="networkPart === p.value"
+                :aria-label="p.count === null ? p.title : `${p.title}, ${p.count}`"
+                @click="networkPart = p.value"
+            >
+                <Icon :name="p.icon" />{{ p.title
+                }}<span v-if="p.count !== null" class="segment-count">{{ count(p.count) }}</span>
+            </button>
         </div>
         <ServersView v-if="networkPart === 'servers'" />
         <KadView v-else-if="networkPart === 'kad'" />
@@ -249,6 +281,11 @@ async function testPorts(): Promise<void> {
     line-height: 1.45;
 }
 
+/* In a narrow window the second button of a card keeps to its icon, its words in the tooltip. */
+.njmule.narrow .card-other .label {
+    display: none;
+}
+
 .card-actions {
     display: flex;
     flex-wrap: wrap;
@@ -277,6 +314,11 @@ async function testPorts(): Promise<void> {
 .segment[aria-selected='true'] {
     background: var(--color-accent-muted);
     box-shadow: inset 0 0 0 1px var(--color-accent-emphasis);
+}
+
+.segment-count {
+    color: var(--color-fg-muted);
+    font-size: 0.9em;
 }
 
 :deep(.port-test-popup) {

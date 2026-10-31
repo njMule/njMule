@@ -124,9 +124,11 @@ const FORWARDING: Record<NonNullable<Status['forwarding']>, string> = {
     failed: 'nj.ports.forwarding.FAILED',
 };
 
-/** A card of the network screen: its headline, the icon and tone beside it, and the lines under it. */
+/** A card of the network screen: its headline, the technical term for it, its icon and tone, and the lines under it. */
 export interface Card {
     headline: string;
+    /** The technical term of the headline, such as High ID, for its tooltip; empty for none. */
+    term: string;
     icon: 'CHECK_CIRCLE' | 'WARNING' | 'HOURGLASS' | 'CLOUD_OFF' | '';
     tone: 'success' | 'warning' | 'connecting' | '';
     detail: string[];
@@ -145,25 +147,33 @@ export function networkCards(
         const s = status?.server;
         ed2k = {
             headline: t(low ? 'nj.network.unreachable' : 'nj.network.reachable'),
+            term: t(low ? 'IDS_IDLOW' : 'IDS_IDHIGH'),
             icon: low ? 'WARNING' : 'CHECK_CIRCLE',
             tone: low ? 'warning' : 'success',
             detail: [serverName, ...(s ? [t('nj.status.server', count(s.users), count(s.files))] : [])],
         };
     } else if (connection === 'connecting') {
-        ed2k = { headline: t('IDS_CONNECTING'), icon: 'HOURGLASS', tone: 'connecting', detail: [serverName] };
+        ed2k = {
+            headline: t('IDS_CONNECTING'),
+            term: '',
+            icon: 'HOURGLASS',
+            tone: 'connecting',
+            detail: [serverName],
+        };
     } else {
-        ed2k = { headline: t('IDS_NOTCONNECTED'), icon: 'CLOUD_OFF', tone: '', detail: [] };
+        ed2k = { headline: t('IDS_NOTCONNECTED'), term: '', icon: 'CLOUD_OFF', tone: '', detail: [] };
     }
     const k = status?.kad ?? null;
     let kad: Card;
     if (k === null) {
-        kad = { headline: t('nj.kad.off'), icon: 'CLOUD_OFF', tone: '', detail: [] };
+        kad = { headline: t('nj.kad.off'), term: '', icon: 'CLOUD_OFF', tone: '', detail: [] };
     } else if (!k.connected) {
-        kad = { headline: t('IDS_CONNECTING'), icon: 'HOURGLASS', tone: 'connecting', detail: [] };
+        kad = { headline: t('IDS_CONNECTING'), term: '', icon: 'HOURGLASS', tone: 'connecting', detail: [] };
     } else {
         // Behind a TCP firewall, whether UDP gets through tells if others still reach us, once tested.
         kad = {
             headline: t(k.firewalled ? 'nj.network.unreachable' : 'nj.network.reachable'),
+            term: t(k.firewalled ? 'IDS_FIREWALLED' : 'IDS_KADOPEN'),
             icon: k.firewalled ? 'WARNING' : 'CHECK_CIRCLE',
             tone: k.firewalled ? 'warning' : 'success',
             detail: [
@@ -178,6 +188,7 @@ export function networkCards(
     const forwarding = FORWARDING[status?.forwarding ?? 'off'];
     const ports: Card = {
         headline: `TCP ${preferences['net.tcpPort'] ?? status?.tcpPort ?? ''}${k ? ` · UDP ${k.udpPort}` : ''}`,
+        term: '',
         icon: '',
         tone: '',
         detail: [

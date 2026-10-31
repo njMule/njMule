@@ -18,6 +18,18 @@ describe('the network cards', () => {
         thenTheEd2kCardIs('success', 'CHECK_CIRCLE');
     });
 
+    it('should give the kind of id as the term of the eD2K headline', () => {
+        givenConnected(true);
+        whenTheCardsAreMade();
+        thenTheTermsAre('[IDS_IDLOW]', '');
+    });
+
+    it('should give the firewall as the term of the Kad headline once Kad is up', () => {
+        givenKad({ connected: true, firewalled: true });
+        whenTheCardsAreMade();
+        thenTheTermsAre('', '[IDS_FIREWALLED]');
+    });
+
     it('should warn on eD2K with a low id', () => {
         givenConnected(true);
         whenTheCardsAreMade();
@@ -74,6 +86,10 @@ describe('the network cards', () => {
 
     function thenThePortsReadAs(headline: string): void {
         expect(cards?.ports.headline).toBe(headline);
+    }
+
+    function thenTheTermsAre(ed2k: string, kad: string): void {
+        expect([cards?.ed2k.term, cards?.kad.term]).toEqual([ed2k, kad]);
     }
 
     function engineStatus(fields: Partial<Status>): Status {
