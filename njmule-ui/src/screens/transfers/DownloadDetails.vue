@@ -529,8 +529,8 @@ defineExpose({ neededHeight });
                                     @contextmenu="pickedSource = sourceKey(s)"
                                 >
                                     <span class="who">
+                                        <span v-if="s.country" class="small muted"><Country :code="s.country" /></span>
                                         <strong class="ellipsis" dir="auto">{{ s.nick ?? s.address }}</strong>
-                                        <span class="small muted"><Country :code="s.country" /></span>
                                         <span class="small muted ellipsis" dir="ltr">{{ s.software }}</span>
                                     </span>
                                     <span class="figure" dir="ltr">{{ sourceFigure(s) }}</span>
