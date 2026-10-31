@@ -20,6 +20,7 @@ import {
 import { computed, h, nextTick, onMounted, ref, shallowRef, watch } from 'vue';
 import { ApiError, answer, api, type Schemas } from '../api/client';
 import { ask } from '../ask';
+import { filesHere, revealFile } from '../files';
 import { count, size } from '../format';
 import { t } from '../i18n';
 import { htmlLinks } from '../links';
@@ -337,9 +338,9 @@ async function subfolders(on: boolean): Promise<void> {
     }
 }
 
-// A page cannot open the folders of the computer njMule runs on: it says so.
+// A page, or a window on another computer's njMule, cannot open the folders of the computer njMule runs on: it says so.
 async function openHere(folder: string): Promise<void> {
-    if (!props.platform.desktop) {
+    if (!filesHere(props.platform)) {
         message(t('nj.remote.elsewhere'));
     } else if (!(await props.platform.openFolder(folder))) {
         problem(folder);
@@ -353,9 +354,10 @@ async function openPlace(): Promise<void> {
 }
 
 // One file at a time, as renaming.
+// The folder of the one file chosen, the file selected where the file manager can.
 async function openFolder(): Promise<void> {
     if (chosen.value.length === 1) {
-        await openHere(parentOf(chosen.value[0]!.path));
+        await revealFile(props.platform, chosen.value[0]!.name, chosen.value[0]!.path);
     }
 }
 
@@ -598,7 +600,7 @@ onMounted(() => void readDirectories());
                 <template #menu>
                     <ContextMenuItem
                         class="menu-item"
-                        :disabled="chosen.length !== 1 || !platform.desktop"
+                        :disabled="chosen.length !== 1 || !filesHere(platform)"
                         @select="openFolder"
                     >
                         <Icon name="FOLDER_OPEN" />{{ t('IDS_OPENFOLDER') }}

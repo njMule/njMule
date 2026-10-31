@@ -22,6 +22,7 @@ import {
 import { computed, ref, shallowRef, watch } from 'vue';
 import { answer, api, type Schemas } from '../../api/client';
 import ClientFilesDialog from '../../dialogs/ClientFilesDialog.vue';
+import { filesHere, preview } from '../../files';
 import { duration, percent, rate, size } from '../../format';
 import { t } from '../../i18n';
 import { categories, folders, sources, type Download, type Source } from '../../model/engine';
@@ -383,7 +384,7 @@ defineExpose({ neededHeight });
                                 v-for="a in headActions(state!)"
                                 :key="a"
                                 class="button"
-                                :disabled="a === 'openIncoming' && !platform.desktop"
+                                :disabled="a === 'openIncoming' && !filesHere(platform)"
                                 @click="act(a)"
                             >
                                 <Icon :name="ACTIONS[a].icon" />{{ t(ACTIONS[a].key) }}
@@ -406,7 +407,11 @@ defineExpose({ neededHeight });
                             </Tip>
                             <DropdownMenuPortal>
                                 <DropdownMenuContent class="menu" align="end" :reference="moreTrigger?.$el">
-                                    <DropdownMenuItem class="menu-item" disabled>
+                                    <DropdownMenuItem
+                                        class="menu-item"
+                                        :disabled="!filesHere(platform)"
+                                        @select="preview(platform, one.hash)"
+                                    >
                                         <Icon name="PREVIEW" />{{ t('IDS_DL_PREVIEW') }}
                                     </DropdownMenuItem>
                                     <DropdownMenuItem class="menu-item" @select="emit('comment', one)">

@@ -429,6 +429,17 @@ fn open_window_on(url: &str, token: &str) -> Result<(), String> {
     }
 }
 
+/// The player of the options: a path copied from a file manager may come in quotes, which are no part of its name.
+fn player_program(player: &str) -> &str {
+    let program = player.trim();
+    for quote in ['"', '\''] {
+        if program.len() >= 2 && program.starts_with(quote) && program.ends_with(quote) {
+            return program[1..program.len() - 1].trim();
+        }
+    }
+    program
+}
+
 /// Brings the window back, from the notification area too, whose icon then goes with what it opened.
 fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -755,6 +766,43 @@ fn connected(app: AppHandle, shell: State<'_, Shell>, problem: Option<String>) {
     }
 }
 
+/// Starts the player of the options on the data of a download so far, its arguments apart by spaces, then the file;
+/// the player runs on its own.
+#[tauri::command]
+fn preview(player: String, args: String, file: String) -> Result<(), String> {
+    let program = player_program(&player);
+    let mut child = Command::new(program)
+        .args(args.split_whitespace())
+        .arg(file)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("{program}: {e}"))?;
+    std::thread::spawn(move || child.wait());
+    Ok(())
+}
+
+/// Opens a file with the program the system opens its kind with: false when the file is not there, or the system's
+/// reason it could not.
+#[tauri::command]
+fn open_file(app: AppHandle, path: String) -> Result<bool, String> {
+    if !Path::new(&path).is_file() {
+        return Ok(false);
+    }
+    app.opener().open_path(path, None::<&str>).map(|_| true).map_err(|e| e.to_string())
+}
+
+/// Shows the folder of a file in the system's file manager, the file selected where it can: false when the file is
+/// not there, or the system's reason it could not.
+#[tauri::command]
+fn reveal_file(app: AppHandle, path: String) -> Result<bool, String> {
+    if !Path::new(&path).exists() {
+        return Ok(false);
+    }
+    app.opener().reveal_item_in_dir(path).map(|_| true).map_err(|e| e.to_string())
+}
+
 /// Brings the window back, from the notification area too.
 #[tauri::command]
 fn show_main(app: AppHandle) {
@@ -895,7 +943,10 @@ fn main() {
             set_desktop_settings,
             remote_connections,
             open_remote,
-            connected
+            connected,
+            preview,
+            open_file,
+            reveal_file
         ])
         .setup(move |app| {
             match &remote {
@@ -1083,6 +1134,12 @@ mod tests {
             ["'self'", "http://127.0.0.1:*", "https://nas.example.org:8443"]
         );
         assert_eq!(Vec::<String>::from(policy["default-src"].clone()), ["'self'"]);
+    }
+
+    #[test]
+    fn should_take_a_player_copied_in_quotes_as_its_path() {
+        assert_eq!(player_program(r#" "C:\Program Files\VLC\vlc.exe" "#), r"C:\Program Files\VLC\vlc.exe");
+        assert_eq!(player_program("/usr/bin/mpv"), "/usr/bin/mpv");
     }
 
     #[test]

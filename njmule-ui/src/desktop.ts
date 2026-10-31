@@ -123,4 +123,7 @@ export const desktop: Platform = {
     onClipboard: (handler) => void listen<string>('clipboard', (e) => handler(e.payload)),
     remoteConnections: () => invoke<string[]>('remote_connections'),
     openRemote: (url, token, remember) => saying(invoke<void>('open_remote', { url, token, remember })),
+    preview: (player, args, file) => saying(invoke<void>('preview', { player, args, file })),
+    openFile: (path) => saying(invoke<boolean>('open_file', { path })),
+    revealFile: (path) => saying(invoke<boolean>('reveal_file', { path })),
 };

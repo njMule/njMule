@@ -18,22 +18,12 @@ import { computed, h, nextTick, onUnmounted, ref, watch } from 'vue';
 import AddLinksDialog from '../dialogs/AddLinksDialog.vue';
 import CategoriesDialog from '../dialogs/CategoriesDialog.vue';
 import CommentDialog from '../dialogs/CommentDialog.vue';
+import { completedFile, filesHere, openFile, preview, revealFile } from '../files';
 import { amount, duration, percent, rate, size } from '../format';
 import { t } from '../i18n';
-import {
-    bans,
-    categories,
-    downloads,
-    known,
-    folders,
-    sources,
-    uploads,
-    type Download,
-    type Source,
-} from '../model/engine';
+import { bans, categories, downloads, known, sources, uploads, type Download, type Source } from '../model/engine';
 import { current, withShortcutKey } from '../places';
 import type { Platform } from '../platform';
-import { problem } from '../toasts';
 import {
     byCategory,
     byName,
@@ -265,9 +255,13 @@ function categoryColor(id: number): number {
     return categories.value.find((c) => c.id === id)?.color ?? 0;
 }
 
-/** A double click or Enter: a download opens onto its sources, or closes; a complete one has none. */
+/**
+ * A double click or Enter: a complete download opens in the program of its kind, the others open onto their sources, or
+ * close.
+ */
 function activate(d: Download): void {
     if (d.status === 'complete') {
+        void openFile(props.platform, d.name, completedFile(d.hash));
         return;
     }
     const next = new Set(opened.value);
@@ -335,13 +329,8 @@ const cancellable = computed(() => chosen.value.filter((d) => d.status !== 'comp
 const active = computed(() => chosen.value.length === 1 && chosen.value[0]!.status !== 'complete');
 const unfinished = computed(() => chosen.value.length > 0 && cancellable.value.length === chosen.value.length);
 
-// The folder a completed download went to: its category's own, else the incoming folder.
-async function openFolderOf(d: Download): Promise<void> {
-    const folder = categories.value.find((c) => c.id === d.category)?.incoming || folders.value.incoming;
-    if (folder !== '' && !(await props.platform.openFolder(folder))) {
-        problem(folder);
-    }
-}
+// The files of the downloads open only in the desktop app's window on the engine's computer.
+const here = computed(() => filesHere(props.platform));
 
 const anyComplete = computed(() => downloads.value.some((d) => d.status === 'complete'));
 
@@ -674,13 +663,17 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                         >
                             <Icon name="INFO" />{{ t('IDS_DETAILS') }}
                         </ContextMenuItem>
-                        <ContextMenuItem class="menu-item" disabled
+                        <!-- A completed download has no part file any more: there is nothing to preview. -->
+                        <ContextMenuItem
+                            class="menu-item"
+                            :disabled="!here || !active || chosen[0]!.completed === 0"
+                            @select="preview(platform, chosen[0]!.hash)"
                             ><Icon name="PREVIEW" />{{ t('IDS_DL_PREVIEW') }}</ContextMenuItem
                         >
                         <ContextMenuItem
                             class="menu-item"
-                            :disabled="!platform.desktop || chosen.length !== 1 || chosen[0]!.status !== 'complete'"
-                            @select="openFolderOf(chosen[0]!)"
+                            :disabled="!here || chosen.length !== 1 || chosen[0]!.status !== 'complete'"
+                            @select="revealFile(platform, chosen[0]!.name, completedFile(chosen[0]!.hash))"
                         >
                             <Icon name="FOLDER_OPEN" />{{ t('IDS_OPENFOLDER') }}
                         </ContextMenuItem>

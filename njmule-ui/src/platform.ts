@@ -66,6 +66,12 @@ export interface Platform {
      * remembers the connection when asked; fails with the reason. An empty token is the one remembered.
      */
     openRemote(url: string, token: string, remember: boolean): Promise<void>;
+    /** Starts the {@code player} of the options, with its {@code args}, on the data file of a download. */
+    preview(player: string, args: string, file: string): Promise<void>;
+    /** Opens a file of this computer with the program of its kind; false when it is not there. */
+    openFile(path: string): Promise<boolean>;
+    /** Shows the folder of a file of this computer, the file selected where the file manager can; false when gone. */
+    revealFile(path: string): Promise<boolean>;
 }
 
 const browser: Platform = {
@@ -99,11 +105,16 @@ const browser: Platform = {
     desktopSettings: async () => null,
     setDesktopSettings: async () => {},
     onClipboard: () => {},
-    // A page is already on its engine.
+    // A page is already on its engine, and opens no program or file of the computer.
     remoteConnections: async () => [],
     openRemote: async () => {
         throw new Error('');
     },
+    preview: async () => {
+        throw new Error('');
+    },
+    openFile: async () => false,
+    revealFile: async () => false,
 };
 
 /** Whether the engine at the API address {@code url} runs on this computer: its folders are ours to open. */

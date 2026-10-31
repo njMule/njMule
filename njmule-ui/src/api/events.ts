@@ -9,7 +9,7 @@ import { endpoint, proofHeaders, type Schemas } from './client';
 
 /** The engine's events this interface reacts to, by their name in openapi.yaml. */
 export interface EventData {
-    'download.completed': { download?: { name?: string } };
+    'download.completed': { download?: { name?: string; hash?: string }; file?: string };
     'download.added': unknown;
     'download.removed': unknown;
     'server.connecting': { server?: { name?: string; address?: string } };
