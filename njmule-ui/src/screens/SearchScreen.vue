@@ -689,6 +689,14 @@ async function start(): Promise<void> {
         problem(wrong.hint);
         return;
     }
+    // The words with the filters, as the engine's parser reads them, before the networks are looked at.
+    const e = expression(words, filters.value);
+    try {
+        await answer(api().POST('/searches/check', { body: { query: e } }));
+    } catch (err) {
+        problem((err as Error).message);
+        return;
+    }
     const scopeNow = where();
     if (scopeNow === undefined) {
         problem(t('IDS_NOTCONNECTEDANY'));
@@ -697,7 +705,7 @@ async function start(): Promise<void> {
     remember(words);
     past.value = history();
     query.value = words;
-    await search(expression(words, filters.value), scopeNow);
+    await search(e, scopeNow);
 }
 
 async function search(e: string, where: Search['scope']): Promise<void> {
