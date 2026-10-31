@@ -338,6 +338,41 @@ paths:
           $ref: "#/components/responses/Forbidden"
         default:
           $ref: "#/components/responses/Error"
+  /desktop:
+    get:
+      operationId: getDesktop
+      tags: [engine]
+      summary: Whether njMule opens ed2k links and starts at login on its computer; for the desktop app's window only.
+      description: A setting the system or this installation does not offer is null, such as one of a development build.
+      responses:
+        "200":
+          $ref: "#/components/responses/Desktop"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateDesktop
+      tags: [engine]
+      summary: Makes njMule open ed2k links or start at login, or gives them up; for the desktop app's window only.
+      description: >-
+        What the body names changes; the rest stays. Giving the links up gives them back to the program that
+        opened them before. A setting the system does not offer is refused, and nothing changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DesktopChange"
+      responses:
+        "200":
+          $ref: "#/components/responses/Desktop"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/Error"
   /schedule:
     get:
       operationId: getSchedule
@@ -2568,6 +2603,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/WebInterface"
+    Desktop:
+      description: What the desktop app sets in the system of njMule's computer now.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Desktop"
     ApiToken:
       description: The API token.
       content:
@@ -3400,6 +3441,26 @@ components:
         url:
           type: [string, "null"]
           description: Where a browser opens the interface, while it is on with a password.
+    Desktop:
+      type: object
+      required: [links, autostart]
+      properties:
+        links:
+          type: [boolean, "null"]
+          description: >-
+            Whether njMule opens ed2k links from browsers and other programs; null where the system hands them
+            over by itself (macOS) or njMule is not installed.
+        autostart:
+          type: [boolean, "null"]
+          description: Whether njMule starts when the user logs in; null where njMule is not installed.
+    DesktopChange:
+      type: object
+      minProperties: 1
+      properties:
+        links:
+          type: boolean
+        autostart:
+          type: boolean
     WebInterfaceChange:
       type: object
       minProperties: 1

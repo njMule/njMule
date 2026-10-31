@@ -146,7 +146,8 @@ public final class RemoteApi implements AutoCloseable {
     // What only the desktop app's window on njMule's computer may do: a browser's session or a token sent from
     // elsewhere
     // must not open the web interface wider, or take the API token with it.
-    private static final Set<String> LOCAL_ONLY = Set.of("updateWebInterface", "getApiToken", "renewApiToken");
+    private static final Set<String> LOCAL_ONLY =
+            Set.of("updateWebInterface", "getApiToken", "renewApiToken", "getDesktop", "updateDesktop");
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -164,6 +165,7 @@ public final class RemoteApi implements AutoCloseable {
     private final EventStreams streams;
     private final Optional<Runnable> exit;
     private final Optional<WebInterface> web;
+    private final Optional<DesktopIntegration> desktop;
     private final ApiSpecification specification;
     private final Map<String, Handler> handlers;
 
@@ -196,6 +198,21 @@ public final class RemoteApi implements AutoCloseable {
             Optional<Runnable> exit,
             Duration heartbeat,
             Optional<WebInterface> web) {
+        this(engine, recent, guard, exit, heartbeat, web, Optional.empty());
+    }
+
+    /**
+     * As the other constructors, giving and changing the settings of the desktop app {@code desktop} sets in the system
+     * of njMule's computer, when given.
+     */
+    public RemoteApi(
+            NjMuleEngine engine,
+            RecentEvents recent,
+            Guard guard,
+            Optional<Runnable> exit,
+            Duration heartbeat,
+            Optional<WebInterface> web,
+            Optional<DesktopIntegration> desktop) {
         this.engine = engine;
         this.guard = guard;
         this.searches = recent.searches();
@@ -205,6 +222,7 @@ public final class RemoteApi implements AutoCloseable {
         this.streams = new EventStreams(engine, heartbeat);
         this.exit = exit;
         this.web = web;
+        this.desktop = desktop;
         this.specification = Shipped.DOCUMENT;
         this.handlers = handlers();
         if (!this.handlers.keySet().equals(this.specification.operations().keySet())) {
@@ -511,6 +529,8 @@ public final class RemoteApi implements AutoCloseable {
                         c -> reply(c.exchange(), 200, g -> ApiJson.array(g, BindInterface.choices(), ApiJson::nic))),
                 entry("getWebInterface", c -> webSettings(c, webInterface().settings())),
                 entry("updateWebInterface", this::updateWebInterface),
+                entry("getDesktop", c -> desktopSettings(c, desktopIntegration().settings())),
+                entry("updateDesktop", this::updateDesktop),
                 entry(
                         "getApiToken",
                         c -> apiToken(
@@ -1055,6 +1075,22 @@ public final class RemoteApi implements AutoCloseable {
     // With whether this caller may change them, so that a form offers the changes only where they are taken.
     private void webSettings(Call c, WebInterface.Settings now) throws IOException {
         reply(c.exchange(), 200, g -> ApiJson.webInterface(g, now, c.caller() == Caller.LOCAL));
+    }
+
+    private DesktopIntegration desktopIntegration() {
+        return this.desktop.orElseThrow(() -> new Failure(501, "Only the desktop app's window sets this."));
+    }
+
+    private void desktopSettings(Call c, DesktopIntegration.Settings now) throws IOException {
+        reply(c.exchange(), 200, g -> ApiJson.desktop(g, now));
+    }
+
+    private void updateDesktop(Call c) throws IOException {
+        JsonNode b = c.body();
+        desktopSettings(
+                c,
+                desktopIntegration()
+                        .change(new DesktopIntegration.Change(optionalFlag(b, "links"), optionalFlag(b, "autostart"))));
     }
 
     // What the body names changes; a wrong value changes nothing.

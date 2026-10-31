@@ -209,6 +209,22 @@ final class ApiJson {
         g.writeEndObject();
     }
 
+    static void desktop(JsonGenerator g, DesktopIntegration.Settings s) {
+        g.writeStartObject();
+        flag(g, "links", s.links());
+        flag(g, "autostart", s.autostart());
+        g.writeEndObject();
+    }
+
+    // A setting a system may not offer: null then.
+    private static void flag(JsonGenerator g, String name, Optional<Boolean> value) {
+        if (value.isPresent()) {
+            g.writeBooleanProperty(name, value.get());
+        } else {
+            g.writeNullProperty(name);
+        }
+    }
+
     private static void strings(JsonGenerator g, String name, List<String> values) {
         g.writeArrayPropertyStart(name);
         values.forEach(g::writeString);
