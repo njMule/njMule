@@ -42,6 +42,8 @@ export const servers = shallowRef<Server[]>([]);
 export const shared = shallowRef<SharedFile[]>([]);
 export const categories = shallowRef<Category[]>([]);
 export const preferences = shallowRef<Record<string, string>>({});
+/** The incoming and temporary folders the engine uses, their defaults included; empty until read. */
+export const folders = shallowRef<Schemas['Folders']>({ incoming: '', temp: '' });
 export const rates = shallowRef<RateSample[]>([]);
 export const connection = ref<Connection>('disconnected');
 export const serverName = ref('');
@@ -231,6 +233,8 @@ async function read<T>(call: Promise<{ data?: T; error?: unknown; response: Resp
 async function readPreferences(): Promise<void> {
     try {
         preferences.value = await answer(api().GET('/preferences'));
+        // The folders follow the preferences, which leave those at their defaults empty.
+        folders.value = await answer(api().GET('/folders'));
     } catch {
         // Kept as they were.
     }

@@ -23,7 +23,7 @@ import { ask } from '../ask';
 import { count, size } from '../format';
 import { t } from '../i18n';
 import { htmlLinks } from '../links';
-import { preferences, readShared, shared, type SharedDirectory, type SharedFile } from '../model/engine';
+import { folders, readShared, shared, type SharedDirectory, type SharedFile } from '../model/engine';
 import type { Platform } from '../platform';
 import {
     fileKind,
@@ -76,7 +76,8 @@ const COUNTERS = computed(() => [
     { value: 'total' as const, title: t('IDS_STATS_CUMULATIVE') },
 ]);
 
-const incoming = computed(() => preferences.value['dirs.incoming'] ?? '');
+// The folder the engine uses, the default one included, as the preference is empty while at its default.
+const incoming = computed(() => folders.value.incoming);
 const tree = computed(() =>
     places(
         directories.value,
