@@ -206,6 +206,10 @@ watch(
 
 async function chooseDirectory(): Promise<void> {
     let path = await props.platform.chooseFolder(t('IDS_SHAREDIR'));
+    // The desktop app's dialog gives none when it is cancelled.
+    if (path === null && props.platform.desktop) {
+        return;
+    }
     let subdirectories = true;
     // A page reaches no folder: the path of the engine's computer is typed, in the same question.
     const typed = path === null;
