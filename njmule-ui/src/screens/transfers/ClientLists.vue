@@ -4,11 +4,13 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
-import { computed, ref } from 'vue';
+import { computed, h, ref } from 'vue';
 import { duration, rate, size } from '../../format';
-import { t } from '../../i18n';
+import { language, t } from '../../i18n';
 import { bans, known, uploads, type Ban, type KnownClient, type Upload } from '../../model/engine';
+import { byName, withoutColon } from '../../transfers';
 import DataTable, { type ColumnMeta } from '../../ui/DataTable.vue';
+import Country from './Country.vue';
 
 // The clients we upload to, those waiting for a slot, the banned and the clients met: one list at a time.
 
@@ -16,10 +18,66 @@ const props = defineProps<{ shelf: 'uploads' | 'queue' | 'banned' | 'known' }>()
 const selected = ref<string[]>([]);
 const numeric: ColumnMeta = { numeric: true };
 
+// Words in the order of their characters, as the desktop app sorts them.
+function byText(a: any, b: any, id: string): number {
+    return byName(String(a.getValue(id)), String(b.getValue(id)));
+}
+
+// A name in its own direction; an address or a program left to right.
+function named(text: string) {
+    return h('span', { class: 'ellipsis', dir: 'auto' }, text);
+}
+
+function leftToRight(text: string) {
+    return h('span', { class: 'ellipsis', dir: 'ltr' }, text);
+}
+
+// The date and time of a moment given in seconds, as the desktop app writes them.
+function dateTime(seconds: number): string {
+    return new Date(seconds * 1000).toLocaleString(language.value, {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    });
+}
+
+const country = {
+    id: 'country',
+    header: t('nj.clients.country'),
+    size: 70,
+    sortFn: byText,
+    cell: ({ getValue }: any) => h(Country, { code: getValue() as string }),
+};
+
 const uploadColumns: ColumnDef<any, Upload, any>[] = [
-    { id: 'client', header: t('IDS_QL_USERNAME'), accessorFn: (u: Upload) => u.nick ?? u.address, size: 180 },
-    { id: 'file', header: t('IDS_DL_FILENAME'), accessorFn: (u: Upload) => u.file, size: 240 },
-    { id: 'software', header: t('IDS_CD_CSOFT'), accessorFn: (u: Upload) => u.software, size: 140 },
+    {
+        id: 'client',
+        header: t('IDS_QL_USERNAME'),
+        accessorFn: (u: Upload) => u.nick ?? u.address,
+        size: 180,
+        sortFn: byText,
+        cell: ({ getValue }: any) => named(getValue()),
+    },
+    { ...country, accessorFn: (u: Upload) => u.country ?? '' },
+    {
+        id: 'software',
+        header: t('IDS_CD_CSOFT'),
+        accessorFn: (u: Upload) => u.software,
+        size: 130,
+        sortFn: byText,
+        cell: ({ getValue }: any) => leftToRight(getValue()),
+    },
+    {
+        id: 'file',
+        header: t('IDS_DL_FILENAME'),
+        accessorFn: (u: Upload) => u.file,
+        size: 260,
+        sortFn: byText,
+        cell: ({ getValue }: any) => named(getValue()),
+    },
     {
         id: 'speed',
         header: t('IDS_DL_SPEED'),
@@ -32,25 +90,32 @@ const uploadColumns: ColumnDef<any, Upload, any>[] = [
         id: 'transferred',
         header: t('IDS_DL_TRANSF'),
         accessorFn: (u: Upload) => u.transferred,
-        size: 100,
+        size: 90,
         meta: numeric,
         cell: ({ getValue }: any) => size(getValue()),
     },
     {
         id: 'waited',
-        header: t('IDS_WAITED'),
+        header: t('nj.transfers.waited'),
         accessorFn: (u: Upload) => u.waitingSeconds,
-        size: 100,
+        size: 90,
         meta: numeric,
         cell: ({ getValue }: any) => duration(getValue()),
     },
 ];
 
 const banColumns: ColumnDef<any, Ban, any>[] = [
-    { id: 'address', header: t('IDS_IP'), accessorFn: (b: Ban) => b.address, size: 220 },
+    {
+        id: 'address',
+        header: t('IDS_IP'),
+        accessorFn: (b: Ban) => b.address,
+        size: 200,
+        sortFn: byText,
+        cell: ({ getValue }: any) => leftToRight(getValue()),
+    },
     {
         id: 'left',
-        header: t('IDS_DL_REMAINS'),
+        header: t('nj.transfers.banLeft'),
         accessorFn: (b: Ban) => b.secondsLeft,
         size: 120,
         meta: numeric,
@@ -58,12 +123,42 @@ const banColumns: ColumnDef<any, Ban, any>[] = [
     },
 ];
 
+// The clients met in the last 90 days, never their addresses; the totals are those of the credits.
 const knownColumns: ColumnDef<any, KnownClient, any>[] = [
-    { id: 'client', header: t('IDS_QL_USERNAME'), accessorFn: (k: KnownClient) => k.nick, size: 200 },
-    { id: 'software', header: t('IDS_CD_CSOFT'), accessorFn: (k: KnownClient) => k.software, size: 160 },
+    {
+        id: 'client',
+        header: t('IDS_QL_USERNAME'),
+        accessorFn: (k: KnownClient) => (k.nick === '' ? k.userHash : k.nick),
+        size: 180,
+        sortFn: byText,
+        cell: ({ getValue }: any) => named(getValue()),
+    },
+    { ...country, accessorFn: (k: KnownClient) => k.country ?? '' },
+    {
+        id: 'software',
+        header: t('IDS_CD_CSOFT'),
+        accessorFn: (k: KnownClient) => k.software,
+        size: 150,
+        sortFn: byText,
+        cell: ({ getValue }: any) => leftToRight(getValue()),
+    },
+    {
+        id: 'firstSeen',
+        header: t('nj.clients.firstSeen'),
+        accessorFn: (k: KnownClient) => k.firstSeen,
+        size: 150,
+        cell: ({ getValue }: any) => dateTime(getValue()),
+    },
+    {
+        id: 'lastSeen',
+        header: withoutColon(t('IDS_LASTSEEN')),
+        accessorFn: (k: KnownClient) => k.lastSeen,
+        size: 150,
+        cell: ({ getValue }: any) => dateTime(getValue()),
+    },
     {
         id: 'uploaded',
-        header: t('IDS_STATS_SESSIONUL'),
+        header: withoutColon(t('IDS_CD_TUP')),
         accessorFn: (k: KnownClient) => k.uploaded,
         size: 110,
         meta: numeric,
@@ -71,7 +166,7 @@ const knownColumns: ColumnDef<any, KnownClient, any>[] = [
     },
     {
         id: 'downloaded',
-        header: t('IDS_STATS_SESSIONDL'),
+        header: withoutColon(t('IDS_CD_TDOWN')),
         accessorFn: (k: KnownClient) => k.downloaded,
         size: 110,
         meta: numeric,
@@ -103,7 +198,11 @@ const label = computed(
         :row-id="(u: Upload) => `${u.userHash}/${u.address}`"
         :label="label"
         :columns-label="label"
-    />
+    >
+        <template #empty>
+            <span class="muted">{{ t('nj.transfers.noUploads') }}</span>
+        </template>
+    </DataTable>
     <DataTable
         v-else-if="shelf === 'banned'"
         v-model:selected="selected"
@@ -113,7 +212,11 @@ const label = computed(
         :row-id="(b: Ban) => b.address"
         :label="label"
         :columns-label="label"
-    />
+    >
+        <template #empty>
+            <span class="muted">{{ t('nj.transfers.noBans') }}</span>
+        </template>
+    </DataTable>
     <DataTable
         v-else
         v-model:selected="selected"
@@ -123,5 +226,9 @@ const label = computed(
         :row-id="(k: KnownClient) => k.userHash"
         :label="label"
         :columns-label="label"
-    />
+    >
+        <template #empty>
+            <span class="muted">{{ t('nj.clients.none') }}</span>
+        </template>
+    </DataTable>
 </template>

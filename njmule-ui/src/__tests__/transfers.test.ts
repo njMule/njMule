@@ -3,7 +3,18 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Download } from '../model/engine';
-import { keeps, named, priorityKey, remaining, shown, type Shown, type StateFilter } from '../transfers';
+import {
+    byName,
+    countryName,
+    keeps,
+    named,
+    priorityKey,
+    remaining,
+    shown,
+    withoutColon,
+    type Shown,
+    type StateFilter,
+} from '../transfers';
 
 function download(fields: Partial<Download>): Download {
     return {
@@ -156,5 +167,71 @@ describe('an automatic priority', () => {
 
     function thenItIs(expected: string): void {
         expect(key).toBe(expected);
+    }
+});
+
+describe('a label as a column title', () => {
+    let title: string | undefined;
+
+    it('should leave out the colon a label ends with', () => {
+        whenTheLabelBecomesATitle('Uploaded total: ');
+        thenTheTitleIs('Uploaded total');
+    });
+
+    it('should keep a title without a colon as it is', () => {
+        whenTheLabelBecomesATitle('Last Seen');
+        thenTheTitleIs('Last Seen');
+    });
+
+    function whenTheLabelBecomesATitle(label: string): void {
+        title = withoutColon(label);
+    }
+
+    function thenTheTitleIs(expected: string): void {
+        expect(title).toBe(expected);
+    }
+});
+
+describe('the name of a country', () => {
+    let name: string | undefined;
+
+    it('should be the name in the language shown', () => {
+        whenTheCountryIsNamed('it', 'en');
+        thenTheNameIs('Italy');
+    });
+
+    it('should be the code when no country has it', () => {
+        whenTheCountryIsNamed('xy', 'en');
+        thenTheNameIs('XY');
+    });
+
+    function whenTheCountryIsNamed(code: string, language: string): void {
+        name = countryName(code, language);
+    }
+
+    function thenTheNameIs(expected: string): void {
+        expect(name).toBe(expected);
+    }
+});
+
+describe('the order of names', () => {
+    let order: string[] = [];
+
+    it('should put capitals before small letters, as the desktop app does', () => {
+        whenTheNamesAreSorted(['beta.iso', 'Alpha.iso', 'alpha.iso']);
+        thenTheOrderIs(['Alpha.iso', 'alpha.iso', 'beta.iso']);
+    });
+
+    it('should compare figures as characters, not as numbers', () => {
+        whenTheNamesAreSorted(['part2', 'part10']);
+        thenTheOrderIs(['part10', 'part2']);
+    });
+
+    function whenTheNamesAreSorted(names: string[]): void {
+        order = [...names].sort(byName);
+    }
+
+    function thenTheOrderIs(expected: string[]): void {
+        expect(order).toEqual(expected);
     }
 });

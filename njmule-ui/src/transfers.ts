@@ -158,6 +158,27 @@ export function bySending<T extends { state: string; queueRank: number }>(list: 
     );
 }
 
+/** Words in the order of their characters, capitals first, as the desktop app sorts names. */
+export function byName(a: string, b: string): number {
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** An eMule label as a column title or a fact's name, without the colon it ends with. */
+export function withoutColon(text: string): string {
+    const trimmed = text.trim();
+    return trimmed.endsWith(':') ? trimmed.slice(0, -1).trimEnd() : trimmed;
+}
+
+/** The name of the country of {@code code} in {@code language}, or the code when the browser does not know it. */
+export function countryName(code: string, language: string): string {
+    const upper = code.toUpperCase();
+    try {
+        return new Intl.DisplayNames([language], { type: 'region' }).of(upper) ?? upper;
+    } catch {
+        return upper;
+    }
+}
+
 const KIND_ICONS: Record<NonNullable<Download['kind']>, IconName> = {
     video: 'FILE_VIDEO',
     audio: 'FILE_AUDIO',
