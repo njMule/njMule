@@ -697,7 +697,7 @@ async function start(): Promise<void> {
     await search(expression(words, filters.value), scopeNow);
 }
 
-async function search(e: string, where: Scope): Promise<void> {
+async function search(e: string, where: Search['scope']): Promise<void> {
     try {
         const { id } = await answer(api().POST('/searches', { body: { query: e, scope: where } }));
         open({ id, key: `s${++next}`, title: '', expression: e, scope: where, results: [], running: true });
@@ -847,6 +847,7 @@ async function refresh(s: Search): Promise<void> {
 // The tabs left open at the last exit come back with the results they had.
 async function restore(): Promise<void> {
     if (searches.value.length > 0 || preferences.value['search.store'] === 'false') {
+        restored = true;
         return;
     }
     try {
@@ -865,7 +866,35 @@ async function restore(): Promise<void> {
     } catch {
         // Nothing to bring back.
     }
+    restored = true;
 }
+
+// The tabs left open come back at the next start with their results, as the desktop app keeps them at its exit; a
+// page is not told when it closes, so they are kept a moment after each change. With the option off none are kept.
+let restored = false;
+let keeping = 0;
+
+function keepOpenSearches(): void {
+    if (!restored) {
+        return;
+    }
+    window.clearTimeout(keeping);
+    keeping = window.setTimeout(() => void saveOpenSearches(), 2000);
+}
+
+async function saveOpenSearches(): Promise<void> {
+    const open =
+        preferences.value['search.store'] === 'false'
+            ? []
+            : searches.value.map((s) => ({ title: s.title, query: s.expression, scope: s.scope, results: s.results }));
+    try {
+        await answer(api().PUT('/searches/saved', { body: open }));
+    } catch {
+        // The searches kept before stay.
+    }
+}
+
+watch(() => searches.value.map((s) => `${s.key} ${s.results.length} ${s.running}`).join('\n'), keepOpenSearches);
 
 function title(s: Search): string {
     return `${s.title || words(s.expression)} (${s.results.length})`;
@@ -897,6 +926,7 @@ onMounted(() => {
 });
 onUnmounted(() => {
     window.clearInterval(timer);
+    window.clearTimeout(keeping);
     tabsObserver.disconnect();
 });
 </script>

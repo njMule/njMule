@@ -35,7 +35,8 @@ export interface Search {
     key: string;
     title: string;
     expression: string;
-    scope: Scope;
+    /** The network searched; an automatic search knows which it picked. */
+    scope: Exclude<Scope, 'automatic'>;
     results: Result[];
     running: boolean;
 }
