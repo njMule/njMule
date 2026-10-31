@@ -3,27 +3,27 @@ SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
-import { computed } from 'vue';
-import { rate, size } from '../format';
+import { PopoverRoot, PopoverTrigger } from 'reka-ui';
+import { computed, ref } from 'vue';
+import { size } from '../format';
 import { t } from '../i18n';
+import { limitsOf, limitText } from '../limits';
 import { lastLog, preferences, servers, status } from '../model/engine';
 import { networkCounts } from '../network';
 import { current, networkPart } from '../places';
 import Tip from '../ui/Tip.vue';
+import SpeedLimits from './SpeedLimits.vue';
 
-// The status strip: the last line of the log (which opens the log), the networks' users and files, the limits and the
-// room left where downloads end up.
+// The status strip: the last line of the log (which opens the log), the networks' users and files, the limits (which
+// open their sliders) and the room left where downloads end up.
 
-function limit(kib: string | undefined): string {
-    const value = Number(kib ?? 0);
-    return value === 0 ? t('nj.rate.noLimit') : rate(value * 1024);
-}
-
-const limits = computed(
-    () =>
-        `${t('IDS_PW_CON_LIMITFRM')}: ↓ ${limit(preferences.value['limits.downloadKiBps'])} · ↑ ${limit(preferences.value['limits.uploadKiBps'])}`,
-);
+const limits = computed(() => {
+    const l = limitsOf(preferences.value);
+    return `${t('IDS_PW_CON_LIMITFRM')}: ↓ ${limitText(l.down)} · ↑ ${limitText(l.up)}`;
+});
 const freeSpace = computed(() => status.value?.freeSpace?.incoming);
+const limitsOpen = ref(false);
+const limitsTrigger = ref<InstanceType<typeof PopoverTrigger> | null>(null);
 </script>
 
 <template>
@@ -40,9 +40,12 @@ const freeSpace = computed(() => status.value?.freeSpace?.incoming);
             </button>
         </Tip>
         <span class="status-text">{{ networkCounts(status, servers) }}</span>
-        <Tip :text="t('IDS_SPEED_LIMITS')">
-            <button id="limits" class="status-link">{{ limits }}</button>
-        </Tip>
+        <PopoverRoot v-model:open="limitsOpen">
+            <Tip :text="t('IDS_SPEED_LIMITS')">
+                <PopoverTrigger id="limits" ref="limitsTrigger" class="status-link">{{ limits }}</PopoverTrigger>
+            </Tip>
+            <SpeedLimits :open="limitsOpen" side="top" :reference="limitsTrigger?.$el" />
+        </PopoverRoot>
         <span v-if="freeSpace !== undefined" class="status-text"
             >{{ t('IDS_STATS_FREESPACE') }}: {{ size(freeSpace) }}</span
         >

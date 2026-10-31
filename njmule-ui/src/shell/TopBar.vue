@@ -10,6 +10,8 @@ import {
     DropdownMenuRoot,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
+    PopoverRoot,
+    PopoverTrigger,
 } from 'reka-ui';
 import { ref } from 'vue';
 import { rate } from '../format';
@@ -22,6 +24,7 @@ import Icon from '../ui/Icon.vue';
 import Tip from '../ui/Tip.vue';
 import NetworkControl from './NetworkControl.vue';
 import Sparkline from './Sparkline.vue';
+import SpeedLimits from './SpeedLimits.vue';
 
 // The top bar: the screen's title and summary, the field to search or paste links, the rates, the networks, More.
 defineProps<{ title: string; summary: string; narrow: boolean; words: NetworkWords; canOpenFolders: boolean }>();
@@ -34,6 +37,8 @@ const emit = defineEmits<{
     incoming: [];
 }>();
 const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
+const ratesTrigger = ref<InstanceType<typeof PopoverTrigger> | null>(null);
+const limitsOpen = ref(false);
 
 // A letter typed on the field starts the text of the palette.
 function typed(e: KeyboardEvent): void {
@@ -66,23 +71,28 @@ function typed(e: KeyboardEvent): void {
             </button>
         </Tip>
         <div class="spacer" />
-        <Tip :text="t('nj.tray.speed')">
-            <button
-                id="rates"
-                class="button flat rates"
-                :aria-label="`${t('nj.tray.speed')}: ↓ ${rate(status?.downloadBytesPerSecond ?? 0)}, ↑ ${rate(status?.uploadBytesPerSecond ?? 0)}`"
-            >
-                <Sparkline v-if="!narrow" :rates="rates" />
-                <span class="rate-numbers">
-                    <span class="rate-label rate-down"
-                        ><Icon name="ARROW_DOWN" />{{ rate(status?.downloadBytesPerSecond ?? 0) }}</span
-                    >
-                    <span v-if="!narrow" class="rate-label rate-up"
-                        ><Icon name="ARROW_UP" />{{ rate(status?.uploadBytesPerSecond ?? 0) }}</span
-                    >
-                </span>
-            </button>
-        </Tip>
+        <!-- The rates open the limits, what one wants to change on seeing them. -->
+        <PopoverRoot v-model:open="limitsOpen">
+            <Tip :text="t('nj.tray.speed')">
+                <PopoverTrigger
+                    id="rates"
+                    ref="ratesTrigger"
+                    class="button flat rates"
+                    :aria-label="`${t('nj.tray.speed')}: ↓ ${rate(status?.downloadBytesPerSecond ?? 0)}, ↑ ${rate(status?.uploadBytesPerSecond ?? 0)}`"
+                >
+                    <Sparkline v-if="!narrow" :rates="rates" />
+                    <span class="rate-numbers">
+                        <span class="rate-label rate-down"
+                            ><Icon name="ARROW_DOWN" />{{ rate(status?.downloadBytesPerSecond ?? 0) }}</span
+                        >
+                        <span v-if="!narrow" class="rate-label rate-up"
+                            ><Icon name="ARROW_UP" />{{ rate(status?.uploadBytesPerSecond ?? 0) }}</span
+                        >
+                    </span>
+                </PopoverTrigger>
+            </Tip>
+            <SpeedLimits :open="limitsOpen" side="bottom" :reference="ratesTrigger?.$el" />
+        </PopoverRoot>
         <NetworkControl :words="words" :compact="narrow" @ed2k="emit('ed2k')" @kad="emit('kad')" @both="emit('both')" />
         <DropdownMenuRoot>
             <Tip :text="t('IDS_MORE')">
