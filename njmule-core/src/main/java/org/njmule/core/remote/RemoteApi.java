@@ -35,6 +35,7 @@ import java.time.Duration;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -52,6 +53,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
@@ -418,7 +420,12 @@ public final class RemoteApi implements AutoCloseable {
                 entry("addServer", this::addServer),
                 entry("connectServer", this::connectServer),
                 entry("disconnectServer", c -> done(c, this.engine.disconnect())),
-                entry("importServers", c -> count(c, this.engine.addServers(url(c)))),
+                entry(
+                        "importServers",
+                        c -> count(
+                                c,
+                                fromList(
+                                        c, this.engine::addServers, this.engine::addServers, this.engine::addServers))),
                 entry(
                         "removeServer",
                         c -> known(c, this.engine.removeServer(address(text(c.parameters(), ADDRESS_KEY))))),
@@ -431,7 +438,15 @@ public final class RemoteApi implements AutoCloseable {
                 entry("disconnectKad", c -> done(c, this.engine.disconnectKad())),
                 entry("recheckKadFirewall", c -> allowed(c, this.engine.recheckKadFirewall(), "Kad is not connected.")),
                 entry("bootstrapKad", c -> done(c, this.engine.kadBootstrap(address(text(c.body(), ADDRESS_KEY))))),
-                entry("importKadNodes", c -> count(c, this.engine.addKadContacts(url(c)))),
+                entry(
+                        "importKadNodes",
+                        c -> count(
+                                c,
+                                fromList(
+                                        c,
+                                        this.engine::addKadContacts,
+                                        this.engine::addKadContacts,
+                                        this.engine::addKadContacts))),
                 entry("startSearch", this::startSearch),
                 entry("listSearches", this::listSearches),
                 entry("getSearchResults", this::getSearchResults),
@@ -1031,6 +1046,39 @@ public final class RemoteApi implements AutoCloseable {
             g.writeStringProperty("token", token);
             g.writeEndObject();
         });
+    }
+
+    // A list from the web by its address, a file of this computer by its path, or the content of a file sent.
+    private static CompletableFuture<Integer> fromList(
+            Call c,
+            Function<URI, CompletableFuture<Integer>> web,
+            Function<Path, CompletableFuture<Integer>> onDisk,
+            Function<byte[], CompletableFuture<Integer>> content) {
+        JsonNode b = c.body();
+        if (b.has("path")) {
+            return onDisk.apply(file(text(b, "path")));
+        }
+        if (b.has("data")) {
+            try {
+                return content.apply(Base64.getDecoder().decode(text(b, "data")));
+            } catch (IllegalArgumentException e) {
+                throw new Failure(400, "The data is not Base64.");
+            }
+        }
+        return web.apply(url(c));
+    }
+
+    // An existing file of this computer, by its absolute path.
+    private static Path file(String text) {
+        try {
+            Path path = Path.of(text.strip());
+            if (path.isAbsolute() && Files.isRegularFile(path)) {
+                return path.normalize();
+            }
+        } catch (InvalidPathException e) {
+            // Answered below.
+        }
+        throw new Failure(400, "Not a file of this computer: " + text);
     }
 
     private void listKnownClients(Call c) throws IOException {

@@ -242,6 +242,11 @@ public final class RemoteEngine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Integer> addServers(byte[] serverMet) {
+        return count("POST", "servers/import", body("data", Base64.getEncoder().encodeToString(serverMet)));
+    }
+
+    @Override
     public CompletableFuture<Integer> addServers(URI url) {
         return count("POST", "servers/import", body("url", url.toString()));
     }
@@ -628,6 +633,11 @@ public final class RemoteEngine implements NjMuleEngine {
     @Override
     public CompletableFuture<Integer> addKadContacts(Path nodesDat) {
         return notHere("a nodes.dat of this computer");
+    }
+
+    @Override
+    public CompletableFuture<Integer> addKadContacts(byte[] nodesDat) {
+        return count("POST", "kad/nodes", body("data", Base64.getEncoder().encodeToString(nodesDat)));
     }
 
     @Override

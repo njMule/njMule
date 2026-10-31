@@ -182,6 +182,27 @@ class EngineApiTest {
     }
 
     @Test
+    void shouldKeepTheKadContactsOfANodesDatSent() throws Exception {
+        givenARunningEngine();
+        givenANodesDatFileWithContacts(2);
+
+        whenTheKadContactsOfTheContentAreAdded();
+
+        thenTheNewContactsAre(2);
+        thenOurNodesDatHolds(2);
+    }
+
+    @Test
+    void shouldRefuseAsTheCallersErrorContentThatIsNoNodesDat() throws Exception {
+        givenARunningEngine();
+        givenAFileOf(new byte[] {1, 2, 3});
+
+        whenTheKadContactsOfTheContentAreAdded();
+
+        thenExceptionOccurredWithTheCause(IllegalArgumentException.class);
+    }
+
+    @Test
     void shouldNeverFetchKadContactsFromThisMachine() throws Exception {
         givenARunningEngine();
 
@@ -644,6 +665,11 @@ class EngineApiTest {
     private void whenTheKadContactsOfTheFileAreAdded() {
         this.exception = catchThrowable(() ->
                 this.newContacts = this.engine.addKadContacts(this.nodesDat).get(10, TimeUnit.SECONDS));
+    }
+
+    private void whenTheKadContactsOfTheContentAreAdded() {
+        this.exception = catchThrowable(() -> this.newContacts =
+                this.engine.addKadContacts(Files.readAllBytes(this.nodesDat)).get(10, TimeUnit.SECONDS));
     }
 
     private void thenTheNewContactsAre(int count) {

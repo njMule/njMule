@@ -127,6 +127,7 @@ import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.persist.format.TextFiles;
+import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.server.ServerList;
 import org.njmule.core.update.Updates;
 import org.njmule.core.upnp.Routers;
@@ -881,6 +882,19 @@ public final class Engine implements NjMuleEngine {
                 .thenCompose(contents -> this.loop.submit(() -> this.network.addKadContacts(contents)));
     }
 
+    // Read on the caller's thread: content that is no nodes.dat is the caller's error.
+    @Override
+    public CompletableFuture<Integer> addKadContacts(byte[] nodesDat) {
+        Objects.requireNonNull(nodesDat, "nodesDat");
+        NodesDat.Contents contents;
+        try {
+            contents = NodesDat.read(nodesDat);
+        } catch (DecodeException e) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("not a nodes.dat: " + e.getMessage()));
+        }
+        return this.loop.submit(() -> this.network.addKadContacts(contents));
+    }
+
     /** Reads a file the user chose, on a thread of its own, no larger than a list from the web may be. */
     private static <T> CompletableFuture<T> read(Path file, Parser<T> parser) {
         return CompletableFuture.supplyAsync(
@@ -924,6 +938,19 @@ public final class Engine implements NjMuleEngine {
     public CompletableFuture<Integer> addServers(Path serverMet) {
         Objects.requireNonNull(serverMet, "serverMet");
         return this.loop.submit(() -> this.network.addServers(serverMet));
+    }
+
+    // Read on the caller's thread: content that is no server.met is the caller's error.
+    @Override
+    public CompletableFuture<Integer> addServers(byte[] serverMet) {
+        Objects.requireNonNull(serverMet, "serverMet");
+        List<ServerMet.Server> read;
+        try {
+            read = ServerMet.read(serverMet);
+        } catch (DecodeException e) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("not a server.met: " + e.getMessage()));
+        }
+        return this.loop.submit(() -> this.network.addServers(read));
     }
 
     @Override

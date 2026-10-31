@@ -74,6 +74,12 @@ public interface NjMuleEngine extends AutoCloseable {
     CompletableFuture<Integer> addServers(Path serverMet);
 
     /**
+     * Adds the servers of a {@code server.met} given as its content, such as one a browser sent; completes with how
+     * many were new, or fails with an {@link IllegalArgumentException} when it is no server.met.
+     */
+    CompletableFuture<Integer> addServers(byte[] serverMet);
+
+    /**
      * Adds the servers of the {@code server.met} at {@code url}, fetched over http or https from a public address;
      * completes with how many were new.
      */
@@ -325,6 +331,12 @@ public interface NjMuleEngine extends AutoCloseable {
 
     /** Adds the Kad contacts of a {@code nodes.dat} file (e.g. eMule's); completes with how many were new. */
     CompletableFuture<Integer> addKadContacts(Path nodesDat);
+
+    /**
+     * Adds the Kad contacts of a {@code nodes.dat} given as its content; completes with how many were new, or fails
+     * with an {@link IllegalArgumentException} when it is no nodes.dat.
+     */
+    CompletableFuture<Integer> addKadContacts(byte[] nodesDat);
 
     /** Our comment on a file, which the clients downloading it hear. */
     CompletableFuture<Optional<FileComment>> fileComment(Hash16 file);

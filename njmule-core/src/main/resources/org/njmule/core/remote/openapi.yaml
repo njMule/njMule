@@ -1456,13 +1456,13 @@ paths:
     post:
       operationId: importServers
       tags: [servers]
-      summary: Adds the servers of a server.met file at an address.
+      summary: Adds the servers of a server.met file at an address, on the engine's computer or sent.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/WebList"
+              $ref: "#/components/schemas/ListSource"
       responses:
         "200":
           $ref: "#/components/responses/Added"
@@ -1734,13 +1734,13 @@ paths:
     post:
       operationId: importKadNodes
       tags: [kad]
-      summary: Adds the contacts of a nodes.dat file at an address.
+      summary: Adds the contacts of a nodes.dat file at an address, on the engine's computer or sent.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/WebList"
+              $ref: "#/components/schemas/ListSource"
       responses:
         "200":
           $ref: "#/components/responses/Added"
@@ -2556,6 +2556,25 @@ components:
           format: uri
           pattern: "^\\s*[Hh][Tt][Tt][Pp][Ss]?://"
           description: An http or https address.
+    ListSource:
+      description: A list from the web by its address, a file of the engine's computer by its path, or a file sent.
+      oneOf:
+        - $ref: "#/components/schemas/WebList"
+        - type: object
+          required: [path]
+          properties:
+            path:
+              type: string
+              minLength: 1
+              description: The absolute path of the file on the engine's computer.
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: string
+              contentEncoding: base64
+              minLength: 1
+              description: The content of the file, in Base64.
     Limits:
       type: object
       description: Speed limits in KiB/s; 0 is unlimited.

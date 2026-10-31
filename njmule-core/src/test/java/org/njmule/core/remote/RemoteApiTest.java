@@ -29,6 +29,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -971,6 +972,42 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldAddTheServersOfAServerMetOfTheEnginesComputer() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineAddsServers();
+        givenAFile("server.met");
+
+        whenCalled("POST", "/api/v1/servers/import", "{\"path\":\"" + jsonPath(this.dir.resolve("server.met")) + "\"}");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{\"added\":3}");
+        thenTheEngineWasAsked("addServers " + this.dir.resolve("server.met"));
+    }
+
+    @Test
+    void shouldAddTheContactsOfANodesDatSent() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineAddsServers();
+
+        whenCalled("POST", "/api/v1/kad/nodes", "{\"data\":\"AQID\"}");
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("addKadContacts 3 bytes");
+    }
+
+    @Test
+    void shouldRefuseAListFileThatIsNotThere() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineAddsServers();
+
+        whenCalled(
+                "POST", "/api/v1/servers/import", "{\"path\":\"" + jsonPath(this.dir.resolve("nothing.met")) + "\"}");
+
+        thenTheStatusIs(400);
+        thenTheEngineWasNotAsked();
+    }
+
+    @Test
     void shouldListTheNetworkInterfacesOfTheEnginesComputer() throws Exception {
         givenTheApiRuns();
 
@@ -1095,6 +1132,21 @@ class RemoteApiTest {
                 Duration.ofSeconds(1),
                 Optional.of(this.web));
         this.server = ApiServer.start(this.api);
+    }
+
+    // Each list gives three entries; what was asked is kept.
+    private void givenTheEngineAddsServers() {
+        for (String method : List.of("addServers", "addKadContacts")) {
+            this.fake.answer(method, args -> {
+                this.calls.add(method + " "
+                        + (args[0] instanceof byte[] data ? data.length + " bytes" : String.valueOf(args[0])));
+                return CompletableFuture.completedFuture(3);
+            });
+        }
+    }
+
+    private void givenAFile(String name) throws IOException {
+        Files.write(this.dir.resolve(name), new byte[] {0x0E, 0, 0, 0, 0});
     }
 
     private void givenTheWebInterfaceHasNoPassword() {
