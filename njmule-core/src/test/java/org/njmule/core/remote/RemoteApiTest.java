@@ -1098,7 +1098,8 @@ class RemoteApiTest {
         whenCalled("GET", "/api/v1/webui", "");
 
         thenTheStatusIs(200);
-        thenTheBodyContains("\"enabled\":false", "\"port\":4711", "\"hasPassword\":true", "\"url\":null");
+        thenTheBodyContains(
+                "\"changeable\":false", "\"enabled\":false", "\"port\":4711", "\"hasPassword\":true", "\"url\":null");
     }
 
     @Test
@@ -1117,7 +1118,11 @@ class RemoteApiTest {
         whenCalledBy(ApiServer.LOCAL, "PATCH", "/api/v1/webui", "{\"enabled\":true,\"hosts\":[\"nas.local\"]}");
 
         thenTheStatusIs(200);
-        thenTheBodyContains("\"enabled\":true", "\"hosts\":[\"nas.local\"]", "\"url\":\"http://127.0.0.1:4711/\"");
+        thenTheBodyContains(
+                "\"changeable\":true",
+                "\"enabled\":true",
+                "\"hosts\":[\"nas.local\"]",
+                "\"url\":\"http://127.0.0.1:4711/\"");
     }
 
     @ParameterizedTest

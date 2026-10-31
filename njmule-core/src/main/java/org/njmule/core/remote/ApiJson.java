@@ -193,8 +193,9 @@ final class ApiJson {
         g.writeEndObject();
     }
 
-    static void webInterface(JsonGenerator g, WebInterface.Settings s) {
+    static void webInterface(JsonGenerator g, WebInterface.Settings s, boolean changeable) {
         g.writeStartObject();
+        g.writeBooleanProperty("changeable", changeable);
         g.writeBooleanProperty("enabled", s.enabled());
         g.writeNumberProperty("port", s.port());
         g.writeBooleanProperty("lan", s.lan());

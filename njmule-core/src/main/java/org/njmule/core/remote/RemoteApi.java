@@ -233,7 +233,11 @@ public final class RemoteApi implements AutoCloseable {
     }
 
     /** A request matched to an operation, with its parameters and body checked against the document. */
-    private record Call(Exchange exchange, Map<String, JsonNode> parameters, JsonNode body, boolean guest) {}
+    private record Call(Exchange exchange, Map<String, JsonNode> parameters, JsonNode body, Caller caller) {
+        boolean guest() {
+            return this.caller == Caller.GUEST;
+        }
+    }
 
     /** Who calls: a guest, an admin, or the desktop app's window on this computer. */
     private enum Caller {
@@ -589,7 +593,7 @@ public final class RemoteApi implements AutoCloseable {
         }
         Map<String, JsonNode> parameters = operation.arguments(route.values(segments), exchange.query());
         JsonNode body = operation.body().isPresent() ? operation.body(read(exchange)) : null;
-        this.handlers.get(operation.id()).handle(new Call(exchange, parameters, body, guest));
+        this.handlers.get(operation.id()).handle(new Call(exchange, parameters, body, caller));
     }
 
     private void authorize(Exchange exchange) {
@@ -1047,8 +1051,9 @@ public final class RemoteApi implements AutoCloseable {
         return this.web.orElseThrow(() -> new Failure(501, "This njMule has no web interface."));
     }
 
+    // With whether this caller may change them, so that a form offers the changes only where they are taken.
     private void webSettings(Call c, WebInterface.Settings now) throws IOException {
-        reply(c.exchange(), 200, g -> ApiJson.webInterface(g, now));
+        reply(c.exchange(), 200, g -> ApiJson.webInterface(g, now, c.caller() == Caller.LOCAL));
     }
 
     // What the body names changes; a wrong value changes nothing.
