@@ -14,6 +14,7 @@ import {
     PopoverTrigger,
 } from 'reka-ui';
 import { onMounted, onUnmounted, ref } from 'vue';
+import { showAbout } from '../about';
 import { rate } from '../format';
 import { t } from '../i18n';
 import { rates, status } from '../model/engine';
@@ -161,7 +162,7 @@ function typed(e: KeyboardEvent): void {
                     <DropdownMenuItem id="updates" class="menu-item" disabled>
                         <Icon name="REFRESH" />{{ t('IDS_CHECK4UPDATE') }}
                     </DropdownMenuItem>
-                    <DropdownMenuItem id="about" class="menu-item" disabled>
+                    <DropdownMenuItem id="about" class="menu-item" @select="showAbout()">
                         <Icon name="INFO" />{{ t('nj.about.title') }}
                     </DropdownMenuItem>
                 </DropdownMenuContent>

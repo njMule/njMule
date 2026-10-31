@@ -37,6 +37,8 @@ import { setPreset } from './limits';
 import { toggleDark } from './theme';
 import { message, problem, success } from './toasts';
 import { addLinks } from './transfers-actions';
+import { showAbout } from './about';
+import AboutDialog from './dialogs/AboutDialog.vue';
 
 // The window's content: the sidebar of places, the top bar with the screen's title, the field to search or paste links,
 // the rates and the networks, the current screen, the status strip, and messages floating over it all.
@@ -269,7 +271,7 @@ const commands = computed<Command[]>(() => [
     },
     { title: t('nj.shortcuts.title'), keys: 'F1', run: () => (shortcutsOpen.value = true) },
     { title: t('IDS_CHECK4UPDATE'), keys: '', run: () => {}, disabled: true },
-    { title: t('nj.about.title'), keys: '', run: () => {}, disabled: true },
+    { title: t('nj.about.title'), keys: '', run: showAbout },
 ]);
 
 // What the text typed is itself: eD2K links to download, or else words to search the network for.
@@ -454,6 +456,7 @@ onUnmounted(() => {
             <CommandPalette v-model:open="paletteOpen" v-model:text="paletteText" :commands="commands" :typed="typed" />
             <ShortcutsDialog v-model:open="shortcutsOpen" />
             <AskDialog />
+            <AboutDialog />
         </div>
     </TooltipProvider>
 </template>
