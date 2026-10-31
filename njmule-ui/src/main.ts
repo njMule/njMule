@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import '@generated/themes.css';
+import './styles/themes.css';
 import './styles/njmule.css';
 import { createApp } from 'vue';
 import App from './App.vue';

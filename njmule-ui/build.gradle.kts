@@ -5,7 +5,6 @@ import com.github.gradle.node.npm.task.NpmTask
 import java.util.Properties
 import java.util.zip.Deflater
 import java.util.zip.GZIPOutputStream
-import java.util.zip.ZipFile
 
 plugins {
     base
@@ -82,60 +81,6 @@ abstract class Translations : DefaultTask() {
 }
 
 /**
- * The colours of the AtlantaFX themes as CSS custom properties, one rule per theme ({@code data-theme} on the root):
- * the interface keeps the desktop app's palettes without copying them by hand.
- */
-@CacheableTask
-abstract class Themes : DefaultTask() {
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.NAME_ONLY)
-    abstract val jars: ConfigurableFileCollection
-
-    @get:OutputFile
-    abstract val output: RegularFileProperty
-
-    @TaskAction
-    fun extract() {
-        val names = listOf(
-            "nord-light", "nord-dark", "primer-light", "primer-dark", "cupertino-light", "cupertino-dark", "dracula",
-        )
-        val jar = jars.files.single { it.name.startsWith("atlantafx-base") }
-        val declaration = Regex("""^\s*(-color-[a-z0-9-]+)\s*:\s*([^;]+);""")
-        val css = StringBuilder("/* Generated from the AtlantaFX themes (MIT License, see NOTICE): do not edit. */\n")
-        ZipFile(jar).use { zip ->
-            for (name in names) {
-                val entry = zip.getEntry("atlantafx/base/theme/$name.css") ?: error("No theme $name in $jar")
-                val text = zip.getInputStream(entry).reader(Charsets.UTF_8).readText()
-                fun rule(selector: String) =
-                    Regex("""(?m)^${Regex.escape(selector)} \{([^}]*)}""").find(text)?.groupValues?.get(1)
-                        ?: error("No rule $selector in theme $name")
-                fun declare(property: String, value: String) {
-                    val colour = value.trim().replace(Regex("""-color-[a-z0-9-]+""")) { "var(-${it.value})" }
-                    css.append("    -$property: $colour;\n")
-                }
-                css.append(":root[data-theme='$name'] {\n")
-                // The first rule of each theme is its root, which declares every colour.
-                for (line in rule(".root").lines()) {
-                    val m = declaration.find(line) ?: continue
-                    declare(m.groupValues[1], m.groupValues[2])
-                }
-                // Buttons and menu items take their own shades in each theme: a dark theme's hover is no light one's.
-                for (line in rule(".button").lines()) {
-                    val m = declaration.find(line)?.takeIf { it.groupValues[1].startsWith("-color-button-") } ?: continue
-                    declare(m.groupValues[1], m.groupValues[2])
-                }
-                val focused = Regex("""-fx-background-color:\s*([^,;]+)""").find(rule(".menu-item:focused"))
-                val label = Regex("""-fx-text-fill:\s*([^;]+)""").find(rule(".menu-item:focused > .label"))
-                declare("-color-menu-item-bg-focused", focused?.groupValues?.get(1) ?: error("No menu item in $name"))
-                declare("-color-menu-item-fg-focused", label?.groupValues?.get(1) ?: error("No menu label in $name"))
-                css.append("}\n")
-            }
-        }
-        output.get().asFile.writeText(css.toString(), Charsets.UTF_8)
-    }
-}
-
-/**
  * The interface's files as the web interface ships them: text files compressed with gzip, which browsers take as they
  * are (the server unpacks them for a client that cannot), the rest unchanged.
  */
@@ -175,21 +120,6 @@ abstract class Compress : DefaultTask() {
 }
 
 
-val atlantafx = configurations.dependencyScope("atlantafx")
-val atlantafxJars = configurations.resolvable("atlantafxJars") {
-    extendsFrom(atlantafx.get())
-    isTransitive = false
-}
-dependencies {
-    atlantafx(libs.atlantafx.base)
-}
-
-val themes = tasks.register<Themes>("themes") {
-    description = "Converts the colours of the AtlantaFX themes to CSS."
-    jars.from(atlantafxJars)
-    output = layout.buildDirectory.file("generated/themes.css")
-}
-
 val translations = tasks.register<Translations>("translations") {
     description = "Converts the desktop app's translations the interface uses to JSON."
     bundles.from(fileTree(rootDir.resolve("njmule-gui/src/main/resources/org/njmule/gui/i18n")) {
@@ -210,11 +140,10 @@ val npmSources = listOf("src", "index.html", "vite.config.ts", "tsconfig.json", 
 
 val bundle = tasks.register<NpmTask>("bundle") {
     description = "Generates the API's types, checks the interface's types and bundles it with Vite."
-    dependsOn(tasks.npmInstall, themes)
+    dependsOn(tasks.npmInstall)
     npmCommand = listOf("run", "build")
     inputs.files(npmSources).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file(api).withPathSensitivity(PathSensitivity.NONE)
-    inputs.file(themes.flatMap { it.output }).withPathSensitivity(PathSensitivity.NONE)
     outputs.dir(layout.buildDirectory.dir("dist"))
     outputs.cacheIf { true }
 }
