@@ -219,7 +219,7 @@ public final class SharedScreen implements Screen {
         this.table.setPlaceholder(Fx.emptyState(
                 Icons.SHARED,
                 this.gui.t("nj.shared.none"),
-                Fx.button(this.gui.t("IDS_SHAREDIR"), Icons.FOLDER_ADD, this::chooseDirectory)));
+                Fx.button(this.gui.t("nj.shared.shareFolder"), Icons.FOLDER_ADD, this::chooseDirectory)));
         // The counters count this run or every run: the cells read them again.
         this.counters.valueProperty().addListener((o, was, now) -> this.table.refresh());
         MenuItem copy = Fx.menuItem(this.gui.t("nj.copyLink"), Icons.COPY, this::copyLinks);
@@ -285,7 +285,8 @@ public final class SharedScreen implements Screen {
 
     // The only way to share a folder, the tree of the places, and what to do with the place chosen.
     private Node side() {
-        Button share = Fx.primary(Fx.button(this.gui.t("IDS_SHAREDIR"), Icons.FOLDER_ADD, this::chooseDirectory));
+        Button share =
+                Fx.primary(Fx.button(this.gui.t("nj.shared.shareFolder"), Icons.FOLDER_ADD, this::chooseDirectory));
         share.setId("share-folder");
         share.setMaxWidth(Double.MAX_VALUE);
         this.folders.setShowRoot(false);
@@ -656,7 +657,7 @@ public final class SharedScreen implements Screen {
             return;
         }
         DirectoryChooser chooser = new DirectoryChooser();
-        chooser.setTitle(this.gui.t("IDS_SHAREDIR"));
+        chooser.setTitle(this.gui.t("nj.shared.shareFolder"));
         var dir = chooser.showDialog(this.view.getScene().getWindow());
         if (dir != null && !confirmShare(dir.toPath()) && SharedDirectory.isSensitive(dir.toPath())) {
             // The safe answer to sharing a whole drive or a personal folder is choosing another one.

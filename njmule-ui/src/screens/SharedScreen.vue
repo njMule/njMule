@@ -206,7 +206,7 @@ watch(
 );
 
 async function chooseDirectory(): Promise<void> {
-    let path = await props.platform.chooseFolder(t('IDS_SHAREDIR'));
+    let path = await props.platform.chooseFolder(t('nj.shared.shareFolder'));
     // The desktop app's dialog gives none when it is cancelled.
     if (path === null && props.platform.desktop) {
         return;
@@ -218,7 +218,7 @@ async function chooseDirectory(): Promise<void> {
         title: t('nj.shared.shareTitle'),
         text: t('nj.shared.shareText'),
         names: typed ? [] : [path!],
-        field: typed ? { label: t('IDS_SHAREDIR'), value: '' } : undefined,
+        field: typed ? { label: t('nj.shared.shareFolder'), value: '' } : undefined,
         check: { label: t('IDS_SHAREDIRSUB'), value: true },
         yes: t('nj.shared.share'),
         no: t('IDS_CANCEL'),
@@ -355,7 +355,7 @@ onMounted(() => void readDirectories());
     <div class="screen" @keydown="screenKey">
         <aside class="shared-side">
             <button id="share-folder" class="button accent wide" @click="chooseDirectory">
-                <Icon name="FOLDER_ADD" />{{ t('IDS_SHAREDIR') }}
+                <Icon name="FOLDER_ADD" />{{ t('nj.shared.shareFolder') }}
             </button>
             <ul id="shared-places" class="shared-places" role="tree">
                 <template v-for="p in tree" :key="p.kind + p.path">
@@ -524,7 +524,7 @@ onMounted(() => void readDirectories());
                 <template #empty>
                     <EmptyState icon="SHARED" :text="t('nj.shared.none')">
                         <button class="button" @click="chooseDirectory">
-                            <Icon name="FOLDER_ADD" />{{ t('IDS_SHAREDIR') }}
+                            <Icon name="FOLDER_ADD" />{{ t('nj.shared.shareFolder') }}
                         </button>
                     </EmptyState>
                 </template>
