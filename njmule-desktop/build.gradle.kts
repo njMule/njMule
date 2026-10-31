@@ -32,17 +32,29 @@ dependencies {
 val cargoHome = providers.environmentVariable("CARGO_HOME").orElse(System.getProperty("user.home") + "/.cargo")
 val program = if (System.getProperty("os.name").startsWith("Windows")) "njmule-gui.exe" else "njmule-gui"
 
+// The shell's version, which its window shows, is gradle.properties' one, merged into tauri.conf.json.
+val tauriVersion = tasks.register("tauriVersion") {
+    val version = project.version.toString()
+    val file = layout.buildDirectory.file("tauri-version.json")
+    inputs.property("version", version)
+    outputs.file(file)
+    doLast { file.get().asFile.writeText("{ \"version\": \"$version\" }\n") }
+}
+
 // Not part of build: it needs the Rust toolchain, which only the desktop packages need.
 tasks.register<NpmTask>("shell") {
     description = "Builds the desktop shell with Tauri (release, no installer)."
     dependsOn(tasks.npmInstall)
     inputs.files(ui).withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(tauriVersion).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir("src-tauri/src").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files("src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/tauri.conf.json", "src-tauri/build.rs")
         .withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir("src-tauri/capabilities").withPathSensitivity(PathSensitivity.RELATIVE)
     outputs.file("src-tauri/target/release/$program")
-    npmCommand = listOf("run", "build")
+    npmCommand = layout.buildDirectory.file("tauri-version.json").map {
+        listOf("run", "build", "--", "--config", it.asFile.absolutePath)
+    }
     environment.put(
         "PATH",
         cargoHome.map { it + "/bin" + File.pathSeparator + System.getenv("PATH") },

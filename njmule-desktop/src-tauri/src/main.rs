@@ -160,6 +160,14 @@ fn links(args: &[String]) -> Vec<String> {
     args.iter().filter(|a| a.to_ascii_lowercase().starts_with("ed2k://")).cloned().collect()
 }
 
+/// The window's title: the name and version, then the other computer's address when the engine runs there.
+fn window_title(version: &str, remote: Option<&str>) -> String {
+    match remote.and_then(|url| url.split_once("://")).and_then(|(_, rest)| rest.split('/').next()) {
+        Some(authority) if !authority.is_empty() => format!("njMule {version} - {authority}"),
+        _ => format!("njMule {version}"),
+    }
+}
+
 fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -236,6 +244,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![endpoint, pending_links, choose_folder, open_folder, tray_texts])
         .setup(move |app| {
             start_engine(engine.clone());
+            if let Some(window) = app.get_webview_window("main") {
+                let remote = std::env::var("NJMULE_REMOTE_URL").ok();
+                window.set_title(&window_title(&app.package_info().version.to_string(), remote.as_deref()))?;
+            }
             // macOS hands links over as events rather than arguments.
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
