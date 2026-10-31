@@ -1,3 +1,0 @@
--H:+ReportExceptionStackTraces
---enable-native-access=javafx.graphics,org.njmule.gui
--H:ConfigurationFileDirectories=../../native/linux

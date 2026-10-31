@@ -29,8 +29,8 @@ import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 
 /**
- * The browser app built by njmule-webapp, shipped in this module's resources: its page, whose session token is filled
- * in for each session, and its files, read once and kept.
+ * The interface built by njmule-ui, shipped in this module's resources: its page, whose session token is filled in for
+ * each session, and its files, read once and kept.
  */
 final class WebApp {
 

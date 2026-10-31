@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CSSProperties, ReactNode } from 'react';
-import { ICONS } from '../../../njmule-webapp/src/icons';
+import { ICONS } from '../../../njmule-ui/src/icons';
 
 // The few icons only the site needs, drawn on the apps' grid and stroke: the systems njMule installs on. They show the
 // kind of machine, not a vendor's logo.

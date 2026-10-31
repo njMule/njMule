@@ -39,6 +39,11 @@ All notable changes to this project are documented here. The format follows
 - Changed from the desktop window, the web interface follows its settings at once, without a
   restart.
 
+### Removed
+
+- The JavaFX desktop app and the former browser app of the web interface, which the one interface
+  replaces, with their native build and their dependencies (OpenJFX, AtlantaFX, RichTextFX).
+
 ## [0.1.3] - 2026-10-31
 
 ### Fixed

@@ -16,8 +16,9 @@
  */
 
 module org.njmule.core {
-    // The njMule engine: everything that is not user interface. Front ends (JavaFX GUI, command
-    // line, web UI) only use the exported packages: "api" (engine facade, events, application
+    // The njMule engine: everything that is not user interface. Front ends (command line, web
+    // interface, desktop window through the API) only use the exported packages: "api" (engine facade, events,
+    // application
     // information), "config" (preferences and directory layout) and "remote" (the remote-control
     // API, which a front end serves on its HTTP server). Everything else is internal.
     requires com.google.common;

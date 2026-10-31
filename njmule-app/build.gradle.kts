@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import com.github.jk1.license.render.ReportRenderer
+import com.github.jk1.license.render.TextReportRenderer
+
 plugins {
     id("njmule.java-conventions")
     application
     alias(libs.plugins.graalvm.native)
+    alias(libs.plugins.license.report)
 }
 
 description = "njMule App"
@@ -20,6 +24,19 @@ dependencies {
 
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
+}
+
+// Third-party license report, part of every release: the app's runtime holds every distributed Java dependency.
+// ./gradlew :njmule-app:generateLicenseReport → build/reports/licenses/THIRD-PARTY.txt
+licenseReport {
+    outputDir = rootProject.layout.buildDirectory.dir("reports/licenses").get().asFile.path
+    configurations = arrayOf("runtimeClasspath")
+    excludeOwnGroup = true
+    renderers = arrayOf<ReportRenderer>(TextReportRenderer("THIRD-PARTY.txt"))
+}
+
+tasks.generateLicenseReport {
+    notCompatibleWithConfigurationCache("the license report plugin reads the project while it runs")
 }
 
 // Development runs from the module path: ./gradlew :njmule-app:run --args="--version"

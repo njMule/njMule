@@ -42,7 +42,7 @@ nodes and its clients. One engine runs it all:
 
 - 🖥️ **A desktop app** for Windows, macOS and Linux, in 36 languages, with light, dark and high
   contrast themes;
-- 🌍 **a web interface** with the same features, behind a password, with a read-only guest;
+- 🌍 **the same interface on the web**, behind a password, with a read-only guest;
 - ⚙️ **a headless engine** with a command line, a JSON remote-control API and its event stream,
   for servers, NAS, Docker and scripts;
 - 📥 **the import of an eMule profile**, only ever read: servers, contacts, known and shared files,
@@ -93,12 +93,12 @@ The documentation's sources are in [`website/`](website); its text is under CC B
 
 ## Building from source
 
-With a JDK 25 (Gradle downloads everything else):
+With a JDK 25 (Gradle downloads everything else; the desktop window also needs Rust, from rustup):
 
 ```bash
 ./gradlew build                                # build, check and test
-./gradlew :njmule-gui:run                      # the desktop app
 ./gradlew :njmule-app:run --args="--help"      # the command line
+./gradlew :njmule-desktop:shell                # the desktop window
 ```
 
 [Building njMule](https://njmule.github.io/njMule/developer/building) explains the options, the

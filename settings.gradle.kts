@@ -9,7 +9,7 @@ dependencyResolutionManagement {
     repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
     repositories {
         mavenCentral()
-        // The Node.js builds the web app is made with (njmule-webapp), and nothing else from there.
+        // The Node.js builds the interface (njmule-ui) and the site are made with, and nothing else from there.
         exclusiveContent {
             forRepository {
                 ivy {
@@ -29,12 +29,10 @@ rootProject.name = "njmule"
 include(
     "njmule-core",
     "njmule-testkit",
-    "njmule-webapp",
     "njmule-ui",
     "njmule-desktop",
     "njmule-webui",
     "njmule-app",
-    "njmule-gui",
     "njmule-bench",
     "website",
 )
