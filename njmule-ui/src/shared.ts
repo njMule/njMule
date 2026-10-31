@@ -108,6 +108,51 @@ export function places(
     return top;
 }
 
+/** What tells a place from the others, as long as the tree changes. */
+export function placeKey(place: Pick<Place, 'kind' | 'path'>): string {
+    return `${place.kind}:${place.path}`;
+}
+
+/** The places in sight, in order: each folder followed by its subfolders unless it is closed. */
+export function shownPlaces(tree: Place[], closed: string[]): Place[] {
+    return tree.flatMap((p) => (closed.includes(placeKey(p)) ? [p] : [p, ...p.children]));
+}
+
+/** What a key does in the tree: the place it chooses, or the folder it opens or closes. */
+export interface TreeMove {
+    choose?: Place;
+    toggle?: Place;
+}
+
+/**
+ * What {@code key} does with {@code at} chosen, as a tree view does: the arrows up and down, Home and End move the
+ * choice; the arrow towards the end opens a folder, then goes into it; the other closes it, then goes to its parent.
+ * Null for a key the tree leaves alone.
+ */
+export function treeMove(key: string, tree: Place[], closed: string[], at: Place, rtl: boolean): TreeMove | null {
+    const shown = shownPlaces(tree, closed);
+    const i = shown.findIndex((p) => placeKey(p) === placeKey(at));
+    const open = at.children.length > 0 && !closed.includes(placeKey(at));
+    switch (key) {
+        case 'ArrowDown':
+            return { choose: shown[Math.min(shown.length - 1, i + 1)] };
+        case 'ArrowUp':
+            return { choose: shown[Math.max(0, i - 1)] };
+        case 'Home':
+            return { choose: shown[0] };
+        case 'End':
+            return { choose: shown.at(-1) };
+        case rtl ? 'ArrowLeft' : 'ArrowRight':
+            return at.children.length === 0 ? {} : open ? { choose: at.children[0] } : { toggle: at };
+        case rtl ? 'ArrowRight' : 'ArrowLeft':
+            return open
+                ? { toggle: at }
+                : { choose: tree.find((p) => p.children.some((c) => placeKey(c) === placeKey(at))) };
+        default:
+            return null;
+    }
+}
+
 // Where personal or system files are, as far as a path alone tells. The engine knows its computer's own folders and
 // refuses the others it finds until asked again (a conflict); a folder known here is asked about at once.
 const UNIX_SYSTEM = ['bin', 'boot', 'dev', 'etc', 'lib', 'lib64', 'proc', 'sbin', 'sys', 'usr', 'var'];

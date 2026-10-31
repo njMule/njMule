@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { describe, expect, it } from 'vitest';
-import { holds, mayHoldPersonalFiles, places, type Place } from '../shared';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { holds, mayHoldPersonalFiles, placeKey, places, treeMove, type Place, type TreeMove } from '../shared';
 
 describe('the places of the shared files', () => {
     const files = ['D:\\Shared\\Books\\a.epub', 'D:\\Shared\\Films\\b.mkv', 'D:\\Shared\\c.iso', 'E:\\Music\\d.mp3'];
@@ -71,6 +71,89 @@ describe('a place', () => {
 
     function thenItHoldsIt(expected: boolean): void {
         expect(held).toBe(expected);
+    }
+});
+
+describe('the keys of the tree', () => {
+    const tree = places(
+        [
+            { path: 'D:\\Shared', subdirectories: true },
+            { path: 'E:\\Music', subdirectories: false },
+        ],
+        'C:\\Incoming',
+        ['D:\\Shared\\Books\\a.epub', 'D:\\Shared\\Films\\b.mkv'],
+    );
+    const shared = tree[2]!;
+    const books = shared.children[0]!;
+    let closed: string[] = [];
+    let move: TreeMove | null = null;
+
+    beforeEach(() => {
+        closed = [];
+        move = null;
+    });
+
+    it('should move the choice down to the next place in sight', () => {
+        whenPressed('ArrowDown', tree[1]!);
+        thenItChooses(shared);
+    });
+
+    it('should go over the subfolders of a closed folder', () => {
+        givenClosed(shared);
+        whenPressed('ArrowDown', shared);
+        thenItChooses(tree[3]!);
+    });
+
+    it('should open a closed folder towards the end', () => {
+        givenClosed(shared);
+        whenPressed('ArrowRight', shared);
+        thenItToggles(shared);
+    });
+
+    it('should go into an open folder towards the end', () => {
+        whenPressed('ArrowRight', shared);
+        thenItChooses(books);
+    });
+
+    it('should close an open folder towards the start', () => {
+        whenPressed('ArrowLeft', shared);
+        thenItToggles(shared);
+    });
+
+    it('should go from a subfolder to its folder towards the start', () => {
+        whenPressed('ArrowLeft', books);
+        thenItChooses(shared);
+    });
+
+    it('should take the end as the left in a right-to-left layout', () => {
+        whenPressed('ArrowLeft', shared, true);
+        thenItChooses(books);
+    });
+
+    it('should leave the other keys to the page', () => {
+        whenPressed('Enter', shared);
+        thenNothingMoves();
+    });
+
+    function givenClosed(place: Place): void {
+        closed = [placeKey(place)];
+    }
+
+    function whenPressed(key: string, at: Place, rtl = false): void {
+        move = treeMove(key, tree, closed, at, rtl);
+    }
+
+    function thenItChooses(place: Place): void {
+        expect(move?.choose?.path).toBe(place.path);
+    }
+
+    function thenItToggles(place: Place): void {
+        expect(move?.toggle?.path).toBe(place.path);
+        expect(move?.choose).toBeUndefined();
+    }
+
+    function thenNothingMoves(): void {
+        expect(move).toBeNull();
     }
 });
 

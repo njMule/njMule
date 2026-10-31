@@ -17,7 +17,7 @@ import {
     DropdownMenuRoot,
     DropdownMenuTrigger,
 } from 'reka-ui';
-import { computed, h, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, h, nextTick, onMounted, ref, shallowRef, watch } from 'vue';
 import { ApiError, answer, api, type Schemas } from '../api/client';
 import { ask } from '../ask';
 import { count, size } from '../format';
@@ -25,7 +25,17 @@ import { t } from '../i18n';
 import { htmlLinks } from '../links';
 import { preferences, readShared, shared, type SharedDirectory, type SharedFile } from '../model/engine';
 import type { Platform } from '../platform';
-import { holds, mayHoldPersonalFiles, nameOf, parentOf, places, type Place } from '../shared';
+import {
+    holds,
+    mayHoldPersonalFiles,
+    nameOf,
+    parentOf,
+    placeKey,
+    places,
+    shownPlaces,
+    treeMove,
+    type Place,
+} from '../shared';
 import { problem } from '../toasts';
 import { kindIcon } from '../transfers';
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
@@ -105,6 +115,47 @@ function placeName(p: Place): string {
 
 function placeCount(p: Place): string {
     return count(shared.value.filter((f) => holds(p, f.path)).length);
+}
+
+// The folders closed in the tree; they open with the arrow beside them, a double click or the keyboard.
+const closed = ref<string[]>([]);
+const shownTree = computed(() => shownPlaces(tree.value, closed.value));
+const placeIndex = computed(() => shownTree.value.findIndex((p) => placeKey(p) === placeKey(place.value)));
+
+function choosePlace(p: Place): void {
+    chosenPlace.value = { kind: p.kind, path: p.path };
+}
+
+function isOpen(p: Place): boolean {
+    return !closed.value.includes(placeKey(p));
+}
+
+// Closing the folder of the subfolder chosen chooses the folder.
+function toggle(p: Place): void {
+    if (isOpen(p)) {
+        closed.value = [...closed.value, placeKey(p)];
+        if (p.children.some((c) => placeKey(c) === placeKey(place.value))) {
+            choosePlace(p);
+        }
+    } else {
+        closed.value = closed.value.filter((k) => k !== placeKey(p));
+    }
+}
+
+async function treeKey(e: KeyboardEvent): Promise<void> {
+    const move = treeMove(e.key, tree.value, closed.value, place.value, document.documentElement.dir === 'rtl');
+    if (move === null) {
+        return;
+    }
+    e.preventDefault();
+    if (move.toggle) {
+        toggle(move.toggle);
+    }
+    if (move.choose) {
+        choosePlace(move.choose);
+        await nextTick();
+        document.getElementById(`shared-place-${placeIndex.value}`)?.scrollIntoView({ block: 'nearest' });
+    }
 }
 
 function stat(f: SharedFile, session: keyof SharedFile['statistics'], total: keyof SharedFile['statistics']): number {
@@ -367,45 +418,38 @@ onMounted(() => void readDirectories());
             <button id="share-folder" class="button accent wide" @click="chooseDirectory">
                 <Icon name="FOLDER_ADD" />{{ t('nj.shared.shareFolder') }}
             </button>
-            <ul id="shared-places" class="shared-places" role="tree">
-                <template v-for="p in tree" :key="p.kind + p.path">
+            <ul
+                id="shared-places"
+                class="shared-places focusable"
+                role="tree"
+                tabindex="0"
+                :aria-activedescendant="placeIndex < 0 ? undefined : `shared-place-${placeIndex}`"
+                @keydown="treeKey"
+            >
+                <Tip v-for="(p, i) in shownTree" :key="placeKey(p)" :text="p.kind === 'all' ? '' : p.path">
                     <li
+                        :id="`shared-place-${i}`"
                         class="place"
+                        :class="{ child: p.kind === 'subfolder' }"
                         role="treeitem"
-                        :aria-selected="place === p"
-                        tabindex="0"
-                        @click="chosenPlace = { kind: p.kind, path: p.path }"
+                        :aria-selected="placeKey(p) === placeKey(place)"
+                        :aria-expanded="p.children.length > 0 ? isOpen(p) : undefined"
+                        @click="choosePlace(p)"
+                        @dblclick="p.children.length > 0 && toggle(p)"
                     >
-                        <Icon v-if="p.children.length > 0" class="tree-arrow" name="CHEVRON_DOWN" />
+                        <span v-if="p.children.length > 0" class="tree-arrow" @click.stop="toggle(p)" @dblclick.stop>
+                            <Icon :name="isOpen(p) ? 'CHEVRON_DOWN' : 'CHEVRON_RIGHT'" />
+                        </span>
                         <span v-else class="tree-arrow" />
                         <Icon
                             :name="p.kind === 'all' ? 'SHARED' : p.kind === 'incoming' ? 'DOWNLOAD' : 'FOLDER_OPEN'"
                         />
-                        <Tip :text="p.kind === 'all' ? '' : p.path">
-                            <span class="place-name ellipsis" dir="ltr">{{ placeName(p) }}</span>
-                        </Tip>
+                        <span class="place-name ellipsis" dir="ltr">{{ placeName(p) }}</span>
                         <Icon v-if="p.kind === 'incoming'" class="place-lock" name="LOCK" />
                         <span class="spacer" />
                         <span class="muted">{{ placeCount(p) }}</span>
                     </li>
-                    <li
-                        v-for="c in p.children"
-                        :key="c.path"
-                        class="place child"
-                        role="treeitem"
-                        :aria-selected="place === c"
-                        tabindex="0"
-                        @click="chosenPlace = { kind: c.kind, path: c.path }"
-                    >
-                        <span class="tree-arrow" />
-                        <Icon name="FOLDER_OPEN" />
-                        <Tip :text="c.path">
-                            <span class="place-name ellipsis" dir="ltr">{{ placeName(c) }}</span>
-                        </Tip>
-                        <span class="spacer" />
-                        <span class="muted">{{ placeCount(c) }}</span>
-                    </li>
-                </template>
+                </Tip>
             </ul>
             <div class="shared-place">
                 <div>
@@ -638,6 +682,7 @@ onMounted(() => void readDirectories());
 }
 
 .tree-arrow {
+    display: inline-flex;
     width: 12px;
     flex: none;
     --nj-icon-size: 12px;
