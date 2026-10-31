@@ -297,8 +297,15 @@ function openNames(s: Search, hashes: string[], open: boolean): void {
     openByTab.value = { ...openByTab.value, [s.key]: [...now] };
 }
 
-// + and - open and close the files chosen that were found under several names.
-function namesKeys(s: Search, e: KeyboardEvent): void {
+// Enter downloads the results chosen; + and - open and close the files chosen that were found under several names.
+function resultKeys(s: Search, e: KeyboardEvent): void {
+    if (e.key === 'Enter' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        if (canDownload.value) {
+            void download(chosen.value);
+        }
+        return;
+    }
     if (e.key !== '+' && e.key !== '-') {
         return;
     }
@@ -1229,7 +1236,7 @@ onUnmounted(() => {
                         :label="title(s)"
                         no-enter-action
                         @update:selected="(ids: string[]) => choose(s.key, ids)"
-                        @keydown="(e: KeyboardEvent) => namesKeys(s, e)"
+                        @keydown="(e: KeyboardEvent) => resultKeys(s, e)"
                         @activate="(r: ResultRow) => download([r.result])"
                     >
                         <template #empty>
