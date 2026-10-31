@@ -39,13 +39,15 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The hand-over of a new version from a stopped engine: it writes the plan and starts the installer, which waits for
- * this process to end. An MSI goes to the Windows launcher, copied out of the folder Windows Installer replaces, which
- * runs {@code msiexec} and starts njMule again; an unpacked archive or bundle goes to {@link UpdateHelper}, run by this
- * version's program.
+ * this process to end. An MSI goes to the desktop window's program, copied out of the folder Windows Installer
+ * replaces, which runs {@code msiexec} and starts njMule again; an unpacked archive or bundle goes to
+ * {@link UpdateHelper}, run by this version's program.
  */
 final class HandOver implements UpdateHandOver {
 
-    static final String LAUNCHER_FILE = "njmule-gui.exe";
+    /** The desktop window's program, which starts this engine for the desktop. */
+    static final String LAUNCHER_FILE = OsFamily.current() == OsFamily.WINDOWS ? "njmule-gui.exe" : "njmule-gui";
+
     static final String INSTALLER_LOG = "install.log";
     static final String INSTALLER_RESULT = "msiexec.txt";
     static final String HELPER_LOG = "helper.log";
@@ -65,7 +67,7 @@ final class HandOver implements UpdateHandOver {
 
     /**
      * @param plan the installation, its program and arguments still to come
-     * @param desktop whether this is the Windows desktop app, which starts again through its launcher
+     * @param desktop whether this is the desktop app's engine, which starts again through its window
      */
     HandOver(
             ApplyPlan plan,
@@ -84,9 +86,9 @@ final class HandOver implements UpdateHandOver {
         this.desktop = desktop;
     }
 
-    /** Whether this process is the Windows desktop app, started by its launcher. */
+    /** Whether this process is the desktop app's engine, started by its window. */
     static boolean desktop() {
-        return OsFamily.current() == OsFamily.WINDOWS && "1".equals(System.getenv(Launcher.DESKTOP_VARIABLE));
+        return "1".equals(System.getenv(Launcher.DESKTOP_VARIABLE));
     }
 
     @Override
@@ -153,7 +155,7 @@ final class HandOver implements UpdateHandOver {
                 this.clock.instant());
     }
 
-    // The installed program that starts njMule as the user does: on Windows the desktop app's launcher.
+    // The installed program that starts njMule as the user does: the desktop app's window, for its engine.
     private Optional<Path> program() {
         Optional<Path> executable = this.installation.executable();
         if (executable.isEmpty()) {
@@ -168,7 +170,8 @@ final class HandOver implements UpdateHandOver {
         return executable;
     }
 
-    // The launcher runs msiexec once this process and its own parent launcher have ended, then starts njMule again.
+    // The window's program runs msiexec once this process and the window that started it have ended, then starts
+    // njMule again.
     private void startInstaller(ApplyPlan full) throws IOException {
         Path installed = this.installation.executable().orElseThrow().resolveSibling(LAUNCHER_FILE);
         Path folder = this.files.version(full.version());
@@ -235,7 +238,7 @@ final class HandOver implements UpdateHandOver {
         throw new IOException(why);
     }
 
-    // This process, and the Windows launcher that waits for it, whose file the installer replaces too.
+    // This process, and the desktop window that started it, whose file the installer replaces too.
     private List<Long> waits() {
         List<Long> pids = new ArrayList<>(List.of(ProcessHandle.current().pid()));
         Optional<Path> folder = this.installation.executable().map(Path::getParent);

@@ -86,19 +86,17 @@ public abstract sealed class LinkAssociation {
     }
 
     /**
-     * The program the system starts for the desktop app running as {@code command}: on Windows the app runs in
-     * njmule.exe, a console program, which njmule-gui.exe beside it starts without a console.
+     * The program the system starts for the desktop app running as {@code command}: the engine, njmule.exe or njmule,
+     * runs started by the desktop window beside it, njmule-gui.exe or njmule-gui.
      */
     static String desktopProgram(String command, String osName, Predicate<Path> isFile) {
-        if (!osName.toLowerCase(Locale.ROOT).startsWith("windows")) {
-            return command;
-        }
+        String suffix = osName.toLowerCase(Locale.ROOT).startsWith("windows") ? ".exe" : "";
         int cut = Math.max(command.lastIndexOf('\\'), command.lastIndexOf('/'));
-        if (!command.substring(cut + 1).equalsIgnoreCase("njmule.exe")) {
+        if (!command.substring(cut + 1).equalsIgnoreCase("njmule" + suffix)) {
             return command;
         }
-        String launcher = command.substring(0, cut + 1) + "njmule-gui.exe";
-        return isFile.test(Path.of(launcher)) ? launcher : command;
+        String window = command.substring(0, cut + 1) + "njmule-gui" + suffix;
+        return isFile.test(Path.of(window)) ? window : command;
     }
 
     // The system's parts as arguments, so that tests choose them and never touch the real ones.
