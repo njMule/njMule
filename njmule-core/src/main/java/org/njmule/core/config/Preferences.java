@@ -396,7 +396,7 @@ public record Preferences(
                 false,
                 0,
                 Notifications.NONE,
-                false);
+                true);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {

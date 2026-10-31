@@ -155,6 +155,8 @@ public final class Engine implements NjMuleEngine {
     // DB-IP publishes its database once a month.
     private static final Duration COUNTRIES_AGE = Duration.ofDays(32);
     private static final String COUNTRIES_FILE = "countries.dat";
+    /** Set to {@code true}, the country database is never downloaded: tests must not fetch it. */
+    static final String COUNTRIES_DISABLED_PROPERTY = "njmule.countries.disabled";
     // Followed by the month, yyyy-MM, and .csv.gz.
     private static final String COUNTRIES_URL = "https://download.db-ip.com/free/dbip-country-lite-";
     // The first look for a new version waits for the start to settle; then whether one is due is asked often.
@@ -391,6 +393,10 @@ public final class Engine implements NjMuleEngine {
                 publish(new EngineEvent.PreferencesChanged(next));
                 this.network.reconfigure(current, next);
                 this.updates.preferences(next);
+                // Turned on or off, the countries follow at once rather than at the next hourly check.
+                if (next.showCountries() != current.showCountries()) {
+                    updateCountriesIfDue();
+                }
             }
             return next;
         });
@@ -667,7 +673,8 @@ public final class Engine implements NjMuleEngine {
         Path file = this.directories.cache().resolve(COUNTRIES_FILE);
         long now = System.currentTimeMillis();
         OptionalLong date = modified(file);
-        boolean fetch = (date.isEmpty() || now - date.getAsLong() >= COUNTRIES_AGE.toMillis())
+        boolean fetch = !Boolean.getBoolean(COUNTRIES_DISABLED_PROPERTY)
+                && (date.isEmpty() || now - date.getAsLong() >= COUNTRIES_AGE.toMillis())
                 && now - this.countriesTried >= COUNTRIES_RETRY.toMillis();
         boolean read = this.countries.size() == 0 && date.isPresent();
         if (this.countriesUpdating || !(fetch || read)) {
