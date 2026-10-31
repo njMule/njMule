@@ -294,6 +294,14 @@ function typed(text: string): Command[] {
     ];
 }
 
+// As in the desktop app, only the lists and the fields have a menu of their own: in its window a right click elsewhere
+// opens none, rather than the webview's (Back, Reload, Print...).
+function noWebviewMenu(e: MouseEvent): void {
+    if (!(e.target instanceof Element && e.target.closest('input, textarea, [contenteditable="true"]'))) {
+        e.preventDefault();
+    }
+}
+
 // The sound of a notification of an event, when the options ask for one; not for the replies to the user. The file is
 // on the engine's computer, so only a window on that computer plays it.
 function chime(): void {
@@ -358,6 +366,9 @@ watch(
 onMounted(() => {
     window.addEventListener('keydown', key);
     window.addEventListener('resize', resize);
+    if (props.platform.desktop) {
+        document.addEventListener('contextmenu', noWebviewMenu);
+    }
     on('download.completed', (d) => {
         success(t('nj.transfers.completed', d.download?.name ?? ''));
         chime();
@@ -388,6 +399,7 @@ onMounted(() => {
 onUnmounted(() => {
     window.removeEventListener('keydown', key);
     window.removeEventListener('resize', resize);
+    document.removeEventListener('contextmenu', noWebviewMenu);
 });
 </script>
 
