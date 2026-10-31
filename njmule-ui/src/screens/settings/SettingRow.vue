@@ -7,7 +7,8 @@ import { t } from '../../i18n';
 import Icon from '../../ui/Icon.vue';
 
 // One option: its name, what it does, whether it differs from its default with a way back to it, what is wrong with
-// the value typed, and its control at the end side, or under the name for paths, lists and command lines.
+// the value typed, and its control at the end side, or under the name for paths, lists and command lines. A row with
+// no words holds its control alone, at the start side.
 
 defineProps<{
     title: string;
@@ -25,7 +26,7 @@ const emit = defineEmits<{ reset: [] }>();
 
 <template>
     <div class="setting-row" :class="{ wide }">
-        <div class="words">
+        <div v-if="title || hint || error" class="words">
             <div v-if="title" class="head">
                 <label class="setting-title" :for="$props.for">{{ title }}</label>
                 <template v-if="changed">
@@ -47,7 +48,7 @@ const emit = defineEmits<{ reset: [] }>();
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 12px 0;
+    padding: 10px 0;
 }
 
 .setting-row + .setting-row {
@@ -75,11 +76,12 @@ const emit = defineEmits<{ reset: [] }>();
     gap: 2px 8px;
 }
 
+/* An option set apart from its default: a small chip, and the way back to the default. */
 .changed-mark {
-    padding: 1px 8px;
+    padding: 0 6px;
     border-radius: 4px;
-    background: var(--color-bg-subtle);
-    font-size: 0.9em;
+    background: var(--color-accent-subtle);
+    font-size: 0.85em;
 }
 
 /* A link back to the default, in the theme's link colour. */
@@ -88,6 +90,7 @@ const emit = defineEmits<{ reset: [] }>();
     border: 0;
     background: none;
     color: var(--color-accent-fg);
+    font-size: 0.92em;
     text-decoration: underline;
     cursor: pointer;
 }
@@ -104,17 +107,23 @@ const emit = defineEmits<{ reset: [] }>();
     gap: 6px;
     margin: 0;
     color: var(--color-danger-fg);
+    font-size: 0.92em;
     --nj-icon-color: var(--color-danger-fg);
+    --nj-icon-size: 14px;
 }
 
+/* The control keeps its size; the name wraps instead. */
 .control {
     display: flex;
     flex: none;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
+    max-width: 100%;
 }
 
 .wide .control {
     flex: auto;
+    flex-wrap: nowrap;
 }
 </style>

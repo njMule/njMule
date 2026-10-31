@@ -11,19 +11,91 @@ export interface Option {
     label: string;
 }
 
-export interface Row {
+/** That another key holds one of these values. */
+export interface Condition {
     key: string;
-    label: string;
-    // A flags row holds the values of the options ticked, apart by commas.
-    kind: 'switch' | 'number' | 'text' | 'lines' | 'choice' | 'password' | 'flags';
-    hint?: string;
+    values: string[];
+}
+
+export type Kind =
+    | 'switch'
+    | 'number'
+    | 'text'
+    | 'lines'
+    | 'choice'
+    | 'password'
+    // The values of the options ticked, apart by commas.
+    | 'flags'
+    // A speed limit in KB/s or MB/s, or no limit (0); kept in KiB/s.
+    | 'limit'
+    // The speed of a line in Mbit/s, kept in KiB/s.
+    | 'line'
+    // The next download to start: a switch, and the categories it takes while on; NONE while off.
+    | 'next'
+    // A folder of the engine's computer, typed or chosen; empty for the default one.
+    | 'folder';
+
+/** A check of the value typed, as the desktop app's Inputs: see screens/settings/inputs.ts. */
+export type Check =
+    | 'nick'
+    | 'name'
+    | 'host'
+    | 'webhook'
+    | 'nightHours'
+    | 'soundFile'
+    | 'folder'
+    | 'commandLine'
+    | 'whitelist'
+    | 'lists';
+
+/** One control of a row, bound to one key. */
+export interface Field {
+    key: string;
+    kind: Kind;
+    /** The least and the most of a number; the longest text of a text. */
     min?: number;
     max?: number;
     options?: Option[];
-    // Waits for "Apply and reconnect", as it takes effect when njMule connects again.
+    check?: Check;
+    /** Shown in the empty field: a translation key, or words the same in every language. */
+    placeholder?: string;
+    /** Read left to right in every language: paths, addresses and command lines. */
+    ltr?: boolean;
+    /** A word after the field, such as its unit. */
+    unit?: string;
+    /** The width in characters, as the desktop app's columns. */
+    columns?: number;
+    /** Takes the width the row leaves. */
+    grow?: boolean;
+    /** The lines a text area shows. */
+    lines?: number;
+    /** Usable only while each condition holds. */
+    enabledWhen?: Condition[];
+    /** Must not be empty while this holds. */
+    requiredWhen?: Condition;
+    /** The words a command line may hold, filled in when it runs. */
+    placeholders?: string[];
+}
+
+/** A button of a row, which acts rather than sets. */
+export type Action = 'checkUpdate' | 'serverLists' | 'updateIpFilter' | 'testNotifications';
+
+export interface Row {
+    /** A translation key, or a word the same in every language such as UDP; empty for none. */
+    label: string;
+    /** Words after the label, the same in every language. */
+    suffix?: string;
+    fields: Field[];
+    hint?: string;
+    /** The control under the name, the width of the page: for paths, lists and command lines. */
+    wide?: boolean;
+    /** Waits for "Apply and reconnect", as it takes effect when njMule connects again. */
     held?: boolean;
-    // Shown only while another key has one of these values.
-    when?: { key: string; values: string[] };
+    /** The default in the reset link: the value itself, or a translation key; by the kind of control otherwise. */
+    defaultWords?: 'value' | string;
+    action?: Action;
+    /** An option of this window rather than of the engine. */
+    local?: 'language' | 'theme';
 }
 
 export interface Section {
@@ -39,12 +111,41 @@ export interface Page {
     sections: Section[];
 }
 
-const EVENTS: [string, string][] = [
-    ['downloadCompleted', 'nj.events.downloadCompleted'],
-    ['downloadFailed', 'nj.events.downloadFailed'],
-    ['chatMessage', 'nj.events.chatMessage'],
-    ['diskSpaceShort', 'nj.events.diskSpaceShort'],
+export interface EventKind {
+    id: string;
+    placeholders: string[];
+}
+
+// The events a program can be run on, with the words filled in.
+export const EVENTS: EventKind[] = [
+    { id: 'downloadCompleted', placeholders: ['%NAME', '%FILE', '%HASH', '%SIZE'] },
+    { id: 'downloadFailed', placeholders: ['%NAME', '%HASH', '%SIZE', '%MESSAGE'] },
+    { id: 'chatMessage', placeholders: ['%SENDER', '%MESSAGE'] },
+    { id: 'diskSpaceShort', placeholders: ['%FILE'] },
 ];
+
+const PORT = { kind: 'number', min: 1, max: 65535 } as const;
+const FOLDER = {
+    kind: 'folder',
+    check: 'folder',
+    ltr: true,
+    grow: true,
+    columns: 32,
+    placeholder: 'nj.settings.defaultDir',
+} as const;
+const PROXY_ON: Condition = { key: 'proxy.type', values: ['SOCKS', 'HTTP'] };
+
+function one(field: Field, row: Omit<Row, 'fields'>): Row {
+    return { ...row, fields: [field] };
+}
+
+function toggle(key: string, label: string, more: Omit<Row, 'fields' | 'label'> = {}): Row {
+    return one({ key, kind: 'switch' }, { label, ...more });
+}
+
+function number(key: string, label: string, min: number, max: number): Row {
+    return one({ key, kind: 'number', min, max }, { label });
+}
 
 export const PAGES: Page[] = [
     {
@@ -53,61 +154,100 @@ export const PAGES: Page[] = [
         summary: 'nj.settings.page.general',
         icon: 'OPTIONS',
         sections: [
-            { rows: [{ key: 'user.nick', label: 'IDS_PW_NICK', kind: 'text', max: 50 }] },
+            {
+                rows: [
+                    one(
+                        { key: 'user.nick', kind: 'text', check: 'nick', max: 50, columns: 16 },
+                        { label: 'IDS_PW_NICK', defaultWords: 'value' },
+                    ),
+                ],
+            },
+            {
+                title: 'IDS_PW_DISPLAY',
+                rows: [
+                    { label: 'IDS_PW_LANG', fields: [], local: 'language' },
+                    { label: 'nj.settings.theme', fields: [], local: 'theme' },
+                ],
+            },
             {
                 title: 'IDS_STARTUP',
                 rows: [
-                    { key: 'system.preventSleep', label: 'nj.settings.preventSleep', kind: 'switch' },
-                    {
-                        key: 'geo.countries',
-                        label: 'nj.settings.countries',
-                        kind: 'switch',
-                        hint: 'nj.settings.countriesHint',
-                    },
+                    toggle('system.preventSleep', 'nj.settings.preventSleep'),
+                    toggle('geo.countries', 'nj.settings.countries', { hint: 'nj.settings.countriesHint' }),
                 ],
             },
             {
                 title: 'nj.update.title',
                 rows: [
-                    {
-                        key: 'update.mode',
-                        label: 'nj.update.mode',
-                        kind: 'choice',
-                        hint: 'nj.update.note',
-                        options: [
-                            { value: 'OFF', label: 'nj.update.mode.off' },
-                            { value: 'NOTIFY', label: 'nj.update.mode.notify' },
-                            { value: 'DOWNLOAD', label: 'nj.update.mode.download' },
-                            { value: 'INSTALL', label: 'nj.update.mode.install' },
-                        ],
-                    },
-                    {
-                        key: 'update.channel',
-                        label: 'nj.update.channel',
-                        kind: 'choice',
-                        options: [
-                            { value: 'STABLE', label: 'nj.update.channel.stable' },
-                            { value: 'PRERELEASE', label: 'nj.update.channel.prerelease' },
-                        ],
-                    },
-                    {
-                        key: 'update.installAt',
-                        label: 'nj.update.installAt',
-                        kind: 'choice',
-                        options: [
-                            { value: 'EXIT', label: 'nj.update.installAt.exit' },
-                            { value: 'EXIT_OR_NIGHT', label: 'nj.update.installAt.exit_or_night' },
-                        ],
-                        when: { key: 'update.mode', values: ['INSTALL'] },
-                    },
-                    {
-                        key: 'update.nightHours',
-                        label: 'nj.update.nightHours',
-                        kind: 'text',
-                        hint: 'nj.update.nightHours.hint',
-                        max: 13,
-                        when: { key: 'update.installAt', values: ['EXIT_OR_NIGHT'] },
-                    },
+                    one(
+                        {
+                            key: 'update.mode',
+                            kind: 'choice',
+                            options: [
+                                { value: 'OFF', label: 'nj.update.mode.off' },
+                                { value: 'NOTIFY', label: 'nj.update.mode.notify' },
+                                { value: 'DOWNLOAD', label: 'nj.update.mode.download' },
+                                { value: 'INSTALL', label: 'nj.update.mode.install' },
+                            ],
+                        },
+                        { label: 'nj.update.mode', hint: 'nj.update.note' },
+                    ),
+                    one(
+                        {
+                            key: 'update.channel',
+                            kind: 'choice',
+                            options: [
+                                { value: 'STABLE', label: 'nj.update.channel.stable' },
+                                { value: 'PRERELEASE', label: 'nj.update.channel.prerelease' },
+                            ],
+                        },
+                        { label: 'nj.update.channel' },
+                    ),
+                    // When to install matters only to what installs on its own; the night hours only to the night.
+                    one(
+                        {
+                            key: 'update.installAt',
+                            kind: 'choice',
+                            options: [
+                                { value: 'EXIT', label: 'nj.update.installAt.exit' },
+                                { value: 'EXIT_OR_NIGHT', label: 'nj.update.installAt.exit_or_night' },
+                            ],
+                            enabledWhen: [{ key: 'update.mode', values: ['INSTALL'] }],
+                        },
+                        { label: 'nj.update.installAt' },
+                    ),
+                    one(
+                        {
+                            key: 'update.nightHours',
+                            kind: 'text',
+                            check: 'nightHours',
+                            ltr: true,
+                            columns: 9,
+                            enabledWhen: [
+                                { key: 'update.mode', values: ['INSTALL'] },
+                                { key: 'update.installAt', values: ['EXIT_OR_NIGHT'] },
+                            ],
+                        },
+                        { label: 'nj.update.nightHours', hint: 'nj.update.nightHours.hint', defaultWords: 'value' },
+                    ),
+                    { label: 'IDS_CHECK4UPDATE', fields: [], action: 'checkUpdate' },
+                ],
+            },
+            {
+                title: 'IDS_PW_EKDEV_OPTIONS',
+                rows: [
+                    toggle('notify.sound', 'nj.settings.sound'),
+                    one(
+                        {
+                            key: 'notify.soundFile',
+                            kind: 'text',
+                            check: 'soundFile',
+                            ltr: true,
+                            grow: true,
+                            columns: 32,
+                        },
+                        { label: 'nj.settings.soundFile', wide: true },
+                    ),
                 ],
             },
         ],
@@ -121,52 +261,57 @@ export const PAGES: Page[] = [
             {
                 title: 'nj.network.ports',
                 rows: [
-                    { key: 'net.tcpPort', label: 'IDS_PW_CLIENTPORT', kind: 'number', min: 1, max: 65535, held: true },
-                    { key: 'net.udpPort', label: 'UDP', kind: 'number', min: 1, max: 65535, held: true },
-                    { key: 'net.upnp', label: 'nj.settings.upnp', kind: 'switch', held: true },
+                    one({ key: 'net.tcpPort', ...PORT }, { label: 'IDS_PW_CLIENTPORT', suffix: ' (TCP)', held: true }),
+                    one({ key: 'net.udpPort', ...PORT }, { label: 'UDP', held: true }),
+                    toggle('net.upnp', 'nj.settings.upnp', { held: true }),
                 ],
             },
             {
                 title: 'IDS_NETWORK',
                 rows: [
-                    { key: 'net.ed2k.enabled', label: 'nj.settings.ed2k', kind: 'switch' },
-                    { key: 'net.kad.enabled', label: 'nj.settings.kad', kind: 'switch' },
-                    { key: 'net.autoConnect', label: 'IDS_PW_AUTOCON', kind: 'switch' },
-                    { key: 'net.reconnect', label: 'IDS_PW_RECON', kind: 'switch' },
-                    {
-                        key: 'security.obfuscation',
-                        label: 'nj.settings.obfuscation',
-                        kind: 'choice',
-                        options: [
-                            { value: 'DISABLED', label: 'nj.obfuscation.disabled' },
-                            { value: 'SUPPORTED', label: 'nj.obfuscation.supported' },
-                            { value: 'REQUESTED', label: 'nj.obfuscation.requested' },
-                            { value: 'REQUIRED', label: 'nj.obfuscation.required' },
-                        ],
-                    },
-                    {
-                        key: 'net.bindInterface',
-                        label: 'nj.settings.bindInterface',
-                        kind: 'text',
-                        hint: 'nj.settings.bindInterface.hint',
-                        max: 256,
-                        held: true,
-                    },
+                    toggle('net.ed2k.enabled', 'nj.settings.ed2k'),
+                    toggle('net.kad.enabled', 'nj.settings.kad'),
+                    toggle('net.autoConnect', 'IDS_PW_AUTOCON'),
+                    toggle('net.reconnect', 'IDS_PW_RECON'),
+                    one(
+                        {
+                            key: 'security.obfuscation',
+                            kind: 'choice',
+                            options: [
+                                { value: 'DISABLED', label: 'nj.obfuscation.disabled' },
+                                { value: 'SUPPORTED', label: 'nj.obfuscation.supported' },
+                                { value: 'REQUESTED', label: 'nj.obfuscation.requested' },
+                                { value: 'REQUIRED', label: 'nj.obfuscation.required' },
+                            ],
+                        },
+                        { label: 'nj.settings.obfuscation' },
+                    ),
+                    // The engine does not list the interfaces up: a name or an address is typed, nothing for any.
+                    one(
+                        {
+                            key: 'net.bindInterface',
+                            kind: 'text',
+                            max: 256,
+                            ltr: true,
+                            columns: 20,
+                            placeholder: 'nj.settings.bindInterface.any',
+                        },
+                        {
+                            label: 'nj.settings.bindInterface',
+                            hint: 'nj.settings.bindInterface.hint',
+                            held: true,
+                            defaultWords: 'nj.settings.bindInterface.any',
+                        },
+                    ),
                 ],
             },
             {
                 title: 'IDS_PW_CON_LIMITFRM',
                 rows: [
-                    { key: 'net.maxConnections', label: 'IDS_PW_MAXC', kind: 'number', min: 1, max: 10000 },
-                    { key: 'net.newConnectionsPer5s', label: 'IDS_MAXCON5SECLABEL', kind: 'number', min: 1, max: 1000 },
-                    {
-                        key: 'download.maxSourcesPerFile',
-                        label: 'IDS_PW_MAXSOURCES',
-                        kind: 'number',
-                        min: 1,
-                        max: 10000,
-                    },
-                    { key: 'upload.queueSize', label: 'IDS_QUEUESIZE', kind: 'number', min: 100, max: 100000 },
+                    number('net.maxConnections', 'IDS_PW_MAXC', 1, 10000),
+                    number('net.newConnectionsPer5s', 'IDS_MAXCON5SECLABEL', 1, 1000),
+                    number('download.maxSourcesPerFile', 'IDS_PW_MAXSOURCES', 1, 10000),
+                    number('upload.queueSize', 'IDS_QUEUESIZE', 100, 100000),
                 ],
             },
         ],
@@ -180,43 +325,21 @@ export const PAGES: Page[] = [
             {
                 title: 'IDS_PW_CON_CAPFRM',
                 rows: [
-                    {
-                        key: 'limits.downloadCapacityKiBps',
-                        label: 'nj.settings.downloadCapacity',
-                        kind: 'number',
-                        min: 1,
-                        max: 10000000,
-                        hint: 'KB/s',
-                    },
-                    {
-                        key: 'limits.uploadCapacityKiBps',
-                        label: 'nj.settings.uploadCapacity',
-                        kind: 'number',
-                        min: 1,
-                        max: 10000000,
-                        hint: 'KB/s',
-                    },
+                    one(
+                        { key: 'limits.downloadCapacityKiBps', kind: 'line', min: 1 },
+                        { label: 'nj.settings.downloadCapacity' },
+                    ),
+                    one(
+                        { key: 'limits.uploadCapacityKiBps', kind: 'line', min: 1 },
+                        { label: 'nj.settings.uploadCapacity' },
+                    ),
                 ],
             },
             {
                 title: 'IDS_PW_CON_LIMITFRM',
                 rows: [
-                    {
-                        key: 'limits.downloadKiBps',
-                        label: 'nj.settings.download',
-                        kind: 'number',
-                        min: 0,
-                        max: 10000000,
-                        hint: 'nj.rate.noLimit',
-                    },
-                    {
-                        key: 'limits.uploadKiBps',
-                        label: 'nj.settings.upload',
-                        kind: 'number',
-                        min: 0,
-                        max: 10000000,
-                        hint: 'nj.rate.noLimit',
-                    },
+                    one({ key: 'limits.downloadKiBps', kind: 'limit', min: 1 }, { label: 'nj.settings.download' }),
+                    one({ key: 'limits.uploadKiBps', kind: 'limit', min: 1 }, { label: 'nj.settings.upload' }),
                 ],
             },
         ],
@@ -229,19 +352,15 @@ export const PAGES: Page[] = [
         sections: [
             {
                 rows: [
-                    {
-                        key: 'server.deadRetries',
-                        label: 'IDS_PW_RDEAD',
-                        kind: 'number',
-                        min: 1,
-                        max: 10,
-                        hint: 'IDS_PW_RETRIES',
-                    },
-                    { key: 'server.addFromServer', label: 'IDS_PW_USC', kind: 'switch' },
-                    { key: 'server.addFromClients', label: 'IDS_PW_UCC', kind: 'switch' },
-                    { key: 'server.staticOnly', label: 'IDS_PW_AUTOCONNECTSTATICONLY', kind: 'switch' },
-                    { key: 'server.manualHighPriority', label: 'IDS_MANUALSERVERHIGHPRIO', kind: 'switch' },
-                    { key: 'server.updateAtStart', label: 'IDS_PW_USS', kind: 'switch' },
+                    one(
+                        { key: 'server.deadRetries', kind: 'number', min: 1, max: 10, unit: 'IDS_PW_RETRIES' },
+                        { label: 'IDS_PW_RDEAD' },
+                    ),
+                    toggle('server.addFromServer', 'IDS_PW_USC'),
+                    toggle('server.addFromClients', 'IDS_PW_UCC'),
+                    toggle('server.staticOnly', 'IDS_PW_AUTOCONNECTSTATICONLY'),
+                    toggle('server.manualHighPriority', 'IDS_MANUALSERVERHIGHPRIO'),
+                    toggle('server.updateAtStart', 'IDS_PW_USS', { action: 'serverLists' }),
                 ],
             },
         ],
@@ -254,21 +373,42 @@ export const PAGES: Page[] = [
         sections: [
             {
                 rows: [
+                    one(
+                        {
+                            key: 'proxy.type',
+                            kind: 'choice',
+                            options: [
+                                { value: 'NONE', label: 'nj.proxy.none' },
+                                { value: 'SOCKS', label: 'nj.proxy.socks' },
+                                { value: 'HTTP', label: 'nj.proxy.http' },
+                            ],
+                        },
+                        { label: 'nj.proxy.type', held: true },
+                    ),
+                    // Without a proxy there is nothing to fill in.
                     {
-                        key: 'proxy.type',
-                        label: 'nj.proxy.type',
-                        kind: 'choice',
+                        label: 'nj.proxy.host',
                         held: true,
-                        options: [
-                            { value: 'NONE', label: 'nj.proxy.none' },
-                            { value: 'SOCKS', label: 'nj.proxy.socks' },
-                            { value: 'HTTP', label: 'nj.proxy.http' },
+                        fields: [
+                            {
+                                key: 'proxy.host',
+                                kind: 'text',
+                                check: 'host',
+                                ltr: true,
+                                enabledWhen: [PROXY_ON],
+                                requiredWhen: PROXY_ON,
+                            },
+                            { key: 'proxy.port', ...PORT, enabledWhen: [PROXY_ON] },
                         ],
                     },
-                    { key: 'proxy.host', label: 'IDS_PROXY_HOST', kind: 'text', max: 255, held: true },
-                    { key: 'proxy.port', label: 'IDS_PROXY_PORT', kind: 'number', min: 1, max: 65535, held: true },
-                    { key: 'proxy.user', label: 'IDS_QL_USERNAME', kind: 'text', max: 255, held: true },
-                    { key: 'proxy.password', label: 'IDS_WS_PASS', kind: 'password', held: true },
+                    {
+                        label: 'nj.proxy.user',
+                        held: true,
+                        fields: [
+                            { key: 'proxy.user', kind: 'text', check: 'name', max: 255, enabledWhen: [PROXY_ON] },
+                            { key: 'proxy.password', kind: 'password', enabledWhen: [PROXY_ON] },
+                        ],
+                    },
                 ],
             },
         ],
@@ -281,60 +421,86 @@ export const PAGES: Page[] = [
         sections: [
             {
                 rows: [
-                    { key: 'dirs.incoming', label: 'IDS_PW_INCOMING', kind: 'text', hint: 'nj.settings.defaultDir' },
-                    { key: 'dirs.temp', label: 'IDS_PW_TEMP', kind: 'text', hint: 'nj.settings.nextStart' },
-                    {
-                        key: 'download.minFreeSpaceMiB',
-                        label: 'IDS_MINFREEDISKSPACE',
-                        kind: 'number',
-                        min: 0,
-                        max: 10000000,
-                    },
+                    one(
+                        { key: 'dirs.incoming', ...FOLDER },
+                        { label: 'IDS_PW_INCOMING', wide: true, defaultWords: 'nj.settings.defaultDir' },
+                    ),
+                    one(
+                        { key: 'dirs.temp', ...FOLDER },
+                        {
+                            label: 'IDS_PW_TEMP',
+                            hint: 'nj.settings.nextStart',
+                            wide: true,
+                            defaultWords: 'nj.settings.defaultDir',
+                        },
+                    ),
+                    number('download.minFreeSpaceMiB', 'IDS_MINFREEDISKSPACE', 0, 10000000),
                 ],
             },
             {
                 title: 'IDS_TW_DOWNLOADS',
                 rows: [
-                    { key: 'download.addPaused', label: 'IDS_ADDNEWFILESPAUSED', kind: 'switch' },
+                    toggle('download.addPaused', 'IDS_ADDNEWFILESPAUSED'),
+                    one(
+                        {
+                            key: 'download.startNext',
+                            kind: 'next',
+                            options: [
+                                { value: 'ANY', label: 'nj.settings.anyCategory' },
+                                { value: 'SAME_CATEGORY_FIRST', label: 'IDS_PREF_STARTNEXTFILECAT' },
+                                { value: 'SAME_CATEGORY', label: 'IDS_PREF_STARTNEXTFILECATONLY' },
+                            ],
+                        },
+                        { label: 'IDS_STARTNEXTFILE' },
+                    ),
+                    toggle('files.cleanUpNewNames', 'IDS_AUTOCLEANUPFN'),
+                    one(
+                        { key: 'files.nameCleanups', kind: 'text', grow: true, columns: 30 },
+                        { label: 'IDS_FILTERFILENAMEWORD', wide: true },
+                    ),
+                    toggle('files.rememberDownloaded', 'IDS_PW_REMEMBERDOWNLOADED'),
+                    toggle('files.rememberCancelled', 'IDS_PW_REMEMBERCANCELLED'),
+                    one(
+                        { key: 'download.autoDeleteDays', kind: 'number', min: 0, max: 365 },
+                        { label: 'nj.settings.autoDeleteDays', hint: 'nj.settings.autoDeleteHint' },
+                    ),
+                ],
+            },
+            {
+                title: 'IDS_DL_PREVIEW',
+                rows: [
+                    toggle('download.previewFirst', 'IDS_DOWNLOADMOVIECHUNKS'),
                     {
-                        key: 'download.startNext',
-                        label: 'IDS_STARTNEXTFILE',
-                        kind: 'choice',
-                        options: [
-                            { value: 'NONE', label: 'IDS_NO' },
-                            { value: 'ANY', label: 'nj.settings.anyCategory' },
-                            { value: 'SAME_CATEGORY_FIRST', label: 'IDS_PREF_STARTNEXTFILECAT' },
-                            { value: 'SAME_CATEGORY', label: 'IDS_PREF_STARTNEXTFILECATONLY' },
+                        label: 'IDS_PW_VIDEOPLAYER',
+                        wide: true,
+                        fields: [
+                            { key: 'preview.player', kind: 'text', ltr: true, grow: true, columns: 26 },
+                            {
+                                key: 'preview.args',
+                                kind: 'text',
+                                ltr: true,
+                                columns: 14,
+                                placeholder: 'nj.preview.args',
+                            },
                         ],
                     },
-                    { key: 'files.cleanUpNewNames', label: 'IDS_AUTOCLEANUPFN', kind: 'switch' },
-                    { key: 'files.nameCleanups', label: 'IDS_FILTERFILENAMEWORD', kind: 'text' },
-                    { key: 'files.rememberDownloaded', label: 'IDS_PW_REMEMBERDOWNLOADED', kind: 'switch' },
-                    { key: 'files.rememberCancelled', label: 'IDS_PW_REMEMBERCANCELLED', kind: 'switch' },
-                    {
-                        key: 'download.autoDeleteDays',
-                        label: 'nj.settings.autoDeleteDays',
-                        kind: 'number',
-                        min: 0,
-                        max: 365,
-                        hint: 'nj.settings.autoDeleteHint',
-                    },
-                    { key: 'download.previewFirst', label: 'IDS_DOWNLOADMOVIECHUNKS', kind: 'switch' },
                 ],
             },
             {
                 title: 'IDS_SHAREDFILES',
                 rows: [
-                    {
-                        key: 'share.visibleTo',
-                        label: 'IDS_PW_SHARE',
-                        kind: 'choice',
-                        options: [
-                            { value: 'EVERYBODY', label: 'IDS_PW_EVER' },
-                            { value: 'FRIENDS', label: 'IDS_PW_FRIENDS' },
-                            { value: 'NOBODY', label: 'IDS_PW_NOONE' },
-                        ],
-                    },
+                    one(
+                        {
+                            key: 'share.visibleTo',
+                            kind: 'choice',
+                            options: [
+                                { value: 'EVERYBODY', label: 'IDS_PW_EVER' },
+                                { value: 'FRIENDS', label: 'IDS_PW_FRIENDS' },
+                                { value: 'NOBODY', label: 'IDS_PW_NOONE' },
+                            ],
+                        },
+                        { label: 'IDS_PW_SHARE' },
+                    ),
                 ],
             },
         ],
@@ -347,30 +513,41 @@ export const PAGES: Page[] = [
         sections: [
             {
                 rows: [
-                    {
-                        key: 'security.ipFilterLists',
-                        label: 'nj.settings.ipFilterLists',
-                        kind: 'lines',
-                        hint: 'nj.settings.ipFilterListsHint',
-                    },
-                    {
-                        key: 'security.ipFilterUpdateDays',
-                        label: 'nj.settings.ipFilterUpdateDays',
-                        kind: 'number',
-                        min: 0,
-                        max: 365,
-                    },
-                    { key: 'security.ipFilterLevel', label: 'IDS_FILTERLEVEL', kind: 'number', min: 0, max: 255 },
-                    { key: 'security.filterLan', label: 'IDS_PW_FILTER', kind: 'switch' },
-                    {
-                        key: 'security.ipFilterWhitelist',
-                        label: 'nj.settings.whitelist',
-                        kind: 'lines',
-                        hint: 'nj.settings.whitelistHint',
-                    },
+                    one(
+                        {
+                            key: 'security.ipFilterLists',
+                            kind: 'lines',
+                            check: 'lists',
+                            ltr: true,
+                            grow: true,
+                            lines: 2,
+                            placeholder: 'https://…/ipfilter.zip\nhttps://…/level1.p2p.gz',
+                        },
+                        {
+                            label: 'nj.settings.ipFilterLists',
+                            hint: 'nj.settings.ipFilterListsHint',
+                            wide: true,
+                            action: 'updateIpFilter',
+                        },
+                    ),
+                    number('security.ipFilterUpdateDays', 'nj.settings.ipFilterUpdateDays', 0, 365),
+                    number('security.ipFilterLevel', 'IDS_FILTERLEVEL', 0, 255),
+                    toggle('security.filterLan', 'IDS_PW_FILTER'),
+                    one(
+                        {
+                            key: 'security.ipFilterWhitelist',
+                            kind: 'lines',
+                            check: 'whitelist',
+                            ltr: true,
+                            lines: 3,
+                            columns: 32,
+                            placeholder: '1.2.3.4\n10.0.0.0/8',
+                        },
+                        { label: 'nj.settings.whitelist', hint: 'nj.settings.whitelistHint', wide: true },
+                    ),
                 ],
             },
-            { title: 'IDS_SPAM', rows: [{ key: 'search.spamFilter', label: 'IDS_SEARCHSPAMFILTER', kind: 'switch' }] },
+            { title: 'IDS_SPAM', rows: [toggle('search.spamFilter', 'IDS_SEARCHSPAMFILTER')] },
         ],
     },
     {
@@ -381,9 +558,12 @@ export const PAGES: Page[] = [
         sections: [
             {
                 rows: [
-                    { key: 'chat.filter', label: 'IDS_FILTERLABEL', kind: 'text', max: 4096 },
-                    { key: 'chat.friendsOnly', label: 'IDS_MSGONLYFRIENDS', kind: 'switch' },
-                    { key: 'chat.spamFilter', label: 'IDS_ADVSPAMFILTER', kind: 'switch' },
+                    one(
+                        { key: 'chat.filter', kind: 'text', max: 4096, grow: true, columns: 30 },
+                        { label: 'IDS_FILTERLABEL', wide: true },
+                    ),
+                    toggle('chat.friendsOnly', 'IDS_MSGONLYFRIENDS'),
+                    toggle('chat.spamFilter', 'IDS_ADVSPAMFILTER'),
                 ],
             },
         ],
@@ -400,13 +580,27 @@ export const PAGES: Page[] = [
         title: 'nj.settings.events',
         summary: 'nj.settings.page.events',
         icon: 'PLAY',
-        sections: EVENTS.map(([id, title]) => ({
-            title,
-            rows: [
-                { key: `events.${id}.enabled`, label: title, kind: 'switch' as const },
-                { key: `events.${id}.command`, label: 'nj.settings.events', kind: 'text' as const, max: 4096 },
-            ],
-        })),
+        sections: [
+            {
+                rows: EVENTS.map((e): Row => ({
+                    label: `nj.events.${e.id}`,
+                    wide: true,
+                    fields: [
+                        { key: `events.${e.id}.enabled`, kind: 'switch' },
+                        {
+                            key: `events.${e.id}.command`,
+                            kind: 'text',
+                            check: 'commandLine',
+                            ltr: true,
+                            grow: true,
+                            columns: 30,
+                            placeholder: e.placeholders.join(' '),
+                            placeholders: e.placeholders,
+                        },
+                    ],
+                })),
+            },
+        ],
     },
     {
         id: 'notify',
@@ -417,48 +611,77 @@ export const PAGES: Page[] = [
             {
                 title: 'IDS_PW_EMAILNOTIFICATIONS',
                 rows: [
-                    { key: 'notify.email', label: 'IDS_PW_ENABLEEMAIL', kind: 'switch' },
-                    { key: 'notify.smtpHost', label: 'IDS_SMTPSERVER', kind: 'text', max: 255 },
-                    { key: 'notify.smtpPort', label: 'nj.webui.port', kind: 'number', min: 1, max: 65535 },
+                    toggle('notify.email', 'IDS_PW_ENABLEEMAIL'),
                     {
-                        key: 'notify.smtpSecurity',
-                        label: 'nj.notify.security',
-                        kind: 'choice',
-                        options: [
-                            { value: 'STARTTLS', label: 'nj.notify.starttls' },
-                            { value: 'TLS', label: 'nj.notify.tls' },
+                        label: 'IDS_SMTPSERVER',
+                        fields: [
+                            {
+                                key: 'notify.smtpHost',
+                                kind: 'text',
+                                check: 'host',
+                                ltr: true,
+                                requiredWhen: { key: 'notify.email', values: ['true'] },
+                            },
+                            { key: 'notify.smtpPort', ...PORT, columns: 12 },
                         ],
                     },
-                    { key: 'notify.smtpUser', label: 'IDS_QL_USERNAME', kind: 'text', max: 255 },
-                    { key: 'notify.smtpPassword', label: 'IDS_WS_PASS', kind: 'password' },
-                    { key: 'notify.mailFrom', label: 'nj.notify.from', kind: 'text', max: 255 },
-                    { key: 'notify.mailTo', label: 'nj.notify.to', kind: 'text', max: 255 },
+                    one(
+                        {
+                            key: 'notify.smtpSecurity',
+                            kind: 'choice',
+                            options: [
+                                { value: 'STARTTLS', label: 'nj.notify.starttls' },
+                                { value: 'TLS', label: 'nj.notify.tls' },
+                            ],
+                        },
+                        { label: 'nj.notify.security' },
+                    ),
+                    {
+                        label: 'nj.proxy.user',
+                        fields: [
+                            { key: 'notify.smtpUser', kind: 'text', check: 'name', max: 255 },
+                            { key: 'notify.smtpPassword', kind: 'password' },
+                        ],
+                    },
+                    one({ key: 'notify.mailFrom', kind: 'text', check: 'name', max: 255 }, { label: 'nj.notify.from' }),
+                    one(
+                        { key: 'notify.mailTo', kind: 'text', check: 'name', max: 255, grow: true },
+                        { label: 'nj.notify.to', wide: true },
+                    ),
                 ],
             },
             {
                 title: 'nj.notify.hook',
                 rows: [
-                    { key: 'notify.webhook', label: 'nj.notify.webhook', kind: 'switch' },
-                    { key: 'notify.webhookUrl', label: 'nj.notify.webhookUrl', kind: 'text', max: 2048 },
-                    {
-                        key: 'notify.webhookBody',
-                        label: 'nj.notify.webhookBody',
-                        kind: 'choice',
-                        options: [
-                            { value: 'TEXT', label: 'nj.notify.bodyText' },
-                            { value: 'JSON', label: 'nj.notify.bodyJson' },
-                        ],
-                    },
+                    toggle('notify.webhook', 'nj.notify.webhook'),
+                    one(
+                        { key: 'notify.webhookUrl', kind: 'text', check: 'webhook', ltr: true, grow: true },
+                        { label: 'nj.notify.webhookUrl', wide: true },
+                    ),
+                    one(
+                        {
+                            key: 'notify.webhookBody',
+                            kind: 'choice',
+                            options: [
+                                { value: 'TEXT', label: 'nj.notify.bodyText' },
+                                { value: 'JSON', label: 'nj.notify.bodyJson' },
+                            ],
+                        },
+                        { label: 'nj.notify.webhookBody' },
+                    ),
                 ],
             },
             {
                 rows: [
-                    {
-                        key: 'notify.events',
-                        label: 'nj.notify.events',
-                        kind: 'flags',
-                        options: EVENTS.map(([value, label]) => ({ value, label })),
-                    },
+                    one(
+                        {
+                            key: 'notify.events',
+                            kind: 'flags',
+                            options: EVENTS.map((e) => ({ value: e.id, label: `nj.events.${e.id}` })),
+                        },
+                        { label: 'nj.notify.events', wide: true },
+                    ),
+                    { label: '', fields: [], action: 'testNotifications' },
                 ],
             },
         ],
@@ -479,31 +702,141 @@ export const PAGES: Page[] = [
             {
                 title: 'IDS_PW_MISC',
                 rows: [
-                    { key: 'search.store', label: 'IDS_STORESEARCHES', kind: 'switch' },
-                    { key: 'backup.copies', label: 'nj.settings.backups', kind: 'number', min: 0, max: 50 },
+                    toggle('search.store', 'IDS_STORESEARCHES'),
+                    number('backup.copies', 'nj.settings.backups', 0, 50),
                 ],
             },
         ],
     },
 ];
 
+// Each language by its own name, as its translation writes it: the window loads the texts of one language only.
+export const LANGUAGE_NAMES: Record<string, string> = {
+    en: 'English',
+    ca: 'Català',
+    cs: 'Čeština',
+    da: 'Dansk',
+    de: 'Deutsch',
+    et: 'Eesti',
+    es: 'Español',
+    fr: 'Français',
+    gl: 'Galego',
+    it: 'Italiano',
+    lv: 'Latviešu',
+    lt: 'Lietuvių',
+    hu: 'Magyar',
+    nl: 'Nederlands',
+    nb: 'Norsk bokmål',
+    pl: 'Polski',
+    'pt-BR': 'Português (Brasil)',
+    'pt-PT': 'Português (Portugal)',
+    ro: 'Română',
+    sq: 'Shqip',
+    sl: 'Slovenščina',
+    fi: 'Suomi',
+    sv: 'Svenska',
+    vi: 'Tiếng Việt',
+    tr: 'Türkçe',
+    el: 'Ελληνικά',
+    bg: 'Български',
+    ru: 'Русский',
+    uk: 'Українська',
+    ar: 'العربية',
+    fa: 'فارسی',
+    he: 'עברית',
+    'zh-CN': '简体中文',
+    'zh-TW': '繁體中文',
+    ja: '日本語',
+    ko: '한국어',
+};
+
+type Translate = (key: string, ...args: unknown[]) => string;
+
 /** A label without the colon some translations end it with, as the desktop app shows it. */
 export function label(text: string): string {
     return text.replace(/\s*:\s*$/, '');
 }
 
-/** Whether {@code row} matches the words looked for, in its label, its hint or its page. */
-export function matches(row: Row, page: Page, words: string, t: (key: string) => string): boolean {
-    if (words.trim() === '') {
-        return true;
-    }
-    const text = [row.label, row.hint ?? '', page.title, page.summary]
-        .map((k) => t(k))
-        .join(' ')
-        .toLowerCase();
-    return words
+/** A translation key's text, or the words themselves when they are no key, such as UDP. */
+export function words(keyOrText: string, t: Translate): string {
+    return /^(IDS_|nj\.)/.test(keyOrText) ? t(keyOrText) : keyOrText;
+}
+
+/** A row's name, as its title shows it. */
+export function rowTitle(row: Row, t: Translate): string {
+    return row.label === '' ? '' : label(words(row.label, t)) + (row.suffix ?? '');
+}
+
+/** Whether every word typed is in {@code text}, whatever the case. */
+export function holdsWords(text: string, typed: string): boolean {
+    const all = text.toLowerCase();
+    return typed
         .toLowerCase()
         .split(/\s+/)
         .filter((w) => w !== '')
-        .every((w) => text.includes(w));
+        .every((w) => all.includes(w));
+}
+
+/** Whether {@code row} holds every word typed, in its name, its line, its section or its page. */
+export function matches(row: Row, section: Section, page: Page, typed: string, t: Translate): boolean {
+    const text = [
+        rowTitle(row, t),
+        row.hint ? t(row.hint) : '',
+        section.title ? t(section.title) : '',
+        t(page.title),
+    ].join(' ');
+    return holdsWords(text, typed);
+}
+
+/** Whether each condition holds, by the values of the keys they name. */
+export function holds(conditions: Condition[] | undefined, value: (key: string) => string): boolean {
+    return (conditions ?? []).every((c) => c.values.includes(value(c.key)));
+}
+
+/**
+ * The default of {@code row} in words, as the control shows it, for its reset link; empty for a plain "Reset". A speed
+ * reads in its unit, {@code rate} writing bytes per second.
+ */
+export function defaultWords(
+    row: Row,
+    defaults: Record<string, string>,
+    t: Translate,
+    rate: (bytesPerSecond: number) => string,
+): string {
+    if (row.defaultWords !== undefined) {
+        return row.defaultWords === 'value' ? (defaults[row.fields[0]?.key ?? ''] ?? '') : t(row.defaultWords);
+    }
+    const field = row.fields[0];
+    if (row.fields.length !== 1 || field === undefined) {
+        return '';
+    }
+    const d = defaults[field.key] ?? '';
+    switch (field.kind) {
+        case 'switch':
+            return t(d === 'true' ? 'IDS_YES' : 'IDS_NO');
+        case 'choice':
+            return label(t(field.options?.find((o) => o.value === d)?.label ?? d));
+        case 'number':
+            return d;
+        case 'limit':
+        case 'line':
+            return d === '0' && field.kind === 'limit' ? t('nj.rate.noLimit') : rate(Number(d) * 1024);
+        default:
+            return '';
+    }
+}
+
+/** What waits, in sentences: reconnecting for the network, restarting for the language, and a wrong value first. */
+export function pendingWords(network: boolean, restart: boolean, wrong: string | undefined, t: Translate): string {
+    const sentences: string[] = [];
+    if (network) {
+        sentences.push(t('nj.settings.pendingReconnect'));
+    }
+    if (restart) {
+        sentences.push(t('nj.settings.pendingRestart'));
+    }
+    if (wrong !== undefined) {
+        sentences.push(t('nj.settings.fixFirst', wrong));
+    }
+    return sentences.join(' ');
 }
