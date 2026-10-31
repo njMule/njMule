@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Download } from '../model/engine';
 import {
+    actsFirst,
     byName,
     countryName,
     keeps,
@@ -233,5 +234,27 @@ describe('the order of names', () => {
 
     function thenTheOrderIs(expected: string[]): void {
         expect(order).toEqual(expected);
+    }
+});
+
+describe('the order of the buttons of a dialog', () => {
+    let first: boolean | undefined;
+
+    it('should put the button that acts first on Windows', () => {
+        whenTheButtonsAreOrderedOn('Win32');
+        thenTheOneThatActsIsFirst(true);
+    });
+
+    it('should put the button that acts last elsewhere', () => {
+        whenTheButtonsAreOrderedOn('MacIntel');
+        thenTheOneThatActsIsFirst(false);
+    });
+
+    function whenTheButtonsAreOrderedOn(platform: string): void {
+        first = actsFirst(platform);
+    }
+
+    function thenTheOneThatActsIsFirst(expected: boolean): void {
+        expect(first).toBe(expected);
     }
 });

@@ -163,6 +163,11 @@ export function byName(a: string, b: string): number {
     return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/** Whether a dialog's button that acts comes before the one that closes it, as on Windows; after it elsewhere. */
+export function actsFirst(platform: string = navigator.platform): boolean {
+    return /^Win/.test(platform);
+}
+
 /** An eMule label as a column title or a fact's name, without the colon it ends with. */
 export function withoutColon(text: string): string {
     const trimmed = text.trim();

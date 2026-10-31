@@ -4,12 +4,17 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
+import { ContextMenuItem } from 'reka-ui';
 import { computed, h, ref } from 'vue';
+import { answer, api } from '../../api/client';
+import ClientFilesDialog from '../../dialogs/ClientFilesDialog.vue';
 import { duration, rate, size } from '../../format';
 import { language, t } from '../../i18n';
 import { bans, known, uploads, type Ban, type KnownClient, type Upload } from '../../model/engine';
+import { problem } from '../../toasts';
 import { byName, withoutColon } from '../../transfers';
 import DataTable, { type ColumnMeta } from '../../ui/DataTable.vue';
+import Icon from '../../ui/Icon.vue';
 import Country from './Country.vue';
 
 // The clients we upload to, those waiting for a slot, the banned and the clients met: one list at a time.
@@ -176,6 +181,38 @@ const knownColumns: ColumnDef<any, KnownClient, any>[] = [
 
 const uploading = computed(() => uploads.value.filter((u) => u.state === 'uploading'));
 const queued = computed(() => uploads.value.filter((u) => u.state === 'queued'));
+const shownUploads = computed(() => (props.shelf === 'uploads' ? uploading.value : queued.value));
+const chosenUploads = computed(() =>
+    shownUploads.value.filter((u) => selected.value.includes(`${u.userHash}/${u.address}`)),
+);
+const browsing = ref(false);
+const browsed = ref<{ address: string; name: string } | null>(null);
+
+// View Shared Files: the client's list in a window of its own.
+function viewFiles(): void {
+    const u = chosenUploads.value[0];
+    if (chosenUploads.value.length === 1 && u !== undefined) {
+        browsed.value = { address: u.address, name: u.nick ?? u.address };
+        browsing.value = true;
+    }
+}
+
+async function unban(): Promise<void> {
+    const outcomes = await Promise.allSettled(
+        selected.value.map((address) => answer(api().DELETE('/bans/{address}', { params: { path: { address } } }))),
+    );
+    for (const o of outcomes) {
+        if (o.status === 'rejected') {
+            problem((o.reason as Error).message);
+        }
+    }
+    try {
+        bans.value = await answer(api().GET('/bans'));
+    } catch {
+        // The next reading shows them.
+    }
+}
+
 const label = computed(
     () =>
         ({
@@ -193,7 +230,7 @@ const label = computed(
         :key="shelf"
         v-model:selected="selected"
         :name="shelf"
-        :rows="shelf === 'uploads' ? uploading : queued"
+        :rows="shownUploads"
         :columns="uploadColumns"
         :row-id="(u: Upload) => `${u.userHash}/${u.address}`"
         :label="label"
@@ -201,6 +238,11 @@ const label = computed(
     >
         <template #empty>
             <span class="muted">{{ t('nj.transfers.noUploads') }}</span>
+        </template>
+        <template #menu>
+            <ContextMenuItem class="menu-item" :disabled="chosenUploads.length !== 1" @select="viewFiles">
+                <Icon name="FOLDER_OPEN" />{{ t('IDS_VIEWFILES') }}
+            </ContextMenuItem>
         </template>
     </DataTable>
     <DataTable
@@ -215,6 +257,11 @@ const label = computed(
     >
         <template #empty>
             <span class="muted">{{ t('nj.transfers.noBans') }}</span>
+        </template>
+        <template #menu>
+            <ContextMenuItem class="menu-item" :disabled="selected.length === 0" @select="unban">
+                <Icon name="UNLOCK" />{{ t('IDS_UNBAN') }}
+            </ContextMenuItem>
         </template>
     </DataTable>
     <DataTable
@@ -231,4 +278,5 @@ const label = computed(
             <span class="muted">{{ t('nj.clients.none') }}</span>
         </template>
     </DataTable>
+    <ClientFilesDialog v-model:open="browsing" :client="browsed" />
 </template>
