@@ -389,6 +389,8 @@ final class CaptureDemo {
         List<SourceInfo> list = new ArrayList<>();
         List<DownloadInfo> downloads = downloads();
         String[] nicks = {"Fox", "", "Kiwi", "", "astro_nauta", "Lynx", "Heron", ""};
+        // One source of each download has no known country: the others' names keep its room.
+        String[] countries = {"de", "it", "", "fr", "jp", "br", "se", "ca", "nl"};
         int n = 0;
         for (DownloadInfo d : List.of(downloads.get(0), downloads.get(1), downloads.get(10))) {
             int partCount = (int) ((d.size() + PartMap.PART_SIZE - 1) / PartMap.PART_SIZE);
@@ -407,7 +409,10 @@ final class CaptureDemo {
                         state == SourceInfo.State.WAITING ? 0 : partCount,
                         a4af ? Optional.of(downloads.get(2).hash()) : Optional.empty(),
                         a4af ? downloads.get(2).name() : "",
-                        reportedName(d.name(), n)));
+                        reportedName(d.name(), n),
+                        countries[n % countries.length].isEmpty()
+                                ? Optional.empty()
+                                : Optional.of(countries[n % countries.length])));
                 n++;
             }
         }

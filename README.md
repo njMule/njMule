@@ -31,7 +31,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 <p align="center">
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset=".github/assets/njmule-transfers-dark.png">
-        <img alt="The transfers of the njMule desktop app: the downloads with their progress, speed, sources, state and what is left, filtered by chips, the first one opened onto its sources, each with a coloured dot telling what it does" src=".github/assets/njmule-transfers-light.png" width="880">
+        <img alt="The transfers of the njMule desktop app: the downloads with their progress, speed, sources, state and what is left, filtered by chips, the first one opened onto its sources, each with a coloured dot telling what it does and, when known, the flag and code of its country" src=".github/assets/njmule-transfers-light.png" width="880">
     </picture>
 </p>
 

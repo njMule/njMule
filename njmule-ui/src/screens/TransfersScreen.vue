@@ -73,6 +73,7 @@ import { inOrder, reordered } from '../ui/row-order';
 import Tip from '../ui/Tip.vue';
 import DownloadDetails from './transfers/DownloadDetails.vue';
 import ClientLists from './transfers/ClientLists.vue';
+import Country from './transfers/Country.vue';
 import DotSelect from './transfers/DotSelect.vue';
 
 // The transfers: the downloads, narrowed by state, category and name, with the details of the chosen one under them;
@@ -269,6 +270,10 @@ watch(sources, (now) => {
     }
     sourceRates.value = rates;
 });
+
+// The downloads with a source whose country is known: the name of each of their sources leaves room for a flag and
+// a code, so that the names line up.
+const withCountry = computed(() => new Set(sources.value.filter((s) => s.country).map((s) => s.file)));
 
 // The sources of an opened download, those sending first, then by their place in the queues.
 function sourcesOf(hash: string): Source[] {
@@ -633,6 +638,9 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                                         <span class="source-dot" :class="sourceDot(sourceShown(s))">{{
                                             sourceDot(sourceShown(s)) === 'unknown' ? '?' : ''
                                         }}</span>
+                                        <span v-if="withCountry.has(row.hash)" class="source-country">
+                                            <Country v-if="s.country" :code="s.country" />
+                                        </span>
                                     </template>
                                     <span v-if="sourceCell(c.id, s).bar !== undefined" class="thin-bar">
                                         <span
@@ -962,6 +970,11 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
 .source-name {
     padding-inline-start: 32px;
     color: var(--color-fg-default);
+}
+
+.source-country {
+    width: 46px;
+    flex: none;
 }
 
 .source-none {
