@@ -16,15 +16,6 @@ import { followTheme } from './theme';
 // answers and how to reach it.
 const platform = await currentPlatform();
 followTheme();
-// The desktop app's window has no menu of the web view's own (back, reload, inspect…): text fields keep theirs, as the
-// desktop app's do, and the lists that have a menu open it themselves before this.
-if (platform.desktop) {
-    document.addEventListener('contextmenu', (e) => {
-        if (!(e.target instanceof Element && e.target.closest('input, textarea, [contenteditable="true"]'))) {
-            e.preventDefault();
-        }
-    });
-}
 connect(await platform.endpoint(), () => {
     // A browser's session ended: log in again. The desktop shell's token does not expire.
     if (!platform.desktop) {
