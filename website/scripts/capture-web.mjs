@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Pictures the web interface for the documentation: starts it on the capture tour's example data (njmule-gui's
-// WebCaptureDemo, as njmule-gui's webCaptureArgs task says), signs in and pictures each place, light and dark, with
-// the browser already on this computer (Chrome, Edge or the one NJMULE_CAPTURE_BROWSER names): Playwright downloads
-// none. Usage: node scripts/capture-web.mjs <launcher.json> <output folder>
+// Pictures the interface for the documentation, the web interface's and the desktop app's pages alike: starts it on
+// example data (njmule-webui's WebCaptureDemo, as its webCaptureArgs task says), signs in and pictures each place,
+// light, dark and in high contrast, with the browser already on this computer (Chrome, Edge or the one
+// NJMULE_CAPTURE_BROWSER names): Playwright downloads none. Usage: node scripts/capture-web.mjs <launcher.json> <output
+// folder>
 
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
@@ -62,6 +63,261 @@ async function shot(page, folder, name) {
     await page.screenshot({ path: join(folder, `${name}.png`) });
 }
 
+// A part of the page alone, such as a dialog or a pop-up, as the desktop app's pictures of a window were.
+async function shotOf(locator, folder, name) {
+    await locator.page().waitForTimeout(SETTLE);
+    await locator.screenshot({ path: join(folder, `${name}.png`) });
+}
+
+// The pictures of the desktop app's pages: the same interface, shown here in the browser on the same example data.
+async function desktopPictures(page, folder, info, go) {
+    const rows = () => page.locator('.data-table .row');
+    const dialog = () => page.locator('[role=dialog], [role=alertdialog]').last();
+    const more = async (item) => {
+        await page.locator('.top-bar .more').click();
+        await page.getByRole('menuitem', { name: item }).click();
+    };
+    const settingsPage = async (index) => {
+        await go('/settings');
+        await page.locator('.page-item').nth(index).click();
+    };
+
+    for (const [id, route] of [
+        ['transfers', '/transfers'],
+        ['shared', '/shared'],
+        ['messages', '/messages'],
+        ['statistics', '/statistics'],
+    ]) {
+        await step(id, async () => {
+            await go(route);
+            await shot(page, folder, id);
+        });
+    }
+    await step('transfers-sources', async () => {
+        await go('/transfers');
+        await rows().first().dblclick();
+        await shot(page, folder, 'transfers-sources');
+    });
+    await step('transfers-details', async () => {
+        await go('/transfers');
+        await rows().first().click();
+        await page.keyboard.press('Alt+Enter');
+        await shot(page, folder, 'transfers-details');
+        await page.evaluate(() => localStorage.setItem('njmule.transfers.details', 'false'));
+        await page.reload();
+        await shown(page);
+    });
+    await step('transfers-ctx-downloads', async () => {
+        await go('/transfers');
+        await rows().first().click({ button: 'right' });
+        await shot(page, folder, 'transfers-ctx-downloads');
+    });
+    await step('transfers-ctx-downloads-sub-more-sub-sources-shared-with-other-files', async () => {
+        await go('/transfers');
+        await rows().first().dblclick();
+        await rows().first().click({ button: 'right' });
+        await page.getByRole('menuitem', { name: /^more$/i }).hover();
+        await page
+            .getByRole('menuitem', { name: /other files/i })
+            .first()
+            .hover();
+        await shot(page, folder, 'transfers-ctx-downloads-sub-more-sub-sources-shared-with-other-files');
+    });
+    await step('transfers-dropdown-category', async () => {
+        await go('/transfers');
+        await page.locator('#category').click();
+        await shot(page, folder, 'transfers-dropdown-category');
+    });
+    await step('dialog-categories', async () => {
+        await go('/transfers');
+        await page.getByRole('button', { name: 'Categories' }).click();
+        await dialog().getByText('Films').first().click();
+        await shotOf(dialog(), folder, 'dialog-categories');
+    });
+    await step('dialog-add-links', async () => {
+        await go('/transfers');
+        await page.locator('#add-links').click();
+        await page
+            .locator('#links-text')
+            .fill(
+                'ed2k://|file|Harbor.Lights.2024.4K.mkv|4939212800|9C4E2A07B1D35F8E61A0C2D47E93B5F1|/\n' +
+                    'ed2k://|file|lumenos-4.1-desktop-amd64.iso|6217003008|E2B71C09A4F35D8E10C6A2B94D7F53E1|/',
+            );
+        await shotOf(dialog(), folder, 'dialog-add-links');
+    });
+    await step('search-live', async () => {
+        await go('/search');
+        await page.locator('#search-query').fill('paper boats');
+        await page.locator('#search-query').press('Enter');
+        await page.waitForTimeout(1500);
+        await shot(page, folder, 'search-live');
+    });
+    await step('search-tab-lumenos-12', async () => {
+        await go('/search');
+        await page.locator('.search-tabs [role=tab]', { hasText: 'lumenos' }).first().click();
+        await shot(page, folder, 'search-tab-lumenos-12');
+    });
+    await step('search-parameters', async () => {
+        await go('/search');
+        await page.locator('button[aria-label="Filters"]:visible').first().click();
+        await shot(page, folder, 'search-parameters');
+    });
+    await step('dialog-share-sensitive', async () => {
+        await go('/shared');
+        await page.getByRole('button', { name: 'Share a folder' }).click();
+        await dialog().locator('input').first().fill('D:\\');
+        await dialog().getByRole('button', { name: 'Share' }).click();
+        await page.waitForTimeout(500);
+        await shotOf(dialog(), folder, 'dialog-share-sensitive');
+    });
+    await step('servers', async () => {
+        await go('/network');
+        await page.locator('.segments .segment').first().click();
+        await shot(page, folder, 'servers');
+    });
+    await step('servers-panel', async () => {
+        await go('/network');
+        await page.locator('.segments .segment').first().click();
+        await rows().first().click();
+        await shot(page, folder, 'servers-panel');
+    });
+    await step('servers-add', async () => {
+        await go('/network');
+        await page.locator('.segments .segment').first().click();
+        await page.getByRole('button', { name: 'Add servers' }).click();
+        await shot(page, folder, 'servers-add');
+    });
+    await step('kad', async () => {
+        await go('/network');
+        await page.locator('.segments .segment').nth(1).click();
+        await shot(page, folder, 'kad');
+    });
+    await step('log', async () => {
+        await go('/network');
+        await page.locator('.segments .segment').nth(2).click();
+        await shot(page, folder, 'log');
+        await shot(page, folder, 'log-tab-log');
+    });
+    await step('log-tab-my-info', async () => {
+        await go('/network');
+        await page.locator('.segments .segment').nth(2).click();
+        await page.getByRole('tab', { name: 'My Info' }).click();
+        await shot(page, folder, 'log-tab-my-info');
+    });
+    await step('palette', async () => {
+        await go('/transfers');
+        await page.keyboard.press('Control+k');
+        await shot(page, folder, 'palette');
+    });
+    await step('shortcuts', async () => {
+        await go('/transfers');
+        await page.keyboard.press('F1');
+        await shotOf(dialog(), folder, 'shortcuts');
+    });
+    await step('sidebar-folded', async () => {
+        await go('/transfers');
+        await page.keyboard.press('Control+b');
+        await shot(page, folder, 'sidebar-folded');
+        await page.keyboard.press('Control+b');
+    });
+    await step('topbar-limits', async () => {
+        await go('/transfers');
+        await page.getByRole('button', { name: /njMule speed/ }).click();
+        await shot(page, folder, 'topbar-limits');
+    });
+    await step('topbar-network', async () => {
+        await go('/transfers');
+        await page.locator('.network-control').click();
+        await shot(page, folder, 'topbar-network');
+    });
+    // A link pasted in the transfers adds its download, which a message at the bottom of the window tells.
+    await step('toasts', async () => {
+        await go('/transfers');
+        await page.evaluate(() => {
+            const data = new DataTransfer();
+            data.setData(
+                'text/plain',
+                'ed2k://|file|Northern.Lights.Timelapse.mkv|734003200|7D3A0C5E91B2F4A68C0E1D2B3F4A5C6D|/',
+            );
+            document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }));
+        });
+        await page.locator('.toast').first().waitFor();
+        await shot(page, folder, 'toasts');
+    });
+    await step('dialog-about', async () => {
+        await go('/transfers');
+        await more('About njMule');
+        await shotOf(dialog(), folder, 'dialog-about');
+    });
+    await step('dialog-import', async () => {
+        await go('/transfers');
+        await more(/Import from eMule/);
+        await shotOf(dialog(), folder, 'dialog-import');
+        await dialog().getByRole('button', { name: 'Check' }).click();
+        await page.waitForTimeout(1500);
+        await shotOf(dialog(), folder, 'dialog-import-report');
+    });
+    await step('dialog-wizard', async () => {
+        await go('/transfers');
+        await more('Set up njMule');
+        await shotOf(dialog(), folder, 'dialog-wizard-1');
+        for (const n of [2, 3, 4, 5]) {
+            await dialog().getByRole('button', { name: 'Next' }).click();
+            await shotOf(dialog(), folder, `dialog-wizard-${n}`);
+            if (n === 2) {
+                await shot(page, folder, 'dialog-wizard-2-over');
+            }
+        }
+    });
+    for (let index = 0; index < 13; index++) {
+        const id = `settings-page-${String(index + 1).padStart(2, '0')}`;
+        await step(id, async () => {
+            await settingsPage(index);
+            await shot(page, folder, id);
+        });
+    }
+    await step('dialog-server-list-addresses', async () => {
+        await settingsPage(3);
+        await page.getByRole('button', { name: 'List...' }).click();
+        await shotOf(dialog(), folder, 'dialog-server-list-addresses');
+    });
+    await step('settings-changed-only', async () => {
+        await settingsPage(1);
+        await page.getByRole('button', { name: /changed only/i }).click();
+        await shot(page, folder, 'settings-changed-only');
+        await page.getByRole('button', { name: /changed only/i }).click();
+    });
+    await step('settings-invalid-field', async () => {
+        await settingsPage(1);
+        await page.locator('[id="option-net.tcpPort"]').fill('99999');
+        await shot(page, folder, 'settings-invalid-field');
+        await page.reload();
+        await shown(page);
+    });
+    // Last: the port typed stays pending until njMule reconnects.
+    await step('settings-pending', async () => {
+        await settingsPage(1);
+        const port = page.locator('[id="option-net.tcpPort"]');
+        await port.fill('4663');
+        await port.press('Enter');
+        await shot(page, folder, 'settings-pending');
+        await page.getByRole('button', { name: 'Discard' }).click();
+    });
+    // The small windows of the notification area's icon, as their page shows them in a browser.
+    for (const [id, view] of [
+        ['tray-menu', 'tray'],
+        ['minimule', 'minimule'],
+    ]) {
+        await step(id, async () => {
+            await page.goto(`${info.url}?view=${view}`);
+            const shown = page.locator('#app > *').first();
+            await shown.waitFor();
+            await page.waitForTimeout(2500);
+            await shotOf(shown, folder, id);
+        });
+    }
+}
+
 // One step: a failure is noted and the next step goes on, from a fresh place.
 async function step(name, run) {
     try {
@@ -93,8 +349,10 @@ async function scheme(browser, info, colorScheme) {
         localStorage.setItem('njmule.transfers.details', 'false');
     });
     const page = await context.newPage();
+    // Loaded again each time, so that nothing a step left open covers the next one.
     const go = async (route) => {
         await page.goto(`${info.url}#${route}`);
+        await page.reload();
         await shown(page);
         await page.keyboard.press('Escape');
     };
@@ -105,7 +363,6 @@ async function scheme(browser, info, colorScheme) {
         await shot(page, folder, 'web-login');
     });
     await signIn(page, info.url, info.password);
-
     await step('web-transfers', async () => {
         await go('/transfers');
         await shot(page, folder, 'web-transfers');
@@ -188,6 +445,7 @@ async function scheme(browser, info, colorScheme) {
         await shot(page, folder, 'web-phone');
         await page.setViewportSize(VIEWPORT);
     });
+    await desktopPictures(page, folder, info, go);
     await context.close();
 
     // A guest sees, and changes, nothing but what it may look at.
@@ -202,6 +460,21 @@ async function scheme(browser, info, colorScheme) {
     await guest.close();
 }
 
+// The transfers under a dark high contrast theme of the system, which the interface follows.
+async function contrast(browser, info) {
+    const folder = join(output, 'contrast');
+    mkdirSync(folder, { recursive: true });
+    const context = await browser.newContext({ ...CONTEXT, colorScheme: 'dark', forcedColors: 'active' });
+    const page = await context.newPage();
+    await step('transfers (contrast)', async () => {
+        await signIn(page, info.url, info.password);
+        await page.goto(`${info.url}#/transfers`);
+        await shown(page);
+        await shot(page, folder, 'transfers');
+    });
+    await context.close();
+}
+
 rmSync(output, { recursive: true, force: true });
 const { demo, info } = await startDemo();
 let browser;
@@ -210,6 +483,7 @@ try {
     for (const colorScheme of ['light', 'dark']) {
         await scheme(browser, info, colorScheme);
     }
+    await contrast(browser, info);
 } finally {
     await browser?.close();
     demo.stdin.end();

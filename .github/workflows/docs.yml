@@ -11,9 +11,7 @@ on:
         tags: ["v*"]
         paths:
             - "website/**"
-            - "njmule-gui/src/main/**"
-            - "njmule-gui/src/test/java/org/njmule/gui/Capture*.java"
-            - "njmule-gui/src/test/java/org/njmule/gui/WebCaptureDemo.java"
+            - "njmule-webui/src/test/java/org/njmule/webui/*CaptureDemo.java"
             - "njmule-ui/src/**"
             - "njmule-webui/src/main/**"
             - "njmule-app/src/main/java/org/njmule/app/LaunchOptions.java"
@@ -29,8 +27,7 @@ on:
         paths:
             - "website/**"
             - "njmule-ui/src/**"
-            - "njmule-gui/src/test/java/org/njmule/gui/Capture*.java"
-            - "njmule-gui/src/test/java/org/njmule/gui/WebCaptureDemo.java"
+            - "njmule-webui/src/test/java/org/njmule/webui/*CaptureDemo.java"
             - "njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml"
             - ".github/workflows/docs.yml"
     workflow_dispatch:

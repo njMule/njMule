@@ -5,10 +5,9 @@
 //  - the brand's images (branding/) and the screenshots the pages name, under build/generated/static/img;
 //  - the repository's own pages (changelog, contributing, security, code of conduct) and the command line's help,
 //    as partials under docs/_generated and developer/_generated.
-// Usage: node scripts/prepare.mjs [--gui <docs-captures>] [--web <web-captures>] [--cli <help.txt>]
-//        [--remote <remote.txt>] [--strict]
-// --gui is njmule-gui's build/docs-captures, --web the folder of scripts/capture-web.mjs; without --strict a
-// missing picture or input is a warning, for a preview of the pages alone.
+// Usage: node scripts/prepare.mjs [--web <web-captures>] [--cli <help.txt>] [--remote <remote.txt>] [--strict]
+// --web is the folder of scripts/capture-web.mjs (light, dark and contrast); without --strict a missing picture or
+// input is a warning, for a preview of the pages alone.
 
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -20,7 +19,6 @@ const root = resolve(site, '..');
 const repository = 'https://github.com/njMule/njMule/blob/main/';
 const { values: options } = parseArgs({
     options: {
-        gui: { type: 'string' },
         web: { type: 'string' },
         cli: { type: 'string' },
         remote: { type: 'string' },
@@ -98,9 +96,9 @@ printed(options.remote, join(site, 'docs', '_generated', 'remote-commands.md'), 
 // ---- The screenshots the pages name
 
 const sources = {
-    light: [join(options.gui ?? '', 'en-light-docs'), join(options.web ?? '', 'light')],
-    dark: [join(options.gui ?? '', 'en-dark-docs'), join(options.web ?? '', 'dark')],
-    contrast: [join(options.gui ?? '', 'en-contrast-screens')],
+    light: join(options.web ?? '', 'light'),
+    dark: join(options.web ?? '', 'dark'),
+    contrast: join(options.web ?? '', 'contrast'),
 };
 const named = { light: new Set(), dark: new Set(), contrast: new Set() };
 const tag = /<(?:Screenshot|ThemedShot)\b[^>]*>/g;
@@ -136,8 +134,8 @@ rmSync(screens, { recursive: true, force: true });
 for (const [set, ids] of Object.entries(named)) {
     mkdirSync(join(screens, set), { recursive: true });
     for (const id of ids) {
-        const from = sources[set].map((dir) => join(dir, `${id}.png`)).find((f) => options.gui && existsSync(f));
-        if (from) {
+        const from = join(sources[set], `${id}.png`);
+        if (options.web && existsSync(from)) {
             copyFileSync(from, join(screens, set, `${id}.png`));
         } else {
             problem(`no ${set} picture ${id}`);
