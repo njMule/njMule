@@ -60,12 +60,20 @@ const MODES: { value: Mode; title: string }[] = [
     { value: 'light', title: 'nj.mode.light' },
     { value: 'dark', title: 'nj.mode.dark' },
 ];
-const STEPS: Record<WizardPage, string> = {
+// What each page is for, under its title.
+const HINTS: Record<WizardPage, string> = {
+    start: 'nj.wizard.intro',
+    nick: 'nj.wizard.nickHint',
+    folders: 'nj.wizard.foldersHint',
+    connection: 'nj.wizard.portsHint',
+    emule: 'nj.wizard.emuleHint',
+};
+// The names of the steps; eMule's is its own.
+const STEPS: Record<Exclude<WizardPage, 'emule'>, string> = {
     start: 'nj.wizard.stepStart',
     nick: 'nj.wizard.stepNick',
     folders: 'nj.wizard.stepFolders',
     connection: 'nj.wizard.stepConnection',
-    emule: '',
 };
 
 // The pages show once the settings they start from are read.
@@ -407,21 +415,7 @@ async function share(path: string, everything: boolean): Promise<void> {
                             <h2 class="heading display">
                                 {{ current === 'start' ? t('nj.wizard.welcome') : stepName(current) }}
                             </h2>
-                            <p class="page-hint">
-                                {{
-                                    t(
-                                        current === 'start'
-                                            ? 'nj.wizard.intro'
-                                            : current === 'nick'
-                                              ? 'nj.wizard.nickHint'
-                                              : current === 'folders'
-                                                ? 'nj.wizard.foldersHint'
-                                                : current === 'connection'
-                                                  ? 'nj.wizard.portsHint'
-                                                  : 'nj.wizard.emuleHint',
-                                    )
-                                }}
-                            </p>
+                            <p class="page-hint">{{ t(HINTS[current]) }}</p>
                         </div>
                         <template v-if="current === 'start'">
                             <div class="named">
