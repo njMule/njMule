@@ -135,7 +135,8 @@ function showPalette(typed: string): void {
 // palette; F1 lists the shortcuts.
 function key(e: KeyboardEvent): void {
     const command = e.ctrlKey || e.metaKey;
-    const digit = Number(e.key);
+    // The digit keys themselves, whatever the layout writes on them (& on a French keyboard).
+    const digit = Number(/^Digit(\d)$/.exec(e.code)?.[1] ?? 0);
     if (command && digit >= 1 && digit <= PLACES.length) {
         current.value = PLACES[digit - 1]!.id;
     } else if (e.key === 'F1') {
