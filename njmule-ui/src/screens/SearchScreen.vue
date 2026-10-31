@@ -25,8 +25,8 @@ import { computed, h, nextTick, onMounted, onUnmounted, ref, watch, type VNode }
 import { answer, api, ApiError } from '../api/client';
 import { count, size } from '../format';
 import { language, t } from '../i18n';
-import { htmlLinks } from '../links';
 import type { IconName } from '../icons';
+import { htmlLinks } from '../links';
 import {
     connection,
     downloads,
@@ -39,38 +39,38 @@ import {
 import { searchRequest } from '../places';
 import {
     automaticScope,
-    completePercent,
     completeness,
+    completePercent,
     expression,
     filterCount,
     hasNames,
-    KNOWN,
+    history,
+    isMedia,
     kindOrder,
+    KNOWN,
+    knownOf,
+    link,
     lowestMaxSize,
     MAX_EXTENSION,
     MAX_SIZE_MB,
     MAX_SOURCES,
+    merged,
+    narrowed,
     NO_FILTERS,
     optionalExtension,
     optionalNumber,
-    history,
-    isMedia,
-    knownOf,
-    link,
-    merged,
-    narrowed,
     playingTime,
     remember,
     resultRows,
     rowOrder,
-    SortMemory,
     searches,
     shade,
+    SortMemory,
     tone,
     words,
-    type FileType,
     type ColumnOrder,
     type ColumnSort,
+    type FileType,
     type Filters,
     type Known,
     type Ours,
@@ -408,24 +408,27 @@ function columns(s: Search): ColumnDef<any, ResultRow, any>[] {
 
 // Names and texts in the order of the interface's language, case aside; values a result lacks go last.
 const collator = computed(() => new Intl.Collator(language.value, { sensitivity: 'accent' }));
-const text = (a: string, b: string) => collator.value.compare(a, b);
+const byText = (a: string, b: string) => collator.value.compare(a, b);
 const ORDERS: Record<string, ColumnOrder> = {
-    name: { compare: (a, b) => text(a.name, b.name) },
+    name: { compare: (a, b) => byText(a.name, b.name) },
     size: { compare: (a, b) => a.size - b.size },
     sources: { compare: (a, b) => a.sources - b.sources },
     complete: { compare: (a, b) => completePercent(a) - completePercent(b) },
     type: { compare: kindOrder },
     known: { compare: (a, b) => KNOWN.indexOf(known(a)!) - KNOWN.indexOf(known(b)!) },
     hash: { compare: (a, b) => (a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0) },
-    artist: { compare: (a, b) => text(a.media?.artist ?? '', b.media?.artist ?? ''), missing: (r) => !r.media?.artist },
-    album: { compare: (a, b) => text(a.media?.album ?? '', b.media?.album ?? ''), missing: (r) => !r.media?.album },
-    title: { compare: (a, b) => text(a.media?.title ?? '', b.media?.title ?? ''), missing: (r) => !r.media?.title },
+    artist: {
+        compare: (a, b) => byText(a.media?.artist ?? '', b.media?.artist ?? ''),
+        missing: (r) => !r.media?.artist,
+    },
+    album: { compare: (a, b) => byText(a.media?.album ?? '', b.media?.album ?? ''), missing: (r) => !r.media?.album },
+    title: { compare: (a, b) => byText(a.media?.title ?? '', b.media?.title ?? ''), missing: (r) => !r.media?.title },
     length: { compare: (a, b) => (a.media?.length ?? 0) - (b.media?.length ?? 0), missing: (r) => !r.media?.length },
     bitrate: {
         compare: (a, b) => (a.media?.bitrate ?? 0) - (b.media?.bitrate ?? 0),
         missing: (r) => !r.media?.bitrate,
     },
-    codec: { compare: (a, b) => text(a.media?.codec ?? '', b.media?.codec ?? ''), missing: (r) => !r.media?.codec },
+    codec: { compare: (a, b) => byText(a.media?.codec ?? '', b.media?.codec ?? ''), missing: (r) => !r.media?.codec },
 };
 
 // What each table was sorted by, and the order of its rows for the sorting it has now.
@@ -808,7 +811,7 @@ async function markSpam(spam: boolean): Promise<void> {
         await answer(
             api().POST('/searches/{id}/spam', {
                 params: { path: { id: s.id } },
-                body: { hashes: chosen.value.map((r) => r.hash), spam },
+                body: { hashes: [...new Set(chosen.value.map((r) => r.hash))], spam },
             }),
         );
         await refresh(s);
