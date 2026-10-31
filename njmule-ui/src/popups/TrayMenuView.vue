@@ -75,7 +75,7 @@ onMounted(() => {
 <template>
     <div ref="root" class="tray-menu" tabindex="-1" @keydown="key">
         <div class="tray-head">
-            <img :src="logo" alt="" width="28" height="28" />
+            <img :src="logo" alt="" width="24" height="24" />
             <div class="tray-words">
                 <span class="tray-name wordmark">njMule</span>
                 <span class="tray-state">{{ state }}</span>
@@ -115,13 +115,14 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* Compact, as a menu of the notification area is: the interface's text size, rows close together. */
 .tray-menu {
-    width: 320px;
+    width: 280px;
     border: 1px solid var(--color-border-default);
     background: var(--color-bg-default);
-    font-size: 13px;
+    font-size: 12px;
     outline: none;
-    --nj-icon-size: 16px;
+    --nj-icon-size: 14px;
     --nj-icon-color: var(--color-fg-muted);
 }
 
@@ -129,8 +130,8 @@ onMounted(() => {
 .tray-head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 14px;
+    gap: 8px;
+    padding: 9px 12px;
     background: var(--nj-brand);
     color: var(--nj-brand-mark);
 }
@@ -140,12 +141,12 @@ onMounted(() => {
     display: flex;
     flex-direction: column;
     min-width: 0;
-    line-height: 18px;
+    line-height: 16px;
 }
 
 .tray-state {
-    font-size: 12px;
-    line-height: 17px;
+    font-size: 11px;
+    line-height: 15px;
     white-space: nowrap;
 }
 
@@ -153,8 +154,8 @@ onMounted(() => {
 .tray-limits {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 12px 14px;
+    gap: 6px;
+    padding: 9px 12px;
     border-bottom: 1px solid var(--color-border-muted);
 }
 
@@ -167,7 +168,7 @@ onMounted(() => {
 
 /* The sliders take the width the menu leaves them; the arrows are as muted as the menu's other icons. */
 .tray-limits :deep(.speeds) {
-    grid-template-columns: auto auto minmax(0, 140px) auto;
+    grid-template-columns: auto auto minmax(0, 116px) auto;
 }
 
 .tray-limits :deep(.speeds .nj-icon) {
@@ -180,26 +181,26 @@ onMounted(() => {
 }
 
 .tray-preset {
-    gap: 8px;
+    gap: 6px;
     height: auto;
-    padding: 4px 10px;
-    font-size: 12px;
+    padding: 3px 8px;
+    font-size: 11px;
 }
 
 .tray-items {
     display: flex;
     flex-direction: column;
-    padding: 6px;
+    padding: 4px;
 }
 
 .tray-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 7px 12px;
+    gap: 8px;
+    padding: 5px 10px;
     border: 0;
     border-radius: 6px;
-    line-height: 18.5px;
+    line-height: 16px;
     background: transparent;
     color: var(--color-fg-default);
     text-align: start;
@@ -220,7 +221,7 @@ onMounted(() => {
 }
 
 .tray-separator {
-    margin: 6px 8px;
+    margin: 4px 8px;
     border: 0;
     border-top: 1px solid var(--color-border-default);
 }
