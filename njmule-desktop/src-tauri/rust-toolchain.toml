@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# The Rust the shell is built and checked with; rustup installs it on first use.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
