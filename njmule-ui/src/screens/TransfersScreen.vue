@@ -504,29 +504,6 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
         <div class="tool-row">
             <Segments v-model="shelf" :items="shelves" :label="t('IDS_EM_TRANS')" />
             <div class="spacer" />
-            <template v-if="shelf === 'downloads'">
-                <Tip :text="`${t('IDS_DETAILS')}  Alt+Enter`">
-                    <button
-                        id="details"
-                        class="button toggle"
-                        :aria-label="t('IDS_DETAILS')"
-                        :aria-pressed="detailsShown"
-                        @click="detailsShown = !detailsShown"
-                    >
-                        <Icon name="INFO" /><span class="tool-text">{{ t('IDS_DETAILS') }}</span>
-                    </button>
-                </Tip>
-                <Tip :text="t('IDS_DL_CLEAR')">
-                    <button
-                        id="clear-completed"
-                        class="button flat"
-                        :aria-label="t('IDS_DL_CLEAR')"
-                        @click="clearCompleted()"
-                    >
-                        <Icon name="CLEAR_ALL" /><span class="tool-text">{{ t('IDS_DL_CLEAR') }}</span>
-                    </button>
-                </Tip>
-            </template>
             <Tip :text="t('nj.transfers.addLinks')">
                 <button
                     id="add-links"
