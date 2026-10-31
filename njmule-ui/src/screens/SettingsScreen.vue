@@ -411,8 +411,9 @@ function act(row: Row, action: Action): void {
                 <template v-if="current">
                     <h2 class="page-title display">{{ t(current.title) }}</h2>
                     <p class="page-description">{{ t(current.summary) }}</p>
-                    <SchedulerPage v-if="current.id === 'scheduler'" />
-                    <template v-for="(section, i) in current.sections" v-else :key="i">
+                    <!-- The rules keep their form and their choice while another page shows. -->
+                    <KeepAlive><SchedulerPage v-if="current.id === 'scheduler'" /></KeepAlive>
+                    <template v-for="(section, i) in current.sections" :key="i">
                         <section v-if="section.rows.some((r) => rowShown(r, section, current!))" class="settings-card">
                             <strong v-if="section.title" class="card-title">{{ t(section.title) }}</strong>
                             <template v-for="(row, r) in section.rows" :key="r">

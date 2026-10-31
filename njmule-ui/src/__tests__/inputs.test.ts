@@ -16,7 +16,9 @@ import {
     isWhitelistEntry,
     keepTyped,
     nickChar,
+    optionalNumberRules,
     rateKib,
+    rateRules,
     rateText,
     timeOfDay,
     webAddresses,
@@ -180,6 +182,25 @@ describe('inputs', () => {
         thenTheAddressesAre(['https://example.com/server.met']);
     });
 
+    it.each([
+        ['', true],
+        ['5', true],
+        ['10000', true],
+        ['0', false],
+        ['10001', false],
+    ])('should take %s for a rule limit of 1 to 10000: %s', (typed, expected) => {
+        whenTheRuleLimitIsChecked(typed);
+        thenItIsValid(expected);
+    });
+
+    it.each([
+        [true, true],
+        [false, false],
+    ])('should take an empty speed where it is optional (%s): %s', (optional, expected) => {
+        whenAnEmptySpeedIsChecked(optional);
+        thenItIsValid(expected);
+    });
+
     function whenTyped(previous: string, next: string, allowed: (c: string) => boolean, max: number): void {
         kept = keepTyped(previous, next, allowed, max);
     }
@@ -234,6 +255,14 @@ describe('inputs', () => {
 
     function whenTheSpeedIsConverted(typed: string, from: RateUnit, to: RateUnit): void {
         kept = convertRate(typed, from, to, 'en');
+    }
+
+    function whenTheRuleLimitIsChecked(typed: string): void {
+        valid = optionalNumberRules(1, 10000, (key) => key).valid(typed);
+    }
+
+    function whenAnEmptySpeedIsChecked(optional: boolean): void {
+        valid = rateRules('KB', 1, optional, (key) => key, String).valid('');
     }
 
     function whenTheAddressesAreRead(lines: string): void {
