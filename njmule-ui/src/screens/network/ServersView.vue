@@ -842,14 +842,18 @@ onUnmounted(() => observer?.disconnect());
 
 dl {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
     gap: 6px 16px;
     margin: 0;
 }
 
+/* A value too long for its column ends in an ellipsis, as in the desktop app: a figure never breaks. */
 dd {
+    min-width: 0;
     margin: 0;
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .said {
