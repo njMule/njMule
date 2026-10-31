@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -47,11 +46,6 @@ public interface NjMuleEngine extends AutoCloseable {
     }
 
     AppDirectories directories();
-
-    /** Whether the engine runs on this computer, whose folders and files the caller can then open itself. */
-    default boolean onThisComputer() {
-        return true;
-    }
 
     /** Latest committed preferences; never blocks. */
     Preferences preferences();
@@ -108,9 +102,6 @@ public interface NjMuleEngine extends AutoCloseable {
 
     /** Replaces the addresses of {@code addresses.dat}. */
     CompletableFuture<Void> setServerListAddresses(List<URI> addresses);
-
-    /** Removes the known ones of {@code servers}; completes with how many. */
-    CompletableFuture<Integer> removeServers(Collection<ServerAddress> servers);
 
     /** Adds a server to the list without connecting; completes with {@code false} when known or not usable. */
     CompletableFuture<Boolean> addServer(ServerAddress server);
