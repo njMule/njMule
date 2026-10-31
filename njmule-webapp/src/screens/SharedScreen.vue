@@ -176,7 +176,7 @@ function copyLinks(html: boolean): void {
     <div class="layout">
         <aside class="places">
             <el-button type="primary" class="share" @click="sharing = true">
-                <NjIcon name="FOLDER_ADD" />{{ t('IDS_SHAREDIR') }}
+                <NjIcon name="FOLDER_ADD" />{{ t('nj.shared.shareFolder') }}
             </el-button>
             <ul>
                 <li>
@@ -275,7 +275,7 @@ function copyLinks(html: boolean): void {
         :name="chosen[0].name"
         :download="false"
     />
-    <el-dialog v-model="sharing" :title="t('IDS_SHAREDIR')" width="560px">
+    <el-dialog v-model="sharing" :title="t('nj.shared.shareFolder')" width="560px">
         <form @submit.prevent="shareNew">
             <label class="label" for="nj-folder">{{ t('nj.shared.folder') }}</label>
             <el-input id="nj-folder" v-model="newFolder" placeholder="/srv/share · D:\Share" />

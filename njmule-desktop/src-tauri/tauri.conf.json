@@ -1,0 +1,43 @@
+{
+    "$schema": "https://schema.tauri.app/config/2",
+    "productName": "njMule",
+    "version": "0.1.2",
+    "identifier": "org.njmule.njMule",
+    "build": {
+        "frontendDist": "../../njmule-ui/build/site"
+    },
+    "app": {
+        "windows": [
+            {
+                "label": "main",
+                "title": "njMule",
+                "width": 1180,
+                "height": 760,
+                "minWidth": 900,
+                "minHeight": 600,
+                "visible": false,
+                "dragDropEnabled": false
+            }
+        ],
+        "security": {
+            "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:*"
+        }
+    },
+    "bundle": {
+        "active": false,
+        "icon": [
+            "../../branding/generated/njmule-32.png",
+            "../../branding/generated/njmule-128.png",
+            "../../branding/generated/njmule-256.png",
+            "../../branding/generated/njmule.ico",
+            "../../branding/generated/njmule.icns"
+        ]
+    },
+    "plugins": {
+        "deep-link": {
+            "desktop": {
+                "schemes": ["ed2k"]
+            }
+        }
+    }
+}

@@ -386,7 +386,7 @@ public final class FirstRunWizard {
         Fx.leftToRight(this.incoming);
         HBox incomingRow = new HBox(8, this.incoming, browse);
         HBox.setHgrow(this.incoming, Priority.ALWAYS);
-        Button add = Fx.button(this.gui.t("IDS_SHAREDIR"), Icons.FOLDER_ADD, this::addShared);
+        Button add = Fx.button(this.gui.t("nj.shared.shareFolder"), Icons.FOLDER_ADD, this::addShared);
         this.shared.setCellFactory(l -> new FolderCell());
         this.shared.setPrefHeight(112);
         this.shared.setPlaceholder(new Label(this.gui.t("nj.wizard.noFolders")));

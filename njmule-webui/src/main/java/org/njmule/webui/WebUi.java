@@ -143,7 +143,12 @@ public final class WebUi implements AutoCloseable {
         // The app calls it with the login session; callers with the API token too when the settings allow them. A
         // wrong API token counts as a failed login of its address.
         this.api = new RemoteApi(
-                engine, this.recent, client -> this.sessions.mayTry(Sessions.clientKey(client)), exit, heartbeat);
+                engine,
+                this.recent,
+                client -> this.sessions.mayTry(Sessions.clientKey(client)),
+                exit,
+                heartbeat,
+                Optional.of(new SettingsFile(() -> engine.directories().config())));
     }
 
     /** Starts the interface; it must be enabled and have a password. The API cannot stop njMule. */
@@ -198,7 +203,13 @@ public final class WebUi implements AutoCloseable {
             public boolean handle(Request request, Response response, Callback callback) {
                 Exchange exchange = new Exchange(request, response, ui.proxies);
                 try {
-                    if (tokens && exchange.path().startsWith(API_PATH) && exchange.header("Authorization") != null) {
+                    boolean tokenPath = tokens && exchange.path().startsWith(API_PATH);
+                    // The desktop app's window on this njMule from another computer calls across origins with the
+                    // token, which no page sends by itself.
+                    boolean shell = tokenPath && ControlEndpoint.allowShell(exchange);
+                    if (shell && exchange.method().equals("OPTIONS")) {
+                        ControlEndpoint.preflight(exchange);
+                    } else if (tokenPath && exchange.header("Authorization") != null) {
                         api.handle(exchange);
                     } else {
                         ui.handle(exchange);

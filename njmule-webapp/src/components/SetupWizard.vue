@@ -171,7 +171,7 @@ async function finish(): Promise<void> {
                 <p v-if="folders.length === 0" class="hint">{{ t('nj.wizard.noFolders') }}</p>
                 <form class="add" @submit.prevent="addFolder">
                     <el-input v-model="newFolder" placeholder="/srv/share · D:\Share" />
-                    <el-button native-type="submit">{{ t('IDS_SHAREDIR') }}</el-button>
+                    <el-button native-type="submit">{{ t('nj.shared.shareFolder') }}</el-button>
                 </form>
                 <p class="hint">{{ t('nj.wizard.asksFirst') }}</p>
             </template>

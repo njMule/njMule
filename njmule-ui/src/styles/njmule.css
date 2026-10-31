@@ -1,0 +1,696 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * njMule's colour tokens and component styles, as the desktop app's njmule.css. Generic colours come from the theme
+ * (--color-*, generated from AtlantaFX); every --nj-* token has a light and a dark value. Sizes keep to a 4 px scale,
+ * corners to 6 (controls), 8 (panels) and 10 (cards, menus), table rows to 32 px.
+ */
+
+@font-face {
+    font-family: 'Manrope';
+    font-weight: 700;
+    src: url('../assets/fonts/Manrope-Bold.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Manrope';
+    font-weight: 800;
+    src: url('../assets/fonts/Manrope-ExtraBold.ttf') format('truetype');
+}
+
+:root {
+    --nj-brand: #24427a;
+    --nj-brand-mark: #f4f6fb;
+    --nj-brand-accent: #f5a65b;
+    /* The logo's orange as an accent: the strong tone keeps 3:1 or more on light surfaces, text on orange is dark. */
+    --nj-accent-strong: #b35a12;
+    --nj-accent-soft: #fbe3cc;
+    --nj-accent-hover: #e8944a;
+    --nj-accent-pressed: #d9822b;
+    --nj-on-accent: #2e3440;
+    --nj-bar-bg: #e5e9f0;
+    --nj-bar-have: #4c566a;
+    --nj-bar-missing: #e8afb4;
+    --nj-bar-sources-min: #b4c7e7;
+    --nj-bar-sources-max: #5e81ac;
+    --nj-bar-requested: #e0b85c;
+    --nj-bar-complete: #638c52;
+    --nj-bar-client: #5e81ac;
+    --nj-bar-error: #d08770;
+    --nj-cat-1: #e5a4aa;
+    --nj-cat-2: #f2c29b;
+    --nj-cat-3: #ebd38f;
+    --nj-cat-4: #b5cfa0;
+    --nj-cat-5: #9fcfc9;
+    --nj-cat-6: #a9bee0;
+    --nj-cat-7: #c7b0db;
+    --nj-cat-8: #e6b3cf;
+    --nj-graph-down: #4570ad;
+    --nj-graph-up: #5e8a4a;
+    --nj-graph-grid: var(--color-border-muted);
+    --nj-dot-useless: var(--color-neutral-emphasis);
+    /* The plate under a CAPTCHA: light in every theme, as its letters are drawn for a light page. */
+    --nj-captcha-paper: #ffffff;
+    --nj-row: 32px;
+    color-scheme: light;
+}
+
+:root.dark {
+    --nj-accent-strong: #f5a65b;
+    --nj-accent-soft: #4b3b2e;
+    --nj-bar-bg: #3b4252;
+    --nj-bar-have: #d8dee9;
+    --nj-bar-missing: #a56a71;
+    --nj-bar-sources-min: #56688a;
+    --nj-bar-sources-max: #88c0d0;
+    --nj-bar-requested: #ebcb8b;
+    --nj-bar-complete: #a3be8c;
+    --nj-bar-client: #81a1c1;
+    --nj-cat-1: #bf616a;
+    --nj-cat-2: #d08770;
+    --nj-cat-3: #ebcb8b;
+    --nj-cat-4: #a3be8c;
+    --nj-cat-5: #8fbcbb;
+    --nj-cat-6: #81a1c1;
+    --nj-cat-7: #b48ead;
+    --nj-cat-8: #c98baa;
+    --nj-graph-down: #5b8cc6;
+    --nj-graph-up: #7d9f57;
+    --nj-dot-useless: #81889a;
+    --nj-captcha-paper: #eceff4;
+    color-scheme: dark;
+}
+
+/* Where a theme's own text falls short of WCAG AA on our surfaces, a stronger tone of the same hue. */
+:root.dark[data-theme='nord-dark'] {
+    --color-fg-muted: #a8b0be;
+    --color-danger-fg: #dca2a8;
+}
+
+/* The system's high contrast scheme: its colours replace the theme's and ours. */
+@media (forced-colors: active) {
+    :root {
+        --nj-brand-accent: Highlight;
+        --nj-accent-strong: LinkText;
+        --nj-bar-sources-max: Highlight;
+        --nj-bar-complete: Highlight;
+        --nj-graph-down: LinkText;
+        --nj-graph-up: Highlight;
+        --nj-graph-grid: GrayText;
+    }
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    background: var(--color-bg-default);
+    color: var(--color-fg-default);
+    /* The system's own face and size (Segoe UI 9 pt on Windows), grown by its text size as the browser applies it. */
+    font: menu;
+    line-height: 1.3;
+    overflow: hidden;
+}
+
+/* Scroll bars as the theme draws them: thin, with no arrows, the thumb in the muted text colour, half faded until
+   pointed at. */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: color-mix(in srgb, var(--color-border-subtle) 50%, transparent);
+}
+
+::-webkit-scrollbar-thumb {
+    border-radius: 1px;
+    background: color-mix(in srgb, var(--color-fg-muted) 50%, transparent);
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+    background: var(--color-fg-muted);
+}
+
+::-webkit-scrollbar-button {
+    display: none;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* Browsers without those take the standard thin bar in the same colours. */
+@supports not selector(::-webkit-scrollbar) {
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: color-mix(in srgb, var(--color-fg-muted) 50%, transparent)
+            color-mix(in srgb, var(--color-border-subtle) 50%, transparent);
+    }
+}
+
+button,
+input,
+select {
+    font: inherit;
+    color: inherit;
+}
+
+/* Check boxes and radio buttons in the theme's accent and about its size, as the desktop app's, rather than the
+   system's. */
+input[type='checkbox'],
+input[type='radio'] {
+    width: calc(0.75em + 7px);
+    height: calc(0.75em + 7px);
+    accent-color: var(--color-accent-emphasis);
+}
+
+.display {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 700;
+}
+
+.wordmark {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 800;
+}
+
+/* Line icons take the colour of the text beside them; a rule setting --nj-icon-color gives one its own. */
+.nj-icon {
+    width: var(--nj-icon-size, 16px);
+    height: var(--nj-icon-size, 16px);
+    flex: none;
+    stroke: var(--nj-icon-color, currentColor);
+    fill: none;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.nj-icon.filled {
+    fill: var(--nj-icon-color, currentColor);
+    stroke: none;
+}
+
+:root[dir='rtl'] .nj-icon.directional {
+    transform: scaleX(-1);
+}
+
+/* Buttons: the theme's own button colours, as the desktop app's, a flat one only on hover; the main action in the
+   logo's orange. */
+.button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--color-button-border);
+    border-radius: 6px;
+    background: var(--color-button-bg);
+    color: var(--color-button-fg);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.button:hover {
+    border-color: var(--color-button-border-hover);
+    background: var(--color-button-bg-hover);
+    color: var(--color-button-fg-hover);
+}
+
+.button:active {
+    border-color: var(--color-button-border-pressed);
+    background: var(--color-button-bg-pressed);
+    color: var(--color-button-fg-pressed);
+}
+
+.button:focus-visible,
+.focusable:focus-visible {
+    outline: 2px solid var(--color-accent-emphasis);
+    outline-offset: 1px;
+}
+
+.button.flat {
+    border-color: transparent;
+    background: transparent;
+}
+
+.button.flat:hover {
+    background: var(--color-bg-subtle);
+}
+
+.button.small {
+    gap: 6px;
+    height: 29px;
+    padding: 0 8px;
+    font-size: 0.8em;
+}
+
+.button.icon-only {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+}
+
+.button.accent {
+    border-color: var(--nj-brand-accent);
+    background: var(--nj-brand-accent);
+    color: var(--nj-on-accent);
+}
+
+.button.accent:hover {
+    border-color: var(--nj-accent-hover);
+    background: var(--nj-accent-hover);
+}
+
+.button.accent:active {
+    background: var(--nj-accent-pressed);
+}
+
+.button:disabled {
+    background: var(--color-button-bg);
+    color: var(--color-fg-muted);
+    border-color: var(--color-button-border);
+    cursor: default;
+}
+
+.button.flat:disabled {
+    background: transparent;
+    border-color: transparent;
+}
+
+.button.toggle[aria-pressed='true'] {
+    background: var(--color-accent-muted);
+    border-color: var(--color-accent-emphasis);
+}
+
+.field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 8px;
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    background: var(--color-bg-default);
+}
+
+.field:focus-within,
+textarea:focus-visible,
+select:focus-visible {
+    border-color: var(--color-accent-emphasis);
+    outline: 1px solid var(--color-accent-emphasis);
+}
+
+.field input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+}
+
+.field input::placeholder {
+    color: var(--color-fg-subtle);
+}
+
+.field .nj-icon {
+    --nj-icon-color: var(--color-fg-muted);
+}
+
+/* A field that is itself the box keeps the theme's room before its text. */
+input.field {
+    padding-inline: 12px;
+}
+
+/* A choice drawn as the theme's: no system arrow, a small solid triangle at its end, made of two halves. */
+select,
+select.field {
+    appearance: none;
+    padding-inline: 12px 28px;
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--color-fg-muted) 50%),
+        linear-gradient(135deg, var(--color-fg-muted) 50%, transparent 50%);
+    background-position:
+        right 12px center,
+        right 8px center;
+    background-size: 4px 4px;
+    background-repeat: no-repeat;
+}
+
+:root[dir='rtl'] select,
+:root[dir='rtl'] select.field {
+    background-position:
+        left 8px center,
+        left 12px center;
+}
+
+select:disabled {
+    opacity: 0.6;
+}
+
+/* Keys written as keys: beside a command, in a field. */
+.shortcut-key {
+    padding: 0 5px;
+    border: 1px solid var(--color-border-default);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--color-bg-default);
+    color: var(--color-fg-muted);
+    font-size: 0.85em;
+    white-space: nowrap;
+    direction: ltr;
+}
+
+/* Menus and popovers drawn over the window. */
+.menu {
+    min-width: 200px;
+    padding: 4px;
+    border: 1px solid var(--color-border-default);
+    border-radius: 10px;
+    background: var(--color-bg-overlay);
+    box-shadow: 0 4px 16px var(--color-shadow-default);
+    z-index: 20;
+}
+
+/* A menu as the theme's context menu: nearly square, a lighter border, a closer shadow; popovers keep the frame above. */
+.menu[role='menu'] {
+    padding: 5px;
+    border-color: var(--color-border-muted);
+    border-radius: 1px;
+    box-shadow: 0 2px 6px var(--color-shadow-default);
+}
+
+/* A row as high as its words and icon with the theme's room, the one pointed at in a grey band across the menu; its
+   icon in the colour of its words. */
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    cursor: default;
+    outline: none;
+    user-select: none;
+}
+
+.menu-item[data-highlighted] {
+    background: var(--color-menu-item-bg-focused);
+    color: var(--color-menu-item-fg-focused);
+}
+
+.menu-item[data-highlighted] .menu-end {
+    color: inherit;
+}
+
+.menu-item[data-disabled] {
+    opacity: 0.6;
+}
+
+.menu-item .menu-end {
+    margin-inline-start: auto;
+    color: var(--color-fg-muted);
+}
+
+/* A command's keys written plainly at the end of its row, in the colour of its words, as the desktop app's menus. */
+.menu-item .menu-end.keys {
+    padding-inline-start: 2em;
+    color: inherit;
+}
+
+.menu-check {
+    width: 16px;
+    display: inline-flex;
+}
+
+.menu-separator {
+    height: 1px;
+    margin: 0.25em 0.5em;
+    background: var(--color-border-muted);
+}
+
+/* A popover's arrow in its fill and border; its base covers the popover's border where they meet. */
+.popover-arrow {
+    fill: var(--color-bg-overlay);
+    stroke: var(--color-border-default);
+}
+
+.popover-arrow path {
+    vector-effect: non-scaling-stroke;
+}
+
+/* A slider as the theme draws one: a square track and an upright thumb in the accent. */
+.slider {
+    appearance: none;
+    height: 20px;
+    margin: 0;
+    background: none;
+}
+
+.slider::-webkit-slider-runnable-track {
+    height: 20px;
+    background: linear-gradient(var(--color-border-muted), var(--color-border-muted)) center / 100% 8px no-repeat;
+}
+
+.slider::-moz-range-track {
+    height: 8px;
+    background: var(--color-border-muted);
+}
+
+.slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 8px;
+    height: 20px;
+    border: none;
+    border-radius: 0;
+    background: var(--color-accent-emphasis);
+}
+
+.slider::-moz-range-thumb {
+    width: 8px;
+    height: 20px;
+    border: none;
+    border-radius: 0;
+    background: var(--color-accent-emphasis);
+}
+
+.slider:focus-visible {
+    outline: 2px solid var(--color-accent-emphasis);
+    outline-offset: 2px;
+}
+
+.slider:disabled {
+    opacity: 0.6;
+}
+
+/* A tooltip as the theme's: a light box with a thin border and a close shadow, its words at the theme's own 14 pixels
+   whatever the window's text size. */
+.tooltip {
+    padding: 8px 12px;
+    border: 1px solid var(--color-border-default);
+    border-radius: 1px;
+    background: var(--color-bg-overlay);
+    color: var(--color-fg-default);
+    box-shadow: 0 2px 6px var(--color-shadow-default);
+    font-size: 14px;
+    white-space: pre-line;
+    z-index: 30;
+}
+
+/* Under a dialog the window stays as it is, as under the desktop app's dialog windows; it only takes no clicks. */
+.scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+}
+
+/* A dialog as one of the desktop app's in its own window: the title and its cross, the words and fields, then the
+   buttons on a band across its foot. */
+.dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(640px, calc(100vw - 32px));
+    max-height: calc(100vh - 64px);
+    padding: 16px 18px 0;
+    border: 1px solid var(--color-border-default);
+    border-radius: 8px;
+    background: var(--color-bg-overlay);
+    box-shadow: 0 8px 32px var(--color-shadow-default);
+    overflow: hidden;
+    z-index: 16;
+}
+
+.dialog-title {
+    margin: 0;
+    font-family: inherit;
+    font-size: 1.15em;
+    font-weight: bold;
+}
+
+.dialog-buttons {
+    display: flex;
+    flex: none;
+    justify-content: flex-end;
+    gap: 8px;
+    margin: 4px -18px 0;
+    padding: 12px 18px;
+    border-top: 1px solid var(--color-border-muted);
+    background: var(--color-bg-subtle);
+}
+
+/* A state on a pastel pill of its tone: the words in the theme's colour, the icon in the tone. */
+.state-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 2px 8px 2px 6px;
+    border: 1px solid transparent;
+    border-radius: 11px;
+    font-size: 0.92em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    --nj-icon-size: 14px;
+}
+
+.state-chip.accent {
+    background: var(--color-accent-muted);
+    --nj-icon-color: var(--color-accent-fg);
+}
+.state-chip.success {
+    background: var(--color-success-muted);
+    --nj-icon-color: var(--color-success-fg);
+}
+.state-chip.warning {
+    background: var(--color-warning-muted);
+    --nj-icon-color: var(--color-warning-fg);
+}
+.state-chip.danger {
+    background: var(--color-danger-muted);
+    --nj-icon-color: var(--color-danger-fg);
+}
+.state-chip.neutral {
+    background: var(--color-neutral-muted);
+    --nj-icon-color: var(--color-fg-muted);
+}
+
+/* A thin bar of how much is done, in the tone of the state; the figure is beside it. */
+.thin-bar {
+    flex: 1;
+    min-width: 0;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--nj-bar-bg);
+    overflow: hidden;
+}
+
+.thin-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+}
+
+.thin-bar-fill.accent {
+    background: var(--nj-bar-sources-max);
+}
+.thin-bar-fill.success {
+    background: var(--nj-bar-complete);
+}
+.thin-bar-fill.warning {
+    background: var(--nj-bar-error);
+}
+.thin-bar-fill.danger {
+    background: var(--color-danger-emphasis);
+}
+.thin-bar-fill.neutral {
+    background: var(--color-fg-subtle);
+}
+
+.category-dot {
+    width: 10px;
+    height: 10px;
+    flex: none;
+    border-radius: 50%;
+    border: 1px solid var(--color-border-default);
+}
+
+.category-dot.cat-1 {
+    background: var(--nj-cat-1);
+}
+.category-dot.cat-2 {
+    background: var(--nj-cat-2);
+}
+.category-dot.cat-3 {
+    background: var(--nj-cat-3);
+}
+.category-dot.cat-4 {
+    background: var(--nj-cat-4);
+}
+.category-dot.cat-5 {
+    background: var(--nj-cat-5);
+}
+.category-dot.cat-6 {
+    background: var(--nj-cat-6);
+}
+.category-dot.cat-7 {
+    background: var(--nj-cat-7);
+}
+.category-dot.cat-8 {
+    background: var(--nj-cat-8);
+}
+
+/* What a source does at a glance: downloading, queued, being reached, of no use now, or not asked yet (?). */
+.source-dot {
+    width: 12px;
+    height: 12px;
+    flex: none;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: bold;
+}
+
+.source-dot.downloading {
+    background: var(--color-success-emphasis);
+}
+.source-dot.queued {
+    background: var(--nj-bar-requested);
+}
+.source-dot.reaching {
+    background: var(--color-danger-emphasis);
+}
+.source-dot.useless {
+    background: var(--nj-dot-useless);
+}
+.source-dot.unknown {
+    border: 1px solid var(--color-fg-muted);
+    color: var(--color-fg-muted);
+}
+
+.muted {
+    color: var(--color-fg-muted);
+}
+
+.ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

@@ -127,6 +127,7 @@ import org.njmule.core.persist.format.KnownMet;
 import org.njmule.core.persist.format.NodesDat;
 import org.njmule.core.persist.format.ServerMet;
 import org.njmule.core.persist.format.TextFiles;
+import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.server.ServerList;
 import org.njmule.core.update.Updates;
 import org.njmule.core.upnp.Routers;
@@ -154,6 +155,8 @@ public final class Engine implements NjMuleEngine {
     // DB-IP publishes its database once a month.
     private static final Duration COUNTRIES_AGE = Duration.ofDays(32);
     private static final String COUNTRIES_FILE = "countries.dat";
+    /** Set to {@code true}, the country database is never downloaded: tests must not fetch it. */
+    static final String COUNTRIES_DISABLED_PROPERTY = "njmule.countries.disabled";
     // Followed by the month, yyyy-MM, and .csv.gz.
     private static final String COUNTRIES_URL = "https://download.db-ip.com/free/dbip-country-lite-";
     // The first look for a new version waits for the start to settle; then whether one is due is asked often.
@@ -292,6 +295,7 @@ public final class Engine implements NjMuleEngine {
         try {
             Path prefsFile = dirs.config().resolve(PreferencesCodec.FILE_NAME);
             AtomicFiles.cleanupInterruptedWrite(prefsFile);
+            boolean created = !Files.exists(prefsFile);
             Preferences prefs = PreferencesCodec.load(prefsFile);
             // Where the downloads go, complete and in parts, which need not be the default folders.
             Files.createDirectories(prefs.effectiveIncomingDir(dirs));
@@ -301,6 +305,9 @@ public final class Engine implements NjMuleEngine {
                 backUp(dirs, prefs.backupCopies());
             }
             PreferencesCodec.save(prefsFile, prefs);
+            if (created) {
+                SetupMark.make(dirs.config());
+            }
             EmuleImporter.applyPendingIdentity(dirs.config(), emuleRunning);
             EmuleImporter.applyPendingFiles(dirs.config());
 
@@ -386,6 +393,10 @@ public final class Engine implements NjMuleEngine {
                 publish(new EngineEvent.PreferencesChanged(next));
                 this.network.reconfigure(current, next);
                 this.updates.preferences(next);
+                // Turned on or off, the countries follow at once rather than at the next hourly check.
+                if (next.showCountries() != current.showCountries()) {
+                    updateCountriesIfDue();
+                }
             }
             return next;
         });
@@ -662,7 +673,8 @@ public final class Engine implements NjMuleEngine {
         Path file = this.directories.cache().resolve(COUNTRIES_FILE);
         long now = System.currentTimeMillis();
         OptionalLong date = modified(file);
-        boolean fetch = (date.isEmpty() || now - date.getAsLong() >= COUNTRIES_AGE.toMillis())
+        boolean fetch = !Boolean.getBoolean(COUNTRIES_DISABLED_PROPERTY)
+                && (date.isEmpty() || now - date.getAsLong() >= COUNTRIES_AGE.toMillis())
                 && now - this.countriesTried >= COUNTRIES_RETRY.toMillis();
         boolean read = this.countries.size() == 0 && date.isPresent();
         if (this.countriesUpdating || !(fetch || read)) {
@@ -877,6 +889,19 @@ public final class Engine implements NjMuleEngine {
                 .thenCompose(contents -> this.loop.submit(() -> this.network.addKadContacts(contents)));
     }
 
+    // Read on the caller's thread: content that is no nodes.dat is the caller's error.
+    @Override
+    public CompletableFuture<Integer> addKadContacts(byte[] nodesDat) {
+        Objects.requireNonNull(nodesDat, "nodesDat");
+        NodesDat.Contents contents;
+        try {
+            contents = NodesDat.read(nodesDat);
+        } catch (DecodeException e) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("not a nodes.dat: " + e.getMessage()));
+        }
+        return this.loop.submit(() -> this.network.addKadContacts(contents));
+    }
+
     /** Reads a file the user chose, on a thread of its own, no larger than a list from the web may be. */
     private static <T> CompletableFuture<T> read(Path file, Parser<T> parser) {
         return CompletableFuture.supplyAsync(
@@ -922,9 +947,29 @@ public final class Engine implements NjMuleEngine {
         return this.loop.submit(() -> this.network.addServers(serverMet));
     }
 
+    // Read on the caller's thread: content that is no server.met is the caller's error.
+    @Override
+    public CompletableFuture<Integer> addServers(byte[] serverMet) {
+        Objects.requireNonNull(serverMet, "serverMet");
+        List<ServerMet.Server> read;
+        try {
+            read = ServerMet.read(serverMet);
+        } catch (DecodeException e) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("not a server.met: " + e.getMessage()));
+        }
+        return this.loop.submit(() -> this.network.addServers(read));
+    }
+
     @Override
     public CompletableFuture<List<ServerInfo>> servers() {
-        return this.loop.submit(this.network::servers);
+        return this.loop.submit(this.network::servers).thenApply(list -> {
+            CountryTable table = this.countries;
+            return table.size() == 0
+                    ? list
+                    : list.stream()
+                            .map(s -> s.withCountry(table.countryOf(s.address())))
+                            .toList();
+        });
     }
 
     @Override
@@ -1446,7 +1491,14 @@ public final class Engine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<List<KadContactInfo>> kadContacts() {
-        return this.loop.submit(this.network::kadContacts);
+        return this.loop.submit(this.network::kadContacts).thenApply(list -> {
+            CountryTable table = this.countries;
+            return table.size() == 0
+                    ? list
+                    : list.stream()
+                            .map(c -> c.withCountry(table.countryOf(c.address())))
+                            .toList();
+        });
     }
 
     @Override
@@ -1474,6 +1526,26 @@ public final class Engine implements NjMuleEngine {
             }
         });
         return report;
+    }
+
+    @Override
+    public CompletableFuture<Optional<Path>> emuleProfile() {
+        return CompletableFuture.completedFuture(EmuleImporter.findConfigDirectory(System.getenv()));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setupPending() {
+        return CompletableFuture.completedFuture(SetupMark.present(this.directories.config()));
+    }
+
+    @Override
+    public CompletableFuture<Void> finishSetup() {
+        try {
+            SetupMark.remove(this.directories.config());
+            return CompletableFuture.completedFuture(null);
+        } catch (IOException e) {
+            return CompletableFuture.failedFuture(e);
+        }
     }
 
     /** Applies an import on the engine thread; called from the import thread. */

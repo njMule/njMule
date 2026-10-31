@@ -36,3 +36,42 @@ updates:
               patterns:
                   - "docusaurus-plugin-openapi-docs"
                   - "docusaurus-theme-openapi-docs"
+    # The interface of the desktop window and the web interface (njmule-ui/package-lock.json).
+    - package-ecosystem: npm
+      directory: /njmule-ui
+      schedule:
+          interval: weekly
+      commit-message:
+          prefix: "chore(deps)"
+      groups:
+          vue:
+              patterns:
+                  - "vue"
+                  - "vue-tsc"
+                  - "@vue/*"
+                  - "@vitejs/plugin-vue"
+          tanstack:
+              patterns:
+                  - "@tanstack/*"
+          vitest:
+              patterns:
+                  - "vite"
+                  - "vitest"
+    # The desktop window's Tauri command line, then its Rust crates, the Tauri crate and its plugins together.
+    - package-ecosystem: npm
+      directory: /njmule-desktop
+      schedule:
+          interval: weekly
+      commit-message:
+          prefix: "chore(deps)"
+    - package-ecosystem: cargo
+      directory: /njmule-desktop/src-tauri
+      schedule:
+          interval: weekly
+      commit-message:
+          prefix: "chore(deps)"
+      groups:
+          tauri:
+              patterns:
+                  - "tauri"
+                  - "tauri-*"

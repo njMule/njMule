@@ -140,7 +140,9 @@ paths:
       operationId: getPreferences
       tags: [engine]
       summary: Every preference, as njMule's njmule.properties file writes it.
-      description: The proxy password is never given.
+      description: >-
+        The passwords, of the proxy and of the mail server, are never given; /preferences/passwords
+        tells which are set.
       responses:
         "200":
           description: The preferences by key.
@@ -174,6 +176,166 @@ paths:
                 $ref: "#/components/schemas/Preferences"
         "400":
           $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /preferences/passwords:
+    get:
+      operationId: getPreferencePasswords
+      tags: [engine]
+      summary: Whether each password of the preferences is set, the passwords themselves never given.
+      description: >-
+        By the keys of the passwords, proxy.password and notify.smtpPassword. Changing the preferences
+        replaces a password, and an empty one clears it.
+      responses:
+        "200":
+          description: Whether each password is set, by its key.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /preferences/defaults:
+    get:
+      operationId: getPreferenceDefaults
+      tags: [engine]
+      summary: Every preference as it is before anyone changes it, written as the preferences are.
+      responses:
+        "200":
+          description: The default preferences by key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preferences"
+        default:
+          $ref: "#/components/responses/Error"
+  /folders:
+    get:
+      operationId: getFolders
+      tags: [engine]
+      summary: The folders the engine uses, the defaults of those the preferences leave empty included.
+      responses:
+        "200":
+          description: The folders, as absolute paths on the engine's computer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Folders"
+        default:
+          $ref: "#/components/responses/Error"
+  /folders/check:
+    post:
+      operationId: checkFolder
+      tags: [engine]
+      summary: Tells what a path names on the engine's computer, as a folder option is typed.
+      description: >-
+        A folder the options name need not exist yet, as it is made when it is needed; a file, or text
+        that is no path there, cannot be one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+                  minLength: 1
+                  maxLength: 4096
+      responses:
+        "200":
+          description: What the path names.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kind]
+                properties:
+                  kind:
+                    type: string
+                    enum: [folder, file, missing, invalid]
+                    description: >-
+                      A folder, a file or nothing there; invalid for text that is no path on the
+                      engine's computer.
+        default:
+          $ref: "#/components/responses/Error"
+  /interfaces:
+    get:
+      operationId: listNetworkInterfaces
+      tags: [engine]
+      summary: The network interfaces of the engine's computer that njMule's connections may be bound to.
+      description: >-
+        Those up now, with an IPv4 address, the loopback left out. The preference net.bindInterface
+        names one by its name, or one of its addresses.
+      responses:
+        "200":
+          description: The interfaces.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NetworkInterface"
+        default:
+          $ref: "#/components/responses/Error"
+  /webui:
+    get:
+      operationId: getWebInterface
+      tags: [engine]
+      summary: The web interface's own settings, which it follows at once when the desktop app's window changes them.
+      description: The password hashes are never given, only whether there are passwords.
+      responses:
+        "200":
+          $ref: "#/components/responses/WebInterface"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateWebInterface
+      tags: [engine]
+      summary: Changes the web interface's settings named; the others stay.
+      description: >-
+        Only the desktop app's window on njMule's computer may: a browser's session or a caller with
+        the API token is refused. A wrong value, or an interface turned on without a password, changes
+        nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebInterfaceChange"
+      responses:
+        "200":
+          $ref: "#/components/responses/WebInterface"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/Error"
+  /webui/token:
+    get:
+      operationId: getApiToken
+      tags: [engine]
+      summary: The API token, made now if there is none; for the desktop app's window on njMule's computer only.
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiToken"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: renewApiToken
+      tags: [engine]
+      summary: Replaces the API token, whose holders are refused from now on; for the desktop app's window only.
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiToken"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         default:
           $ref: "#/components/responses/Error"
   /schedule:
@@ -255,6 +417,22 @@ paths:
         default:
           $ref: "#/components/responses/Error"
   /import/emule:
+    get:
+      operationId: findEmuleProfile
+      tags: [engine]
+      summary: The configuration folder of an eMule on njMule's computer, where eMule keeps it.
+      responses:
+        "200":
+          description: The folder of the eMule of the user njMule runs as; no path when there is none.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
     post:
       operationId: importEmule
       tags: [engine]
@@ -330,6 +508,38 @@ paths:
                                   type: [string, integer]
         "400":
           $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/Error"
+  /setup:
+    get:
+      operationId: getSetup
+      tags: [engine]
+      summary: Whether njMule waits for the questions of its first start.
+      description: >-
+        The start that created njMule's configuration marks it to be set up; it stays so, across
+        starts, until an interface asks the questions and `POST /setup/done` says they were answered
+        or put aside.
+      responses:
+        "200":
+          description: Whether the questions are still to be asked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pending]
+                properties:
+                  pending:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /setup/done:
+    post:
+      operationId: finishSetup
+      tags: [engine]
+      summary: Marks the questions of the first start answered or put aside.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
         default:
           $ref: "#/components/responses/Error"
   /ipfilter:
@@ -689,6 +899,33 @@ paths:
                 $ref: "#/components/schemas/Download"
         "404":
           $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Error"
+  /downloads/{hash}/data:
+    parameters:
+      - $ref: "#/components/parameters/Hash"
+    get:
+      operationId: getDownloadData
+      tags: [downloads]
+      summary: Where the data of a download is, which a player on njMule's computer can show while it grows.
+      responses:
+        "200":
+          description: The data file, once the start of the file has come.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [path]
+                properties:
+                  path:
+                    type: string
+                    description: The file on njMule's computer.
+        "404":
+          description: An unknown download, or one whose start has not come yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         default:
           $ref: "#/components/responses/Error"
   /downloads/{hash}/autoswap:
@@ -1304,13 +1541,13 @@ paths:
     post:
       operationId: importServers
       tags: [servers]
-      summary: Adds the servers of a server.met file at an address.
+      summary: Adds the servers of a server.met file at an address, on the engine's computer or sent.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/WebList"
+              $ref: "#/components/schemas/ListSource"
       responses:
         "200":
           $ref: "#/components/responses/Added"
@@ -1582,13 +1819,13 @@ paths:
     post:
       operationId: importKadNodes
       tags: [kad]
-      summary: Adds the contacts of a nodes.dat file at an address.
+      summary: Adds the contacts of a nodes.dat file at an address, on the engine's computer or sent.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/WebList"
+              $ref: "#/components/schemas/ListSource"
       responses:
         "200":
           $ref: "#/components/responses/Added"
@@ -1664,6 +1901,34 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "409":
           description: Automatic was asked, and neither a server nor Kad is connected.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          $ref: "#/components/responses/Error"
+  /searches/check:
+    post:
+      operationId: checkSearch
+      tags: [searches]
+      summary: Tells whether a search would take an expression, before it starts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  minLength: 1
+                  description: Words, with AND, OR and NOT between them as wanted, and attributes.
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          description: The expression is malformed; the error tells what is wrong and where.
           content:
             application/json:
               schema:
@@ -2291,6 +2556,29 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The caller may not do this, such as a change only the desktop app's window may make.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    WebInterface:
+      description: The web interface's settings now.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebInterface"
+    ApiToken:
+      description: The API token.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [token]
+            properties:
+              token:
+                type: string
+                pattern: "^[A-Za-z0-9_-]{43}$"
     Error:
       description: |
         Any other failure: 401 without the right token (with `WWW-Authenticate: Bearer`), 404 for an
@@ -2337,6 +2625,20 @@ components:
         api:
           type: integer
           description: The version of the API, which grows when calls are added.
+        java:
+          type: string
+          description: The version of Java njMule runs on, for a report of a problem; not told to a guest.
+        system:
+          type: object
+          description: The system njMule runs on, for a report of a problem; not told to a guest.
+          required: [name, version, arch]
+          properties:
+            name:
+              type: string
+            version:
+              type: string
+            arch:
+              type: string
 
     Hash:
       type: string
@@ -2367,6 +2669,25 @@ components:
           format: uri
           pattern: "^\\s*[Hh][Tt][Tt][Pp][Ss]?://"
           description: An http or https address.
+    ListSource:
+      description: A list from the web by its address, a file of the engine's computer by its path, or a file sent.
+      oneOf:
+        - $ref: "#/components/schemas/WebList"
+        - type: object
+          required: [path]
+          properties:
+            path:
+              type: string
+              minLength: 1
+              description: The absolute path of the file on the engine's computer.
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: string
+              contentEncoding: base64
+              minLength: 1
+              description: The content of the file, in Base64.
     Limits:
       type: object
       description: Speed limits in KiB/s; 0 is unlimited.
@@ -2579,6 +2900,10 @@ components:
           type: boolean
         static:
           type: boolean
+        country:
+          type: [string, "null"]
+          pattern: "^[a-z]{2}$"
+          description: The server's country (ISO 3166-1, lower case), when the countries are shown and it is known.
     Kad:
       type: object
       required:
@@ -2892,6 +3217,12 @@ components:
         type:
           type: [string, "null"]
           description: The file type the network gives, if any.
+        aich:
+          type: [string, "null"]
+          pattern: "^[A-Z2-7]{32}$"
+          description: >-
+            The root of the file's AICH tree in Base32, when its publishers agree on one; the eD2K
+            link of the file carries it as h=.
         spamRating:
           type: integer
         spam:
@@ -3007,6 +3338,105 @@ components:
       additionalProperties:
         type: string
         maxLength: 16384
+    Folders:
+      type: object
+      required: [incoming, temp]
+      properties:
+        incoming:
+          type: string
+          description: Where the finished downloads go, always shared.
+        temp:
+          type: string
+          description: Where the downloads' parts are kept until they are finished.
+    NetworkInterface:
+      type: object
+      required: [name, displayName, addresses]
+      properties:
+        name:
+          type: string
+          description: The name the system gives the interface, as net.bindInterface takes it.
+        displayName:
+          type: string
+        addresses:
+          type: array
+          description: Its IPv4 addresses.
+          items:
+            type: string
+    WebInterface:
+      type: object
+      required: [changeable, enabled, port, lan, hosts, proxies, api, hasPassword, hasGuest, url]
+      properties:
+        changeable:
+          type: boolean
+          description: Whether the caller may change them, as the desktop app's window on njMule's computer.
+        enabled:
+          type: boolean
+          description: Whether the web interface runs; it needs a password too.
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        lan:
+          type: boolean
+          description: Whether other computers may connect, rather than this one only.
+        hosts:
+          type: array
+          description: Names besides localhost under which browsers open the interface.
+          items:
+            type: string
+        proxies:
+          type: array
+          description: Reverse proxies trusted to name their client in X-Forwarded-For.
+          items:
+            type: string
+        api:
+          type: boolean
+          description: Whether the remote-control API answers callers with its token too.
+        hasPassword:
+          type: boolean
+        hasGuest:
+          type: boolean
+          description: Whether a guest, who may only look, can log in.
+        url:
+          type: [string, "null"]
+          description: Where a browser opens the interface, while it is on with a password.
+    WebInterfaceChange:
+      type: object
+      minProperties: 1
+      properties:
+        enabled:
+          type: boolean
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        lan:
+          type: boolean
+        hosts:
+          type: array
+          maxItems: 64
+          description: Host names or IP addresses.
+          items:
+            type: string
+            maxLength: 255
+        proxies:
+          type: array
+          maxItems: 64
+          description: Addresses, CIDR blocks or ranges.
+          items:
+            type: string
+            maxLength: 255
+        api:
+          type: boolean
+        password:
+          type: string
+          minLength: 8
+          maxLength: 1024
+          description: The admin's new password.
+        guestPassword:
+          type: string
+          maxLength: 1024
+          description: The guest's new password, of 8 characters at least, or an empty one to let no guest in.
     Schedule:
       type: object
       required: [rules]
@@ -3213,6 +3643,10 @@ components:
           type: integer
         verified:
           type: boolean
+        country:
+          type: [string, "null"]
+          pattern: "^[a-z]{2}$"
+          description: The contact's country (ISO 3166-1, lower case), when the countries are shown and it is known.
     KadSearch:
       type: object
       required: [target, kind, answers]

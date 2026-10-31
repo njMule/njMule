@@ -42,7 +42,7 @@ While Windows high contrast is on, the desktop app takes the system's colours in
 | **Start minimized** | Off | Opens the window minimised; with the option below on Windows, njMule starts as an icon in the notification area. Key `window.startMinimized` in `gui.properties`. Desktop only. |
 | **Minimise to the notification area, next to the clock** | On | Minimising the window hides it into an icon in the Windows notification area. Shown only on Windows. Key `window.minimizeToTray` in `gui.properties`. Desktop only. See [Notification area](../desktop/tray.mdx). |
 | **Keep the computer awake while files are transferred** | Off | Keeps the computer from going to sleep while files are downloaded or uploaded, and lets it sleep again two minutes after the last transfer. njMule uses the Windows launcher of the desktop app, `caffeinate` on macOS and `systemd-inhibit` on Linux, which all end with njMule anyway. Key `system.preventSleep`. Also in the web interface. |
-| **Show the country of other clients** | Off | Shows the country of other clients, with its flag, in the sources of a download, among the uploads and the queue, and in the known clients. njMule then downloads DB-IP's free country database once a month (IP Geolocation by DB-IP, CC BY 4.0). Key `geo.countries`. Also in the web interface. See [Privacy](../data/privacy.mdx). |
+| **Show the country of other clients** | On | Shows the country of other clients, with its flag, in the sources of a download, among the uploads and the queue, and in the known clients, the country of each server in the servers' list and of each Kad contact. njMule then downloads DB-IP's free country database once a month (IP Geolocation by DB-IP, CC BY 4.0). Key `geo.countries`. Also in the web interface. See [Privacy](../data/privacy.mdx). |
 
 ## Updates
 
@@ -78,4 +78,4 @@ messages are on the [Notifications](notifications.mdx) page; programs of your ow
 | Option | Default | What it does |
 | --- | --- | --- |
 | **Play a sound with the notifications of completed downloads and new messages** | Off | Plays the sound file below when a download completes, and when a chat message arrives while the **Messages** screen is not shown. Key `notify.sound`. Desktop only. |
-| **Sound file (WAV)** | empty | The full path of a WAV file, typed or chosen with **Browse...**; **Test** plays it. Nothing plays while it is empty, even with the switch on. Key `notify.soundFile`. Desktop only. |
+| **Sound file (WAV, MP3)** | empty | The full path of a WAV or MP3 file, typed or chosen with **Browse...**; **Test** plays it. Nothing plays while it is empty, even with the switch on. Key `notify.soundFile`. Desktop only. |

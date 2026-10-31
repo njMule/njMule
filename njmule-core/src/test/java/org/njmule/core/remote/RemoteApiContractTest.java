@@ -128,6 +128,8 @@ class RemoteApiContractTest {
                 "/api/v1/bans",
                 "/api/v1/update",
                 "/api/v1/preferences",
+                "/api/v1/preferences/defaults",
+                "/api/v1/folders",
                 "/api/v1/schedule",
                 "/api/v1/rates",
                 "/api/v1/rates?span=86400",
@@ -136,9 +138,15 @@ class RemoteApiContractTest {
                 "/api/v1/ports/test",
                 "/api/v1/servers/lists",
                 "/api/v1/downloads/" + HASH + "/parts",
+                "/api/v1/downloads/" + HASH + "/data",
                 "/api/v1/downloads/" + HASH + "/comments",
                 "/api/v1/files/" + HASH + "/comment",
-                "/api/v1/files/" + HASH + "/notes");
+                "/api/v1/files/" + HASH + "/notes",
+                "/api/v1/import/emule",
+                "/api/v1/setup",
+                "/api/v1/webui",
+                "/api/v1/interfaces",
+                "/api/v1/preferences/passwords");
     }
 
     @ParameterizedTest
@@ -194,17 +202,21 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/servers/connect", "{\"address\":\"203.0.113.10:4661\"}", 200),
                 Arguments.of("POST", "/api/v1/servers/disconnect", "", 200),
                 Arguments.of("POST", "/api/v1/servers/import", LIST, 200),
+                Arguments.of("POST", "/api/v1/servers/import", "{\"data\":\"AQID\"}", 200),
                 Arguments.of("DELETE", "/api/v1/servers/203.0.113.10:4661", "", 200),
                 Arguments.of("POST", "/api/v1/kad/connect", "", 200),
                 Arguments.of("POST", "/api/v1/kad/disconnect", "", 200),
                 Arguments.of("POST", "/api/v1/kad/recheck", "", 200),
                 Arguments.of("POST", "/api/v1/kad/bootstrap", "{\"address\":\"198.51.100.40:4672\"}", 200),
                 Arguments.of("POST", "/api/v1/kad/nodes", LIST, 200),
+                Arguments.of("POST", "/api/v1/kad/nodes", "{\"data\":\"AQID\"}", 200),
                 Arguments.of("PUT", "/api/v1/limits", "{\"uploadKiBps\":50}", 200),
                 Arguments.of("POST", "/api/v1/ipfilter", LIST, 200),
                 Arguments.of("POST", "/api/v1/messages", "{\"to\":\"198.51.100.9:4662\",\"text\":\"hi\"}", 200),
                 Arguments.of("DELETE", "/api/v1/bans/192.0.2.200", "", 200),
                 Arguments.of("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"global\"}", 201),
+                Arguments.of("POST", "/api/v1/searches/check", "{\"query\":\"talk\"}", 200),
+                Arguments.of("POST", "/api/v1/folders/check", "{\"path\":\"" + TEMP + "\"}", 200),
                 Arguments.of("POST", "/api/v1/notifications/test", "", 200),
                 Arguments.of("POST", "/api/v1/update/check", "", 200),
                 Arguments.of("POST", "/api/v1/update/skip", "{\"version\":\"0.2.0\"}", 200),
@@ -212,6 +224,7 @@ class RemoteApiContractTest {
                 Arguments.of("POST", "/api/v1/update/install", "", 202),
                 Arguments.of("POST", "/api/v1/update/install", "{\"restart\":false}", 200),
                 Arguments.of("POST", "/api/v1/import/emule", "{\"path\":\"" + TEMP + "\",\"dryRun\":true}", 200),
+                Arguments.of("POST", "/api/v1/setup/done", "", 200),
                 Arguments.of("POST", "/api/v1/shutdown", "", 202),
                 Arguments.of("PATCH", "/api/v1/preferences", "{\"user.nick\":\"Night Owl\"}", 200),
                 Arguments.of(
@@ -263,8 +276,31 @@ class RemoteApiContractTest {
         thenTheAnswerFollowsTheDocument();
     }
 
+    static Stream<Arguments> windowCalls() {
+        return Stream.of(
+                Arguments.of(
+                        "PATCH", "/api/v1/webui", "{\"enabled\":true,\"port\":8080,\"hosts\":[\"nas.local\"]}", 200),
+                Arguments.of("PATCH", "/api/v1/webui", "{\"password\":\"short\"}", 400),
+                Arguments.of("GET", "/api/v1/webui/token", "", 200),
+                Arguments.of("POST", "/api/v1/webui/token", "", 200));
+    }
+
+    @ParameterizedTest
+    @MethodSource("windowCalls")
+    void shouldAnswerTheDesktopWindowAsTheDocumentDescribesIt(String verb, String call, String body, int status)
+            throws Exception {
+        givenTheApiRuns();
+
+        whenTheWindowCalls(verb, call, body);
+
+        thenTheStatusIs(status);
+        thenTheAnswerFollowsTheDocument();
+    }
+
     static Stream<Arguments> refusals() {
         return Stream.of(
+                Arguments.of("PATCH", "/api/v1/webui", "{\"lan\":true}", 403),
+                Arguments.of("GET", "/api/v1/webui/token", "", 403),
                 Arguments.of("GET", "/api/v1/nothing", "", 404),
                 Arguments.of("DELETE", "/api/v1/status", "", 405),
                 Arguments.of("GET", "/api/v1/downloads/talk", "", 400),
@@ -289,6 +325,7 @@ class RemoteApiContractTest {
                 Arguments.of("DELETE", "/api/v1/conversations/198.51.100.99:4662", "", 404),
                 Arguments.of("POST", "/api/v1/searches/7/spam", "{\"hashes\":[\"" + HASH + "\"]}", 404),
                 Arguments.of("POST", "/api/v1/ipfilter/lists", "", 409),
+                Arguments.of("POST", "/api/v1/searches/check", "{\"query\":\"talk OR\"}", 400),
                 Arguments.of("POST", "/api/v1/import/emule", "{\"path\":\"relative\"}", 400));
     }
 
@@ -391,6 +428,9 @@ class RemoteApiContractTest {
         answerWith("kadNotes", List.of(ApiSamples.kadNote()));
         answerWith("savedSearches", List.of(ApiSamples.savedSearch()));
         answerWith("spamMarks", ApiSamples.spamMarks());
+        answerWith("emuleProfile", Optional.of(Path.of(System.getProperty("java.io.tmpdir"))));
+        answerWith("setupPending", true);
+        answerWith("downloadData", Optional.of(Path.of("001.part").toAbsolutePath()));
         this.fake.value("schedule", ApiSamples.schedule());
         this.fake.value("activeRule", ApiSamples.schedule().rules().stream().findFirst());
         this.fake.value("preferences", Preferences.defaults());
@@ -443,7 +483,8 @@ class RemoteApiContractTest {
                 "setCategories",
                 "setServerListAddresses",
                 "setFileComment",
-                "addFriend")) {
+                "addFriend",
+                "finishSetup")) {
             this.fake.answer(done, args -> CompletableFuture.completedFuture(null));
         }
         for (String counted : List.of("addServers", "addKadContacts", "updateIpFilter")) {
@@ -483,7 +524,13 @@ class RemoteApiContractTest {
         this.token = ApiToken.loadOrCreate(dirs.config(), new SecureRandom());
         NjMuleEngine engine = this.fake.engine();
         this.recent = RecentEvents.follow(engine);
-        this.api = new RemoteApi(engine, this.recent, client -> true, Optional.of(() -> {}), Duration.ofSeconds(1));
+        this.api = new RemoteApi(
+                engine,
+                this.recent,
+                client -> true,
+                Optional.of(() -> {}),
+                Duration.ofSeconds(1),
+                Optional.of(new FakeWebInterface()));
         this.server = ApiServer.start(this.api);
     }
 
@@ -531,6 +578,19 @@ class RemoteApiContractTest {
                 body.isEmpty() ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body);
         this.answer =
                 this.http.send(request(target).method(verb, content).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private void whenTheWindowCalls(String verb, String target, String body) throws Exception {
+        this.method = verb;
+        this.path = target;
+        HttpRequest.BodyPublisher content =
+                body.isEmpty() ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body);
+        this.answer = this.http.send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.server.port() + target))
+                        .header(ApiServer.LOCAL, "1")
+                        .method(verb, content)
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     private void whenCalledWithoutTheToken(String verb, String target) throws Exception {

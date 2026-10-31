@@ -17,6 +17,7 @@
 package org.njmule.core.api;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * What front ends show about a server; {@code address} is {@code ip:port}, zero or empty values are unknown.
@@ -26,6 +27,7 @@ import java.util.Objects;
  * @param softFiles the number of files a client should offer at most
  * @param hardFiles the number of files beyond which the server drops a client
  * @param isStatic kept in the static list: never dropped as dead, and written to {@code staticservers.dat}
+ * @param country the server's country as its ISO 3166-1 code in lower case, when the countries are shown and known
  */
 public record ServerInfo(
         String address,
@@ -42,7 +44,8 @@ public record ServerInfo(
         long lowIdUsers,
         String version,
         boolean supportsObfuscation,
-        boolean isStatic) {
+        boolean isStatic,
+        Optional<String> country) {
 
     /** The order servers are tried in. */
     public enum Priority {
@@ -57,5 +60,63 @@ public record ServerInfo(
         Objects.requireNonNull(description, "description");
         Objects.requireNonNull(priority, "priority");
         Objects.requireNonNull(version, "version");
+        Objects.requireNonNull(country, "country");
+    }
+
+    /** A server whose country is not known. */
+    public ServerInfo(
+            String address,
+            String name,
+            String description,
+            long users,
+            long files,
+            long maxUsers,
+            int failed,
+            Priority priority,
+            int ping,
+            long softFiles,
+            long hardFiles,
+            long lowIdUsers,
+            String version,
+            boolean supportsObfuscation,
+            boolean isStatic) {
+        this(
+                address,
+                name,
+                description,
+                users,
+                files,
+                maxUsers,
+                failed,
+                priority,
+                ping,
+                softFiles,
+                hardFiles,
+                lowIdUsers,
+                version,
+                supportsObfuscation,
+                isStatic,
+                Optional.empty());
+    }
+
+    /** This server in {@code where}. */
+    public ServerInfo withCountry(Optional<String> where) {
+        return new ServerInfo(
+                this.address,
+                this.name,
+                this.description,
+                this.users,
+                this.files,
+                this.maxUsers,
+                this.failed,
+                this.priority,
+                this.ping,
+                this.softFiles,
+                this.hardFiles,
+                this.lowIdUsers,
+                this.version,
+                this.supportsObfuscation,
+                this.isStatic,
+                where);
     }
 }

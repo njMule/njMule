@@ -167,6 +167,41 @@ class EngineTest {
     }
 
     @Test
+    void shouldWaitToBeSetUpWhenItsStartCreatedTheConfiguration() throws Exception {
+        whenTheEngineStarts();
+
+        thenTheSetupIsPending(true);
+    }
+
+    @Test
+    void shouldStillWaitToBeSetUpAfterARestart() throws Exception {
+        givenARunningEngine();
+
+        whenTheEngineIsRestarted();
+
+        thenTheSetupIsPending(true);
+    }
+
+    @Test
+    void shouldNoLongerWaitToBeSetUpOnceTheSetupIsDone() throws Exception {
+        givenARunningEngine();
+        givenTheSetupIsDone();
+
+        whenTheEngineIsRestarted();
+
+        thenTheSetupIsPending(false);
+    }
+
+    @Test
+    void shouldNotWaitToBeSetUpOnAConfigurationOfBefore() throws Exception {
+        givenPreferencesSavedBefore();
+
+        whenTheEngineStarts();
+
+        thenTheSetupIsPending(false);
+    }
+
+    @Test
     void shouldPublishAChangeOfThePreferencesOnceAndTheStopLast() throws Exception {
         givenARunningEngine();
         givenSomeoneListens();
@@ -396,6 +431,20 @@ class EngineTest {
     private void givenAnEngineOnTheConfigurationIn(String folder) throws IOException {
         this.dirs = AppDirectories.underRoot(this.root.resolve(folder), false);
         this.engine = Engine.start(new EngineConfig(this.dirs), () -> false);
+    }
+
+    private void givenTheSetupIsDone() throws Exception {
+        this.engine.finishSetup().get(5, TimeUnit.SECONDS);
+    }
+
+    private void givenPreferencesSavedBefore() throws IOException {
+        Path config = AppDirectories.underRoot(this.root, false).config();
+        Files.createDirectories(config);
+        PreferencesCodec.save(config.resolve(PreferencesCodec.FILE_NAME), Preferences.defaults());
+    }
+
+    private void thenTheSetupIsPending(boolean pending) throws Exception {
+        assertThat(this.engine.setupPending().get(5, TimeUnit.SECONDS)).isEqualTo(pending);
     }
 
     private void givenSomeoneListens() {

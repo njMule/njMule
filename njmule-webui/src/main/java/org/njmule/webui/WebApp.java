@@ -46,7 +46,7 @@ final class WebApp {
             .or(CharMatcher.inRange('A', 'Z'))
             .or(CharMatcher.inRange('0', '9'))
             .or(CharMatcher.anyOf("._-"));
-    private static final Set<String> EXTENSIONS = Set.of("js", "css", "svg", "woff2");
+    private static final Set<String> EXTENSIONS = Set.of("js", "css", "svg", "woff2", "ttf");
     private static final Pattern TRANSLATION = Pattern.compile("/i18n/[A-Za-z-]{2,10}\\.json");
     // The flags of the desktop app, by country code.
     private static final Pattern FLAG = Pattern.compile("/flags/[a-z]{2}\\.png");
@@ -143,6 +143,7 @@ final class WebApp {
             case "css" -> "text/css; charset=utf-8";
             case "svg" -> "image/svg+xml";
             case "woff2" -> "font/woff2";
+            case "ttf" -> "font/ttf";
             case "png" -> "image/png";
             case "json" -> "application/json; charset=utf-8";
             default -> "text/markdown; charset=utf-8";

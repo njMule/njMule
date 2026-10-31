@@ -43,7 +43,7 @@ import org.njmule.core.security.IpWhitelist;
  * @param ipFilterWhitelist addresses the IP filter never blocks, one per line (see {@link #invalidWhitelistEntry})
  * @param eventCommands the programs run when a download ends, a chat message arrives or the disk runs short
  * @param notificationSound whether the desktop app plays {@code notificationSoundFile} with its notifications
- * @param notificationSoundFile a WAV file; empty = none
+ * @param notificationSoundFile a WAV or MP3 file; empty = none
  * @param ipFilterLists addresses (http or https) of IP filter lists, one per line, joined into one filter (see
  *     {@link #invalidListEntry})
  * @param ipFilterUpdateDays the lists are fetched again once the filter is this many days old; {@code 0} = by hand only
@@ -396,7 +396,7 @@ public record Preferences(
                 false,
                 0,
                 Notifications.NONE,
-                false);
+                true);
     }
 
     public Path effectiveIncomingDir(AppDirectories dirs) {

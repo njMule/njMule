@@ -7,7 +7,7 @@ plugins {
 
 description = "njMule Web UI"
 
-// The browser app, built by njmule-webapp.
+// The browser app, built by njmule-ui.
 val webAppDeclared = configurations.dependencyScope("webAppDeclared")
 val webApp = configurations.resolvable("webApp") {
     extendsFrom(webAppDeclared.get())
@@ -15,7 +15,7 @@ val webApp = configurations.resolvable("webApp") {
 }
 
 dependencies {
-    webAppDeclared(project(":njmule-webapp"))
+    webAppDeclared(project(":njmule-ui"))
     api(project(":njmule-core"))
     implementation(libs.slf4j.api)
     implementation(libs.guava)

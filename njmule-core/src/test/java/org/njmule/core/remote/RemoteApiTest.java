@@ -29,6 +29,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -36,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -61,16 +63,21 @@ import org.njmule.core.api.FileHistory;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.ImportOptions;
 import org.njmule.core.api.ImportReport;
+import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.PartMap;
 import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
+import org.njmule.core.api.ServerInfo;
 import org.njmule.core.api.SharedDirectory;
 import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
+import org.njmule.core.persist.PreferencesCodec;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /** The remote-control API against an engine the test controls. */
 @Timeout(60)
@@ -90,6 +97,7 @@ class RemoteApiTest {
     private final List<String> calls = new CopyOnWriteArrayList<>();
     private final CountDownLatch exited = new CountDownLatch(1);
     private final AtomicInteger attempts = new AtomicInteger();
+    private final FakeWebInterface web = new FakeWebInterface();
     private RemoteApi api;
     private ApiServer server;
     private String token;
@@ -142,6 +150,29 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldTellTheJavaAndTheSystemItRunsOnToATokenHolder() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("GET", "/api/v1", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains(
+                "\"java\":\"" + System.getProperty("java.version") + "\"",
+                "\"arch\":\"" + System.getProperty("os.arch") + "\"");
+    }
+
+    @Test
+    void shouldTellAGuestNeitherTheJavaNorTheSystem() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledAsGuest("GET", "/api/v1");
+
+        thenTheStatusIs(200);
+        thenTheBodyDoesNotContain("\"java\"");
+        thenTheBodyDoesNotContain("\"system\"");
+    }
+
+    @Test
     void shouldListTheDownloadsAsJson() throws Exception {
         givenTheApiRuns();
         givenTheEngineDownloads(download());
@@ -154,6 +185,28 @@ class RemoteApiTest {
                 "\"name\":\"talk.bin\"",
                 "\"status\":\"paused\"",
                 "\"priority\":\"normal\"");
+    }
+
+    @Test
+    void shouldGiveTheCountryOfAServerWhenItIsKnown() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKnowsTheServer(ApiSamples.server().withCountry(Optional.of("nl")));
+
+        whenCalled("GET", "/api/v1/servers", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"name\":\"Lighthouse\"", "\"country\":\"nl\"");
+    }
+
+    @Test
+    void shouldGiveTheCountryOfAKadContactWhenItIsKnown() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKnowsTheKadContact(ApiSamples.kadContact().withCountry(Optional.of("nl")));
+
+        whenCalled("GET", "/api/v1/kad/contacts", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"address\":\"198.51.100.40:4672\"", "\"country\":\"nl\"");
     }
 
     @Test
@@ -483,6 +536,65 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldTellWhichPasswordsAreSetWithoutGivingThem() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+        givenTheProxyPasswordIs("hunter22");
+
+        whenCalled("GET", "/api/v1/preferences/passwords", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{\"notify.smtpPassword\":false,\"proxy.password\":true}");
+    }
+
+    @Test
+    void shouldClearAPasswordSetEmpty() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+        givenTheProxyPasswordIs("hunter22");
+
+        whenCalled("PATCH", "/api/v1/preferences", "{\"proxy.password\":\"\"}");
+
+        thenTheStatusIs(200);
+        thenTheBodyDoesNotContain("proxy.password");
+        thenTheProxyPasswordIsEmpty();
+    }
+
+    @Test
+    void shouldGiveTheDefaultPreferencesWhateverWasChanged() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+        givenTheNickWasChanged();
+
+        whenCalled("GET", "/api/v1/preferences/defaults", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"user.nick\":\"njMule\"", "\"net.tcpPort\":\"4662\"");
+        thenTheBodyDoesNotContain("proxy.password");
+    }
+
+    @Test
+    void shouldGiveTheFoldersWithTheDefaultsOfThoseLeftEmpty() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+
+        whenCalled("GET", "/api/v1/folders", "");
+
+        thenTheStatusIs(200);
+        thenTheFoldersAre(AppDirectories.underRoot(this.dir, true));
+    }
+
+    @Test
+    void shouldRefuseTheFoldersToAGuest() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineKeepsPreferences();
+
+        whenCalledAsGuest("GET", "/api/v1/folders");
+
+        thenTheStatusIs(403);
+    }
+
+    @Test
     void shouldChangeOnlyThePreferencesNamed() throws Exception {
         givenTheApiRuns();
         givenTheEngineKeepsPreferences();
@@ -557,6 +669,17 @@ class RemoteApiTest {
 
         thenTheStatusIs(202);
         thenTheBodyContains("\"forwarding\":\"asking\"", "\"tcp\":\"testing\"", "\"done\":false");
+    }
+
+    @Test
+    void shouldAnswerATestOfThePortsWithoutWaitingForItsEnd() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineTestsThePortsForMinutes();
+
+        whenCalled("POST", "/api/v1/ports/test", "");
+
+        thenTheStatusIs(202);
+        thenTheBodyContains("\"tcp\":\"open\"", "\"udp\":\"testing\"", "\"done\":false");
     }
 
     @Test
@@ -641,6 +764,37 @@ class RemoteApiTest {
 
         thenTheStatusIs(200);
         thenTheEngineWasAsked("setDownloadPreview true");
+    }
+
+    @Test
+    void shouldTellWhereTheDataOfADownloadIs() throws Exception {
+        givenTheApiRuns();
+        givenTheDataOfTheDownloadIn(Optional.of(this.dir.resolve("001.part")));
+
+        whenCalled("GET", "/api/v1/downloads/" + HASH + "/data", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"path\":\"" + jsonPath(this.dir.resolve("001.part")) + "\"");
+    }
+
+    @Test
+    void shouldFindNoDataOfADownloadWhoseStartHasNotCome() throws Exception {
+        givenTheApiRuns();
+        givenTheDataOfTheDownloadIn(Optional.empty());
+
+        whenCalled("GET", "/api/v1/downloads/" + HASH + "/data", "");
+
+        thenTheStatusIs(404);
+    }
+
+    @Test
+    void shouldRefuseTheDataOfADownloadToAGuest() throws Exception {
+        givenTheApiRuns();
+        givenTheDataOfTheDownloadIn(Optional.of(this.dir.resolve("001.part")));
+
+        whenCalledAsGuest("GET", "/api/v1/downloads/" + HASH + "/data");
+
+        thenTheStatusIs(403);
     }
 
     @Test
@@ -735,6 +889,62 @@ class RemoteApiTest {
 
         thenTheStatusIs(400);
         thenTheEngineWasNotAsked();
+    }
+
+    @Test
+    void shouldTellTheEmuleProfileFoundOnItsComputer() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineFindsAnEmuleProfile(Optional.of(this.dir));
+
+        whenCalled("GET", "/api/v1/import/emule", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{\"path\":\"" + jsonPath(this.dir) + "\"}");
+    }
+
+    @Test
+    void shouldTellNoPathWhenItsComputerHasNoEmuleProfile() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineFindsAnEmuleProfile(Optional.empty());
+
+        whenCalled("GET", "/api/v1/import/emule", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{}");
+    }
+
+    @Test
+    void shouldTellThatNjMuleWaitsToBeSetUp() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineWaitsToBeSetUp(true);
+
+        whenCalled("GET", "/api/v1/setup", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{\"pending\":true}");
+    }
+
+    @Test
+    void shouldMarkTheSetupDone() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineWaitsToBeSetUp(true);
+
+        whenCalled("POST", "/api/v1/setup/done", "");
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("finish setup");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/v1/setup", "/api/v1/import/emule"})
+    void shouldRefuseTheFirstStartToAGuest(String path) throws Exception {
+        givenTheApiRuns();
+        givenTheEngineWaitsToBeSetUp(true);
+        givenTheEngineFindsAnEmuleProfile(Optional.of(this.dir));
+
+        whenCalledAsGuest("GET", path);
+
+        thenTheStatusIs(403);
     }
 
     @Test
@@ -842,6 +1052,187 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldAddTheServersOfAServerMetOfTheEnginesComputer() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineAddsServers();
+        givenAFile("server.met");
+
+        whenCalled("POST", "/api/v1/servers/import", "{\"path\":\"" + jsonPath(this.dir.resolve("server.met")) + "\"}");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{\"added\":3}");
+        thenTheEngineWasAsked("addServers " + this.dir.resolve("server.met"));
+    }
+
+    @Test
+    void shouldAddTheContactsOfANodesDatSent() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineAddsServers();
+
+        whenCalled("POST", "/api/v1/kad/nodes", "{\"data\":\"AQID\"}");
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("addKadContacts 3 bytes");
+    }
+
+    @Test
+    void shouldRefuseAListFileThatIsNotThere() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineAddsServers();
+
+        whenCalled(
+                "POST", "/api/v1/servers/import", "{\"path\":\"" + jsonPath(this.dir.resolve("nothing.met")) + "\"}");
+
+        thenTheStatusIs(400);
+        thenTheEngineWasNotAsked();
+    }
+
+    @Test
+    void shouldTakeAWellFormedSearchExpression() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("POST", "/api/v1/searches/check", "{\"query\":\"talk AND (night OR day) @size>10m\"}");
+
+        thenTheStatusIs(200);
+    }
+
+    @Test
+    void shouldTellWhatIsWrongWithAMalformedSearchExpression() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("POST", "/api/v1/searches/check", "{\"query\":\"talk AND\"}");
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("AND");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"folder", "file", "missing"})
+    void shouldTellWhatAPathNamesOnTheEnginesComputer(String kind) throws Exception {
+        givenTheApiRuns();
+        givenAFile("talk.met");
+
+        whenCalled("POST", "/api/v1/folders/check", "{\"path\":\"" + jsonPath(pathOf(kind)) + "\"}");
+
+        thenTheStatusIs(200);
+        thenTheBodyIs("{\"kind\":\"" + kind + "\"}");
+    }
+
+    @Test
+    void shouldRefuseToCheckAFolderForAGuest() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledAsGuest("POST", "/api/v1/folders/check");
+
+        thenTheStatusIs(403);
+    }
+
+    @Test
+    void shouldListTheNetworkInterfacesOfTheEnginesComputer() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("GET", "/api/v1/interfaces", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyIsAList();
+    }
+
+    @Test
+    void shouldRefuseTheNetworkInterfacesToAGuest() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledAsGuest("GET", "/api/v1/interfaces");
+
+        thenTheStatusIs(403);
+    }
+
+    @Test
+    void shouldGiveTheWebInterfaceSettingsWithoutThePasswords() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("GET", "/api/v1/webui", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains(
+                "\"changeable\":false", "\"enabled\":false", "\"port\":4711", "\"hasPassword\":true", "\"url\":null");
+    }
+
+    @Test
+    void shouldRefuseTheWebInterfaceSettingsToAGuest() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledAsGuest("GET", "/api/v1/webui");
+
+        thenTheStatusIs(403);
+    }
+
+    @Test
+    void shouldChangeTheWebInterfaceForTheDesktopWindow() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledBy(ApiServer.LOCAL, "PATCH", "/api/v1/webui", "{\"enabled\":true,\"hosts\":[\"nas.local\"]}");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains(
+                "\"changeable\":true",
+                "\"enabled\":true",
+                "\"hosts\":[\"nas.local\"]",
+                "\"url\":\"http://127.0.0.1:4711/\"");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {ApiServer.SESSION, "Authorization"})
+    void shouldRefuseToChangeTheWebInterfaceFromABrowserOrATokenHolder(String caller) throws Exception {
+        givenTheApiRuns();
+
+        whenCalledBy(caller, "PATCH", "/api/v1/webui", "{\"lan\":true}");
+
+        thenTheStatusIs(403);
+        thenTheWebInterfaceIsOnlyForThisComputer();
+    }
+
+    @Test
+    void shouldRefuseAWebInterfaceTheEngineRefuses() throws Exception {
+        givenTheApiRuns();
+        givenTheWebInterfaceHasNoPassword();
+
+        whenCalledBy(ApiServer.LOCAL, "PATCH", "/api/v1/webui", "{\"enabled\":true}");
+
+        thenTheStatusIs(400);
+        thenTheBodyContains("needs a password");
+    }
+
+    @Test
+    void shouldGiveTheApiTokenToTheDesktopWindow() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledBy(ApiServer.LOCAL, "GET", "/api/v1/webui/token", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains("\"token\":\"" + this.token + "\"");
+    }
+
+    @Test
+    void shouldRefuseTheApiTokenToABrowser() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledBy(ApiServer.SESSION, "GET", "/api/v1/webui/token", "");
+
+        thenTheStatusIs(403);
+        thenTheBodyDoesNotContain(this.token);
+    }
+
+    @Test
+    void shouldRefuseTheOldTokenOnceTheDesktopWindowRenewedIt() throws Exception {
+        givenTheApiRuns();
+        givenTheDesktopWindowRenewedTheToken();
+
+        whenCalled("GET", "/api/v1/status", "");
+
+        thenTheStatusIs(401);
+    }
+
+    @Test
     void shouldStopNjMuleWhenAsked() throws Exception {
         givenTheApiRuns();
 
@@ -863,8 +1254,42 @@ class RemoteApiTest {
                 RecentEvents.follow(engine),
                 client -> this.attempts.incrementAndGet() <= ALLOWED_ATTEMPTS,
                 Optional.of(this.exited::countDown),
-                Duration.ofSeconds(1));
+                Duration.ofSeconds(1),
+                Optional.of(this.web));
         this.server = ApiServer.start(this.api);
+    }
+
+    // Each list gives three entries; what was asked is kept.
+    private void givenTheEngineAddsServers() {
+        for (String method : List.of("addServers", "addKadContacts")) {
+            this.fake.answer(method, args -> {
+                this.calls.add(method + " "
+                        + (args[0] instanceof byte[] data ? data.length + " bytes" : String.valueOf(args[0])));
+                return CompletableFuture.completedFuture(3);
+            });
+        }
+    }
+
+    private void givenAFile(String name) throws IOException {
+        Files.write(this.dir.resolve(name), new byte[] {0x0E, 0, 0, 0, 0});
+    }
+
+    private Path pathOf(String kind) {
+        return switch (kind) {
+            case "folder" -> this.dir;
+            case "file" -> this.dir.resolve("talk.met");
+            default -> this.dir.resolve("nothing here");
+        };
+    }
+
+    private void givenTheWebInterfaceHasNoPassword() {
+        this.web.forget();
+    }
+
+    private void givenTheDesktopWindowRenewedTheToken() throws Exception {
+        whenCalledBy(ApiServer.LOCAL, "POST", "/api/v1/webui/token", "");
+        thenTheStatusIs(200);
+        thenTheBodyDoesNotContain(this.token);
     }
 
     private void givenWrongTokensSent(int count) throws Exception {
@@ -901,6 +1326,13 @@ class RemoteApiTest {
 
     private void thenTheBodyIs(String body) {
         assertThat(this.answer.body()).isEqualTo(body);
+    }
+
+    private void thenTheFoldersAre(AppDirectories dirs) {
+        JsonNode folders = JsonMapper.shared().readTree(this.answer.body());
+        assertThat(folders.path("incoming").asString())
+                .isEqualTo(dirs.downloads().toString());
+        assertThat(folders.path("temp").asString()).isEqualTo(dirs.temp().toString());
     }
 
     private void givenAClientSharing(String client, String name) {
@@ -941,8 +1373,32 @@ class RemoteApiTest {
         return path.toString().replace("\\", "\\\\");
     }
 
+    private void givenTheEngineFindsAnEmuleProfile(Optional<Path> profile) {
+        this.fake.answer("emuleProfile", args -> CompletableFuture.completedFuture(profile));
+    }
+
+    private void givenTheEngineWaitsToBeSetUp(boolean pending) {
+        this.fake.answer("setupPending", args -> CompletableFuture.completedFuture(pending));
+        this.fake.answer("finishSetup", args -> {
+            this.calls.add("finish setup");
+            return CompletableFuture.completedFuture(null);
+        });
+    }
+
+    private void givenTheEngineKnowsTheServer(ServerInfo server) {
+        this.fake.answer("servers", args -> CompletableFuture.completedFuture(List.of(server)));
+    }
+
+    private void givenTheEngineKnowsTheKadContact(KadContactInfo contact) {
+        this.fake.answer("kadContacts", args -> CompletableFuture.completedFuture(List.of(contact)));
+    }
+
     private void givenTheEngineDownloads(DownloadInfo download) {
         this.fake.answer("downloads", args -> CompletableFuture.completedFuture(List.of(download)));
+    }
+
+    private void givenTheDataOfTheDownloadIn(Optional<Path> data) {
+        this.fake.answer("downloadData", args -> CompletableFuture.completedFuture(data));
     }
 
     private void givenTheEngineAddsDownloads() {
@@ -1073,6 +1529,12 @@ class RemoteApiTest {
                         false)));
     }
 
+    // Its future completes only at the end of the test, long after a call waits.
+    private void givenTheEngineTestsThePortsForMinutes() {
+        this.fake.answer("testPorts", args -> new CompletableFuture<PortTest>());
+        this.fake.answer("portTest", args -> CompletableFuture.completedFuture(Optional.of(ApiSamples.portTest())));
+    }
+
     private void givenTheEngineKeepsCategories() {
         AtomicReference<List<Category>> kept = new AtomicReference<>(List.of());
         this.fake.answer("categories", args -> CompletableFuture.completedFuture(kept.get()));
@@ -1135,6 +1597,20 @@ class RemoteApiTest {
     }
 
     @SuppressWarnings("unchecked")
+    private void givenTheNickWasChanged() {
+        this.preferences = PreferencesCodec.apply(this.preferences, Map.of("user.nick", "Night Owl"));
+        this.fake.value("preferences", this.preferences);
+    }
+
+    private void givenTheProxyPasswordIs(String password) {
+        this.preferences = PreferencesCodec.apply(this.preferences, Map.of("proxy.password", password));
+        this.fake.value("preferences", this.preferences);
+    }
+
+    private void thenTheProxyPasswordIsEmpty() {
+        assertThat(this.preferences.proxy().password()).isEmpty();
+    }
+
     private void givenTheEngineKeepsPreferences() {
         this.fake.value("preferences", this.preferences);
         this.fake.answer("updatePreferences", args -> {
@@ -1172,6 +1648,16 @@ class RemoteApiTest {
                 body.isEmpty() ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body);
         this.answer = this.http.send(
                 request(path, token).method(method, content).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    // A caller named by the header the test server knows it by; the token's header is a caller with the token.
+    private void whenCalledBy(String caller, String method, String path, String body) throws Exception {
+        HttpRequest.BodyPublisher content =
+                body.isEmpty() ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body);
+        HttpRequest.Builder request = caller.equals("Authorization")
+                ? request(path, Optional.of(this.token))
+                : request(path, Optional.empty()).header(caller, "1");
+        this.answer = this.http.send(request.method(method, content).build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private void whenCalledAsGuest(String method, String path) throws Exception {
@@ -1246,6 +1732,14 @@ class RemoteApiTest {
             line = this.stream.readLine();
         }
         assertThat(line).isNull();
+    }
+
+    private void thenTheBodyIsAList() throws Exception {
+        assertThat(JsonMapper.shared().readTree(this.answer.body()).isArray()).isTrue();
+    }
+
+    private void thenTheWebInterfaceIsOnlyForThisComputer() {
+        assertThat(this.web.settings().lan()).isFalse();
     }
 
     private void thenTheUploadLimitIs(int kibps) {

@@ -43,6 +43,8 @@ import org.njmule.core.remote.ApiToken;
 @Timeout(60)
 class WebUiApiTest {
 
+    private static final String SHELL_PAGE = "http://tauri.localhost";
+
     @TempDir
     Path dir;
 
@@ -115,6 +117,36 @@ class WebUiApiTest {
         thenTheBodyContains("API is off");
     }
 
+    @Test
+    void shouldLetTheDesktopShellsPagesAskAcrossOrigins() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledFrom("OPTIONS", "/api/v1/downloads", Optional.empty(), SHELL_PAGE);
+
+        thenTheStatusIs(204);
+        thenTheAnswerAllows(SHELL_PAGE);
+    }
+
+    @Test
+    void shouldLetTheDesktopShellsPagesReadWhatTheTokenGets() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledFrom("GET", "/api/v1", Optional.of(this.token), SHELL_PAGE);
+
+        thenTheStatusIs(200);
+        thenTheAnswerIsReadableBy(SHELL_PAGE);
+    }
+
+    @Test
+    void shouldLetNoOtherPageAskAcrossOrigins() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledFrom("OPTIONS", "/api/v1/downloads", Optional.empty(), "https://example.org");
+
+        thenTheStatusIs(403);
+        thenTheAnswerIsReadableBy(null);
+    }
+
     // Given
 
     private void givenTheApiRuns() throws IOException {
@@ -160,6 +192,15 @@ class WebUiApiTest {
                 HttpResponse.BodyHandlers.ofString());
     }
 
+    private void whenCalledFrom(String method, String path, Optional<String> token, String origin) throws Exception {
+        this.answer = this.http.send(
+                request(path, token)
+                        .header("Origin", origin)
+                        .method(method, HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
     private void whenTheInterfaceStops() {
         this.ui.close();
         this.ui = null;
@@ -173,6 +214,17 @@ class WebUiApiTest {
 
     private void thenTheBodyContains(String... parts) {
         assertThat(this.answer.body()).contains(parts);
+    }
+
+    private void thenTheAnswerAllows(String origin) {
+        thenTheAnswerIsReadableBy(origin);
+        assertThat(this.answer.headers().firstValue("Access-Control-Allow-Headers"))
+                .hasValueSatisfying(h -> assertThat(h).contains("Authorization"));
+    }
+
+    private void thenTheAnswerIsReadableBy(String origin) {
+        assertThat(this.answer.headers().firstValue("Access-Control-Allow-Origin"))
+                .isEqualTo(Optional.ofNullable(origin));
     }
 
     private void thenNjMuleWasStopped() throws InterruptedException {

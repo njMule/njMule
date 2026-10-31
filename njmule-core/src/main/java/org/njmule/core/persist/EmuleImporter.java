@@ -165,6 +165,28 @@ public final class EmuleImporter {
         this.emuleRunning = Objects.requireNonNull(emuleRunning, "emuleRunning");
     }
 
+    /**
+     * eMule's configuration folder of this computer's user, in the local then the roaming application data that
+     * {@code env} names, if one is there.
+     */
+    public static Optional<Path> findConfigDirectory(Map<String, String> env) {
+        for (String variable : List.of("LOCALAPPDATA", "APPDATA")) {
+            String base = env.get(variable);
+            if (base == null || base.isBlank()) {
+                continue;
+            }
+            try {
+                Path config = Path.of(base, "eMule", "config");
+                if (config.isAbsolute() && Files.isDirectory(config)) {
+                    return Optional.of(config);
+                }
+            } catch (InvalidPathException e) {
+                // Not a usable path.
+            }
+        }
+        return Optional.empty();
+    }
+
     /** Whether an eMule runs on this computer. */
     public static boolean isEmuleRunning() {
         return ProcessHandle.allProcesses()

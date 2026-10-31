@@ -39,8 +39,10 @@ import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
 import java.util.concurrent.SubmissionPublisher;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
@@ -103,6 +105,7 @@ public final class RemoteEngine implements NjMuleEngine {
     private static final Logger logger = LoggerFactory.getLogger(RemoteEngine.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
     private static final Duration RETRY = Duration.ofSeconds(5);
+    private static final Duration PORT_TEST_READ = Duration.ofSeconds(1);
     private static final JsonMapper MAPPER = JsonMapper.shared();
 
     private final String api;
@@ -236,6 +239,11 @@ public final class RemoteEngine implements NjMuleEngine {
     @Override
     public CompletableFuture<Integer> addServers(Path serverMet) {
         return notHere("a server.met of this computer");
+    }
+
+    @Override
+    public CompletableFuture<Integer> addServers(byte[] serverMet) {
+        return count("POST", "servers/import", body("data", Base64.getEncoder().encodeToString(serverMet)));
     }
 
     @Override
@@ -591,7 +599,19 @@ public final class RemoteEngine implements NjMuleEngine {
 
     @Override
     public CompletableFuture<PortTest> testPorts() {
-        return json("POST", "ports/test", null).thenApply(ApiReader::portTest);
+        return json("POST", "ports/test", null).thenApply(ApiReader::portTest).thenCompose(this::untilOver);
+    }
+
+    // The other njMule answers as the test starts: it is read again until over, when this engine's future completes.
+    private CompletableFuture<PortTest> untilOver(PortTest test) {
+        if (test.done()) {
+            return CompletableFuture.completedFuture(test);
+        }
+        Executor later = CompletableFuture.delayedExecutor(PORT_TEST_READ.toMillis(), TimeUnit.MILLISECONDS);
+        return CompletableFuture.runAsync(() -> {}, later)
+                .thenCompose(nothing -> portTest())
+                .thenCompose(
+                        read -> read.map(this::untilOver).orElseGet(() -> CompletableFuture.completedFuture(test)));
     }
 
     @Override
@@ -613,6 +633,11 @@ public final class RemoteEngine implements NjMuleEngine {
     @Override
     public CompletableFuture<Integer> addKadContacts(Path nodesDat) {
         return notHere("a nodes.dat of this computer");
+    }
+
+    @Override
+    public CompletableFuture<Integer> addKadContacts(byte[] nodesDat) {
+        return count("POST", "kad/nodes", body("data", Base64.getEncoder().encodeToString(nodesDat)));
     }
 
     @Override
@@ -721,6 +746,24 @@ public final class RemoteEngine implements NjMuleEngine {
                 .put("identity", options.identity())
                 .put("downloads", options.downloads());
         return json("POST", "import/emule", body).thenApply(ApiReader::importReport);
+    }
+
+    @Override
+    public CompletableFuture<Optional<Path>> emuleProfile() {
+        return json("GET", "import/emule", null).thenApply(n -> {
+            JsonNode path = n.path("path");
+            return path.isString() ? Optional.of(Path.of(path.asString())) : Optional.empty();
+        });
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setupPending() {
+        return json("GET", "setup", null).thenApply(n -> n.path("pending").asBoolean(false));
+    }
+
+    @Override
+    public CompletableFuture<Void> finishSetup() {
+        return done("POST", "setup/done", null);
     }
 
     @Override

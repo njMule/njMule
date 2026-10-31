@@ -76,7 +76,7 @@ class RemoteFolderActionsTest {
         givenAWindowOnAnotherComputer();
         givenTheSharedFilesShown();
 
-        whenTheButtonIsPressed("Share Directory");
+        whenTheButtonIsPressed("Share a folder");
 
         thenTheUserIsTold(ELSEWHERE);
     }

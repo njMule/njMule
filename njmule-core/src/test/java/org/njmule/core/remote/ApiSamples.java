@@ -35,6 +35,7 @@ import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.KadContactInfo;
@@ -87,7 +88,8 @@ final class ApiSamples {
                 82_469,
                 "17.15",
                 true,
-                false);
+                false,
+                Optional.of("nl"));
     }
 
     static KadInfo kad() {
@@ -201,7 +203,7 @@ final class ApiSamples {
                 new SearchResult.Media("Ann", "Talks", "Opening", 3725, 192, "mp3"),
                 SearchResult.Origin.NONE,
                 70,
-                Optional.empty(),
+                Optional.of(Hash20.parseBase32("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567")),
                 List.of(new SearchResult.Name("talk.bin", 2, 1), new SearchResult.Name("talk (2).bin", 1, -1)));
     }
 
@@ -287,7 +289,8 @@ final class ApiSamples {
     }
 
     static KadContactInfo kadContact() {
-        return new KadContactInfo("8F3C2A1D90B44E6E9A0C7E51D2B3F4A5", "198.51.100.40:4672", 2, "8F3C2A1D…", 9, true);
+        return new KadContactInfo(
+                "8F3C2A1D90B44E6E9A0C7E51D2B3F4A5", "198.51.100.40:4672", 2, "8F3C2A1D…", 9, true, Optional.of("jp"));
     }
 
     static KadSearchInfo kadSearch() {

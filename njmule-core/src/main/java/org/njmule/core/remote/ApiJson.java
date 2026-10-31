@@ -17,6 +17,7 @@
 package org.njmule.core.remote;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
@@ -34,6 +35,7 @@ import org.njmule.core.api.FileComment;
 import org.njmule.core.api.FileKind;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
@@ -54,6 +56,7 @@ import org.njmule.core.api.SourceInfo;
 import org.njmule.core.api.SpamMarks;
 import org.njmule.core.api.UpdateStatus;
 import org.njmule.core.api.UploadInfo;
+import org.njmule.core.config.BindInterface;
 import org.njmule.core.config.Schedule;
 import tools.jackson.core.JsonEncoding;
 import tools.jackson.core.JsonGenerator;
@@ -170,7 +173,46 @@ final class ApiJson {
         g.writeStringProperty("version", s.version());
         g.writeBooleanProperty("obfuscation", s.supportsObfuscation());
         g.writeBooleanProperty("static", s.isStatic());
+        optional(g, "country", s.country());
         g.writeEndObject();
+    }
+
+    static void folders(JsonGenerator g, Path incoming, Path temp) {
+        g.writeStartObject();
+        g.writeStringProperty("incoming", incoming.toString());
+        g.writeStringProperty("temp", temp.toString());
+        g.writeEndObject();
+    }
+
+    static void nic(JsonGenerator g, BindInterface.Candidate c) {
+        g.writeStartObject();
+        g.writeStringProperty("name", c.name());
+        g.writeStringProperty("displayName", c.displayName());
+        g.writeArrayPropertyStart("addresses");
+        c.addresses().forEach(a -> g.writeString(a.getHostAddress()));
+        g.writeEndArray();
+        g.writeEndObject();
+    }
+
+    static void webInterface(JsonGenerator g, WebInterface.Settings s, boolean changeable) {
+        g.writeStartObject();
+        g.writeBooleanProperty("changeable", changeable);
+        g.writeBooleanProperty("enabled", s.enabled());
+        g.writeNumberProperty("port", s.port());
+        g.writeBooleanProperty("lan", s.lan());
+        strings(g, "hosts", s.hosts());
+        strings(g, "proxies", s.proxies());
+        g.writeBooleanProperty("api", s.api());
+        g.writeBooleanProperty("hasPassword", s.hasPassword());
+        g.writeBooleanProperty("hasGuest", s.hasGuest());
+        optional(g, "url", s.url());
+        g.writeEndObject();
+    }
+
+    private static void strings(JsonGenerator g, String name, List<String> values) {
+        g.writeArrayPropertyStart(name);
+        values.forEach(g::writeString);
+        g.writeEndArray();
     }
 
     static void update(JsonGenerator g, UpdateStatus s) {
@@ -418,6 +460,8 @@ final class ApiJson {
         g.writeNumberProperty("sources", r.sources());
         completeSources(g, r.completeSources());
         optional(g, "type", r.type());
+        // Its eD2K link carries it, so that a download from the link can check and repair the file.
+        optional(g, "aich", r.aichHash().map(Hash20::toBase32));
         g.writeNumberProperty("spamRating", r.spamRating());
         g.writeBooleanProperty("spam", r.isSpam());
         // The names the file was found under, when more than one.
@@ -651,6 +695,7 @@ final class ApiJson {
         g.writeStringProperty("distance", c.distance());
         g.writeNumberProperty("version", c.version());
         g.writeBooleanProperty("verified", c.verified());
+        optional(g, "country", c.country());
         g.writeEndObject();
     }
 

@@ -107,6 +107,8 @@ tasks.withType<Test>().configureEach {
     systemProperty("njmule.upnp.disabled", "true")
     systemProperty("njmule.defaultlists.disabled", "true")
     systemProperty("njmule.update.disabled", "true")
+    // Nor is DB-IP's country database downloaded, which every profile asks for by default.
+    systemProperty("njmule.countries.disabled", "true")
     // Test settings given on the command line, e.g. -Pnjmule.interop.kadPort=14897.
     systemProperties(testSettings.get())
 }

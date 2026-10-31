@@ -17,18 +17,32 @@
 package org.njmule.core.api;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * A contact of our Kad routing table.
  *
  * @param type how far it is trusted, from 0 (answered lately) to 4 (not heard from)
  * @param distance the XOR of its id and ours, in hex: the smaller, the closer
+ * @param country the contact's country as its ISO 3166-1 code in lower case, when the countries are shown and known
  */
-public record KadContactInfo(String id, String address, int type, String distance, int version, boolean verified) {
+public record KadContactInfo(
+        String id, String address, int type, String distance, int version, boolean verified, Optional<String> country) {
 
     public KadContactInfo {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(address, "address");
         Objects.requireNonNull(distance, "distance");
+        Objects.requireNonNull(country, "country");
+    }
+
+    /** A contact whose country is not known. */
+    public KadContactInfo(String id, String address, int type, String distance, int version, boolean verified) {
+        this(id, address, type, distance, version, verified, Optional.empty());
+    }
+
+    /** This contact in {@code where}. */
+    public KadContactInfo withCountry(Optional<String> where) {
+        return new KadContactInfo(this.id, this.address, this.type, this.distance, this.version, this.verified, where);
     }
 }

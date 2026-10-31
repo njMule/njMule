@@ -34,6 +34,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Flow;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,7 @@ import org.njmule.core.api.Ed2kLink;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.api.PortTest;
 import org.njmule.core.api.SearchId;
 import org.njmule.core.api.SearchRequest;
 import org.njmule.core.api.SearchResult;
@@ -57,6 +59,8 @@ class RemoteEngineTest {
     private static final Hash16 HASH = Hash16.parseHex(ApiSamples.HASH);
     private static final Ed2kLink.FileLink LINK =
             (Ed2kLink.FileLink) Ed2kLink.parse("ed2k://|file|talk.bin|5000|" + ApiSamples.HASH + "|/");
+    private static final PortTest PORTS_OPEN = new PortTest(
+            4662, 4672, PortTest.Forwarding.FORWARDED, "192.0.2.1", PortTest.Reach.OPEN, PortTest.Reach.OPEN, true);
 
     @TempDir
     Path dir;
@@ -127,6 +131,17 @@ class RemoteEngineTest {
     }
 
     @Test
+    void shouldWaitForTheEndOfATestOfThePortsOfTheOtherNjmule() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItsTestOfThePortsEndsAtTheNextRead();
+        givenConnected();
+
+        whenAsked(this.remote.testPorts());
+
+        thenTheAnswerIs(PORTS_OPEN);
+    }
+
+    @Test
     void shouldPassOnTheEventsOfTheOtherNjmule() throws Exception {
         givenTheOtherNjmuleRuns();
         givenItDownloads(ApiSamples.download());
@@ -167,6 +182,28 @@ class RemoteEngineTest {
         whenAsked(this.remote.savedSearches());
 
         thenTheAnswerIs(List.of(ApiSamples.savedSearch()));
+    }
+
+    @Test
+    void shouldFindTheEmuleProfileOnTheComputerOfTheOtherNjmule() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItAnswers("emuleProfile", Optional.of(this.dir));
+        givenConnected();
+
+        whenAsked(this.remote.emuleProfile());
+
+        thenTheAnswerIs(Optional.of(this.dir));
+    }
+
+    @Test
+    void shouldAskWhetherTheOtherNjmuleWaitsToBeSetUp() throws Exception {
+        givenTheOtherNjmuleRuns();
+        givenItAnswers("setupPending", true);
+        givenConnected();
+
+        whenAsked(this.remote.setupPending());
+
+        thenTheAnswerIs(true);
     }
 
     @Test
@@ -364,6 +401,16 @@ class RemoteEngineTest {
 
     private void givenItDownloads(DownloadInfo download) {
         this.fake.answer("downloads", args -> CompletableFuture.completedFuture(List.of(download)));
+    }
+
+    // Its API answers as the test starts; the test is over at the read after.
+    private void givenItsTestOfThePortsEndsAtTheNextRead() {
+        AtomicInteger reads = new AtomicInteger();
+        this.fake.answer("testPorts", args -> new CompletableFuture<PortTest>());
+        this.fake.answer(
+                "portTest",
+                args -> CompletableFuture.completedFuture(
+                        Optional.of(reads.getAndIncrement() == 0 ? ApiSamples.portTest() : PORTS_OPEN)));
     }
 
     private void givenItKnowsTheDownload(boolean known) {
