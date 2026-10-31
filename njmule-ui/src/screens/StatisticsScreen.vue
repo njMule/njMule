@@ -29,6 +29,8 @@ import StatsTree from './statistics/StatsTree.vue';
 
 type Span = '600' | '3600' | '86400';
 
+const TILE_MIN = 170;
+
 const span = ref<Span>('600');
 const samples = shallowRef<RateSample[]>([]);
 const step = ref(1);
@@ -96,6 +98,30 @@ const tiles = computed(() => {
     ];
 });
 
+// The tiles take one width, the widest one's, in as many columns as fit, as the desktop app's.
+const tilesBox = ref<HTMLElement | null>(null);
+const tileWidth = ref(TILE_MIN);
+
+watch(
+    tiles,
+    () => {
+        // Kept aside while another place shows, the tiles measure nothing.
+        if (!tilesBox.value?.isConnected) {
+            return;
+        }
+        let widest = TILE_MIN;
+        for (const tile of tilesBox.value.children) {
+            const style = getComputedStyle(tile);
+            const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+            for (const part of tile.children) {
+                widest = Math.max(widest, Math.ceil(part.getBoundingClientRect().width + padding));
+            }
+        }
+        tileWidth.value = widest;
+    },
+    { flush: 'post' },
+);
+
 const totals = computed(() => {
     const s = status.value;
     return [
@@ -139,7 +165,7 @@ const tree = computed(() => {
 
 <template>
     <div class="screen">
-        <div class="tiles">
+        <div ref="tilesBox" class="tiles" :style="{ '--tile-width': `${tileWidth}px` }">
             <div v-for="tile in tiles" :key="tile.name" class="stat-card">
                 <span class="stat-name">{{ tile.name }}</span>
                 <strong class="stat-value">{{ tile.value }}</strong>
@@ -195,28 +221,31 @@ const tree = computed(() => {
 }
 
 .tiles {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, var(--tile-width));
     gap: 12px;
 }
 
 .stat-card {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     gap: 2px;
-    min-width: 170px;
     padding: 10px 14px;
     line-height: 1.4;
     border-radius: 8px;
     background: var(--color-bg-subtle);
 }
 
+/* Never wrapped: each part is measured whole to give the tiles their width. */
 .stat-name {
     color: var(--color-fg-muted);
+    white-space: nowrap;
 }
 
 .stat-value {
     font-size: 1.3em;
+    white-space: nowrap;
 }
 
 /* The cards of the statistics: a heading, then a graph or named figures. */
