@@ -24,8 +24,9 @@ async function play(path: string): Promise<void> {
     playing = true;
     let url = '';
     try {
-        const wav = await invoke<ArrayBuffer>('sound', { path });
-        url = URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }));
+        const sound = await invoke<ArrayBuffer>('sound', { path });
+        const type = /\.mp3$/i.test(path) ? 'audio/mpeg' : 'audio/wav';
+        url = URL.createObjectURL(new Blob([sound], { type }));
         const audio = new Audio(url);
         await new Promise<void>((done) => {
             const cut = window.setTimeout(() => {
@@ -106,7 +107,7 @@ export const desktop: Platform = {
         }
         return invoke<string | null>('choose_folder', { title });
     },
-    chooseFile: (title, kind, extension) => invoke<string | null>('choose_file', { title, kind, extension }),
+    chooseFile: (title, kind, extensions) => invoke<string | null>('choose_file', { title, kind, extensions }),
     onLinks: (handler) => {
         void listen<string[]>('links', (e) => handler(e.payload));
         // Links the shell received before the window listened.

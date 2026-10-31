@@ -50,7 +50,7 @@ export function chooseListFile(
     extension: string,
 ): Promise<ChosenList | undefined> {
     if (onEngine) {
-        return (platform?.chooseFile(title, kind, extension) ?? Promise.resolve(null)).then((path) =>
+        return (platform?.chooseFile(title, kind, [extension]) ?? Promise.resolve(null)).then((path) =>
             path ? { body: { path }, name: fileName(path) } : undefined,
         );
     }

@@ -310,6 +310,13 @@ export function isCommandLine(text: string): boolean {
 }
 
 /** Nothing, or the full path of a file on the engine's computer, Windows or not. */
+/** Whether {@code text} is the full path of a sound the window plays, a WAV or MP3 file, or empty for none. */
+export function isSoundFile(text: string): boolean {
+    return text.trim() === '' || (isFullPath(text) && SOUND_FILE.test(text.trim()));
+}
+
+const SOUND_FILE = /\.(wav|mp3)$/i;
+
 export function isFullPath(text: string): boolean {
     return text === '' || /^([A-Za-z]:[\\/]|[\\/]{2}|\/)/.test(text);
 }
@@ -451,7 +458,7 @@ export function checkRules(
                 valid: isNightHours,
             };
         case 'soundFile':
-            return { allowed: printable, max: MAX_TEXT, hint: t('nj.input.soundFile'), valid: isFullPath };
+            return { allowed: printable, max: MAX_TEXT, hint: t('nj.input.soundFile'), valid: isSoundFile };
         case 'folder':
             return {
                 allowed: printable,

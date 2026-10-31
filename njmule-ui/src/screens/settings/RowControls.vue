@@ -100,11 +100,22 @@ function focused(field: Field, e: FocusEvent): void {
 }
 
 async function browse(field: Field): Promise<void> {
-    const folder = await props.platform?.chooseFolder(props.title);
-    if (folder) {
-        type(field, folder);
+    const chosen =
+        field.kind === 'sound'
+            ? await props.platform?.chooseFile(props.title, 'WAV, MP3', SOUND_EXTENSIONS)
+            : await props.platform?.chooseFolder(props.title);
+    if (chosen) {
+        type(field, chosen);
         await commit(props.row, field);
     }
+}
+
+// The kinds of sound the window plays.
+const SOUND_EXTENSIONS = ['wav', 'mp3'];
+
+// The sound as the notifications would play it, applied or not.
+function hear(field: Field): void {
+    props.platform?.playSound(shown(field).trim());
 }
 </script>
 
@@ -210,13 +221,22 @@ async function browse(field: Field): Promise<void> {
             />
             <span v-if="field.unit">{{ t(field.unit) }}</span>
             <button
-                v-if="field.kind === 'folder'"
+                v-if="field.kind === 'folder' || field.kind === 'sound'"
                 type="button"
                 class="button"
                 :disabled="!platform?.desktop || !enabled(field)"
                 @click="browse(field)"
             >
                 <Icon name="FOLDER_OPEN" />{{ t('IDS_PW_BROWSE') }}
+            </button>
+            <button
+                v-if="field.kind === 'sound'"
+                type="button"
+                class="button"
+                :disabled="!platform?.desktop || shown(field).trim() === '' || wrong(field)"
+                @click="hear(field)"
+            >
+                <Icon name="VOLUME" />{{ t('IDS_TEST') }}
             </button>
         </template>
     </template>

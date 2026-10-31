@@ -765,14 +765,20 @@ async fn choose_folder(app: AppHandle, title: String) -> Result<Option<String>, 
     .map_err(|e| e.to_string())
 }
 
-/// A file of this computer named `kind`, with the extension `extension`, chosen with the system's dialog.
+/// A file of this computer named `kind`, with one of the `extensions`, chosen with the system's dialog.
 #[tauri::command]
-async fn choose_file(app: AppHandle, title: String, kind: String, extension: String) -> Result<Option<String>, String> {
+async fn choose_file(
+    app: AppHandle,
+    title: String,
+    kind: String,
+    extensions: Vec<String>,
+) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let extensions: Vec<&str> = extensions.iter().map(String::as_str).collect();
         app.dialog()
             .file()
             .set_title(title)
-            .add_filter(kind, &[extension.as_str()])
+            .add_filter(kind, &extensions)
             .blocking_pick_file()
             .map(|file| file.to_string())
     })
@@ -786,12 +792,12 @@ fn open_folder(app: AppHandle, path: String) -> Result<(), String> {
     app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
 
-/// A WAV file the window plays with a notification, read whole; a huge one is never read into memory.
+/// A WAV or MP3 file the window plays with a notification, read whole; a huge one is never read into memory.
 #[tauri::command]
 async fn sound(path: String) -> Result<Response, String> {
     let path = PathBuf::from(path);
-    if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("wav")) {
-        return Err(format!("{} is not a WAV file", path.display()));
+    if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("wav") || e.eq_ignore_ascii_case("mp3")) {
+        return Err(format!("{} is not a WAV or MP3 file", path.display()));
     }
     if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() > MAX_SOUND {
         return Err(format!("{} is larger than {MAX_SOUND} bytes", path.display()));

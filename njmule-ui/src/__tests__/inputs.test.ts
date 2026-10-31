@@ -11,6 +11,7 @@ import {
     isCommandLine,
     isFullPath,
     isNightHours,
+    isSoundFile,
     isValidHost,
     isWebhookUrl,
     isWhitelistEntry,
@@ -148,6 +149,17 @@ describe('inputs', () => {
     });
 
     it.each([
+        ['', true],
+        ['C:\\sounds\\done.wav', true],
+        ['C:\\sounds\\done.MP3', true],
+        ['C:\\sounds\\done.ogg', false],
+        ['done.mp3', false],
+    ])('should take %s as a sound the window plays: %s', (path, expected) => {
+        whenTheSoundIsChecked(path);
+        thenItIsValid(expected);
+    });
+
+    it.each([
         ['1,5', 'MB', 1, 1536],
         ['1.5', 'MB', 1, 1536],
         ['100', 'KB', 1, 100],
@@ -243,6 +255,10 @@ describe('inputs', () => {
 
     function whenThePathIsChecked(path: string): void {
         valid = isFullPath(path);
+    }
+
+    function whenTheSoundIsChecked(path: string): void {
+        valid = isSoundFile(path);
     }
 
     function whenTheSpeedIsRead(typed: string, unit: RateUnit, min: number): void {

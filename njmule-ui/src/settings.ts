@@ -34,6 +34,8 @@ export type Kind =
     | 'next'
     // A folder of the engine's computer, typed or chosen; empty for the default one.
     | 'folder'
+    // A sound file of this computer, typed or chosen, which can be heard; empty for none.
+    | 'sound'
     // A network interface of the engine's computer, by its name or an address; empty for any.
     | 'interface';
 
@@ -117,10 +119,10 @@ export interface Page {
 
 export interface EventKind {
     id: string;
-    placeholders: string[];
-}
     /** Its name, a key written out: the translations keep only the keys the code holds whole. */
     label: string;
+    placeholders: string[];
+}
 
 // The events a program can be run on, with the words filled in.
 export const EVENTS: EventKind[] = [
@@ -259,7 +261,7 @@ export const PAGES: Page[] = [
                     one(
                         {
                             key: 'notify.soundFile',
-                            kind: 'text',
+                            kind: 'sound',
                             check: 'soundFile',
                             ltr: true,
                             grow: true,

@@ -30,10 +30,10 @@ export interface Platform {
     /** A folder of the computer the engine runs on, chosen by the user; null when none is or none can be. */
     chooseFolder(title: string): Promise<string | null>;
     /**
-     * A file of the computer the engine runs on, chosen by the user among those named {@code kind} with the extension
-     * {@code extension}; null when none is or none can be.
+     * A file of the computer the engine runs on, chosen by the user among those named {@code kind} with one of the
+     * {@code extensions}; null when none is or none can be.
      */
-    chooseFile(title: string, kind: string, extension: string): Promise<string | null>;
+    chooseFile(title: string, kind: string, extensions: string[]): Promise<string | null>;
     /** eD2K links the system hands over, such as a link clicked in a browser. */
     onLinks(handler: (links: string[]) => void): void;
     /** Opens a folder in the system's file manager; false where it cannot. */
