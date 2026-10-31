@@ -41,6 +41,7 @@ const emit = defineEmits<{
     /** The bar cannot show all it holds at its width. */
     crowded: [];
     import: [];
+    wizard: [];
 }>();
 const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 const ratesTrigger = ref<InstanceType<typeof PopoverTrigger> | null>(null);
@@ -145,7 +146,7 @@ function typed(e: KeyboardEvent): void {
                     <DropdownMenuItem id="options" class="menu-item" @select="current = 'settings'">
                         <Icon name="OPTIONS" />{{ t('IDS_EM_PREFS') }}
                     </DropdownMenuItem>
-                    <DropdownMenuItem id="wizard" class="menu-item" disabled>
+                    <DropdownMenuItem id="wizard" class="menu-item" :disabled="guest" @select="emit('wizard')">
                         <Icon name="WIZARD" />{{ t('nj.wizard.title') }}
                     </DropdownMenuItem>
                     <DropdownMenuItem id="import" class="menu-item" :disabled="guest" @select="emit('import')">

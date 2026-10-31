@@ -6,7 +6,8 @@ import './styles/njmule.css';
 import { createApp } from 'vue';
 import App from './App.vue';
 import { connect } from './api/client';
-import { loadLanguage, t, windowLanguage } from './i18n';
+import { loadLanguage, windowLanguage } from './i18n';
+import { trayWords } from './language';
 import { follow } from './model/engine';
 import { followChats } from './chats';
 import { currentPlatform } from './platform';
@@ -23,13 +24,7 @@ connect(await platform.endpoint(), () => {
     }
 });
 await loadLanguage(windowLanguage(navigator.languages));
-platform.localize({
-    fullSpeed: t('nj.tray.fullSpeed'),
-    slowDown: t('nj.tray.slowDown'),
-    show: t('nj.tray.show'),
-    options: t('IDS_EM_PREFS'),
-    quit: t('nj.exit.quit'),
-});
+platform.localize(trayWords());
 follow();
 followChats();
 createApp(App, { platform }).mount('#app');

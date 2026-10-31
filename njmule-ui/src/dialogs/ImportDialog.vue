@@ -42,26 +42,31 @@ const canChoose = computed(() => props.platform.desktop && engineHere(endpoint()
 const valid = computed(() => directory.value.trim() !== '' && isFullPath(directory.value.trim()));
 const main = computed(() => (!checked.value ? 'check' : taken.value ? null : 'take'));
 
-// Each opening starts afresh, from the eMule found on the engine's computer.
-watch(open, async (now) => {
-    if (!now) {
-        return;
-    }
-    directory.value = '';
-    identity.value = false;
-    downloads.value = false;
-    rows.value = [];
-    selected.value = [];
-    summary.value = '';
-    working.value = false;
-    checked.value = false;
-    taken.value = false;
-    takeOff.value = true;
-    const found = await emuleProfile();
-    if (found !== null && open.value && directory.value === '') {
-        directory.value = found;
-    }
-});
+// Each opening starts afresh, from the eMule found on the engine's computer; also one asked as the window is drawn
+// again, in another language.
+watch(
+    open,
+    async (now) => {
+        if (!now) {
+            return;
+        }
+        directory.value = '';
+        identity.value = false;
+        downloads.value = false;
+        rows.value = [];
+        selected.value = [];
+        summary.value = '';
+        working.value = false;
+        checked.value = false;
+        taken.value = false;
+        takeOff.value = true;
+        const found = await emuleProfile();
+        if (found !== null && open.value && directory.value === '') {
+            directory.value = found;
+        }
+    },
+    { immediate: true },
+);
 
 async function browse(): Promise<void> {
     const folder = await props.platform.chooseFolder(t('nj.import.directory'));
