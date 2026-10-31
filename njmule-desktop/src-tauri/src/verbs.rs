@@ -14,9 +14,12 @@
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Duration;
 
 /// The processes an update waits for: the old njMule and the window that started it.
 const MAX_WAITS: usize = 8;
+/// How long a start waits for each process it was told to.
+const WAIT: Duration = Duration::from_secs(60);
 
 /// A command of the desktop program, from its command line.
 #[derive(Debug, PartialEq)]
@@ -54,6 +57,27 @@ pub fn verb(args: &[String]) -> Option<Result<Verb, String>> {
         }
         "--uninstall-profile" if args.len() == 2 => Some(Ok(Verb::UninstallProfile)),
         _ => None,
+    }
+}
+
+/// The processes `--wait <pid>` names: the njMule an update could not replace, which the next start waits for.
+pub fn waits(args: &[String]) -> Vec<u32> {
+    args.windows(2).filter(|pair| pair[0] == "--wait").filter_map(|pair| pair[1].parse().ok()).collect()
+}
+
+/// Waits up to a minute for each of `pids` to end.
+pub fn await_ended(pids: &[u32]) {
+    for &pid in pids {
+        #[cfg(windows)]
+        windows::wait_for(pid, WAIT.as_millis() as u32);
+        #[cfg(unix)]
+        {
+            let end = std::time::Instant::now() + WAIT;
+            // SAFETY: signal 0 sends nothing; it only asks whether the process is there.
+            while std::time::Instant::now() < end && unsafe { libc::kill(pid as libc::pid_t, 0) } == 0 {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
     }
 }
 
@@ -202,8 +226,8 @@ mod windows {
         unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR) };
     }
 
-    /// Waits up to a minute for the process `pid` to end, if it still runs.
-    fn wait_for(pid: u32, millis: u32) {
+    /// Waits up to `millis` for the process `pid` to end, if it still runs.
+    pub(super) fn wait_for(pid: u32, millis: u32) {
         // SAFETY: the handle is checked, waited on and closed here.
         unsafe {
             let process = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
@@ -402,6 +426,13 @@ mod tests {
         let args = msiexec_args(&update);
 
         assert_eq!(args, words(&["/i", "a.msi", "/passive", "/norestart", "/l*v", "i.log"]));
+    }
+
+    #[test]
+    fn should_wait_for_the_processes_named() {
+        let found = waits(&words(&["njmule-gui", "--config-dir", "/data", "--wait", "41", "--wait", "x"]));
+
+        assert_eq!(found, vec![41]);
     }
 
     #[test]

@@ -1178,6 +1178,8 @@ fn main() {
         };
         std::process::exit(code);
     }
+    // Started again after an update that could not install: the old njMule ends first, so that this one is the window.
+    verbs::await_ended(&verbs::waits(&args));
     if let Some(dir) = config_dir(&args) {
         std::env::set_var("NJMULE_CONFIG_DIR", dir);
     }

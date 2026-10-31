@@ -2272,6 +2272,7 @@ dependencies = [
  "arboard",
  "encoding_rs",
  "java-properties",
+ "libc",
  "serde",
  "serde_json",
  "tauri",
