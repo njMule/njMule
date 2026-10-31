@@ -16,7 +16,6 @@
  */
 package org.njmule.core.config;
 
-import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -35,28 +34,22 @@ public record EventCommands(
     /** Nothing runs on any event. */
     public static final EventCommands NONE = new EventCommands(Command.NONE, Command.NONE, Command.NONE, Command.NONE);
 
-    /** What a command can run on, with the placeholders its arguments may hold. */
+    /** What a command can run on. */
     public enum Event {
-        DOWNLOAD_COMPLETED("downloadCompleted", List.of("%NAME", "%FILE", "%HASH", "%SIZE")),
-        DOWNLOAD_FAILED("downloadFailed", List.of("%NAME", "%HASH", "%SIZE", "%MESSAGE")),
-        CHAT_MESSAGE("chatMessage", List.of("%SENDER", "%MESSAGE")),
-        DISK_SPACE_SHORT("diskSpaceShort", List.of("%FILE"));
+        DOWNLOAD_COMPLETED("downloadCompleted"),
+        DOWNLOAD_FAILED("downloadFailed"),
+        CHAT_MESSAGE("chatMessage"),
+        DISK_SPACE_SHORT("diskSpaceShort");
 
         private final String id;
-        private final ImmutableList<String> placeholders;
 
-        Event(String id, List<String> placeholders) {
+        Event(String id) {
             this.id = id;
-            this.placeholders = ImmutableList.copyOf(placeholders);
         }
 
         /** A short name in lowerCamelCase, for files and texts. */
         public String id() {
             return this.id;
-        }
-
-        public List<String> placeholders() {
-            return this.placeholders;
         }
     }
 

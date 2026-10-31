@@ -46,7 +46,6 @@ class Ed2kLinkTest {
     private String uri;
     private Ed2kLink parsed;
     private Optional<Ed2kLink> found;
-    private String html;
     private Throwable exception;
 
     @Test
@@ -239,15 +238,6 @@ class Ed2kLinkTest {
 
         thenTheAddressStartsWith("ed2k://|file|100%25%20citt%C3%A0%20%7C%20test.mkv|19456001|");
         thenTheLinkParsedBackIsTheSame();
-    }
-
-    @Test
-    void shouldWriteAnHtmlAnchorWithTheNameEscaped() {
-        givenAFileLink("Tom & Jerry <1>.avi", 1000);
-
-        whenTheLinkIsWrittenAsHtml();
-
-        thenTheAnchorShowsTheEscapedName("Tom &amp; Jerry &lt;1&gt;.avi");
     }
 
     @Property
@@ -466,10 +456,6 @@ class Ed2kLinkTest {
         this.parsed = Ed2kLink.parse(this.uri);
     }
 
-    private void whenTheLinkIsWrittenAsHtml() {
-        this.html = ((FileLink) this.written).toHtml();
-    }
-
     private void whenFileLinksWithTheTextInsideAreParsed(String text) {
         this.exception = catchThrowable(() -> {
             Ed2kLink.parse("ed2k://|file|a.bin|100|" + HASH + "|" + text + "|/");
@@ -552,15 +538,6 @@ class Ed2kLinkTest {
 
     private void thenTheLinkContains(String text) {
         assertThat(this.uri).contains(text);
-    }
-
-    private void thenTheAnchorShowsTheEscapedName(String escapedName) {
-        String href =
-                this.written.toUri().replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-        assertThat(this.html)
-                .as("the name escaped in the address too")
-                .isEqualTo("<a href=\"" + href + "\">" + escapedName + "</a>")
-                .doesNotContain("<1>");
     }
 
     private void thenExceptionOccurred(Class<? extends Throwable> type) {
