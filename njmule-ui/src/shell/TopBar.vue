@@ -21,6 +21,7 @@ import { rates, status } from '../model/engine';
 import type { NetworkWords } from '../network';
 import { current, withShortcutKey } from '../places';
 import { toggleDark } from '../theme';
+import { checkNow } from '../updates';
 import Icon from '../ui/Icon.vue';
 import Tip from '../ui/Tip.vue';
 import NetworkControl from './NetworkControl.vue';
@@ -159,7 +160,7 @@ function typed(e: KeyboardEvent): void {
                         <Icon name="KEYBOARD" />{{ t('nj.shortcuts.title')
                         }}<span class="menu-end shortcut-key">F1</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem id="updates" class="menu-item" disabled>
+                    <DropdownMenuItem id="updates" class="menu-item" @select="checkNow()">
                         <Icon name="REFRESH" />{{ t('IDS_CHECK4UPDATE') }}
                     </DropdownMenuItem>
                     <DropdownMenuItem id="about" class="menu-item" @select="showAbout()">

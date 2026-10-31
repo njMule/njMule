@@ -44,6 +44,7 @@ import {
     wrong,
     type Place,
 } from './settings/options';
+import { checkNow } from '../updates';
 import RowControls from './settings/RowControls.vue';
 import SchedulerPage from './settings/SchedulerPage.vue';
 import ServerListsDialog from './settings/ServerListsDialog.vue';
@@ -298,23 +299,6 @@ onActivated(() => {
 
 // ------------------------------------------------------------------ the buttons of the rows
 
-// Looks now, whatever the mode, and tells what it found.
-async function checkUpdate(): Promise<void> {
-    message(t('nj.update.checking'));
-    try {
-        const update = await answer(api().POST('/update/check'));
-        if (update.available) {
-            message(t('nj.update.available', update.available.version));
-        } else if (update.failure) {
-            problem(t('nj.update.failed', update.failure));
-        } else if (!update.checking) {
-            message(t('nj.update.newest', update.current));
-        }
-    } catch (e) {
-        problem((e as Error).message);
-    }
-}
-
 // The lists typed are kept first: the engine fetches those of the preferences.
 async function updateIpFilter(row: Row): Promise<void> {
     const field = row.fields[0]!;
@@ -354,8 +338,9 @@ async function testNotifications(): Promise<void> {
 
 function act(row: Row, action: Action): void {
     switch (action) {
+        // Looks now, whatever the mode: the answer opens in its own window.
         case 'checkUpdate':
-            void checkUpdate();
+            checkNow();
             break;
         case 'serverLists':
             listsOpen.value = true;

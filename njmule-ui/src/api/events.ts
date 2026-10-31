@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { EventSourceParserStream } from 'eventsource-parser/stream';
-import { endpoint, proofHeaders } from './client';
+import { endpoint, proofHeaders, type Schemas } from './client';
 
 // The engine's events as server-sent events. Read with fetch rather than EventSource, which cannot send the desktop
 // shell's token in a header.
@@ -21,6 +21,10 @@ export interface EventData {
     log: { message?: string; level?: string };
     // The engine dropped events this stream had not read yet: read everything again.
     lost: unknown;
+    'update.status': { status?: Schemas['Update'] };
+    'update.available': { version?: Schemas['NewVersion'] };
+    'update.ready': { version?: Schemas['NewVersion'] };
+    'update.restart': { version?: string };
 }
 
 export type EventName = keyof EventData;

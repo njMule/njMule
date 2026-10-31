@@ -105,6 +105,10 @@ export function follow(): void {
             'message.received',
             'preferences.changed',
             'log',
+            'update.status',
+            'update.available',
+            'update.ready',
+            'update.restart',
         ],
         (name, data) => {
             react(name, data);

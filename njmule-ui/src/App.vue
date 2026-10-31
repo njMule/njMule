@@ -39,6 +39,8 @@ import { message, problem, success } from './toasts';
 import { addLinks } from './transfers-actions';
 import { showAbout } from './about';
 import AboutDialog from './dialogs/AboutDialog.vue';
+import UpdateDialog from './dialogs/UpdateDialog.vue';
+import { checkNow, followUpdates } from './updates';
 
 // The window's content: the sidebar of places, the top bar with the screen's title, the field to search or paste links,
 // the rates and the networks, the current screen, the status strip, and messages floating over it all.
@@ -270,7 +272,7 @@ const commands = computed<Command[]>(() => [
         run: toggleSidebar,
     },
     { title: t('nj.shortcuts.title'), keys: 'F1', run: () => (shortcutsOpen.value = true) },
-    { title: t('IDS_CHECK4UPDATE'), keys: '', run: () => {}, disabled: true },
+    { title: t('IDS_CHECK4UPDATE'), keys: '', run: checkNow },
     { title: t('nj.about.title'), keys: '', run: showAbout },
 ]);
 
@@ -389,6 +391,8 @@ onMounted(() => {
     });
     // Links clicked in a browser or opened by the system come to this window: files, servers and lists.
     props.platform.onLinks((links) => void handOver(links));
+    // New versions told, and in the desktop app's window the end of njMule when one installs now.
+    followUpdates(props.platform);
     props.platform.onCloseAsked(() => void quitIfWanted());
     props.platform.onTray((chosen) => {
         if (chosen === 'connect') {
@@ -457,6 +461,7 @@ onUnmounted(() => {
             <ShortcutsDialog v-model:open="shortcutsOpen" />
             <AskDialog />
             <AboutDialog />
+            <UpdateDialog :platform="platform" :can-open-folders="canOpenFolders" />
         </div>
     </TooltipProvider>
 </template>
