@@ -51,6 +51,7 @@ import EmptyState from '../../ui/EmptyState.vue';
 import Icon from '../../ui/Icon.vue';
 import PopoverHeader from '../../ui/PopoverHeader.vue';
 import Tip from '../../ui/Tip.vue';
+import Country from '../transfers/Country.vue';
 
 // The servers: the list narrowed by its words, the one in use in bold behind an accent bar, the one being tried in
 // italics; the details of the one chosen beside the list, or over its end in a narrow window; servers added by address
@@ -154,6 +155,14 @@ const columns: ColumnDef<any, Server, any>[] = [
         cell: words('auto'),
     },
     { id: 'address', header: t('IDS_IP'), accessorFn: (s: Server) => s.address, size: 150, cell: words('ltr') },
+    // Its flag and code, as the clients': known once the countries are shown.
+    {
+        id: 'country',
+        header: t('nj.clients.country'),
+        accessorFn: (s: Server) => s.country ?? '',
+        size: 70,
+        cell: ({ getValue }: any) => h(Country, { code: getValue() as string }),
+    },
     {
         id: 'description',
         header: t('IDS_DESCRIPTION'),
@@ -637,7 +646,10 @@ onUnmounted(() => observer?.disconnect());
                         <span class="details-kind"><Icon name="SERVER" /></span>
                         <div class="details-title">
                             <strong class="details-name" dir="auto">{{ one.name || one.address }}</strong>
-                            <span class="muted" dir="ltr">{{ one.address }}</span>
+                            <span class="details-where muted"
+                                ><span dir="ltr">{{ one.address }}</span
+                                ><Country :code="one.country"
+                            /></span>
                         </div>
                         <Tip v-if="!beside" :text="t('IDS_FD_CLOSE')">
                             <button
@@ -842,6 +854,12 @@ onUnmounted(() => observer?.disconnect());
     gap: 2px;
     flex: 1;
     min-width: 0;
+}
+
+.details-where {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .details-name {
