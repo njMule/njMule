@@ -1,11 +1,22 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { describe, expect, it } from 'vitest';
-import { duration, rate, size } from '../format';
+import { afterEach, describe, expect, it } from 'vitest';
+import { count, duration, rate, size } from '../format';
+import { language } from '../i18n';
 
 describe('format', () => {
     let shown = '';
+
+    afterEach(() => {
+        language.value = 'en';
+    });
+
+    it('should group the thousands of a four-digit count, as the desktop app', () => {
+        givenTheLanguage('it');
+        whenTheCountIsWritten(1243);
+        thenItReads('1.243');
+    });
 
     it('should write small sizes in bytes', () => {
         whenTheSizeIsWritten(999);
@@ -36,6 +47,14 @@ describe('format', () => {
         whenTheDurationIsWritten(4 * 60 + 7);
         thenItReads('4:07 mins');
     });
+
+    function givenTheLanguage(tag: string): void {
+        language.value = tag;
+    }
+
+    function whenTheCountIsWritten(value: number): void {
+        shown = count(value);
+    }
 
     function whenTheSizeIsWritten(bytes: number): void {
         shown = size(bytes);

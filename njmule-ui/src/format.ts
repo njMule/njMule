@@ -99,8 +99,12 @@ export function clock(time: Date): string {
     return time.toLocaleTimeString(language.value, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
 
+// The thousands are grouped from four digits on, as the desktop app's figures: languages such as Italian group only
+// from five by default. The value 'always' is newer than the TypeScript library in use.
+const GROUPED = { useGrouping: 'always' } as unknown as Intl.NumberFormatOptions;
+
 export function count(value: number): string {
-    return value.toLocaleString(language.value);
+    return value.toLocaleString(language.value, GROUPED);
 }
 
 function twoDigits(value: number): string {
