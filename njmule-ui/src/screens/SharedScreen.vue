@@ -5,12 +5,15 @@ SPDX-License-Identifier: GPL-3.0-or-later
 <script setup lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
 import {
+    ContextMenuContent,
     ContextMenuItem,
     ContextMenuPortal,
+    ContextMenuRoot,
     ContextMenuSeparator,
     ContextMenuSub,
     ContextMenuSubContent,
     ContextMenuSubTrigger,
+    ContextMenuTrigger,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuPortal,
@@ -434,39 +437,64 @@ onMounted(() => void readDirectories());
             <button id="share-folder" class="button accent wide" @click="chooseDirectory">
                 <Icon name="FOLDER_ADD" />{{ t('nj.shared.shareFolder') }}
             </button>
-            <ul
-                id="shared-places"
-                class="shared-places focusable"
-                role="tree"
-                tabindex="0"
-                :aria-activedescendant="placeIndex < 0 ? undefined : `shared-place-${placeIndex}`"
-                @keydown="treeKey"
-            >
-                <Tip v-for="(p, i) in shownTree" :key="placeKey(p)" :text="p.kind === 'all' ? '' : p.path">
-                    <li
-                        :id="`shared-place-${i}`"
-                        class="place"
-                        :class="{ child: p.kind === 'subfolder' }"
-                        role="treeitem"
-                        :aria-selected="placeKey(p) === placeKey(place)"
-                        :aria-expanded="p.children.length > 0 ? isOpen(p) : undefined"
-                        @click="choosePlace(p)"
-                        @dblclick="p.children.length > 0 && toggle(p)"
+            <!-- A right click on a folder chooses it and opens what can be done with it. -->
+            <ContextMenuRoot>
+                <ContextMenuTrigger as-child>
+                    <ul
+                        id="shared-places"
+                        class="shared-places focusable"
+                        role="tree"
+                        tabindex="0"
+                        :aria-activedescendant="placeIndex < 0 ? undefined : `shared-place-${placeIndex}`"
+                        @keydown="treeKey"
                     >
-                        <span v-if="p.children.length > 0" class="tree-arrow" @click.stop="toggle(p)" @dblclick.stop>
-                            <Icon :name="isOpen(p) ? 'CHEVRON_DOWN' : 'CHEVRON_RIGHT'" />
-                        </span>
-                        <span v-else class="tree-arrow" />
-                        <Icon
-                            :name="p.kind === 'all' ? 'SHARED' : p.kind === 'incoming' ? 'DOWNLOAD' : 'FOLDER_OPEN'"
-                        />
-                        <span class="place-name ellipsis" dir="ltr">{{ placeName(p) }}</span>
-                        <Icon v-if="p.kind === 'incoming'" class="place-lock" name="LOCK" />
-                        <span class="spacer" />
-                        <span class="muted">{{ placeCount(p) }}</span>
-                    </li>
-                </Tip>
-            </ul>
+                        <Tip v-for="(p, i) in shownTree" :key="placeKey(p)" :text="p.kind === 'all' ? '' : p.path">
+                            <li
+                                :id="`shared-place-${i}`"
+                                class="place"
+                                :class="{ child: p.kind === 'subfolder' }"
+                                role="treeitem"
+                                :aria-selected="placeKey(p) === placeKey(place)"
+                                :aria-expanded="p.children.length > 0 ? isOpen(p) : undefined"
+                                @click="choosePlace(p)"
+                                @contextmenu="choosePlace(p)"
+                                @dblclick="p.children.length > 0 && toggle(p)"
+                            >
+                                <span
+                                    v-if="p.children.length > 0"
+                                    class="tree-arrow"
+                                    @click.stop="toggle(p)"
+                                    @dblclick.stop
+                                >
+                                    <Icon :name="isOpen(p) ? 'CHEVRON_DOWN' : 'CHEVRON_RIGHT'" />
+                                </span>
+                                <span v-else class="tree-arrow" />
+                                <Icon
+                                    :name="
+                                        p.kind === 'all' ? 'SHARED' : p.kind === 'incoming' ? 'DOWNLOAD' : 'FOLDER_OPEN'
+                                    "
+                                />
+                                <span class="place-name ellipsis" dir="ltr">{{ placeName(p) }}</span>
+                                <Icon v-if="p.kind === 'incoming'" class="place-lock" name="LOCK" />
+                                <span class="spacer" />
+                                <span class="muted">{{ placeCount(p) }}</span>
+                            </li>
+                        </Tip>
+                    </ul>
+                </ContextMenuTrigger>
+                <ContextMenuPortal>
+                    <ContextMenuContent class="menu">
+                        <ContextMenuItem class="menu-item" :disabled="place.kind === 'all'" @select="openPlace">
+                            <Icon name="FOLDER_OPEN" />{{ t('IDS_OPENFOLDER') }}
+                        </ContextMenuItem>
+                        <!-- Only a folder shared on its own can be unshared: not the locked incoming folder, nor a
+                             folder inside a shared one. -->
+                        <ContextMenuItem class="menu-item" :disabled="place.kind !== 'folder'" @select="unshare">
+                            <Icon name="REMOVE_CIRCLE" />{{ t('IDS_UNSHAREDIR') }}
+                        </ContextMenuItem>
+                    </ContextMenuContent>
+                </ContextMenuPortal>
+            </ContextMenuRoot>
             <div class="shared-place">
                 <div>
                     <strong class="place-title" dir="ltr">{{
@@ -486,19 +514,6 @@ onMounted(() => void readDirectories());
                         @change="subfolders(($event.target as HTMLInputElement).checked)"
                     />
                 </label>
-                <div class="place-buttons">
-                    <button v-if="place.kind !== 'all'" class="button small" @click="openPlace">
-                        <Icon name="FOLDER_OPEN" />{{ t('IDS_OPENFOLDER') }}
-                    </button>
-                    <button
-                        v-if="place.kind === 'folder'"
-                        id="unshare-folder"
-                        class="button flat small"
-                        @click="unshare"
-                    >
-                        <Icon name="REMOVE_CIRCLE" />{{ t('IDS_UNSHAREDIR') }}
-                    </button>
-                </div>
                 <p v-if="place.kind === 'incoming'" class="muted note">{{ t('nj.shared.incomingNote') }}</p>
             </div>
         </aside>
@@ -734,12 +749,6 @@ onMounted(() => void readDirectories());
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-}
-
-.place-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
 }
 
 .note {
