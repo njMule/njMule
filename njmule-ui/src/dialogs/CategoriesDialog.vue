@@ -237,7 +237,7 @@ async function browse(): Promise<void> {
                         >
                     </div>
                 </div>
-                <div class="footer">
+                <div class="dialog-buttons">
                     <button class="button risky" :disabled="chosen === null" @click="remove">
                         <Icon name="DELETE" />{{ t('IDS_CAT_REMOVE') }}
                     </button>
@@ -334,12 +334,6 @@ async function browse(): Promise<void> {
 }
 
 .check {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.footer {
     display: flex;
     align-items: center;
     gap: 8px;
