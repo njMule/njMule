@@ -20,6 +20,7 @@ import { t } from '../i18n';
 import { rates, status } from '../model/engine';
 import type { NetworkWords } from '../network';
 import { current, withShortcutKey } from '../places';
+import { guest } from '../role';
 import { toggleDark } from '../theme';
 import { checkNow } from '../updates';
 import Icon from '../ui/Icon.vue';
@@ -39,6 +40,7 @@ const emit = defineEmits<{
     incoming: [];
     /** The bar cannot show all it holds at its width. */
     crowded: [];
+    import: [];
 }>();
 const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 const ratesTrigger = ref<InstanceType<typeof PopoverTrigger> | null>(null);
@@ -146,7 +148,7 @@ function typed(e: KeyboardEvent): void {
                     <DropdownMenuItem id="wizard" class="menu-item" disabled>
                         <Icon name="WIZARD" />{{ t('nj.wizard.title') }}
                     </DropdownMenuItem>
-                    <DropdownMenuItem id="import" class="menu-item" disabled>
+                    <DropdownMenuItem id="import" class="menu-item" :disabled="guest" @select="emit('import')">
                         <Icon name="IMPORT" />{{ t('nj.import.title') }}
                     </DropdownMenuItem>
                     <DropdownMenuItem id="remote" class="menu-item" disabled>

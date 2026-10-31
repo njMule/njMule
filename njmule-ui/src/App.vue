@@ -32,6 +32,8 @@ import Sidebar from './shell/Sidebar.vue';
 import StatusStrip from './shell/StatusStrip.vue';
 import Toasts from './shell/Toasts.vue';
 import TopBar from './shell/TopBar.vue';
+import ImportDialog from './dialogs/ImportDialog.vue';
+import { guest } from './role';
 import { handOver } from './handover';
 import { setPreset } from './limits';
 import { toggleDark } from './theme';
@@ -61,6 +63,7 @@ const collapsed = ref(narrow.value || readCollapsed());
 const paletteOpen = ref(false);
 const paletteText = ref('');
 const shortcutsOpen = ref(false);
+const importOpen = ref(false);
 
 const words = computed(() => networkWords(connection.value, status.value, serverName.value));
 const title = computed(() => t(PLACES.find((p) => p.id === current.value)?.title ?? ''));
@@ -264,7 +267,7 @@ const commands = computed<Command[]>(() => [
     },
     { title: t('IDS_OPENINC'), keys: '', run: () => void openIncoming(), disabled: !canOpenFolders.value },
     { title: t('nj.wizard.title'), keys: '', run: () => {}, disabled: true },
-    { title: t('nj.import.title'), keys: '', run: () => {}, disabled: true },
+    { title: t('nj.import.title'), keys: '', run: () => (importOpen.value = true), disabled: guest },
     { title: t('nj.top.theme'), keys: '', run: toggleDark },
     {
         title: t(collapsed.value ? 'nj.sidebar.expand' : 'nj.sidebar.collapse'),
@@ -439,6 +442,7 @@ onUnmounted(() => {
                         @shortcuts="shortcutsOpen = true"
                         @incoming="openIncoming"
                         @crowded="crowded"
+                        @import="importOpen = true"
                     />
                     <Banner @connect="connectIfOff" />
                     <!-- A place keeps what it shows while another is open: its filters, choice, scroll and pending options. -->
@@ -459,6 +463,7 @@ onUnmounted(() => {
             <Toasts />
             <CommandPalette v-model:open="paletteOpen" v-model:text="paletteText" :commands="commands" :typed="typed" />
             <ShortcutsDialog v-model:open="shortcutsOpen" />
+            <ImportDialog v-model:open="importOpen" :platform="platform" />
             <AskDialog />
             <AboutDialog />
             <UpdateDialog :platform="platform" :can-open-folders="canOpenFolders" />
