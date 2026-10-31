@@ -103,7 +103,15 @@ export interface Row {
     defaultWords?: 'value' | string;
     action?: Action;
     /** An option of this window rather than of the engine; of the desktop app's shell for the others. */
-    local?: 'language' | 'theme' | 'startMinimized' | 'minimizeToTray' | 'confirmExit' | 'watchClipboard';
+    local?:
+        | 'language'
+        | 'theme'
+        | 'startMinimized'
+        | 'minimizeToTray'
+        | 'confirmExit'
+        | 'watchClipboard'
+        | 'autostart'
+        | 'ed2kLinks';
     /** The test of the ports, run on the ports as their fields give them. */
     portTest?: boolean;
 }
@@ -188,6 +196,7 @@ export const PAGES: Page[] = [
             {
                 title: 'IDS_STARTUP',
                 rows: [
+                    { label: 'nj.settings.autostart', fields: [], local: 'autostart' },
                     { label: 'IDS_PREF_STARTMIN', fields: [], local: 'startMinimized' },
                     { label: 'nj.settings.tray', fields: [], local: 'minimizeToTray' },
                     toggle('system.preventSleep', 'nj.settings.preventSleep'),
@@ -256,6 +265,7 @@ export const PAGES: Page[] = [
                 rows: [
                     { label: 'IDS_PW_PROMPT', fields: [], local: 'confirmExit' },
                     { label: 'IDS_PF_WATCHCB', fields: [], local: 'watchClipboard' },
+                    { label: 'nj.settings.ed2kLinks', fields: [], local: 'ed2kLinks' },
                 ],
             },
             {

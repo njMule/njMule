@@ -26,6 +26,7 @@ import { family, type Family, mode, type Mode, setTheme } from '../theme';
 import { message, problem } from '../toasts';
 import Icon from '../ui/Icon.vue';
 import Switch from '../ui/Switch.vue';
+import Tip from '../ui/Tip.vue';
 import {
     DESKTOP_DEFAULTS,
     type DesktopOption,
@@ -54,6 +55,14 @@ import {
     wrong,
     type Place,
 } from './settings/options';
+import {
+    isSystemOption,
+    readSystemSettings,
+    setSystemOption,
+    SYSTEM_FAILURES,
+    type SystemOption,
+    systemSettings,
+} from '../system-settings';
 import { checkNow } from '../updates';
 import RowControls from './settings/RowControls.vue';
 import { readInterfaces } from './settings/interfaces';
@@ -110,7 +119,10 @@ watch(pageId, (id) => {
 });
 
 onMounted(async () => {
-    void currentPlatform().then((p) => (platform.value = p));
+    void currentPlatform().then((p) => {
+        platform.value = p;
+        void readSystemSettings(p);
+    });
     void readDefaults();
     try {
         installer.value = (await answer(api().GET('/update'))).installer;
@@ -134,7 +146,23 @@ function setDesktop(option: DesktopOption, value: boolean): void {
     }
 }
 
+// What the window sets in the system: off until the user turns it on, unavailable where the system offers none.
+function systemValue(option: SystemOption): boolean {
+    return systemSettings.value?.[option] ?? false;
+}
+
+function systemUsable(option: SystemOption): boolean {
+    return (systemSettings.value?.[option] ?? null) !== null;
+}
+
+function setSystem(option: SystemOption, on: boolean): void {
+    setSystemOption(option, on).catch((e: unknown) => problem(t(SYSTEM_FAILURES[option], (e as Error).message)));
+}
+
 function isChanged(row: Row): boolean {
+    if (isSystemOption(row.local)) {
+        return systemValue(row.local);
+    }
     if (isDesktopOption(row.local)) {
         return desktopSettings.value !== null && desktopValue(row.local) !== DESKTOP_DEFAULTS[row.local];
     }
@@ -163,6 +191,9 @@ function controlOf(row: Row): string | undefined {
 }
 
 function defaultTextOf(row: Row): string {
+    if (isSystemOption(row.local)) {
+        return t('IDS_NO');
+    }
     if (isDesktopOption(row.local)) {
         return t(DESKTOP_DEFAULTS[row.local] ? 'IDS_YES' : 'IDS_NO');
     }
@@ -176,7 +207,9 @@ function defaultTextOf(row: Row): string {
 }
 
 function resetRow(row: Row): void {
-    if (isDesktopOption(row.local)) {
+    if (isSystemOption(row.local)) {
+        setSystem(row.local, false);
+    } else if (isDesktopOption(row.local)) {
         setDesktop(row.local, DESKTOP_DEFAULTS[row.local]);
     } else if (row.local === 'language') {
         languageChoice.value = '';
@@ -504,6 +537,24 @@ function act(row: Row, action: Action): void {
                                             </option>
                                         </select>
                                     </template>
+                                    <Tip
+                                        v-else-if="isSystemOption(row.local)"
+                                        :text="
+                                            row.local === 'autostart' && !systemUsable('autostart')
+                                                ? t('nj.settings.autostartUnavailable')
+                                                : ''
+                                        "
+                                    >
+                                        <Switch
+                                            :id="`option-${row.local}`"
+                                            :model-value="systemValue(row.local)"
+                                            :label="rowTitle(row, t)"
+                                            :disabled="!systemUsable(row.local)"
+                                            @update:model-value="
+                                                (on: boolean) => setSystem(row.local as SystemOption, on)
+                                            "
+                                        />
+                                    </Tip>
                                     <Switch
                                         v-else-if="isDesktopOption(row.local)"
                                         :id="`option-${row.local}`"
