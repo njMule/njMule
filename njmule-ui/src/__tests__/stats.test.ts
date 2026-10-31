@@ -3,7 +3,16 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Source, Upload } from '../model/engine';
-import { clientsBySoftware, scaleTop, upDownRatio } from '../stats';
+import {
+    clientsBySoftware,
+    scaleTop,
+    type StatsEntry,
+    type TreeMove,
+    type TreeRow,
+    treeKey,
+    treeRows,
+    upDownRatio,
+} from '../stats';
 
 describe('the top of the rate graph', () => {
     let top = 0;
@@ -103,5 +112,80 @@ describe('the clients by software', () => {
 
     function thenTheSoftwareIs(expected: [string, number][]): void {
         expect(counted?.bySoftware).toEqual(expected);
+    }
+});
+
+describe('the statistics tree', () => {
+    const ENTRIES: StatsEntry[] = [
+        {
+            text: 'Uploads',
+            children: [{ text: 'Session', children: [{ text: 'Uploaded: 1 MB', children: [] }] }],
+        },
+        { text: 'Time', children: [{ text: 'Session: 5 mins', children: [] }] },
+    ];
+    let open = new Set<string>();
+    let rows: TreeRow[] = [];
+    let move: TreeMove | null = null;
+
+    it('should show the lines of the branches open only', () => {
+        givenOpen('0');
+        whenTheLinesAreLaidOut();
+        thenTheLinesAre(['0', '0.0', '1']);
+    });
+
+    it('should go down to the next line', () => {
+        givenOpen('0');
+        whenTheKeyIsPressed('0.0', 'ArrowDown');
+        thenTheMoveIs({ chosen: '1' });
+    });
+
+    it('should open a closed branch with the right arrow', () => {
+        givenOpen('0');
+        whenTheKeyIsPressed('0.0', 'ArrowRight');
+        thenTheMoveIs({ chosen: '0.0', toggle: '0.0' });
+    });
+
+    it('should go into an open branch with the right arrow', () => {
+        givenOpen('0');
+        whenTheKeyIsPressed('0', 'ArrowRight');
+        thenTheMoveIs({ chosen: '0.0' });
+    });
+
+    it('should close an open branch with the left arrow', () => {
+        givenOpen('0');
+        whenTheKeyIsPressed('0', 'ArrowLeft');
+        thenTheMoveIs({ chosen: '0', toggle: '0' });
+    });
+
+    it('should go up to the parent with the left arrow', () => {
+        givenOpen('0', '0.0');
+        whenTheKeyIsPressed('0.0.0', 'ArrowLeft');
+        thenTheMoveIs({ chosen: '0.0' });
+    });
+
+    it('should choose the first line on the first key', () => {
+        givenOpen();
+        whenTheKeyIsPressed('', 'ArrowDown');
+        thenTheMoveIs({ chosen: '0' });
+    });
+
+    function givenOpen(...keys: string[]): void {
+        open = new Set(keys);
+    }
+
+    function whenTheLinesAreLaidOut(): void {
+        rows = treeRows(ENTRIES, open);
+    }
+
+    function whenTheKeyIsPressed(chosen: string, key: string): void {
+        move = treeKey(treeRows(ENTRIES, open), chosen, key);
+    }
+
+    function thenTheLinesAre(expected: string[]): void {
+        expect(rows.map((r) => r.key)).toEqual(expected);
+    }
+
+    function thenTheMoveIs(expected: TreeMove): void {
+        expect(move).toEqual(expected);
     }
 });

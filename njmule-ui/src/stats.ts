@@ -202,3 +202,71 @@ function shared(files: SharedFile[]): StatsEntry {
 function free(name: string, bytes: number | undefined, dir: string): StatsEntry {
     return entry(`${name}: ${bytes === undefined ? '-' : size(bytes)}${dir === '' ? '' : ` (${dir})`}`);
 }
+
+/** A line of the tree as it shows: its place among the lines (as 0.2.1), its depth from 1, and its parent's place. */
+export interface TreeRow {
+    key: string;
+    text: string;
+    level: number;
+    parent: string | null;
+    branch: boolean;
+    open: boolean;
+}
+
+/** The lines that show, branches open as {@code open} says, in their order. */
+export function treeRows(entries: StatsEntry[], open: ReadonlySet<string>, parent: string | null = null): TreeRow[] {
+    const rows: TreeRow[] = [];
+    entries.forEach((e, i) => {
+        const key = parent === null ? String(i) : `${parent}.${i}`;
+        const branch = e.children.length > 0;
+        const shown = branch && open.has(key);
+        rows.push({ key, text: e.text, level: key.split('.').length, parent, branch, open: shown });
+        if (shown) {
+            rows.push(...treeRows(e.children, open, key));
+        }
+    });
+    return rows;
+}
+
+/** What a key does to the tree: the line chosen after it, and the branch it opens or closes, if any. */
+export interface TreeMove {
+    chosen: string;
+    toggle?: string;
+}
+
+/**
+ * The keys of a tree: the arrows up and down go from line to line, right opens a branch or goes into it, left closes
+ * it or goes up to its parent, Home and End go to the first and the last line.
+ */
+export function treeKey(rows: TreeRow[], chosen: string, key: string): TreeMove | null {
+    if (rows.length === 0) {
+        return null;
+    }
+    const at = rows.findIndex((r) => r.key === chosen);
+    const row = rows[at];
+    switch (key) {
+        case 'ArrowDown':
+            return { chosen: rows[Math.min(rows.length - 1, at + 1)]!.key };
+        case 'ArrowUp':
+            return { chosen: rows[Math.max(0, at - 1)]!.key };
+        case 'Home':
+            return { chosen: rows[0]!.key };
+        case 'End':
+            return { chosen: rows[rows.length - 1]!.key };
+        case 'ArrowRight':
+            if (row === undefined || !row.branch) {
+                return row === undefined ? { chosen: rows[0]!.key } : null;
+            }
+            return row.open ? { chosen: rows[at + 1]!.key } : { chosen: row.key, toggle: row.key };
+        case 'ArrowLeft':
+            if (row === undefined) {
+                return { chosen: rows[0]!.key };
+            }
+            if (row.branch && row.open) {
+                return { chosen: row.key, toggle: row.key };
+            }
+            return row.parent === null ? null : { chosen: row.parent };
+        default:
+            return null;
+    }
+}

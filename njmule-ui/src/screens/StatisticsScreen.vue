@@ -22,7 +22,7 @@ import { statsTree } from '../stats';
 import Icon from '../ui/Icon.vue';
 import RateGraph from '../ui/RateGraph.vue';
 import Segments from '../ui/Segments.vue';
-import StatsBranch from './statistics/StatsBranch.vue';
+import StatsTree from './statistics/StatsTree.vue';
 
 // What happens now first, then the rates over time, then the session and all sessions, then every figure, closed
 // until wanted: the cards above say the main ones.
@@ -177,9 +177,7 @@ const tree = computed(() => {
         </div>
         <details class="all">
             <summary><Icon name="CHEVRON_RIGHT" class="chevron" />{{ t('nj.stats.all') }}</summary>
-            <div class="tree" tabindex="0">
-                <StatsBranch :entries="tree" open />
-            </div>
+            <StatsTree :entries="tree" :label="t('nj.stats.all')" />
         </details>
     </div>
 </template>
@@ -303,12 +301,5 @@ dd {
 
 .all:not([open]) summary .chevron:dir(rtl) {
     transform: scaleX(-1);
-}
-
-.tree {
-    height: 380px;
-    overflow-y: auto;
-    border-top: 1px solid var(--color-border-muted);
-    user-select: text;
 }
 </style>
