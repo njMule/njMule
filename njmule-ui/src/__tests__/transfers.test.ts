@@ -17,6 +17,7 @@ import {
     priorityKey,
     remaining,
     shown,
+    sourceProgram,
     withoutColon,
     type Shown,
     type StateFilter,
@@ -355,5 +356,27 @@ describe('a rating', () => {
 
     function thenItIs(expected: string): void {
         expect(key).toBe(expected);
+    }
+});
+
+describe('a source under its download', () => {
+    let shownProgram: string | undefined;
+
+    it('should tell its place in the queue after its program', () => {
+        whenTheSourceIsShown('eMule v0.70b', 12);
+        thenItShows('eMule v0.70b QR: 12');
+    });
+
+    it('should tell only its program outside a queue', () => {
+        whenTheSourceIsShown('aMule 2.3.3', 0);
+        thenItShows('aMule 2.3.3');
+    });
+
+    function whenTheSourceIsShown(software: string, queueRank: number): void {
+        shownProgram = sourceProgram({ software, queueRank });
+    }
+
+    function thenItShows(expected: string): void {
+        expect(shownProgram).toBe(expected);
     }
 });

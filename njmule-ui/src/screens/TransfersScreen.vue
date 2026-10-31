@@ -14,7 +14,7 @@ import {
     ContextMenuSubTrigger,
     ContextMenuPortal,
 } from 'reka-ui';
-import { computed, h, ref, watch } from 'vue';
+import { computed, h, nextTick, ref, watch } from 'vue';
 import AddLinksDialog from '../dialogs/AddLinksDialog.vue';
 import CategoriesDialog from '../dialogs/CategoriesDialog.vue';
 import CommentDialog from '../dialogs/CommentDialog.vue';
@@ -38,6 +38,7 @@ import {
     byCategory,
     byName,
     byPriority,
+    bySending,
     byState,
     keeps,
     kindIcon,
@@ -49,6 +50,7 @@ import {
     resumable,
     shown,
     sourceDot,
+    sourceProgram,
     sourceShown,
     SOURCE_STATES,
     STATE_FILTERS,
@@ -181,8 +183,9 @@ watch(sources, (now) => {
     sourceRates.value = rates;
 });
 
+// The sources of an opened download, those sending first, then by their place in the queues.
 function sourcesOf(hash: string): Source[] {
-    return sources.value.filter((s) => s.file === hash);
+    return bySending(sources.value.filter((s) => s.file === hash));
 }
 
 function categoryName(id: number): string {
@@ -233,15 +236,18 @@ function tableKey(e: KeyboardEvent): void {
     e.preventDefault();
 }
 
-// Ctrl+F narrows the downloads by name; Alt+Enter shows the details of the chosen one.
-function screenKey(e: KeyboardEvent): void {
+// Ctrl+F narrows the downloads by name, from any list; Alt+Enter shows the details of the chosen one, before the list
+// takes Enter to open the download.
+async function screenKey(e: KeyboardEvent): Promise<void> {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
         shelf.value = 'downloads';
+        await nextTick();
         filterBox.value?.focus();
-        e.preventDefault();
     } else if (e.altKey && e.key === 'Enter') {
-        detailsShown.value = true;
         e.preventDefault();
+        e.stopPropagation();
+        detailsShown.value = true;
     }
 }
 
@@ -419,7 +425,7 @@ function sourceCell(column: string, s: Source): { text?: string; bar?: number; d
             return { text: s.state === 'downloading' && r > 0 ? rate(r) : '' };
         }
         case 'sources':
-            return { text: s.software };
+            return { text: sourceProgram(s) };
         case 'status':
             return { text: t(SOURCE_STATES[sourceShown(s)]) };
         default:
@@ -437,7 +443,7 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
 </script>
 
 <template>
-    <div class="screen" @keydown="screenKey">
+    <div class="screen" @keydown.capture="screenKey">
         <div class="tool-row">
             <Segments v-model="shelf" :items="shelves" :label="t('IDS_EM_TRANS')" />
             <div class="spacer" />
@@ -446,19 +452,34 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                     <button
                         id="details"
                         class="button toggle"
+                        :aria-label="t('IDS_DETAILS')"
                         :aria-pressed="detailsShown"
                         @click="detailsShown = !detailsShown"
                     >
-                        <Icon name="INFO" />{{ t('IDS_DETAILS') }}
+                        <Icon name="INFO" /><span class="tool-text">{{ t('IDS_DETAILS') }}</span>
                     </button>
                 </Tip>
-                <button id="clear-completed" class="button flat" :disabled="!anyComplete" @click="clearCompleted()">
-                    <Icon name="CLEAR_ALL" />{{ t('IDS_DL_CLEAR') }}
-                </button>
+                <Tip :text="t('IDS_DL_CLEAR')">
+                    <button
+                        id="clear-completed"
+                        class="button flat"
+                        :aria-label="t('IDS_DL_CLEAR')"
+                        @click="clearCompleted()"
+                    >
+                        <Icon name="CLEAR_ALL" /><span class="tool-text">{{ t('IDS_DL_CLEAR') }}</span>
+                    </button>
+                </Tip>
             </template>
-            <button id="add-links" class="button accent" @click="adding = true">
-                <Icon name="ADD" />{{ t('nj.transfers.addLinks') }}
-            </button>
+            <Tip :text="t('nj.transfers.addLinks')">
+                <button
+                    id="add-links"
+                    class="button accent"
+                    :aria-label="t('nj.transfers.addLinks')"
+                    @click="adding = true"
+                >
+                    <Icon name="ADD" /><span class="tool-text">{{ t('nj.transfers.addLinks') }}</span>
+                </button>
+            </Tip>
         </div>
         <template v-if="shelf === 'downloads'">
             <div class="narrowing">
@@ -755,6 +776,11 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
 
 .spacer {
     flex: 1;
+}
+
+/* In a narrow window the tools keep to their icons; the text is the tooltip and the accessible name. */
+:global(.njmule.narrow) .tool-text {
+    display: none;
 }
 
 .narrowing {

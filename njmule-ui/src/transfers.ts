@@ -172,6 +172,11 @@ export function bySending<T extends { state: string; queueRank: number }>(list: 
     );
 }
 
+/** What a source shows under the sources column of its download: its program and its place in a queue. */
+export function sourceProgram(s: Pick<Source, 'software' | 'queueRank'>): string {
+    return s.queueRank > 0 ? `${s.software} QR: ${s.queueRank}` : s.software;
+}
+
 // The order the status column sorts the states in: from what runs to what is done.
 const STATE_ORDER: Shown[] = [
     'downloading',
