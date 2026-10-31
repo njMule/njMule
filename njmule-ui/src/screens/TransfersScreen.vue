@@ -14,6 +14,7 @@ import {
 } from 'reka-ui';
 import { computed, h, ref, watch } from 'vue';
 import AddLinksDialog from '../dialogs/AddLinksDialog.vue';
+import CommentDialog from '../dialogs/CommentDialog.vue';
 import { amount, duration, percent, rate, size } from '../format';
 import { t } from '../i18n';
 import { bans, categories, downloads, known, sources, uploads, type Download, type Source } from '../model/engine';
@@ -76,6 +77,8 @@ const selected = ref<string[]>([]);
 const opened = ref(new Set<string>());
 const detailsShown = ref(readDetails());
 const adding = ref(false);
+const commenting = ref(false);
+const commented = ref<Download | null>(null);
 const filterBox = ref<HTMLInputElement | null>(null);
 
 function readDetails(): boolean {
@@ -207,6 +210,14 @@ function screenKey(e: KeyboardEvent): void {
     } else if (e.altKey && e.key === 'Enter') {
         detailsShown.value = true;
         e.preventDefault();
+    }
+}
+
+// Our comment and rating of the one download chosen, and what others said of it.
+function comment(list: Download[]): void {
+    if (list.length === 1) {
+        commented.value = list[0]!;
+        commenting.value = true;
     }
 }
 
@@ -532,9 +543,9 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                         >
                             <Icon name="FOLDER_OPEN" />{{ t('IDS_OPENFOLDER') }}
                         </ContextMenuItem>
-                        <ContextMenuItem class="menu-item" disabled
-                            ><Icon name="COMMENT" />{{ t('IDS_CMT_ADD') }}</ContextMenuItem
-                        >
+                        <ContextMenuItem class="menu-item" :disabled="chosen.length !== 1" @select="comment(chosen)">
+                            <Icon name="COMMENT" />{{ t('IDS_CMT_ADD') }}
+                        </ContextMenuItem>
                         <ContextMenuSub>
                             <ContextMenuSubTrigger class="menu-item" :disabled="cancellable.length === 0">
                                 <Icon name="PRIORITY" />{{ t('IDS_PRIORITY')
@@ -595,6 +606,7 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
             </div>
         </template>
         <ClientLists v-else :shelf="shelf" />
+        <CommentDialog v-model:open="commenting" :file="commented" download />
         <AddLinksDialog v-model:open="adding" :category="category === SHOW_ALL ? undefined : category" />
     </div>
 </template>

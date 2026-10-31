@@ -214,6 +214,21 @@ export function actsFirst(platform: string = navigator.platform): boolean {
     return /^Win/.test(platform);
 }
 
+/** The ratings from none to the best, as clients number them, each with the tone of its chip. */
+export const RATINGS: { key: string; tone: Tone }[] = [
+    { key: 'IDS_CMT_NOTRATED', tone: 'neutral' },
+    { key: 'IDS_CMT_FAKE', tone: 'danger' },
+    { key: 'IDS_CMT_POOR', tone: 'warning' },
+    { key: 'IDS_CMT_FAIR', tone: 'neutral' },
+    { key: 'IDS_CMT_GOOD', tone: 'accent' },
+    { key: 'IDS_CMT_EXCELLENT', tone: 'success' },
+];
+
+/** The rating {@code value} stands for; one out of range is the nearest there is. */
+export function rating(value: number): (typeof RATINGS)[number] {
+    return RATINGS[Math.min(Math.max(Math.trunc(value), 0), RATINGS.length - 1)]!;
+}
+
 /** An eMule label as a column title or a fact's name, without the colon it ends with. */
 export function withoutColon(text: string): string {
     const trimmed = text.trim();

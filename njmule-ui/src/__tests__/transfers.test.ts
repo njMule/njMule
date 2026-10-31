@@ -12,6 +12,7 @@ import {
     byState,
     countryName,
     keeps,
+    rating,
     named,
     priorityKey,
     remaining,
@@ -332,5 +333,27 @@ describe('the order of the downloads', () => {
 
     function thenTheOrderIs(expected: string[]): void {
         expect(order).toEqual(expected);
+    }
+});
+
+describe('a rating', () => {
+    let key: string | undefined;
+
+    it('should be named as clients number it', () => {
+        whenTheRatingIsNamed(4);
+        thenItIs('IDS_CMT_GOOD');
+    });
+
+    it('should be the best there is when a client gives more', () => {
+        whenTheRatingIsNamed(9);
+        thenItIs('IDS_CMT_EXCELLENT');
+    });
+
+    function whenTheRatingIsNamed(value: number): void {
+        key = rating(value).key;
+    }
+
+    function thenItIs(expected: string): void {
+        expect(key).toBe(expected);
     }
 });
