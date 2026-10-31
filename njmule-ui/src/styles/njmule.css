@@ -163,7 +163,8 @@ select {
     transform: scaleX(-1);
 }
 
-/* Buttons: the theme's outline and fill, a flat one only on hover; the main action in the logo's orange. */
+/* Buttons: the theme's outline and fill (its subtle background, as the desktop app's), a flat one only on hover; the
+   main action in the logo's orange. */
 .button {
     display: inline-flex;
     align-items: center;
@@ -172,18 +173,19 @@ select {
     padding: 0 12px;
     border: 1px solid var(--color-border-default);
     border-radius: 6px;
-    background: var(--color-bg-default);
+    background: var(--color-bg-subtle);
     color: var(--color-fg-default);
     white-space: nowrap;
     cursor: pointer;
 }
 
 .button:hover {
-    background: var(--color-bg-subtle);
+    background: var(--color-base-1);
 }
 
 .button:active {
-    background: var(--color-bg-inset);
+    border-color: transparent;
+    background: var(--color-bg-subtle);
 }
 
 .button:focus-visible,
