@@ -93,7 +93,7 @@ jobs:
                   java-version: "25"
             # Gradle User Home cache through actions/cache (the open-source provider); also checks the
             # wrapper jar against the published checksums.
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             # One module's tests at a time: on the runners' four CPUs the long timed tests (the Kad
@@ -148,7 +148,7 @@ jobs:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             # Gradle User Home cache through actions/cache (the open-source provider); also checks the
             # wrapper jar against the published checksums.
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             - name: Build the native executable
@@ -180,7 +180,7 @@ jobs:
                   java-version: "25"
             # Gradle User Home cache through actions/cache (the open-source provider); also checks the
             # wrapper jar against the published checksums.
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             - name: Install GraalVM
@@ -237,7 +237,7 @@ jobs:
                   tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
                   echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm/Contents/Home" >> "$GITHUB_ENV"
                   echo "JAVA_HOME=$RUNNER_TEMP/graalvm/Contents/Home" >> "$GITHUB_ENV"
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             - name: Build the native executable
@@ -273,7 +273,7 @@ jobs:
                   echo "$MUSL_SHA256  $RUNNER_TEMP/musl.tar.gz" | sha256sum -c -
                   tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/musl.tar.gz"
                   echo "$RUNNER_TEMP/musl-toolchain/bin" >> "$GITHUB_PATH"
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             - name: Build the static executable
@@ -319,7 +319,7 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               if: env.SONAR_TOKEN != ''
               with:
                   cache-provider: basic

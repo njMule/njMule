@@ -62,7 +62,7 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             - name: Install GraalVM and WiX
@@ -198,7 +198,7 @@ jobs:
                   curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/nfpm.tar.gz" "$NFPM_URL"
                   echo "$NFPM_SHA256  $RUNNER_TEMP/nfpm.tar.gz" | sha256sum -c -
                   tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/nfpm.tar.gz" nfpm
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             # Releases always get the full optimization, never the quick -Ob of the CI checks.
@@ -267,7 +267,7 @@ jobs:
                   echo "$MUSL_SHA256  $RUNNER_TEMP/musl.tar.gz" | sha256sum -c -
                   tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/musl.tar.gz"
                   echo "$RUNNER_TEMP/musl-toolchain/bin" >> "$GITHUB_PATH"
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             - name: Build the static executable
@@ -485,7 +485,7 @@ jobs:
                   tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
                   echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm/Contents/Home" >> "$GITHUB_ENV"
                   echo "JAVA_HOME=$RUNNER_TEMP/graalvm/Contents/Home" >> "$GITHUB_ENV"
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             # The committed metadata comes from Windows and Linux: the tour adds macOS's first. JavaFX's Metal pipeline
@@ -604,7 +604,7 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             - name: Install GraalVM and WiX
@@ -704,7 +704,7 @@ jobs:
                   tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
                   echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm" >> "$GITHUB_ENV"
                   echo "JAVA_HOME=$RUNNER_TEMP/graalvm" >> "$GITHUB_ENV"
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             - name: Fetch the packages and their update information
@@ -756,7 +756,7 @@ jobs:
                   tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
                   echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm/Contents/Home" >> "$GITHUB_ENV"
                   echo "JAVA_HOME=$RUNNER_TEMP/graalvm/Contents/Home" >> "$GITHUB_ENV"
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             - name: Fetch the packages and their update information
@@ -845,7 +845,7 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
             - name: Software bill of materials
