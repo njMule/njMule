@@ -39,6 +39,7 @@ import {
 } from '../shared';
 import { message, problem } from '../toasts';
 import { kindIcon } from '../transfers';
+import CommentDialog from '../dialogs/CommentDialog.vue';
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
 import EmptyState from '../ui/EmptyState.vue';
 import Icon from '../ui/Icon.vue';
@@ -371,6 +372,17 @@ async function prioritize(priority: Priority): Promise<void> {
     await readShared();
 }
 
+// Our comment and rating of one file, and what others said of it.
+const commenting = ref(false);
+const commented = ref<SharedFile | null>(null);
+
+function comment(): void {
+    if (chosen.value.length === 1) {
+        commented.value = chosen.value[0]!;
+        commenting.value = true;
+    }
+}
+
 async function rename(): Promise<void> {
     const f = chosen.value[0];
     if (f === undefined || chosen.value.length !== 1) {
@@ -558,7 +570,7 @@ onMounted(() => void readDirectories());
                             <DropdownMenuItem class="menu-item" @select="rename">
                                 <Icon name="EDIT" />{{ t('IDS_RENAME') }}
                             </DropdownMenuItem>
-                            <DropdownMenuItem class="menu-item" disabled
+                            <DropdownMenuItem class="menu-item" @select="comment"
                                 ><Icon name="COMMENT" />{{ t('IDS_CMT_ADD') }}</DropdownMenuItem
                             >
                             <DropdownMenuItem class="menu-item" @select="copyLinks(true)"
@@ -595,7 +607,7 @@ onMounted(() => void readDirectories());
                     <ContextMenuItem class="menu-item" :disabled="chosen.length !== 1" @select="rename">
                         <Icon name="EDIT" />{{ t('IDS_RENAME') }}
                     </ContextMenuItem>
-                    <ContextMenuItem class="menu-item" disabled
+                    <ContextMenuItem class="menu-item" :disabled="chosen.length !== 1" @select="comment"
                         ><Icon name="COMMENT" />{{ t('IDS_CMT_ADD') }}</ContextMenuItem
                     >
                     <ContextMenuSeparator class="menu-separator" />
@@ -626,6 +638,7 @@ onMounted(() => void readDirectories());
                 </template>
             </DataTable>
         </section>
+        <CommentDialog v-model:open="commenting" :file="commented" :download="false" />
     </div>
 </template>
 
