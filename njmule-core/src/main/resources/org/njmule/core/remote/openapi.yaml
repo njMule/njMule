@@ -3128,6 +3128,12 @@ components:
         type:
           type: [string, "null"]
           description: The file type the network gives, if any.
+        aich:
+          type: [string, "null"]
+          pattern: "^[A-Z2-7]{32}$"
+          description: >-
+            The root of the file's AICH tree in Base32, when its publishers agree on one; the eD2K
+            link of the file carries it as h=.
         spamRating:
           type: integer
         spam:

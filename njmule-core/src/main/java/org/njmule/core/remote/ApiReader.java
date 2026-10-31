@@ -38,6 +38,7 @@ import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.InstallKind;
 import org.njmule.core.api.KadContactInfo;
@@ -248,7 +249,7 @@ final class ApiReader {
                 media,
                 SearchResult.Origin.NONE,
                 n.path("spamRating").asInt(),
-                Optional.empty(),
+                optional(n, "aich").flatMap(Hash20::tryParseBase32),
                 list(
                         n.path("names"),
                         each -> new SearchResult.Name(

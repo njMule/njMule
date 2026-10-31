@@ -35,6 +35,7 @@ import org.njmule.core.api.FileComment;
 import org.njmule.core.api.FileKind;
 import org.njmule.core.api.Friend;
 import org.njmule.core.api.Hash16;
+import org.njmule.core.api.Hash20;
 import org.njmule.core.api.ImportReport;
 import org.njmule.core.api.KadContactInfo;
 import org.njmule.core.api.KadInfo;
@@ -457,6 +458,8 @@ final class ApiJson {
         g.writeNumberProperty("sources", r.sources());
         completeSources(g, r.completeSources());
         optional(g, "type", r.type());
+        // Its eD2K link carries it, so that a download from the link can check and repair the file.
+        optional(g, "aich", r.aichHash().map(Hash20::toBase32));
         g.writeNumberProperty("spamRating", r.spamRating());
         g.writeBooleanProperty("spam", r.isSpam());
         // The names the file was found under, when more than one.
