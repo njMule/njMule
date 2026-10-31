@@ -84,7 +84,7 @@ function key(e: KeyboardEvent): void {
                         @click="run(command)"
                     >
                         <span class="ellipsis">{{ command.title }}</span>
-                        <span v-if="command.keys" class="menu-end shortcut-key">{{ command.keys }}</span>
+                        <span v-if="command.keys" class="menu-end keys">{{ command.keys }}</span>
                     </li>
                 </ul>
             </DialogContent>
@@ -115,6 +115,11 @@ function key(e: KeyboardEvent): void {
     padding: 2px 0;
     overflow-y: auto;
     list-style: none;
+}
+
+/* The chosen command is a list's chosen row, as in the desktop app's palette. */
+.menu-item[data-highlighted] {
+    background: var(--color-accent-muted);
 }
 
 .menu-item:not([data-highlighted]):not([data-disabled]):hover {

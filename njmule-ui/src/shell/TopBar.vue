@@ -157,8 +157,7 @@ function typed(e: KeyboardEvent): void {
                         <Icon name="THEME" />{{ t('nj.top.theme') }}
                     </DropdownMenuItem>
                     <DropdownMenuItem id="shortcuts" class="menu-item" @select="emit('shortcuts')">
-                        <Icon name="KEYBOARD" />{{ t('nj.shortcuts.title')
-                        }}<span class="menu-end shortcut-key">F1</span>
+                        <Icon name="KEYBOARD" />{{ t('nj.shortcuts.title') }}<span class="menu-end keys">F1</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem id="updates" class="menu-item" @select="checkNow()">
                         <Icon name="REFRESH" />{{ t('IDS_CHECK4UPDATE') }}

@@ -415,6 +415,12 @@ select:disabled {
     color: var(--color-fg-muted);
 }
 
+/* A command's keys written plainly at the end of its row, in the colour of its words, as the desktop app's menus. */
+.menu-item .menu-end.keys {
+    padding-inline-start: 2em;
+    color: inherit;
+}
+
 .menu-check {
     width: 16px;
     display: inline-flex;
