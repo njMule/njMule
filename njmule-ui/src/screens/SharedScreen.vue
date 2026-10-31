@@ -25,7 +25,7 @@ import { t } from '../i18n';
 import { htmlLinks } from '../links';
 import { preferences, readShared, shared, type SharedDirectory, type SharedFile } from '../model/engine';
 import type { Platform } from '../platform';
-import { holds, nameOf, parentOf, places, type Place } from '../shared';
+import { holds, mayHoldPersonalFiles, nameOf, parentOf, places, type Place } from '../shared';
 import { problem } from '../toasts';
 import { kindIcon } from '../transfers';
 import DataTable, { type ColumnMeta } from '../ui/DataTable.vue';
@@ -206,18 +206,21 @@ watch(
 );
 
 async function chooseDirectory(): Promise<void> {
-    let path = await props.platform.chooseFolder(t('nj.shared.shareFolder'));
+    const chosenFolder = await props.platform.chooseFolder(t('nj.shared.shareFolder'));
     // The desktop app's dialog gives none when it is cancelled.
-    if (path === null && props.platform.desktop) {
+    if (chosenFolder === null && props.platform.desktop) {
         return;
     }
-    let subdirectories = true;
-    // A page reaches no folder: the path of the engine's computer is typed, in the same question.
-    const typed = path === null;
+    // A page reaches no folder: the path of the engine's computer is typed, in the question.
+    const typed = chosenFolder === null;
+    if (!typed && mayHoldPersonalFiles(chosenFolder)) {
+        await shareEverything(chosenFolder, true);
+        return;
+    }
     const first = await ask({
         title: t('nj.shared.shareTitle'),
         text: t('nj.shared.shareText'),
-        names: typed ? [] : [path!],
+        names: typed ? [] : [chosenFolder],
         namesFirst: true,
         field: typed ? { label: t('nj.shared.shareFolder'), value: '' } : undefined,
         check: { label: t('IDS_SHAREDIRSUB'), value: true },
@@ -227,27 +230,32 @@ async function chooseDirectory(): Promise<void> {
     if (first === null || (typed && first.field === '')) {
         return;
     }
-    path = typed ? first.field : path!;
-    subdirectories = first.check;
-    if (!(await share(path, subdirectories, false))) {
-        // A whole drive or a personal folder: shared only after a second question, whose default is not to.
-        const again = await ask({
-            title: t('nj.shared.shareAllTitle'),
-            text: t('nj.shared.sensitiveText'),
-            names: [path],
-            namesFirst: true,
-            note: t('nj.shared.asksAlso'),
-            warning: true,
-            yes: t('nj.shared.shareAll'),
-            no: t('nj.shared.chooseOther'),
-            risky: true,
-        });
-        if (again === null) {
-            await chooseDirectory();
-            return;
-        }
-        await share(path, subdirectories, true);
+    const path = typed ? first.field : chosenFolder;
+    // A typed path is known only now; a folder the engine knows to be personal comes back as a conflict.
+    if ((typed && mayHoldPersonalFiles(path)) || !(await share(path, first.check, false))) {
+        await shareEverything(path, first.check);
     }
+}
+
+// A whole drive or a personal folder, shared only when the user insists; the default is choosing another one.
+async function shareEverything(path: string, subdirectories: boolean): Promise<void> {
+    const a = await ask({
+        title: t('nj.shared.shareAllTitle'),
+        text: t('nj.shared.sensitiveText'),
+        names: [path],
+        namesFirst: true,
+        check: { label: t('IDS_SHAREDIRSUB'), value: subdirectories },
+        note: t('nj.shared.asksAlso'),
+        warning: true,
+        yes: t('nj.shared.shareAll'),
+        no: t('nj.shared.chooseOther'),
+        risky: true,
+    });
+    if (a === null) {
+        await chooseDirectory();
+        return;
+    }
+    await share(path, a.check, true);
 }
 
 /** Shares {@code path}; false when the engine asks first whether to share a folder that may hold personal files. */

@@ -107,3 +107,68 @@ export function places(
     }
     return top;
 }
+
+// Where personal or system files are, as far as a path alone tells. The engine knows its computer's own folders and
+// refuses the others it finds until asked again (a conflict); a folder known here is asked about at once.
+const UNIX_SYSTEM = ['bin', 'boot', 'dev', 'etc', 'lib', 'lib64', 'proc', 'sbin', 'sys', 'usr', 'var'];
+const MAC_SYSTEM = ['System', 'Library', 'Applications', 'private'];
+const WINDOWS_SYSTEM = ['windows', 'program files', 'program files (x86)', 'programdata'];
+const PERSONAL = ['documents', 'desktop', 'pictures', '.ssh', '.gnupg'];
+// The folders beside the homes in the users' folder.
+const NO_HOME = ['public', 'default', 'default user', 'all users', 'shared'];
+
+/**
+ * Whether sharing {@code path} deserves a second thought: a disk's root, a system folder, a home or the documents,
+ * desktop, pictures or keys in it, or a folder holding one of them.
+ */
+export function mayHoldPersonalFiles(path: string): boolean {
+    const windows = /^[A-Za-z]:/.test(path) || path.includes('\\');
+    const parts = path.split(/[\\/]+/).filter((p) => p !== '' && p !== '.');
+    if (windows) {
+        // A network share's root is its first two names, a disk's its letter.
+        const below = path.startsWith('\\\\') ? parts.slice(1) : parts;
+        const [top, home, kept, under] = below.slice(1).map((p) => p.toLowerCase());
+        if (top === undefined || WINDOWS_SYSTEM.includes(top)) {
+            return true;
+        }
+        return top === 'users' && privateInHome(home, kept, under, true);
+    }
+    const [top, home, kept, under] = parts;
+    if (top === undefined || UNIX_SYSTEM.includes(top) || MAC_SYSTEM.includes(top)) {
+        return true;
+    }
+    if (top === 'root') {
+        return home === undefined || PERSONAL.includes(home.toLowerCase());
+    }
+    return (top === 'home' || top === 'Users') && privateInHome(home, kept, under, false);
+}
+
+// Whether home/kept/under, in the users' folder, is a home, what it keeps private, or the folder holding that.
+function privateInHome(
+    home: string | undefined,
+    kept: string | undefined,
+    under: string | undefined,
+    windows: boolean,
+): boolean {
+    if (home === undefined) {
+        return true;
+    }
+    if (NO_HOME.includes(home.toLowerCase())) {
+        return false;
+    }
+    if (kept === undefined) {
+        return true;
+    }
+    const folder = kept.toLowerCase();
+    if (PERSONAL.includes(folder)) {
+        return true;
+    }
+    // Windows keeps the programs' settings in AppData; OneDrive may hold the documents, desktop and pictures.
+    if (windows && folder === 'appdata') {
+        return under === undefined || under === 'roaming' || under === 'local';
+    }
+    if (windows && folder.startsWith('onedrive')) {
+        return under === undefined || PERSONAL.includes(under);
+    }
+    return false;
+}

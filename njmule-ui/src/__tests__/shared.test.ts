@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { describe, expect, it } from 'vitest';
-import { holds, places, type Place } from '../shared';
+import { holds, mayHoldPersonalFiles, places, type Place } from '../shared';
 
 describe('the places of the shared files', () => {
     const files = ['D:\\Shared\\Books\\a.epub', 'D:\\Shared\\Films\\b.mkv', 'D:\\Shared\\c.iso', 'E:\\Music\\d.mp3'];
@@ -71,5 +71,54 @@ describe('a place', () => {
 
     function thenItHoldsIt(expected: boolean): void {
         expect(held).toBe(expected);
+    }
+});
+
+describe('a folder to share', () => {
+    let warned: boolean | undefined;
+
+    it.each([
+        'C:\\',
+        'D:',
+        '\\\\nas\\films',
+        'C:\\Windows\\Fonts',
+        'C:\\Program Files (x86)\\Game',
+        'C:\\Users',
+        'C:\\Users\\ann',
+        'C:\\Users\\ann\\Documents\\Books',
+        'C:\\Users\\ann\\AppData\\Roaming',
+        'C:\\Users\\ann\\OneDrive\\Pictures',
+        '/',
+        '/etc',
+        '/usr/share/doc',
+        '/home',
+        '/home/ann',
+        '/home/ann/.ssh',
+        '/Users/ann/Desktop',
+        '/root',
+    ])('should be asked about first when it is %s', (path) => {
+        whenChecked(path);
+        thenItIsWarnedAbout(true);
+    });
+
+    it.each([
+        'D:\\Shared',
+        'C:\\Users\\ann\\Videos',
+        'C:\\Users\\Public\\Music',
+        '\\\\nas\\films\\new',
+        '/srv/share',
+        '/home/ann/Downloads',
+        '/Users/Shared/Films',
+    ])('should be shared at once when it is %s', (path) => {
+        whenChecked(path);
+        thenItIsWarnedAbout(false);
+    });
+
+    function whenChecked(path: string): void {
+        warned = mayHoldPersonalFiles(path);
+    }
+
+    function thenItIsWarnedAbout(expected: boolean): void {
+        expect(warned).toBe(expected);
     }
 });
