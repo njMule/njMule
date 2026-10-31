@@ -6,7 +6,10 @@ import type { Download } from '../model/engine';
 import {
     actsFirst,
     appliesTo,
+    byCategory,
     byName,
+    byPriority,
+    byState,
     countryName,
     keeps,
     named,
@@ -286,5 +289,48 @@ describe('the downloads a command applies to', () => {
 
     function thenItChanges(expected: Download['status'][]): void {
         expect(changed).toEqual(expected);
+    }
+});
+
+describe('the order of the downloads', () => {
+    let given: Download[] = [];
+    let order: string[] = [];
+
+    it('should sort the states from what runs to what is done', () => {
+        givenDownloads(
+            download({ name: 'done', status: 'complete' }),
+            download({ name: 'paused', status: 'paused' }),
+            download({ name: 'running', status: 'downloading', sources: 2, transferring: 1 }),
+        );
+        whenTheyAreSortedBy(byState);
+        thenTheOrderIs(['running', 'paused', 'done']);
+    });
+
+    it('should sort the priorities by level, an automatic one after a set one', () => {
+        givenDownloads(
+            download({ name: 'auto high', priority: 'auto', sources: 3 }),
+            download({ name: 'high', priority: 'high' }),
+            download({ name: 'low', priority: 'low' }),
+        );
+        whenTheyAreSortedBy(byPriority);
+        thenTheOrderIs(['low', 'high', 'auto high']);
+    });
+
+    it('should sort the categories by their number, not their name', () => {
+        givenDownloads(download({ name: 'second', category: 2 }), download({ name: 'first', category: 1 }));
+        whenTheyAreSortedBy(byCategory);
+        thenTheOrderIs(['first', 'second']);
+    });
+
+    function givenDownloads(...list: Download[]): void {
+        given = list;
+    }
+
+    function whenTheyAreSortedBy(compare: (a: Download, b: Download) => number): void {
+        order = [...given].sort(compare).map((d) => d.name);
+    }
+
+    function thenTheOrderIs(expected: string[]): void {
+        expect(order).toEqual(expected);
     }
 });

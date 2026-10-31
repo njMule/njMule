@@ -172,6 +172,38 @@ export function bySending<T extends { state: string; queueRank: number }>(list: 
     );
 }
 
+// The order the status column sorts the states in: from what runs to what is done.
+const STATE_ORDER: Shown[] = [
+    'downloading',
+    'waiting',
+    'noSources',
+    'paused',
+    'stopped',
+    'noSpace',
+    'error',
+    'complete',
+];
+
+/** Downloads by state, in the order of the states rather than of their words. */
+export function byState(a: Pick<Download, 'status' | 'transferring' | 'sources'>, b: typeof a): number {
+    return STATE_ORDER.indexOf(shown(a)) - STATE_ORDER.indexOf(shown(b));
+}
+
+const LEVELS = ['low', 'normal', 'high'];
+
+/** Downloads by the priority they act with, an automatic one after a set one of the same level. */
+export function byPriority(a: Pick<Download, 'priority' | 'sources'>, b: typeof a): number {
+    return (
+        LEVELS.indexOf(effectivePriority(a)) - LEVELS.indexOf(effectivePriority(b)) ||
+        Number(a.priority === 'auto') - Number(b.priority === 'auto')
+    );
+}
+
+/** Downloads by the number of their category, as the desktop app sorts them, not by its name. */
+export function byCategory(a: Pick<Download, 'category'>, b: typeof a): number {
+    return a.category - b.category;
+}
+
 /** Words in the order of their characters, capitals first, as the desktop app sorts names. */
 export function byName(a: string, b: string): number {
     return a < b ? -1 : a > b ? 1 : 0;

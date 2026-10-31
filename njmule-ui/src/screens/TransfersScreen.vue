@@ -20,6 +20,10 @@ import { bans, categories, downloads, known, sources, uploads, type Download, ty
 import { current, withShortcutKey } from '../places';
 import type { Platform } from '../platform';
 import {
+    byCategory,
+    byName,
+    byPriority,
+    byState,
     keeps,
     kindIcon,
     left,
@@ -218,6 +222,7 @@ const columns: ColumnDef<any, Download, any>[] = [
         accessorFn: (d: Download) => d.name,
         size: 220,
         minSize: 100,
+        sortFn: (a: any, b: any) => byName(a.original.name, b.original.name),
         cell: ({ row }: any) => {
             const d = row.original as Download;
             const color = categoryColor(d.category);
@@ -286,6 +291,7 @@ const columns: ColumnDef<any, Download, any>[] = [
         accessorFn: (d: Download) => shown(d),
         size: 128,
         minSize: 104,
+        sortFn: (a: any, b: any) => byState(a.original, b.original),
         // The state in words on a chip of its tone, with an icon of its own: the colour is never the only cue.
         cell: ({ getValue }: any) => {
             const state = STATES[getValue() as keyof typeof STATES];
@@ -329,6 +335,7 @@ const columns: ColumnDef<any, Download, any>[] = [
         accessorFn: (d: Download) => t(priorityKey(d)),
         size: 85,
         minSize: 72,
+        sortFn: (a: any, b: any) => byPriority(a.original, b.original),
         meta: { hidden: true } satisfies ColumnMeta,
     },
     {
@@ -337,6 +344,7 @@ const columns: ColumnDef<any, Download, any>[] = [
         accessorFn: (d: Download) => categoryName(d.category),
         size: 95,
         minSize: 72,
+        sortFn: (a: any, b: any) => byCategory(a.original, b.original),
         meta: { hidden: true } satisfies ColumnMeta,
     },
 ];
