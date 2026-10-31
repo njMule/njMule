@@ -99,9 +99,32 @@ export interface ResultRow {
     isName: boolean;
 }
 
-/** The rows of {@code results}, one for each file, in their order. */
-export function resultRows(results: Result[]): ResultRow[] {
-    return results.map((r) => ({ id: r.hash, result: r, file: r, isName: false }));
+/** Whether a result was found under several names, which its row can open to show. */
+export function hasNames(r: Pick<Result, 'names'>): boolean {
+    return r.names.length > 1;
+}
+
+/**
+ * The rows of {@code results} in their order, one for each file and, under each file of {@code open} found under
+ * several names, one for each name: the file as found under that name, with its own sources.
+ */
+export function resultRows(results: Result[], open: ReadonlySet<string> = new Set()): ResultRow[] {
+    return results.flatMap((file) => {
+        const row: ResultRow = { id: file.hash, result: file, file, isName: false };
+        if (!open.has(file.hash) || !hasNames(file)) {
+            return [row];
+        }
+        return [
+            row,
+            ...file.names.map((n) => ({
+                // A name has no line break: it keeps the row of a name apart from its file's.
+                id: `${file.hash}\n${n.name}`,
+                result: { ...file, name: n.name, sources: n.sources, completeSources: n.completeSources, names: [] },
+                file,
+                isName: true,
+            })),
+        ];
+    });
 }
 
 /** The eD2K link of a result. */

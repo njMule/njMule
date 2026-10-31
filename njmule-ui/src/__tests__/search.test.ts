@@ -14,6 +14,8 @@ import {
     merged,
     type Ours,
     type Result,
+    type ResultRow,
+    resultRows,
     tone,
     type Tone,
     words,
@@ -253,5 +255,54 @@ describe('the media columns', () => {
 
     function thenItIsMedia(expected: boolean): void {
         expect(media).toBe(expected);
+    }
+});
+
+describe('the rows of the names of a file', () => {
+    const NAMES = [
+        { name: 'one.iso', sources: 5, completeSources: 1 },
+        { name: 'two.iso', sources: 2, completeSources: null },
+    ];
+    let results: Result[] = [];
+    let rows: ResultRow[] = [];
+
+    it('should show only the files while none is open', () => {
+        givenTheResults(result('A', { names: NAMES }), result('B'));
+        whenTheRowsAreMade();
+        thenTheRowsAre('A.iso', 'B.iso');
+    });
+
+    it('should show the names of an open file under it', () => {
+        givenTheResults(result('A', { names: NAMES }), result('B'));
+        whenTheRowsAreMade('A');
+        thenTheRowsAre('A.iso', 'one.iso', 'two.iso', 'B.iso');
+    });
+
+    it('should give a name its own sources', () => {
+        givenTheResults(result('A', { names: NAMES }));
+        whenTheRowsAreMade('A');
+        thenTheSourcesAre(1, 5, 2);
+    });
+
+    it('should not open a file found under one name', () => {
+        givenTheResults(result('A', { names: [NAMES[0]!] }));
+        whenTheRowsAreMade('A');
+        thenTheRowsAre('A.iso');
+    });
+
+    function givenTheResults(...given: Result[]): void {
+        results = given;
+    }
+
+    function whenTheRowsAreMade(...open: string[]): void {
+        rows = resultRows(results, new Set(open.map((h) => h.padEnd(32, '0'))));
+    }
+
+    function thenTheRowsAre(...names: string[]): void {
+        expect(rows.map((r) => r.result.name)).toEqual(names);
+    }
+
+    function thenTheSourcesAre(...sources: number[]): void {
+        expect(rows.map((r) => r.result.sources)).toEqual(sources);
     }
 });

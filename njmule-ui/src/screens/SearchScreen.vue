@@ -33,6 +33,7 @@ import {
     completeness,
     expression,
     filterCount,
+    hasNames,
     history,
     isMedia,
     knownOf,
@@ -72,6 +73,8 @@ const filter = ref('');
 const filterColumn = ref('name');
 // Each search keeps its own table, with what is chosen in it and how far it scrolled, as the desktop app's tabs do.
 const selectedByTab = ref<Record<string, string[]>>({});
+// For each tab, the files found under several names that are open to show them.
+const openByTab = ref<Record<string, string[]>>({});
 const columnTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 const tabsTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
@@ -121,7 +124,7 @@ const TEXTS: Record<string, { key: string; text: (r: Result) => string }> = {
 };
 
 const rowsByTab = computed<Record<string, ResultRow[]>>(() =>
-    Object.fromEntries(searches.value.map((s) => [s.key, resultRows(s.results)])),
+    Object.fromEntries(searches.value.map((s) => [s.key, resultRows(s.results, new Set(openByTab.value[s.key]))])),
 );
 // The filter beside the tabs narrows every list, by the text of the file each row shows.
 const visibleByTab = computed<Record<string, ResultRow[]>>(() => {
@@ -171,7 +174,48 @@ function leftToRight(text: string): VNode {
 const MEDIA = ['artist', 'album', 'title', 'length', 'bitrate', 'codec'];
 const media: ColumnMeta = { hidden: true };
 
-function columns(): ColumnDef<any, ResultRow, any>[] {
+// The name of a file; one found under several names opens to show them, and closes, on its arrow. Its names show
+// under it, one step further in.
+function nameCell(s: Search, row: ResultRow): VNode {
+    const opens = !row.isName && hasNames(row.file);
+    const open = opens && (openByTab.value[s.key] ?? []).includes(row.file.hash);
+    const sign = h(
+        'span',
+        {
+            class: ['names-sign', { 'name-row': row.isName, opens }],
+            onClick: opens ? () => openNames(s, [row.file.hash], !open) : undefined,
+            // A double click on the arrow opens and closes, never downloads.
+            onDblclick: (e: MouseEvent) => e.stopPropagation(),
+        },
+        opens ? [h(Icon, { name: open ? 'CHEVRON_DOWN' : 'CHEVRON_RIGHT' })] : [],
+    );
+    return h('span', { class: 'name-cell' }, [sign, h('span', { class: 'ellipsis', dir: 'auto' }, row.result.name)]);
+}
+
+function openNames(s: Search, hashes: string[], open: boolean): void {
+    const now = new Set(openByTab.value[s.key]);
+    for (const hash of hashes) {
+        if (open) {
+            now.add(hash);
+        } else {
+            now.delete(hash);
+        }
+    }
+    openByTab.value = { ...openByTab.value, [s.key]: [...now] };
+}
+
+// + and - open and close the files chosen that were found under several names.
+function namesKeys(s: Search, e: KeyboardEvent): void {
+    if (e.key !== '+' && e.key !== '-') {
+        return;
+    }
+    const rows = new Map((rowsByTab.value[s.key] ?? []).map((r) => [r.id, r]));
+    const files = selection(s.key).flatMap((id) => rows.get(id)?.file.hash ?? []);
+    openNames(s, files, e.key === '+');
+    e.preventDefault();
+}
+
+function columns(s: Search): ColumnDef<any, ResultRow, any>[] {
     return [
         {
             id: 'name',
@@ -179,7 +223,7 @@ function columns(): ColumnDef<any, ResultRow, any>[] {
             accessorFn: (r: ResultRow) => r.result.name,
             size: 380,
             minSize: 100,
-            cell: ({ getValue }: any) => ownDirection(getValue()),
+            cell: ({ row }: any) => nameCell(s, row.original as ResultRow),
         },
         {
             id: 'size',
@@ -465,8 +509,10 @@ async function search(e: string, where: Scope): Promise<void> {
 async function close(s: Search): Promise<void> {
     const at = searches.value.indexOf(s);
     searches.value = searches.value.filter((other) => other !== s);
-    const { [s.key]: _gone, ...others } = selectedByTab.value;
-    selectedByTab.value = others;
+    const { [s.key]: _chosen, ...othersChosen } = selectedByTab.value;
+    selectedByTab.value = othersChosen;
+    const { [s.key]: _open, ...othersOpen } = openByTab.value;
+    openByTab.value = othersOpen;
     if (shownKey.value === s.key) {
         shownKey.value = searches.value[Math.min(at, searches.value.length - 1)]?.key ?? '';
     }
@@ -843,13 +889,14 @@ onUnmounted(() => {
                         class="search-results"
                         name="search"
                         :rows="visibleByTab[s.key] ?? []"
-                        :columns="columns()"
+                        :columns="columns(s)"
                         :row-id="(r: ResultRow) => r.id"
                         :row-class="rowClass"
                         :row-style="rowStyle"
                         :label="title(s)"
                         :columns-label="t('IDS_DL_FILENAME')"
                         @update:selected="(ids: string[]) => choose(s.key, ids)"
+                        @keydown="(e: KeyboardEvent) => namesKeys(s, e)"
                         @activate="(r: ResultRow) => download([r.result])"
                     >
                         <template #empty>
@@ -1193,6 +1240,30 @@ onUnmounted(() => {
 
 .search-results :deep(.result-downloading) {
     font-weight: bold;
+}
+
+/* The arrow of a result found under several names; its names show one step further in. */
+.search-results :deep(.name-cell) {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.search-results :deep(.names-sign) {
+    display: inline-flex;
+    flex: none;
+    justify-content: center;
+    width: 16px;
+    --nj-icon-size: 14px;
+    --nj-icon-color: var(--color-fg-muted);
+}
+
+.search-results :deep(.names-sign.name-row) {
+    width: 32px;
+}
+
+.search-results :deep(.names-sign.opens) {
+    cursor: pointer;
 }
 
 /* What is chosen in the results and what to do with it, under them. */
