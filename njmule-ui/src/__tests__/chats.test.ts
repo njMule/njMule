@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     chatAddress,
+    chatWho,
     entriesOf,
     entryName,
     initials,
@@ -233,5 +234,27 @@ describe('the keys of a list', () => {
 
     function thenTheChoiceIs(expected: number | null): void {
         expect(at).toBe(expected);
+    }
+});
+
+describe('the person of a conversation', () => {
+    let who = '';
+
+    it('should go by the nick in the conversation', () => {
+        whenNamedIn(chat('1.1.1.1:4662', { nick: 'ann' }));
+        thenTheyGoBy('ann');
+    });
+
+    it('should go by the address while the nick is not known', () => {
+        whenNamedIn(chat('1.1.1.1:4662', { nick: '' }));
+        thenTheyGoBy('1.1.1.1:4662');
+    });
+
+    function whenNamedIn(c: Chat): void {
+        who = chatWho(c);
+    }
+
+    function thenTheyGoBy(expected: string): void {
+        expect(who).toBe(expected);
     }
 });

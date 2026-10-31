@@ -15,6 +15,7 @@ import { answer, api } from '../api/client';
 import {
     addressTyped,
     besideName,
+    chatWho,
     chatAddress,
     chats,
     entriesOf,
@@ -34,7 +35,9 @@ import {
     shortTime,
     slot,
     unread,
+    type Chat,
     type Entry,
+    type Line,
 } from '../chats';
 import { t } from '../i18n';
 import { message, problem } from '../toasts';
@@ -98,6 +101,15 @@ function when(time: string | undefined): string {
     return time === undefined ? '' : shortTime(time);
 }
 
+// Above a line's words: its time and who wrote it, "Me" or the nick ("?" while none is known); a notice's time only.
+// The nick keeps its own direction.
+function meta(l: Line, chat: Chat): string {
+    if (l.author === 'notice') {
+        return when(l.time);
+    }
+    return `${when(l.time)}  ${l.author === 'us' ? t('nj.chat.me') : `\u2068${chat.nick || '?'}\u2069`}`;
+}
+
 // A row out of sight, hidden by the words to find or by the friends only, shows again when it is chosen.
 function choose(key: string): void {
     if (!shown.value.some((e) => e.key === key)) {
@@ -154,16 +166,34 @@ watch(asking, async (now) => {
     }
 });
 
-// The lines of the conversation shown are read, and it scrolls to the newest as they come.
+// Each conversation keeps where it was scrolled to, unless lines came since: then, as while it shows, it goes to the
+// newest. The lines of the conversation shown are read.
+const scrolls = new Map<string, { top: number; last: number }>();
+const lastLine = (key: string) => entries.value.find((e) => e.key === key)?.chat?.lines.at(-1)?.sequence ?? 0;
+
 watch(
-    () => chosen.value?.chat?.lines.length,
-    async () => {
+    chosenKey,
+    (_now, was) => {
+        if (linesBox.value) {
+            scrolls.set(was, { top: linesBox.value.scrollTop, last: lastLine(was) });
+        }
+    },
+    { flush: 'pre' },
+);
+
+watch(
+    () => [chosenKey.value, chosen.value?.chat?.lines.at(-1)?.sequence ?? 0] as const,
+    async ([key, last], [wasKey]) => {
         const chat = chosen.value?.chat;
         if (chat !== undefined) {
             markRead(chat);
         }
         await nextTick();
-        linesBox.value?.scrollTo({ top: linesBox.value.scrollHeight });
+        const box = linesBox.value;
+        const kept = scrolls.get(key);
+        if (box) {
+            box.scrollTop = key !== wasKey && kept?.last === last ? kept.top : box.scrollHeight;
+        }
     },
 );
 
@@ -181,15 +211,18 @@ async function send(words: string, to: string): Promise<boolean> {
     }
 }
 
+// Writing to a friend without a conversation opens one on the friend's address.
 async function sendText(): Promise<void> {
     const to = chosen.value ? where(chosen.value) : '';
-    if (to === '') {
-        message(t('nj.chat.noAddress'));
+    if (to === '' || text.value.trim() === '') {
         return;
+    }
+    if (chosen.value?.chat === undefined) {
+        openChat(to);
+        choose(to);
     }
     if (await send(text.value, to)) {
         text.value = '';
-        choose(to);
     }
 }
 
@@ -227,7 +260,7 @@ async function befriend(): Promise<void> {
     try {
         await answer(
             api().POST('/friends', {
-                body: { userHash: chat.userHash, name: chat.nick ?? chat.address, address: chat.address },
+                body: { userHash: chat.userHash, name: chat.nick ?? '', address: chat.address },
             }),
         );
         await readFriends();
@@ -372,7 +405,7 @@ async function close(): Promise<void> {
                     </span>
                     <div class="who-box">
                         <strong class="person-name ellipsis" dir="auto">{{ name(chosen) }}</strong>
-                        <span v-if="where(chosen) !== name(chosen)" class="muted" dir="ltr">{{ where(chosen) }}</span>
+                        <span v-if="besideName(chosen)" class="muted" dir="ltr">{{ besideName(chosen) }}</span>
                     </div>
                     <button
                         v-if="chosen.friend"
@@ -403,46 +436,68 @@ async function close(): Promise<void> {
                         </DropdownMenuPortal>
                     </DropdownMenuRoot>
                 </header>
-                <div ref="linesBox" class="chat-lines">
-                    <p v-if="!chosen.chat || chosen.chat.lines.length === 0" class="muted empty">
-                        {{ t('nj.chat.empty', name(chosen)) }}
-                    </p>
-                    <div
-                        v-for="l in chosen.chat?.lines ?? []"
-                        :key="l.sequence"
-                        class="chat-line"
-                        :class="`chat-${l.author}`"
-                    >
-                        <div class="chat-bubble">
-                            <span class="chat-text" dir="auto">{{ lineText(l) }}</span>
-                            <span class="chat-meta">{{ when(l.time) }}</span>
+                <template v-if="chosen.chat">
+                    <div ref="linesBox" class="chat-lines">
+                        <p v-if="chosen.chat.lines.length === 0" class="muted empty">
+                            {{ t('nj.chat.empty', chatWho(chosen.chat)) }}
+                        </p>
+                        <div
+                            v-for="l in chosen.chat.lines"
+                            :key="l.sequence"
+                            class="chat-line"
+                            :class="`chat-${l.author}`"
+                        >
+                            <div class="chat-bubble">
+                                <span class="chat-meta">{{ meta(l, chosen.chat) }}</span>
+                                <span class="chat-text" dir="auto">{{ lineText(l) }}</span>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <form v-if="chosen.chat?.captcha" class="captcha-card" @submit.prevent="sendLetters">
-                    <p class="captcha-text"><Icon name="SHIELD" />{{ t('IDS_CAPTCHAREQUEST') }}</p>
-                    <div class="row">
-                        <span class="captcha-plate">
-                            <img :src="`data:image/bmp;base64,${chosen.chat.captcha}`" alt="CAPTCHA" />
-                        </span>
+                    <form v-if="chosen.chat.captcha" class="captcha-card" @submit.prevent="sendLetters">
+                        <p class="captcha-text"><Icon name="SHIELD" />{{ t('IDS_CAPTCHAREQUEST') }}</p>
+                        <div class="row">
+                            <span class="captcha-plate">
+                                <img
+                                    :src="`data:image/bmp;base64,${chosen.chat.captcha}`"
+                                    :alt="t('nj.chat.captchaLetters')"
+                                />
+                            </span>
+                            <input
+                                v-model="letters"
+                                class="field"
+                                dir="ltr"
+                                :placeholder="t('nj.chat.captchaLetters')"
+                                :aria-label="t('nj.chat.captchaLetters')"
+                            />
+                            <button class="button" type="submit"><Icon name="SEND" />{{ t('nj.chat.send') }}</button>
+                        </div>
+                    </form>
+                    <form class="write" @submit.prevent="sendText">
                         <input
-                            v-model="letters"
+                            v-model="text"
                             class="field"
-                            maxlength="16"
-                            :placeholder="t('nj.chat.captchaLetters')"
+                            :placeholder="t('nj.chat.write', chatWho(chosen.chat))"
+                            :aria-label="t('nj.chat.write', chatWho(chosen.chat))"
                         />
-                        <button class="button" type="submit"><Icon name="SEND" />{{ t('nj.chat.send') }}</button>
-                    </div>
-                </form>
-                <form class="write" @submit.prevent="sendText">
-                    <input
-                        v-model="text"
-                        class="field"
-                        :placeholder="t('nj.chat.write', name(chosen))"
-                        :aria-label="t('nj.chat.write', name(chosen))"
-                    />
-                    <button class="button accent" type="submit"><Icon name="SEND" />{{ t('nj.chat.send') }}</button>
-                </form>
+                        <button class="button accent" type="submit"><Icon name="SEND" />{{ t('nj.chat.send') }}</button>
+                    </form>
+                </template>
+                <!-- A friend without a conversation: a word, and a box that starts one when the friend can be reached. -->
+                <template v-else>
+                    <p class="muted friend-note">
+                        {{ chosen.friend?.address ? t('nj.chat.empty', name(chosen)) : t('nj.chat.noAddress') }}
+                    </p>
+                    <form class="write" @submit.prevent="sendText">
+                        <input
+                            v-model="text"
+                            class="field"
+                            :disabled="!chosen.friend?.address"
+                            :placeholder="chosen.friend?.address ? t('nj.chat.write', name(chosen)) : ''"
+                            :aria-label="t('nj.chat.write', name(chosen))"
+                        />
+                        <button class="button accent" type="submit"><Icon name="SEND" />{{ t('nj.chat.send') }}</button>
+                    </form>
+                </template>
             </template>
         </section>
     </div>
@@ -645,6 +700,16 @@ async function close(): Promise<void> {
     margin: auto;
 }
 
+/* What a friend without a conversation shows above the box to write, centred in the room left. */
+.friend-note {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    text-align: center;
+}
+
 /* Chat lines as bubbles on pastel tints: ours accent, theirs neutral. */
 .chat-line {
     display: flex;
@@ -663,7 +728,7 @@ async function close(): Promise<void> {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    max-width: 70%;
+    max-width: 75%;
     padding: 5px 10px 6px;
     border-radius: 10px;
     background: var(--color-bg-subtle);
@@ -684,9 +749,11 @@ async function close(): Promise<void> {
     overflow-wrap: anywhere;
 }
 
+/* The time and the author, two spaces apart, above the words. */
 .chat-meta {
     color: var(--color-fg-muted);
     font-size: 0.85em;
+    white-space: pre-wrap;
 }
 
 /* A picture asked before a message goes through: on a light plate, read in every theme. */
@@ -713,9 +780,9 @@ async function close(): Promise<void> {
     background: var(--nj-captcha-paper);
 }
 
+/* The picture at its own size, as the client drew it. */
 .captcha-plate img {
     display: block;
-    height: 32px;
 }
 
 .write {

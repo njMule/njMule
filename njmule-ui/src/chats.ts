@@ -145,6 +145,11 @@ export function besideName(e: Entry): string {
     return where === entryName(e) ? '' : where;
 }
 
+/** The name the person of a conversation goes by in it: the nick, or the address. */
+export function chatWho(chat: Chat): string {
+    return chat.nick || chat.address;
+}
+
 /** The first letters of up to two words of the name, or none for an address. */
 export function initials(name: string): string {
     if (name === '' || /^[\p{Nd}\[]/u.test(name)) {
