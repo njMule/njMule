@@ -17,7 +17,8 @@ All notable changes to this project are documented here. The format follows
   (`njmule-desktop`) that starts the native engine.
 - In that interface: the program's own icon beside every file name in the desktop window, Ctrl+V to
   add the eD2K links on the clipboard in Transfers, Enter to download the search results chosen, the
-  downloads reordered by dragging them, and Browse for the preview player and the event programs.
+  downloads reordered by dragging them, Browse for the preview player and the event programs, and the
+  flag and code of each source's country under an opened download.
 - The remote-control API answers what the interface needs: the folders and network interfaces of
   njMule's computer, the check of a folder and of a search, the defaults of the preferences and
   whether each password is set, the first start's questions, the web interface's settings and API
