@@ -4,15 +4,17 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
-import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef } from 'vue';
+import { computed, h, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { answer, api, type Schemas } from '../../api/client';
 import { count } from '../../format';
 import { t } from '../../i18n';
 import { buddyState, distanceBars, udpState } from '../../kad';
 import { status } from '../../model/engine';
-import { message, problem, success } from '../../toasts';
+import { hostPort, rememberUrl, SUGGESTED_URLS, urlHistory, webAddress } from '../../network';
+import { message, problem } from '../../toasts';
 import DataTable from '../../ui/DataTable.vue';
 import Icon from '../../ui/Icon.vue';
+import Tip from '../../ui/Tip.vue';
 
 // Kad: its state in plain words with what to do, the contacts by distance and the facts, the ways to join it, and
 // the contacts and the lookups running, read every few seconds while shown.
@@ -24,14 +26,31 @@ const contacts = shallowRef<Contact[]>([]);
 const lookups = shallowRef<Lookup[]>([]);
 const tab = ref<'contacts' | 'searches'>('contacts');
 const joinOpen = ref(false);
-const nodesUrl = ref('https://upd.emule-security.org/nodes.dat');
+// The lists that worked are offered again; the well-known one is filled in while none did.
+const nodesHistory = ref(urlHistory('nodesDat'));
+const nodesUrl = ref<string>(nodesHistory.value.length === 0 ? SUGGESTED_URLS.nodesDat : '');
 const node = ref('');
+const nodesValid = computed(() => webAddress(nodesUrl.value) !== null);
+const nodeValid = computed(() => hostPort(node.value) !== null);
 const selectedContacts = ref<string[]>([]);
 const selectedLookups = ref<string[]>([]);
 
 const kad = computed(() => status.value?.kad ?? null);
 const bars = computed(() => distanceBars(contacts.value));
 const tallest = computed(() => Math.max(1, ...bars.value));
+const placed = computed(() => bars.value.reduce((sum, n) => sum + n, 0));
+// The bars stand on the base line, as tall as their share of the fullest; an empty distance shows a hairline.
+const CHART_HEIGHT = 72;
+function barHeight(n: number): string {
+    return n === 0 ? '1px' : `${Math.max(3, (CHART_HEIGHT * n) / tallest.value)}px`;
+}
+
+// Open while Kad is not connected, closed once it is; in between, as the user leaves it.
+watch(
+    () => kad.value?.connected ?? false,
+    (connected) => (joinOpen.value = !connected),
+    { immediate: true },
+);
 
 const say = computed(() => {
     const k = kad.value;
@@ -65,6 +84,7 @@ const facts = computed(() => {
     ];
 });
 
+// The kinds of lookups in their order, which their column sorts by whatever the words of the language.
 const KINDS: Record<Lookup['kind'], string> = {
     node: 'IDS_KAD_NODE',
     keyword: 'IDS_KAD_SEARCHKW',
@@ -75,18 +95,44 @@ const KINDS: Record<Lookup['kind'], string> = {
     store_notes: 'IDS_STORENOTES',
 };
 
+const ORDER = Object.keys(KINDS);
+
+// Ids, addresses and figures read left to right in every language.
+function leftToRight({ getValue }: any) {
+    return h('span', { dir: 'ltr' }, String(getValue()));
+}
+
 const contactColumns: ColumnDef<any, Contact, any>[] = [
-    { id: 'id', header: t('IDS_ID'), accessorFn: (c: Contact) => c.id, size: 260 },
-    { id: 'type', header: t('IDS_TYPE'), accessorFn: (c: Contact) => c.type, size: 60 },
-    { id: 'distance', header: t('IDS_KADDISTANCE'), accessorFn: (c: Contact) => c.distance, size: 260 },
-    { id: 'address', header: t('IDS_IP'), accessorFn: (c: Contact) => c.address, size: 160 },
-    { id: 'version', header: 'Kad', accessorFn: (c: Contact) => c.version, size: 50 },
+    { id: 'id', header: t('IDS_ID'), accessorFn: (c: Contact) => c.id, size: 260, cell: leftToRight },
+    { id: 'type', header: t('IDS_TYPE'), accessorFn: (c: Contact) => c.type, size: 60, cell: leftToRight },
+    {
+        id: 'distance',
+        header: t('IDS_KADDISTANCE'),
+        accessorFn: (c: Contact) => c.distance,
+        size: 260,
+        cell: leftToRight,
+    },
+    { id: 'address', header: t('IDS_IP'), accessorFn: (c: Contact) => c.address, size: 160, cell: leftToRight },
+    { id: 'version', header: 'Kad', accessorFn: (c: Contact) => c.version, size: 50, cell: leftToRight },
 ];
 
 const lookupColumns: ColumnDef<any, Lookup, any>[] = [
-    { id: 'target', header: t('IDS_KADID'), accessorFn: (l: Lookup) => l.target, size: 260 },
-    { id: 'kind', header: t('IDS_TYPE'), accessorFn: (l: Lookup) => t(KINDS[l.kind]), size: 140 },
-    { id: 'answers', header: t('nj.kad.answers'), accessorFn: (l: Lookup) => l.answers, size: 80 },
+    { id: 'target', header: t('IDS_KADID'), accessorFn: (l: Lookup) => l.target, size: 260, cell: leftToRight },
+    {
+        id: 'kind',
+        header: t('IDS_TYPE'),
+        accessorFn: (l: Lookup) => t(KINDS[l.kind]),
+        size: 140,
+        sortFn: (a: any, b: any) =>
+            ORDER.indexOf((a.original as Lookup).kind) - ORDER.indexOf((b.original as Lookup).kind),
+    },
+    {
+        id: 'answers',
+        header: t('nj.kad.answers'),
+        accessorFn: (l: Lookup) => l.answers,
+        size: 80,
+        cell: leftToRight,
+    },
 ];
 
 async function read(): Promise<void> {
@@ -102,19 +148,25 @@ async function read(): Promise<void> {
 
 async function download(): Promise<void> {
     const url = nodesUrl.value.trim();
+    const parsed = webAddress(url);
+    if (parsed === null) {
+        return;
+    }
     message(t('IDS_DOWNLOADING_NODESDAT_FROM', url));
     try {
         const { added } = await answer(api().POST('/kad/nodes', { body: { url } }));
-        success(t('nj.kad.fromUrl', added, url));
+        rememberUrl('nodesDat', url);
+        nodesHistory.value = urlHistory('nodesDat');
+        message(t('nj.kad.fromUrl', added, parsed.hostname));
     } catch (e) {
         problem((e as Error).message);
     }
 }
 
 async function bootstrap(): Promise<void> {
-    const where = node.value.trim();
-    if (!/^[^\s:]+:\d{1,5}$/.test(where)) {
-        message(t('nj.servers.badAddress', where));
+    const where = hostPort(node.value);
+    if (where === null) {
+        message(t('nj.servers.badAddress', node.value.trim()));
         return;
     }
     try {
@@ -145,17 +197,16 @@ onUnmounted(() => window.clearInterval(timer));
             <section class="card chart">
                 <div class="chart-head">
                     <strong>{{ t('nj.kad.byDistance') }}</strong>
-                    <span class="muted">{{ t('IDS_KADCONTACTLAB') }}: {{ count(contacts.length) }}</span>
+                    <span class="muted">{{ t('IDS_KADCONTACTLAB') }}: {{ count(placed) }}</span>
                 </div>
-                <div class="bars" role="img" :aria-label="t('nj.kad.byDistance')">
-                    <span
-                        v-for="(n, i) in bars"
-                        :key="i"
-                        class="distance-bar"
-                        :class="{ empty: n === 0 }"
-                        :style="{ height: n === 0 ? '1px' : `${Math.max(4, (n * 100) / tallest)}%` }"
-                        :title="String(n)"
-                    />
+                <div
+                    class="bars"
+                    role="img"
+                    :aria-label="`${t('nj.kad.byDistance')}, ${t('IDS_KADCONTACTLAB')}: ${count(placed)}`"
+                >
+                    <Tip v-for="(n, i) in bars" :key="i" :text="`${t('IDS_KADCONTACTLAB')}: ${count(n)}`">
+                        <span class="distance-bar" :class="{ empty: n === 0 }" :style="{ height: barHeight(n) }" />
+                    </Tip>
                 </div>
                 <div class="chart-axis muted">
                     <span>{{ t('nj.kad.close') }}</span
@@ -163,25 +214,52 @@ onUnmounted(() => window.clearInterval(timer));
                 </div>
             </section>
             <dl class="card facts">
-                <template v-for="[name, value] in facts" :key="name">
+                <template v-for="([name, value], i) in facts" :key="name">
                     <dt class="muted">{{ name }}</dt>
-                    <dd>{{ value }}</dd>
+                    <!-- The id reads left to right in every language. -->
+                    <dd :dir="i === facts.length - 1 ? 'ltr' : undefined">{{ value }}</dd>
                 </template>
             </dl>
         </div>
         <details class="join" :open="joinOpen" @toggle="joinOpen = ($event.target as HTMLDetailsElement).open">
             <summary><Icon name="CHEVRON_RIGHT" class="chevron" />{{ t('nj.kad.join') }}</summary>
-            <p class="muted">{{ t('nj.kad.joinHint') }}</p>
-            <label class="field-label" for="nodes-url">{{ t('IDS_BOOTSRAPNODESDAT') }}</label>
-            <div class="row">
-                <input id="nodes-url" v-model="nodesUrl" class="field" dir="ltr" />
-                <button class="button" @click="download"><Icon name="DOWNLOAD" />{{ t('IDS_DOWNLOAD') }}</button>
+            <p>{{ t('nj.kad.joinHint') }}</p>
+            <div class="ways">
+                <label for="nodes-url">{{ t('IDS_BOOTSRAPNODESDAT') }}</label>
+                <Tip :text="t('nj.input.url')">
+                    <input
+                        id="nodes-url"
+                        v-model="nodesUrl"
+                        class="field"
+                        dir="ltr"
+                        list="nodes-url-history"
+                        placeholder="https://…/nodes.dat"
+                        :aria-invalid="nodesUrl.trim() !== '' && !nodesValid"
+                        @keydown.enter="download"
+                    />
+                </Tip>
+                <button class="button" :disabled="!nodesValid" @click="download">
+                    <Icon name="DOWNLOAD" />{{ t('IDS_DOWNLOAD') }}
+                </button>
+                <label for="kad-node">{{ t('nj.kad.fromClient') }}</label>
+                <Tip :text="t('nj.input.address')">
+                    <input
+                        id="kad-node"
+                        v-model="node"
+                        class="field"
+                        dir="ltr"
+                        :placeholder="t('nj.kad.nodePrompt')"
+                        :aria-invalid="node.trim() !== '' && !nodeValid"
+                        @keydown.enter="bootstrap"
+                    />
+                </Tip>
+                <button class="button" :disabled="!nodeValid" @click="bootstrap">
+                    <Icon name="IMPORT" />{{ t('IDS_BOOTSTRAP') }}
+                </button>
             </div>
-            <label class="field-label" for="kad-node">{{ t('nj.kad.fromClient') }}</label>
-            <div class="row">
-                <input id="kad-node" v-model="node" class="field" dir="ltr" :placeholder="t('nj.kad.nodePrompt')" />
-                <button class="button" @click="bootstrap">{{ t('IDS_BOOTSTRAP') }}</button>
-            </div>
+            <datalist id="nodes-url-history">
+                <option v-for="u in nodesHistory" :key="u" :value="u" />
+            </datalist>
         </details>
         <div class="tabs" role="tablist">
             <button class="tab" role="tab" :aria-selected="tab === 'contacts'" @click="tab = 'contacts'">
@@ -247,15 +325,14 @@ onUnmounted(() => window.clearInterval(timer));
     --nj-icon-color: var(--color-fg-muted);
 }
 
+/* On a pastel tint of its tone, which its icon takes; the text keeps the theme's colour. */
 .say.success {
     background: var(--color-success-subtle);
-    color: var(--color-success-fg);
     --nj-icon-color: var(--color-success-fg);
 }
 
 .say.warning {
     background: var(--color-warning-subtle);
-    color: var(--color-warning-fg);
     --nj-icon-color: var(--color-warning-fg);
 }
 
@@ -287,7 +364,7 @@ onUnmounted(() => window.clearInterval(timer));
 .bars {
     display: flex;
     align-items: flex-end;
-    gap: 4px;
+    gap: 3px;
     height: 72px;
     direction: ltr;
 }
@@ -295,18 +372,19 @@ onUnmounted(() => window.clearInterval(timer));
 /* The Kad contacts by distance: bars in the accent of the progress bars, an empty distance as a hairline. */
 .distance-bar {
     flex: 1;
+    min-width: 2px;
     border-radius: 2px 2px 0 0;
     background: var(--nj-bar-sources-max);
 }
 
 .distance-bar.empty {
-    background: var(--color-border-muted);
+    background: var(--nj-bar-bg);
 }
 
 .chart-axis {
     display: flex;
     justify-content: space-between;
-    font-size: 0.92em;
+    font-size: 0.85em;
     direction: ltr;
 }
 
@@ -321,7 +399,6 @@ onUnmounted(() => window.clearInterval(timer));
 .facts dd {
     margin: 0;
     font-weight: bold;
-    direction: ltr;
 }
 
 .join {
@@ -361,19 +438,20 @@ onUnmounted(() => window.clearInterval(timer));
     margin: 0 14px;
 }
 
-.field-label {
-    color: var(--color-fg-muted);
-    font-size: 0.92em;
-}
-
-.row {
-    display: flex;
+/* The ways in side by side as in a form: the names, the boxes that take the rest, their buttons. */
+.ways {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
     gap: 8px;
 }
 
-.row .field {
-    flex: 1;
-    min-width: 0;
+.join p {
+    margin-block: 0;
+}
+
+.field[aria-invalid='true'] {
+    border-color: var(--color-danger-emphasis);
 }
 
 .tabs {
