@@ -25,6 +25,11 @@ export interface Platform {
     endpoint(): Promise<Endpoint>;
     /** A folder of the computer the engine runs on, chosen by the user; null when none is or none can be. */
     chooseFolder(title: string): Promise<string | null>;
+    /**
+     * A file of the computer the engine runs on, chosen by the user among those named {@code kind} with the extension
+     * {@code extension}; null when none is or none can be.
+     */
+    chooseFile(title: string, kind: string, extension: string): Promise<string | null>;
     /** eD2K links the system hands over, such as a link clicked in a browser. */
     onLinks(handler: (links: string[]) => void): void;
     /** Opens a folder in the system's file manager; false where it cannot. */
@@ -57,6 +62,7 @@ const browser: Platform = {
               },
     // A page reaches no folder: the user types the path of the engine's computer.
     chooseFolder: async () => null,
+    chooseFile: async () => null,
     onLinks: () => {},
     openFolder: async () => false,
     showFolder: async () => {

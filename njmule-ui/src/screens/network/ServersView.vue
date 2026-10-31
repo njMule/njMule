@@ -27,8 +27,8 @@ import {
     PopoverRoot,
     PopoverTrigger,
 } from 'reka-ui';
-import { computed, h, onMounted, onUnmounted, ref } from 'vue';
-import { answer, api } from '../../api/client';
+import { computed, h, onMounted, onUnmounted, ref, shallowRef } from 'vue';
+import { answer, api, endpoint } from '../../api/client';
 import { askRisky } from '../../ask';
 import { count } from '../../format';
 import { t } from '../../i18n';
@@ -43,6 +43,8 @@ import {
     urlHistory,
     webAddress,
 } from '../../network';
+import { chooseListFile, choosesOnEngine } from '../../list-files';
+import { currentPlatform, type Platform } from '../../platform';
 import { message, problem } from '../../toasts';
 import DataTable, { type ColumnMeta } from '../../ui/DataTable.vue';
 import EmptyState from '../../ui/EmptyState.vue';
@@ -52,7 +54,7 @@ import Tip from '../../ui/Tip.vue';
 
 // The servers: the list narrowed by its words, the one in use in bold behind an accent bar, the one being tried in
 // italics; the details of the one chosen beside the list, or over its end in a narrow window; servers added by address
-// or from a server.met on the web.
+// or from a server.met on the web or in a file.
 
 const filter = ref('');
 const selected = ref<string[]>([]);
@@ -311,6 +313,18 @@ async function update(): Promise<void> {
     });
 }
 
+const platform = shallowRef<Platform | undefined>();
+onMounted(() => void currentPlatform().then((p) => (platform.value = p)));
+
+// A server.met of the engine's computer by its path in the desktop window beside it, else one of this computer sent.
+async function addServerMet(): Promise<void> {
+    const onEngine = choosesOnEngine(platform.value, endpoint().url);
+    const chosen = await chooseListFile(onEngine, platform.value, t('nj.servers.addMet'), 'server.met', 'met');
+    if (chosen !== undefined) {
+        await run(() => answer(api().POST('/servers/import', { body: chosen.body })));
+    }
+}
+
 function prioritize(priority: Server['priority']): Promise<void> {
     return run(async () => {
         for (const s of chosen.value) {
@@ -516,6 +530,10 @@ onUnmounted(() => observer?.disconnect());
                             </Tip>
                             <button class="button" :disabled="!addressValid" @click="connectToAddress">
                                 <Icon name="ADD" />{{ t('nj.servers.addConnect') }}
+                            </button>
+                            <span />
+                            <button class="button from-file" @click="addServerMet">
+                                <Icon name="FOLDER_OPEN" />{{ t('nj.servers.addMet') }}
                             </button>
                         </div>
                         <datalist id="server-met-history">
@@ -741,6 +759,11 @@ onUnmounted(() => observer?.disconnect());
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
+}
+
+/* Under the field it goes with, as wide as its words. */
+.from-file {
+    justify-self: start;
 }
 
 .field[aria-invalid='true'] {

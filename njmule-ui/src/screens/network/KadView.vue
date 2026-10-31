@@ -5,12 +5,14 @@ SPDX-License-Identifier: GPL-3.0-or-later
 <script setup lang="ts">
 import type { ColumnDef } from '@tanstack/vue-table';
 import { computed, h, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
-import { answer, api, type Schemas } from '../../api/client';
+import { answer, api, endpoint, type Schemas } from '../../api/client';
 import { count } from '../../format';
 import { t } from '../../i18n';
 import { buddyState, distanceBars, udpState } from '../../kad';
 import { status } from '../../model/engine';
 import { hostPort, rememberUrl, SUGGESTED_URLS, urlHistory, webAddress } from '../../network';
+import { chooseListFile, choosesOnEngine } from '../../list-files';
+import { currentPlatform, type Platform } from '../../platform';
 import { message, problem } from '../../toasts';
 import DataTable from '../../ui/DataTable.vue';
 import Icon from '../../ui/Icon.vue';
@@ -163,6 +165,24 @@ async function download(): Promise<void> {
     }
 }
 
+const platform = shallowRef<Platform | undefined>();
+onMounted(() => void currentPlatform().then((p) => (platform.value = p)));
+
+// A nodes.dat of the engine's computer by its path in the desktop window beside it, else one of this computer sent.
+async function addNodesDat(): Promise<void> {
+    const onEngine = choosesOnEngine(platform.value, endpoint().url);
+    const chosen = await chooseListFile(onEngine, platform.value, t('nj.kad.addNodesDat'), 'nodes.dat', 'dat');
+    if (chosen === undefined) {
+        return;
+    }
+    try {
+        const { added } = await answer(api().POST('/kad/nodes', { body: chosen.body }));
+        message(t('nj.kad.fromFile', added, chosen.name));
+    } catch (e) {
+        problem((e as Error).message);
+    }
+}
+
 async function bootstrap(): Promise<void> {
     const where = hostPort(node.value);
     if (where === null) {
@@ -241,6 +261,11 @@ onUnmounted(() => window.clearInterval(timer));
                 <button class="button" :disabled="!nodesValid" @click="download">
                     <Icon name="DOWNLOAD" />{{ t('IDS_DOWNLOAD') }}
                 </button>
+                <span />
+                <button class="button from-file" @click="addNodesDat">
+                    <Icon name="FOLDER_OPEN" />{{ t('nj.kad.addNodesDat') }}
+                </button>
+                <span />
                 <label for="kad-node">{{ t('nj.kad.fromClient') }}</label>
                 <Tip :text="t('nj.input.address')">
                     <input
@@ -442,6 +467,11 @@ onUnmounted(() => window.clearInterval(timer));
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
+}
+
+/* Under the field it goes with, as wide as its words. */
+.from-file {
+    justify-self: start;
 }
 
 .join p {

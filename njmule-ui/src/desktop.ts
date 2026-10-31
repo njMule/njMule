@@ -48,6 +48,7 @@ export const desktop: Platform = {
     desktop: true,
     endpoint: () => invoke<Endpoint>('endpoint'),
     chooseFolder: (title) => invoke<string | null>('choose_folder', { title }),
+    chooseFile: (title, kind, extension) => invoke<string | null>('choose_file', { title, kind, extension }),
     onLinks: (handler) => {
         void listen<string[]>('links', (e) => handler(e.payload));
         // Links the shell received before the window listened.

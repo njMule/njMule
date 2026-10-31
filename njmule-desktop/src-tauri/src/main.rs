@@ -238,6 +238,21 @@ async fn choose_folder(app: AppHandle, title: String) -> Result<Option<String>, 
     .map_err(|e| e.to_string())
 }
 
+/// A file of this computer named `kind`, with the extension `extension`, chosen with the system's dialog.
+#[tauri::command]
+async fn choose_file(app: AppHandle, title: String, kind: String, extension: String) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title(title)
+            .add_filter(kind, &[extension.as_str()])
+            .blocking_pick_file()
+            .map(|file| file.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 /// Opens a folder in the system's file manager, or tells the system's reason it could not.
 #[tauri::command]
 fn open_folder(app: AppHandle, path: String) -> Result<(), String> {
@@ -385,6 +400,7 @@ fn main() {
             endpoint,
             pending_links,
             choose_folder,
+            choose_file,
             open_folder,
             tray_texts,
             tray_state,
