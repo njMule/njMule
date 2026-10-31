@@ -80,10 +80,28 @@ export function filterCount(f: Filters): number {
 
 /** The words of an expression, without its attributes, for a tab's title. */
 export function words(expression: string): string {
-    return expression
-        .split(/\s+/)
-        .filter((w) => !w.startsWith('@'))
-        .join(' ');
+    return expression.replace(/\s*@\S+/g, '').trim();
+}
+
+/** The results as they are now, in the order they first came: those known keep their place, new ones go last. */
+export function merged(before: Result[], now: Result[]): Result[] {
+    const fresh = new Map(now.map((r) => [r.hash, r]));
+    const known = new Set(before.map((r) => r.hash));
+    return [...before.flatMap((r) => fresh.get(r.hash) ?? []), ...now.filter((r) => !known.has(r.hash))];
+}
+
+/** A row of a search's results: a file, or, under an open file, one of the names it was found under. */
+export interface ResultRow {
+    id: string;
+    /** The file, or the file as found under the row's name. */
+    result: Result;
+    file: Result;
+    isName: boolean;
+}
+
+/** The rows of {@code results}, one for each file, in their order. */
+export function resultRows(results: Result[]): ResultRow[] {
+    return results.map((r) => ({ id: r.hash, result: r, file: r, isName: false }));
 }
 
 /** The eD2K link of a result. */

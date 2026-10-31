@@ -20,8 +20,8 @@ import {
     PopoverRoot,
     PopoverTrigger,
 } from 'reka-ui';
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { answer, api } from '../api/client';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { answer, api, ApiError } from '../api/client';
 import { count, size } from '../format';
 import { t } from '../i18n';
 import { htmlLinks } from '../links';
@@ -33,9 +33,11 @@ import {
     filterCount,
     history,
     link,
+    merged,
     narrowed,
     playingTime,
     remember,
+    resultRows,
     searches,
     shade,
     tone,
@@ -43,6 +45,7 @@ import {
     type FileType,
     type Filters,
     type Result,
+    type ResultRow,
     type Scope,
     type Search,
 } from '../search';
@@ -61,9 +64,15 @@ const filters = ref<Filters>({ type: '', extension: '' });
 const shownKey = ref(searches.value.at(-1)?.key ?? '');
 const filter = ref('');
 const filterColumn = ref('name');
-const selected = ref<string[]>([]);
+// Each search keeps its own table, with what is chosen in it and how far it scrolled, as the desktop app's tabs do.
+const selectedByTab = ref<Record<string, string[]>>({});
 const columnTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
+const tabsTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
+const tabList = ref<HTMLElement | null>(null);
+const tabElements = new Map<string, HTMLElement>();
+// The tabs do not all fit: a menu at their end lists them all.
+const overflowing = ref(false);
 const past = ref(history());
 let next = 0;
 
@@ -87,7 +96,6 @@ const TYPES: { value: FileType; key: string }[] = [
 
 const shown = computed(() => searches.value.find((s) => s.key === shownKey.value));
 const downloading = computed(() => new Set(downloads.value.map((d) => d.hash.toUpperCase())));
-const hasMedia = computed(() => (shown.value?.results ?? []).some((r) => r.media !== undefined));
 
 // The text of each column the filter can look in.
 const TEXTS: Record<string, { key: string; text: (r: Result) => string }> = {
@@ -102,10 +110,28 @@ const TEXTS: Record<string, { key: string; text: (r: Result) => string }> = {
     codec: { key: 'IDS_CODEC', text: (r) => r.media?.codec ?? '' },
 };
 
-const visible = computed(() =>
-    narrowed(shown.value?.results ?? [], filter.value, TEXTS[filterColumn.value]?.text ?? ((r) => r.name)),
+const rowsByTab = computed<Record<string, ResultRow[]>>(() =>
+    Object.fromEntries(searches.value.map((s) => [s.key, resultRows(s.results)])),
 );
-const chosen = computed(() => (shown.value?.results ?? []).filter((r) => selected.value.includes(r.hash)));
+// The filter beside the tabs narrows every list, by the text of the file each row shows.
+const visibleByTab = computed<Record<string, ResultRow[]>>(() => {
+    const text = TEXTS[filterColumn.value]?.text ?? ((r: Result) => r.name);
+    return Object.fromEntries(
+        Object.entries(rowsByTab.value).map(([key, rows]) => [key, narrowed(rows, filter.value, (r) => text(r.file))]),
+    );
+});
+const counted = computed(() => {
+    const all = shown.value?.results.length ?? 0;
+    const visible = (visibleByTab.value[shownKey.value] ?? []).filter((r) => !r.isName).length;
+    return visible === all ? String(all) : `${visible}/${all}`;
+});
+const chosen = computed(() => {
+    const rows = new Map((rowsByTab.value[shownKey.value] ?? []).map((r) => [r.id, r]));
+    return selection(shownKey.value).flatMap((id) => {
+        const row = rows.get(id);
+        return row === undefined ? [] : [row.result];
+    });
+});
 const running = computed(() => searches.value.filter((s) => s.running).length);
 
 const KNOWN: Record<NonNullable<Result['known']> | 'spam', string> = {
@@ -123,30 +149,40 @@ function knownText(r: Result): string {
     return r.known !== undefined ? t(KNOWN[r.known]) : r.spam ? t(KNOWN.spam) : '';
 }
 
-function columns(media: boolean): ColumnDef<any, Result, any>[] {
-    const all: ColumnDef<any, Result, any>[] = [
-        { id: 'name', header: t('IDS_DL_FILENAME'), accessorFn: (r: Result) => r.name, size: 380, minSize: 100 },
+function hasMedia(s: Search): boolean {
+    return s.results.some((r) => r.media !== undefined);
+}
+
+function columns(media: boolean): ColumnDef<any, ResultRow, any>[] {
+    const all: ColumnDef<any, ResultRow, any>[] = [
+        {
+            id: 'name',
+            header: t('IDS_DL_FILENAME'),
+            accessorFn: (r: ResultRow) => r.result.name,
+            size: 380,
+            minSize: 100,
+        },
         {
             id: 'size',
             header: t('IDS_DL_SIZE'),
-            accessorFn: (r: Result) => r.size,
+            accessorFn: (r: ResultRow) => r.result.size,
             size: 90,
             cell: ({ getValue }: any) => size(getValue()),
         },
-        { id: 'sources', header: t('IDS_SEARCHAVAIL'), accessorFn: (r: Result) => r.sources, size: 90 },
+        { id: 'sources', header: t('IDS_SEARCHAVAIL'), accessorFn: (r: ResultRow) => r.result.sources, size: 90 },
         {
             id: 'complete',
             header: t('IDS_COMPLETE'),
-            accessorFn: (r: Result) => (r.completeSources ?? -1) / Math.max(1, r.sources),
+            accessorFn: (r: ResultRow) => (r.result.completeSources ?? -1) / Math.max(1, r.result.sources),
             size: 90,
-            cell: ({ row }: any) => completeness(row.original as Result),
+            cell: ({ row }: any) => completeness((row.original as ResultRow).result),
         },
-        { id: 'type', header: t('nj.search.type'), accessorFn: (r: Result) => r.type ?? '', size: 90 },
-        { id: 'known', header: t('nj.search.known'), accessorFn: (r: Result) => knownText(r), size: 150 },
+        { id: 'type', header: t('nj.search.type'), accessorFn: (r: ResultRow) => r.result.type ?? '', size: 90 },
+        { id: 'known', header: t('nj.search.known'), accessorFn: (r: ResultRow) => knownText(r.result), size: 150 },
         {
             id: 'hash',
             header: t('IDS_FILEID'),
-            accessorFn: (r: Result) => r.hash,
+            accessorFn: (r: ResultRow) => r.result.hash,
             size: 220,
             meta: { hidden: true } satisfies ColumnMeta,
         },
@@ -156,38 +192,137 @@ function columns(media: boolean): ColumnDef<any, Result, any>[] {
     }
     return [
         ...all,
-        { id: 'artist', header: t('IDS_ARTIST'), accessorFn: (r: Result) => r.media?.artist ?? '', size: 100 },
-        { id: 'album', header: t('IDS_ALBUM'), accessorFn: (r: Result) => r.media?.album ?? '', size: 100 },
-        { id: 'title', header: t('IDS_TITLE'), accessorFn: (r: Result) => r.media?.title ?? '', size: 100 },
+        {
+            id: 'artist',
+            header: t('IDS_ARTIST'),
+            accessorFn: (r: ResultRow) => r.result.media?.artist ?? '',
+            size: 100,
+        },
+        { id: 'album', header: t('IDS_ALBUM'), accessorFn: (r: ResultRow) => r.result.media?.album ?? '', size: 100 },
+        { id: 'title', header: t('IDS_TITLE'), accessorFn: (r: ResultRow) => r.result.media?.title ?? '', size: 100 },
         {
             id: 'length',
             header: t('IDS_LENGTH'),
-            accessorFn: (r: Result) => r.media?.length ?? 0,
+            accessorFn: (r: ResultRow) => r.result.media?.length ?? 0,
             size: 60,
             cell: ({ getValue }: any) => ((getValue() as number) === 0 ? '' : playingTime(getValue())),
         },
         {
             id: 'bitrate',
             header: t('IDS_BITRATE'),
-            accessorFn: (r: Result) => r.media?.bitrate ?? 0,
+            accessorFn: (r: ResultRow) => r.result.media?.bitrate ?? 0,
             size: 80,
             cell: ({ getValue }: any) =>
                 (getValue() as number) === 0 ? '' : `${count(getValue())} ${t('IDS_KBITSSEC')}`,
         },
-        { id: 'codec', header: t('IDS_CODEC'), accessorFn: (r: Result) => r.media?.codec ?? '', size: 60 },
+        { id: 'codec', header: t('IDS_CODEC'), accessorFn: (r: ResultRow) => r.result.media?.codec ?? '', size: 60 },
     ];
 }
 
 // Ours already in red, known from before in green, spam muted; a new result from the text's colour towards the
 // accent's as it has more sources. A file being downloaded stands out in bold.
-function rowClass(r: Result): string[] {
+function rowClass(row: ResultRow): string[] {
+    const r = row.result;
     const ours = downloading.value.has(r.hash.toUpperCase());
     return [`result-${tone(r, ours)}`, ours || r.known === 'downloading' ? 'result-downloading' : ''];
 }
 
-function rowStyle(r: Result): Record<string, string> {
-    return { '--nj-shade': `${shade(r.sources)}%` };
+function rowStyle(row: ResultRow): Record<string, string> {
+    return { '--nj-shade': `${shade(row.result.sources)}%` };
 }
+
+function selection(key: string): string[] {
+    return selectedByTab.value[key] ?? [];
+}
+
+function choose(key: string, ids: string[]): void {
+    selectedByTab.value = { ...selectedByTab.value, [key]: ids };
+}
+
+function keepTab(key: string, element: unknown): void {
+    if (element instanceof HTMLElement) {
+        tabElements.set(key, element);
+    } else {
+        tabElements.delete(key);
+    }
+}
+
+function shownAt(): number {
+    return searches.value.findIndex((s) => s.key === shownKey.value);
+}
+
+// Shows the tab at {@code index}, going round past either end, and gives it the focus as the desktop app's tabs do.
+function showTab(index: number): void {
+    const all = searches.value.length;
+    const s = searches.value[((index % all) + all) % all];
+    if (s !== undefined) {
+        shownKey.value = s.key;
+        void nextTick(() => tabElements.get(s.key)?.focus());
+    }
+}
+
+// Ctrl+Tab and Ctrl+Page Down show the next search, Ctrl+Shift+Tab and Ctrl+Page Up the one before.
+function tabKeys(e: KeyboardEvent): boolean {
+    if (!e.ctrlKey || e.altKey || e.metaKey || searches.value.length === 0) {
+        return false;
+    }
+    const step = e.key === 'Tab' ? (e.shiftKey ? -1 : 1) : e.key === 'PageDown' ? 1 : e.key === 'PageUp' ? -1 : 0;
+    if (step === 0) {
+        return false;
+    }
+    e.preventDefault();
+    showTab(shownAt() + step);
+    return true;
+}
+
+// On the tabs the arrows go to the next or the one before, in the reading direction; Home and End to either end.
+function tabListKeys(e: KeyboardEvent): void {
+    if (tabKeys(e) || e.ctrlKey || e.altKey || e.metaKey) {
+        return;
+    }
+    const rtl = getComputedStyle(e.currentTarget as Element).direction === 'rtl';
+    const steps: Record<string, number> = {
+        ArrowLeft: rtl ? 1 : -1,
+        ArrowRight: rtl ? -1 : 1,
+        ArrowUp: -1,
+        ArrowDown: 1,
+    };
+    if (steps[e.key] !== undefined) {
+        showTab(shownAt() + steps[e.key]!);
+    } else if (e.key === 'Home' || e.key === 'End') {
+        showTab(e.key === 'Home' ? 0 : searches.value.length - 1);
+    } else {
+        return;
+    }
+    e.preventDefault();
+}
+
+function measureTabs(): void {
+    const list = tabList.value;
+    overflowing.value = list !== null && list.scrollWidth > list.clientWidth + 1;
+}
+
+const tabsObserver = new ResizeObserver(measureTabs);
+
+watch(tabList, (now, before) => {
+    if (before) {
+        tabsObserver.unobserve(before);
+    }
+    if (now) {
+        tabsObserver.observe(now);
+    }
+});
+
+watch(
+    () => searches.value.map((s) => title(s)).join('\n'),
+    () => void nextTick(measureTabs),
+);
+
+// The tab shown is scrolled into sight, as the desktop app's tab row does.
+watch(
+    shownKey,
+    (key) => void nextTick(() => tabElements.get(key)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })),
+);
 
 function open(search: Search): void {
     searches.value = [...searches.value, search];
@@ -216,6 +351,8 @@ async function search(e: string, where: Scope): Promise<void> {
 async function close(s: Search): Promise<void> {
     const at = searches.value.indexOf(s);
     searches.value = searches.value.filter((other) => other !== s);
+    const { [s.key]: _gone, ...others } = selectedByTab.value;
+    selectedByTab.value = others;
     if (shownKey.value === s.key) {
         shownKey.value = searches.value[Math.min(at, searches.value.length - 1)]?.key ?? '';
     }
@@ -228,6 +365,7 @@ async function close(s: Search): Promise<void> {
     }
 }
 
+// A search the engine cannot widen, or no longer knows, stays as it is without a word.
 async function more(): Promise<void> {
     const s = shown.value;
     if (s?.id === null || s === undefined) {
@@ -237,7 +375,9 @@ async function more(): Promise<void> {
         await answer(api().POST('/searches/{id}/more', { params: { path: { id: s.id } } }));
         s.running = true;
     } catch (err) {
-        problem((err as Error).message);
+        if (!(err instanceof ApiError && (err.status === 404 || err.status === 409))) {
+            problem((err as Error).message);
+        }
     }
 }
 
@@ -309,7 +449,8 @@ async function refresh(s: Search): Promise<void> {
     }
     try {
         const got = await answer(api().GET('/searches/{id}', { params: { path: { id: s.id } } }));
-        s.results = got.results;
+        // The engine lists them by sources; the desktop app keeps the order they came in until a column sorts them.
+        s.results = merged(s.results, got.results);
         s.running = got.running;
     } catch {
         // A search the engine forgot keeps the results it showed.
@@ -357,10 +498,6 @@ watch(
     { immediate: true },
 );
 
-watch(shownKey, () => {
-    selected.value = [];
-});
-
 let timer = 0;
 onMounted(() => {
     void restore();
@@ -372,7 +509,10 @@ onMounted(() => {
         }
     }, 1000);
 });
-onUnmounted(() => window.clearInterval(timer));
+onUnmounted(() => {
+    window.clearInterval(timer);
+    tabsObserver.disconnect();
+});
 </script>
 
 <template>
@@ -487,27 +627,54 @@ onUnmounted(() => window.clearInterval(timer));
 
         <template v-else>
             <div class="tab-row">
-                <div class="search-tabs" role="tablist">
-                    <div
-                        v-for="s in searches"
-                        :key="s.key"
-                        class="search-tab"
-                        role="tab"
-                        :aria-selected="s.key === shownKey"
-                        tabindex="0"
-                        @click="shownKey = s.key"
-                        @keydown.enter="shownKey = s.key"
-                    >
-                        <span v-if="s.running" class="tab-spinner" aria-hidden="true" />
-                        <span class="ellipsis" dir="auto">{{ title(s) }}</span>
-                        <button class="tab-close" :aria-label="t('IDS_FD_CLOSE')" @click.stop="close(s)">
-                            <Icon name="CLOSE" />
-                        </button>
-                    </div>
+                <div ref="tabList" class="search-tabs" role="tablist" @keydown="tabListKeys">
+                    <Tip v-for="s in searches" :key="s.key" :text="s.expression">
+                        <div
+                            :ref="(el) => keepTab(s.key, el)"
+                            class="search-tab"
+                            role="tab"
+                            :aria-selected="s.key === shownKey"
+                            :tabindex="s.key === shownKey ? 0 : -1"
+                            @click="shownKey = s.key"
+                        >
+                            <span v-if="s.running" class="tab-spinner" aria-hidden="true" />
+                            <span class="ellipsis" dir="auto">{{ title(s) }}</span>
+                            <button
+                                class="tab-close"
+                                tabindex="-1"
+                                :aria-label="t('IDS_FD_CLOSE')"
+                                @click.stop="close(s)"
+                            >
+                                <Icon name="CLOSE" />
+                            </button>
+                        </div>
+                    </Tip>
                 </div>
-                <button class="button flat small" :disabled="shown?.id === null" @click="more">
-                    <Icon name="ADD" />{{ t('nj.search.more') }}
-                </button>
+                <DropdownMenuRoot v-if="overflowing">
+                    <DropdownMenuTrigger
+                        ref="tabsTrigger"
+                        class="button flat small tabs-menu"
+                        :aria-label="t('IDS_MORE')"
+                    >
+                        <Icon name="CHEVRON_DOWN" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuPortal>
+                        <DropdownMenuContent class="menu" align="end" :reference="tabsTrigger?.$el">
+                            <DropdownMenuRadioGroup v-model="shownKey">
+                                <DropdownMenuRadioItem
+                                    v-for="s in searches"
+                                    :key="s.key"
+                                    class="menu-item"
+                                    :value="s.key"
+                                >
+                                    <span class="menu-check"><Icon v-if="s.key === shownKey" name="CHECK" /></span
+                                    ><span class="ellipsis" dir="auto">{{ title(s) }}</span>
+                                </DropdownMenuRadioItem>
+                            </DropdownMenuRadioGroup>
+                        </DropdownMenuContent>
+                    </DropdownMenuPortal>
+                </DropdownMenuRoot>
+                <button class="button flat small" @click="more"><Icon name="ADD" />{{ t('nj.search.more') }}</button>
                 <button class="button flat small stop-search" :disabled="!shown?.running" @click="stop">
                     <Icon name="STOP" />{{ t('IDS_DL_STOP') }}
                 </button>
@@ -547,67 +714,78 @@ onUnmounted(() => window.clearInterval(timer));
                     </Tip>
                 </div>
             </div>
-            <strong class="results-count">{{
-                t(
-                    'nj.search.count',
-                    visible.length === (shown?.results.length ?? 0)
-                        ? String(visible.length)
-                        : `${visible.length}/${shown?.results.length ?? 0}`,
-                )
-            }}</strong>
-            <DataTable
-                v-if="shown"
-                :key="`${shown.key}-${hasMedia}`"
-                v-model:selected="selected"
-                class="search-results"
-                name="search"
-                :rows="visible"
-                :columns="columns(hasMedia)"
-                :row-id="(r: Result) => r.hash"
-                :row-class="rowClass"
-                :row-style="rowStyle"
-                :label="title(shown)"
-                :columns-label="t('IDS_DL_FILENAME')"
-                @activate="(r: Result) => download([r])"
-            >
-                <template #empty>
-                    <span class="muted">{{ t('nj.search.waiting') }}</span>
-                </template>
-                <template #menu>
-                    <ContextMenuItem
-                        class="menu-item default-item"
-                        :disabled="chosen.length === 0"
-                        @select="download(chosen)"
+            <strong class="results-count">{{ t('nj.search.count', counted) }}</strong>
+            <div class="tab-tables" @keydown="tabKeys">
+                <div
+                    v-for="s in searches"
+                    :key="s.key"
+                    class="tab-table"
+                    :class="{ shown: s.key === shownKey }"
+                    role="tabpanel"
+                >
+                    <DataTable
+                        :key="hasMedia(s) ? 'media' : 'plain'"
+                        :selected="selection(s.key)"
+                        class="search-results"
+                        name="search"
+                        :rows="visibleByTab[s.key] ?? []"
+                        :columns="columns(hasMedia(s))"
+                        :row-id="(r: ResultRow) => r.id"
+                        :row-class="rowClass"
+                        :row-style="rowStyle"
+                        :label="title(s)"
+                        :columns-label="t('IDS_DL_FILENAME')"
+                        @update:selected="(ids: string[]) => choose(s.key, ids)"
+                        @activate="(r: ResultRow) => download([r.result])"
                     >
-                        <Icon name="DOWNLOAD" />{{ t('IDS_DOWNLOAD') }}
-                    </ContextMenuItem>
-                    <ContextMenuSeparator class="menu-separator" />
-                    <ContextMenuItem class="menu-item" :disabled="chosen.length === 0" @select="copyLinks(false)">
-                        <Icon name="COPY" />{{ t('nj.copyLink') }}
-                    </ContextMenuItem>
-                    <ContextMenuItem class="menu-item" :disabled="chosen.length === 0" @select="copyLinks(true)">
-                        <Icon name="CODE" />{{ t('IDS_DL_LINK2') }}
-                    </ContextMenuItem>
-                    <ContextMenuItem class="menu-item" :disabled="chosen.length === 0" @select="searchRelated">
-                        <Icon name="SEARCH" />{{ t('IDS_SEARCHRELATED') }}
-                    </ContextMenuItem>
-                    <ContextMenuSeparator class="menu-separator" />
-                    <ContextMenuItem
-                        class="menu-item"
-                        :disabled="chosen.length === 0 || shown.id === null"
-                        @select="markSpam(true)"
-                    >
-                        <Icon name="BLOCK" />{{ t('IDS_MARKSPAM') }}
-                    </ContextMenuItem>
-                    <ContextMenuItem
-                        class="menu-item"
-                        :disabled="chosen.length === 0 || shown.id === null"
-                        @select="markSpam(false)"
-                    >
-                        <Icon name="CHECK" />{{ t('IDS_MARKNOTSPAM') }}
-                    </ContextMenuItem>
-                </template>
-            </DataTable>
+                        <template #empty>
+                            <span class="muted">{{ t('nj.search.waiting') }}</span>
+                        </template>
+                        <template #menu>
+                            <ContextMenuItem
+                                class="menu-item default-item"
+                                :disabled="chosen.length === 0"
+                                @select="download(chosen)"
+                            >
+                                <Icon name="DOWNLOAD" />{{ t('IDS_DOWNLOAD') }}
+                            </ContextMenuItem>
+                            <ContextMenuSeparator class="menu-separator" />
+                            <ContextMenuItem
+                                class="menu-item"
+                                :disabled="chosen.length === 0"
+                                @select="copyLinks(false)"
+                            >
+                                <Icon name="COPY" />{{ t('nj.copyLink') }}
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                                class="menu-item"
+                                :disabled="chosen.length === 0"
+                                @select="copyLinks(true)"
+                            >
+                                <Icon name="CODE" />{{ t('IDS_DL_LINK2') }}
+                            </ContextMenuItem>
+                            <ContextMenuItem class="menu-item" :disabled="chosen.length === 0" @select="searchRelated">
+                                <Icon name="SEARCH" />{{ t('IDS_SEARCHRELATED') }}
+                            </ContextMenuItem>
+                            <ContextMenuSeparator class="menu-separator" />
+                            <ContextMenuItem
+                                class="menu-item"
+                                :disabled="chosen.length === 0 || s.id === null"
+                                @select="markSpam(true)"
+                            >
+                                <Icon name="BLOCK" />{{ t('IDS_MARKSPAM') }}
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                                class="menu-item"
+                                :disabled="chosen.length === 0 || s.id === null"
+                                @select="markSpam(false)"
+                            >
+                                <Icon name="CHECK" />{{ t('IDS_MARKNOTSPAM') }}
+                            </ContextMenuItem>
+                        </template>
+                    </DataTable>
+                </div>
+            </div>
             <div v-if="chosen.length > 0" id="selection-bar" class="selection-bar">
                 <span class="chosen-name ellipsis" dir="auto">{{
                     chosen.length === 1 ? chosen[0]!.name : t('nj.search.chosen', chosen.length)
@@ -763,6 +941,7 @@ onUnmounted(() => window.clearInterval(timer));
     min-width: 0;
     gap: 2px;
     overflow-x: auto;
+    scrollbar-width: none;
 }
 
 /* The tabs as the desktop app draws them: the chosen one raised, with the strong accent along its top. */
@@ -778,10 +957,15 @@ onUnmounted(() => window.clearInterval(timer));
     background: var(--color-bg-subtle);
     cursor: pointer;
     white-space: nowrap;
+    outline: none;
 }
 
 .search-tab:hover {
     background: var(--color-bg-default);
+}
+
+.search-tab:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--color-accent-emphasis);
 }
 
 .search-tab[aria-selected='true'] {
@@ -789,6 +973,12 @@ onUnmounted(() => window.clearInterval(timer));
     box-shadow: inset 0 2px 0 var(--nj-accent-strong);
     margin-bottom: -1px;
     padding-bottom: 5px;
+}
+
+.search-tab[aria-selected='true']:focus-visible {
+    box-shadow:
+        inset 0 2px 0 var(--nj-accent-strong),
+        inset 0 0 0 2px var(--color-accent-emphasis);
 }
 
 .tab-close {
@@ -803,6 +993,11 @@ onUnmounted(() => window.clearInterval(timer));
 
 .tab-close:hover {
     background: var(--color-bg-inset);
+}
+
+.tabs-menu {
+    flex: none;
+    margin-bottom: 2px;
 }
 
 /* A search running, in its tab: a turning ring in the strong accent. */
@@ -844,6 +1039,24 @@ onUnmounted(() => window.clearInterval(timer));
 
 .results-count {
     margin-top: 2px;
+}
+
+/* The tables of all the searches lie on each other, the shown one on top: the others keep their scroll. */
+.tab-tables {
+    display: grid;
+    flex: 1;
+    min-height: 0;
+}
+
+.tab-table {
+    display: flex;
+    grid-area: 1 / 1;
+    min-height: 0;
+    min-width: 0;
+}
+
+.tab-table:not(.shown) {
+    visibility: hidden;
 }
 
 /* The colours of the search results: ours already in red, known from before in green, spam muted; a new result from
