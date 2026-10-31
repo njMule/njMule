@@ -11,6 +11,7 @@ import {
     expression,
     type Filters,
     filterCount,
+    history,
     isMedia,
     kindOrder,
     lowestMaxSize,
@@ -25,6 +26,7 @@ import {
     type Result,
     type ResultRow,
     resultRows,
+    remember,
     rowOrder,
     SortMemory,
     tone,
@@ -516,5 +518,41 @@ describe('the order of file types', () => {
 
     function thenTheFirstComes(first: boolean): void {
         expect(order < 0).toBe(first);
+    }
+});
+
+describe('the searches typed before', () => {
+    let kept: string[] = [];
+
+    it('should keep the last ten, the latest first', () => {
+        givenTheSearchesTyped(12);
+        whenTheyAreRead();
+        thenTheyAre(['s12', 's11', 's10', 's9', 's8', 's7', 's6', 's5', 's4', 's3']);
+    });
+
+    it('should keep a search typed again once, at the top', () => {
+        givenTheSearchesTyped(3);
+        givenTheSearchTypedAgain('s1');
+        whenTheyAreRead();
+        thenTheyAre(['s1', 's3', 's2']);
+    });
+
+    function givenTheSearchesTyped(count: number): void {
+        localStorage.clear();
+        for (let i = 1; i <= count; i++) {
+            remember(`s${i}`);
+        }
+    }
+
+    function givenTheSearchTypedAgain(query: string): void {
+        remember(query);
+    }
+
+    function whenTheyAreRead(): void {
+        kept = history();
+    }
+
+    function thenTheyAre(expected: string[]): void {
+        expect(kept).toEqual(expected);
     }
 });

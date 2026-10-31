@@ -389,13 +389,16 @@ export function narrowed<T>(results: T[], filter: string, text: (r: T) => string
 }
 
 const HISTORY_KEY = 'njmule.search.history';
-const HISTORY_SIZE = 30;
+// The desktop app keeps the last ten.
+const HISTORY_SIZE = 10;
 
 /** The searches typed before, the newest first. */
 export function history(): string[] {
     try {
         const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]') as unknown;
-        return Array.isArray(saved) ? saved.filter((h): h is string => typeof h === 'string') : [];
+        return Array.isArray(saved)
+            ? saved.filter((h): h is string => typeof h === 'string').slice(0, HISTORY_SIZE)
+            : [];
     } catch {
         return [];
     }

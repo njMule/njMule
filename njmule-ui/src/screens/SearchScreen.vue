@@ -105,7 +105,11 @@ const tabList = ref<HTMLElement | null>(null);
 const tabElements = new Map<string, HTMLElement>();
 // The tabs do not all fit: a menu at their end lists them all.
 const overflowing = ref(false);
+// The searches typed before, the latest first, in a list under the search box: from its arrow, F4 or Alt+Down.
 const past = ref(history());
+const historyOpen = ref(false);
+const queryBox = ref<HTMLElement | null>(null);
+const queryInput = ref<HTMLInputElement | null>(null);
 let next = 0;
 
 // The number fields of the filters, two by row.
@@ -641,6 +645,13 @@ watch(
     { deep: true },
 );
 
+function historyKeys(e: KeyboardEvent): void {
+    if (e.key === 'F4' || (e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp'))) {
+        historyOpen.value = !historyOpen.value;
+        e.preventDefault();
+    }
+}
+
 // Automatic: the network connected, Kad when both are unless the server is a static or a big one.
 function where(): Exclude<Scope, 'automatic'> | undefined {
     if (scope.value !== 'automatic') {
@@ -887,19 +898,39 @@ onUnmounted(() => {
     <div class="screen">
         <form class="tool-row" @submit.prevent="start">
             <Tip :text="t('nj.input.search')">
-                <div class="field query" :class="{ invalid: query !== '' && !queryValid }">
+                <div ref="queryBox" class="field query" :class="{ invalid: query !== '' && !queryValid }">
                     <input
                         id="search-query"
+                        ref="queryInput"
                         v-model="query"
-                        list="search-history"
                         :maxlength="MAX_EXPRESSION"
                         :placeholder="t('IDS_SEARCH_TEXT')"
                         :aria-label="t('IDS_SEARCH_TEXT')"
                         :aria-invalid="query !== '' && !queryValid"
+                        @keydown="historyKeys"
                     />
-                    <datalist id="search-history">
-                        <option v-for="h in past" :key="h" :value="h" />
-                    </datalist>
+                    <DropdownMenuRoot v-model:open="historyOpen">
+                        <DropdownMenuTrigger
+                            type="button"
+                            class="history-arrow"
+                            tabindex="-1"
+                            :aria-label="t('IDS_SEARCH_TEXT')"
+                        >
+                            <Icon name="CHEVRON_DOWN" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuPortal>
+                            <DropdownMenuContent
+                                class="menu search-history"
+                                align="start"
+                                :reference="queryBox ?? undefined"
+                                @close-auto-focus.prevent="queryInput?.focus()"
+                            >
+                                <DropdownMenuItem v-for="h in past" :key="h" class="menu-item" @select="query = h">
+                                    <span class="ellipsis" dir="auto">{{ h }}</span>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenuPortal>
+                    </DropdownMenuRoot>
                 </div>
             </Tip>
             <Segments v-model="scope" :items="SCOPES" :label="t('IDS_SEARCH_TEXT')" />
@@ -1227,6 +1258,25 @@ onUnmounted(() => {
 .query {
     flex: 1 1 320px;
     min-width: 120px;
+}
+
+/* The arrow of the search box, which opens the searches typed before under it, as wide as the box. */
+.history-arrow {
+    display: inline-flex;
+    padding: 2px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.history-arrow:hover {
+    background: var(--color-bg-subtle);
+}
+
+:deep(.search-history) {
+    min-width: var(--reka-popper-anchor-width);
+    max-width: var(--reka-popper-anchor-width);
 }
 
 /* A field holding no valid value, as the desktop app marks it. */
