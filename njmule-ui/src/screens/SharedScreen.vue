@@ -218,12 +218,13 @@ async function chooseDirectory(): Promise<void> {
         title: t('nj.shared.shareTitle'),
         text: t('nj.shared.shareText'),
         names: typed ? [] : [path!],
+        namesFirst: true,
         field: typed ? { label: t('nj.shared.shareFolder'), value: '' } : undefined,
         check: { label: t('IDS_SHAREDIRSUB'), value: true },
         yes: t('nj.shared.share'),
         no: t('IDS_CANCEL'),
     });
-    if (first === null) {
+    if (first === null || (typed && first.field === '')) {
         return;
     }
     path = typed ? first.field : path!;
@@ -234,6 +235,7 @@ async function chooseDirectory(): Promise<void> {
             title: t('nj.shared.shareAllTitle'),
             text: t('nj.shared.sensitiveText'),
             names: [path],
+            namesFirst: true,
             note: t('nj.shared.asksAlso'),
             warning: true,
             yes: t('nj.shared.shareAll'),
@@ -319,7 +321,7 @@ async function rename(): Promise<void> {
         yes: t('IDS_RENAME'),
         no: t('IDS_CANCEL'),
     });
-    if (a !== null && a.field !== f.name) {
+    if (a !== null && a.field !== '' && a.field !== f.name) {
         try {
             await answer(
                 api().PUT('/shared/{hash}/name', { params: { path: { hash: f.hash } }, body: { name: a.field } }),
