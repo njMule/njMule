@@ -2365,6 +2365,20 @@ components:
         api:
           type: integer
           description: The version of the API, which grows when calls are added.
+        java:
+          type: string
+          description: The version of Java njMule runs on, for a report of a problem; not told to a guest.
+        system:
+          type: object
+          description: The system njMule runs on, for a report of a problem; not told to a guest.
+          required: [name, version, arch]
+          properties:
+            name:
+              type: string
+            version:
+              type: string
+            arch:
+              type: string
 
     Hash:
       type: string

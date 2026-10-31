@@ -146,6 +146,29 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldTellTheJavaAndTheSystemItRunsOnToATokenHolder() throws Exception {
+        givenTheApiRuns();
+
+        whenCalled("GET", "/api/v1", "");
+
+        thenTheStatusIs(200);
+        thenTheBodyContains(
+                "\"java\":\"" + System.getProperty("java.version") + "\"",
+                "\"arch\":\"" + System.getProperty("os.arch") + "\"");
+    }
+
+    @Test
+    void shouldTellAGuestNeitherTheJavaNorTheSystem() throws Exception {
+        givenTheApiRuns();
+
+        whenCalledAsGuest("GET", "/api/v1");
+
+        thenTheStatusIs(200);
+        thenTheBodyDoesNotContain("\"java\"");
+        thenTheBodyDoesNotContain("\"system\"");
+    }
+
+    @Test
     void shouldListTheDownloadsAsJson() throws Exception {
         givenTheApiRuns();
         givenTheEngineDownloads(download());

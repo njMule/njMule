@@ -533,6 +533,16 @@ public final class RemoteApi implements AutoCloseable {
             g.writeStringProperty("name", NjMuleInfo.NAME);
             g.writeStringProperty("version", NjMuleInfo.version());
             g.writeNumberProperty("api", VERSION);
+            // What a report of a problem needs, for those who may change things only.
+            if (!c.guest()) {
+                g.writeStringProperty("java", System.getProperty("java.version"));
+                g.writeName("system");
+                g.writeStartObject();
+                g.writeStringProperty("name", System.getProperty("os.name"));
+                g.writeStringProperty("version", System.getProperty("os.version"));
+                g.writeStringProperty("arch", System.getProperty("os.arch"));
+                g.writeEndObject();
+            }
             g.writeEndObject();
         });
     }
