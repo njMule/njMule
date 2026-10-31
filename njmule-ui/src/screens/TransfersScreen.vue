@@ -590,7 +590,6 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                     :row-id="(d: Download) => d.hash"
                     :below="isOpened"
                     :label="t('IDS_TW_DOWNLOADS')"
-                    :columns-label="t('IDS_DL_FILENAME')"
                     @activate="activate"
                     @keydown="tableKey"
                 >

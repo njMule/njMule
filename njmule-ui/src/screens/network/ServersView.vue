@@ -536,7 +536,6 @@ onUnmounted(() => observer?.disconnect());
                     :row-id="(s: Server) => s.address"
                     :row-class="rowClass"
                     :label="t('IDS_SV_SERVERLIST')"
-                    :columns-label="t('IDS_SL_SERVERNAME')"
                     @activate="connectTo"
                 >
                     <template #empty>
@@ -732,8 +731,8 @@ onUnmounted(() => observer?.disconnect());
     flex-direction: column;
     width: 520px;
     max-width: calc(100vw - 32px);
-    border-radius: 6px;
     padding: 14px;
+    border-radius: 6px;
 }
 
 /* The ways side by side as in a form: the names, the boxes that take the rest, their buttons. */

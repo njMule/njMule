@@ -234,7 +234,6 @@ const label = computed(
         :columns="uploadColumns"
         :row-id="(u: Upload) => `${u.userHash}/${u.address}`"
         :label="label"
-        :columns-label="label"
     >
         <template #empty>
             <span class="muted">{{ t('nj.transfers.noUploads') }}</span>
@@ -253,7 +252,6 @@ const label = computed(
         :columns="banColumns"
         :row-id="(b: Ban) => b.address"
         :label="label"
-        :columns-label="label"
     >
         <template #empty>
             <span class="muted">{{ t('nj.transfers.noBans') }}</span>
@@ -272,7 +270,6 @@ const label = computed(
         :columns="knownColumns"
         :row-id="(k: KnownClient) => k.userHash"
         :label="label"
-        :columns-label="label"
     >
         <template #empty>
             <span class="muted">{{ t('nj.clients.none') }}</span>

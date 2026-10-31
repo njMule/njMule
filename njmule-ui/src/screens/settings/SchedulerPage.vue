@@ -295,7 +295,6 @@ function setCount(which: 'connections' | 'sources', text: string): void {
                 :columns="columns"
                 :row-id="(l: Listed) => String(l.index)"
                 :label="t('nj.scheduler.title')"
-                :columns-label="t('nj.scheduler.title')"
             >
                 <template #empty>{{ t('nj.scheduler.none') }}</template>
             </DataTable>

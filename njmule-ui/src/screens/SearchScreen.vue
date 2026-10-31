@@ -1203,7 +1203,6 @@ onUnmounted(() => {
                         :row-class="rowClass"
                         :row-style="rowStyle"
                         :label="title(s)"
-                        :columns-label="t('IDS_DL_FILENAME')"
                         no-enter-action
                         @update:selected="(ids: string[]) => choose(s.key, ids)"
                         @keydown="(e: KeyboardEvent) => namesKeys(s, e)"

@@ -35,6 +35,7 @@ import {
     DropdownMenuTrigger,
 } from 'reka-ui';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { t } from '../i18n';
 import Icon from './Icon.vue';
 
 // A table as the desktop app's: rows of 32 px drawn only where they show, sorted by a click on a header (ascending
@@ -59,8 +60,6 @@ const props = defineProps<{
     /** Lines shown under a row, such as the sources of an opened download. */
     below?: (row: T) => boolean;
     label: string;
-    /** The name of the menu that shows and hides the columns. */
-    columnsLabel: string;
     /** Classes and styles of a row besides the table's own, such as the colour of what a search result is to us. */
     rowClass?: (row: T) => string | string[];
     rowStyle?: (row: T) => Record<string, string>;
@@ -486,7 +485,7 @@ defineExpose({ visibleColumns: () => (table as any).getVisibleLeafColumns() as a
                         <DropdownMenuTrigger
                             class="column-menu"
                             :style="{ width: `${Math.max(gutter, MENU_ROOM)}px` }"
-                            :aria-label="columnsLabel"
+                            :aria-label="t('nj.table.columns')"
                             >⋮</DropdownMenuTrigger
                         >
                         <DropdownMenuPortal>

@@ -107,7 +107,6 @@ async function download(): Promise<void> {
                         :columns="columns"
                         :row-id="(f: ClientFile) => f.hash"
                         :label="t('IDS_VIEWFILES')"
-                        :columns-label="t('IDS_VIEWFILES')"
                     >
                         <template #empty>
                             <span class="muted">{{ t('nj.browse.asking') }}</span>

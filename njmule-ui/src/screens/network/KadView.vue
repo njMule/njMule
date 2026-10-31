@@ -278,7 +278,6 @@ onUnmounted(() => window.clearInterval(timer));
             :columns="contactColumns"
             :row-id="(c: Contact) => c.id + c.address"
             :label="t('IDS_KADCONTACTLAB')"
-            :columns-label="t('IDS_ID')"
         >
             <template #empty>
                 <span class="muted">{{ t('nj.kad.off') }}</span>
@@ -293,7 +292,6 @@ onUnmounted(() => window.clearInterval(timer));
             :columns="lookupColumns"
             :row-id="(l: Lookup) => l.target + l.kind"
             :label="t('IDS_KADSEARCHLAB')"
-            :columns-label="t('IDS_KADID')"
         >
             <template #empty>
                 <span class="muted">{{ t('nj.kad.noSearches') }}</span>

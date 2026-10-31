@@ -587,7 +587,6 @@ onMounted(() => void readDirectories());
                 :columns="columns"
                 :row-id="(f: SharedFile) => f.hash"
                 :label="t('IDS_EM_FILES')"
-                :columns-label="t('IDS_DL_FILENAME')"
             >
                 <template #empty>
                     <EmptyState icon="SHARED" :text="t('nj.shared.none')">
