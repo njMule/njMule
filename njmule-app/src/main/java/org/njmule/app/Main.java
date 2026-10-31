@@ -557,7 +557,7 @@ public final class Main {
      * interface follows the settings its window saves at once, apart from the call that saved them.
      */
     private static Optional<ControlEndpoint> startControlEndpoint(
-            NjMuleEngine engine, PrintStream out, CompletableFuture<Void> stop, LiveWebUi web) {
+            NjMuleEngine engine, PrintStream out, CompletableFuture<Void> stop, LiveWebUi web, DesktopSystem desktop) {
         if (!"1".equals(System.getenv(CONTROL_ENDPOINT_VARIABLE))) {
             return Optional.empty();
         }
@@ -565,7 +565,8 @@ public final class Main {
             ControlEndpoint endpoint = ControlEndpoint.start(
                     engine,
                     () -> stop.complete(null),
-                    settings -> Thread.ofVirtual().name("njmule-webui-apply").start(() -> web.apply(settings)));
+                    settings -> Thread.ofVirtual().name("njmule-webui-apply").start(() -> web.apply(settings)),
+                    Optional.of(desktop));
             out.println(CONTROL_LINE + "{\"url\":\"" + endpoint.url() + "\",\"token\":\"" + endpoint.token() + "\"}");
             out.flush();
             Thread.ofPlatform().daemon().name("njmule-shell-watch").start(() -> {
@@ -667,7 +668,12 @@ public final class Main {
         Updating.onRestart(engine, () -> stop.complete(null));
         LiveWebUi web = new LiveWebUi(engine, out, () -> stop.complete(null));
         web.apply(WebUiSettings.load(dirs.config()));
-        Optional<ControlEndpoint> control = startControlEndpoint(engine, out, stop, web);
+        // A start at login keeps the profile of this one.
+        List<String> startArguments = cli.configDir()
+                .map(dir -> List.of("--config-dir", dir.toAbsolutePath().toString()))
+                .orElse(List.of());
+        Optional<ControlEndpoint> control = startControlEndpoint(
+                engine, out, stop, web, DesktopSystem.forThisSystem(dirs.config(), startArguments));
         for (Ed2kLink link : cli.links()) {
             follow(engine, link, err);
         }

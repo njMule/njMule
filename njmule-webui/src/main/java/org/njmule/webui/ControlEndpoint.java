@@ -36,6 +36,7 @@ import org.eclipse.jetty.server.handler.ErrorHandler;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.thread.VirtualThreadPool;
 import org.njmule.core.api.NjMuleEngine;
+import org.njmule.core.remote.DesktopIntegration;
 import org.njmule.core.remote.Exchange;
 import org.njmule.core.remote.RecentEvents;
 import org.njmule.core.remote.RemoteApi;
@@ -77,6 +78,16 @@ public final class ControlEndpoint implements AutoCloseable {
     /** As above; {@code webChanged} hears the web interface's settings the window saves, to follow them at once. */
     public static ControlEndpoint start(NjMuleEngine engine, Runnable exit, Consumer<WebUiSettings> webChanged)
             throws IOException {
+        return start(engine, exit, webChanged, Optional.empty());
+    }
+
+    /** As above; the window sets the eD2K links and the start at login of this computer through {@code desktop}. */
+    public static ControlEndpoint start(
+            NjMuleEngine engine,
+            Runnable exit,
+            Consumer<WebUiSettings> webChanged,
+            Optional<DesktopIntegration> desktop)
+            throws IOException {
         byte[] secret = new byte[TOKEN_BYTES];
         TOKENS.nextBytes(secret);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
@@ -99,7 +110,8 @@ public final class ControlEndpoint implements AutoCloseable {
                 client -> true,
                 Optional.of(exit),
                 RemoteApi.HEARTBEAT,
-                Optional.of(new SettingsFile(() -> engine.directories().config(), webChanged)));
+                Optional.of(new SettingsFile(() -> engine.directories().config(), webChanged)),
+                desktop);
         ControlEndpoint endpoint = new ControlEndpoint(server, recent, api, token, connector.getLocalPort());
         server.setHandler(new Handler.Abstract() {
             @Override
