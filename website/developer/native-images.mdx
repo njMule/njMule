@@ -1,19 +1,17 @@
 ---
 title: Native images
-description: Build njMule's GraalVM native executables - the command line, the static Linux build, the desktop app and its Windows launcher - and keep their reachability metadata up to date.
+description: Build njMule's GraalVM native executable - the command line and headless engine, its static Linux build and the Windows service host - and keep its reachability metadata up to date.
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-njMule is distributed as native executables made by GraalVM Native Image: users need no Java
-runtime, and njMule starts at once. There are two native builds:
-
-- **the command line and headless engine** (`njmule-app`), built by the GraalVM Native Build Tools
-  plugin: `njmule`;
-- **the desktop app** (`njmule-gui`), built by `native-image` on the module path through a Gradle
-  task of njMule's own, since GluonFX does not support Java 25 and JavaFX 27. Its executable is also
-  the command line of the desktop packages.
+njMule's engine is distributed as a native executable made by GraalVM Native Image: users need no
+Java runtime, and njMule starts at once. There is one native build, **the command line and headless
+engine** (`njmule-app`), made by the GraalVM Native Build Tools plugin: `njmule`. Every package
+carries it; the desktop packages add the desktop window, a Tauri shell that starts it
+([Building](building.mdx#the-desktop-window)), and the Windows packages the
+[service host](#the-windows-service-host).
 
 ## GraalVM Community only
 
@@ -78,8 +76,8 @@ icon and version information linked in). Try it with `njmule --version`.
 
 ### Linux builds in Docker
 
-Without a local GraalVM, Docker builds the Linux x64 command-line executable in the same pinned
-image as the CI. Run from the root of your clone:
+Without a local GraalVM, Docker builds the Linux x64 executable in the same pinned image as the
+CI. Run from the root of your clone:
 
 <Tabs groupId="shell">
 <TabItem value="unix" label="Bash" default>
@@ -124,89 +122,31 @@ docker run --rm -v "$PWD:/work" -v njmule-gradle:/root/.gradle -v njmule-musl:/m
 The result is `njmule-app/build/native-static/njmule`; the script checks that `ldd` finds no
 library in it and runs `njmule --version`.
 
-## The desktop app
+## The Windows service host
+
+On Windows a small C program, compiled with the Visual C++ tools, goes with the native executable:
 
 ```bash
-./gradlew :njmule-gui:nativeGui
+./gradlew :njmule-app:nativeService
 ```
 
-The executable lands in `njmule-gui/build/native/`, next to the JDK shared libraries it loads: on
-Linux and macOS it is `njmule-gui`, on Windows `njmule.exe`, a console program, which is the command
-line too. The packages no longer carry it: they hold the headless engine of `njmule-app` and the
-desktop window of `njmule-desktop` ([Packaging](packaging.mdx)).
-
-The build passes the arguments of `njmule-gui/native/<os>.args` and keeps only the date and number
-formats of the regions of the interface's languages: all the JDK's locales would add 37 MiB. Build
-both native executables at once with `./gradlew :njmule-app:nativeCompile :njmule-gui:nativeGui`.
-
-### The Windows launcher and service
-
-A console program opens a console window when started from the desktop. On Windows two small C
-programs, compiled with the Visual C++ tools, go with the native executables:
-
-| Task | Result | What it is |
-|---|---|---|
-| `./gradlew :njmule-gui:nativeLauncher` | `njmule-gui/build/launcher/njmule-gui.exe` | the JavaFX app's GUI program: it starts `njmule.exe` beside it without a console, with `NJMULE_DESKTOP=1`; the packages carry the desktop window under that name instead, which answers the same commands (`--apply-update`, `--keep-awake`, `--uninstall-profile`, `--restore-links`) |
-| `./gradlew :njmule-gui:nativeService` | `njmule-gui/build/launcher/njmule-service.exe` | the Windows service host that runs `njmule.exe` headless once `njmule --service=install` set the service up |
-
-Copy them next to `njmule.exe` to run them. GraalVM has no Windows on Arm build yet: the x64
-programs run there under the system's x64 emulation.
+It lands in `njmule-app/build/launcher/njmule-service.exe` (from
+`njmule-app/native/windows/service.c`): the Windows service host that runs `njmule.exe` headless
+once `njmule --service=install` set the service up. Copy it next to `njmule.exe` to use it. GraalVM
+has no Windows on Arm build yet: the x64 programs run there under the system's x64 emulation.
 
 ## Reachability metadata
 
 Native Image must know at build time what the code reaches by reflection, JNI, resources and
 `ServiceLoader`. That knowledge is the reachability metadata under
-`src/main/resources/META-INF/native-image/` of each module:
+`src/main/resources/META-INF/native-image/` of each module, written by hand:
 
 - `njmule-core` declares its own, and initializes the class that holds the Windows-1252 charset at
   build time, so that the charset is in the image (about 12 KB instead of the 6 MB of all
   charsets).
-- The desktop app's metadata is recorded, not written by hand: `GuiTour`, started by the system
-  property `njmule.gui.tour`, walks through every screen, popup, dialog and theme once and exits,
-  while GraalVM's tracing agent watches.
-
-Record it again after you change the GUI:
-
-```bash
-./gradlew :njmule-gui:nativeTour
-```
-
-It runs the tour on the JVM twice, with the platform's accelerated rendering (Direct3D on Windows,
-Metal on macOS, OpenGL on Linux) and with software rendering, and merges what the agent saw into
-`njmule-gui/src/main/resources/META-INF/native-image/org.njmule/njmule-gui/tour`. It needs a display
-(`xvfb-run` on a Linux machine without one). The `manual/` folder beside it holds the few JNI
-entries the tour cannot reach, such as those of the file choosers, and `njmule-gui/native/<os>/`
-the configuration of one operating system only.
-
-Record the metadata on Windows and on Linux. For Linux, `tools/native-gui-docker.sh` does it in an
-Ubuntu container with GTK and a virtual display: it runs the tour under the agent, copies the Linux
-metadata into your checkout, builds both native executables, and lets the native desktop app take
-the tour as a smoke test. Save the GraalVM Community Linux x64 archive as `graalvm.tar.gz` in a
-folder of your choice and mount it at `/graalvm`:
-
-```bash
-docker run --rm -v "$PWD:/work" -v njmule-gradle:/root/.gradle -v "/home/you/graalvm:/graalvm:ro" \
-    ubuntu:24.04 bash /work/tools/native-gui-docker.sh
-```
-
-The results are in `njmule-gui/build/native-linux/` and `njmule-app/build/native-linux/njmule`.
-macOS's metadata is added by the release workflow, which runs `nativeTour` on its macOS runner
-before the native build.
-
-### The tour as a smoke test
-
-The native desktop app takes the same tour, which proves that the metadata covers the whole
-interface:
-
-```bash
-cp -r njmule-gui/native/tour /tmp/tour
-njmule-gui/build/native/njmule-gui -Dnjmule.gui.tour=true --config-dir /tmp/tour
-grep "Tour finished" /tmp/tour/logs/*.log
-```
-
-The tour's profile in `njmule-gui/native/tour` keeps the eD2K and Kad networks off and UPnP off, on
-ports of its own, with the web interface and its API on this computer only. On Windows, start
-`njmule-gui.exe` the same way, next to `njmule.exe`.
+- `njmule-webui` declares the resources it serves: the interface's files and the browser icons.
+- The libraries' own metadata comes from the GraalVM reachability metadata repository, which the
+  Native Build Tools plugin reads.
 
 ## Keep the code native-friendly
 

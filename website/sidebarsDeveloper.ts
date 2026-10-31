@@ -45,7 +45,7 @@ const sidebars: SidebarsConfig = {
         'packaging',
         'code-style',
         'contributing',
-        'web-app',
+        'interface',
         'translations',
         'documentation',
         'releases',

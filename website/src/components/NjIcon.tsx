@@ -26,7 +26,7 @@ const ALL_ICONS = { ...ICONS, ...SITE_ICONS };
 
 export type IconName = keyof typeof ALL_ICONS;
 
-/** One of njMule's own line icons (the web app's src/icons.ts, drawn as the apps draw them). */
+/** One of njMule's own line icons (njmule-ui's src/icons.ts, drawn as the interface draws them). */
 export default function NjIcon({
     name,
     size = 24,

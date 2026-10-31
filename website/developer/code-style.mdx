@@ -31,8 +31,11 @@ Every file type follows the same basics, set in `.editorconfig` and `.gitattribu
 | UTF-8, a final newline, no trailing whitespace | Markdown keeps trailing whitespace |
 | Java, Kotlin: at most 120 columns | Markdown is wrapped at about 100 columns |
 
-The web app's and this site's TypeScript and Vue files are formatted with Prettier (120 columns,
-4 spaces, single quotes, LF), checked by the build too ([Web app](web-app.mdx#formatting-and-types)).
+The interface's and this site's TypeScript and Vue files are formatted with Prettier (120 columns,
+4 spaces, single quotes, LF), checked by the build too
+([Interface](interface.mdx#formatting-and-types)). The desktop window's Rust code is formatted with
+`cargo fmt` (120 columns, `rustfmt.toml`) and linted with Clippy, which the CI runs with warnings as
+errors.
 
 ## Fields and own methods
 
@@ -88,8 +91,9 @@ included.
 
 - **Use what exists.** The JDK or a well-known, maintained library comes before a utility, codec,
   parser or algorithm of your own ([Dependencies](dependencies.mdx#choosing-a-library)).
-- **The core stays GUI-free.** `njmule-core` never depends on JavaFX, AWT or any GUI module; front
-  ends use only its exported packages ([Developer guide](index.mdx#what-each-module-exports)).
+- **The core knows no interface.** `njmule-core` never depends on AWT or on an interface module;
+  front ends use only its exported packages ([Developer guide](index.mdx#what-each-module-exports)),
+  and the interface reaches the engine only through the [remote-control API](api/index.mdx).
 - **Native-image friendly.** No undeclared reflection, no dynamic proxies; register resources and
   `ServiceLoader` providers in the reachability metadata ([Native images](native-images.mdx)).
 - **Hands off the user's eMule.** Never write into an eMule installation or configuration folder:
@@ -137,22 +141,23 @@ njMule follows the [REUSE](https://reuse.software) specification, which the CI c
 
 ## UI colours
 
-The desktop app and the web interface share one sober palette with pastel tints, compatible with
-whichever AtlantaFX theme is in use. The default theme is Nord Light or Nord Dark, following the
-system's colour scheme.
+The interface has one sober palette with pastel tints, the same in the desktop window and in the
+web interface, compatible with whichever theme is in use. The default theme is Nord Light or Nord
+Dark, following the system's colour scheme; Primer, Cupertino and Dracula stay selectable.
 
-- **Tokens only.** Use the AtlantaFX looked-up colours (`-color-bg-*`, `-color-fg-*`,
-  `-color-accent-*`, `-color-success-*`, …) and njMule's `-nj-*` tokens. The tokens are defined in
-  `njmule-gui/src/main/resources/org/njmule/gui/njmule.css` for the desktop app and in
-  `njmule-webapp/src/theme.css` (`--nj-*` and Element Plus's `--el-*` variables) for the web app.
-  Those files hold the only colour literals: none in Java, CSS or Vue code elsewhere.
-- **Every token has a light and a dark value.**
+- **Tokens only.** Use the theme's colours (`--color-bg-*`, `--color-fg-*`, `--color-accent-*`,
+  `--color-success-*`, …) and njMule's `--nj-*` tokens. The theme's colours are in
+  `njmule-ui/src/styles/themes.css`, one rule per theme, converted once from the AtlantaFX 3.0.0
+  themes (MIT); the `--nj-*` tokens are in `njmule-ui/src/styles/njmule.css`. Those files hold the
+  only colour literals: none in TypeScript, Vue or CSS elsewhere.
+- **Every token has a light and a dark value**, and the system's forced colours (high contrast)
+  take the place of the tokens while they are on.
 - **Pastel for surfaces, theme colours for text.** Pastel tones fill surfaces, bars, charts and
-  chips (`*-subtle`, `*-muted`); text uses the theme's `-color-fg-*` and `-color-*-fg` tokens, never
-  a pastel tone. Saturated colours are kept for real errors and warnings.
+  chips (`*-subtle`, `*-muted`); text uses the theme's `--color-fg-*` and `--color-*-fg` tokens,
+  never a pastel tone. Saturated colours are kept for real errors and warnings.
 - **Accessibility (WCAG 2.2 AA).** Text keeps a contrast of 4.5:1 at least (3:1 for large text),
   essential icons and graphics 3:1; colour is never the only cue, so add an icon, a tooltip, a
-  legend or a pattern. `TokenContrastTest` measures the desktop app's tokens in every theme.
+  legend or a pattern.
 - **The brand** is a deep blue `#24427A`, an off-white mark `#F4F6FB` and warm orange accents
   `#F5A65B` (see `branding/README.md`). Orange stays an accent, never a large surface.
 

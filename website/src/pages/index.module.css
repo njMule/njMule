@@ -321,88 +321,18 @@
     gap: 2.5rem;
 }
 
-.facesHead {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 1.5rem 3rem;
-}
-
 .facesText {
     display: grid;
     gap: 1rem;
-    max-width: 36rem;
+    max-width: 44rem;
 }
 
-.switch {
-    display: inline-flex;
-    padding: 4px;
-    border-radius: 999px;
-    background: var(--ifm-background-color);
-}
-
-.switchItem {
-    font: inherit;
-    font-family: 'Manrope', var(--ifm-font-family-base);
-    font-size: 1rem;
-    font-weight: 700;
-    border: 0;
-    border-radius: 999px;
-    padding: 0.55rem 1.15rem;
-    background: transparent;
-    color: var(--ink-soft);
-    cursor: pointer;
-    transition:
-        background-color 200ms var(--ease),
-        color 200ms var(--ease);
-}
-
-.switchItem:hover {
-    color: var(--ink);
-}
-
-.switchItem:focus-visible {
-    outline: 3px solid var(--nj-brand-accent);
-    outline-offset: 1px;
-}
-
-.switchOn {
-    background: var(--nj-brand);
-    color: var(--nj-brand-mark);
-}
-
-.switchOn:hover {
-    color: #ffffff;
-}
-
-:global([data-theme='dark']) .switchOn {
-    background: var(--ifm-color-primary);
-    color: #1b2330;
-}
-
-/* Both pictures in one cell, the one shown over the other; never wider than they were taken. */
+/* Never wider than it was taken. */
 .facesShot {
-    display: grid;
     justify-self: center;
     width: min(100%, 60rem);
-}
-
-.faceImage {
-    grid-area: 1 / 1;
-    width: 100%;
     height: auto;
     border-radius: var(--radius-m);
-    opacity: 0;
-    transform: translateY(12px);
-    transition:
-        opacity 320ms var(--ease),
-        transform 420ms var(--ease);
-}
-
-.faceImageOn {
-    opacity: 1;
-    transform: none;
 }
 
 /* ---------------------------------------------------------------- what it does on the network */
@@ -1482,7 +1412,6 @@
 
 @media (prefers-reduced-motion: reduce) {
     .bar > span,
-    .faceImage,
     .stageImage,
     .placePreview,
     .primary,
