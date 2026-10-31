@@ -708,7 +708,7 @@ export const PAGES: Page[] = [
     {
         id: 'web',
         title: 'IDS_PW_WS',
-        summary: 'nj.webui.note',
+        summary: 'nj.webui.noteNow',
         icon: 'NETWORK',
         sections: [],
     },

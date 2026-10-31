@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,7 @@ class SettingsFileTest {
 
     private SettingsFile file;
     private WebInterface.Settings settings;
+    private final List<WebUiSettings> heard = new ArrayList<>();
     private Exception failure;
 
     @Test
@@ -57,6 +59,16 @@ class SettingsFileTest {
 
         thenExceptionOccurred("needs a password");
         thenTheInterfaceIsOffInTheFile();
+        thenNothingWasHeard();
+    }
+
+    @Test
+    void shouldHandOverTheSettingsSaved() throws Exception {
+        givenTheSettingsFile();
+
+        whenChanged(change(Optional.of(true), Optional.of(PASSWORD), Optional.empty()));
+
+        thenTheSettingsHeardAreUsable();
     }
 
     @Test
@@ -89,7 +101,7 @@ class SettingsFileTest {
     // Given
 
     private void givenTheSettingsFile() {
-        this.file = new SettingsFile(() -> this.dir);
+        this.file = new SettingsFile(() -> this.dir, this.heard::add);
     }
 
     private void givenAPassword() throws Exception {
@@ -110,6 +122,16 @@ class SettingsFileTest {
 
     private void thenNoExceptionOccurred() {
         assertThat(this.failure).isNull();
+    }
+
+    private void thenNothingWasHeard() {
+        assertThat(this.heard).isEmpty();
+    }
+
+    private void thenTheSettingsHeardAreUsable() {
+        assertThat(this.heard)
+                .singleElement()
+                .satisfies(s -> assertThat(s.usable()).isTrue());
     }
 
     private void thenExceptionOccurred(String message) {

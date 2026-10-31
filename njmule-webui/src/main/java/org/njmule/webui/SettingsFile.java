@@ -23,6 +23,7 @@ import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.njmule.core.remote.WebInterface;
 
@@ -34,10 +35,17 @@ final class SettingsFile implements WebInterface {
 
     // Asked at each call: an engine gives its directories once it has started.
     private final Supplier<Path> configDir;
+    private final Consumer<WebUiSettings> saved;
     private final Object changing = new Object();
 
     SettingsFile(Supplier<Path> configDir) {
+        this(configDir, settings -> {});
+    }
+
+    /** As above, handing {@code saved} the settings each change leaves. */
+    SettingsFile(Supplier<Path> configDir, Consumer<WebUiSettings> saved) {
         this.configDir = configDir;
+        this.saved = saved;
     }
 
     @Override
@@ -67,6 +75,7 @@ final class SettingsFile implements WebInterface {
                 throw new IllegalArgumentException("the web interface needs a password");
             }
             next.save(dir);
+            this.saved.accept(next);
             return view(next);
         }
     }

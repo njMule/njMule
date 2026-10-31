@@ -6,8 +6,8 @@ description: Turn on njMule's web interface and set its port, LAN access, host n
 The **Web Interface** page of the desktop app turns on njMule's [web interface](../web/overview.mdx),
 the same app in a browser, and the remote-control API that answers beside it. You set its port,
 whether other computers may connect, the names and proxies it trusts, your password and a guest's.
-The page says it: *The web interface follows these settings from the next start, at
-`http://localhost:<port>/` on this computer.*
+The page says it: *The web interface follows these settings at once, at `http://localhost:<port>/`
+on this computer.*
 
 <Screenshot
   id="settings-page-12"
@@ -16,8 +16,9 @@ The page says it: *The web interface follows these settings from the next start,
 />
 
 These settings are kept in `webui.properties` in the configuration folder, apart from the engine's,
-and saved as soon as you set them; the web interface takes them at the next start of njMule. Without
-the desktop app, the same settings are made with the [command line](#from-the-command-line).
+and saved as soon as you set them; the web interface follows them at once: it starts, stops, or
+starts again with them, which signs out the browsers using it. Without the desktop app, the same
+settings are made with the [command line](#from-the-command-line), from the next start of njMule.
 
 ## Options
 

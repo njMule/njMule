@@ -285,7 +285,7 @@ paths:
     get:
       operationId: getWebInterface
       tags: [engine]
-      summary: The web interface's own settings, which it follows from the next start.
+      summary: The web interface's own settings, which it follows at once when the desktop app's window changes them.
       description: The password hashes are never given, only whether there are passwords.
       responses:
         "200":

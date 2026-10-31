@@ -546,7 +546,7 @@ class MainTest {
     void shouldLeaveTheWebInterfaceOffOnABusyPort() throws IOException {
         givenABusyPort();
         givenTheWebInterfaceOnTheBusyPort();
-        givenTheLogOf(Main.class);
+        givenTheLogOf(LiveWebUi.class);
 
         whenRunWith("--config-dir", this.dir.toString());
 

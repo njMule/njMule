@@ -24,6 +24,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
@@ -70,6 +71,12 @@ public final class ControlEndpoint implements AutoCloseable {
 
     /** Starts the endpoint; {@code exit} stops njMule when the window asks. */
     public static ControlEndpoint start(NjMuleEngine engine, Runnable exit) throws IOException {
+        return start(engine, exit, settings -> {});
+    }
+
+    /** As above; {@code webChanged} hears the web interface's settings the window saves, to follow them at once. */
+    public static ControlEndpoint start(NjMuleEngine engine, Runnable exit, Consumer<WebUiSettings> webChanged)
+            throws IOException {
         byte[] secret = new byte[TOKEN_BYTES];
         TOKENS.nextBytes(secret);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
@@ -92,7 +99,7 @@ public final class ControlEndpoint implements AutoCloseable {
                 client -> true,
                 Optional.of(exit),
                 RemoteApi.HEARTBEAT,
-                Optional.of(new SettingsFile(() -> engine.directories().config())));
+                Optional.of(new SettingsFile(() -> engine.directories().config(), webChanged)));
         ControlEndpoint endpoint = new ControlEndpoint(server, recent, api, token, connector.getLocalPort());
         server.setHandler(new Handler.Abstract() {
             @Override
