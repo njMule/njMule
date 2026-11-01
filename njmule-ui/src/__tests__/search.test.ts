@@ -34,6 +34,7 @@ import {
     SortMemory,
     tone,
     type Tone,
+    typeName,
     words,
 } from '../search';
 
@@ -521,6 +522,59 @@ describe('the order of file types', () => {
 
     function thenTheFirstComes(first: boolean): void {
         expect(order < 0).toBe(first);
+    }
+});
+
+describe('the names of file types', () => {
+    let named = '';
+
+    it.each([
+        ['Audio', 'song.mp3', 'IDS_SEARCH_AUDIO'],
+        ['Video', 'film.mkv', 'IDS_SEARCH_VIDEO'],
+        ['Image', 'photo.jpg', 'IDS_SEARCH_PICS'],
+        ['Doc', 'book.pdf', 'IDS_SEARCH_DOC'],
+        ['Pro', 'setup.exe', 'IDS_SEARCH_PRG'],
+        ['Arc', 'album.zip', 'IDS_SEARCH_ARC'],
+        ['Iso', 'debian.iso', 'IDS_SEARCH_CDIMG'],
+    ])('should name the type %s in the words of the interface', (type, name, expected) => {
+        whenTheTypeIsNamed(type, name);
+        thenTheNameIs(expected);
+    });
+
+    it.each(['album.rar', 'album.7z', 'ALBUM.ZIP'])(
+        'should name %s, which the network calls a program, an archive',
+        (name) => {
+            whenTheTypeIsNamed('Pro', name);
+            thenTheNameIs('IDS_SEARCH_ARC');
+        },
+    );
+
+    it('should name a disc image the network calls a program by its extension', () => {
+        whenTheTypeIsNamed('Pro', 'debian.iso');
+        thenTheNameIs('IDS_SEARCH_CDIMG');
+    });
+
+    it('should keep a program without extension a program', () => {
+        whenTheTypeIsNamed('Pro', 'setup');
+        thenTheNameIs('IDS_SEARCH_PRG');
+    });
+
+    it.each(['Torrent', 'constructor'])('should show the type %s, not an eD2K one, as the network gives it', (type) => {
+        whenTheTypeIsNamed(type, 'album.torrent');
+        thenTheNameIs(type);
+    });
+
+    it('should name nothing for a file the network gives no type', () => {
+        whenTheTypeIsNamed(null, 'album.rar');
+        thenTheNameIs('');
+    });
+
+    function whenTheTypeIsNamed(type: string | null, name: string): void {
+        named = typeName({ type, name }, (key) => key);
+    }
+
+    function thenTheNameIs(expected: string): void {
+        expect(named).toBe(expected);
     }
 });
 
