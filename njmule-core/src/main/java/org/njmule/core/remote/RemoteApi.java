@@ -1268,6 +1268,13 @@ public final class RemoteApi implements AutoCloseable {
 
     private void listSearches(Call c) throws IOException {
         List<SearchCollector.Listed> listed = this.searches.searches();
+        // Those the server holds more results of wait for them to be asked, as in getSearchResults.
+        Set<Long> waiting = new HashSet<>();
+        for (SearchCollector.Listed s : listed) {
+            if (s.running() && await(this.engine.hasMoreResults(new SearchId(s.id())))) {
+                waiting.add(s.id());
+            }
+        }
         reply(
                 c.exchange(),
                 200,
@@ -1276,7 +1283,7 @@ public final class RemoteApi implements AutoCloseable {
                     w.writeNumberProperty("id", s.id());
                     w.writeStringProperty("query", s.asked().expression());
                     w.writeStringProperty("scope", s.asked().scope());
-                    w.writeBooleanProperty("running", s.running());
+                    w.writeBooleanProperty("running", s.running() && !waiting.contains(s.id()));
                     w.writeNumberProperty("results", s.results());
                     w.writeEndObject();
                 }));
@@ -1289,12 +1296,15 @@ public final class RemoteApi implements AutoCloseable {
                 await(this.engine.rateSpam(this.searches.results(id).orElseThrow(RemoteApi::notFound))));
         found.sort(Comparator.comparing(SearchResult::isSpam)
                 .thenComparing(Comparator.comparingInt(SearchResult::sources).reversed()));
-        boolean running = this.searches.running(id);
+        boolean more = await(this.engine.hasMoreResults(new SearchId(id)));
+        // A search the server holds more results of waits for them to be asked: nothing comes until then.
+        boolean running = this.searches.running(id) && !more;
         Known known = known();
         reply(c.exchange(), 200, g -> {
             g.writeStartObject();
             g.writeNumberProperty("id", id);
             g.writeBooleanProperty("running", running);
+            g.writeBooleanProperty("more", more);
             g.writeName("results");
             ApiJson.array(g, found, (w, r) -> ApiJson.result(w, r, known.of(r.hash())));
             g.writeEndObject();
@@ -1313,6 +1323,7 @@ public final class RemoteApi implements AutoCloseable {
         long id = searchId(c);
         searchKnown(id);
         allowed(c, this.engine.moreResults(new SearchId(id)), "That search cannot get more results.");
+        this.searches.resumed(id);
     }
 
     private void downloadSearchResult(Call c) throws IOException {

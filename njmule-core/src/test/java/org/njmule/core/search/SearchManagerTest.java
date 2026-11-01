@@ -136,6 +136,7 @@ class SearchManagerTest {
     private SearchId id;
     private ScriptedServer server;
     private String chosenKeyword;
+    private boolean holdsMore;
     private Throwable exception;
 
     @AfterEach
@@ -441,6 +442,46 @@ class SearchManagerTest {
     }
 
     @Test
+    void shouldHoldMoreResultsOnceTheServerSaysItHasSome() throws Exception {
+        givenAConnectedServer();
+        givenASearchIsStarted(server("linux"));
+        givenTheServerReceivedASearchRequest();
+        givenTheServerAnswered(FIRST_SERVER_ANSWER, true);
+        givenTheSearchReported("linux.iso 2/2");
+
+        whenItIsAskedWhetherTheServerHoldsMoreResults();
+
+        thenTheServerHoldsMoreResults(true);
+    }
+
+    @Test
+    void shouldHoldNoMoreResultsWhileTheirAnswerIsAwaited() throws Exception {
+        givenAConnectedServer();
+        givenASearchIsStarted(server("linux"));
+        givenTheServerReceivedASearchRequest();
+        givenTheServerAnswered(FIRST_SERVER_ANSWER, true);
+        givenTheSearchReported("linux.iso 2/2");
+        givenMoreResultsWereAskedFor();
+
+        whenItIsAskedWhetherTheServerHoldsMoreResults();
+
+        thenTheServerHoldsMoreResults(false);
+    }
+
+    @Test
+    void shouldHoldNoMoreResultsWhenTheServerSaysItHasNone() throws Exception {
+        givenAConnectedServer();
+        givenASearchIsStarted(server("linux"));
+        givenTheServerReceivedASearchRequest();
+        givenTheServerAnswered(FIRST_SERVER_ANSWER, false);
+        givenTheSearchReported("linux.iso 2/2");
+
+        whenItIsAskedWhetherTheServerHoldsMoreResults();
+
+        thenTheServerHoldsMoreResults(false);
+    }
+
+    @Test
     void shouldEndAServerSearchWhenTheServerIsLost() throws Exception {
         givenAConnectedServer();
         givenASearchIsStarted(server("lost"));
@@ -727,6 +768,10 @@ class SearchManagerTest {
         this.server.send(new ServerMessages.SearchResults(files, more).encode());
     }
 
+    private void whenItIsAskedWhetherTheServerHoldsMoreResults() throws Exception {
+        this.holdsMore = onLoop(() -> this.manager.hasMore(this.id));
+    }
+
     private void whenTheServerIsLost() throws Exception {
         onLoop(() -> {
             this.manager.serverLost();
@@ -809,6 +854,10 @@ class SearchManagerTest {
 
     private void thenNoMoreResultsCanBeAskedFor() throws Exception {
         assertThat(onLoop(() -> this.manager.more(this.id))).isFalse();
+    }
+
+    private void thenTheServerHoldsMoreResults(boolean expected) {
+        assertThat(this.holdsMore).isEqualTo(expected);
     }
 
     private void thenTheResultsReportedAre(String... names) {

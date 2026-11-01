@@ -112,6 +112,14 @@ public final class SearchCollector {
         return found != null && !found.ended && this.ticker.getAsLong() - found.startedAt < LONGEST_SEARCH.toNanos();
     }
 
+    /** Notes that a search started here was asked for more results: it runs again from now. */
+    public synchronized void resumed(long search) {
+        Found found = this.ours.get(search);
+        if (found != null) {
+            found.startedAt = this.ticker.getAsLong();
+        }
+    }
+
     // Results may arrive before the request that started the search notes its id.
     public synchronized void add(EngineEvent.SearchResults r) {
         Map<Hash16, SearchResult> found = find(r.search().value()).results;
@@ -144,7 +152,7 @@ public final class SearchCollector {
     private static final class Found {
         private final Map<Hash16, SearchResult> results = new LinkedHashMap<>();
         private final Asked asked;
-        private final long startedAt;
+        private long startedAt;
         private boolean ended;
 
         private Found(Asked asked, long startedAt) {

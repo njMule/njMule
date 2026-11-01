@@ -476,7 +476,8 @@ class RemoteApiContractTest {
                 "setDownloadAutoSwap",
                 "renameSharedFile",
                 "removeFriend",
-                "setFriendSlot")) {
+                "setFriendSlot",
+                "hasMoreResults")) {
             answerWith(yes, true);
         }
         for (String done : List.of(
