@@ -116,7 +116,9 @@ terminal.
 
 You never need to delete `njmule.lock`: the system releases the lock when njMule ends, even after a
 crash. To run two njMule at once, give the second one a profile of its own with
-`--config-dir <dir>` and other [ports](network/ports.mdx).
+`--config-dir <dir>` and other [ports](network/ports.mdx), and run it with `njmule`: only one
+desktop window runs at a time, whatever its profile, and a second `njmule-gui` hands its links to it
+([Portable mode](data/portable.mdx)).
 
 ### Links open another program
 
