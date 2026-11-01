@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-01
+
 ### Added
 
 - One interface for the desktop app and the web interface (`njmule-ui`, Vue 3 and TypeScript), which
@@ -35,7 +37,6 @@ All notable changes to this project are documented here. The format follows
   engine, which is also the command line: the MSI, the deb, rpm and tar archives and the macOS app.
   The window shows the interface in the system's web view: WebView2 on Windows, WebKit on macOS,
   and WebKitGTK 4.1, which the deb and rpm packages depend on, on Linux.
-
 - The web interface is the desktop app's interface in the browser: the same screens, menus, dialogs
   and colours, with the browser's ways for what needs njMule's computer, such as folders typed.
 - The country of other clients, servers and Kad contacts is shown by default (`geo.countries`); its
