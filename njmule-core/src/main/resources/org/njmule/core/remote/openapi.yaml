@@ -2906,6 +2906,13 @@ components:
         missingInterface:
           type: string
           description: Present while the network interface the preferences bind to is gone, which keeps njMule offline.
+        kadPortTaken:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: >-
+            Present while another program holds the UDP port Kad is set to use, so that Kad cannot start; njMule tries
+            the port again every 10 seconds and starts Kad once it is free.
         relatedSearch:
           type: boolean
           description: Whether the server we are on finds the files related to others (related::<hash> searches).

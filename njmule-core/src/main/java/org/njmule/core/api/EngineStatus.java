@@ -18,6 +18,7 @@ package org.njmule.core.api;
 
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 
 /**
  * The state of the engine at a glance: connections, rates and counts.
@@ -37,6 +38,7 @@ import java.util.Optional;
  * @param overheadDownloaded the bytes of packets received this session besides file data
  * @param forwarding what the router answered when asked through UPnP to forward our ports
  * @param router the host of the router that answered UPnP, empty when none did
+ * @param kadPortTaken the UDP port Kad waits for while another program holds it
  */
 public record EngineStatus(
         Optional<ServerInfo> server,
@@ -65,7 +67,8 @@ public record EngineStatus(
         long overheadUploaded,
         long overheadDownloaded,
         PortTest.Forwarding forwarding,
-        String router) {
+        String router,
+        OptionalInt kadPortTaken) {
 
     public EngineStatus {
         Objects.requireNonNull(server, "server");
@@ -75,6 +78,67 @@ public record EngineStatus(
         Objects.requireNonNull(publicIpv6, "publicIpv6");
         Objects.requireNonNull(forwarding, "forwarding");
         Objects.requireNonNull(router, "router");
+        Objects.requireNonNull(kadPortTaken, "kadPortTaken");
+    }
+
+    /** A status of a Kad that holds its port, or does not run. */
+    public EngineStatus(
+            Optional<ServerInfo> server,
+            long clientId,
+            boolean lowId,
+            boolean obfuscated,
+            Optional<KadInfo> kad,
+            long downloadBytesPerSecond,
+            long uploadBytesPerSecond,
+            long downloaded,
+            long uploaded,
+            int downloads,
+            int uploads,
+            int queued,
+            int sharedFiles,
+            long totalDownloaded,
+            long totalUploaded,
+            long sessions,
+            long sessionSeconds,
+            long totalSeconds,
+            String publicIp,
+            int tcpPort,
+            boolean relatedSearch,
+            Optional<String> missingInterface,
+            Optional<String> publicIpv6,
+            long overheadUploaded,
+            long overheadDownloaded,
+            PortTest.Forwarding forwarding,
+            String router) {
+        this(
+                server,
+                clientId,
+                lowId,
+                obfuscated,
+                kad,
+                downloadBytesPerSecond,
+                uploadBytesPerSecond,
+                downloaded,
+                uploaded,
+                downloads,
+                uploads,
+                queued,
+                sharedFiles,
+                totalDownloaded,
+                totalUploaded,
+                sessions,
+                sessionSeconds,
+                totalSeconds,
+                publicIp,
+                tcpPort,
+                relatedSearch,
+                missingInterface,
+                publicIpv6,
+                overheadUploaded,
+                overheadDownloaded,
+                forwarding,
+                router,
+                OptionalInt.empty());
     }
 
     /** A status of a router never asked through UPnP. */

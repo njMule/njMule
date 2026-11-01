@@ -154,6 +154,10 @@ final class ApiJson {
         if (s.missingInterface().isPresent()) {
             g.writeStringProperty("missingInterface", s.missingInterface().get());
         }
+        // Present while another program holds Kad's UDP port, which Kad tries again.
+        if (s.kadPortTaken().isPresent()) {
+            g.writeNumberProperty("kadPortTaken", s.kadPortTaken().getAsInt());
+        }
         g.writeEndObject();
     }
 
