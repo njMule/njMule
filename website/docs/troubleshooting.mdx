@@ -87,8 +87,10 @@ must belong to that user.
 
 ### The window does not open
 
-**What you see:** you start the desktop app and its window stays empty, and the [log](#logs) says
-that `njMule is already running with the configuration in …`.
+**What you see:** you start the desktop app and, instead of its window, a message says
+*njMule stopped while starting*, followed by the reason, such as
+`Cannot start njMule: njMule is already running with the configuration in …`, and the folder of
+its [log](#logs). **Close** ends the desktop app.
 
 **Why:** only one njMule may use a profile at a time; two would write the same downloads and lists.
 The first one locks the file `njmule.lock` in the configuration folder. A second start of the
@@ -96,12 +98,14 @@ desktop app never gets that far: it hands its eD2K links to the desktop app alre
 its window to the front, then ends. But when another njMule holds the profile, such as the headless
 engine (`njmule` in a terminal, or the systemd user unit) or a command-line task (`njmule --search`,
 `njmule --import-emule`) that is still running, the engine the desktop app starts cannot take the
-profile and stops.
+profile and stops: the desktop app shows what it wrote. The same message tells any other reason the
+engine could not start, such as a wrong `--log-level` or a folder it cannot write; its first lines
+are what `njmule` would print in a terminal.
 
 **What to do:**
 
 1. Use the njMule that is running: its window, or its [web interface](web/overview.mdx) when it is
-   headless.
+   headless. `njmule "ed2k://…"` hands links to it.
 2. Or stop it first, then start the desktop app:
    - `njmule --exit` asks the njMule running on the same profile to save and exit, and waits for it
      (30 seconds at most);
@@ -501,8 +505,8 @@ its own computer. See [Logs](data/logs.mdx).
 
 The levels are `ERROR`, `WARN`, `INFO` (the default), `DEBUG` and `TRACE`.
 
-- For one run of the headless engine, start it with `njmule --log-level DEBUG`. The desktop app
-  does not pass the option to its engine: use `log.level` for it.
+- For one run, start njMule with `--log-level DEBUG`: `njmule-gui --log-level DEBUG` for the
+  desktop app, which passes it to its engine, `njmule --log-level DEBUG` headless.
 - To keep it, quit njMule and set `log.level=DEBUG` in `njmule.properties`, in the configuration
   folder (see [Data locations](data/locations.mdx)).
 

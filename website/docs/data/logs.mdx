@@ -76,8 +76,8 @@ The files hold the addresses of servers and clients and the names of files: shar
 
 There is no option for it in the options pages. Choose it:
 
-- **for one run**, with `--log-level`: `njmule --log-level DEBUG` (the desktop app's window does
-  not pass it to its engine: use `log.level` for it);
+- **for one run**, with `--log-level`: `njmule --log-level DEBUG`, or
+  `njmule-gui --log-level DEBUG`, which passes it to the desktop app's engine;
 - **for good**, with `log.level` in `njmule.properties` (edit it while njMule is stopped, or change
   it through the remote-control API); it takes effect at the next start.
 
