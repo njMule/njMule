@@ -93,18 +93,21 @@ jobs:
                           - '.github/workflows/build.yml'
 
     verify:
-        name: verify (${{ matrix.os }})
+        name: verify (${{ matrix.os }})${{ matrix.sonar && ' + SonarQube Cloud' || '' }}
         needs: changes
         if: needs.changes.outputs.build == 'true'
         strategy:
             fail-fast: false
             matrix:
                 os: [ubuntu-latest, windows-latest, macos-latest]
+                # SonarQube Cloud analyses the Linux build.
+                include:
+                    - os: ubuntu-latest
+                      sonar: true
         runs-on: ${{ matrix.os }}
         env:
-            # SonarQube Cloud analyses the Linux build; skipped until the SONAR_TOKEN secret exists (and on forks,
-            # which do not receive it).
-            SONAR_TOKEN: ${{ matrix.os == 'ubuntu-latest' && secrets.SONAR_TOKEN || '' }}
+            # Skipped until the SONAR_TOKEN secret exists (and on forks, which do not receive it).
+            SONAR_TOKEN: ${{ matrix.sonar && secrets.SONAR_TOKEN || '' }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
