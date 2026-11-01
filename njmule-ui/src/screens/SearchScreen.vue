@@ -1007,7 +1007,8 @@ onUnmounted(() => {
 
 <template>
     <div class="screen">
-        <form v-if="!guest" class="tool-row" @submit.prevent="start">
+        <!-- The searches typed before are njMule's own list: the browser's suggestions would hide it. -->
+        <form v-if="!guest" class="tool-row" autocomplete="off" @submit.prevent="start">
             <Tip :text="t('nj.input.search')">
                 <div ref="queryBox" class="field query" :class="{ invalid: query !== '' && !queryValid }">
                     <input

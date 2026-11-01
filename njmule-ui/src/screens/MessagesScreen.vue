@@ -331,7 +331,7 @@ async function close(): Promise<void> {
                     </button>
                 </Tip>
             </div>
-            <form v-if="asking" class="new-conversation" @submit.prevent="start">
+            <form v-if="asking" class="new-conversation" autocomplete="off" @submit.prevent="start">
                 <label for="chat-address">{{ t('IDS_SV_ADDRESS') }}</label>
                 <div class="row">
                     <Tip :text="t('nj.input.address')">
@@ -453,7 +453,12 @@ async function close(): Promise<void> {
                             </div>
                         </div>
                     </div>
-                    <form v-if="chosen.chat.captcha" class="captcha-card" @submit.prevent="sendLetters">
+                    <form
+                        v-if="chosen.chat.captcha"
+                        class="captcha-card"
+                        autocomplete="off"
+                        @submit.prevent="sendLetters"
+                    >
                         <p class="captcha-text"><Icon name="SHIELD" />{{ t('IDS_CAPTCHAREQUEST') }}</p>
                         <div class="row">
                             <span class="captcha-plate">
@@ -472,7 +477,7 @@ async function close(): Promise<void> {
                             <button class="button" type="submit"><Icon name="SEND" />{{ t('nj.chat.send') }}</button>
                         </div>
                     </form>
-                    <form class="write" @submit.prevent="sendText">
+                    <form class="write" autocomplete="off" @submit.prevent="sendText">
                         <input
                             v-model="text"
                             class="field"
@@ -487,7 +492,7 @@ async function close(): Promise<void> {
                     <p class="muted friend-note">
                         {{ chosen.friend?.address ? t('nj.chat.empty', name(chosen)) : t('nj.chat.noAddress') }}
                     </p>
-                    <form class="write" @submit.prevent="sendText">
+                    <form class="write" autocomplete="off" @submit.prevent="sendText">
                         <input
                             v-model="text"
                             class="field"

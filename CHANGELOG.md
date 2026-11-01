@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
 
 - The web interface frees its port as soon as it stops: changing its settings no longer fails, now
   and then, to start it again on the same port.
+- The browser's own suggestions, or the desktop window's, no longer cover the searches typed before,
+  the command palette's list or the boxes of the messages.
 - The Type column of the search results and of a client's shared files names the type in the
   interface's language, such as Archive or Program, rather than the network's code (`Pro`).
 
