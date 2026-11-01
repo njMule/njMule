@@ -26,6 +26,8 @@ All notable changes to this project are documented here. The format follows
   sent from a browser, the country of servers and Kad contacts, the searches and server list
   addresses typed in the eMule imported, and, for the desktop window, the ed2k links and the start
   at login of njMule's computer.
+- `--webui-guest-password-file` and `--webui-no-guest` set or remove the web interface's guest on a
+  headless njMule, and the Synology wizard and the Docker Compose file offer a guest password.
 
 ### Changed
 

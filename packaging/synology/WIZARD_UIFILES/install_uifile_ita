@@ -16,6 +16,20 @@
                         }
                     }
                 ]
+            },
+            {
+                "type": "password",
+                "desc": "Se vuoi, anche una password per gli ospiti (almeno 8 caratteri, diversa dalla prima): chi entra con questa può solo guardare. Lasciala vuota per non avere ospiti.",
+                "subitems": [
+                    {
+                        "key": "wizard_webui_guest_password",
+                        "desc": "Password ospite",
+                        "validator": {
+                            "allowBlank": true,
+                            "minLength": 8
+                        }
+                    }
+                ]
             }
         ]
     }

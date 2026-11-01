@@ -2,19 +2,26 @@
 # SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# On a new install, sets the web interface password chosen in the wizard (only its hash is kept)
-# and lets the other computers of the network reach the interface, also by the name of the NAS.
+# On a new install, sets the web interface password chosen in the wizard, and the guest's when one
+# was chosen (only their hashes are kept), and lets the other computers of the network reach the
+# interface, also by the name of the NAS.
 
 VAR="${SYNOPKG_PKGVAR:-/var/packages/${SYNOPKG_PKGNAME}/var}"
 
 if [ "${SYNOPKG_PKG_STATUS}" = "INSTALL" ] && [ -n "${wizard_webui_password}" ]; then
     secret="${VAR}/webui-password.tmp"
     (umask 077 && printf '%s\n' "${wizard_webui_password}" > "${secret}")
+    guest="${VAR}/webui-guest-password.tmp"
+    set --
+    if [ -n "${wizard_webui_guest_password}" ]; then
+        (umask 077 && printf '%s\n' "${wizard_webui_guest_password}" > "${guest}")
+        set -- --webui-guest-password-file "${guest}"
+    fi
     name=$(hostname)
     "${SYNOPKG_PKGDEST}/bin/njmule" --config-dir "${VAR}" --webui-password --webui-password-file "${secret}" \
-        --webui-lan --webui-host "${name}" --webui-host "${name}.local" > /dev/null 2> "${VAR}/njmule.err"
+        --webui-lan --webui-host "${name}" --webui-host "${name}.local" "$@" > /dev/null 2> "${VAR}/njmule.err"
     result=$?
-    rm -f "${secret}"
+    rm -f "${secret}" "${guest}"
     if [ "${result}" -ne 0 ]; then
         cat "${VAR}/njmule.err" > "${SYNOPKG_TEMP_LOGFILE}"
         exit 1

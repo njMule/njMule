@@ -116,6 +116,9 @@ public record LaunchOptions(
      *     them
      * @param proxies the reverse proxies trusted to name their client, as {@link WebUiSettings#proxy} keeps them
      * @param keepPassword the password stays as it is: no password option, which only {@code --service=install} allows
+     * @param guestPasswordFile where the password of a guest, who may only look, is read; the guest stays as saved when
+     *     empty
+     * @param noGuest whether no guest may log in any more
      */
     public record WebUiSetup(
             Optional<Integer> port,
@@ -124,10 +127,24 @@ public record LaunchOptions(
             Optional<Path> passwordFile,
             List<String> hosts,
             List<String> proxies,
-            boolean keepPassword) {
+            boolean keepPassword,
+            Optional<Path> guestPasswordFile,
+            boolean noGuest) {
         public WebUiSetup {
             hosts = List.copyOf(hosts);
             proxies = List.copyOf(proxies);
+        }
+
+        /** A setup that leaves the guest as it is. */
+        public WebUiSetup(
+                Optional<Integer> port,
+                boolean lan,
+                boolean api,
+                Optional<Path> passwordFile,
+                List<String> hosts,
+                List<String> proxies,
+                boolean keepPassword) {
+            this(port, lan, api, passwordFile, hosts, proxies, keepPassword, Optional.empty(), false);
         }
 
         /** A setup with a new password. */
@@ -231,6 +248,8 @@ public record LaunchOptions(
     private static final String WEBUI_API_OPTION = "--webui-api";
     private static final String WEBUI_HOST_OPTION = "--webui-host";
     private static final String WEBUI_PROXY_OPTION = "--webui-proxy";
+    private static final String WEBUI_GUEST_PASSWORD_FILE_OPTION = "--webui-guest-password-file";
+    private static final String WEBUI_NO_GUEST_OPTION = "--webui-no-guest";
     private static final String REMOTE_OPTION = "--remote";
     private static final String REMOTE_URL_OPTION = "--remote-url";
     private static final String API_TOKEN_OPTION = "--api-token";
@@ -244,7 +263,7 @@ public record LaunchOptions(
     private static final String SERVICE_OUTPUT_OPTION = "--service-output";
     private static final String WAIT_OPTION = "--wait";
 
-    // What --webui-port, --webui-lan, --webui-api, --webui-host and --webui-proxy apply to.
+    // What --webui-port, --webui-lan, --webui-api, --webui-host, --webui-proxy and the guest's options apply to.
     private static final String WEBUI_SETUP =
             WEBUI_PASSWORD_OPTION + ", " + WEBUI_PASSWORD_FILE_OPTION + " or " + SERVICE_OPTION + "=install";
 
@@ -263,7 +282,9 @@ public record LaunchOptions(
             WEBUI_LAN_OPTION,
             WEBUI_API_OPTION,
             WEBUI_HOST_OPTION,
-            WEBUI_PROXY_OPTION);
+            WEBUI_PROXY_OPTION,
+            WEBUI_GUEST_PASSWORD_FILE_OPTION,
+            WEBUI_NO_GUEST_OPTION);
 
     public static LaunchOptions parse(String... args) throws UsageException {
         ParseResult result;
@@ -501,6 +522,12 @@ public record LaunchOptions(
                         + ": a reverse proxy trusted to name its client in X-Forwarded-For, an address, a CIDR block or"
                         + " a range (repeatable); otherwise every request is its own client")
                 .build());
+        spec.addOption(valued(
+                WEBUI_GUEST_PASSWORD_FILE_OPTION,
+                "<file>",
+                "with " + WEBUI_SETUP + ": a guest, who may only look, logs in with the first line of <file>, which"
+                        + " is not the web interface password"));
+        spec.addOption(flag(WEBUI_NO_GUEST_OPTION, "with " + WEBUI_SETUP + ": let no guest log in any more"));
         spec.addOption(OptionSpec.builder(REMOTE_OPTION)
                 .paramLabel("<command>")
                 .type(List.class)
@@ -671,18 +698,28 @@ public record LaunchOptions(
         boolean api = result.hasMatchedOption(WEBUI_API_OPTION);
         boolean host = result.hasMatchedOption(WEBUI_HOST_OPTION);
         boolean proxy = result.hasMatchedOption(WEBUI_PROXY_OPTION);
+        boolean noGuest = result.hasMatchedOption(WEBUI_NO_GUEST_OPTION);
         Optional<Path> passwordFile = Optional.empty();
         if (result.hasMatchedOption(WEBUI_PASSWORD_FILE_OPTION)) {
             passwordFile = Optional.of(toFile(result.matchedOptionValue(WEBUI_PASSWORD_FILE_OPTION, "")));
         }
+        Optional<Path> guestFile = Optional.empty();
+        if (result.hasMatchedOption(WEBUI_GUEST_PASSWORD_FILE_OPTION)) {
+            guestFile = Optional.of(toFile(result.matchedOptionValue(WEBUI_GUEST_PASSWORD_FILE_OPTION, "")));
+        }
+        if (noGuest && guestFile.isPresent()) {
+            throw new UsageException(
+                    WEBUI_GUEST_PASSWORD_FILE_OPTION + " cannot be combined with " + WEBUI_NO_GUEST_OPTION);
+        }
         boolean keepPassword = !result.hasMatchedOption(WEBUI_PASSWORD_OPTION) && passwordFile.isEmpty();
-        if (keepPassword && !(port || lan || api || host || proxy)) {
+        if (keepPassword && !(port || lan || api || host || proxy || noGuest || guestFile.isPresent())) {
             return Optional.empty();
         }
         if (keepPassword
                 && service.map(task -> task.action() != ServiceAction.INSTALL).orElse(true)) {
             throw new UsageException(WEBUI_PORT_OPTION + ", " + WEBUI_LAN_OPTION + ", " + WEBUI_API_OPTION + ", "
-                    + WEBUI_HOST_OPTION + " and " + WEBUI_PROXY_OPTION + " apply to " + WEBUI_SETUP);
+                    + WEBUI_HOST_OPTION + ", " + WEBUI_PROXY_OPTION + ", " + WEBUI_GUEST_PASSWORD_FILE_OPTION + " and "
+                    + WEBUI_NO_GUEST_OPTION + " apply to " + WEBUI_SETUP);
         }
         List<String> hosts = new ArrayList<>();
         for (String name : result.matchedOptionValue(WEBUI_HOST_OPTION, List.<String>of())) {
@@ -712,7 +749,8 @@ public record LaunchOptions(
                 throw new UsageException("Invalid port for " + WEBUI_PORT_OPTION + ": " + value);
             }
         }
-        return Optional.of(new WebUiSetup(number, lan, api, passwordFile, hosts, proxies, keepPassword));
+        return Optional.of(
+                new WebUiSetup(number, lan, api, passwordFile, hosts, proxies, keepPassword, guestFile, noGuest));
     }
 
     private static Optional<Path> applyUpdate(ParseResult result) throws UsageException {

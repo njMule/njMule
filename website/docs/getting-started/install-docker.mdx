@@ -150,6 +150,10 @@ In Compose, change `command:` the same way.
   `--webui-host <name>` for each name.
 - **Reverse proxy.** Add `--webui-proxy <address>` for a proxy you trust to name its clients; see
   [Behind a reverse proxy](../web/reverse-proxy.mdx).
+- **Guest.** For a [guest](../web/guest.mdx), who may only look, put its password in a second
+  secret and add `--webui-guest-password-file /run/secrets/njmule_webui_guest_password`; like
+  yours, it is read again at every start. The repository's Compose file has these lines, commented
+  out. `--webui-no-guest` takes the guest away.
 - **Remote-control API.** Add `--webui-api`; then the command line in the container drives njMule:
 
   ```bash

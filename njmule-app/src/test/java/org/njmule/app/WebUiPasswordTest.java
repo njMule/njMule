@@ -39,11 +39,14 @@ import org.slf4j.LoggerFactory;
 class WebUiPasswordTest {
 
     private static final String PASSWORD = "long enough";
+    private static final String GUEST_PASSWORD = "only looking";
+    private static final String GUEST_HASH = "pbkdf2-sha512$1$BB$BB";
 
     @TempDir
     Path dir;
 
     private Path file;
+    private Path guestFile;
     private char[] password;
     private boolean set;
     private Throwable exception;
@@ -179,6 +182,47 @@ class WebUiPasswordTest {
     }
 
     @Test
+    void shouldLetTheGuestOfTheFileLogIn() throws IOException {
+        givenThePasswordFile(PASSWORD);
+        givenTheGuestPasswordFile(GUEST_PASSWORD + "\n");
+
+        whenTheCommandLineSetsThePasswordFromTheFile("--webui-guest-password-file", this.guestFile.toString());
+
+        thenTheGuestLogsInWith(GUEST_PASSWORD);
+    }
+
+    @Test
+    void shouldRefuseAGuestPasswordThatIsTheWebInterfacePassword() throws IOException {
+        givenThePasswordFile(PASSWORD);
+        givenTheGuestPasswordFile(PASSWORD);
+
+        whenThePasswordCommandSetsThePasswordFromTheFile("--webui-guest-password-file", this.guestFile.toString());
+
+        thenExceptionOccurred("is the web interface password");
+        thenTheSettingsFileDoesNotExist();
+    }
+
+    @Test
+    void shouldLetNoGuestInAnyMore() throws IOException {
+        givenTheWebInterfaceSettingsWithAGuest();
+        givenThePasswordFile(PASSWORD);
+
+        whenTheCommandLineSetsThePasswordFromTheFile("--webui-no-guest");
+
+        thenTheSavedGuestHashIs("");
+    }
+
+    @Test
+    void shouldKeepTheSavedGuestTheCommandLineDoesNotName() throws IOException {
+        givenTheWebInterfaceSettingsWithAGuest();
+        givenThePasswordFile(PASSWORD);
+
+        whenTheCommandLineSetsThePasswordFromTheFile();
+
+        thenTheSavedGuestHashIs(GUEST_HASH);
+    }
+
+    @Test
     void shouldSetNothingWithoutAPasswordFile() {
         whenTheCommandLineSetsNoPasswordFile();
 
@@ -191,6 +235,15 @@ class WebUiPasswordTest {
 
     private void givenThePasswordFileBytes(byte[] content) throws IOException {
         this.file = Files.write(this.dir.resolve("webui-password"), content);
+    }
+
+    private void givenTheGuestPasswordFile(String content) throws IOException {
+        this.guestFile = Files.writeString(this.dir.resolve("webui-guest-password"), content);
+    }
+
+    private void givenTheWebInterfaceSettingsWithAGuest() throws IOException {
+        givenTheWebInterfaceSettings(
+                new WebUiSettings(true, 8080, false, "pbkdf2-sha512$1$AA$AA", false, List.of(), List.of(), GUEST_HASH));
     }
 
     private void givenAPasswordFileThatDoesNotExist() {
@@ -220,8 +273,10 @@ class WebUiPasswordTest {
         whenTheCommandLineSetsThePassword(args);
     }
 
-    private void whenThePasswordCommandSetsThePasswordFromTheFile() {
-        whenTheCommandLineSetsThePassword(List.of("--webui-password", "--webui-password-file", this.file.toString()));
+    private void whenThePasswordCommandSetsThePasswordFromTheFile(String... options) {
+        List<String> args = new ArrayList<>(List.of("--webui-password", "--webui-password-file", this.file.toString()));
+        args.addAll(List.of(options));
+        whenTheCommandLineSetsThePassword(args);
     }
 
     private void whenTheCommandLineSetsNoPasswordFile() {
@@ -275,6 +330,23 @@ class WebUiPasswordTest {
     private void thenTheSavedHostNamesAre(String... names) {
         assertThat(this.exception).isNull();
         assertThat(WebUiSettings.load(config()).hosts()).containsExactly(names);
+    }
+
+    private void thenTheGuestLogsInWith(String expected) {
+        assertThat(this.exception).isNull();
+        assertThat(Passwords.matches(
+                        expected.toCharArray(), WebUiSettings.load(config()).guestPasswordHash()))
+                .as("the guest password of the file")
+                .isTrue();
+    }
+
+    private void thenTheSettingsFileDoesNotExist() {
+        assertThat(config().resolve(WebUiSettings.FILE_NAME)).doesNotExist();
+    }
+
+    private void thenTheSavedGuestHashIs(String expected) {
+        assertThat(this.exception).isNull();
+        assertThat(WebUiSettings.load(config()).guestPasswordHash()).isEqualTo(expected);
     }
 
     private void thenTheLogNamesTheFileButNotThePassword() {

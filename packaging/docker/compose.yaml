@@ -22,10 +22,14 @@ services:
             - ./temp:/njmule/temp
         secrets:
             - njmule_webui_password
+            # A guest, who may only look: uncomment this line, its secret below and the second command.
+            # - njmule_webui_guest_password
         # The default command; add "--webui-api" for the remote-control API, and "--webui-host", "<name>"
         # for each host name the web interface answers to besides the host's address (a reverse proxy's
         # public name, for example).
         command: ["--webui-password-file", "/run/secrets/njmule_webui_password", "--webui-lan"]
+        # command: ["--webui-password-file", "/run/secrets/njmule_webui_password", "--webui-lan",
+        #           "--webui-guest-password-file", "/run/secrets/njmule_webui_guest_password"]
 
 volumes:
     njmule:
@@ -33,3 +37,5 @@ volumes:
 secrets:
     njmule_webui_password:
         file: ./webui_password.txt
+    # njmule_webui_guest_password:
+    #     file: ./webui_guest_password.txt

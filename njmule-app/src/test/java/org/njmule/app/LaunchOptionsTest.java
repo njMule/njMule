@@ -541,6 +541,47 @@ class LaunchOptionsTest {
     }
 
     @Test
+    void shouldParseTheGuestPasswordFileOfTheWebInterface() {
+        whenTheArgumentsAreParsed("--webui-password-file", "secret", "--webui-guest-password-file", "guest");
+
+        thenTheWebInterfaceSetupIs(new LaunchOptions.WebUiSetup(
+                Optional.empty(),
+                false,
+                false,
+                Optional.of(Path.of("secret")),
+                List.of(),
+                List.of(),
+                false,
+                Optional.of(Path.of("guest")),
+                false));
+    }
+
+    @Test
+    void shouldTakeTheGuestOfTheServiceWithoutAPassword() {
+        whenTheArgumentsAreParsed("--service=install", "--webui-no-guest");
+
+        thenTheActionIs(Action.SERVICE);
+        thenTheWebInterfaceSetupIs(new LaunchOptions.WebUiSetup(
+                Optional.empty(), false, false, Optional.empty(), List.of(), List.of(), true, Optional.empty(), true));
+    }
+
+    @Test
+    void shouldRefuseTheGuestPasswordFileWithoutThePassword() {
+        whenTheArgumentsAreParsed("--webui-guest-password-file", "guest");
+
+        thenExceptionOccurred(UsageException.class, "apply to --webui-password");
+    }
+
+    @Test
+    void shouldRefuseAGuestPasswordFileWithNoGuest() {
+        whenTheArgumentsAreParsed(
+                "--webui-password-file", "secret", "--webui-guest-password-file", "guest", "--webui-no-guest");
+
+        thenExceptionOccurred(UsageException.class);
+        thenTheMessageIs("--webui-guest-password-file cannot be combined with --webui-no-guest");
+    }
+
+    @Test
     void shouldRefuseTheWebInterfaceHostNamesWithoutThePassword() {
         whenTheArgumentsAreParsed("--webui-host", "nas.local");
 
