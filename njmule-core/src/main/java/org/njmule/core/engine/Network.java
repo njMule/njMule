@@ -21,6 +21,7 @@ import com.google.common.math.LongMath;
 import com.google.common.net.InetAddresses;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.IOException;
+import java.net.BindException;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
@@ -281,6 +282,8 @@ final class Network {
     private KadSocket kadSocket;
     // Kad disconnected by the user: new ports do not start it again.
     private volatile boolean kadStoppedByHand;
+    // The UDP port Kad could not open as another program held it, which Kad tries again; 0 when none.
+    private volatile int kadPortTaken;
     // Where UPnP discovery goes; empty: the router is never asked.
     private final Optional<Routers> upnp;
     // Whether this run connects at start and reconnects as the preferences say.
@@ -640,6 +643,7 @@ final class Network {
         }
         restartForwarding();
         this.loop.scheduleRepeating("network interface", BIND_CHECK, BIND_CHECK, this::checkBinding);
+        this.loop.scheduleRepeating("Kad port", BIND_CHECK, BIND_CHECK, this::retryKadPort);
         this.loop.scheduleRepeating("public address", ADDRESS_CHECK, ADDRESS_CHECK, this::watchAddress);
         this.loop.scheduleRepeating("save totals", TOTALS_SAVE, TOTALS_SAVE, this::saveTotals);
         this.loop.scheduleRepeating("save client history", TOTALS_SAVE, TOTALS_SAVE, this.history::save);
@@ -765,6 +769,18 @@ final class Network {
             }
         }
         restartForwarding();
+    }
+
+    // A Kad whose port another program held starts once the port is free, unless turned off or stopped by hand since.
+    private void retryKadPort() {
+        if (this.closed || this.kadPortTaken == 0 || this.kad != null || offline()) {
+            return;
+        }
+        if (!this.preferences.get().kadEnabled() || this.kadStoppedByHand) {
+            this.kadPortTaken = 0;
+            return;
+        }
+        startKad();
     }
 
     // When we move, the server or Kad sees the new address first; the other one has to look again.
@@ -984,7 +1000,8 @@ final class Network {
                 // What came besides the files: the packets of file data count by their payload only.
                 Math.max(0, Traffic.received() - this.downloads.downloaded()),
                 this.upnpAnswer,
-                this.upnpRouter);
+                this.upnpRouter,
+                this.kadPortTaken == 0 ? OptionalInt.empty() : OptionalInt.of(this.kadPortTaken));
     }
 
     private long sessionSeconds() {
@@ -1831,6 +1848,7 @@ final class Network {
     /** Stops Kad until it is connected again or njMule starts again. */
     void disconnectKad() {
         this.kadStoppedByHand = true;
+        this.kadPortTaken = 0;
         if (this.kad != null) {
             stopKad();
             this.userLog.log(LogLine.Level.INFO, "Kad stopped");
@@ -2280,15 +2298,34 @@ final class Network {
                 this.kadNotes.tick();
             });
             logger.info("Kad id {} on UDP port {}", identity.id(), this.kadSocket.port());
+            if (this.kadPortTaken != 0) {
+                this.kadPortTaken = 0;
+                this.userLog.log(LogLine.Level.SUCCESS, "Kad started: UDP port " + prefs.udpPort() + " is free again");
+            }
+        } catch (BindException e) {
+            kadNotStarted();
+            // Told once; the port is tried again until it is free.
+            if (this.kadPortTaken != prefs.udpPort()) {
+                this.kadPortTaken = prefs.udpPort();
+                this.userLog.log(
+                        LogLine.Level.WARNING,
+                        "Cannot start Kad on UDP port " + prefs.udpPort() + ": another program uses it. njMule tries"
+                                + " again every " + BIND_CHECK.toSeconds() + " seconds");
+            }
         } catch (IOException e) {
+            kadNotStarted();
+            this.kadPortTaken = 0;
             this.userLog.log(
                     LogLine.Level.WARNING, "Cannot start Kad on UDP port " + prefs.udpPort() + ": " + e.getMessage());
-            if (this.kadSocket != null) {
-                this.kadSocket.close();
-            }
-            this.kad = null;
-            this.kadSocket = null;
         }
+    }
+
+    private void kadNotStarted() {
+        if (this.kadSocket != null) {
+            this.kadSocket.close();
+        }
+        this.kad = null;
+        this.kadSocket = null;
     }
 
     // Kad starts from the saved contacts and, at once, from the shipped ones: the saved ones may all be gone.

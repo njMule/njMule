@@ -41,6 +41,8 @@ const text = computed(() => {
     switch (shown.value) {
         case 'interface':
             return t('nj.banner.interfaceMissing', status.value?.missingInterface ?? '');
+        case 'kadPort':
+            return t('nj.banner.kadPortTaken', status.value?.kadPortTaken ?? 0);
         case 'offline':
             return t('nj.banner.offline');
         case 'unreachable':
@@ -50,7 +52,9 @@ const text = computed(() => {
     }
 });
 
-const ICONS = { interface: 'LINK_OFF', offline: 'CLOUD_OFF', unreachable: 'WARNING' } as const;
+const ICONS = { interface: 'LINK_OFF', kadPort: 'WARNING', offline: 'CLOUD_OFF', unreachable: 'WARNING' } as const;
+// What needs a change of the options shows as a warning.
+const tone = computed(() => (shown.value === 'unreachable' || shown.value === 'kadPort' ? 'warning' : 'notice'));
 
 function act(): void {
     if (shown.value === 'offline') {
@@ -67,12 +71,7 @@ function close(): void {
 </script>
 
 <template>
-    <div
-        v-if="shown !== 'none'"
-        class="banner"
-        :class="shown === 'unreachable' ? 'unreachable' : 'offline'"
-        role="status"
-    >
+    <div v-if="shown !== 'none'" class="banner" :class="tone" role="status">
         <Icon class="banner-icon" :name="ICONS[shown]" />
         <span class="banner-text">{{ text }}</span>
         <button v-if="!guest" type="button" class="button" @click="act">
@@ -95,11 +94,11 @@ function close(): void {
     border-bottom: 1px solid var(--color-border-muted);
 }
 
-.banner.offline {
+.banner.notice {
     background: var(--color-accent-subtle);
 }
 
-.banner.unreachable {
+.banner.warning {
     background: var(--color-warning-subtle);
 }
 
@@ -109,7 +108,7 @@ function close(): void {
     --nj-icon-color: var(--color-fg-muted);
 }
 
-.unreachable .banner-icon {
+.warning .banner-icon {
     --nj-icon-color: var(--color-warning-fg);
 }
 

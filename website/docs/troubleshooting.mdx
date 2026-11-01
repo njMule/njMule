@@ -202,6 +202,19 @@ from connecting.
 
 See [Servers and Kad](network/servers-and-kad.mdx).
 
+### Kad does not start: its port is in use
+
+**What you see:** Kad is off although **Use the Kad network** is on, and a banner says *Kad cannot
+start: another program uses UDP port 4672. njMule tries again every 10 seconds, or choose another
+port in the options.*
+
+**Why:** another program held the UDP port of **Options → Connection** when Kad started: often
+another eMule client, or a second njMule on another profile with the same ports.
+
+**What to do:** close the other program, or give one of the two another port. njMule tries the port
+again every 10 seconds and starts Kad once it is free; with a new **UDP** port in **Options →
+Connection** it starts at once. **Disconnect** on Kad stops the attempts.
+
 ### No servers
 
 **What you see:** the server list says *No servers yet: add a server.met or connect to an

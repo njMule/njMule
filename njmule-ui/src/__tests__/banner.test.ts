@@ -29,6 +29,19 @@ describe('the banner over the screens', () => {
         thenItTells('interface');
     });
 
+    it("should tell Kad's port held by another program before no network", () => {
+        givenTheEngine({ kadPortTaken: 4672 });
+        whenTheBannerLooks();
+        thenItTells('kadPort');
+    });
+
+    it("should tell Kad's port held by another program while a server is connected", () => {
+        givenTheEngine({ kadPortTaken: 4672 });
+        givenConnection('connected');
+        whenTheBannerLooks();
+        thenItTells('kadPort');
+    });
+
     it('should tell nothing while a server is being tried', () => {
         givenTheEngine({});
         givenConnection('connecting');
