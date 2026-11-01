@@ -16,6 +16,7 @@ All notable changes to this project are documented here. The format follows
   and then, to start it again on the same port.
 - The Type column of the search results and of a client's shared files names the type in the
   interface's language, such as Archive or Program, rather than the network's code (`Pro`).
+- The Stop icon is a filled square, as on a player: the empty one looked like a check box.
 
 ## [0.2.0] - 2026-11-01
 
