@@ -36,7 +36,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
-/** A guest, who logs in with a password of its own and may only look. */
+/** A guest, who logs in with a password of its own and may only look, then logs out. */
 @Timeout(60)
 class WebUiGuestTest {
 
@@ -102,6 +102,17 @@ class WebUiGuestTest {
         thenTheAnswerIs(403, "A guest can only look");
     }
 
+    @Test
+    void shouldEndTheGuestsSessionOnLogout() throws Exception {
+        givenTheWebInterfaceRunsWithAGuest();
+        givenLoggedInWith(GUEST_PASSWORD);
+
+        whenTheAppLogsOut();
+
+        thenTheAnswerLeadsTo("login");
+        thenTheSessionIsOver();
+    }
+
     // Given
 
     private void givenTheWebInterfaceRunsWithAGuest() throws Exception {
@@ -143,11 +154,31 @@ class WebUiGuestTest {
                 HttpResponse.BodyHandlers.ofString());
     }
 
+    // The app sends the logout form with the session's token, as a form of the page.
+    private void whenTheAppLogsOut() throws Exception {
+        String token = token();
+        this.answer = this.http.send(
+                request("/logout")
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(form(Map.of("csrf", token)))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
     // Then
 
     private void thenTheAnswerIs(int status, String part) {
         assertThat(this.answer.statusCode()).as(this.answer.body()).isEqualTo(status);
         assertThat(this.answer.body()).contains(part);
+    }
+
+    private void thenTheAnswerLeadsTo(String location) {
+        assertThat(this.answer.statusCode()).as(this.answer.body()).isEqualTo(303);
+        assertThat(this.answer.headers().firstValue("Location")).hasValue(location);
+    }
+
+    private void thenTheSessionIsOver() throws Exception {
+        assertThat(get("/").statusCode()).isEqualTo(303);
     }
 
     private void thenTheEngineWasNotAsked() {

@@ -107,10 +107,12 @@ through a reverse proxy that serves HTTPS.
 
 <Screenshot id="web-login" alt="The sign-in page of the web interface: the njMule logo, the Password field and the Log in button." caption="The sign-in page." />
 
-A session ends after 30 minutes without a request; a page left open keeps it alive. A host name
-that is not `localhost` or an IP address must be listed first, or the interface answers *Unknown
-host name* (see [Host names](./security.mdx#host-names)). Signing in with the guest password opens
-the read-only view described in [Guest access](./guest.mdx).
+A session ends after 30 minutes without a request, or with **⋯ → Logout** in the top bar, which
+brings back the sign-in page; a page left open keeps it alive. The desktop app's window has no
+session, and no **Logout**. A host name that is not `localhost` or an IP address must be listed
+first, or the interface answers *Unknown host name* (see [Host names](./security.mdx#host-names)).
+Signing in with the guest password opens the read-only view described in
+[Guest access](./guest.mdx).
 
 ## Find your way around
 

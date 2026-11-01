@@ -47,8 +47,10 @@ limit.
 
 Logging in opens a session, kept in memory by njMule; restarting njMule ends every session.
 
-- A session ends after **30 minutes without a request**. An open page keeps asking for news, so it
-  stays signed in while it is open.
+- A session ends after **30 minutes without a request**, or at once with **⋯ → Logout** in the top
+  bar (also in the command palette). An open page keeps asking for news, so it stays signed in
+  while it is open. Logging out forgets the session in njMule and expires its cookie in the
+  browser: on a shared computer, log out before you leave.
 - The session cookie is named `njmule-session-<port>`, so that two njMule on one computer keep
   their own sessions. It is **HttpOnly** (no script can read it), **SameSite=Strict** (no other
   site's page can send it) and **Secure** when you logged in over HTTPS, as through a reverse

@@ -52,6 +52,7 @@ const emit = defineEmits<{
     crowded: [];
     import: [];
     wizard: [];
+    logout: [];
 }>();
 const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);
 const ratesTrigger = ref<InstanceType<typeof PopoverTrigger> | null>(null);
@@ -210,6 +211,13 @@ function typed(e: KeyboardEvent): void {
                     <DropdownMenuItem id="about" class="menu-item" @select="showAbout()">
                         <Icon name="INFO" />{{ t('nj.about.title') }}
                     </DropdownMenuItem>
+                    <!-- A browser's session ends here; the desktop app's window has none. -->
+                    <template v-if="!desktop">
+                        <DropdownMenuSeparator class="menu-separator" />
+                        <DropdownMenuItem id="logout" class="menu-item" @select="emit('logout')">
+                            <Icon name="EXIT" />{{ t('IDS_WEB_LOGOUT') }}
+                        </DropdownMenuItem>
+                    </template>
                 </DropdownMenuContent>
             </DropdownMenuPortal>
         </DropdownMenuRoot>
