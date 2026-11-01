@@ -21,8 +21,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.stream.Stream;
+import net.jqwik.api.Arbitraries;
+import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
+import net.jqwik.api.Provide;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -129,6 +132,14 @@ class KeywordsTest {
         thenTheKeywordsAre(List.of("école"), "combining marks are not composed");
     }
 
+    @ParameterizedTest
+    @MethodSource("wordsShortenedByLowering")
+    void shouldCountTheThreeBytesOfAWordBeforeLoweringIt(String text, String keyword) {
+        whenTheKeywordsAreTakenFrom(text);
+
+        thenTheKeywordsAre(List.of(keyword), "three bytes in the name, two once lowered");
+    }
+
     @Test
     void shouldKeepTheLowerCaseTableWholeAndStable() {
         whenEveryCodeUnitIsLowered();
@@ -136,10 +147,11 @@ class KeywordsTest {
         thenLoweringAgainChangesNothing();
         thenTheUnitsTheTableChangesAre(873);
         thenTheAsciiLettersAreLoweredAsUsual();
+        thenTheUnitsWhoseLowerCaseIsShorterInUtf8Are("ⱢⱤⱥⱦ");
     }
 
     @Property
-    void shouldTakeKeywordsThatAreLowerCaseLongEnoughAndDistinct(@ForAll String text) {
+    void shouldTakeKeywordsThatAreLowerCaseLongEnoughAndDistinct(@ForAll("namesKeepingTheirBytes") String text) {
         whenTheKeywordsAreTakenFrom(text);
 
         thenTheKeywordsAreDistinct();
@@ -163,6 +175,17 @@ class KeywordsTest {
                 Arguments.of("STRASSE Straße", List.of("strasse", "straße")),
                 Arguments.of("Ünïcode", List.of("ünïcode")),
                 Arguments.of("🎵music", List.of("🎵music")));
+    }
+
+    static Stream<Arguments> wordsShortenedByLowering() {
+        return Stream.of(
+                Arguments.of("Ɫ", "ɫ"), Arguments.of("Ɽ", "ɽ"), Arguments.of("ⱥ", "Ⱥ"), Arguments.of("ⱦ", "Ⱦ"));
+    }
+
+    @Provide
+    Arbitrary<String> namesKeepingTheirBytes() {
+        // A word of one unit that lowering shortens can end under three bytes: see its own test.
+        return Arbitraries.strings().filter(text -> text.chars().noneMatch(c -> isShortenedByLowering((char) c)));
     }
 
     private void whenTheKeywordsAreTakenFrom(String text) {
@@ -215,6 +238,16 @@ class KeywordsTest {
         }
     }
 
+    private void thenTheUnitsWhoseLowerCaseIsShorterInUtf8Are(String units) {
+        StringBuilder shortened = new StringBuilder();
+        for (int c = 0; c <= 0xFFFF; c++) {
+            if (isShortenedByLowering((char) c)) {
+                shortened.append((char) c);
+            }
+        }
+        assertThat(shortened).hasToString(units);
+    }
+
     private void thenTheKeywordsAreDistinct() {
         assertThat(this.keywords).doesNotHaveDuplicates();
     }
@@ -229,5 +262,13 @@ class KeywordsTest {
 
     private void thenTheKeywordsOfTheKeywordsAreTheSame() {
         assertThat(Keywords.of(String.join(" ", this.keywords) + " ")).containsExactlyElementsOf(this.keywords);
+    }
+
+    private static boolean isShortenedByLowering(char c) {
+        return utf8Length(KadLowerCase.toLowerCase(c)) < utf8Length(c);
+    }
+
+    private static int utf8Length(char c) {
+        return String.valueOf(c).getBytes(StandardCharsets.UTF_8).length;
     }
 }
