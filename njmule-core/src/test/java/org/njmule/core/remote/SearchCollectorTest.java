@@ -51,6 +51,15 @@ class SearchCollectorTest {
         thenTheSearchRuns(true);
     }
 
+    @Test
+    void shouldNotStartASearchItDoesNotKnowWhenAskedForMoreResults() {
+        givenMoreResultsWereAskedFor();
+
+        whenItIsAskedWhetherTheSearchRuns();
+
+        thenTheSearchRuns(false);
+    }
+
     private void givenASearchStarted() {
         this.collector.started(SEARCH);
     }
