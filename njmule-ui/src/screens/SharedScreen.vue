@@ -259,13 +259,16 @@ watch(
 );
 
 async function chooseDirectory(): Promise<void> {
-    const chosenFolder = await props.platform.chooseFolder(t('nj.shared.shareFolder'));
+    // A page, or a window on another computer's njMule, reaches no folder of the engine's computer: its path is typed,
+    // in the question.
+    const chosenFolder = filesHere(props.platform)
+        ? await props.platform.chooseFolder(t('nj.shared.shareFolder'))
+        : undefined;
     // The system's dialog gives none when it is cancelled.
-    if (chosenFolder === null && props.platform.desktop) {
+    if (chosenFolder === null) {
         return;
     }
-    // A page reaches no folder: the path of the engine's computer is typed, in the question.
-    const typed = chosenFolder === null;
+    const typed = chosenFolder === undefined;
     if (!typed && mayHoldPersonalFiles(chosenFolder)) {
         await shareEverything(chosenFolder, true);
         return;

@@ -8,7 +8,16 @@ import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot, Di
 import { computed, h, ref, shallowRef, watch } from 'vue';
 import { answer, api, ApiError, endpoint } from '../api/client';
 import { t } from '../i18n';
-import { detail, emuleProfile, importButtons, OUTCOMES, reportSummary, type ImportItem } from '../import';
+import {
+    detail,
+    emuleProfile,
+    importButtons,
+    OUTCOMES,
+    reportSummary,
+    startAtLoginAsEmuleDid,
+    takeEmuleHistory,
+    type ImportItem,
+} from '../import';
 import { engineHere, type Platform } from '../platform';
 import { isFullPath } from '../screens/settings/inputs';
 import { problem } from '../toasts';
@@ -95,6 +104,10 @@ async function run(dryRun: boolean): Promise<void> {
         takeOff.value = !dryRun;
         checked.value = true;
         taken.value = !dryRun;
+        if (!dryRun) {
+            void takeEmuleHistory();
+            void startAtLoginAsEmuleDid(report, props.platform);
+        }
     } catch (e) {
         if (e instanceof ApiError && e.status === 400) {
             // No such folder on the engine's computer: nothing was tried.

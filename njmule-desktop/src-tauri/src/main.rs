@@ -84,6 +84,11 @@ const SETTINGS_FILE: &str = "desktop.json";
 const CLIPBOARD_EVERY: Duration = Duration::from_secs(1);
 /// The start of an eD2K file link.
 const FILE_LINK: &str = "ed2k://|file|";
+/// The same with its separators escaped, as browsers write it.
+const ESCAPED_FILE_LINK: &str = "ed2k://%7cfile%7c";
+/// The start of a magnet link, and what names an eD2K file in one.
+const MAGNET_LINK: &str = "magnet:?";
+const MAGNET_ED2K: &str = "xt=urn:ed2k";
 
 /// The options of the desktop app that only the shell applies, as the Options page sets them.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -300,9 +305,15 @@ fn set_app_user_model_id() {
     }
 }
 
-/// The eD2K links among the words of a command line.
+/// The eD2K and magnet links among the words of a command line, as the engine's command line takes them.
 fn links(args: &[String]) -> Vec<String> {
-    args.iter().filter(|a| a.to_ascii_lowercase().starts_with("ed2k://")).cloned().collect()
+    args.iter()
+        .filter(|a| {
+            let word = a.to_ascii_lowercase();
+            word.starts_with("ed2k://") || word.starts_with(MAGNET_LINK)
+        })
+        .cloned()
+        .collect()
 }
 
 /// The window's title: the name and version, then the other computer's address when the engine runs there.
@@ -763,9 +774,13 @@ fn tray_chosen(app: &AppHandle, id: &str) {
     }
 }
 
-/// Whether `text` starts with an eD2K file link, as copied from a page.
+/// Whether `text` starts with an eD2K file link, as copied from a page: plain, escaped, or the magnet link of an eD2K
+/// file.
 fn starts_with_file_link(text: &str) -> bool {
-    text.trim_start().get(..FILE_LINK.len()).is_some_and(|start| start.eq_ignore_ascii_case(FILE_LINK))
+    let first = text.split_whitespace().next().unwrap_or_default().to_ascii_lowercase();
+    first.starts_with(FILE_LINK)
+        || first.starts_with(ESCAPED_FILE_LINK)
+        || (first.starts_with(MAGNET_LINK) && first.contains(MAGNET_ED2K))
 }
 
 /// Looks at the clipboard once a second while the options ask for it and tells the window each change: the text when
@@ -1356,6 +1371,7 @@ mod tests {
     use super::*;
 
     const LINK: &str = "ed2k://|file|a.iso|1000|0123456789ABCDEF0123456789ABCDEF|/";
+    const MAGNET: &str = "magnet:?xt=urn:ed2k:0123456789ABCDEF0123456789ABCDEF&xl=1000&dn=a.iso";
 
     #[test]
     fn should_take_a_copied_file_link_whatever_its_case_and_the_spaces_before() {
@@ -1367,6 +1383,27 @@ mod tests {
     fn should_leave_a_text_that_only_holds_a_link_further_on() {
         let text = format!("see {LINK}");
         then_it_starts_with_a_file_link(&text, false);
+    }
+
+    #[test]
+    fn should_take_a_copied_file_link_a_browser_escaped() {
+        then_it_starts_with_a_file_link(&LINK.replace('|', "%7C"), true);
+    }
+
+    #[test]
+    fn should_take_a_copied_magnet_link_of_an_ed2k_file() {
+        then_it_starts_with_a_file_link(MAGNET, true);
+    }
+
+    #[test]
+    fn should_leave_a_copied_magnet_link_of_another_network() {
+        then_it_starts_with_a_file_link("magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a", false);
+    }
+
+    #[test]
+    fn should_take_the_ed2k_and_magnet_links_of_a_command_line() {
+        let found = links(&words(&["njmule-gui", "--minimized", LINK, MAGNET, "notes.txt"]));
+        assert_eq!(found, words(&[LINK, MAGNET]));
     }
 
     #[test]

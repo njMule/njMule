@@ -4,7 +4,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
 import { computed } from 'vue';
-import { filesHere } from '../../files';
 import { rate } from '../../format';
 import { t } from '../../i18n';
 import type { IconName } from '../../icons';
@@ -13,6 +12,7 @@ import { label, words, type Action, type Field, type Row } from '../../settings'
 import Icon from '../../ui/Icon.vue';
 import Switch from '../../ui/Switch.vue';
 import FieldInput from './FieldInput.vue';
+import { browsesHere } from './folders';
 import { rateKib, withProgram } from './inputs';
 import { interfaceChoices, interfaceName, interfaces } from './interfaces';
 import {
@@ -110,7 +110,7 @@ function canBrowse(field: Field): boolean {
     if (platform === undefined || !enabled(field)) {
         return false;
     }
-    return field.kind === 'command' ? filesHere(platform) : platform.desktop;
+    return browsesHere(field.kind, platform);
 }
 
 async function browse(field: Field): Promise<void> {

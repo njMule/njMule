@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { answer, api } from './api/client';
+import { t as translate } from './i18n';
 import type { IconName } from './icons';
+import { seedUrlHistory } from './network';
+import type { Platform } from './platform';
+import { seedHistory } from './search';
+import { readSystemSettings, setSystemOption, SYSTEM_FAILURES, systemSettings } from './system-settings';
+import { message, problem } from './toasts';
 import type { Tone } from './transfers';
 
 // Taking an eMule profile over: where eMule keeps it on the engine's computer, what the engine says of each file, in
@@ -105,6 +111,40 @@ export const OUTCOMES: Record<Outcome, { key: string; icon: IconName; tone: Tone
 export function reportSummary(report: ImportReport, t: Translate): string {
     const failed = report.items.filter((i) => i.outcome === 'failed').length;
     return t(report.dryRun ? 'nj.import.checked' : 'nj.import.done', report.items.length, failed);
+}
+
+/** Starts the histories of the boxes still empty with what was typed in those of the eMule imported, if any. */
+export async function takeEmuleHistory(): Promise<void> {
+    try {
+        const typed = await answer(api().GET('/import/emule/history'));
+        seedHistory(typed.searches);
+        seedUrlHistory('serverMet', typed.serverLists);
+    } catch {
+        // The boxes start empty then.
+    }
+}
+
+/**
+ * After the import of an eMule that started at login, njMule starts so too, and says it, where this window sets that:
+ * the desktop app's window on the engine's computer.
+ */
+export async function startAtLoginAsEmuleDid(report: ImportReport, platform: Platform): Promise<void> {
+    if (report.dryRun || !report.startAtLogin) {
+        return;
+    }
+    await readSystemSettings(platform);
+    const now = systemSettings.value?.autostart;
+    if (now === null || now === undefined) {
+        return;
+    }
+    try {
+        if (!now) {
+            await setSystemOption('autostart', true);
+        }
+        message(translate('nj.import.autostart'));
+    } catch (e) {
+        problem(translate(SYSTEM_FAILURES.autostart, (e as Error).message));
+    }
 }
 
 /**

@@ -309,9 +309,19 @@ export function urlHistory(name: UrlHistory): string[] {
 
 /** Remembers {@code url}, which worked, at the top of its history. */
 export function rememberUrl(name: UrlHistory, url: string): void {
-    const next = [url, ...urlHistory(name).filter((h) => h !== url)].slice(0, URL_HISTORY_SIZE);
+    keepUrls(name, [url, ...urlHistory(name).filter((h) => h !== url)]);
+}
+
+/** Starts an empty history with the web addresses among {@code typed}, the newest first, such as eMule's. */
+export function seedUrlHistory(name: UrlHistory, typed: string[]): void {
+    if (urlHistory(name).length === 0) {
+        keepUrls(name, [...new Set(typed.map((u) => u.trim()).filter((u) => webAddress(u) !== null))]);
+    }
+}
+
+function keepUrls(name: UrlHistory, urls: string[]): void {
     try {
-        localStorage.setItem(`njmule.history.${name}`, JSON.stringify(next));
+        localStorage.setItem(`njmule.history.${name}`, JSON.stringify(urls.slice(0, URL_HISTORY_SIZE)));
     } catch {
         // Not kept beyond this window.
     }

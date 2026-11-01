@@ -71,6 +71,7 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
+import org.njmule.core.api.EmuleHistory;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
@@ -1513,6 +1514,11 @@ public final class Engine implements NjMuleEngine {
     @Override
     public CompletableFuture<Optional<Path>> emuleProfile() {
         return CompletableFuture.completedFuture(EmuleImporter.findConfigDirectory(System.getenv()));
+    }
+
+    @Override
+    public CompletableFuture<EmuleHistory> emuleHistory() {
+        return CompletableFuture.completedFuture(EmuleImporter.history(this.directories.config()));
     }
 
     @Override

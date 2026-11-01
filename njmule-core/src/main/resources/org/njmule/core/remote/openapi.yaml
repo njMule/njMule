@@ -545,6 +545,35 @@ paths:
           $ref: "#/components/responses/BadRequest"
         default:
           $ref: "#/components/responses/Error"
+  /import/emule/history:
+    get:
+      operationId: getEmuleHistory
+      tags: [engine]
+      summary: What was typed in the boxes of the eMule imported, for an interface to offer again.
+      description: >-
+        The searches and the server list addresses of the eMule whose profile was imported, as the
+        import kept them, the newest first; empty lists before an import.
+      responses:
+        "200":
+          description: The entries of each box.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [searches, serverLists]
+                properties:
+                  searches:
+                    type: array
+                    maxItems: 50
+                    items:
+                      type: string
+                  serverLists:
+                    type: array
+                    maxItems: 50
+                    items:
+                      type: string
+        default:
+          $ref: "#/components/responses/Error"
   /setup:
     get:
       operationId: getSetup

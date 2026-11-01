@@ -27,7 +27,7 @@ import {
     PopoverRoot,
     PopoverTrigger,
 } from 'reka-ui';
-import { computed, h, onMounted, onUnmounted, ref, shallowRef } from 'vue';
+import { computed, h, onActivated, onMounted, onUnmounted, ref, shallowRef } from 'vue';
 import { answer, api, endpoint } from '../../api/client';
 import { askRisky } from '../../ask';
 import { count } from '../../format';
@@ -63,6 +63,8 @@ const address = ref('');
 // The lists that worked are offered again; the well-known one is filled in while none did.
 const metHistory = ref(urlHistory('serverMet'));
 const metUrl = ref<string>(metHistory.value.length === 0 ? SUGGESTED_URLS.serverMet : '');
+// An import from eMule may have started an empty history since this place was last shown.
+onActivated(() => (metHistory.value = urlHistory('serverMet')));
 // The ways to add servers, under their button, also opened from the empty list.
 const adding = ref(false);
 const moreTrigger = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null);

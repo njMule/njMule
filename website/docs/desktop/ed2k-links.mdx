@@ -21,7 +21,7 @@ the links you click in a browser.
 | Server list | `ed2k://\|serverlist\|https://…/server.met\|/` | Downloads the `server.met` and adds its servers. |
 | Nodes list | `ed2k://\|nodeslist\|https://…/nodes.dat\|/` | Downloads the `nodes.dat` and adds its Kad contacts. |
 | Search | `ed2k://\|search\|words\|/` | Understood, but not acted upon yet. |
-| Magnet | `magnet:?xt=urn:ed2k:hash&xl=size&dn=name` | The eD2K form of a magnet link: given to `njmule` on the command line, adds a download, as a file link does. The window takes `ed2k://` links only. |
+| Magnet | `magnet:?xt=urn:ed2k:hash&xl=size&dn=name` | The eD2K form of a magnet link: adds a download, as a file link does. |
 
 A file link may carry more after its hash, which njMule uses when it is there:
 
@@ -31,10 +31,9 @@ A file link may carry more after its hash, which njMule uses when it is there:
 - after the closing `/`, a list of sources: `|sources,198.51.100.7:4662,…|/`, at most 32,767 of
   them; a list dated with `@` and a date (`|sources@261231,…|/`) is left out from that date on.
 
-A file may be up to 256 GiB. The `njmule` command line also reads links whose separators a browser
-escaped (`%7C` for `|`). A magnet link is taken only in its eD2K form (`urn:ed2k:` or
-`urn:ed2khash:`, with a name and a size); the magnet links of BitTorrent stay with the programs made
-for them.
+A file may be up to 256 GiB. Links whose separators a browser escaped (`%7C` for `|`) are read too.
+A magnet link is taken only in its eD2K form (`urn:ed2k:` or `urn:ed2khash:`, with a name and a
+size); the magnet links of BitTorrent stay with the programs made for them.
 
 ## Adding file links
 
@@ -50,11 +49,12 @@ There are several ways to add eD2K file links as downloads:
 | The command line | `njmule-gui "ed2k://\|file\|…\|/"`: see [The command line](#the-command-line). |
 | The clipboard | Copy links anywhere, while the desktop app watches the clipboard: see [Watching the clipboard](#watching-the-clipboard). |
 
-Pasting in Transfers, the palette and drag and drop find every `ed2k://|file|` link in the text,
-apart by spaces or lines, and each becomes a download; the clipboard is watched for a text that
-**starts** with such a link. Each download goes into
-the first category whose names it matches (see [Categories](./categories.mdx)), and starts paused
-when **Add files to download in paused mode** is on in [Directories](../settings/directories.mdx).
+Pasting in Transfers, the palette and drag and drop find every file link in the text, apart by
+spaces or lines: `ed2k://|file|` links, escaped or not, and the magnet links of eD2K files. Each
+becomes a download; the clipboard is watched for a text that **starts** with such a link. Each
+download goes into the first category whose names it matches (see [Categories](./categories.mdx)),
+and starts paused when **Add files to download in paused mode** is on in
+[Directories](../settings/directories.mdx).
 A message names each one added (**Download added: …**). Adding the link of a file you already
 download only adds its sources to the download.
 
@@ -81,8 +81,8 @@ the clipboard are already in it.
    option of [Directories](../settings/directories.mdx) is on, and what you choose here wins over it.
 5. The line at the bottom counts the files and their total size. Press **Download**.
 
-**Download** stays off while no file is ticked. The box takes file links only, wherever they are in
-the text.
+**Download** stays off while no file is ticked. The box takes file links only, escaped and magnet
+ones too, wherever they are in the text.
 
 ## Opening links from a browser
 
@@ -146,17 +146,22 @@ njmule --restore-links
 
 ## The command line
 
-Links given to the desktop app on the command line are handled as a click in a browser. Quote each
-link, as the `|` in it means something to the shells:
+Links given to the desktop app on the command line are handled as a click in a browser, and so are
+the magnet links of eD2K files, as the `njmule` command line takes them. Quote each link, as the `|`
+and `&` in it mean something to the shells:
 
 ```bash
 njmule-gui "ed2k://|file|Example.iso|734003200|0123456789ABCDEF0123456789ABCDEF|/"
 ```
 
+```bash
+njmule-gui "magnet:?xt=urn:ed2k:0123456789ABCDEF0123456789ABCDEF&xl=734003200&dn=Example.iso"
+```
+
 If the desktop app already runs, the links go to it, its window comes to the front, and the new
 start ends at once. Started without links, a second start only brings the running window to the
-front. Words that are not eD2K links are left out. For the other options of the command line, see
-[Command line](../server/cli.mdx).
+front. Words that are not eD2K or magnet links are left out, and a magnet link of another network
+adds nothing. For the other options of the command line, see [Command line](../server/cli.mdx).
 
 ## Watching the clipboard
 
@@ -164,7 +169,8 @@ The desktop app can notice eD2K file links you copy in other programs. Turn on *
 eD2K file links** in [General options](../settings/general.mdx) (off by default; greyed out in the
 web interface). Then:
 
-1. Copy a text that starts with an eD2K file link, in a browser or elsewhere.
+1. Copy a text that starts with an eD2K file link, escaped or not, or with the magnet link of an
+   eD2K file, in a browser or elsewhere.
 2. njMule asks **Add these eD2K file links to download?**, naming the files (up to ten).
 3. Press **Download** to add them, or **Leave them**.
 

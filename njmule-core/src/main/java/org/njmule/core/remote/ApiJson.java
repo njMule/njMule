@@ -29,6 +29,7 @@ import java.util.function.Consumer;
 import org.njmule.core.api.BanInfo;
 import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
+import org.njmule.core.api.EmuleHistory;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.FileComment;
@@ -637,6 +638,13 @@ final class ApiJson {
             g.writeEndObject();
         }
         g.writeEndArray();
+        g.writeEndObject();
+    }
+
+    static void emuleHistory(JsonGenerator g, EmuleHistory typed) {
+        g.writeStartObject();
+        strings(g, "searches", typed.searches());
+        strings(g, "serverLists", typed.serverLists());
         g.writeEndObject();
     }
 

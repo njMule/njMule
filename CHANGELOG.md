@@ -23,8 +23,9 @@ All notable changes to this project are documented here. The format follows
   njMule's computer, the check of a folder and of a search, the defaults of the preferences and
   whether each password is set, the first start's questions, the web interface's settings and API
   token for the desktop window, the data of a download for a player, server.met and nodes.dat files
-  sent from a browser, the country of servers and Kad contacts, and, for the desktop window, the
-  ed2k links and the start at login of njMule's computer.
+  sent from a browser, the country of servers and Kad contacts, the searches and server list
+  addresses typed in the eMule imported, and, for the desktop window, the ed2k links and the start
+  at login of njMule's computer.
 
 ### Changed
 

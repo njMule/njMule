@@ -59,6 +59,7 @@ import org.njmule.core.api.Category;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.DownloadPriority;
 import org.njmule.core.api.Ed2kLink;
+import org.njmule.core.api.EmuleHistory;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.FileHistory;
@@ -298,6 +299,10 @@ public final class RemoteApi implements AutoCloseable {
                 entry("getRates", this::getRates),
                 entry("importEmule", this::importEmule),
                 entry("findEmuleProfile", this::findEmuleProfile),
+                entry("getEmuleHistory", c -> {
+                    EmuleHistory typed = await(this.engine.emuleHistory());
+                    reply(c.exchange(), 200, g -> ApiJson.emuleHistory(g, typed));
+                }),
                 entry("getSetup", c -> {
                     boolean pending = await(this.engine.setupPending());
                     reply(c.exchange(), 200, g -> {

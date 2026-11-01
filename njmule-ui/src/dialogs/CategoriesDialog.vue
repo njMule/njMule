@@ -6,6 +6,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 import { DialogClose, DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import { computed, ref, watch } from 'vue';
 import { answer, api, type Schemas } from '../api/client';
+import { filesHere } from '../files';
 import { t } from '../i18n';
 import { categories, type Category } from '../model/engine';
 import type { Platform } from '../platform';
@@ -199,7 +200,7 @@ async function browse(): Promise<void> {
                                         ><input v-model="incoming" dir="ltr" :placeholder="t('nj.settings.defaultDir')"
                                     /></span>
                                 </Tip>
-                                <button class="button" :disabled="!platform.desktop" @click.prevent="browse">
+                                <button class="button" :disabled="!filesHere(platform)" @click.prevent="browse">
                                     <Icon name="FOLDER_OPEN" />{{ t('IDS_PW_BROWSE') }}
                                 </button>
                             </span>

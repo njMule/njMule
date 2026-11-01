@@ -3,6 +3,9 @@
 
 import { shallowRef } from 'vue';
 import { answer, api } from '../../api/client';
+import { filesHere } from '../../files';
+import type { Platform } from '../../platform';
+import type { Kind } from '../../settings';
 
 // What the paths typed in the folder options name on the engine's computer, which only the engine can tell: a folder
 // option takes a folder, or one not there yet, but not a file nor text that is no path there.
@@ -33,6 +36,15 @@ export async function checkPath(path: string): Promise<void> {
 export function checkPathSoon(path: string): void {
     window.clearTimeout(timer);
     timer = window.setTimeout(() => void checkPath(path), PAUSE_MS);
+}
+
+/**
+ * Whether Browse chooses the path of an option of {@code kind} here: a folder or a command line of the engine's
+ * computer only in the desktop app's window on that computer, a sound or a program of this one in any desktop window;
+ * elsewhere the path is typed.
+ */
+export function browsesHere(kind: Kind, platform: Platform): boolean {
+    return kind === 'folder' || kind === 'command' ? filesHere(platform) : platform.desktop;
 }
 
 /** Whether a folder option can take {@code path}: empty for the default folder, or a path that names no file. */

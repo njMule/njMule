@@ -50,6 +50,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.njmule.core.api.EmuleHistory;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.FileComment;
 import org.njmule.core.api.Hash16;
@@ -143,6 +144,7 @@ class RemoteApiContractTest {
                 "/api/v1/files/" + HASH + "/comment",
                 "/api/v1/files/" + HASH + "/notes",
                 "/api/v1/import/emule",
+                "/api/v1/import/emule/history",
                 "/api/v1/setup",
                 "/api/v1/webui",
                 "/api/v1/interfaces",
@@ -434,6 +436,7 @@ class RemoteApiContractTest {
         answerWith("savedSearches", List.of(ApiSamples.savedSearch()));
         answerWith("spamMarks", ApiSamples.spamMarks());
         answerWith("emuleProfile", Optional.of(Path.of(System.getProperty("java.io.tmpdir"))));
+        answerWith("emuleHistory", new EmuleHistory(List.of("talk"), List.of("http://example.org/server.met")));
         answerWith("setupPending", true);
         answerWith("downloadData", Optional.of(Path.of("001.part").toAbsolutePath()));
         this.fake.value("schedule", ApiSamples.schedule());
