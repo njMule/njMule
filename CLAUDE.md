@@ -81,7 +81,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `release.yml`, whose draft release waits for the maintainer's approval of the `release`
   environment and is then published by hand. Then the pinned Roadmap issue (#38) gets the release
   under "Released" and its completed "Next" items ticked.
-- The `release` skill (`.claude/skills/release/SKILL.md`) does all of it, with a manual run of
+- The `release` skill (`.claude/skills/release/SKILL.md`, kept local like `docs/` and never
+  committed) does all of it, with a manual run of
   `release.yml` on the release branch before the tag, once the maintainer asks for a release of a
   version: that request is their approval of every step, including the `release` environment and
   the publication.
