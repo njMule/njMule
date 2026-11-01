@@ -111,6 +111,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - Builds are incremental and cached (build cache and configuration cache, `gradle.properties`): with
   nothing changed `./gradlew build` takes about a second, a change re-runs only what depends on it,
   and worktrees share the build cache in `~/.gradle`. `clean` is never needed for a correct build.
+  In CI the build cache lives apart (`NJMULE_BUILD_CACHE`, `settings.gradle.kts`): each build of
+  `main` saves it and pull requests start from it, so unchanged modules are not tested again.
 - Dependencies are locked and verified: every resolved version is in the `gradle.lockfile` of each
   project (and `buildscript-`/`settings-gradle.lockfile`), every downloaded artifact is checked
   against its SHA-256 in `gradle/verification-metadata.xml` (the Node.js archives of every platform
@@ -127,7 +129,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   ```
 - Test options (`-P`): `test.excludedTags` (default `interop,private-fixtures,perf`), `test.tags`,
   `test.forks` (JVMs per module, default 4), `test.maxHeap` (default 4g) and `test.parallelModules=1` (one module's tests at a time, for
-  machines with few cores; the CI's verify and Sonar jobs use it on their four CPUs). Any
+  machines with few cores; the CI's verify jobs use it on their four CPUs). Any
   `-Pnjmule.<name>=<value>` reaches the tests as a system property. PowerShell splits an unquoted
   option at its first dot: write `'-Ptest.forks=1'`. One class:
   `./gradlew :njmule-core:test --tests '*TagCodecTest'`. Speed of the transfers on the loopback
@@ -166,7 +168,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `java -jar njmule-bench/build/libs/benchmarks.jar` (for the throughput benchmarks one operation is
   1 MiB, so ops/s = MiB/s).
 - Static analysis on SonarQube Cloud: `./gradlew build sonar -Dsonar.token=<token>` (project
-  `njMule_njMule`, organisation `njmule`); in CI the `sonar` job runs once the
+  `njMule_njMule`, organisation `njmule`); in CI the Linux `verify` job runs it once the
   `SONAR_TOKEN` secret is set.
 - Native image: GraalVM Community `25.0.4.1.1` (25 Innovation 4, same as CI). Locally it is installed
   in `%LOCALAPPDATA%\Programs\GraalVM` with `GRAALVM_HOME` set; on Windows `native-image` needs the
