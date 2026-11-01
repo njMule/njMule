@@ -2,33 +2,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: Documentation
 
-# The documentation website (website/): built on every change that can alter it, to catch broken pages and
-# links; published on GitHub Pages only when asked (a manual run with "deploy") and with each release tag.
+# The documentation website (website/): built on the pull requests that change it or what its build pictures and
+# generates, to catch broken pages and links, but not again once merged; published on GitHub Pages only when asked
+# (a manual run with "deploy") and with each release tag.
 on:
     push:
-        branches: [main]
-        # Tag pushes ignore the path filters: every release publishes the site.
         tags: ["v*"]
-        paths:
-            - "website/**"
-            - "njmule-http/src/test/java/org/njmule/http/*CaptureDemo.java"
-            - "njmule-ui/src/**"
-            - "njmule-http/src/main/**"
-            - "njmule-app/src/main/java/org/njmule/app/LaunchOptions.java"
-            - "njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml"
-            - "branding/**"
-            - "CHANGELOG.md"
-            - "CONTRIBUTING.md"
-            - "SECURITY.md"
-            - "CODE_OF_CONDUCT.md"
-            - "gradle/**"
-            - ".github/workflows/docs.yml"
     pull_request:
         paths:
             - "website/**"
             - "njmule-ui/src/**"
             - "njmule-http/src/test/java/org/njmule/http/*CaptureDemo.java"
             - "njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml"
+            # The version: the release's pull request checks the site its tag will publish.
+            - "gradle.properties"
             - ".github/workflows/docs.yml"
     workflow_dispatch:
         inputs:

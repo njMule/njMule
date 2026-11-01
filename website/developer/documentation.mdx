@@ -188,10 +188,9 @@ The `Documentation` workflow (`.github/workflows/docs.yml`) builds the site with
 `./gradlew :website:siteCheck :website:site` on an Ubuntu runner, the pictures coming from the
 interface on the demo engine in the runner's Chrome:
 
-- **It checks** every push to `main` that changes the site or what it is made from (the interface,
-  the web interface, the demo engine, the command line's options, the API document, the branding,
-  the repository's pages, the Gradle set-up), and every pull request that changes the site, the
-  interface, the demo engine, the API document or the workflow itself.
+- **It checks** every pull request that changes the site, the interface, the demo engine, the API
+  document, the version in `gradle.properties` (so the release's pull request checks the site its
+  tag will publish) or the workflow itself. A merge into `main` does not build it again.
 - **It publishes** on GitHub Pages only when asked: a manual run with **deploy** ticked, or the push
   of a `v*` tag, which publishes the site of every release.
 

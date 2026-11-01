@@ -156,7 +156,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   TypeScript). Preview: `./gradlew :website:prepare`, then `npm start` in `website/`. Pages are MDX
   in English, text under CC BY-SA 4.0; screenshots are never committed (`<Screenshot id="…">`). A
   user-visible change updates its page in the same branch. `.github/workflows/docs.yml` builds it
-  on changes and publishes on GitHub Pages only on a manual run with `deploy` or a `v*` tag.
+  on the pull requests that change it (not again on `main`) and publishes on GitHub Pages only on a
+  manual run with `deploy` or a `v*` tag.
 - Other tasks: `:njmule-app:generateLicenseReport` (THIRD-PARTY.txt in `build/reports/licenses`),
   `cyclonedxBom` (SBOM in `build/reports/cyclonedx`), `dependencyCheckAggregate` (OWASP
   dependency-check, needs `NVD_API_KEY`), `:njmule-app:nativeCompile` (GraalVM native image).
