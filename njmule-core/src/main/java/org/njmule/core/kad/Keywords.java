@@ -43,6 +43,7 @@ public final class Keywords {
             if (i == text.length() || DELIMITERS.indexOf(text.charAt(i)) >= 0) {
                 last = text.substring(start, i);
                 start = i + 1;
+                // Counted before lowering, which leaves a few words of one unit at two bytes.
                 if (last.getBytes(StandardCharsets.UTF_8).length >= MIN_BYTES) {
                     String word = KadLowerCase.toLowerCase(last);
                     words.remove(word);
