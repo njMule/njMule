@@ -25,6 +25,9 @@ All notable changes to this project are documented here. The format follows
 - The Type column of the search results and of a client's shared files names the type in the
   interface's language, such as Archive or Program, rather than the network's code (`Pro`).
 - The Stop icon is a filled square, as on a player: the empty one looked like a check box.
+- More results, as the search's More button is now called in every language, is enabled only while
+  the server holds more results, rather than doing nothing when pressed; a search that waits for
+  them no longer shows as running.
 
 ## [0.2.0] - 2026-11-01
 

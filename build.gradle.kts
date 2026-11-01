@@ -68,6 +68,8 @@ sonar {
         property("sonar.organization", "njmule")
         property("sonar.projectKey", "njMule_njMule")
         property("sonar.projectName", "njMule")
+        // The analysis waits for the quality gate and fails with it, so that a red gate fails the CI and the merge.
+        property("sonar.qualitygate.wait", true)
         // The CI's own scripts run only on the runners, where no test measures them; their issues are still reported.
         property("sonar.coverage.exclusions", ".github/**")
         // MD5 and SHA-1 are mandated by the eD2K and Kad protocols and file formats (hashes, key

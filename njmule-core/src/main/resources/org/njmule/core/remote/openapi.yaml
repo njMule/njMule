@@ -1924,7 +1924,7 @@ paths:
                       description: Where it was searched, as asked; empty when not noted.
                     running:
                       type: boolean
-                      description: Whether more results may come.
+                      description: Whether more results may come without being asked for.
                     results:
                       type: integer
                       minimum: 0
@@ -2063,13 +2063,18 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [id, running, results]
+                required: [id, running, more, results]
                 properties:
                   id:
                     $ref: "#/components/schemas/SearchId"
                   running:
                     type: boolean
-                    description: Whether more results may come.
+                    description: Whether more results may come without being asked for.
+                  more:
+                    type: boolean
+                    description: >-
+                      Whether the connected server holds more results of this search, which moreSearchResults
+                      asks for now; only a server search, the latest, up to five times.
                   results:
                     type: array
                     items:
@@ -2126,7 +2131,8 @@ paths:
     post:
       operationId: moreSearchResults
       tags: [searches]
-      summary: Asks more servers for results of a server search.
+      summary: Asks the connected server for the next results of a search.
+      description: Allowed while getSearchResults says `more`; refused with 409 otherwise.
       responses:
         "200":
           $ref: "#/components/responses/Ok"

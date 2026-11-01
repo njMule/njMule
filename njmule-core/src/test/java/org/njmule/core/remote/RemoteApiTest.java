@@ -374,6 +374,31 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldTellASearchRunsWithNoMoreResultsToAskForWhileTheServerHoldsNone() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSearchesAs(7);
+        givenASearchStarted("{\"query\":\"talk\",\"scope\":\"server\"}", "\"id\":7");
+        givenTheEngineFinds(7, "talk.bin");
+
+        whenTheResultsAreAskedUntilTheyCome("/api/v1/searches/7", "talk.bin");
+
+        thenTheBodyContains("\"running\":true,\"more\":false");
+    }
+
+    @Test
+    void shouldTellASearchTheServerHoldsMoreResultsOfWaitsForThemToBeAsked() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSearchesAs(7);
+        givenASearchStarted("{\"query\":\"talk\",\"scope\":\"server\"}", "\"id\":7");
+        givenTheEngineFinds(7, "talk.bin");
+        givenTheServerHoldsMoreResults();
+
+        whenTheResultsAreAskedUntilTheyCome("/api/v1/searches/7", "talk.bin");
+
+        thenTheBodyContains("\"running\":false,\"more\":true");
+    }
+
+    @Test
     void shouldSearchKadAutomaticallyFromASmallServerAmongMany() throws Exception {
         givenTheApiRuns();
         givenTheEngineSearchesAs(8);
@@ -1586,6 +1611,11 @@ class RemoteApiTest {
             this.calls.add("search " + request.expression() + " " + request.scope());
             return CompletableFuture.completedFuture(new SearchId(id));
         });
+        this.fake.answer("hasMoreResults", args -> CompletableFuture.completedFuture(false));
+    }
+
+    private void givenTheServerHoldsMoreResults() {
+        this.fake.answer("hasMoreResults", args -> CompletableFuture.completedFuture(true));
     }
 
     private void givenASearchStarted(String body, String answered) throws Exception {

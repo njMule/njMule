@@ -1132,6 +1132,11 @@ public final class Engine implements NjMuleEngine {
     }
 
     @Override
+    public CompletableFuture<Boolean> hasMoreResults(SearchId search) {
+        return this.loop.submit(() -> this.network.hasMoreResults(search));
+    }
+
+    @Override
     public CompletableFuture<Void> stopSearch(SearchId search) {
         return this.loop.submit(() -> {
             this.network.stopSearch(search);
