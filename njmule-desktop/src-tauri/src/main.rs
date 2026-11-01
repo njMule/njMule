@@ -12,6 +12,7 @@ mod verbs;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
+use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -43,6 +44,10 @@ const STOP_WAIT: Duration = Duration::from_secs(30);
 const ERROR_LINES: usize = 8;
 /// How long the rest of the engine's error output may take once its other output ended.
 const ERROR_WAIT: Duration = Duration::from_secs(5);
+/// The file of the engine's settings folder with the port and secret its hand-over of links listens with.
+const HANDOFF_FILE: &str = "handoff";
+/// How long a njMule already running may take to answer the hand-over.
+const HANDOFF_WAIT: Duration = Duration::from_secs(5);
 
 /// The option that opens the window on another computer's njMule, at the address of its API.
 const REMOTE_OPTION: &str = "--remote-url";
@@ -208,6 +213,12 @@ fn engine_program() -> PathBuf {
 /// Starts the engine with `options` of the window's command line besides its profile.
 fn start_engine(app: AppHandle, engine: Arc<Engine>, options: Vec<String>) {
     report_failed_start(app.clone(), engine.clone());
+    // A njMule without a window keeps the profile (a service, say): this start's links go to it, and the window says so.
+    let links = engine.links.lock().unwrap().clone();
+    if engine_config_dir(&app).is_some_and(|config| give_to_running(&config, &links)) {
+        engine.found(Err(running_without_window(!links.is_empty())));
+        return;
+    }
     let program = engine_program();
     let mut command = if program.extension().is_some_and(|e| e.eq_ignore_ascii_case("bat")) {
         let mut c = Command::new("cmd");
@@ -287,7 +298,7 @@ fn start_engine(app: AppHandle, engine: Arc<Engine>, options: Vec<String>) {
         }
         if !matches!(ended, Some(Ok(status)) if status.success()) {
             app.dialog()
-                .message("njMule stopped unexpectedly: see its log.")
+                .message(format!("njMule stopped unexpectedly.\n\n{}", log_place(logs_dir(&app).as_deref())))
                 .kind(MessageDialogKind::Error)
                 .title("njMule")
                 .blocking_show();
@@ -366,11 +377,48 @@ fn start_failure(errors: &str, logs: Option<&Path>) -> String {
         text.push_str("\n\n");
         text.push_str(errors);
     }
-    match logs {
-        Some(dir) => text.push_str(&format!("\n\nIts log is in {}.", dir.display())),
-        None => text.push_str("\n\nSee its log."),
-    }
+    text.push_str("\n\n");
+    text.push_str(&log_place(logs));
     text
+}
+
+/// Where the engine's log is, for the user to look.
+fn log_place(logs: Option<&Path>) -> String {
+    logs.map_or_else(|| "See its log.".to_owned(), |dir| format!("Its log is in {}.", dir.display()))
+}
+
+/// What the user reads when a njMule without a window keeps the profile, and took this start's links if it had any.
+fn running_without_window(links: bool) -> String {
+    format!(
+        "njMule already runs without a window on this profile{}. Use its web interface, or stop it with njmule --exit \
+         to open the desktop app.",
+        if links { ", and the links went to it" } else { "" }
+    )
+}
+
+/// Gives `links`, maybe none, to the njMule running on the profile of `config` through its engine's hand-over (the
+/// port and secret of its file there, then one link a line and an empty one); whether one took them.
+fn give_to_running(config: &Path, links: &[String]) -> bool {
+    let Ok(text) = std::fs::read_to_string(config.join(HANDOFF_FILE)) else { return false };
+    let Some((port, secret)) = text.trim().split_once(' ') else { return false };
+    let Some(port) = port.parse::<u16>().ok().filter(|&p| p > 0 && !secret.contains(' ')) else { return false };
+    let mut lines = format!("{secret}\n");
+    for link in links.iter().map(|l| l.trim()).filter(|l| !l.is_empty() && !l.contains(['\n', '\r'])) {
+        lines.push_str(link);
+        lines.push('\n');
+    }
+    lines.push('\n');
+    let exchange = || -> std::io::Result<String> {
+        let mut stream = TcpStream::connect_timeout(&SocketAddr::from((Ipv4Addr::LOCALHOST, port)), HANDOFF_WAIT)?;
+        stream.set_read_timeout(Some(HANDOFF_WAIT))?;
+        stream.set_write_timeout(Some(HANDOFF_WAIT))?;
+        stream.write_all(lines.as_bytes())?;
+        let mut answer = String::new();
+        BufReader::new(stream).read_line(&mut answer)?;
+        Ok(answer)
+    };
+    // A file left by a crash: nobody listens there any more.
+    exchange().is_ok_and(|answer| answer.trim_end() == "OK")
 }
 
 /// The value of `option` on a command line, as the next word or after `=`, the first time it comes.
@@ -478,6 +526,15 @@ fn profile_root() -> Option<PathBuf> {
         return Some(PathBuf::from(root));
     }
     engine_program().parent().filter(|d| d.join("portable.flag").is_file()).map(|d| d.join("data"))
+}
+
+/// The engine's folder of settings in the profile it uses, as the engine finds it.
+fn engine_config_dir(app: &AppHandle) -> Option<PathBuf> {
+    match profile_root() {
+        Some(root) => Some(root.join("config")),
+        None if cfg!(target_os = "linux") => app.path().config_dir().ok().map(|dir| dir.join(APP_DIR)),
+        None => app.path().config_dir().ok().map(|dir| dir.join(APP_DIR).join("config")),
+    }
 }
 
 /// The desktop app's folder of the profile the engine uses, as the engine finds it.
@@ -1641,6 +1698,45 @@ mod tests {
     fn should_still_tell_the_engine_stopped_without_errors_nor_log_folder() {
         let text = start_failure("", None);
         then_the_errors_are(&text, "njMule stopped while starting.\n\nSee its log.");
+    }
+
+    #[test]
+    fn should_hand_the_links_to_the_njmule_running_on_the_profile() {
+        let folder = given_a_folder("handoff");
+        let running = given_a_njmule_listening_for_links(&folder, "0a1b");
+
+        let taken = give_to_running(&folder.0, &words(&[LINK, " ", MAGNET]));
+
+        assert!(taken);
+        assert_eq!(running.join().unwrap(), words(&["0a1b", LINK, MAGNET]));
+    }
+
+    #[test]
+    fn should_find_no_njmule_running_where_a_crash_left_the_handoff_file() {
+        let folder = given_a_folder("stale");
+        let port = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap().local_addr().unwrap().port();
+        std::fs::write(folder.0.join(HANDOFF_FILE), format!("{port} 0a1b\n")).unwrap();
+
+        let taken = give_to_running(&folder.0, &words(&[LINK]));
+
+        assert!(!taken);
+    }
+
+    /// A njMule listening for links as the engine does, which answers one start and returns the lines it read.
+    fn given_a_njmule_listening_for_links(folder: &Folder, secret: &str) -> std::thread::JoinHandle<Vec<String>> {
+        let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::fs::write(folder.0.join(HANDOFF_FILE), format!("{port} {secret}\n")).unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let lines: Vec<String> = BufReader::new(stream.try_clone().unwrap())
+                .lines()
+                .map(Result::unwrap)
+                .take_while(|line| !line.is_empty())
+                .collect();
+            stream.write_all(b"OK\nheadless\n").unwrap();
+            lines
+        })
     }
 
     fn then_the_options_are(options: &[String], expected: &[&str]) {

@@ -88,19 +88,20 @@ must belong to that user.
 ### The window does not open
 
 **What you see:** you start the desktop app and, instead of its window, a message says
-*njMule stopped while starting*, followed by the reason, such as
-`Cannot start njMule: njMule is already running with the configuration in …`, and the folder of
-its [log](#logs). **Close** ends the desktop app.
+*njMule already runs without a window on this profile*, or *njMule stopped while starting*
+followed by the reason and the folder of its [log](#logs). **Close** ends the desktop app.
 
 **Why:** only one njMule may use a profile at a time; two would write the same downloads and lists.
 The first one locks the file `njmule.lock` in the configuration folder. A second start of the
 desktop app never gets that far: it hands its eD2K links to the desktop app already running, brings
-its window to the front, then ends. But when another njMule holds the profile, such as the headless
-engine (`njmule` in a terminal, or the systemd user unit) or a command-line task (`njmule --search`,
-`njmule --import-emule`) that is still running, the engine the desktop app starts cannot take the
-profile and stops: the desktop app shows what it wrote. The same message tells any other reason the
-engine could not start, such as a wrong `--log-level` or a folder it cannot write; its first lines
-are what `njmule` would print in a terminal.
+its window to the front, then ends. When another njMule holds the profile, such as the headless
+engine (`njmule` in a terminal, or the systemd user unit) or a command-line task
+(`njmule --search`, `njmule --import-emule`) that is still running, the desktop app hands its links
+to it, says so and ends. *njMule stopped while starting* tells why the engine the desktop app
+starts could not run otherwise, such as
+`Cannot start njMule: njMule is already running with the configuration in …`, a wrong
+`--log-level` or a folder it cannot write; its first lines are what `njmule` would print in a
+terminal.
 
 **What to do:**
 
@@ -115,7 +116,9 @@ are what `njmule` would print in a terminal.
 
 You never need to delete `njmule.lock`: the system releases the lock when njMule ends, even after a
 crash. To run two njMule at once, give the second one a profile of its own with
-`--config-dir <dir>` and other [ports](network/ports.mdx).
+`--config-dir <dir>` and other [ports](network/ports.mdx), and run it with `njmule`: only one
+desktop window runs at a time, whatever its profile, and a second `njmule-gui` hands its links to it
+([Portable mode](data/portable.mdx)).
 
 ### Links open another program
 
