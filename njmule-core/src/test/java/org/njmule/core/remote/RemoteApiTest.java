@@ -399,6 +399,43 @@ class RemoteApiTest {
     }
 
     @Test
+    void shouldListASearchTheServerHoldsMoreResultsOfAsWaitingForThem() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSearchesAs(7);
+        givenASearchStarted("{\"query\":\"talk\",\"scope\":\"server\"}", "7");
+        givenTheServerHoldsMoreResults();
+
+        whenCalled("GET", "/api/v1/searches", "");
+
+        thenTheBodyContains("{\"id\":7,\"query\":\"talk\",\"scope\":\"server\",\"running\":false,\"results\":0}");
+    }
+
+    @Test
+    void shouldListAnEndedSearchAsNotRunning() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSearchesAs(7);
+        givenASearchStarted("{\"query\":\"talk\",\"scope\":\"kad\"}", "7");
+        givenTheEngineEndedTheSearch(7);
+
+        whenTheResultsAreAskedUntilTheyCome("/api/v1/searches", "\"running\":false");
+
+        thenTheBodyContains("{\"id\":7,\"query\":\"talk\",\"scope\":\"kad\",\"running\":false,\"results\":0}");
+    }
+
+    @Test
+    void shouldAskTheServerForMoreResultsOfASearch() throws Exception {
+        givenTheApiRuns();
+        givenTheEngineSearchesAs(7);
+        givenASearchStarted("{\"query\":\"talk\",\"scope\":\"server\"}", "7");
+        givenTheEngineAsksForMoreResults();
+
+        whenCalled("POST", "/api/v1/searches/7/more", "");
+
+        thenTheStatusIs(200);
+        thenTheEngineWasAsked("more 7");
+    }
+
+    @Test
     void shouldSearchKadAutomaticallyFromASmallServerAmongMany() throws Exception {
         givenTheApiRuns();
         givenTheEngineSearchesAs(8);
@@ -1616,6 +1653,17 @@ class RemoteApiTest {
 
     private void givenTheServerHoldsMoreResults() {
         this.fake.answer("hasMoreResults", args -> CompletableFuture.completedFuture(true));
+    }
+
+    private void givenTheEngineAsksForMoreResults() {
+        this.fake.answer("moreResults", args -> {
+            this.calls.add("more " + ((SearchId) args[0]).value());
+            return CompletableFuture.completedFuture(true);
+        });
+    }
+
+    private void givenTheEngineEndedTheSearch(long search) {
+        this.fake.events.submit(new EngineEvent.SearchEnded(new SearchId(search), 0));
     }
 
     private void givenASearchStarted(String body, String answered) throws Exception {

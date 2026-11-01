@@ -469,6 +469,40 @@ class SearchManagerTest {
     }
 
     @Test
+    void shouldHoldNoMoreResultsOfAnUnknownSearch() throws Exception {
+        givenAConnectedServer();
+        givenAnUnknownSearch();
+
+        whenItIsAskedWhetherTheServerHoldsMoreResults();
+
+        thenTheServerHoldsMoreResults(false);
+    }
+
+    @Test
+    void shouldHoldNoMoreResultsOfAKadSearch() throws Exception {
+        givenARunningKadThatCannotLookUp("never");
+        givenASearchIsStarted(kad("rare linux distro"));
+
+        whenItIsAskedWhetherTheServerHoldsMoreResults();
+
+        thenTheServerHoldsMoreResults(false);
+    }
+
+    @Test
+    void shouldHoldNoMoreResultsOnceAskedForTheMostTimes() throws Exception {
+        givenAConnectedServer();
+        givenASearchIsStarted(server("linux"));
+        givenTheServerReceivedASearchRequest();
+        givenTheServerAnswered(FIRST_SERVER_ANSWER, true);
+        givenTheSearchReported("linux.iso 2/2");
+        givenMoreResultsWereAskedForAndAnswered(SearchManager.MAX_MORE_REQUESTS);
+
+        whenItIsAskedWhetherTheServerHoldsMoreResults();
+
+        thenTheServerHoldsMoreResults(false);
+    }
+
+    @Test
     void shouldHoldNoMoreResultsWhenTheServerSaysItHasNone() throws Exception {
         givenAConnectedServer();
         givenASearchIsStarted(server("linux"));
@@ -602,6 +636,19 @@ class SearchManagerTest {
     private void givenMoreResultsWereAskedFor() throws Exception {
         assertThat(onLoop(() -> this.manager.more(this.id))).isTrue();
         assertThat(this.server.next().opcode()).isEqualTo(Opcodes.Server.QUERY_MORE_RESULT.code());
+    }
+
+    // Each answer brings a new file, whose report tells it was taken before the next request.
+    private void givenMoreResultsWereAskedForAndAnswered(int times) throws Exception {
+        for (int i = 0; i < times; i++) {
+            givenMoreResultsWereAskedFor();
+            givenTheServerAnswered(List.of(entry(20 + i, "linux-" + i + ".iso", 1000, 1)), true);
+            givenTheSearchReported("linux-" + i + ".iso 1/1");
+        }
+    }
+
+    private void givenAnUnknownSearch() {
+        this.id = new SearchId(999);
     }
 
     private void givenAskingForMoreAgainWasRefused() throws Exception {
