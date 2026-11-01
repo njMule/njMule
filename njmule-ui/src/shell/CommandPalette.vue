@@ -69,7 +69,13 @@ function key(e: KeyboardEvent): void {
                 <DialogTitle class="visually-hidden">{{ t('nj.palette.prompt') }}</DialogTitle>
                 <div class="field">
                     <Icon name="SEARCH" />
-                    <input ref="input" v-model="text" :placeholder="t('nj.palette.prompt')" @keydown="key" />
+                    <input
+                        ref="input"
+                        v-model="text"
+                        autocomplete="off"
+                        :placeholder="t('nj.palette.prompt')"
+                        @keydown="key"
+                    />
                 </div>
                 <ul ref="list" class="commands" role="listbox">
                     <li
