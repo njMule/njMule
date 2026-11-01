@@ -81,7 +81,8 @@ desktop.ini
 $RECYCLE.BIN/
 
 # --- Claude Code: personal, machine-local settings ------------------------------
-# Shared project instructions (CLAUDE.md, .claude/settings.json, .claude/commands/) are committed.
+# Shared project instructions (CLAUDE.md, .claude/settings.json, .claude/commands/,
+# .claude/skills/) are committed.
 .claude/settings.local.json
 .claude/*.local.*
 CLAUDE.local.md
