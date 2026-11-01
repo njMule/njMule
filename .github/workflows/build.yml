@@ -140,9 +140,9 @@ jobs:
                       echo "TMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
                       echo "TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
                   fi
-                  size=$(du -sm "$RUNNER_TEMP/build-cache" 2>/dev/null | cut -f1)
-                  if [[ "$GITHUB_EVENT_NAME" != pull_request ]] && (( ${size:-0} > 300 )); then
-                      rm -rf "$RUNNER_TEMP/build-cache"
+                  cache="$RUNNER_TEMP/build-cache"
+                  if [[ "$GITHUB_EVENT_NAME" != pull_request && -d "$cache" ]] && (( $(du -sm "$cache" | cut -f1) > 300 )); then
+                      rm -rf "$cache"
                   fi
             # One module's tests at a time: on the runners' four CPUs the long timed tests (the Kad
             # simulation, the window tests) ran out of time next to the other modules' test JVMs. A failure
