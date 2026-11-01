@@ -298,7 +298,7 @@ fn start_engine(app: AppHandle, engine: Arc<Engine>, options: Vec<String>) {
         }
         if !matches!(ended, Some(Ok(status)) if status.success()) {
             app.dialog()
-                .message("njMule stopped unexpectedly: see its log.")
+                .message(format!("njMule stopped unexpectedly.\n\n{}", log_place(logs_dir(&app).as_deref())))
                 .kind(MessageDialogKind::Error)
                 .title("njMule")
                 .blocking_show();
@@ -377,11 +377,14 @@ fn start_failure(errors: &str, logs: Option<&Path>) -> String {
         text.push_str("\n\n");
         text.push_str(errors);
     }
-    match logs {
-        Some(dir) => text.push_str(&format!("\n\nIts log is in {}.", dir.display())),
-        None => text.push_str("\n\nSee its log."),
-    }
+    text.push_str("\n\n");
+    text.push_str(&log_place(logs));
     text
+}
+
+/// Where the engine's log is, for the user to look.
+fn log_place(logs: Option<&Path>) -> String {
+    logs.map_or_else(|| "See its log.".to_owned(), |dir| format!("Its log is in {}.", dir.display()))
 }
 
 /// What the user reads when a njMule without a window keeps the profile, and took this start's links if it had any.
