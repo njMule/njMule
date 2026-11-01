@@ -315,6 +315,31 @@ function extension(name: string): string {
     return dot < 0 ? '' : name.substring(dot + 1);
 }
 
+// The names of the eD2K file types, which the network gives as short codes: a map, as any text may come.
+const TYPE_NAMES = new Map([
+    ['audio', 'IDS_SEARCH_AUDIO'],
+    ['video', 'IDS_SEARCH_VIDEO'],
+    ['image', 'IDS_SEARCH_PICS'],
+    ['pro', 'IDS_SEARCH_PRG'],
+    ['doc', 'IDS_SEARCH_DOC'],
+    ['arc', 'IDS_SEARCH_ARC'],
+    ['iso', 'IDS_SEARCH_CDIMG'],
+]);
+// The networks index archives and disc images as programs: their extensions tell them apart, as the engine's do.
+const ARCHIVES = new Set(['7z', 'ace', 'bz2', 'cab', 'gz', 'rar', 'tar', 'tgz', 'xz', 'zip']);
+const DISC_IMAGES = new Set(['bin', 'cue', 'dmg', 'img', 'iso', 'mdf', 'mds', 'nrg']);
+
+/** The type of a file in words of {@code translate}; a type the network gives that is not an eD2K one as it is. */
+export function typeName(r: { type?: string | null; name: string }, translate: (key: string) => string): string {
+    const type = r.type ?? '';
+    let key = TYPE_NAMES.get(type.toLowerCase());
+    if (key === 'IDS_SEARCH_PRG') {
+        const ext = extension(r.name).toLowerCase();
+        key = ARCHIVES.has(ext) ? 'IDS_SEARCH_ARC' : DISC_IMAGES.has(ext) ? 'IDS_SEARCH_CDIMG' : key;
+    }
+    return key === undefined ? type : translate(key);
+}
+
 /** The eD2K link of a result, which carries its AICH hash so that a download from it can check and repair the file. */
 export function link(r: Pick<Result, 'name' | 'size' | 'hash' | 'aich'>): string {
     return fileLink(r.name, r.size, r.hash, r.aich);

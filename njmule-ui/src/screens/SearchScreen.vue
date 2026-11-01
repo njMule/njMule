@@ -69,6 +69,7 @@ import {
     shade,
     SortMemory,
     tone,
+    typeName,
     words,
     type ColumnOrder,
     type ColumnSort,
@@ -170,7 +171,7 @@ const TEXTS: Record<string, { key: string; text: (r: Result) => string }> = {
     name: { key: 'IDS_DL_FILENAME', text: (r) => r.name },
     size: { key: 'IDS_DL_SIZE', text: (r) => size(r.size) },
     sources: { key: 'IDS_SEARCHAVAIL', text: (r) => String(r.sources) },
-    type: { key: 'nj.search.type', text: (r) => r.type ?? '' },
+    type: { key: 'nj.search.type', text: (r) => typeText(r) },
     hash: { key: 'IDS_FILEID', text: (r) => r.hash },
     artist: { key: 'IDS_ARTIST', text: (r) => r.media?.artist ?? '' },
     album: { key: 'IDS_ALBUM', text: (r) => r.media?.album ?? '' },
@@ -228,6 +229,10 @@ function known(r: Result): Known | undefined {
 function knownText(r: Result): string {
     const k = known(r);
     return k === undefined ? '' : t(STATES[k].key);
+}
+
+function typeText(r: Result): string {
+    return typeName(r, t);
 }
 
 function lengthText(seconds: number): string {
@@ -356,9 +361,9 @@ function columns(s: Search): ColumnDef<any, ResultRow, any>[] {
         {
             id: 'type',
             header: t('nj.search.type'),
-            accessorFn: (r: ResultRow) => r.result.type ?? '',
+            accessorFn: (r: ResultRow) => typeText(r.result),
             size: 90,
-            cell: ({ getValue }: any) => leftToRight(getValue()),
+            cell: ({ getValue }: any) => ownDirection(getValue()),
         },
         {
             id: 'known',
@@ -444,7 +449,7 @@ const ORDERS: Record<string, ColumnOrder> = {
     size: { compare: (a, b) => a.size - b.size },
     sources: { compare: (a, b) => a.sources - b.sources },
     complete: { compare: (a, b) => completePercent(a) - completePercent(b) },
-    type: { compare: kindOrder },
+    type: { compare: (a, b) => byText(typeText(a), typeText(b)) || kindOrder(a, b) },
     known: { compare: (a, b) => KNOWN.indexOf(known(a)!) - KNOWN.indexOf(known(b)!) },
     hash: { compare: (a, b) => (a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0) },
     artist: {

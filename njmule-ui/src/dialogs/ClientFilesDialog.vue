@@ -9,6 +9,7 @@ import { computed, h, ref, shallowRef, watch } from 'vue';
 import { answer, api } from '../api/client';
 import { size } from '../format';
 import { t } from '../i18n';
+import { typeName } from '../search';
 import { addLinks } from '../transfers-actions';
 import { actsFirst, byName } from '../transfers';
 import DataTable from '../ui/DataTable.vue';
@@ -81,10 +82,10 @@ const columns: ColumnDef<any, ClientFile, any>[] = [
     {
         id: 'type',
         header: t('IDS_TYPE'),
-        accessorFn: (f: ClientFile) => f.type ?? '',
+        accessorFn: (f: ClientFile) => typeName(f, t),
         size: 90,
         sortFn: byText,
-        cell: ({ getValue }: any) => h('span', { dir: 'ltr' }, getValue()),
+        cell: ({ getValue }: any) => h('span', { dir: 'auto' }, getValue()),
     },
 ];
 
