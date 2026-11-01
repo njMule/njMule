@@ -35,6 +35,7 @@ import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineStatus;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
+import org.njmule.core.kad.KadIdentity;
 
 /** Kad whose UDP port another program holds: it waits, tries the port again, and starts once the port is free. */
 @Timeout(60)
@@ -95,6 +96,28 @@ class KadPortEngineTest {
         thenKadWaitsForNoPort();
     }
 
+    @Test
+    void shouldStopWaitingForTheKadPortWhenKadIsTurnedOff() throws Exception {
+        givenAProfileWithKad();
+        givenAnotherProgramHoldsTheKadPort();
+        givenNjMuleRunning();
+
+        whenKadIsTurnedOffInThePreferences();
+
+        thenKadWaitsForNoPort();
+    }
+
+    @Test
+    void shouldNotWaitForAPortWhenKadCannotStartForAnotherReason() throws Exception {
+        givenAProfileWithKad();
+        givenKadCannotWriteItsKeyFile();
+
+        whenNjMuleStarts();
+
+        thenKadWaitsForNoPort();
+        thenKadDoesNotRun();
+    }
+
     private void givenAProfileWithKad() throws IOException {
         AppDirectories dirs = AppDirectories.underRoot(this.dir.resolve("njmule"), false);
         Files.createDirectories(dirs.config());
@@ -107,6 +130,15 @@ class KadPortEngineTest {
 
     private void givenAnotherProgramHoldsTheKadPort() throws IOException {
         this.otherProgram = new DatagramSocket(new InetSocketAddress(this.udpPort));
+    }
+
+    // A folder that is not empty where Kad writes its UDP key: the write fails, the port is free.
+    private void givenKadCannotWriteItsKeyFile() throws IOException {
+        Path key = AppDirectories.underRoot(this.dir.resolve("njmule"), false)
+                .config()
+                .resolve(KadIdentity.KEY_FILE_NAME);
+        Files.createDirectories(key);
+        Files.writeString(key.resolve("inside.txt"), "taken");
     }
 
     private void givenNjMuleRunning() throws Exception {
@@ -128,6 +160,13 @@ class KadPortEngineTest {
 
     private void whenKadIsStoppedByHand() throws Exception {
         this.engine.disconnectKad().get(5, TimeUnit.SECONDS);
+        readStatus();
+    }
+
+    private void whenKadIsTurnedOffInThePreferences() throws Exception {
+        this.engine
+                .updatePreferences(p -> p.toBuilder().kadEnabled(false).build())
+                .get(5, TimeUnit.SECONDS);
         readStatus();
     }
 

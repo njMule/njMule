@@ -747,6 +747,8 @@ final class Network {
         this.binding = now;
         this.session.disconnect();
         stopKad();
+        // The new interface starts Kad again, which tells a taken port anew.
+        this.kadPortTaken = 0;
         closeListener();
         closeServerUdp();
         if (now instanceof BindInterface.Binding.Missing missing) {
@@ -771,16 +773,13 @@ final class Network {
         restartForwarding();
     }
 
-    // A Kad whose port another program held starts once the port is free, unless turned off or stopped by hand since.
+    // A Kad whose port another program held starts once the port is free. Turning Kad off, a stop by hand or a change
+    // of
+    // interface ends the wait; a start ends it too.
     private void retryKadPort() {
-        if (this.closed || this.kadPortTaken == 0 || this.kad != null || offline()) {
-            return;
+        if (!this.closed && this.kadPortTaken != 0) {
+            startKad();
         }
-        if (!this.preferences.get().kadEnabled() || this.kadStoppedByHand) {
-            this.kadPortTaken = 0;
-            return;
-        }
-        startKad();
     }
 
     // When we move, the server or Kad sees the new address first; the other one has to look again.
@@ -1732,6 +1731,7 @@ final class Network {
         // Only turning Kad off stops it: a Kad connected by hand stays while other settings change.
         if (was.kadEnabled() && !now.kadEnabled()) {
             stopKad();
+            this.kadPortTaken = 0;
         } else if (this.kad != null) {
             if (tcp || udp) {
                 // Kad tells other nodes our TCP port and listens on the UDP one.

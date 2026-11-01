@@ -135,7 +135,8 @@ final class ApiSamples {
                 0,
                 0,
                 connected ? PortTest.Forwarding.FORWARDED : PortTest.Forwarding.OFF,
-                connected ? "192.0.2.1" : "");
+                connected ? "192.0.2.1" : "",
+                connected ? OptionalInt.of(4672) : OptionalInt.empty());
     }
 
     static DownloadInfo download() {
