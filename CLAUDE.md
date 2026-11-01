@@ -175,7 +175,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   1 MiB, so ops/s = MiB/s).
 - Static analysis on SonarQube Cloud: `./gradlew build sonar -Dsonar.token=<token>` (project
   `njMule_njMule`, organisation `njmule`); in CI the Linux `verify` job runs it once the
-  `SONAR_TOKEN` secret is set.
+  `SONAR_TOKEN` secret is set. The analysis waits for the quality gate (`sonar.qualitygate.wait`):
+  a red gate, such as new code under 80% covered, fails that job and so `CI result` and the merge.
 - Native image: GraalVM Community `25.0.4.1.1` (25 Innovation 4, same as CI). Locally it is installed
   in `%LOCALAPPDATA%\Programs\GraalVM` with `GRAALVM_HOME` set; on Windows `native-image` needs the
   Visual Studio 2022 Build Tools (C++ workload): `./gradlew :njmule-app:nativeCompile` →
