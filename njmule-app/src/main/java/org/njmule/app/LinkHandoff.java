@@ -304,8 +304,9 @@ public final class LinkHandoff implements AutoCloseable {
                 line != null && !line.isEmpty();
                 line = readLine(in, client, deadline)) {
             lines++;
+            String lower = line.toLowerCase(Locale.ROOT);
             if (links.size() < MAX_LINKS
-                    && (line.equals(EXIT) || line.toLowerCase(Locale.ROOT).startsWith("ed2k://"))) {
+                    && (line.equals(EXIT) || lower.startsWith("ed2k://") || lower.startsWith("magnet:?"))) {
                 links.add(line);
             }
         }

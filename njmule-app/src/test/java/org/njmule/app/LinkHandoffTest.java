@@ -49,6 +49,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class LinkHandoffTest {
 
     private static final String LINK = "ed2k://|file|a.iso|10|" + "ab".repeat(16) + "|/";
+    private static final String MAGNET = "magnet:?xt=urn:ed2k:" + "ab".repeat(16) + "&xl=10&dn=a.iso";
     private static final String ANY_SECRET = "ab".repeat(32);
     // One character too many, and no more: nothing is left unread to reset the connection.
     private static final String TOO_LONG = "ed2k://" + "a".repeat(LinkHandoff.MAX_LINE - 6);
@@ -93,6 +94,16 @@ class LinkHandoffTest {
 
         thenTheLinksWereDelivered();
         thenTheRunningInstanceReceives(LINK);
+    }
+
+    @Test
+    void shouldHandTheMagnetLinksOfALaterStartToTheRunningOne() throws Exception {
+        givenARunningInstance();
+
+        whenALaterStartDelivers(MAGNET);
+
+        thenTheLinksWereDelivered();
+        thenTheRunningInstanceReceives(MAGNET);
     }
 
     @Test

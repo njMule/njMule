@@ -84,8 +84,10 @@ downloads, the other sees. The defaults follow each system's conventions (Linux:
   to them ([Portable mode](../data/portable.mdx)).
 
 Only one njMule runs on one configuration at a time. A second headless start on the same
-configuration fails with *njMule is already running with the configuration in …*, and so does the
-engine of a desktop app started meanwhile, which then shows that message instead of its window
+configuration hands its links to the running one, or fails with
+*njMule is already running with the configuration in …* when it has none. A desktop app started
+meanwhile hands its links to it as well and says *njMule already runs without a window on this
+profile* instead of opening its window
 ([The window does not open](../troubleshooting.mdx#the-window-does-not-open)). Give one of them
 `--config-dir` if you want both at once, or [drive](#drive-it) the headless one instead.
 
