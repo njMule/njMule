@@ -10,6 +10,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The web interface frees its port as soon as it stops: changing its settings no longer fails, now
+  and then, to start it again on the same port.
+
 ## [0.2.0] - 2026-11-01
 
 ### Added

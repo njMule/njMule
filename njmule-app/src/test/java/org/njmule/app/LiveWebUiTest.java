@@ -24,6 +24,7 @@ import java.io.PrintStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.njmule.http.WebUiSettings;
@@ -62,6 +63,15 @@ class LiveWebUiTest {
 
         thenItAnswersOn(this.second);
         thenNothingAnswersOn(this.first);
+    }
+
+    @Test
+    void shouldStartTheInterfaceAgainOnTheSamePortWhenItsHostNamesChange() {
+        givenTheInterfaceRunsOnTheFirstPort();
+
+        whenTheHostNamesBecome("njmule.example");
+
+        thenItAnswersOn(this.first);
     }
 
     @Test
@@ -105,6 +115,10 @@ class LiveWebUiTest {
 
     private void whenTheSettingsAre(boolean enabled, int port) {
         this.web.apply(settings(enabled, port));
+    }
+
+    private void whenTheHostNamesBecome(String name) {
+        this.web.apply(new WebUiSettings(true, this.first, false, HASH, false, List.of(name)));
     }
 
     // Then
