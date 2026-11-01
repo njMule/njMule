@@ -156,9 +156,8 @@ export const ICONS = {
     SPEED: { path: 'M4 17a8 8 0 1 1 16 0M12 17l4-5.5' },
     STAR: { path: 'M12 4l2.4 5 5.4.7-4 3.7 1 5.4L12 16.2l-4.8 2.6 1-5.4-4-3.7 5.4-.7z' },
     STATISTICS: { path: 'M4 19.5h16M5 15l4.5-5 4 3 6-7' },
-    STOP: {
-        path: 'M8 6.5h8a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H8a1.5 1.5 0 0 1-1.5-1.5V8A1.5 1.5 0 0 1 8 6.5z',
-    },
+    // Filled, as on a player: an empty square reads as a check box.
+    STOP: { path: 'M8 6h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z', kind: 'filled' },
     STORAGE: {
         path: 'M4 6.5C4 5 7.6 4 12 4s8 1 8 2.5S16.4 9 12 9 4 8 4 6.5zM4 6.5v11C4 19 7.6 20 12 20s8-1 8-2.5v-11M4 12c0 1.5 3.6 2.5 8 2.5s8-1 8-2.5',
     },
