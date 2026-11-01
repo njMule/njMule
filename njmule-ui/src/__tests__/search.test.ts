@@ -11,6 +11,7 @@ import {
     expression,
     type Filters,
     filterCount,
+    forget,
     history,
     isMedia,
     kindOrder,
@@ -594,6 +595,18 @@ describe('the searches typed before', () => {
         thenTheyAre(['s1', 's3', 's2']);
     });
 
+    it('should leave out a search deleted from the list, the others in their order', () => {
+        givenTheSearchesTyped(3);
+        whenTheSearchIsDeleted('s2');
+        thenTheListHolds(['s3', 's1']);
+    });
+
+    it('should keep the list as it is when a search not in it is deleted', () => {
+        givenTheSearchesTyped(2);
+        whenTheSearchIsDeleted('other');
+        thenTheListHolds(['s2', 's1']);
+    });
+
     function givenTheSearchesTyped(count: number): void {
         localStorage.clear();
         for (let i = 1; i <= count; i++) {
@@ -609,8 +622,16 @@ describe('the searches typed before', () => {
         kept = history();
     }
 
+    function whenTheSearchIsDeleted(query: string): void {
+        forget(query);
+    }
+
     function thenTheyAre(expected: string[]): void {
         expect(kept).toEqual(expected);
+    }
+
+    function thenTheListHolds(expected: string[]): void {
+        expect(history()).toEqual(expected);
     }
 });
 
