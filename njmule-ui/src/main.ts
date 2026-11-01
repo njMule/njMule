@@ -11,6 +11,7 @@ import { follow } from './model/engine';
 import { followChats } from './chats';
 import { readSystemIcons } from './file-icons';
 import { currentPlatform } from './platform';
+import { guest } from './role';
 import { followTheme } from './theme';
 
 // The same interface in the desktop app's window and as the web interface: the platform says where the engine
@@ -28,7 +29,10 @@ await loadLanguage(windowLanguage(navigator.languages));
 const view = new URLSearchParams(window.location.search).get('view');
 if (view === null) {
     follow();
-    followChats();
+    // A guest may not read the chats.
+    if (!guest) {
+        followChats();
+    }
     readSystemIcons(platform);
     createApp(App, { platform }).mount('#app');
 } else {

@@ -11,6 +11,7 @@ import ClientFilesDialog from '../../dialogs/ClientFilesDialog.vue';
 import { duration, rate, size } from '../../format';
 import { language, t } from '../../i18n';
 import { bans, known, uploads, type Ban, type KnownClient, type Upload } from '../../model/engine';
+import { guest } from '../../role';
 import { problem } from '../../toasts';
 import { byName, withoutColon } from '../../transfers';
 import DataTable, { type ColumnMeta } from '../../ui/DataTable.vue';
@@ -241,7 +242,8 @@ const label = computed(
             <span class="muted">{{ t('nj.transfers.noUploads') }}</span>
         </template>
         <template #menu>
-            <ContextMenuItem class="menu-item" :disabled="chosenUploads.length !== 1" @select="viewFiles">
+            <!-- Asking a client for its files is not for a guest. -->
+            <ContextMenuItem class="menu-item" :disabled="guest || chosenUploads.length !== 1" @select="viewFiles">
                 <Icon name="FOLDER_OPEN" />{{ t('IDS_VIEWFILES') }}
             </ContextMenuItem>
         </template>

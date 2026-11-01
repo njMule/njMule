@@ -37,6 +37,7 @@ import {
     status,
 } from '../model/engine';
 import { searchRequest } from '../places';
+import { guest } from '../role';
 import {
     automaticScope,
     completeness,
@@ -50,6 +51,7 @@ import {
     KNOWN,
     knownOf,
     link,
+    listedSearches,
     lowestMaxSize,
     MAX_EXTENSION,
     MAX_SIZE_MB,
@@ -88,7 +90,8 @@ import Segments from '../ui/Segments.vue';
 import Tip from '../ui/Tip.vue';
 
 // The searches: what to look for, where and with which filters in one row; a tab of results for each search, narrowed
-// by the words of a column; what is chosen and what to do with it under them.
+// by the words of a column; what is chosen and what to do with it under them. A guest sees the searches made through
+// the web interface, as the engine lists them, and can only copy the links of their results.
 
 const query = ref('');
 const scope = ref<Scope>('automatic');
@@ -237,10 +240,12 @@ function bitrateText(kbits: number): string {
 
 // The rules of the menu: Download while a file chosen is not ours yet, Search Related Files where the
 // server finds them, and each spam mark where it changes something.
-const canDownload = computed(() => chosen.value.some((r) => known(r) !== 'downloading' && known(r) !== 'shared'));
-const canRelate = computed(() => chosen.value.length > 0 && (status.value?.relatedSearch ?? false));
-const canMarkSpam = computed(() => chosen.value.some((r) => !r.spam) && shown.value?.id !== null);
-const canMarkNotSpam = computed(() => chosen.value.some((r) => r.spam) && shown.value?.id !== null);
+const canDownload = computed(
+    () => !guest && chosen.value.some((r) => known(r) !== 'downloading' && known(r) !== 'shared'),
+);
+const canRelate = computed(() => !guest && chosen.value.length > 0 && (status.value?.relatedSearch ?? false));
+const canMarkSpam = computed(() => !guest && chosen.value.some((r) => !r.spam) && shown.value?.id !== null);
+const canMarkNotSpam = computed(() => !guest && chosen.value.some((r) => r.spam) && shown.value?.id !== null);
 
 function listFilterColumns(open: boolean): void {
     if (open) {
@@ -790,8 +795,12 @@ async function stop(): Promise<void> {
     }
 }
 
-// A file chosen with its names downloads once, under the first name chosen, without a word.
+// A file chosen with its names downloads once, under the first name chosen, without a word; a guest's double click does
+// nothing.
 async function download(results: Result[]): Promise<void> {
+    if (guest) {
+        return;
+    }
     const files = new Map<string, Result>();
     for (const r of results) {
         if (!files.has(r.hash)) {
@@ -905,8 +914,25 @@ async function restore(): Promise<void> {
     restored = true;
 }
 
+// A guest's tabs are the searches the engine lists, which come and go; each new one reads its results at once.
+async function followListed(): Promise<void> {
+    try {
+        const listed = await answer(api().GET('/searches'));
+        const before = new Set(searches.value.map((s) => s.id));
+        searches.value = listedSearches(searches.value, listed);
+        for (const s of searches.value.filter((s) => !before.has(s.id))) {
+            void refresh(s);
+        }
+        if (!searches.value.some((s) => s.key === shownKey.value)) {
+            shownKey.value = searches.value.at(-1)?.key ?? '';
+        }
+    } catch {
+        // As they were until the next reading.
+    }
+}
+
 // The tabs left open come back at the next start with their results. A page is not told when it closes, so they are
-// kept a moment after each change. With the option off none are kept.
+// kept a moment after each change. With the option off none are kept, nor ever a guest's, which restores none.
 let restored = false;
 let keeping = 0;
 
@@ -950,8 +976,14 @@ watch(
 );
 
 let timer = 0;
+let listing = 0;
 onMounted(() => {
-    void restore();
+    if (guest) {
+        void followListed();
+        listing = window.setInterval(() => void followListed(), 3000);
+    } else {
+        void restore();
+    }
     timer = window.setInterval(() => {
         for (const s of searches.value) {
             if (s.running || s === shown.value) {
@@ -962,6 +994,7 @@ onMounted(() => {
 });
 onUnmounted(() => {
     window.clearInterval(timer);
+    window.clearInterval(listing);
     window.clearTimeout(keeping);
     tabsObserver.disconnect();
 });
@@ -969,7 +1002,7 @@ onUnmounted(() => {
 
 <template>
     <div class="screen">
-        <form class="tool-row" @submit.prevent="start">
+        <form v-if="!guest" class="tool-row" @submit.prevent="start">
             <Tip :text="t('nj.input.search')">
                 <div ref="queryBox" class="field query" :class="{ invalid: query !== '' && !queryValid }">
                     <input
@@ -1089,31 +1122,35 @@ onUnmounted(() => {
 
         <div v-if="searches.length === 0" id="search-empty" class="empty-state">
             <Icon class="empty-icon" name="SEARCH" />
-            <h2 class="display">{{ t('nj.search.emptyTitle') }}</h2>
-            <p>{{ t('nj.search.emptyText') }}</p>
-            <div class="tips">
-                <div class="search-tip">
-                    <Icon name="LABEL" />
-                    <div>
-                        <strong>{{ t('nj.search.tipExact') }}</strong
-                        ><code>"night of the living dead"</code>
+            <!-- A guest starts none: what it may see instead of how to search. -->
+            <p v-if="guest">{{ t('nj.webui.guestHint') }}</p>
+            <template v-else>
+                <h2 class="display">{{ t('nj.search.emptyTitle') }}</h2>
+                <p>{{ t('nj.search.emptyText') }}</p>
+                <div class="tips">
+                    <div class="search-tip">
+                        <Icon name="LABEL" />
+                        <div>
+                            <strong>{{ t('nj.search.tipExact') }}</strong
+                            ><code>"night of the living dead"</code>
+                        </div>
+                    </div>
+                    <div class="search-tip">
+                        <Icon name="REMOVE_CIRCLE" />
+                        <div>
+                            <strong>{{ t('nj.search.tipWithout') }}</strong
+                            ><code>debian -netinst</code>
+                        </div>
+                    </div>
+                    <div class="search-tip">
+                        <Icon name="LINK" />
+                        <div>
+                            <strong>{{ t('nj.search.tipLink') }}</strong
+                            ><code>ed2k://|file|…|/</code>
+                        </div>
                     </div>
                 </div>
-                <div class="search-tip">
-                    <Icon name="REMOVE_CIRCLE" />
-                    <div>
-                        <strong>{{ t('nj.search.tipWithout') }}</strong
-                        ><code>debian -netinst</code>
-                    </div>
-                </div>
-                <div class="search-tip">
-                    <Icon name="LINK" />
-                    <div>
-                        <strong>{{ t('nj.search.tipLink') }}</strong
-                        ><code>ed2k://|file|…|/</code>
-                    </div>
-                </div>
-            </div>
+            </template>
         </div>
 
         <template v-else>
@@ -1131,6 +1168,7 @@ onUnmounted(() => {
                             <span v-if="s.running" class="tab-spinner" aria-hidden="true" />
                             <span class="ellipsis" dir="auto">{{ title(s) }}</span>
                             <button
+                                v-if="!guest"
                                 class="tab-close"
                                 tabindex="-1"
                                 :aria-label="t('IDS_FD_CLOSE')"
@@ -1165,10 +1203,14 @@ onUnmounted(() => {
                         </DropdownMenuContent>
                     </DropdownMenuPortal>
                 </DropdownMenuRoot>
-                <button class="button flat small" @click="more"><Icon name="ADD" />{{ t('nj.search.more') }}</button>
-                <button class="button flat small stop-search" :disabled="!shown?.running" @click="stop">
-                    <Icon name="STOP" />{{ t('IDS_DL_STOP') }}
-                </button>
+                <template v-if="!guest">
+                    <button class="button flat small" @click="more">
+                        <Icon name="ADD" />{{ t('nj.search.more') }}
+                    </button>
+                    <button class="button flat small stop-search" :disabled="!shown?.running" @click="stop">
+                        <Icon name="STOP" />{{ t('IDS_DL_STOP') }}
+                    </button>
+                </template>
                 <div class="field results-filter">
                     <DropdownMenuRoot @update:open="listFilterColumns">
                         <Tip :text="t('nj.search.filterColumn')">
@@ -1284,7 +1326,7 @@ onUnmounted(() => {
                     >· {{ size(chosen[0]!.size) }} · {{ t('IDS_DL_SOURCES') }}: {{ chosen[0]!.sources }}</span
                 >
                 <span class="spacer" />
-                <button class="button" @click="download(chosen)">
+                <button v-if="!guest" class="button" @click="download(chosen)">
                     <Icon name="DOWNLOAD" />{{ t('IDS_DOWNLOAD') }}
                 </button>
                 <Tip :text="t('nj.copyLink')">
@@ -1292,7 +1334,7 @@ onUnmounted(() => {
                         <Icon name="COPY" />
                     </button>
                 </Tip>
-                <Tip :text="t('IDS_SEARCHRELATED')">
+                <Tip v-if="!guest" :text="t('IDS_SEARCHRELATED')">
                     <button class="button icon-only" :aria-label="t('IDS_SEARCHRELATED')" @click="searchRelated">
                         <Icon name="SEARCH" />
                     </button>
@@ -1308,10 +1350,16 @@ onUnmounted(() => {
                             <DropdownMenuItem class="menu-item" @select="copyLinks(true)"
                                 ><Icon name="CODE" />{{ t('IDS_DL_LINK2') }}</DropdownMenuItem
                             >
-                            <DropdownMenuItem class="menu-item" :disabled="shown?.id === null" @select="markSpam(true)"
+                            <DropdownMenuItem
+                                class="menu-item"
+                                :disabled="guest || shown?.id === null"
+                                @select="markSpam(true)"
                                 ><Icon name="BLOCK" />{{ t('IDS_MARKSPAM') }}</DropdownMenuItem
                             >
-                            <DropdownMenuItem class="menu-item" :disabled="shown?.id === null" @select="markSpam(false)"
+                            <DropdownMenuItem
+                                class="menu-item"
+                                :disabled="guest || shown?.id === null"
+                                @select="markSpam(false)"
                                 ><Icon name="CHECK" />{{ t('IDS_MARKNOTSPAM') }}</DropdownMenuItem
                             >
                         </DropdownMenuContent>

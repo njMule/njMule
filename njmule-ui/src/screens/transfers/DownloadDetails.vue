@@ -28,6 +28,7 @@ import { t } from '../../i18n';
 import { categories, folders, sources, type Download, type Source } from '../../model/engine';
 import { withShortcutKey } from '../../places';
 import type { Platform } from '../../platform';
+import { guest } from '../../role';
 import { problem } from '../../toasts';
 import {
     headActions,
@@ -67,7 +68,7 @@ import Country from './Country.vue';
 
 // The details of the download chosen, under the list: what it is, how far it got and its parts drawn large with what
 // each colour means, what to do now; beside them, in tabs, its sources, the facts the columns leave out, the names its
-// sources give it, to rename it by, and what others said of it.
+// sources give it, to rename it by, and what others said of it. A guest sees it all and can only copy the links.
 
 const props = defineProps<{ chosen: Download[]; platform: Platform }>();
 const emit = defineEmits<{ close: []; comment: [download: Download] }>();
@@ -117,7 +118,7 @@ const note = computed(() => (state.value === null ? null : stateNote(state.value
 const itsSources = computed(() => (one.value === null ? [] : sources.value.filter((s) => s.file === one.value!.hash)));
 const names = computed(() => (one.value === null ? [] : sourceNames(sources.value, one.value.hash)));
 // A finished download has its file already.
-const renamable = computed(() => one.value !== null && one.value.status !== 'complete');
+const renamable = computed(() => !guest && one.value !== null && one.value.status !== 'complete');
 
 function sourceKey(s: Source): string {
     return `${s.file}/${s.address}`;
@@ -334,18 +335,20 @@ defineExpose({ neededHeight });
         <div v-else-if="one === null" class="details-many">
             <strong class="details-name">{{ t('nj.details.chosen', chosen.length) }}</strong>
             <div class="buttons">
-                <button class="button" @click="each('/downloads/{hash}/pause', chosen)">
-                    <Icon name="PAUSE" />{{ t('IDS_DL_PAUSE') }}
-                </button>
-                <button class="button" @click="each('/downloads/{hash}/resume', chosen)">
-                    <Icon name="PLAY" />{{ t('IDS_DL_RESUME') }}
-                </button>
-                <button class="button" @click="each('/downloads/{hash}/stop', chosen)">
-                    <Icon name="STOP" />{{ t('IDS_DL_STOP') }}
-                </button>
-                <button class="button" @click="askCancel(chosen)">
-                    <Icon name="DELETE" />{{ t('nj.transfers.cancelMany') }}
-                </button>
+                <template v-if="!guest">
+                    <button class="button" @click="each('/downloads/{hash}/pause', chosen)">
+                        <Icon name="PAUSE" />{{ t('IDS_DL_PAUSE') }}
+                    </button>
+                    <button class="button" @click="each('/downloads/{hash}/resume', chosen)">
+                        <Icon name="PLAY" />{{ t('IDS_DL_RESUME') }}
+                    </button>
+                    <button class="button" @click="each('/downloads/{hash}/stop', chosen)">
+                        <Icon name="STOP" />{{ t('IDS_DL_STOP') }}
+                    </button>
+                    <button class="button" @click="askCancel(chosen)">
+                        <Icon name="DELETE" />{{ t('nj.transfers.cancelMany') }}
+                    </button>
+                </template>
                 <button class="button" @click="copyLinks(chosen)"><Icon name="COPY" />{{ t('nj.copyLink') }}</button>
             </div>
         </div>
@@ -381,22 +384,25 @@ defineExpose({ neededHeight });
                     </p>
                     <div class="action-row">
                         <div class="to-do">
-                            <button
-                                v-for="a in headActions(state!)"
-                                :key="a"
-                                class="button"
-                                :disabled="a === 'openIncoming' && !filesHere(platform)"
-                                @click="act(a)"
-                            >
-                                <Icon :name="ACTIONS[a].icon" />{{ t(ACTIONS[a].key) }}
-                            </button>
+                            <template v-if="!guest">
+                                <button
+                                    v-for="a in headActions(state!)"
+                                    :key="a"
+                                    class="button"
+                                    :disabled="a === 'openIncoming' && !filesHere(platform)"
+                                    @click="act(a)"
+                                >
+                                    <Icon :name="ACTIONS[a].icon" />{{ t(ACTIONS[a].key) }}
+                                </button>
+                            </template>
                         </div>
                         <Tip :text="`${t('nj.copyLink')}  ${withShortcutKey('C')}`">
                             <button class="button icon-only" :aria-label="t('nj.copyLink')" @click="copyLinks([one])">
                                 <Icon name="COPY" />
                             </button>
                         </Tip>
-                        <DropdownMenuRoot>
+                        <!-- All it holds changes the download: not for a guest. -->
+                        <DropdownMenuRoot v-if="!guest">
                             <Tip :text="t('IDS_MORE')">
                                 <DropdownMenuTrigger
                                     ref="moreTrigger"
@@ -518,7 +524,7 @@ defineExpose({ neededHeight });
                                 icon="NO_SOURCES"
                                 :text="t('nj.transfers.noSources')"
                             >
-                                <button class="button" @click="askSource(one)">
+                                <button v-if="!guest" class="button" @click="askSource(one)">
                                     <Icon name="PERSON_ADD" />{{ t('IDS_ADDSRCMANUALLY') }}
                                 </button>
                             </EmptyState>
@@ -565,12 +571,12 @@ defineExpose({ neededHeight });
                     </ContextMenuTrigger>
                     <ContextMenuPortal>
                         <ContextMenuContent class="menu">
-                            <ContextMenuItem class="menu-item" :disabled="picked === null" @select="viewFiles">
+                            <ContextMenuItem class="menu-item" :disabled="guest || picked === null" @select="viewFiles">
                                 <Icon name="FOLDER_OPEN" />{{ t('IDS_VIEWFILES') }}
                             </ContextMenuItem>
                             <ContextMenuItem
                                 class="menu-item"
-                                :disabled="picked === null || picked.state !== 'a4af'"
+                                :disabled="guest || picked === null || picked.state !== 'a4af'"
                                 @select="swapSource(picked!.file, picked!.address)"
                             >
                                 <Icon name="SWAP" />{{ t('nj.a4af.swapToThis') }}
@@ -654,7 +660,7 @@ defineExpose({ neededHeight });
                             <span class="small muted" dir="auto">{{ c.text }}</span>
                         </li>
                     </ul>
-                    <div>
+                    <div v-if="!guest">
                         <button class="button" @click="emit('comment', one)">
                             <Icon name="COMMENT" />{{ t('IDS_CMT_ADD') }}
                         </button>

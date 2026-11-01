@@ -24,11 +24,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
@@ -37,10 +35,8 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.junit.jupiter.api.io.TempDir;
-import org.njmule.core.config.AppDirectories;
 
-/** A guest, who logs in with a password of its own and may only look, and the admin who sets that password. */
+/** A guest, who logs in with a password of its own and may only look, then logs out. */
 @Timeout(60)
 class WebUiGuestTest {
 
@@ -51,9 +47,6 @@ class WebUiGuestTest {
     private final FakeEngine fake = new FakeEngine();
     private final HttpClient http = HttpClient.newHttpClient();
     private final List<String> asked = new CopyOnWriteArrayList<>();
-
-    @TempDir
-    Path dir;
 
     private WebUi ui;
     private String cookie;
@@ -104,56 +97,26 @@ class WebUiGuestTest {
         givenTheWebInterfaceRunsWithAGuest();
         givenLoggedInWith(GUEST_PASSWORD);
 
-        whenThePageIsAsked("/webui/hosts");
+        whenThePageIsAsked("/api/v1/webui");
 
-        thenTheAnswerIs(403, "A guest can only look.");
+        thenTheAnswerIs(403, "A guest can only look");
     }
 
     @Test
-    void shouldSaveTheGuestPasswordTheAdminSends() throws Exception {
+    void shouldEndTheGuestsSessionOnLogout() throws Exception {
         givenTheWebInterfaceRunsWithAGuest();
-        givenTheSettingsInTheConfigDirectory();
-        givenLoggedInWith(PASSWORD);
+        givenLoggedInWith(GUEST_PASSWORD);
 
-        whenTheAppPutsTheGuestPassword("another guest");
+        whenTheAppLogsOut();
 
-        thenTheAnswerIs(200, "{\"guest\":true}");
-        thenTheSavedGuestPasswordIs("another guest");
-    }
-
-    @Test
-    void shouldRefuseAGuestPasswordThatIsTheAdmins() throws Exception {
-        givenTheWebInterfaceRunsWithAGuest();
-        givenTheSettingsInTheConfigDirectory();
-        givenLoggedInWith(PASSWORD);
-
-        whenTheAppPutsTheGuestPassword(PASSWORD);
-
-        thenTheAnswerIs(400, "must differ from yours");
-    }
-
-    @Test
-    void shouldTakeTheGuestAwayWithAnEmptyPassword() throws Exception {
-        givenTheWebInterfaceRunsWithAGuest();
-        givenTheSettingsInTheConfigDirectory();
-        givenLoggedInWith(PASSWORD);
-
-        whenTheAppPutsTheGuestPassword("");
-
-        thenTheAnswerIs(200, "{\"guest\":false}");
-        thenNoGuestIsSaved();
+        thenTheAnswerLeadsTo("login");
+        thenTheSessionIsOver();
     }
 
     // Given
 
     private void givenTheWebInterfaceRunsWithAGuest() throws Exception {
         this.ui = FreePorts.bound(port -> WebUi.start(this.fake.engine(), settings(port)));
-    }
-
-    private void givenTheSettingsInTheConfigDirectory() throws Exception {
-        AppDirectories dirs = AppDirectories.resolve(Optional.of(this.dir));
-        this.fake.value("directories", dirs);
-        settings(4711).save(dirs.config());
     }
 
     private void givenTheEngineDisconnects() {
@@ -191,13 +154,13 @@ class WebUiGuestTest {
                 HttpResponse.BodyHandlers.ofString());
     }
 
-    private void whenTheAppPutsTheGuestPassword(String password) throws Exception {
+    // The app sends the logout form with the session's token, as a form of the page.
+    private void whenTheAppLogsOut() throws Exception {
         String token = token();
         this.answer = this.http.send(
-                request("/webui/guest")
+                request("/logout")
                         .header("Content-Type", "application/x-www-form-urlencoded")
-                        .header("X-NjMule-CSRF", token)
-                        .PUT(form(Map.of("password", password)))
+                        .POST(form(Map.of("csrf", token)))
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
     }
@@ -209,21 +172,17 @@ class WebUiGuestTest {
         assertThat(this.answer.body()).contains(part);
     }
 
+    private void thenTheAnswerLeadsTo(String location) {
+        assertThat(this.answer.statusCode()).as(this.answer.body()).isEqualTo(303);
+        assertThat(this.answer.headers().firstValue("Location")).hasValue(location);
+    }
+
+    private void thenTheSessionIsOver() throws Exception {
+        assertThat(get("/").statusCode()).isEqualTo(303);
+    }
+
     private void thenTheEngineWasNotAsked() {
         assertThat(this.asked).isEmpty();
-    }
-
-    private void thenTheSavedGuestPasswordIs(String password) {
-        assertThat(Passwords.matches(password.toCharArray(), saved().guestPasswordHash()))
-                .isTrue();
-    }
-
-    private void thenNoGuestIsSaved() {
-        assertThat(saved().hasGuest()).isFalse();
-    }
-
-    private WebUiSettings saved() {
-        return WebUiSettings.load(AppDirectories.resolve(Optional.of(this.dir)).config());
     }
 
     private static WebUiSettings settings(int port) {

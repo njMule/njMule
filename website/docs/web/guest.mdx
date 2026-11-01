@@ -28,20 +28,27 @@ On the command line there is no guest option, but setting your own password with
 ## What a guest sees
 
 The guest signs in on the same page as you, with the guest password. The top bar then says
-**Guest**, and the sidebar offers only the places a guest may open.
+**Guest** (its tooltip tells what a guest sees), and the sidebar, the shortcuts and the command
+palette offer only the places a guest may open.
 
-<Screenshot id="web-guest" alt="The Transfers place as a guest sees it: only Transfers, Search, Network and Statistics in the sidebar, the word Guest in the top bar, and only the Copy eD2K link button." caption="Transfers, as a guest sees them." />
+<Screenshot id="web-guest" alt="The Transfers place as a guest sees it: only Transfers, Search, Network and Statistics in the sidebar, the word Guest in the top bar beside the rates, and no Add links button." caption="Transfers, as a guest sees them." />
 
 | Place | What the guest sees | What it cannot do |
 |---|---|---|
 | **Transfers** | The downloads with their details, sources, names and comments; the uploads and the queue | Any action on a download; the banned and the known clients |
-| **Search** | The searches open in njMule, with their results | Start, close or download a search |
+| **Search** | The searches made through the web interface, with their results | Start, close or download a search |
 | **Network** | The eD2K, Kad and port cards; the servers; Kad's state, contacts and searches | Connect, add or change servers, join Kad, test the ports; the log |
 | **Statistics** | The rates and figures | |
 
-A guest never sees **Shared Files**, **Messages** or **Options**, nor the speed limits and the
-network control of the top bar. **Copy eD2K link** and the filters still work, since they change
-nothing. Of the live notices, a guest gets only those of finished downloads.
+A guest never sees **Shared Files**, **Messages** or **Options**, nor the speed limits, the network
+control of the top bar or the log line of the status strip. **Copy eD2K link** and the filters
+still work, since they change nothing; the other items of the right-click menus are greyed out. Of
+the live notices, a guest gets only those of finished downloads. A guest ends its session as you
+do, with **⋯ → Logout**.
+
+The searches a guest sees are those made in a browser through the web interface, or by the
+[remote-control API](../server/remote-control.mdx) on its port; the desktop app's own searches are
+not among them.
 
 ## What protects it
 
@@ -53,8 +60,8 @@ otherwise follows the same rules as yours: the same [lockout](./security.mdx#fai
 wrong passwords, the same idle time of 30 minutes. njMule logs each guest login with its address.
 
 :::note
-A guest sees the names of the files you download and the searches open in njMule. Give the
-password only to people who may know them.
+A guest sees the names of the files you download and the searches made through the web
+interface. Give the password only to people who may know them.
 :::
 
 ## Related pages

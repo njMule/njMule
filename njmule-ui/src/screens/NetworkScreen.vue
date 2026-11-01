@@ -9,7 +9,8 @@ import { answer, api } from '../api/client';
 import { t } from '../i18n';
 import { connection, preferences, serverName, servers, status } from '../model/engine';
 import { networkCards, networkWords } from '../network';
-import { current, networkPart } from '../places';
+import { current, logAllowed, networkPart } from '../places';
+import { guest } from '../role';
 import { problem } from '../toasts';
 import Icon from '../ui/Icon.vue';
 import PopoverHeader from '../ui/PopoverHeader.vue';
@@ -20,7 +21,7 @@ import LogView from './network/LogView.vue';
 import ServersView from './network/ServersView.vue';
 
 // The network: the state of eD2K, Kad and the ports on three cards, in plain words with what to do, then one of its
-// parts at a time: the servers, Kad and the log.
+// parts at a time: the servers, Kad and the log. A guest reads the cards without what they offer to do, and has no log.
 
 const emit = defineEmits<{ ed2k: []; kad: [] }>();
 
@@ -38,7 +39,7 @@ const parts = computed(() => [
         icon: 'KAD' as const,
         count: status.value?.kad ? status.value.kad.contacts : null,
     },
-    { value: 'log' as const, title: t('IDS_SV_LOG'), icon: 'LOG' as const, count: null },
+    ...(logAllowed ? [{ value: 'log' as const, title: t('IDS_SV_LOG'), icon: 'LOG' as const, count: null }] : []),
 ]);
 
 async function recheck(): Promise<void> {
@@ -76,7 +77,7 @@ async function testPorts(): Promise<void> {
                 <div class="card-detail">
                     <div v-for="line in cards.ed2k.detail" :key="line" dir="auto">{{ line }}</div>
                 </div>
-                <div class="card-actions">
+                <div v-if="!guest" class="card-actions">
                     <button class="button small" @click="emit('ed2k')">
                         <Icon :name="connection === 'disconnected' ? 'LINK' : 'LINK_OFF'" />{{
                             t(
@@ -114,7 +115,7 @@ async function testPorts(): Promise<void> {
                 <div class="card-detail">
                     <div v-for="line in cards.kad.detail" :key="line">{{ line }}</div>
                 </div>
-                <div class="card-actions">
+                <div v-if="!guest" class="card-actions">
                     <button class="button small" @click="emit('kad')">
                         <Icon :name="words.kadRuns ? 'LINK_OFF' : 'LINK'" />{{
                             t(words.kadRuns ? 'IDS_MAIN_BTN_DISCONNECT' : 'IDS_MAIN_BTN_CONNECT')
@@ -143,7 +144,7 @@ async function testPorts(): Promise<void> {
                 <div class="card-detail">
                     <div v-for="line in cards.ports.detail" :key="line">{{ line }}</div>
                 </div>
-                <div class="card-actions">
+                <div v-if="!guest" class="card-actions">
                     <PopoverRoot v-model:open="testShown">
                         <PopoverAnchor as-child>
                             <button class="button small" @click="testPorts">
@@ -185,7 +186,7 @@ async function testPorts(): Promise<void> {
         </div>
         <ServersView v-if="networkPart === 'servers'" />
         <KadView v-else-if="networkPart === 'kad'" />
-        <LogView v-else />
+        <LogView v-else-if="logAllowed" />
     </div>
 </template>
 

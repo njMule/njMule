@@ -8,11 +8,13 @@ import { type BannerKind, bannerKind } from '../banner';
 import { t } from '../i18n';
 import { connection, status } from '../model/engine';
 import { current } from '../places';
+import { guest } from '../role';
 import Icon from '../ui/Icon.vue';
 import Tip from '../ui/Tip.vue';
 
-// A line above the screens for a state that lasts and wants something done. It waits a moment before it shows, so a
-// reconnection does not make it flicker, and once closed it stays away until the state changes.
+// A line above the screens for a state that lasts and wants something done, which a guest can only read. It waits a
+// moment before it shows, so a reconnection does not make it flicker, and once closed it stays away until the state
+// changes.
 const emit = defineEmits<{ connect: [] }>();
 
 const SETTLE_MS = 2000;
@@ -73,7 +75,7 @@ function close(): void {
     >
         <Icon class="banner-icon" :name="ICONS[shown]" />
         <span class="banner-text">{{ text }}</span>
-        <button type="button" class="button" @click="act">
+        <button v-if="!guest" type="button" class="button" @click="act">
             {{ t(shown === 'offline' ? 'IDS_MAIN_BTN_CONNECT' : 'IDS_EM_PREFS') }}
         </button>
         <Tip :text="t('IDS_FD_CLOSE')">

@@ -24,7 +24,6 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.List;
@@ -70,11 +69,6 @@ public final class WebUi implements AutoCloseable {
     private static final String GET = "GET";
     private static final String POST = "POST";
     private static final String API_PATH = "/api/";
-    // The web interface's own settings the app changes: the host names it answers to.
-    private static final String HOSTS_PATH = "/webui/hosts";
-    // Whether a guest may log in, and its password, which the app's settings change.
-    private static final String GUEST_PATH = "/webui/guest";
-    private static final String ADMINS_ONLY = "A guest can only look.";
     // The header that carries the session's token on the app's changes: no other site's page can send it.
     private static final String CSRF_HEADER = "X-NjMule-CSRF";
     private static final String PAGES_POLICY =
@@ -101,12 +95,8 @@ public final class WebUi implements AutoCloseable {
     private static final Pattern QUICKCONNECT =
             Pattern.compile("(\\d{1,3})-(\\d{1,3})-(\\d{1,3})-(\\d{1,3})\\.[a-z0-9-]+\\.direct\\.quickconnect\\.to");
 
-    private final NjMuleEngine engine;
+    // Followed as they were at the start: changed settings start another interface.
     private final WebUiSettings settings;
-    // The names of the settings, changed by the settings page.
-    private volatile List<String> hosts;
-    // The guest's password hash, changed by the settings page; empty for no guest.
-    private volatile String guestHash;
     private final TrustedProxies proxies;
     private final Server server;
     private final int port;
@@ -129,10 +119,7 @@ public final class WebUi implements AutoCloseable {
             int passwordChecks,
             Optional<Runnable> exit,
             Duration heartbeat) {
-        this.engine = engine;
         this.settings = settings;
-        this.hosts = settings.hosts();
-        this.guestHash = settings.guestPasswordHash();
         this.proxies = new TrustedProxies(settings.proxies());
         this.server = server;
         this.port = port;
@@ -286,7 +273,7 @@ public final class WebUi implements AutoCloseable {
         String path = exchange.path();
         // A HEAD gets the headers of the GET; send() leaves the body out.
         String method = exchange.isHead() ? GET : exchange.method();
-        List<String> names = this.hosts;
+        List<String> names = this.settings.hosts();
         if (!trustedHost(exchange.header("Host"), this.settings.lan(), names, exchange.localAddress())) {
             send(
                     exchange,
@@ -323,18 +310,6 @@ public final class WebUi implements AutoCloseable {
             callApi(exchange, method, session);
             return;
         }
-        if (session.isPresent() && session.get().guest() && (path.equals(HOSTS_PATH) || path.equals(GUEST_PATH))) {
-            sendJson(exchange, 403, ADMINS_ONLY);
-            return;
-        }
-        if (path.equals(HOSTS_PATH)) {
-            hosts(exchange, method, session);
-            return;
-        }
-        if (path.equals(GUEST_PATH)) {
-            guest(exchange, method, session);
-            return;
-        }
         if (session.isEmpty()) {
             if (method.equals(GET)) {
                 redirect(exchange, "/login");
@@ -364,89 +339,6 @@ public final class WebUi implements AutoCloseable {
         } else {
             this.api.handleTrusted(exchange);
         }
-    }
-
-    // The host names as JSON; a PUT of the form field "hosts", with the session's token, replaces them.
-    private void hosts(Exchange exchange, String method, Optional<Sessions.Session> session) throws IOException {
-        if (session.isEmpty()) {
-            sendJson(exchange, 401, "Log in first.");
-            return;
-        }
-        if (!method.equals(GET)) {
-            Optional<Map<String, String>> form = exchange.form(MAX_FIELDS, MAX_BODY);
-            if (!method.equals("PUT") || form.isEmpty()) {
-                sendJson(exchange, 400, "Send the host names as the form field hosts.");
-                return;
-            }
-            if (!Sessions.validForm(session.get(), exchange.header(CSRF_HEADER))) {
-                sendJson(exchange, 403, "Expired session token: reload the page.");
-                return;
-            }
-            try {
-                hostNames(form.get(), exchange.header("Host"));
-            } catch (IllegalArgumentException e) {
-                sendJson(exchange, 400, String.valueOf(e.getMessage()));
-                return;
-            }
-        }
-        StringBuilder json =
-                new StringBuilder("{\"lan\":").append(this.settings.lan()).append(",\"hosts\":[");
-        List<String> names = this.hosts;
-        for (int i = 0; i < names.size(); i++) {
-            // Host names are letters, digits, dots and hyphens: nothing to escape.
-            json.append(i == 0 ? "" : ",").append('"').append(names.get(i)).append('"');
-        }
-        send(exchange, 200, "application/json; charset=utf-8", json.append("]}").toString());
-    }
-
-    // Whether a guest may log in; a PUT of the form field "password", with the session's token, sets its password, an
-    // empty one takes the guest away.
-    private void guest(Exchange exchange, String method, Optional<Sessions.Session> session) throws IOException {
-        if (session.isEmpty()) {
-            sendJson(exchange, 401, "Log in first.");
-            return;
-        }
-        if (!method.equals(GET)) {
-            Optional<Map<String, String>> form = exchange.form(MAX_LOGIN_FIELDS, MAX_LOGIN_BODY);
-            if (!method.equals("PUT") || form.isEmpty()) {
-                sendJson(exchange, 400, "Send the password as the form field password.");
-                return;
-            }
-            if (!Sessions.validForm(session.get(), exchange.header(CSRF_HEADER))) {
-                sendJson(exchange, 403, "Expired session token: reload the page.");
-                return;
-            }
-            char[] password = form.get().getOrDefault("password", "").toCharArray();
-            try {
-                guestPassword(password);
-            } catch (IllegalArgumentException e) {
-                sendJson(exchange, 400, String.valueOf(e.getMessage()));
-                return;
-            } finally {
-                Passwords.wipe(password);
-            }
-        }
-        send(exchange, 200, "application/json; charset=utf-8", "{\"guest\":" + !this.guestHash.isEmpty() + "}");
-    }
-
-    // The guest's password, written to the file of the running settings, which the command line may have changed.
-    private void guestPassword(char[] password) throws IOException {
-        if (password.length > 0 && password.length < Passwords.MIN_LENGTH) {
-            throw new IllegalArgumentException(
-                    "The guest password needs at least " + Passwords.MIN_LENGTH + " characters.");
-        }
-        Path dir = this.engine.directories().config();
-        WebUiSettings file = WebUiSettings.load(dir);
-        if (!file.usable()) {
-            throw new IllegalArgumentException("Cannot read " + WebUiSettings.FILE_NAME + ": nothing was changed.");
-        }
-        String hash = password.length == 0 ? "" : Passwords.hash(password, new SecureRandom());
-        if (!hash.isEmpty() && Passwords.matches(password, file.passwordHash())) {
-            throw new IllegalArgumentException("The guest password must differ from yours.");
-        }
-        file.withGuest(hash).save(dir);
-        this.guestHash = hash;
-        logger.info(hash.isEmpty() ? "Web interface guest taken away" : "Web interface guest password set");
     }
 
     static boolean trustedHost(String host, boolean lan, List<String> names, InetAddress reached) {
@@ -550,7 +442,7 @@ public final class WebUi implements AutoCloseable {
         boolean guest = false;
         try {
             right = Passwords.matches(password, this.settings.passwordHash());
-            String guestHash = this.guestHash;
+            String guestHash = this.settings.guestPasswordHash();
             if (!right && !guestHash.isEmpty()) {
                 guest = Passwords.matches(password, guestHash);
                 right = guest;
@@ -611,36 +503,6 @@ public final class WebUi implements AutoCloseable {
         this.sessions.close(session.id());
         exchange.addCookie(sessionCookie(exchange, "").maxAge(0).build());
         redirect(exchange, "/login");
-    }
-
-    // The names of the settings, written to the file of the running settings, which the command line may have changed.
-    private void hostNames(Map<String, String> form, String host) {
-        List<String> names = WebUiSettings.hostNames(form.getOrDefault("hosts", ""));
-        String current = host == null ? "" : withoutPort(host);
-        if (this.hosts.contains(current) && !names.contains(current)) {
-            throw new IllegalArgumentException("Keep " + current + ": this page is open under that name.");
-        }
-        Path dir = this.engine.directories().config();
-        WebUiSettings file = WebUiSettings.load(dir);
-        if (!file.usable()) {
-            throw new IllegalArgumentException("Cannot read " + WebUiSettings.FILE_NAME + ": nothing was changed.");
-        }
-        WebUiSettings changed = new WebUiSettings(
-                file.enabled(),
-                file.port(),
-                file.lan(),
-                file.passwordHash(),
-                file.api(),
-                names,
-                file.proxies(),
-                file.guestPasswordHash());
-        try {
-            changed.save(dir);
-        } catch (IOException e) {
-            throw new IllegalArgumentException("Cannot save the settings: " + e.getMessage(), e);
-        }
-        this.hosts = changed.hosts();
-        logger.info("Web interface host names: {}", changed.hosts().isEmpty() ? "none" : changed.hosts());
     }
 
     private Optional<Sessions.Session> session(Exchange exchange) {
