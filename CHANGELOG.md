@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Delete takes the search highlighted out of the list of the searches typed before.
+
 ### Fixed
 
 - The web interface frees its port as soon as it stops: changing its settings no longer fails, now

@@ -465,6 +465,10 @@ export function remember(query: string): void {
     keepHistory([query, ...history().filter((h) => h !== query)]);
 }
 
+export function forget(query: string): void {
+    keepHistory(history().filter((h) => h !== query));
+}
+
 /** Starts an empty history with {@code typed}, the newest first, such as the searches of the eMule imported. */
 export function seedHistory(typed: string[]): void {
     if (history().length === 0) {

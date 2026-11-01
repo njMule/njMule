@@ -44,6 +44,7 @@ import {
     completePercent,
     expression,
     filterCount,
+    forget,
     hasNames,
     history,
     isMedia,
@@ -697,6 +698,24 @@ function historyKeys(e: KeyboardEvent): void {
     }
 }
 
+// Delete takes the search highlighted out of the list and highlights the next one; the list closes once empty.
+async function pastKeys(e: KeyboardEvent, typed: string): Promise<void> {
+    if (e.key !== 'Delete') {
+        return;
+    }
+    e.preventDefault();
+    const menu = (e.currentTarget as HTMLElement).closest('[role="menu"]');
+    const at = past.value.indexOf(typed);
+    forget(typed);
+    past.value = history();
+    if (past.value.length === 0) {
+        historyOpen.value = false;
+        return;
+    }
+    await nextTick();
+    menu?.querySelectorAll<HTMLElement>('[role="menuitem"]')[Math.min(at, past.value.length - 1)]?.focus();
+}
+
 // Automatic: the network connected, Kad when both are unless the server is a static or a big one.
 function where(): Exclude<Scope, 'automatic'> | undefined {
     if (scope.value !== 'automatic') {
@@ -1036,7 +1055,13 @@ onUnmounted(() => {
                                 :reference="queryBox ?? undefined"
                                 @close-auto-focus.prevent="queryInput?.focus()"
                             >
-                                <DropdownMenuItem v-for="h in past" :key="h" class="menu-item" @select="query = h">
+                                <DropdownMenuItem
+                                    v-for="h in past"
+                                    :key="h"
+                                    class="menu-item"
+                                    @select="query = h"
+                                    @keydown="pastKeys($event, h)"
+                                >
                                     <span class="ellipsis" dir="auto">{{ h }}</span>
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
