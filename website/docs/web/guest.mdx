@@ -12,7 +12,7 @@ most one guest password, shared by everyone you give it to.
 
 The guest password needs at least 8 characters and must differ from yours.
 
-Only the desktop app on the computer that runs njMule sets it:
+In the desktop app on the computer that runs njMule:
 
 1. Open **Options → Web Interface**.
 2. Type the password twice in **Guest password, twice (a guest may only look)**.
@@ -22,8 +22,25 @@ Only the desktop app on the computer that runs njMule sets it:
 password, the page shows these settings greyed out: *Only the desktop app on njMule's computer
 changes these settings.*
 
-On the command line there is no guest option, but setting your own password with
-`--webui-password` or `--webui-password-file` keeps the guest password as it is.
+### On a headless njMule
+
+A njMule without the desktop app (on a server, in Docker, on a Synology NAS, as the Windows
+service) takes the guest password from the first line of a file, as it takes yours:
+`--webui-guest-password-file <file>`. `--webui-no-guest` takes the guest away. Both come with
+`--webui-password`, `--webui-password-file` or `--service=install`:
+
+```bash
+njmule --webui-password --webui-guest-password-file ~/njmule-guest-password.txt
+njmule --webui-password-file /run/secrets/njmule_webui_password \
+    --webui-guest-password-file /run/secrets/njmule_webui_guest_password
+njmule --service=install --webui-guest-password-file C:\Users\you\njmule-guest-password.txt
+```
+
+With `--webui-password-file` alone, the guest's file is read again at every start, as yours is.
+Without either option the guest stays as it was, also when you set your own password again.
+
+- **Docker:** a second secret, see [Install with Docker](../getting-started/install-docker.mdx).
+- **Synology:** the installation wizard asks for a guest password too; leave it empty for no guest.
 
 ## What a guest sees
 

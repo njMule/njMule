@@ -75,20 +75,22 @@ public final class WebUiPassword {
     }
 
     /**
-     * Turns the web interface on with {@code password} and the port, LAN, API, host name and proxy choices of
+     * Turns the web interface on with {@code password} and the port, LAN, API, host name, proxy and guest choices of
      * {@code setup}.
      */
-    static WebUiSettings save(Path config, LaunchOptions.WebUiSetup setup, char[] password) throws IOException {
+    static WebUiSettings save(Path config, LaunchOptions.WebUiSetup setup, char[] password)
+            throws LaunchOptions.UsageException, IOException {
         WebUiSettings old = WebUiSettings.load(config);
+        String admin = Passwords.hash(password, new SecureRandom());
         WebUiSettings settings = new WebUiSettings(
                 true,
                 setup.port().orElse(old.port()),
                 setup.lan(),
-                Passwords.hash(password, new SecureRandom()),
+                admin,
                 setup.api() || old.api(),
                 setup.hosts(),
                 setup.proxies(),
-                old.guestPasswordHash());
+                guestHash(setup, admin, old));
         settings.save(config);
         return settings;
     }
@@ -97,24 +99,54 @@ public final class WebUiPassword {
      * Turns the web interface on with {@code password}, the saved one when null, changing only the choices
      * {@code setup} gives: what was set in the web interface itself stays.
      */
-    static WebUiSettings update(Path config, LaunchOptions.WebUiSetup setup, char[] password) throws IOException {
+    static WebUiSettings update(Path config, LaunchOptions.WebUiSetup setup, char[] password)
+            throws LaunchOptions.UsageException, IOException {
         WebUiSettings old = WebUiSettings.load(config);
+        String admin = password == null ? old.passwordHash() : Passwords.hash(password, new SecureRandom());
         WebUiSettings settings = new WebUiSettings(
                 true,
                 setup.port().orElse(old.port()),
                 setup.lan() || old.lan(),
-                password == null ? old.passwordHash() : Passwords.hash(password, new SecureRandom()),
+                admin,
                 setup.api() || old.api(),
                 setup.hosts().isEmpty() ? old.hosts() : setup.hosts(),
                 setup.proxies().isEmpty() ? old.proxies() : setup.proxies(),
-                old.guestPasswordHash());
+                guestHash(setup, admin, old));
         settings.save(config);
         return settings;
     }
 
-    // The first line of the file, without its line ending or a byte order mark. No String holds the password, so
-    // that it can be wiped.
+    // The guest's password may not be the web interface's, whose holder would log in as a guest otherwise.
+    private static String guestHash(LaunchOptions.WebUiSetup setup, String admin, WebUiSettings old)
+            throws LaunchOptions.UsageException {
+        if (setup.noGuest()) {
+            return "";
+        }
+        if (setup.guestPasswordFile().isEmpty()) {
+            return old.guestPasswordHash();
+        }
+        Path file = setup.guestPasswordFile().get();
+        char[] guest = read(file, "web interface guest password");
+        try {
+            if (!admin.isEmpty() && Passwords.matches(guest, admin)) {
+                throw new LaunchOptions.UsageException(
+                        "The guest password in " + file + " is the web interface password: choose another one.");
+            }
+            String hash = Passwords.hash(guest, new SecureRandom());
+            logger.info("Web interface guest password set from {}", file);
+            return hash;
+        } finally {
+            Passwords.wipe(guest);
+        }
+    }
+
     static char[] read(Path file) throws LaunchOptions.UsageException {
+        return read(file, "web interface password");
+    }
+
+    // The first line of the file, without its line ending or a byte order mark, kind naming the password in the
+    // messages. No String holds the password, so that it can be wiped.
+    private static char[] read(Path file, String kind) throws LaunchOptions.UsageException {
         byte[] bytes = null;
         CharBuffer text = null;
         try {
@@ -123,7 +155,7 @@ public final class WebUiPassword {
             }
             if (bytes.length > MAX_FILE_BYTES) {
                 throw new LaunchOptions.UsageException(
-                        "The web interface password file " + file + " is longer than " + MAX_FILE_BYTES + " bytes.");
+                        "The " + kind + " file " + file + " is longer than " + MAX_FILE_BYTES + " bytes.");
             }
             text = StandardCharsets.UTF_8
                     .newDecoder()
@@ -143,15 +175,14 @@ public final class WebUiPassword {
             text.get(start, password);
             return password;
         } catch (NoSuchFileException e) {
-            throw new LaunchOptions.UsageException("The web interface password file " + file + " does not exist.");
+            throw new LaunchOptions.UsageException("The " + kind + " file " + file + " does not exist.");
         } catch (AccessDeniedException e) {
-            throw new LaunchOptions.UsageException(
-                    "The web interface password file " + file + " cannot be read: access denied.");
+            throw new LaunchOptions.UsageException("The " + kind + " file " + file + " cannot be read: access denied.");
         } catch (CharacterCodingException e) {
-            throw new LaunchOptions.UsageException("The web interface password file " + file + " is not UTF-8 text.");
+            throw new LaunchOptions.UsageException("The " + kind + " file " + file + " is not UTF-8 text.");
         } catch (IOException e) {
             throw new LaunchOptions.UsageException(
-                    "The web interface password file " + file + " cannot be read: " + e.getMessage());
+                    "The " + kind + " file " + file + " cannot be read: " + e.getMessage());
         } finally {
             if (bytes != null) {
                 Arrays.fill(bytes, (byte) 0);

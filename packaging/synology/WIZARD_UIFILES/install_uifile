@@ -16,6 +16,20 @@
                         }
                     }
                 ]
+            },
+            {
+                "type": "password",
+                "desc": "Optionally, a guest password too (8 characters at least, another one): a guest who logs in with it may only look. Leave it empty for no guest.",
+                "subitems": [
+                    {
+                        "key": "wizard_webui_guest_password",
+                        "desc": "Guest password",
+                        "validator": {
+                            "allowBlank": true,
+                            "minLength": 8
+                        }
+                    }
+                ]
             }
         ]
     }
