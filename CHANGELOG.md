@@ -39,6 +39,8 @@ All notable changes to this project are documented here. The format follows
   database is fetched as soon as the option is on.
 - Changed from the desktop window, the web interface follows its settings at once, without a
   restart.
+- The browser only shows the web interface's own settings: its host names and the guest password
+  are set, like the rest, in the desktop app on njMule's computer.
 
 ### Removed
 
