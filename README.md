@@ -56,8 +56,7 @@ proxies, binding to a VPN interface and IP filters. The
 ## Download
 
 Every package is on the **[latest release](https://github.com/njMule/njMule/releases/latest)**,
-with its checksums, minisign signature and software bill of materials; the Docker image is
-`ghcr.io/njmule/njmule` on the
+with its checksums, minisign signature and software bill of materials; the Docker image is on the
 **[GitHub Container Registry](https://github.com/njMule/njMule/pkgs/container/njmule)**.
 
 | System | Packages | Guide |
@@ -68,15 +67,23 @@ with its checksums, minisign signature and software bill of materials; the Docke
 | 🐳 Docker (amd64, arm64) | `ghcr.io/njmule/njmule` | [Install with Docker](https://njmule.github.io/njMule/docs/getting-started/install-docker) |
 | 🗄️ Synology DSM 7 (x86_64) | `.spk` package | [Install on Synology](https://njmule.github.io/njMule/docs/getting-started/install-synology) |
 
+Then follow the [first start](https://njmule.github.io/njMule/docs/getting-started/first-run), and
+[check your download](https://njmule.github.io/njMule/docs/getting-started/verify-downloads) if you
+like. The executables are not code-signed yet: Windows SmartScreen and macOS Gatekeeper ask once.
+
+### Quick start with Docker
+
+Write a password for the web interface in a file, then start the container:
+
 ```bash
 printf '%s\n' 'a password of 8 characters or more' > webui_password
 docker run -d --name njmule -p 4662:4662/tcp -p 4672:4672/udp -p 4711:4711/tcp -v njmule:/njmule \
     -v "$PWD/webui_password:/run/secrets/njmule_webui_password:ro" ghcr.io/njmule/njmule
 ```
 
-Then follow the [first start](https://njmule.github.io/njMule/docs/getting-started/first-run), and
-[check your download](https://njmule.github.io/njMule/docs/getting-started/verify-downloads) if you
-like. The executables are not code-signed yet: Windows SmartScreen and macOS Gatekeeper ask once.
+The web interface answers on port 4711 of the host: log in with that password and the first start
+opens. The [Docker guide](https://njmule.github.io/njMule/docs/getting-started/install-docker) adds
+a folder for the completed downloads, Docker Compose and the image's tags.
 
 ## Documentation
 
