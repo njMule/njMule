@@ -799,6 +799,7 @@ async function more(): Promise<void> {
     try {
         await answer(api().POST('/searches/{id}/more', { params: { path: { id: s.id } } }));
         s.running = true;
+        s.more = false;
     } catch (err) {
         if (!(err instanceof ApiError && (err.status === 404 || err.status === 409))) {
             problem((err as Error).message);
@@ -904,9 +905,11 @@ async function refresh(s: Search): Promise<void> {
         // The engine lists them by sources; the order they came in is kept until a column sorts them.
         s.results = merged(s.results, got.results);
         s.running = got.running;
+        s.more = got.more;
     } catch (err) {
         // A search the engine forgot keeps the results it showed, as one brought back from the last exit.
         s.running = false;
+        s.more = false;
         if (err instanceof ApiError && err.status === 404) {
             s.id = null;
         }
@@ -1235,7 +1238,7 @@ onUnmounted(() => {
                     </DropdownMenuPortal>
                 </DropdownMenuRoot>
                 <template v-if="!guest">
-                    <button class="button flat small" @click="more">
+                    <button class="button flat small" :disabled="!shown?.more" @click="more">
                         <Icon name="ADD" />{{ t('nj.search.more') }}
                     </button>
                     <button class="button flat small stop-search" :disabled="!shown?.running" @click="stop">

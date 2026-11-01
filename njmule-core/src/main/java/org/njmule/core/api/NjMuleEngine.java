@@ -168,6 +168,9 @@ public interface NjMuleEngine extends AutoCloseable {
     /** Asks the server for more results; completes with {@code false} when it has none. */
     CompletableFuture<Boolean> moreResults(SearchId search);
 
+    /** Whether the server holds more results of a search that {@link #moreResults} may ask for now. */
+    CompletableFuture<Boolean> hasMoreResults(SearchId search);
+
     CompletableFuture<Void> stopSearch(SearchId search);
 
     /** Says hello to the client at {@code peer} and completes with its answer. */

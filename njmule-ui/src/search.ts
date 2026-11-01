@@ -39,6 +39,8 @@ export interface Search {
     scope: Exclude<Scope, 'automatic'>;
     results: Result[];
     running: boolean;
+    /** Whether the server holds more results, which More results asks for. */
+    more?: boolean;
 }
 
 /** The searches of the window, kept while it moves between places. */

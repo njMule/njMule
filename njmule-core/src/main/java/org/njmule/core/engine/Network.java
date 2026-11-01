@@ -1166,6 +1166,10 @@ final class Network {
         return this.searches.more(id);
     }
 
+    boolean hasMoreResults(SearchId id) {
+        return this.searches.hasMore(id);
+    }
+
     void stopSearch(SearchId id) {
         this.searches.stop(id);
     }

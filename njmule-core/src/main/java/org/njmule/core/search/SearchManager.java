@@ -312,19 +312,24 @@ public final class SearchManager {
     }
 
     /**
-     * Asks the server for more results; {@code false} if it has none, the limit is reached or the server has taken a
-     * newer search since, whose results it would continue.
+     * Whether the server said it holds more results of this search and {@link #more} may ask for them now: not while an
+     * answer is awaited, past the limit or once the server has taken a newer search, whose results it would continue.
      */
-    public boolean more(SearchId id) {
+    public boolean hasMore(SearchId id) {
         Search search = this.searches.get(id);
-        if (search == null
-                || search != this.serverSearch
-                || search.ended
-                || !search.moreAvailable
-                || search.moreRequests >= MAX_MORE_REQUESTS
-                || !this.session.send(ServerMessages.queryMoreResults())) {
+        return search != null
+                && search == this.serverSearch
+                && !search.ended
+                && search.moreAvailable
+                && search.moreRequests < MAX_MORE_REQUESTS;
+    }
+
+    /** Asks the server for more results; {@code false} unless {@link #hasMore} or when the request cannot be sent. */
+    public boolean more(SearchId id) {
+        if (!hasMore(id) || !this.session.send(ServerMessages.queryMoreResults())) {
             return false;
         }
+        Search search = this.searches.get(id);
         search.moreRequests++;
         search.moreAvailable = false;
         waitForServer(search);
