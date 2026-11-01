@@ -81,6 +81,10 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `release.yml`, whose draft release waits for the maintainer's approval of the `release`
   environment and is then published by hand. Then the pinned Roadmap issue (#38) gets the release
   under "Released" and its completed "Next" items ticked.
+- The `release` skill (`.claude/skills/release/SKILL.md`) does all of it, with a manual run of
+  `release.yml` on the release branch before the tag, once the maintainer asks for a release of a
+  version: that request is their approval of every step, including the `release` environment and
+  the publication.
 
 ## Project layout
 
@@ -205,7 +209,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   Known constraint: palantir-java-format is pinned to the newest version Spotless supports.
 - GitHub operations use the GitHub CLI (`gh pr create`, `gh release create`, `gh api`); remote is
   `git@github.com:njMule/njMule.git` (SSH).
-- Push, PRs, tags and releases only when the maintainer explicitly asks.
+- Push, PRs, tags and releases only when the maintainer explicitly asks; asking for a release of a
+  version asks for all of its steps (the `release` skill).
 - **Every change reaches `main` through a pull request** (since 0.1.0, when the milestones on
   `main` ended): a branch `<type>/<description>` from the latest `main`, `./gradlew build` green,
   then the pull request, squash-merged once its checks pass.
