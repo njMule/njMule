@@ -170,7 +170,7 @@ The tags, the test kit and the interface's tests are explained in [Testing](test
 | `./gradlew :njmule-app:generateLicenseReport` | `build/reports/licenses/THIRD-PARTY.txt`, the third-party licenses of the engine's runtime, which holds every distributed Java dependency |
 | `./gradlew cyclonedxBom` | the CycloneDX software bill of materials in `build/reports/cyclonedx` |
 | `./gradlew dependencyCheckAggregate` | the OWASP dependency-check report; fails on a vulnerability scored 7 or more; needs an NVD API key in `NVD_API_KEY` |
-| `./gradlew build sonar -Dsonar.token=<token>` | a SonarQube Cloud analysis (organisation `njmule`, project `njMule_njMule`); in CI the Linux `verify` job runs it once the `SONAR_TOKEN` secret is set |
+| `./gradlew build sonar -Dsonar.token=<token>` | a SonarQube Cloud analysis (organisation `njmule`, project `njMule_njMule`); in CI the Linux `verify` job runs it once the `SONAR_TOKEN` secret is set; it waits for the quality gate and fails when the gate is red |
 | `./gradlew iconTools` | copies the JSVG jar the icon tools need into `build/tools` (see `branding/README.md`) |
 | `./gradlew :njmule-app:nativeCompile` | the native command-line executable ([Native images](native-images.mdx)) |
 | `./gradlew :njmule-app:nativeService` | the Windows service host `njmule-service.exe` ([Native images](native-images.mdx#the-windows-service-host)) |

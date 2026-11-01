@@ -229,7 +229,7 @@ request, and once a week on everything:
 
 | Job | What it does |
 |---|---|
-| verify | `./gradlew build --continue '-Ptest.parallelModules=1'` on Ubuntu, Windows and macOS, starting from the build cache of `main`'s latest build (saved by each build of `main`), so the modules a change leaves alone are not tested again; on Ubuntu then `./gradlew sonar`, once the `SONAR_TOKEN` secret exists; on a failure, the test reports are kept as an artifact |
+| verify | `./gradlew build --continue '-Ptest.parallelModules=1'` on Ubuntu, Windows and macOS, starting from the build cache of `main`'s latest build (saved by each build of `main`), so the modules a change leaves alone are not tested again; on Ubuntu then `./gradlew sonar`, once the `SONAR_TOKEN` secret exists, which waits for the quality gate and fails the job when it is red (new code under 80% covered, say); on a failure, the test reports are kept as an artifact |
 | desktop shell | on Ubuntu, Windows and macOS: builds the interface, then `cargo fmt --check`, Clippy with warnings as errors, and `cargo test`; only when the desktop window, the interface, the generated icons or the workflow change, and weekly |
 | native image | the native command-line executable on Linux x64 (in the pinned GraalVM container), Windows x64 and macOS arm64, built with `-Ob`, then started with `--version` and `--license`; on Windows also the service host, installed as a real service, tried and removed |
 | synology package | the static musl executable and the `.spk` around it, checked entry by entry; only when the build, the dependencies, the native configuration or the package's files change, and weekly |
