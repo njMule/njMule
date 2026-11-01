@@ -24,6 +24,10 @@ dependencyResolutionManagement {
     }
 }
 
+// The CI keeps the build cache apart from the Gradle user home, whose cache entry changes only with the build
+// files, to save it after each build of main (.github/workflows/build.yml).
+providers.environmentVariable("NJMULE_BUILD_CACHE").orNull?.let { dir -> buildCache { local { directory = File(dir) } } }
+
 rootProject.name = "njmule"
 
 include(

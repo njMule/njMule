@@ -14,6 +14,11 @@ on:
 permissions:
     contents: read
 
+# A newer commit of the same pull request or branch makes the older run useless, and frees its runners.
+concurrency:
+    group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+
 jobs:
     # Changes that cannot affect the build (documents, repository metadata, branding sources, local
     # tools) skip the build jobs; skipped jobs count as passed, so such commits and PRs stay green. The
@@ -88,31 +93,70 @@ jobs:
                           - '.github/workflows/build.yml'
 
     verify:
-        name: verify (${{ matrix.os }})
+        name: verify (${{ matrix.os }})${{ matrix.sonar && ' + SonarQube Cloud' || '' }}
         needs: changes
         if: needs.changes.outputs.build == 'true'
         strategy:
             fail-fast: false
             matrix:
                 os: [ubuntu-latest, windows-latest, macos-latest]
+                # SonarQube Cloud analyses the Linux build.
+                include:
+                    - os: ubuntu-latest
+                      sonar: true
         runs-on: ${{ matrix.os }}
+        env:
+            # Skipped until the SONAR_TOKEN secret exists (and on forks, which do not receive it).
+            SONAR_TOKEN: ${{ matrix.sonar && secrets.SONAR_TOKEN || '' }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  # SonarQube Cloud reads the history (new code, blame).
+                  fetch-depth: ${{ env.SONAR_TOKEN != '' && '0' || '1' }}
             - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
               with:
                   distribution: temurin
                   java-version: "25"
             # Gradle User Home cache through actions/cache (the open-source provider); also checks the
-            # wrapper jar against the published checksums.
+            # wrapper jar against the published checksums. Only these jobs write it, so that the one entry
+            # per system holds what the whole build needs; the others read it.
             - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
+            # The task outputs of main's latest build, kept by NJMULE_BUILD_CACHE apart from the Gradle User Home,
+            # whose entry changes only with the build files: the modules a change leaves alone come from the
+            # cache instead of being compiled and tested again.
+            - name: Restore the build cache
+              uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              with:
+                  path: ${{ runner.temp }}/build-cache
+                  key: build-cache-${{ runner.os }}-${{ github.sha }}
+                  restore-keys: build-cache-${{ runner.os }}-
+            # On Windows the tests' temporary files go to the runner's faster drive, as the Gradle User Home
+            # does. On main the cache grows with each build (a whole build stores about 50 MiB): past 300 MiB it
+            # starts afresh, and this build fills it again.
+            - name: Set up the build
+              shell: bash
+              run: |
+                  echo "NJMULE_BUILD_CACHE=$RUNNER_TEMP/build-cache" >> "$GITHUB_ENV"
+                  if [[ "$RUNNER_OS" == Windows ]]; then
+                      echo "TMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
+                      echo "TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
+                  fi
+                  cache="$RUNNER_TEMP/build-cache"
+                  if [[ "$GITHUB_EVENT_NAME" != pull_request && -d "$cache" ]] && (( $(du -sm "$cache" | cut -f1) > 300 )); then
+                      rm -rf "$cache"
+                  fi
             # One module's tests at a time: on the runners' four CPUs the long timed tests (the Kad
             # simulation, the window tests) ran out of time next to the other modules' test JVMs. A failure
             # does not stop the other modules, whose reports come too.
             - name: Build and test
               shell: bash
               run: ./gradlew build --continue '-Ptest.parallelModules=1'
+            - name: Analyse on SonarQube Cloud
+              if: env.SONAR_TOKEN != ''
+              shell: bash
+              run: ./gradlew sonar
             - name: Upload test reports
               if: failure()
               uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -121,12 +165,43 @@ jobs:
                   path: |
                       **/build/test-results/
                       **/build/reports/tests/
-            # The basic cache provider saves Gradle's user home without stopping the daemon, whose lock
-            # files Windows does not let it read.
+            # Before the caches are saved: Windows does not let them read the lock files the daemon holds.
             - name: Stop Gradle
               if: always() && runner.os == 'Windows'
               shell: bash
               run: ./gradlew --stop
+            # Under this commit; the build-cache-cleanup job then deletes the ones it replaces.
+            - name: Save the build cache
+              if: success() && github.event_name != 'pull_request'
+              uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              with:
+                  path: ${{ runner.temp }}/build-cache
+                  key: build-cache-${{ runner.os }}-${{ github.sha }}
+
+    # Each build of main saves its build cache under its commit; the older ones go, so that the repository's cache
+    # space keeps the Gradle User Homes. A system whose build failed keeps its previous cache.
+    build-cache-cleanup:
+        name: clean the build caches
+        needs: verify
+        if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.verify.result != 'skipped' }}
+        runs-on: ubuntu-latest
+        permissions:
+            actions: write
+        env:
+            GH_TOKEN: ${{ github.token }}
+            GH_REPO: ${{ github.repository }}
+        steps:
+            - name: Delete the replaced build caches
+              run: |
+                  for os in Linux Windows macOS; do
+                      prefix="build-cache-$os-"
+                      keys=$(gh cache list --ref "$GITHUB_REF" --key "$prefix" --limit 100 --json key --jq '.[].key')
+                      if grep -qx "$prefix$GITHUB_SHA" <<< "$keys"; then
+                          for key in $keys; do
+                              [[ "$key" == "$prefix$GITHUB_SHA" ]] || gh cache delete "$key"
+                          done
+                      fi
+                  done
 
     # The desktop window's shell, in Rust, on each system it is packaged for: formatted, linted and tested, with the
     # toolchain src-tauri/rust-toolchain.toml pins and the interface it embeds built first.
@@ -148,9 +223,10 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
-            - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
+                  cache-read-only: true
             - name: Install the web view's libraries
               if: runner.os == 'Linux'
               run: |
@@ -206,7 +282,8 @@ jobs:
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             # Gradle User Home cache through actions/cache (the open-source provider); also checks the
-            # wrapper jar against the published checksums.
+            # wrapper jar against the published checksums. Written here too: the container's user home is
+            # another path, hence another entry.
             - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
@@ -237,11 +314,12 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
-            # Gradle User Home cache through actions/cache (the open-source provider); also checks the
-            # wrapper jar against the published checksums.
+            # Gradle User Home cache through actions/cache (the open-source provider), written by verify; also
+            # checks the wrapper jar against the published checksums.
             - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
+                  cache-read-only: true
             - name: Install GraalVM
               shell: pwsh
               run: |
@@ -299,6 +377,7 @@ jobs:
             - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
+                  cache-read-only: true
             - name: Build the native executable
               run: ./gradlew :njmule-app:nativeCompile '-Pnative.optimization=-Ob'
             - name: Smoke test
@@ -335,6 +414,7 @@ jobs:
             - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
+                  cache-read-only: true
             - name: Build the static executable
               run: ./gradlew :njmule-app:nativeCompile '-Pnative.static=musl' '-Pnative.optimization=-Ob'
             # Static, or it would not start on DSM's old glibc.
@@ -360,41 +440,15 @@ jobs:
                   tar -xOf "$spk" INFO | grep -qx 'arch="x86_64"'
                   tar -xOf "$spk" package.tgz | tar -tJf - | grep -qx 'bin/njmule'
 
-    sonar:
-        name: SonarQube Cloud
-        needs: changes
-        if: needs.changes.outputs.build == 'true'
-        runs-on: ubuntu-latest
-        # Skipped until the SONAR_TOKEN secret exists (and on forks, which do not receive it).
-        env:
-            SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        steps:
-            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-              if: env.SONAR_TOKEN != ''
-              with:
-                  fetch-depth: 0
-            - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-              if: env.SONAR_TOKEN != ''
-              with:
-                  distribution: temurin
-                  java-version: "25"
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              if: env.SONAR_TOKEN != ''
-              with:
-                  cache-provider: basic
-            - name: Build and analyse
-              if: env.SONAR_TOKEN != ''
-              run: ./gradlew build sonar '-Ptest.parallelModules=1'
-
     # The one check to require on pull requests: it passes when every job passed or was skipped
     # because the change does not need a build.
     ci:
         name: CI result
         if: always()
-        needs: [changes, verify, desktop, actionlint, reuse, native, native-windows, native-macos, synology, sonar]
+        needs: [changes, verify, desktop, actionlint, reuse, native, native-windows, native-macos, synology]
         runs-on: ubuntu-latest
         steps:
             - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
               with:
-                  allowed-skips: verify, desktop, actionlint, native, native-windows, native-macos, synology, sonar
+                  allowed-skips: verify, desktop, actionlint, native, native-windows, native-macos, synology
                   jobs: ${{ toJSON(needs) }}
