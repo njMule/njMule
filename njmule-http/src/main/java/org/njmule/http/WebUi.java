@@ -171,7 +171,9 @@ public final class WebUi implements AutoCloseable {
         Server server = new Server(new VirtualThreadPool());
         HttpConfiguration http = new HttpConfiguration();
         http.setSendServerVersion(false);
-        ServerConnector connector = new ServerConnector(server, new HttpConnectionFactory(http));
+        // The selector accepts, and stop() closes it: a socket closed while a virtual thread waits in accept() still
+        // listens until that thread runs again, so the port could answer after close() and refuse the next start.
+        ServerConnector connector = new ServerConnector(server, 0, -1, new HttpConnectionFactory(http));
         connector.setHost(
                 settings.lan() ? null : InetAddress.getLoopbackAddress().getHostAddress());
         connector.setPort(settings.port());
