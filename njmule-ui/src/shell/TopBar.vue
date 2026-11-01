@@ -20,7 +20,7 @@ import { t } from '../i18n';
 import { rates, status } from '../model/engine';
 import type { NetworkWords } from '../network';
 import { current, withShortcutKey } from '../places';
-import { guest } from '../role';
+import { allowed, guest } from '../role';
 import { toggleDark } from '../theme';
 import { checkNow } from '../updates';
 import Icon from '../ui/Icon.vue';
@@ -29,7 +29,8 @@ import NetworkControl from './NetworkControl.vue';
 import Sparkline from './Sparkline.vue';
 import SpeedLimits from './SpeedLimits.vue';
 
-// The top bar: the screen's title and summary, the field to search or paste links, the rates, the networks, More.
+// The top bar: the screen's title and summary, the field to search or paste links, the rates, the networks, More. A
+// guest sees that it is one, and the rates without the limits or the networks' control.
 defineProps<{
     title: string;
     summary: string;
@@ -92,6 +93,9 @@ function typed(e: KeyboardEvent): void {
             <h1 ref="titleBox" class="screen-title display">{{ title }}</h1>
             <div v-if="summary && !narrow" class="screen-summary ellipsis">{{ summary }}</div>
         </div>
+        <Tip v-if="guest" :text="t('nj.webui.guestHint')">
+            <span id="guest" class="state-chip neutral guest"><Icon name="LOCK" />{{ t('IDS_WEB_LOWUSER') }}</span>
+        </Tip>
         <div class="spacer" />
         <Tip :text="`${t('nj.palette.prompt')}  ${withShortcutKey('K')}`">
             <button
@@ -108,8 +112,25 @@ function typed(e: KeyboardEvent): void {
             </button>
         </Tip>
         <div class="spacer" />
-        <!-- The rates open the limits, what one wants to change on seeing them. -->
-        <PopoverRoot v-model:open="limitsOpen">
+        <!-- The rates open the limits, what one wants to change on seeing them; a guest only sees them. -->
+        <div
+            v-if="guest"
+            id="rates"
+            class="rates rates-only"
+            role="group"
+            :aria-label="`${t('nj.tray.speed')}: ↓ ${rate(status?.downloadBytesPerSecond ?? 0)}, ↑ ${rate(status?.uploadBytesPerSecond ?? 0)}`"
+        >
+            <Sparkline v-if="!narrow" :rates="rates" />
+            <span class="rate-numbers">
+                <span class="rate-label rate-down"
+                    ><Icon name="ARROW_DOWN" />{{ rate(status?.downloadBytesPerSecond ?? 0) }}</span
+                >
+                <span v-if="!narrow" class="rate-label rate-up"
+                    ><Icon name="ARROW_UP" />{{ rate(status?.uploadBytesPerSecond ?? 0) }}</span
+                >
+            </span>
+        </div>
+        <PopoverRoot v-else v-model:open="limitsOpen">
             <Tip :text="t('nj.tray.speed')">
                 <PopoverTrigger
                     id="rates"
@@ -130,7 +151,14 @@ function typed(e: KeyboardEvent): void {
             </Tip>
             <SpeedLimits :open="limitsOpen" side="bottom" :reference="ratesTrigger?.$el" />
         </PopoverRoot>
-        <NetworkControl :words="words" :compact="narrow" @ed2k="emit('ed2k')" @kad="emit('kad')" @both="emit('both')" />
+        <NetworkControl
+            v-if="!guest"
+            :words="words"
+            :compact="narrow"
+            @ed2k="emit('ed2k')"
+            @kad="emit('kad')"
+            @both="emit('both')"
+        />
         <DropdownMenuRoot>
             <Tip :text="t('IDS_MORE')">
                 <DropdownMenuTrigger
@@ -152,7 +180,12 @@ function typed(e: KeyboardEvent): void {
                     >
                         <Icon name="FOLDER_OPEN" />{{ t('IDS_OPENINC') }}
                     </DropdownMenuItem>
-                    <DropdownMenuItem id="options" class="menu-item" @select="current = 'settings'">
+                    <DropdownMenuItem
+                        id="options"
+                        class="menu-item"
+                        :disabled="!allowed('/settings')"
+                        @select="current = 'settings'"
+                    >
                         <Icon name="OPTIONS" />{{ t('IDS_EM_PREFS') }}
                     </DropdownMenuItem>
                     <DropdownMenuItem id="wizard" class="menu-item" :disabled="guest" @select="emit('wizard')">
@@ -171,7 +204,7 @@ function typed(e: KeyboardEvent): void {
                     <DropdownMenuItem id="shortcuts" class="menu-item" @select="emit('shortcuts')">
                         <Icon name="KEYBOARD" />{{ t('nj.shortcuts.title') }}<span class="menu-end keys">F1</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem id="updates" class="menu-item" @select="checkNow()">
+                    <DropdownMenuItem id="updates" class="menu-item" :disabled="guest" @select="checkNow()">
                         <Icon name="REFRESH" />{{ t('IDS_CHECK4UPDATE') }}
                     </DropdownMenuItem>
                     <DropdownMenuItem id="about" class="menu-item" @select="showAbout()">
@@ -257,6 +290,12 @@ function typed(e: KeyboardEvent): void {
     padding: 0 10px;
 }
 
+.rates-only {
+    display: flex;
+    align-items: center;
+    flex: none;
+}
+
 .rate-numbers {
     display: flex;
     flex-direction: column;
@@ -286,5 +325,10 @@ function typed(e: KeyboardEvent): void {
 
 .more {
     --nj-icon-size: 20px;
+}
+
+.guest {
+    flex: none;
+    color: var(--color-fg-default);
 }
 </style>

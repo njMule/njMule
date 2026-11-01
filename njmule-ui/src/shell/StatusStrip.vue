@@ -10,14 +10,16 @@ import { t } from '../i18n';
 import { limitsOf, limitText } from '../limits';
 import { folders, lastLog, preferences, servers, status } from '../model/engine';
 import { networkCounts } from '../network';
-import { showLog } from '../places';
+import { logAllowed, showLog } from '../places';
+import { guest } from '../role';
 import Tip from '../ui/Tip.vue';
 import Icon from '../ui/Icon.vue';
 import { showUpdates, stripText, update } from '../updates';
 import SpeedLimits from './SpeedLimits.vue';
 
 // The status strip: the last line of the log (which opens the log), the networks' users and files, the limits (which
-// open their sliders) and the room left where downloads end up.
+// open their sliders) and the room left where downloads end up. A guest, who may not read the log and the options,
+// sees neither the log nor the limits.
 
 const limits = computed(() => {
     const l = limitsOf(preferences.value);
@@ -35,14 +37,15 @@ const updateText = computed(() => {
 
 <template>
     <footer class="status-strip">
-        <Tip :text="t('IDS_SV_LOG')">
+        <Tip v-if="logAllowed" :text="t('IDS_SV_LOG')">
             <button class="status-link last-log ellipsis" @click="showLog()">{{ lastLog }}</button>
         </Tip>
+        <span v-else class="last-log" />
         <button v-if="updateText" id="update-link" class="status-link update-link" @click="showUpdates()">
             <Icon name="DOWNLOAD" />{{ updateText }}
         </button>
         <span class="status-text">{{ networkCounts(status, servers) }}</span>
-        <PopoverRoot v-model:open="limitsOpen">
+        <PopoverRoot v-if="!guest" v-model:open="limitsOpen">
             <Tip :text="t('IDS_SPEED_LIMITS')">
                 <PopoverTrigger id="limits" ref="limitsTrigger" class="status-link">{{ limits }}</PopoverTrigger>
             </Tip>

@@ -25,6 +25,7 @@ import { fileLinks } from '../links';
 import { bans, categories, downloads, known, sources, uploads, type Download, type Source } from '../model/engine';
 import { current, withShortcutKey } from '../places';
 import type { Platform } from '../platform';
+import { guest } from '../role';
 import {
     byCategory,
     byName,
@@ -77,7 +78,8 @@ import Country from './transfers/Country.vue';
 import DotSelect from './transfers/DotSelect.vue';
 
 // The transfers: the downloads, narrowed by state, category and name, with the details of the chosen one under them;
-// and, one list at a time, the clients we upload to, those waiting, the banned and the clients met.
+// and, one list at a time, the clients we upload to, those waiting, the banned and the clients met. A guest sees the
+// downloads, the uploads and the queue, and can only copy the links.
 
 const props = defineProps<{ platform: Platform }>();
 
@@ -230,8 +232,12 @@ const shelves = computed(() => [
         title: t('IDS_ONQUEUE'),
         count: uploads.value.filter((u) => u.state === 'queued').length,
     },
-    { value: 'banned' as const, title: t('IDS_BANNED'), count: bans.value.length },
-    { value: 'known' as const, title: t('IDS_CLIENTLIST'), count: known.value.length },
+    ...(guest
+        ? []
+        : [
+              { value: 'banned' as const, title: t('IDS_BANNED'), count: bans.value.length },
+              { value: 'known' as const, title: t('IDS_CLIENTLIST'), count: known.value.length },
+          ]),
 ]);
 
 // How many downloads each chip keeps, whatever the category and the filter.
@@ -311,7 +317,7 @@ function isOpened(d: Download): boolean {
 // Delete cancels the chosen downloads after the question and takes the completed ones off the list; Ctrl+C copies
 // their links; the arrows open and close their sources.
 function tableKey(e: KeyboardEvent): void {
-    if (e.key === 'Delete') {
+    if (e.key === 'Delete' && !guest) {
         void clearCompletedOf(chosen.value);
         void askCancel(chosen.value);
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
@@ -335,7 +341,10 @@ function tableKey(e: KeyboardEvent): void {
 // Ctrl+V adds the downloads of the eD2K file links on the clipboard, in the category shown, unless a field or a dialog
 // takes the text.
 function pasted(e: ClipboardEvent): void {
-    if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable], [role=dialog]')) {
+    if (
+        guest ||
+        (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable], [role=dialog]'))
+    ) {
         return;
     }
     const text = e.clipboardData?.getData('text/plain') ?? '';
@@ -554,7 +563,7 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
         <div class="tool-row">
             <Segments v-model="shelf" :items="shelves" :label="t('IDS_EM_TRANS')" />
             <div class="spacer" />
-            <Tip :text="t('nj.transfers.addLinks')">
+            <Tip v-if="!guest" :text="t('nj.transfers.addLinks')">
                 <button
                     id="add-links"
                     class="button accent"
@@ -575,7 +584,7 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                     :items="categoryChoices"
                     :label="t('IDS_CAT')"
                 />
-                <Tip :text="t('nj.categories.title')">
+                <Tip v-if="!guest" :text="t('nj.categories.title')">
                     <button
                         class="button flat icon-only"
                         :aria-label="t('nj.categories.title')"
@@ -616,7 +625,7 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                             <button class="button" @click="current = 'search'">
                                 <Icon name="SEARCH" />{{ t('IDS_EM_SEARCH') }}
                             </button>
-                            <button class="button" @click="adding = true">
+                            <button v-if="!guest" class="button" @click="adding = true">
                                 <Icon name="PASTE" />{{ t('IDS_SW_DIRECTDOWNLOAD') }}
                             </button>
                         </EmptyState>
@@ -657,32 +666,33 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                         </div>
                     </template>
                     <!-- What one does to the chosen downloads, the common first; the rarer under More. Clearing the
-                         completed ones is of the whole list, so it comes last. Items that do not apply are off. -->
+                         completed ones is of the whole list, so it comes last. Items that do not apply are off, and
+                         for a guest all those that change anything. -->
                     <template #menu>
                         <ContextMenuItem
                             class="menu-item"
-                            :disabled="!chosen.some(pausable)"
+                            :disabled="guest || !chosen.some(pausable)"
                             @select="each('/downloads/{hash}/pause', chosen)"
                         >
                             <Icon name="PAUSE" />{{ t('IDS_DL_PAUSE') }}
                         </ContextMenuItem>
                         <ContextMenuItem
                             class="menu-item"
-                            :disabled="!chosen.some(resumable)"
+                            :disabled="guest || !chosen.some(resumable)"
                             @select="each('/downloads/{hash}/resume', chosen)"
                         >
                             <Icon name="PLAY" />{{ t('IDS_DL_RESUME') }}
                         </ContextMenuItem>
                         <ContextMenuItem
                             class="menu-item"
-                            :disabled="!chosen.some(stoppable)"
+                            :disabled="guest || !chosen.some(stoppable)"
                             @select="each('/downloads/{hash}/stop', chosen)"
                         >
                             <Icon name="STOP" />{{ t('IDS_DL_STOP') }}
                         </ContextMenuItem>
                         <ContextMenuItem
                             class="menu-item"
-                            :disabled="cancellable.length === 0"
+                            :disabled="guest || cancellable.length === 0"
                             @select="askCancel(chosen)"
                         >
                             <Icon name="DELETE" />{{ t('nj.transfers.cancelOne') }}
@@ -709,11 +719,15 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                         >
                             <Icon name="FOLDER_OPEN" />{{ t('IDS_OPENFOLDER') }}
                         </ContextMenuItem>
-                        <ContextMenuItem class="menu-item" :disabled="chosen.length !== 1" @select="comment(chosen)">
+                        <ContextMenuItem
+                            class="menu-item"
+                            :disabled="guest || chosen.length !== 1"
+                            @select="comment(chosen)"
+                        >
                             <Icon name="COMMENT" />{{ t('IDS_CMT_ADD') }}
                         </ContextMenuItem>
                         <ContextMenuSub>
-                            <ContextMenuSubTrigger class="menu-item" :disabled="cancellable.length === 0">
+                            <ContextMenuSubTrigger class="menu-item" :disabled="guest || cancellable.length === 0">
                                 <Icon name="PRIORITY" />{{ t('IDS_PRIORITY')
                                 }}<Icon class="menu-end" name="CHEVRON_RIGHT" />
                             </ContextMenuSubTrigger>
@@ -731,7 +745,7 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                             </ContextMenuPortal>
                         </ContextMenuSub>
                         <ContextMenuSub>
-                            <ContextMenuSubTrigger class="menu-item" :disabled="cancellable.length === 0">
+                            <ContextMenuSubTrigger class="menu-item" :disabled="guest || cancellable.length === 0">
                                 <Icon name="LABEL" />{{ t('IDS_CAT') }}<Icon class="menu-end" name="CHEVRON_RIGHT" />
                             </ContextMenuSubTrigger>
                             <ContextMenuPortal>
@@ -755,7 +769,7 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                         <!-- The rarer, in plain words. A client that has the files of several downloads is asked
                              for one at a time: its sources can move. -->
                         <ContextMenuSub>
-                            <ContextMenuSubTrigger class="menu-item">
+                            <ContextMenuSubTrigger class="menu-item" :disabled="guest">
                                 <Icon name="MORE" />{{ t('IDS_MORE') }}<Icon class="menu-end" name="CHEVRON_RIGHT" />
                             </ContextMenuSubTrigger>
                             <ContextMenuPortal>
@@ -833,7 +847,7 @@ const PRIORITY_KEYS: Record<Download['priority'], string> = {
                             <Icon name="CODE" />{{ t('IDS_DL_LINK2') }}
                         </ContextMenuItem>
                         <ContextMenuSeparator class="menu-separator" />
-                        <ContextMenuItem class="menu-item" :disabled="!anyComplete" @select="clearCompleted()">
+                        <ContextMenuItem class="menu-item" :disabled="guest || !anyComplete" @select="clearCompleted()">
                             <Icon name="CLEAR_ALL" />{{ t('IDS_DL_CLEAR') }}
                         </ContextMenuItem>
                     </template>

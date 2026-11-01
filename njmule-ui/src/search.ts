@@ -44,6 +44,38 @@ export interface Search {
 /** The searches of the window, kept while it moves between places. */
 export const searches = ref<Search[]>([]);
 
+/** A search the engine keeps the results of: one started through the web interface or the API. */
+export interface Listed {
+    id: number;
+    /** What it searched for; empty when not noted. */
+    query: string;
+    /** Where it searched, as asked; empty when not noted. */
+    scope: string;
+    running: boolean;
+}
+
+/**
+ * The tabs of the searches the engine lists, as a guest sees them: those open stay as they are, those the engine
+ * forgot go, and the new ones come after them, their results still to read.
+ */
+export function listedSearches(open: Search[], listed: Listed[]): Search[] {
+    const ids = new Set(open.map((s) => s.id));
+    return [
+        ...open.filter((s) => listed.some((l) => l.id === s.id)),
+        ...listed
+            .filter((l) => !ids.has(l.id))
+            .map((l): Search => ({
+                id: l.id,
+                key: `e${l.id}`,
+                title: '',
+                expression: l.query,
+                scope: l.scope === 'global' || l.scope === 'kad' ? l.scope : 'server',
+                results: [],
+                running: l.running,
+            })),
+    ];
+}
+
 /** Whether {@code text} is empty or a whole number from {@code min} to {@code max}. */
 export function optionalNumber(text: string, min: number, max: number): boolean {
     const n = text.trim();

@@ -3,9 +3,10 @@
 
 import { ref, watch } from 'vue';
 import type { IconName } from './icons';
+import { allowed } from './role';
 
 // The places of the sidebar in groups: what one does first comes first, the network and the statistics after, the
-// options at the bottom. Ctrl+1 ... Ctrl+7 open them in this order.
+// options at the bottom. Ctrl+1 ... Ctrl+7 open them in this order. A guest's page has only those it may open.
 
 export type Place = 'transfers' | 'search' | 'shared' | 'messages' | 'network' | 'statistics' | 'settings';
 
@@ -15,7 +16,7 @@ export interface PlaceInfo {
     icon: IconName;
 }
 
-export const GROUPS: PlaceInfo[][] = [
+const EVERY_GROUP: PlaceInfo[][] = [
     [
         { id: 'transfers', title: 'IDS_EM_TRANS', icon: 'TRANSFERS' },
         { id: 'search', title: 'IDS_EM_SEARCH', icon: 'SEARCH' },
@@ -28,6 +29,9 @@ export const GROUPS: PlaceInfo[][] = [
     ],
     [{ id: 'settings', title: 'IDS_EM_PREFS', icon: 'OPTIONS' }],
 ];
+
+/** The groups of the places this page may open; a group left empty stays, so that the last one keeps to the bottom. */
+export const GROUPS: PlaceInfo[][] = EVERY_GROUP.map((group) => group.filter((p) => allowed(`/${p.id}`)));
 
 export const PLACES: PlaceInfo[] = GROUPS.flat();
 
@@ -51,6 +55,11 @@ function saved(): Place | undefined {
 export const current = ref<Place>(fromHash() ?? saved() ?? 'transfers');
 
 watch(current, (place) => {
+    // A place this page may not open, asked for from elsewhere, gives way to the transfers.
+    if (!PLACES.some((p) => p.id === place)) {
+        current.value = 'transfers';
+        return;
+    }
     if (fromHash() !== place) {
         window.history.replaceState(null, '', `#/${place}`);
     }
@@ -72,10 +81,13 @@ type NetworkPart = 'servers' | 'kad' | 'log';
 
 const PART_KEY = 'njmule.networkPart';
 
+/** Whether this page may show the log, which a guest may not read. */
+export const logAllowed = allowed('/network/log');
+
 function savedPart(): NetworkPart {
     try {
         const part = localStorage.getItem(PART_KEY);
-        return part === 'kad' || part === 'log' ? part : 'servers';
+        return part === 'kad' || (part === 'log' && logAllowed) ? part : 'servers';
     } catch {
         return 'servers';
     }
@@ -88,6 +100,10 @@ function savedPart(): NetworkPart {
 export const networkPart = ref<NetworkPart>(savedPart());
 
 watch(networkPart, (part) => {
+    if (part === 'log' && !logAllowed) {
+        networkPart.value = 'servers';
+        return;
+    }
     try {
         localStorage.setItem(PART_KEY, part);
     } catch {
@@ -100,6 +116,9 @@ export const logTabRequest = ref(0);
 
 /** Opens the log at its own tab, as the last line of the status strip does. */
 export function showLog(): void {
+    if (!logAllowed) {
+        return;
+    }
     networkPart.value = 'log';
     current.value = 'network';
     logTabRequest.value++;

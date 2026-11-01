@@ -14,6 +14,8 @@ import {
     history,
     isMedia,
     kindOrder,
+    type Listed,
+    listedSearches,
     lowestMaxSize,
     MAX_SIZE_MB,
     NO_FILTERS,
@@ -28,6 +30,7 @@ import {
     resultRows,
     remember,
     rowOrder,
+    type Search,
     SortMemory,
     tone,
     type Tone,
@@ -554,5 +557,62 @@ describe('the searches typed before', () => {
 
     function thenTheyAre(expected: string[]): void {
         expect(kept).toEqual(expected);
+    }
+});
+
+describe('the searches a guest sees', () => {
+    let open: Search[] = [];
+    let tabs: Search[] = [];
+
+    it('should keep the tabs open of the searches the engine still lists', () => {
+        givenTheTabsOpen(tab(1, 'debian', 3));
+        whenTheEngineLists({ id: 1, query: 'debian', scope: 'server', running: false });
+        thenTheTabsAre([{ id: 1, expression: 'debian', results: 3 }]);
+    });
+
+    it('should close the tabs of the searches the engine forgot', () => {
+        givenTheTabsOpen(tab(1, 'debian', 3), tab(2, 'ubuntu', 5));
+        whenTheEngineLists({ id: 2, query: 'ubuntu', scope: 'kad', running: true });
+        thenTheTabsAre([{ id: 2, expression: 'ubuntu', results: 5 }]);
+    });
+
+    it('should open a tab after the others for a new search, its results still to read', () => {
+        givenTheTabsOpen(tab(1, 'debian', 3));
+        whenTheEngineLists(
+            { id: 1, query: 'debian', scope: 'server', running: false },
+            { id: 7, query: 'fedora', scope: 'global', running: true },
+        );
+        thenTheTabsAre([
+            { id: 1, expression: 'debian', results: 3 },
+            { id: 7, expression: 'fedora', results: 0 },
+        ]);
+        thenTheNewTabSearched('global', true);
+    });
+
+    it('should take a search on an unnoted network for a server search', () => {
+        givenTheTabsOpen();
+        whenTheEngineLists({ id: 4, query: '', scope: '', running: false });
+        thenTheNewTabSearched('server', false);
+    });
+
+    function tab(id: number, expression: string, results: number): Search {
+        const found = Array.from({ length: results }, (_, i) => ({ hash: `${id}-${i}` }) as unknown as Result);
+        return { id, key: `e${id}`, title: '', expression, scope: 'server', results: found, running: false };
+    }
+
+    function givenTheTabsOpen(...searches: Search[]): void {
+        open = searches;
+    }
+
+    function whenTheEngineLists(...listed: Listed[]): void {
+        tabs = listedSearches(open, listed);
+    }
+
+    function thenTheTabsAre(expected: { id: number; expression: string; results: number }[]): void {
+        expect(tabs.map((s) => ({ id: s.id, expression: s.expression, results: s.results.length }))).toEqual(expected);
+    }
+
+    function thenTheNewTabSearched(scope: Search['scope'], running: boolean): void {
+        expect(tabs.at(-1)).toMatchObject({ scope, running, key: `e${tabs.at(-1)!.id}` });
     }
 });

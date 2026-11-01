@@ -190,7 +190,7 @@ function drop(e: DragEvent): void {
     // Never the page's own way with a link dropped, which would leave njMule for that address.
     e.preventDefault();
     const text = e.dataTransfer?.getData('text/plain') || e.dataTransfer?.getData('text/uri-list') || '';
-    if (fileLinks(text).length > 0) {
+    if (!guest && fileLinks(text).length > 0) {
         void addLinks(text);
     }
 }
@@ -258,8 +258,8 @@ async function openIncoming(): Promise<void> {
 // The folders open where they are: in the desktop app's window on the engine's own computer.
 const canOpenFolders = computed(() => props.platform.desktop && engineHere(endpoint().url));
 
-// What the palette offers: the places, then the commands of the bar and the menus; those whose dialog this window has
-// not yet show disabled.
+// What the palette offers: the places, then the commands of the bar and the menus; those this window cannot run, or a
+// guest may not, show disabled.
 const commands = computed<Command[]>(() => [
     ...PLACES.map((p, i) => ({ title: t(p.title), keys: shortcut(i), run: () => (current.value = p.id) })),
     // What eD2K's state calls for, as on the networks' button for both.
@@ -273,6 +273,7 @@ const commands = computed<Command[]>(() => [
         ),
         keys: '',
         run: () => void both(),
+        disabled: guest,
     },
     { title: t('IDS_OPENINC'), keys: '', run: () => void openIncoming(), disabled: !canOpenFolders.value },
     { title: t('nj.wizard.title'), keys: '', run: () => (wizardOpen.value = true), disabled: guest },
@@ -284,12 +285,16 @@ const commands = computed<Command[]>(() => [
         run: toggleSidebar,
     },
     { title: t('nj.shortcuts.title'), keys: 'F1', run: () => (shortcutsOpen.value = true) },
-    { title: t('IDS_CHECK4UPDATE'), keys: '', run: checkNow },
+    { title: t('IDS_CHECK4UPDATE'), keys: '', run: checkNow, disabled: guest },
     { title: t('nj.about.title'), keys: '', run: showAbout },
 ]);
 
-// What the text typed is itself: eD2K links to download, or else words to search the network for.
+// What the text typed is itself: eD2K links to download, or else words to search the network for; nothing for a guest,
+// who may do neither.
 function typed(text: string): Command[] {
+    if (guest) {
+        return [];
+    }
     const links = fileLinks(text);
     if (links.length > 0) {
         return [

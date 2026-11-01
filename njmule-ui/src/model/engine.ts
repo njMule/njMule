@@ -4,6 +4,7 @@
 import { computed, ref, shallowRef } from 'vue';
 import { answer, api, ApiError, type Schemas } from '../api/client';
 import { followEvents, type EventData, type EventName } from '../api/events';
+import { guest } from '../role';
 
 // What the screens show of the engine: read through the API at fixed paces (the status and the downloads every second,
 // the uploads and the sources every two, the servers every ten, the clients met every thirty) and kept current between
@@ -170,15 +171,17 @@ async function tick(): Promise<void> {
     if (ticks % 2 === 0) {
         void read(api().GET('/uploads'), uploads);
         void read(api().GET('/sources'), sources);
-        void read(api().GET('/bans'), bans);
+        if (!guest) {
+            void read(api().GET('/bans'), bans);
+        }
     }
     if (ticks % 10 === 0) {
         void read(api().GET('/servers'), servers);
     }
-    if (ticks % 15 === 0) {
+    if (ticks % 15 === 0 && !guest) {
         void read(api().GET('/shared'), shared);
     }
-    if (ticks % 30 === 0) {
+    if (ticks % 30 === 0 && !guest) {
         void read(api().GET('/clients/known'), known);
     }
 }
@@ -189,14 +192,19 @@ async function readAll(): Promise<void> {
         read(api().GET('/downloads'), downloads),
         read(api().GET('/uploads'), uploads),
         read(api().GET('/sources'), sources),
-        read(api().GET('/bans'), bans),
         read(api().GET('/servers'), servers),
-        read(api().GET('/clients/known'), known),
-        read(api().GET('/shared'), shared),
         read(api().GET('/categories'), categories),
-        readPreferences(),
         readRates(),
-        readLastLog(),
+        // A guest may not read the banned, the clients met, the shared files, the options or the log.
+        ...(guest
+            ? []
+            : [
+                  read(api().GET('/bans'), bans),
+                  read(api().GET('/clients/known'), known),
+                  read(api().GET('/shared'), shared),
+                  readPreferences(),
+                  readLastLog(),
+              ]),
     ]);
 }
 

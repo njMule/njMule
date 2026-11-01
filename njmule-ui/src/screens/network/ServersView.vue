@@ -45,6 +45,7 @@ import {
 } from '../../network';
 import { chooseListFile, choosesOnEngine } from '../../list-files';
 import { currentPlatform, type Platform } from '../../platform';
+import { guest } from '../../role';
 import { message, problem } from '../../toasts';
 import DataTable, { type ColumnMeta } from '../../ui/DataTable.vue';
 import EmptyState from '../../ui/EmptyState.vue';
@@ -55,7 +56,7 @@ import Country from '../transfers/Country.vue';
 
 // The servers: the list narrowed by its words, the one in use in bold behind an accent bar, the one being tried in
 // italics; the details of the one chosen beside the list, or over its end in a narrow window; servers added by address
-// or from a server.met on the web or in a file.
+// or from a server.met on the web or in a file. A guest sees them all and can only copy their links.
 
 const filter = ref('');
 const selected = ref<string[]>([]);
@@ -277,7 +278,11 @@ async function run(call: () => Promise<unknown>): Promise<void> {
     }
 }
 
+// A guest's double click does nothing.
 function connectTo(s: Server): Promise<void> {
+    if (guest) {
+        return Promise.resolve();
+    }
     return run(() => answer(api().POST('/servers/connect', { body: { address: s.address } })));
 }
 
@@ -422,22 +427,28 @@ async function pasteLinks(): Promise<void> {
 }
 
 async function menuOpening(): Promise<void> {
+    if (guest) {
+        return;
+    }
     const text = await clipboard();
     pasteable.value = text === null || serverLinks(text).length > 0;
 }
 
 // Keys of the list, ahead of the table's own: Enter leaves the server in use, which the table would connect to again.
+// A guest only copies.
 function key(e: KeyboardEvent): void {
     if ((e.target as HTMLElement).closest('button, input, a')) {
         return;
     }
     const command = e.ctrlKey || e.metaKey;
-    if (e.key === 'Delete') {
+    if (command && e.key.toLowerCase() === 'c') {
+        void copyLinks();
+    } else if (guest) {
+        return;
+    } else if (e.key === 'Delete') {
         void remove(chosen.value);
     } else if (e.key === 'Enter') {
         void connectOrDisconnect();
-    } else if (command && e.key.toLowerCase() === 'c') {
-        void copyLinks();
     } else if (command && e.key.toLowerCase() === 'v') {
         void pasteLinks();
     } else {
@@ -499,7 +510,7 @@ onUnmounted(() => observer?.disconnect());
                 <Icon name="FILTER" />
                 <input v-model="filter" :placeholder="t('nj.servers.filter')" @keydown.esc="filter = ''" />
             </label>
-            <PopoverRoot v-model:open="adding">
+            <PopoverRoot v-if="!guest" v-model:open="adding">
                 <Tip :text="t('nj.servers.add')">
                     <PopoverTrigger ref="addTrigger" class="button"
                         ><Icon name="ADD" />{{ t('nj.servers.add') }}</PopoverTrigger
@@ -567,18 +578,21 @@ onUnmounted(() => observer?.disconnect());
                 >
                     <template #empty>
                         <EmptyState icon="SERVER" :text="t('nj.servers.none')">
-                            <button class="button" @click="update">
-                                <Icon name="REFRESH" />{{ t('IDS_SV_UPDATE') }}
-                            </button>
-                            <button class="button" @click="adding = true">
-                                <Icon name="ADD" />{{ t('nj.servers.add') }}
-                            </button>
+                            <template v-if="!guest">
+                                <button class="button" @click="update">
+                                    <Icon name="REFRESH" />{{ t('IDS_SV_UPDATE') }}
+                                </button>
+                                <button class="button" @click="adding = true">
+                                    <Icon name="ADD" />{{ t('nj.servers.add') }}
+                                </button>
+                            </template>
                         </EmptyState>
                     </template>
+                    <!-- A guest may only copy the links. -->
                     <template #menu>
                         <ContextMenuItem
                             class="menu-item default-item"
-                            :disabled="chosen.length === 0"
+                            :disabled="guest || chosen.length === 0"
                             @select="connectOrDisconnect"
                         >
                             <Icon name="LINK" /><span class="default-label">{{
@@ -586,7 +600,7 @@ onUnmounted(() => observer?.disconnect());
                             }}</span>
                         </ContextMenuItem>
                         <ContextMenuSub>
-                            <ContextMenuSubTrigger class="menu-item" :disabled="chosen.length === 0">
+                            <ContextMenuSubTrigger class="menu-item" :disabled="guest || chosen.length === 0">
                                 <Icon name="PRIORITY" />{{ t('IDS_PRIORITY')
                                 }}<Icon class="menu-end" name="CHEVRON_RIGHT" />
                             </ContextMenuSubTrigger>
@@ -611,14 +625,14 @@ onUnmounted(() => observer?.disconnect());
                         <ContextMenuSeparator class="menu-separator" />
                         <ContextMenuItem
                             class="menu-item"
-                            :disabled="chosen.every((s) => s.static)"
+                            :disabled="guest || chosen.every((s) => s.static)"
                             @select="makeStatic(true)"
                         >
                             <Icon name="LIST_ADD" />{{ t('IDS_ADDTOSTATIC') }}
                         </ContextMenuItem>
                         <ContextMenuItem
                             class="menu-item"
-                            :disabled="!chosen.some((s) => s.static)"
+                            :disabled="guest || !chosen.some((s) => s.static)"
                             @select="makeStatic(false)"
                         >
                             <Icon name="REMOVE_CIRCLE" />{{ t('IDS_REMOVEFROMSTATIC') }}
@@ -627,13 +641,21 @@ onUnmounted(() => observer?.disconnect());
                         <ContextMenuItem class="menu-item" :disabled="chosen.length === 0" @select="copyLinks">
                             <Icon name="COPY" />{{ t('IDS_DL_LINK1') }}
                         </ContextMenuItem>
-                        <ContextMenuItem class="menu-item" :disabled="!pasteable" @select="pasteLinks">
+                        <ContextMenuItem class="menu-item" :disabled="guest || !pasteable" @select="pasteLinks">
                             <Icon name="PASTE" />{{ t('IDS_SW_DIRECTDOWNLOAD') }}
                         </ContextMenuItem>
-                        <ContextMenuItem class="menu-item" :disabled="chosen.length === 0" @select="remove(chosen)">
+                        <ContextMenuItem
+                            class="menu-item"
+                            :disabled="guest || chosen.length === 0"
+                            @select="remove(chosen)"
+                        >
                             <Icon name="DELETE" />{{ t('IDS_REMOVETHIS') }}
                         </ContextMenuItem>
-                        <ContextMenuItem class="menu-item" :disabled="servers.length === 0" @select="removeAll">
+                        <ContextMenuItem
+                            class="menu-item"
+                            :disabled="guest || servers.length === 0"
+                            @select="removeAll"
+                        >
                             <Icon name="DELETE_ALL" />{{ t('IDS_REMOVEALL') }}
                         </ContextMenuItem>
                     </template>
@@ -663,7 +685,7 @@ onUnmounted(() => observer?.disconnect());
                     </div>
                     <p v-if="one.description" class="muted" dir="auto">{{ one.description }}</p>
                     <div class="details-actions">
-                        <div class="details-buttons">
+                        <div v-if="!guest" class="details-buttons">
                             <button class="button" @click="connectOrDisconnect">
                                 <Icon :name="ours ? 'LINK_OFF' : 'LINK'" />{{
                                     t(ours ? 'IDS_MAIN_BTN_DISCONNECT' : 'IDS_MAIN_BTN_CONNECT')
@@ -688,7 +710,7 @@ onUnmounted(() => observer?.disconnect());
                             <DropdownMenuPortal>
                                 <DropdownMenuContent class="menu" align="end" :reference="moreTrigger?.$el">
                                     <DropdownMenuSub>
-                                        <DropdownMenuSubTrigger class="menu-item">
+                                        <DropdownMenuSubTrigger class="menu-item" :disabled="guest">
                                             <Icon name="PRIORITY" />{{ t('IDS_PRIORITY')
                                             }}<Icon class="menu-end" name="CHEVRON_RIGHT" />
                                         </DropdownMenuSubTrigger>
@@ -709,7 +731,7 @@ onUnmounted(() => observer?.disconnect());
                                         <Icon name="COPY" />{{ t('IDS_DL_LINK1') }}
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator class="menu-separator" />
-                                    <DropdownMenuItem class="menu-item" @select="remove(chosen)">
+                                    <DropdownMenuItem class="menu-item" :disabled="guest" @select="remove(chosen)">
                                         <Icon name="DELETE" />{{ t('IDS_REMOVETHIS') }}
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>

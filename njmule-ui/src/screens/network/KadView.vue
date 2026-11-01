@@ -13,14 +13,15 @@ import { status } from '../../model/engine';
 import { hostPort, rememberUrl, SUGGESTED_URLS, urlHistory, webAddress } from '../../network';
 import { chooseListFile, choosesOnEngine } from '../../list-files';
 import { currentPlatform, type Platform } from '../../platform';
+import { guest } from '../../role';
 import { message, problem } from '../../toasts';
 import DataTable from '../../ui/DataTable.vue';
 import Icon from '../../ui/Icon.vue';
 import Tip from '../../ui/Tip.vue';
 import Country from '../transfers/Country.vue';
 
-// Kad: its state in plain words with what to do, the contacts by distance and the facts, the ways to join it, and
-// the contacts and the lookups running, read every few seconds while shown.
+// Kad: its state in plain words with what to do, the contacts by distance and the facts, the ways to join it (not for a
+// guest), and the contacts and the lookups running, read every few seconds while shown.
 
 type Contact = Schemas['KadContact'];
 type Lookup = Schemas['KadSearch'];
@@ -262,7 +263,12 @@ onUnmounted(() => window.clearInterval(timer));
                 </template>
             </dl>
         </div>
-        <details class="join" :open="joinOpen" @toggle="joinOpen = ($event.target as HTMLDetailsElement).open">
+        <details
+            v-if="!guest"
+            class="join"
+            :open="joinOpen"
+            @toggle="joinOpen = ($event.target as HTMLDetailsElement).open"
+        >
             <summary><Icon name="CHEVRON_RIGHT" class="chevron" />{{ t('nj.kad.join') }}</summary>
             <p>{{ t('nj.kad.joinHint') }}</p>
             <div class="ways">
