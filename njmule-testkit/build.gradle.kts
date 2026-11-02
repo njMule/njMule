@@ -16,6 +16,7 @@ dependencies {
 
     testImplementation(project(":njmule-app"))
     testImplementation(project(":njmule-http"))
+    testImplementation(libs.jackson.databind)
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
 }
@@ -27,6 +28,13 @@ tasks.compileJava {
 
 // The end-to-end tests here exercise the core and the launcher: one coverage report for all of them,
 // which SonarQube Cloud reads too.
+// The flows against an njmule executable (-Pnjmule.engine=<path>) run again whenever it changes.
+providers.gradleProperty("njmule.engine").orNull?.let { engine ->
+    tasks.test {
+        inputs.file(engine).withPathSensitivity(PathSensitivity.NONE)
+    }
+}
+
 tasks.check {
     dependsOn(tasks.named("testCodeCoverageReport"))
 }

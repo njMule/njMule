@@ -37,7 +37,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.SearchId;
@@ -169,7 +168,7 @@ class ObfuscatedServerUdpFlowTest {
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
                 "net.tcpPort=" + port + "\nnet.kad.enabled=false\nsecurity.filterLan=false\n");
-        NjMuleEngine started = NjMuleEngine.start(new EngineConfig(dirs));
+        NjMuleEngine started = Engines.start(dirs);
         this.resources.add(started);
         return started;
     }

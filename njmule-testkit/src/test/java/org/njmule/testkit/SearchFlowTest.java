@@ -42,7 +42,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.SearchId;
@@ -163,7 +162,7 @@ class SearchFlowTest {
         int port = FreePorts.tcp();
         Files.writeString(
                 dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nsecurity.filterLan=false\n");
-        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+        this.engine = Engines.start(dirs);
         this.resources.add(this.engine);
         this.events = new Events(this.engine);
     }

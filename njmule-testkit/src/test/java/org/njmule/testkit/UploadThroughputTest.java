@@ -31,7 +31,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.Ed2kLink;
-import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.ServerAddress;
@@ -175,6 +174,6 @@ class UploadThroughputTest {
                 "net.tcpPort=" + port + "\nnet.udpPort=" + FreePorts.udp()
                         + "\nsecurity.filterLan=false\nnet.kad.enabled=false\n"
                         + "limits.uploadKiBps=" + this.uploadLimit + "\nlimits.downloadKiBps=0\n");
-        return NjMuleEngine.start(new EngineConfig(dirs));
+        return Engines.start(dirs);
     }
 }

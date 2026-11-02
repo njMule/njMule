@@ -137,7 +137,9 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   machines with few cores; the CI's verify jobs use it on their four CPUs). Any
   `-Pnjmule.<name>=<value>` reaches the tests as a system property. PowerShell splits an unquoted
   option at its first dot: write `'-Ptest.forks=1'`. One class:
-  `./gradlew :njmule-core:test --tests '*TagCodecTest'`. Speed of the transfers on the loopback
+  `./gradlew :njmule-core:test --tests '*TagCodecTest'`. The testkit's engine flows run against an
+  `njmule` executable through its API with `-Pnjmule.engine=<path>` (the native one, or `installDist`'s
+  launcher). Speed of the transfers on the loopback
   (prints MiB/s): `./gradlew :njmule-testkit:test --tests '*ThroughputTest' '-Ptest.tags=perf'
   '-Ptest.excludedTags=interop'`.
 - Interface (`njmule-ui`): Gradle downloads Node.js (`nodejs` in `libs.versions.toml`, checked

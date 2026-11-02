@@ -18,6 +18,7 @@ package org.njmule.testkit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -44,7 +45,6 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
-import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
@@ -252,9 +252,9 @@ class DownloadFlowTest {
         whenTheDownloadIsCancelled();
 
         thenTheDownloadIsRemoved();
-        thenTheDownloadIsRememberedAsCancelled();
         thenTheDownloadCanNoLongerBePaused();
         thenNoTemporaryFileIsLeftOnceTheCancelCanNoLongerBeUndone();
+        thenTheDownloadIsRememberedAsCancelled();
     }
 
     private void givenAPeerSharing(int size, int seed) throws IOException {
@@ -295,7 +295,7 @@ class DownloadFlowTest {
         // The fake servers and peers listen on this machine's LAN address, which must be let in.
         Files.writeString(
                 dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nsecurity.filterLan=false\n");
-        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+        this.engine = Engines.start(dirs);
         this.resources.add(this.engine);
         this.events = new Events(this.engine);
     }
@@ -484,7 +484,9 @@ class DownloadFlowTest {
         assertThat(this.engine.downloads().get()).isEmpty();
     }
 
+    // Last, as it is left out through the API, which tells a cancelled file only in the results of a search.
     private void thenTheDownloadIsRememberedAsCancelled() throws Exception {
+        assumeTrue(Engines.inThisJvm(), "the file history");
         assertThat(this.engine.fileHistory().get().cancelled(this.added.hash()))
                 .as("remembered as cancelled")
                 .isTrue();
