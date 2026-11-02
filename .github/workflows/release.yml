@@ -151,53 +151,63 @@ jobs:
                   if (-not (Test-Path (Join-Path $data "config\njmule.properties"))) { throw "the uninstaller took the service's profile" }
                   Remove-Item -Recurse -Force $data
             # Uninstalling closes the desktop app running on the user's profile, which saves first, rather than
-            # leaving it running or its files to a reboot.
+            # leaving it running, its files to a reboot or its closing to the Restart Manager, whose request the
+            # window may answer by asking whether to quit. Several rounds, as a race would show only now and then.
             - name: Uninstall a running njMule
               shell: pwsh
               run: |
                   $msi = (Resolve-Path "dist\njmule-$env:VERSION-windows-x64.msi").Path
-                  $p = Start-Process msiexec.exe -ArgumentList @("/i", "`"$msi`"", "/qn") -PassThru -Wait
-                  if ($p.ExitCode -ne 0) { throw "install failed: $($p.ExitCode)" }
-                  $dir = (Get-ItemProperty HKCU:\Software\njMule).InstallFolder
                   $config = Join-Path $env:APPDATA "njMule\config"
-                  New-Item -ItemType Directory -Force $config | Out-Null
-                  Set-Content -Encoding ascii (Join-Path $config "njmule.properties") `
-                      "net.ed2k.enabled=false`nnet.kad.enabled=false`nnet.upnp=false`nupdate.mode=OFF"
-                  Start-Process (Join-Path $dir "njmule-gui.exe")
-                  # Its engine writes the handoff file once it runs.
-                  $started = $false
-                  foreach ($i in 1..120) {
-                      if (Test-Path (Join-Path $config "handoff")) { $started = $true; break }
-                      Start-Sleep 1
-                  }
-                  if (-not $started) { throw "the installed desktop app did not start" }
+                  $logs = Join-Path $env:LOCALAPPDATA "njMule\logs\*.log"
                   $processes = {
                       Get-CimInstance Win32_Process -Filter "Name like 'njmule%'" |
                           Format-Table ProcessId, ParentProcessId, CreationDate, CommandLine -AutoSize | Out-String -Width 400
                   }
-                  "Running before the uninstall:"
-                  & $processes
-                  $log = "$env:RUNNER_TEMP\running-uninstall.log"
-                  $logs = Join-Path $env:LOCALAPPDATA "njMule\logs\*.log"
-                  $watch = [Diagnostics.Stopwatch]::StartNew()
-                  $p = Start-Process msiexec.exe -ArgumentList @("/x", "`"$msi`"", "/qn", "/l*v", "`"$log`"") -PassThru -Wait
-                  "The uninstall took $([int]$watch.Elapsed.TotalSeconds) s and ended with $($p.ExitCode)"
-                  $left = Get-Process njmule, njmule-gui -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dir*" }
-                  $stopped = Select-String -Quiet "Stopping njMule" $logs
-                  Select-String -Path $log -Pattern "StopRunning|RESTART MANAGER|RestartManager|in use|Return value 3|reboot" |
-                      Select-Object -First 60 | ForEach-Object { $_.Line }
-                  "The engine's log:"
-                  Get-Content $logs -Tail 25 -ErrorAction SilentlyContinue
-                  # 3010 would leave files in use to a reboot.
-                  if ($left) {
-                      "Running after the uninstall:"
-                      & $processes
+                  $failed = 0
+                  foreach ($round in 1..5) {
+                      $p = Start-Process msiexec.exe -ArgumentList @("/i", "`"$msi`"", "/qn") -PassThru -Wait
+                      if ($p.ExitCode -ne 0) { throw "install failed: $($p.ExitCode)" }
+                      $dir = (Get-ItemProperty HKCU:\Software\njMule).InstallFolder
+                      Remove-Item -Recurse -Force (Join-Path $env:APPDATA njMule), (Join-Path $env:LOCALAPPDATA njMule) -ErrorAction SilentlyContinue
+                      New-Item -ItemType Directory -Force $config | Out-Null
+                      Set-Content -Encoding ascii (Join-Path $config "njmule.properties") `
+                          "net.ed2k.enabled=false`nnet.kad.enabled=false`nnet.upnp=false`nupdate.mode=OFF"
+                      Start-Process (Join-Path $dir "njmule-gui.exe")
+                      # Its engine writes the handoff file once it runs.
+                      $started = $false
+                      foreach ($i in 1..120) {
+                          if (Test-Path (Join-Path $config "handoff")) { $started = $true; break }
+                          Start-Sleep 1
+                      }
+                      if (-not $started) { throw "the installed desktop app did not start" }
+                      $before = & $processes
+                      $log = "$env:RUNNER_TEMP\running-uninstall-$round.log"
+                      $watch = [Diagnostics.Stopwatch]::StartNew()
+                      $p = Start-Process msiexec.exe -ArgumentList @("/x", "`"$msi`"", "/qn", "/l*v", "`"$log`"") -PassThru -Wait
+                      $seconds = [int]$watch.Elapsed.TotalSeconds
+                      $left = Get-Process njmule, njmule-gui -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dir*" }
+                      $stopped = Select-String -Quiet "Stopping njMule" $logs
+                      $kept = Test-Path (Join-Path $dir "njmule-gui.exe")
+                      "Round $round`: the uninstall took $seconds s and ended with $($p.ExitCode); left running: $(@($left).Count); stopped saving: $stopped"
+                      # 3010 would leave files in use to a reboot; a slow uninstall, a close left to the Restart Manager.
+                      if ($p.ExitCode -ne 0 -or $left -or $kept -or -not $stopped -or $seconds -gt 20) {
+                          $failed++
+                          "Running before the uninstall:"
+                          $before
+                          "Running after it:"
+                          & $processes
+                          Select-String -Path $log -Pattern "StopRunning|InstallValidate|RESTART MANAGER|RestartManager|in use|Return value 3|reboot" |
+                              Select-Object -First 60 | ForEach-Object { $_.Line }
+                          "The engine's log:"
+                          Get-Content $logs -Tail 25 -ErrorAction SilentlyContinue
+                          $left | Stop-Process -Force -ErrorAction SilentlyContinue
+                          if ($kept) {
+                              Start-Process msiexec.exe -ArgumentList @("/x", "`"$msi`"", "/qn") -Wait
+                          }
+                      }
                   }
-                  if ($p.ExitCode -ne 0) { throw "uninstall failed: $($p.ExitCode)" }
-                  if ($left) { throw "njMule still runs after the uninstall: $($left.Path)" }
-                  if (Test-Path (Join-Path $dir "njmule-gui.exe")) { throw "the uninstaller left the programs" }
-                  if (-not $stopped) { throw "njMule did not stop saving its state" }
                   Remove-Item -Recurse -Force (Join-Path $env:APPDATA njMule), (Join-Path $env:LOCALAPPDATA njMule)
+                  if ($failed) { throw "$failed of 5 uninstalls left njMule running, took too long or did not stop it" }
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: windows-x64
