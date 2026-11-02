@@ -40,6 +40,8 @@ const CONTROL_LINE: &str = "njmule-control ";
 const START_WAIT: Duration = Duration::from_secs(120);
 /// How long the engine may take to save and stop once the shell closes.
 const STOP_WAIT: Duration = Duration::from_secs(30);
+/// How long the window gets to close once its engine has ended.
+const CLOSE_WAIT: Duration = Duration::from_secs(5);
 /// How many lines of the engine's error output tell why it could not start: its usage follows a wrong option.
 const ERROR_LINES: usize = 8;
 /// How long the rest of the engine's error output may take once its other output ended.
@@ -303,6 +305,12 @@ fn start_engine(app: AppHandle, engine: Arc<Engine>, options: Vec<String>) {
                 .title("njMule")
                 .blocking_show();
         }
+        // Closing the web view can take long while it is still being made, which keeps an uninstallation or an update
+        // waiting: the shell then ends anyway, its engine having saved everything.
+        std::thread::spawn(|| {
+            std::thread::sleep(CLOSE_WAIT);
+            std::process::exit(0);
+        });
         app.exit(0);
     });
 }
