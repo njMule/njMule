@@ -179,18 +179,19 @@ jobs:
                   & $processes
                   $log = "$env:RUNNER_TEMP\running-uninstall.log"
                   $logs = Join-Path $env:LOCALAPPDATA "njMule\logs\*.log"
+                  $watch = [Diagnostics.Stopwatch]::StartNew()
                   $p = Start-Process msiexec.exe -ArgumentList @("/x", "`"$msi`"", "/qn", "/l*v", "`"$log`"") -PassThru -Wait
+                  "The uninstall took $([int]$watch.Elapsed.TotalSeconds) s and ended with $($p.ExitCode)"
                   $left = Get-Process njmule, njmule-gui -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dir*" }
                   $stopped = Select-String -Quiet "Stopping njMule" $logs
+                  Select-String -Path $log -Pattern "StopRunning|RESTART MANAGER|RestartManager|in use|Return value 3|reboot" |
+                      Select-Object -First 60 | ForEach-Object { $_.Line }
+                  "The engine's log:"
+                  Get-Content $logs -Tail 25 -ErrorAction SilentlyContinue
                   # 3010 would leave files in use to a reboot.
-                  if ($p.ExitCode -ne 0 -or $left -or -not $stopped) {
-                      "Uninstall exit code: $($p.ExitCode)"
+                  if ($left) {
                       "Running after the uninstall:"
                       & $processes
-                      Select-String -Path $log -Pattern "StopRunning|InstallValidate|RESTART MANAGER|RestartManager|in use|Return value 3|reboot" |
-                          Select-Object -First 60 | ForEach-Object { $_.Line }
-                      "The engine's log:"
-                      Get-Content $logs -Tail 40 -ErrorAction SilentlyContinue
                   }
                   if ($p.ExitCode -ne 0) { throw "uninstall failed: $($p.ExitCode)" }
                   if ($left) { throw "njMule still runs after the uninstall: $($left.Path)" }
