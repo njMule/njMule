@@ -106,6 +106,15 @@
             </Component>
         </ComponentGroup>
 
+        <!-- At uninstall, not at an upgrade, the njMule running on the user's profile saves and stops first, its window
+             with it, so that nothing holds the files to remove: before InstallValidate, which would otherwise ask to
+             close it or for a reboot. When none runs, nothing happens. -->
+        <CustomAction
+                Id="StopRunning"
+                Directory="INSTALLFOLDER"
+                ExeCommand="&quot;[INSTALLFOLDER]njmule-gui.exe&quot; --exit"
+                Execute="immediate"
+                Return="ignore"/>
         <!-- The desktop app may have taken the ed2k links: at uninstall it gives them back to
              what opened them before, if it still has them. Not at an upgrade, which keeps them,
              and never a reason to stop the uninstall. The program still exists before
@@ -128,6 +137,10 @@
                 Impersonate="yes"
                 Return="ignore"/>
         <InstallExecuteSequence>
+            <Custom
+                    Action="StopRunning"
+                    Before="InstallValidate"
+                    Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE"/>
             <Custom
                     Action="RestoreLinks"
                     Before="RemoveFiles"

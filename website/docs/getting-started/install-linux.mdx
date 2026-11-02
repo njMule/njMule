@@ -180,7 +180,8 @@ sudo dnf remove njmule
 </TabItem>
 </Tabs>
 
-A package touches no home folder: removing it leaves each user's profile in place, and says where.
+Removing a package first closes every njMule still running from it, which saves its state. A
+package touches no home folder: removing it leaves each user's profile in place, and says where.
 `njmule --remove-profile` deletes the profile of the user who runs it (settings, lists, identity,
 unfinished downloads, caches and logs), after asking; stop njMule first. Completed downloads always
 stay. For an archive, delete its folder, and the links and menu entry if you made them. See

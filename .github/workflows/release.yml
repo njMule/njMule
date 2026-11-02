@@ -114,6 +114,7 @@ jobs:
                       if (-not (Select-String -Quiet -SimpleMatch $exe "$env:RUNNER_TEMP\msi.wxs")) { throw "$exe is missing from the MSI" }
                   }
                   if (-not (Select-String -Quiet -SimpleMatch "--restore-links" "$env:RUNNER_TEMP\msi.wxs")) { throw "the uninstaller does not give the ed2k links back" }
+                  if (-not (Select-String -Quiet -SimpleMatch "--exit" "$env:RUNNER_TEMP\msi.wxs")) { throw "the uninstaller does not close a running njMule" }
                   Copy-Item LICENSE, NOTICE, README.md, CHANGELOG.md "stage\$name"
                   Set-Content -Encoding ascii "stage\$name\install.properties" "kind=zip"
                   Compress-Archive -Path "stage\$name" -DestinationPath "dist\$name.zip"
@@ -149,6 +150,40 @@ jobs:
                   if (Get-Service njMule -ErrorAction SilentlyContinue) { throw "the uninstaller left the service" }
                   if (-not (Test-Path (Join-Path $data "config\njmule.properties"))) { throw "the uninstaller took the service's profile" }
                   Remove-Item -Recurse -Force $data
+            # Uninstalling closes the desktop app running on the user's profile, which saves first, rather than
+            # leaving it running or its files to a reboot.
+            - name: Uninstall a running njMule
+              shell: pwsh
+              run: |
+                  $msi = (Resolve-Path "dist\njmule-$env:VERSION-windows-x64.msi").Path
+                  $p = Start-Process msiexec.exe -ArgumentList @("/i", "`"$msi`"", "/qn") -PassThru -Wait
+                  if ($p.ExitCode -ne 0) { throw "install failed: $($p.ExitCode)" }
+                  $dir = (Get-ItemProperty HKCU:\Software\njMule).InstallFolder
+                  $config = Join-Path $env:APPDATA "njMule\config"
+                  New-Item -ItemType Directory -Force $config | Out-Null
+                  Set-Content -Encoding ascii (Join-Path $config "njmule.properties") `
+                      "net.ed2k.enabled=false`nnet.kad.enabled=false`nnet.upnp=false`nupdate.mode=OFF"
+                  Start-Process (Join-Path $dir "njmule-gui.exe")
+                  # Its engine writes the handoff file once it runs.
+                  $started = $false
+                  foreach ($i in 1..120) {
+                      if (Test-Path (Join-Path $config "handoff")) { $started = $true; break }
+                      Start-Sleep 1
+                  }
+                  if (-not $started) { throw "the installed desktop app did not start" }
+                  $log = "$env:RUNNER_TEMP\running-uninstall.log"
+                  $p = Start-Process msiexec.exe -ArgumentList @("/x", "`"$msi`"", "/qn", "/l*v", "`"$log`"") -PassThru -Wait
+                  # 3010 would leave files in use to a reboot.
+                  if ($p.ExitCode -ne 0) {
+                      Select-String -Path $log -Pattern "StopRunning|in use|RestartManager|Return value 3" | Select-Object -Last 40
+                      throw "uninstall failed: $($p.ExitCode)"
+                  }
+                  $left = Get-Process njmule, njmule-gui -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dir*" }
+                  if ($left) { throw "njMule still runs after the uninstall: $($left.Path)" }
+                  if (Test-Path (Join-Path $dir "njmule-gui.exe")) { throw "the uninstaller left the programs" }
+                  $logs = Join-Path $env:LOCALAPPDATA "njMule\logs\*.log"
+                  if (-not (Select-String -Quiet "Stopping njMule" $logs)) { throw "njMule did not stop saving its state" }
+                  Remove-Item -Recurse -Force (Join-Path $env:APPDATA njMule), (Join-Path $env:LOCALAPPDATA njMule)
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: windows-x64
@@ -236,6 +271,27 @@ jobs:
                   tar -C archive -cJf "dist/${name}.tar.xz" "${name}"
                   # The headless executable alone goes into the Docker image only.
                   install -m 755 njmule-app/build/native/nativeCompile/njmule headless/njmule
+            # Removing the package closes the desktop app still running, which saves first.
+            - name: Remove a running njMule
+              run: |
+                  sudo apt-get install -y -qq ./dist/*.deb
+                  config="$HOME/.config/njmule"
+                  mkdir -p "$config"
+                  printf 'net.ed2k.enabled=false\nnet.kad.enabled=false\nnet.upnp=false\nupdate.mode=OFF\n' > "$config/njmule.properties"
+                  xvfb-run -a njmule-gui > /dev/null 2>&1 &
+                  # Its engine writes the handoff file once it runs.
+                  for _ in $(seq 1 120); do
+                      [ -e "$config/handoff" ] && break
+                      sleep 1
+                  done
+                  [ -e "$config/handoff" ] || { echo "the installed desktop app did not start" >&2; exit 1; }
+                  sudo apt-get remove -y -qq njmule
+                  if pgrep -x njmule-gui > /dev/null || pgrep -x njmule > /dev/null; then
+                      echo "njMule still runs after the removal" >&2
+                      exit 1
+                  fi
+                  grep -qs "Stopping njMule" "$HOME"/.local/state/njmule/logs/*.log || { echo "njMule did not stop saving its state" >&2; exit 1; }
+                  rm -rf "$config" "$HOME/.local/share/njmule" "$HOME/.local/state/njmule" "$HOME/.cache/njmule"
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: linux-${{ matrix.arch }}
@@ -521,6 +577,31 @@ jobs:
                   # LZMA (ULMO): smaller than zlib (UDZO), opened by every supported macOS.
                   hdiutil create -volname njMule -srcfolder stage -ov -format ULMO \
                       "dist/njmule-${VERSION}-macos-arm64.dmg"
+            # As "Uninstall njMule" does first: the app running on the user's profile saves and stops, its window
+            # with it.
+            - name: Exit a running njMule
+              run: |
+                  app=stage/njMule.app/Contents/MacOS
+                  config="$HOME/Library/Application Support/njMule/config"
+                  mkdir -p "$config"
+                  printf 'net.ed2k.enabled=false\nnet.kad.enabled=false\nnet.upnp=false\nupdate.mode=OFF\n' > "$config/njmule.properties"
+                  "$app/njmule-gui" > /dev/null 2>&1 &
+                  # Its engine writes the handoff file once it runs.
+                  for _ in $(seq 1 120); do
+                      [ -e "$config/handoff" ] && break
+                      sleep 1
+                  done
+                  [ -e "$config/handoff" ] || { echo "the desktop app did not start" >&2; exit 1; }
+                  "$app/njmule-gui" --exit
+                  for _ in $(seq 1 20); do
+                      pgrep -x njmule-gui > /dev/null || break
+                      sleep 0.5
+                  done
+                  if pgrep -x njmule-gui > /dev/null || pgrep -x njmule > /dev/null; then
+                      echo "njMule still runs after --exit" >&2
+                      exit 1
+                  fi
+                  rm -rf "$HOME/Library/Application Support/njMule" "$HOME/Library/Logs/njMule" "$HOME/Library/Caches/org.njmule.njMule"
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: macos-arm64
