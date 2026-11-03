@@ -10,6 +10,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Uninstalling closes njMule if it still runs, once it has saved its state, rather than leaving it
+  running: the Windows installer, the macOS disk image's Uninstall njMule (which asked to quit it
+  first) and the removal of the deb and rpm packages.
+
 ## [0.3.0] - 2026-11-01
 
 ### Added

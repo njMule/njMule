@@ -200,7 +200,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - Installers: every desktop package carries the headless engine `njmule(.exe)` of
   `:njmule-app:nativeCompile`, also the command line, and the desktop window `njmule-gui(.exe)` of
   `:njmule-desktop:shell`, which starts the engine beside it and answers the old Windows launcher's
-  commands (`--apply-update`, `--keep-awake`, `--uninstall-profile`, `--restore-links`); Windows adds
+  commands (`--apply-update`, `--keep-awake`, `--uninstall-profile`, `--restore-links`) and `--exit`,
+  which every uninstaller runs first to have a running njMule save and stop; Windows adds
   `njmule-service.exe`. `.github/scripts/desktop-smoke-test.*` checks the window starts the engine.
   WiX **5** (`dotnet tool install --global wix --version 5.0.2`; v6+ need the OSMF EULA)
   builds the per-user MSI from `packaging/windows/njmule.wxs`; nfpm builds deb/rpm from

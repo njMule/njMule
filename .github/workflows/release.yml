@@ -114,6 +114,7 @@ jobs:
                       if (-not (Select-String -Quiet -SimpleMatch $exe "$env:RUNNER_TEMP\msi.wxs")) { throw "$exe is missing from the MSI" }
                   }
                   if (-not (Select-String -Quiet -SimpleMatch "--restore-links" "$env:RUNNER_TEMP\msi.wxs")) { throw "the uninstaller does not give the ed2k links back" }
+                  if (-not (Select-String -Quiet -SimpleMatch "--exit" "$env:RUNNER_TEMP\msi.wxs")) { throw "the uninstaller does not close a running njMule" }
                   Copy-Item LICENSE, NOTICE, README.md, CHANGELOG.md "stage\$name"
                   Set-Content -Encoding ascii "stage\$name\install.properties" "kind=zip"
                   Compress-Archive -Path "stage\$name" -DestinationPath "dist\$name.zip"

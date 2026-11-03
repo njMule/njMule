@@ -51,11 +51,13 @@ What the installer does:
   It stops the service while its files are replaced, starts it again after an upgrade and removes
   it with njMule; the service's profile in `%ProgramData%\njMule` stays. See
   [Windows service](/docs/server/windows-service).
-- A newer MSI upgrades the installed one. Uninstalling gives the ed2k links back to the program that
-  opened them before (`njmule-gui.exe --restore-links`) and, unless it runs without a user
-  interface (`/qn`), asks whether the user's profile goes to the Recycle Bin too
-  (`njmule-gui.exe --uninstall-profile`). The desktop window answers both, and the update's
-  `--apply-update`, before it opens any window.
+- A newer MSI upgrades the installed one. Uninstalling first has the njMule running on the user's
+  profile save and stop, its window with it (`njmule-gui.exe --exit`, before `InstallValidate`, so
+  that no file is in use), then gives the ed2k links back to the program that opened them before
+  (`njmule-gui.exe --restore-links`) and, unless it runs without a user interface (`/qn`), asks
+  whether the user's profile goes to the Recycle Bin too (`njmule-gui.exe --uninstall-profile`). The
+  desktop window answers all three, and the update's `--apply-update`, before it opens any window,
+  and runs the engine's commands without a console window.
 
 To build it, stage the engine, the desktop window and the service host, then run WiX from the root of
 the repository (the window needs Rust, see [Building](building.mdx#the-desktop-window)):
@@ -77,9 +79,9 @@ wix build packaging\windows\njmule.wxs -wx -arch x64 -d Version=1.2.3 -d Gui=yes
 Before packing, the release workflow runs `.github/scripts/desktop-smoke-test.ps1` on the programs:
 the window tells its version, starts the engine on a profile of its own and takes it along when
 closed. It then checks the MSI: it decompiles it and looks for the programs, the
-`install.properties` file and the `--restore-links` action, installs it for every user with the
-service and checks that the service answers, and installs, runs and uninstalls it on a Windows arm64
-runner.
+`install.properties` file and the `--exit` and `--restore-links` actions, installs it for every user
+with the service and checks that the service answers, and installs, runs and uninstalls it on a
+Windows arm64 runner.
 
 The **zip** holds the same files as the stage folder, plus `LICENSE`, `NOTICE`, `README.md`,
 `CHANGELOG.md` and an `install.properties` with `kind=zip`. It runs from any folder, and is portable
@@ -112,9 +114,11 @@ The packages install:
 | `/usr/share/licenses/njmule/`, `/usr/share/doc/njmule/` | the license and the documents of `stage/doc` |
 
 They depend on WebKitGTK 4.1 and GTK 3, which the window shows the interface with, and are
-compressed with xz. After installing and removing,
-their scripts refresh the desktop database and the icon cache; a removal also says where each
-user's profile stays, as a package touches no home folder.
+compressed with xz. Before a removal (not an upgrade), `preremove.sh` sends `SIGTERM` to every
+desktop window and every engine without a window running from `/usr/lib/njmule`, whoever runs it,
+and waits up to a minute for them to save and stop; the engine of a window stops with it. After
+installing and removing, their scripts refresh the desktop database and the icon cache; a removal
+also says where each user's profile stays, as a package touches no home folder.
 
 The **`.tar.xz` archive** of the release holds the same two programs, `LICENSE`, `NOTICE`, `README.md`, `CHANGELOG.md`, an `install.properties` with `kind=tar`, and a
 `share/` folder with the desktop entry, the metadata and the icon for manual desktop integration.
@@ -144,7 +148,8 @@ hdiutil create -volname njMule -srcfolder stage -ov -format ULMO dist/njmule-1.2
 - The bundle is **ad-hoc signed** (`--sign -`), not notarized: Gatekeeper asks users to allow its
   first launch ([Install on macOS](/docs/getting-started/install-macos)).
 - *Uninstall njMule*, compiled from `uninstall.applescript`, sits beside the app in the disk image:
-  it moves the app to the Trash and, when its box is ticked, the user's profile too.
+  it closes a running njMule first (`njmule-gui --exit`, which waits for it to save and stop), then
+  moves the app to the Trash and, when its box is ticked, the user's profile too.
 - The disk image is compressed with LZMA (`ULMO`), which every supported macOS opens.
 
 ## Synology package

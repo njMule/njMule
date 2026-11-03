@@ -5,6 +5,8 @@
 //!
 //! - `--version` writes njMule's version;
 //! - `--restore-links` hands the eD2K links back to the program that had them, through the engine;
+//! - `--exit` has the njMule running on the profile save and stop, through the engine, its window going with it, as an
+//!   uninstallation does first;
 //! - on Windows, a copy of it out of the folder Windows Installer replaces installs a new version:
 //!   `--apply-update <msi> --wait <pid>... --ui passive|quiet [--all-users] --log <file> --result <file>
 //!   [--relaunch <program> <arguments>...]` waits for those processes to end, runs msiexec on the package, writes its
@@ -20,6 +22,9 @@ use std::time::Duration;
 const MAX_WAITS: usize = 8;
 /// How long a start waits for each process it was told to.
 const WAIT: Duration = Duration::from_secs(60);
+/// How long the windows of a njMule that stopped get to end with it.
+#[cfg(windows)]
+const ENDING_WAIT: Duration = Duration::from_secs(10);
 
 /// A command of the desktop program, from its command line; those of Windows Installer and its computer only run
 /// there.
@@ -28,6 +33,7 @@ const WAIT: Duration = Duration::from_secs(60);
 pub enum Verb {
     Version,
     RestoreLinks(Vec<String>),
+    Exit(Vec<String>),
     ApplyUpdate(Update),
     KeepAwake(u32),
     UninstallProfile,
@@ -52,6 +58,7 @@ pub fn verb(args: &[String]) -> Option<Result<Verb, String>> {
     match first.as_str() {
         "--version" if args.len() == 2 => Some(Ok(Verb::Version)),
         "--restore-links" => Some(Ok(Verb::RestoreLinks(args[1..].to_vec()))),
+        "--exit" => Some(Ok(Verb::Exit(args[1..].to_vec()))),
         "--apply-update" if args.get(2).is_some_and(|msi| msi.to_ascii_lowercase().ends_with(".msi")) => {
             Some(update(&args[1..]).map(Verb::ApplyUpdate))
         }
@@ -135,6 +142,7 @@ pub fn run(verb: Verb, version: &str) -> i32 {
             0
         }
         Verb::RestoreLinks(args) => engine(&args),
+        Verb::Exit(args) => stop_running(&args),
         #[cfg(windows)]
         Verb::ApplyUpdate(update) => windows::apply_update(&update),
         #[cfg(windows)]
@@ -182,6 +190,17 @@ fn engine(args: &[String]) -> i32 {
     }
 }
 
+/// Has the njMule running on the profile `args` name save and stop, through the engine, which waits for it; on Windows
+/// its window and helpers, which hold the files an uninstallation removes, then get the time to end too.
+fn stop_running(args: &[String]) -> i32 {
+    let code = engine(args);
+    #[cfg(windows)]
+    if code == 0 {
+        windows::await_others(ENDING_WAIT);
+    }
+    code
+}
+
 /// The console of the command line that started this window program, so that its output shows there.
 fn attach_console() {
     #[cfg(windows)]
@@ -194,13 +213,22 @@ fn attach_console() {
 #[cfg(windows)]
 mod windows {
     use super::{msiexec_args, Update};
-    use std::os::windows::ffi::OsStrExt;
+    use std::ffi::OsString;
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
     use std::os::windows::process::CommandExt;
+    use std::path::{Path, PathBuf};
     use std::process::Command;
-    use windows_sys::Win32::Foundation::CloseHandle;
+    use std::time::{Duration, Instant};
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    };
     use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
     use windows_sys::Win32::System::Power::{SetThreadExecutionState, ES_CONTINUOUS, ES_SYSTEM_REQUIRED};
-    use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, WaitForSingleObject, INFINITE, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+    };
     use windows_sys::Win32::UI::Controls::{
         TASKDIALOGCONFIG, TDCBF_OK_BUTTON, TDF_ALLOW_DIALOG_CANCELLATION, TD_INFORMATION_ICON,
     };
@@ -239,6 +267,72 @@ mod windows {
                 WaitForSingleObject(process, millis);
                 CloseHandle(process);
             }
+        }
+    }
+
+    /// Waits up to `wait` in all for the other processes of this very program to end.
+    pub(super) fn await_others(wait: Duration) {
+        let Ok(own) = std::env::current_exe() else { return };
+        let deadline = Instant::now() + wait;
+        for pid in others(&own) {
+            let left = deadline.saturating_duration_since(Instant::now());
+            wait_for(pid, left.as_millis() as u32);
+        }
+    }
+
+    /// The processes but this one that run `program`.
+    fn others(program: &Path) -> Vec<u32> {
+        let name: Vec<u16> = program.file_name().map(|n| n.encode_wide().collect()).unwrap_or_default();
+        let mut found = Vec::new();
+        // SAFETY: the snapshot is checked and closed here; each entry has its size set and ends its name with a null.
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snapshot == INVALID_HANDLE_VALUE {
+                return found;
+            }
+            let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+            let mut more = Process32FirstW(snapshot, &mut entry) != 0;
+            while more {
+                let pid = entry.th32ProcessID;
+                let length = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+                if pid != std::process::id()
+                    && same_name(&entry.szExeFile[..length], &name)
+                    && image(pid).is_some_and(|path| same_name(&wide_path(&path), &wide_path(program)))
+                {
+                    found.push(pid);
+                }
+                more = Process32NextW(snapshot, &mut entry) != 0;
+            }
+            CloseHandle(snapshot);
+        }
+        found
+    }
+
+    fn wide_path(path: &Path) -> Vec<u16> {
+        path.as_os_str().encode_wide().collect()
+    }
+
+    /// Whether two names are the same but for the case of their ASCII letters, as Windows' file names are.
+    fn same_name(a: &[u16], b: &[u16]) -> bool {
+        let lower = |c: &u16| if (b'A' as u16..=b'Z' as u16).contains(c) { c + 32 } else { *c };
+        a.len() == b.len() && a.iter().map(lower).eq(b.iter().map(lower))
+    }
+
+    /// The program the process `pid` runs, when this one may ask.
+    fn image(pid: u32) -> Option<PathBuf> {
+        // SAFETY: the handle is checked and closed here; the size passed is the buffer's, and the call sets it to the
+        // length written.
+        unsafe {
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if process.is_null() {
+                return None;
+            }
+            let mut buffer = vec![0u16; 32_768];
+            let mut size = buffer.len() as u32;
+            let named = QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, buffer.as_mut_ptr(), &mut size) != 0;
+            CloseHandle(process);
+            named.then(|| PathBuf::from(OsString::from_wide(&buffer[..size as usize])))
         }
     }
 
@@ -438,6 +532,13 @@ mod tests {
         let found = waits(&words(&["njmule-gui", "--config-dir", "/data", "--wait", "41", "--wait", "x"]));
 
         assert_eq!(found, vec![41]);
+    }
+
+    #[test]
+    fn should_have_the_running_njmule_exit_through_the_engine_on_its_profile() {
+        let found = verb(&words(&["njmule-gui", "--exit", "--config-dir", "/data"]));
+
+        assert_eq!(found, Some(Ok(Verb::Exit(words(&["--exit", "--config-dir", "/data"])))));
     }
 
     #[test]

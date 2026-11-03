@@ -92,4 +92,5 @@ contents:
 
 scripts:
   postinstall: packaging/linux/refresh.sh
+  preremove: packaging/linux/preremove.sh
   postremove: packaging/linux/postremove.sh

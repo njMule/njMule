@@ -13,7 +13,9 @@ they are.
 
 ## Before you uninstall
 
-1. Exit njMule, or stop it if it runs headless (`njmule --exit`).
+1. The Windows installer, the macOS uninstaller and the Linux packages close a running njMule
+   themselves, once it has saved its state. Elsewhere, exit njMule, or stop it if it runs headless
+   (`njmule --exit`).
 2. Move your completed downloads somewhere else if they are inside a folder you will delete by hand
    (the Windows service's and the Docker volume's are).
 
@@ -26,9 +28,11 @@ they are.
 
 1. Open **Settings → Apps → Installed apps**, find **njMule** and choose **Uninstall** (or use
    **Programs and Features** of the Control Panel).
-2. If njMule opens ed2k links, the uninstaller gives them back to the program that opened them
+2. If njMule runs, the uninstaller closes it first: njMule saves its state and stops, its window
+   with it.
+3. If njMule opens ed2k links, the uninstaller gives them back to the program that opened them
    before, such as eMule, when it still has it, and turns **Start njMule when I log in** off.
-3. The window **Uninstall njMule** asks *Also delete your njMule data?* Tick **Delete my njMule
+4. The window **Uninstall njMule** asks *Also delete your njMule data?* Tick **Delete my njMule
    data** to move your profile (`%APPDATA%\njMule` and `%LOCALAPPDATA%\njMule`) to the Recycle Bin,
    with the `org.njmule.njMule` folders the desktop window may have left beside them; leave it
    unticked to keep it.
@@ -48,18 +52,19 @@ service's own profile in `%ProgramData%\njMule`, with its downloads, stays.
 </TabItem>
 <TabItem value="macos" label="macOS">
 
-1. Quit njMule.
-2. Open the njMule disk image and double-click **Uninstall njMule**.
-3. To delete your data too, select the line **Delete my njMule data: settings, server and contact
+1. Open the njMule disk image and double-click **Uninstall njMule**.
+2. To delete your data too, select the line **Delete my njMule data: settings, server and contact
    lists, identity and credits, unfinished downloads and logs**; leave it unselected to keep it.
    Choose **Uninstall**.
 
-The uninstaller gives the ed2k links back and turns the start at login off, then njMule.app goes to
-the Trash and, when you chose it, `~/Library/Application Support/njMule`,
-`~/Library/Caches/org.njmule.njMule` and `~/Library/Logs/njMule` with it. If njMule still runs, the
-uninstaller asks you to quit it first.
+If njMule runs, the uninstaller closes it first, once it has saved its state. It then gives the ed2k
+links back and turns the start at login off, and njMule.app goes to the Trash and, when you chose it,
+`~/Library/Application Support/njMule`, `~/Library/Caches/org.njmule.njMule` and
+`~/Library/Logs/njMule` with it. A njMule it cannot close, such as one started on another profile,
+it asks you to quit.
 
-Without the disk image, drag njMule from Applications to the Trash; to delete the data first, run
+Without the disk image, quit njMule and drag it from Applications to the Trash: macOS closes
+nothing by itself. To delete the data first, run
 `/Applications/njMule.app/Contents/MacOS/njmule --remove-profile`.
 
 </TabItem>
@@ -79,7 +84,9 @@ Without the disk image, drag njMule from Applications to the Trash; to delete th
    sudo dnf remove njmule    # Fedora, RHEL
    ```
 
-The package touches no home folder: it tells where each user's profile stays, in `~/.config/njmule`,
+Removing the package first closes every njMule still running from it, whichever user runs it: each
+saves its state and stops, within a minute. The package touches no home folder: it tells where each
+user's profile stays, in `~/.config/njmule`,
 `~/.local/share/njmule`, `~/.local/state/njmule` and `~/.cache/njmule`. Delete those folders by hand
 later if you change your mind.
 
