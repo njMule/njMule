@@ -139,7 +139,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   option at its first dot: write `'-Ptest.forks=1'`. One class:
   `./gradlew :njmule-core:test --tests '*TagCodecTest'`. The testkit's engine flows run against an
   `njmule` executable through its API with `-Pnjmule.engine=<path>` (the native one, or `installDist`'s
-  launcher). Speed of the transfers on the loopback
+  launcher). `-Pnjmule.corpus.write=true` writes the engine's answers into the corpora
+  (`golden/*.txt` of `njmule-core`'s tests) instead of checking them. Speed of the transfers on the loopback
   (prints MiB/s): `./gradlew :njmule-testkit:test --tests '*ThroughputTest' '-Ptest.tags=perf'
   '-Ptest.excludedTags=interop'`.
 - Interface (`njmule-ui`): Gradle downloads Node.js (`nodejs` in `libs.versions.toml`, checked
