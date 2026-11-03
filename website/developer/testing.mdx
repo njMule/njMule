@@ -173,6 +173,18 @@ The eD2K and AICH hashes and the protocol obfuscation are also checked against g
 by an independent Python implementation (`tools/golden/`), stored in
 `njmule-core/src/test/resources/golden/`.
 
+A corpus in the same folder keeps a decoder's inputs with the answers the engine gives them, so that
+another engine can be checked against them. `tag-codec.txt` holds tags, tag lists and Kad tag lists,
+written right and changed by `Mutations`, with the bytes each read takes and the tags written again,
+or the refusal. `TagCodecCorpusTest` checks that the engine still answers so. After a change meant
+to alter the answers, write them again and review the difference:
+
+```bash
+./gradlew :njmule-core:test --tests '*CorpusTest' -Pnjmule.corpus.write=true
+```
+
+The inputs stay the same; delete the file to draw new ones from the jqwik generators.
+
 ## Interface tests
 
 The interface's tests are in `njmule-ui/src/__tests__/*.test.ts`, run by Vitest on happy-dom, a
