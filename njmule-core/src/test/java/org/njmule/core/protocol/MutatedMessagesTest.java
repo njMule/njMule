@@ -70,11 +70,11 @@ class MutatedMessagesTest {
     private static final int IP = 0x0A00_0001;
 
     @FunctionalInterface
-    private interface Decoder {
+    interface Decoder {
         Object decode(Packet packet) throws DecodeException;
     }
 
-    private record Sample(String name, Packet packet, Decoder decoder) {
+    record Sample(String name, Packet packet, Decoder decoder) {
         @Override
         public String toString() {
             return this.name;

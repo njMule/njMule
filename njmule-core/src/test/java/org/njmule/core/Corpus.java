@@ -22,20 +22,20 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
+import java.util.HexFormat;
 import java.util.List;
-import java.util.SequencedMap;
 import java.util.stream.Collectors;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Inputs of a decoder with the answers this engine gives them, in {@code golden/<name>.txt}: one case per line, its
- * kind then {@code key=value} fields. Another engine that replays them answers as this one does.
+ * Inputs of a decoder with the answers this engine gives them, in {@code golden/<name>.jsonl}: one JSON object per
+ * line, its {@code kind} first. Another engine that replays them answers as this one does.
  */
 public final class Corpus {
 
     private static final Path SOURCES = Path.of("src", "test", "resources", "golden");
+    private static final JsonMapper MAPPER = JsonMapper.shared();
 
     private Corpus() {}
 
@@ -44,61 +44,34 @@ public final class Corpus {
         return Boolean.getBoolean("njmule.corpus.write");
     }
 
-    /** The cases of {@code golden/<name>.txt}, none if it does not exist yet. */
-    public static List<Case> read(String name) {
-        try (InputStream in = Corpus.class.getResourceAsStream("/golden/" + name + ".txt")) {
+    /** The cases of {@code golden/<name>.jsonl}, none if it does not exist yet. */
+    public static List<ObjectNode> read(String name) {
+        try (InputStream in = Corpus.class.getResourceAsStream("/golden/" + name + ".jsonl")) {
             if (in == null) {
                 return List.of();
             }
             return new String(in.readAllBytes(), StandardCharsets.UTF_8)
                     .lines()
-                    .filter(line -> !line.isBlank() && !line.startsWith("#"))
-                    .map(Case::parse)
+                    .filter(line -> !line.isBlank())
+                    .map(line -> (ObjectNode) MAPPER.readTree(line))
                     .toList();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
-    /** Writes {@code golden/<name>.txt} in the module's test sources, run from the module's folder as Gradle does. */
-    public static void write(String name, String header, List<Case> cases) throws IOException {
-        List<String> lines = new ArrayList<>();
-        header.lines().map(line -> "# " + line).forEach(lines::add);
-        cases.stream().map(Case::toString).forEach(lines::add);
+    /** Writes {@code golden/<name>.jsonl} in the module's test sources, run from the module's folder as Gradle does. */
+    public static void write(String name, List<ObjectNode> cases) throws IOException {
         Files.createDirectories(SOURCES);
-        Files.writeString(SOURCES.resolve(name + ".txt"), String.join("\n", lines) + "\n");
+        Files.writeString(
+                SOURCES.resolve(name + ".jsonl"),
+                cases.stream().map(ObjectNode::toString).collect(Collectors.joining("\n", "", "\n")));
     }
 
-    /** One case: what it decodes, and its fields in order. */
-    public record Case(String kind, SequencedMap<String, String> fields) {
-
-        public Case {
-            fields = Collections.unmodifiableSequencedMap(new LinkedHashMap<>(fields));
-        }
-
-        public String field(String key) {
-            String value = this.fields.get(key);
-            if (value == null) {
-                throw new IllegalArgumentException("No " + key + " in " + this);
-            }
-            return value;
-        }
-
-        private static Case parse(String line) {
-            String[] parts = line.split(" ", -1);
-            SequencedMap<String, String> fields = new LinkedHashMap<>();
-            for (int i = 1; i < parts.length; i++) {
-                int eq = parts[i].indexOf('=');
-                fields.put(parts[i].substring(0, eq), parts[i].substring(eq + 1));
-            }
-            return new Case(parts[0], fields);
-        }
-
-        @Override
-        public String toString() {
-            return this.fields.entrySet().stream()
-                    .map(field -> field.getKey() + "=" + field.getValue())
-                    .collect(Collectors.joining(" ", this.kind + " ", ""));
-        }
+    /** A case of {@code kind} that decodes {@code in}. */
+    public static ObjectNode newCase(String kind, byte[] in) {
+        return MAPPER.createObjectNode()
+                .put("kind", kind)
+                .put("in", HexFormat.of().formatHex(in));
     }
 }

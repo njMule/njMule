@@ -23,9 +23,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HexFormat;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.SequencedMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -35,24 +33,17 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.njmule.core.Corpus;
-import org.njmule.core.Corpus.Case;
 import org.njmule.core.Mutations;
 import org.njmule.core.protocol.io.DecodeException;
 import org.njmule.core.protocol.io.PacketReader;
 import org.njmule.core.protocol.io.PacketWriter;
 import org.njmule.core.protocol.io.StringEncoding;
+import tools.jackson.databind.node.ObjectNode;
 
-/** The tag codec's answers to the inputs of {@code golden/tag-codec.txt}, which other engines replay. */
+/** The tag codec's answers to the inputs of {@code golden/tag-codec.jsonl}, which other engines replay. */
 class TagCodecCorpusTest {
 
     private static final String NAME = "tag-codec";
-    private static final String HEADER = """
-            Inputs of the tag decoders and the answers of njMule's Java engine, for other engines to replay.
-            Kinds: ed2k-tag (one eD2K tag), ed2k-tags (count eD2K tags, at most 64), kad-tags (a Kad tag list).
-            Answers: used (bytes read); the tags written again in the new eD2K encoding (new), the old one (old)
-            or as a Kad list (kad), - where writing them is refused; error=decode where reading is refused.
-            Answers again: ./gradlew :njmule-core:test --tests '*CorpusTest' -Pnjmule.corpus.write=true
-            (new inputs once this file is deleted).""";
     private static final String ED2K_TAG = "ed2k-tag";
     private static final String ED2K_TAGS = "ed2k-tags";
     private static final String KAD_TAGS = "kad-tags";
@@ -60,13 +51,13 @@ class TagCodecCorpusTest {
     private static final int MAX_INPUT = 256;
     private static final HexFormat HEX = HexFormat.of();
 
-    private Case input;
-    private Case answer;
-    private List<Case> answers;
+    private ObjectNode input;
+    private ObjectNode answer;
+    private List<ObjectNode> answers;
 
     @ParameterizedTest
     @MethodSource("recordedCases")
-    void shouldGiveTheRecordedAnswers(Case recorded) {
+    void shouldGiveTheRecordedAnswers(ObjectNode recorded) {
         givenTheCorpusIsChecked();
         givenTheInputOf(recorded);
         whenItIsDecoded();
@@ -81,7 +72,8 @@ class TagCodecCorpusTest {
     }
 
     private static Stream<Arguments> recordedCases() {
-        return Corpus.read(NAME).stream().map(c -> Arguments.argumentSet(c.kind(), c));
+        return Corpus.read(NAME).stream()
+                .map(c -> Arguments.argumentSet(c.get("kind").asString(), c));
     }
 
     private void givenTheCorpusIsChecked() {
@@ -92,7 +84,7 @@ class TagCodecCorpusTest {
         assumeTrue(Corpus.writing(), "-Pnjmule.corpus.write=true");
     }
 
-    private void givenTheInputOf(Case recorded) {
+    private void givenTheInputOf(ObjectNode recorded) {
         this.input = inputOf(recorded);
     }
 
@@ -101,81 +93,81 @@ class TagCodecCorpusTest {
     }
 
     private void whenTheInputsAreAnswered() throws IOException {
-        List<Case> inputs =
+        List<ObjectNode> inputs =
                 Corpus.read(NAME).stream().map(TagCodecCorpusTest::inputOf).toList();
         this.answers = (inputs.isEmpty() ? newInputs() : inputs)
                 .stream().map(TagCodecCorpusTest::answered).toList();
-        Corpus.write(NAME, HEADER, this.answers);
+        Corpus.write(NAME, this.answers);
     }
 
-    private void thenTheAnswerIs(Case recorded) {
+    private void thenTheAnswerIs(ObjectNode recorded) {
         assertThat(this.answer).hasToString(recorded.toString());
     }
 
     private void thenEveryInputHasAnAnswer() {
-        assertThat(this.answers)
-                .isNotEmpty()
-                .allMatch(c -> c.fields().containsKey("used") || c.fields().containsKey("error"));
+        assertThat(this.answers).isNotEmpty().allMatch(c -> c.has("used") || c.has("error"));
     }
 
-    private static Case inputOf(Case recorded) {
-        SequencedMap<String, String> fields = new LinkedHashMap<>();
-        fields.put("in", recorded.field("in"));
-        if (recorded.fields().containsKey("count")) {
-            fields.put("count", recorded.field("count"));
+    private static ObjectNode inputOf(ObjectNode recorded) {
+        ObjectNode fresh = Corpus.newCase(
+                recorded.get("kind").asString(), HEX.parseHex(recorded.get("in").asString()));
+        if (recorded.has("count")) {
+            fresh.put("count", recorded.get("count").asInt());
         }
-        return new Case(recorded.kind(), fields);
+        return fresh;
     }
 
-    private static Case answered(Case input) {
-        SequencedMap<String, String> fields = new LinkedHashMap<>(input.fields());
-        PacketReader in = PacketReader.of(HEX.parseHex(input.field("in")));
+    private static ObjectNode answered(ObjectNode input) {
+        ObjectNode result = input.deepCopy();
+        PacketReader in = PacketReader.of(HEX.parseHex(input.get("in").asString()));
         try {
-            switch (input.kind()) {
+            switch (input.get("kind").asString()) {
                 case ED2K_TAG -> {
                     List<Tag> tags = List.of(TagCodec.readEd2k(in));
-                    fields.put("used", Integer.toString(in.position()));
-                    fields.put("new", hexWritten(out -> writeNewEd2k(out, tags)));
-                    fields.put("old", hexWritten(out -> writeOldEd2k(out, tags)));
+                    result.put("used", in.position());
+                    result.put("new", hexWritten(out -> writeNewEd2k(out, tags)));
+                    result.put("old", hexWritten(out -> writeOldEd2k(out, tags)));
                 }
                 case ED2K_TAGS -> {
-                    List<Tag> tags = TagCodec.readEd2kList(in, Long.parseLong(input.field("count")), MAX_COUNT);
-                    fields.put("used", Integer.toString(in.position()));
-                    fields.put("new", hexWritten(out -> writeNewEd2k(out, tags)));
+                    List<Tag> tags =
+                            TagCodec.readEd2kList(in, input.get("count").asLong(), MAX_COUNT);
+                    result.put("used", in.position());
+                    result.put("new", hexWritten(out -> writeNewEd2k(out, tags)));
                 }
                 case KAD_TAGS -> {
                     List<Tag> tags = TagCodec.readKadList(in);
-                    fields.put("used", Integer.toString(in.position()));
-                    fields.put("kad", hexWritten(out -> TagCodec.writeKadList(out, tags)));
+                    result.put("used", in.position());
+                    result.put("kad", hexWritten(out -> TagCodec.writeKadList(out, tags)));
                 }
-                default -> throw new IllegalArgumentException("Unknown kind: " + input.kind());
+                default -> throw new IllegalArgumentException("Unknown kind: " + input.get("kind"));
             }
         } catch (DecodeException e) {
-            fields.put("error", "decode");
+            result.put("error", "decode");
         }
-        return new Case(input.kind(), fields);
+        return result;
     }
 
     /** Tags, lists and Kad lists as the codec writes them, each also changed by {@link Mutations}. */
-    private static List<Case> newInputs() {
+    private static List<ObjectNode> newInputs() {
         TagCodecTest generators = new TagCodecTest();
-        List<Case> inputs = new ArrayList<>();
+        List<ObjectNode> inputs = new ArrayList<>();
         for (List<Tag> tags : samples(generators.ed2kTags().map(List::of), TagCodecCorpusTest::writeNewEd2k, 40)) {
             byte[] data = bytes(out -> writeNewEd2k(out, tags));
-            inputs.add(newInput(ED2K_TAG, data));
-            inputs.add(newInput(ED2K_TAG, bytes(out -> writeOldEd2k(out, tags))));
-            inputs.add(newInput(ED2K_TAG, Mutations.changed(data, inputs.size())));
+            inputs.add(Corpus.newCase(ED2K_TAG, data));
+            inputs.add(Corpus.newCase(ED2K_TAG, bytes(out -> writeOldEd2k(out, tags))));
+            inputs.add(Corpus.newCase(ED2K_TAG, Mutations.changed(data, inputs.size())));
         }
         for (List<Tag> tags :
                 samples(generators.ed2kTags().list().ofMaxSize(4), TagCodecCorpusTest::writeNewEd2k, 20)) {
             byte[] data = bytes(out -> writeNewEd2k(out, tags));
-            inputs.add(newInput(ED2K_TAGS, data, tags.size()));
-            inputs.add(newInput(ED2K_TAGS, Mutations.changed(data, inputs.size()), tags.size()));
+            inputs.add(Corpus.newCase(ED2K_TAGS, data).put("count", tags.size()));
+            inputs.add(Corpus.newCase(ED2K_TAGS, Mutations.changed(data, inputs.size()))
+                    .put("count", tags.size()));
         }
         for (List<Tag> tags : samples(generators.kadTags(), TagCodec::writeKadList, 20)) {
             byte[] data = bytes(out -> TagCodec.writeKadList(out, tags));
-            inputs.add(newInput(KAD_TAGS, data));
-            inputs.add(newInput(KAD_TAGS, Mutations.changed(data, inputs.size())));
+            inputs.add(Corpus.newCase(KAD_TAGS, data));
+            inputs.add(Corpus.newCase(KAD_TAGS, Mutations.changed(data, inputs.size())));
         }
         return inputs;
     }
@@ -190,19 +182,6 @@ class TagCodecCorpusTest {
                 .toList();
     }
 
-    private static Case newInput(String kind, byte[] data) {
-        SequencedMap<String, String> fields = new LinkedHashMap<>();
-        fields.put("in", HEX.formatHex(data));
-        return new Case(kind, fields);
-    }
-
-    private static Case newInput(String kind, byte[] data, int count) {
-        SequencedMap<String, String> fields =
-                new LinkedHashMap<>(newInput(kind, data).fields());
-        fields.put("count", Integer.toString(count));
-        return new Case(kind, fields);
-    }
-
     private static void writeNewEd2k(PacketWriter out, List<Tag> tags) {
         TagCodec.writeEd2kList(out, tags, Ed2kTagFormat.NEW, StringEncoding.UTF8);
     }
@@ -211,11 +190,12 @@ class TagCodecCorpusTest {
         TagCodec.writeEd2kList(out, tags, Ed2kTagFormat.OLD, StringEncoding.UTF8_BOM_IF_NEEDED);
     }
 
+    /** The bytes {@code write} writes in hex, or null where it refuses the tags. */
     private static String hexWritten(Consumer<PacketWriter> write) {
         try {
             return HEX.formatHex(bytes(write));
         } catch (IllegalArgumentException e) {
-            return "-";
+            return null;
         }
     }
 
