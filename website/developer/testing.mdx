@@ -174,16 +174,23 @@ by an independent Python implementation (`tools/golden/`), stored in
 `njmule-core/src/test/resources/golden/`.
 
 A corpus in the same folder keeps a decoder's inputs with the answers the engine gives them, so that
-another engine can be checked against them. `tag-codec.txt` holds tags, tag lists and Kad tag lists,
-written right and changed by `Mutations`, with the bytes each read takes and the tags written again,
-or the refusal. `TagCodecCorpusTest` checks that the engine still answers so. After a change meant
-to alter the answers, write them again and review the difference:
+another engine can be checked against them: JSON Lines, one case per line, described in the
+folder's `README.md`.
+
+- `tag-codec.jsonl` holds tags, tag lists and Kad tag lists, written right and changed by
+  `Mutations`, with the bytes each read takes and the tags written again, or the refusal
+  (`TagCodecCorpusTest`).
+- `packets.jsonl` holds every eD2K and Kad message of `MutatedMessagesTest`, as made and changed,
+  with the message decoded, in the form of `Canonical`, or the refusal (`PacketCorpusTest`).
+
+The tests check that the engine still answers so. After a change meant to alter the answers, write
+them again and review the difference:
 
 ```bash
 ./gradlew :njmule-core:test --tests '*CorpusTest' -Pnjmule.corpus.write=true
 ```
 
-The inputs stay the same; delete the file to draw new ones from the jqwik generators.
+The inputs stay the same; delete a file to draw new ones.
 
 ## Interface tests
 
