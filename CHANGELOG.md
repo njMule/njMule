@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-03
+
 ### Fixed
 
 - Uninstalling closes njMule if it still runs, once it has saved its state, rather than leaving it
