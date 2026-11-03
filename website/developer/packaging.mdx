@@ -80,9 +80,8 @@ Before packing, the release workflow runs `.github/scripts/desktop-smoke-test.ps
 the window tells its version, starts the engine on a profile of its own and takes it along when
 closed. It then checks the MSI: it decompiles it and looks for the programs, the
 `install.properties` file and the `--exit` and `--restore-links` actions, installs it for every user
-with the service and checks that the service answers, uninstalls it while the desktop app runs and
-checks that njMule stopped on its own and left no file in use, and installs, runs and uninstalls it
-on a Windows arm64 runner.
+with the service and checks that the service answers, and installs, runs and uninstalls it on a
+Windows arm64 runner.
 
 The **zip** holds the same files as the stage folder, plus `LICENSE`, `NOTICE`, `README.md`,
 `CHANGELOG.md` and an `install.properties` with `kind=zip`. It runs from any folder, and is portable
@@ -202,12 +201,12 @@ Compose file users start from ([Install with Docker](/docs/getting-started/insta
 
 | Job | Runner | What it makes and checks |
 |---|---|---|
-| `windows-x64` | Windows | the engine, the desktop window and the service host; the desktop smoke test; the service installed, answering and removed; the MSI and the zip; the MSI installed for every user with the service; the MSI uninstalled while the desktop app runs |
-| `linux` | Ubuntu x64 and arm64 | the engine and the desktop window; the desktop smoke test under Xvfb; the deb, the rpm and the `.tar.xz` archive; the deb removed while the desktop app runs |
+| `windows-x64` | Windows | the engine, the desktop window and the service host; the desktop smoke test; the service installed, answering and removed; the MSI and the zip; the MSI installed for every user with the service |
+| `linux` | Ubuntu x64 and arm64 | the engine and the desktop window; the desktop smoke test under Xvfb; the deb, the rpm and the `.tar.xz` archive |
 | `synology` | Ubuntu x64 | the static executable (checked with `ldd`), the `.spk` and the static archive |
 | `docker` | Ubuntu | the image for both platforms, tried, then pushed for a tag |
 | `windows-arm64` | Windows on Arm | the x64 MSI installed, run (desktop smoke test), and uninstalled, ed2k links given back |
-| `macos-arm64` | macOS | the engine and the desktop window, the signed bundle, the desktop smoke test on it, and the disk image; the running app closed as its uninstaller does |
+| `macos-arm64` | macOS | the engine and the desktop window, the signed bundle, the desktop smoke test on it, and the disk image |
 
 Every native build in the release uses `-O2`. The jobs that follow (the end-to-end update tests and
 the draft release) are described in [Releases](releases.mdx).
