@@ -47,7 +47,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.NjMuleInfo;
@@ -130,6 +129,7 @@ class ServerFlowTest {
 
     @Test
     void shouldKeepAnAnswerOfTheServerWithTheSearchItAnswers() throws Exception {
+        givenTheEngineOfThisJvm();
         givenAServerOnTheLan("");
         givenTheServerFindsAFileNamedAfterTheFirstOrSecondSearch();
         givenNjMuleRunning();
@@ -222,6 +222,11 @@ class ServerFlowTest {
         thenTheAnswerComesFromSoftwareStartingWith("njMule " + NjMuleInfo.version());
         thenTheAnswerHasOurNick();
         thenTheAnswerIsNotObfuscated();
+    }
+
+    // Two calls in a row reach the engine in that order only in this JVM: through the API they are two requests.
+    private void givenTheEngineOfThisJvm() {
+        assumeTrue(Engines.inThisJvm(), "two searches sent back to back");
     }
 
     private void givenAServerOnTheLan(String welcome, FileEntry... files) throws IOException {
@@ -531,7 +536,7 @@ class ServerFlowTest {
         // The fake servers and peers listen on this machine's LAN address, which must be let in.
         Files.writeString(
                 dirs.config().resolve("njmule.properties"), "net.tcpPort=" + port + "\nsecurity.filterLan=false\n");
-        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+        this.engine = Engines.start(dirs);
         this.resources.add(this.engine);
     }
 

@@ -32,7 +32,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.DownloadInfo;
-import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.NjMuleEngine;
@@ -93,7 +92,7 @@ class DownloadThroughputTest {
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
                 "net.tcpPort=" + FreePorts.tcp() + "\nsecurity.filterLan=false\nnet.kad.enabled=false\n");
-        this.engine = NjMuleEngine.start(new EngineConfig(dirs));
+        this.engine = Engines.start(dirs);
         this.engine.events().subscribe(new Flow.Subscriber<>() {
             @Override
             public void onSubscribe(Flow.Subscription subscription) {

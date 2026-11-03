@@ -293,6 +293,9 @@ jobs:
               run: |
                   njmule-app/build/native/nativeCompile/njmule --version
                   njmule-app/build/native/nativeCompile/njmule --license | grep -q "GNU GENERAL PUBLIC LICENSE"
+            # The test kit's flows again, against this executable through its API instead of an engine in their JVM.
+            - name: End-to-end tests against the executable
+              run: ./gradlew :njmule-testkit:test "-Pnjmule.engine=$PWD/njmule-app/build/native/nativeCompile/njmule"
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
                   name: njmule-linux-x64

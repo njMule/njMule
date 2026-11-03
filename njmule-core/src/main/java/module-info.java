@@ -47,6 +47,9 @@ module org.njmule.core {
             org.njmule.testkit;
     exports org.njmule.core.protocol.crypt to
             org.njmule.testkit;
+    // The test kit drives an engine through its API and reads the preferences it answers as the profile keeps them.
+    exports org.njmule.core.persist to
+            org.njmule.testkit;
     exports org.njmule.core.persist.format to
             org.njmule.testkit;
     exports org.njmule.core.protocol.ed2k to

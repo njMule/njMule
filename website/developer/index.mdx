@@ -64,7 +64,8 @@ The Java modules expose only what their `module-info.java` exports:
 - **`org.njmule.core`** exports `org.njmule.core.api` (the engine facade, events and application
   information), `org.njmule.core.config` (preferences and directory layout) and
   `org.njmule.core.remote` (the remote-control API, which a front end serves on its HTTP server).
-  Everything else is internal; a few codec packages are exported to `org.njmule.testkit` only.
+  Everything else is internal; a few codec packages and `org.njmule.core.persist` (the preferences
+  as the profile keeps them) are exported to `org.njmule.testkit` only.
 - **`org.njmule.app`** exports `org.njmule.app` and `org.njmule.app.logging`, and provides njMule's
   Logback configurator; `org.njmule.app.logging.internal` is not exported.
 - **`org.njmule.http`** exports `org.njmule.http`.

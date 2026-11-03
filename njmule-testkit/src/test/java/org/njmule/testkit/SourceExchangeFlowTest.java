@@ -33,7 +33,6 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
-import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.api.SharedFileInfo;
 import org.njmule.core.config.AppDirectories;
@@ -146,7 +145,7 @@ class SourceExchangeFlowTest {
         Files.writeString(
                 dirs.config().resolve("njmule.properties"),
                 "net.tcpPort=" + port + "\nsecurity.filterLan=false\n" + extra);
-        NjMuleEngine engine = NjMuleEngine.start(new EngineConfig(dirs));
+        NjMuleEngine engine = Engines.start(dirs);
         this.resources.add(engine);
         return engine;
     }
