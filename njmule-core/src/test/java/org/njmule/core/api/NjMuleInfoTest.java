@@ -1,5 +1,5 @@
 /*
- * njMule - Next generation Java Mule
+ * njMule - New Jack Mule
  * SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -36,7 +36,7 @@ class NjMuleInfoTest {
     void shouldFollowTheGplRecommendationInTheStartupNotice() {
         whenTheStartupNoticeIsMadeWithTheHints("--warranty", "--license");
 
-        thenTheTextContains("njMule", "Next generation Java Mule", NjMuleInfo.COPYRIGHT);
+        thenTheTextContains("njMule", "New Jack Mule", NjMuleInfo.COPYRIGHT);
         thenTheTextContains("ABSOLUTELY NO WARRANTY", "'--warranty'", "'--license'");
     }
 

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// njMule - Next generation Java Mule: a modern eD2K and Kad client, wire-compatible with eMule.
+// njMule - New Jack Mule: a modern eD2K and Kad client, wire-compatible with eMule.
 // The modules share their set-up through build-logic (njmule.java-conventions).
 
 buildscript {

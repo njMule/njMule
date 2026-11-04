@@ -10,6 +10,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- njMule now stands for New Jack Mule (a jack is the male donkey, a mule's sire) instead of Next
+  generation Java Mule: in the About window, the packages' descriptions, the README and the user
+  guide.
+
 ### Fixed
 
 - The remote-control API's document lets the schedule's active rule be null, as the API answers

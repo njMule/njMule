@@ -51,7 +51,7 @@ public final class SocialPreview {
         g.fill(new RoundRectangle2D.Float(tx + 6, 344, 120, 12, 12, 12));
         g.setColor(new Color(0x4C566A));
         g.setFont(new Font(font, Font.PLAIN, 44));
-        g.drawString("Next generation Java Mule", tx + 4, 420);
+        g.drawString("New Jack Mule", tx + 4, 420);
         g.setColor(new Color(0x6B7385));
         g.setFont(new Font(font, Font.PLAIN, 30));
         g.drawString("eD2K and Kad client  ·  Java 25  ·  GPL-3.0", tx + 4, 472);

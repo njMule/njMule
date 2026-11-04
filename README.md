@@ -7,7 +7,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 <h1 align="center">njMule</h1>
 
 <p align="center">
-    <strong>Next generation Java Mule</strong> — a modern, open-source client for the eD2K and Kad
+    <strong>New Jack Mule</strong> — a modern, open-source client for the eD2K and Kad
     file-sharing networks, compatible with eMule.
 </p>
 
