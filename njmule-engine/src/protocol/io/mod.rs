@@ -233,7 +233,30 @@ impl PacketWriter {
         Ok(self.u16(length).bytes(&raw))
     }
 
+    /// A u8 item count; a list too long for the field is the caller's error, never silently cut.
+    pub fn count8(&mut self, count: usize) -> Result<&mut Self, EncodeError> {
+        Ok(self.u8(narrowed(count)?))
+    }
+
+    /// A u16 item count.
+    pub fn count16(&mut self, count: usize) -> Result<&mut Self, EncodeError> {
+        Ok(self.u16(narrowed(count)?))
+    }
+
+    /// A u32 item count.
+    pub fn count32(&mut self, count: usize) -> Result<&mut Self, EncodeError> {
+        Ok(self.u32(narrowed(count)?))
+    }
+
     pub fn to_byte_array(&self) -> Vec<u8> {
         self.data.clone()
     }
+
+    pub fn into_byte_array(self) -> Vec<u8> {
+        self.data
+    }
+}
+
+fn narrowed<T: TryFrom<usize>>(count: usize) -> Result<T, EncodeError> {
+    T::try_from(count).map_err(|_| EncodeError::new(format!("{count} items do not fit in the count field")))
 }

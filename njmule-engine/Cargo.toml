@@ -11,6 +11,7 @@ rust-version = "1.99"
 publish = false
 
 [dependencies]
+miniz_oxide = "0.9.1"
 
 [dev-dependencies]
 hex = "0.4"

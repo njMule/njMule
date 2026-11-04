@@ -1,0 +1,202 @@
+// SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! Opcode tables of the eD2K and Kad protocols, one per protocol and transport, under the protocol's own names. A
+//! code given twice in a table makes its `name` match unreachable, which the build refuses.
+
+macro_rules! opcodes {
+    ($(#[$meta:meta])* $table:ident { $($(#[$opcode_meta:meta])* $name:ident = $code:literal,)+ }) => {
+        $(#[$meta])*
+        pub mod $table {
+            $($(#[$opcode_meta])* pub const $name: u8 = $code;)+
+
+            /// The name of an opcode of this table.
+            pub const fn name(code: u8) -> Option<&'static str> {
+                match code {
+                    $($code => Some(stringify!($name)),)+
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+opcodes! {
+    /// Client ↔ server over TCP ([`EDONKEY`](crate::protocol::packet::protocol::EDONKEY)).
+    server {
+        LOGINREQUEST = 0x01,
+        REJECT = 0x05,
+        GETSERVERLIST = 0x14,
+        OFFERFILES = 0x15,
+        SEARCHREQUEST = 0x16,
+        DISCONNECT = 0x18,
+        GETSOURCES = 0x19,
+        SEARCH_USER = 0x1A,
+        CALLBACKREQUEST = 0x1C,
+        QUERY_MORE_RESULT = 0x21,
+        GETSOURCES_OBFU = 0x23,
+        SERVERLIST = 0x32,
+        SEARCHRESULT = 0x33,
+        SERVERSTATUS = 0x34,
+        CALLBACKREQUESTED = 0x35,
+        CALLBACK_FAIL = 0x36,
+        SERVERMESSAGE = 0x38,
+        IDCHANGE = 0x40,
+        SERVERIDENT = 0x41,
+        FOUNDSOURCES = 0x42,
+        USERS_LIST = 0x43,
+        FOUNDSOURCES_OBFU = 0x44,
+    }
+}
+
+opcodes! {
+    /// Client ↔ server over UDP (server TCP port + 4).
+    server_udp {
+        GLOBSEARCHREQ3 = 0x90,
+        GLOBSEARCHREQ2 = 0x92,
+        GLOBGETSOURCES2 = 0x94,
+        GLOBSERVSTATREQ = 0x96,
+        GLOBSERVSTATRES = 0x97,
+        GLOBSEARCHREQ = 0x98,
+        GLOBSEARCHRES = 0x99,
+        GLOBGETSOURCES = 0x9A,
+        GLOBFOUNDSOURCES = 0x9B,
+        GLOBCALLBACKREQ = 0x9C,
+        INVALID_LOWID = 0x9E,
+        SERVER_LIST_REQ = 0xA0,
+        SERVER_LIST_RES = 0xA1,
+        SERVER_DESC_REQ = 0xA2,
+        SERVER_DESC_RES = 0xA3,
+        SERVER_LIST_REQ2 = 0xA4,
+    }
+}
+
+opcodes! {
+    /// Client ↔ client over TCP, base protocol ([`EDONKEY`](crate::protocol::packet::protocol::EDONKEY)).
+    client {
+        HELLO = 0x01,
+        SENDINGPART = 0x46,
+        REQUESTPARTS = 0x47,
+        FILEREQANSNOFIL = 0x48,
+        END_OF_DOWNLOAD = 0x49,
+        ASKSHAREDFILES = 0x4A,
+        ASKSHAREDFILESANSWER = 0x4B,
+        HELLOANSWER = 0x4C,
+        CHANGE_CLIENT_ID = 0x4D,
+        MESSAGE = 0x4E,
+        SETREQFILEID = 0x4F,
+        FILESTATUS = 0x50,
+        HASHSETREQUEST = 0x51,
+        HASHSETANSWER = 0x52,
+        STARTUPLOADREQ = 0x54,
+        ACCEPTUPLOADREQ = 0x55,
+        CANCELTRANSFER = 0x56,
+        OUTOFPARTREQS = 0x57,
+        REQUESTFILENAME = 0x58,
+        REQFILENAMEANSWER = 0x59,
+        CHANGE_SLOT = 0x5B,
+        QUEUERANK = 0x5C,
+        ASKSHAREDDIRS = 0x5D,
+        ASKSHAREDFILESDIR = 0x5E,
+        ASKSHAREDDIRSANS = 0x5F,
+        ASKSHAREDFILESDIRANS = 0x60,
+        ASKSHAREDDENIEDANS = 0x61,
+        /// A client's new IPv6 address, 16 bytes, sent by newer clients when theirs changes.
+        CHANGE_CLIENT_IP = 0xAC,
+    }
+}
+
+opcodes! {
+    /// Client ↔ client over TCP, extended protocol ([`EMULE`](crate::protocol::packet::protocol::EMULE)).
+    extended {
+        EMULEINFO = 0x01,
+        EMULEINFOANSWER = 0x02,
+        COMPRESSEDPART = 0x40,
+        QUEUERANKING = 0x60,
+        FILEDESC = 0x61,
+        REQUESTSOURCES = 0x81,
+        ANSWERSOURCES = 0x82,
+        REQUESTSOURCES2 = 0x83,
+        ANSWERSOURCES2 = 0x84,
+        PUBLICKEY = 0x85,
+        SIGNATURE = 0x86,
+        SECIDENTSTATE = 0x87,
+        REQUESTPREVIEW = 0x90,
+        PREVIEWANSWER = 0x91,
+        MULTIPACKET = 0x92,
+        MULTIPACKETANSWER = 0x93,
+        PUBLICIP_REQ = 0x97,
+        PUBLICIP_ANSWER = 0x98,
+        CALLBACK = 0x99,
+        REASKCALLBACKTCP = 0x9A,
+        AICHREQUEST = 0x9B,
+        AICHANSWER = 0x9C,
+        AICHFILEHASHANS = 0x9D,
+        AICHFILEHASHREQ = 0x9E,
+        BUDDYPING = 0x9F,
+        BUDDYPONG = 0xA0,
+        COMPRESSEDPART_I64 = 0xA1,
+        SENDINGPART_I64 = 0xA2,
+        REQUESTPARTS_I64 = 0xA3,
+        MULTIPACKET_EXT = 0xA4,
+        CHATCAPTCHAREQ = 0xA5,
+        CHATCAPTCHARES = 0xA6,
+        FWCHECKUDPREQ = 0xA7,
+        KAD_FWTCPCHECK_ACK = 0xA8,
+        MULTIPACKET_EXT2 = 0xA9,
+        MULTIPACKETANSWER_EXT2 = 0xB0,
+        HASHSETREQUEST2 = 0xB1,
+        HASHSETANSWER2 = 0xB2,
+    }
+}
+
+opcodes! {
+    /// Client ↔ client over UDP ([`EMULE`](crate::protocol::packet::protocol::EMULE)).
+    client_udp {
+        REASKFILEPING = 0x90,
+        REASKACK = 0x91,
+        FILENOTFOUND = 0x92,
+        QUEUEFULL = 0x93,
+        REASKCALLBACKUDP = 0x94,
+        DIRECTCALLBACKREQ = 0x95,
+        /// Inside a rendezvous through a buddy: a client asks a firewalled one to meet it through their routers.
+        RENDEZVOUS = 0xA0,
+        /// Empty: opens a hole in the sender's router towards the receiver.
+        HOLEPUNCH = 0xA1,
+        /// A buddy tells a rendezvous requester the address it sees the target at.
+        NATT_ENDPOINT_HINT = 0xAA,
+        PORTTEST = 0xFE,
+    }
+}
+
+opcodes! {
+    /// Kad version 2 over UDP ([`KAD`](crate::protocol::packet::protocol::KAD)); version 1 requests are not answered.
+    kad {
+        BOOTSTRAP_REQ = 0x01,
+        BOOTSTRAP_RES = 0x09,
+        HELLO_REQ = 0x11,
+        HELLO_RES = 0x19,
+        REQ = 0x21,
+        HELLO_RES_ACK = 0x22,
+        RES = 0x29,
+        SEARCH_KEY_REQ = 0x33,
+        SEARCH_SOURCE_REQ = 0x34,
+        SEARCH_NOTES_REQ = 0x35,
+        SEARCH_RES = 0x3B,
+        PUBLISH_KEY_REQ = 0x43,
+        PUBLISH_SOURCE_REQ = 0x44,
+        PUBLISH_NOTES_REQ = 0x45,
+        PUBLISH_RES = 0x4B,
+        PUBLISH_RES_ACK = 0x4C,
+        FIREWALLED_REQ = 0x50,
+        FINDBUDDY_REQ = 0x51,
+        CALLBACK_REQ = 0x52,
+        FIREWALLED2_REQ = 0x53,
+        FIREWALLED_RES = 0x58,
+        FIREWALLED_ACK_RES = 0x59,
+        FINDBUDDY_RES = 0x5A,
+        PING = 0x60,
+        PONG = 0x61,
+        FIREWALLUDP = 0x62,
+    }
+}

@@ -3,7 +3,11 @@
 
 //! eD2K and Kad tags: typed name-value pairs.
 
+pub mod client_tag;
+pub mod file_tag;
+pub mod server_tag;
 pub mod tag_codec;
+pub mod tags;
 
 use std::fmt;
 
