@@ -148,21 +148,7 @@ final class ApiEngine implements NjMuleEngine {
     static ApiEngine start(Path executable, AppDirectories dirs) throws IOException {
         Path root = dirs.config().getParent();
         Path log = root.resolve("engine.log");
-        // The test JVM's switches (no UPnP, real servers, update checks or downloads) hold for the engine too: options
-        // of a native executable, JAVA_OPTS of a launcher script.
-        List<String> switches = System.getProperties().stringPropertyNames().stream()
-                .filter(name -> name.startsWith("njmule.") && name.endsWith(".disabled"))
-                .sorted()
-                .map(name -> "-D" + name + "=" + System.getProperty(name))
-                .toList();
-        List<String> command = new ArrayList<>(List.of(executable.toString()));
-        ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
-        if (script(executable)) {
-            builder.environment().put("JAVA_OPTS", String.join(" ", switches));
-        } else {
-            command.addAll(switches);
-        }
-        command.addAll(List.of("--config-dir", root.toString()));
+        ProcessBuilder builder = command(executable, List.of("--config-dir", root.toString()));
         builder.environment().put("NJMULE_CONTROL_ENDPOINT", "1");
         Process process = builder.start();
         BufferedReader output = process.inputReader(StandardCharsets.UTF_8);
@@ -200,6 +186,26 @@ final class ApiEngine implements NjMuleEngine {
         }
         engine.stream = Thread.ofVirtual().name("njmule-remote-events").start(engine::follow);
         return engine;
+    }
+
+    /** A start of {@code executable} with {@code arguments}, its errors in its output. */
+    static ProcessBuilder command(Path executable, List<String> arguments) throws IOException {
+        // The test JVM's switches (no UPnP, real servers, update checks or downloads) hold for the engine too: options
+        // of a native executable, JAVA_OPTS of a launcher script.
+        List<String> switches = System.getProperties().stringPropertyNames().stream()
+                .filter(name -> name.startsWith("njmule.") && name.endsWith(".disabled"))
+                .sorted()
+                .map(name -> "-D" + name + "=" + System.getProperty(name))
+                .toList();
+        List<String> command = new ArrayList<>(List.of(executable.toString()));
+        ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+        if (script(executable)) {
+            builder.environment().put("JAVA_OPTS", String.join(" ", switches));
+        } else {
+            command.addAll(switches);
+        }
+        command.addAll(arguments);
+        return builder;
     }
 
     private static boolean script(Path executable) throws IOException {

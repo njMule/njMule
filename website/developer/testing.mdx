@@ -145,7 +145,8 @@ them:
 
 The end-to-end tests in `njmule-testkit/src/test` drive whole flows against these doubles: server
 log-in, callbacks and searches, downloads with their limits and recovery, source exchange, the
-command line, the web interface's calls and the remote-control API. Their coverage is aggregated
+command line, one njMule per profile (a later start hands its links to the one running, asks it to
+exit with `--exit`, or fails on the lock), the web interface's calls and the remote-control API. Their coverage is aggregated
 into one JaCoCo report with that of the launcher and the web interface.
 
 The engine flows also run against an `njmule` executable instead of an engine in their JVM: with
