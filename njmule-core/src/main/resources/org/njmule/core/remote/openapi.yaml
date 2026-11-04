@@ -3549,8 +3549,8 @@ components:
           items:
             $ref: "#/components/schemas/ScheduleRule"
         active:
-          type: string
-          description: The name of the rule that applies now.
+          type: [string, "null"]
+          description: The name of the rule that applies now; null when none does.
     ScheduleRule:
       type: object
       required: [start, end]

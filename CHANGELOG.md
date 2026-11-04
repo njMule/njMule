@@ -10,6 +10,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The remote-control API's document lets the schedule's active rule be null, as the API answers
+  when no rule applies; clients generated from the document no longer reject that answer.
+
 ## [0.3.1] - 2026-11-03
 
 ### Fixed
