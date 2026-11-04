@@ -30,6 +30,7 @@ import java.util.OptionalLong;
 import org.njmule.core.api.Hash16;
 import org.njmule.core.api.Hash20;
 import org.njmule.core.kad.UInt128;
+import org.njmule.core.persist.format.Known2Met;
 import org.njmule.core.protocol.packet.Packet;
 import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.util.Bytes;
@@ -74,6 +75,10 @@ public final class Canonical {
                         .put("protocol", packet.protocol())
                         .put("opcode", packet.opcode())
                         .put("payload", HEX.formatHex(packet.payload()));
+            case Known2Met.Entry entry ->
+                NODES.objectNode()
+                        .set("masterHash", of(entry.masterHash()))
+                        .set("blockHashes", of(entry.blockHashes()));
             case BitSet bits -> array(bits.stream().boxed().toList());
             case Optional<?> optional -> of(optional.orElse(null));
             case OptionalInt optional -> optional.isPresent() ? of(optional.getAsInt()) : NODES.nullNode();
