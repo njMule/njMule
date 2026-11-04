@@ -117,7 +117,7 @@ tasks.withType<Test>().configureEach {
 spotless {
     lineEndings = LineEnding.UNIX
     java {
-        target("src/main/java/**/*.java", "src/test/java/**/*.java")
+        target("src/main/java/**/*.java", "src/test/java/**/*.java", "src/testFixtures/java/**/*.java")
         // PALANTIR style: 4-space indent, 120 columns, compact lambdas.
         palantirJavaFormat(versionOf("palantir-java-format")).style("PALANTIR").formatJavadoc(true)
         removeUnusedImports()

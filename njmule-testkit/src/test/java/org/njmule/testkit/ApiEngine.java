@@ -43,6 +43,7 @@ import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Flow;
 import java.util.concurrent.SubmissionPublisher;
@@ -93,6 +94,7 @@ import org.njmule.core.config.AppDirectories;
 import org.njmule.core.config.Preferences;
 import org.njmule.core.config.Schedule;
 import org.njmule.core.persist.PreferencesCodec;
+import org.njmule.core.remote.ApiContract;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
@@ -114,12 +116,15 @@ final class ApiEngine implements NjMuleEngine {
     private static final Duration STOP_WAIT = Duration.ofSeconds(30);
     private static final String CONTROL_LINE = "njmule-control ";
     private static final JsonMapper MAPPER = JsonMapper.shared();
+    // Every answer and event the engine gives must follow the API's document, strictly.
+    private static final ApiContract CONTRACT = new ApiContract();
 
     private final String api;
     private final String token;
     private final AppDirectories directories;
     private final Process process;
     private final HttpClient http;
+    private final List<String> violations = new CopyOnWriteArrayList<>();
     private final SubmissionPublisher<EngineEvent> publisher = new SubmissionPublisher<>();
     // The part maps of the last list, for the download events, which carry none.
     private final Map<Hash16, PartMap> parts = new ConcurrentHashMap<>();
@@ -918,6 +923,10 @@ final class ApiEngine implements NjMuleEngine {
         // Not close(), which waits for every request: the event stream lasts as long as the other njMule.
         this.http.shutdownNow();
         stop(this.process);
+        if (!this.violations.isEmpty()) {
+            throw new AssertionError("The engine's API strayed from openapi.yaml:" + System.lineSeparator()
+                    + String.join(System.lineSeparator(), this.violations));
+        }
     }
 
     // The events, followed again after a pause when the stream breaks, as the other njMule may restart.
@@ -954,17 +963,24 @@ final class ApiEngine implements NjMuleEngine {
     // Server-sent events: "event:" and "data:" lines, a blank line after each event.
     private void read(Iterator<String> lines) {
         String name = null;
+        String id = null;
         StringBuilder data = new StringBuilder();
         while (this.running && lines.hasNext()) {
             String line = lines.next();
             if (line.isEmpty()) {
-                if (name != null && !dispatch(name, data.toString())) {
-                    return;
+                if (name != null) {
+                    checkEvent(name, id, data.toString());
+                    if (!dispatch(name, data.toString())) {
+                        return;
+                    }
                 }
                 name = null;
+                id = null;
                 data.setLength(0);
             } else if (line.startsWith("event:")) {
                 name = line.substring("event:".length()).strip();
+            } else if (line.startsWith("id:")) {
+                id = line.substring("id:".length()).strip();
             } else if (line.startsWith("data:")) {
                 data.append(line.substring("data:".length()).strip());
             }
@@ -1077,12 +1093,30 @@ final class ApiEngine implements NjMuleEngine {
         return this.http
                 .sendAsync(request, HttpResponse.BodyHandlers.ofByteArray())
                 .thenApply(r -> {
+                    checkAnswer(method, r);
                     int status = r.statusCode();
                     if (status / 100 == 2 || (refusable && (status == 404 || status == 409))) {
                         return r;
                     }
                     throw new CompletionException(new IOException(failure(r)));
                 });
+    }
+
+    private void checkAnswer(String method, HttpResponse<byte[]> answer) {
+        // An answer with no body, such as 204, has nothing a schema could check.
+        if (answer.body().length == 0) {
+            return;
+        }
+        String query = answer.uri().getRawQuery();
+        String target = answer.uri().getRawPath() + (query == null ? "" : "?" + query);
+        String type = answer.headers().firstValue("Content-Type").orElse("");
+        CONTRACT.answerViolations(
+                        method, target, answer.statusCode(), type, new String(answer.body(), StandardCharsets.UTF_8))
+                .forEach(v -> this.violations.add(method + " " + target + " " + answer.statusCode() + ": " + v));
+    }
+
+    private void checkEvent(String name, String id, String data) {
+        CONTRACT.eventViolations(name, id, data).forEach(v -> this.violations.add("event " + name + ": " + v));
     }
 
     private HttpRequest.Builder request(String method, String path, byte[] body) {

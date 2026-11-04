@@ -153,7 +153,10 @@ The engine flows also run against an `njmule` executable instead of an engine in
 `-Pnjmule.engine=<path>` each one starts that executable on its profile, as the desktop window does
 (`NJMULE_CONTROL_ENDPOINT=1`), and drives it only through the remote-control API (`ApiEngine`). Its
 output lands in `engine.log` beside the profile. The few steps the API cannot show (two calls that
-must reach the engine in order, the history of cancelled files) are skipped in that mode:
+must reach the engine in order, the history of cancelled files) are skipped in that mode. Every
+answer and event the executable gives is checked against `openapi.yaml`, strictly (no field the
+document does not name), by `ApiContract`, which the core's tests share with the test kit as
+Gradle test fixtures (`njmule-core/src/testFixtures`, with `Corpus`, `Canonical` and `Mutations`):
 
 ```bash
 ./gradlew :njmule-app:nativeCompile :njmule-testkit:test "-Pnjmule.engine=$PWD/njmule-app/build/native/nativeCompile/njmule"
