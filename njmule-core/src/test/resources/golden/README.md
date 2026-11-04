@@ -32,3 +32,15 @@ text files `ipfilter.dat`, `staticservers.dat` and `shareddir.dat`, each as the 
 and changed three times; `known.met salvaged` and `known2_64.met salvaged` read the same files as a
 damaged one is read. The answer `value` is what the reader gives, in the form of `Canonical` (an
 AICH tree of `known2_64.met` as its `masterHash` and `blockHashes`).
+
+## `hashes.jsonl`
+
+What the golden vectors do not show, the data's own hashes being theirs:
+
+- `ed2k-layout`: a `size` at the edges of blocks, parts, the empty last part, 32 bits and the
+  largest file, with its `parts`, `ed2kParts` (with the empty last part), `hashSet` (part hashes a
+  hash set holds) and `lastPartLength` (none for an empty file), or `"error":"invalid"`;
+- `aich-tree`: a `size` and its `blocks` (the hashes of its 180 KiB blocks), with the tree's
+  `master` hash and `parts` hashes;
+- `aich-recovery`: the recovery data `in` of `part` of a file of `size` with the AICH `master`
+  hash, as made and changed, with the block hashes it proves, or `"error":"unproven"`.

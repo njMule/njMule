@@ -185,6 +185,8 @@ folder's `README.md`.
 - `profile-files.jsonl` holds the files of a profile (`.met` and `.dat` files, the Kad indexes,
   `ipfilter.dat` and the other text files), as written and changed, with what their readers give
   (`ProfileFilesCorpusTest`).
+- `hashes.jsonl` holds how files split into eD2K parts, how AICH trees are built from their block
+  hashes and what AICH recovery data proves (`HashCorpusTest`).
 
 The tests check that the engine still answers so. After a change meant to alter the answers, write
 them again and review the difference:
