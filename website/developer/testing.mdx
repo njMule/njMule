@@ -168,9 +168,12 @@ after each test with `njmule-testkit/src/test/resources/transcripts/<class>/<tes
 transcript keeps each connection's packets in hex, each line once and sorted, with
 what changes from one run or machine to the next masked: the engine's user hash, ID and port, the
 version it tells, the addresses of the machine, random challenges, the ranges a download picks and
-whether router traversal was up yet. The same transcripts hold in both modes, so an executable must
-send what the engine in the JVM sends. After a change meant to alter the packets, record them again
-and review the difference:
+whether router traversal was up yet. Every recorded packet must come, and a packet of a kind the
+transcript holds (channel, connection, protocol, opcode) must be one of its lines; kinds it does not
+hold are not compared, as an engine sends some on its timers (the offer of a file just completed)
+before or after a test ends. The same transcripts hold in both modes, so an executable must send
+what the engine in the JVM sends. After a change meant to alter the packets, record them again and
+review the difference:
 
 ```bash
 ./gradlew :njmule-testkit:test --tests '*ServerFlowTest' --tests '*SearchFlowTest' --tests '*DownloadFlowTest' -Pnjmule.transcripts.write=true

@@ -26,12 +26,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -57,6 +59,10 @@ import org.njmule.testkit.Transcript.Receiver;
  * own timers) and sorted (a download and an upload on one connection interleave as they come), with what changes from
  * one run or machine to the next masked: the engine's user hash, ID and port, the version it tells, the addresses of
  * the machine, random challenges, the ranges a download picks at random.
+ *
+ * <p>Every recorded packet must come, and a packet of a kind the transcript holds (channel, connection, protocol,
+ * opcode) must be one of its lines. Kinds it does not hold are not compared: an engine sends some on its timers, as the
+ * offer of a file just completed, and a test may end before or after they come.
  */
 final class Transcripts implements BeforeEachCallback, AfterEachCallback {
 
@@ -87,9 +93,52 @@ final class Transcripts implements BeforeEachCallback, AfterEachCallback {
             Files.writeString(SOURCES.resolve(name), text);
             return;
         }
-        assertThat(text)
-                .as("packets against transcripts/%s (-Pnjmule.transcripts.write=true records them)", name)
-                .isEqualTo(recorded(name));
+        assertThat(differences(text, recorded(name)))
+                .as(
+                        "packets against transcripts/%s (-Pnjmule.transcripts.write=true records them); received:%n%s",
+                        name, text)
+                .isEmpty();
+    }
+
+    private static List<String> differences(String received, String recorded) {
+        Map<String, Set<String>> came = sections(received);
+        Map<String, Set<String>> expected = sections(recorded);
+        if (!came.keySet().equals(expected.keySet())) {
+            return List.of("fakes " + came.keySet() + " instead of " + expected.keySet());
+        }
+        List<String> differences = new ArrayList<>();
+        expected.forEach((fake, lines) -> {
+            Set<String> got = came.get(fake);
+            Set<String> kinds = lines.stream().map(Transcripts::kind).collect(Collectors.toSet());
+            lines.stream()
+                    .filter(line -> !got.contains(line))
+                    .forEach(line -> differences.add(fake + " lacks " + line));
+            got.stream()
+                    .filter(line -> !lines.contains(line) && kinds.contains(kind(line)))
+                    .forEach(line -> differences.add(fake + " got " + line));
+        });
+        return differences;
+    }
+
+    // The lines of each fake, under its "# server 1" or "# peer 2".
+    private static Map<String, Set<String>> sections(String text) {
+        Map<String, Set<String>> sections = new LinkedHashMap<>();
+        Set<String> lines = null;
+        for (String line : text.lines().toList()) {
+            if (line.startsWith("# ")) {
+                lines = sections.computeIfAbsent(line.substring(2), fake -> new TreeSet<>());
+            } else if (lines != null && !line.isBlank()) {
+                lines.add(line);
+            }
+        }
+        return sections;
+    }
+
+    // What a packet is, without its payload: "tcp 1 e3 01", "udp e3 96".
+    private static String kind(String line) {
+        String[] fields = line.split(" ", -1);
+        int length = fields[0].equals("tcp") ? 4 : 3;
+        return String.join(" ", List.of(fields).subList(0, Math.min(length, fields.length)));
     }
 
     private static String recorded(String name) throws IOException {
