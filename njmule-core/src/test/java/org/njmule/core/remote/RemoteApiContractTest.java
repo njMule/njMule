@@ -178,7 +178,7 @@ class RemoteApiContractTest {
     }
 
     static Stream<String> disconnectedReads() {
-        return Stream.of("/api/v1/status", "/api/v1/kad");
+        return Stream.of("/api/v1/status", "/api/v1/kad", "/api/v1/schedule");
     }
 
     static Stream<Arguments> changes() {
@@ -440,7 +440,9 @@ class RemoteApiContractTest {
         answerWith("setupPending", true);
         answerWith("downloadData", Optional.of(Path.of("001.part").toAbsolutePath()));
         this.fake.value("schedule", ApiSamples.schedule());
-        this.fake.value("activeRule", ApiSamples.schedule().rules().stream().findFirst());
+        // No rule applies to an engine connected to nothing, whose schedule tells none.
+        this.fake.value(
+                "activeRule", connected ? ApiSamples.schedule().rules().stream().findFirst() : Optional.empty());
         this.fake.value("preferences", Preferences.defaults());
         this.fake.value("updateStatus", ApiSamples.updateStatus());
         // Until a test says otherwise, nothing new is known: there is nothing to download or install.
