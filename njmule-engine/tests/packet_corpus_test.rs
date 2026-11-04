@@ -10,6 +10,10 @@
 mod canonical;
 
 use canonical::Canonical;
+use njmule_engine::protocol::ed2k::client_messages::{
+    CompressedPart, FileName, FileStatus, HashSet, RequestParts, SendingPart,
+};
+use njmule_engine::protocol::ed2k::hello::Hello;
 use njmule_engine::protocol::ed2k::server_datagrams::{self, Description, Status};
 use njmule_engine::protocol::ed2k::server_messages::{
     self, FoundSources, IdChange, Login, SearchResults, ServerIdent, ServerStatus,
@@ -21,15 +25,6 @@ use serde_json::{Map, Value, json};
 const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/packets.jsonl");
 
 const NOT_PORTED: &[&str] = &[
-    "hello",
-    "hello answer",
-    "file name",
-    "file status",
-    "hash set",
-    "request parts",
-    "request parts, 64 bit",
-    "sending part",
-    "compressed part",
     "source exchange answer",
     "source exchange request",
     "packed source exchange answer",
@@ -79,6 +74,13 @@ fn decoder(kind: &str) -> Option<Decoder> {
         "server description" => |p| Description::decode(&p).map(|v| v.canonical()),
         "global search results" => |p| server_datagrams::decode_search_results(&p).map(|v| v.canonical()),
         "global found sources" => |p| server_datagrams::decode_found_sources(&p).map(|v| v.canonical()),
+        "hello" | "hello answer" => |p| Hello::decode(&p).map(|v| v.canonical()),
+        "file name" => |p| FileName::decode(&p).map(|v| v.canonical()),
+        "file status" => |p| FileStatus::decode(&p).map(|v| v.canonical()),
+        "hash set" => |p| HashSet::decode(&p).map(|v| v.canonical()),
+        "request parts" | "request parts, 64 bit" => |p| RequestParts::decode(&p).map(|v| v.canonical()),
+        "sending part" => |p| SendingPart::decode(&p).map(|v| v.canonical()),
+        "compressed part" => |p| CompressedPart::decode(&p).map(|v| v.canonical()),
         "packed search results" => |p| SearchResults::decode(&packing::unpack_from_server(p)?).map(|v| v.canonical()),
         _ => return None,
     })

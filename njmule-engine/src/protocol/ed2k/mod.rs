@@ -3,7 +3,9 @@
 
 //! The messages of the eD2K network.
 
+pub mod client_messages;
 pub mod client_version;
 pub mod file_entry;
+pub mod hello;
 pub mod server_datagrams;
 pub mod server_messages;
