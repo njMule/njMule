@@ -85,7 +85,7 @@ class MetFilesEdgeCaseTest {
     }
 
     // Valid files of every counted format, each read and then used.
-    private static List<Sample> samples() {
+    static List<Sample> samples() {
         Hash20 aich = Hash20.of(new byte[Hash20.LENGTH]);
         List<Sample> samples = new ArrayList<>();
         samples.add(new Sample(

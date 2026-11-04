@@ -182,6 +182,9 @@ folder's `README.md`.
   (`TagCodecCorpusTest`).
 - `packets.jsonl` holds every eD2K and Kad message of `MutatedMessagesTest`, as made and changed,
   with the message decoded, in the form of `Canonical`, or the refusal (`PacketCorpusTest`).
+- `profile-files.jsonl` holds the files of a profile (`.met` and `.dat` files, the Kad indexes,
+  `ipfilter.dat` and the other text files), as written and changed, with what their readers give
+  (`ProfileFilesCorpusTest`).
 
 The tests check that the engine still answers so. After a change meant to alter the answers, write
 them again and review the difference:

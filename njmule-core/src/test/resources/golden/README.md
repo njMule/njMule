@@ -23,3 +23,12 @@ in the form of `Canonical`: records as objects of their components, with an `@ty
 implement a sealed interface (tags); integers as the unsigned values of their width; floats as the
 hex of their bits; bytes, hashes and Kad ids (big-endian) in lower-case hex; a tag name as its id
 or the hex of its bytes; an inner packet as `protocol`, `opcode` and `payload`.
+
+## `profile-files.jsonl`
+
+The files of a profile, kind their name: the `.met` files of `MetFilesEdgeCaseTest`, `nodes.dat`,
+`preferences.dat`, the Kad indexes (`load_index.dat`, `src_index.dat`, `key_index.dat`) and the
+text files `ipfilter.dat`, `staticservers.dat` and `shareddir.dat`, each as the engine writes it
+and changed three times; `known.met salvaged` and `known2_64.met salvaged` read the same files as a
+damaged one is read. The answer `value` is what the reader gives, in the form of `Canonical` (an
+AICH tree of `known2_64.met` as its `masterHash` and `blockHashes`).
