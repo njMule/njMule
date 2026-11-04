@@ -215,8 +215,9 @@ folder's `README.md`.
 - `hashes.jsonl` holds how files split into eD2K parts, how AICH trees are built from their block
   hashes and what AICH recovery data proves (`HashCorpusTest`).
 
-The tests check that the engine still answers so. After a change meant to alter the answers, write
-them again and review the difference:
+The tests check that the engine still answers so, and the Rust engine (`njmule-engine`) replays
+the same files in its own tests (`tag-codec.jsonl` so far). After a change meant to alter the
+answers, write them again and review the difference:
 
 ```bash
 ./gradlew :njmule-core:test --tests '*CorpusTest' -Pnjmule.corpus.write=true

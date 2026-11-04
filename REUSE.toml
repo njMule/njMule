@@ -25,6 +25,7 @@ path = [
     "njmule-desktop/*.json",
     "njmule-desktop/src-tauri/*.json",
     "njmule-desktop/src-tauri/Cargo.lock",
+    "njmule-engine/Cargo.lock",
     "njmule-desktop/src-tauri/capabilities/*.json",
     "website/*.json",
 ]

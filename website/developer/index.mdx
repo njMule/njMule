@@ -44,6 +44,7 @@ the npm packages and the Rust crates are pinned in their own lock files: see
 | `njmule-app` (module `org.njmule.app`) | the headless launcher and command line, the Logback set-up, the Windows service commands and their service host |
 | `njmule-ui` | the interface of the desktop window and of the web interface (Vue 3, TypeScript, Vite), with its translations (`i18n/`) and country flags (`flags/`) |
 | `njmule-desktop` | the desktop window: a Tauri 2 shell in Rust (`src-tauri/`) that starts the engine and shows the interface |
+| `njmule-engine` | the engine in Rust, a port of `njmule-core` under way; its tests replay the corpora of the Java engine |
 | `njmule-http` (module `org.njmule.http`) | the web interface on Jetty (password, sessions, form tokens), which serves the interface and the core's remote-control API, and the desktop window's control endpoint |
 | `njmule-testkit` (module `org.njmule.testkit`) | test doubles shared by the modules (a fake server, a fake peer, free ports) and the end-to-end tests |
 | `njmule-bench` | JMH benchmarks; a classpath build so that it reaches internal core packages; never distributed |

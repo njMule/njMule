@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[package]
+name = "njmule-engine"
+version = "0.0.0"
+description = "njMule's engine in Rust, ported from the Java engine and checked against its corpora"
+license = "GPL-3.0-or-later"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+hex = "0.4"
+serde_json = "1"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+# What network input must never do: panic on an index, an unwrap or an overflow.
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = "deny"
+
+[profile.release]
+# Silent wrapping in release builds is a bug class Java does not have: checked through the betas.
+overflow-checks = true

@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# As wide as the Java code; a chain breaks a little before the line does.
+max_width = 120
+use_small_heuristics = "Max"
+chain_width = 108

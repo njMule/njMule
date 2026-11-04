@@ -5,8 +5,9 @@
 - `*.jsonl`: corpora, inputs of a decoder with the answers the Java engine gives them, which
   another engine replays and must answer alike. One JSON object per line: `kind`, the input `in`
   (hex) with what the kind needs to decode it, then the answer, or `"error":"decode"` where the
-  input is refused. The tests that check them (`*CorpusTest`) write them again with
-  `-Pnjmule.corpus.write=true`, keeping the inputs; a deleted file gets new ones.
+  input is refused. The Java tests that check them (`*CorpusTest`) write them again with
+  `-Pnjmule.corpus.write=true`, keeping the inputs; a deleted file gets new ones. The Rust
+  engine replays them in `njmule-engine/tests`.
 
 ## `tag-codec.jsonl`
 
