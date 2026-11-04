@@ -93,6 +93,7 @@ public final class FakeServer implements AutoCloseable {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final Config config;
+    private final Transcript transcript = Transcript.started(Transcript.Receiver.SERVER);
     private final ServerSocket tcp;
     private final DatagramSocket udp;
     private final List<ServerMessages.Login> logins = new CopyOnWriteArrayList<>();
@@ -324,10 +325,12 @@ public final class FakeServer implements AutoCloseable {
         OutputStream out = null;
         try (client) {
             InputStream in = new BufferedInputStream(client.getInputStream());
+            int connection = this.transcript.newConnection();
             out = new BufferedOutputStream(client.getOutputStream());
             this.clients.add(out);
             while (true) {
                 Packet request = Packing.unpack(TcpFraming.read(in, FrameLimit.fixed(1 << 20)), 1 << 22);
+                this.transcript.add("tcp", connection, request);
                 synchronized (out) {
                     for (Packet answer : answer(request, client)) {
                         out.write(TcpFraming.encode(answer));
@@ -406,6 +409,7 @@ public final class FakeServer implements AutoCloseable {
                 datagram.setLength(buffer.length);
                 this.udp.receive(datagram);
                 Packet request = UdpFraming.decode(buffer, 0, datagram.getLength());
+                this.transcript.add("udp", 0, request);
                 Packet answer = answerUdp(request, this.udpSearches);
                 if (answer != null) {
                     byte[] bytes = UdpFraming.encode(answer);
@@ -431,6 +435,7 @@ public final class FakeServer implements AutoCloseable {
                 if (received.kind() != DatagramObfuscation.Kind.SERVER) {
                     continue;
                 }
+                this.transcript.add("udp-obfuscated", 0, received.packet());
                 Packet answer = answerUdp(received.packet(), this.obfuscatedUdpSearches);
                 if (answer != null) {
                     byte[] bytes =

@@ -36,6 +36,9 @@ public final class PublicIpv6 {
     private static final InetSocketAddress INTERNET =
             new InetSocketAddress(InetAddresses.forString("2001:4860:4860::8888"), 53); // NOSONAR: never contacted
 
+    /** Set to {@code true}, no address is found: tests then send the same packets on any network they run on. */
+    public static final String NO_IPV6_PROPERTY = "njmule.ipv6.disabled";
+
     private PublicIpv6() {}
 
     /**
@@ -43,7 +46,7 @@ public final class PublicIpv6 {
      * while its connections go through a proxy.
      */
     public static Optional<Inet6Address> find() {
-        if (!mayBeTold()) {
+        if (Boolean.getBoolean(NO_IPV6_PROPERTY) || !mayBeTold()) {
             return Optional.empty();
         }
         try (DatagramSocket probe = new DatagramSocket()) {

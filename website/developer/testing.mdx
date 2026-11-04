@@ -161,6 +161,23 @@ must reach the engine in order, the history of cancelled files) are skipped in t
 `njmule-app/build/install/njmule/bin/njmule` of `:njmule-app:installDist` (`njmule.bat` on Windows)
 serves as well, without the native build.
 
+The server, search and download flows also check what the engine sent: every packet `FakeServer`
+and `FakePeer` receive goes into their `Transcript`, which the `Transcripts` extension compares
+after each test with `njmule-testkit/src/test/resources/transcripts/<class>/<test>.txt`. A
+transcript keeps each connection's packets in hex, each line once in the order it first came, with
+what changes from one run or machine to the next masked: the engine's user hash, ID and port, the
+version it tells, the addresses of the machine, random challenges, the ranges a download picks and
+whether router traversal was up yet. The same transcripts hold in both modes, so an executable must
+send what the engine in the JVM sends. After a change meant to alter the packets, record them again
+and review the difference:
+
+```bash
+./gradlew :njmule-testkit:test --tests '*ServerFlowTest' --tests '*SearchFlowTest' --tests '*DownloadFlowTest' -Pnjmule.transcripts.write=true
+```
+
+Tests never tell peers the machine's public IPv6 address (`njmule.ipv6.disabled`), so that the
+packets stay the same on any network.
+
 ## Property-based and fuzz tests
 
 Codecs and parsers have jqwik properties (`@Property`) over generated input: tags, packets, hashes,
