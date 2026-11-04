@@ -5,7 +5,11 @@
 //! lowerCamelCase, with an `@type` for the cases of a sealed type, integers as the unsigned values of their width,
 //! floats as the hex of their bits, bytes and hashes in lower-case hex, an absent value as null.
 
+use njmule_engine::protocol::ed2k::client_messages::{
+    CompressedPart, FileName, FileStatus, HashSet, Range, RequestParts, SendingPart,
+};
 use njmule_engine::protocol::ed2k::file_entry::FileEntry;
+use njmule_engine::protocol::ed2k::hello::Hello;
 use njmule_engine::protocol::ed2k::server_datagrams::{Description, Status};
 use njmule_engine::protocol::ed2k::server_messages::{
     Endpoint, FoundSources, IdChange, Login, SearchResults, ServerIdent, ServerStatus, Source,
@@ -162,5 +166,70 @@ impl Canonical for Status {
 impl Canonical for Description {
     fn canonical(&self) -> Value {
         json!({"challenge": self.challenge, "tags": self.tags.canonical()})
+    }
+}
+
+impl Canonical for Hello {
+    fn canonical(&self) -> Value {
+        json!({
+            "userHash": self.user_hash.canonical(),
+            "clientId": self.client_id,
+            "tcpPort": self.tcp_port,
+            "tags": self.tags.canonical(),
+            "serverIp": self.server_ip,
+            "serverPort": self.server_port,
+        })
+    }
+}
+
+impl Canonical for FileName {
+    fn canonical(&self) -> Value {
+        json!({"file": self.file.canonical(), "name": self.name})
+    }
+}
+
+// A set of parts as the indexes of those present, as a bit set's form is.
+fn indexes(parts: &[bool]) -> Value {
+    json!(parts.iter().enumerate().filter(|(_, has)| **has).map(|(part, _)| part).collect::<Vec<_>>())
+}
+
+impl Canonical for FileStatus {
+    fn canonical(&self) -> Value {
+        json!({"file": self.file.canonical(), "partCount": self.part_count, "parts": indexes(&self.parts)})
+    }
+}
+
+impl Canonical for HashSet {
+    fn canonical(&self) -> Value {
+        json!({"file": self.file.canonical(), "parts": self.parts.canonical()})
+    }
+}
+
+impl Canonical for Range {
+    fn canonical(&self) -> Value {
+        json!({"start": self.start, "end": self.end})
+    }
+}
+
+impl Canonical for RequestParts {
+    fn canonical(&self) -> Value {
+        json!({"file": self.file.canonical(), "ranges": self.ranges.to_vec().canonical()})
+    }
+}
+
+impl Canonical for SendingPart {
+    fn canonical(&self) -> Value {
+        json!({"file": self.file.canonical(), "start": self.start, "end": self.end, "data": hex::encode(&self.data)})
+    }
+}
+
+impl Canonical for CompressedPart {
+    fn canonical(&self) -> Value {
+        json!({
+            "file": self.file.canonical(),
+            "blockStart": self.block_start,
+            "compressedSize": self.compressed_size,
+            "chunk": hex::encode(&self.chunk),
+        })
     }
 }

@@ -5,6 +5,7 @@
 //! unauthenticated connection cannot make us allocate much; afterwards the caps follow what each packet can legitimately
 //! carry.
 
+use crate::files::hash::ed2k;
 use crate::protocol::packet::opcodes::{client, extended};
 use crate::protocol::packet::protocol;
 
@@ -18,8 +19,8 @@ pub const HASHSET_MAX: usize = 2 * 1024 * 1024;
 pub const SHARED_FILES_MAX: usize = 4 * 1024 * 1024;
 /// Any packet from a server (search results, source and server lists).
 pub const SERVER_MAX: usize = 1024 * 1024;
-/// File data: hash, 64-bit offsets and one block of 180 KiB.
-pub const DATA_MAX: usize = 16 + 8 + 8 + 184_320;
+/// File data: hash, 64-bit offsets and one block.
+pub const DATA_MAX: usize = 16 + 8 + 8 + ed2k::EMBLOCKSIZE as usize;
 
 /// Until hello and hello answer are exchanged.
 pub fn client_handshake(protocol: u8, opcode: u8) -> Option<usize> {

@@ -233,6 +233,13 @@ impl PacketWriter {
         Ok(self.u16(length).bytes(&raw))
     }
 
+    /// A file offset in the 32-bit form; an offset at 4 GiB or beyond needs the 64-bit one.
+    pub fn offset32(&mut self, offset: u64) -> Result<&mut Self, EncodeError> {
+        let narrow =
+            u32::try_from(offset).map_err(|_| EncodeError::new(format!("offset {offset} needs the 64-bit form")))?;
+        Ok(self.u32(narrow))
+    }
+
     /// A u8 item count; a list too long for the field is the caller's error, never silently cut.
     pub fn count8(&mut self, count: usize) -> Result<&mut Self, EncodeError> {
         Ok(self.u8(narrowed(count)?))

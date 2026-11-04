@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's Ed2kMessagesTest about servers, under their names: login, id, status,
-//! identity, search results, server lists, sources and the version tag. Its peer messages come with their port.
+//! The examples of the Java engine's Ed2kMessagesTest, under their names: login, id, status, identity, search
+//! results, server lists, sources, the version tag and the hello. Its global search requests come with `search`.
 
 #![allow(
     clippy::unwrap_used,
@@ -12,10 +12,14 @@
     clippy::arithmetic_side_effects
 )]
 
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use njmule_engine::protocol::ed2k::client_version::{self, NJMULE_COMPAT};
 use njmule_engine::protocol::ed2k::file_entry::FileEntry;
+use njmule_engine::protocol::ed2k::hello::{
+    Hello, MISC1_NO_VIEW_SHARED_FILES, MISC1_UNICODE, MISC2_SUPPORTS_CRYPT, MOD_MISC_EXTENDED_SX, MOD_MISC_IPV6,
+    MOD_MISC_QUIC_TRAVERSAL, MOD_MISC_UTP_TRAVERSAL, Ours,
+};
 use njmule_engine::protocol::ed2k::server_datagrams::{self, Status, UDP_OBFUSCATION};
 use njmule_engine::protocol::ed2k::server_messages::{
     self, CallbackRequested, Endpoint, FoundSources, IdChange, Login, SearchResults, ServerIdent, ServerStatus, Source,
@@ -25,10 +29,47 @@ use njmule_engine::protocol::io::{PacketWriter, StringEncoding};
 use njmule_engine::protocol::packet::opcodes::server_udp;
 use njmule_engine::protocol::packet::{Packet, protocol};
 use njmule_engine::protocol::tag::tag_codec::write_ed2k_list;
-use njmule_engine::protocol::tag::{Ed2kTagFormat, Tag, TagName, file_tag, server_tag};
+use njmule_engine::protocol::tag::{Ed2kTagFormat, Tag, TagName, client_tag, file_tag, server_tag};
 use njmule_engine::util::ipv4;
 
 const HASH: [u8; 16] = [0x11; 16];
+
+// Default preferences, nick "x", no server, Kad off.
+const EMULE_HELLO: &str = concat!(
+    "10",
+    "11111111111111111111111111111111",
+    "00000000",
+    "3612",
+    "06000000",
+    "020100010100",
+    "78",
+    "030100113c000000",
+    "030100f940120000",
+    "030100fa16421334",
+    "030100feba2d0000",
+    "030100fb00200100",
+    "00000000",
+    "0000",
+);
+
+fn our_hello() -> Hello {
+    let ours = Ours {
+        nick: "njMule user",
+        udp_port: 4672,
+        kad_port: 0,
+        misc_options1: MISC1_UNICODE | MISC1_NO_VIEW_SHARED_FILES,
+        misc_options2: MISC2_SUPPORTS_CRYPT,
+    };
+    Hello::of(HASH, 0x0100_0001, 4662, &ours, ip("9.8.7.6"), 4661)
+}
+
+fn hello_on_the_port_with(tcp_port: u16, tags: Vec<Tag>) -> Hello {
+    Hello { user_hash: HASH, client_id: 0, tcp_port, tags, server_ip: 0, server_port: 0 }
+}
+
+fn ipv6_tag(address: &str) -> Tag {
+    Tag::Hash { name: TagName::id(client_tag::MOD_IP_V6), value: address.parse::<Ipv6Addr>().unwrap().octets() }
+}
 
 fn ip(text: &str) -> u32 {
     u32::from(text.parse::<Ipv4Addr>().unwrap())
@@ -502,4 +543,122 @@ fn should_carry_the_njmule_compatible_client_id_in_a_release_version() {
 #[test]
 fn should_carry_the_njmule_compatible_client_id_alone_for_an_unreadable_version() {
     assert_eq!(client_version::from_sem_ver("garbage"), 0x6E00_0000);
+}
+
+#[test]
+fn should_read_the_hello_of_emule() {
+    let hello = Hello::decode(&packet(0x01, EMULE_HELLO)).unwrap();
+
+    assert_eq!(hello.user_hash, HASH);
+    assert_eq!(hello.nick(), Some("x"));
+    assert_eq!((hello.listen_port(), hello.udp_port(), hello.kad_port()), (4662, 4672, 0));
+    assert_eq!((hello.misc_options1(), hello.misc_options2()), (0x3413_4216, 0x2DBA));
+    assert_eq!(hello.kad_version(), 10);
+    assert_eq!(hello.emule_version(), Some(0x0001_2000));
+    assert_eq!(hello.server_ip, 0);
+}
+
+#[test]
+fn should_keep_sixteen_bits_of_a_wider_listen_port_tag() {
+    assert_eq!(hello_on_the_port_with(4662, vec![int(client_tag::PORT, 0x1_1234)]).listen_port(), 0x1234);
+}
+
+#[test]
+fn should_keep_sixteen_bits_of_a_listen_port_tag_with_all_bits_set() {
+    assert_eq!(hello_on_the_port_with(4662, vec![int(client_tag::PORT, u64::MAX)]).listen_port(), 0xFFFF);
+}
+
+#[test]
+fn should_listen_on_the_tcp_port_without_a_listen_port_tag() {
+    assert_eq!(hello_on_the_port_with(4662, Vec::new()).listen_port(), 4662);
+}
+
+#[test]
+fn should_give_the_hello_answer_no_size_byte() {
+    let hello = our_hello();
+
+    assert_eq!(hello.encode(false).unwrap().length(), hello.encode(true).unwrap().length() + 1);
+}
+
+#[test]
+fn should_round_trip_our_hello() {
+    for answer in [false, true] {
+        let decoded = Hello::decode(&our_hello().encode(answer).unwrap()).unwrap();
+
+        assert_eq!(decoded, our_hello(), "answer {answer}");
+        assert_eq!(decoded.server_ip, ip("9.8.7.6"), "answer {answer}");
+    }
+}
+
+#[test]
+fn should_tell_in_our_hello_that_we_take_ipv6() {
+    let decoded = Hello::decode(&our_hello().encode(false).unwrap()).unwrap();
+
+    assert_eq!(decoded.mod_misc_options(), MOD_MISC_IPV6);
+    assert!(decoded.has_ipv4());
+    assert!(!decoded.supports_extended_source_exchange());
+}
+
+#[test]
+fn should_tell_router_traversal_in_the_hello_alongside_ipv6() {
+    let hello = our_hello().with_router_traversal().with_ipv6(&"2001:db8:1:2::1".parse().unwrap());
+
+    let decoded = Hello::decode(&hello.encode(false).unwrap()).unwrap();
+
+    assert_eq!(
+        decoded.mod_misc_options(),
+        MOD_MISC_UTP_TRAVERSAL | MOD_MISC_QUIC_TRAVERSAL | MOD_MISC_IPV6 | MOD_MISC_EXTENDED_SX
+    );
+}
+
+#[test]
+fn should_carry_our_ipv6_address_in_the_hello() {
+    let address: Ipv6Addr = "2001:db8:1:2::1".parse().unwrap();
+
+    let decoded = Hello::decode(&our_hello().with_ipv6(&address).encode(true).unwrap()).unwrap();
+
+    assert_eq!(decoded.ipv6(), Some(address));
+    assert_eq!(decoded.mod_misc_options(), MOD_MISC_IPV6 | MOD_MISC_EXTENDED_SX);
+    assert!(decoded.supports_extended_source_exchange());
+}
+
+#[test]
+fn should_ignore_an_ipv6_address_in_the_hello_that_peers_cannot_reach() {
+    for address in ["fe80::1", "fd00::1", "2002:102:304::1", "2001:0:4136:e378::1", "::1"] {
+        assert_eq!(hello_on_the_port_with(4662, vec![ipv6_tag(address)]).ipv6(), None, "{address}");
+    }
+}
+
+#[test]
+fn should_tell_the_peer_the_ipv4_address_we_see_it_at() {
+    let hello = our_hello();
+
+    let addressed = hello.to_peer_at(&IpAddr::V4("1.2.3.4".parse().unwrap()));
+
+    assert_eq!(addressed.tags.len(), hello.tags.len() + 1);
+    assert_eq!(addressed.tags.last(), Some(&int(client_tag::MOD_YOUR_IP, u64::from(ipv4::to_ed2k(ip("1.2.3.4"))))));
+}
+
+#[test]
+fn should_tell_the_peer_the_ipv6_address_we_see_it_at() {
+    let hello = our_hello();
+    let address: Ipv6Addr = "2001:db8::7".parse().unwrap();
+
+    let addressed = hello.to_peer_at(&IpAddr::V6(address));
+
+    assert_eq!(addressed.tags.len(), hello.tags.len() + 1);
+    assert_eq!(
+        addressed.tags.last(),
+        Some(&Tag::Hash { name: TagName::id(client_tag::MOD_YOUR_IP), value: address.octets() })
+    );
+}
+
+#[test]
+fn should_tell_whether_a_client_has_an_ipv4_address() {
+    for (client_id, expected) in [(4_294_967_295, false), (16_777_217, true), (5, true)] {
+        let hello =
+            Hello { user_hash: HASH, client_id, tcp_port: 4662, tags: Vec::new(), server_ip: 0, server_port: 0 };
+
+        assert_eq!(hello.has_ipv4(), expected, "client id {client_id}");
+    }
 }

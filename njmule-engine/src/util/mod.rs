@@ -4,3 +4,4 @@
 //! Small helpers shared by the packages.
 
 pub mod ipv4;
+pub mod ipv6;
