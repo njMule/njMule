@@ -47,3 +47,15 @@ another engine's strings).
 - `search-expressions.jsonl`: searches written by hand and joined from the fragments of
   `SearchParserTest`; `value` is the search parsed and `wire` its bytes for a server that takes
   64-bit sizes, or `error` the reason it is refused.
+
+## `hashes.jsonl`
+
+What the golden vectors do not show, the data's own hashes being theirs:
+
+- `ed2k-layout`: a `size` at the edges of blocks, parts, the empty last part, 32 bits and the
+  largest file, with its `parts`, `ed2kParts` (with the empty last part), `hashSet` (part hashes a
+  hash set holds) and `lastPartLength` (none for an empty file), or `"error":"invalid"`;
+- `aich-tree`: a `size` and its `blocks` (the hashes of its 180 KiB blocks), with the tree's
+  `master` hash and `parts` hashes;
+- `aich-recovery`: the recovery data `in` of `part` of a file of `size` with the AICH `master`
+  hash, as made and changed, with the block hashes it proves, or `"error":"unproven"`.

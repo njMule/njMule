@@ -212,6 +212,8 @@ folder's `README.md`.
 - `ed2k-links.jsonl`, `kad-keywords.jsonl` and `search-expressions.jsonl` hold texts people and
   browsers give: links, the names Kad publishes keywords for (with the whole lower case table
   the keyword ids rest on) and searches, with what the parsers make of them.
+- `hashes.jsonl` holds how files split into eD2K parts, how AICH trees are built from their block
+  hashes and what AICH recovery data proves (`HashCorpusTest`).
 
 The tests check that the engine still answers so. After a change meant to alter the answers, write
 them again and review the difference:
