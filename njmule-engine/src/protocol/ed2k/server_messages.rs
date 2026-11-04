@@ -11,7 +11,7 @@ use crate::protocol::packet::opcodes::server;
 use crate::protocol::packet::{Packet, protocol};
 use crate::protocol::tag::tag_codec::{read_ed2k_list, write_ed2k_list};
 use crate::protocol::tag::{Ed2kTagFormat, Tag, TagName, client_tag, server_tag, tags};
-use crate::util::ipv4;
+use crate::util::{ipv4, white_space};
 
 /// Client ids below this value are LowIDs.
 pub const LOW_ID_LIMIT: u32 = 0x0100_0000;
@@ -348,7 +348,12 @@ pub fn get_sources(file: &[u8; 16], size: u64, obfuscated: bool) -> Packet {
 /// Lines of a server message: the text is split on line breaks and blank lines dropped.
 pub fn decode_message(packet: &Packet) -> Result<Vec<String>, DecodeError> {
     let text = packet.reader().string16()?;
-    Ok(text.split(['\r', '\n']).map(strip).filter(|line| !line.is_empty()).map(str::to_owned).collect())
+    Ok(text
+        .split(['\r', '\n'])
+        .map(white_space::strip)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect())
 }
 
 pub fn message(text: &str) -> Result<Packet, EncodeError> {
@@ -408,13 +413,4 @@ pub fn keep_alive() -> Packet {
 
 fn low32(value: u64) -> u32 {
     u32::try_from(value & u64::from(u32::MAX)).unwrap_or(u32::MAX)
-}
-
-// The ends of a line without the white space servers pad it with: ASCII controls and Unicode spaces, not the no-break
-// ones (U+00A0, U+2007, U+202F) nor U+0085, which other trims take too.
-fn strip(line: &str) -> &str {
-    line.trim_matches(|c: char| {
-        matches!(c, '\t'..='\r' | '\u{1C}'..='\u{20}' | '\u{1680}' | '\u{2028}' | '\u{2029}' | '\u{205F}' | '\u{3000}')
-            || matches!(c, '\u{2000}'..='\u{200A}') && c != '\u{2007}'
-    })
 }

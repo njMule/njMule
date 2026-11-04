@@ -6,5 +6,6 @@
 
 pub mod api;
 pub mod files;
+pub mod kad;
 pub mod protocol;
 pub mod util;

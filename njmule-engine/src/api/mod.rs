@@ -3,4 +3,5 @@
 
 //! What the engine tells about itself and offers its interfaces.
 
+pub mod file_comment;
 pub mod nj_mule_info;
