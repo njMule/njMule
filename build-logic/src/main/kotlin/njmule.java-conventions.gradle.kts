@@ -108,6 +108,8 @@ tasks.withType<Test>().configureEach {
     systemProperty("njmule.update.disabled", "true")
     // Nor is DB-IP's country database downloaded, which every profile asks for by default.
     systemProperty("njmule.countries.disabled", "true")
+    // Nor does the engine tell peers the machine's public IPv6 address: the packets stay the same on any network.
+    systemProperty("njmule.ipv6.disabled", "true")
     // Test settings given on the command line, e.g. -Pnjmule.interop.kadPort=14897.
     systemProperties(testSettings.get())
 }

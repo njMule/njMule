@@ -42,6 +42,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.DownloadInfo;
 import org.njmule.core.api.Ed2kLink;
@@ -59,6 +60,7 @@ import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.util.Ipv4;
 
 @Timeout(120)
+@ExtendWith(Transcripts.class)
 class DownloadFlowTest {
 
     private static final Duration WAIT = Duration.ofSeconds(90);

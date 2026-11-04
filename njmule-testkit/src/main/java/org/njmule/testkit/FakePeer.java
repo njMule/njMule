@@ -100,6 +100,7 @@ public final class FakePeer implements AutoCloseable {
     private final Path file;
     private final Ed2kLink.FileLink link;
     private final Config config;
+    private final Transcript transcript = Transcript.started(Transcript.Receiver.PEER);
     private final ServerSocket tcp;
     private volatile long lowId;
     private volatile Hash16 wanted;
@@ -253,12 +254,15 @@ public final class FakePeer implements AutoCloseable {
                 RandomAccessFile data = new RandomAccessFile(this.file.toFile(), "r")) {
             InputStream in = new BufferedInputStream(client.getInputStream());
             Session session = new Session(client, data, calledBack);
+            int connection = this.transcript.newConnection();
             if (answer != Answer.NONE) {
                 session.send(session.hello().encode(false));
             }
             // A session starting while the peer closes, too late to be dropped, ends at once.
             while (!client.isClosed() && !this.tcp.isClosed()) {
-                session.handle(TcpFraming.read(in, FrameLimit.fixed(1 << 20)));
+                Packet packet = TcpFraming.read(in, FrameLimit.fixed(1 << 20));
+                this.transcript.add("tcp", connection, packet);
+                session.handle(packet);
             }
         } catch (IOException e) {
             logger.debug("Fake peer client gone: {}", e.getMessage());
