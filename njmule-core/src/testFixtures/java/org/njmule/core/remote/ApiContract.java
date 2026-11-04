@@ -35,7 +35,7 @@ import tools.jackson.databind.node.ObjectNode;
  * Checks the answers and events of the API against the response schemas of its OpenAPI document, strictly: every field
  * an answer holds must be in the document, although the document itself lets clients take fields it does not name.
  */
-final class ApiContract {
+public final class ApiContract {
 
     private static final String BASE = "https://njmule.invalid/test/openapi.json";
     private static final NodePath ERROR = pointer("components", "responses", "Error");
@@ -44,7 +44,7 @@ final class ApiContract {
     private final JsonNode document = strict(this.specification.document());
     private final Schema root;
 
-    ApiContract() {
+    public ApiContract() {
         this.root = ApiSpecification.registry(BASE, this.document).loadSchema(SchemaLocation.of(BASE), false);
     }
 
@@ -114,7 +114,8 @@ final class ApiContract {
      * What in an answer does not follow the response the document gives for its status (or its default response); empty
      * when it follows it.
      */
-    List<String> answerViolations(String method, String pathAndQuery, int status, String contentType, String body) {
+    public List<String> answerViolations(
+            String method, String pathAndQuery, int status, String contentType, String body) {
         String path = pathAndQuery.contains("?") ? pathAndQuery.substring(0, pathAndQuery.indexOf('?')) : pathAndQuery;
         Optional<ApiSpecification.Route> route = this.specification.route(RemoteApi.segments(path));
         if (route.isEmpty() || route.get().operation(method).isEmpty()) {
@@ -145,7 +146,7 @@ final class ApiContract {
     }
 
     /** What in an event of the stream does not follow the document's item schema and the data schema of its name. */
-    List<String> eventViolations(String name, String id, String data) {
+    public List<String> eventViolations(String name, String id, String data) {
         ObjectNode item = JsonNodeFactory.instance.objectNode();
         item.put("event", name);
         item.put("id", id);

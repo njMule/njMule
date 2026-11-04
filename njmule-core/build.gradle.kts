@@ -3,6 +3,8 @@
 
 plugins {
     id("njmule.java-conventions")
+    // The tests' helpers the test kit shares: corpora, the canonical form of values, the API contract.
+    `java-test-fixtures`
 }
 
 description = "njMule Core"
@@ -11,6 +13,11 @@ description = "njMule Core"
 // does the tests.
 val openapi = sourceSets.create("openapi")
 tasks.named("spotbugsOpenapi") {
+    enabled = false
+}
+
+// Test code, as SpotBugs does not look at the tests either.
+tasks.named("spotbugsTestFixtures") {
     enabled = false
 }
 
@@ -45,6 +52,10 @@ dependencies {
     "openapiImplementation"(libs.jackson.databind)
     "openapiImplementation"(libs.jackson.dataformat.yaml)
 
+    testFixturesImplementation(libs.jackson.databind)
+    testFixturesImplementation(libs.json.schema.validator) {
+        exclude(group = "tools.jackson.dataformat", module = "jackson-dataformat-yaml")
+    }
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
     testImplementation(libs.jqwik)

@@ -17,6 +17,7 @@ dependencies {
     testImplementation(project(":njmule-app"))
     testImplementation(project(":njmule-http"))
     testImplementation(libs.jackson.databind)
+    testImplementation(testFixtures(project(":njmule-core")))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.assertj.core)
 }
