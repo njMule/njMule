@@ -160,7 +160,7 @@ async function load(): Promise<void> {
     try {
         const s = await answer(api().GET('/schedule'));
         rules.value = s.rules;
-        active.value = s.active;
+        active.value = s.active ?? undefined;
     } catch (e) {
         problem((e as Error).message);
     }
