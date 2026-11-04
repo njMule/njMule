@@ -26,12 +26,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -53,9 +53,10 @@ import org.njmule.testkit.Transcript.Receiver;
  * {@code transcripts/<class>/<test>.txt}; {@code -Pnjmule.transcripts.write=true} records it instead. Another engine
  * driven through the same flows must send the same packets.
  *
- * <p>A transcript is made comparable: each connection's packets in hex, each told once in the order it first came (an
- * engine repeats some on its own timers), with what changes from one run to the next masked: the engine's user hash and
- * port, the version it tells, random challenges, the ranges a download picks at random.
+ * <p>A transcript is made comparable: each connection's packets in hex, each told once (an engine repeats some on its
+ * own timers) and sorted (a download and an upload on one connection interleave as they come), with what changes from
+ * one run or machine to the next masked: the engine's user hash, ID and port, the version it tells, the addresses of
+ * the machine, random challenges, the ranges a download picks at random.
  */
 final class Transcripts implements BeforeEachCallback, AfterEachCallback {
 
@@ -112,14 +113,14 @@ final class Transcripts implements BeforeEachCallback, AfterEachCallback {
         return text.toString();
     }
 
-    // Per channel and connection, each line once in the order it first came.
+    // Per channel and connection, each line once, sorted.
     private static List<String> lines(Transcript transcript) {
         Map<Received, Set<String>> groups =
                 new TreeMap<>(Comparator.<Received>comparingInt(r -> CHANNELS.indexOf(r.channel()))
                         .thenComparingInt(Received::connection));
         for (Received received : transcript.received()) {
             Received group = new Received(received.channel(), received.connection(), null);
-            groups.computeIfAbsent(group, g -> new LinkedHashSet<>()).add(line(transcript.receiver(), received));
+            groups.computeIfAbsent(group, g -> new TreeSet<>()).add(line(transcript.receiver(), received));
         }
         List<String> lines = new ArrayList<>();
         groups.values().forEach(lines::addAll);

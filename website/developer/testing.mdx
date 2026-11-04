@@ -164,7 +164,7 @@ serves as well, without the native build.
 The server, search and download flows also check what the engine sent: every packet `FakeServer`
 and `FakePeer` receive goes into their `Transcript`, which the `Transcripts` extension compares
 after each test with `njmule-testkit/src/test/resources/transcripts/<class>/<test>.txt`. A
-transcript keeps each connection's packets in hex, each line once in the order it first came, with
+transcript keeps each connection's packets in hex, each line once and sorted, with
 what changes from one run or machine to the next masked: the engine's user hash, ID and port, the
 version it tells, the addresses of the machine, random challenges, the ranges a download picks and
 whether router traversal was up yet. The same transcripts hold in both modes, so an executable must
