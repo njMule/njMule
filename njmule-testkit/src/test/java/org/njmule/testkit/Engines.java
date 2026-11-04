@@ -18,6 +18,7 @@ package org.njmule.testkit;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import org.njmule.core.api.EngineConfig;
 import org.njmule.core.api.NjMuleEngine;
 import org.njmule.core.config.AppDirectories;
@@ -38,5 +39,10 @@ final class Engines {
 
     static NjMuleEngine start(AppDirectories dirs) throws IOException {
         return inThisJvm() ? NjMuleEngine.start(new EngineConfig(dirs)) : ApiEngine.start(Path.of(EXECUTABLE), dirs);
+    }
+
+    /** A start of the njmule executable with {@code arguments}; only out of this JVM. */
+    static ProcessBuilder command(String... arguments) throws IOException {
+        return ApiEngine.command(Path.of(EXECUTABLE), List.of(arguments));
     }
 }

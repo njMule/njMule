@@ -145,7 +145,8 @@ them:
 
 The end-to-end tests in `njmule-testkit/src/test` drive whole flows against these doubles: server
 log-in, callbacks and searches, downloads with their limits and recovery, source exchange, the
-command line, the web interface's calls and the remote-control API. Their coverage is aggregated
+command line, one njMule per profile (a later start hands its links to the one running, asks it to
+exit with `--exit`, or fails on the lock), the web interface's calls and the remote-control API. Their coverage is aggregated
 into one JaCoCo report with that of the launcher and the web interface.
 
 The engine flows also run against an `njmule` executable instead of an engine in their JVM: with
@@ -167,9 +168,12 @@ after each test with `njmule-testkit/src/test/resources/transcripts/<class>/<tes
 transcript keeps each connection's packets in hex, each line once and sorted, with
 what changes from one run or machine to the next masked: the engine's user hash, ID and port, the
 version it tells, the addresses of the machine, random challenges, the ranges a download picks and
-whether router traversal was up yet. The same transcripts hold in both modes, so an executable must
-send what the engine in the JVM sends. After a change meant to alter the packets, record them again
-and review the difference:
+whether router traversal was up yet. Every recorded packet must come, and a packet of a kind the
+transcript holds (channel, connection, protocol, opcode) must be one of its lines; kinds it does not
+hold are not compared, as an engine sends some on its timers (the offer of a file just completed)
+before or after a test ends. The same transcripts hold in both modes, so an executable must send
+what the engine in the JVM sends. After a change meant to alter the packets, record them again and
+review the difference:
 
 ```bash
 ./gradlew :njmule-testkit:test --tests '*ServerFlowTest' --tests '*SearchFlowTest' --tests '*DownloadFlowTest' -Pnjmule.transcripts.write=true
