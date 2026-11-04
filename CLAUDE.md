@@ -95,6 +95,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 | `njmule-app` (`org.njmule.app`) | headless launcher/CLI, Logback set-up (`logging.internal` is not exported) |
 | `njmule-ui` | the one interface of the desktop window and the web interface (Vue 3, TypeScript, Vite, Reka UI, TanStack Table/Virtual); reaches njMule only through the remote-control API; built into njmule-http's jar; holds the translation bundles (`i18n/`) and flags (`flags/`) |
 | `njmule-desktop` | the desktop window: a Tauri 2 shell (Rust, `src-tauri/`) that starts the native engine with a control endpoint and shows `njmule-ui` |
+| `njmule-engine` | the engine in Rust, being ported from `njmule-core` (phase 2 spike): a Cargo crate of its own, whose tests replay the Java engine's corpora |
 | `njmule-http` (`org.njmule.http`) | njMule over HTTP on Jetty: the web interface (password, sessions, CSRF), which serves `njmule-ui` and the core's remote-control API, and the desktop window's control endpoint |
 | `njmule-testkit` (`org.njmule.testkit`) | test doubles (fake server and peers, from M2) |
 | `njmule-bench` | JMH benchmarks; classpath build so it reaches internal core packages; not distributed |
@@ -157,6 +158,11 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `./gradlew :njmule-desktop:shell` builds `src-tauri/target/release/njmule-gui(.exe)`, which starts
   the `njmule` executable beside it (or on the `PATH`) and shows `njmule-ui`. In `src-tauri`:
   `cargo test` runs its tests, `cargo fmt` formats it (`rustfmt.toml`: 120 columns).
+- Rust engine (`njmule-engine`): the same pinned Rust; in `njmule-engine`, `cargo test` replays the
+  corpora of `njmule-core/src/test/resources/golden`, `cargo clippy --all-targets -- -D warnings`
+  holds its lints (no unwrap, index, panic or unchecked arithmetic on network input), `cargo deny
+  check` its crates' licenses, advisories and sources (`deny.toml`). Port a Java package with the
+  same names in snake_case and its tests under the same names, and keep the corpora green.
 - Documentation website (`website/`, Docusaurus, not part of `build`): `./gradlew :website:site` →
   `website/build/site` (it takes the interface's screenshots on a demo engine with the installed
   Chrome or Edge through `website/scripts/capture-web.mjs`, the CLI help with `:njmule-app:cliHelp`,

@@ -34,6 +34,7 @@ jobs:
             workflows: ${{ steps.filter.outputs.workflows == 'true' }}
             static: ${{ github.event_name == 'schedule' || steps.static.outputs.static == 'true' }}
             desktop: ${{ github.event_name == 'schedule' || steps.desktop.outputs.desktop == 'true' }}
+            engine: ${{ github.event_name == 'schedule' || steps.engine.outputs.engine == 'true' }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -90,6 +91,16 @@ jobs:
                           - 'njmule-desktop/**'
                           - 'njmule-ui/**'
                           - 'branding/generated/**'
+                          - '.github/workflows/build.yml'
+            # The Rust engine, and the Java engine's corpora its tests replay.
+            - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+              if: github.event_name != 'schedule'
+              id: engine
+              with:
+                  filters: |
+                      engine:
+                          - 'njmule-engine/**'
+                          - 'njmule-core/src/test/resources/golden/**'
                           - '.github/workflows/build.yml'
 
     verify:
@@ -251,6 +262,31 @@ jobs:
             - name: Stop Gradle
               if: always() && runner.os == 'Windows'
               run: ./gradlew --stop
+
+    engine:
+        name: rust engine
+        needs: changes
+        if: needs.changes.outputs.engine == 'true'
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: njmule-engine
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - name: Install the pinned Rust
+              run: |
+                  channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+                  rustup toolchain install "$channel" --profile minimal --component rustfmt,clippy
+            # The tests replay the corpora the Java engine wrote, in njmule-core's test resources.
+            - name: Format, lint and test
+              run: |
+                  cargo fmt --check
+                  cargo clippy --locked --all-targets -- -D warnings
+                  cargo test --locked
+            - name: Licenses, advisories and sources of the crates
+              uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+              with:
+                  manifest-path: njmule-engine/Cargo.toml
 
     actionlint:
         name: actionlint
@@ -448,10 +484,10 @@ jobs:
     ci:
         name: CI result
         if: always()
-        needs: [changes, verify, desktop, actionlint, reuse, native, native-windows, native-macos, synology]
+        needs: [changes, verify, desktop, engine, actionlint, reuse, native, native-windows, native-macos, synology]
         runs-on: ubuntu-latest
         steps:
             - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
               with:
-                  allowed-skips: verify, desktop, actionlint, native, native-windows, native-macos, synology
+                  allowed-skips: verify, desktop, engine, actionlint, native, native-windows, native-macos, synology
                   jobs: ${{ toJSON(needs) }}
