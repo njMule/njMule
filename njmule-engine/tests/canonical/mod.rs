@@ -19,6 +19,10 @@ use njmule_engine::protocol::ed2k::server_messages::{
     Endpoint, FoundSources, IdChange, Login, SearchResults, ServerIdent, ServerStatus, Source,
 };
 use njmule_engine::protocol::ed2k::source_exchange::{self, Answer, Request};
+use njmule_engine::protocol::kad::kad_messages::{
+    self, BootstrapAnswer, BuddyOffer, CallbackRequest, Contact, Entry, FindBuddy, FirewallCheck, FirewallUdp,
+    KeywordPublish, NotesPublish, NotesSearch, PublishAnswer, SearchAnswer, Sender, SourcePublish, SourceSearch,
+};
 use njmule_engine::protocol::packet::Packet;
 use njmule_engine::protocol::tag::{Tag, TagName};
 use serde_json::{Value, json};
@@ -329,5 +333,147 @@ impl Canonical for UdpCheckRequest {
 impl Canonical for FileComment {
     fn canonical(&self) -> Value {
         json!({"text": self.text(), "rating": self.rating()})
+    }
+}
+
+impl Canonical for Contact {
+    fn canonical(&self) -> Value {
+        json!({
+            "id": self.id.canonical(),
+            "ip": self.ip,
+            "udpPort": self.udp_port,
+            "tcpPort": self.tcp_port,
+            "version": self.version,
+        })
+    }
+}
+
+impl Canonical for Sender {
+    fn canonical(&self) -> Value {
+        json!({"id": self.id.canonical(), "tcpPort": self.tcp_port, "version": self.version})
+    }
+}
+
+impl Canonical for BootstrapAnswer {
+    fn canonical(&self) -> Value {
+        json!({"sender": self.sender.canonical(), "contacts": self.contacts.canonical()})
+    }
+}
+
+impl Canonical for kad_messages::Hello {
+    fn canonical(&self) -> Value {
+        json!({"sender": self.sender.canonical(), "tags": self.tags.canonical()})
+    }
+}
+
+impl Canonical for kad_messages::Request {
+    fn canonical(&self) -> Value {
+        json!({"count": self.count, "target": self.target.canonical(), "receiver": self.receiver.canonical()})
+    }
+}
+
+impl Canonical for kad_messages::Answer {
+    fn canonical(&self) -> Value {
+        json!({"target": self.target.canonical(), "contacts": self.contacts.canonical()})
+    }
+}
+
+impl Canonical for SourceSearch {
+    fn canonical(&self) -> Value {
+        json!({"target": self.target.canonical(), "start": self.start, "size": self.size})
+    }
+}
+
+impl Canonical for NotesSearch {
+    fn canonical(&self) -> Value {
+        json!({"target": self.target.canonical(), "size": self.size})
+    }
+}
+
+impl Canonical for Entry {
+    fn canonical(&self) -> Value {
+        json!({"id": self.id.canonical(), "tags": self.tags.canonical()})
+    }
+}
+
+impl Canonical for SearchAnswer {
+    fn canonical(&self) -> Value {
+        json!({"sender": self.sender.canonical(), "target": self.target.canonical(), "results": self.results.canonical()})
+    }
+}
+
+impl Canonical for KeywordPublish {
+    fn canonical(&self) -> Value {
+        json!({"keyword": self.keyword.canonical(), "files": self.files.canonical()})
+    }
+}
+
+impl Canonical for SourcePublish {
+    fn canonical(&self) -> Value {
+        json!({"file": self.file.canonical(), "source": self.source.canonical(), "tags": self.tags.canonical()})
+    }
+}
+
+impl Canonical for NotesPublish {
+    fn canonical(&self) -> Value {
+        json!({"file": self.file.canonical(), "publisher": self.publisher.canonical(), "tags": self.tags.canonical()})
+    }
+}
+
+impl Canonical for PublishAnswer {
+    fn canonical(&self) -> Value {
+        json!({"target": self.target.canonical(), "load": self.load})
+    }
+}
+
+impl Canonical for FirewallCheck {
+    fn canonical(&self) -> Value {
+        json!({"tcpPort": self.tcp_port, "userHash": self.user_hash.canonical(), "connectOptions": self.connect_options})
+    }
+}
+
+impl Canonical for FindBuddy {
+    fn canonical(&self) -> Value {
+        json!({
+            "buddyId": self.buddy_id.canonical(),
+            "userHash": self.user_hash.canonical(),
+            "tcpPort": self.tcp_port,
+            "connectOptions": self.connect_options,
+        })
+    }
+}
+
+impl Canonical for BuddyOffer {
+    fn canonical(&self) -> Value {
+        json!({
+            "buddyId": self.buddy_id.canonical(),
+            "userHash": self.user_hash.canonical(),
+            "tcpPort": self.tcp_port,
+            "connectOptions": self.connect_options,
+        })
+    }
+}
+
+impl Canonical for CallbackRequest {
+    fn canonical(&self) -> Value {
+        json!({"buddyId": self.buddy_id.canonical(), "file": self.file.canonical(), "tcpPort": self.tcp_port})
+    }
+}
+
+impl Canonical for FirewallUdp {
+    fn canonical(&self) -> Value {
+        json!({"error": self.error, "port": self.port})
+    }
+}
+
+impl Canonical for u32 {
+    fn canonical(&self) -> Value {
+        json!(self)
+    }
+}
+
+impl Canonical for u16 {
+    fn canonical(&self) -> Value {
+        json!(self)
     }
 }

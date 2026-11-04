@@ -5,5 +5,6 @@
 
 pub mod ed2k;
 pub mod io;
+pub mod kad;
 pub mod packet;
 pub mod tag;
