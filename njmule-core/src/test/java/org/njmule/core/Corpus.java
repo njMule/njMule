@@ -68,6 +68,19 @@ public final class Corpus {
                 cases.stream().map(ObjectNode::toString).collect(Collectors.joining("\n", "", "\n")));
     }
 
+    /** A case of {@code kind} that parses {@code text}, which must be {@link #wellFormed}. */
+    public static ObjectNode newTextCase(String kind, String text) {
+        if (!wellFormed(text)) {
+            throw new IllegalArgumentException("A lone surrogate does not fit a corpus: " + text);
+        }
+        return MAPPER.createObjectNode().put("kind", kind).put("text", text);
+    }
+
+    /** True unless {@code text} holds a lone surrogate, which neither JSON in UTF-8 nor another engine's text holds. */
+    public static boolean wellFormed(String text) {
+        return text.codePoints().noneMatch(c -> c >= Character.MIN_SURROGATE && c <= Character.MAX_SURROGATE);
+    }
+
     /** A case of {@code kind} that decodes {@code in}. */
     public static ObjectNode newCase(String kind, byte[] in) {
         return MAPPER.createObjectNode()

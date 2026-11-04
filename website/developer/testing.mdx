@@ -202,6 +202,9 @@ folder's `README.md`.
 - `profile-files.jsonl` holds the files of a profile (`.met` and `.dat` files, the Kad indexes,
   `ipfilter.dat` and the other text files), as written and changed, with what their readers give
   (`ProfileFilesCorpusTest`).
+- `ed2k-links.jsonl`, `kad-keywords.jsonl` and `search-expressions.jsonl` hold texts people and
+  browsers give: links, the names Kad publishes keywords for (with the whole lower case table
+  the keyword ids rest on) and searches, with what the parsers make of them.
 
 The tests check that the engine still answers so. After a change meant to alter the answers, write
 them again and review the difference:

@@ -1,0 +1,84 @@
+{"kind":"search","text":"ubuntu","value":{"@type":"Keyword","text":"ubuntu"},"wire":"0106007562756e7475"}
+{"kind":"search","text":"ubuntu iso","value":{"@type":"And","left":{"@type":"Keyword","text":"ubuntu"},"right":{"@type":"Keyword","text":"iso"}},"wire":"00000106007562756e747501030069736f"}
+{"kind":"search","text":"\"ubuntu desktop\" iso","value":{"@type":"And","left":{"@type":"Keyword","text":"\"ubuntu desktop\""},"right":{"@type":"Keyword","text":"iso"}},"wire":"0000011000227562756e7475206465736b746f702201030069736f"}
+{"kind":"search","text":"linux iso OR ubuntu NOT beta @size>700m","value":{"@type":"And","left":{"@type":"Keyword","text":"linux"},"right":{"@type":"And","left":{"@type":"Or","left":{"@type":"Keyword","text":"iso"},"right":{"@type":"Not","left":{"@type":"Keyword","text":"ubuntu"},"right":{"@type":"Keyword","text":"beta"}}},"right":{"@type":"NumericAttr","tag":2,"comparison":"GREATER","value":734003200}}},"wire":"00000105006c696e75780000000101030069736f00020106007562756e747501040062657461030000c02b01010002"}
+{"kind":"search","text":"a AND (b OR c) NOT d","value":{"@type":"And","left":{"@type":"Keyword","text":"a"},"right":{"@type":"Not","left":{"@type":"Or","left":{"@type":"Keyword","text":"b"},"right":{"@type":"Keyword","text":"c"}},"right":{"@type":"Keyword","text":"d"}}},"wire":"00000101006100020001010100620101006301010064"}
+{"kind":"search","text":"-beta ubuntu","error":"GENERAL"}
+{"kind":"search","text":"@type=video matrix","value":{"@type":"And","left":{"@type":"StringAttr","tag":3,"value":"Video"},"right":{"@type":"Keyword","text":"matrix"}},"wire":"0000020500566964656f0100030106006d6174726978"}
+{"kind":"search","text":"@ext=mkv @length>=1:30:00 film","value":{"@type":"And","left":{"@type":"StringAttr","tag":4,"value":"mkv"},"right":{"@type":"And","left":{"@type":"NumericAttr","tag":211,"comparison":"GREATER_EQUAL","value":5400},"right":{"@type":"Keyword","text":"film"}}},"wire":"00000203006d6b7601000400000318150000030100d301040066696c6d"}
+{"kind":"search","text":"@size<1.5g @size>.5k a","value":{"@type":"And","left":{"@type":"NumericAttr","tag":2,"comparison":"LESS","value":1610612736},"right":{"@type":"And","left":{"@type":"NumericAttr","tag":2,"comparison":"GREATER","value":512},"right":{"@type":"Keyword","text":"a"}}},"wire":"0000030000006002010002000003000200000101000201010061"}
+{"kind":"search","text":"@sources>10 @complete>2 a","value":{"@type":"And","left":{"@type":"NumericAttr","tag":21,"comparison":"GREATER","value":10},"right":{"@type":"And","left":{"@type":"NumericAttr","tag":48,"comparison":"GREATER","value":2},"right":{"@type":"Keyword","text":"a"}}},"wire":"0000030a00000001010015000003020000000101003001010061"}
+{"kind":"search","text":"ed2k://|file|a.bin|1000|0123456789ABCDEF0123456789ABCDEF|/","value":{"@type":"Keyword","text":"ed2k::0123456789ABCDEF0123456789ABCDEF"},"wire":"0126006564326b3a3a3031323334353637383941424344454630313233343536373839414243444546"}
+{"kind":"search","text":"Città NOÏR ß","value":{"@type":"And","left":{"@type":"Keyword","text":"Città"},"right":{"@type":"And","left":{"@type":"Keyword","text":"NOÏR"},"right":{"@type":"Keyword","text":"ß"}}},"wire":"000001060043697474c3a000000105004e4fc38f52010200c39f"}
+{"kind":"search","text":"(a","error":"MISSING_CLOSING_PARENTHESIS"}
+{"kind":"search","text":"a)","error":"GENERAL"}
+{"kind":"search","text":"\"a","error":"UNTERMINATED_STRING"}
+{"kind":"search","text":"AND","error":"GENERAL"}
+{"kind":"search","text":"a OR","error":"MISSING_OR_OPERAND"}
+{"kind":"search","text":"NOT","error":"GENERAL"}
+{"kind":"search","text":"@size>","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"@size>huge","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"@nothing=1 a","error":"UNKNOWN_ATTRIBUTE"}
+{"kind":"search","text":"a b c d e f g h i j k l","error":"TOO_COMPLEX"}
+{"kind":"search","text":"","error":"GENERAL"}
+{"kind":"search","text":"   ","error":"GENERAL"}
+{"kind":"search","text":"a:k@length=-e999999999999999999999@length>@size>\"g","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"(","error":"MISSING_EXPRESSION_IN_PARENTHESES"}
+{"kind":"search","text":"OR","error":"GENERAL"}
+{"kind":"search","text":"@ext=kb1AND:m=mb1--g","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":")\\\\1.5ORAND( @length>e9OR","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"\"ORvideok\\ :b1a)@type=","error":"UNTERMINATED_STRING"}
+{"kind":"search","text":"((99999999999999999999e9NOT-aAND@length=","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"@length=@type= =(k","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"1.5","value":{"@type":"Keyword","text":"1.5"},"wire":"010300312e35"}
+{"kind":"search","text":"m\\g=\"NOT123)","error":"UNTERMINATED_STRING"}
+{"kind":"search","text":"NOT(@type=)(OR@type=1.5aNOTa","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"@length>video@ext=99999999999999999999(k-\"(\\>","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"a:99999999999999999999AND)@type==ag\\@length>@type=","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"videob1>=e9\\NOTANDa)","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":")AND@size>@type=)","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"b1:kNOTe9e9-@length=:b1video\\","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"@type=ORNOTam\\99999999999999999999123<k@type=\\","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"@length=\"","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"=<","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"(","error":"MISSING_EXPRESSION_IN_PARENTHESES"}
+{"kind":"search","text":"e9mb1@type=123OR","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"k1.5m<ma)","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":" mmNOT\"@length>@length=gm>1.5","error":"UNTERMINATED_STRING"}
+{"kind":"search","text":":e9k>\"@size>k(-ak","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"@type=\\\\99999999999999999999ORm@length=@ext=((","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"123","value":{"@type":"Keyword","text":"123"},"wire":"010300313233"}
+{"kind":"search","text":"","error":"GENERAL"}
+{"kind":"search","text":"@length>@ext=","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"<(OR\\@ext=123e9@ext=>\"OR","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"video>k99999999999999999999)","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"99999999999999999999aOR\\<=99999999999999999999","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"","error":"GENERAL"}
+{"kind":"search","text":"NOTb1@type=:k-aa1.5123","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"=99999999999999999999>@ext=> k@size>e9\\@length=","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"@size>e9==NOT@length=videob1video-b1)","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"99999999999999999999 NOTb1","value":{"@type":"And","left":{"@type":"Keyword","text":"99999999999999999999"},"right":{"@type":"Keyword","text":"NOTb1"}},"wire":"000001140039393939393939393939393939393939393939390105004e4f546231"}
+{"kind":"search","text":"123b1b1OR@length=","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":":)\\","error":"GENERAL"}
+{"kind":"search","text":"<123NOT:@ext=(","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":":e999999999999999999999>(:gvideo\\","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"OR@length>g@size> ( @size>(me9(","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"-123=>123:e9@length=@ext=","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":")(","error":"GENERAL"}
+{"kind":"search","text":"a-e9\\1.5","value":{"@type":"Keyword","text":"a-e9\\1.5"},"wire":"010800612d65395c312e35"}
+{"kind":"search","text":"","error":"GENERAL"}
+{"kind":"search","text":"(@ext==ab1@type=99999999999999999999@type=(1.5 OR","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"(99999999999999999999OR","error":"MISSING_CLOSING_PARENTHESIS"}
+{"kind":"search","text":"OR>b1)@ext=","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"b1@size>=:(@length>am123<","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"OR","error":"GENERAL"}
+{"kind":"search","text":"@type=","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"1.5\\@length>NOTNOT","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"AND","error":"GENERAL"}
+{"kind":"search","text":"@type=OR<:m>\"(@type==","error":"INVALID_ATTRIBUTE_VALUE"}
+{"kind":"search","text":"99999999999999999999mkvideo>video","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":">videovideovideo","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"1.5","value":{"@type":"Keyword","text":"1.5"},"wire":"010300312e35"}
+{"kind":"search","text":"OR@length>\\@size>-","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"g1.5@size>1.5@length>@size>)-","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"a99999999999999999999=k","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
