@@ -54,7 +54,7 @@ public final class SocialPreview {
         g.drawString("New Jack Mule", tx + 4, 420);
         g.setColor(new Color(0x6B7385));
         g.setFont(new Font(font, Font.PLAIN, 30));
-        g.drawString("eD2K and Kad client  ·  Java 25  ·  GPL-3.0", tx + 4, 472);
+        g.drawString("eD2K and Kad client  ·  GPL-3.0", tx + 4, 472);
         g.dispose();
         ImageIO.write(image, "png", new File(args[1]));
     }
