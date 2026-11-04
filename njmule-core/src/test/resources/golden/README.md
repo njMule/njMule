@@ -33,6 +33,21 @@ and changed three times; `known.met salvaged` and `known2_64.met salvaged` read 
 damaged one is read. The answer `value` is what the reader gives, in the form of `Canonical` (an
 AICH tree of `known2_64.met` as its `masterHash` and `blockHashes`).
 
+## Text corpora
+
+The text a parser reads is in `text` (well-formed Unicode: a lone surrogate fits neither JSON nor
+another engine's strings).
+
+- `ed2k-links.jsonl`: links written by hand (with the mistakes browsers and sites make) and links
+  the codec writes from generated names and hosts, each also changed; `value` is the link parsed,
+  `"error":"invalid"` a refusal.
+- `kad-keywords.jsonl`: the `lower-case` case lists every UTF-16 unit the network's lower case
+  changes, as `[unit, lowered]`; each `keywords` case lists the words Kad publishes a name under
+  with their ids (MD4 of the word in UTF-8, in hex).
+- `search-expressions.jsonl`: searches written by hand and joined from the fragments of
+  `SearchParserTest`; `value` is the search parsed and `wire` its bytes for a server that takes
+  64-bit sizes, or `error` the reason it is refused.
+
 ## `hashes.jsonl`
 
 What the golden vectors do not show, the data's own hashes being theirs:

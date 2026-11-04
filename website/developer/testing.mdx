@@ -161,6 +161,23 @@ must reach the engine in order, the history of cancelled files) are skipped in t
 `njmule-app/build/install/njmule/bin/njmule` of `:njmule-app:installDist` (`njmule.bat` on Windows)
 serves as well, without the native build.
 
+The server, search and download flows also check what the engine sent: every packet `FakeServer`
+and `FakePeer` receive goes into their `Transcript`, which the `Transcripts` extension compares
+after each test with `njmule-testkit/src/test/resources/transcripts/<class>/<test>.txt`. A
+transcript keeps each connection's packets in hex, each line once and sorted, with
+what changes from one run or machine to the next masked: the engine's user hash, ID and port, the
+version it tells, the addresses of the machine, random challenges, the ranges a download picks and
+whether router traversal was up yet. The same transcripts hold in both modes, so an executable must
+send what the engine in the JVM sends. After a change meant to alter the packets, record them again
+and review the difference:
+
+```bash
+./gradlew :njmule-testkit:test --tests '*ServerFlowTest' --tests '*SearchFlowTest' --tests '*DownloadFlowTest' -Pnjmule.transcripts.write=true
+```
+
+Tests never tell peers the machine's public IPv6 address (`njmule.ipv6.disabled`), so that the
+packets stay the same on any network.
+
 ## Property-based and fuzz tests
 
 Codecs and parsers have jqwik properties (`@Property`) over generated input: tags, packets, hashes,
@@ -185,6 +202,9 @@ folder's `README.md`.
 - `profile-files.jsonl` holds the files of a profile (`.met` and `.dat` files, the Kad indexes,
   `ipfilter.dat` and the other text files), as written and changed, with what their readers give
   (`ProfileFilesCorpusTest`).
+- `ed2k-links.jsonl`, `kad-keywords.jsonl` and `search-expressions.jsonl` hold texts people and
+  browsers give: links, the names Kad publishes keywords for (with the whole lower case table
+  the keyword ids rest on) and searches, with what the parsers make of them.
 - `hashes.jsonl` holds how files split into eD2K parts, how AICH trees are built from their block
   hashes and what AICH recovery data proves (`HashCorpusTest`).
 

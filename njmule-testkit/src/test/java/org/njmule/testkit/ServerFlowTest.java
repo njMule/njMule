@@ -46,6 +46,7 @@ import java.util.function.Predicate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.njmule.core.api.EngineEvent;
 import org.njmule.core.api.NjMuleEngine;
@@ -71,6 +72,7 @@ import org.njmule.core.protocol.tag.TagName;
 import org.njmule.core.util.Ipv4;
 
 @Timeout(60)
+@ExtendWith(Transcripts.class)
 class ServerFlowTest {
 
     private static final Duration WAIT = Duration.ofSeconds(30);
