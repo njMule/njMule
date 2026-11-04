@@ -13,11 +13,15 @@ use canonical::Canonical;
 use njmule_engine::protocol::ed2k::client_messages::{
     CompressedPart, FileName, FileStatus, HashSet, RequestParts, SendingPart,
 };
+use njmule_engine::protocol::ed2k::client_reasks::{Ack, Ping, ThroughBuddy};
 use njmule_engine::protocol::ed2k::hello::Hello;
+use njmule_engine::protocol::ed2k::low_id_messages::{Callback, DirectCallbackRequest, UdpCheckRequest};
 use njmule_engine::protocol::ed2k::server_datagrams::{self, Description, Status};
 use njmule_engine::protocol::ed2k::server_messages::{
     self, FoundSources, IdChange, Login, SearchResults, ServerIdent, ServerStatus,
 };
+use njmule_engine::protocol::ed2k::source_exchange::{Answer, Request};
+use njmule_engine::protocol::ed2k::{chat_messages, file_description};
 use njmule_engine::protocol::io::DecodeError;
 use njmule_engine::protocol::packet::{Packet, packing};
 use serde_json::{Map, Value, json};
@@ -25,17 +29,6 @@ use serde_json::{Map, Value, json};
 const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/packets.jsonl");
 
 const NOT_PORTED: &[&str] = &[
-    "source exchange answer",
-    "source exchange request",
-    "packed source exchange answer",
-    "reask ping",
-    "reask ack",
-    "reask through a buddy",
-    "callback",
-    "direct callback request",
-    "udp check request",
-    "file comment",
-    "chat message",
     "bootstrap answer",
     "kad hello",
     "kad request",
@@ -81,6 +74,19 @@ fn decoder(kind: &str) -> Option<Decoder> {
         "request parts" | "request parts, 64 bit" => |p| RequestParts::decode(&p).map(|v| v.canonical()),
         "sending part" => |p| SendingPart::decode(&p).map(|v| v.canonical()),
         "compressed part" => |p| CompressedPart::decode(&p).map(|v| v.canonical()),
+        "source exchange answer" => |p| Answer::decode(&p).map(|v| v.canonical()),
+        "packed source exchange answer" => {
+            |p| Answer::decode(&packing::unpack(p, packing::MAX_CLIENT_UNPACKED)?).map(|v| v.canonical())
+        }
+        "source exchange request" => |p| Request::decode(&p).map(|v| v.canonical()),
+        "reask ping" => |p| Ping::decode(&p, 4).map(|v| v.canonical()),
+        "reask ack" => |p| Ack::decode(&p, 4).map(|v| v.canonical()),
+        "reask through a buddy" => |p| ThroughBuddy::decode(&p).map(|v| v.canonical()),
+        "callback" => |p| Callback::decode(&p).map(|v| v.canonical()),
+        "direct callback request" => |p| DirectCallbackRequest::decode(&p).map(|v| v.canonical()),
+        "udp check request" => |p| UdpCheckRequest::decode(&p).map(|v| v.canonical()),
+        "file comment" => |p| file_description::decode(&p).map(|v| v.canonical()),
+        "chat message" => |p| chat_messages::text(&p).map(|v| v.canonical()),
         "packed search results" => |p| SearchResults::decode(&packing::unpack_from_server(p)?).map(|v| v.canonical()),
         _ => return None,
     })

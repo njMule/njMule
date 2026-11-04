@@ -5,15 +5,21 @@
 //! lowerCamelCase, with an `@type` for the cases of a sealed type, integers as the unsigned values of their width,
 //! floats as the hex of their bits, bytes and hashes in lower-case hex, an absent value as null.
 
+use njmule_engine::api::file_comment::FileComment;
+use njmule_engine::kad::uint128::UInt128;
 use njmule_engine::protocol::ed2k::client_messages::{
-    CompressedPart, FileName, FileStatus, HashSet, Range, RequestParts, SendingPart,
+    CompressedPart, FileName, FileStatus, HashSet, PartStatus, Range, RequestParts, SendingPart,
 };
+use njmule_engine::protocol::ed2k::client_reasks::{Ack, Ping, ThroughBuddy};
 use njmule_engine::protocol::ed2k::file_entry::FileEntry;
 use njmule_engine::protocol::ed2k::hello::Hello;
+use njmule_engine::protocol::ed2k::low_id_messages::{Callback, DirectCallbackRequest, UdpCheckRequest};
 use njmule_engine::protocol::ed2k::server_datagrams::{Description, Status};
 use njmule_engine::protocol::ed2k::server_messages::{
     Endpoint, FoundSources, IdChange, Login, SearchResults, ServerIdent, ServerStatus, Source,
 };
+use njmule_engine::protocol::ed2k::source_exchange::{self, Answer, Request};
+use njmule_engine::protocol::packet::Packet;
 use njmule_engine::protocol::tag::{Tag, TagName};
 use serde_json::{Value, json};
 
@@ -231,5 +237,97 @@ impl Canonical for CompressedPart {
             "compressedSize": self.compressed_size,
             "chunk": hex::encode(&self.chunk),
         })
+    }
+}
+
+impl Canonical for UInt128 {
+    fn canonical(&self) -> Value {
+        json!(hex::encode(self.to_big_endian()))
+    }
+}
+
+impl Canonical for Packet {
+    fn canonical(&self) -> Value {
+        json!({"protocol": self.protocol(), "opcode": self.opcode(), "payload": hex::encode(self.payload())})
+    }
+}
+
+impl Canonical for PartStatus {
+    fn canonical(&self) -> Value {
+        json!({"partCount": self.part_count, "parts": indexes(&self.parts)})
+    }
+}
+
+impl Canonical for source_exchange::Source {
+    fn canonical(&self) -> Value {
+        json!({
+            "ip": self.ip,
+            "lowId": self.low_id,
+            "port": self.port,
+            "serverIp": self.server_ip,
+            "serverPort": self.server_port,
+            "userHash": self.user_hash.canonical(),
+            "cryptOptions": self.crypt_options,
+            "ipv6": self.ipv6.map(|address| address.to_string()),
+        })
+    }
+}
+
+impl Canonical for Answer {
+    fn canonical(&self) -> Value {
+        json!({"version": self.version, "file": self.file.canonical(), "sources": self.sources.canonical()})
+    }
+}
+
+impl Canonical for Request {
+    fn canonical(&self) -> Value {
+        json!({"version": self.version, "file": self.file.canonical()})
+    }
+}
+
+impl Canonical for Ping {
+    fn canonical(&self) -> Value {
+        json!({"file": self.file.canonical(), "parts": self.parts.canonical(), "completeSources": self.complete_sources})
+    }
+}
+
+impl Canonical for Ack {
+    fn canonical(&self) -> Value {
+        json!({"parts": self.parts.canonical(), "rank": self.rank})
+    }
+}
+
+impl Canonical for ThroughBuddy {
+    fn canonical(&self) -> Value {
+        json!({"buddyId": self.buddy_id.canonical(), "ping": self.ping.canonical()})
+    }
+}
+
+impl Canonical for Callback {
+    fn canonical(&self) -> Value {
+        json!({
+            "buddyId": self.buddy_id.canonical(),
+            "file": self.file.canonical(),
+            "requesterIp": self.requester_ip,
+            "requesterPort": self.requester_port,
+        })
+    }
+}
+
+impl Canonical for DirectCallbackRequest {
+    fn canonical(&self) -> Value {
+        json!({"tcpPort": self.tcp_port, "userHash": self.user_hash.canonical(), "connectOptions": self.connect_options})
+    }
+}
+
+impl Canonical for UdpCheckRequest {
+    fn canonical(&self) -> Value {
+        json!({"internalPort": self.internal_port, "externalPort": self.external_port, "senderKey": self.sender_key})
+    }
+}
+
+impl Canonical for FileComment {
+    fn canonical(&self) -> Value {
+        json!({"text": self.text(), "rating": self.rating()})
     }
 }
