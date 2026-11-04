@@ -8,7 +8,7 @@
     <metadata_license>CC0-1.0</metadata_license>
     <project_license>GPL-3.0-or-later</project_license>
     <name>njMule</name>
-    <summary>Next generation Java Mule: eD2K and Kad file sharing</summary>
+    <summary>New Jack Mule: eD2K and Kad file sharing</summary>
     <description>
         <p>
             njMule is a file sharing client for the eD2K and Kad networks, compatible with eMule.

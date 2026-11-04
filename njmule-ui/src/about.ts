@@ -7,7 +7,7 @@ import type { Schemas } from './api/client';
 // The name, version, copyright and licence, in the same words in every front end: the tagline and the copyright stay
 // in English.
 
-export const TAGLINE = 'Next generation Java Mule';
+export const TAGLINE = 'New Jack Mule';
 export const COPYRIGHT = 'Copyright (C) 2026 Salvatore Coppola and the njMule contributors';
 export const LICENSE_ID = 'GPL-3.0-or-later';
 

@@ -17,7 +17,7 @@ vendor: njMule contributors
 homepage: https://github.com/njMule/njMule
 license: GPL-3.0-or-later
 description: |-
-  Next generation Java Mule: eD2K and Kad file sharing.
+  New Jack Mule: eD2K and Kad file sharing.
   njMule is a file sharing client for the eD2K and Kad networks, compatible with
   eMule: server and Kad searches, downloads checked part by part, uploads with
   credits and secure identification, a desktop and a web interface, and the import
