@@ -68,7 +68,8 @@ jobs:
             - name: Install GraalVM and WiX
               shell: pwsh
               run: |
-                  Invoke-WebRequest "$env:GRAALVM_RELEASE/$($env:GRAALVM_NAME)_windows-x64_bin.zip" -OutFile "$env:RUNNER_TEMP\graalvm.zip"
+                  Invoke-WebRequest "$env:GRAALVM_RELEASE/$($env:GRAALVM_NAME)_windows-x64_bin.zip" -OutFile "$env:RUNNER_TEMP\graalvm.zip" `
+                      -MaximumRetryCount 5 -RetryIntervalSec 15
                   if ((Get-FileHash "$env:RUNNER_TEMP\graalvm.zip" -Algorithm SHA256).Hash -ne $env:GRAALVM_SHA256) {
                       throw "GraalVM checksum mismatch"
                   }
@@ -195,14 +196,15 @@ jobs:
                   sudo apt-get install -y -qq --no-install-recommends build-essential zlib1g-dev \
                       libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev \
                       xvfb fonts-dejavu-core
-                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/graalvm.tar.gz" \
-                      "$GRAALVM_RELEASE/${GRAALVM_NAME}_${{ matrix.graalvm }}_bin.tar.gz"
+                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
+                      -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_RELEASE/${GRAALVM_NAME}_${{ matrix.graalvm }}_bin.tar.gz"
                   echo "$GRAALVM_SHA256  $RUNNER_TEMP/graalvm.tar.gz" | sha256sum -c -
                   mkdir -p "$RUNNER_TEMP/graalvm"
                   tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
                   echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm" >> "$GITHUB_ENV"
                   echo "JAVA_HOME=$RUNNER_TEMP/graalvm" >> "$GITHUB_ENV"
-                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/nfpm.tar.gz" "$NFPM_URL"
+                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
+                      -o "$RUNNER_TEMP/nfpm.tar.gz" "$NFPM_URL"
                   echo "$NFPM_SHA256  $RUNNER_TEMP/nfpm.tar.gz" | sha256sum -c -
                   tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/nfpm.tar.gz" nfpm
             - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
@@ -265,14 +267,15 @@ jobs:
                   fetch-depth: 0
             - name: Install GraalVM and the musl toolchain
               run: |
-                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/graalvm.tar.gz" \
-                      "$GRAALVM_RELEASE/${GRAALVM_NAME}_linux-x64_bin.tar.gz"
+                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
+                      -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_RELEASE/${GRAALVM_NAME}_linux-x64_bin.tar.gz"
                   echo "$GRAALVM_SHA256  $RUNNER_TEMP/graalvm.tar.gz" | sha256sum -c -
                   mkdir -p "$RUNNER_TEMP/graalvm"
                   tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
                   echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm" >> "$GITHUB_ENV"
                   echo "JAVA_HOME=$RUNNER_TEMP/graalvm" >> "$GITHUB_ENV"
-                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/musl.tar.gz" "$MUSL_URL"
+                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
+                      -o "$RUNNER_TEMP/musl.tar.gz" "$MUSL_URL"
                   echo "$MUSL_SHA256  $RUNNER_TEMP/musl.tar.gz" | sha256sum -c -
                   tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/musl.tar.gz"
                   echo "$RUNNER_TEMP/musl-toolchain/bin" >> "$GITHUB_PATH"
@@ -484,7 +487,8 @@ jobs:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - name: Install GraalVM
               run: |
-                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_RELEASE/${GRAALVM_NAME}_macos-aarch64_bin.tar.gz"
+                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
+                      -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_RELEASE/${GRAALVM_NAME}_macos-aarch64_bin.tar.gz"
                   echo "$GRAALVM_SHA256  $RUNNER_TEMP/graalvm.tar.gz" | shasum -a 256 -c -
                   mkdir -p "$RUNNER_TEMP/graalvm"
                   tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
@@ -597,7 +601,8 @@ jobs:
             - name: Install GraalVM and WiX
               shell: pwsh
               run: |
-                  Invoke-WebRequest "$env:GRAALVM_RELEASE/$($env:GRAALVM_NAME)_windows-x64_bin.zip" -OutFile "$env:RUNNER_TEMP\graalvm.zip"
+                  Invoke-WebRequest "$env:GRAALVM_RELEASE/$($env:GRAALVM_NAME)_windows-x64_bin.zip" -OutFile "$env:RUNNER_TEMP\graalvm.zip" `
+                      -MaximumRetryCount 5 -RetryIntervalSec 15
                   if ((Get-FileHash "$env:RUNNER_TEMP\graalvm.zip" -Algorithm SHA256).Hash -ne $env:GRAALVM_SHA256) {
                       throw "GraalVM checksum mismatch"
                   }
@@ -685,8 +690,8 @@ jobs:
               run: |
                   sudo apt-get update -qq
                   sudo apt-get install -y -qq --no-install-recommends build-essential zlib1g-dev
-                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/graalvm.tar.gz" \
-                      "$GRAALVM_RELEASE/${GRAALVM_NAME}_linux-x64_bin.tar.gz"
+                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
+                      -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_RELEASE/${GRAALVM_NAME}_linux-x64_bin.tar.gz"
                   echo "$GRAALVM_SHA256  $RUNNER_TEMP/graalvm.tar.gz" | sha256sum -c -
                   mkdir -p "$RUNNER_TEMP/graalvm"
                   tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
@@ -740,7 +745,8 @@ jobs:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - name: Install GraalVM
               run: |
-                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_RELEASE/${GRAALVM_NAME}_macos-aarch64_bin.tar.gz"
+                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
+                      -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_RELEASE/${GRAALVM_NAME}_macos-aarch64_bin.tar.gz"
                   echo "$GRAALVM_SHA256  $RUNNER_TEMP/graalvm.tar.gz" | shasum -a 256 -c -
                   mkdir -p "$RUNNER_TEMP/graalvm"
                   tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"

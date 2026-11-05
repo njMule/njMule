@@ -124,10 +124,13 @@ jobs:
               with:
                   # SonarQube Cloud reads the history (new code, blame).
                   fetch-depth: ${{ env.SONAR_TOKEN != '' && '0' || '1' }}
+            # The macOS image has no Temurin 25 of its own: the JDK comes from the Actions cache, written here,
+            # rather than from GitHub's releases in every job.
             - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
               with:
                   distribution: temurin
                   java-version: "25"
+                  cache-jdk: true
             # Gradle User Home cache through actions/cache (the open-source provider); also checks the
             # wrapper jar against the published checksums. Only these jobs write it, so that the one entry
             # per system holds what the whole build needs; the others read it.
@@ -234,6 +237,8 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
+                  cache-jdk: true
+                  cache-read-only: true
             - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
@@ -362,7 +367,9 @@ jobs:
             - name: Install GraalVM
               shell: pwsh
               run: |
-                  Invoke-WebRequest $env:GRAALVM_URL -OutFile "$env:RUNNER_TEMP\graalvm.zip"
+                  # GitHub's releases answer a 5xx now and then.
+                  Invoke-WebRequest $env:GRAALVM_URL -OutFile "$env:RUNNER_TEMP\graalvm.zip" `
+                      -MaximumRetryCount 5 -RetryIntervalSec 15
                   if ((Get-FileHash "$env:RUNNER_TEMP\graalvm.zip" -Algorithm SHA256).Hash -ne $env:GRAALVM_SHA256) {
                       throw "GraalVM checksum mismatch"
                   }
@@ -407,7 +414,10 @@ jobs:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - name: Install GraalVM
               run: |
-                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_URL"
+                  # GitHub's releases answer a 5xx now and then, which curl may report as a receive error (56): only
+                  # --retry-all-errors retries that.
+                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
+                      -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_URL"
                   echo "$GRAALVM_SHA256  $RUNNER_TEMP/graalvm.tar.gz" | shasum -a 256 -c -
                   mkdir -p "$RUNNER_TEMP/graalvm"
                   tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
@@ -440,13 +450,15 @@ jobs:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - name: Install GraalVM and the musl toolchain
               run: |
-                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_URL"
+                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
+                      -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_URL"
                   echo "$GRAALVM_SHA256  $RUNNER_TEMP/graalvm.tar.gz" | sha256sum -c -
                   mkdir -p "$RUNNER_TEMP/graalvm"
                   tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
                   echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm" >> "$GITHUB_ENV"
                   echo "JAVA_HOME=$RUNNER_TEMP/graalvm" >> "$GITHUB_ENV"
-                  curl --proto =https --tlsv1.2 -sSfL -o "$RUNNER_TEMP/musl.tar.gz" "$MUSL_URL"
+                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
+                      -o "$RUNNER_TEMP/musl.tar.gz" "$MUSL_URL"
                   echo "$MUSL_SHA256  $RUNNER_TEMP/musl.tar.gz" | sha256sum -c -
                   tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/musl.tar.gz"
                   echo "$RUNNER_TEMP/musl-toolchain/bin" >> "$GITHUB_PATH"
