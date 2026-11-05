@@ -217,9 +217,9 @@ folder's `README.md`.
 
 The tests check that the engine still answers so, and the Rust engine (`njmule-engine`) replays
 the same files in its own tests: so far `tag-codec.jsonl`, `packets.jsonl`, `ed2k-links.jsonl`,
-`search-expressions.jsonl` and `hashes.jsonl`, with the golden vectors of `file-hashes.txt` and
-`obfuscation.txt`. After a change meant to alter the answers, write them again and review the
-difference:
+`search-expressions.jsonl`, `hashes.jsonl` and `profile-files.jsonl`, with the golden vectors of
+`file-hashes.txt` and `obfuscation.txt`. After a change meant to alter the answers, write them
+again and review the difference:
 
 ```bash
 ./gradlew :njmule-core:test --tests '*CorpusTest' -Pnjmule.corpus.write=true
