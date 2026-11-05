@@ -11,7 +11,9 @@
 //!   96><padding length 0-15><padding>` in clear, the server answers `<g^b 96>` and the encrypted negotiation, the
 //!   client confirms.
 
-use std::io::{self, ErrorKind, Read, Write};
+use std::io::{self, ErrorKind};
+
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use md5::{Digest, Md5};
 use rand::{CryptoRng, RngExt};
@@ -41,11 +43,11 @@ const NEGOTIATION_HEADER: usize = 7;
 const ANSWER_HEADER: usize = 6;
 
 /// Outgoing connection to a client whose user hash is known.
-pub fn connect_to_client(
-    input: &mut impl Read,
-    output: &mut impl Write,
+pub async fn connect_to_client(
+    input: &mut (impl AsyncRead + Unpin),
+    output: &mut (impl AsyncWrite + Unpin),
     receiver_user_hash: &[u8; 16],
-    random: &mut impl CryptoRng,
+    random: &mut (impl CryptoRng + Send),
     max_padding: u8,
 ) -> io::Result<Ciphers> {
     let mut key_part = [0; 4];
@@ -57,77 +59,77 @@ pub fn connect_to_client(
     let mut request = vec![marker(random)];
     request.extend_from_slice(&key_part);
     request.extend_from_slice(&tail);
-    output.write_all(&request)?;
-    output.flush()?;
-    let answer: [u8; ANSWER_HEADER] = read_decrypted(input, &mut receive)?;
+    output.write_all(&request).await?;
+    output.flush().await?;
+    let answer: [u8; ANSWER_HEADER] = read_decrypted(input, &mut receive).await?;
     check_sync(&answer)?;
     let [.., method, padding] = answer;
     if method != METHOD_OBFUSCATION {
         return Err(invalid(format!("peer selected unsupported obfuscation method {method}")));
     }
-    skip_decrypted(input, &mut receive, padding)?;
+    skip_decrypted(input, &mut receive, padding).await?;
     Ok(Ciphers { send, receive })
 }
 
 /// Incoming connection whose first byte (the marker, already read) is not a protocol byte. The keys derive from our own
 /// user hash.
-pub fn accept_from_client(
-    input: &mut impl Read,
-    output: &mut impl Write,
+pub async fn accept_from_client(
+    input: &mut (impl AsyncRead + Unpin),
+    output: &mut (impl AsyncWrite + Unpin),
     own_user_hash: &[u8; 16],
-    random: &mut impl CryptoRng,
+    random: &mut (impl CryptoRng + Send),
     max_padding: u8,
 ) -> io::Result<Ciphers> {
-    let key_part: [u8; 4] = read_fully(input)?;
+    let key_part: [u8; 4] = read_fully(input).await?;
     let mut receive = client_key(own_user_hash, MAGIC_REQUESTER, &key_part);
     let mut send = client_key(own_user_hash, MAGIC_SERVER, &key_part);
-    let request: [u8; NEGOTIATION_HEADER] = read_decrypted(input, &mut receive)?;
+    let request: [u8; NEGOTIATION_HEADER] = read_decrypted(input, &mut receive).await?;
     check_sync(&request)?;
     let [.., padding] = request;
-    skip_decrypted(input, &mut receive, padding)?;
+    skip_decrypted(input, &mut receive, padding).await?;
     let mut answer = selection(random, max_padding);
     send.apply(&mut answer);
-    output.write_all(&answer)?;
-    output.flush()?;
+    output.write_all(&answer).await?;
+    output.flush().await?;
     Ok(Ciphers { send, receive })
 }
 
 /// Outgoing connection to a server. The final confirmation is written but not flushed, so that it leaves together with
 /// the first packet.
-pub fn connect_to_server(
-    input: &mut impl Read,
-    output: &mut impl Write,
-    random: &mut impl CryptoRng,
+pub async fn connect_to_server(
+    input: &mut (impl AsyncRead + Unpin),
+    output: &mut (impl AsyncWrite + Unpin),
+    random: &mut (impl CryptoRng + Send),
 ) -> io::Result<Ciphers> {
     let dh = Dh768::generate(random);
     let mut request = vec![marker(random)];
     request.extend_from_slice(&dh.public_value());
     request.extend_from_slice(&padded(random, MAX_SERVER_PADDING));
-    output.write_all(&request)?;
-    output.flush()?;
-    let server_public: [u8; dh768::SIZE] = read_fully(input)?;
+    output.write_all(&request).await?;
+    output.flush().await?;
+    let server_public: [u8; dh768::SIZE] = read_fully(input).await?;
     let secret = dh.shared_secret(&server_public).map_err(invalid_data)?;
     let mut send = server_key(&secret, MAGIC_REQUESTER);
     let mut receive = server_key(&secret, MAGIC_SERVER);
-    let answer: [u8; NEGOTIATION_HEADER] = read_decrypted(input, &mut receive)?;
+    let answer: [u8; NEGOTIATION_HEADER] = read_decrypted(input, &mut receive).await?;
     check_sync(&answer)?;
     let [.., padding] = answer;
-    skip_decrypted(input, &mut receive, padding)?;
+    skip_decrypted(input, &mut receive, padding).await?;
     let mut confirm = selection(random, MAX_SERVER_PADDING);
     send.apply(&mut confirm);
-    output.write_all(&confirm)?;
+    output.write_all(&confirm).await?;
     Ok(Ciphers { send, receive })
 }
 
 /// The server side of [`connect_to_server`], after the marker byte; used by test servers.
-pub fn accept_as_server(
-    input: &mut impl Read,
-    output: &mut impl Write,
-    random: &mut impl CryptoRng,
+pub async fn accept_as_server(
+    input: &mut (impl AsyncRead + Unpin),
+    output: &mut (impl AsyncWrite + Unpin),
+    random: &mut (impl CryptoRng + Send),
 ) -> io::Result<Ciphers> {
-    let client_public: [u8; dh768::SIZE] = read_fully(input)?;
-    let [padding] = read_fully(input)?;
-    discard(input, padding)?;
+    let client_public: [u8; dh768::SIZE] = read_fully(input).await?;
+    let [padding] = read_fully(input).await?;
+    discard(input, padding).await?;
     let dh = Dh768::generate(random);
     let secret = dh.shared_secret(&client_public).map_err(invalid_data)?;
     let mut receive = server_key(&secret, MAGIC_REQUESTER);
@@ -136,12 +138,12 @@ pub fn accept_as_server(
     send.apply(&mut tail);
     let mut answer = dh.public_value().to_vec();
     answer.extend_from_slice(&tail);
-    output.write_all(&answer)?;
-    output.flush()?;
-    let confirm: [u8; ANSWER_HEADER] = read_decrypted(input, &mut receive)?;
+    output.write_all(&answer).await?;
+    output.flush().await?;
+    let confirm: [u8; ANSWER_HEADER] = read_decrypted(input, &mut receive).await?;
     check_sync(&confirm)?;
     let [.., padding] = confirm;
-    skip_decrypted(input, &mut receive, padding)?;
+    skip_decrypted(input, &mut receive, padding).await?;
     Ok(Ciphers { send, receive })
 }
 
@@ -179,7 +181,7 @@ fn tcp_cipher(key: &[u8; 16]) -> Rc4 {
 }
 
 // <sync><methods supported><method preferred><padding length><padding>, not yet encrypted.
-fn negotiation(random: &mut impl CryptoRng, max_padding: u8) -> Vec<u8> {
+fn negotiation(random: &mut (impl CryptoRng + Send), max_padding: u8) -> Vec<u8> {
     let mut out = SYNC.to_le_bytes().to_vec();
     out.push(METHOD_OBFUSCATION);
     out.push(METHOD_OBFUSCATION);
@@ -188,7 +190,7 @@ fn negotiation(random: &mut impl CryptoRng, max_padding: u8) -> Vec<u8> {
 }
 
 // <sync><method selected><padding length><padding>, not yet encrypted.
-fn selection(random: &mut impl CryptoRng, max_padding: u8) -> Vec<u8> {
+fn selection(random: &mut (impl CryptoRng + Send), max_padding: u8) -> Vec<u8> {
     let mut out = SYNC.to_le_bytes().to_vec();
     out.push(METHOD_OBFUSCATION);
     out.extend_from_slice(&padded(random, max_padding));
@@ -196,7 +198,7 @@ fn selection(random: &mut impl CryptoRng, max_padding: u8) -> Vec<u8> {
 }
 
 // <padding length><padding> of 0 to max_padding random bytes.
-fn padded(random: &mut impl CryptoRng, max_padding: u8) -> Vec<u8> {
+fn padded(random: &mut (impl CryptoRng + Send), max_padding: u8) -> Vec<u8> {
     let length = random.random_range(0..=max_padding);
     let mut out = vec![0; usize::from(length)];
     random.fill_bytes(&mut out);
@@ -211,31 +213,31 @@ fn check_sync(decrypted: &[u8]) -> io::Result<()> {
     }
 }
 
-fn read_decrypted<const N: usize>(input: &mut impl Read, cipher: &mut Rc4) -> io::Result<[u8; N]> {
-    let mut data = read_fully(input)?;
+async fn read_decrypted<const N: usize>(input: &mut (impl AsyncRead + Unpin), cipher: &mut Rc4) -> io::Result<[u8; N]> {
+    let mut data = read_fully(input).await?;
     cipher.apply(&mut data);
     Ok(data)
 }
 
-fn skip_decrypted(input: &mut impl Read, cipher: &mut Rc4, length: u8) -> io::Result<()> {
-    discard(input, length)?;
+async fn skip_decrypted(input: &mut (impl AsyncRead + Unpin), cipher: &mut Rc4, length: u8) -> io::Result<()> {
+    discard(input, length).await?;
     cipher.skip(usize::from(length));
     Ok(())
 }
 
-fn discard(input: &mut impl Read, length: u8) -> io::Result<()> {
+async fn discard(input: &mut (impl AsyncRead + Unpin), length: u8) -> io::Result<()> {
     let mut data = vec![0; usize::from(length)];
-    fill(input, &mut data)
+    fill(input, &mut data).await
 }
 
-fn read_fully<const N: usize>(input: &mut impl Read) -> io::Result<[u8; N]> {
+async fn read_fully<const N: usize>(input: &mut (impl AsyncRead + Unpin)) -> io::Result<[u8; N]> {
     let mut data = [0; N];
-    fill(input, &mut data)?;
+    fill(input, &mut data).await?;
     Ok(data)
 }
 
-fn fill(input: &mut impl Read, data: &mut [u8]) -> io::Result<()> {
-    input.read_exact(data).map_err(|e| match e.kind() {
+async fn fill(input: &mut (impl AsyncRead + Unpin), data: &mut [u8]) -> io::Result<()> {
+    input.read_exact(data).await.map(|_| ()).map_err(|e| match e.kind() {
         ErrorKind::UnexpectedEof => invalid("connection closed during the obfuscation handshake".to_owned()),
         _ => e,
     })
