@@ -43,3 +43,39 @@ impl SearchResult {
 pub fn is_downloadable(name: &str, size: u64) -> bool {
     !name.trim().is_empty() && size > 0 && size <= ed2k::MAX_FILE_SIZE
 }
+
+/// The media details of a file, as its tags tell them: empty texts and zeros where unknown.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Media {
+    pub artist: String,
+    pub album: String,
+    pub title: String,
+    /// Seconds.
+    pub length: u32,
+    /// Kilobits per second.
+    pub bitrate: u32,
+    pub codec: String,
+}
+
+impl Media {
+    /// The longest text kept, in UTF-16 code units as other clients count them.
+    pub const MAX_TEXT: usize = 256;
+
+    /// The details, their texts made fit to show: control characters made spaces, cut to [`Self::MAX_TEXT`].
+    pub fn new(artist: &str, album: &str, title: &str, length: u32, bitrate: u32, codec: &str) -> Self {
+        Self { artist: clean(artist), album: clean(album), title: clean(title), length, bitrate, codec: clean(codec) }
+    }
+}
+
+fn clean(text: &str) -> String {
+    let mut out = String::new();
+    let mut units = 0usize;
+    for c in crate::util::white_space::strip(text).chars() {
+        units = units.saturating_add(c.len_utf16());
+        if units > Media::MAX_TEXT {
+            break;
+        }
+        out.push(if c.is_control() { ' ' } else { c });
+    }
+    crate::util::white_space::strip(&out).to_owned()
+}

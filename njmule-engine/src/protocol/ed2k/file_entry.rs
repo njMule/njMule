@@ -22,6 +22,11 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
+    /// The media details its tags carry.
+    pub fn media(&self) -> crate::api::search_result::Media {
+        crate::protocol::tag::media_tags::read(&self.tags)
+    }
+
     pub fn read(input: &mut PacketReader<'_>) -> Result<Self, DecodeError> {
         let hash = input.hash16()?;
         let client_id = input.u32()?;

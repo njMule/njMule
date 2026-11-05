@@ -23,6 +23,18 @@ Rc4Test.shouldRefuseToSkipBackwards
 Rc4Test.shouldStartAgainFromANewKeyAsANewInstanceWould
 # Rust takes the MD4 of the RustCrypto crates as it is: there is no MD4 of our own to compare with another.
 Md4Test.shouldAgreeWithBouncyCastle
+# Nothing in the engine patches what it wrote or caps a writer, and Rust lengths and counts are never negative.
+PacketReaderWriterTest.shouldEnforceTheSizeCap
+PacketReaderWriterTest.shouldPatchACountWrittenEarlier
+PacketReaderWriterTest.shouldPatchAU16InsideWhatWasWritten
+PacketReaderWriterTest.shouldPatchAU32InsideWhatWasWritten
+PacketReaderWriterTest.shouldPatchAU8InsideWhatWasWritten
+PacketReaderWriterTest.shouldRefuseANegativeCount
+PacketReaderWriterTest.shouldRefuseASliceOfNegativeLength
+PacketReaderWriterTest.shouldRefuseToPatchAU16PastWhatWasWritten
+PacketReaderWriterTest.shouldRefuseToPatchAU32BeforeTheStart
+PacketReaderWriterTest.shouldRefuseToPatchAU32PastWhatWasWritten
+PacketReaderWriterTest.shouldRefuseToPatchAU8PastWhatWasWritten
 # Whole classes of Java helpers that Rust's slices and integer methods hold.
 BytesTest
 LittleEndianTest
@@ -172,10 +184,7 @@ UserHashStoreTest.shouldGiveWayToTheBackupOfACorruptFile
 UserHashStoreTest.shouldKeepTheUserHashOnceTheOtherProgramLetsItGo
 UserHashStoreTest.shouldNotReplaceAUserHashHeldByAnotherProgram
 
-# Whole classes of area 1 not ported yet: the packet reader and writer, messages changed at random, transfer rates,
-# the media details of search results, and the RSA keys of secure identification.
-MediaTagsTest
+# Whole classes of area 1 not ported yet: messages changed at random
+# and the RSA keys of secure identification.
 MutatedMessagesTest
-PacketReaderWriterTest
-RateMeterTest
 RsaTest
