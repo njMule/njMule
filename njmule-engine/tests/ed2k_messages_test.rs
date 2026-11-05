@@ -662,3 +662,56 @@ fn should_tell_whether_a_client_has_an_ipv4_address() {
         assert_eq!(hello.has_ipv4(), expected, "client id {client_id}");
     }
 }
+
+fn global_search(expression: &str, udp_flags: u32) -> Option<Packet> {
+    let parsed = njmule_engine::search::search_parser::parse(expression).unwrap();
+    server_datagrams::search_request(&parsed, udp_flags).unwrap()
+}
+
+#[test]
+fn should_ask_a_server_with_large_files_and_extended_searches_the_third_global_search() {
+    let request =
+        global_search("ubuntu iso", server_datagrams::UDP_LARGEFILES | server_datagrams::UDP_EXT_GETFILES).unwrap();
+
+    assert_eq!(request.opcode(), server_udp::GLOBSEARCHREQ3);
+    assert!(hex::encode(request.payload()).starts_with("01000000890e01"));
+}
+
+#[test]
+fn should_ask_a_server_with_extended_searches_the_second_global_search() {
+    let request = global_search("ubuntu iso", server_datagrams::UDP_EXT_GETFILES).unwrap();
+
+    assert_eq!(request.opcode(), server_udp::GLOBSEARCHREQ2);
+}
+
+#[test]
+fn should_ask_a_server_without_flags_the_first_global_search() {
+    let request = global_search("ubuntu iso", 0).unwrap();
+
+    assert_eq!(request.opcode(), server_udp::GLOBSEARCHREQ);
+}
+
+#[test]
+fn should_not_ask_a_server_without_large_files_for_large_files() {
+    let request = global_search("movie @size>5g", server_datagrams::UDP_EXT_GETFILES);
+
+    assert!(request.is_none());
+}
+
+// Every decoder reads garbage or refuses it as malformed: never a panic.
+proptest::proptest! {
+    #[test]
+    fn should_only_fail_with_decode_exception_on_garbage(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=200)) {
+        use njmule_engine::protocol::ed2k::server_messages as messages;
+        let received = Packet::of(protocol::EDONKEY, 0x01, data);
+        let _ = njmule_engine::protocol::ed2k::hello::Hello::decode(&received);
+        let _ = messages::IdChange::decode(&received);
+        let _ = messages::SearchResults::decode(&received);
+        let _ = messages::ServerIdent::decode(&received);
+        let _ = messages::decode_message(&received);
+        let _ = messages::decode_server_list(&received);
+        let _ = messages::CallbackRequested::decode(&received);
+        let _ = Status::decode(&received);
+        let _ = server_datagrams::decode_search_results(&received);
+    }
+}

@@ -227,3 +227,21 @@ fn should_ask_for_the_extended_form_with_version_one() {
 
     assert_eq!(hex::encode(packet.payload()), format!("010000{}", "ab".repeat(16)));
 }
+
+// Garbage is read or refused as malformed: never a panic.
+proptest::proptest! {
+    #[test]
+    fn should_only_fail_with_decode_exception_on_garbage_read_as_an_extended_answer(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=200)) {
+        let _ = njmule_engine::protocol::ed2k::source_exchange::Answer::decode_extended(&Packet::of(protocol::EMULE, 0x84, data));
+    }
+
+    #[test]
+    fn should_only_fail_with_decode_exception_on_garbage_read_as_an_answer(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=200)) {
+        let _ = njmule_engine::protocol::ed2k::source_exchange::Answer::decode(&Packet::of(protocol::EMULE, 0x84, data));
+    }
+
+    #[test]
+    fn should_only_fail_with_decode_exception_on_garbage_read_as_a_request(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=200)) {
+        let _ = njmule_engine::protocol::ed2k::source_exchange::Request::decode(&Packet::of(protocol::EMULE, 0x83, data));
+    }
+}

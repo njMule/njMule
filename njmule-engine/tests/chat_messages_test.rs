@@ -84,3 +84,16 @@ fn should_refuse_a_captcha_picture_that_is_not_a_bitmap() {
 
     assert!(chat_messages::captcha(&chat_messages::captcha_request(&image)).is_err());
 }
+
+// Garbage is read or refused as malformed: never a panic.
+proptest::proptest! {
+    #[test]
+    fn should_only_fail_with_decode_exception_on_garbage_read_as_a_captcha(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=300)) {
+        let _ = chat_messages::captcha(&Packet::of(protocol::EMULE, 0xA5, data));
+    }
+
+    #[test]
+    fn should_only_fail_with_decode_exception_on_garbage_read_as_a_message(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=300)) {
+        let _ = chat_messages::text(&Packet::of(protocol::EDONKEY, client::MESSAGE, data));
+    }
+}
