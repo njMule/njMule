@@ -33,4 +33,23 @@ impl UInt128 {
     pub fn to_big_endian(&self) -> [u8; 16] {
         self.0.to_be_bytes()
     }
+
+    /// Bit `index`, 0 the most significant and 127 the least; 0 past them.
+    pub fn bit(&self, index: u32) -> u8 {
+        u8::from(self.0.checked_shl(index).is_some_and(|shifted| shifted >> 127 == 1))
+    }
+
+    /// The most significant 32 bits.
+    pub fn top32(&self) -> u32 {
+        u32::try_from(self.0 >> 96).unwrap_or(u32::MAX)
+    }
+}
+
+/// The distance of two ids in the Kad metric.
+impl std::ops::BitXor for UInt128 {
+    type Output = Self;
+
+    fn bitxor(self, other: Self) -> Self {
+        Self(self.0 ^ other.0)
+    }
 }

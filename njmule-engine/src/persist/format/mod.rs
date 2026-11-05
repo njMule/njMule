@@ -6,6 +6,7 @@
 pub mod cancelled_met;
 pub mod clients_met;
 pub mod friends_met;
+pub mod ini_file;
 pub mod ip_filter_dat;
 pub mod kad_index_files;
 pub mod known2_met;
