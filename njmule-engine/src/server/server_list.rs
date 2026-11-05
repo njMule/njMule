@@ -94,9 +94,10 @@ impl ServerList {
     /// Reads `file`; a missing file gives an empty list.
     pub fn load(file: &Path) -> io::Result<Self> {
         let mut list = Self::default();
-        match std::fs::read(file) {
-            Ok(data) => {
-                let servers = server_met::read(&data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        match atomic_files::read(file, |data| {
+            server_met::read(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        }) {
+            Ok(servers) => {
                 list.add_all(servers);
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
@@ -107,7 +108,7 @@ impl ServerList {
 
     pub fn save(&self, file: &Path) -> io::Result<()> {
         let data = server_met::write(&self.all()).map_err(io::Error::other)?;
-        atomic_files::write(file, &data, false)
+        atomic_files::write(file, &data)
     }
 
     /// Adds the servers not known yet; returns how many were added.
@@ -147,13 +148,13 @@ impl ServerList {
     /// Reads the static servers of `file` (`host:port,priority,name`): missing ones are added, and each takes the
     /// priority written there.
     pub fn load_statics(&mut self, file: &Path) -> io::Result<()> {
-        let data = match std::fs::read(file) {
-            Ok(data) => data,
+        let entries = match atomic_files::read(file, |data| Ok(text_files::static_servers(data))) {
+            Ok(entries) => entries,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
             Err(e) => return Err(e),
         };
         self.untaken.clear();
-        for entry in text_files::static_servers(&data) {
+        for entry in entries {
             let server = server_of(&entry);
             let address = address_of(&server);
             self.add(server);
@@ -188,7 +189,7 @@ impl ServerList {
                 entries.push(entry.clone());
             }
         }
-        atomic_files::write(file, &text_files::write_static_servers(&entries), false)
+        atomic_files::write(file, &text_files::write_static_servers(&entries))
     }
 
     pub fn is_static(&self, address: &Address) -> bool {

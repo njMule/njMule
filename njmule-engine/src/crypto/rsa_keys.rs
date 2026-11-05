@@ -79,7 +79,7 @@ pub fn write_key_file(file: &Path, key: &PrivateKey) -> io::Result<()> {
         text.push_str(std::str::from_utf8(line).unwrap_or_default());
         text.push('\n');
     }
-    atomic_files::write(file, text.as_bytes(), true)
+    atomic_files::write_secret(file, text.as_bytes())
 }
 
 // The parser reads only from the slice: lengths inside the DER cannot make it allocate more.

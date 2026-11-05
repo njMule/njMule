@@ -29,7 +29,6 @@ const KEPT_TAGS: [&[u8]; 3] = [b"njm_a4af_auto", b"njm_sources", b"njm_idle"];
 
 pub const DATA_SUFFIX: &str = ".part";
 pub const MET_SUFFIX: &str = ".part.met";
-pub const BAK_SUFFIX: &str = ".bak";
 
 /// The bytes still missing at most for the endgame: one part, so that the blocks asked twice stay few.
 pub const ENDGAME_MISSING: u64 = ed2k::PARTSIZE;
@@ -578,24 +577,12 @@ pub fn write_met(met: &Path, contents: &Contents, data: &Path) -> io::Result<()>
     let date = data_date(data).unwrap_or_else(now_seconds);
     let dated = Contents { mtime: date, ..contents.clone() };
     let bytes = part_met::write(&dated).map_err(io::Error::other)?;
-    if met.exists() {
-        // The last good file stays beside, for a crash during the next write.
-        let _ = fs::copy(met, bak_path(met));
-    }
-    atomic_files::write(met, &bytes, false)
+    atomic_files::write(met, &bytes)
 }
 
 /// Reads a part.met, or its backup when the file itself is gone or broken.
 pub fn read_met(met: &Path) -> io::Result<Contents> {
-    let read =
-        |file: &Path| -> io::Result<Contents> { part_met::read(&fs::read(file)?).map_err(|e| invalid(&e.to_string())) };
-    read(met).or_else(|first| read(&bak_path(met)).map_err(|_| first))
-}
-
-pub fn bak_path(file: &Path) -> PathBuf {
-    let mut name = file.file_name().unwrap_or_default().to_os_string();
-    name.push(BAK_SUFFIX);
-    file.with_file_name(name)
+    atomic_files::read(met, |data| part_met::read(data).map_err(|e| invalid(&e.to_string())))
 }
 
 /// `001`, `002`, ...: the base name of download number `n`.
