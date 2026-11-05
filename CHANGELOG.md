@@ -20,6 +20,8 @@ All notable changes to this project are documented here. The format follows
 
 - The remote-control API's document lets the schedule's active rule be null, as the API answers
   when no rule applies; clients generated from the document no longer reject that answer.
+- An eD2K link naming a source by an IPv6 address with a zone id (`[fe80::1%eth0]:4662`) keeps its
+  other sources and is no longer refused on machines without that interface: the source is dropped.
 
 ## [0.3.1] - 2026-11-03
 

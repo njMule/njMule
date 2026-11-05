@@ -194,3 +194,7 @@
 {"kind":"ed2k-link","text":"ed2k://|server|7.198.118.89|4661|/","value":{"@type":"ServerLink","host":"7.198.118.89","port":4661}}
 {"kind":"ed2k-link","text":"ed2k:/\\se","error":"invalid"}
 {"kind":"ed2k-link","text":"ed0k://|se���|7.198.118.89|4661|/","error":"invalid"}
+{"kind":"ed2k-link","text":"ed2k://|file|a.bin|1000|0123456789ABCDEF0123456789ABCDEF|/|sources,[fe80::1%nothere]:4662,1.2.3.4:4662|/","value":{"@type":"FileLink","name":"a.bin","size":1000,"hash":"0123456789abcdef0123456789abcdef","aichHash":null,"partHashes":[],"sources":[{"host":"1.2.3.4","port":4662}],"httpSources":[]}}
+{"kind":"ed2k-link","text":"ed2k://|file|a%0Ab.bin|1000|0123456789ABCDEF0123456789ABCDEF|/","value":{"@type":"FileLink","name":"ab.bin","size":1000,"hash":"0123456789abcdef0123456789abcdef","aichHash":null,"partHashes":[],"sources":[],"httpSources":[]}}
+{"kind":"ed2k-link","text":"ed2k://|file|a.bin|1000|0123456789ABCDEF0123456789ABCDEF|s=HTTPS://host.example/a.bin|/","value":{"@type":"FileLink","name":"a.bin","size":1000,"hash":"0123456789abcdef0123456789abcdef","aichHash":null,"partHashes":[],"sources":[],"httpSources":["HTTPS://host.example/a.bin"]}}
+{"kind":"ed2k-link","text":"ed2k://|file|a.bin|1000|0123456789ABCDEF0123456789ABCDEF||/","error":"invalid"}

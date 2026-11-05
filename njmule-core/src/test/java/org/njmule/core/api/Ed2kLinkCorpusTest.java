@@ -75,7 +75,11 @@ class Ed2kLinkCorpusTest {
             "  ed2k://|file|a.bin|1000|" + HASH + "|/  ",
             "ed2k://|file|a.bin|1000|" + HASH + "|/\n",
             "http://host.example/a.bin",
-            "");
+            "",
+            "ed2k://|file|a.bin|1000|" + HASH + "|/|sources,[fe80::1%nothere]:4662,1.2.3.4:4662|/",
+            "ed2k://|file|a%0Ab.bin|1000|" + HASH + "|/",
+            "ed2k://|file|a.bin|1000|" + HASH + "|s=HTTPS://host.example/a.bin|/",
+            "ed2k://|file|a.bin|1000|" + HASH + "||/");
 
     private ObjectNode input;
     private ObjectNode answer;

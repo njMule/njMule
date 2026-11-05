@@ -125,6 +125,13 @@ class Ed2kLinkTest {
     }
 
     @Test
+    void shouldDropAnIpv6SourceWithAZoneIdButKeepTheLink() {
+        whenTheLinkIsParsed("ed2k://|file|a.bin|100|" + HASH + "|/|sources,[fe80::1%nothere]:4662,1.2.3.4:4662|/");
+
+        thenTheSourcesAre(new Source("1.2.3.4", 4662));
+    }
+
+    @Test
     void shouldWriteAnIpv6SourceInBracketsAndReadItBack() {
         givenAFileLinkWithTheSource(new Source("2001:db8::1", 4662));
 
