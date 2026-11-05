@@ -3,4 +3,5 @@
 
 //! Files: their hashes and parts.
 
+pub mod file_types;
 pub mod hash;

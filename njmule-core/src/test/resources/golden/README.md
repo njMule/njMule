@@ -24,8 +24,8 @@ in the form of `Canonical`: records as objects of their components, with an `@ty
 implement a sealed interface (tags); integers as the unsigned values of their width; floats as the
 hex of their bits; bytes, hashes and Kad ids (big-endian) in lower-case hex; a tag name as its id
 or the hex of its bytes; an inner packet as `protocol`, `opcode` and `payload`.
-The Rust engine replays the kinds it has ported and names the others, so that a kind new to the
-corpus fails there until it is ported or named.
+The Rust engine replays every kind; a kind new to the corpus fails there until it is ported or
+named as still to port.
 
 ## `profile-files.jsonl`
 
