@@ -21,10 +21,12 @@ use njmule_engine::protocol::ed2k::server_messages::{
 use njmule_engine::protocol::ed2k::source_exchange::{self, Answer, Request};
 use njmule_engine::protocol::kad::kad_messages::{
     self, BootstrapAnswer, BuddyOffer, CallbackRequest, Contact, Entry, FindBuddy, FirewallCheck, FirewallUdp,
-    KeywordPublish, NotesPublish, NotesSearch, PublishAnswer, SearchAnswer, Sender, SourcePublish, SourceSearch,
+    KeywordPublish, KeywordSearch, NotesPublish, NotesSearch, PublishAnswer, SearchAnswer, Sender, SourcePublish,
+    SourceSearch,
 };
 use njmule_engine::protocol::packet::Packet;
 use njmule_engine::protocol::tag::{Tag, TagName};
+use njmule_engine::search::search_expr::SearchExpr;
 use serde_json::{Value, json};
 
 pub trait Canonical {
@@ -475,5 +477,27 @@ impl Canonical for u32 {
 impl Canonical for u16 {
     fn canonical(&self) -> Value {
         json!(self)
+    }
+}
+
+impl Canonical for SearchExpr {
+    fn canonical(&self) -> Value {
+        let operator = |kind: &str, left: &SearchExpr, right: &SearchExpr| json!({"@type": kind, "left": left.canonical(), "right": right.canonical()});
+        match self {
+            SearchExpr::And(left, right) => operator("And", left, right),
+            SearchExpr::Or(left, right) => operator("Or", left, right),
+            SearchExpr::Not(left, right) => operator("Not", left, right),
+            SearchExpr::Keyword(text) => json!({"@type": "Keyword", "text": text}),
+            SearchExpr::StringAttr { tag, value } => json!({"@type": "StringAttr", "tag": tag, "value": value}),
+            SearchExpr::NumericAttr { tag, comparison, value } => {
+                json!({"@type": "NumericAttr", "tag": tag, "comparison": comparison.name(), "value": value})
+            }
+        }
+    }
+}
+
+impl Canonical for KeywordSearch {
+    fn canonical(&self) -> Value {
+        json!({"target": self.target.canonical(), "start": self.start, "expression": hex::encode(&self.expression)})
     }
 }

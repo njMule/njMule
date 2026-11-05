@@ -3,7 +3,7 @@
 
 //! The Java engine's answers in `golden/packets.jsonl`, given again by the messages ported so far: every case of their
 //! kinds decoded as the corpus says. The kinds still to port are named, so a kind new to the corpus fails until it is
-//! ported or named: the keyword search's expression waits for the search package.
+//! ported or named.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
@@ -23,16 +23,18 @@ use njmule_engine::protocol::ed2k::server_messages::{
 use njmule_engine::protocol::ed2k::source_exchange::{Answer, Request};
 use njmule_engine::protocol::ed2k::{chat_messages, file_description};
 use njmule_engine::protocol::io::DecodeError;
+use njmule_engine::protocol::io::PacketReader;
 use njmule_engine::protocol::kad::kad_messages::{
     self, BootstrapAnswer, BuddyOffer, CallbackRequest, FindBuddy, FirewallCheck, FirewallUdp, KeywordPublish,
-    NotesPublish, NotesSearch, PublishAnswer, SearchAnswer, SourcePublish, SourceSearch,
+    KeywordSearch, NotesPublish, NotesSearch, PublishAnswer, SearchAnswer, SourcePublish, SourceSearch,
 };
 use njmule_engine::protocol::packet::{Packet, packing};
+use njmule_engine::search::search_tree_codec;
 use serde_json::{Map, Value, json};
 
 const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/packets.jsonl");
 
-const NOT_PORTED: &[&str] = &["keyword search and its expression"];
+const NOT_PORTED: &[&str] = &[];
 
 type Decoder = fn(Packet) -> Result<Value, DecodeError>;
 
@@ -91,6 +93,15 @@ fn decoder(kind: &str) -> Option<Decoder> {
         "kad callback request" => |p| CallbackRequest::decode(&p).map(|v| v.canonical()),
         "udp firewall answer" => |p| FirewallUdp::decode(&p).map(|v| v.canonical()),
         "pong" => |p| kad_messages::decode_pong(&p).map(|v| v.canonical()),
+        // The search, or the tree of its expression when it carries one.
+        "keyword search and its expression" => |p| {
+            let search = KeywordSearch::decode(&p)?;
+            if search.expression.is_empty() {
+                Ok(search.canonical())
+            } else {
+                search_tree_codec::read(&mut PacketReader::of(&search.expression)).map(|v| v.canonical())
+            }
+        },
         "packed search results" => |p| SearchResults::decode(&packing::unpack_from_server(p)?).map(|v| v.canonical()),
         _ => return None,
     })
