@@ -9,4 +9,5 @@ pub mod engine_event;
 pub mod file_comment;
 pub mod nj_mule_info;
 pub mod peer_info;
+pub mod search_result;
 pub mod server_info;

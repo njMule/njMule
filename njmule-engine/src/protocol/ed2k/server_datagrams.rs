@@ -10,7 +10,10 @@ use crate::protocol::io::{DecodeError, EncodeError, PacketWriter, StringEncoding
 use crate::protocol::packet::opcodes::server_udp;
 use crate::protocol::packet::{Packet, protocol};
 use crate::protocol::tag::tag_codec::{read_ed2k_list, write_ed2k_list};
-use crate::protocol::tag::{Ed2kTagFormat, Tag};
+use crate::protocol::tag::tag_type::{NEW_ED2K_FLAG, UINT8};
+use crate::protocol::tag::{Ed2kTagFormat, Tag, client_tag};
+use crate::search::search_expr::SearchExpr;
+use crate::search::search_tree_codec;
 
 // Server UDP flags, from the status answer.
 pub const UDP_EXT_GETSOURCES: u32 = 0x001;
@@ -256,4 +259,36 @@ pub fn search_results(files: &[FileEntry]) -> Result<Packet, EncodeError> {
         file.write(&mut out, Ed2kTagFormat::New)?;
     }
     Ok(Packet::written(protocol::EDONKEY, server_udp::GLOBSEARCHRES, out))
+}
+
+/// A global search on a server over UDP, in the form its UDP flags take; none when the expression needs 64-bit sizes
+/// the server cannot take.
+pub fn search_request(expression: &SearchExpr, udp_flags: u32) -> Result<Option<Packet>, EncodeError> {
+    let large_files = udp_flags & UDP_LARGEFILES != 0;
+    let extended = udp_flags & UDP_EXT_GETFILES != 0;
+    let tree = search_tree_codec::for_server(expression);
+    let mut out = PacketWriter::new();
+    if large_files && extended {
+        out.u32(1)
+            .u8(UINT8 | NEW_ED2K_FLAG)
+            .u8(client_tag::SERVER_UDPSEARCH_FLAGS)
+            .u8(SEARCH_FLAG_NEWTAGS_LARGEFILES);
+        search_tree_codec::write(&mut out, &tree, true)?;
+        return Ok(Some(Packet::written(protocol::EDONKEY, server_udp::GLOBSEARCHREQ3, out)));
+    }
+    if needs_64_bit(&tree)? {
+        return Ok(None);
+    }
+    search_tree_codec::write(&mut out, &tree, false)?;
+    let opcode = if extended { server_udp::GLOBSEARCHREQ2 } else { server_udp::GLOBSEARCHREQ };
+    Ok(Some(Packet::written(protocol::EDONKEY, opcode, out)))
+}
+
+const SEARCH_FLAG_NEWTAGS_LARGEFILES: u8 = 0x01;
+
+fn needs_64_bit(tree: &SearchExpr) -> Result<bool, EncodeError> {
+    let (mut narrow, mut wide) = (PacketWriter::new(), PacketWriter::new());
+    search_tree_codec::write(&mut narrow, tree, false)?;
+    search_tree_codec::write(&mut wide, tree, true)?;
+    Ok(narrow.size() != wide.size())
 }

@@ -8,8 +8,10 @@ use serde_json::{Map, Value, json};
 use crate::api::engine_event::EngineEvent;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
+use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::config::preferences::Preferences;
+use crate::files::shared_files::SharedFile;
 use crate::persist::preferences_codec;
 
 pub fn preferences(preferences: &Preferences) -> Value {
@@ -90,7 +92,53 @@ pub fn event(event: &EngineEvent) -> (&'static str, Value) {
         }
         EngineEvent::ServerUpdated(info) => ("server.updated", json!({"server": server(info)})),
         EngineEvent::ServersChanged { count } => ("servers.changed", json!({"count": count})),
+        EngineEvent::SearchResults { search, results } => (
+            "search.results",
+            json!({"search": search, "results": results.iter().map(search_result).collect::<Vec<_>>()}),
+        ),
+        EngineEvent::SearchEnded { search, results } => ("search.ended", json!({"search": search, "results": results})),
     }
+}
+
+/// A file a search found.
+pub fn search_result(result: &SearchResult) -> Value {
+    json!({
+        "hash": hash(&result.hash),
+        "name": result.name,
+        "size": result.size,
+        "sources": result.sources,
+        "completeSources": result.complete_sources,
+        "type": result.file_type,
+        // Its eD2K link carries it, so that a download from the link can check and repair the file.
+        "aich": result.aich_hash.map(|aich| data_encoding::BASE32_NOPAD.encode(&aich)),
+        "spamRating": result.spam_rating,
+        "spam": result.is_spam(),
+        "names": result
+            .names
+            .iter()
+            .map(|name| json!({"name": name.name, "sources": name.sources, "completeSources": name.complete_sources}))
+            .collect::<Vec<_>>(),
+    })
+}
+
+/// A shared file: what it is, where it lies and how much it was asked for.
+pub fn shared_file(file: &SharedFile) -> Value {
+    json!({
+        "hash": hash(&file.hash),
+        "name": file.name,
+        "size": file.size,
+        "path": file.path.display().to_string(),
+        "priority": "normal",
+        "link": file.link().to_uri(),
+        "statistics": {
+            "requests": 0,
+            "accepted": 0,
+            "transferred": 0,
+            "totalRequests": 0,
+            "totalAccepted": 0,
+            "totalTransferred": 0,
+        },
+    })
 }
 
 /// A known server: its address, what it told of itself and how we use it.
