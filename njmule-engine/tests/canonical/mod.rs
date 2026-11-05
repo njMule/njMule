@@ -5,6 +5,8 @@
 //! lowerCamelCase, with an `@type` for the cases of a sealed type, integers as the unsigned values of their width,
 //! floats as the hex of their bits, bytes and hashes in lower-case hex, an absent value as null.
 
+pub mod packet_decoders;
+
 use njmule_engine::api::file_comment::FileComment;
 use njmule_engine::kad::uint128::UInt128;
 use njmule_engine::protocol::ed2k::client_messages::{

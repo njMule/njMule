@@ -184,7 +184,5 @@ UserHashStoreTest.shouldGiveWayToTheBackupOfACorruptFile
 UserHashStoreTest.shouldKeepTheUserHashOnceTheOtherProgramLetsItGo
 UserHashStoreTest.shouldNotReplaceAUserHashHeldByAnotherProgram
 
-# Whole classes of area 1 not ported yet: messages changed at random
-# and the RSA keys of secure identification.
-MutatedMessagesTest
+# Whole classes of area 1 not ported yet: the RSA keys of secure identification.
 RsaTest
