@@ -2,17 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The `njmule` executable: runs the engine on a profile. With `NJMULE_CONTROL_ENDPOINT=1` it serves the API on a
-//! loopback port, prints where on a `njmule-control` line, and stops when its standard input ends.
+//! loopback port, prints where on a `njmule-control` line, and stops when its standard input ends. With `--hash` it
+//! prints the eD2K links of files instead.
 
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use clap::Parser;
+use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::nj_mule_info;
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
+use njmule_engine::files::hash::file_hasher;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use tokio::io::AsyncReadExt;
 
@@ -23,17 +26,27 @@ const API_STOP_WAIT: Duration = Duration::from_secs(5);
 #[command(name = "njmule", version = nj_mule_info::version(), about = "njMule, an eD2K and Kad client")]
 struct Cli {
     /// The profile's folder, which keeps everything under it.
-    #[arg(long, value_name = "FOLDER")]
-    config_dir: PathBuf,
+    #[arg(long, value_name = "FOLDER", required_unless_present = "hash")]
+    config_dir: Option<PathBuf>,
     /// A switch NAME=VALUE, such as njmule.upnp.disabled=true; the engine ignores those it does not have.
     #[arg(short = 'D', value_name = "NAME=VALUE")]
     switches: Vec<String>,
+    /// Prints the ed2k link (with AICH hash) of each file and exits.
+    #[arg(long, value_name = "FILE", num_args = 1..)]
+    hash: Vec<PathBuf>,
 }
 
 fn main() -> ExitCode {
     tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
     let cli = Cli::parse();
-    let outcome = tokio::runtime::Runtime::new().and_then(|runtime| runtime.block_on(run(cli)));
+    if !cli.hash.is_empty() {
+        return hash(&cli.hash);
+    }
+    let Some(config_dir) = cli.config_dir else {
+        return ExitCode::FAILURE;
+    };
+    let switches = cli.switches;
+    let outcome = tokio::runtime::Runtime::new().and_then(|runtime| runtime.block_on(run(config_dir, switches)));
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -43,9 +56,41 @@ fn main() -> ExitCode {
     }
 }
 
-async fn run(cli: Cli) -> io::Result<()> {
-    tracing::debug!("Switches: {:?}", cli.switches);
-    let engine = Engine::start(AppDirectories::under_root(&cli.config_dir)?).await?;
+// The link of each file, with its size, its part hashes and the speed it was hashed at.
+fn hash(files: &[PathBuf]) -> ExitCode {
+    let mut code = ExitCode::SUCCESS;
+    for file in files {
+        let start = Instant::now();
+        match link(file) {
+            Ok((link, parts)) => {
+                let seconds = start.elapsed().as_secs_f64().max(1e-9);
+                println!("{}", link.to_uri());
+                #[expect(clippy::cast_precision_loss, reason = "a speed to show")]
+                let speed = link.size as f64 / seconds / 1e6;
+                println!("  {} bytes, {parts} part hashes, {speed:.1} MB/s", link.size);
+            }
+            Err(e) => {
+                eprintln!("Cannot hash {}: {e}", file.display());
+                code = ExitCode::FAILURE;
+            }
+        }
+    }
+    code
+}
+
+fn link(file: &Path) -> io::Result<(FileLink, usize)> {
+    let hashes = file_hasher::hash_file(file)?;
+    let name = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let aich = hashes.aich.as_ref().map(|tree| tree.master_hash());
+    let link =
+        FileLink::new(name, hashes.ed2k.size(), hashes.ed2k.file_hash(), aich, Vec::new(), Vec::new(), Vec::new())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+    Ok((link, hashes.ed2k.part_hashes().len()))
+}
+
+async fn run(config_dir: PathBuf, switches: Vec<String>) -> io::Result<()> {
+    tracing::debug!("Switches: {switches:?}");
+    let engine = Engine::start(AppDirectories::under_root(&config_dir)?).await?;
     let control = std::env::var("NJMULE_CONTROL_ENDPOINT").is_ok_and(|value| value == "1");
     let endpoint = if control {
         let endpoint = ControlEndpoint::start(engine.clone()).await?;
