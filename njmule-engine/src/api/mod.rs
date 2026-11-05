@@ -3,6 +3,7 @@
 
 //! What the engine tells about itself and offers its interfaces.
 
+pub mod download_info;
 pub mod ed2k_link;
 pub mod ed2k_link_codec;
 pub mod engine_event;

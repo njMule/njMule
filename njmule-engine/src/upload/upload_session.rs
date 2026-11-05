@@ -1,0 +1,239 @@
+// SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! A client that may download from us, over the upload side of its link: it asks for a file, its parts and hash set
+//! and a place in our queue; with a slot it asks for blocks.
+
+use std::collections::{HashSet, VecDeque};
+use std::net::IpAddr;
+
+use crate::files::hash::ed2k;
+use crate::files::shared_files::SharedFile;
+use crate::peer::peer_link::LinkHandle;
+use crate::protocol::ed2k::client_messages::{self, FileName, FileStatus, RequestParts};
+use crate::protocol::ed2k::hello::{self, Hello};
+use crate::protocol::io::{DecodeError, PacketWriter};
+use crate::protocol::packet::opcodes::{client, extended};
+use crate::protocol::packet::{Packet, protocol};
+
+/// Blocks a client may have waiting at once.
+pub const MAX_PENDING_BLOCKS: usize = 32;
+/// The largest block a client may ask for.
+pub const MAX_BLOCK: u64 = 3 * ed2k::EMBLOCKSIZE;
+/// Files neither shared nor downloaded a client may ask us for on one connection before it is dropped.
+pub const UNKNOWN_FILES_LIMIT: usize = 6;
+
+/// One requested block of a file.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Block {
+    pub file: [u8; 16],
+    pub start: u64,
+    pub end: u64,
+}
+
+/// What a session asks of the uploads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Request {
+    /// The client asks for an upload of the file.
+    Upload([u8; 16]),
+    /// The client asked for blocks.
+    Blocks,
+    /// The client does not want more data now.
+    Stopped,
+    /// The client broke the rules; the connection is closed.
+    Misbehaved,
+}
+
+pub struct UploadSession {
+    link: LinkHandle,
+    peer: Hello,
+    file: Option<[u8; 16]>,
+    pending: VecDeque<Block>,
+    // Blocks sent in this slot are not sent again.
+    sent: HashSet<Block>,
+    unknown: HashSet<[u8; 16]>,
+    slot: bool,
+}
+
+impl UploadSession {
+    pub fn new(link: LinkHandle, peer: Hello) -> Self {
+        Self {
+            link,
+            peer,
+            file: None,
+            pending: VecDeque::new(),
+            sent: HashSet::new(),
+            unknown: HashSet::new(),
+            slot: false,
+        }
+    }
+
+    pub fn user_hash(&self) -> [u8; 16] {
+        self.peer.user_hash
+    }
+
+    pub fn link(&self) -> &LinkHandle {
+        &self.link
+    }
+
+    pub fn file(&self) -> Option<[u8; 16]> {
+        self.file
+    }
+
+    pub fn has_slot(&self) -> bool {
+        self.slot
+    }
+
+    /// The next requested block, if any.
+    pub fn next_block(&mut self) -> Option<Block> {
+        let block = self.pending.pop_front()?;
+        self.sent.insert(block.clone());
+        Some(block)
+    }
+
+    /// Gives the client its slot.
+    pub fn accept(&mut self) {
+        self.slot = true;
+        self.pending.clear();
+        self.sent.clear();
+        self.link.send(Packet::empty(protocol::EDONKEY, client::ACCEPTUPLOADREQ));
+    }
+
+    /// Tells the client its place in our queue.
+    pub fn send_rank(&self, rank: u32) {
+        let mut out = PacketWriter::new();
+        out.u16(u16::try_from(rank).unwrap_or(u16::MAX)).bytes(&[0; 10]);
+        self.link.send(Packet::written(protocol::EMULE, extended::QUEUERANKING, out));
+    }
+
+    /// Takes the slot away; the client goes back to waiting at `rank`.
+    pub fn end_slot(&mut self, rank: u32) {
+        if self.slot {
+            self.slot = false;
+            self.pending.clear();
+            self.link.send(Packet::empty(protocol::EDONKEY, client::OUTOFPARTREQS));
+        }
+        self.send_rank(rank);
+    }
+
+    /// Handles a packet of the upload side; `find` gives our complete file of a hash.
+    pub fn received(
+        &mut self,
+        packet: &Packet,
+        ours: &Hello,
+        find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>,
+    ) -> Result<Option<Request>, DecodeError> {
+        match (packet.protocol(), packet.opcode()) {
+            (protocol::EDONKEY, client::HELLO) => {
+                let again = Hello::decode(packet)?;
+                // Becoming another client on the same connection would take over that client's place and slot.
+                if again.user_hash != self.peer.user_hash {
+                    return Ok(Some(Request::Misbehaved));
+                }
+                self.peer = again;
+                if let Ok(answer) = ours.to_peer_at(&self.link.remote().ip()).encode(true) {
+                    self.link.send(answer);
+                }
+            }
+            (protocol::EDONKEY, client::REQUESTFILENAME) => {
+                let hash = client_messages::file_of(packet)?;
+                if let Some(file) = self.lookup(&hash, find) {
+                    self.send_or_log((FileName { file: hash, name: file.name }).encode());
+                }
+            }
+            (protocol::EDONKEY, client::SETREQFILEID) => {
+                let hash = client_messages::file_of(packet)?;
+                self.file = self.lookup(&hash, find).map(|file| file.hash);
+                if self.file.is_some() {
+                    // A complete file: no bits.
+                    self.send_or_log((FileStatus { file: hash, part_count: 0, parts: Vec::new() }).encode());
+                } else {
+                    self.link.send(client_messages::for_file(client::FILEREQANSNOFIL, &hash));
+                }
+            }
+            (protocol::EDONKEY, client::HASHSETREQUEST) => {
+                let hash = client_messages::file_of(packet)?;
+                if let Some(file) = self.lookup(&hash, find).filter(|file| !file.part_hashes.is_empty()) {
+                    self.send_or_log((client_messages::HashSet { file: hash, parts: file.part_hashes }).encode());
+                }
+            }
+            (protocol::EDONKEY, client::STARTUPLOADREQ) => {
+                if packet.length() >= 16 {
+                    let hash = client_messages::file_of(packet)?;
+                    if let Some(file) = self.lookup(&hash, find) {
+                        self.file = Some(file.hash);
+                    }
+                }
+                return Ok(self.file.map(Request::Upload));
+            }
+            (protocol::EDONKEY, client::REQUESTPARTS) | (protocol::EMULE, extended::REQUESTPARTS_I64) => {
+                return Ok(self.blocks(&RequestParts::decode(packet)?, find));
+            }
+            (protocol::EDONKEY, client::CANCELTRANSFER | client::END_OF_DOWNLOAD) => {
+                self.slot = false;
+                self.pending.clear();
+                return Ok(Some(Request::Stopped));
+            }
+            (protocol::EMULE, extended::PUBLICIP_REQ) => {
+                if let IpAddr::V4(ip) = self.link.remote().ip() {
+                    self.link.send(Packet::of(protocol::EMULE, extended::PUBLICIP_ANSWER, ip.octets().to_vec()));
+                }
+            }
+            (protocol::EMULE, extended::AICHFILEHASHREQ) => {
+                let hash = client_messages::file_of(packet)?;
+                if let Some(master) = self.lookup(&hash, find).and_then(|file| file.aich_hash) {
+                    let mut out = PacketWriter::new();
+                    out.hash16(&hash).bytes(&master);
+                    self.link.send(Packet::written(protocol::EMULE, extended::AICHFILEHASHANS, out));
+                }
+            }
+            // Without the AICH tree of the file at hand, the answer is the file hash alone.
+            (protocol::EMULE, extended::AICHREQUEST) => {
+                let mut input = packet.reader();
+                let mut out = PacketWriter::new();
+                out.hash16(&input.hash16()?);
+                self.link.send(Packet::written(protocol::EMULE, extended::AICHANSWER, out));
+            }
+            _ => {}
+        }
+        Ok(None)
+    }
+
+    // Only blocks of the file in upload, of at most three block sizes, are taken.
+    fn blocks(&mut self, request: &RequestParts, find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>) -> Option<Request> {
+        let file = self.file.filter(|file| self.slot && *file == request.file)?;
+        let size = find(&file)?.size;
+        for range in request.ranges.iter().filter(|range| !range.is_empty()) {
+            let block = Block { file, start: range.start, end: range.end };
+            if range.end.saturating_sub(range.start) > MAX_BLOCK || range.end > size {
+                tracing::debug!("Refusing block {}-{} to {}", range.start, range.end, self.link.remote());
+                continue;
+            }
+            if !self.pending.contains(&block) && !self.sent.contains(&block) && self.pending.len() < MAX_PENDING_BLOCKS
+            {
+                self.pending.push_back(block);
+            }
+        }
+        (!self.pending.is_empty()).then_some(Request::Blocks)
+    }
+
+    // Files above 4 GB only for clients that can take them; a client asking for many files we do not have floods us.
+    fn lookup(&mut self, hash: &[u8; 16], find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>) -> Option<SharedFile> {
+        let found = find(hash);
+        if found.is_none() && self.unknown.insert(*hash) && self.unknown.len() >= UNKNOWN_FILES_LIMIT {
+            tracing::debug!("{} asked for {} files we do not have", self.link.remote(), self.unknown.len());
+            self.link.close();
+        }
+        let large = self.peer.misc_options2() & hello::MISC2_LARGE_FILES != 0;
+        found.filter(|file| large || file.size <= ed2k::OLD_MAX_FILE_SIZE)
+    }
+
+    fn send_or_log(&self, packet: Result<Packet, crate::protocol::io::EncodeError>) {
+        match packet {
+            Ok(packet) => {
+                self.link.send(packet);
+            }
+            Err(e) => tracing::warn!("Cannot answer {}: {e}", self.link.remote()),
+        }
+    }
+}

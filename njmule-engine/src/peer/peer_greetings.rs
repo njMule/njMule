@@ -28,28 +28,6 @@ pub const IDLE_TIMEOUT: Duration = Duration::from_secs(40);
 // The bits of the first misc options a client sets when it can prove its user hash.
 const SECURE_IDENT_SHIFT: u32 = 16;
 
-/// A client that connected to us: answers its HELLO with ours, then keeps the connection until it goes quiet.
-pub async fn accepted(mut stream: TcpStream, ours: Hello) -> io::Result<()> {
-    let remote = stream.peer_addr()?;
-    let mut first = [0u8; 1];
-    if stream.peek(&mut first).await? == 1 && !protocol::is_tcp(first[0]) {
-        // An obfuscated stream: not taken yet.
-        tracing::debug!("Closing an obfuscated connection from {remote}");
-        return Ok(());
-    }
-    let Some(packet) = within(HELLO_TIMEOUT, read_packet(&mut stream, &frame_limits::client_handshake)).await? else {
-        return Ok(());
-    };
-    if !is(&packet, client::HELLO) {
-        return Err(io::Error::new(ErrorKind::InvalidData, "a connection must start with a hello"));
-    }
-    let peer = Hello::decode(&packet).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
-    tracing::debug!("Hello from {remote}: {}", peer_software::describe(&peer));
-    write_packet(&mut stream, &encode(&ours.to_peer_at(&remote.ip()), true)?).await?;
-    while let Ok(Ok(Some(_))) = timeout(IDLE_TIMEOUT, read_packet(&mut stream, &frame_limits::client)).await {}
-    Ok(())
-}
-
 /// A client we called back on a server's request: we greet it first, answer its greeting, and keep the connection
 /// until it goes quiet.
 pub async fn called_back(connection: tcp_connector::Connection, ours: Hello) -> io::Result<()> {

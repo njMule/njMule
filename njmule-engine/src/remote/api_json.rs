@@ -5,12 +5,15 @@
 
 use serde_json::{Map, Value, json};
 
+use crate::api::download_info::{DownloadInfo, SourceInfo};
+use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::config::preferences::Preferences;
+use crate::files::file_types;
 use crate::files::shared_files::SharedFile;
 use crate::persist::preferences_codec;
 
@@ -97,6 +100,83 @@ pub fn event(event: &EngineEvent) -> (&'static str, Value) {
             json!({"search": search, "results": results.iter().map(search_result).collect::<Vec<_>>()}),
         ),
         EngineEvent::SearchEnded { search, results } => ("search.ended", json!({"search": search, "results": results})),
+        EngineEvent::DownloadAdded(info) => ("download.added", json!({"download": download(info, false)})),
+        EngineEvent::DownloadProgress(info) => ("download.progress", json!({"download": download(info, false)})),
+        EngineEvent::DownloadCompleted { download: info, file } => {
+            ("download.completed", json!({"download": download(info, false), "file": file.display().to_string()}))
+        }
+        EngineEvent::DownloadFailed { download: info, reason } => {
+            ("download.failed", json!({"download": download(info, false), "reason": reason}))
+        }
+        EngineEvent::DownloadRemoved(removed) => ("download.removed", json!({"hash": hash(removed)})),
+    }
+}
+
+/// A download, with the map of its parts when asked for.
+pub fn download(info: &DownloadInfo, with_parts: bool) -> Value {
+    let link = FileLink::of(&info.name, info.size, info.hash).map(|link| link.to_uri()).unwrap_or_default();
+    let mut data = json!({
+        "hash": hash(&info.hash),
+        "name": info.name,
+        "size": info.size,
+        "completed": info.completed,
+        "status": info.status.name(),
+        "priority": info.priority.name(),
+        "category": info.category,
+        "sources": info.sources,
+        "transferring": info.transferring,
+        "bytesPerSecond": info.bytes_per_second,
+        "previewFirst": info.preview_first,
+        "autoSwap": info.auto_swap,
+        "link": link,
+        "kind": kind(&info.name),
+    });
+    if with_parts && let Value::Object(fields) = &mut data {
+        let spans = |spans: &[(u64, u64)]| spans.iter().map(|(start, end)| json!([start, end])).collect::<Vec<_>>();
+        fields.insert(
+            "parts".to_owned(),
+            json!({
+                "size": info.parts.size,
+                "missing": spans(&info.parts.missing),
+                "requested": spans(&info.parts.requested),
+                "sources": info.parts.sources,
+            }),
+        );
+    }
+    data
+}
+
+/// A source of a download, as the list of downloading clients shows it.
+pub fn source(info: &SourceInfo) -> Value {
+    json!({
+        "file": hash(&info.file),
+        "fileName": info.file_name,
+        "address": info.address,
+        "nick": info.nick,
+        "software": info.software,
+        "state": info.state.name(),
+        "queueRank": info.queue_rank,
+        "received": info.received,
+        "parts": info.parts,
+        "partCount": info.part_count,
+        "reportedName": info.reported_name,
+        "askedFor": null,
+        "askedForName": "",
+        "country": null,
+    })
+}
+
+// The kind of a file named `name`; other when its extension does not tell.
+fn kind(name: &str) -> &'static str {
+    match file_types::of(name) {
+        Some(file_types::VIDEO) => "video",
+        Some(file_types::AUDIO) => "audio",
+        Some(file_types::IMAGE) => "image",
+        Some(file_types::DOCUMENT) => "document",
+        Some(_) if file_types::is_a(file_types::ARCHIVE, name) => "archive",
+        Some(_) if file_types::is_a(file_types::DISC_IMAGE, name) => "disc_image",
+        Some(_) => "program",
+        None => "other",
     }
 }
 

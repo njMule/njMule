@@ -15,6 +15,8 @@ use tokio::net::{TcpListener, UdpSocket};
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinSet;
 
+use crate::api::download_info::{DownloadInfo, SourceInfo};
+use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
@@ -123,17 +125,10 @@ impl Engine {
             tasks: tokio::sync::Mutex::new(JoinSet::new()),
         });
         let engine = Self { shared: shared.clone() };
-        let network = network::start(shared, commands_out, udp);
-        {
-            let mut tasks = engine.shared.tasks.lock().await;
-            tasks.spawn(async move {
-                let _ = network.await;
-            });
-            if let Some(listener) = listener {
-                let accepting = engine.clone();
-                tasks.spawn(async move { accepting.accept(listener).await });
-            }
-        }
+        let network = network::start(shared, commands_out, udp, listener)?;
+        engine.shared.tasks.lock().await.spawn(async move {
+            let _ = network.await;
+        });
         engine.publish(EngineEvent::Started { version: nj_mule_info::version().to_owned() });
         Ok(engine)
     }
@@ -216,6 +211,47 @@ impl Engine {
         self.ask(Command::SharedFiles).await.unwrap_or_default()
     }
 
+    /// Adds a download, paused when `paused` says so or, without it, as the preferences say.
+    pub async fn add_download(&self, link: FileLink, paused: Option<bool>) -> Result<DownloadInfo, String> {
+        self.ask(|reply| Command::AddDownload(Box::new(link), paused, reply))
+            .await
+            .unwrap_or_else(|| Err("the engine is stopping".to_owned()))
+    }
+
+    /// The downloads, the completed ones last.
+    pub async fn downloads(&self) -> Vec<DownloadInfo> {
+        self.ask(Command::Downloads).await.unwrap_or_default()
+    }
+
+    pub async fn sources(&self) -> Vec<SourceInfo> {
+        self.ask(Command::Sources).await.unwrap_or_default()
+    }
+
+    /// Pauses a download; answers it as it is now, none when unknown.
+    pub async fn pause_download(&self, hash: [u8; 16]) -> Option<DownloadInfo> {
+        self.ask(|reply| Command::PauseDownload(hash, reply)).await.flatten()
+    }
+
+    /// Resumes a paused, stopped or failed download; answers it as it is now, none when unknown or running.
+    pub async fn resume_download(&self, hash: [u8; 16]) -> Option<DownloadInfo> {
+        self.ask(|reply| Command::ResumeDownload(hash, reply)).await.flatten()
+    }
+
+    /// Stops a download and deletes its data; false when unknown or while its finished file is moved.
+    pub async fn cancel_download(&self, hash: [u8; 16]) -> bool {
+        self.ask(|reply| Command::CancelDownload(hash, reply)).await.unwrap_or(false)
+    }
+
+    /// Takes the completed downloads off the list; their files stay. Answers how many.
+    pub async fn clear_completed_downloads(&self) -> usize {
+        self.ask(Command::ClearCompleted).await.unwrap_or(0)
+    }
+
+    /// Takes one completed download off the list; its file stays.
+    pub async fn clear_completed_download(&self, hash: [u8; 16]) -> bool {
+        self.ask(|reply| Command::ClearCompletedOne(hash, reply)).await.unwrap_or(false)
+    }
+
     /// Completes once the engine stops.
     pub fn stopped(&self) -> impl Future<Output = ()> + Send + use<> {
         let mut stop = self.shared.stop.subscribe();
@@ -243,29 +279,6 @@ impl Engine {
     fn publish(&self, event: EngineEvent) {
         // Without a front end following, nobody misses the event.
         let _ = self.shared.events.send(event);
-    }
-
-    async fn accept(&self, listener: TcpListener) {
-        let mut stop = self.shared.stop.subscribe();
-        let mut connections = JoinSet::new();
-        loop {
-            tokio::select! {
-                _ = stop.wait_for(|stopped| *stopped) => break,
-                accepted = listener.accept() => match accepted {
-                    Ok((stream, _)) => {
-                        let ours = self.shared.our_hello();
-                        connections.spawn(async move {
-                            if let Err(e) = peer_greetings::accepted(stream, ours).await {
-                                tracing::debug!("Client connection ended: {e}");
-                            }
-                        });
-                    }
-                    Err(e) => tracing::warn!("Cannot accept a connection: {e}"),
-                },
-                Some(_) = connections.join_next(), if !connections.is_empty() => {}
-            }
-        }
-        connections.abort_all();
     }
 }
 

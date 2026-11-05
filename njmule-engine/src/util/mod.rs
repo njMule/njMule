@@ -3,6 +3,7 @@
 
 //! Small helpers shared by the packages.
 
+pub mod instants;
 pub mod ipv4;
 pub mod ipv6;
 pub mod white_space;
