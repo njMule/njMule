@@ -16,7 +16,7 @@ use std::net::Ipv6Addr;
 
 use njmule_engine::files::hash::ed2k::{EMBLOCKSIZE, PARTSIZE};
 use njmule_engine::protocol::ed2k::client_messages::{
-    self, CompressedPart, FileName, FileStatus, HashSet, Range, RequestParts, SendingPart,
+    self, CompressedPart, FileName, FileStatus, HashSet, PartStatus, Range, RequestParts, SendingPart,
 };
 use njmule_engine::protocol::io::PacketWriter;
 use njmule_engine::protocol::packet::opcodes::{client, extended};
@@ -331,4 +331,24 @@ proptest::proptest! {
             let _ = messages::decode_queue_rank(&received);
         }
     }
+}
+
+#[test]
+fn should_give_the_status_of_a_download_from_its_complete_parts() {
+    let status = PartStatus::of(2 * PARTSIZE + 1, &[true, false]);
+
+    assert_eq!(status.part_count, 3);
+    assert_eq!([0, 1, 2, 3].map(|part| status.has(part)), [true, false, false, false]);
+}
+
+#[test]
+fn should_count_the_empty_last_part_of_an_exact_multiple_of_the_part_size_as_complete() {
+    let status = PartStatus::of(2 * PARTSIZE, &[false, true]);
+
+    assert_eq!(status.parts, [false, true, true]);
+}
+
+#[test]
+fn should_refuse_to_send_data_that_does_not_fill_its_range() {
+    assert!(part(0, 10, &[0; 9]).encode(false).is_err());
 }

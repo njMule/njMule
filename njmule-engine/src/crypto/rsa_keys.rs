@@ -35,12 +35,10 @@ pub fn encode_public(key: &PublicKey) -> Vec<u8> {
 /// Decodes a SubjectPublicKeyInfo or a bare PKCS#1 RSAPublicKey, of a key a signature check can use.
 pub fn decode_public(der: &[u8]) -> Result<PublicKey, DecodeError> {
     check_size(der)?;
+    // The crate refuses moduli over 4,096 bits, exponents over 2^33 - 1 and even ones.
     let key = RsaPublicKey::from_public_key_der(der)
         .or_else(|_| RsaPublicKey::from_pkcs1_der(der))
         .map_err(|e| DecodeError::new(format!("malformed RSA key: {e}")))?;
-    if key.n().bits() > MAX_KEY_BITS || key.e().bits() > 64 {
-        return Err(DecodeError::new("implausible RSA public key"));
-    }
     // What the signature check refuses besides: moduli that are prime or have small factors.
     if probably_prime(key.n(), PRIME_ROUNDS) || !key.n().gcd(&small_primes()).eq(&BigUint::from(1u32)) {
         return Err(DecodeError::new("implausible RSA public key"));

@@ -9,7 +9,7 @@
 use std::net::Ipv4Addr;
 
 use njmule_engine::protocol::ed2k::client_messages::PartStatus;
-use njmule_engine::protocol::ed2k::client_reasks::{Ack, Ping, Relayed, ThroughBuddy};
+use njmule_engine::protocol::ed2k::client_reasks::{self, Ack, Ping, Relayed, ThroughBuddy};
 use njmule_engine::protocol::packet::opcodes::{client_udp, extended};
 use njmule_engine::protocol::packet::{Packet, protocol};
 
@@ -104,4 +104,19 @@ fn should_read_back_a_relayed_ping() {
     let sent = Relayed { requester_ip: host(1, 2, 3, 4), requester_port: 4672, ping: ping(2).encode(4).unwrap() };
 
     assert_eq!(Relayed::decode(&sent.encode()), Ok(sent));
+}
+
+#[test]
+fn should_read_the_file_of_a_ping_whatever_its_version() {
+    for version in [2, 3, 4] {
+        let packet = ping(5).encode(version).unwrap();
+
+        assert_eq!(Ping::file(&packet), Ok(ping(5).file), "version {version}");
+    }
+}
+
+#[test]
+fn should_answer_a_full_queue_and_an_unknown_file_with_empty_messages() {
+    assert_packet(&client_reasks::queue_full(), client_udp::QUEUEFULL, "");
+    assert_packet(&client_reasks::file_not_found(), client_udp::FILENOTFOUND, "");
 }

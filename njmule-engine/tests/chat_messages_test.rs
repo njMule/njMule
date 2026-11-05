@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
-use njmule_engine::protocol::ed2k::chat_messages::{self, MAX_LENGTH};
+use njmule_engine::protocol::ed2k::chat_messages::{self, MAX_LENGTH, SOLVED};
 use njmule_engine::protocol::io::{PacketWriter, StringEncoding};
 use njmule_engine::protocol::packet::opcodes::client;
 use njmule_engine::protocol::packet::{Packet, protocol};
@@ -96,4 +96,11 @@ proptest::proptest! {
     fn should_only_fail_with_decode_exception_on_garbage_read_as_a_message(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=300)) {
         let _ = chat_messages::text(&Packet::of(protocol::EDONKEY, client::MESSAGE, data));
     }
+}
+
+#[test]
+fn should_read_a_captcha_result_as_solved_only_for_its_solved_status() {
+    assert_eq!(chat_messages::is_solved(&chat_messages::captcha_result(SOLVED)), Ok(true));
+    assert_eq!(chat_messages::is_solved(&chat_messages::captcha_result(1)), Ok(false));
+    assert!(chat_messages::is_solved(&Packet::of(protocol::EMULE, 0x5A, Vec::new())).is_err());
 }
