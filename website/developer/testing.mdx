@@ -216,9 +216,9 @@ folder's `README.md`.
   hashes and what AICH recovery data proves (`HashCorpusTest`).
 
 The tests check that the engine still answers so, and the Rust engine (`njmule-engine`) replays
-the same files in its own tests: so far `tag-codec.jsonl`, `packets.jsonl`, `ed2k-links.jsonl` and
-`search-expressions.jsonl`. After a change meant to alter the answers, write
-them again and review the difference:
+the same files in its own tests: so far `tag-codec.jsonl`, `packets.jsonl`, `ed2k-links.jsonl`,
+`search-expressions.jsonl` and `hashes.jsonl`, with the golden vectors of `file-hashes.txt`. After
+a change meant to alter the answers, write them again and review the difference:
 
 ```bash
 ./gradlew :njmule-core:test --tests '*CorpusTest' -Pnjmule.corpus.write=true
