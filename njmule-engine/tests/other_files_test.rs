@@ -13,6 +13,7 @@
 )]
 
 use njmule_engine::kad::uint128::UInt128;
+use njmule_engine::persist::format::ini_file::{GLOBAL, IniFile};
 use njmule_engine::persist::format::ip_filter_dat::{self, Range};
 use njmule_engine::persist::format::kad_index_files::{
     self, Entry, IndexKey, Keyword, KeywordEntry, KeywordIndex, KeywordSource, Load, LoadIndex, NO_AICH, PublishedName,
@@ -291,10 +292,33 @@ fn should_never_throw_from_text_parsers_and_only_fail_cleanly_from_binary_ones()
         let _ = text_files::entries(&data);
         let _ = ip_filter_dat::read(&data, "ipfilter.dat");
         let _ = ip_filter_dat::read(&data, "list.p2p");
+        let _ = IniFile::parse(&data);
         let _ = kad_index_files::read_load(&data);
         let _ = kad_index_files::read_sources(&data);
         let _ = kad_index_files::read_keywords(&data);
         let _ = search_files::read_stored(&data);
         let _ = search_files::read_spam(&data);
     }
+}
+
+#[test]
+fn should_read_ini_files_case_insensitively() {
+    let file = "Global=1\n[eMule]\nNick = someone\nPort=4662\nport=1\n; comment\n[Proxy]\nName=caf\u{e9}\n";
+
+    let ini = IniFile::parse(file.as_bytes());
+
+    assert_eq!(ini.get(GLOBAL, "global"), Some("1"));
+    assert_eq!(ini.get("EMULE", "nick"), Some("someone"));
+    assert_eq!(ini.get_long("eMule", "Port"), Some(4662));
+    assert_eq!(ini.get_boolean("eMule", "Port"), Some(true));
+    assert_eq!(ini.get("proxy", "name"), Some("caf\u{e9}"));
+    assert_eq!(ini.sections(), ["eMule", "Proxy"]);
+    assert!(ini.has_section("PROXY"));
+}
+
+#[test]
+fn should_decode_ansi_ini_files() {
+    let ini = IniFile::parse(&[b'[', b'x', b']', b'\n', b'k', b'=', 0xE9]);
+
+    assert_eq!(ini.get("x", "k"), Some("\u{e9}"));
 }

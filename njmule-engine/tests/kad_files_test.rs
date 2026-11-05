@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The examples of the Java engine's KadFilesTest, under their names: Kad ids on the wire, `nodes.dat` and
-//! `preferencesKad.dat`. The bit arithmetic of ids waits for the routing table.
+//! `preferencesKad.dat`, and the bit arithmetic of ids.
 
 #![allow(
     clippy::unwrap_used,
@@ -161,4 +161,28 @@ fn should_fail_on_garbage_only_with_a_decode_exception() {
         let _ = nodes_dat::read(&data);
         let _ = preferences_kad_dat::read(&data);
     }
+}
+
+const HIGH_AND_LOW_BITS: UInt128 = UInt128(0x8000_0000_0000_0000_0000_0000_0000_0001);
+
+#[test]
+fn should_count_the_bits_from_the_most_significant() {
+    for (index, expected) in [(0, 1), (1, 0), (127, 1)] {
+        assert_eq!(HIGH_AND_LOW_BITS.bit(index), expected, "bit {index}");
+    }
+}
+
+#[test]
+fn should_take_the_top32_bits_from_the_most_significant() {
+    assert_eq!(HIGH_AND_LOW_BITS.top32(), 0x8000_0000);
+}
+
+#[test]
+fn should_compare_ids_from_the_most_significant_bit() {
+    assert!(HIGH_AND_LOW_BITS > UInt128(0x7FFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF));
+}
+
+#[test]
+fn should_give_zero_for_an_id_xored_with_itself() {
+    assert_eq!(HIGH_AND_LOW_BITS ^ HIGH_AND_LOW_BITS, UInt128::ZERO);
 }

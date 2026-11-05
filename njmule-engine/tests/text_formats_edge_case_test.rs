@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The examples of the Java engine's TextFormatsEdgeCaseTest, under their names: corner cases of the text files of a
-//! profile. The ini files, read only when importing a profile, are not ported yet.
+//! profile.
 
 #![allow(
     clippy::unwrap_used,
@@ -12,6 +12,7 @@
     clippy::arithmetic_side_effects
 )]
 
+use njmule_engine::persist::format::ini_file::{GLOBAL, IniFile};
 use njmule_engine::persist::format::ip_filter_dat::{self, Range};
 use njmule_engine::persist::format::text_files::{self, PRIORITY_HIGH, PRIORITY_LOW, StaticServer};
 use rand::rngs::StdRng;
@@ -212,4 +213,39 @@ fn should_use_the_first_three_digits_of_a_longer_level() {
         ip_filter_dat::read(file.as_bytes(), "ipfilter.dat"),
         [range(ip(1, 2, 3, 0), ip(1, 2, 3, 255), 12, "Long level")]
     );
+}
+
+#[test]
+fn should_take_the_ini_values_as_the_reference_reader_does() {
+    let lines = ["Key = value", "a=b=c", "k=1", "k=2", "[ eMule ]", "[]", "Empty=", "Plus=+5", "Hex=0x10"];
+    let file = [&lines[..], &["Huge=99999999999999999999", ""]].concat().join("\r\n");
+
+    let ini = IniFile::parse(file.as_bytes());
+
+    assert_eq!(ini.get(GLOBAL, "key"), Some("value"));
+    assert_eq!(ini.get(GLOBAL, "a"), Some("b=c"));
+    assert_eq!(ini.get(GLOBAL, "k"), Some("1"));
+    assert_eq!(ini.get("eMule", "Empty"), Some(""));
+    assert_eq!(ini.get_long("eMule", "Plus"), Some(5));
+    assert_eq!(ini.get_long("eMule", "Hex"), None);
+    assert_eq!(ini.get_long("eMule", "Huge"), None);
+}
+
+#[test]
+fn should_read_a_utf16_ini_file() {
+    let file: Vec<u8> = "\u{feff}[x]\r\nk=\u{e9}\r\n".encode_utf16().flat_map(u16::to_le_bytes).collect();
+
+    let ini = IniFile::parse(&file);
+
+    assert_eq!(ini.get("x", "k"), Some("\u{e9}"));
+}
+
+#[test]
+fn should_let_a_section_line_end_with_a_comment() {
+    let ini = IniFile::parse(b"[eMule]\nNick=a\n[Proxy] ;the proxy\nProxyName=h\n[a]b]\nk=v\n");
+
+    assert_eq!(ini.get("Proxy", "ProxyName"), Some("h"));
+    assert_eq!(ini.get("eMule", "ProxyName"), None);
+    assert_eq!(ini.get("a]b", "k"), Some("v"));
+    assert_eq!(ini.sections(), ["eMule", "Proxy", "a]b"]);
 }
