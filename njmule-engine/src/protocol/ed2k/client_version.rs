@@ -16,7 +16,7 @@ pub fn encode(compat: u8, major: i32, minor: i32, patch: i32) -> u32 {
 
 /// njMule's own version tag, from its semantic version.
 pub fn nj_mule() -> u32 {
-    from_sem_ver(env!("CARGO_PKG_VERSION"))
+    from_sem_ver(crate::api::nj_mule_info::version())
 }
 
 pub fn from_sem_ver(version: &str) -> u32 {
