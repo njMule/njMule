@@ -136,3 +136,11 @@ fn should_reject_a_short_quic_proof() {
 
     assert!(QuicProof::decode(&proof).is_err());
 }
+
+// A forward of garbage is read or refused as malformed: never a panic.
+proptest::proptest! {
+    #[test]
+    fn should_only_fail_with_decode_exception_on_a_garbage_forward(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=80)) {
+        let _ = njmule_engine::protocol::ed2k::nat_traversal_messages::Forward::decode(&Packet::of(protocol::EMULE, 0x01, data));
+    }
+}

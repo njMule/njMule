@@ -1,9 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# The tests of Java classes with a Rust twin that are not ported yet, each with the reason it waits;
-# test_name_map_test fails on any other missing test, and on a line here that is ported or gone.
+# The tests of Java classes with a Rust twin that have no Rust test of their name: those Rust needs not,
+# and those not ported yet, each with its reason. test_name_map_test fails on any other missing test, and
+# on a line here that is ported or gone.
 
+# Java only: Rust needs no such test.
 # Corpora are written from the Java engine only: Rust replays them.
 Ed2kLinkCorpusTest.shouldWriteItsAnswersWhenAsked
 HashCorpusTest.shouldWriteItsAnswersWhenAsked
@@ -11,39 +13,19 @@ PacketCorpusTest.shouldWriteItsAnswersWhenAsked
 ProfileFilesCorpusTest.shouldWriteItsAnswersWhenAsked
 SearchParserCorpusTest.shouldWriteItsAnswersWhenAsked
 TagCodecCorpusTest.shouldWriteItsAnswersWhenAsked
-
-# AichRecoveryTest: not ported yet.
+# A part number is unsigned in Rust: none is negative.
 AichRecoveryTest.shouldHaveNoRecoveryDataForANegativePart
-
-# ChatMessagesTest: not ported yet.
-ChatMessagesTest.shouldOnlyFailWithDecodeExceptionOnGarbageReadAsACaptcha
-ChatMessagesTest.shouldOnlyFailWithDecodeExceptionOnGarbageReadAsAMessage
-
-# ClientMessagesTest: not ported yet.
-ClientMessagesTest.shouldOnlyFailWithDecodeExceptionOnGarbage
+# A datagram is decoded from a slice in Rust: no offsets to check.
+FramingTest.shouldNotReadAUdpDatagramBeforeTheBuffer
+FramingTest.shouldNotReadAUdpDatagramPastTheBuffer
+# A skip is unsigned in Rust, and a cipher is keyed only when it is made.
+Rc4Test.shouldRefuseToSkipBackwards
+Rc4Test.shouldStartAgainFromANewKeyAsANewInstanceWould
 
 # Ed2kLinkTest: not ported yet.
 Ed2kLinkTest.shouldDropAnIpv6SourceWithAZoneIdButKeepTheLink
 Ed2kLinkTest.shouldOnlyFailWithIllegalArgumentForAnythingInsideAFileLink
 Ed2kLinkTest.shouldOnlyFailWithIllegalArgumentForGarbage
-
-# Ed2kMessagesTest: not ported yet.
-Ed2kMessagesTest.shouldAskAServerWithExtendedSearchesTheSecondGlobalSearch
-Ed2kMessagesTest.shouldAskAServerWithLargeFilesAndExtendedSearchesTheThirdGlobalSearch
-Ed2kMessagesTest.shouldAskAServerWithoutFlagsTheFirstGlobalSearch
-Ed2kMessagesTest.shouldNotAskAServerWithoutLargeFilesForLargeFiles
-Ed2kMessagesTest.shouldOnlyFailWithDecodeExceptionOnGarbage
-
-# Ed2kStringsTest: not ported yet.
-Ed2kStringsTest.shouldDecodeAnyBytesToSomeText
-Ed2kStringsTest.shouldRoundTripTextWithoutLoneSurrogatesInBothEncodings
-Ed2kStringsTest.shouldTakeAsUtf8ExactlyWhatAStrictDecoderAccepts
-
-# FramingTest: not ported yet.
-FramingTest.shouldNeverInflateGarbagePastTheCap
-FramingTest.shouldNotReadAUdpDatagramBeforeTheBuffer
-FramingTest.shouldNotReadAUdpDatagramPastTheBuffer
-FramingTest.shouldOnlyFailWithIoExceptionsOnGarbageStreams
 
 # IpFilterLevelsTest: not ported yet.
 IpFilterLevelsTest.shouldKeepBlockedARangeInsideAnAllowedOne
@@ -54,12 +36,6 @@ KadFilesTest.shouldCompareIdsFromTheMostSignificantBit
 KadFilesTest.shouldCountTheBitsFromTheMostSignificant
 KadFilesTest.shouldGiveZeroForAnIdXoredWithItself
 KadFilesTest.shouldTakeTheTop32BitsFromTheMostSignificant
-
-# KadMessagesTest: not ported yet.
-KadMessagesTest.shouldOnlyFailWithDecodeExceptionOnGarbage
-
-# NatTraversalMessagesTest: not ported yet.
-NatTraversalMessagesTest.shouldOnlyFailWithDecodeExceptionOnAGarbageForward
 
 # OtherFilesTest: not ported yet.
 OtherFilesTest.shouldDecodeAnsiIniFiles
@@ -101,10 +77,6 @@ PreferencesCodecTest.shouldLoadTheNewerPreferencesOnceTheOtherProgramLetsThemGo
 PreferencesCodecTest.shouldLoseOnlyTheLineOfAMalformedEscape
 PreferencesCodecTest.shouldNotTakeFromTheOlderBackupThePreferencesHeldByAnotherProgram
 PreferencesCodecTest.shouldWriteASortedAndStableOutput
-
-# Rc4Test: not ported yet.
-Rc4Test.shouldRefuseToSkipBackwards
-Rc4Test.shouldStartAgainFromANewKeyAsANewInstanceWould
 
 # Kad searches, the spam filter and media details wait for their ports.
 SearchManagerTest.shouldAskKadForArchivesAsProgramsAndKeepOnlyTheArchives
@@ -184,23 +156,6 @@ SharedFilesTest.shouldShareTheIncomingAndSharedDirectoriesAndRememberTheHashes
 SharedFilesTest.shouldTakeTheUsableRecordsOfAnotherClient
 SharedFilesTest.shouldTreatPrivateDirectoriesAsPrivate
 SharedFilesTest.shouldUnshareAFileWhoseContentChangesUnderItsOldHash
-
-# SourceExchangeTest: not ported yet.
-SourceExchangeTest.shouldOnlyFailWithDecodeExceptionOnGarbageReadAsARequest
-SourceExchangeTest.shouldOnlyFailWithDecodeExceptionOnGarbageReadAsAnAnswer
-SourceExchangeTest.shouldOnlyFailWithDecodeExceptionOnGarbageReadAsAnExtendedAnswer
-
-# TagCodecTest: not ported yet.
-TagCodecTest.shouldNeverLetGarbageEscapeAKadListAsAnUncheckedException
-TagCodecTest.shouldNeverLetGarbageEscapeAnEd2kListAsAnUncheckedException
-TagCodecTest.shouldNotTakeAPortBeyondSixteenBits
-TagCodecTest.shouldNotTakeAPortOfZero
-TagCodecTest.shouldRoundTripTagListsInTheKadEncoding
-TagCodecTest.shouldRoundTripTagsInTheNewEd2kEncoding
-TagCodecTest.shouldRoundTripTagsInTheOldEd2kEncoding
-TagCodecTest.shouldTakeAPortWithinItsRange
-TagCodecTest.shouldTakeNoPortWithoutTheTag
-TagCodecTest.shouldTakeTheHighestPort
 
 # TextFormatsEdgeCaseTest: not ported yet.
 TextFormatsEdgeCaseTest.shouldLetASectionLineEndWithAComment

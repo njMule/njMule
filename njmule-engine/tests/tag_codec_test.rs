@@ -4,11 +4,21 @@
 //! The examples of the Java engine's TagCodecTest, under their names: expected bytes follow the old and new eD2K tag
 //! encodings and the Kad tag encoding.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 
 use njmule_engine::protocol::io::{PacketReader, PacketWriter, StringEncoding};
-use njmule_engine::protocol::tag::tag_codec::{read_ed2k, read_ed2k_list, read_kad, write_ed2k, write_kad};
+use njmule_engine::protocol::tag::tag_codec::{
+    read_ed2k, read_ed2k_list, read_kad, read_kad_list, write_ed2k, write_kad, write_kad_list,
+};
+use njmule_engine::protocol::tag::tags;
 use njmule_engine::protocol::tag::{Ed2kTagFormat, Tag, TagName};
+use proptest::prelude::*;
 
 const FILENAME: u8 = 0x01;
 const FILESIZE: u8 = 0x02;
@@ -151,4 +161,138 @@ fn should_check_the_count_of_a_list_against_the_data() {
     let data = hex::decode("890205").unwrap();
 
     assert!(read_ed2k_list(&mut PacketReader::of(&data), 2, 100).is_err());
+}
+
+// Integer tags 1 to 4 holding a port, nothing, more than sixteen bits and the highest port.
+fn port_tags() -> Vec<Tag> {
+    vec![int(1, 4662), int(2, 0), int(3, 0x1_0000), int(4, 0xFFFF)]
+}
+
+#[test]
+fn should_take_a_port_within_its_range() {
+    let port = tags::port_value(&port_tags(), 1);
+
+    assert_eq!(port, Some(4662));
+}
+
+#[test]
+fn should_take_the_highest_port() {
+    let port = tags::port_value(&port_tags(), 4);
+
+    assert_eq!(port, Some(0xFFFF));
+}
+
+#[test]
+fn should_not_take_a_port_of_zero() {
+    let port = tags::port_value(&port_tags(), 2);
+
+    assert_eq!(port, None);
+}
+
+#[test]
+fn should_not_take_a_port_beyond_sixteen_bits() {
+    let port = tags::port_value(&port_tags(), 3);
+
+    assert_eq!(port, None);
+}
+
+#[test]
+fn should_take_no_port_without_the_tag() {
+    let port = tags::port_value(&port_tags(), 5);
+
+    assert_eq!(port, None);
+}
+
+fn names() -> impl Strategy<Value = TagName> {
+    prop_oneof![
+        any::<u8>().prop_map(TagName::id),
+        prop::collection::vec(any::<u8>(), 0..=12).prop_map(|raw| TagName::of_bytes(&raw))
+    ]
+}
+
+// Unicode without surrogates or a leading BOM: every value has one UTF-8 form.
+fn strings() -> impl Strategy<Value = String> {
+    prop::collection::vec(prop::char::range('\u{1}', '\u{D7FF}'), 0..=40).prop_map(String::from_iter)
+}
+
+fn ed2k_tags() -> impl Strategy<Value = Tag> {
+    prop_oneof![
+        (names(), any::<u64>()).prop_map(|(name, value)| Tag::Int { name, value }),
+        (names(), strings()).prop_map(|(name, value)| Tag::String { name, value }),
+        (names(), any::<[u8; 16]>()).prop_map(|(name, value)| Tag::Hash { name, value }),
+        (names(), any::<f32>()).prop_map(|(name, value)| Tag::Float { name, value }),
+        (names(), any::<bool>()).prop_map(|(name, value)| Tag::Bool { name, value }),
+        (names(), 0u16..=100).prop_map(|(name, bit_count)| Tag::BoolArray {
+            name,
+            bit_count,
+            value: vec![0; usize::from(bit_count / 8) + 1],
+        }),
+        (names(), prop::collection::vec(any::<u8>(), 0..=300)).prop_map(|(name, value)| Tag::Blob { name, value }),
+    ]
+}
+
+fn kad_tags() -> impl Strategy<Value = Vec<Tag>> {
+    let tag = prop_oneof![
+        (names(), any::<u64>()).prop_map(|(name, value)| Tag::Int { name, value }),
+        (names(), strings()).prop_map(|(name, value)| Tag::String { name, value }),
+        (names(), any::<[u8; 16]>()).prop_map(|(name, value)| Tag::Hash { name, value }),
+        (names(), any::<f32>()).prop_map(|(name, value)| Tag::Float { name, value }),
+        (names(), prop::collection::vec(any::<u8>(), 0..=255)).prop_map(|(name, value)| Tag::Bsob { name, value }),
+    ];
+    prop::collection::vec(tag, 0..=8)
+}
+
+// Compared as written out, so that a NaN float equals itself.
+fn shown(tags: &[Tag]) -> String {
+    format!("{tags:?}")
+}
+
+fn round_trip_ed2k(tag: &Tag, format: Ed2kTagFormat, encoding: StringEncoding) -> Tag {
+    let mut out = PacketWriter::new();
+    write_ed2k(&mut out, tag, format, encoding).unwrap();
+    let data = out.to_byte_array();
+    read_ed2k(&mut PacketReader::of(&data)).unwrap()
+}
+
+proptest! {
+    #[test]
+    fn should_round_trip_tags_in_the_new_ed2k_encoding(tag in ed2k_tags()) {
+        let read = round_trip_ed2k(&tag, Ed2kTagFormat::New, StringEncoding::Utf8);
+
+        prop_assert_eq!(shown(&[read]), shown(&[tag]));
+    }
+
+    #[test]
+    fn should_round_trip_tags_in_the_old_ed2k_encoding(tag in ed2k_tags()) {
+        let read = round_trip_ed2k(&tag, Ed2kTagFormat::Old, StringEncoding::Utf8BomIfNeeded);
+
+        prop_assert_eq!(shown(&[read]), shown(&[tag]));
+    }
+
+    #[test]
+    fn should_round_trip_tag_lists_in_the_kad_encoding(tags in kad_tags()) {
+        let mut out = PacketWriter::new();
+        write_kad_list(&mut out, &tags).unwrap();
+        let data = out.to_byte_array();
+        let mut input = PacketReader::of(&data);
+
+        let read = read_kad_list(&mut input).unwrap();
+
+        prop_assert_eq!(shown(&read), shown(&tags));
+        prop_assert!(!input.has_remaining());
+    }
+
+    #[test]
+    fn should_never_let_garbage_escape_an_ed2k_list_as_an_unchecked_exception(
+        data in prop::collection::vec(any::<u8>(), 0..=64),
+    ) {
+        let _ = read_ed2k_list(&mut PacketReader::of(&data), data.len() as u64, 64);
+    }
+
+    #[test]
+    fn should_never_let_garbage_escape_a_kad_list_as_an_unchecked_exception(
+        data in prop::collection::vec(any::<u8>(), 0..=64),
+    ) {
+        let _ = read_kad_list(&mut PacketReader::of(&data));
+    }
 }

@@ -314,3 +314,21 @@ fn should_decode_a_queue_ranking_of_the_extended_protocol() {
 fn should_read_the_file_of_a_file_request() {
     assert_eq!(client_messages::file_of(&client_messages::for_file(client::SETREQFILEID, &FILE)), Ok(FILE));
 }
+
+// Every decoder reads garbage, in both protocols, or refuses it as malformed: never a panic.
+proptest::proptest! {
+    #[test]
+    fn should_only_fail_with_decode_exception_on_garbage(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=120)) {
+        use njmule_engine::protocol::ed2k::client_messages as messages;
+        for kind in [protocol::EDONKEY, protocol::EMULE] {
+            let received = Packet::of(kind, 0x50, data.clone());
+            let _ = messages::FileStatus::decode(&received);
+            let _ = messages::HashSet::decode(&received);
+            let _ = messages::RequestParts::decode(&received);
+            let _ = messages::SendingPart::decode(&received);
+            let _ = messages::CompressedPart::decode(&received);
+            let _ = messages::FileName::decode(&received);
+            let _ = messages::decode_queue_rank(&received);
+        }
+    }
+}

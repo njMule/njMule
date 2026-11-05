@@ -212,3 +212,24 @@ fn should_round_trip_tcp_frames() {
         assert_eq!(read(&mut input, &fixed(300)), Ok(Some(packet)));
     }
 }
+
+proptest::proptest! {
+    #[test]
+    fn should_only_fail_with_io_exceptions_on_garbage_streams(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=40)) {
+        let mut input = Cursor::new(data);
+
+        // Up to ten frames: each read gives a frame, the end, or an error, never a panic.
+        for _ in 0..10 {
+            if !matches!(tcp_framing::read(&mut input, &fixed(16)), Ok(Some(_))) {
+                break;
+            }
+        }
+    }
+
+    #[test]
+    fn should_never_inflate_garbage_past_the_cap(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=64)) {
+        let inflated = packing::inflate(&data, 1000);
+
+        proptest::prop_assert!(inflated.as_ref().is_ok_and(|bytes| bytes.len() <= 1000) || inflated.is_err());
+    }
+}

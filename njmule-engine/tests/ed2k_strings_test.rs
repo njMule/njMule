@@ -75,3 +75,58 @@ fn should_write_unicode_with_a_bom() {
 fn should_write_unicode_without_a_bom_in_plain_utf8() {
     assert_eq!(hex::encode(encode("à", StringEncoding::Utf8)), "c3a0");
 }
+
+// Valid UTF-8, the same with one byte changed, or any bytes.
+fn nearly_utf8() -> impl proptest::strategy::Strategy<Value = Vec<u8>> {
+    use proptest::prelude::*;
+    let valid = any::<String>().prop_filter("not empty", |text| !text.is_empty()).prop_map(String::into_bytes);
+    prop_oneof![
+        valid.clone(),
+        valid.prop_flat_map(|bytes| {
+            let length = bytes.len();
+            (Just(bytes), 0..length).prop_map(|(mut changed, at)| {
+                changed[at] ^= 0x40;
+                changed
+            })
+        }),
+        proptest::collection::vec(any::<u8>(), 0..=40),
+    ]
+}
+
+proptest::proptest! {
+    #[test]
+    fn should_round_trip_text_without_lone_surrogates_in_both_encodings(text in proptest::prelude::any::<String>()) {
+        proptest::prop_assume!(!text.starts_with('\u{FEFF}'));
+
+        let read: Vec<String> = [StringEncoding::Utf8, StringEncoding::Utf8BomIfNeeded]
+            .into_iter()
+            .map(|encoding| decode(&encode(&text, encoding)))
+            .collect();
+
+        proptest::prop_assert_eq!(read, vec![text.clone(), text]);
+    }
+
+    #[test]
+    fn should_take_as_utf8_exactly_what_a_strict_decoder_accepts(raw in nearly_utf8()) {
+        let text = decode(&raw);
+
+        let body = raw.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&raw);
+        // The bytes windows-1252 leaves undefined are the replacement character, as a Java decoder gives them.
+        let expected = std::str::from_utf8(body).map(str::to_owned).unwrap_or_else(|_| {
+            encoding_rs::WINDOWS_1252
+                .decode_without_bom_handling(body)
+                .0
+                .chars()
+                .map(|c| if matches!(c, '\u{81}' | '\u{8D}' | '\u{8F}' | '\u{90}' | '\u{9D}') { '\u{FFFD}' } else { c })
+                .collect()
+        });
+        proptest::prop_assert_eq!(text, expected);
+    }
+
+    #[test]
+    fn should_decode_any_bytes_to_some_text(raw in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=256)) {
+        let text = decode(&raw);
+
+        proptest::prop_assert!(raw.is_empty() || !text.is_empty());
+    }
+}

@@ -251,3 +251,23 @@ fn should_refuse_an_answer_with_more_contacts_than_bytes() {
 fn should_refuse_a_lookup_request_for_no_contacts() {
     assert!(Request::decode(&Packet::of(protocol::KAD, 0x21, vec![0; 33])).is_err());
 }
+
+// Every decoder reads garbage or refuses it as malformed: never a panic.
+proptest::proptest! {
+    #[test]
+    fn should_only_fail_with_decode_exception_on_garbage(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=120)) {
+        use njmule_engine::protocol::kad::kad_messages as messages;
+        let received = Packet::of(protocol::KAD, 0x01, data);
+        let _ = messages::Answer::decode(&received);
+        let _ = messages::Request::decode(&received);
+        let _ = messages::Hello::decode(&received);
+        let _ = messages::BootstrapAnswer::decode(&received);
+        let _ = messages::SearchAnswer::decode(&received);
+        let _ = messages::KeywordPublish::decode(&received);
+        let _ = messages::SourcePublish::decode(&received);
+        let _ = messages::KeywordSearch::decode(&received);
+        let _ = messages::SourceSearch::decode(&received);
+        let _ = messages::PublishAnswer::decode(&received);
+        let _ = messages::FirewallCheck::decode(&received);
+    }
+}
