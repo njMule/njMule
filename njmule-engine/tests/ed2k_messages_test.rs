@@ -17,8 +17,8 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use njmule_engine::protocol::ed2k::client_version::{self, NJMULE_COMPAT};
 use njmule_engine::protocol::ed2k::file_entry::FileEntry;
 use njmule_engine::protocol::ed2k::hello::{
-    Hello, MISC1_NO_VIEW_SHARED_FILES, MISC1_UNICODE, MISC2_SUPPORTS_CRYPT, MOD_MISC_EXTENDED_SX, MOD_MISC_IPV6,
-    MOD_MISC_QUIC_TRAVERSAL, MOD_MISC_UTP_TRAVERSAL, Ours,
+    Hello, MISC1_AICH_SHIFT, MISC1_NO_VIEW_SHARED_FILES, MISC1_UDP_VERSION_SHIFT, MISC1_UNICODE, MISC2_SUPPORTS_CRYPT,
+    MOD_MISC_EXTENDED_SX, MOD_MISC_IPV6, MOD_MISC_QUIC_TRAVERSAL, MOD_MISC_UTP_TRAVERSAL, Ours,
 };
 use njmule_engine::protocol::ed2k::server_datagrams::{self, Status, UDP_OBFUSCATION};
 use njmule_engine::protocol::ed2k::server_messages::{
@@ -26,7 +26,7 @@ use njmule_engine::protocol::ed2k::server_messages::{
     TCP_COMPRESSION, TCP_LARGEFILES,
 };
 use njmule_engine::protocol::io::{PacketWriter, StringEncoding};
-use njmule_engine::protocol::packet::opcodes::server_udp;
+use njmule_engine::protocol::packet::opcodes::{server, server_udp};
 use njmule_engine::protocol::packet::{Packet, protocol};
 use njmule_engine::protocol::tag::tag_codec::write_ed2k_list;
 use njmule_engine::protocol::tag::{Ed2kTagFormat, Tag, TagName, client_tag, file_tag, server_tag};
@@ -714,4 +714,54 @@ proptest::proptest! {
         let _ = Status::decode(&received);
         let _ = server_datagrams::decode_search_results(&received);
     }
+}
+
+#[test]
+fn should_read_the_udp_version_and_aich_support_from_the_misc_options() {
+    let options = 4u32 << MISC1_UDP_VERSION_SHIFT | 1 << MISC1_AICH_SHIFT;
+    let hello = hello_on_the_port_with(4662, vec![int(client_tag::EMULE_MISCOPTIONS1, u64::from(options))]);
+    let plain = hello_on_the_port_with(4662, Vec::new());
+
+    assert_eq!((hello.udp_version(), hello.supports_aich()), (4, true));
+    assert_eq!((plain.udp_version(), plain.supports_aich()), (0, false));
+}
+
+#[test]
+fn should_read_a_64_bit_size_tag_without_its_high_half() {
+    let entry = entry_with(vec![int(file_tag::FILESIZE, 5 << 32 | 7)]);
+
+    assert_eq!(entry.size(), Some(5 << 32 | 7));
+}
+
+#[test]
+fn should_have_no_aich_hash_of_the_wrong_length() {
+    let entry = entry_with(vec![string(file_tag::AICH_HASH, "ABCDEFGH")]);
+
+    assert_eq!(entry.aich_hash(), None);
+}
+
+#[test]
+fn should_round_trip_an_id_change_with_the_reported_address() {
+    let change = IdChange { client_id: 1234, server_flags: TCP_COMPRESSION, reported_ip: ip("198.51.100.20") };
+
+    assert_eq!(IdChange::decode(&change.encode()), Ok(change));
+}
+
+#[test]
+fn should_write_the_requests_of_a_server_session() {
+    assert_eq!(server_messages::get_server_list(), packet(server::GETSERVERLIST, ""));
+    assert_eq!(server_messages::query_more_results(), packet(server::QUERY_MORE_RESULT, ""));
+    assert_eq!(server_messages::callback_request(0x0001_0203), packet(server::CALLBACKREQUEST, "03020100"));
+    assert_eq!(server_messages::keep_alive(), packet(server::OFFERFILES, "00000000"));
+}
+
+#[test]
+fn should_offer_files_with_the_tag_format_the_server_takes() {
+    let entry = format!("01000000{}000000000000", hex::encode(HASH));
+
+    let new = server_messages::offer_files(&[named_file()], true).unwrap();
+    let old = server_messages::offer_files(&[named_file()], false).unwrap();
+
+    assert_eq!(new, packet(server::OFFERFILES, &format!("{entry}01000000910161")));
+    assert_eq!(old, packet(server::OFFERFILES, &format!("{entry}0100000002010001010061")));
 }

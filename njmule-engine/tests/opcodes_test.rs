@@ -3,7 +3,9 @@
 
 //! The examples of the Java engine's OpcodesTest, under their names: opcode tables and frame limits.
 
-use njmule_engine::protocol::packet::frame_limits::{self, CLIENT_MAX, DATA_MAX, HANDSHAKE_MAX, SHARED_FILES_MAX};
+use njmule_engine::protocol::packet::frame_limits::{
+    self, CLIENT_MAX, DATA_MAX, HANDSHAKE_MAX, HASHSET_MAX, SHARED_FILES_MAX,
+};
 use njmule_engine::protocol::packet::opcodes::{client, extended, kad, server};
 use njmule_engine::protocol::packet::protocol;
 
@@ -60,4 +62,18 @@ fn should_cap_the_shared_files_answer_of_an_identified_client() {
 #[test]
 fn should_cap_other_messages_of_an_identified_client() {
     assert_eq!(frame_limits::client(protocol::EDONKEY, client::MESSAGE), Some(CLIENT_MAX));
+}
+
+#[test]
+fn should_allow_data_parts_and_hash_sets_their_larger_frames() {
+    assert_eq!(frame_limits::client(protocol::EDONKEY, client::SENDINGPART), Some(DATA_MAX));
+    assert_eq!(frame_limits::client(protocol::EDONKEY, client::HASHSETANSWER), Some(HASHSET_MAX));
+    assert_eq!(frame_limits::client(protocol::EMULE, extended::HASHSETANSWER2), Some(HASHSET_MAX));
+}
+
+#[test]
+fn should_tell_the_packed_protocols() {
+    assert!(protocol::is_packed(protocol::PACKED));
+    assert!(protocol::is_packed(protocol::KAD_PACKED));
+    assert!(!protocol::is_packed(protocol::EMULE));
 }

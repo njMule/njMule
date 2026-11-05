@@ -11,7 +11,7 @@
     clippy::arithmetic_side_effects
 )]
 
-use std::io::{Cursor, ErrorKind};
+use std::io::{self, Cursor, ErrorKind, Read};
 
 use njmule_engine::protocol::io::DecodeError;
 use njmule_engine::protocol::packet::frame_limit::{FrameLimit, fixed};
@@ -232,4 +232,33 @@ proptest::proptest! {
 
         proptest::prop_assert!(inflated.as_ref().is_ok_and(|bytes| bytes.len() <= 1000) || inflated.is_err());
     }
+}
+
+#[test]
+fn should_refuse_to_pack_a_protocol_without_a_packed_form() {
+    assert!(packing::pack(Packet::of(protocol::PACKED, 0x40, vec![0; 4000])).is_err());
+}
+
+#[test]
+fn should_pass_on_read_errors_other_than_a_frame_cut_short() {
+    struct Reset;
+    impl Read for Reset {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            Err(io::Error::new(ErrorKind::ConnectionReset, "reset"))
+        }
+    }
+    let mut input = stream("e30500000001").chain(Reset);
+
+    let error = tcp_framing::read(&mut input, &fixed(10)).unwrap_err();
+
+    assert_eq!(error.kind(), ErrorKind::ConnectionReset);
+}
+
+#[test]
+fn should_show_a_packet_with_at_most_32_payload_bytes_in_logs() {
+    let short = Packet::of(protocol::EMULE, 0x40, vec![0xAB; 2]);
+    let long = Packet::of(protocol::EMULE, 0x40, vec![0; 40]);
+
+    assert_eq!(format!("{short:?}"), "Packet[0xC5/0x40, 2 bytes: abab]");
+    assert_eq!(format!("{long:?}"), format!("Packet[0xC5/0x40, 40 bytes: {}…]", "00".repeat(32)));
 }

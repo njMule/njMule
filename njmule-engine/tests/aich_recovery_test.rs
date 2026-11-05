@@ -155,3 +155,36 @@ fn should_use_long_identifiers_for_large_files() {
     assert_eq!(&data[..2], [0, 0]);
     assert!(proven(&tree, last, &data).is_some());
 }
+
+#[test]
+fn should_make_no_recovery_data_for_a_part_without_it() {
+    let error = aich_recovery::create(&tree(EMBLOCKSIZE, 3), 0).unwrap_err();
+
+    assert_eq!(error.to_string(), format!("part 0 of {EMBLOCKSIZE} bytes has no recovery data"));
+}
+
+#[test]
+fn should_prove_nothing_for_a_part_without_recovery_data() {
+    let tree = tree(2 * PARTSIZE + EMBLOCKSIZE, 4);
+    let data = aich_recovery::create(&tree, 0).unwrap();
+
+    assert_eq!(proven(&tree, 2, &data), None);
+}
+
+#[test]
+fn should_prove_the_blocks_of_data_without_the_count_of_long_identifiers() {
+    let tree = tree(2 * PARTSIZE, 5);
+    let data = aich_recovery::create(&tree, 1).unwrap();
+
+    // Small files end their data with a zero count of 32-bit identifiers; a reader takes it without.
+    assert_eq!(proven(&tree, 1, &data[..data.len() - 2]), Some(blocks_of(&tree, 1)));
+}
+
+#[test]
+fn should_prove_nothing_with_an_identifier_outside_the_tree() {
+    let tree = tree(2 * PARTSIZE, 6);
+    let mut data = aich_recovery::create(&tree, 0).unwrap();
+    data[2..4].copy_from_slice(&1u16.to_le_bytes());
+
+    assert_eq!(proven(&tree, 0, &data), None, "1 is the root, which the data never holds");
+}

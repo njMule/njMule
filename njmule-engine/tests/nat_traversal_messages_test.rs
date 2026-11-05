@@ -9,7 +9,7 @@
 use std::net::{Ipv4Addr, SocketAddr};
 
 use njmule_engine::protocol::ed2k::nat_traversal_messages::{
-    self, Caps, FRAME_CAPS, FRAME_CAPS_ACK, FRAME_QUIC, Forward, QuicProof, Rendezvous, TRANSPORT_UTP,
+    self, Caps, FRAME_CAPS, FRAME_CAPS_ACK, FRAME_QUIC, FRAME_UTP, Forward, QuicProof, Rendezvous, TRANSPORT_UTP,
 };
 use njmule_engine::protocol::packet::opcodes::{client_udp, extended};
 use njmule_engine::protocol::packet::{Packet, protocol};
@@ -143,4 +143,22 @@ proptest::proptest! {
     fn should_only_fail_with_decode_exception_on_a_garbage_forward(data in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..=80)) {
         let _ = njmule_engine::protocol::ed2k::nat_traversal_messages::Forward::decode(&Packet::of(protocol::EMULE, 0x01, data));
     }
+}
+
+#[test]
+fn should_open_a_hole_with_an_empty_datagram() {
+    assert_packet(&nat_traversal_messages::hole_punch(), protocol::EMULE, client_udp::HOLEPUNCH, "");
+}
+
+#[test]
+fn should_frame_a_utp_packet_as_it_is() {
+    assert_packet(&nat_traversal_messages::utp_frame(&[1, 2, 3]), protocol::UDP_RESERVED_2, FRAME_UTP, "010203");
+}
+
+#[test]
+fn should_refuse_a_capability_frame_of_another_version() {
+    let mut payload = Caps { answer: false, options: 0, sender: A, expected: B, file: FILE }.encode().into_payload();
+    payload[4] = 2;
+
+    assert!(Caps::decode(&Packet::of(protocol::UDP_RESERVED_2, FRAME_CAPS, payload)).is_err());
 }

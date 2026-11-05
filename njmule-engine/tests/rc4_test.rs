@@ -61,3 +61,8 @@ fn should_continue_the_key_stream_across_calls() {
 
     assert_eq!(parts.as_slice(), key_stream(&key, 40));
 }
+
+#[test]
+fn should_show_nothing_of_the_key_stream_in_logs() {
+    assert_eq!(format!("{:?}", Rc4::new(&[1, 2, 3, 4, 5])), "Rc4 { .. }");
+}

@@ -19,6 +19,7 @@ use njmule_engine::protocol::kad::kad_messages::{
     self, Answer, BootstrapAnswer, Contact, Entry, FirewallCheck, Hello, KeywordPublish, KeywordSearch,
     MAX_LOOKUP_CONTACTS, PublishAnswer, Request, SearchAnswer, Sender, SourcePublish, SourceSearch, VERSION,
 };
+use njmule_engine::protocol::packet::opcodes::kad;
 use njmule_engine::protocol::packet::{Packet, protocol};
 use njmule_engine::protocol::tag::{Tag, TagName};
 
@@ -270,4 +271,19 @@ proptest::proptest! {
         let _ = messages::PublishAnswer::decode(&received);
         let _ = messages::FirewallCheck::decode(&received);
     }
+}
+
+#[test]
+fn should_write_the_empty_kad_requests() {
+    assert_eq!(kad_messages::bootstrap_request(), Packet::empty(protocol::KAD, kad::BOOTSTRAP_REQ));
+    assert_eq!(kad_messages::ping(), Packet::empty(protocol::KAD, kad::PING));
+}
+
+#[test]
+fn should_fit_an_entry_in_an_answer_only_with_room_for_the_answer_around_it() {
+    // The answer's sender, target and count take 36 bytes.
+    let size = entry().size().unwrap();
+
+    assert!(SearchAnswer::fits(&entry(), 36 + size).unwrap());
+    assert!(!SearchAnswer::fits(&entry(), 35 + size).unwrap());
 }

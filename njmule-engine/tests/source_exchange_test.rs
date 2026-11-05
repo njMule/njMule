@@ -245,3 +245,20 @@ proptest::proptest! {
         let _ = njmule_engine::protocol::ed2k::source_exchange::Request::decode(&Packet::of(protocol::EMULE, 0x83, data));
     }
 }
+
+#[test]
+fn should_refuse_to_write_an_answer_of_an_unknown_version() {
+    for version in [0, VERSION + 1] {
+        assert!(answer(version, vec![low_id_source()]).encode().is_err(), "version {version}");
+    }
+}
+
+#[test]
+fn should_refuse_an_extended_answer_of_more_sources_than_its_reader_takes() {
+    let count = u16::try_from(MAX_SOURCES + 1).unwrap();
+
+    let decoded =
+        Answer::decode_extended(&received(&format!("01{}{}", hex::encode(FILE), hex::encode(count.to_le_bytes()))));
+
+    assert!(decoded.is_err());
+}

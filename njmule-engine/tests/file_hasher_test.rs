@@ -123,3 +123,22 @@ fn should_cancel_when_the_progress_breaks() {
 
     assert_eq!(error.kind(), ErrorKind::Interrupted);
 }
+
+#[test]
+fn should_refuse_an_aich_tree_of_an_empty_file() {
+    assert!(AichTree::from_block_hashes(0, Vec::new()).is_err());
+}
+
+#[test]
+fn should_pass_on_read_errors_other_than_the_end_of_the_data() {
+    struct Locked;
+    impl Read for Locked {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            Err(io::Error::new(ErrorKind::PermissionDenied, "locked"))
+        }
+    }
+
+    let error = hashed(&mut Locked, 10).unwrap_err();
+
+    assert_eq!(error.kind(), ErrorKind::PermissionDenied);
+}

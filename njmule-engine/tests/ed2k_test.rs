@@ -116,3 +116,18 @@ fn should_find_a_hash_set_inconsistent_when_its_file_hash_is_not_that_of_its_par
 fn should_refuse_a_file_above_the_maximum_size() {
     assert!(ed2k::check_size(MAX_FILE_SIZE + 1).is_err());
 }
+
+#[test]
+fn should_hash_a_file_of_one_part_as_its_part_hash() {
+    let part = hash16("31d6cfe0d16ae931b73c59d7e0c089c0");
+
+    assert_eq!(ed2k::file_hash(&[part]).unwrap(), part);
+}
+
+#[test]
+fn should_have_no_part_hash_beyond_the_last_data_part() {
+    let set = Ed2kHashSet::new(PARTSIZE, EMPTY_PART_HASH, vec![EMPTY_PART_HASH; 2]).unwrap();
+
+    assert_eq!(set.part_hash(0), Some(EMPTY_PART_HASH));
+    assert_eq!(set.part_hash(1), None, "the empty part ending a file of one PARTSIZE holds no data");
+}

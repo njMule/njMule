@@ -44,7 +44,19 @@ fn pkcs1_public_key(modulus: &[u8], exponent: &[u8]) -> Vec<u8> {
 }
 
 fn length(length: usize) -> Vec<u8> {
-    if length < 0x80 { vec![length as u8] } else { vec![0x81, length as u8] }
+    match length {
+        0..0x80 => vec![length as u8],
+        0x80..0x100 => vec![0x81, length as u8],
+        _ => vec![0x82, (length >> 8) as u8, length as u8],
+    }
+}
+
+// A private key above 4,096 bits made at once from two Mersenne primes, 2^2203 - 1 and 2^2281 - 1.
+fn private_key_of_4484_bits() -> Vec<u8> {
+    use ::rsa::pkcs8::EncodePrivateKey;
+    let mersenne = |exponent: usize| (::rsa::BigUint::from(1u32) << exponent) - ::rsa::BigUint::from(1u32);
+    let key = ::rsa::RsaPrivateKey::from_p_q(mersenne(2203), mersenne(2281), ::rsa::BigUint::from(65_537u32)).unwrap();
+    key.to_pkcs8_der().unwrap().as_bytes().to_vec()
 }
 
 #[test]
@@ -182,6 +194,56 @@ fn should_reject_public_keys_the_signature_check_cannot_use() {
 
         assert!(decoded.is_err(), "{modulus:02x?} {exponent:02x?}");
     }
+}
+
+#[test]
+fn should_give_the_public_exponent_of_a_new_key() {
+    assert_eq!(KEY.public_key().exponent(), 65_537);
+}
+
+#[test]
+fn should_show_only_the_size_of_a_private_key_in_logs() {
+    assert_eq!(format!("{:?}", *KEY), "PrivateKey[384 bits]");
+}
+
+#[test]
+fn should_reject_public_keys_beyond_the_size_limits() {
+    let modulus_of_4104_bits = [vec![0xC3], vec![0x55; 512]].concat();
+    let modulus = KEY.public_key().modulus();
+    let too_large: [(&[u8], &[u8]); 2] = [(&modulus_of_4104_bits, &[0x01, 0x00, 0x01]), (&modulus, &[0x01; 9])];
+
+    for (modulus, exponent) in too_large {
+        let decoded = rsa_keys::decode_public(&pkcs1_public_key(modulus, exponent));
+
+        assert!(decoded.is_err(), "{} modulus bytes, {} exponent bytes", modulus.len(), exponent.len());
+    }
+}
+
+#[test]
+fn should_reject_private_keys_above_4096_bits() {
+    let error = rsa_keys::decode_private(&private_key_of_4484_bits()).unwrap_err();
+
+    assert_eq!(error.to_string(), "implausible RSA private key");
+}
+
+#[test]
+fn should_reject_keys_of_more_than_4096_bytes_before_reading_them() {
+    let der = vec![0x30; 4097];
+
+    for error in [rsa_keys::decode_public(&der).unwrap_err(), rsa_keys::decode_private(&der).unwrap_err()] {
+        assert_eq!(error.to_string(), "RSA key of 4097 bytes is too large");
+    }
+}
+
+#[test]
+fn should_refuse_a_key_file_that_is_not_base64() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("cryptkey.dat");
+    std::fs::write(&file, "not Base64!").unwrap();
+
+    let error = rsa_keys::read_key_file(&file).unwrap_err();
+
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
 }
 
 #[test]
