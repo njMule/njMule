@@ -58,6 +58,7 @@ class SearchParserCorpusTest {
             "@sources>10 @complete>2 a",
             "ed2k://|file|a.bin|1000|0123456789ABCDEF0123456789ABCDEF|/",
             "Città NOÏR ß",
+            "\"a\\x\u0663b\\x41\"",
             "(a",
             "a)",
             "\"a",

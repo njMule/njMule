@@ -17,6 +17,7 @@
 package org.njmule.core.search;
 
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Supplier;
@@ -585,8 +586,9 @@ public final class SearchParser {
                         case 'x' -> {
                             int value = 0;
                             int digits = 0;
-                            while (digits < 3 && i < this.in.length() && Character.digit(this.in.charAt(i), 16) >= 0) {
-                                value = value * 16 + Character.digit(this.in.charAt(i), 16);
+                            // ASCII hex digits only: digits of other scripts are text, not part of the escape.
+                            while (digits < 3 && i < this.in.length() && HexFormat.isHexDigit(this.in.charAt(i))) {
+                                value = value * 16 + HexFormat.fromHexDigit(this.in.charAt(i));
                                 i++;
                                 digits++;
                             }
