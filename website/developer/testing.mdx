@@ -272,6 +272,18 @@ desktop window with `.github/scripts/desktop-smoke-test.ps1` or `desktop-smoke-t
 tells its version, starts the engine on a profile of its own and takes it along when closed
 ([Packaging](packaging.mdx)).
 
+The window starts the Rust engine as well: it logs to the profile's `logs` folder too, where the
+smoke test looks for the start of its control endpoint. To try it, put the two programs side by side
+and run the script on their folder:
+
+```powershell
+./gradlew :njmule-desktop:shell
+cargo build --release --manifest-path njmule-engine/Cargo.toml
+New-Item -ItemType Directory -Force smoke
+Copy-Item njmule-desktop/src-tauri/target/release/njmule-gui.exe, njmule-engine/target/release/njmule.exe smoke
+./.github/scripts/desktop-smoke-test.ps1 smoke
+```
+
 ## Pictures of the interface
 
 This site's screenshots are taken from the interface itself, on a demo engine: `WebCaptureDemo`, in

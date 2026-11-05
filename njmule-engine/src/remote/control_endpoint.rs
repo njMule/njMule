@@ -41,7 +41,8 @@ impl ControlEndpoint {
         rand::rng().fill_bytes(&mut secret);
         let token = data_encoding::BASE64URL_NOPAD.encode(&secret);
         let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).await?;
-        let url = format!("http://{}{BASE_PATH}", listener.local_addr()?);
+        let address = listener.local_addr()?;
+        let url = format!("http://{address}{BASE_PATH}");
         let app = Router::new()
             .nest(BASE_PATH, remote_api::router(engine))
             .layer(middleware::from_fn_with_state(token.clone(), guard));
@@ -53,6 +54,7 @@ impl ControlEndpoint {
                 })
                 .await
         });
+        tracing::info!("Control endpoint for the desktop app on port {}", address.port());
         Ok(Self { url, token, stop, serving })
     }
 
