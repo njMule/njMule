@@ -35,6 +35,10 @@ PacketReaderWriterTest.shouldRefuseToPatchAU16PastWhatWasWritten
 PacketReaderWriterTest.shouldRefuseToPatchAU32BeforeTheStart
 PacketReaderWriterTest.shouldRefuseToPatchAU32PastWhatWasWritten
 PacketReaderWriterTest.shouldRefuseToPatchAU8PastWhatWasWritten
+# The comparisons with the JDK's own RSA belong to the Java engine.
+RsaTest.shouldEncodeLargerKeysAsTheJdkDoes
+RsaTest.shouldMakeSignaturesTheJdkVerifiesOnLargerKeys
+RsaTest.shouldVerifySignaturesOfTheJdkOnLargerKeys
 # Whole classes of Java helpers that Rust's slices and integer methods hold.
 BytesTest
 LittleEndianTest
@@ -183,6 +187,3 @@ TextFormatsEdgeCaseTest.shouldTakeTheIniValuesAsTheReferenceReaderDoes
 UserHashStoreTest.shouldGiveWayToTheBackupOfACorruptFile
 UserHashStoreTest.shouldKeepTheUserHashOnceTheOtherProgramLetsItGo
 UserHashStoreTest.shouldNotReplaceAUserHashHeldByAnotherProgram
-
-# Whole classes of area 1 not ported yet: the RSA keys of secure identification.
-RsaTest
