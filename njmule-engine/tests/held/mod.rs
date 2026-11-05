@@ -54,7 +54,7 @@ pub fn hold_from_deletion(file: &Path) -> Option<Held> {
 pub fn hold(file: &Path) -> Option<Held> {
     use std::os::unix::fs::PermissionsExt;
     let before = fs::metadata(file).unwrap().permissions();
-    fs::set_permissions(file, fs::Permissions::from_mode(0)).unwrap();
+    fs::set_permissions(file, fs::Permissions::from_mode(0o000)).unwrap();
     let path = file.to_path_buf();
     let held = Held::by(move || fs::set_permissions(&path, before).unwrap());
     fs::File::open(file).is_err().then_some(held)
