@@ -18,6 +18,7 @@ use crate::persist::format::server_met::{self, Server};
 use crate::persist::format::text_files::{self, StaticServer};
 use crate::protocol::ed2k::server_datagrams;
 use crate::protocol::tag::{Tag, TagName, server_tag};
+use crate::util::ipv4;
 
 pub const FILE_NAME: &str = "server.met";
 pub const STATIC_FILE_NAME: &str = "staticservers.dat";
@@ -289,14 +290,12 @@ pub fn priority(server: &Server) -> Priority {
 
 /// Usable as a peer address: not 0.x, loopback, multicast, broadcast or reserved.
 pub fn is_usable(ip: u32) -> bool {
-    let [a, ..] = ip.to_be_bytes();
-    a != 0 && a != 127 && a < 224
+    ipv4::is_unicast_public_candidate(ip)
 }
 
 /// A private address: 0.x, 10.x, 172.16-31.x, 192.168.x.
 pub fn is_lan(ip: u32) -> bool {
-    let [a, b, ..] = ip.to_be_bytes();
-    a == 0 || a == 10 || (a == 172 && (16..32).contains(&b)) || (a == 192 && b == 168)
+    ipv4::is_lan(ip)
 }
 
 pub fn int(id: u8, value: u64) -> Tag {

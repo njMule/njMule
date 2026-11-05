@@ -4,7 +4,8 @@
 //! The test-name map of the port: every test of a Java test class that has a Rust twin (`FooTest.java` and
 //! `tests/foo_test.rs`) is found among the Rust tests under its name in snake case (`shouldX` as `should_x`, digits
 //! split off or not), or is listed in `tests/not_ported.txt` with the reason it waits. A test added to Java, or lost in Rust, fails here; so
-//! does a listed one that is ported, or gone from Java, so that the list only shrinks.
+//! does a listed one that is ported, or gone from Java, so that the list only shrinks. In the areas ported whole
+//! (`AREAS`), every Java test class has a twin, or is listed as a class with the reason it has none.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
@@ -14,6 +15,8 @@ use std::path::{Path, PathBuf};
 
 const JAVA_TESTS: &str = "../njmule-core/src/test/java";
 const NOT_PORTED: &str = "tests/not_ported.txt";
+// The packages of org.njmule.core, with those under them, whose test classes all have Rust twins.
+const AREAS: [&str; 4] = ["protocol/", "files/hash/", "util/", "crypto/"];
 const ANNOTATIONS: [&str; 6] =
     ["@Test", "@ParameterizedTest", "@Property", "@RepeatedTest", "@TestFactory", "@Example"];
 
@@ -111,9 +114,17 @@ fn should_find_every_test_of_a_ported_java_class_in_rust_or_among_those_not_port
     files(Path::new(JAVA_TESTS), &mut java);
     let mut missing = BTreeMap::new();
     let mut known = BTreeSet::new();
+    let core = Path::new(JAVA_TESTS).join("org/njmule/core");
     for path in java.iter().filter(|path| path.extension().is_some_and(|extension| extension == "java")) {
         let class = path.file_stem().unwrap().to_string_lossy().into_owned();
-        if !class.ends_with("Test") || !twins.contains(&snake(&class)) {
+        if !class.ends_with("Test") {
+            continue;
+        }
+        if !twins.contains(&snake(&class)) {
+            let package = path.strip_prefix(&core).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            if AREAS.iter().any(|area| package.starts_with(area)) {
+                missing.insert(class.clone(), snake(&class));
+            }
             continue;
         }
         for test in java_tests(&fs::read_to_string(path).unwrap()) {
@@ -135,7 +146,8 @@ fn should_find_every_test_of_a_ported_java_class_in_rust_or_among_those_not_port
 
     assert!(
         unported.is_empty(),
-        "Java tests with no Rust test of their name, nor listed in {NOT_PORTED}: {unported:#?}"
+        "Java tests with no Rust test of their name, or test classes of a ported area with no twin, nor listed in \
+         {NOT_PORTED}: {unported:#?}"
     );
     assert!(
         stale.is_empty(),
