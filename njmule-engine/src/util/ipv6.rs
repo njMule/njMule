@@ -3,7 +3,7 @@
 
 //! IPv6 addresses as the peers who hold them.
 
-use std::net::Ipv6Addr;
+use std::net::{IpAddr, Ipv6Addr};
 
 /// Whether peers on the Internet may reach `address`: global unicast IPv6, but no 6to4 or Teredo address, which need
 /// relays.
@@ -19,4 +19,15 @@ pub fn is_public(address: &Ipv6Addr) -> bool {
 pub fn public_of(bytes: &[u8]) -> Option<Ipv6Addr> {
     let octets: [u8; 16] = bytes.try_into().ok()?;
     Some(Ipv6Addr::from(octets)).filter(is_public)
+}
+
+/// The /64 network of an IPv6 address, which one host usually holds whole; an IPv4 address as it is.
+pub fn network(address: IpAddr) -> IpAddr {
+    match address {
+        IpAddr::V6(v6) => {
+            let [a, b, c, d, ..] = v6.segments();
+            IpAddr::V6(Ipv6Addr::new(a, b, c, d, 0, 0, 0, 0))
+        }
+        v4 => v4,
+    }
 }
