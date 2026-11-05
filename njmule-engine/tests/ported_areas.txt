@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The areas of the Java engine ported to Rust whole: packages below org/njmule/core in Java and src in Rust,
+# each with the packages under it. test_name_map_test wants a Rust twin for each of their Java test classes;
+# tools/engine_coverage.py wants each package's Rust line coverage at least that of its Java twin.
+
+protocol/
+files/hash/
+util/
+crypto/

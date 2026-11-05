@@ -5,7 +5,7 @@
 //! `tests/foo_test.rs`) is found among the Rust tests under its name in snake case (`shouldX` as `should_x`, digits
 //! split off or not), or is listed in `tests/not_ported.txt` with the reason it waits. A test added to Java, or lost in Rust, fails here; so
 //! does a listed one that is ported, or gone from Java, so that the list only shrinks. In the areas ported whole
-//! (`AREAS`), every Java test class has a twin, or is listed as a class with the reason it has none.
+//! (`tests/ported_areas.txt`), every Java test class has a twin, or is listed as a class with the reason it has none.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 const JAVA_TESTS: &str = "../njmule-core/src/test/java";
 const NOT_PORTED: &str = "tests/not_ported.txt";
 // The packages of org.njmule.core, with those under them, whose test classes all have Rust twins.
-const AREAS: [&str; 4] = ["protocol/", "files/hash/", "util/", "crypto/"];
+const AREAS: &str = "tests/ported_areas.txt";
 const ANNOTATIONS: [&str; 6] =
     ["@Test", "@ParameterizedTest", "@Property", "@RepeatedTest", "@TestFactory", "@Example"];
 
@@ -96,9 +96,9 @@ fn key(name: &str) -> String {
     name.chars().filter(|c| *c != '_').map(|c| c.to_ascii_lowercase()).collect()
 }
 
-// `Class.method` lines; comments give the reason of the lines that follow.
-fn not_ported() -> BTreeSet<String> {
-    fs::read_to_string(NOT_PORTED)
+// The lines of a list, without its blank lines and `#` comments.
+fn listed(file: &str) -> Vec<String> {
+    fs::read_to_string(file)
         .unwrap()
         .lines()
         .map(str::trim)
@@ -107,9 +107,15 @@ fn not_ported() -> BTreeSet<String> {
         .collect()
 }
 
+// `Class.method` lines; comments give the reason of the lines that follow.
+fn not_ported() -> BTreeSet<String> {
+    listed(NOT_PORTED).into_iter().collect()
+}
+
 #[test]
 fn should_find_every_test_of_a_ported_java_class_in_rust_or_among_those_not_ported() {
     let (twins, rust) = rust_tests();
+    let areas = listed(AREAS);
     let mut java = Vec::new();
     files(Path::new(JAVA_TESTS), &mut java);
     let mut missing = BTreeMap::new();
@@ -122,7 +128,7 @@ fn should_find_every_test_of_a_ported_java_class_in_rust_or_among_those_not_port
         }
         if !twins.contains(&snake(&class)) {
             let package = path.strip_prefix(&core).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
-            if AREAS.iter().any(|area| package.starts_with(area)) {
+            if areas.iter().any(|area| package.starts_with(area.as_str())) {
                 missing.insert(class.clone(), snake(&class));
             }
             continue;

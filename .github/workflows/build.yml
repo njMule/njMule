@@ -104,6 +104,7 @@ jobs:
                           # The Java tests the port mirrors, which test_name_map_test compares.
                           - 'njmule-core/src/test/java/**'
                           - 'njmule-testkit/**'
+                          - 'tools/engine_coverage.py'
                           - '.github/workflows/build.yml'
 
     verify:
@@ -284,13 +285,18 @@ jobs:
             - name: Install the pinned Rust
               run: |
                   channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
-                  rustup toolchain install "$channel" --profile minimal --component rustfmt,clippy
-            # The tests replay the corpora the Java engine wrote, in njmule-core's test resources.
+                  rustup toolchain install "$channel" --profile minimal --component rustfmt,clippy,llvm-tools
+            - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+              with:
+                  tool: cargo-llvm-cov@0.9.1
+            # The tests replay the corpora the Java engine wrote, in njmule-core's test resources. They run measured:
+            # each ported package must reach the line coverage of its Java twin.
             - name: Format, lint and test
               run: |
                   cargo fmt --check
                   cargo clippy --locked --all-targets -- -D warnings
-                  cargo test --locked
+                  cargo llvm-cov --locked --json --summary-only --output-path target/coverage.json
+                  python3 ../tools/engine_coverage.py check target/coverage.json
             - name: Licenses, advisories and sources of the crates
               uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
               with:

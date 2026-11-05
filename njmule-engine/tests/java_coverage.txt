@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Line coverage of the Java engine's packages, from JaCoCo: package, lines covered, lines. The Rust twins
+# of the packages in ported_areas.txt must not fall below it (tools/engine_coverage.py, which rewrites it).
+
+api/ 1034 1096
+config/ 787 828
+crypto/ 238 261
+download/ 2558 2758
+engine/ 2391 3193
+files/ 1156 1242
+files/hash/ 251 260
+kad/ 2791 2916
+net/ 853 960
+peer/ 891 1035
+persist/ 1097 1159
+persist/format/ 928 942
+protocol/crypt/ 272 295
+protocol/ed2k/ 885 903
+protocol/io/ 159 165
+protocol/kad/ 292 294
+protocol/packet/ 326 333
+protocol/tag/ 278 303
+quic/ 306 354
+remote/ 2113 2285
+search/ 1135 1202
+security/ 276 286
+server/ 885 948
+social/ 229 241
+update/ 1373 1587
+upload/ 1073 1119
+upnp/ 669 785
+util/ 87 96
+utp/ 539 594

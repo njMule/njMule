@@ -184,6 +184,20 @@ The port keeps the Java tests' names. When a Java test class has a Rust twin (`F
 `test_name_map_test` checks both ways, so a test added in Java or lost in Rust fails it, and so does
 a listed test once it is ported. The `engine` job runs it when the Java tests change too.
 
+The areas ported whole are listed in `njmule-engine/tests/ported_areas.txt`: every Java test class
+there has a twin, and every package keeps at least the line coverage of the Java package it replaces.
+The Java figures come from JaCoCo and are kept in `njmule-engine/tests/java_coverage.txt`; the
+`engine` job measures the Rust tests with cargo-llvm-cov and fails on a package below its Java twin.
+In `njmule-engine`, with rustup's `llvm-tools` and cargo-llvm-cov installed:
+
+```bash
+cargo llvm-cov --locked --json --summary-only --output-path target/coverage.json
+python ../tools/engine_coverage.py check target/coverage.json
+```
+
+`python tools/engine_coverage.py baseline njmule-core/build/reports/jacoco/test/jacocoTestReport.xml`
+writes the Java figures again, after `./gradlew :njmule-core:jacocoTestReport`.
+
 The server, search and download flows also check what the engine sent: every packet `FakeServer`
 and `FakePeer` receive goes into their `Transcript`, which the `Transcripts` extension compares
 after each test with `njmule-testkit/src/test/resources/transcripts/<class>/<test>.txt`. A
