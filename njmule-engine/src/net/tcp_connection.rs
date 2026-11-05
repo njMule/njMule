@@ -110,4 +110,9 @@ impl<W: AsyncWrite + Unpin> FrameWriter<W> {
     pub async fn flush(&mut self) -> io::Result<()> {
         self.output.flush().await
     }
+
+    /// Ends the stream: the other side reads its end.
+    pub async fn shutdown(&mut self) -> io::Result<()> {
+        self.output.shutdown().await
+    }
 }

@@ -165,15 +165,17 @@ Gradle test fixtures (`njmule-core/src/testFixtures`, with `Corpus`, `Canonical`
 `njmule-app/build/install/njmule/bin/njmule` of `:njmule-app:installDist` (`njmule.bat` on Windows)
 serves as well, without the native build.
 
-The Rust engine builds an `njmule` executable of its own, which the flows drive the same way. So far
-it passes `ServerFlowTest` (log-in through the obfuscated probe, low id, dead servers and the server
-list, UDP status and description, call-backs, greetings, the offer of shared files) and
-`SearchFlowTest` (server and global searches, more results); `DownloadFlowTest` follows as the
-downloads are ported. The `engine` job of the CI runs both against it:
+The Rust engine builds an `njmule` executable of its own, which the flows drive the same way. It
+passes the three of them: `ServerFlowTest` (log-in through the obfuscated probe, low id, dead servers
+and the server list, UDP status and description, call-backs, greetings, the offer of shared files),
+`SearchFlowTest` (server and global searches, more results) and `DownloadFlowTest` (compressed
+blocks, a place in the queue, call-backs, corrupt parts saved by AICH, sources from the servers,
+an upload over the same connection, pause, resume and cancel). The `engine` job of the CI runs them
+against it:
 
 ```bash
 cargo build --release --manifest-path njmule-engine/Cargo.toml
-./gradlew :njmule-testkit:test --tests '*ServerFlowTest' --tests '*SearchFlowTest' "-Pnjmule.engine=$PWD/njmule-engine/target/release/njmule"
+./gradlew :njmule-testkit:test --tests '*ServerFlowTest' --tests '*SearchFlowTest' --tests '*DownloadFlowTest' "-Pnjmule.engine=$PWD/njmule-engine/target/release/njmule"
 ```
 
 The server, search and download flows also check what the engine sent: every packet `FakeServer`

@@ -27,6 +27,7 @@ md4 = "0.11.0"
 miniz_oxide = "0.9.1"
 num-bigint = "0.5.1"
 percent-encoding = "2.3.2"
+rangemap = "1.8.0"
 rand = "0.10.3"
 rc4 = "0.2.0"
 serde = { version = "1.0.229", features = ["derive"] }

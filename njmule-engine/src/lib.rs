@@ -7,6 +7,7 @@
 pub mod api;
 pub mod config;
 pub mod crypto;
+pub mod download;
 pub mod engine;
 pub mod files;
 pub mod kad;
@@ -16,5 +17,7 @@ pub mod persist;
 pub mod protocol;
 pub mod remote;
 pub mod search;
+pub mod security;
 pub mod server;
+pub mod upload;
 pub mod util;

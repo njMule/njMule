@@ -132,6 +132,18 @@ impl SharedFiles {
         file
     }
 
+    /// Shares a file just downloaded, with the hashes its download checked.
+    pub fn completed(&mut self, mut file: SharedFile) -> SharedFile {
+        file.mtime = std::fs::metadata(&file.path)
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .and_then(|since| u32::try_from(since.as_secs()).ok())
+            .unwrap_or(0);
+        self.add(file.clone());
+        file
+    }
+
     pub fn files(&self) -> impl Iterator<Item = &SharedFile> {
         self.files.values()
     }

@@ -1,39 +1,52 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The network side of the engine: the server list, the session with a server and the UDP status of the others. One
-//! task owns all of it; the API, the connection tasks and the timers reach it through its queues.
+//! The network side of the engine: the server list, the session with a server and the UDP status of the others, the
+//! searches, the downloads and the uploads with the connections to other clients. One task owns all of it; the API,
+//! the connection tasks, the disk threads and the timers reach it through its queues.
 
 use std::collections::{HashMap, HashSet};
+use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use tokio::net::UdpSocket;
+use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
+use crate::api::download_info::{DownloadInfo, SourceInfo};
+use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::server_info::ServerInfo;
 use crate::config::preferences::{ObfuscationMode, Preferences};
+use crate::download::download_manager::{self, Action, DownloadEvent, DownloadManager, ServerLink};
+use crate::download::download_session;
+use crate::download::finished_downloads::FinishedDownloads;
 use crate::engine::{ServerContext, Shared};
 use crate::files::hash::file_hasher::FileHashes;
+use crate::files::part_file_storage::DiskDone;
 use crate::files::shared_files::{self, Found, SharedFile, SharedFiles};
+use crate::net::tcp_connection::{FrameReader, FrameWriter};
 use crate::net::tcp_connector;
 use crate::peer::peer_greetings;
+use crate::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId};
 use crate::persist::format::server_met::Server;
+use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams;
 use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint};
-use crate::protocol::packet::opcodes::server_udp;
-use crate::protocol::packet::{Packet, udp_framing};
+use crate::protocol::packet::opcodes::{client, extended, server_udp};
+use crate::protocol::packet::{Packet, protocol, udp_framing};
 use crate::protocol::tag::server_tag;
 use crate::search::search_manager::{Effect as SearchEffect, Scope, SearchManager, StartError, Timer};
 use crate::server::file_publisher::{FilePublisher, Offer};
+use crate::server::global_sources::GlobalSources;
 use crate::server::server_list::{self, Address, ServerList};
 use crate::server::server_pinger::{self, Effect, ServerPinger};
 use crate::server::server_session::{Context, Notice, Outcome, ServerSession};
+use crate::upload::upload_manager::{Sent, UploadManager};
 
 /// How long changes of the list wait to be saved together.
 const SAVE_DELAY: Duration = Duration::from_secs(30);
@@ -44,6 +57,8 @@ const MAX_CALLBACKS_OPEN: usize = 8;
 // Crypt options of a callback request: the client asks for or requires obfuscation.
 const CRYPT_REQUESTED_OR_REQUIRED: u8 = 0x06;
 const MAX_DATAGRAM: usize = 8 * 1024;
+/// Sources kept per download at most.
+const MAX_SOURCES_PER_FILE: usize = 400;
 
 /// What the API asks the network side.
 #[derive(Debug)]
@@ -56,6 +71,14 @@ pub enum Command {
     StartSearch(String, Scope, oneshot::Sender<Result<u64, StartError>>),
     MoreResults(u64, oneshot::Sender<MoreAnswer>),
     SharedFiles(oneshot::Sender<Vec<SharedFile>>),
+    AddDownload(Box<FileLink>, Option<bool>, oneshot::Sender<Result<DownloadInfo, String>>),
+    Downloads(oneshot::Sender<Vec<DownloadInfo>>),
+    Sources(oneshot::Sender<Vec<SourceInfo>>),
+    PauseDownload([u8; 16], oneshot::Sender<Option<DownloadInfo>>),
+    ResumeDownload([u8; 16], oneshot::Sender<Option<DownloadInfo>>),
+    CancelDownload([u8; 16], oneshot::Sender<bool>),
+    ClearCompleted(oneshot::Sender<usize>),
+    ClearCompletedOne([u8; 16], oneshot::Sender<bool>),
     Stop(oneshot::Sender<()>),
 }
 
@@ -84,13 +107,39 @@ enum Tick {
     Ping,
     Save,
     CallbackOver(SocketAddr),
-    Publish,
+    Second,
     Search(Timer),
     Hashed(Found, Result<FileHashes, String>),
 }
 
-/// How often the offer of our files is looked at.
-const PUBLISH_TICK: Duration = Duration::from_secs(1);
+// What the connections to other clients bring.
+enum PeerEvent {
+    Accepted(TcpStream),
+    Connected(SocketAddr, Box<io::Result<tcp_connector::Connection>>),
+    Resolved([u8; 16], Vec<SocketAddr>),
+}
+
+/// How often the offer of our files, the downloads and the other servers are looked at.
+const SECOND: Duration = Duration::from_secs(1);
+
+// A connection with another client, and what it said of itself once it greeted us.
+struct Peer {
+    handle: LinkHandle,
+    hello: Option<Hello>,
+    incoming: bool,
+}
+
+// What the network side gets on its queues.
+struct Queues {
+    commands: mpsc::UnboundedReceiver<Command>,
+    outcomes: mpsc::UnboundedReceiver<Outcome>,
+    ticks: mpsc::UnboundedReceiver<Tick>,
+    datagrams: mpsc::UnboundedReceiver<(SocketAddr, Packet)>,
+    links: mpsc::UnboundedReceiver<LinkEvent>,
+    peers: mpsc::UnboundedReceiver<PeerEvent>,
+    disk: mpsc::UnboundedReceiver<DiskDone>,
+    sent: mpsc::UnboundedReceiver<Sent>,
+}
 
 pub struct Network {
     shared: Arc<Shared>,
@@ -109,6 +158,14 @@ pub struct Network {
     known_searches: HashSet<u64>,
     shared_files: SharedFiles,
     publisher: FilePublisher,
+    downloads: DownloadManager,
+    finished: FinishedDownloads,
+    uploads: UploadManager,
+    global: GlobalSources,
+    peers: HashMap<LinkId, Peer>,
+    next_link: LinkId,
+    link_events: mpsc::UnboundedSender<LinkEvent>,
+    peer_events: mpsc::UnboundedSender<PeerEvent>,
 }
 
 /// Starts the network side; it runs until it is asked to stop.
@@ -116,7 +173,8 @@ pub fn start(
     shared: Arc<Shared>,
     commands: mpsc::UnboundedReceiver<Command>,
     udp: Option<UdpSocket>,
-) -> JoinHandle<()> {
+    listener: Option<TcpListener>,
+) -> io::Result<JoinHandle<()>> {
     let dirs = &shared.dirs;
     let mut servers = ServerList::load(&dirs.config.join(server_list::FILE_NAME)).unwrap_or_else(|e| {
         tracing::warn!("Cannot read the server list: {e}");
@@ -143,16 +201,26 @@ pub fn start(
             }
         }
     });
-    let publishing = ticks_in.clone();
+    let seconds = ticks_in.clone();
     let publish = tokio::spawn(async move {
-        let mut every = tokio::time::interval(PUBLISH_TICK);
+        let mut every = tokio::time::interval(SECOND);
         loop {
             every.tick().await;
-            if publishing.send(Tick::Publish).is_err() {
+            if seconds.send(Tick::Second).is_err() {
                 break;
             }
         }
     });
+    let (links_in, links) = mpsc::unbounded_channel();
+    let (peers_in, peers) = mpsc::unbounded_channel();
+    let (disk_in, disk) = mpsc::unbounded_channel();
+    let (sent_in, sent) = mpsc::unbounded_channel();
+    let preferences = shared.preferences.borrow().clone();
+    let temp = preferences.temp_dir.clone().unwrap_or_else(|| dirs.temp.clone());
+    let incoming = preferences.incoming_dir.clone().unwrap_or_else(|| dirs.downloads.clone());
+    let downloads = DownloadManager::open(&temp, &incoming, disk_in)?;
+    let accepting = listener.map(|listener| tokio::spawn(accept(listener, peers_in.clone())));
+    let finished = FinishedDownloads::load(&dirs.config);
     let network = Network {
         shared,
         servers,
@@ -170,28 +238,34 @@ pub fn start(
         known_searches: HashSet::new(),
         shared_files,
         publisher: FilePublisher::default(),
+        downloads,
+        finished,
+        uploads: UploadManager::new(sent_in),
+        global: GlobalSources::default(),
+        peers: HashMap::new(),
+        next_link: 1,
+        link_events: links_in,
+        peer_events: peers_in,
     };
-    tokio::spawn(async move {
-        network.run(commands, outcomes, ticks, datagrams).await;
+    let queues = Queues { commands, outcomes, ticks, datagrams, links, peers, disk, sent };
+    Ok(tokio::spawn(async move {
+        network.run(queues).await;
         if let Some(receiving) = receiving {
             receiving.abort();
         }
+        if let Some(accepting) = accepting {
+            accepting.abort();
+        }
         publish.abort();
         hashing.abort();
-    })
+    }))
 }
 
 impl Network {
-    async fn run(
-        mut self,
-        mut commands: mpsc::UnboundedReceiver<Command>,
-        mut outcomes: mpsc::UnboundedReceiver<Outcome>,
-        mut ticks: mpsc::UnboundedReceiver<Tick>,
-        mut datagrams: mpsc::UnboundedReceiver<(SocketAddr, Packet)>,
-    ) {
+    async fn run(mut self, mut queues: Queues) {
         loop {
             tokio::select! {
-                command = commands.recv() => match command {
+                command = queues.commands.recv() => match command {
                     Some(Command::Stop(done)) => {
                         self.stop();
                         let _ = done.send(());
@@ -200,9 +274,20 @@ impl Network {
                     Some(command) => self.command(command),
                     None => return,
                 },
-                Some(outcome) = outcomes.recv() => self.outcome(outcome),
-                Some(tick) = ticks.recv() => self.tick(tick),
-                Some((from, packet)) = datagrams.recv() => self.datagram(from, &packet),
+                Some(outcome) = queues.outcomes.recv() => self.outcome(outcome),
+                Some(tick) = queues.ticks.recv() => self.tick(tick),
+                Some((from, packet)) = queues.datagrams.recv() => self.datagram(from, &packet),
+                Some(event) = queues.links.recv() => self.link_event(event),
+                Some(event) = queues.peers.recv() => self.peer_event(event),
+                Some(done) = queues.disk.recv() => {
+                    let ours = self.shared.our_hello();
+                    self.downloads.disk_done(done, &ours);
+                    self.after_downloads();
+                }
+                Some(sent) = queues.sent.recv() => {
+                    let files = &self.shared_files;
+                    self.uploads.block_sent(&sent, &|hash: &[u8; 16]| files.get(hash).cloned());
+                }
             }
         }
     }
@@ -262,6 +347,65 @@ impl Network {
             }
             Command::SharedFiles(answer) => {
                 let _ = answer.send(self.shared_files.files().cloned().collect());
+            }
+            Command::AddDownload(link, paused, answer) => {
+                let ours = self.shared.our_hello();
+                let fresh = self.downloads.download(&link.hash).is_none();
+                let added = self.downloads.add(&link, &self.settings(), &ours).map_err(|e| e.to_string());
+                let paused = paused.unwrap_or_else(|| self.preferences().add_downloads_paused);
+                let added = match added {
+                    Ok(info) if fresh && paused => {
+                        self.downloads.pause(&info.hash, &ours);
+                        Ok(self.downloads.download(&info.hash).unwrap_or(info))
+                    }
+                    other => other,
+                };
+                if let Ok(info) = &added {
+                    tracing::info!("Downloading {}", info.name);
+                }
+                self.after_downloads();
+                let _ = answer.send(added);
+            }
+            Command::Downloads(answer) => {
+                let mut all = self.downloads.downloads();
+                let active: HashSet<[u8; 16]> = all.iter().map(|d| d.hash).collect();
+                all.extend(self.finished.downloads().filter(|d| !active.contains(&d.hash)).cloned());
+                let _ = answer.send(all);
+            }
+            Command::Sources(answer) => {
+                let _ = answer.send(self.downloads.sources());
+            }
+            Command::PauseDownload(hash, answer) => {
+                let ours = self.shared.our_hello();
+                let paused = self.downloads.pause(&hash, &ours);
+                self.after_downloads();
+                let _ = answer.send(self.downloads.download(&hash).filter(|_| paused));
+            }
+            Command::ResumeDownload(hash, answer) => {
+                let ours = self.shared.our_hello();
+                let resumed = self.downloads.resume(&hash, &ours);
+                self.after_downloads();
+                let _ = answer.send(self.downloads.download(&hash).filter(|_| resumed));
+            }
+            Command::CancelDownload(hash, answer) => {
+                let ours = self.shared.our_hello();
+                let cancelled = self.downloads.cancel(&hash, &ours);
+                self.after_downloads();
+                let _ = answer.send(cancelled);
+            }
+            Command::ClearCompleted(answer) => {
+                let cleared = self.finished.clear();
+                for hash in &cleared {
+                    self.publish(EngineEvent::DownloadRemoved(*hash));
+                }
+                let _ = answer.send(cleared.len());
+            }
+            Command::ClearCompletedOne(hash, answer) => {
+                let cleared = self.finished.remove(&hash);
+                if cleared {
+                    self.publish(EngineEvent::DownloadRemoved(hash));
+                }
+                let _ = answer.send(cleared);
             }
             Command::Stop(_) => {}
         }
@@ -326,6 +470,8 @@ impl Network {
                 self.save_servers();
                 self.start_pinging();
                 self.publisher.connected(Instant::now());
+                self.downloads.server_connected();
+                self.global.start();
                 self.remove_dead(self.servers.dead(preferences.dead_server_retries));
                 if preferences.add_servers_from_server {
                     self.session.send(server_messages::get_server_list());
@@ -339,6 +485,7 @@ impl Network {
                 self.set_context(ServerContext::default());
                 self.stop_pinging();
                 self.publisher.disconnected();
+                self.global.stop(Instant::now());
                 let mut effects = Vec::new();
                 self.searches.server_lost(&mut effects);
                 self.search_effects(effects);
@@ -369,8 +516,12 @@ impl Network {
                 self.searches.server_results(&results.files, results.more, &self.servers, connected, &mut effects);
                 self.search_effects(effects);
             }
-            // Downloads come with their own port.
-            Notice::FoundSources(_) => {}
+            Notice::FoundSources(found) => {
+                let ours = self.shared.our_hello();
+                let id = self.session.id().map_or(0, |id| id.client_id);
+                self.downloads.found_sources(&found, &self.settings(), id, &ours);
+                self.after_downloads();
+            }
         }
     }
 
@@ -388,7 +539,10 @@ impl Network {
             Tick::CallbackOver(address) => {
                 self.calling.remove(&address);
             }
-            Tick::Publish => self.publish_files(),
+            Tick::Second => {
+                self.publish_files();
+                self.second();
+            }
             Tick::Search(timer) => {
                 let connected = self.session.server().map(server_list::address_of);
                 let mut effects = Vec::new();
@@ -410,6 +564,15 @@ impl Network {
     }
 
     fn datagram(&mut self, from: SocketAddr, packet: &Packet) {
+        if packet.opcode() == server_udp::GLOBFOUNDSOURCES {
+            let ours = self.shared.our_hello();
+            let id = self.session.id().map_or(0, |id| id.client_id);
+            for found in self.global.received(from, packet) {
+                self.downloads.found_sources(&found, &self.settings(), id, &ours);
+            }
+            self.after_downloads();
+            return;
+        }
         if packet.opcode() == server_udp::GLOBSEARCHRES {
             let SocketAddr::V4(from) = from else {
                 return;
@@ -479,6 +642,202 @@ impl Network {
             && self.session.send(packet)
         {
             self.publisher.sent(now, hashes);
+        }
+    }
+
+    // Once a second: the downloads, the other servers asked for sources, the upload slots.
+    fn second(&mut self) {
+        let ours = self.shared.our_hello();
+        let settings = self.settings();
+        let context = self.shared.context.lock().map(|context| *context).unwrap_or_default();
+        let obfuscation = self.preferences().obfuscation;
+        let mut server = SessionLink { session: &mut self.session, context, obfuscation };
+        self.downloads.tick(&mut server, &settings, &ours);
+        let connected = self.session.server().map(server_list::address_of);
+        let wanting = self.downloads.wanting_sources(&settings);
+        let retries = self.preferences().dead_server_retries;
+        let allowed = self.preferences().obfuscation != ObfuscationMode::Required;
+        if let Some((target, packet)) =
+            self.global.tick(Instant::now(), &self.servers, connected.as_ref(), retries, &wanting, allowed)
+        {
+            self.send_datagram(target, &packet);
+        }
+        self.uploads.fill_slots();
+        self.after_downloads();
+    }
+
+    // Acts on what the downloads asked and tells what they did.
+    fn after_downloads(&mut self) {
+        for action in self.downloads.take_actions() {
+            match action {
+                Action::Connect { address, obfuscate_for } => {
+                    let events = self.peer_events.clone();
+                    tokio::spawn(async move {
+                        let mut random = StdRng::from_rng(&mut rand::rng());
+                        let result = tcp_connector::connect_to_client(
+                            address,
+                            obfuscate_for,
+                            download_session::HANDSHAKE_TIMEOUT,
+                            &mut random,
+                        )
+                        .await;
+                        let _ = events.send(PeerEvent::Connected(address, Box::new(result)));
+                    });
+                }
+                Action::Resolve { file, hosts } => {
+                    let events = self.peer_events.clone();
+                    tokio::spawn(async move {
+                        let mut found = Vec::new();
+                        for host in hosts {
+                            if let Ok(mut addresses) = tokio::net::lookup_host((host.host.as_str(), host.port)).await
+                                && let Some(address) = addresses.find(SocketAddr::is_ipv4)
+                            {
+                                found.push(address);
+                            }
+                        }
+                        let _ = events.send(PeerEvent::Resolved(file, found));
+                    });
+                }
+            }
+        }
+        for event in self.downloads.take_events() {
+            match event {
+                DownloadEvent::Added(info) => {
+                    // A file downloaded again takes the place of its completed download.
+                    self.finished.remove(&info.hash);
+                    self.publish(EngineEvent::DownloadAdded(info));
+                }
+                DownloadEvent::Progress(info) => self.publish(EngineEvent::DownloadProgress(info)),
+                DownloadEvent::Completed { info, path, file } => {
+                    tracing::info!("Finished downloading {}", info.name);
+                    let shared = self.shared_files.completed(SharedFile {
+                        hash: file.hash(),
+                        name: path.file_name().map_or_else(|| info.name.clone(), |n| n.to_string_lossy().into_owned()),
+                        size: file.size(),
+                        path: path.clone(),
+                        mtime: 0,
+                        part_hashes: file.part_hashes().to_vec(),
+                        aich_hash: file.aich_hash(),
+                    });
+                    if let Err(e) = self.shared_files.save(&self.shared.dirs.config) {
+                        tracing::warn!("Cannot save the known files: {e}");
+                    }
+                    self.publisher.changed(Some(shared.hash));
+                    self.finished.add(&info);
+                    self.publish(EngineEvent::DownloadCompleted { download: info, file: path });
+                }
+                DownloadEvent::Failed { info, reason } => {
+                    tracing::error!("Download {} stopped: {reason}", info.name);
+                    self.publish(EngineEvent::DownloadFailed { download: info, reason });
+                }
+                DownloadEvent::Removed(hash) => self.publish(EngineEvent::DownloadRemoved(hash)),
+            }
+        }
+    }
+
+    fn peer_event(&mut self, event: PeerEvent) {
+        let ours = self.shared.our_hello();
+        match event {
+            PeerEvent::Accepted(stream) => {
+                let Ok(remote) = stream.peer_addr() else {
+                    return;
+                };
+                let (input, output) = stream.into_split();
+                self.new_link(remote, FrameReader::new(input, None), FrameWriter::new(output, None), true);
+            }
+            PeerEvent::Connected(address, result) => match *result {
+                Ok(connection) => {
+                    let tcp_connector::Connection { reader, writer, remote, .. } = connection;
+                    let handle = self.new_link(remote, reader, writer, false);
+                    self.downloads.connected(address, Ok(handle), &ours);
+                }
+                Err(e) => self.downloads.connected(address, Err(e.to_string()), &ours),
+            },
+            PeerEvent::Resolved(file, addresses) => self.downloads.resolved(&file, &addresses, &self.settings()),
+        }
+        self.after_downloads();
+    }
+
+    fn new_link<R, W>(
+        &mut self,
+        remote: SocketAddr,
+        reader: FrameReader<R>,
+        writer: FrameWriter<W>,
+        incoming: bool,
+    ) -> LinkHandle
+    where
+        R: tokio::io::AsyncRead + Unpin + Send + 'static,
+        W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
+        let id = self.next_link;
+        self.next_link = self.next_link.saturating_add(1);
+        let handle = peer_link::start(id, remote, reader, writer, self.link_events.clone());
+        self.peers.insert(id, Peer { handle: handle.clone(), hello: None, incoming });
+        handle
+    }
+
+    fn link_event(&mut self, event: LinkEvent) {
+        let ours = self.shared.our_hello();
+        match event {
+            LinkEvent::Packet(link, packet) => self.peer_packet(link, &packet, &ours),
+            LinkEvent::Closed(link, reason) => {
+                self.peers.remove(&link);
+                self.downloads.closed(link, reason.as_deref(), &ours);
+                self.uploads.closed(link);
+            }
+        }
+        self.after_downloads();
+    }
+
+    // A client greets first: the hello on its connection, the hello answer on ours; then each packet goes to the side
+    // it is for.
+    fn peer_packet(&mut self, link: LinkId, packet: &Packet, ours: &Hello) {
+        let Some(peer) = self.peers.get_mut(&link) else {
+            return;
+        };
+        let handle = peer.handle.clone();
+        let Some(hello) = peer.hello.clone() else {
+            let expected = if peer.incoming { client::HELLO } else { client::HELLOANSWER };
+            if packet.protocol() != protocol::EDONKEY || packet.opcode() != expected {
+                if peer.incoming {
+                    handle.close();
+                }
+                return;
+            }
+            let Ok(hello) = Hello::decode(packet) else {
+                handle.close();
+                return;
+            };
+            peer.hello = Some(hello.clone());
+            if !peer.incoming {
+                self.downloads.greeted(link, hello, ours);
+                return;
+            }
+            match ours.to_peer_at(&handle.remote().ip()).encode(true) {
+                Ok(answer) => {
+                    handle.send(answer);
+                }
+                Err(e) => tracing::warn!("Cannot answer {}: {e}", handle.remote()),
+            }
+            let server_ip = self.shared.context.lock().map(|context| context.ip).unwrap_or(0);
+            self.downloads.adopt(&handle, &hello, server_ip, &self.settings(), ours);
+            return;
+        };
+        if from_uploader(packet) && self.downloads.has_link(link) {
+            self.downloads.received(link, packet, ours);
+            return;
+        }
+        let files = &self.shared_files;
+        self.uploads.received(&handle, &hello, packet, ours, &|hash: &[u8; 16]| files.get(hash).cloned());
+    }
+
+    fn settings(&self) -> download_manager::Settings {
+        let preferences = self.preferences();
+        download_manager::Settings {
+            obfuscation: preferences.obfuscation,
+            max_sources_per_file: MAX_SOURCES_PER_FILE,
+            listen_port: self.shared.listen_port,
+            filter_lan: preferences.filter_lan_addresses,
         }
     }
 
@@ -623,6 +982,11 @@ impl Network {
     }
 
     fn stop(&mut self) {
+        let ours = self.shared.our_hello();
+        self.downloads.close(&ours);
+        for peer in self.peers.values() {
+            peer.handle.close();
+        }
         self.with_session(|session, ctx| session.disconnect(ctx));
         self.stop_pinging();
         if let Some(saving) = self.saving.take() {
@@ -650,6 +1014,100 @@ impl Network {
     fn set_context(&self, context: ServerContext) {
         if let Ok(mut current) = self.shared.context.lock() {
             *current = context;
+        }
+    }
+}
+
+// The server session as the downloads use it.
+struct SessionLink<'a> {
+    session: &'a mut ServerSession,
+    context: ServerContext,
+    obfuscation: ObfuscationMode,
+}
+
+impl ServerLink for SessionLink<'_> {
+    fn client_id(&self) -> u32 {
+        self.context.client_id
+    }
+
+    fn server_ip(&self) -> u32 {
+        self.context.ip
+    }
+
+    fn ask_sources(&mut self, file: &[u8; 16], size: u64) -> bool {
+        let Some(id) = self.session.id().filter(|_| self.session.is_connected()) else {
+            return false;
+        };
+        if size > 0xFFFF_FFFF && id.server_flags & server_messages::TCP_LARGEFILES == 0 {
+            return false;
+        }
+        let obfuscated =
+            id.server_flags & server_messages::TCP_OBFUSCATION != 0 && self.obfuscation != ObfuscationMode::Disabled;
+        self.session.send(server_messages::get_sources(file, size, obfuscated))
+    }
+
+    fn request_callback(&mut self, low_id: u32) -> bool {
+        self.session.send(server_messages::callback_request(low_id))
+    }
+}
+
+// What uploaders send to downloaders; anything else is for the upload side.
+fn from_uploader(packet: &Packet) -> bool {
+    match packet.protocol() {
+        protocol::EDONKEY => matches!(
+            packet.opcode(),
+            client::SENDINGPART
+                | client::FILEREQANSNOFIL
+                | client::FILESTATUS
+                | client::HASHSETANSWER
+                | client::ACCEPTUPLOADREQ
+                | client::OUTOFPARTREQS
+                | client::REQFILENAMEANSWER
+                | client::QUEUERANK
+                | client::ASKSHAREDFILESANSWER
+                | client::ASKSHAREDDIRSANS
+                | client::ASKSHAREDFILESDIRANS
+                | client::ASKSHAREDDENIEDANS
+        ),
+        protocol::EMULE => matches!(
+            packet.opcode(),
+            extended::COMPRESSEDPART
+                | extended::COMPRESSEDPART_I64
+                | extended::SENDINGPART_I64
+                | extended::QUEUERANKING
+                | extended::ANSWERSOURCES
+                | extended::ANSWERSOURCES2
+                | extended::PREVIEWANSWER
+                | extended::MULTIPACKETANSWER
+                | extended::MULTIPACKETANSWER_EXT2
+                | extended::PUBLICIP_ANSWER
+                | extended::AICHANSWER
+                | extended::AICHFILEHASHANS
+                | extended::FILEDESC
+                | extended::HASHSETANSWER2
+        ),
+        _ => false,
+    }
+}
+
+// Takes the connections other clients open; an obfuscated one is not taken yet.
+async fn accept(listener: TcpListener, events: mpsc::UnboundedSender<PeerEvent>) {
+    loop {
+        match listener.accept().await {
+            Ok((stream, remote)) => {
+                let events = events.clone();
+                tokio::spawn(async move {
+                    let mut first = [0u8; 1];
+                    let peeked = tokio::time::timeout(peer_greetings::HELLO_TIMEOUT, stream.peek(&mut first)).await;
+                    if matches!(peeked, Ok(Ok(1))) && protocol::is_tcp(first[0]) {
+                        let _ = stream.set_nodelay(true);
+                        let _ = events.send(PeerEvent::Accepted(stream));
+                    } else {
+                        tracing::debug!("Closing a connection from {remote} that is not plain eD2K");
+                    }
+                });
+            }
+            Err(e) => tracing::warn!("Cannot accept a connection: {e}"),
         }
     }
 }

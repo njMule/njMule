@@ -5,4 +5,6 @@
 
 pub mod file_types;
 pub mod hash;
+pub mod part_file;
+pub mod part_file_storage;
 pub mod shared_files;

@@ -3,6 +3,9 @@
 
 //! What the engine tells its front ends, in the order it happens.
 
+use std::path::PathBuf;
+
+use crate::api::download_info::DownloadInfo;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 
@@ -42,4 +45,17 @@ pub enum EngineEvent {
         search: u64,
         results: usize,
     },
+    DownloadAdded(DownloadInfo),
+    DownloadProgress(DownloadInfo),
+    /// The download is complete, its file now at `file`.
+    DownloadCompleted {
+        download: DownloadInfo,
+        file: PathBuf,
+    },
+    DownloadFailed {
+        download: DownloadInfo,
+        reason: String,
+    },
+    /// The download left the list: cancelled, or cleared once complete.
+    DownloadRemoved([u8; 16]),
 }

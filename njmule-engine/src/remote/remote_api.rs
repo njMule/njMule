@@ -5,13 +5,14 @@
 
 use std::collections::BTreeMap;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde_json::{Value, json};
 
+use crate::api::ed2k_link::Ed2kLink;
 use crate::engine::Engine;
 use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::persist::format::server_met;
@@ -30,6 +31,13 @@ pub fn router(engine: Engine) -> Router {
         .route("/searches", post(start_search))
         .route("/searches/{id}/more", post(more_results))
         .route("/shared", get(shared_files))
+        .route("/downloads", get(downloads).post(add_downloads))
+        .route("/downloads/completed", delete(clear_completed_downloads))
+        .route("/downloads/completed/{hash}", delete(clear_completed_download))
+        .route("/downloads/{hash}", delete(cancel_download))
+        .route("/downloads/{hash}/pause", post(pause_download))
+        .route("/downloads/{hash}/resume", post(resume_download))
+        .route("/sources", get(sources))
         .route("/servers", get(servers))
         .route("/servers/import", post(import_servers))
         .route("/servers/connect", post(connect_server))
@@ -178,4 +186,82 @@ async fn more_results(State(engine): State<Engine>, Path(id): Path<String>) -> R
 
 async fn shared_files(State(engine): State<Engine>) -> Json<Value> {
     Json(Value::Array(engine.shared_files().await.iter().map(api_json::shared_file).collect()))
+}
+
+/// Adds the downloads of `links` (one link or a list), paused when `paused` says so.
+async fn add_downloads(State(engine): State<Engine>, Json(body): Json<Value>) -> Result<Response, ApiError> {
+    let texts: Vec<&str> = match body.get("links") {
+        Some(Value::Array(links)) => links.iter().map(|link| link.as_str().unwrap_or_default()).collect(),
+        Some(Value::String(link)) => vec![link.as_str()],
+        _ => return Err(ApiError::new(StatusCode::BAD_REQUEST, "Missing links")),
+    };
+    let mut links = Vec::with_capacity(texts.len());
+    for text in texts {
+        match Ed2kLink::try_parse(text.trim()) {
+            Some(Ed2kLink::File(link)) => links.push(link),
+            _ => return Err(ApiError::new(StatusCode::BAD_REQUEST, format!("Not an eD2K file link: {text}"))),
+        }
+    }
+    let paused = match body.get("paused") {
+        Some(Value::Bool(paused)) => Some(*paused),
+        None | Some(Value::Null) => None,
+        Some(_) => return Err(ApiError::new(StatusCode::BAD_REQUEST, "paused: a truth value")),
+    };
+    let mut added = Vec::with_capacity(links.len());
+    for link in links {
+        let info = engine
+            .add_download(link, paused)
+            .await
+            .map_err(|reason| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, reason))?;
+        added.push(api_json::download(&info, false));
+    }
+    Ok((StatusCode::CREATED, Json(Value::Array(added))).into_response())
+}
+
+/// The downloads; with `include=parts` each comes with the map of its parts.
+async fn downloads(State(engine): State<Engine>, Query(query): Query<BTreeMap<String, String>>) -> Json<Value> {
+    let with_parts = query.get("include").is_some_and(|include| include == "parts");
+    Json(Value::Array(engine.downloads().await.iter().map(|info| api_json::download(info, with_parts)).collect()))
+}
+
+async fn sources(State(engine): State<Engine>) -> Json<Value> {
+    Json(Value::Array(engine.sources().await.iter().map(api_json::source).collect()))
+}
+
+async fn pause_download(State(engine): State<Engine>, Path(hash): Path<String>) -> Result<Json<Value>, ApiError> {
+    let info = engine.pause_download(file_hash(&hash)?).await.ok_or_else(no_download)?;
+    Ok(Json(api_json::download(&info, false)))
+}
+
+async fn resume_download(State(engine): State<Engine>, Path(hash): Path<String>) -> Result<Json<Value>, ApiError> {
+    let info = engine.resume_download(file_hash(&hash)?).await.ok_or_else(no_download)?;
+    Ok(Json(api_json::download(&info, false)))
+}
+
+async fn cancel_download(State(engine): State<Engine>, Path(hash): Path<String>) -> Result<Json<Value>, ApiError> {
+    if engine.cancel_download(file_hash(&hash)?).await { Ok(Json(api_json::ok())) } else { Err(no_download()) }
+}
+
+async fn clear_completed_downloads(State(engine): State<Engine>) -> Json<Value> {
+    Json(json!({"removed": engine.clear_completed_downloads().await}))
+}
+
+async fn clear_completed_download(
+    State(engine): State<Engine>,
+    Path(hash): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    if engine.clear_completed_download(file_hash(&hash)?).await { Ok(Json(api_json::ok())) } else { Err(no_download()) }
+}
+
+// A hash in a path: 32 hex digits; anything else names no download.
+fn file_hash(text: &str) -> Result<[u8; 16], ApiError> {
+    data_encoding::HEXUPPER_PERMISSIVE
+        .decode(text.as_bytes())
+        .ok()
+        .and_then(|bytes| <[u8; 16]>::try_from(bytes).ok())
+        .ok_or_else(no_download)
+}
+
+fn no_download() -> ApiError {
+    ApiError::new(StatusCode::NOT_FOUND, "No such download")
 }

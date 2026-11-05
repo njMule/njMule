@@ -293,8 +293,8 @@ jobs:
               uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
               with:
                   manifest-path: njmule-engine/Cargo.toml
-            # The test kit's flows the Rust engine passes so far, against its executable through the API, as the
-            # native image's job runs them all.
+            # The test kit's flows, against the Rust engine's executable through the API, as the native image's job
+            # runs them.
             - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
               with:
                   distribution: temurin
@@ -309,7 +309,7 @@ jobs:
                   cargo build --locked --release
                   cd ..
                   ./gradlew :njmule-testkit:test --tests '*ServerFlowTest' --tests '*SearchFlowTest' \
-                      "-Pnjmule.engine=$PWD/njmule-engine/target/release/njmule"
+                      --tests '*DownloadFlowTest' "-Pnjmule.engine=$PWD/njmule-engine/target/release/njmule"
 
     actionlint:
         name: actionlint
