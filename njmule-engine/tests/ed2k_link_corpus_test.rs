@@ -12,7 +12,7 @@ use serde_json::{Map, Value, json};
 const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/ed2k-links.jsonl");
 
 #[test]
-fn should_give_the_answers_of_the_java_engine() {
+fn should_give_the_recorded_answers() {
     let text = std::fs::read_to_string(CORPUS).expect("the corpus of the Java engine");
     let mut differences = Vec::new();
     let mut cases = 0;

@@ -101,6 +101,8 @@ jobs:
                       engine:
                           - 'njmule-engine/**'
                           - 'njmule-core/src/test/resources/golden/**'
+                          # The Java tests the port mirrors, which test_name_map_test compares.
+                          - 'njmule-core/src/test/java/**'
                           - 'njmule-testkit/**'
                           - '.github/workflows/build.yml'
 
