@@ -82,3 +82,4 @@
 {"kind":"search","text":"OR@length>\\@size>-","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
 {"kind":"search","text":"g1.5@size>1.5@length>@size>)-","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
 {"kind":"search","text":"a99999999999999999999=k","error":"OPERATOR_WITHOUT_ATTRIBUTE"}
+{"kind":"search","text":"\"a\\x٣b\\x41\"","value":{"@type":"Keyword","text":"\"ax٣bA\""},"wire":"010800226178d9a3624122"}

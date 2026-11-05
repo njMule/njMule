@@ -117,6 +117,13 @@ class SearchParserTest {
         thenTheSearchIs(kw("ORANGE"));
     }
 
+    @Test
+    void shouldTakeOnlyAsciiHexDigitsInAnEscape() {
+        whenTheTextIsParsed("\"a\\x\u0663b\\x41\"");
+
+        thenTheSearchIs(kw("\"ax\u0663bA\""));
+    }
+
     @ParameterizedTest
     @MethodSource("quotedPhrases")
     void shouldKeepTheQuotesAndEscapesOfQuotedPhrases(String text, SearchExpr expected) {
