@@ -3,5 +3,7 @@
 
 //! What the engine tells about itself and offers its interfaces.
 
+pub mod ed2k_link;
+pub mod ed2k_link_codec;
 pub mod file_comment;
 pub mod nj_mule_info;
