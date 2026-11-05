@@ -11,6 +11,8 @@ use crate::protocol::packet::opcodes::server;
 use crate::protocol::packet::{Packet, protocol};
 use crate::protocol::tag::tag_codec::{read_ed2k_list, write_ed2k_list};
 use crate::protocol::tag::{Ed2kTagFormat, Tag, TagName, client_tag, server_tag, tags};
+use crate::search::search_expr::SearchExpr;
+use crate::search::search_tree_codec;
 use crate::util::{ipv4, white_space};
 
 /// Client ids below this value are LowIDs.
@@ -413,4 +415,11 @@ pub fn keep_alive() -> Packet {
 
 fn low32(value: u64) -> u32 {
     u32::try_from(value & u64::from(u32::MAX)).unwrap_or(u32::MAX)
+}
+
+/// A search on the server we are on; `large_files` when it takes 64-bit sizes.
+pub fn search_request(expression: &SearchExpr, large_files: bool) -> Result<Packet, EncodeError> {
+    let mut out = PacketWriter::new();
+    search_tree_codec::write(&mut out, &search_tree_codec::for_server(expression), large_files)?;
+    Ok(Packet::written(protocol::EDONKEY, server::SEARCHREQUEST, out))
 }

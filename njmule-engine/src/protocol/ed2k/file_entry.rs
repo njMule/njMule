@@ -59,6 +59,15 @@ impl FileEntry {
         self.count(file_tag::COMPLETE_SOURCES)
     }
 
+    /// The root of the file's AICH tree, when the entry names a well-formed one.
+    pub fn aich_hash(&self) -> Option<[u8; 20]> {
+        let text = tags::string_value(&self.tags, file_tag::AICH_HASH)?;
+        if text.len() != 32 {
+            return None;
+        }
+        data_encoding::BASE32_NOPAD.decode(text.as_bytes()).ok().and_then(|bytes| bytes.try_into().ok())
+    }
+
     /// The type servers report, e.g. `Video` or `Pro`.
     pub fn file_type(&self) -> Option<&str> {
         tags::string_value(&self.tags, file_tag::FILETYPE)

@@ -21,11 +21,13 @@ use crate::api::peer_info::PeerInfo;
 use crate::api::server_info::ServerInfo;
 use crate::config::app_directories::AppDirectories;
 use crate::config::preferences::{ObfuscationMode, Preferences, SharedFilesVisibility};
-use crate::engine::network::{Command, ConnectError};
+use crate::engine::network::{Command, ConnectError, MoreAnswer};
+use crate::files::shared_files::SharedFile;
 use crate::peer::peer_greetings;
 use crate::persist::format::server_met::Server;
 use crate::persist::{preferences_codec, user_hash_store};
 use crate::protocol::ed2k::hello::{self, Hello, Ours};
+use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::Address;
 
 /// Events kept for a front end that reads them late; one that falls further behind loses the stream.
@@ -195,6 +197,23 @@ impl Engine {
     /// Puts a known server in the static list or takes it out; false for an unknown server.
     pub async fn set_static_server(&self, address: Address, wanted: bool) -> bool {
         self.ask(|reply| Command::SetStaticServer(address, wanted, reply)).await.unwrap_or(false)
+    }
+
+    /// Starts a search; answers its id.
+    pub async fn start_search(&self, query: String, scope: Scope) -> Result<u64, StartError> {
+        self.ask(|reply| Command::StartSearch(query, scope, reply))
+            .await
+            .unwrap_or_else(|| Err(StartError::Unavailable("the engine is stopping".to_owned())))
+    }
+
+    /// Asks the server for more results of a search.
+    pub async fn more_results(&self, search: u64) -> MoreAnswer {
+        self.ask(|reply| Command::MoreResults(search, reply)).await.unwrap_or(MoreAnswer::Unknown)
+    }
+
+    /// The files we share, those hashed so far.
+    pub async fn shared_files(&self) -> Vec<SharedFile> {
+        self.ask(Command::SharedFiles).await.unwrap_or_default()
     }
 
     /// Completes once the engine stops.

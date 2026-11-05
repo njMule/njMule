@@ -13,9 +13,10 @@ use axum::{Json, Router};
 use serde_json::{Value, json};
 
 use crate::engine::Engine;
-use crate::engine::network::ConnectError;
+use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::persist::format::server_met;
 use crate::remote::{api_json, event_streams};
+use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::Address;
 
 /// The calls, relative to the API's base path.
@@ -26,6 +27,9 @@ pub fn router(engine: Engine) -> Router {
         .route("/update", get(|| async { Json(api_json::update()) }))
         .route("/events", get(events))
         .route("/clients/{address}/hello", post(hello))
+        .route("/searches", post(start_search))
+        .route("/searches/{id}/more", post(more_results))
+        .route("/shared", get(shared_files))
         .route("/servers", get(servers))
         .route("/servers/import", post(import_servers))
         .route("/servers/connect", post(connect_server))
@@ -145,4 +149,33 @@ async fn set_static_server(
 
 fn server_address(text: &str) -> Result<Address, ApiError> {
     Address::parse(text).ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a server address: {text}")))
+}
+
+/// Starts a search: `query`, and `scope` (`server` by default, `global`, `kad` or `automatic`).
+async fn start_search(State(engine): State<Engine>, Json(body): Json<Value>) -> Result<Response, ApiError> {
+    let Some(query) = body.get("query").and_then(Value::as_str) else {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Missing text: query"));
+    };
+    let asked = body.get("scope").and_then(Value::as_str).unwrap_or("server");
+    // Automatic: what the networks connected allow, the servers here.
+    let scope = if asked.eq_ignore_ascii_case("automatic") { Some(Scope::Global) } else { Scope::parse(asked) }
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a search scope: {asked}")))?;
+    let started = engine.start_search(query.trim().to_owned(), scope).await.map_err(|e| match e {
+        StartError::Syntax(error) => ApiError::new(StatusCode::BAD_REQUEST, error.to_string()),
+        StartError::Unavailable(reason) => ApiError::new(StatusCode::CONFLICT, reason),
+    })?;
+    Ok((StatusCode::CREATED, Json(json!({"id": started}))).into_response())
+}
+
+async fn more_results(State(engine): State<Engine>, Path(id): Path<String>) -> Result<Json<Value>, ApiError> {
+    let id: u64 = id.parse().map_err(|_| ApiError::new(StatusCode::NOT_FOUND, "No such search"))?;
+    match engine.more_results(id).await {
+        MoreAnswer::Asked => Ok(Json(api_json::ok())),
+        MoreAnswer::Refused => Err(ApiError::new(StatusCode::CONFLICT, "That search cannot get more results.")),
+        MoreAnswer::Unknown => Err(ApiError::new(StatusCode::NOT_FOUND, "No such search")),
+    }
+}
+
+async fn shared_files(State(engine): State<Engine>) -> Json<Value> {
+    Json(Value::Array(engine.shared_files().await.iter().map(api_json::shared_file).collect()))
 }

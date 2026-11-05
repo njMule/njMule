@@ -19,12 +19,18 @@ use crate::api::engine_event::EngineEvent;
 use crate::api::server_info::ServerInfo;
 use crate::config::preferences::{ObfuscationMode, Preferences};
 use crate::engine::{ServerContext, Shared};
+use crate::files::hash::file_hasher::FileHashes;
+use crate::files::shared_files::{self, Found, SharedFile, SharedFiles};
 use crate::net::tcp_connector;
 use crate::peer::peer_greetings;
 use crate::persist::format::server_met::Server;
+use crate::protocol::ed2k::server_datagrams;
 use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint};
+use crate::protocol::packet::opcodes::server_udp;
 use crate::protocol::packet::{Packet, udp_framing};
 use crate::protocol::tag::server_tag;
+use crate::search::search_manager::{Effect as SearchEffect, Scope, SearchManager, StartError, Timer};
+use crate::server::file_publisher::{FilePublisher, Offer};
 use crate::server::server_list::{self, Address, ServerList};
 use crate::server::server_pinger::{self, Effect, ServerPinger};
 use crate::server::server_session::{Context, Notice, Outcome, ServerSession};
@@ -47,7 +53,20 @@ pub enum Command {
     DisconnectServer(oneshot::Sender<()>),
     Servers(oneshot::Sender<Vec<ServerInfo>>),
     SetStaticServer(Address, bool, oneshot::Sender<bool>),
+    StartSearch(String, Scope, oneshot::Sender<Result<u64, StartError>>),
+    MoreResults(u64, oneshot::Sender<MoreAnswer>),
+    SharedFiles(oneshot::Sender<Vec<SharedFile>>),
     Stop(oneshot::Sender<()>),
+}
+
+/// What a request for more results of a search comes to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoreAnswer {
+    Asked,
+    /// The search cannot get more results now.
+    Refused,
+    /// No such search.
+    Unknown,
 }
 
 /// Why a connection cannot be asked for.
@@ -65,7 +84,13 @@ enum Tick {
     Ping,
     Save,
     CallbackOver(SocketAddr),
+    Publish,
+    Search(Timer),
+    Hashed(Found, Result<FileHashes, String>),
 }
+
+/// How often the offer of our files is looked at.
+const PUBLISH_TICK: Duration = Duration::from_secs(1);
 
 pub struct Network {
     shared: Arc<Shared>,
@@ -80,6 +105,10 @@ pub struct Network {
     callbacks: HashMap<SocketAddr, Instant>,
     calling: HashSet<SocketAddr>,
     our_ip: u32,
+    searches: SearchManager,
+    known_searches: HashSet<u64>,
+    shared_files: SharedFiles,
+    publisher: FilePublisher,
 }
 
 /// Starts the network side; it runs until it is asked to stop.
@@ -101,6 +130,29 @@ pub fn start(
     let (datagrams_in, datagrams) = mpsc::unbounded_channel();
     let udp = udp.map(Arc::new);
     let receiving = udp.clone().map(|socket| tokio::spawn(receive(socket, datagrams_in)));
+    // The incoming folder is shared: the files known from before at once, the others once hashed.
+    let mut shared_files = SharedFiles::load(&dirs.config);
+    let to_hash: Vec<Found> =
+        shared_files::scan(&dirs.downloads).into_iter().filter(|found| !shared_files.take_known(found)).collect();
+    let hashed = ticks_in.clone();
+    let hashing = tokio::task::spawn_blocking(move || {
+        for found in to_hash {
+            let hashes = shared_files::hash(&found).map_err(|e| e.to_string());
+            if hashed.send(Tick::Hashed(found, hashes)).is_err() {
+                return;
+            }
+        }
+    });
+    let publishing = ticks_in.clone();
+    let publish = tokio::spawn(async move {
+        let mut every = tokio::time::interval(PUBLISH_TICK);
+        loop {
+            every.tick().await;
+            if publishing.send(Tick::Publish).is_err() {
+                break;
+            }
+        }
+    });
     let network = Network {
         shared,
         servers,
@@ -114,12 +166,18 @@ pub fn start(
         callbacks: HashMap::new(),
         calling: HashSet::new(),
         our_ip: 0,
+        searches: SearchManager::default(),
+        known_searches: HashSet::new(),
+        shared_files,
+        publisher: FilePublisher::default(),
     };
     tokio::spawn(async move {
         network.run(commands, outcomes, ticks, datagrams).await;
         if let Some(receiving) = receiving {
             receiving.abort();
         }
+        publish.abort();
+        hashing.abort();
     })
 }
 
@@ -178,6 +236,32 @@ impl Network {
                     }
                 }
                 let _ = done.send(known);
+            }
+            Command::StartSearch(query, scope, answer) => {
+                let id = self.session.id();
+                let session = &mut self.session;
+                let mut effects = Vec::new();
+                let started = self.searches.start(&query, scope, id, |packet| session.send(packet), &mut effects);
+                if let Ok(search) = started {
+                    self.known_searches.insert(search);
+                }
+                // The search is told first, so that its events find it.
+                let _ = answer.send(started);
+                self.search_effects(effects);
+            }
+            Command::MoreResults(search, answer) => {
+                if !self.known_searches.contains(&search) {
+                    let _ = answer.send(MoreAnswer::Unknown);
+                    return;
+                }
+                let session = &mut self.session;
+                let mut effects = Vec::new();
+                let asked = self.searches.more(search, |packet| session.send(packet), &mut effects);
+                let _ = answer.send(if asked { MoreAnswer::Asked } else { MoreAnswer::Refused });
+                self.search_effects(effects);
+            }
+            Command::SharedFiles(answer) => {
+                let _ = answer.send(self.shared_files.files().cloned().collect());
             }
             Command::Stop(_) => {}
         }
@@ -241,6 +325,7 @@ impl Network {
                 });
                 self.save_servers();
                 self.start_pinging();
+                self.publisher.connected(Instant::now());
                 self.remove_dead(self.servers.dead(preferences.dead_server_retries));
                 if preferences.add_servers_from_server {
                     self.session.send(server_messages::get_server_list());
@@ -253,6 +338,10 @@ impl Network {
             Notice::Disconnected { server, reason } => {
                 self.set_context(ServerContext::default());
                 self.stop_pinging();
+                self.publisher.disconnected();
+                let mut effects = Vec::new();
+                self.searches.server_lost(&mut effects);
+                self.search_effects(effects);
                 let info = server.as_ref().map(|server| self.info(server));
                 self.publish(EngineEvent::ServerDisconnected { server: info, reason });
             }
@@ -274,7 +363,14 @@ impl Network {
                 }
             }
             // Searches and downloads come with their own ports.
-            Notice::SearchResults { .. } | Notice::FoundSources(_) => {}
+            Notice::SearchResults { results, .. } => {
+                let connected = self.session.server().map(server_list::address_of);
+                let mut effects = Vec::new();
+                self.searches.server_results(&results.files, results.more, &self.servers, connected, &mut effects);
+                self.search_effects(effects);
+            }
+            // Downloads come with their own port.
+            Notice::FoundSources(_) => {}
         }
     }
 
@@ -292,10 +388,42 @@ impl Network {
             Tick::CallbackOver(address) => {
                 self.calling.remove(&address);
             }
+            Tick::Publish => self.publish_files(),
+            Tick::Search(timer) => {
+                let connected = self.session.server().map(server_list::address_of);
+                let mut effects = Vec::new();
+                self.searches.timer(timer, &self.servers, connected, &mut effects);
+                self.search_effects(effects);
+            }
+            Tick::Hashed(found, hashes) => match hashes {
+                Ok(hashes) => {
+                    let file = self.shared_files.hashed(found, &hashes);
+                    tracing::info!("Sharing {}", file.name);
+                    if let Err(e) = self.shared_files.save(&self.shared.dirs.config) {
+                        tracing::warn!("Cannot save the known files: {e}");
+                    }
+                    self.publisher.changed(None);
+                }
+                Err(e) => tracing::warn!("Cannot hash {}: {e}", found.path.display()),
+            },
         }
     }
 
     fn datagram(&mut self, from: SocketAddr, packet: &Packet) {
+        if packet.opcode() == server_udp::GLOBSEARCHRES {
+            let SocketAddr::V4(from) = from else {
+                return;
+            };
+            match server_datagrams::decode_search_results(packet) {
+                Ok(files) => {
+                    let mut effects = Vec::new();
+                    self.searches.datagram_results(u32::from(*from.ip()), &files, &mut effects);
+                    self.search_effects(effects);
+                }
+                Err(e) => tracing::debug!("Malformed search answer from {from}: {e}"),
+            }
+            return;
+        }
         let effects = self.pinger.received(from, packet, &mut self.servers, self.our_ip, &mut self.random);
         self.effects(effects);
     }
@@ -316,6 +444,41 @@ impl Network {
         };
         if let Err(e) = udp.try_send_to(&udp_framing::encode(packet), target) {
             tracing::debug!("Cannot send a datagram to {target}: {e}");
+        }
+    }
+
+    fn search_effects(&mut self, effects: Vec<SearchEffect>) {
+        for effect in effects {
+            match effect {
+                SearchEffect::Datagram(target, packet) => self.send_datagram(target, &packet),
+                SearchEffect::Results { search, changed } => {
+                    self.publish(EngineEvent::SearchResults { search, results: changed });
+                }
+                SearchEffect::Ended { search, results } => self.publish(EngineEvent::SearchEnded { search, results }),
+                SearchEffect::After(delay, timer) => {
+                    let ticks = self.ticks.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(delay).await;
+                        let _ = ticks.send(Tick::Search(timer));
+                    });
+                }
+            }
+        }
+    }
+
+    // Offers our files to the server when an offer is due.
+    fn publish_files(&mut self) {
+        let offers: Vec<Offer> = self
+            .shared_files
+            .files()
+            .map(|file| Offer { hash: file.hash, name: file.name.clone(), size: file.size, complete: true })
+            .collect();
+        let now = Instant::now();
+        let due = self.publisher.tick(now, self.session.id(), self.session.server(), self.shared.listen_port, &offers);
+        if let Some((packet, hashes)) = due
+            && self.session.send(packet)
+        {
+            self.publisher.sent(now, hashes);
         }
     }
 
