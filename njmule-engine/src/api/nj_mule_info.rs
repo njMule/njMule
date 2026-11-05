@@ -5,7 +5,7 @@
 
 pub const NAME: &str = "njMule";
 
-/// The semantic version; the crate's own until the engine ships, when it follows `gradle.properties`.
+/// The semantic version, from `gradle.properties`.
 pub fn version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
+    env!("NJMULE_VERSION")
 }

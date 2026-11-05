@@ -165,6 +165,15 @@ Gradle test fixtures (`njmule-core/src/testFixtures`, with `Corpus`, `Canonical`
 `njmule-app/build/install/njmule/bin/njmule` of `:njmule-app:installDist` (`njmule.bat` on Windows)
 serves as well, without the native build.
 
+The Rust engine builds an `njmule` executable of its own, which the flows drive the same way. So far
+it answers the greeting scenario (`ServerFlowTest.shouldAnswerHellosAndReportTheAnswer`); the others
+follow as their parts are ported:
+
+```bash
+cargo build --release --manifest-path njmule-engine/Cargo.toml
+./gradlew :njmule-testkit:test --tests '*shouldAnswerHellos*' "-Pnjmule.engine=$PWD/njmule-engine/target/release/njmule"
+```
+
 The server, search and download flows also check what the engine sent: every packet `FakeServer`
 and `FakePeer` receive goes into their `Transcript`, which the `Transcripts` extension compares
 after each test with `njmule-testkit/src/test/resources/transcripts/<class>/<test>.txt`. A
