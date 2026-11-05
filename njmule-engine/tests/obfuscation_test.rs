@@ -14,7 +14,7 @@
 )]
 
 use std::collections::HashMap;
-use std::io::{self, ErrorKind, PipeReader, PipeWriter, Read, Write};
+use std::io::{self, ErrorKind};
 use std::sync::LazyLock;
 use std::thread;
 
@@ -25,7 +25,9 @@ use njmule_engine::protocol::crypt::stream_obfuscation::{self as streams, Cipher
 use njmule_engine::protocol::io::DecodeError;
 use njmule_engine::protocol::packet::{Packet, protocol, udp_framing};
 use num_bigint::BigUint;
-use rand::{Rng, RngExt};
+use rand::rngs::StdRng;
+use rand::{Rng, RngExt, SeedableRng};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
 
 const GOLDEN_FILE: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/obfuscation.txt");
@@ -70,40 +72,33 @@ fn is_decode_error(error: &io::Error) -> bool {
     error.kind() == ErrorKind::InvalidData && error.get_ref().is_some_and(|inner| inner.is::<DecodeError>())
 }
 
-/// One end of two connected pipes.
-struct Endpoint {
-    input: PipeReader,
-    output: PipeWriter,
+fn random() -> StdRng {
+    StdRng::from_rng(&mut rand::rng())
 }
 
-/// Runs each side on its own thread over two connected pipes; an end closes when its side returns.
-fn run<A: Send, B: Send>(a: impl FnOnce(Endpoint) -> A + Send, b: impl FnOnce(Endpoint) -> B + Send) -> (A, B) {
-    let (a_input, b_output) = io::pipe().unwrap();
-    let (b_input, a_output) = io::pipe().unwrap();
-    let first = Endpoint { input: a_input, output: a_output };
-    let second = Endpoint { input: b_input, output: b_output };
-    thread::scope(|scope| {
-        let a = scope.spawn(move || a(first));
-        let b = scope.spawn(move || b(second));
-        (a.join().unwrap(), b.join().unwrap())
-    })
+/// Two connected ends of a stream; an end closes when its side drops it.
+fn duplex() -> (DuplexStream, DuplexStream) {
+    tokio::io::duplex(1 << 16)
 }
 
 /// The client handshake: the connecting side with `connecting_user_hash`, the accepting one with [`USER_HASH`] and the
 /// marker it read.
-fn clients_shake_hands(
+async fn clients_shake_hands(
     connecting_user_hash: [u8; 16],
     padding: u8,
 ) -> (io::Result<Ciphers>, io::Result<(u8, Ciphers)>) {
-    run(
-        move |mut a| {
-            streams::connect_to_client(&mut a.input, &mut a.output, &connecting_user_hash, &mut rand::rng(), padding)
+    let (mut a, mut b) = duplex();
+    tokio::join!(
+        async move {
+            let (mut input, mut output) = tokio::io::split(&mut a);
+            streams::connect_to_client(&mut input, &mut output, &connecting_user_hash, &mut random(), padding).await
         },
-        move |mut b| {
+        async move {
+            let (mut input, mut output) = tokio::io::split(&mut b);
             let mut marker = [0];
-            b.input.read_exact(&mut marker)?;
+            input.read_exact(&mut marker).await?;
             let ciphers =
-                streams::accept_from_client(&mut b.input, &mut b.output, &USER_HASH, &mut rand::rng(), padding)?;
+                streams::accept_from_client(&mut input, &mut output, &USER_HASH, &mut random(), padding).await?;
             Ok((marker[0], ciphers))
         },
     )
@@ -218,13 +213,14 @@ fn should_derive_the_golden_server_key_stream() {
     }
 }
 
-#[test]
-fn should_start_the_client_request_in_clear_and_make_it_readable_with_the_receiver_key() {
+#[tokio::test]
+async fn should_start_the_client_request_in_clear_and_make_it_readable_with_the_receiver_key() {
     let mut request = Vec::new();
 
     // The answer never comes: only the request matters here.
-    let error =
-        streams::connect_to_client(&mut io::empty(), &mut request, &USER_HASH, &mut rand::rng(), 0).unwrap_err();
+    let error = streams::connect_to_client(&mut tokio::io::empty(), &mut request, &USER_HASH, &mut random(), 0)
+        .await
+        .unwrap_err();
 
     assert!(is_decode_error(&error), "{error}");
     assert_eq!(request.len(), 1 + 4 + 7);
@@ -235,9 +231,9 @@ fn should_start_the_client_request_in_clear_and_make_it_readable_with_the_receiv
     assert_eq!(hex::encode(body), "c46f5e83".to_owned() + "00" + "00" + "00");
 }
 
-#[test]
-fn should_complete_the_client_handshake_and_share_the_stream() {
-    let (connecting, accepting) = clients_shake_hands(USER_HASH, 128);
+#[tokio::test]
+async fn should_complete_the_client_handshake_and_share_the_stream() {
+    let (connecting, accepting) = clients_shake_hands(USER_HASH, 128).await;
 
     let mut connecting = connecting.unwrap();
     let (marker, mut accepting) = accepting.unwrap();
@@ -246,26 +242,29 @@ fn should_complete_the_client_handshake_and_share_the_stream() {
     assert_eq!(round_trip(&mut accepting.send, &mut connecting.receive, "answer"), "answer");
 }
 
-#[test]
-fn should_fail_the_handshake_with_a_wrong_user_hash() {
-    let (connecting, accepting) = clients_shake_hands([0; 16], 0);
+#[tokio::test]
+async fn should_fail_the_handshake_with_a_wrong_user_hash() {
+    let (connecting, accepting) = clients_shake_hands([0; 16], 0).await;
 
     assert!(is_decode_error(&accepting.unwrap_err()));
     assert!(is_decode_error(&connecting.unwrap_err()));
 }
 
-#[test]
-fn should_agree_on_the_keys_in_the_server_handshake() {
-    let (client, server) = run(
-        |mut a| {
-            let ciphers = streams::connect_to_server(&mut a.input, &mut a.output, &mut rand::rng())?;
-            a.output.flush()?;
+#[tokio::test]
+async fn should_agree_on_the_keys_in_the_server_handshake() {
+    let (mut a, mut b) = duplex();
+    let (client, server) = tokio::join!(
+        async move {
+            let (mut input, mut output) = tokio::io::split(&mut a);
+            let ciphers = streams::connect_to_server(&mut input, &mut output, &mut random()).await?;
+            output.flush().await?;
             Ok::<_, io::Error>(ciphers)
         },
-        |mut b| {
+        async move {
+            let (mut input, mut output) = tokio::io::split(&mut b);
             let mut marker = [0];
-            b.input.read_exact(&mut marker)?;
-            streams::accept_as_server(&mut b.input, &mut b.output, &mut rand::rng())
+            input.read_exact(&mut marker).await?;
+            streams::accept_as_server(&mut input, &mut output, &mut random()).await
         },
     );
 

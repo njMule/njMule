@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 use crate::api::engine_event::EngineEvent;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
+use crate::api::server_info::ServerInfo;
 use crate::config::preferences::Preferences;
 use crate::persist::preferences_codec;
 
@@ -56,6 +57,11 @@ pub fn peer_info(info: &PeerInfo) -> Value {
     })
 }
 
+/// The answer of a call that only needs to be done.
+pub fn ok() -> Value {
+    json!({"ok": true})
+}
+
 pub fn error(message: &str) -> Value {
     json!({"error": message})
 }
@@ -66,7 +72,47 @@ pub fn event(event: &EngineEvent) -> (&'static str, Value) {
         EngineEvent::Started { version } => ("started", json!({"version": version})),
         EngineEvent::Stopping => ("stopping", Value::Object(Map::new())),
         EngineEvent::PreferencesChanged => ("preferences.changed", Value::Object(Map::new())),
+        EngineEvent::ServerConnecting(info) => ("server.connecting", json!({"server": server(info)})),
+        EngineEvent::ServerConnected { server: info, client_id, low_id, obfuscated } => (
+            "server.connected",
+            json!({"server": server(info), "clientId": client_id, "lowId": low_id, "obfuscated": obfuscated}),
+        ),
+        EngineEvent::ServerDisconnected { server: info, reason } => {
+            let mut data = Map::new();
+            if let Some(info) = info {
+                data.insert("server".to_owned(), server(info));
+            }
+            data.insert("reason".to_owned(), json!(reason));
+            ("server.disconnected", Value::Object(data))
+        }
+        EngineEvent::ServerMessage { server: info, text } => {
+            ("server.message", json!({"server": server(info), "text": text}))
+        }
+        EngineEvent::ServerUpdated(info) => ("server.updated", json!({"server": server(info)})),
+        EngineEvent::ServersChanged { count } => ("servers.changed", json!({"count": count})),
     }
+}
+
+/// A known server: its address, what it told of itself and how we use it.
+pub fn server(info: &ServerInfo) -> Value {
+    json!({
+        "address": info.address,
+        "name": info.name,
+        "description": info.description,
+        "users": info.users,
+        "files": info.files,
+        "maxUsers": info.max_users,
+        "lowIdUsers": info.low_id_users,
+        "softFiles": info.soft_files,
+        "hardFiles": info.hard_files,
+        "failed": info.failed,
+        "priority": info.priority.name(),
+        "ping": info.ping,
+        "version": info.version,
+        "obfuscation": info.obfuscation,
+        "static": info.is_static,
+        "country": null,
+    })
 }
 
 /// A hash as the API writes it: 32 upper-case hex digits.

@@ -13,6 +13,7 @@ use tokio::time::timeout;
 
 use crate::api::peer_info::{Identification, PeerInfo};
 use crate::net::tcp_connection::{read_packet, write_packet};
+use crate::net::tcp_connector;
 use crate::peer::peer_software;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::packet::frame_limits;
@@ -47,6 +48,27 @@ pub async fn accepted(mut stream: TcpStream, ours: Hello) -> io::Result<()> {
     write_packet(&mut stream, &encode(&ours.to_peer_at(&remote.ip()), true)?).await?;
     while let Ok(Ok(Some(_))) = timeout(IDLE_TIMEOUT, read_packet(&mut stream, &frame_limits::client)).await {}
     Ok(())
+}
+
+/// A client we called back on a server's request: we greet it first, answer its greeting, and keep the connection
+/// until it goes quiet.
+pub async fn called_back(connection: tcp_connector::Connection, ours: Hello) -> io::Result<()> {
+    let tcp_connector::Connection { mut reader, mut writer, remote, .. } = connection;
+    writer.write_packet(&encode(&ours.to_peer_at(&remote.ip()), false)?).await?;
+    let mut greeted = false;
+    loop {
+        let limit = if greeted { frame_limits::client } else { frame_limits::client_handshake };
+        let Ok(read) = timeout(IDLE_TIMEOUT, reader.read_packet(&limit)).await else {
+            return Ok(());
+        };
+        let Some(packet) = read? else {
+            return Ok(());
+        };
+        if is(&packet, client::HELLO) {
+            writer.write_packet(&encode(&ours.to_peer_at(&remote.ip()), true)?).await?;
+        }
+        greeted |= is(&packet, client::HELLOANSWER) || is(&packet, client::HELLO);
+    }
 }
 
 /// Says hello to the client at `address` and answers what it said of itself.

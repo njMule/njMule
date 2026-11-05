@@ -16,4 +16,5 @@ pub mod persist;
 pub mod protocol;
 pub mod remote;
 pub mod search;
+pub mod server;
 pub mod util;
