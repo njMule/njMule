@@ -6,4 +6,5 @@
 pub mod app_directories;
 pub mod event_commands;
 pub mod night_hours;
+pub mod os_family;
 pub mod preferences;
