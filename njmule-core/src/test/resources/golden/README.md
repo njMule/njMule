@@ -1,7 +1,7 @@
 # Golden vectors and corpora
 
 - `file-hashes.txt` and `obfuscation.txt`: vectors made by an independent Python implementation
-  (`tools/golden/`), which the engine must match.
+  (`tools/golden/`), which both engines must match.
 - `*.jsonl`: corpora, inputs of a decoder with the answers the Java engine gives them, which
   another engine replays and must answer alike. One JSON object per line: `kind`, the input `in`
   (hex) with what the kind needs to decode it, then the answer, or `"error":"decode"` where the
