@@ -8,6 +8,7 @@ pub mod api;
 pub mod crypto;
 pub mod files;
 pub mod kad;
+pub mod persist;
 pub mod protocol;
 pub mod search;
 pub mod util;
