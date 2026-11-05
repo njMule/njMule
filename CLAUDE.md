@@ -163,7 +163,12 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   corpora of `njmule-core/src/test/resources/golden`, `cargo clippy --all-targets -- -D warnings`
   holds its lints (no unwrap, index, panic or unchecked arithmetic on network input), `cargo deny
   check` its crates' licenses, advisories and sources (`deny.toml`). Port a Java package with the
-  same names in snake_case and its tests under the same names, and keep the corpora green.
+  same names in snake_case and its tests under the same names, and keep the corpora green. The
+  areas ported whole are listed in `tests/ported_areas.txt`; each of their packages keeps at least
+  the line coverage of its Java twin (`tests/java_coverage.txt`, from JaCoCo):
+  `cargo llvm-cov --json --summary-only --output-path target/coverage.json`, then
+  `python ../tools/engine_coverage.py check target/coverage.json` (rustup's `llvm-tools` and
+  `cargo install cargo-llvm-cov --locked`), as the CI's `engine` job does.
 - Documentation website (`website/`, Docusaurus, not part of `build`): `./gradlew :website:site` →
   `website/build/site` (it takes the interface's screenshots on a demo engine with the installed
   Chrome or Edge through `website/scripts/capture-web.mjs`, the CLI help with `:njmule-app:cliHelp`,
