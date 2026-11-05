@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The `njmule` executable: runs the engine on a profile. With `NJMULE_CONTROL_ENDPOINT=1` it serves the API on a
-//! loopback port, prints where on a `njmule-control` line, and stops when its standard input ends. With `--hash` it
-//! prints the eD2K links of files instead.
+//! The `njmule` executable: runs the engine on a profile, logging to standard error and to the profile's `logs`
+//! folder. With `NJMULE_CONTROL_ENDPOINT=1` it serves the API on a loopback port, prints where on a `njmule-control`
+//! line, and stops when its standard input ends. With `--hash` it prints the eD2K links of files instead.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -18,9 +18,13 @@ use njmule_engine::engine::Engine;
 use njmule_engine::files::hash::file_hasher;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use tokio::io::AsyncReadExt;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::fmt::writer::MakeWriterExt;
 
 /// How long the API may take to finish the calls it is answering when the engine stops.
 const API_STOP_WAIT: Duration = Duration::from_secs(5);
+/// Days of logs kept: one file a day.
+const LOG_DAYS: usize = 14;
 
 #[derive(Parser)]
 #[command(name = "njmule", version = nj_mule_info::version(), about = "njMule, an eD2K and Kad client")]
@@ -37,16 +41,24 @@ struct Cli {
 }
 
 fn main() -> ExitCode {
-    tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
     let cli = Cli::parse();
     if !cli.hash.is_empty() {
+        tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
         return hash(&cli.hash);
     }
     let Some(config_dir) = cli.config_dir else {
         return ExitCode::FAILURE;
     };
+    let dirs = match AppDirectories::under_root(&config_dir) {
+        Ok(dirs) => dirs,
+        Err(e) => {
+            eprintln!("njmule: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    log_to(&dirs);
     let switches = cli.switches;
-    let outcome = tokio::runtime::Runtime::new().and_then(|runtime| runtime.block_on(run(config_dir, switches)));
+    let outcome = tokio::runtime::Runtime::new().and_then(|runtime| runtime.block_on(run(dirs, switches)));
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -88,9 +100,27 @@ fn link(file: &Path) -> io::Result<(FileLink, usize)> {
     Ok((link, hashes.ed2k.part_hashes().len()))
 }
 
-async fn run(config_dir: PathBuf, switches: Vec<String>) -> io::Result<()> {
+// Standard error, and a file a day in the profile's logs folder, where the desktop window points the user; without the
+// file, standard error alone.
+fn log_to(dirs: &AppDirectories) {
+    let file = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix("njmule")
+        .filename_suffix("log")
+        .max_log_files(LOG_DAYS)
+        .build(&dirs.logs);
+    match file {
+        Ok(file) => tracing_subscriber::fmt().with_writer(io::stderr.and(file)).with_ansi(false).init(),
+        Err(e) => {
+            tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
+            tracing::warn!("Cannot log to {}: {e}", dirs.logs.display());
+        }
+    }
+}
+
+async fn run(dirs: AppDirectories, switches: Vec<String>) -> io::Result<()> {
     tracing::debug!("Switches: {switches:?}");
-    let engine = Engine::start(AppDirectories::under_root(&config_dir)?).await?;
+    let engine = Engine::start(dirs).await?;
     let control = std::env::var("NJMULE_CONTROL_ENDPOINT").is_ok_and(|value| value == "1");
     let endpoint = if control {
         let endpoint = ControlEndpoint::start(engine.clone()).await?;
