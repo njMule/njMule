@@ -23,6 +23,12 @@ unused-allowed-license = "allow"
 
 [advisories]
 yanked = "deny"
+ignore = [
+    # The Marvin attack: the timing of RSA private-key operations may leak the key. Secure identification signs
+    # with blinding, and its 384-bit keys, which the protocol fixes, can be factored offline anyway: the timing
+    # leaks nothing a peer could not get otherwise. To drop once rsa 0.10 is stable.
+    { id = "RUSTSEC-2023-0071", reason = "secure identification's 384-bit keys give no secrecy to protect; signing is blinded" },
+]
 
 [bans]
 multiple-versions = "warn"
