@@ -214,9 +214,12 @@ final class Ed2kLinkCodec {
             return Optional.empty();
         }
         if (host.startsWith("[") && host.endsWith("]")) {
-            // An IPv6 address, kept without its brackets.
+            // An IPv6 address, kept without its brackets. A zone id names an interface of the sender's machine, which
+            // no peer can reach, and its lookup here would refuse the whole link.
             String inside = host.substring(1, host.length() - 1);
-            return InetAddresses.isInetAddress(inside) && InetAddresses.forString(inside) instanceof Inet6Address
+            return inside.indexOf('%') < 0
+                            && InetAddresses.isInetAddress(inside)
+                            && InetAddresses.forString(inside) instanceof Inet6Address
                     ? Optional.of(new Ed2kLink.Source(inside, port))
                     : Optional.empty();
         }
