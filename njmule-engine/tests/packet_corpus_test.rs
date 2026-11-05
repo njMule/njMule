@@ -3,7 +3,7 @@
 
 //! The Java engine's answers in `golden/packets.jsonl`, given again by the messages ported so far: every case of their
 //! kinds decoded as the corpus says. The kinds still to port are named, so a kind new to the corpus fails until it is
-//! ported or named.
+//! ported or named: the keyword search's expression waits for the search package.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
@@ -23,33 +23,16 @@ use njmule_engine::protocol::ed2k::server_messages::{
 use njmule_engine::protocol::ed2k::source_exchange::{Answer, Request};
 use njmule_engine::protocol::ed2k::{chat_messages, file_description};
 use njmule_engine::protocol::io::DecodeError;
+use njmule_engine::protocol::kad::kad_messages::{
+    self, BootstrapAnswer, BuddyOffer, CallbackRequest, FindBuddy, FirewallCheck, FirewallUdp, KeywordPublish,
+    NotesPublish, NotesSearch, PublishAnswer, SearchAnswer, SourcePublish, SourceSearch,
+};
 use njmule_engine::protocol::packet::{Packet, packing};
 use serde_json::{Map, Value, json};
 
 const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/packets.jsonl");
 
-const NOT_PORTED: &[&str] = &[
-    "bootstrap answer",
-    "kad hello",
-    "kad request",
-    "kad answer",
-    "keyword search and its expression",
-    "source search",
-    "notes search",
-    "search answer",
-    "packed kad search answer",
-    "keyword publish",
-    "source publish",
-    "notes publish",
-    "publish answer",
-    "firewall check",
-    "firewall answer",
-    "find buddy",
-    "buddy offer",
-    "kad callback request",
-    "udp firewall answer",
-    "pong",
-];
+const NOT_PORTED: &[&str] = &["keyword search and its expression"];
 
 type Decoder = fn(Packet) -> Result<Value, DecodeError>;
 
@@ -87,6 +70,27 @@ fn decoder(kind: &str) -> Option<Decoder> {
         "udp check request" => |p| UdpCheckRequest::decode(&p).map(|v| v.canonical()),
         "file comment" => |p| file_description::decode(&p).map(|v| v.canonical()),
         "chat message" => |p| chat_messages::text(&p).map(|v| v.canonical()),
+        "bootstrap answer" => |p| BootstrapAnswer::decode(&p).map(|v| v.canonical()),
+        "kad hello" => |p| kad_messages::Hello::decode(&p).map(|v| v.canonical()),
+        "kad request" => |p| kad_messages::Request::decode(&p).map(|v| v.canonical()),
+        "kad answer" => |p| kad_messages::Answer::decode(&p).map(|v| v.canonical()),
+        "source search" => |p| SourceSearch::decode(&p).map(|v| v.canonical()),
+        "notes search" => |p| NotesSearch::decode(&p).map(|v| v.canonical()),
+        "search answer" => |p| SearchAnswer::decode(&p).map(|v| v.canonical()),
+        "packed kad search answer" => {
+            |p| SearchAnswer::decode(&packing::unpack(p, packing::MAX_CLIENT_UNPACKED)?).map(|v| v.canonical())
+        }
+        "keyword publish" => |p| KeywordPublish::decode(&p).map(|v| v.canonical()),
+        "source publish" => |p| SourcePublish::decode(&p).map(|v| v.canonical()),
+        "notes publish" => |p| NotesPublish::decode(&p).map(|v| v.canonical()),
+        "publish answer" => |p| PublishAnswer::decode(&p).map(|v| v.canonical()),
+        "firewall check" => |p| FirewallCheck::decode(&p).map(|v| v.canonical()),
+        "firewall answer" => |p| kad_messages::decode_firewall_answer(&p).map(|v| v.canonical()),
+        "find buddy" => |p| FindBuddy::decode(&p).map(|v| v.canonical()),
+        "buddy offer" => |p| BuddyOffer::decode(&p).map(|v| v.canonical()),
+        "kad callback request" => |p| CallbackRequest::decode(&p).map(|v| v.canonical()),
+        "udp firewall answer" => |p| FirewallUdp::decode(&p).map(|v| v.canonical()),
+        "pong" => |p| kad_messages::decode_pong(&p).map(|v| v.canonical()),
         "packed search results" => |p| SearchResults::decode(&packing::unpack_from_server(p)?).map(|v| v.canonical()),
         _ => return None,
     })
