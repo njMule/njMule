@@ -3,6 +3,7 @@
 
 //! The wire: packets, their framing and tags, and the messages of the eD2K network.
 
+pub mod crypt;
 pub mod ed2k;
 pub mod io;
 pub mod kad;

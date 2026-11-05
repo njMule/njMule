@@ -5,6 +5,7 @@
 //! where it answers the corpora of the Java engine (`njmule-core/src/test/resources/golden`) alike.
 
 pub mod api;
+pub mod crypto;
 pub mod files;
 pub mod kad;
 pub mod protocol;
