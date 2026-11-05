@@ -123,6 +123,10 @@ impl<'a> PacketReader<'a> {
         self.array()
     }
 
+    pub fn hash20(&mut self) -> Result<[u8; 20], DecodeError> {
+        self.array()
+    }
+
     pub fn skip(&mut self, length: usize) -> Result<(), DecodeError> {
         self.bytes(length).map(|_| ())
     }
@@ -222,6 +226,10 @@ impl PacketWriter {
     }
 
     pub fn hash16(&mut self, value: &[u8; 16]) -> &mut Self {
+        self.bytes(value)
+    }
+
+    pub fn hash20(&mut self, value: &[u8; 20]) -> &mut Self {
         self.bytes(value)
     }
 
