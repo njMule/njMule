@@ -5,6 +5,7 @@
 
 pub mod client_tag;
 pub mod file_tag;
+pub mod media_tags;
 pub mod server_tag;
 pub mod tag_codec;
 pub mod tags;
