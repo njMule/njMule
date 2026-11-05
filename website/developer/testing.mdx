@@ -178,6 +178,12 @@ cargo build --release --manifest-path njmule-engine/Cargo.toml
 ./gradlew :njmule-testkit:test --tests '*ServerFlowTest' --tests '*SearchFlowTest' --tests '*DownloadFlowTest' "-Pnjmule.engine=$PWD/njmule-engine/target/release/njmule"
 ```
 
+The port keeps the Java tests' names. When a Java test class has a Rust twin (`FooTest.java` beside
+`njmule-engine/tests/foo_test.rs`), each of its tests appears there in snake case (`shouldX` as
+`should_x`), or is listed in `njmule-engine/tests/not_ported.txt` with the reason it waits.
+`test_name_map_test` checks both ways, so a test added in Java or lost in Rust fails it, and so does
+a listed test once it is ported. The `engine` job runs it when the Java tests change too.
+
 The server, search and download flows also check what the engine sent: every packet `FakeServer`
 and `FakePeer` receive goes into their `Transcript`, which the `Transcripts` extension compares
 after each test with `njmule-testkit/src/test/resources/transcripts/<class>/<test>.txt`. A
