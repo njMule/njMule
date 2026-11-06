@@ -145,12 +145,17 @@ enum PeerEvent {
     // A client's connection the guard admitted, plain or obfuscated, with its permit.
     Accepted(Box<tcp_connector::Connection>, Permit),
     Connected(SocketAddr, Box<io::Result<tcp_connector::Connection>>),
+    // A client we call for the upload slot its turn brought, by user hash.
+    UploadCall([u8; 16], Box<io::Result<tcp_connector::Connection>>),
     // A client we call back on a server's request.
     CalledBack(SocketAddr, Box<io::Result<tcp_connector::Connection>>),
     Resolved([u8; 16], Vec<SocketAddr>),
     // The connection of a hello asked through the API, and who waits for the answer.
     Probed(Box<io::Result<tcp_connector::Connection>>, oneshot::Sender<io::Result<PeerInfo>>),
 }
+
+// How long a client we call for its upload slot has to accept the connection.
+const UPLOAD_CALL_TIMEOUT: Duration = Duration::from_secs(45);
 
 /// How often the offer of our files, the downloads and the other servers are looked at.
 const SECOND: Duration = Duration::from_secs(1);
@@ -164,6 +169,8 @@ struct Peer {
     incoming: bool,
     // The address of a client we call back, free to be called again once it answered our hello or left.
     called_back: Option<SocketAddr>,
+    // The user hash of a client we called for its upload slot, until it answers our hello.
+    upload_for: Option<[u8; 16]>,
     // Held while the connection lives: the guard counts it.
     _permit: Option<Permit>,
 }
@@ -698,6 +705,7 @@ impl Network {
                 let settings = upload_settings(&self.preferences());
                 let files = &self.shared_files;
                 self.uploads.tick(settings, &|hash: &[u8; 16]| files.get(hash).cloned(), Instant::now());
+                self.after_uploads();
             }
             Tick::Second => {
                 self.publish_files();
@@ -1057,6 +1065,25 @@ impl Network {
                 Err(e) => self.downloads.connected(address, Err(e.to_string()), &ours),
             },
             PeerEvent::Resolved(file, addresses) => self.downloads.resolved(&file, &addresses, &self.settings()),
+            PeerEvent::UploadCall(user_hash, result) => match *result {
+                Ok(connection) => {
+                    let handle = self.new_link(connection, None);
+                    handle.set_timeout(peer_greetings::HELLO_TIMEOUT);
+                    if let Some(peer) = self.peers.get_mut(&handle.id()) {
+                        peer.upload_for = Some(user_hash);
+                    }
+                    match self.shared.our_hello().to_peer_at(&handle.remote().ip()).encode(false) {
+                        Ok(hello) => {
+                            handle.send(hello);
+                        }
+                        Err(e) => {
+                            tracing::warn!("Cannot greet {}: {e}", handle.remote());
+                            handle.close();
+                        }
+                    }
+                }
+                Err(e) => self.uploads.call_failed(user_hash, &e.to_string()),
+            },
             PeerEvent::CalledBack(address, result) => match *result {
                 Ok(connection) => self.call_back(address, connection),
                 Err(e) => {
@@ -1204,7 +1231,15 @@ impl Network {
         let incoming = permit.is_some();
         self.peers.insert(
             id,
-            Peer { handle: handle.clone(), hello: None, identity: None, incoming, called_back: None, _permit: permit },
+            Peer {
+                handle: handle.clone(),
+                hello: None,
+                identity: None,
+                incoming,
+                called_back: None,
+                upload_for: None,
+                _permit: permit,
+            },
         );
         handle
     }
@@ -1217,7 +1252,11 @@ impl Network {
             }
             LinkEvent::Packet(link, packet) => self.peer_packet(link, &packet, &ours),
             LinkEvent::Closed(link, reason) => {
-                if let Some(address) = self.peers.remove(&link).and_then(|peer| peer.called_back) {
+                let peer = self.peers.remove(&link);
+                if let Some(user_hash) = peer.as_ref().and_then(|peer| peer.upload_for) {
+                    self.uploads.call_failed(user_hash, reason.as_deref().unwrap_or("closed before the hello"));
+                }
+                if let Some(address) = peer.and_then(|peer| peer.called_back) {
                     tracing::debug!(
                         "Callback to {address} failed: {}",
                         reason.as_deref().unwrap_or("closed before the hello")
@@ -1252,6 +1291,7 @@ impl Network {
             };
             peer.hello = Some(hello.clone());
             if !peer.incoming {
+                let upload_for = peer.upload_for.take();
                 if let Some(address) = peer.called_back.take() {
                     tracing::debug!("Called {address} back");
                     handle.set_timeout(peer_greetings::IDLE_TIMEOUT);
@@ -1259,6 +1299,11 @@ impl Network {
                 }
                 self.met(&hello, handle.remote().ip());
                 self.identify(link);
+                if let Some(user_hash) = upload_for {
+                    let trusted = self.trusted(link);
+                    self.uploads.called(user_hash, &handle, &hello, trusted, Instant::now());
+                    self.after_uploads();
+                }
                 self.downloads.greeted(link, hello, ours);
                 return;
             }
@@ -1301,6 +1346,7 @@ impl Network {
                     .and_then(|peer| peer.identity.as_ref())
                     .is_none_or(|session| session.trust().credits());
                 self.uploads.received(&handle, &hello, trusted, packet, ours, &find, &visible, Instant::now());
+                self.after_uploads();
             }
             Side::Download | Side::Buddy => {
                 tracing::debug!("Nothing on {} takes opcode {:#04x}", handle.remote(), packet.opcode());
@@ -1312,6 +1358,34 @@ impl Network {
     fn met(&mut self, hello: &Hello, _address: IpAddr) {
         let nick = hello.nick().unwrap_or_default();
         self.history.seen(hello.user_hash, nick, &peer_software::describe(hello), None, now_seconds());
+    }
+
+    // Whether credits apply to the client of a link: its identity proven, or it does not take part.
+    fn trusted(&self, link: LinkId) -> bool {
+        self.peers
+            .get(&link)
+            .and_then(|peer| peer.identity.as_ref())
+            .is_none_or(|session| session.trust().credits())
+    }
+
+    // The clients whose turn came while they were not connected are called.
+    fn after_uploads(&mut self) {
+        for call in self.uploads.take_calls() {
+            let events = self.peer_events.clone();
+            let routes = self.shared.routes.clone();
+            tokio::spawn(async move {
+                let mut random = StdRng::from_rng(&mut rand::rng());
+                let connection = tcp_connector::connect_to_client(
+                    call.address,
+                    call.obfuscate_for,
+                    UPLOAD_CALL_TIMEOUT,
+                    &routes,
+                    &mut random,
+                )
+                .await;
+                let _ = events.send(PeerEvent::UploadCall(call.user_hash, Box::new(connection)));
+            });
+        }
     }
 
     // The hellos are over: the client is asked to prove its user hash, against the key it proved to own before if any.
@@ -1732,5 +1806,6 @@ fn upload_settings(preferences: &Preferences) -> upload_manager::Settings {
     upload_manager::Settings {
         max_upload_kibps: preferences.max_upload_kibps,
         queue_size: usize::try_from(preferences.upload_queue_size).unwrap_or(usize::MAX),
+        obfuscation: preferences.obfuscation != ObfuscationMode::Disabled,
     }
 }
