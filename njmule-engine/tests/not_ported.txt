@@ -50,14 +50,6 @@ Ed2kLinkTest.shouldDropAnIpv6SourceWithAZoneIdButKeepTheLink
 Ed2kLinkTest.shouldOnlyFailWithIllegalArgumentForAnythingInsideAFileLink
 Ed2kLinkTest.shouldOnlyFailWithIllegalArgumentForGarbage
 
-# IpFilterLevelsTest: these ask the IP filter itself, which comes with area 3 (security).
-IpFilterLevelsTest.shouldKeepBlockedARangeInsideAnAllowedOne
-IpFilterLevelsTest.shouldNotGrowABlockedRangeOverAnAllowedOne
-
-# IpWhitelistTest: these ask the IP filter itself, which comes with area 3 (security).
-IpWhitelistTest.shouldForgetTheAddressesOfAnEarlierWhitelist
-IpWhitelistTest.shouldLetThroughTheAllowedAddressesOfABlockedRange
-
 # Sources kept for the next run, files above 4 GiB on the disk and the properties over any file wait for their ports.
 PartFileTest.shouldAskTheSourcesForTheHashSetWhenTheOneOfALinkDoesNotGiveTheFileHash
 PartFileTest.shouldCompleteTheFileWithTheBlocksHandedOut

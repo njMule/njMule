@@ -3,6 +3,8 @@
 
 //! What keeps names and data from the network from doing harm.
 
+pub mod connection_guard;
+pub mod ip_filter;
 pub mod ip_whitelist;
 pub mod path_sanitizer;
 pub mod secure_ident;

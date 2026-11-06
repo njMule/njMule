@@ -29,3 +29,26 @@ fn should_merge_the_overlapping_ranges_of_one_level() {
         ]
     );
 }
+
+fn filter_of(list: &str) -> njmule_engine::security::ip_filter::IpFilter {
+    njmule_engine::security::ip_filter::IpFilter::of(
+        &ip_filter_dat::read(list.as_bytes(), "ipfilter.dat"),
+        njmule_engine::security::ip_filter::DEFAULT_LEVEL,
+    )
+}
+
+#[test]
+fn should_keep_blocked_a_range_inside_an_allowed_one() {
+    let filter = filter_of("10.0.0.0 - 10.0.0.255 , 200 , allowed\n10.0.0.100 - 10.0.1.255 , 000 , blocked\n");
+
+    assert!(filter.blocks(ip("10.0.0.150")) && filter.blocks(ip("10.0.1.10")));
+    assert!(!filter.blocks(ip("10.0.0.50")));
+}
+
+#[test]
+fn should_not_grow_a_blocked_range_over_an_allowed_one() {
+    let filter = filter_of("10.0.0.0 - 10.0.0.255 , 000 , blocked\n10.0.0.200 - 10.0.3.255 , 200 , allowed\n");
+
+    assert!(filter.blocks(ip("10.0.0.10")) && filter.blocks(ip("10.0.0.220")));
+    assert!(!filter.blocks(ip("10.0.2.1")));
+}

@@ -142,3 +142,26 @@ fn should_pick_the_number_after_the_reserved_names_of_a_long_name() {
         assert!(path.file_name().unwrap().to_string_lossy().contains(" (13)"));
     }
 }
+
+// Beyond the Java engine's examples.
+
+#[test]
+fn should_number_a_name_after_an_extension_too_long_to_be_one() {
+    let directory = tempfile::tempdir().unwrap();
+    let name = format!("film.{}", "x".repeat(MAX_NAME_BYTES / 2 + 1));
+    let first = path_sanitizer::reserve(directory.path(), &name).unwrap();
+
+    let second = path_sanitizer::reserve(directory.path(), &name).unwrap();
+
+    assert_ne!(first, second);
+    assert!(second.file_name().unwrap().to_string_lossy().ends_with(" (2)"), "{second:?}");
+}
+
+#[test]
+fn should_fail_to_reserve_a_name_in_a_folder_that_is_not_there() {
+    let directory = tempfile::tempdir().unwrap();
+
+    let reserved = path_sanitizer::reserve(&directory.path().join("gone"), "film.avi");
+
+    assert!(reserved.is_err());
+}
