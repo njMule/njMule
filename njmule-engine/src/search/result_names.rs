@@ -35,6 +35,8 @@ pub fn found_again(known: &SearchResult, found: &SearchResult, add_counts: bool)
         sources: count(known.sources, found.sources, add_counts),
         complete_sources: optional_count(known.complete_sources, found.complete_sources, add_counts),
         file_type,
+        media: known.media.clone(),
+        origin: known.origin.clone(),
         spam_rating: known.spam_rating,
         aich_hash: known.aich_hash,
         names: if merged.len() > 1 { merged } else { Vec::new() },

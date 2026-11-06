@@ -11,4 +11,5 @@ util/
 crypto/
 config/
 persist/
+search/
 security/

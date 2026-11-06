@@ -12,17 +12,7 @@ use njmule_engine::search::result_names::{self, MAX_NAMES};
 const HASH: [u8; 16] = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF];
 
 fn result(name: &str, sources: u32, complete: Option<u32>) -> SearchResult {
-    SearchResult {
-        hash: HASH,
-        name: name.to_owned(),
-        size: 1000,
-        sources,
-        complete_sources: complete,
-        file_type: None,
-        spam_rating: 0,
-        aich_hash: None,
-        names: Vec::new(),
-    }
+    SearchResult::new(HASH, name, 1000, sources, complete, None)
 }
 
 fn name(name: &str, sources: u32, complete: Option<u32>) -> Name {

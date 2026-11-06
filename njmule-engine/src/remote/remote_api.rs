@@ -173,6 +173,7 @@ async fn start_search(State(engine): State<Engine>, Json(body): Json<Value>) -> 
         .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a search scope: {asked}")))?;
     let started = engine.start_search(query.trim().to_owned(), scope).await.map_err(|e| match e {
         StartError::Syntax(error) => ApiError::new(StatusCode::BAD_REQUEST, error.to_string()),
+        StartError::NotForKad(reason) => ApiError::new(StatusCode::BAD_REQUEST, reason),
         StartError::Unavailable(reason) => ApiError::new(StatusCode::CONFLICT, reason),
     })?;
     Ok((StatusCode::CREATED, Json(json!({"id": started}))).into_response())

@@ -14,5 +14,8 @@ pub mod import_options;
 pub mod import_report;
 pub mod nj_mule_info;
 pub mod peer_info;
+pub mod saved_search;
+pub mod search_request;
 pub mod search_result;
 pub mod server_info;
+pub mod spam_marks;

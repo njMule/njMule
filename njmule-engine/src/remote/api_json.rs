@@ -10,7 +10,7 @@ use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
-use crate::api::search_result::SearchResult;
+use crate::api::search_result::{Media, SearchResult};
 use crate::api::server_info::ServerInfo;
 use crate::config::preferences::Preferences;
 use crate::files::file_types;
@@ -197,7 +197,7 @@ fn kind(name: &str) -> &'static str {
 
 /// A file a search found.
 pub fn search_result(result: &SearchResult) -> Value {
-    json!({
+    let mut out = json!({
         "hash": hash(&result.hash),
         "name": result.name,
         "size": result.size,
@@ -213,7 +213,24 @@ pub fn search_result(result: &SearchResult) -> Value {
             .iter()
             .map(|name| json!({"name": name.name, "sources": name.sources, "completeSources": name.complete_sources}))
             .collect::<Vec<_>>(),
-    })
+    });
+    let media = &result.media;
+    if *media != Media::default()
+        && let Some(fields) = out.as_object_mut()
+    {
+        fields.insert(
+            "media".to_owned(),
+            json!({
+                "artist": media.artist,
+                "album": media.album,
+                "title": media.title,
+                "length": media.length,
+                "bitrate": media.bitrate,
+                "codec": media.codec,
+            }),
+        );
+    }
+    out
 }
 
 /// A shared file: what it is, where it lies and how much it was asked for.
