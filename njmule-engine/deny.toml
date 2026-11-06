@@ -4,6 +4,18 @@
 # cargo deny check: the crates the engine takes must be GPL-3.0-compatible, free of known
 # advisories and from crates.io.
 
+# The crates of the platforms the engine is built for: those of other targets (wasm32, Android) never ship.
+[graph]
+targets = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-unknown-linux-musl",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
+
 [licenses]
 allow = [
     "Apache-2.0",

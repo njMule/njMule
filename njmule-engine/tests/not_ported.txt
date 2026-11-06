@@ -39,6 +39,8 @@ PacketReaderWriterTest.shouldRefuseToPatchAU8PastWhatWasWritten
 RsaTest.shouldEncodeLargerKeysAsTheJdkDoes
 RsaTest.shouldMakeSignaturesTheJdkVerifiesOnLargerKeys
 RsaTest.shouldVerifySignaturesOfTheJdkOnLargerKeys
+# Rust cancels a fetch by dropping its future: there is no interrupt flag to keep.
+WebListsTest.shouldFetchNothingForAnInterruptedCaller
 # Whole classes of Java helpers that Rust's slices and integer methods hold.
 BytesTest
 LittleEndianTest

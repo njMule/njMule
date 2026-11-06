@@ -4,6 +4,7 @@
 //! Connections to servers and clients, along the routes of the preferences.
 
 pub mod country_table;
+pub mod http_route;
 pub mod public_ipv6;
 pub mod relay_keeper;
 pub mod routes;
@@ -13,3 +14,4 @@ pub mod tcp_connection;
 pub mod tcp_connector;
 pub mod traffic;
 pub mod udp_route;
+pub mod web_lists;
