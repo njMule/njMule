@@ -6,6 +6,8 @@
 
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
 
+mod free_port;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::net::Ipv4Addr;
@@ -27,7 +29,7 @@ async fn started(preferences: &str) -> (tempfile::TempDir, Engine, u16) {
     let profile = tempfile::tempdir().unwrap();
     let dirs = AppDirectories::under_root(profile.path()).unwrap();
     fs::create_dir_all(&dirs.config).unwrap();
-    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let port = free_port::free_port();
     fs::write(dirs.config.join("njmule.properties"), format!("net.tcpPort={port}\n{preferences}")).unwrap();
     let engine = Engine::start(dirs).await.unwrap();
     (profile, engine, port)

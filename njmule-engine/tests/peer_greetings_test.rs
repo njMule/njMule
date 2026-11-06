@@ -6,6 +6,8 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
+mod free_port;
+
 use std::fs;
 use std::net::{Ipv4Addr, SocketAddr};
 
@@ -22,8 +24,8 @@ async fn engine() -> (tempfile::TempDir, Engine) {
     let profile = tempfile::tempdir().unwrap();
     let dirs = AppDirectories::under_root(profile.path()).unwrap();
     fs::create_dir_all(&dirs.config).unwrap();
-    // A port the system has free: the preferences take none of 0.
-    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    // The preferences take no port of 0.
+    let port = free_port::free_port();
     fs::write(dirs.config.join("njmule.properties"), format!("net.tcpPort={port}\n")).unwrap();
     (profile, Engine::start(dirs).await.unwrap())
 }
