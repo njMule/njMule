@@ -40,24 +40,7 @@ pub const MAX_RESULTS: usize = 2_000;
 /// Requests for more results of one search, as servers allow.
 pub const MAX_MORE_REQUESTS: u32 = 5;
 
-/// Where a search looks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Scope {
-    Server,
-    Global,
-    Kad,
-}
-
-impl Scope {
-    pub fn parse(text: &str) -> Option<Self> {
-        match text.trim().to_lowercase().as_str() {
-            "server" => Some(Self::Server),
-            "global" => Some(Self::Global),
-            "kad" => Some(Self::Kad),
-            _ => None,
-        }
-    }
-}
+pub use crate::api::search_request::Scope;
 
 /// Why a search cannot start.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -363,15 +346,16 @@ impl SearchManager {
                 continue;
             };
             let reported = SearchResult {
-                hash: file.hash,
-                name: name.to_owned(),
-                size,
-                sources: file.sources(),
-                complete_sources: Some(file.complete_sources()),
-                file_type: file.file_type().map(str::to_owned),
-                spam_rating: 0,
+                media: file.media(),
                 aich_hash: file.aich_hash(),
-                names: Vec::new(),
+                ..SearchResult::new(
+                    file.hash,
+                    name,
+                    size,
+                    file.sources(),
+                    Some(file.complete_sources()),
+                    file.file_type(),
+                )
             };
             let shown = as_shown(reported);
             if !search_result::is_downloadable(&shown.name, shown.size) {
