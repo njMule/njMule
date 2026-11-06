@@ -22,6 +22,7 @@ use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
+use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
 use crate::download::download_manager::{self, Action, DownloadEvent, DownloadManager, ServerLink};
@@ -31,6 +32,7 @@ use crate::engine::{ServerContext, Shared};
 use crate::files::hash::file_hasher::FileHashes;
 use crate::files::part_file_storage::DiskDone;
 use crate::files::shared_files::{self, Found, SharedFile, SharedFiles};
+use crate::net::relay_keeper::{Level, RelayKeeper};
 use crate::net::tcp_connection::{FrameReader, FrameWriter};
 use crate::net::tcp_connector;
 use crate::peer::peer_greetings;
@@ -153,6 +155,8 @@ pub struct Network {
     pinging: Option<JoinHandle<()>>,
     saving: Option<JoinHandle<()>>,
     udp: Option<ServerUdp>,
+    // Keeps the server socket on the UDP relay of a SOCKS5 proxy, when the preferences have one.
+    server_relay: Option<Arc<RelayKeeper>>,
     // The UDP keys of the servers asked obfuscated, by address and port, for their answers.
     server_udp_keys: Arc<Mutex<HashMap<(u32, u16), u32>>>,
     ticks: mpsc::UnboundedSender<Tick>,
@@ -195,6 +199,29 @@ pub fn start(
     let (datagrams_in, datagrams) = mpsc::unbounded_channel();
     let udp = udp.map(|socket| ServerUdp::start(socket, datagrams_in));
     let server_udp_keys: Arc<Mutex<HashMap<(u32, u16), u32>>> = Arc::default();
+    // Put on the route of the proxy before anything is sent through it, then kept there as the proxy changes.
+    let local = match shared.routes.binding() {
+        Binding::Bound(address) => Some(address),
+        Binding::Any | Binding::Missing(_) => None,
+    };
+    let server_relay =
+        udp.as_ref().map(|udp| {
+            Arc::new(RelayKeeper::start("Server UDP", udp.router(), shared.routes.proxy(), local, |level, text| {
+                match level {
+                    Level::Info => tracing::info!("{text}"),
+                    Level::Warning => tracing::warn!("{text}"),
+                }
+            }))
+        });
+    let following = server_relay.clone().map(|relay| {
+        let mut changes = shared.preferences.subscribe();
+        tokio::spawn(async move {
+            while changes.changed().await.is_ok() {
+                let proxy = changes.borrow_and_update().proxy.clone();
+                relay.follow(proxy);
+            }
+        })
+    });
     if let Some(udp) = &udp {
         let keys = Arc::clone(&server_udp_keys);
         udp.decode_with(move |from| key_of(&keys, from));
@@ -246,6 +273,7 @@ pub fn start(
         pinging: None,
         saving: None,
         udp,
+        server_relay,
         server_udp_keys,
         ticks: ticks_in,
         random: StdRng::from_rng(&mut rand::rng()),
@@ -269,6 +297,9 @@ pub fn start(
     let queues = Queues { commands, outcomes, ticks, datagrams, links, peers, disk, sent };
     Ok(tokio::spawn(async move {
         network.run(queues).await;
+        if let Some(following) = following {
+            following.abort();
+        }
         if let Some(accepting) = accepting {
             accepting.abort();
         }
@@ -1058,6 +1089,9 @@ impl Network {
             saving.abort();
         }
         self.save_servers();
+        if let Some(relay) = &self.server_relay {
+            relay.close();
+        }
         // The servers' spam shares change with every UDP answer.
         let spam_file = self.shared.dirs.config.join(spam_filter::FILE_NAME);
         if let Err(e) = self.spam.save(&spam_file) {

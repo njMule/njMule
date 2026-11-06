@@ -83,6 +83,12 @@ impl ServerUdp {
         *self.shared.route.lock().unwrap_or_else(PoisonError::into_inner) = route;
     }
 
+    /// What puts the socket on a route, for a keeper of the route that outlives a call.
+    pub fn router(&self) -> impl Fn(UdpRoute) + Send + Sync + 'static {
+        let shared = Arc::clone(&self.shared);
+        move |route| *shared.route.lock().unwrap_or_else(PoisonError::into_inner) = route
+    }
+
     /// Datagrams from now on are decoded with the UDP key `keys` gives for their sender (0: none).
     pub fn decode_with(&self, keys: impl Fn(SocketAddr) -> u32 + Send + Sync + 'static) {
         *self.shared.keys.lock().unwrap_or_else(PoisonError::into_inner) = Box::new(keys);
