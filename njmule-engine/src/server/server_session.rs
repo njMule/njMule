@@ -19,6 +19,7 @@ use tokio::task::JoinHandle;
 
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
+use crate::net::routes::Routes;
 use crate::net::tcp_connector;
 use crate::persist::format::server_met::{self, Server};
 use crate::protocol::ed2k::server_datagrams;
@@ -79,6 +80,7 @@ pub enum Notice {
 pub struct Context<'a> {
     pub servers: &'a mut ServerList,
     pub preferences: &'a Preferences,
+    pub routes: &'a Routes,
     pub user_hash: [u8; 16],
     pub listen_port: u16,
     pub keep_connected: bool,
@@ -374,9 +376,10 @@ impl ServerSession {
         ctx.notices.push(Notice::Connecting(attempt.server.clone()));
         let outcomes = self.outcomes.clone();
         let (number, obfuscated) = (attempt.number, attempt.obfuscated);
+        let routes = ctx.routes.clone();
         attempt.work = Some(tokio::spawn(async move {
             let mut random = StdRng::from_rng(&mut rand::rng());
-            match tcp_connector::connect_to_server(address, obfuscated, LOGIN_TIMEOUT, &mut random).await {
+            match tcp_connector::connect_to_server(address, obfuscated, LOGIN_TIMEOUT, &routes, &mut random).await {
                 Ok(connection) => run(number, connection, outcomes).await,
                 Err(e) => {
                     let _ = outcomes.send(Outcome::Failed { attempt: number, reason: e.to_string() });

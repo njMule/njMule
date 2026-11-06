@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use njmule_engine::config::obfuscation_mode::ObfuscationMode;
 use njmule_engine::config::preferences::Preferences;
+use njmule_engine::net::routes::Routes;
 use njmule_engine::net::tcp_connection::{FrameReader, FrameWriter, read_packet, write_packet};
 use njmule_engine::persist::format::server_met::Server;
 use njmule_engine::protocol::crypt::stream_obfuscation;
@@ -67,6 +68,7 @@ impl Harness {
         let mut ctx = Context {
             servers: &mut self.servers,
             preferences: &self.preferences,
+            routes: &Routes::direct(),
             user_hash: USER_HASH,
             listen_port: 4662,
             keep_connected: false,

@@ -443,6 +443,7 @@ impl Network {
         let mut ctx = Context {
             servers: &mut self.servers,
             preferences: &preferences,
+            routes: &self.shared.routes,
             user_hash: self.shared.user_hash,
             listen_port: self.shared.listen_port,
             keep_connected: true,
@@ -673,12 +674,14 @@ impl Network {
             match action {
                 Action::Connect { address, obfuscate_for } => {
                     let events = self.peer_events.clone();
+                    let routes = self.shared.routes.clone();
                     tokio::spawn(async move {
                         let mut random = StdRng::from_rng(&mut rand::rng());
                         let result = tcp_connector::connect_to_client(
                             address,
                             obfuscate_for,
                             download_session::HANDSHAKE_TIMEOUT,
+                            &routes,
                             &mut random,
                         )
                         .await;
@@ -917,9 +920,17 @@ impl Network {
         self.calling.insert(address);
         let ours = self.shared.our_hello();
         let ticks = self.ticks.clone();
+        let routes = self.shared.routes.clone();
         tokio::spawn(async move {
             let mut random = StdRng::from_rng(&mut rand::rng());
-            match tcp_connector::connect_to_client(address, obfuscate, peer_greetings::HELLO_TIMEOUT, &mut random).await
+            match tcp_connector::connect_to_client(
+                address,
+                obfuscate,
+                peer_greetings::HELLO_TIMEOUT,
+                &routes,
+                &mut random,
+            )
+            .await
             {
                 Ok(connection) => {
                     if let Err(e) = peer_greetings::called_back(connection, ours).await {
