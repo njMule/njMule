@@ -12,6 +12,7 @@ use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
 use crate::api::search_result::{Media, SearchResult};
 use crate::api::server_info::ServerInfo;
+use crate::config::bind_interface::Candidate;
 use crate::config::preferences::Preferences;
 use crate::files::file_types;
 use crate::files::shared_files::SharedFile;
@@ -62,6 +63,15 @@ pub fn update() -> Value {
 }
 
 /// No schedule yet: no rules, none active.
+/// A network interface the connections may be bound to.
+pub fn network_interface(candidate: &Candidate) -> Value {
+    json!({
+        "name": candidate.name,
+        "displayName": candidate.display_name,
+        "addresses": candidate.addresses.iter().map(ToString::to_string).collect::<Vec<_>>(),
+    })
+}
+
 pub fn schedule() -> Value {
     json!({"rules": [], "active": null})
 }

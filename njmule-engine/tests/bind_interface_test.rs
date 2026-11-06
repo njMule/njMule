@@ -83,3 +83,30 @@ fn should_offer_the_interfaces_with_an_address_but_the_loopback() {
 
     assert_eq!(choices, ["eth0", "wg0", "eth1"]);
 }
+
+// Beyond the Java engine's examples: the interfaces of the computer the tests run on, which always has a loopback.
+
+#[test]
+fn should_list_the_interfaces_of_this_computer_with_the_loopback_among_them() {
+    let found = bind_interface::interfaces();
+
+    assert!(
+        found.iter().any(|candidate| candidate.loopback && candidate.addresses.contains(&Ipv4Addr::LOCALHOST)),
+        "{found:?}"
+    );
+    assert!(bind_interface::choices(&found).iter().all(|candidate| !candidate.loopback));
+}
+
+#[test]
+fn should_bind_now_to_an_address_this_computer_has_and_to_nothing_it_has_not() {
+    let bindings = [
+        bind_interface::resolve_now(" "),
+        bind_interface::resolve_now("127.0.0.1"),
+        bind_interface::resolve_now("no such interface"),
+    ];
+
+    assert_eq!(
+        bindings,
+        [Binding::Any, Binding::Bound(Ipv4Addr::LOCALHOST), Binding::Missing("no such interface".to_owned())]
+    );
+}

@@ -5,9 +5,12 @@
 //! its name or display name, or an IPv4 address of this computer. A chosen interface that is not there leaves njMule
 //! offline rather than reaching the network another way.
 //!
-//! The interfaces of the computer are listed with the engine's binding, which comes with the network.
+//! Interfaces go by the names the system gives them: on Windows the name shown in the network settings ("Wi-Fi"), not
+//! the names the Java engine makes up (`wlan1`), so a choice made there by such a name is to be made again.
 
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
+
+use if_addrs::IfOperStatus;
 
 use crate::util::white_space::strip;
 
@@ -29,6 +32,48 @@ pub enum Binding {
     Bound(Ipv4Addr),
     /// The chosen interface or address is not there now.
     Missing(String),
+}
+
+/// The interfaces that are up now, with their IPv4 addresses, in the order the system lists them; none when they cannot
+/// be listed.
+pub fn interfaces() -> Vec<Candidate> {
+    let Ok(found) = if_addrs::get_if_addrs() else {
+        return Vec::new();
+    };
+    let mut candidates: Vec<Candidate> = Vec::new();
+    // One entry for each address: an interface not known to be down, with its IPv4 addresses gathered.
+    for entry in found.into_iter().filter(|entry| !is_down(&entry.oper_status)) {
+        let position = match candidates.iter().position(|candidate| candidate.name == entry.name) {
+            Some(position) => position,
+            None => {
+                candidates.push(Candidate {
+                    display_name: entry.name.clone(),
+                    name: entry.name.clone(),
+                    loopback: false,
+                    addresses: Vec::new(),
+                });
+                candidates.len().saturating_sub(1)
+            }
+        };
+        if let (Some(candidate), IpAddr::V4(address)) = (candidates.get_mut(position), entry.ip()) {
+            candidate.loopback |= address.is_loopback();
+            candidate.addresses.push(address);
+        }
+    }
+    candidates
+}
+
+// A tunnel that tells no state, as many VPNs do on Linux, counts as up.
+fn is_down(status: &IfOperStatus) -> bool {
+    matches!(status, IfOperStatus::Down | IfOperStatus::NotPresent | IfOperStatus::LowerLayerDown)
+}
+
+/// What `choice` binds to with the interfaces up now; a blank choice lists none.
+pub fn resolve_now(choice: &str) -> Binding {
+    if strip(choice).is_empty() {
+        return Binding::Any;
+    }
+    resolve(choice, &interfaces())
 }
 
 /// The interfaces worth choosing among `available`: not the loopback, with an IPv4 address.

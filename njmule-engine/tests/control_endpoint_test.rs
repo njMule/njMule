@@ -144,7 +144,7 @@ async fn should_let_the_shells_pages_call_across_origins() {
 async fn should_answer_the_calls_the_test_kit_makes_first() {
     let running = running().await;
 
-    for call in ["GET /api/v1/preferences", "GET /api/v1/schedule", "GET /api/v1/update"] {
+    for call in ["GET /api/v1/preferences", "GET /api/v1/schedule", "GET /api/v1/update", "GET /api/v1/interfaces"] {
         let (status, answer) = running.call(call, &[running.bearer()]).await;
 
         assert_eq!(status, 200, "{call}: {answer}");

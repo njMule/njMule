@@ -22,7 +22,7 @@ use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
 use crate::api::server_info::ServerInfo;
 use crate::config::app_directories::AppDirectories;
-use crate::config::bind_interface::Binding;
+use crate::config::bind_interface::{self, Binding};
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
 use crate::config::shared_files_visibility::SharedFilesVisibility;
@@ -100,29 +100,56 @@ impl Engine {
         dirs.create_all()?;
         let preferences = preferences_codec::load(&dirs.config.join(preferences_codec::FILE_NAME))?;
         let user_hash = user_hash_store::load_or_create(&dirs.config, &mut rand::rng())?;
-        let listener = match TcpListener::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, preferences.tcp_port))).await {
-            Ok(listener) => Some(listener),
-            Err(e) => {
-                // Other clients cannot reach us: we get a low id.
-                tracing::warn!("Cannot listen on TCP port {}: {e}", preferences.tcp_port);
+        // Sockets go on the network interface of the preferences; while it is gone, none opens and nothing connects.
+        let local = match bind_interface::resolve_now(&preferences.bind_interface) {
+            Binding::Any => Some(None),
+            Binding::Bound(address) => {
+                tracing::info!("Connections go through {} ({address})", preferences.bind_interface);
+                Some(Some(address))
+            }
+            Binding::Missing(choice) => {
+                tracing::warn!(
+                    "The network interface {choice} is not available: njMule stays offline until it is back"
+                );
                 None
             }
         };
-        // The servers' UDP answers come to a port of their own, not the one Kad and clients use.
-        let udp = match ServerUdp::bind_beside(preferences.udp_port, None).await {
-            Ok(socket) => Some(socket),
-            Err(e) => {
-                tracing::warn!("Cannot open the server UDP socket: {e}");
-                None
+        let listener = match local {
+            Some(local) => {
+                let address = SocketAddr::from((local.unwrap_or(Ipv4Addr::UNSPECIFIED), preferences.tcp_port));
+                match TcpListener::bind(address).await {
+                    Ok(listener) => Some(listener),
+                    Err(e) => {
+                        // Other clients cannot reach us: we get a low id.
+                        tracing::warn!("Cannot listen on TCP port {}: {e}", preferences.tcp_port);
+                        None
+                    }
+                }
             }
+            None => None,
+        };
+        // The servers' UDP answers come to a port of their own, not the one Kad and clients use.
+        let udp = match local {
+            Some(local) => match ServerUdp::bind_beside(preferences.udp_port, local).await {
+                Ok(socket) => Some(socket),
+                Err(e) => {
+                    tracing::warn!("Cannot open the server UDP socket: {e}");
+                    None
+                }
+            },
+            None => None,
         };
         let listen_port = listener.as_ref().and_then(|l| l.local_addr().ok()).map_or(0, |address| address.port());
         let (events, _) = broadcast::channel(EVENT_BACKLOG);
         let (commands, commands_out) = mpsc::unbounded_channel();
         let preferences = watch::Sender::new(preferences);
         let proxy = preferences.subscribe();
-        // Any interface until the computer's are listed, which comes with the network's binding.
-        let routes = Routes::new(move || proxy.borrow().proxy.clone(), || Binding::Any);
+        let interface = preferences.subscribe();
+        // Read at each connection: the interface may go, as a VPN that drops, or come back with another address.
+        let routes = Routes::new(
+            move || proxy.borrow().proxy.clone(),
+            move || bind_interface::resolve_now(&interface.borrow().bind_interface),
+        );
         let shared = Arc::new(Shared {
             dirs,
             user_hash,
