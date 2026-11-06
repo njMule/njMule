@@ -210,9 +210,16 @@ impl Engine {
         self.shared.events.subscribe()
     }
 
-    /// Says hello to a client and answers what it said.
+    /// Says hello to a client and answers what it said, and whether it proved its user hash.
     pub async fn hello(&self, address: SocketAddr) -> io::Result<PeerInfo> {
-        peer_greetings::hello(address, self.shared.our_hello()).await
+        // Past the hello and the identification, the engine is not answering.
+        let wait = peer_greetings::HELLO_TIMEOUT.saturating_add(peer_greetings::IDENTIFY_WAIT).saturating_mul(2);
+        let asked = self.ask(|answer| Command::Hello(address, answer));
+        match tokio::time::timeout(wait, asked).await {
+            Ok(Some(answer)) => answer,
+            Ok(None) => Err(io::Error::other("the engine is stopping")),
+            Err(_) => Err(io::Error::new(io::ErrorKind::TimedOut, "no answer in time")),
+        }
     }
 
     /// Adds the servers not known yet; answers how many.

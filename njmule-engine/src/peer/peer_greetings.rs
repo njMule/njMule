@@ -4,15 +4,13 @@
 //! The greeting that opens every connection between clients: HELLO, answered with HELLOANSWER. Until it is over a
 //! peer may send only small frames, so an unknown connection cannot make us allocate much.
 
-use std::io::{self, ErrorKind};
+use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use tokio::net::TcpStream;
 use tokio::time::timeout;
 
 use crate::api::peer_info::{Identification, PeerInfo};
-use crate::net::tcp_connection::{read_packet, write_packet};
 use crate::net::tcp_connector;
 use crate::peer::peer_software;
 use crate::protocol::ed2k::hello::Hello;
@@ -24,6 +22,8 @@ use crate::protocol::packet::{Packet, protocol};
 pub const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long a connection may stay silent.
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(40);
+/// How long a client greeted through the API has, after the hellos, to prove its user hash.
+pub const IDENTIFY_WAIT: Duration = Duration::from_secs(10);
 
 // The bits of the first misc options a client sets when it can prove its user hash.
 const SECURE_IDENT_SHIFT: u32 = 16;
@@ -49,22 +49,7 @@ pub async fn called_back(connection: tcp_connector::Connection, ours: Hello) -> 
     }
 }
 
-/// Says hello to the client at `address` and answers what it said of itself.
-pub async fn hello(address: SocketAddr, ours: Hello) -> io::Result<PeerInfo> {
-    let mut stream = within(HELLO_TIMEOUT, TcpStream::connect(address)).await?;
-    write_packet(&mut stream, &encode(&ours.to_peer_at(&address.ip()), false)?).await?;
-    loop {
-        let packet = within(HELLO_TIMEOUT, read_packet(&mut stream, &frame_limits::client_handshake))
-            .await?
-            .ok_or_else(|| io::Error::new(ErrorKind::UnexpectedEof, "closed before the hello"))?;
-        if is(&packet, client::HELLOANSWER) {
-            let peer = Hello::decode(&packet).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
-            return Ok(info(address, &peer, false));
-        }
-    }
-}
-
-/// What `peer` said of itself at `address`. Proving user hashes is not done yet: a peer that offers to is pending.
+/// What `peer` said of itself at `address`; a peer that offers to prove its user hash is pending.
 pub fn info(address: SocketAddr, peer: &Hello, obfuscated: bool) -> PeerInfo {
     let proves = peer.misc_options1() >> SECURE_IDENT_SHIFT & 0xF != 0;
     PeerInfo {
@@ -83,8 +68,4 @@ fn is(packet: &Packet, opcode: u8) -> bool {
 
 fn encode(hello: &Hello, answer: bool) -> io::Result<Packet> {
     hello.encode(answer).map_err(io::Error::other)
-}
-
-async fn within<T>(limit: Duration, work: impl Future<Output = io::Result<T>>) -> io::Result<T> {
-    timeout(limit, work).await.map_err(|_| io::Error::new(ErrorKind::TimedOut, "no answer in time"))?
 }

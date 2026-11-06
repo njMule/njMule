@@ -20,6 +20,7 @@ use tokio::task::JoinHandle;
 use crate::api::download_info::{DownloadInfo, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::peer_info::{Identification as PeerIdentification, PeerInfo};
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::config::bind_interface::Binding;
@@ -34,16 +35,17 @@ use crate::files::hash::file_hasher::FileHashes;
 use crate::files::part_file_storage::DiskDone;
 use crate::files::shared_files::{self, Found, SharedFile, SharedFiles};
 use crate::net::relay_keeper::{Level, RelayKeeper};
-use crate::net::tcp_connection::{FrameReader, FrameWriter};
 use crate::net::tcp_connector;
+use crate::peer::identities::{self, Identities, Session, Trust};
+use crate::peer::identity_handshake::{Identity, Outcome as Identification};
 use crate::peer::peer_greetings;
-use crate::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId};
+use crate::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId, Side};
 use crate::persist::format::server_met::Server;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams;
 use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint};
-use crate::protocol::packet::opcodes::{client, extended, server_udp};
-use crate::protocol::packet::{Packet, protocol};
+use crate::protocol::packet::opcodes::{client, server_udp};
+use crate::protocol::packet::{Packet, frame_limits, protocol};
 use crate::protocol::tag::server_tag;
 use crate::search::search_manager::{Effect as SearchEffect, Scope, SearchManager, SpamRater, StartError, Timer};
 use crate::search::spam_filter::{self, SpamFilter};
@@ -56,6 +58,7 @@ use crate::server::server_pinger::{self, Effect, ServerPinger};
 use crate::server::server_route::ServerRoute;
 use crate::server::server_session::{Context, Notice, Outcome, ServerSession};
 use crate::server::server_udp::ServerUdp;
+use crate::upload::credits::{self, Credits};
 use crate::upload::upload_manager::{Sent, UploadManager};
 
 /// How long changes of the list wait to be saved together.
@@ -88,6 +91,9 @@ pub enum Command {
     CancelDownload([u8; 16], oneshot::Sender<bool>),
     ClearCompleted(oneshot::Sender<usize>),
     ClearCompletedOne([u8; 16], oneshot::Sender<bool>),
+    /// Says hello to a client and runs the identification: told once its outcome is known, the connection closes or
+    /// the wait is over.
+    Hello(SocketAddr, oneshot::Sender<io::Result<PeerInfo>>),
     Stop(oneshot::Sender<()>),
 }
 
@@ -116,6 +122,8 @@ enum Tick {
     Ping,
     Save,
     CallbackOver(SocketAddr),
+    // The wait for the identification of a client we said hello to is over.
+    ProbeOver(LinkId),
     Second,
     Search(Timer),
     Hashed(Found, Result<FileHashes, String>),
@@ -127,6 +135,8 @@ enum Tick {
 /// How often the network interface of the preferences is looked at: it may go, as a VPN that drops, come back, or
 /// come back with another address.
 const BIND_CHECK_SECONDS: u32 = 10;
+/// How often the credits are saved, besides on stopping.
+const CREDITS_SAVE_SECONDS: u32 = 13 * 60;
 
 // What the connections to other clients bring.
 enum PeerEvent {
@@ -134,6 +144,8 @@ enum PeerEvent {
     Accepted(Box<tcp_connector::Connection>, Permit),
     Connected(SocketAddr, Box<io::Result<tcp_connector::Connection>>),
     Resolved([u8; 16], Vec<SocketAddr>),
+    // The connection of a hello asked through the API, and who waits for the answer.
+    Probed(Box<io::Result<tcp_connector::Connection>>, oneshot::Sender<io::Result<PeerInfo>>),
 }
 
 /// How often the offer of our files, the downloads and the other servers are looked at.
@@ -143,9 +155,19 @@ const SECOND: Duration = Duration::from_secs(1);
 struct Peer {
     handle: LinkHandle,
     hello: Option<Hello>,
+    // The secure identification of the client, once it greeted us.
+    identity: Option<Session>,
     incoming: bool,
     // Held while the connection lives: the guard counts it.
     _permit: Option<Permit>,
+}
+
+// A hello of ours asked through the API: the client's answer, then the identification.
+struct Probe {
+    handle: LinkHandle,
+    hello: Option<Hello>,
+    identity: Option<Session>,
+    answer: Option<oneshot::Sender<io::Result<PeerInfo>>>,
 }
 
 // What the network side gets on its queues.
@@ -195,7 +217,12 @@ pub struct Network {
     uploads: UploadManager,
     global: GlobalSources,
     peers: HashMap<LinkId, Peer>,
+    probes: HashMap<LinkId, Probe>,
     next_link: LinkId,
+    // Our key, which clients ask us to prove we own, and the keys they proved to own, kept with their credits.
+    identities: Identities,
+    credits: Credits,
+    since_credits_save: u32,
     link_events: mpsc::UnboundedSender<LinkEvent>,
     peer_events: mpsc::UnboundedSender<PeerEvent>,
 }
@@ -268,6 +295,8 @@ pub fn start(
         tracing::warn!("Cannot read {}: {e}", spam_file.display());
         SpamFilter::default()
     });
+    let identities = Identities::new(Identity::of(identities::load_or_create_key(&dirs.config)?));
+    let credits = Credits::load(&dirs.config, credits::system_clock());
     // The guard's clock.
     let started = Instant::now();
     let mut network = Network {
@@ -307,7 +336,11 @@ pub fn start(
         uploads: UploadManager::new(sent_in),
         global: GlobalSources::default(),
         peers: HashMap::new(),
+        probes: HashMap::new(),
         next_link: 1,
+        identities,
+        credits,
+        since_credits_save: 0,
         link_events: links_in,
         peer_events: peers_in,
     };
@@ -467,6 +500,22 @@ impl Network {
                 }
                 let _ = answer.send(cleared);
             }
+            Command::Hello(address, answer) => {
+                let events = self.peer_events.clone();
+                let routes = self.shared.routes.clone();
+                tokio::spawn(async move {
+                    let mut random = StdRng::from_rng(&mut rand::rng());
+                    let connection = tcp_connector::connect_to_client(
+                        address,
+                        None,
+                        peer_greetings::HELLO_TIMEOUT,
+                        &routes,
+                        &mut random,
+                    )
+                    .await;
+                    let _ = events.send(PeerEvent::Probed(Box::new(connection), answer));
+                });
+            }
             Command::Stop(_) => {}
         }
     }
@@ -608,6 +657,7 @@ impl Network {
             Tick::CallbackOver(address) => {
                 self.calling.remove(&address);
             }
+            Tick::ProbeOver(link) => self.settle_probe(link),
             Tick::Second => {
                 self.publish_files();
                 self.second();
@@ -615,6 +665,11 @@ impl Network {
                 if self.since_bind_check >= BIND_CHECK_SECONDS {
                     self.since_bind_check = 0;
                     self.check_binding();
+                }
+                self.since_credits_save = self.since_credits_save.saturating_add(1);
+                if self.since_credits_save >= CREDITS_SAVE_SECONDS {
+                    self.since_credits_save = 0;
+                    self.credits.save();
                 }
             }
             Tick::ProxyChanged(proxy) => {
@@ -957,44 +1012,146 @@ impl Network {
         let ours = self.shared.our_hello();
         match event {
             PeerEvent::Accepted(connection, permit) => {
-                let tcp_connector::Connection { reader, writer, remote, .. } = *connection;
-                self.new_link(remote, reader, writer, Some(permit));
+                self.new_link(*connection, Some(permit));
             }
             PeerEvent::Connected(address, result) => match *result {
                 Ok(connection) => {
-                    let tcp_connector::Connection { reader, writer, remote, .. } = connection;
-                    let handle = self.new_link(remote, reader, writer, None);
+                    let handle = self.new_link(connection, None);
                     self.downloads.connected(address, Ok(handle), &ours);
                 }
                 Err(e) => self.downloads.connected(address, Err(e.to_string()), &ours),
             },
             PeerEvent::Resolved(file, addresses) => self.downloads.resolved(&file, &addresses, &self.settings()),
+            PeerEvent::Probed(connection, answer) => match *connection {
+                Ok(connection) => self.probe(connection, answer),
+                Err(e) => {
+                    let _ = answer.send(Err(e));
+                }
+            },
         }
         self.after_downloads();
     }
 
-    fn new_link<R, W>(
-        &mut self,
-        remote: SocketAddr,
-        reader: FrameReader<R>,
-        writer: FrameWriter<W>,
-        permit: Option<Permit>,
-    ) -> LinkHandle
-    where
-        R: tokio::io::AsyncRead + Unpin + Send + 'static,
-        W: tokio::io::AsyncWrite + Unpin + Send + 'static,
-    {
+    // Our hello goes first; the outcome is told at the latest once the client had the time to answer and identify.
+    fn probe(&mut self, connection: tcp_connector::Connection, answer: oneshot::Sender<io::Result<PeerInfo>>) {
         let id = self.next_link;
         self.next_link = self.next_link.saturating_add(1);
-        let handle = peer_link::start(id, remote, reader, writer, self.link_events.clone());
+        let connection = connection.into_tcp_connection(frame_limits::client_handshake);
+        let handle = peer_link::start(id, connection, self.link_events.clone());
+        handle.set_timeout(peer_greetings::HELLO_TIMEOUT);
+        match self.shared.our_hello().to_peer_at(&handle.remote().ip()).encode(false) {
+            Ok(hello) => {
+                handle.send(hello);
+            }
+            Err(e) => {
+                let _ = answer.send(Err(io::Error::other(e)));
+                handle.close();
+                return;
+            }
+        }
+        self.probes.insert(id, Probe { handle, hello: None, identity: None, answer: Some(answer) });
+        let ticks = self.ticks.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(peer_greetings::HELLO_TIMEOUT.saturating_add(peer_greetings::IDENTIFY_WAIT)).await;
+            let _ = ticks.send(Tick::ProbeOver(id));
+        });
+    }
+
+    fn probe_event(&mut self, event: LinkEvent) {
+        match event {
+            LinkEvent::Packet(link, packet) => self.probe_packet(link, &packet),
+            LinkEvent::Closed(link, reason) => {
+                let Some(mut probe) = self.probes.remove(&link) else {
+                    return;
+                };
+                if probe.hello.is_some() {
+                    settle(&mut probe);
+                } else if let Some(answer) = probe.answer.take() {
+                    let reason = reason.unwrap_or_else(|| "closed before the hello".to_owned());
+                    let _ = answer.send(Err(io::Error::new(io::ErrorKind::UnexpectedEof, reason)));
+                }
+            }
+        }
+    }
+
+    fn probe_packet(&mut self, link: LinkId, packet: &Packet) {
+        let our_public_address = self.our_public_address();
+        let Some(probe) = self.probes.get_mut(&link) else {
+            return;
+        };
+        let handle = probe.handle.clone();
+        match (&probe.hello, probe.identity.as_mut()) {
+            (None, _) => {
+                if packet.protocol() != protocol::EDONKEY || packet.opcode() != client::HELLOANSWER {
+                    return;
+                }
+                let Ok(hello) = Hello::decode(packet) else {
+                    handle.close();
+                    return;
+                };
+                let pinned = pinned_key(&self.credits, &hello);
+                let (session, send) = self.identities.start(
+                    &hello,
+                    handle.remote().ip(),
+                    handle.local(),
+                    pinned,
+                    our_public_address,
+                    &mut self.random,
+                );
+                send_all(&handle, send);
+                probe.hello = Some(hello);
+                probe.identity = Some(session);
+                handle.set_timeout(peer_greetings::IDLE_TIMEOUT);
+            }
+            (Some(_), Some(session)) => {
+                if !identification(session, &mut self.credits, &handle, packet)
+                    && packet.protocol() == protocol::EDONKEY
+                    && packet.opcode() == client::HELLO
+                {
+                    match self.shared.our_hello().to_peer_at(&handle.remote().ip()).encode(true) {
+                        Ok(answer) => {
+                            handle.send(answer);
+                        }
+                        Err(e) => tracing::warn!("Cannot answer {}: {e}", handle.remote()),
+                    }
+                }
+            }
+            (Some(_), None) => {}
+        }
+        if probe.identity.as_ref().is_some_and(Session::is_settled) {
+            settle(probe);
+        }
+    }
+
+    fn settle_probe(&mut self, link: LinkId) {
+        if let Some(probe) = self.probes.get_mut(&link) {
+            settle(probe);
+        }
+    }
+
+    // Our public address, which signatures of the secure identification are bound to: a HighID, else the address the
+    // server reports with a LowID.
+    fn our_public_address(&self) -> Option<Ipv4Addr> {
+        Some(self.address_seen_by_server()).filter(|ip| *ip != 0).map(Ipv4Addr::from)
+    }
+
+    fn new_link(&mut self, connection: tcp_connector::Connection, permit: Option<Permit>) -> LinkHandle {
+        let id = self.next_link;
+        self.next_link = self.next_link.saturating_add(1);
+        let connection = connection.into_tcp_connection(frame_limits::client_handshake);
+        let handle = peer_link::start(id, connection, self.link_events.clone());
         let incoming = permit.is_some();
-        self.peers.insert(id, Peer { handle: handle.clone(), hello: None, incoming, _permit: permit });
+        self.peers
+            .insert(id, Peer { handle: handle.clone(), hello: None, identity: None, incoming, _permit: permit });
         handle
     }
 
     fn link_event(&mut self, event: LinkEvent) {
         let ours = self.shared.our_hello();
         match event {
+            LinkEvent::Packet(link, _) | LinkEvent::Closed(link, _) if self.probes.contains_key(&link) => {
+                self.probe_event(event);
+            }
             LinkEvent::Packet(link, packet) => self.peer_packet(link, &packet, &ours),
             LinkEvent::Closed(link, reason) => {
                 self.peers.remove(&link);
@@ -1026,6 +1183,7 @@ impl Network {
             };
             peer.hello = Some(hello.clone());
             if !peer.incoming {
+                self.identify(link);
                 self.downloads.greeted(link, hello, ours);
                 return;
             }
@@ -1035,16 +1193,44 @@ impl Network {
                 }
                 Err(e) => tracing::warn!("Cannot answer {}: {e}", handle.remote()),
             }
+            self.identify(link);
             let server_ip = self.shared.context.lock().map(|context| context.ip).unwrap_or(0);
             self.downloads.adopt(&handle, &hello, server_ip, &self.settings(), ours);
             return;
         };
-        if from_uploader(packet) && self.downloads.has_link(link) {
-            self.downloads.received(link, packet, ours);
+        if let Some(session) = self.peers.get_mut(&link).and_then(|peer| peer.identity.as_mut())
+            && identification(session, &mut self.credits, &handle, packet)
+        {
             return;
         }
-        let files = &self.shared_files;
-        self.uploads.received(&handle, &hello, packet, ours, &|hash: &[u8; 16]| files.get(hash).cloned());
+        match peer_link::side_of(packet) {
+            Side::Download if self.downloads.has_link(link) => {
+                self.downloads.received(link, packet, ours);
+            }
+            Side::Upload => {
+                let files = &self.shared_files;
+                self.uploads.received(&handle, &hello, packet, ours, &|hash: &[u8; 16]| files.get(hash).cloned());
+            }
+            Side::Download | Side::Buddy => {
+                tracing::debug!("Nothing on {} takes opcode {:#04x}", handle.remote(), packet.opcode());
+            }
+        }
+    }
+
+    // The hellos are over: the client is asked to prove its user hash, against the key it proved to own before if any.
+    fn identify(&mut self, link: LinkId) {
+        let our_public_address = self.our_public_address();
+        let Some(peer) = self.peers.get_mut(&link) else {
+            return;
+        };
+        let Some(hello) = &peer.hello else {
+            return;
+        };
+        let (remote, local) = (peer.handle.remote().ip(), peer.handle.local());
+        let pinned = pinned_key(&self.credits, hello);
+        let (session, send) = self.identities.start(hello, remote, local, pinned, our_public_address, &mut self.random);
+        send_all(&peer.handle, send);
+        peer.identity = Some(session);
     }
 
     fn settings(&self) -> download_manager::Settings {
@@ -1211,12 +1397,16 @@ impl Network {
         for peer in self.peers.values() {
             peer.handle.close();
         }
+        for probe in self.probes.values() {
+            probe.handle.close();
+        }
         self.with_session(|session, ctx| session.disconnect(ctx));
         self.stop_pinging();
         if let Some(saving) = self.saving.take() {
             saving.abort();
         }
         self.save_servers();
+        self.credits.save();
         self.close_sockets();
         // The servers' spam shares change with every UDP answer.
         let spam_file = self.shared.dirs.config.join(spam_filter::FILE_NAME);
@@ -1282,44 +1472,6 @@ impl ServerLink for SessionLink<'_> {
 }
 
 // What uploaders send to downloaders; anything else is for the upload side.
-fn from_uploader(packet: &Packet) -> bool {
-    match packet.protocol() {
-        protocol::EDONKEY => matches!(
-            packet.opcode(),
-            client::SENDINGPART
-                | client::FILEREQANSNOFIL
-                | client::FILESTATUS
-                | client::HASHSETANSWER
-                | client::ACCEPTUPLOADREQ
-                | client::OUTOFPARTREQS
-                | client::REQFILENAMEANSWER
-                | client::QUEUERANK
-                | client::ASKSHAREDFILESANSWER
-                | client::ASKSHAREDDIRSANS
-                | client::ASKSHAREDFILESDIRANS
-                | client::ASKSHAREDDENIEDANS
-        ),
-        protocol::EMULE => matches!(
-            packet.opcode(),
-            extended::COMPRESSEDPART
-                | extended::COMPRESSEDPART_I64
-                | extended::SENDINGPART_I64
-                | extended::QUEUERANKING
-                | extended::ANSWERSOURCES
-                | extended::ANSWERSOURCES2
-                | extended::PREVIEWANSWER
-                | extended::MULTIPACKETANSWER
-                | extended::MULTIPACKETANSWER_EXT2
-                | extended::PUBLICIP_ANSWER
-                | extended::AICHANSWER
-                | extended::AICHFILEHASHANS
-                | extended::FILEDESC
-                | extended::HASHSETANSWER2
-        ),
-        _ => false,
-    }
-}
-
 // Takes the connections other clients open; an obfuscated one is not taken yet.
 // Clients come plain, or obfuscated with keys from our user hash; plain ones are refused while obfuscation is required.
 // The guard admits each first, as for any incoming connection.
@@ -1427,4 +1579,57 @@ impl Drop for Network {
             task.abort();
         }
     }
+}
+
+// The key the client's user hash proved to own before, if any.
+fn pinned_key<'a>(credits: &'a Credits, hello: &Hello) -> Option<&'a [u8]> {
+    credits.get(&hello.user_hash).map(|credit| credit.public_key.as_slice()).filter(|key| !key.is_empty())
+}
+
+fn send_all(handle: &LinkHandle, packets: Vec<Packet>) {
+    for packet in packets {
+        handle.send(packet);
+    }
+}
+
+// A packet of the secure identification: answered, and a key proven pinned with the credits. False for another packet.
+fn identification(session: &mut Session, credits: &mut Credits, handle: &LinkHandle, packet: &Packet) -> bool {
+    let handled = match session.received(packet) {
+        Ok(Some(handled)) => handled,
+        Ok(None) => return false,
+        Err(e) => {
+            tracing::debug!("Bad identification packet from {}: {e}", handle.remote());
+            handle.close();
+            return true;
+        }
+    };
+    send_all(handle, handled.send);
+    match handled.outcome {
+        Some(Identification::Identified { user_hash, public_key }) => {
+            tracing::debug!("{} proved it owns the key of its user hash", handle.remote());
+            credits.identified(user_hash, &public_key);
+        }
+        Some(Identification::Failed { .. }) => {
+            tracing::debug!("{} failed to prove it owns the key of its user hash", handle.remote());
+        }
+        None => {}
+    }
+    true
+}
+
+// Tells what the client of a hello of ours said, with how far its identification went; once.
+fn settle(probe: &mut Probe) {
+    let (Some(hello), Some(answer)) = (&probe.hello, probe.answer.take()) else {
+        return;
+    };
+    let mut info = peer_greetings::info(probe.handle.remote(), hello, probe.handle.is_obfuscated());
+    info.identification = match &probe.identity {
+        Some(session) if session.is_supported() => match session.trust() {
+            Trust::Identified => PeerIdentification::Verified,
+            Trust::Failed => PeerIdentification::Failed,
+            Trust::Unsecured | Trust::Needed => PeerIdentification::Pending,
+        },
+        _ => PeerIdentification::NotSupported,
+    };
+    let _ = answer.send(Ok(info));
 }

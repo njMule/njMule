@@ -189,7 +189,7 @@ fn send_block(link: &LinkHandle, path: &PathBuf, block: &Block) -> std::io::Resu
         let packet = (SendingPart { file: block.file, start, end, data: chunk.to_vec() })
             .encode(wide)
             .map_err(std::io::Error::other)?;
-        if !link.send(packet) {
+        if !link.send_data(packet) {
             break;
         }
         start = end;

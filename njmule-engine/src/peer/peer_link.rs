@@ -1,26 +1,90 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! A connection with another client, shared by our download from it and our upload to it. Two tasks move its frames:
-//! one reads and hands each packet to the engine, the other writes what the engine sends. Until the greeting is over a
-//! client may send only small frames, so an unknown connection cannot make us allocate much.
+//! A connection with another client, shared by our download from it and our upload to it, as clients use one
+//! connection for both: each packet goes to the side it belongs to. Until the greeting is over a client may send only
+//! small frames, so an unknown connection cannot make us allocate much.
 
-use std::net::SocketAddr;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::fmt;
+use std::io;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 
-use crate::net::tcp_connection::{FrameReader, FrameWriter};
-use crate::protocol::packet::opcodes::client;
+use crate::net::tcp_connection::{Handler, TcpConnection};
+use crate::protocol::packet::opcodes::{client, extended};
 use crate::protocol::packet::{Packet, frame_limits, packing, protocol};
 
 /// A connection silent this long closes, unless a side asks for longer.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(40);
 
 pub type LinkId = u64;
+
+/// Our download from the client, our upload to it, or the Kad buddy link with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Download,
+    Upload,
+    Buddy,
+}
+
+/// The side a packet from the client is for: what uploaders send goes to our download, what buddies send each other
+/// to the buddy link, anything else to our upload, which answers hellos and chats too.
+pub fn side_of(packet: &Packet) -> Side {
+    let opcode = packet.opcode();
+    match packet.protocol() {
+        protocol::EMULE
+            if matches!(
+                opcode,
+                extended::BUDDYPING | extended::BUDDYPONG | extended::CALLBACK | extended::REASKCALLBACKTCP
+            ) =>
+        {
+            Side::Buddy
+        }
+        protocol::EDONKEY
+            if matches!(
+                opcode,
+                client::SENDINGPART
+                    | client::FILEREQANSNOFIL
+                    | client::FILESTATUS
+                    | client::HASHSETANSWER
+                    | client::ACCEPTUPLOADREQ
+                    | client::OUTOFPARTREQS
+                    | client::REQFILENAMEANSWER
+                    | client::QUEUERANK
+                    | client::ASKSHAREDFILESANSWER
+                    | client::ASKSHAREDDIRSANS
+                    | client::ASKSHAREDFILESDIRANS
+                    | client::ASKSHAREDDENIEDANS
+            ) =>
+        {
+            Side::Download
+        }
+        protocol::EMULE
+            if matches!(
+                opcode,
+                extended::COMPRESSEDPART
+                    | extended::COMPRESSEDPART_I64
+                    | extended::SENDINGPART_I64
+                    | extended::QUEUERANKING
+                    | extended::ANSWERSOURCES
+                    | extended::ANSWERSOURCES2
+                    | extended::PREVIEWANSWER
+                    | extended::MULTIPACKETANSWER
+                    | extended::MULTIPACKETANSWER_EXT2
+                    | extended::PUBLICIP_ANSWER
+                    | extended::AICHANSWER
+                    | extended::AICHFILEHASHANS
+                    | extended::FILEDESC
+                    | extended::HASHSETANSWER2
+            ) =>
+        {
+            Side::Download
+        }
+        _ => Side::Upload,
+    }
+}
 
 /// What a connection tells the engine.
 #[derive(Debug)]
@@ -30,19 +94,17 @@ pub enum LinkEvent {
     Closed(LinkId, Option<String>),
 }
 
-#[derive(Debug)]
-enum Command {
-    Send(Packet),
-    Close,
-}
-
-/// The engine's end of a connection.
-#[derive(Debug, Clone)]
+/// The engine's end of a connection; clones are the same connection.
+#[derive(Clone)]
 pub struct LinkHandle {
     id: LinkId,
-    remote: SocketAddr,
-    commands: mpsc::UnboundedSender<Command>,
-    timeout: Arc<AtomicU64>,
+    connection: TcpConnection,
+}
+
+impl fmt::Debug for LinkHandle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LinkHandle").field("id", &self.id).field("remote", &self.remote()).finish()
+    }
 }
 
 impl LinkHandle {
@@ -51,101 +113,74 @@ impl LinkHandle {
     }
 
     pub fn remote(&self) -> SocketAddr {
-        self.remote
+        self.connection.remote_address()
+    }
+
+    /// Our address on the connection.
+    pub fn local(&self) -> Option<IpAddr> {
+        self.connection.local_address()
+    }
+
+    pub fn is_obfuscated(&self) -> bool {
+        self.connection.is_obfuscated()
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.connection.is_open()
     }
 
     /// Sends `packet` after those sent before; false once the connection is closed.
     pub fn send(&self, packet: Packet) -> bool {
-        self.commands.send(Command::Send(packet)).is_ok()
+        self.connection.send(packet)
     }
 
+    /// As [`Self::send`], for file data: it goes out after the other packets waiting.
+    pub fn send_data(&self, packet: Packet) -> bool {
+        self.connection.send_data(packet)
+    }
+
+    /// Bytes of file data waiting to be written.
+    pub fn queued_data(&self) -> u64 {
+        self.connection.queued_data()
+    }
+
+    /// Closes the connection once what is queued is sent.
     pub fn close(&self) {
-        let _ = self.commands.send(Command::Close);
+        self.connection.close();
     }
 
     /// Fails reads that wait longer than `timeout`, from the next read on.
     pub fn set_timeout(&self, timeout: Duration) {
-        self.timeout.store(u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX), Ordering::Relaxed);
+        self.connection.set_read_timeout(timeout);
     }
 }
 
-/// Starts moving the frames of a connection; its packets and its end go to `events`.
-pub fn start<R, W>(
-    id: LinkId,
-    remote: SocketAddr,
-    reader: FrameReader<R>,
-    writer: FrameWriter<W>,
-    events: mpsc::UnboundedSender<LinkEvent>,
-) -> LinkHandle
-where
-    R: AsyncRead + Unpin + Send + 'static,
-    W: AsyncWrite + Unpin + Send + 'static,
-{
-    let (commands, queue) = mpsc::unbounded_channel();
-    let timeout = Arc::new(AtomicU64::new(u64::try_from(DEFAULT_TIMEOUT.as_millis()).unwrap_or(u64::MAX)));
-    let (closing, closed) = watch::channel(false);
-    tokio::spawn(write(writer, queue, closing));
-    tokio::spawn(read(id, reader, events, timeout.clone(), closed));
-    LinkHandle { id, remote, commands, timeout }
+/// Starts a link over `connection`, which reads by the handshake's limits until a hello passes; its packets and its
+/// end go to `events`.
+pub fn start(id: LinkId, connection: TcpConnection, events: mpsc::UnboundedSender<LinkEvent>) -> LinkHandle {
+    connection.set_read_timeout(DEFAULT_TIMEOUT);
+    // Clients pack extended packets: those inflate with the client cap.
+    connection.start(Forward { id, events }, Box::new(|packet| packing::unpack(packet, packing::MAX_CLIENT_UNPACKED)));
+    LinkHandle { id, connection }
 }
 
-async fn write<W: AsyncWrite + Unpin>(
-    mut writer: FrameWriter<W>,
-    mut queue: mpsc::UnboundedReceiver<Command>,
-    closing: watch::Sender<bool>,
-) {
-    while let Some(command) = queue.recv().await {
-        match command {
-            Command::Send(packet) => {
-                if let Err(e) = writer.write_packet(&packet).await {
-                    tracing::debug!("Cannot send to a client: {e}");
-                    break;
-                }
-            }
-            Command::Close => break,
+struct Forward {
+    id: LinkId,
+    events: mpsc::UnboundedSender<LinkEvent>,
+}
+
+impl Handler for Forward {
+    fn on_packet(&self, connection: &TcpConnection, packet: Packet) -> Result<(), String> {
+        // The next frame is read right after this returns: lift the handshake limit here.
+        if packet.protocol() == protocol::EDONKEY
+            && (packet.opcode() == client::HELLO || packet.opcode() == client::HELLOANSWER)
+        {
+            connection.set_frame_limit(frame_limits::client);
         }
+        self.events.send(LinkEvent::Packet(self.id, packet)).map_err(|_| "the engine stopped".to_owned())
     }
-    let _ = writer.flush().await;
-    let _ = writer.shutdown().await;
-    closing.send_replace(true);
-}
 
-async fn read<R: AsyncRead + Unpin>(
-    id: LinkId,
-    mut reader: FrameReader<R>,
-    events: mpsc::UnboundedSender<LinkEvent>,
-    timeout: Arc<AtomicU64>,
-    mut closed: watch::Receiver<bool>,
-) {
-    let mut greeted = false;
-    let reason = loop {
-        let wait = Duration::from_millis(timeout.load(Ordering::Relaxed));
-        let read = tokio::select! {
-            _ = closed.wait_for(|closed| *closed) => break None,
-            read = tokio::time::timeout(wait, async {
-                if greeted {
-                    reader.read_packet(&frame_limits::client).await
-                } else {
-                    reader.read_packet(&frame_limits::client_handshake).await
-                }
-            }) => read,
-        };
-        let packet = match read {
-            Err(_) => break Some(format!("silent for {} s", wait.as_secs())),
-            Ok(Err(e)) => break Some(e.to_string()),
-            Ok(Ok(None)) => break None,
-            Ok(Ok(Some(packet))) => packet,
-        };
-        // Clients pack extended packets: those inflate with the client cap.
-        let packet = match packing::unpack(packet, packing::MAX_CLIENT_UNPACKED) {
-            Ok(packet) => packet,
-            Err(e) => break Some(e.to_string()),
-        };
-        greeted |= packet.protocol() == protocol::EDONKEY
-            && (packet.opcode() == client::HELLO || packet.opcode() == client::HELLOANSWER);
-        if events.send(LinkEvent::Packet(id, packet)).is_err() {
-            return;
-        }
-    };
-    let _ = events.send(LinkEvent::Closed(id, reason));
+    fn on_closed(&self, _connection: &TcpConnection, cause: Option<io::Error>) {
+        let _ = self.events.send(LinkEvent::Closed(self.id, cause.map(|e| e.to_string())));
+    }
 }
