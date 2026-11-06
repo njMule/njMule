@@ -12,6 +12,7 @@ pub mod obfuscation_mode;
 pub mod os_family;
 pub mod preferences;
 pub mod proxy_settings;
+pub mod schedule;
 pub mod shared_files_visibility;
 pub mod update_channel;
 pub mod update_install_time;

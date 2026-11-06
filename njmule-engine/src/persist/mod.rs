@@ -7,4 +7,5 @@ pub mod atomic_files;
 pub mod format;
 pub mod preferences_codec;
 pub mod property_lines;
+pub mod schedule_codec;
 pub mod user_hash_store;
