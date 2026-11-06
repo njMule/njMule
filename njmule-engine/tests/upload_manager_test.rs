@@ -15,20 +15,44 @@ use njmule_engine::api::upload_priority::UploadPriority;
 use njmule_engine::files::shared_files::SharedFile;
 use njmule_engine::net::tcp_connection::{TcpConnection, read_packet, write_packet};
 use njmule_engine::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId};
-use njmule_engine::protocol::ed2k::client_messages::{self, Range, RequestParts, SendingPart};
+use njmule_engine::protocol::ed2k::client_messages::{self, PartStatus, Range, RequestParts, SendingPart};
+use njmule_engine::protocol::ed2k::client_reasks::{self, Ack, Ping};
 use njmule_engine::protocol::ed2k::hello::{Hello, Ours};
 use njmule_engine::protocol::packet::opcodes::{client, extended};
 use njmule_engine::protocol::packet::{Packet, frame_limits, protocol};
 use njmule_engine::upload::credits::Credits;
-use njmule_engine::upload::upload_manager::{self, BlockRead, Settings, UploadManager};
+use njmule_engine::upload::upload_manager::{self, BlockRead, FileCounts, ReaskAnswer, Settings, UploadManager};
 use njmule_engine::upload::upload_session::{self, MAX_BLOCK};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use tokio::sync::{mpsc, oneshot};
 
 const WAIT: Duration = Duration::from_secs(20);
 const SILENCE: Duration = Duration::from_millis(500);
 const LOW_ID: u32 = 0x00AB_CDEF;
+const MANY_BLOCKS: usize = 16;
+const SMALL_SOCKET_BUFFER: u32 = 64 * 1024;
+
+// The counts of the files, as events.
+struct Counted(Arc<Mutex<Vec<String>>>);
+
+impl FileCounts for Counted {
+    fn asked(&mut self, file: &[u8; 16]) {
+        self.0.lock().unwrap().push(format!("asked {}", hex(file)));
+    }
+
+    fn accepted(&mut self, file: &[u8; 16]) {
+        self.0.lock().unwrap().push(format!("accepted {}", hex(file)));
+    }
+
+    fn sent(&mut self, file: &[u8; 16], bytes: u64) {
+        self.0.lock().unwrap().push(format!("sent {bytes} {}", hex(file)));
+    }
+}
+
+fn hex(hash: &[u8; 16]) -> String {
+    hash.iter().map(|byte| format!("{byte:02x}")).collect()
+}
 const OURS: [u8; 16] = [0xAB; 16];
 
 type Job = Box<dyn FnOnce(&mut Loop) + Send>;
@@ -150,7 +174,8 @@ async fn serve(
             Some(event) = events.recv() => state.event(event),
             Some(read) = reads.recv() => {
                 let now = state.now();
-                state.manager.block_read(read, now);
+                let shared = Arc::clone(&state.shared);
+                state.manager.block_read(read, &move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).cloned(), now);
             }
             _ = every.tick() => state.tick(),
             job = jobs.recv() => match job {
@@ -173,6 +198,18 @@ struct Downloader {
 impl Downloader {
     async fn connect(port: u16, hello: &Hello) -> Self {
         let stream = TcpStream::connect(SocketAddr::from((Ipv4Addr::LOCALHOST, port))).await.unwrap();
+        let (input, output) = stream.into_split();
+        let mut client = Self { input, output };
+        client.send(&hello.encode(false).unwrap()).await;
+        client.until(protocol::EDONKEY, client::HELLOANSWER).await;
+        client
+    }
+
+    // As connect, with a small receive buffer, set before the connection settles the window it offers.
+    async fn connect_with_buffer(port: u16, hello: &Hello, buffer: u32) -> Self {
+        let socket = TcpSocket::new_v4().unwrap();
+        socket.set_recv_buffer_size(buffer).unwrap();
+        let stream = socket.connect(SocketAddr::from((Ipv4Addr::LOCALHOST, port))).await.unwrap();
         let (input, output) = stream.into_split();
         let mut client = Self { input, output };
         client.send(&hello.encode(false).unwrap()).await;
@@ -237,6 +274,12 @@ struct Uploads {
     clients: HashMap<u8, Downloader>,
     files: HashMap<String, SharedFile>,
     file: Option<SharedFile>,
+    // The buffers of our sockets and of the clients', when the scenario makes them small.
+    socket_buffer: u32,
+    counted: Arc<Mutex<Vec<String>>>,
+    reask_answer: Option<ReaskAnswer>,
+    data_before_answer: u64,
+    queued: u64,
     // Where a client waiting for our call listens, and the hellos the clients gave.
     listening: Option<TcpListener>,
     hellos: HashMap<u8, Hello>,
@@ -260,6 +303,11 @@ impl Uploads {
             clients: HashMap::new(),
             files: HashMap::new(),
             file: None,
+            socket_buffer: 0,
+            counted: Arc::default(),
+            reask_answer: None,
+            data_before_answer: 0,
+            queued: 0,
             listening: None,
             hellos: HashMap::new(),
             client: 0,
@@ -306,7 +354,13 @@ impl Uploads {
     }
 
     async fn given_the_uploads_started(&mut self) {
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let socket = TcpSocket::new_v4().unwrap();
+        if self.socket_buffer > 0 {
+            // Accepted connections take the listener's buffers.
+            socket.set_send_buffer_size(self.socket_buffer).unwrap();
+        }
+        socket.bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
+        let listener = socket.listen(16).unwrap();
         self.port = listener.local_addr().unwrap().port();
         let (reads_in, reads) = mpsc::unbounded_channel::<BlockRead>();
         let (called_in, called) = mpsc::unbounded_channel();
@@ -314,6 +368,7 @@ impl Uploads {
         let mut manager = UploadManager::new(reads_in, credits, *self.settings.lock().unwrap());
         let priorities = Arc::clone(&self.priorities);
         manager.set_priorities(move |hash| priorities.lock().unwrap().get(hash).copied().unwrap_or_default());
+        manager.count_in(Box::new(Counted(Arc::clone(&self.counted))));
         let ours = Hello::of(OURS, 0, 4662, &plain("test"), 0, 0);
         let state = Loop {
             manager,
@@ -681,6 +736,184 @@ impl Uploads {
     async fn when_another_connection_from_its_address_asks_for_them(&mut self, count: usize) {
         self.client = 2;
         self.ask_for_unknown_files(2, count).await;
+    }
+
+    // UDP re-asks.
+
+    async fn given_a_client_waiting_that_takes_udp_reasks_on_port(&mut self, udp_port: u16) {
+        let ours = Ours {
+            nick: "client 3",
+            udp_port,
+            kad_port: udp_port,
+            misc_options1: client_reasks::UDP_VERSION << 24,
+            misc_options2: 0,
+        };
+        let hello = Hello::of([3; 16], 0, 5003, &ours, 0, 0);
+        let client = Downloader::connect(self.port, &hello).await;
+        self.clients.insert(3, client);
+        self.client = 3;
+        self.given_the_client_waits_at(3, 1, "behind the busy slots").await;
+    }
+
+    async fn when_a_reask_for_the_file_comes_from(&mut self, port: u16, file: [u8; 16]) {
+        let ping = Ping { file, parts: PartStatus::COMPLETE, complete_sources: 0 }.encode(client_reasks::UDP_VERSION);
+        let ping = ping.unwrap();
+        self.reask_answer = self
+            .on_loop(move |state| {
+                let now = state.now();
+                let shared = Arc::clone(&state.shared);
+                let find = move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).cloned();
+                state.manager.reasked(Ipv4Addr::LOCALHOST.into(), port, &ping, &find, now)
+            })
+            .await;
+    }
+
+    fn then_the_answer_tells_the_place(&self, place: u32) {
+        let answer = &self.reask_answer.as_ref().expect("an answer").packet;
+        let ack = Ack::decode(answer, client_reasks::UDP_VERSION).unwrap();
+        assert_eq!(ack, Ack { parts: Some(PartStatus::COMPLETE), rank: place });
+    }
+
+    fn then_there_is_no_answer(&self) {
+        assert!(self.reask_answer.is_none());
+    }
+
+    fn then_the_answer_is_plain(&self, expected: Packet) {
+        assert_eq!(self.reask_answer, Some(ReaskAnswer { packet: expected, obfuscate_for: None }));
+    }
+
+    // The counts of a file.
+
+    async fn given_a_client_that_asked_for_the_file_by_name(&mut self) {
+        let file = self.file.as_ref().unwrap().hash;
+        self.client = 1;
+        let client = self.client_of(1, 0).await;
+        client.send(&client_messages::for_file(client::REQUESTFILENAME, &file)).await;
+        client.until(protocol::EDONKEY, client::REQFILENAMEANSWER).await;
+    }
+
+    async fn when_it_downloads_the_file(&mut self) {
+        let file = self.file.clone().unwrap();
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&blocks(file.hash, &[Range { start: 0, end: file.size }])).await;
+        let mut received = 0u64;
+        while received < file.size {
+            let packet = client.next().await;
+            if packet.protocol() == protocol::EDONKEY && packet.opcode() == client::SENDINGPART {
+                received += SendingPart::decode(&packet).unwrap().data.len() as u64;
+            }
+        }
+        // The uploads count what they handed over just after: the data can reach the client first.
+        self.on_loop(|_| ()).await;
+    }
+
+    fn then_the_file_was_counted(&self, events: &[&str]) {
+        let hash = hex(&self.file.as_ref().unwrap().hash);
+        let expected: Vec<String> = events.iter().map(|event| format!("{event} {hash}")).collect();
+        assert_eq!(*self.counted.lock().unwrap(), expected);
+    }
+
+    // Files that moved or went.
+
+    fn given_the_file_listed_at(&self, name: &str) {
+        let mut file = self.file.clone().unwrap();
+        file.path = self.dir.path().join(name);
+        self.shared.lock().unwrap().insert(file.hash, file);
+    }
+
+    fn given_the_file_found_where_it_went(&self) {
+        let file = self.file.clone().unwrap();
+        self.shared.lock().unwrap().insert(file.hash, file);
+    }
+
+    fn given_the_file_no_longer_shared(&self) {
+        self.shared.lock().unwrap().remove(&self.file.as_ref().unwrap().hash);
+    }
+
+    async fn when_the_client_asks_for_the_block(&mut self, start: u64, end: u64) {
+        let file = self.file.as_ref().unwrap().hash;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&blocks(file, &[Range { start, end }])).await;
+    }
+
+    async fn then_the_client_receives_the_block(&mut self, start: u64, end: u64) {
+        let file = self.file.clone().unwrap();
+        let data = std::fs::read(&file.path).unwrap();
+        let client = self.clients.get_mut(&self.client).unwrap();
+        let seen = client.until(protocol::EDONKEY, client::SENDINGPART).await;
+        let part = SendingPart::decode(seen.last().unwrap()).unwrap();
+        assert_eq!(part.data, data[start as usize..end as usize]);
+    }
+
+    async fn then_the_connection_ends(&mut self) {
+        assert!(self.clients.get_mut(&self.client).unwrap().closed_within(WAIT).await);
+    }
+
+    async fn then_the_slot_is_gone(&self) {
+        let deadline = Instant::now() + WAIT;
+        let mut slots = usize::MAX;
+        while slots > 0 && Instant::now() < deadline {
+            slots = self.on_loop(|state| state.manager.slot_count()).await;
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(slots, 0);
+    }
+
+    // A client that reads slowly.
+
+    async fn given_a_client_with_a_slot_that_asks_for_many_blocks_and_reads_nothing(&mut self) {
+        self.given_the_shared_file("much.bin", MANY_BLOCKS * MAX_BLOCK as usize, 17);
+        self.socket_buffer = SMALL_SOCKET_BUFFER;
+        self.given_the_uploads_started().await;
+        let hello = Hello::of([1; 16], 0, 5001, &plain("client 1"), 0, 0);
+        let client = Downloader::connect_with_buffer(self.port, &hello, SMALL_SOCKET_BUFFER).await;
+        self.clients.insert(1, client);
+        self.hellos.insert(1, hello);
+        self.client = 1;
+        let file = self.file.as_ref().unwrap().hash;
+        assert_eq!(self.ask(1, file).await.opcode(), client::ACCEPTUPLOADREQ);
+        let count = MANY_BLOCKS as u64;
+        let client = self.clients.get_mut(&1).unwrap();
+        for at in (0..count).step_by(3) {
+            let ranges: Vec<Range> = (at..(at + 3).min(count))
+                .map(|block| Range { start: block * MAX_BLOCK, end: (block + 1) * MAX_BLOCK })
+                .collect();
+            client.send(&blocks(file, &ranges)).await;
+        }
+        // Whatever is not held back is handed over within a few ticks.
+        let mut last = u64::MAX;
+        let mut sent = self.sent_to_the_slot().await;
+        while sent != last {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            last = sent;
+            sent = self.sent_to_the_slot().await;
+        }
+        self.queued = sent;
+    }
+
+    async fn sent_to_the_slot(&self) -> u64 {
+        let uploads = self.on_loop(|state| state.manager.uploads(state.now())).await;
+        uploads.iter().filter_map(|upload| upload.sent).sum()
+    }
+
+    async fn when_it_asks_for_the_file_name_and_reads(&mut self) {
+        let file = self.file.as_ref().unwrap().hash;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&client_messages::for_file(client::REQUESTFILENAME, &file)).await;
+        tokio::time::sleep(SILENCE).await;
+        for packet in client.until(protocol::EDONKEY, client::REQFILENAMEANSWER).await {
+            if packet.protocol() == protocol::EDONKEY && packet.opcode() == client::SENDINGPART {
+                self.data_before_answer += SendingPart::decode(&packet).unwrap().data.len() as u64;
+            }
+        }
+    }
+
+    fn then_little_of_what_it_asked_for_was_queued(&self) {
+        assert!(self.queued < self.file.as_ref().unwrap().size / 2, "{}", self.queued);
+    }
+
+    fn then_our_answer_came_before_most_of_the_data(&self) {
+        assert!(self.data_before_answer < self.file.as_ref().unwrap().size / 2, "{}", self.data_before_answer);
     }
 
     // Helpers.
@@ -1162,4 +1395,96 @@ async fn should_still_count_asking_too_often_when_the_client_comes_back_with_ano
     uploads.when_it_comes_back_with_the_user_hash_of_and_asks_right_away(9).await;
 
     uploads.then_it_is_banned().await;
+}
+
+#[tokio::test]
+async fn should_tell_a_client_waiting_for_the_file_its_place_over_udp() {
+    let mut uploads = Uploads::new();
+    uploads.given_two_slots_busy_under_a_limit().await;
+    uploads.given_a_client_waiting_that_takes_udp_reasks_on_port(4672).await;
+
+    let file = uploads.file.as_ref().unwrap().hash;
+    uploads.when_a_reask_for_the_file_comes_from(4672, file).await;
+
+    uploads.then_the_answer_tells_the_place(1);
+}
+
+#[tokio::test]
+async fn should_answer_nothing_to_a_reask_from_another_udp_port_of_the_address() {
+    let mut uploads = Uploads::new();
+    uploads.given_two_slots_busy_under_a_limit().await;
+    uploads.given_a_client_waiting_that_takes_udp_reasks_on_port(4672).await;
+
+    let file = uploads.file.as_ref().unwrap().hash;
+    uploads.when_a_reask_for_the_file_comes_from(4673, file).await;
+
+    uploads.then_there_is_no_answer();
+}
+
+#[tokio::test]
+async fn should_tell_anyone_over_udp_that_we_do_not_share_the_file() {
+    let mut uploads = Uploads::new();
+    uploads.given_two_slots_busy_under_a_limit().await;
+
+    uploads.when_a_reask_for_the_file_comes_from(4672, [0x9D; 16]).await;
+
+    uploads.then_the_answer_is_plain(client_reasks::file_not_found());
+}
+
+#[tokio::test]
+async fn should_count_the_request_by_name_the_slot_and_the_bytes_sent_of_a_file() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("counted.bin", 3000, 41);
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_that_asked_for_the_file_by_name().await;
+    uploads.given_the_client_got_a_slot(1).await;
+
+    uploads.when_it_downloads_the_file().await;
+
+    uploads.then_the_file_was_counted(&["asked", "accepted", "sent 3000"]);
+}
+
+#[tokio::test]
+async fn should_read_a_block_where_its_file_went() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("moved.txt", 4000, 12);
+    uploads.given_the_file_listed_at("gone.txt");
+    uploads.given_the_uploads_started().await;
+    uploads.client = 1;
+    uploads.given_the_client_got_a_slot(1).await;
+    uploads.given_the_file_found_where_it_went();
+
+    uploads.when_the_client_asks_for_the_block(0, 1000).await;
+
+    uploads.then_the_client_receives_the_block(0, 1000).await;
+}
+
+#[tokio::test]
+async fn should_end_the_slot_once_its_file_is_gone() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("moved.txt", 4000, 12);
+    uploads.given_the_file_listed_at("gone.txt");
+    uploads.given_the_uploads_started().await;
+    uploads.client = 1;
+    uploads.given_the_client_got_a_slot(1).await;
+    uploads.given_the_file_found_where_it_went();
+    uploads.when_the_client_asks_for_the_block(0, 1000).await;
+    uploads.then_the_client_receives_the_block(0, 1000).await;
+    uploads.given_the_file_no_longer_shared();
+
+    uploads.when_the_client_asks_for_the_block(1000, 2000).await;
+
+    uploads.then_the_connection_ends().await;
+    uploads.then_the_slot_is_gone().await;
+}
+
+#[tokio::test]
+async fn should_queue_little_for_a_client_that_reads_nothing_and_let_our_answers_pass_its_data() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_client_with_a_slot_that_asks_for_many_blocks_and_reads_nothing().await;
+
+    uploads.when_it_asks_for_the_file_name_and_reads().await;
+
+    uploads.then_little_of_what_it_asked_for_was_queued();
+    uploads.then_our_answer_came_before_most_of_the_data();
 }

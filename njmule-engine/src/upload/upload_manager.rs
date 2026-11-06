@@ -9,6 +9,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::net::{IpAddr, SocketAddr};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
@@ -18,6 +19,8 @@ use crate::api::upload_priority::UploadPriority;
 use crate::files::hash::ed2k;
 use crate::files::shared_files::SharedFile;
 use crate::peer::peer_link::{LinkHandle, LinkId};
+use crate::protocol::ed2k::client_messages::PartStatus;
+use crate::protocol::ed2k::client_reasks::{self, Ack};
 use crate::protocol::ed2k::hello::{self, Hello};
 use crate::protocol::packet::Packet;
 use crate::upload::blocks;
@@ -39,6 +42,8 @@ pub const IDLE_SLOTS_LIMIT: u32 = 8;
 pub const IDLE_SLOTS_WINDOW: Duration = Duration::from_secs(4 * 3600);
 // Connections from an address dropped for asking for files we do not have, at which it is banned.
 const UNKNOWN_FILES_DROPS: u32 = 2;
+// A client not in the queue that asks over UDP is told the queue is full this close to its size.
+const QUEUE_FULL_MARGIN: usize = 50;
 // How often the request histories are purged.
 const REQUESTS_PURGE: Duration = Duration::from_secs(60);
 /// A waiting client that does not ask again for this long is forgotten.
@@ -85,12 +90,27 @@ pub struct Call {
     pub obfuscate_for: Option<[u8; 16]>,
 }
 
-/// A block read from its file, or why it could not be.
+/// A block read from its file at `path`, or why it could not be.
 #[derive(Debug)]
 pub struct BlockRead {
     pub link: LinkId,
     pub block: Block,
+    pub path: PathBuf,
     pub packets: io::Result<Vec<Packet>>,
+}
+
+/// What a UDP re-ask is answered with, and the user hash that obfuscates the answer, when it is known.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReaskAnswer {
+    pub packet: Packet,
+    pub obfuscate_for: Option<[u8; 16]>,
+}
+
+/// Where the requests by name, the slots and the bytes sent of each file are counted.
+pub trait FileCounts: Send {
+    fn asked(&mut self, file: &[u8; 16]);
+    fn accepted(&mut self, file: &[u8; 16]);
+    fn sent(&mut self, file: &[u8; 16], bytes: u64);
 }
 
 /// A banned address, for IPv6 its /64, and the time left.
@@ -122,6 +142,9 @@ struct Client {
     low_id: bool,
     // Whether it takes obfuscated connections.
     crypt: bool,
+    // Where it takes UDP re-asks from, and their version.
+    udp_port: u16,
+    udp_version: u32,
     // We are calling it for its slot.
     connecting: bool,
     // A LowID we cannot call whose turn came while it was away: it gets a slot when it asks again.
@@ -178,6 +201,7 @@ pub struct UploadManager {
     next_purge: Option<Instant>,
     // The clients to call, for the network.
     calls: Vec<Call>,
+    counts: Option<Box<dyn FileCounts>>,
 }
 
 impl UploadManager {
@@ -200,12 +224,76 @@ impl UploadManager {
             requests: RequestTracker::new(MIN_REQUEST_TIME, IDLE_SLOTS_WINDOW),
             next_purge: None,
             calls: Vec::new(),
+            counts: None,
         }
     }
 
     /// Where the upload priority of a shared file comes from; without it every file is [`UploadPriority::Auto`].
     pub fn set_priorities(&mut self, priorities: impl Fn(&[u8; 16]) -> UploadPriority + Send + 'static) {
         self.priorities = Box::new(priorities);
+    }
+
+    /// Counts the requests by name, the slots and the bytes sent of each file in `counts`.
+    pub fn count_in(&mut self, counts: Box<dyn FileCounts>) {
+        self.counts = Some(counts);
+    }
+
+    /// A client at `ip` asked again over UDP from `port`. One waiting for the file is told its place, with the parts we
+    /// have to clients of UDP version 4 and up; anyone is told when we do not share the file, or when the queue is about
+    /// full. A client we cannot tell apart from others at its address, waiting for another file or due for a slot it
+    /// can only get over TCP is answered nothing, and so asks over TCP.
+    pub fn reasked(
+        &mut self,
+        ip: IpAddr,
+        port: u16,
+        ping: &Packet,
+        find: Find<'_>,
+        now: Instant,
+    ) -> Option<ReaskAnswer> {
+        if self.is_banned(ip, now) {
+            return None;
+        }
+        let hash = client_reasks::Ping::file(ping).ok()?;
+        let waiting = self.waiting_at(ip, port);
+        let key = waiting.and_then(|user_hash| self.waiting.get(&user_hash)).filter(|client| client.crypt);
+        let key = key.map(|client| client.user_hash);
+        if find(&hash).is_none() {
+            return Some(ReaskAnswer { packet: client_reasks::file_not_found(), obfuscate_for: key });
+        }
+        let Some(user_hash) = waiting else {
+            // Its user hash unknown, the answer goes plain.
+            let full = self.waiting.len().saturating_add(QUEUE_FULL_MARGIN) > self.settings.queue_size;
+            return full.then(|| ReaskAnswer { packet: client_reasks::queue_full(), obfuscate_for: None });
+        };
+        let client = self.waiting.get(&user_hash)?;
+        if client.file != hash || client.next_connect {
+            return None;
+        }
+        let (client_port, version) = (client.port, client.udp_version);
+        if self.requests.asked(Key { ip, port: client_port }, hash, now) >= BAD_LIMIT {
+            self.ban(ip, now, "asked again too often");
+            return None;
+        }
+        if let Some(client) = self.waiting.get_mut(&user_hash) {
+            client.last_ask = now;
+        }
+        // Our shared files are complete.
+        let parts = (version > 3).then_some(PartStatus::COMPLETE);
+        let rank = u32::try_from(self.rank_of(&user_hash, now).unwrap_or(1)).unwrap_or(u32::MAX);
+        let packet = Ack { parts, rank }.encode(version).ok()?;
+        Some(ReaskAnswer { packet, obfuscate_for: key })
+    }
+
+    // The client waiting at this address and UDP port; none when it is not the only one there.
+    fn waiting_at(&self, ip: IpAddr, port: u16) -> Option<[u8; 16]> {
+        let mut found = None;
+        for client in self.waiting.values().filter(|client| client.ip == ip && client.udp_port == port) {
+            if found.is_some() {
+                return None;
+            }
+            found = Some(client.user_hash);
+        }
+        found
     }
 
     pub fn credits(&self) -> &Credits {
@@ -393,8 +481,17 @@ impl UploadManager {
         session.set_trusted(trusted);
         match session.received(packet, ours, find, visible) {
             Ok(Some(Request::Upload(file))) => self.requested(link.id(), file, now),
+            Ok(Some(Request::Named(file))) => {
+                if let Some(counts) = &mut self.counts {
+                    counts.asked(&file);
+                }
+            }
             Ok(Some(Request::Blocks)) => self.blocks_requested(link.id(), find, now),
             Ok(Some(Request::Stopped)) => self.slot_gone(link.id()),
+            Ok(Some(Request::FileGone)) => {
+                tracing::debug!("{} asked for blocks of a file we no longer share", link.remote());
+                self.end_slot(link.id());
+            }
             Ok(Some(Request::Misbehaved)) => {
                 link.close();
                 self.ban(link.remote().ip(), now, "changed its user hash");
@@ -501,24 +598,32 @@ impl UploadManager {
         }
     }
 
-    /// A block read for a slot: its packets go out within what the budget of this tick has left.
-    pub fn block_read(&mut self, read: BlockRead, now: Instant) {
-        let Some(slot) = self.slots.iter_mut().find(|slot| slot.link == read.link) else {
+    /// A block read for a slot: its packets go out within what the budget of this tick has left. A file renamed, or a
+    /// download completed, since the block was asked for is read where it is now.
+    pub fn block_read(&mut self, read: BlockRead, find: Find<'_>, now: Instant) {
+        let Some(at) = self.slots.iter().position(|slot| slot.link == read.link) else {
             return;
         };
-        slot.reading = false;
         let packets = match read.packets {
             Ok(packets) => packets,
             Err(e) => {
-                tracing::warn!("Cannot read a block for an upload: {e}");
-                let link = slot.link;
-                self.slots.retain(|slot| slot.link != link);
-                if let Some(session) = self.sessions.get(&link) {
-                    session.link().close();
+                let moved = find(&read.block.file)
+                    .map(|file| Uploadable::of(&file))
+                    .filter(|file| file.data != read.path && file.has(read.block.start, read.block.end));
+                match moved {
+                    Some(file) => self.spawn_read(at, file, read.block),
+                    None => {
+                        tracing::warn!("Cannot read a block for an upload: {e}");
+                        self.end_slot(read.link);
+                    }
                 }
                 return;
             }
         };
+        let Some(slot) = self.slots.get_mut(at) else {
+            return;
+        };
+        slot.reading = false;
         let length = read.block.end.saturating_sub(read.block.start);
         let last = packets.len().saturating_sub(1);
         for (at, packet) in packets.into_iter().enumerate() {
@@ -584,12 +689,15 @@ impl UploadManager {
         }
         let low_id = session.peer().client_id != 0 && session.peer().client_id < 0x0100_0000;
         let crypt = session.peer().misc_options2() & hello::MISC2_SUPPORTS_CRYPT != 0;
+        let (udp_port, udp_version) = (session.peer().udp_port(), session.peer().udp_version());
         let client = Client {
             user_hash,
             ip,
             port,
             low_id,
             crypt,
+            udp_port,
+            udp_version,
             connecting: false,
             next_connect: false,
             file,
@@ -654,6 +762,21 @@ impl UploadManager {
             return;
         };
         let Some(file) = find(&block.file).map(|file| Uploadable::of(&file)) else {
+            // Its file is no longer shared: the slot ends.
+            let link = slot.link;
+            tracing::debug!("The file of an upload slot is gone");
+            self.end_slot(link);
+            return;
+        };
+        self.spawn_read(at, file, block);
+    }
+
+    // The block is read, and compressed, off the engine's task.
+    fn spawn_read(&mut self, at: usize, file: Uploadable, block: Block) {
+        let Some(slot) = self.slots.get_mut(at) else {
+            return;
+        };
+        let Some(session) = self.sessions.get(&slot.link) else {
             return;
         };
         slot.client.file = file.hash;
@@ -667,8 +790,16 @@ impl UploadManager {
             let packets = usize::try_from(length)
                 .map_err(io::Error::other)
                 .and_then(|length| blocks::read_packets(&file.data, file.hash, block.start, length, compress));
-            let _ = reads.send(BlockRead { link, block, packets });
+            let _ = reads.send(BlockRead { link, block, path: file.data, packets });
         });
+    }
+
+    // The slot ends and its connection closes, as when its file cannot be read.
+    fn end_slot(&mut self, link: LinkId) {
+        self.slot_gone(link);
+        if let Some(session) = self.sessions.get(&link) {
+            session.link().close();
+        }
     }
 
     // One data packet per slot in turn, while the budget lasts: every slot whose client reads what it gets has an equal
@@ -705,6 +836,11 @@ impl UploadManager {
                 if session.link().send_data(item.packet) {
                     slot.sent = slot.sent.saturating_add(item.payload);
                     self.uploaded = self.uploaded.saturating_add(item.payload);
+                    if let Some(counts) = &mut self.counts
+                        && item.payload > 0
+                    {
+                        counts.sent(&slot.client.file, item.payload);
+                    }
                     if let Some(rate) = &mut slot.rate {
                         rate.add(item.payload, clock);
                     }
@@ -802,6 +938,9 @@ impl UploadManager {
         session.link().set_timeout(SLOT_TIMEOUT);
         session.accept();
         tracing::debug!("Upload slot for {}", session.link().remote());
+        if let Some(counts) = &mut self.counts {
+            counts.accepted(&client.file);
+        }
         self.slots.push(Slot {
             client,
             link,

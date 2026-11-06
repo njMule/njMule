@@ -121,15 +121,7 @@ SharedFilesTest.shouldUnshareAFileWhoseContentChangesUnderItsOldHash
 UploadManagerTest.shouldNotCountFilesWeDownloadAsUnknown
 
 
-# The upload manager is ported in pieces: UDP re-asks, the counts of each file, moved, gone or faulty files and
-# clients that read slowly.
-UploadManagerTest.shouldAnswerNothingToAReaskFromAnotherUdpPortOfTheAddress
-UploadManagerTest.shouldTellAClientWaitingForTheFileItsPlaceOverUdp
-UploadManagerTest.shouldTellAnyoneOverUdpThatWeDoNotShareTheFile
-UploadManagerTest.shouldCountTheRequestByNameTheSlotAndTheBytesSentOfAFile
-UploadManagerTest.shouldQueueLittleForAClientThatReadsNothingAndLetOurAnswersPassItsData
-UploadManagerTest.shouldReadABlockWhereItsFileWent
-UploadManagerTest.shouldEndTheSlotOnceItsFileIsGone
+# A file look-up cannot fault in the Rust engine: it answers a file or none, and none is a file we do not have.
 UploadManagerTest.shouldEndOnlyTheSessionOfTheClientWhoseFileLookUpFaults
 
 # The upload manager is ported in pieces: source exchange and partial files, which need the downloads' port.
