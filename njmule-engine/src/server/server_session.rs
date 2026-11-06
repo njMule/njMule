@@ -353,7 +353,7 @@ impl ServerSession {
         let Some(index) = self.attempts.iter().position(|attempt| attempt.number == number) else {
             return;
         };
-        if !server_list::accepts(ip) {
+        if !ctx.servers.accepts(ip) {
             let reason = format!("{} is not an address to connect to", std::net::Ipv4Addr::from(ip));
             self.fail(number, &reason, ctx);
             return;

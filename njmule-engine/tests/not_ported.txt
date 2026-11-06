@@ -81,10 +81,7 @@ PeerGreetingsTest.shouldAnswerAClientThatGreetsUsWithOurOwnUserHashButTakeNothin
 PeerGreetingsTest.shouldHandOverAClientThatGreetsUsWithItsOwnUserHash
 PeerGreetingsTest.shouldSayHelloFirstOverAConnectionThroughRoutersAndHandItOverOnTheClientsHello
 
-# ServerListTest: not ported yet.
-ServerListTest.shouldNeitherAddNorOfferServersTheFilterBlocks
-
-# ServerPingerTest: not ported yet.
+# The engine's task drives the pinger with its own timer: the pinger holds none to start or stop.
 ServerPingerTest.shouldStartAndStopTheTimerOnce
 
 # Scenarios of the server session not ported yet.
