@@ -401,7 +401,10 @@ impl Network {
                     self.downloads.disk_done(done, &ours);
                     self.after_downloads();
                 }
-                Some(read) = queues.reads.recv() => self.uploads.block_read(read, Instant::now()),
+                Some(read) = queues.reads.recv() => {
+                    let files = &self.shared_files;
+                    self.uploads.block_read(read, &|hash: &[u8; 16]| files.get(hash).cloned(), Instant::now());
+                }
             }
         }
     }

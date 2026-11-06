@@ -46,6 +46,8 @@ pub struct Block {
 pub enum Request {
     /// The client asks for an upload of the file.
     Upload([u8; 16]),
+    /// The client asks for the file by its name.
+    Named([u8; 16]),
     /// The client asked for blocks.
     Blocks,
     /// The client does not want more data now.
@@ -54,6 +56,8 @@ pub enum Request {
     Misbehaved,
     /// The client asked for too many files we do not have on its connection, which closes.
     UnknownFiles,
+    /// The client asked for blocks of a file we no longer share.
+    FileGone,
 }
 
 pub struct UploadSession {
@@ -195,6 +199,7 @@ impl UploadSession {
                 let hash = client_messages::file_of(packet)?;
                 if let Some(file) = self.lookup(&hash, find) {
                     self.send_or_log((FileName { file: hash, name: file.name }).encode());
+                    return Ok(Some(Request::Named(hash)));
                 }
             }
             (protocol::EDONKEY, client::SETREQFILEID) => {
@@ -310,7 +315,9 @@ impl UploadSession {
     // Only blocks of the file in upload, of at most three block sizes, are taken.
     fn blocks(&mut self, request: &RequestParts, find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>) -> Option<Request> {
         let file = self.file.filter(|file| self.slot && *file == request.file)?;
-        let size = find(&file)?.size;
+        let Some(size) = find(&file).map(|file| file.size) else {
+            return Some(Request::FileGone);
+        };
         for range in request.ranges.iter().filter(|range| !range.is_empty()) {
             let block = Block { file, start: range.start, end: range.end };
             if range.end.saturating_sub(range.start) > MAX_BLOCK || range.end > size {
