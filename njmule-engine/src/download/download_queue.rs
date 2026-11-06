@@ -19,6 +19,7 @@ use crate::api::ed2k_link::{self, FileLink};
 use crate::files::hash::ed2k;
 use crate::files::part_file::{self, PartFile, Status};
 use crate::files::part_file_storage::{DiskDone, Done, PartFileStorage};
+use crate::persist::atomic_files;
 use crate::security::path_sanitizer;
 use crate::util::instants;
 
@@ -325,7 +326,7 @@ impl DownloadQueue {
         download.storage.cancel_saves();
         download.storage.close(Vec::new());
         let met = download.file.met_file();
-        for file in [met.clone(), part_file::bak_path(&met)] {
+        for file in [met.clone(), atomic_files::bak_path(&met)] {
             if file.exists()
                 && let Err(e) = fs::rename(&file, aside(&file))
             {
@@ -556,7 +557,7 @@ impl DownloadQueue {
                 };
                 download.file.set_status(Status::Complete);
                 let met = download.file.met_file();
-                for file in [part_file::bak_path(&met), met] {
+                for file in [atomic_files::bak_path(&met), met] {
                     if let Err(e) = fs::remove_file(&file)
                         && e.kind() != io::ErrorKind::NotFound
                     {
@@ -613,7 +614,7 @@ impl DownloadQueue {
         let base = part_file::file_name(number);
         let data = self.temp_dir.join(format!("{base}{}", part_file::DATA_SUFFIX));
         let met = self.temp_dir.join(format!("{base}{}", part_file::MET_SUFFIX));
-        let bak = part_file::bak_path(&met);
+        let bak = atomic_files::bak_path(&met);
         let mut temporary = met.file_name().unwrap_or_default().to_os_string();
         temporary.push(".tmp");
         vec![data, met.with_file_name(temporary), met.clone(), bak.clone(), aside(&bak), aside(&met)]
@@ -671,7 +672,7 @@ fn aside(file: &Path) -> PathBuf {
 // The number of `NNN.part.met`, its backup or either set aside.
 fn met_number(name: &str) -> Option<u32> {
     let rest = name.strip_suffix(SET_ASIDE).unwrap_or(name);
-    let rest = rest.strip_suffix(part_file::BAK_SUFFIX).unwrap_or(rest);
+    let rest = rest.strip_suffix(atomic_files::BAK_SUFFIX).unwrap_or(rest);
     let digits = rest.strip_suffix(part_file::MET_SUFFIX)?;
     if digits.is_empty() || digits.len() > 6 || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;

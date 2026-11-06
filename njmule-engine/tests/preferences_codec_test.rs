@@ -6,6 +6,8 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
+mod held;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
@@ -119,4 +121,36 @@ fn should_give_every_key_as_text() {
     assert_eq!(map["net.tcpPort"], "4662");
     assert_eq!(map["security.obfuscation"], "REQUESTED");
     assert_eq!(map["dirs.incoming"], "");
+}
+
+fn saved_with_the_tcp_port(file: &std::path::Path, tcp_port: u16) {
+    preferences_codec::save(file, &Preferences { tcp_port, ..Preferences::default() }).unwrap();
+}
+
+#[test]
+fn should_not_take_from_the_older_backup_the_preferences_held_by_another_program() {
+    let (_directory, file) = file();
+    saved_with_the_tcp_port(&file, 1111);
+    saved_with_the_tcp_port(&file, 2222);
+    let Some(_held) = held::hold(&file) else { return };
+
+    let loaded = preferences_codec::load(&file);
+
+    // Loaded from the backup, they would be saved over the newer file at the start.
+    assert!(loaded.is_err());
+}
+
+#[test]
+fn should_load_the_newer_preferences_once_the_other_program_lets_them_go() {
+    let (_directory, file) = file();
+    saved_with_the_tcp_port(&file, 1111);
+    saved_with_the_tcp_port(&file, 2222);
+    {
+        let Some(_held) = held::hold(&file) else { return };
+        assert!(preferences_codec::load(&file).is_err());
+    }
+
+    let loaded = preferences_codec::load(&file);
+
+    assert_eq!(loaded.unwrap().tcp_port, 2222);
 }

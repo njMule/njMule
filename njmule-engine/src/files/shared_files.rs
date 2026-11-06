@@ -73,18 +73,34 @@ pub struct SharedFiles {
     known: HashMap<(String, u64, u32), KnownFile>,
 }
 
+// The file, else its backup; when both are damaged, what comes before the damage, from the one that keeps more.
+fn read_known(file: &Path) -> Vec<KnownFile> {
+    match atomic_files::read(file, |data| {
+        known_met::read(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    }) {
+        Ok(known) => known,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => {
+            tracing::warn!("Cannot read {}; what can be read of it is kept: {e}", file.display());
+            [atomic_files::bak_path(file), file.to_path_buf()]
+                .iter()
+                .filter_map(|candidate| std::fs::read(candidate).ok())
+                .map(|data| known_met::salvage(&data))
+                .max_by_key(Vec::len)
+                .unwrap_or_default()
+        }
+    }
+}
+
 impl SharedFiles {
     /// The files hashed before, from `known.met` in `config`.
     pub fn load(config: &Path) -> Self {
         let mut shared = Self::default();
-        let file = config.join(KNOWN_FILE_NAME);
-        if let Ok(data) = std::fs::read(&file) {
-            for known in known_met::salvage(&data) {
-                if let (Some(name), Some(size)) = (known.name().map(str::to_owned), known.size())
-                    && known.is_consistent()
-                {
-                    shared.known.insert((name, size, known.mtime), known);
-                }
+        for known in read_known(&config.join(KNOWN_FILE_NAME)) {
+            if let (Some(name), Some(size)) = (known.name().map(str::to_owned), known.size())
+                && known.is_consistent()
+            {
+                shared.known.insert((name, size, known.mtime), known);
             }
         }
         shared
@@ -95,7 +111,7 @@ impl SharedFiles {
         let shared: std::collections::HashSet<[u8; 16]> = self.files.keys().copied().collect();
         files.extend(self.known.values().filter(|known| !shared.contains(&known.file_hash)).cloned());
         let data = known_met::write(&files).map_err(io::Error::other)?;
-        atomic_files::write(&config.join(KNOWN_FILE_NAME), &data, false)
+        atomic_files::write(&config.join(KNOWN_FILE_NAME), &data)
     }
 
     /// Shares a found file that was hashed before; false when it must be hashed first.

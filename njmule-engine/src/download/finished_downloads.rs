@@ -3,7 +3,7 @@
 
 //! The completed downloads, listed until the user clears them; kept in `finished.json` from one run to the next.
 
-use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
@@ -27,11 +27,12 @@ impl FinishedDownloads {
     /// The completed downloads kept in `config`; none when they cannot be read.
     pub fn load(config: &Path) -> Self {
         let mut kept = Self { file: config.join(FILE_NAME), finished: IndexMap::new() };
-        let Ok(data) = fs::read(&kept.file) else {
-            return kept;
-        };
-        let root: Value = match serde_json::from_slice(&data) {
+        let read = atomic_files::read(&kept.file, |data| {
+            serde_json::from_slice::<Value>(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        });
+        let root = match read {
             Ok(root) => root,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return kept,
             Err(e) => {
                 tracing::warn!("Starting a new list of completed downloads: cannot read {}: {e}", kept.file.display());
                 return kept;
@@ -106,7 +107,7 @@ impl FinishedDownloads {
         let root = json!({"format": FORMAT, "downloads": downloads});
         let written = serde_json::to_vec(&root)
             .map_err(std::io::Error::other)
-            .and_then(|data| atomic_files::write(&self.file, &data, false));
+            .and_then(|data| atomic_files::write(&self.file, &data));
         if let Err(e) = written {
             tracing::warn!("Cannot save the completed downloads to {}: {e}", self.file.display());
         }

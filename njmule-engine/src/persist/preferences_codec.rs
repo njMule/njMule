@@ -70,7 +70,7 @@ pub fn apply(preferences: &Preferences, changes: &BTreeMap<String, String>) -> R
 /// Loads the preferences, or the defaults if the file is missing; a value that cannot be read keeps its default.
 pub fn load(file: &Path) -> io::Result<Preferences> {
     let mut preferences = Preferences::default();
-    for (key, value) in read(file)? {
+    for (key, value) in properties(file, false)? {
         if KEYS.contains(&key.as_str())
             && let Err(reason) = set(&mut preferences, &key, &value)
         {
@@ -80,9 +80,10 @@ pub fn load(file: &Path) -> io::Result<Preferences> {
     Ok(preferences)
 }
 
-/// Writes the preferences, keeping the keys of the file this engine does not use.
+/// Writes the preferences, for their owner only as they hold the proxy and mail passwords, keeping the keys of the file
+/// this engine does not use.
 pub fn save(file: &Path, preferences: &Preferences) -> io::Result<()> {
-    let mut properties = read(file)?;
+    let mut properties = properties(file, true).unwrap_or_default();
     for (key, value) in to_map(preferences) {
         properties.insert(key.to_owned(), value);
     }
@@ -93,22 +94,27 @@ pub fn save(file: &Path, preferences: &Preferences) -> io::Result<()> {
     }
     writer.finish().map_err(io::Error::other)?;
     drop(writer);
-    atomic_files::write(file, &text, true)
+    atomic_files::write_secret(file, &text)
 }
 
-fn read(file: &Path) -> io::Result<BTreeMap<String, String>> {
-    let text = match std::fs::read(file) {
-        Ok(text) => text,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
-        Err(e) => return Err(e),
+// The properties of `file`, else of its backup; none when neither is there. With `backup_if_held` false, a file another
+// program holds fails rather than yield the older backup, which saving would then make the file.
+fn properties(file: &Path, backup_if_held: bool) -> io::Result<BTreeMap<String, String>> {
+    let parse = |text: &[u8]| {
+        let mut properties = BTreeMap::new();
+        PropertiesIter::new_with_encoding(text, UTF_8)
+            .read_into(|key, value| {
+                properties.insert(key, value);
+            })
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        Ok(properties)
     };
-    let mut properties = BTreeMap::new();
-    PropertiesIter::new_with_encoding(text.as_slice(), UTF_8)
-        .read_into(|key, value| {
-            properties.insert(key, value);
-        })
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    Ok(properties)
+    let read =
+        if backup_if_held { atomic_files::read(file, parse) } else { atomic_files::read_unless_held(file, parse) };
+    match read {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(BTreeMap::new()),
+        done => done,
+    }
 }
 
 fn set(preferences: &mut Preferences, key: &str, value: &str) -> Result<(), String> {
