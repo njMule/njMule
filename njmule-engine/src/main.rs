@@ -29,8 +29,9 @@ const LOG_DAYS: usize = 14;
 #[derive(Parser)]
 #[command(name = "njmule", version = nj_mule_info::version(), about = "njMule, an eD2K and Kad client")]
 struct Cli {
-    /// The profile's folder, which keeps everything under it.
-    #[arg(long, value_name = "FOLDER", required_unless_present = "hash")]
+    /// The profile's folder, which keeps everything under it; else the system's places, or beside the executable in
+    /// portable mode.
+    #[arg(long, value_name = "FOLDER")]
     config_dir: Option<PathBuf>,
     /// A switch NAME=VALUE, such as njmule.upnp.disabled=true; the engine ignores those it does not have.
     #[arg(short = 'D', value_name = "NAME=VALUE")]
@@ -46,10 +47,7 @@ fn main() -> ExitCode {
         tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
         return hash(&cli.hash);
     }
-    let Some(config_dir) = cli.config_dir else {
-        return ExitCode::FAILURE;
-    };
-    let dirs = match AppDirectories::under_root(&config_dir) {
+    let dirs = match AppDirectories::resolve_current(cli.config_dir.as_deref()) {
         Ok(dirs) => dirs,
         Err(e) => {
             eprintln!("njmule: {e}");
