@@ -22,11 +22,13 @@ use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
 use crate::api::server_info::ServerInfo;
 use crate::config::app_directories::AppDirectories;
+use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
 use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::engine::network::{Command, ConnectError, MoreAnswer};
 use crate::files::shared_files::SharedFile;
+use crate::net::routes::Routes;
 use crate::peer::peer_greetings;
 use crate::persist::format::server_met::Server;
 use crate::persist::{preferences_codec, user_hash_store};
@@ -60,6 +62,7 @@ pub struct Shared {
     user_hash: [u8; 16],
     listen_port: u16,
     preferences: watch::Sender<Preferences>,
+    routes: Routes,
     events: broadcast::Sender<EngineEvent>,
     context: Mutex<ServerContext>,
     commands: mpsc::UnboundedSender<Command>,
@@ -115,11 +118,16 @@ impl Engine {
         let listen_port = listener.as_ref().and_then(|l| l.local_addr().ok()).map_or(0, |address| address.port());
         let (events, _) = broadcast::channel(EVENT_BACKLOG);
         let (commands, commands_out) = mpsc::unbounded_channel();
+        let preferences = watch::Sender::new(preferences);
+        let proxy = preferences.subscribe();
+        // Any interface until the computer's are listed, which comes with the network's binding.
+        let routes = Routes::new(move || proxy.borrow().proxy.clone(), || Binding::Any);
         let shared = Arc::new(Shared {
             dirs,
             user_hash,
             listen_port,
-            preferences: watch::Sender::new(preferences),
+            preferences,
+            routes,
             events,
             context: Mutex::new(ServerContext::default()),
             commands,
