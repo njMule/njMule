@@ -216,11 +216,14 @@ impl ServerSession {
                 }
             }
             Outcome::ReconnectPauseOver => self.reconnected_lately = false,
-            Outcome::KeepAliveCheck => {
-                if self.session.as_ref().is_some_and(|session| session.last_sent.elapsed() >= KEEP_ALIVE) {
-                    self.send(server_messages::keep_alive());
-                }
-            }
+            Outcome::KeepAliveCheck => self.keep_alive_if_idle(Instant::now()),
+        }
+    }
+
+    /// Offers the server no file, which keeps the connection open, once nothing was sent for [`KEEP_ALIVE`] at `now`.
+    pub fn keep_alive_if_idle(&mut self, now: Instant) {
+        if self.session.as_ref().is_some_and(|session| now.saturating_duration_since(session.last_sent) >= KEEP_ALIVE) {
+            self.send(server_messages::keep_alive());
         }
     }
 

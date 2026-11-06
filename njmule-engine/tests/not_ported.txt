@@ -84,13 +84,6 @@ PeerGreetingsTest.shouldSayHelloFirstOverAConnectionThroughRoutersAndHandItOverO
 # The engine's task drives the pinger with its own timer: the pinger holds none to start or stop.
 ServerPingerTest.shouldStartAndStopTheTimerOnce
 
-# Scenarios of the server session not ported yet.
-ServerSessionTest.shouldEndTheAttemptWhenTheServerHangsUpBeforeTheId
-ServerSessionTest.shouldIgnoreAnObfuscatedPortBeyondTheRangeAndUseThePlainOne
-ServerSessionTest.shouldNeverDialAServerKnownByAHostNameAtNoAddress
-ServerSessionTest.shouldOfferNoFileToTheServerOnceNothingWasSentForAWhile
-ServerSessionTest.shouldSendNothingToKeepAliveAConnectionInUse
-
 # Shared folders and trees, private folders, renames, counts, priorities and other clients' records wait for their ports.
 SharedFilesTest.shouldAddTheCountsOfARunToTheTotalsKnownMetKeeps
 SharedFilesTest.shouldBuildTheAichTreeOfAFileOnceForAllItsRequests

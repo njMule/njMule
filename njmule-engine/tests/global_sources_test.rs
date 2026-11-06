@@ -190,3 +190,30 @@ fn should_ask_again_half_an_hour_after_a_pass() {
 
     assert_eq!(sent.map(|(to, packet)| (to, files_asked(&packet))), Some((udp("B"), vec![file(1)])));
 }
+
+// Beyond the Java engine's examples: the branches its other tests reach.
+
+#[test]
+fn should_ask_nothing_more_once_stopped_and_pause_before_the_next_pass() {
+    let mut asking = Asking::new(&[server("B"), server("D")]);
+    asking.wanting = wanted(&[file(1)]);
+    asking.requests(1);
+
+    asking.global.stop(asking.now);
+    asking.global.start();
+
+    assert!(asking.tick(true).is_none(), "the next pass waits");
+    let answer = server_datagrams::found_sources(&[sources(file(1), &[HIGH_ID])]).unwrap();
+    assert!(asking.global.received(udp("B"), &answer).is_empty(), "nothing is awaited any more");
+}
+
+#[test]
+fn should_ignore_a_malformed_answer_of_a_server_asked() {
+    let mut asking = Asking::new(&[server("B")]);
+    asking.wanting = wanted(&[file(1)]);
+    asking.requests(1);
+
+    let found = asking.global.received(udp("B"), &Packet::of(0xE3, 0x9B, vec![1, 2, 3]));
+
+    assert!(found.is_empty());
+}

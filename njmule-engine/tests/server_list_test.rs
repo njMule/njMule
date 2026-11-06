@@ -363,3 +363,17 @@ fn should_neither_add_nor_offer_servers_the_filter_blocks() {
     assert_eq!(addresses(&list.candidates()), ["1.2.3.4:4661", "5.6.7.9:4661"]);
     assert_eq!(list.len(), 3, "kept in the file");
 }
+
+// Beyond the Java engine's examples: the branches its other tests reach.
+
+#[test]
+fn should_name_the_priorities_and_read_no_address_from_other_text() {
+    let names = [Priority::High, Priority::Normal, Priority::Low].map(Priority::name);
+    let empty = ServerList::default();
+
+    assert_eq!(names, ["high", "normal", "low"]);
+    assert_eq!(Address::parse("not an address:4661"), None);
+    assert!(empty.is_empty());
+    assert!(server_list::is_lan(ip("192.168.1.2")) && !server_list::is_lan(ip("1.2.3.4")));
+    assert!(format!("{empty:?}").contains("Blocked"));
+}

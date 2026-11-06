@@ -13,3 +13,4 @@ config/
 persist/
 search/
 security/
+server/
