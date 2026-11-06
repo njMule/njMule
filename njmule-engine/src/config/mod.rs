@@ -5,6 +5,14 @@
 
 pub mod app_directories;
 pub mod event_commands;
+pub mod next_download;
 pub mod night_hours;
+pub mod notifications;
+pub mod obfuscation_mode;
 pub mod os_family;
 pub mod preferences;
+pub mod proxy_settings;
+pub mod shared_files_visibility;
+pub mod update_channel;
+pub mod update_install_time;
+pub mod update_mode;

@@ -9,7 +9,7 @@
 pub const MAX_COMMAND_LINE: usize = 4096;
 
 /// What a command can run on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Event {
     DownloadCompleted,
     DownloadFailed,

@@ -25,10 +25,16 @@ struct Running {
 }
 
 async fn running() -> Running {
+    running_with("").await
+}
+
+async fn running_with(preferences: &str) -> Running {
     let profile = tempfile::tempdir().unwrap();
     let dirs = AppDirectories::under_root(profile.path()).unwrap();
     fs::create_dir_all(&dirs.config).unwrap();
-    fs::write(dirs.config.join("njmule.properties"), "net.tcpPort=0\n").unwrap();
+    // A port the system has free: the preferences take none of 0.
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    fs::write(dirs.config.join("njmule.properties"), format!("net.tcpPort={port}\n{preferences}")).unwrap();
     let engine = Engine::start(dirs).await.unwrap();
     let endpoint = ControlEndpoint::start(engine.clone()).await.unwrap();
     let line = endpoint.control_line();
@@ -82,6 +88,20 @@ async fn should_answer_the_token_of_the_run() {
     assert_eq!(status, 200, "{answer}");
     assert!(answer.contains("\"net.tcpPort\""), "{answer}");
     assert_eq!(running.token.len(), 43);
+    running.stop().await;
+}
+
+#[tokio::test]
+async fn should_never_give_the_passwords_of_the_preferences() {
+    let running = running_with("proxy.password=secret\n").await;
+
+    let (_, preferences) = running.call("GET /api/v1/preferences", &[running.bearer()]).await;
+    let (status, passwords) = running.call("GET /api/v1/preferences/passwords", &[running.bearer()]).await;
+
+    assert!(!preferences.contains("secret") && !preferences.contains("proxy.password"), "{preferences}");
+    assert_eq!(status, 200, "{passwords}");
+    let set: Value = serde_json::from_str(&passwords[passwords.find("\r\n\r\n").unwrap() + 4..]).unwrap();
+    assert_eq!(set, serde_json::json!({"notify.smtpPassword": false, "proxy.password": true}));
     running.stop().await;
 }
 

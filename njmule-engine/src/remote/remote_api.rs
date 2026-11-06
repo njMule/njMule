@@ -24,6 +24,9 @@ use crate::server::server_list::Address;
 pub fn router(engine: Engine) -> Router {
     Router::new()
         .route("/preferences", get(preferences).patch(update_preferences))
+        .route("/preferences/passwords", get(|State(engine): State<Engine>| async move {
+            Json(api_json::preference_passwords(&engine.preferences()))
+        }))
         .route("/schedule", get(|| async { Json(api_json::schedule()) }))
         .route("/update", get(|| async { Json(api_json::update()) }))
         .route("/events", get(events))

@@ -22,7 +22,9 @@ async fn engine() -> (tempfile::TempDir, Engine) {
     let profile = tempfile::tempdir().unwrap();
     let dirs = AppDirectories::under_root(profile.path()).unwrap();
     fs::create_dir_all(&dirs.config).unwrap();
-    fs::write(dirs.config.join("njmule.properties"), "net.tcpPort=0\n").unwrap();
+    // A port the system has free: the preferences take none of 0.
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    fs::write(dirs.config.join("njmule.properties"), format!("net.tcpPort={port}\n")).unwrap();
     (profile, Engine::start(dirs).await.unwrap())
 }
 

@@ -17,7 +17,8 @@ use rand::rngs::StdRng;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use crate::config::preferences::{ObfuscationMode, Preferences};
+use crate::config::obfuscation_mode::ObfuscationMode;
+use crate::config::preferences::Preferences;
 use crate::net::tcp_connector;
 use crate::persist::format::server_met::{self, Server};
 use crate::protocol::ed2k::server_datagrams;
