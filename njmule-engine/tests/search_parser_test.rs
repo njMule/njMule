@@ -446,3 +446,11 @@ fn should_refuse_alternatives_in_kad() {
 fn should_refuse_a_kad_search_without_a_word_kad_indexes() {
     assert!(kad("22.04 @size>700m").is_err());
 }
+
+#[test]
+fn should_tell_the_reason_and_where_in_its_message() {
+    let error = parse("linux (iso").unwrap_err();
+
+    assert_eq!(error.reason(), Reason::MissingClosingParenthesis);
+    assert!(error.to_string().starts_with(&format!("MISSING_CLOSING_PARENTHESIS at {}", error.position())), "{error}");
+}

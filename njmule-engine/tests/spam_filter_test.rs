@@ -369,3 +369,90 @@ fn should_read_back_the_learned_markers_of_a_file_saved() {
         spam_filter::BARE_NAME_HIT + spam_filter::SIZE_HIT + spam_filter::ONLY_SERVER_HIT + spam_filter::SOURCE_HIT
     );
 }
+
+// Beyond the Java engine's examples: the branches its other tests reach.
+
+#[test]
+fn should_rate_nothing_of_a_file_cleared_again_after_a_restart() {
+    let mut scenario = Scenario::of_the_file();
+    scenario.filter.mark(&file("ab", "Fake 2026 FULL.avi", 700 * MIB, udp(&[SPAM_SERVER])), true);
+    scenario.filter.mark(&file("ab", "Fake 2026 FULL.avi", 700 * MIB, udp(&[SPAM_SERVER])), false);
+
+    scenario.saved_and_loaded_again();
+
+    assert_eq!(scenario.filter.rate(&file("ab", "Fake 2026 FULL.avi", 700 * MIB, udp(&[SPAM_SERVER]))), 0);
+    assert_eq!(scenario.filter.marks().not_spam, [hash("ab")].into());
+}
+
+#[test]
+fn should_keep_the_markers_it_does_not_know() {
+    let scenario = Scenario::new();
+    let unknown = Tag::String { name: TagName::id(0x40), value: "a marker of another version".to_owned() };
+    fs::write(scenario.spam_file(), search_files::write_spam(std::slice::from_ref(&unknown)).unwrap()).unwrap();
+
+    scenario.load().save(&scenario.spam_file()).unwrap();
+
+    assert_eq!(search_files::read_spam(&fs::read(scenario.spam_file()).unwrap()).unwrap(), [unknown]);
+}
+
+#[test]
+fn should_count_a_spam_result_more_or_less_for_the_servers_that_gave_it() {
+    let mut filter = SpamFilter::default();
+    filter.answered(SPAM_SERVER, 10, 4);
+    let fake = file("ab", "Fake one.avi", 700 * MIB, udp(&[SPAM_SERVER]));
+    filter.mark(&fake, true);
+    let other = file("cd", "Other name.mkv", 300 * MIB, udp(&[SPAM_SERVER]));
+    let marked = filter.rate(&other);
+
+    filter.mark(&fake, false);
+
+    assert_eq!(marked, spam_filter::ONLY_SERVER_HIT + spam_filter::ONLY_SPAM_SERVERS_HIT, "5 of 10: a spam server");
+    assert_eq!(filter.rate(&other), 0, "4 of 10 again, and the server forgotten");
+}
+
+#[test]
+fn should_rate_a_popular_file_of_spam_servers_higher_when_a_source_is_near_the_server() {
+    let mut filter = SpamFilter::default();
+    filter.answered(SPAM_SERVER, 10, 6);
+    let far = popular(file("cd", "Other name.mkv", 300 * MIB, origin(SPAM_SERVER, SPAM_SOURCE, "")));
+    let near = popular(file("cd", "Other name.mkv", 300 * MIB, origin(SPAM_SERVER, ipv4::of(198, 51, 100, 200), "")));
+
+    let ratings = (filter.rate(&far), filter.rate(&near));
+
+    assert_eq!(
+        ratings,
+        (
+            spam_filter::ONLY_SPAM_SERVERS_HIT + spam_filter::POPULAR_HIT,
+            spam_filter::ONLY_SPAM_SERVERS_HIT + spam_filter::POPULAR_SMALL_PROGRAM_HIT
+        )
+    );
+}
+
+#[test]
+fn should_rate_bare_names_by_how_few_edits_part_them() {
+    let mut filter = SpamFilter::default();
+    filter.mark(&file("ab", "x.avi", 700 * MIB, bare("great movie hd rip 2026 avi")), true);
+    filter.mark(&file("ac", "y.avi", 700 * MIB, bare("short")), true);
+    let rate = |name: &str| filter.rate(&file("cd", "z.mkv", 3 * MIB, bare(name)));
+
+    let ratings =
+        [rate("great movie hd rip 1999 xvid"), rate("other film entirely, not alike"), rate("shorter"), rate("short")];
+
+    assert_eq!(ratings, [spam_filter::FAR_NAME_HIT, 0, 0, spam_filter::SHORT_BARE_NAME_HIT]);
+}
+
+#[test]
+fn should_forget_the_oldest_markers_beyond_the_most_it_keeps() {
+    let mut filter = SpamFilter::default();
+    for i in 0..=4096u32 {
+        let mut hash = [0; 16];
+        hash[..4].copy_from_slice(&i.to_be_bytes());
+        filter.mark(&SearchResult::new(hash, &format!("fake number {i}.avi"), 1000, 1, None, None), true);
+        filter.answered(i, 1, 0);
+    }
+
+    let marks = filter.marks();
+
+    assert_eq!((marks.spam.len(), marks.names.len()), (4096, 4096));
+    assert!(!marks.spam.contains(&[0; 16]), "the oldest goes first");
+}

@@ -20,6 +20,7 @@ use tokio::task::JoinHandle;
 use crate::api::download_info::{DownloadInfo, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
@@ -41,7 +42,8 @@ use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint};
 use crate::protocol::packet::opcodes::{client, extended, server_udp};
 use crate::protocol::packet::{Packet, protocol, udp_framing};
 use crate::protocol::tag::server_tag;
-use crate::search::search_manager::{Effect as SearchEffect, Scope, SearchManager, StartError, Timer};
+use crate::search::search_manager::{Effect as SearchEffect, Scope, SearchManager, SpamRater, StartError, Timer};
+use crate::search::spam_filter::{self, SpamFilter};
 use crate::server::file_publisher::{FilePublisher, Offer};
 use crate::server::global_sources::GlobalSources;
 use crate::server::server_list::{self, Address, ServerList};
@@ -157,6 +159,7 @@ pub struct Network {
     our_ip: u32,
     searches: SearchManager,
     known_searches: HashSet<u64>,
+    spam: SpamFilter,
     shared_files: SharedFiles,
     publisher: FilePublisher,
     downloads: DownloadManager,
@@ -222,6 +225,12 @@ pub fn start(
     let downloads = DownloadManager::open(&temp, &incoming, disk_in)?;
     let accepting = listener.map(|listener| tokio::spawn(accept(listener, peers_in.clone())));
     let finished = FinishedDownloads::load(&dirs.config);
+    let spam_file = dirs.config.join(spam_filter::FILE_NAME);
+    let spam = SpamFilter::load(&spam_file).unwrap_or_else(|e| {
+        tracing::warn!("Cannot read {}: {e}", spam_file.display());
+        SpamFilter::default()
+    });
+    let searches = if udp.is_some() { SearchManager::default() } else { SearchManager::default().without_udp() };
     let network = Network {
         shared,
         servers,
@@ -235,8 +244,9 @@ pub fn start(
         callbacks: HashMap::new(),
         calling: HashSet::new(),
         our_ip: 0,
-        searches: SearchManager::default(),
+        searches,
         known_searches: HashSet::new(),
+        spam,
         shared_files,
         publisher: FilePublisher::default(),
         downloads,
@@ -327,7 +337,8 @@ impl Network {
                 let id = self.session.id();
                 let session = &mut self.session;
                 let mut effects = Vec::new();
-                let started = self.searches.start(&query, scope, id, |packet| session.send(packet), &mut effects);
+                // Kad comes with its port.
+                let started = self.searches.start(&query, scope, id, None, |packet| session.send(packet), &mut effects);
                 if let Ok(search) = started {
                     self.known_searches.insert(search);
                 }
@@ -515,7 +526,15 @@ impl Network {
             Notice::SearchResults { results, .. } => {
                 let connected = self.session.server().map(server_list::address_of);
                 let mut effects = Vec::new();
-                self.searches.server_results(&results.files, results.more, &self.servers, connected, &mut effects);
+                let mut spam = Rater::of(&mut self.spam, &self.shared.preferences.borrow());
+                self.searches.server_results(
+                    &results.files,
+                    results.more,
+                    &self.servers,
+                    connected,
+                    &mut spam,
+                    &mut effects,
+                );
                 self.search_effects(effects);
             }
             Notice::FoundSources(found) => {
@@ -582,7 +601,8 @@ impl Network {
             match server_datagrams::decode_search_results(packet) {
                 Ok(files) => {
                     let mut effects = Vec::new();
-                    self.searches.datagram_results(u32::from(*from.ip()), &files, &mut effects);
+                    let mut spam = Rater::of(&mut self.spam, &self.shared.preferences.borrow());
+                    self.searches.datagram_results(u32::from(*from.ip()), &files, &mut spam, &mut effects);
                     self.search_effects(effects);
                 }
                 Err(e) => tracing::debug!("Malformed search answer from {from}: {e}"),
@@ -627,6 +647,8 @@ impl Network {
                         let _ = ticks.send(Tick::Search(timer));
                     });
                 }
+                // No Kad search is started yet.
+                SearchEffect::StopKad(_) => {}
             }
         }
     }
@@ -1005,6 +1027,11 @@ impl Network {
             saving.abort();
         }
         self.save_servers();
+        // The servers' spam shares change with every UDP answer.
+        let spam_file = self.shared.dirs.config.join(spam_filter::FILE_NAME);
+        if let Err(e) = self.spam.save(&spam_file) {
+            tracing::warn!("Cannot save {}: {e}", spam_file.display());
+        }
     }
 
     fn info(&self, server: &Server) -> ServerInfo {
@@ -1151,5 +1178,28 @@ async fn receive(socket: Arc<UdpSocket>, datagrams: mpsc::UnboundedSender<(Socke
             // On Windows an ICMP error for an earlier datagram fails a receive: harmless.
             Err(e) => tracing::debug!("Server UDP: {e}"),
         }
+    }
+}
+
+// The spam filter as the searches rate with it: off in the preferences, nothing is spam, though the servers' UDP answers
+// are still counted.
+struct Rater<'a> {
+    filter: &'a mut SpamFilter,
+    on: bool,
+}
+
+impl<'a> Rater<'a> {
+    fn of(filter: &'a mut SpamFilter, preferences: &Preferences) -> Self {
+        Self { filter, on: preferences.search_spam_filter }
+    }
+}
+
+impl SpamRater for Rater<'_> {
+    fn rate(&self, result: &SearchResult) -> u32 {
+        if self.on { self.filter.rate(result) } else { 0 }
+    }
+
+    fn answered(&mut self, server_ip: u32, results: u32, spam: u32) {
+        self.filter.answered(server_ip, results, spam);
     }
 }
