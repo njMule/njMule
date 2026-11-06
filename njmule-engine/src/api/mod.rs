@@ -12,6 +12,7 @@ pub mod engine_event;
 pub mod file_comment;
 pub mod import_options;
 pub mod import_report;
+pub mod known_client;
 pub mod nj_mule_info;
 pub mod peer_info;
 pub mod saved_search;
