@@ -13,6 +13,7 @@ use axum::{Json, Router};
 use serde_json::{Value, json};
 
 use crate::api::ed2k_link::Ed2kLink;
+use crate::config::bind_interface;
 use crate::engine::Engine;
 use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::persist::format::server_met;
@@ -28,6 +29,7 @@ pub fn router(engine: Engine) -> Router {
             Json(api_json::preference_passwords(&engine.preferences()))
         }))
         .route("/schedule", get(|| async { Json(api_json::schedule()) }))
+        .route("/interfaces", get(network_interfaces))
         .route("/update", get(|| async { Json(api_json::update()) }))
         .route("/events", get(events))
         .route("/clients/{address}/hello", post(hello))
@@ -268,4 +270,13 @@ fn file_hash(text: &str) -> Result<[u8; 16], ApiError> {
 
 fn no_download() -> ApiError {
     ApiError::new(StatusCode::NOT_FOUND, "No such download")
+}
+
+// The interfaces worth choosing, listed off the engine's task: the system may take a moment.
+async fn network_interfaces() -> Result<Response, ApiError> {
+    let found = tokio::task::spawn_blocking(bind_interface::interfaces)
+        .await
+        .map_err(|e| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, format!("The interfaces cannot be listed: {e}")))?;
+    let choices: Vec<Value> = bind_interface::choices(&found).into_iter().map(api_json::network_interface).collect();
+    Ok(Json(choices).into_response())
 }
