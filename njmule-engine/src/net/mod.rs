@@ -3,6 +3,7 @@
 
 //! Connections to servers and clients, along the routes of the preferences.
 
+pub mod country_table;
 pub mod public_ipv6;
 pub mod relay_keeper;
 pub mod routes;
