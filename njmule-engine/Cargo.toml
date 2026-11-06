@@ -39,9 +39,11 @@ rsa = { version = "0.9.10", features = ["getrandom"] }
 semver = "1.0.28"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+sha2 = "0.11.1"
 sha1 = "0.11.0"
 strum = { version = "0.28.0", features = ["derive"] }
 subtle = "2.6.1"
+sysinfo = { version = "0.40.1", default-features = false, features = ["system"] }
 time = "0.3.55"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "io-util", "io-std", "sync", "time", "fs", "signal"] }
 tokio-stream = { version = "0.1.19", features = ["sync"] }
