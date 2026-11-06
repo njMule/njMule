@@ -5,7 +5,7 @@
 //! chosen and through the proxy of the preferences, as the routes say.
 
 use std::io::{self, ErrorKind};
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use rand::CryptoRng;
@@ -16,8 +16,9 @@ use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use crate::config::proxy_settings::{ProxySettings, ProxyType};
 use crate::net::routes::Routes;
 use crate::net::socks5::{self, Socks5Error, Target};
-use crate::net::tcp_connection::{FrameReader, FrameWriter};
+use crate::net::tcp_connection::{FrameReader, FrameWriter, Limit, TcpConnection};
 use crate::protocol::crypt::stream_obfuscation;
+use crate::protocol::packet::protocol;
 
 /// The padding we send at most in a handshake with a client.
 pub const MAX_CLIENT_PADDING: u8 = 128;
@@ -28,6 +29,15 @@ pub struct Connection {
     pub writer: FrameWriter<OwnedWriteHalf>,
     pub obfuscated: bool,
     pub remote: SocketAddr,
+    /// Our address on it.
+    pub local: Option<IpAddr>,
+}
+
+impl Connection {
+    /// The connection served by its own tasks, not started yet; frames read go by `limit` until another is set.
+    pub fn into_tcp_connection(self, limit: Limit) -> TcpConnection {
+        TcpConnection::new(self.reader, self.writer, self.remote, self.local, self.obfuscated, limit)
+    }
 }
 
 /// Connects to a server; obfuscated through the Diffie-Hellman handshake when `obfuscated`.
@@ -39,9 +49,10 @@ pub async fn connect_to_server(
     random: &mut (impl CryptoRng + Send),
 ) -> io::Result<Connection> {
     let stream = open(address, limit, routes).await?;
+    let local = local_of(&stream);
     let (mut input, mut output) = stream.into_split();
     if !obfuscated {
-        return Ok(plain(input, output, address));
+        return Ok(plain(input, output, address, local));
     }
     let ciphers = within(limit, stream_obfuscation::connect_to_server(&mut input, &mut output, random)).await?;
     Ok(Connection {
@@ -49,6 +60,7 @@ pub async fn connect_to_server(
         writer: FrameWriter::new(output, Some(ciphers.send)),
         obfuscated: true,
         remote: address,
+        local,
     })
 }
 
@@ -61,9 +73,10 @@ pub async fn connect_to_client(
     random: &mut (impl CryptoRng + Send),
 ) -> io::Result<Connection> {
     let stream = open(address, limit, routes).await?;
+    let local = local_of(&stream);
     let (mut input, mut output) = stream.into_split();
     let Some(user_hash) = obfuscate_for else {
-        return Ok(plain(input, output, address));
+        return Ok(plain(input, output, address, local));
     };
     let ciphers = within(
         limit,
@@ -75,6 +88,7 @@ pub async fn connect_to_client(
         writer: FrameWriter::new(output, Some(ciphers.send)),
         obfuscated: true,
         remote: address,
+        local,
     })
 }
 
@@ -143,13 +157,58 @@ async fn http_connect(stream: &mut TcpStream, address: SocketAddr) -> io::Result
     }
 }
 
-fn plain(input: OwnedReadHalf, output: OwnedWriteHalf, remote: SocketAddr) -> Connection {
+fn plain(input: OwnedReadHalf, output: OwnedWriteHalf, remote: SocketAddr, local: Option<IpAddr>) -> Connection {
     Connection {
         reader: FrameReader::new(input, None),
         writer: FrameWriter::new(output, None),
         obfuscated: false,
         remote,
+        local,
     }
+}
+
+// Our address on a connection, unless it is the wildcard.
+fn local_of(stream: &TcpStream) -> Option<IpAddr> {
+    stream.local_addr().ok().map(|address| address.ip()).filter(|ip| !ip.is_unspecified())
+}
+
+/// Takes a connection a client opened: plain, or obfuscated with keys from our user hash; a plain one is refused unless
+/// `allow_plain`, when obfuscation is required. The handshake must end within `limit`.
+pub async fn accept(
+    stream: TcpStream,
+    own_user_hash: [u8; 16],
+    allow_plain: bool,
+    limit: Duration,
+    random: &mut (impl CryptoRng + Send),
+) -> io::Result<Connection> {
+    stream.set_nodelay(true)?;
+    let remote = stream.peer_addr()?;
+    let local = local_of(&stream);
+    let mut first = [0u8; 1];
+    if within(limit, stream.peek(&mut first)).await? == 0 {
+        return Err(io::Error::new(ErrorKind::UnexpectedEof, "closed before the first byte"));
+    }
+    let (mut input, mut output) = stream.into_split();
+    if protocol::is_tcp(first[0]) {
+        if !allow_plain {
+            return Err(io::Error::other("plain connection refused, obfuscation required"));
+        }
+        return Ok(plain(input, output, remote, local));
+    }
+    let mut marker = [0u8; 1];
+    input.read_exact(&mut marker).await?;
+    let ciphers = within(
+        limit,
+        stream_obfuscation::accept_from_client(&mut input, &mut output, &own_user_hash, random, MAX_CLIENT_PADDING),
+    )
+    .await?;
+    Ok(Connection {
+        reader: FrameReader::new(input, Some(ciphers.receive)),
+        writer: FrameWriter::new(output, Some(ciphers.send)),
+        obfuscated: true,
+        remote,
+        local,
+    })
 }
 
 async fn within<T>(limit: Duration, work: impl Future<Output = io::Result<T>>) -> io::Result<T> {

@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use tokio::net::{TcpListener, TcpStream, UdpSocket};
+use tokio::net::{TcpListener, UdpSocket};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
@@ -47,6 +47,8 @@ use crate::protocol::packet::{Packet, protocol};
 use crate::protocol::tag::server_tag;
 use crate::search::search_manager::{Effect as SearchEffect, Scope, SearchManager, SpamRater, StartError, Timer};
 use crate::search::spam_filter::{self, SpamFilter};
+use crate::security::connection_guard::{Admission, ConnectionGuard, Limits, Permit};
+use crate::security::ip_filter::IpFilter;
 use crate::server::file_publisher::{FilePublisher, Offer};
 use crate::server::global_sources::{Asking, GlobalSources};
 use crate::server::server_list::{self, Address, ServerList};
@@ -128,7 +130,8 @@ const BIND_CHECK_SECONDS: u32 = 10;
 
 // What the connections to other clients bring.
 enum PeerEvent {
-    Accepted(TcpStream),
+    // A client's connection the guard admitted, plain or obfuscated, with its permit.
+    Accepted(Box<tcp_connector::Connection>, Permit),
     Connected(SocketAddr, Box<io::Result<tcp_connector::Connection>>),
     Resolved([u8; 16], Vec<SocketAddr>),
 }
@@ -141,6 +144,8 @@ struct Peer {
     handle: LinkHandle,
     hello: Option<Hello>,
     incoming: bool,
+    // Held while the connection lives: the guard counts it.
+    _permit: Option<Permit>,
 }
 
 // What the network side gets on its queues.
@@ -163,6 +168,8 @@ pub struct Network {
     pinging: Option<JoinHandle<()>>,
     saving: Option<JoinHandle<()>>,
     udp: Option<ServerUdp>,
+    // Admits the connections clients open to us.
+    guard: Arc<ConnectionGuard>,
     // Keeps the server socket on the UDP relay of a SOCKS5 proxy, when the preferences have one.
     server_relay: Option<RelayKeeper>,
     datagrams: mpsc::UnboundedSender<(SocketAddr, Packet)>,
@@ -261,6 +268,8 @@ pub fn start(
         tracing::warn!("Cannot read {}: {e}", spam_file.display());
         SpamFilter::default()
     });
+    // The guard's clock.
+    let started = Instant::now();
     let mut network = Network {
         shared,
         servers,
@@ -269,6 +278,13 @@ pub fn start(
         pinging: None,
         saving: None,
         udp: None,
+        guard: Arc::new(ConnectionGuard::new(
+            || Arc::new(IpFilter::empty()),
+            |_| false,
+            |_| false,
+            || Limits::DEFAULT,
+            move || started.elapsed(),
+        )),
         server_relay: None,
         datagrams: datagrams_in,
         accepting: None,
@@ -695,7 +711,9 @@ impl Network {
         let port =
             listener.as_ref().and_then(|listener| listener.local_addr().ok()).map_or(0, |address| address.port());
         self.shared.listen_port.store(port, std::sync::atomic::Ordering::Relaxed);
-        self.accepting = listener.map(|listener| tokio::spawn(accept(listener, self.peer_events.clone())));
+        self.accepting = listener.map(|listener| {
+            tokio::spawn(accept(listener, self.peer_events.clone(), Arc::clone(&self.shared), Arc::clone(&self.guard)))
+        });
         let udp = udp.map(|socket| ServerUdp::start(socket, self.datagrams.clone()));
         if let Some(udp) = &udp {
             let keys = Arc::clone(&self.server_udp_keys);
@@ -938,17 +956,14 @@ impl Network {
     fn peer_event(&mut self, event: PeerEvent) {
         let ours = self.shared.our_hello();
         match event {
-            PeerEvent::Accepted(stream) => {
-                let Ok(remote) = stream.peer_addr() else {
-                    return;
-                };
-                let (input, output) = stream.into_split();
-                self.new_link(remote, FrameReader::new(input, None), FrameWriter::new(output, None), true);
+            PeerEvent::Accepted(connection, permit) => {
+                let tcp_connector::Connection { reader, writer, remote, .. } = *connection;
+                self.new_link(remote, reader, writer, Some(permit));
             }
             PeerEvent::Connected(address, result) => match *result {
                 Ok(connection) => {
                     let tcp_connector::Connection { reader, writer, remote, .. } = connection;
-                    let handle = self.new_link(remote, reader, writer, false);
+                    let handle = self.new_link(remote, reader, writer, None);
                     self.downloads.connected(address, Ok(handle), &ours);
                 }
                 Err(e) => self.downloads.connected(address, Err(e.to_string()), &ours),
@@ -963,7 +978,7 @@ impl Network {
         remote: SocketAddr,
         reader: FrameReader<R>,
         writer: FrameWriter<W>,
-        incoming: bool,
+        permit: Option<Permit>,
     ) -> LinkHandle
     where
         R: tokio::io::AsyncRead + Unpin + Send + 'static,
@@ -972,7 +987,8 @@ impl Network {
         let id = self.next_link;
         self.next_link = self.next_link.saturating_add(1);
         let handle = peer_link::start(id, remote, reader, writer, self.link_events.clone());
-        self.peers.insert(id, Peer { handle: handle.clone(), hello: None, incoming });
+        let incoming = permit.is_some();
+        self.peers.insert(id, Peer { handle: handle.clone(), hello: None, incoming, _permit: permit });
         handle
     }
 
@@ -1305,24 +1321,49 @@ fn from_uploader(packet: &Packet) -> bool {
 }
 
 // Takes the connections other clients open; an obfuscated one is not taken yet.
-async fn accept(listener: TcpListener, events: mpsc::UnboundedSender<PeerEvent>) {
+// Clients come plain, or obfuscated with keys from our user hash; plain ones are refused while obfuscation is required.
+// The guard admits each first, as for any incoming connection.
+async fn accept(
+    listener: TcpListener,
+    events: mpsc::UnboundedSender<PeerEvent>,
+    shared: Arc<Shared>,
+    guard: Arc<ConnectionGuard>,
+) {
     loop {
-        match listener.accept().await {
-            Ok((stream, remote)) => {
-                let events = events.clone();
-                tokio::spawn(async move {
-                    let mut first = [0u8; 1];
-                    let peeked = tokio::time::timeout(peer_greetings::HELLO_TIMEOUT, stream.peek(&mut first)).await;
-                    if matches!(peeked, Ok(Ok(1))) && protocol::is_tcp(first[0]) {
-                        let _ = stream.set_nodelay(true);
-                        let _ = events.send(PeerEvent::Accepted(stream));
-                    } else {
-                        tracing::debug!("Closing a connection from {remote} that is not plain eD2K");
-                    }
-                });
+        let (stream, remote) = match listener.accept().await {
+            Ok(accepted) => accepted,
+            Err(e) => {
+                tracing::warn!("Cannot accept a connection: {e}");
+                continue;
             }
-            Err(e) => tracing::warn!("Cannot accept a connection: {e}"),
-        }
+        };
+        let permit = match guard.admit(remote.ip()) {
+            Admission::Admitted(permit) => permit,
+            Admission::Refused(reason) => {
+                tracing::debug!("Refused {remote}: {reason:?}");
+                continue;
+            }
+        };
+        let events = events.clone();
+        let shared = Arc::clone(&shared);
+        tokio::spawn(async move {
+            let allow_plain = shared.preferences.borrow().obfuscation != ObfuscationMode::Required;
+            let mut random = StdRng::from_rng(&mut rand::rng());
+            let accepted = tcp_connector::accept(
+                stream,
+                shared.user_hash,
+                allow_plain,
+                peer_greetings::HELLO_TIMEOUT,
+                &mut random,
+            )
+            .await;
+            match accepted {
+                Ok(connection) => {
+                    let _ = events.send(PeerEvent::Accepted(Box::new(connection), permit));
+                }
+                Err(e) => tracing::debug!("Closing a connection from {remote}: {e}"),
+            }
+        });
     }
 }
 

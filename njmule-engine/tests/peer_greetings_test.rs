@@ -90,3 +90,28 @@ async fn should_tell_what_a_greeted_client_said() {
     assert!(!info.obfuscated);
     engine.stop().await;
 }
+
+// Beyond the Java engine's examples: what its listener tests show through TcpConnector.accept.
+
+#[tokio::test]
+async fn should_answer_a_hello_over_an_obfuscated_connection() {
+    let (_profile, engine) = engine().await;
+    let mut random = <rand::rngs::StdRng as rand::SeedableRng>::from_rng(&mut rand::rng());
+    let connection = njmule_engine::net::tcp_connector::connect_to_client(
+        SocketAddr::from((Ipv4Addr::LOCALHOST, engine.listen_port())),
+        Some(engine.user_hash()),
+        std::time::Duration::from_secs(5),
+        &njmule_engine::net::routes::Routes::direct(),
+        &mut random,
+    )
+    .await
+    .unwrap();
+    let (mut reader, mut writer) = (connection.reader, connection.writer);
+
+    writer.write_packet(&their_hello().encode(false).unwrap()).await.unwrap();
+    let answer = reader.read_packet(&frame_limits::client_handshake).await.unwrap().unwrap();
+
+    assert_eq!(answer.opcode(), client::HELLOANSWER);
+    assert_eq!(Hello::decode(&answer).unwrap().user_hash, engine.user_hash());
+    engine.stop().await;
+}
