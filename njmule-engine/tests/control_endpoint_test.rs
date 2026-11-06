@@ -15,7 +15,11 @@ use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
 use njmule_engine::net::tcp_connection::{read_packet, write_packet};
 use njmule_engine::protocol::ed2k::hello::{Hello, Ours};
-use njmule_engine::protocol::packet::frame_limits;
+use njmule_engine::protocol::io::{PacketWriter, StringEncoding};
+use njmule_engine::protocol::packet::opcodes::client;
+use njmule_engine::protocol::packet::{Packet, frame_limits, protocol};
+use njmule_engine::protocol::tag::tag_codec::write_ed2k_list;
+use njmule_engine::protocol::tag::{Ed2kTagFormat, Tag, TagName, file_tag};
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -204,5 +208,41 @@ async fn should_list_the_clients_met_through_the_api() {
     assert_eq!(known[0]["nick"], "fake peer");
     assert_eq!((known[0]["uploaded"].as_u64(), known[0]["downloaded"].as_u64()), (Some(0), Some(0)));
     assert!(known[0]["country"].is_null());
+    running.stop().await;
+}
+
+#[tokio::test]
+async fn should_list_the_files_a_client_shares_through_the_api() {
+    let running = running().await;
+    let peer = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let port = peer.local_addr().unwrap().port();
+    let client = tokio::spawn(async move {
+        let (mut stream, _) = peer.accept().await.unwrap();
+        read_packet(&mut stream, &frame_limits::client).await.unwrap().expect("our hello");
+        let ours = Ours { nick: "them", udp_port: 0, kad_port: 0, misc_options1: 0, misc_options2: 0 };
+        write_packet(&mut stream, &Hello::of([2; 16], 0, 4662, &ours, 0, 0).encode(true).unwrap()).await.unwrap();
+        read_packet(&mut stream, &frame_limits::client).await.unwrap().expect("the request");
+        let mut list = PacketWriter::new();
+        list.u32(1).hash16(&[0x0F; 16]).u32(0).u16(0).u32(2);
+        let tags = [
+            Tag::String { name: TagName::id(file_tag::FILENAME), value: "film.avi".to_owned() },
+            Tag::Int { name: TagName::id(file_tag::FILESIZE), value: 700 },
+        ];
+        write_ed2k_list(&mut list, &tags, Ed2kTagFormat::New, StringEncoding::Utf8).unwrap();
+        let answer = Packet::written(protocol::EDONKEY, client::ASKSHAREDFILESANSWER, list);
+        write_packet(&mut stream, &answer).await.unwrap();
+        let _ = read_packet(&mut stream, &frame_limits::client).await;
+    });
+
+    let (status, answer) =
+        running.call(&format!("POST /api/v1/clients/127.0.0.1:{port}/files"), &[running.bearer()]).await;
+
+    assert_eq!(status, 200, "{answer}");
+    let body: Value = serde_json::from_str(&answer[answer.find("\r\n\r\n").unwrap() + 4..]).unwrap();
+    assert_eq!(body[0]["hash"], "0F".repeat(16));
+    assert_eq!(body[0]["name"], "film.avi");
+    assert_eq!(body[0]["size"], 700);
+    assert_eq!(body[0]["link"], format!("ed2k://|file|film.avi|700|{}|/", "0F".repeat(16)));
+    drop(client);
     running.stop().await;
 }

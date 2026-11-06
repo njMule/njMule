@@ -36,6 +36,7 @@ pub fn router(engine: Engine) -> Router {
             Json(Value::Array(engine.known_clients().await.iter().map(api_json::known_client).collect()))
         }))
         .route("/clients/{address}/hello", post(hello))
+        .route("/clients/{address}/files", post(browse_client))
         .route("/searches", post(start_search))
         .route("/searches/{id}/more", post(more_results))
         .route("/shared", get(shared_files))
@@ -99,13 +100,24 @@ async fn events(State(engine): State<Engine>) -> Response {
 }
 
 async fn hello(State(engine): State<Engine>, Path(address): Path<String>) -> Result<Json<Value>, ApiError> {
-    let target = tokio::net::lookup_host(address.as_str())
+    let target = client_address(&address).await?;
+    let info = engine.hello(target).await.map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e.to_string()))?;
+    Ok(Json(api_json::peer_info(&info)))
+}
+
+async fn browse_client(State(engine): State<Engine>, Path(address): Path<String>) -> Result<Json<Value>, ApiError> {
+    let target = client_address(&address).await?;
+    let files = engine.browse(target).await.map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e.to_string()))?;
+    Ok(Json(Value::Array(files.iter().filter_map(api_json::shared_by_client).collect())))
+}
+
+// A client's `host:port`, its name looked up.
+async fn client_address(address: &str) -> Result<std::net::SocketAddr, ApiError> {
+    tokio::net::lookup_host(address)
         .await
         .ok()
         .and_then(|mut found| found.next())
-        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a client address: {address}")))?;
-    let info = engine.hello(target).await.map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, e.to_string()))?;
-    Ok(Json(api_json::peer_info(&info)))
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a client address: {address}")))
 }
 
 async fn servers(State(engine): State<Engine>) -> Json<Value> {
