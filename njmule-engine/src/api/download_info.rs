@@ -48,6 +48,13 @@ impl DownloadPriority {
             Self::Auto => "auto",
         }
     }
+
+    /// The priority of its name, in any case.
+    pub fn of_name(text: &str) -> Option<Self> {
+        [Self::Low, Self::Normal, Self::High, Self::Auto]
+            .into_iter()
+            .find(|priority| priority.name().eq_ignore_ascii_case(text))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

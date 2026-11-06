@@ -4,6 +4,7 @@
 //! The profile's layout and the user's preferences.
 
 pub mod app_directories;
+pub mod bind_interface;
 pub mod event_commands;
 pub mod next_download;
 pub mod night_hours;

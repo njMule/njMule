@@ -4,6 +4,7 @@
 //! What the engine keeps on disk.
 
 pub mod atomic_files;
+pub mod categories_codec;
 pub mod format;
 pub mod preferences_codec;
 pub mod property_lines;
