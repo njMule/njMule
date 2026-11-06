@@ -32,6 +32,9 @@ pub fn router(engine: Engine) -> Router {
         .route("/interfaces", get(network_interfaces))
         .route("/update", get(|| async { Json(api_json::update()) }))
         .route("/events", get(events))
+        .route("/clients/known", get(|State(engine): State<Engine>| async move {
+            Json(Value::Array(engine.known_clients().await.iter().map(api_json::known_client).collect()))
+        }))
         .route("/clients/{address}/hello", post(hello))
         .route("/searches", post(start_search))
         .route("/searches/{id}/more", post(more_results))

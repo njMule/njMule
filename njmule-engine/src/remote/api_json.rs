@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 use crate::api::download_info::{DownloadInfo, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::known_client::KnownClient;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
 use crate::api::search_result::{Media, SearchResult};
@@ -84,6 +85,19 @@ pub fn peer_info(info: &PeerInfo) -> Value {
         "software": info.software,
         "obfuscated": info.obfuscated,
         "identification": info.identification.name(),
+    })
+}
+
+pub fn known_client(client: &KnownClient) -> Value {
+    json!({
+        "userHash": hash(&client.user_hash),
+        "nick": client.nick,
+        "software": client.software,
+        "firstSeen": client.first_seen,
+        "lastSeen": client.last_seen,
+        "country": client.country,
+        "uploaded": client.uploaded,
+        "downloaded": client.downloaded,
     })
 }
 

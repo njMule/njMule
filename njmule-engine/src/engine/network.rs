@@ -7,9 +7,9 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -20,6 +20,7 @@ use tokio::task::JoinHandle;
 use crate::api::download_info::{DownloadInfo, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::known_client::KnownClient;
 use crate::api::peer_info::{Identification as PeerIdentification, PeerInfo};
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
@@ -36,10 +37,11 @@ use crate::files::part_file_storage::DiskDone;
 use crate::files::shared_files::{self, Found, SharedFile, SharedFiles};
 use crate::net::relay_keeper::{Level, RelayKeeper};
 use crate::net::tcp_connector;
+use crate::peer::client_history::ClientHistory;
 use crate::peer::identities::{self, Identities, Session, Trust};
 use crate::peer::identity_handshake::{Identity, Outcome as Identification};
-use crate::peer::peer_greetings;
 use crate::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId, Side};
+use crate::peer::{peer_greetings, peer_software};
 use crate::persist::format::server_met::Server;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams;
@@ -94,6 +96,7 @@ pub enum Command {
     /// Says hello to a client and runs the identification: told once its outcome is known, the connection closes or
     /// the wait is over.
     Hello(SocketAddr, oneshot::Sender<io::Result<PeerInfo>>),
+    KnownClients(oneshot::Sender<Vec<KnownClient>>),
     Stop(oneshot::Sender<()>),
 }
 
@@ -121,7 +124,6 @@ pub enum ConnectError {
 enum Tick {
     Ping,
     Save,
-    CallbackOver(SocketAddr),
     // The wait for the identification of a client we said hello to is over.
     ProbeOver(LinkId),
     Second,
@@ -143,6 +145,8 @@ enum PeerEvent {
     // A client's connection the guard admitted, plain or obfuscated, with its permit.
     Accepted(Box<tcp_connector::Connection>, Permit),
     Connected(SocketAddr, Box<io::Result<tcp_connector::Connection>>),
+    // A client we call back on a server's request.
+    CalledBack(SocketAddr, Box<io::Result<tcp_connector::Connection>>),
     Resolved([u8; 16], Vec<SocketAddr>),
     // The connection of a hello asked through the API, and who waits for the answer.
     Probed(Box<io::Result<tcp_connector::Connection>>, oneshot::Sender<io::Result<PeerInfo>>),
@@ -158,6 +162,8 @@ struct Peer {
     // The secure identification of the client, once it greeted us.
     identity: Option<Session>,
     incoming: bool,
+    // The address of a client we call back, free to be called again once it answered our hello or left.
+    called_back: Option<SocketAddr>,
     // Held while the connection lives: the guard counts it.
     _permit: Option<Permit>,
 }
@@ -223,6 +229,8 @@ pub struct Network {
     identities: Identities,
     credits: Credits,
     since_credits_save: u32,
+    // The clients met, by user hash.
+    history: ClientHistory,
     link_events: mpsc::UnboundedSender<LinkEvent>,
     peer_events: mpsc::UnboundedSender<PeerEvent>,
 }
@@ -297,6 +305,7 @@ pub fn start(
     });
     let identities = Identities::new(Identity::of(identities::load_or_create_key(&dirs.config)?));
     let credits = Credits::load(&dirs.config, credits::system_clock());
+    let history = ClientHistory::load(&dirs.config, now_seconds());
     // The guard's clock.
     let started = Instant::now();
     let mut network = Network {
@@ -341,6 +350,7 @@ pub fn start(
         identities,
         credits,
         since_credits_save: 0,
+        history,
         link_events: links_in,
         peer_events: peers_in,
     };
@@ -516,8 +526,32 @@ impl Network {
                     let _ = events.send(PeerEvent::Probed(Box::new(connection), answer));
                 });
             }
+            Command::KnownClients(answer) => {
+                let _ = answer.send(self.known_clients());
+            }
             Command::Stop(_) => {}
         }
+    }
+
+    fn known_clients(&mut self) -> Vec<KnownClient> {
+        let credits = &self.credits;
+        self.history
+            .clients(now_seconds())
+            .into_iter()
+            .map(|entry| {
+                let credit = credits.get(&entry.user_hash);
+                KnownClient {
+                    user_hash: entry.user_hash,
+                    nick: entry.nick,
+                    software: entry.software,
+                    first_seen: entry.first_seen,
+                    last_seen: entry.last_seen,
+                    country: entry.country,
+                    uploaded: credit.map_or(0, |credit| credit.uploaded),
+                    downloaded: credit.map_or(0, |credit| credit.downloaded),
+                }
+            })
+            .collect()
     }
 
     /// Connects to the server at `address` (added to the list if new), or to any.
@@ -653,9 +687,6 @@ impl Network {
             Tick::Save => {
                 self.saving = None;
                 self.save_servers();
-            }
-            Tick::CallbackOver(address) => {
-                self.calling.remove(&address);
             }
             Tick::ProbeOver(link) => self.settle_probe(link),
             Tick::Second => {
@@ -1022,6 +1053,13 @@ impl Network {
                 Err(e) => self.downloads.connected(address, Err(e.to_string()), &ours),
             },
             PeerEvent::Resolved(file, addresses) => self.downloads.resolved(&file, &addresses, &self.settings()),
+            PeerEvent::CalledBack(address, result) => match *result {
+                Ok(connection) => self.call_back(address, connection),
+                Err(e) => {
+                    tracing::debug!("Callback to {address} failed: {e}");
+                    self.calling.remove(&address);
+                }
+            },
             PeerEvent::Probed(connection, answer) => match *connection {
                 Ok(connection) => self.probe(connection, answer),
                 Err(e) => {
@@ -1030,6 +1068,25 @@ impl Network {
             },
         }
         self.after_downloads();
+    }
+
+    // We say hello first; once the hellos are over, the client asks for what it wants over the link, which our upload
+    // side answers.
+    fn call_back(&mut self, address: SocketAddr, connection: tcp_connector::Connection) {
+        let handle = self.new_link(connection, None);
+        handle.set_timeout(peer_greetings::HELLO_TIMEOUT);
+        if let Some(peer) = self.peers.get_mut(&handle.id()) {
+            peer.called_back = Some(address);
+        }
+        match self.shared.our_hello().to_peer_at(&handle.remote().ip()).encode(false) {
+            Ok(hello) => {
+                handle.send(hello);
+            }
+            Err(e) => {
+                tracing::warn!("Cannot greet {address}: {e}");
+                handle.close();
+            }
+        }
     }
 
     // Our hello goes first; the outcome is told at the latest once the client had the time to answer and identify.
@@ -1141,8 +1198,10 @@ impl Network {
         let connection = connection.into_tcp_connection(frame_limits::client_handshake);
         let handle = peer_link::start(id, connection, self.link_events.clone());
         let incoming = permit.is_some();
-        self.peers
-            .insert(id, Peer { handle: handle.clone(), hello: None, identity: None, incoming, _permit: permit });
+        self.peers.insert(
+            id,
+            Peer { handle: handle.clone(), hello: None, identity: None, incoming, called_back: None, _permit: permit },
+        );
         handle
     }
 
@@ -1154,7 +1213,13 @@ impl Network {
             }
             LinkEvent::Packet(link, packet) => self.peer_packet(link, &packet, &ours),
             LinkEvent::Closed(link, reason) => {
-                self.peers.remove(&link);
+                if let Some(address) = self.peers.remove(&link).and_then(|peer| peer.called_back) {
+                    tracing::debug!(
+                        "Callback to {address} failed: {}",
+                        reason.as_deref().unwrap_or("closed before the hello")
+                    );
+                    self.calling.remove(&address);
+                }
                 self.downloads.closed(link, reason.as_deref(), &ours);
                 self.uploads.closed(link);
             }
@@ -1183,6 +1248,12 @@ impl Network {
             };
             peer.hello = Some(hello.clone());
             if !peer.incoming {
+                if let Some(address) = peer.called_back.take() {
+                    tracing::debug!("Called {address} back");
+                    handle.set_timeout(peer_greetings::IDLE_TIMEOUT);
+                    self.calling.remove(&address);
+                }
+                self.met(&hello, handle.remote().ip());
                 self.identify(link);
                 self.downloads.greeted(link, hello, ours);
                 return;
@@ -1193,6 +1264,12 @@ impl Network {
                 }
                 Err(e) => tracing::warn!("Cannot answer {}: {e}", handle.remote()),
             }
+            // Ourselves, or someone posing as us: it hears who we are, which ends a connection to ourselves.
+            if hello.user_hash == ours.user_hash {
+                handle.close();
+                return;
+            }
+            self.met(&hello, handle.remote().ip());
             self.identify(link);
             let server_ip = self.shared.context.lock().map(|context| context.ip).unwrap_or(0);
             self.downloads.adopt(&handle, &hello, server_ip, &self.settings(), ours);
@@ -1215,6 +1292,12 @@ impl Network {
                 tracing::debug!("Nothing on {} takes opcode {:#04x}", handle.remote(), packet.opcode());
             }
         }
+    }
+
+    // Who a greeted client said it is goes into the history, never its address. The countries are not shown yet.
+    fn met(&mut self, hello: &Hello, _address: IpAddr) {
+        let nick = hello.nick().unwrap_or_default();
+        self.history.seen(hello.user_hash, nick, &peer_software::describe(hello), None, now_seconds());
     }
 
     // The hellos are over: the client is asked to prove its user hash, against the key it proved to own before if any.
@@ -1316,28 +1399,19 @@ impl Network {
         }
         self.callbacks.insert(address, Instant::now());
         self.calling.insert(address);
-        let ours = self.shared.our_hello();
-        let ticks = self.ticks.clone();
+        let events = self.peer_events.clone();
         let routes = self.shared.routes.clone();
         tokio::spawn(async move {
             let mut random = StdRng::from_rng(&mut rand::rng());
-            match tcp_connector::connect_to_client(
+            let connection = tcp_connector::connect_to_client(
                 address,
                 obfuscate,
                 peer_greetings::HELLO_TIMEOUT,
                 &routes,
                 &mut random,
             )
-            .await
-            {
-                Ok(connection) => {
-                    if let Err(e) = peer_greetings::called_back(connection, ours).await {
-                        tracing::debug!("Callback to {address} ended: {e}");
-                    }
-                }
-                Err(e) => tracing::debug!("Callback to {address} failed: {e}"),
-            }
-            let _ = ticks.send(Tick::CallbackOver(address));
+            .await;
+            let _ = events.send(PeerEvent::CalledBack(address, Box::new(connection)));
         });
     }
 
@@ -1407,6 +1481,7 @@ impl Network {
         }
         self.save_servers();
         self.credits.save();
+        self.history.save();
         self.close_sockets();
         // The servers' spam shares change with every UDP answer.
         let spam_file = self.shared.dirs.config.join(spam_filter::FILE_NAME);
@@ -1632,4 +1707,9 @@ fn settle(probe: &mut Probe) {
         _ => PeerIdentification::NotSupported,
     };
     let _ = answer.send(Ok(info));
+}
+
+// The time in seconds since 1970, as the client history dates what it sees.
+fn now_seconds() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs())
 }

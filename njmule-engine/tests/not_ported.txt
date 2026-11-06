@@ -76,9 +76,7 @@ PartFileTest.shouldTrustThePartsCheckedBeforeOnlyWhileTheDataIsUnchanged
 PathSanitizerTest.shouldKeepAnyNameInsideTheDirectory
 PathSanitizerTest.shouldMakeNamesSafeShortAndStable
 
-# Proving user hashes (secure identification) waits for its port.
-PeerGreetingsTest.shouldAnswerAClientThatGreetsUsWithOurOwnUserHashButTakeNothingFromIt
-PeerGreetingsTest.shouldHandOverAClientThatGreetsUsWithItsOwnUserHash
+# Connections through routers come with the port of NAT traversal.
 PeerGreetingsTest.shouldSayHelloFirstOverAConnectionThroughRoutersAndHandItOverOnTheClientsHello
 
 # The engine's task drives the pinger with its own timer: the pinger holds none to start or stop.

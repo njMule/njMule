@@ -13,6 +13,9 @@ use std::net::SocketAddr;
 
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
+use njmule_engine::net::tcp_connection::{read_packet, write_packet};
+use njmule_engine::protocol::ed2k::hello::{Hello, Ours};
+use njmule_engine::protocol::packet::frame_limits;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -180,5 +183,26 @@ async fn should_say_hello_to_ourselves_through_the_api() {
     assert_eq!(body["obfuscated"], false);
     assert!(body["software"].as_str().unwrap().starts_with("njMule "));
     assert_eq!(body["userHash"], data_encoding::HEXUPPER.encode(&running.engine.user_hash()));
+    running.stop().await;
+}
+
+#[tokio::test]
+async fn should_list_the_clients_met_through_the_api() {
+    let running = running().await;
+    let mut client = TcpStream::connect(("127.0.0.1", running.engine.listen_port())).await.unwrap();
+    let ours = Ours { nick: "fake peer", udp_port: 0, kad_port: 0, misc_options1: 0, misc_options2: 0 };
+    write_packet(&mut client, &Hello::of([9; 16], 0, 4662, &ours, 0, 0).encode(false).unwrap()).await.unwrap();
+    read_packet(&mut client, &frame_limits::client_handshake).await.unwrap().expect("the answer");
+
+    let (status, answer) = running.call("GET /api/v1/clients/known", &[running.bearer()]).await;
+
+    assert_eq!(status, 200, "{answer}");
+    let body: Value = serde_json::from_str(&answer[answer.find("\r\n\r\n").unwrap() + 4..]).unwrap();
+    let known = body.as_array().unwrap();
+    assert_eq!(known.len(), 1);
+    assert_eq!(known[0]["userHash"], "09".repeat(16));
+    assert_eq!(known[0]["nick"], "fake peer");
+    assert_eq!((known[0]["uploaded"].as_u64(), known[0]["downloaded"].as_u64()), (Some(0), Some(0)));
+    assert!(known[0]["country"].is_null());
     running.stop().await;
 }

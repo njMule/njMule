@@ -115,3 +115,39 @@ async fn should_answer_a_hello_over_an_obfuscated_connection() {
     assert_eq!(Hello::decode(&answer).unwrap().user_hash, engine.user_hash());
     engine.stop().await;
 }
+
+#[tokio::test]
+async fn should_answer_a_client_that_greets_us_with_our_own_user_hash_but_take_nothing_from_it() {
+    let (_profile, engine) = engine().await;
+    let ours = Ours { nick: "posing as us", udp_port: 0, kad_port: 0, misc_options1: 0, misc_options2: 0 };
+    let mut stream = TcpStream::connect(SocketAddr::from((Ipv4Addr::LOCALHOST, engine.listen_port()))).await.unwrap();
+
+    write_packet(&mut stream, &Hello::of(engine.user_hash(), 0, 4662, &ours, 0, 0).encode(false).unwrap())
+        .await
+        .unwrap();
+
+    let answer = read_packet(&mut stream, &frame_limits::client_handshake).await.unwrap().unwrap();
+    assert_eq!(answer.opcode(), client::HELLOANSWER);
+    assert!(matches!(read_packet(&mut stream, &frame_limits::client).await, Ok(None) | Err(_)));
+    assert!(engine.known_clients().await.is_empty());
+    engine.stop().await;
+}
+
+#[tokio::test]
+async fn should_hand_over_a_client_that_greets_us_with_its_own_user_hash() {
+    let (_profile, engine) = engine().await;
+    let mut stream = TcpStream::connect(SocketAddr::from((Ipv4Addr::LOCALHOST, engine.listen_port()))).await.unwrap();
+
+    write_packet(&mut stream, &their_hello().encode(false).unwrap()).await.unwrap();
+
+    let answer = read_packet(&mut stream, &frame_limits::client_handshake).await.unwrap().unwrap();
+    assert_eq!(answer.opcode(), client::HELLOANSWER);
+    // The link answers what the client says next.
+    write_packet(&mut stream, &their_hello().encode(false).unwrap()).await.unwrap();
+    let again = read_packet(&mut stream, &frame_limits::client).await.unwrap().unwrap();
+    assert_eq!(again.opcode(), client::HELLOANSWER);
+    let known: Vec<([u8; 16], String)> =
+        engine.known_clients().await.into_iter().map(|client| (client.user_hash, client.nick)).collect();
+    assert_eq!(known, [([9; 16], "fake peer".to_owned())]);
+    engine.stop().await;
+}

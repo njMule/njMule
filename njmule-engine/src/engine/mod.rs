@@ -19,6 +19,7 @@ use tokio::task::JoinSet;
 use crate::api::download_info::{DownloadInfo, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::known_client::KnownClient;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
 use crate::api::server_info::ServerInfo;
@@ -220,6 +221,11 @@ impl Engine {
             Ok(None) => Err(io::Error::other("the engine is stopping")),
             Err(_) => Err(io::Error::new(io::ErrorKind::TimedOut, "no answer in time")),
         }
+    }
+
+    /// The clients met in the last 90 days, those met last first.
+    pub async fn known_clients(&self) -> Vec<KnownClient> {
+        self.ask(Command::KnownClients).await.unwrap_or_default()
     }
 
     /// Adds the servers not known yet; answers how many.
