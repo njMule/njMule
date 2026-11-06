@@ -14,6 +14,7 @@ use indexmap::IndexMap;
 
 use crate::api::search_result::{self, SearchResult};
 use crate::files::file_types;
+use crate::kad::keywords;
 use crate::persist::format::server_met::Server;
 use crate::protocol::ed2k::file_entry::FileEntry;
 use crate::protocol::ed2k::server_datagrams;
@@ -412,6 +413,51 @@ fn required_kind(expression: &SearchExpr) -> Option<&'static str> {
             _ => None,
         },
         _ => None,
+    }
+}
+
+/// The longest word, as Kad indexes words, that every match of `expression` has: joined by AND or on the left of NOT,
+/// preferably outside quotes; an error saying why there is none.
+pub fn kad_keyword(expression: &SearchExpr) -> Result<String, String> {
+    let mut plain = Vec::new();
+    let mut quoted = Vec::new();
+    let alternatives = required_words(expression, &mut plain, &mut quoted);
+    let words = if plain.is_empty() { quoted } else { plain };
+    let mut best: Option<String> = None;
+    for word in words {
+        if best.as_ref().is_none_or(|best| word.chars().count() > best.chars().count()) {
+            best = Some(word);
+        }
+    }
+    best.ok_or_else(|| {
+        if alternatives {
+            "Kad cannot search for words joined by OR: search for each on its own".to_owned()
+        } else {
+            "Kad needs a word of at least three letters to search for".to_owned()
+        }
+    })
+}
+
+// Adds the words every match has; true when alternatives (OR) were left out.
+fn required_words(expression: &SearchExpr, plain: &mut Vec<String>, quoted: &mut Vec<String>) -> bool {
+    match expression {
+        SearchExpr::And(left, right) => {
+            let left = required_words(left, plain, quoted);
+            let right = required_words(right, plain, quoted);
+            left || right
+        }
+        SearchExpr::Not(left, _) => required_words(left, plain, quoted),
+        SearchExpr::Or(..) => true,
+        SearchExpr::Keyword(text) => {
+            let words = keywords::of(text);
+            if text.starts_with('"') {
+                quoted.extend(words)
+            } else {
+                plain.extend(words)
+            }
+            false
+        }
+        SearchExpr::StringAttr { .. } | SearchExpr::NumericAttr { .. } => false,
     }
 }
 

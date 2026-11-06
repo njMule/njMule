@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The examples of the Java engine's SearchParserTest, under their names: the syntax, attributes, errors and the
-//! trees servers and Kad receive. Its Kad keyword scenarios come with the search manager.
+//! trees servers and Kad receive, and the word Kad looks up.
 
 #![allow(
     clippy::unwrap_used,
@@ -15,6 +15,7 @@
 use njmule_engine::protocol::io::{PacketReader, PacketWriter};
 use njmule_engine::protocol::tag::file_tag;
 use njmule_engine::search::search_expr::{Comparison, SearchExpr};
+use njmule_engine::search::search_manager::kad_keyword;
 use njmule_engine::search::search_parser::parse;
 use njmule_engine::search::search_syntax_error::Reason;
 use njmule_engine::search::search_tree_codec::{self, for_kad, for_server};
@@ -386,4 +387,62 @@ fn should_decode_any_bytes_or_fail_cleanly() {
     for hex in ["08ffffffffffffffff00010002", "03010000000601000200", "0301000000010200020300", "010000"] {
         assert!(search_tree_codec::read(&mut PacketReader::of(&hex::decode(hex).unwrap())).is_err(), "{hex}");
     }
+}
+
+proptest::proptest! {
+    #[test]
+    fn should_parse_any_text_or_fail_with_a_syntax_error(text in "(?s).{0,60}") {
+        if let Ok(search) = parse(&text) {
+            // A search parsed can be sent.
+            let _ = written(&search, true);
+        }
+    }
+}
+
+fn kad(expression: &str) -> Result<String, String> {
+    kad_keyword(&parse(expression).unwrap())
+}
+
+#[test]
+fn should_look_up_the_longest_word_in_kad() {
+    assert_eq!(kad("the matrix reloaded"), Ok("reloaded".to_owned()));
+}
+
+#[test]
+fn should_look_up_a_word_every_result_has_in_kad() {
+    assert_eq!(kad("\"linux\" AND (debian OR ubuntu) @size>700m"), Ok("linux".to_owned()), "a word every result has");
+}
+
+#[test]
+fn should_look_up_the_trimmed_lower_case_word_in_kad() {
+    assert_eq!(kad("  Único  "), Ok("único".to_owned()));
+}
+
+#[test]
+fn should_look_up_a_word_kad_indexes() {
+    assert_eq!(kad("ubuntu 22.04.3"), Ok("ubuntu".to_owned()), "a word Kad indexes");
+}
+
+#[test]
+fn should_not_look_up_an_excluded_word_in_kad() {
+    for (expression, keyword) in [("linux -distribution", "linux"), ("linux NOT (distribution OR distro)", "linux")] {
+        assert_eq!(kad(expression), Ok(keyword.to_owned()), "{expression}");
+    }
+}
+
+#[test]
+fn should_prefer_a_word_outside_a_phrase_in_kad() {
+    assert_eq!(kad("iso \"the matrix\""), Ok("iso".to_owned()));
+}
+
+#[test]
+fn should_refuse_alternatives_in_kad() {
+    let refusal = kad("linux OR windows").unwrap_err();
+
+    assert!(refusal.contains("OR"), "{refusal}");
+}
+
+#[test]
+fn should_refuse_a_kad_search_without_a_word_kad_indexes() {
+    assert!(kad("22.04 @size>700m").is_err());
 }
