@@ -101,6 +101,18 @@ pub fn known_client(client: &KnownClient) -> Value {
     })
 }
 
+/// A file a client shares, as its list gave it; none when no link can be made of it.
+pub fn shared_by_client(file: &SearchResult) -> Option<Value> {
+    let link = file.link().ok()?.to_uri();
+    Some(json!({
+        "hash": hash(&file.hash),
+        "name": file.name,
+        "size": file.size,
+        "type": file.file_type,
+        "link": link,
+    }))
+}
+
 /// The answer of a call that only needs to be done.
 pub fn ok() -> Value {
     json!({"ok": true})

@@ -12,6 +12,8 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinSet;
@@ -22,6 +24,7 @@ use crate::api::engine_event::EngineEvent;
 use crate::api::known_client::KnownClient;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
+use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::config::app_directories::AppDirectories;
 use crate::config::bind_interface::{self, Binding};
@@ -31,7 +34,7 @@ use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::engine::network::{Command, ConnectError, MoreAnswer};
 use crate::files::shared_files::SharedFile;
 use crate::net::routes::Routes;
-use crate::peer::peer_greetings;
+use crate::peer::{peer_greetings, shared_files_browser};
 use crate::persist::format::server_met::Server;
 use crate::persist::{preferences_codec, user_hash_store};
 use crate::protocol::ed2k::hello::{self, Hello, Ours};
@@ -221,6 +224,12 @@ impl Engine {
             Ok(None) => Err(io::Error::other("the engine is stopping")),
             Err(_) => Err(io::Error::new(io::ErrorKind::TimedOut, "no answer in time")),
         }
+    }
+
+    /// The files the client listening at `address` shares, when it shows them.
+    pub async fn browse(&self, address: SocketAddr) -> io::Result<Vec<SearchResult>> {
+        let mut random = StdRng::from_rng(&mut rand::rng());
+        shared_files_browser::browse(address, &self.shared.our_hello(), &self.shared.routes, &mut random).await
     }
 
     /// The clients met in the last 90 days, those met last first.

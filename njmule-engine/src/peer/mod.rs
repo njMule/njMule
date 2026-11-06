@@ -9,3 +9,4 @@ pub mod identity_handshake;
 pub mod peer_greetings;
 pub mod peer_link;
 pub mod peer_software;
+pub mod shared_files_browser;
