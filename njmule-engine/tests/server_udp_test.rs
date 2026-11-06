@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fake_socks5_proxy::FakeSocks5Proxy;
+use njmule_engine::net::relay_keeper::RelayKeeper;
 use njmule_engine::net::socks5_udp::Socks5Udp;
 use njmule_engine::net::udp_route::UdpRoute;
 use njmule_engine::protocol::crypt::datagram_obfuscation;
@@ -156,4 +157,27 @@ async fn should_drop_datagrams_that_are_no_edonkey_packets() {
 
     let (_, packet) = tokio::time::timeout(WAIT, received.recv()).await.unwrap().unwrap();
     assert_eq!((packet.protocol(), packet.opcode()), (protocol::EDONKEY, OPCODE), "only the eDonkey packet");
+}
+
+#[tokio::test]
+async fn should_go_through_the_relay_a_keeper_keeps_it_on() {
+    let proxy = FakeSocks5Proxy::start();
+    let (receiver, _received) = mpsc::unbounded_channel();
+    let udp = ServerUdp::open(0, receiver).await.unwrap();
+    let _keeper = RelayKeeper::start("Server UDP", udp.router(), proxy.settings(), None, |_, _| {});
+    let server = EchoServer::start();
+    let to = server.address();
+    // Held until the proxy grants the association.
+    let deadline = tokio::time::Instant::now() + WAIT;
+    while !proxy.seen().contains(&"associate".to_owned()) {
+        assert!(tokio::time::Instant::now() < deadline, "the proxy was asked");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    udp.send(to, &query()).unwrap();
+
+    let asked_by = server.asked().await.unwrap();
+    assert!(asked_by.ip().is_loopback());
+    assert_ne!(asked_by.port(), udp.port(), "asked by the relay, not by the socket");
 }
