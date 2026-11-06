@@ -65,6 +65,8 @@ pub struct UploadSession {
     // Our files were listed to the client: once a connection, as the list can take a megabyte.
     listed: bool,
     slot: bool,
+    // Whether credits apply to the client: its identity proven, or it does not take part.
+    trusted: bool,
 }
 
 impl UploadSession {
@@ -78,6 +80,7 @@ impl UploadSession {
             unknown: HashSet::new(),
             listed: false,
             slot: false,
+            trusted: false,
         }
     }
 
@@ -97,6 +100,22 @@ impl UploadSession {
         self.slot
     }
 
+    pub fn peer(&self) -> &Hello {
+        &self.peer
+    }
+
+    pub fn is_trusted(&self) -> bool {
+        self.trusted
+    }
+
+    pub fn set_trusted(&mut self, trusted: bool) {
+        self.trusted = trusted;
+    }
+
+    pub fn has_pending_blocks(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
     /// The next requested block, if any.
     pub fn next_block(&mut self) -> Option<Block> {
         let block = self.pending.pop_front()?;
@@ -109,14 +128,16 @@ impl UploadSession {
         self.slot = true;
         self.pending.clear();
         self.sent.clear();
-        self.link.send(Packet::empty(protocol::EDONKEY, client::ACCEPTUPLOADREQ));
+        // What tells the client where it stands goes in order with the data: a client drops the data that comes after
+        // the end of its slot.
+        self.link.send_data(Packet::empty(protocol::EDONKEY, client::ACCEPTUPLOADREQ));
     }
 
     /// Tells the client its place in our queue.
     pub fn send_rank(&self, rank: u32) {
         let mut out = PacketWriter::new();
         out.u16(u16::try_from(rank).unwrap_or(u16::MAX)).bytes(&[0; 10]);
-        self.link.send(Packet::written(protocol::EMULE, extended::QUEUERANKING, out));
+        self.link.send_data(Packet::written(protocol::EMULE, extended::QUEUERANKING, out));
     }
 
     /// Takes the slot away; the client goes back to waiting at `rank`.
@@ -124,7 +145,7 @@ impl UploadSession {
         if self.slot {
             self.slot = false;
             self.pending.clear();
-            self.link.send(Packet::empty(protocol::EDONKEY, client::OUTOFPARTREQS));
+            self.link.send_data(Packet::empty(protocol::EDONKEY, client::OUTOFPARTREQS));
         }
         self.send_rank(rank);
     }
