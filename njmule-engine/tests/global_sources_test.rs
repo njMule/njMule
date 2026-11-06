@@ -8,13 +8,15 @@
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
+use njmule_engine::config::obfuscation_mode::ObfuscationMode;
 use njmule_engine::persist::format::server_met::Server;
 use njmule_engine::protocol::ed2k::server_datagrams::{self, SourceQuery};
 use njmule_engine::protocol::ed2k::server_messages::{FoundSources, Source};
 use njmule_engine::protocol::packet::Packet;
 use njmule_engine::protocol::tag::server_tag;
-use njmule_engine::server::global_sources::{GlobalSources, PASS_PAUSE};
+use njmule_engine::server::global_sources::{self, GlobalSources, PASS_PAUSE};
 use njmule_engine::server::server_list::{self, Address, ServerList};
+use njmule_engine::server::server_route::ServerRoute;
 
 const DEAD_RETRIES: u32 = 3;
 const HIGH_ID: u32 = 0x5511_7400;
@@ -78,7 +80,16 @@ impl Asking {
     }
 
     fn tick(&mut self, allowed: bool) -> Option<(SocketAddr, Packet)> {
-        self.global.tick(self.now, &self.servers, self.connected.as_ref(), DEAD_RETRIES, &self.wanting, allowed)
+        let plain = |server: &Server| ServerRoute::of(server, 0, ObfuscationMode::Disabled);
+        let asking = global_sources::Asking {
+            connected: self.connected.as_ref(),
+            dead_retries: DEAD_RETRIES,
+            allowed,
+            route: &plain,
+        };
+        self.global
+            .tick(self.now, &self.servers, &self.wanting, &asking)
+            .map(|(route, packet)| (route.target, packet))
     }
 
     fn requests(&mut self, count: usize) -> Vec<(SocketAddr, Packet)> {
