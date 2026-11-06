@@ -12,6 +12,7 @@ pub mod socks5;
 pub mod socks5_udp;
 pub mod tcp_connection;
 pub mod tcp_connector;
+pub mod tcp_listener;
 pub mod traffic;
 pub mod udp_route;
 pub mod web_lists;
