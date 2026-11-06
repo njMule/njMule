@@ -52,6 +52,8 @@ pub enum Request {
     Stopped,
     /// The client broke the rules; the connection is closed.
     Misbehaved,
+    /// The client asked for too many files we do not have on its connection, which closes.
+    UnknownFiles,
 }
 
 pub struct UploadSession {
@@ -67,6 +69,8 @@ pub struct UploadSession {
     slot: bool,
     // Whether credits apply to the client: its identity proven, or it does not take part.
     trusted: bool,
+    // The client asked for too many files we do not have; told once.
+    flooded: bool,
 }
 
 impl UploadSession {
@@ -81,6 +85,7 @@ impl UploadSession {
             listed: false,
             slot: false,
             trusted: false,
+            flooded: false,
         }
     }
 
@@ -153,6 +158,21 @@ impl UploadSession {
     /// Handles a packet of the upload side; `find` gives our complete file of a hash, `visible` the files the client
     /// may browse.
     pub fn received(
+        &mut self,
+        packet: &Packet,
+        ours: &Hello,
+        find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>,
+        visible: Visible<'_>,
+    ) -> Result<Option<Request>, DecodeError> {
+        let request = self.request(packet, ours, find, visible)?;
+        if self.flooded {
+            self.flooded = false;
+            return Ok(Some(Request::UnknownFiles));
+        }
+        Ok(request)
+    }
+
+    fn request(
         &mut self,
         packet: &Packet,
         ours: &Hello,
@@ -311,6 +331,7 @@ impl UploadSession {
         if found.is_none() && self.unknown.insert(*hash) && self.unknown.len() >= UNKNOWN_FILES_LIMIT {
             tracing::debug!("{} asked for {} files we do not have", self.link.remote(), self.unknown.len());
             self.link.close();
+            self.flooded = true;
         }
         let large = self.peer.misc_options2() & hello::MISC2_LARGE_FILES != 0;
         found.filter(|file| large || file.size <= ed2k::OLD_MAX_FILE_SIZE)

@@ -22,12 +22,25 @@ use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::packet::Packet;
 use crate::upload::blocks;
 use crate::upload::credits::Credits;
+use crate::upload::request_tracker::{Key, RequestTracker};
 use crate::upload::upload_session::{Block, Request, UploadSession, Visible};
 use crate::upload::uploadable::Uploadable;
+use crate::util::ipv6;
 use crate::util::rate_meter::RateMeter;
 
 /// Payload a slot gets before the client waits again, while others wait.
 pub const SESSION_LIMIT: u64 = ed2k::PARTSIZE + 20_480;
+/// Clients asking again for a file sooner than this are counted; at [`BAD_LIMIT`] they are banned.
+pub const MIN_REQUEST_TIME: Duration = Duration::from_secs(600);
+pub const BAD_LIMIT: u32 = 4;
+pub const BAN_TIME: Duration = Duration::from_secs(2 * 3600);
+/// Slots a client leaves without asking for data within [`IDLE_SLOTS_WINDOW`], at which it is banned.
+pub const IDLE_SLOTS_LIMIT: u32 = 8;
+pub const IDLE_SLOTS_WINDOW: Duration = Duration::from_secs(4 * 3600);
+// Connections from an address dropped for asking for files we do not have, at which it is banned.
+const UNKNOWN_FILES_DROPS: u32 = 2;
+// How often the request histories are purged.
+const REQUESTS_PURGE: Duration = Duration::from_secs(60);
 /// A waiting client that does not ask again for this long is forgotten.
 pub const PURGE_AFTER: Duration = Duration::from_secs(3600);
 /// Clients of one address that may wait at once.
@@ -70,6 +83,13 @@ pub struct BlockRead {
     pub packets: io::Result<Vec<Packet>>,
 }
 
+/// A banned address, for IPv6 its /64, and the time left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ban {
+    pub address: IpAddr,
+    pub left: Duration,
+}
+
 /// A client of ours: waiting, or uploading with what it got in this slot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UploadState {
@@ -87,6 +107,8 @@ pub type Find<'a> = &'a dyn Fn(&[u8; 16]) -> Option<SharedFile>;
 struct Client {
     user_hash: [u8; 16],
     ip: IpAddr,
+    // The port it listens on, which tells its program apart from others at the address.
+    port: u16,
     file: [u8; 16],
     // The connection it waits on.
     link: Option<LinkId>,
@@ -133,6 +155,10 @@ pub struct UploadManager {
     epoch: Instant,
     // Payload bytes sent in this session.
     uploaded: u64,
+    // Banned addresses, IPv6 ones by /64, until when.
+    bans: HashMap<IpAddr, Instant>,
+    requests: RequestTracker,
+    next_purge: Option<Instant>,
 }
 
 impl UploadManager {
@@ -151,6 +177,9 @@ impl UploadManager {
             next_credits_save: None,
             epoch: Instant::now(),
             uploaded: 0,
+            bans: HashMap::new(),
+            requests: RequestTracker::new(MIN_REQUEST_TIME, IDLE_SLOTS_WINDOW),
+            next_purge: None,
         }
     }
 
@@ -180,6 +209,72 @@ impl UploadManager {
     /// Payload bytes sent in this session.
     pub fn uploaded(&self) -> u64 {
         self.uploaded
+    }
+
+    /// The banned addresses with the time left.
+    pub fn bans(&self, now: Instant) -> Vec<Ban> {
+        self.bans
+            .iter()
+            .map(|(address, until)| Ban { address: *address, left: until.saturating_duration_since(now) })
+            .filter(|ban| !ban.left.is_zero())
+            .collect()
+    }
+
+    /// Lifts the ban on `ip`, for IPv6 on its /64; false when it was not banned.
+    pub fn unban(&mut self, ip: IpAddr) -> bool {
+        self.bans.remove(&ipv6::network(ip)).is_some()
+    }
+
+    /// Whether `ip` is banned, with the rest of its /64 for IPv6.
+    pub fn is_banned(&self, ip: IpAddr, now: Instant) -> bool {
+        self.bans.get(&ipv6::network(ip)).is_some_and(|until| now < *until)
+    }
+
+    /// Bans `ip` for [`BAN_TIME`]. Clients waiting from it leave the queue; a slot it holds runs to its end, as other
+    /// clients may share the address.
+    pub fn ban(&mut self, ip: IpAddr, now: Instant, reason: &str) {
+        tracing::debug!("Banning {ip}: {reason}");
+        let banned = ipv6::network(ip);
+        self.bans.insert(banned, now.checked_add(BAN_TIME).unwrap_or(now));
+        let gone: Vec<[u8; 16]> = self
+            .waiting
+            .values()
+            .filter(|client| ipv6::network(client.ip) == banned)
+            .map(|client| client.user_hash)
+            .collect();
+        for user_hash in gone {
+            if let Some(link) = self.waiting.shift_remove(&user_hash).and_then(|client| client.link)
+                && !self.slots.iter().any(|slot| slot.link == link)
+                && let Some(session) = self.sessions.get(&link)
+            {
+                session.link().close();
+            }
+        }
+    }
+
+    /// Ends the uploads to and drops the waiting clients at the addresses `refused` takes; answers how many.
+    pub fn drop_clients(&mut self, refused: &dyn Fn(IpAddr) -> bool) -> usize {
+        let mut dropped = 0usize;
+        let gone: Vec<LinkId> =
+            self.slots.iter().filter(|slot| refused(slot.client.ip)).map(|slot| slot.link).collect();
+        for link in gone {
+            self.slots.retain(|slot| slot.link != link);
+            if let Some(session) = self.sessions.get(&link) {
+                session.link().close();
+            }
+            dropped = dropped.saturating_add(1);
+        }
+        let waiting: Vec<[u8; 16]> =
+            self.waiting.values().filter(|client| refused(client.ip)).map(|client| client.user_hash).collect();
+        for user_hash in waiting {
+            if let Some(link) = self.waiting.shift_remove(&user_hash).and_then(|client| client.link)
+                && let Some(session) = self.sessions.get(&link)
+            {
+                session.link().close();
+            }
+            dropped = dropped.saturating_add(1);
+        }
+        dropped
     }
 
     /// Slots and waiting clients, for diagnostics.
@@ -234,6 +329,9 @@ impl UploadManager {
         visible: Visible<'_>,
         now: Instant,
     ) {
+        if !self.sessions.contains_key(&link.id()) && self.is_banned(link.remote().ip(), now) {
+            return;
+        }
         let session = self.sessions.entry(link.id()).or_insert_with(|| UploadSession::new(link.clone(), peer.clone()));
         session.set_trusted(trusted);
         match session.received(packet, ours, find, visible) {
@@ -241,8 +339,14 @@ impl UploadManager {
             Ok(Some(Request::Blocks)) => self.blocks_requested(link.id(), find, now),
             Ok(Some(Request::Stopped)) => self.slot_gone(link.id()),
             Ok(Some(Request::Misbehaved)) => {
-                tracing::debug!("{} changed its user hash", link.remote());
                 link.close();
+                self.ban(link.remote().ip(), now, "changed its user hash");
+            }
+            Ok(Some(Request::UnknownFiles)) => {
+                let ip = link.remote().ip();
+                if self.requests.unknown_files(ip, now) >= UNKNOWN_FILES_DROPS {
+                    self.ban(ip, now, "asked for files we do not have again and again");
+                }
             }
             Ok(None) => {}
             Err(e) => {
@@ -285,11 +389,13 @@ impl UploadManager {
         } else {
             carried.saturating_add(limit.saturating_mul(1024) / 10).min(limit.saturating_mul(1024))
         };
+        self.bans.retain(|_, until| now < *until);
         self.waiting.retain(|_, client| {
             now.saturating_duration_since(client.last_ask) <= PURGE_AFTER && find(&client.file).is_some()
         });
         let waiting = !self.waiting.is_empty();
         let mut requeued = Vec::new();
+        let mut idle = Vec::new();
         for at in 0..self.slots.len() {
             self.read(at, find);
             let Some(slot) = self.slots.get_mut(at) else {
@@ -310,10 +416,24 @@ impl UploadManager {
                 // A client that holds a slot without asking for data we have keeps others waiting.
                 tracing::debug!("A client left its upload slot idle");
                 requeued.push(slot.link);
+                if !slot.requested {
+                    idle.push(Key { ip: slot.client.ip, port: slot.client.port });
+                }
             }
         }
         for link in requeued {
             self.requeue(link, now);
+        }
+        // Taking slots and asking for nothing, over and over, keeps others from them: the client is banned.
+        for key in idle {
+            if self.requests.idle_slot(key, now) >= IDLE_SLOTS_LIMIT {
+                self.ban(key.ip, now, "took slots and asked for nothing");
+            }
+        }
+        let purge_at = *self.next_purge.get_or_insert(now);
+        if now >= purge_at {
+            self.next_purge = now.checked_add(REQUESTS_PURGE);
+            self.requests.purge(now);
         }
         self.send(now);
         self.fill_slots(now);
@@ -357,10 +477,27 @@ impl UploadManager {
             return;
         };
         let (user_hash, ip, trusted) = (session.user_hash(), session.link().remote().ip(), session.is_trusted());
-        if let Some(slot) = self.slots.iter_mut().find(|slot| slot.client.user_hash == user_hash) {
-            if slot.client.ip != ip {
-                return;
+        let port = session.peer().tcp_port;
+        if self.is_banned(ip, now) {
+            return;
+        }
+        let holds_slot = self.slots.iter().any(|slot| slot.client.user_hash == user_hash);
+        if self.waiting.get(&user_hash).is_some_and(|client| client.ip != ip)
+            || self.slots.iter().any(|slot| slot.client.user_hash == user_hash && slot.client.ip != ip)
+        {
+            tracing::debug!("{ip} claims the user hash of a client from elsewhere");
+            return;
+        }
+        // A client asking for the same file again too soon, with no slower ask between, is banned, also when it left
+        // the queue meanwhile; a slot it holds runs on.
+        if self.requests.asked(Key { ip, port }, file, now) >= BAD_LIMIT {
+            self.ban(ip, now, "asked again too often");
+            if !holds_slot && let Some(session) = self.sessions.get(&link) {
+                session.link().close();
             }
+            return;
+        }
+        if let Some(slot) = self.slots.iter_mut().find(|slot| slot.client.user_hash == user_hash) {
             // Already uploading to it, maybe over a new connection or for another file.
             slot.link = link;
             slot.client.file = file;
@@ -371,10 +508,6 @@ impl UploadManager {
             return;
         }
         if let Some(client) = self.waiting.get_mut(&user_hash) {
-            if client.ip != ip {
-                tracing::debug!("{ip} claims the user hash of a client waiting from elsewhere");
-                return;
-            }
             client.last_ask = now;
             client.link = Some(link);
             client.file = file;
@@ -386,7 +519,7 @@ impl UploadManager {
         if self.waiting.len() >= self.settings.queue_size || same_ip >= MAX_WAITING_PER_IP {
             return;
         }
-        let client = Client { user_hash, ip, file, link: Some(link), wait_start: now, last_ask: now, trusted };
+        let client = Client { user_hash, ip, port, file, link: Some(link), wait_start: now, last_ask: now, trusted };
         if self.waiting.is_empty() && self.can_open_slot() {
             self.open(client, link, now);
             return;
@@ -415,7 +548,17 @@ impl UploadManager {
 
     // The slot of the link ends: the client stopped, or left.
     fn slot_gone(&mut self, link: LinkId) {
-        self.slots.retain(|slot| slot.link != link);
+        if let Some(at) = self.slots.iter().position(|slot| slot.link == link) {
+            let slot = self.slots.remove(at);
+            self.slot_ended(&slot);
+        }
+    }
+
+    // A slot that sent data forgives the idle slots of its client.
+    fn slot_ended(&mut self, slot: &Slot) {
+        if slot.sent > 0 {
+            self.requests.productive(Key { ip: slot.client.ip, port: slot.client.port });
+        }
     }
 
     // The next block of a slot is read, and compressed, off the engine's task.
@@ -502,6 +645,7 @@ impl UploadManager {
             return;
         };
         let slot = self.slots.remove(at);
+        self.slot_ended(&slot);
         let mut client = slot.client;
         client.link = Some(link);
         client.wait_start = now;
