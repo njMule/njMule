@@ -5,6 +5,7 @@
 
 pub mod atomic_files;
 pub mod categories_codec;
+pub mod config_backup;
 pub mod format;
 pub mod preferences_codec;
 pub mod property_lines;
