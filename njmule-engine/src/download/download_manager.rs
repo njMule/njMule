@@ -18,7 +18,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus, SourceInfo, SourceState};
 use crate::api::ed2k_link::{self, FileLink};
-use crate::config::preferences::ObfuscationMode;
+use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::download::download_queue::{self, DownloadQueue, QueueEvent};
 use crate::download::download_session::{Context, DownloadSession, Note, Outcome, State};
 use crate::files::hash::aich_recovery;

@@ -21,6 +21,7 @@ data-encoding = "2.11.1"
 dirs = "7.0.0"
 encoding_rs = "0.8.44"
 futures-util = "0.3.34"
+http = "1.5.0"
 indexmap = "2.14.2"
 java-properties = "2.0.0"
 md-5 = "0.11.0"
@@ -34,9 +35,11 @@ rangemap = "1.8.0"
 rand = "0.10.3"
 rc4 = "0.2.0"
 rsa = { version = "0.9.10", features = ["getrandom"] }
+semver = "1.0.28"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha1 = "0.11.0"
+strum = { version = "0.28.0", features = ["derive"] }
 subtle = "2.6.1"
 time = "0.3.55"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "io-util", "io-std", "sync", "time", "fs", "signal"] }

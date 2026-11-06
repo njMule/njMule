@@ -17,11 +17,26 @@ use crate::files::file_types;
 use crate::files::shared_files::SharedFile;
 use crate::persist::preferences_codec;
 
+// The passwords the preferences hold, which never leave.
+const SECRETS: [&str; 2] = ["notify.smtpPassword", "proxy.password"];
+
 pub fn preferences(preferences: &Preferences) -> Value {
     Value::Object(
-        preferences_codec::to_map(preferences)
+        preferences_codec::values(preferences)
             .into_iter()
-            .map(|(key, value)| (key.to_owned(), json!(value)))
+            .filter(|(key, _)| !SECRETS.contains(&key.as_str()))
+            .map(|(key, value)| (key, json!(value)))
+            .collect(),
+    )
+}
+
+/// Whether each password is set, so that a form shows one is without ever holding it.
+pub fn preference_passwords(preferences: &Preferences) -> Value {
+    let values = preferences_codec::values(preferences);
+    Value::Object(
+        SECRETS
+            .iter()
+            .map(|&key| (key.to_owned(), json!(values.get(key).is_some_and(|value| !value.is_empty()))))
             .collect(),
     )
 }

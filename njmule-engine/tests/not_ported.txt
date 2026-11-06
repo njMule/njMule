@@ -52,6 +52,10 @@ Ed2kLinkTest.shouldOnlyFailWithIllegalArgumentForGarbage
 IpFilterLevelsTest.shouldKeepBlockedARangeInsideAnAllowedOne
 IpFilterLevelsTest.shouldNotGrowABlockedRangeOverAnAllowedOne
 
+# IpWhitelistTest: these ask the IP filter itself, which comes with area 3 (security).
+IpWhitelistTest.shouldForgetTheAddressesOfAnEarlierWhitelist
+IpWhitelistTest.shouldLetThroughTheAllowedAddressesOfABlockedRange
+
 # Sources kept for the next run, files above 4 GiB on the disk and the properties over any file wait for their ports.
 PartFileTest.shouldAskTheSourcesForTheHashSetWhenTheOneOfALinkDoesNotGiveTheFileHash
 PartFileTest.shouldCompleteTheFileWithTheBlocksHandedOut
@@ -79,13 +83,6 @@ PathSanitizerTest.shouldMakeNamesSafeShortAndStable
 PeerGreetingsTest.shouldAnswerAClientThatGreetsUsWithOurOwnUserHashButTakeNothingFromIt
 PeerGreetingsTest.shouldHandOverAClientThatGreetsUsWithItsOwnUserHash
 PeerGreetingsTest.shouldSayHelloFirstOverAConnectionThroughRoutersAndHandItOverOnTheClientsHello
-
-# PreferencesCodecTest: the proxy and its passwords, the escapes and the file's layout wait for the port of config.
-PreferencesCodecTest.shouldKeepThePasswordsForTheirOwnerOnly
-PreferencesCodecTest.shouldKeepTheProxyCredentialsThroughTheFile
-PreferencesCodecTest.shouldLoadEscapedValuesBackUnchanged
-PreferencesCodecTest.shouldLoseOnlyTheLineOfAMalformedEscape
-PreferencesCodecTest.shouldWriteASortedAndStableOutput
 
 # Kad searches, the spam filter and media details wait for their ports.
 SearchManagerTest.shouldAskKadForArchivesAsProgramsAndKeepOnlyTheArchives
