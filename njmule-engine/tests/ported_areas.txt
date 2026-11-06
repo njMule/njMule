@@ -9,3 +9,5 @@ protocol/
 files/hash/
 util/
 crypto/
+config/
+persist/
