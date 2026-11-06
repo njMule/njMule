@@ -8,7 +8,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::io;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
@@ -18,7 +18,7 @@ use crate::api::upload_priority::UploadPriority;
 use crate::files::hash::ed2k;
 use crate::files::shared_files::SharedFile;
 use crate::peer::peer_link::{LinkHandle, LinkId};
-use crate::protocol::ed2k::hello::Hello;
+use crate::protocol::ed2k::hello::{self, Hello};
 use crate::protocol::packet::Packet;
 use crate::upload::blocks;
 use crate::upload::credits::Credits;
@@ -68,11 +68,21 @@ const RATE_SECONDS: usize = 5;
 const HEADER: u64 = 6;
 const MIN_COMPRESSIBLE: u64 = 32;
 
-/// What the uploads need from the preferences: the upload limit, 0 for none, and how many clients may wait.
+/// What the uploads need from the preferences: the upload limit, 0 for none, how many clients may wait, and whether
+/// the clients we call are reached obfuscated when they take it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Settings {
     pub max_upload_kibps: u32,
     pub queue_size: usize,
+    pub obfuscation: bool,
+}
+
+/// A client whose turn came while it was not connected: we call it, obfuscated with its user hash when it takes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Call {
+    pub user_hash: [u8; 16],
+    pub address: SocketAddr,
+    pub obfuscate_for: Option<[u8; 16]>,
 }
 
 /// A block read from its file, or why it could not be.
@@ -109,6 +119,13 @@ struct Client {
     ip: IpAddr,
     // The port it listens on, which tells its program apart from others at the address.
     port: u16,
+    low_id: bool,
+    // Whether it takes obfuscated connections.
+    crypt: bool,
+    // We are calling it for its slot.
+    connecting: bool,
+    // A LowID we cannot call whose turn came while it was away: it gets a slot when it asks again.
+    next_connect: bool,
     file: [u8; 16],
     // The connection it waits on.
     link: Option<LinkId>,
@@ -159,6 +176,8 @@ pub struct UploadManager {
     bans: HashMap<IpAddr, Instant>,
     requests: RequestTracker,
     next_purge: Option<Instant>,
+    // The clients to call, for the network.
+    calls: Vec<Call>,
 }
 
 impl UploadManager {
@@ -180,6 +199,7 @@ impl UploadManager {
             bans: HashMap::new(),
             requests: RequestTracker::new(MIN_REQUEST_TIME, IDLE_SLOTS_WINDOW),
             next_purge: None,
+            calls: Vec::new(),
         }
     }
 
@@ -279,17 +299,54 @@ impl UploadManager {
 
     /// Slots and waiting clients, for diagnostics.
     pub fn describe(&self) -> String {
-        let mut text = format!("waiting {}", self.waiting.len());
+        let called = self.waiting.values().filter(|client| client.next_connect).count();
+        let mut text = format!("waiting {}, {called} called when they ask", self.waiting.len());
         for slot in &self.slots {
             let pending = self.sessions.get(&slot.link).is_some_and(UploadSession::has_pending_blocks);
             text.push_str(&format!(
-                "; slot sent {}{}{}",
-                slot.sent,
+                "\nslot out {}{}{} payload {}",
+                slot.out.len(),
                 if slot.reading { " reading" } else { "" },
-                if pending { " pending" } else { "" }
+                if pending { " pending" } else { "" },
+                slot.sent
             ));
         }
         text
+    }
+
+    /// The clients to call for their slots, since asked last.
+    pub fn take_calls(&mut self) -> Vec<Call> {
+        std::mem::take(&mut self.calls)
+    }
+
+    /// A client we called answered our hello over `link`: its slot, when it is the client we called.
+    pub fn called(&mut self, user_hash: [u8; 16], link: &LinkHandle, peer: &Hello, trusted: bool, now: Instant) {
+        let Some(client) = self.waiting.get_mut(&user_hash) else {
+            link.close();
+            return;
+        };
+        client.connecting = false;
+        if peer.user_hash != user_hash {
+            tracing::debug!("{} answered our call with another user hash", link.remote());
+            link.close();
+            return;
+        }
+        let mut session = UploadSession::new(link.clone(), peer.clone());
+        session.set_trusted(trusted);
+        self.sessions.insert(link.id(), session);
+        if let Some(mut client) = self.waiting.shift_remove(&user_hash) {
+            client.link = Some(link.id());
+            client.trusted = trusted;
+            self.open(client, link.id(), now);
+        }
+    }
+
+    /// A client we called could not be reached, or left before its hello: it leaves the queue.
+    pub fn call_failed(&mut self, user_hash: [u8; 16], reason: &str) {
+        if self.waiting.get(&user_hash).is_some_and(|client| client.connecting) {
+            tracing::debug!("Cannot reach a client for its slot: {reason}");
+            self.waiting.shift_remove(&user_hash);
+        }
     }
 
     /// The clients with a slot, then the waiting ones from the best score down.
@@ -512,15 +569,36 @@ impl UploadManager {
             client.link = Some(link);
             client.file = file;
             client.trusted = trusted;
-            self.tell_rank(link, &user_hash, now);
+            if client.next_connect && self.can_open_slot(true) {
+                if let Some(client) = self.waiting.shift_remove(&user_hash) {
+                    self.open(client, link, now);
+                }
+            } else {
+                self.tell_rank(link, &user_hash, now);
+            }
             return;
         }
         let same_ip = self.waiting.values().filter(|client| client.ip == ip).count();
         if self.waiting.len() >= self.settings.queue_size || same_ip >= MAX_WAITING_PER_IP {
             return;
         }
-        let client = Client { user_hash, ip, port, file, link: Some(link), wait_start: now, last_ask: now, trusted };
-        if self.waiting.is_empty() && self.can_open_slot() {
+        let low_id = session.peer().client_id != 0 && session.peer().client_id < 0x0100_0000;
+        let crypt = session.peer().misc_options2() & hello::MISC2_SUPPORTS_CRYPT != 0;
+        let client = Client {
+            user_hash,
+            ip,
+            port,
+            low_id,
+            crypt,
+            connecting: false,
+            next_connect: false,
+            file,
+            link: Some(link),
+            wait_start: now,
+            last_ask: now,
+            trusted,
+        };
+        if self.waiting.is_empty() && self.can_open_slot(false) {
             self.open(client, link, now);
             return;
         }
@@ -659,27 +737,62 @@ impl UploadManager {
         }
     }
 
-    // The best clients connected take the slots that can open.
+    // The best client we can reach gets the slot; a LowID that is not connected cannot be called, so when it would have
+    // been the best it gets a slot when it asks again. A HighID that is not connected is called.
     fn fill_slots(&mut self, now: Instant) {
-        while !self.waiting.is_empty() && self.can_open_slot() {
+        while !self.waiting.is_empty() && self.can_open_slot(false) {
             let scoring = Scoring::new(self, now);
-            let best = self
-                .waiting
-                .values()
-                .filter(|client| client.link.is_some_and(|link| self.is_open(link)))
-                .map(|client| (client.user_hash, scoring.of(client)))
-                .max_by(|a, b| a.1.total_cmp(&b.1));
+            let mut best: Option<([u8; 16], f64)> = None;
+            let mut away: Option<([u8; 16], f64)> = None;
+            for client in self.waiting.values().filter(|client| !client.connecting) {
+                let score = scoring.of(client);
+                let connected = client.link.is_some_and(|link| self.is_open(link));
+                if !client.low_id || connected {
+                    if best.is_none_or(|(_, top)| score > top) {
+                        best = Some((client.user_hash, score));
+                    }
+                } else if !client.next_connect && away.is_none_or(|(_, top)| score > top) {
+                    away = Some((client.user_hash, score));
+                }
+            }
+            if let Some((user_hash, score)) = away
+                && best.is_none_or(|(_, top)| score > top)
+                && let Some(client) = self.waiting.get_mut(&user_hash)
+            {
+                client.next_connect = true;
+            }
             let Some((user_hash, _)) = best else {
                 return;
             };
-            let Some(client) = self.waiting.shift_remove(&user_hash) else {
-                return;
-            };
-            let Some(link) = client.link else {
-                return;
-            };
-            self.open(client, link, now);
+            let connected =
+                self.waiting.get(&user_hash).and_then(|client| client.link).filter(|link| self.is_open(*link));
+            match connected {
+                Some(link) => {
+                    if let Some(client) = self.waiting.shift_remove(&user_hash) {
+                        self.open(client, link, now);
+                    }
+                }
+                None => {
+                    self.call(&user_hash);
+                    return;
+                }
+            }
         }
+    }
+
+    fn call(&mut self, user_hash: &[u8; 16]) {
+        let obfuscation = self.settings.obfuscation;
+        let Some(client) = self.waiting.get_mut(user_hash) else {
+            return;
+        };
+        client.connecting = true;
+        // Obfuscated only towards clients that said they take it.
+        let obfuscate_for = (obfuscation && client.crypt).then_some(client.user_hash);
+        self.calls.push(Call {
+            user_hash: client.user_hash,
+            address: SocketAddr::new(client.ip, client.port),
+            obfuscate_for,
+        });
     }
 
     fn open(&mut self, client: Client, link: LinkId, now: Instant) {
@@ -701,8 +814,11 @@ impl UploadManager {
         });
     }
 
-    fn can_open_slot(&self) -> bool {
-        let open = self.slots.len();
+    // Clients being called count as slots; `extra` lets one more open for a firewalled client whose turn came.
+    fn can_open_slot(&self, extra: bool) -> bool {
+        let calling = self.waiting.values().filter(|client| client.connecting).count();
+        let open = self.slots.len().saturating_add(calling);
+        let extra = usize::from(extra);
         if open >= MAX_SLOTS {
             return false;
         }
@@ -711,13 +827,13 @@ impl UploadManager {
         }
         let limit = u64::from(self.settings.max_upload_kibps);
         if limit == 0 {
-            return open < UNLIMITED_SLOTS;
+            return open < UNLIMITED_SLOTS.saturating_add(extra);
         }
         let open_now = u64::try_from(open).unwrap_or(u64::MAX);
         let per_slot = if open <= 3 { 3_072 } else { open_now.saturating_mul(1_024).min(25_600) };
         let allowed =
             usize::try_from(limit.saturating_mul(1_024).checked_div(per_slot).unwrap_or(0)).unwrap_or(usize::MAX);
-        open < allowed.max(MIN_SLOTS)
+        open < allowed.max(MIN_SLOTS).saturating_add(extra)
     }
 
     fn is_open(&self, link: LinkId) -> bool {

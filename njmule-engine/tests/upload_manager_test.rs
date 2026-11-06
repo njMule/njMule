@@ -43,6 +43,9 @@ struct Loop {
     offset: Arc<Mutex<Duration>>,
     ours: Hello,
     reads: Option<mpsc::UnboundedReceiver<BlockRead>>,
+    // The links of our calls, by the user hash called, until the hello answer.
+    calling: HashMap<LinkId, [u8; 16]>,
+    called: mpsc::UnboundedSender<([u8; 16], std::io::Result<TcpStream>)>,
 }
 
 impl Loop {
@@ -61,6 +64,14 @@ impl Loop {
                     if packet.protocol() == protocol::EDONKEY && packet.opcode() == client::HELLO {
                         *hello = Some(Hello::decode(&packet).unwrap());
                         handle.send(self.ours.encode(true).unwrap());
+                    } else if packet.protocol() == protocol::EDONKEY && packet.opcode() == client::HELLOANSWER {
+                        let answered = Hello::decode(&packet).unwrap();
+                        *hello = Some(answered.clone());
+                        let handle = handle.clone();
+                        if let Some(user_hash) = self.calling.remove(&link) {
+                            self.manager.called(user_hash, &handle, &answered, true, now);
+                            self.calls();
+                        }
                     }
                     return;
                 };
@@ -69,9 +80,13 @@ impl Loop {
                 let find = move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).cloned();
                 let ours = self.ours.clone();
                 self.manager.received(&handle, &peer, true, &packet, &ours, &find, &|| None, now);
+                self.calls();
             }
             LinkEvent::Closed(link, _) => {
                 self.links.remove(&link);
+                if let Some(user_hash) = self.calling.remove(&link) {
+                    self.manager.call_failed(user_hash, "closed before the hello");
+                }
                 self.manager.closed(link);
             }
         }
@@ -82,10 +97,25 @@ impl Loop {
         let settings = *self.settings.lock().unwrap();
         let shared = Arc::clone(&self.shared);
         self.manager.tick(settings, &move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).cloned(), now);
+        self.calls();
+    }
+
+    fn calls(&mut self) {
+        for call in self.manager.take_calls() {
+            let called = self.called.clone();
+            tokio::spawn(async move {
+                let _ = called.send((call.user_hash, TcpStream::connect(call.address).await));
+            });
+        }
     }
 }
 
-async fn serve(listener: TcpListener, mut state: Loop, mut jobs: mpsc::UnboundedReceiver<Job>) {
+async fn serve(
+    listener: TcpListener,
+    mut state: Loop,
+    mut jobs: mpsc::UnboundedReceiver<Job>,
+    mut called: mpsc::UnboundedReceiver<([u8; 16], std::io::Result<TcpStream>)>,
+) {
     let (events_in, mut events) = mpsc::unbounded_channel();
     let mut reads = state.reads.take().unwrap();
     let mut next: LinkId = 1;
@@ -103,6 +133,20 @@ async fn serve(listener: TcpListener, mut state: Loop, mut jobs: mpsc::Unbounded
                 state.links.insert(next, (handle, None));
                 next += 1;
             }
+            Some((user_hash, stream)) = called.recv() => match stream {
+                Ok(stream) => {
+                    let remote = stream.peer_addr().unwrap();
+                    let local = stream.local_addr().ok().map(|address| address.ip());
+                    let (input, output) = stream.into_split();
+                    let connection = TcpConnection::over(input, output, remote, local, frame_limits::client_handshake);
+                    let handle = peer_link::start(next, connection, events_in.clone());
+                    handle.send(state.ours.encode(false).unwrap());
+                    state.links.insert(next, (handle, None));
+                    state.calling.insert(next, user_hash);
+                    next += 1;
+                }
+                Err(e) => state.manager.call_failed(user_hash, &e.to_string()),
+            },
             Some(event) = events.recv() => state.event(event),
             Some(read) = reads.recv() => {
                 let now = state.now();
@@ -193,6 +237,9 @@ struct Uploads {
     clients: HashMap<u8, Downloader>,
     files: HashMap<String, SharedFile>,
     file: Option<SharedFile>,
+    // Where a client waiting for our call listens, and the hellos the clients gave.
+    listening: Option<TcpListener>,
+    hellos: HashMap<u8, Hello>,
     // The client the scenario follows, and the answer it got last.
     client: u8,
     answer: Option<Packet>,
@@ -206,13 +253,15 @@ impl Uploads {
             jobs,
             port: 0,
             offset: Arc::default(),
-            settings: Arc::new(Mutex::new(Settings { max_upload_kibps: 0, queue_size: 100 })),
+            settings: Arc::new(Mutex::new(Settings { max_upload_kibps: 0, queue_size: 100, obfuscation: false })),
             shared: Arc::default(),
             priorities: Arc::default(),
             dir: tempfile::tempdir().unwrap(),
             clients: HashMap::new(),
             files: HashMap::new(),
             file: None,
+            listening: None,
+            hellos: HashMap::new(),
             client: 0,
             answer: None,
             dropped: 0,
@@ -231,7 +280,7 @@ impl Uploads {
     // Steps.
 
     fn given_the_settings(&self, max_upload_kibps: u32, queue_size: usize) {
-        *self.settings.lock().unwrap() = Settings { max_upload_kibps, queue_size };
+        *self.settings.lock().unwrap() = Settings { max_upload_kibps, queue_size, obfuscation: false };
     }
 
     fn given_the_shared_file(&mut self, name: &str, size: usize, seed: u8) {
@@ -260,6 +309,7 @@ impl Uploads {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         self.port = listener.local_addr().unwrap().port();
         let (reads_in, reads) = mpsc::unbounded_channel::<BlockRead>();
+        let (called_in, called) = mpsc::unbounded_channel();
         let credits = Credits::load(self.dir.path(), Box::new(|| 1_790_000_000));
         let mut manager = UploadManager::new(reads_in, credits, *self.settings.lock().unwrap());
         let priorities = Arc::clone(&self.priorities);
@@ -274,10 +324,12 @@ impl Uploads {
             offset: Arc::clone(&self.offset),
             ours,
             reads: Some(reads),
+            calling: HashMap::new(),
+            called: called_in,
         };
         let (jobs, jobs_out) = mpsc::unbounded_channel();
         self.jobs = jobs;
-        tokio::spawn(serve(listener, state, jobs_out));
+        tokio::spawn(serve(listener, state, jobs_out, called));
     }
 
     async fn given_the_clients_connected(&mut self, seeds: &[u8]) {
@@ -334,6 +386,10 @@ impl Uploads {
 
     fn given_the_client_left(&mut self, seed: u8) {
         self.clients.remove(&seed);
+    }
+
+    fn when_the_client_leaves(&mut self, seed: u8) {
+        self.given_the_client_left(seed);
     }
 
     fn given_time_passed(&self, duration: Duration) {
@@ -630,13 +686,119 @@ impl Uploads {
     // Helpers.
 
     async fn client_of(&mut self, seed: u8, client_id: u32) -> &mut Downloader {
+        self.client_listening_on(seed, client_id, 5000 + u16::from(seed)).await
+    }
+
+    async fn client_listening_on(&mut self, seed: u8, client_id: u32, port: u16) -> &mut Downloader {
         if !self.clients.contains_key(&seed) {
             let nick = format!("client {seed}");
-            let hello = Hello::of([seed; 16], client_id, 5000 + u16::from(seed), &plain(&nick), 0, 0);
+            let hello = Hello::of([seed; 16], client_id, port, &plain(&nick), 0, 0);
             let client = Downloader::connect(self.port, &hello).await;
             self.clients.insert(seed, client);
+            self.hellos.insert(seed, hello);
         }
         self.clients.get_mut(&seed).unwrap()
+    }
+
+    // Calling clients back.
+
+    async fn given_a_client_listening_for_calls_waiting_at(&mut self, seed: u8, place: u32) {
+        let listening = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let port = listening.local_addr().unwrap().port();
+        self.listening = Some(listening);
+        self.client_listening_on(seed, 0, port).await;
+        self.given_the_client_waits_at(seed, place, "waiting for our call").await;
+    }
+
+    async fn given_a_client_that_cannot_be_called_waiting_at(&mut self, seed: u8, place: u32) {
+        let closed = closed_port().await;
+        self.client_listening_on(seed, 0, closed).await;
+        self.given_the_client_waits_at(seed, place, "waiting for a call that cannot come").await;
+    }
+
+    // Our call, taken by `hello`.
+    async fn accept_call(&mut self, hello: &Hello) -> Downloader {
+        let listening = self.listening.as_ref().unwrap();
+        let (stream, _) = tokio::time::timeout(WAIT, listening.accept()).await.expect("our call").unwrap();
+        let (input, output) = stream.into_split();
+        let mut called = Downloader { input, output };
+        let greeting = called.next().await;
+        assert_eq!((greeting.protocol(), greeting.opcode()), (protocol::EDONKEY, client::HELLO));
+        called.send(&hello.encode(true).unwrap()).await;
+        called
+    }
+
+    async fn then_an_impostor_answering_the_call_is_cut_off(&mut self, seed: u8) {
+        let impostor = Hello::of([seed; 16], 0, 5000 + u16::from(seed), &plain("impostor"), 0, 0);
+        let mut called = self.accept_call(&impostor).await;
+        assert!(called.closed_within(WAIT).await);
+    }
+
+    async fn then_the_client_answering_the_call_gets_a_slot(&mut self, seed: u8) {
+        let hello = self.hellos[&seed].clone();
+        let mut called = self.accept_call(&hello).await;
+        called.until(protocol::EDONKEY, client::ACCEPTUPLOADREQ).await;
+        self.clients.insert(seed, called);
+    }
+
+    async fn when_the_called_client_hangs_up_before_its_hello(&mut self) {
+        let listening = self.listening.as_ref().unwrap();
+        let (stream, _) = tokio::time::timeout(WAIT, listening.accept()).await.expect("our call").unwrap();
+        drop(stream);
+    }
+
+    async fn given_a_firewalled_client_that_waited_and_left(&mut self) {
+        self.client = 3;
+        self.client_of(3, LOW_ID).await;
+        self.given_the_client_waits_at(3, 1, "behind the busy slots").await;
+        self.given_the_client_left(3);
+        self.given_time_passed(upload_manager::MIN_REQUEST_TIME + Duration::from_secs(60));
+    }
+
+    async fn given_a_slot_freed_while_it_was_away(&mut self) {
+        self.given_the_client_left(1);
+        let deadline = Instant::now() + WAIT;
+        let mut described = String::new();
+        while !described.starts_with("waiting 1, 1 called when they ask") && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            described = self.on_loop(|state| state.manager.describe()).await;
+        }
+        assert!(described.starts_with("waiting 1, 1 called when they ask"), "{described}");
+    }
+
+    async fn when_the_firewalled_client_asks_again(&mut self) {
+        let file = self.file.as_ref().unwrap().hash;
+        self.answer = Some(self.ask(3, file).await);
+    }
+
+    fn then_it_gets_a_slot(&self) {
+        assert_eq!(self.answer.as_ref().unwrap().opcode(), client::ACCEPTUPLOADREQ);
+    }
+
+    async fn given_a_client_that_asked_too_often_almost_to_a_ban_and_cannot_be_called(&mut self) {
+        let closed = closed_port().await;
+        self.client = 8;
+        self.client_listening_on(8, 0, closed).await;
+        self.given_the_client_waits_at(8, 1, "behind the busy slots").await;
+        self.given_it_asked_again_right_away(upload_manager::BAD_LIMIT - 1).await;
+        self.given_the_client_left(8);
+    }
+
+    async fn given_it_left_the_queue_when_it_could_not_be_called(&mut self) {
+        self.given_the_client_left(1);
+        self.then_the_queue_empties("the client left the queue").await;
+    }
+
+    async fn when_it_comes_back_with_the_user_hash_of_and_asks_right_away(&mut self, seed: u8) {
+        let port = self.hellos[&8].tcp_port;
+        let hello = Hello::of([seed; 16], 0, port, &plain("back"), 0, 0);
+        let mut client = Downloader::connect(self.port, &hello).await;
+        let file = self.file.as_ref().unwrap().hash;
+        client.send(&client_messages::for_file(client::SETREQFILEID, &file)).await;
+        client.until(protocol::EDONKEY, client::FILESTATUS).await;
+        client.send(&client_messages::for_file(client::STARTUPLOADREQ, &file)).await;
+        self.client = seed;
+        self.clients.insert(seed, client);
     }
 
     // The file asked for, then an upload of it: a slot or a place in the queue.
@@ -660,6 +822,12 @@ impl Uploads {
         let now = self.on_loop(|state| state.manager.uploads(state.now())).await;
         now.into_iter().filter(|upload| upload.sent.is_none()).map(|upload| names[&upload.file].clone()).collect()
     }
+}
+
+// A port nobody listens on.
+async fn closed_port() -> u16 {
+    let probe = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+    probe.local_addr().unwrap().port()
 }
 
 fn plain(nick: &str) -> Ours<'_> {
@@ -888,6 +1056,110 @@ async fn should_drop_a_client_asking_for_many_files_we_do_not_have_and_ban_it_th
     uploads.given_a_client_that_was_dropped_for_asking_for_files_we_do_not_have().await;
 
     uploads.when_another_connection_from_its_address_asks_for_them(upload_session::UNKNOWN_FILES_LIMIT).await;
+
+    uploads.then_it_is_banned().await;
+}
+
+#[tokio::test]
+async fn should_call_a_client_that_left_the_queue_for_its_slot() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_settings(1, 100);
+    uploads.given_the_shared_file("called.txt", 3000, 10);
+    uploads.given_the_uploads_started().await;
+    uploads.given_the_clients_connected(&[1, 2]).await;
+    uploads.given_the_client_asked_for(1, "called.txt").await;
+    uploads.given_the_client_asked_for(2, "called.txt").await;
+    uploads.given_a_client_listening_for_calls_waiting_at(3, 1).await;
+    uploads.given_the_client_left(3);
+
+    uploads.when_the_client_leaves(1);
+
+    uploads.then_an_impostor_answering_the_call_is_cut_off(7).await;
+    uploads.then_the_client_answering_the_call_gets_a_slot(3).await;
+}
+
+#[tokio::test]
+async fn should_drop_from_the_queue_a_client_whose_port_is_closed() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_settings(1, 100);
+    uploads.given_the_shared_file("called.txt", 3000, 10);
+    uploads.given_the_uploads_started().await;
+    uploads.given_the_clients_connected(&[1, 2]).await;
+    uploads.given_the_client_asked_for(1, "called.txt").await;
+    uploads.given_the_client_asked_for(2, "called.txt").await;
+    uploads.given_a_client_listening_for_calls_waiting_at(3, 1).await;
+    uploads.given_the_client_left(3);
+    uploads.given_the_client_left(1);
+    uploads.then_an_impostor_answering_the_call_is_cut_off(7).await;
+    uploads.then_the_client_answering_the_call_gets_a_slot(3).await;
+    uploads.given_a_client_that_cannot_be_called_waiting_at(4, 1).await;
+    uploads.given_the_client_left(4);
+
+    uploads.when_the_client_leaves(2);
+
+    uploads.then_the_queue_empties("the unreachable client dropped").await;
+}
+
+#[tokio::test]
+async fn should_drop_from_the_queue_a_client_that_hangs_up_before_its_hello() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_settings(1, 100);
+    uploads.given_the_shared_file("called.txt", 3000, 10);
+    uploads.given_the_uploads_started().await;
+    uploads.given_the_clients_connected(&[1, 2]).await;
+    uploads.given_the_client_asked_for(1, "called.txt").await;
+    uploads.given_the_client_asked_for(2, "called.txt").await;
+    uploads.given_a_client_listening_for_calls_waiting_at(3, 1).await;
+    uploads.given_the_client_left(3);
+    uploads.given_the_client_left(1);
+    uploads.then_an_impostor_answering_the_call_is_cut_off(7).await;
+    uploads.then_the_client_answering_the_call_gets_a_slot(3).await;
+    uploads.given_a_client_that_cannot_be_called_waiting_at(4, 1).await;
+    uploads.given_the_client_left(4);
+    uploads.given_the_client_left(2);
+    uploads.then_the_queue_empties("the unreachable client dropped").await;
+    uploads.given_the_client_asked_for(5, "called.txt").await;
+    uploads.given_a_client_listening_for_calls_waiting_at(6, 1).await;
+    uploads.given_the_client_left(6);
+    uploads.given_the_client_left(5);
+
+    uploads.when_the_called_client_hangs_up_before_its_hello().await;
+
+    uploads.then_the_queue_empties("the client that hung up dropped").await;
+}
+
+#[tokio::test]
+async fn should_give_a_slot_when_it_asks_again_to_a_firewalled_client_whose_turn_came_while_it_was_away() {
+    let mut uploads = Uploads::new();
+    uploads.given_two_slots_busy_under_a_limit().await;
+    uploads.given_a_firewalled_client_that_waited_and_left().await;
+    uploads.given_a_slot_freed_while_it_was_away().await;
+
+    uploads.when_the_firewalled_client_asks_again().await;
+
+    uploads.then_it_gets_a_slot();
+}
+
+#[tokio::test]
+async fn should_still_count_asking_too_often_after_the_client_left_the_queue() {
+    let mut uploads = Uploads::new();
+    uploads.given_two_slots_busy_under_a_limit().await;
+    uploads.given_a_client_that_asked_too_often_almost_to_a_ban_and_cannot_be_called().await;
+    uploads.given_it_left_the_queue_when_it_could_not_be_called().await;
+
+    uploads.when_it_comes_back_with_the_user_hash_of_and_asks_right_away(8).await;
+
+    uploads.then_it_is_banned().await;
+}
+
+#[tokio::test]
+async fn should_still_count_asking_too_often_when_the_client_comes_back_with_another_user_hash() {
+    let mut uploads = Uploads::new();
+    uploads.given_two_slots_busy_under_a_limit().await;
+    uploads.given_a_client_that_asked_too_often_almost_to_a_ban_and_cannot_be_called().await;
+    uploads.given_it_left_the_queue_when_it_could_not_be_called().await;
+
+    uploads.when_it_comes_back_with_the_user_hash_of_and_asks_right_away(9).await;
 
     uploads.then_it_is_banned().await;
 }

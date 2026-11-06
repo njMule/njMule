@@ -117,16 +117,9 @@ SharedFilesTest.shouldTakeTheUsableRecordsOfAnotherClient
 SharedFilesTest.shouldTreatPrivateDirectoriesAsPrivate
 SharedFilesTest.shouldUnshareAFileWhoseContentChangesUnderItsOldHash
 
-# The upload manager is ported in pieces: these need clients called back, or the downloads.
+# The upload manager is ported in pieces: this one needs the downloads.
 UploadManagerTest.shouldNotCountFilesWeDownloadAsUnknown
-UploadManagerTest.shouldStillCountAskingTooOftenAfterTheClientLeftTheQueue
-UploadManagerTest.shouldStillCountAskingTooOftenWhenTheClientComesBackWithAnotherUserHash
 
-# The upload manager is ported in pieces: calling back clients whose turn came.
-UploadManagerTest.shouldCallAClientThatLeftTheQueueForItsSlot
-UploadManagerTest.shouldDropFromTheQueueAClientThatHangsUpBeforeItsHello
-UploadManagerTest.shouldDropFromTheQueueAClientWhosePortIsClosed
-UploadManagerTest.shouldGiveASlotWhenItAsksAgainToAFirewalledClientWhoseTurnCameWhileItWasAway
 
 # The upload manager is ported in pieces: UDP re-asks, the counts of each file, moved, gone or faulty files and
 # clients that read slowly.
