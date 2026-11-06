@@ -42,6 +42,8 @@ RsaTest.shouldVerifySignaturesOfTheJdkOnLargerKeys
 # Whole classes of Java helpers that Rust's slices and integer methods hold.
 BytesTest
 LittleEndianTest
+# The Java engine reads the Downloads folder from reg.exe's answer; Rust asks the Known Folder API.
+KnownFoldersTest
 
 # Ed2kLinkTest: not ported yet.
 Ed2kLinkTest.shouldDropAnIpv6SourceWithAZoneIdButKeepTheLink

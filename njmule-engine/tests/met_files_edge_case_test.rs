@@ -351,3 +351,111 @@ fn should_refuse_to_write_a_public_key_of_more_than_eighty_bytes() {
 
     assert!(clients_met::write(&[credit]).is_err());
 }
+
+// Beyond the Java engine's examples: the tags the engine reads for later, and the ends of damaged files.
+
+#[test]
+fn should_read_every_tag_of_a_server_kept_in_server_met() {
+    let server = Server {
+        ip: 0x0102_0304,
+        port: 4661,
+        tags: vec![
+            int(server_tag::FAIL, 2),
+            named(server_tag::USERS, 300),
+            named(server_tag::FILES, 9000),
+            int(server_tag::MAXUSERS, 500),
+            int(server_tag::UDPFLAGS, 0x7FF),
+            int(server_tag::UDPKEY, 77),
+            int(server_tag::UDPKEYIP, 0x0A00_0001),
+            int(server_tag::TCPPORTOBFUSCATION, 4662),
+            int(server_tag::UDPPORTOBFUSCATION, 4672),
+            int(server_tag::PING, 120),
+            int(server_tag::SOFTFILES, 1000),
+            int(server_tag::HARDFILES, 2000),
+            int(server_tag::LOWIDUSERS, 30),
+        ],
+    };
+
+    let read = &server_met::read(&server_met::write(&[server]).unwrap()).unwrap()[0];
+
+    assert_eq!((read.failed_count(), read.users(), read.files()), (Some(2), Some(300), Some(9000)));
+    assert_eq!((read.max_users(), read.udp_flags(), read.udp_key()), (Some(500), Some(0x7FF), Some(77)));
+    assert_eq!(read.udp_key_ip(), Some(0x0A00_0001));
+    assert_eq!((read.obfuscated_tcp_port(), read.obfuscated_udp_port()), (Some(4662), Some(4672)));
+    assert_eq!((read.ping(), read.soft_files(), read.hard_files()), (Some(120), Some(1000), Some(2000)));
+    assert_eq!(read.low_id_users(), Some(30));
+}
+
+#[test]
+fn should_read_the_upload_tags_of_a_known_file() {
+    let file = KnownFile {
+        mtime: 0,
+        file_hash: H,
+        part_hashes: Vec::new(),
+        tags: vec![
+            int(file_tag::FILESIZE, 10),
+            int(file_tag::ULPRIORITY, 3),
+            int(file_tag::ATREQUESTED, 40),
+            int(file_tag::ATACCEPTED, 12),
+            string(file_tag::AICH_HASH, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+        ],
+    };
+    let short_aich = KnownFile { tags: vec![string(file_tag::AICH_HASH, "AAAA")], ..file.clone() };
+
+    let read = &known_met::read(&known_met::write(&[file, short_aich]).unwrap()).unwrap();
+
+    assert_eq!((read[0].upload_priority(), read[0].requests(), read[0].accepted()), (Some(3), 40, 12));
+    assert_eq!(read[0].aich_hash(), Some([0; 20]));
+    assert_eq!(read[1].aich_hash(), None);
+}
+
+#[test]
+fn should_refuse_to_write_more_part_hashes_than_a_file_has() {
+    let file = KnownFile {
+        mtime: 0,
+        file_hash: H,
+        part_hashes: vec![H; njmule_engine::persist::format::met_codecs::MAX_PART_HASHES + 1],
+        tags: Vec::new(),
+    };
+
+    assert!(known_met::write(&[file]).is_err());
+}
+
+#[test]
+fn should_give_no_gaps_for_a_size_beyond_what_a_file_can_have() {
+    let contents = part_met(vec![int(file_tag::FILESIZE, u64::MAX), named(b"\t0", 0), named(b"\n0", 100)]);
+
+    assert!(contents.gaps().is_empty());
+}
+
+#[test]
+fn should_refuse_a_bootstrap_nodes_dat_with_trailing_data() {
+    let mut data = Vec::new();
+    for value in [0_u32, 3, 1, 1] {
+        data.extend(value.to_le_bytes());
+    }
+    data.extend([0; 26]);
+
+    assert!(njmule_engine::persist::format::nodes_dat::read(&data).is_err());
+}
+
+#[test]
+fn should_read_the_levels_and_lists_of_every_ip_filter_form() {
+    use njmule_engine::persist::format::ip_filter_dat;
+    let ranges = ip_filter_dat::read(b"1.2.3.0 - 1.2.3.255 , 1000\n5.6.7.0 - 5.6.7.9 , 042 , office\n", "list.prefix");
+
+    assert_eq!(
+        ranges.iter().map(|r| (r.level, r.description.as_str())).collect::<Vec<_>>(),
+        [(100, ""), (42, "office")]
+    );
+    // A binary list that ends inside an entry keeps the entries before it.
+    for cut in [2_usize, 6] {
+        let mut p2b = vec![0xFF, 0xFF, 0xFF, 0xFF, b'P', b'2', b'B', 2];
+        p2b.extend(b"a\0");
+        p2b.extend([1, 2, 3, 0, 1, 2, 3, 255]);
+        p2b.extend(b"b\0");
+        p2b.extend(&[5, 6, 7, 0, 5, 6, 7, 255][..cut]);
+
+        assert_eq!(ip_filter_dat::read(&p2b, "list.p2b").len(), 1, "{cut}");
+    }
+}
