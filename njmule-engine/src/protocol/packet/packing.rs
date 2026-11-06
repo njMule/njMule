@@ -45,6 +45,17 @@ pub fn unpack_from_server(packet: Packet) -> Result<Packet, DecodeError> {
     Ok(Packet::of(protocol::EDONKEY, packet.opcode(), inflate(packet.payload(), MAX_SERVER_UNPACKED)?))
 }
 
+// The start of the data compressing tells about the whole.
+const SAMPLE: usize = 16 * 1024;
+
+/// Whether compressing `data` at `level` is worth trying: its first 16 KiB shrink by a thirty-second at least. Data
+/// compressed already, as media and archives are whatever their names, does not, and is spared its whole compression.
+pub fn shrinks(data: &[u8], level: u8) -> bool {
+    let sample = data.get(..data.len().min(SAMPLE)).unwrap_or(data);
+    let length = sample.len();
+    !sample.is_empty() && deflate(sample, level).len() <= length.saturating_sub(length / 32)
+}
+
 pub fn deflate(data: &[u8], level: u8) -> Vec<u8> {
     miniz_oxide::deflate::compress_to_vec_zlib(data, level)
 }

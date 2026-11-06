@@ -33,6 +33,20 @@ pub const MET_SUFFIX: &str = ".part.met";
 /// The bytes still missing at most for the endgame: one part, so that the blocks asked twice stay few.
 pub const ENDGAME_MISSING: u64 = ed2k::PARTSIZE;
 
+/// The sources of a download kept for the next run at most.
+pub const MAX_KNOWN_SOURCES: usize = 100;
+
+/// A source of a download kept for the next run: its address (as [`crate::util::ipv4`] holds it) and port, when it was
+/// last found good (seconds since 1970), its user hash when known and its crypt options.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KnownSource {
+    pub ip: u32,
+    pub port: u16,
+    pub seen: u64,
+    pub user_hash: Option<[u8; 16]>,
+    pub crypt_options: u8,
+}
+
 /// Where a download stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {

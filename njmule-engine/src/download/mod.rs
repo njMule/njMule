@@ -4,7 +4,9 @@
 //! Downloads: their part files, the sessions with their sources and the sources themselves.
 
 pub mod block_inflater;
+pub mod corruption_black_box;
 pub mod download_manager;
 pub mod download_queue;
 pub mod download_session;
 pub mod finished_downloads;
+pub mod known_sources;
