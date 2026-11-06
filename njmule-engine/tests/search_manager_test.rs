@@ -277,7 +277,7 @@ impl Searching {
         self.effects
             .iter()
             .filter_map(|effect| match effect {
-                Effect::Datagram(_, packet) => Some(packet),
+                Effect::Query(_, packet) => Some(packet),
                 _ => None,
             })
             .collect()

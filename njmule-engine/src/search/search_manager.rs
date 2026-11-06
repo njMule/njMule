@@ -7,7 +7,7 @@
 //! the [`Effect`]s it hands back.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::Ipv4Addr;
 use std::time::Duration;
 
 use indexmap::IndexMap;
@@ -107,7 +107,8 @@ pub enum TimerKind {
 /// What the manager asks the engine to do.
 #[derive(Debug, Clone)]
 pub enum Effect {
-    Datagram(SocketAddr, Packet),
+    /// A query for this server over UDP, along the route the engine has for it.
+    Query(Server, Packet),
     Results {
         search: u64,
         changed: Vec<SearchResult>,
@@ -416,11 +417,8 @@ impl SearchManager {
                 return;
             }
         };
-        let Some(port) = server.port.checked_add(PORT_OFFSET) else {
-            return;
-        };
         search.asked_over_udp.insert(server.ip);
-        effects.push(Effect::Datagram(SocketAddr::from((Ipv4Addr::from(server.ip), port)), request));
+        effects.push(Effect::Query(server, request));
     }
 
     // Answers of the connected server, or of the server at `udp_server` over UDP; the results they made, rated.

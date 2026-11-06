@@ -5,7 +5,7 @@
 //! passes over the list with a pause between them.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{SocketAddr, SocketAddrV4};
 use std::time::{Duration, Instant};
 
 use crate::persist::format::server_met::Server;
@@ -14,6 +14,7 @@ use crate::protocol::ed2k::server_messages::FoundSources;
 use crate::protocol::packet::Packet;
 use crate::server::server_list::{self, Address, ServerList};
 use crate::server::server_pinger::PORT_OFFSET;
+use crate::server::server_route::ServerRoute;
 use crate::util::instants;
 
 pub const INTERVAL: Duration = Duration::from_secs(1);
@@ -22,11 +23,23 @@ pub const MAX_FILES_PER_SERVER: usize = 35;
 
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How the servers are asked now.
+pub struct Asking<'a> {
+    /// The server we are on, which is not asked.
+    pub connected: Option<&'a Address>,
+    /// The failures in a row after which a server is not asked.
+    pub dead_retries: u32,
+    /// Whether sources without a user hash can be used, so are worth asking for.
+    pub allowed: bool,
+    /// How a server is asked over UDP; none when it cannot be.
+    pub route: &'a dyn Fn(&Server) -> Option<ServerRoute>,
+}
+
 pub struct GlobalSources {
     // By the address and UDP port asked at: the files asked and when.
     asked: HashMap<SocketAddrV4, (HashSet<[u8; 16]>, Instant)>,
     left: VecDeque<Server>,
-    requests: VecDeque<(SocketAddr, Packet)>,
+    requests: VecDeque<(ServerRoute, Packet)>,
     running: bool,
     passing: bool,
     next_pass: Instant,
@@ -98,15 +111,13 @@ impl GlobalSources {
         &mut self,
         now: Instant,
         servers: &ServerList,
-        connected: Option<&Address>,
-        dead_retries: u32,
         wanting: &[SourceQuery],
-        allowed: bool,
-    ) -> Option<(SocketAddr, Packet)> {
+        asking: &Asking<'_>,
+    ) -> Option<(ServerRoute, Packet)> {
         self.asked.retain(|_, (_, sent)| now.saturating_duration_since(*sent) <= ANSWER_TIMEOUT);
         if !self.running
-            || !allowed
-            || (self.requests.is_empty() && !self.queue_next_server(now, servers, connected, dead_retries, wanting))
+            || !asking.allowed
+            || (self.requests.is_empty() && !self.queue_next_server(now, servers, wanting, asking))
         {
             return None;
         }
@@ -118,9 +129,8 @@ impl GlobalSources {
         &mut self,
         now: Instant,
         servers: &ServerList,
-        connected: Option<&Address>,
-        dead_retries: u32,
         wanting: &[SourceQuery],
+        asking: &Asking<'_>,
     ) -> bool {
         loop {
             let Some(server) = self.left.pop_front() else {
@@ -140,9 +150,13 @@ impl GlobalSources {
                 continue;
             };
             let askable = server.ip != 0
-                && server.failed_count().unwrap_or(0) < u64::from(dead_retries)
-                && connected != Some(&server_list::address_of(&server));
-            let Some(port) = server.port.checked_add(PORT_OFFSET).filter(|_| askable) else {
+                && server.port.checked_add(PORT_OFFSET).is_some()
+                && server.failed_count().unwrap_or(0) < u64::from(asking.dead_retries)
+                && asking.connected != Some(&server_list::address_of(&server));
+            let Some(way) = askable.then(|| (asking.route)(&server)).flatten() else {
+                continue;
+            };
+            let SocketAddr::V4(target) = way.target else {
                 continue;
             };
             let files = self.next_files(wanting);
@@ -156,9 +170,8 @@ impl GlobalSources {
             if packets.is_empty() {
                 continue;
             }
-            let target = SocketAddrV4::new(Ipv4Addr::from(server.ip), port);
             self.asked.insert(target, (files.iter().map(|file| file.file).collect(), now));
-            self.requests.extend(packets.into_iter().map(|packet| (SocketAddr::V4(target), packet)));
+            self.requests.extend(packets.into_iter().map(|packet| (way, packet)));
             return true;
         }
     }

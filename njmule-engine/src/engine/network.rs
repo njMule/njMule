@@ -7,8 +7,8 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::Arc;
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use rand::SeedableRng;
@@ -40,15 +40,17 @@ use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams;
 use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint};
 use crate::protocol::packet::opcodes::{client, extended, server_udp};
-use crate::protocol::packet::{Packet, protocol, udp_framing};
+use crate::protocol::packet::{Packet, protocol};
 use crate::protocol::tag::server_tag;
 use crate::search::search_manager::{Effect as SearchEffect, Scope, SearchManager, SpamRater, StartError, Timer};
 use crate::search::spam_filter::{self, SpamFilter};
 use crate::server::file_publisher::{FilePublisher, Offer};
-use crate::server::global_sources::GlobalSources;
+use crate::server::global_sources::{Asking, GlobalSources};
 use crate::server::server_list::{self, Address, ServerList};
 use crate::server::server_pinger::{self, Effect, ServerPinger};
+use crate::server::server_route::ServerRoute;
 use crate::server::server_session::{Context, Notice, Outcome, ServerSession};
+use crate::server::server_udp::ServerUdp;
 use crate::upload::upload_manager::{Sent, UploadManager};
 
 /// How long changes of the list wait to be saved together.
@@ -59,7 +61,6 @@ const CALLBACK_REPEAT: Duration = Duration::from_secs(60);
 const MAX_CALLBACKS_OPEN: usize = 8;
 // Crypt options of a callback request: the client asks for or requires obfuscation.
 const CRYPT_REQUESTED_OR_REQUIRED: u8 = 0x06;
-const MAX_DATAGRAM: usize = 8 * 1024;
 /// Sources kept per download at most.
 const MAX_SOURCES_PER_FILE: usize = 400;
 
@@ -151,7 +152,9 @@ pub struct Network {
     pinger: ServerPinger,
     pinging: Option<JoinHandle<()>>,
     saving: Option<JoinHandle<()>>,
-    udp: Option<Arc<UdpSocket>>,
+    udp: Option<ServerUdp>,
+    // The UDP keys of the servers asked obfuscated, by address and port, for their answers.
+    server_udp_keys: Arc<Mutex<HashMap<(u32, u16), u32>>>,
     ticks: mpsc::UnboundedSender<Tick>,
     random: StdRng,
     callbacks: HashMap<SocketAddr, Instant>,
@@ -190,8 +193,12 @@ pub fn start(
     let (outcomes_in, outcomes) = mpsc::unbounded_channel();
     let (ticks_in, ticks) = mpsc::unbounded_channel();
     let (datagrams_in, datagrams) = mpsc::unbounded_channel();
-    let udp = udp.map(Arc::new);
-    let receiving = udp.clone().map(|socket| tokio::spawn(receive(socket, datagrams_in)));
+    let udp = udp.map(|socket| ServerUdp::start(socket, datagrams_in));
+    let server_udp_keys: Arc<Mutex<HashMap<(u32, u16), u32>>> = Arc::default();
+    if let Some(udp) = &udp {
+        let keys = Arc::clone(&server_udp_keys);
+        udp.decode_with(move |from| key_of(&keys, from));
+    }
     // The incoming folder is shared: the files known from before at once, the others once hashed.
     let mut shared_files = SharedFiles::load(&dirs.config);
     let to_hash: Vec<Found> =
@@ -239,6 +246,7 @@ pub fn start(
         pinging: None,
         saving: None,
         udp,
+        server_udp_keys,
         ticks: ticks_in,
         random: StdRng::from_rng(&mut rand::rng()),
         callbacks: HashMap::new(),
@@ -261,9 +269,6 @@ pub fn start(
     let queues = Queues { commands, outcomes, ticks, datagrams, links, peers, disk, sent };
     Ok(tokio::spawn(async move {
         network.run(queues).await;
-        if let Some(receiving) = receiving {
-            receiving.abort();
-        }
         if let Some(accepting) = accepting {
             accepting.abort();
         }
@@ -627,15 +632,35 @@ impl Network {
         let Some(udp) = &self.udp else {
             return;
         };
-        if let Err(e) = udp.try_send_to(&udp_framing::encode(packet), target) {
+        if let Err(e) = udp.send(target, packet) {
             tracing::debug!("Cannot send a datagram to {target}: {e}");
         }
+    }
+
+    fn send_routed(&mut self, route: &ServerRoute, packet: &Packet) {
+        let Some(udp) = &self.udp else {
+            return;
+        };
+        if let Err(e) = udp.send_routed(route, packet, &mut self.random) {
+            tracing::debug!("Cannot send a datagram to {}: {e}", route.target);
+        }
+    }
+
+    // Our address as the server we are on sees it, which server UDP keys are bound to; 0 while unknown.
+    fn address_seen_by_server(&self) -> u32 {
+        self.session.id().map_or(0, |id| id.public_ip())
     }
 
     fn search_effects(&mut self, effects: Vec<SearchEffect>) {
         for effect in effects {
             match effect {
-                SearchEffect::Datagram(target, packet) => self.send_datagram(target, &packet),
+                SearchEffect::Query(server, packet) => {
+                    let our_ip = self.address_seen_by_server();
+                    let mode = self.preferences().obfuscation;
+                    if let Some(route) = route_to(&self.server_udp_keys, &server, our_ip, mode) {
+                        self.send_routed(&route, &packet);
+                    }
+                }
                 SearchEffect::Results { search, changed } => {
                     self.publish(EngineEvent::SearchResults { search, results: changed });
                 }
@@ -679,12 +704,18 @@ impl Network {
         self.downloads.tick(&mut server, &settings, &ours);
         let connected = self.session.server().map(server_list::address_of);
         let wanting = self.downloads.wanting_sources(&settings);
-        let retries = self.preferences().dead_server_retries;
-        let allowed = self.preferences().obfuscation != ObfuscationMode::Required;
-        if let Some((target, packet)) =
-            self.global.tick(Instant::now(), &self.servers, connected.as_ref(), retries, &wanting, allowed)
-        {
-            self.send_datagram(target, &packet);
+        let our_ip = self.address_seen_by_server();
+        let preferences = self.preferences();
+        let keys = &self.server_udp_keys;
+        let route = |server: &Server| route_to(keys, server, our_ip, preferences.obfuscation);
+        let asking = Asking {
+            connected: connected.as_ref(),
+            dead_retries: preferences.dead_server_retries,
+            allowed: preferences.obfuscation != ObfuscationMode::Required,
+            route: &route,
+        };
+        if let Some((route, packet)) = self.global.tick(Instant::now(), &self.servers, &wanting, &asking) {
+            self.send_routed(&route, &packet);
         }
         self.uploads.fill_slots();
         self.after_downloads();
@@ -1156,29 +1187,30 @@ fn by_hand(address: &Address) -> Server {
     Server { ip: address.ip, port: address.port, tags: Vec::new() }
 }
 
-// Reads the server datagrams: plain eD2K packets from the servers' UDP ports.
-async fn receive(socket: Arc<UdpSocket>, datagrams: mpsc::UnboundedSender<(SocketAddr, Packet)>) {
-    let mut buffer = vec![0u8; MAX_DATAGRAM];
-    loop {
-        match socket.recv_from(&mut buffer).await {
-            Ok((length, from)) => {
-                let Some(data) = buffer.get(..length) else {
-                    continue;
-                };
-                match udp_framing::decode(data) {
-                    Ok(packet) if packet.protocol() == crate::protocol::packet::protocol::EDONKEY => {
-                        if datagrams.send((from, packet)).is_err() {
-                            return;
-                        }
-                    }
-                    Ok(_) => {}
-                    Err(_) => tracing::debug!("Dropping a malformed datagram from {from}"),
-                }
-            }
-            // On Windows an ICMP error for an earlier datagram fails a receive: harmless.
-            Err(e) => tracing::debug!("Server UDP: {e}"),
-        }
+// How a server is asked over UDP; the key of an obfuscated route is kept for its answers.
+fn route_to(
+    keys: &Mutex<HashMap<(u32, u16), u32>>,
+    server: &Server,
+    our_ip: u32,
+    mode: ObfuscationMode,
+) -> Option<ServerRoute> {
+    let route = ServerRoute::of(server, our_ip, mode)?;
+    if let (true, SocketAddr::V4(target)) = (route.is_obfuscated(), route.target) {
+        keys.lock().unwrap_or_else(PoisonError::into_inner).insert(slot(target), route.key);
     }
+    Some(route)
+}
+
+// The UDP key of the server that sent from `from`, 0 for none; servers on one address are told apart by their port.
+fn key_of(keys: &Mutex<HashMap<(u32, u16), u32>>, from: SocketAddr) -> u32 {
+    let SocketAddr::V4(from) = from else {
+        return 0;
+    };
+    keys.lock().unwrap_or_else(PoisonError::into_inner).get(&slot(from)).copied().unwrap_or(0)
+}
+
+fn slot(address: SocketAddrV4) -> (u32, u16) {
+    (u32::from(*address.ip()), address.port())
 }
 
 // The spam filter as the searches rate with it: off in the preferences, nothing is spam, though the servers' UDP answers

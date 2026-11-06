@@ -88,6 +88,22 @@ pub struct ServerList {
     statics: IndexSet<Address>,
     // Static servers not taken in the list (unusable): written back as they were.
     untaken: Vec<StaticServer>,
+    blocked: Blocked,
+}
+
+// The addresses the IP filter blocks.
+struct Blocked(Box<dyn Fn(u32) -> bool + Send + Sync>);
+
+impl Default for Blocked {
+    fn default() -> Self {
+        Self(Box::new(|_| false))
+    }
+}
+
+impl std::fmt::Debug for Blocked {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Blocked")
+    }
 }
 
 impl ServerList {
@@ -118,8 +134,12 @@ impl ServerList {
 
     /// Adds a server unless its address is known already or cannot be one of a server. Its name and description come
     /// from other clients' lists and are shown: they lose their control characters.
+    /// Adds a server unless its address is already known, blocked or cannot be one of a server.
     pub fn add(&mut self, server: Server) -> bool {
-        if server.port == 0 || !(is_usable(server.ip) || server.dynamic_ip().is_some()) {
+        if server.port == 0
+            || !(is_usable(server.ip) || server.dynamic_ip().is_some())
+            || (server.ip != 0 && (self.blocked.0)(server.ip))
+        {
             return false;
         }
         let address = address_of(&server);
@@ -245,12 +265,22 @@ impl ServerList {
 
     /// The servers at a usable address, to ask over UDP: high priority first, then those that failed least.
     pub fn candidates(&self) -> Vec<Server> {
-        self.sorted(|server| accepts(server.ip))
+        self.sorted(|server| self.accepts(server.ip))
     }
 
     /// As [`Self::candidates`], with the servers known by host name too, resolved when connecting.
     pub fn connectable(&self) -> Vec<Server> {
-        self.sorted(|server| accepts(server.ip) || server.dynamic_ip().is_some())
+        self.sorted(|server| self.accepts(server.ip) || server.dynamic_ip().is_some())
+    }
+
+    /// Applies the IP filter: blocked servers are no longer added nor offered.
+    pub fn filter(&mut self, blocks: impl Fn(u32) -> bool + Send + Sync + 'static) {
+        self.blocked = Blocked(Box::new(blocks));
+    }
+
+    /// Whether a server may be at `ip`: a usable address the filters let through.
+    pub fn accepts(&self, ip: u32) -> bool {
+        is_usable(ip) && !(self.blocked.0)(ip)
     }
 
     fn sorted(&self, wanted: impl Fn(&Server) -> bool) -> Vec<Server> {
@@ -258,11 +288,6 @@ impl ServerList {
         usable.sort_by_key(|server| (rank(server), server.failed_count().unwrap_or(0)));
         usable
     }
-}
-
-/// Whether a server may be at `ip`: a usable address.
-pub fn accepts(ip: u32) -> bool {
-    is_usable(ip)
 }
 
 /// Whether the server announced TCP obfuscation and a port it takes it on.

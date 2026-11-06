@@ -160,7 +160,7 @@ fn asked(
     servers: &ServerList,
 ) -> Option<(Address, Server)> {
     let ip = u32::from(*from.ip());
-    if !server_list::accepts(ip) {
+    if !servers.accepts(ip) {
         return None;
     }
     waiting.iter().filter(|(_, pending)| pending.challenge == challenge).find_map(|(address, _)| {

@@ -8,13 +8,15 @@
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
 
+use njmule_engine::config::obfuscation_mode::ObfuscationMode;
 use njmule_engine::persist::format::server_met::Server;
 use njmule_engine::protocol::ed2k::server_datagrams::{self, SourceQuery};
 use njmule_engine::protocol::ed2k::server_messages::{FoundSources, Source};
 use njmule_engine::protocol::packet::Packet;
 use njmule_engine::protocol::tag::server_tag;
-use njmule_engine::server::global_sources::{GlobalSources, PASS_PAUSE};
+use njmule_engine::server::global_sources::{self, GlobalSources, PASS_PAUSE};
 use njmule_engine::server::server_list::{self, Address, ServerList};
+use njmule_engine::server::server_route::ServerRoute;
 
 const DEAD_RETRIES: u32 = 3;
 const HIGH_ID: u32 = 0x5511_7400;
@@ -78,7 +80,16 @@ impl Asking {
     }
 
     fn tick(&mut self, allowed: bool) -> Option<(SocketAddr, Packet)> {
-        self.global.tick(self.now, &self.servers, self.connected.as_ref(), DEAD_RETRIES, &self.wanting, allowed)
+        let plain = |server: &Server| ServerRoute::of(server, 0, ObfuscationMode::Disabled);
+        let asking = global_sources::Asking {
+            connected: self.connected.as_ref(),
+            dead_retries: DEAD_RETRIES,
+            allowed,
+            route: &plain,
+        };
+        self.global
+            .tick(self.now, &self.servers, &self.wanting, &asking)
+            .map(|(route, packet)| (route.target, packet))
     }
 
     fn requests(&mut self, count: usize) -> Vec<(SocketAddr, Packet)> {
@@ -178,4 +189,31 @@ fn should_ask_again_half_an_hour_after_a_pass() {
     let sent = asking.tick(true);
 
     assert_eq!(sent.map(|(to, packet)| (to, files_asked(&packet))), Some((udp("B"), vec![file(1)])));
+}
+
+// Beyond the Java engine's examples: the branches its other tests reach.
+
+#[test]
+fn should_ask_nothing_more_once_stopped_and_pause_before_the_next_pass() {
+    let mut asking = Asking::new(&[server("B"), server("D")]);
+    asking.wanting = wanted(&[file(1)]);
+    asking.requests(1);
+
+    asking.global.stop(asking.now);
+    asking.global.start();
+
+    assert!(asking.tick(true).is_none(), "the next pass waits");
+    let answer = server_datagrams::found_sources(&[sources(file(1), &[HIGH_ID])]).unwrap();
+    assert!(asking.global.received(udp("B"), &answer).is_empty(), "nothing is awaited any more");
+}
+
+#[test]
+fn should_ignore_a_malformed_answer_of_a_server_asked() {
+    let mut asking = Asking::new(&[server("B")]);
+    asking.wanting = wanted(&[file(1)]);
+    asking.requests(1);
+
+    let found = asking.global.received(udp("B"), &Packet::of(0xE3, 0x9B, vec![1, 2, 3]));
+
+    assert!(found.is_empty());
 }

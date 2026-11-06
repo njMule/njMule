@@ -11,7 +11,7 @@ use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 
-use tokio::net::{TcpListener, UdpSocket};
+use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinSet;
 
@@ -35,6 +35,7 @@ use crate::persist::{preferences_codec, user_hash_store};
 use crate::protocol::ed2k::hello::{self, Hello, Ours};
 use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::Address;
+use crate::server::server_udp::ServerUdp;
 
 /// Events kept for a front end that reads them late; one that falls further behind loses the stream.
 const EVENT_BACKLOG: usize = 1024;
@@ -107,8 +108,8 @@ impl Engine {
                 None
             }
         };
-        // The servers' UDP answers come to a port of their own.
-        let udp = match UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))).await {
+        // The servers' UDP answers come to a port of their own, not the one Kad and clients use.
+        let udp = match ServerUdp::bind_beside(preferences.udp_port, None).await {
             Ok(socket) => Some(socket),
             Err(e) => {
                 tracing::warn!("Cannot open the server UDP socket: {e}");
