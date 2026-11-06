@@ -7,14 +7,17 @@
 use std::collections::{HashSet, VecDeque};
 use std::net::IpAddr;
 
+use crate::files::file_types;
 use crate::files::hash::ed2k;
 use crate::files::shared_files::SharedFile;
 use crate::peer::peer_link::LinkHandle;
 use crate::protocol::ed2k::client_messages::{self, FileName, FileStatus, RequestParts};
+use crate::protocol::ed2k::file_entry::FileEntry;
 use crate::protocol::ed2k::hello::{self, Hello};
-use crate::protocol::io::{DecodeError, PacketWriter};
+use crate::protocol::io::{DecodeError, PacketWriter, StringEncoding};
 use crate::protocol::packet::opcodes::{client, extended};
 use crate::protocol::packet::{Packet, protocol};
+use crate::protocol::tag::{Ed2kTagFormat, Tag, TagName, file_tag};
 
 /// Blocks a client may have waiting at once.
 pub const MAX_PENDING_BLOCKS: usize = 32;
@@ -22,6 +25,13 @@ pub const MAX_PENDING_BLOCKS: usize = 32;
 pub const MAX_BLOCK: u64 = 3 * ed2k::EMBLOCKSIZE;
 /// Files neither shared nor downloaded a client may ask us for on one connection before it is dropped.
 pub const UNKNOWN_FILES_LIMIT: usize = 6;
+/// The answer to a client browsing our files stays below this size, which every client takes.
+pub const MAX_SHARED_LIST: usize = 1_000_000;
+/// The pseudo-directory a client browsing by directory sees our files in.
+pub const FILES_DIRECTORY: &str = "!Other";
+
+/// The shared files a client may browse; none when the preferences do not let it look.
+pub type Visible<'a> = &'a dyn Fn() -> Option<Vec<SharedFile>>;
 
 /// One requested block of a file.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -52,6 +62,8 @@ pub struct UploadSession {
     // Blocks sent in this slot are not sent again.
     sent: HashSet<Block>,
     unknown: HashSet<[u8; 16]>,
+    // Our files were listed to the client: once a connection, as the list can take a megabyte.
+    listed: bool,
     slot: bool,
 }
 
@@ -64,6 +76,7 @@ impl UploadSession {
             pending: VecDeque::new(),
             sent: HashSet::new(),
             unknown: HashSet::new(),
+            listed: false,
             slot: false,
         }
     }
@@ -116,12 +129,14 @@ impl UploadSession {
         self.send_rank(rank);
     }
 
-    /// Handles a packet of the upload side; `find` gives our complete file of a hash.
+    /// Handles a packet of the upload side; `find` gives our complete file of a hash, `visible` the files the client
+    /// may browse.
     pub fn received(
         &mut self,
         packet: &Packet,
         ours: &Hello,
         find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>,
+        visible: Visible<'_>,
     ) -> Result<Option<Request>, DecodeError> {
         match (packet.protocol(), packet.opcode()) {
             (protocol::EDONKEY, client::HELLO) => {
@@ -174,6 +189,14 @@ impl UploadSession {
                 self.pending.clear();
                 return Ok(Some(Request::Stopped));
             }
+            (protocol::EDONKEY, client::ASKSHAREDFILES) => self.shared_files_asked(None, visible),
+            (protocol::EDONKEY, client::ASKSHAREDDIRS) => self.shared_directories_asked(visible),
+            (protocol::EDONKEY, client::ASKSHAREDFILESDIR) => {
+                let mut input = packet.reader();
+                let length = usize::from(input.u16()?);
+                let directory = input.bytes(length)?.to_vec();
+                self.shared_files_asked(Some(directory), visible);
+            }
             (protocol::EMULE, extended::PUBLICIP_REQ) => {
                 if let IpAddr::V4(ip) = self.link.remote().ip() {
                     self.link.send(Packet::of(protocol::EMULE, extended::PUBLICIP_ANSWER, ip.octets().to_vec()));
@@ -197,6 +220,50 @@ impl UploadSession {
             _ => {}
         }
         Ok(None)
+    }
+
+    // Real paths stay private: every file shows in one pseudo-directory, the one of single shared files.
+    fn shared_directories_asked(&self, visible: Visible<'_>) {
+        if visible().is_none() {
+            self.link.send(Packet::empty(protocol::EDONKEY, client::ASKSHAREDDENIEDANS));
+            return;
+        }
+        let mut out = PacketWriter::new();
+        out.u32(1);
+        if out.string16(FILES_DIRECTORY, StringEncoding::Utf8).is_ok() {
+            self.link.send(Packet::written(protocol::EDONKEY, client::ASKSHAREDDIRSANS, out));
+        }
+    }
+
+    // The files the preferences let this client see, all of them or those of `directory`, echoed as asked. A client not
+    // allowed gets an empty list or, for a directory, a refusal.
+    fn shared_files_asked(&mut self, directory: Option<Vec<u8>>, visible: Visible<'_>) {
+        let files = visible();
+        if files.is_none() && directory.is_some() {
+            self.link.send(Packet::empty(protocol::EDONKEY, client::ASKSHAREDDENIEDANS));
+            return;
+        }
+        if self.listed {
+            tracing::debug!("{} asked for our files again", self.link.remote());
+            return;
+        }
+        self.listed = true;
+        let mut files = files.unwrap_or_default();
+        if directory.as_deref().is_some_and(|directory| directory != FILES_DIRECTORY.as_bytes()) {
+            files.clear();
+        }
+        let list = listing(&files, self.peer.misc_options2() & hello::MISC2_LARGE_FILES != 0);
+        tracing::debug!("Our files listed to {}", self.peer.nick().unwrap_or("?"));
+        match directory {
+            None => {
+                self.link.send(Packet::written(protocol::EDONKEY, client::ASKSHAREDFILESANSWER, list));
+            }
+            Some(directory) => {
+                let mut out = PacketWriter::new();
+                out.u16(u16::try_from(directory.len()).unwrap_or(0)).bytes(&directory).bytes(&list.into_byte_array());
+                self.link.send(Packet::written(protocol::EDONKEY, client::ASKSHAREDFILESDIRANS, out));
+            }
+        }
     }
 
     // Only blocks of the file in upload, of at most three block sizes, are taken.
@@ -236,4 +303,30 @@ impl UploadSession {
             Err(e) => tracing::warn!("Cannot answer {}: {e}", self.link.remote()),
         }
     }
+}
+
+/// `<u32 count>` and the entries of `files`, large ones only for a client that takes them; the list stops growing
+/// past [`MAX_SHARED_LIST`] bytes.
+pub fn listing(files: &[SharedFile], large: bool) -> PacketWriter {
+    let mut entries = PacketWriter::new();
+    let mut count = 0u32;
+    for file in files {
+        if (file.size > ed2k::OLD_MAX_FILE_SIZE && !large) || entries.size() > MAX_SHARED_LIST {
+            continue;
+        }
+        let mut tags = vec![
+            Tag::String { name: TagName::id(file_tag::FILENAME), value: file.name.clone() },
+            Tag::Int { name: TagName::id(file_tag::FILESIZE), value: file.size },
+        ];
+        if let Some(kind) = file_types::of(&file.name) {
+            tags.push(Tag::String { name: TagName::id(file_tag::FILETYPE), value: kind.to_owned() });
+        }
+        let entry = FileEntry { hash: file.hash, client_id: 0, port: 0, tags };
+        if entry.write(&mut entries, Ed2kTagFormat::New).is_ok() {
+            count = count.saturating_add(1);
+        }
+    }
+    let mut out = PacketWriter::new();
+    out.u32(count).bytes(&entries.into_byte_array());
+    out
 }

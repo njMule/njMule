@@ -18,7 +18,7 @@ use crate::peer::peer_link::{LinkHandle, LinkId};
 use crate::protocol::ed2k::client_messages::SendingPart;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::packet::Packet;
-use crate::upload::upload_session::{Block, Request, UploadSession};
+use crate::upload::upload_session::{Block, Request, UploadSession, Visible};
 
 /// Bytes a slot sends before its client goes back to the queue.
 pub const SESSION_LIMIT: u64 = ed2k::PARTSIZE + 20_480;
@@ -64,9 +64,10 @@ impl UploadManager {
         packet: &Packet,
         ours: &Hello,
         find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>,
+        visible: Visible<'_>,
     ) {
         let session = self.sessions.entry(link.id()).or_insert_with(|| UploadSession::new(link.clone(), peer.clone()));
-        match session.received(packet, ours, find) {
+        match session.received(packet, ours, find, visible) {
             Ok(Some(Request::Upload(_))) => self.requested(link.id()),
             Ok(Some(Request::Blocks)) => self.send_next(link.id(), find),
             Ok(Some(Request::Stopped)) => {

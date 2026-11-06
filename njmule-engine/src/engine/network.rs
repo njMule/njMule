@@ -28,6 +28,7 @@ use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
 use crate::config::proxy_settings::ProxySettings;
+use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::download::download_manager::{self, Action, DownloadEvent, DownloadManager, ServerLink};
 use crate::download::download_session;
 use crate::download::finished_downloads::FinishedDownloads;
@@ -1286,7 +1287,12 @@ impl Network {
             }
             Side::Upload => {
                 let files = &self.shared_files;
-                self.uploads.received(&handle, &hello, packet, ours, &|hash: &[u8; 16]| files.get(hash).cloned());
+                let visibility = self.preferences().shared_files_visibility;
+                // Friends are not kept yet: none may look when only friends may.
+                let visible =
+                    || (visibility == SharedFilesVisibility::Everybody).then(|| files.files().cloned().collect());
+                let find = |hash: &[u8; 16]| files.get(hash).cloned();
+                self.uploads.received(&handle, &hello, packet, ours, &find, &visible);
             }
             Side::Download | Side::Buddy => {
                 tracing::debug!("Nothing on {} takes opcode {:#04x}", handle.remote(), packet.opcode());
