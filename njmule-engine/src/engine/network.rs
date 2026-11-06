@@ -25,6 +25,7 @@ use crate::api::server_info::ServerInfo;
 use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
+use crate::config::proxy_settings::ProxySettings;
 use crate::download::download_manager::{self, Action, DownloadEvent, DownloadManager, ServerLink};
 use crate::download::download_session;
 use crate::download::finished_downloads::FinishedDownloads;
@@ -116,7 +117,14 @@ enum Tick {
     Second,
     Search(Timer),
     Hashed(Found, Result<FileHashes, String>),
+    ProxyChanged(ProxySettings),
+    // The sockets opened for a binding, which a newer one may have replaced meanwhile.
+    Rebound(Binding, Option<TcpListener>, Option<UdpSocket>),
 }
+
+/// How often the network interface of the preferences is looked at: it may go, as a VPN that drops, come back, or
+/// come back with another address.
+const BIND_CHECK_SECONDS: u32 = 10;
 
 // What the connections to other clients bring.
 enum PeerEvent {
@@ -156,7 +164,13 @@ pub struct Network {
     saving: Option<JoinHandle<()>>,
     udp: Option<ServerUdp>,
     // Keeps the server socket on the UDP relay of a SOCKS5 proxy, when the preferences have one.
-    server_relay: Option<Arc<RelayKeeper>>,
+    server_relay: Option<RelayKeeper>,
+    datagrams: mpsc::UnboundedSender<(SocketAddr, Packet)>,
+    accepting: Option<JoinHandle<()>>,
+    following: Option<JoinHandle<()>>,
+    // The interface the sockets are on, and the seconds since it was last looked at.
+    binding: Binding,
+    since_bind_check: u32,
     // The UDP keys of the servers asked obfuscated, by address and port, for their answers.
     server_udp_keys: Arc<Mutex<HashMap<(u32, u16), u32>>>,
     ticks: mpsc::UnboundedSender<Tick>,
@@ -197,35 +211,19 @@ pub fn start(
     let (outcomes_in, outcomes) = mpsc::unbounded_channel();
     let (ticks_in, ticks) = mpsc::unbounded_channel();
     let (datagrams_in, datagrams) = mpsc::unbounded_channel();
-    let udp = udp.map(|socket| ServerUdp::start(socket, datagrams_in));
     let server_udp_keys: Arc<Mutex<HashMap<(u32, u16), u32>>> = Arc::default();
-    // Put on the route of the proxy before anything is sent through it, then kept there as the proxy changes.
-    let local = match shared.routes.binding() {
-        Binding::Bound(address) => Some(address),
-        Binding::Any | Binding::Missing(_) => None,
-    };
-    let server_relay =
-        udp.as_ref().map(|udp| {
-            Arc::new(RelayKeeper::start("Server UDP", udp.router(), shared.routes.proxy(), local, |level, text| {
-                match level {
-                    Level::Info => tracing::info!("{text}"),
-                    Level::Warning => tracing::warn!("{text}"),
-                }
-            }))
-        });
-    let following = server_relay.clone().map(|relay| {
-        let mut changes = shared.preferences.subscribe();
-        tokio::spawn(async move {
-            while changes.changed().await.is_ok() {
-                let proxy = changes.borrow_and_update().proxy.clone();
-                relay.follow(proxy);
+    // The proxy as it changes, for the relay of the server socket.
+    let mut changes = shared.preferences.subscribe();
+    let proxies = ticks_in.clone();
+    let following = tokio::spawn(async move {
+        while changes.changed().await.is_ok() {
+            let proxy = changes.borrow_and_update().proxy.clone();
+            if proxies.send(Tick::ProxyChanged(proxy)).is_err() {
+                return;
             }
-        })
+        }
     });
-    if let Some(udp) = &udp {
-        let keys = Arc::clone(&server_udp_keys);
-        udp.decode_with(move |from| key_of(&keys, from));
-    }
+    let binding = shared.routes.binding();
     // The incoming folder is shared: the files known from before at once, the others once hashed.
     let mut shared_files = SharedFiles::load(&dirs.config);
     let to_hash: Vec<Found> =
@@ -257,30 +255,33 @@ pub fn start(
     let temp = preferences.temp_dir.clone().unwrap_or_else(|| dirs.temp.clone());
     let incoming = preferences.incoming_dir.clone().unwrap_or_else(|| dirs.downloads.clone());
     let downloads = DownloadManager::open(&temp, &incoming, disk_in)?;
-    let accepting = listener.map(|listener| tokio::spawn(accept(listener, peers_in.clone())));
     let finished = FinishedDownloads::load(&dirs.config);
     let spam_file = dirs.config.join(spam_filter::FILE_NAME);
     let spam = SpamFilter::load(&spam_file).unwrap_or_else(|e| {
         tracing::warn!("Cannot read {}: {e}", spam_file.display());
         SpamFilter::default()
     });
-    let searches = if udp.is_some() { SearchManager::default() } else { SearchManager::default().without_udp() };
-    let network = Network {
+    let mut network = Network {
         shared,
         servers,
         session: ServerSession::new(outcomes_in),
         pinger: ServerPinger::default(),
         pinging: None,
         saving: None,
-        udp,
-        server_relay,
+        udp: None,
+        server_relay: None,
+        datagrams: datagrams_in,
+        accepting: None,
+        following: Some(following),
+        binding,
+        since_bind_check: 0,
         server_udp_keys,
         ticks: ticks_in,
         random: StdRng::from_rng(&mut rand::rng()),
         callbacks: HashMap::new(),
         calling: HashSet::new(),
         our_ip: 0,
-        searches,
+        searches: SearchManager::default().without_udp(),
         known_searches: HashSet::new(),
         spam,
         shared_files,
@@ -294,15 +295,10 @@ pub fn start(
         link_events: links_in,
         peer_events: peers_in,
     };
+    network.attach(listener, udp);
     let queues = Queues { commands, outcomes, ticks, datagrams, links, peers, disk, sent };
     Ok(tokio::spawn(async move {
         network.run(queues).await;
-        if let Some(following) = following {
-            following.abort();
-        }
-        if let Some(accepting) = accepting {
-            accepting.abort();
-        }
         publish.abort();
         hashing.abort();
     }))
@@ -492,7 +488,7 @@ impl Network {
             preferences: &preferences,
             routes: &self.shared.routes,
             user_hash: self.shared.user_hash,
-            listen_port: self.shared.listen_port,
+            listen_port: self.shared.listen_port(),
             keep_connected: true,
             notices: &mut notices,
         };
@@ -599,6 +595,22 @@ impl Network {
             Tick::Second => {
                 self.publish_files();
                 self.second();
+                self.since_bind_check = self.since_bind_check.saturating_add(1);
+                if self.since_bind_check >= BIND_CHECK_SECONDS {
+                    self.since_bind_check = 0;
+                    self.check_binding();
+                }
+            }
+            Tick::ProxyChanged(proxy) => {
+                // TCP reads the proxy at each connection; UDP keeps an association with it.
+                if let Some(relay) = &self.server_relay {
+                    relay.follow(proxy);
+                }
+            }
+            Tick::Rebound(binding, listener, udp) => {
+                if binding == self.binding {
+                    self.attach(listener, udp);
+                }
             }
             Tick::Search(timer) => {
                 let connected = self.session.server().map(server_list::address_of);
@@ -677,6 +689,105 @@ impl Network {
         }
     }
 
+    // Puts the sockets opened for the binding to work: clients are accepted, and the server socket decodes the answers
+    // of the servers asked obfuscated and goes on the route of the proxy before anything is sent through it.
+    fn attach(&mut self, listener: Option<TcpListener>, udp: Option<UdpSocket>) {
+        let port =
+            listener.as_ref().and_then(|listener| listener.local_addr().ok()).map_or(0, |address| address.port());
+        self.shared.listen_port.store(port, std::sync::atomic::Ordering::Relaxed);
+        self.accepting = listener.map(|listener| tokio::spawn(accept(listener, self.peer_events.clone())));
+        let udp = udp.map(|socket| ServerUdp::start(socket, self.datagrams.clone()));
+        if let Some(udp) = &udp {
+            let keys = Arc::clone(&self.server_udp_keys);
+            udp.decode_with(move |from| key_of(&keys, from));
+            let local = match self.binding {
+                Binding::Bound(address) => Some(address),
+                Binding::Any | Binding::Missing(_) => None,
+            };
+            self.server_relay = Some(RelayKeeper::start(
+                "Server UDP",
+                udp.router(),
+                self.shared.routes.proxy(),
+                local,
+                |level, text| match level {
+                    Level::Info => tracing::info!("{text}"),
+                    Level::Warning => tracing::warn!("{text}"),
+                },
+            ));
+        }
+        self.searches.set_udp(udp.is_some());
+        self.udp = udp;
+    }
+
+    fn close_sockets(&mut self) -> (Option<JoinHandle<()>>, Option<ServerUdp>) {
+        if let Some(relay) = self.server_relay.take() {
+            relay.close();
+        }
+        self.searches.set_udp(false);
+        self.shared.listen_port.store(0, std::sync::atomic::Ordering::Relaxed);
+        let accepting = self.accepting.take();
+        if let Some(accepting) = &accepting {
+            accepting.abort();
+        }
+        (accepting, self.udp.take())
+    }
+
+    // The interface may go (a VPN that drops), come back, or come back with another address.
+    fn check_binding(&mut self) {
+        let now = self.shared.routes.binding();
+        if now != self.binding {
+            self.rebind(now);
+        }
+    }
+
+    // Every socket bound for the old interface closes; the new one opens them again, or nothing does while it is gone.
+    // Connections already made finish as they are: those through a dropped interface end with it.
+    fn rebind(&mut self, now: Binding) {
+        self.binding = now.clone();
+        self.with_session(|session, ctx| session.disconnect(ctx));
+        let (accepting, udp) = self.close_sockets();
+        let preferences = self.preferences();
+        let local = match &now {
+            Binding::Missing(choice) => {
+                tracing::warn!(
+                    "The network interface {choice} is not available: njMule stays offline until it is back"
+                );
+                None
+            }
+            Binding::Bound(address) => {
+                tracing::info!("Connections go through {} ({address})", preferences.bind_interface);
+                Some(Some(*address))
+            }
+            Binding::Any => {
+                tracing::info!("Connections go through any network interface");
+                Some(None)
+            }
+        };
+        let ticks = self.ticks.clone();
+        tokio::spawn(async move {
+            // The old sockets leave their ports before the new ones take them.
+            if let Some(accepting) = accepting {
+                let _ = accepting.await;
+            }
+            if let Some(udp) = udp {
+                udp.close().await;
+            }
+            let Some(local) = local else {
+                return;
+            };
+            let address = SocketAddr::from((local.unwrap_or(Ipv4Addr::UNSPECIFIED), preferences.tcp_port));
+            let listener = TcpListener::bind(address)
+                .await
+                .inspect_err(|e| tracing::warn!("Cannot listen on TCP port {}: {e}", preferences.tcp_port))
+                .ok();
+            let udp = ServerUdp::bind_beside(preferences.udp_port, local)
+                .await
+                .inspect_err(|e| tracing::warn!("Cannot open the server UDP socket: {e}"))
+                .ok();
+            let _ = ticks.send(Tick::Rebound(now, listener, udp));
+        });
+    }
+
     // Our address as the server we are on sees it, which server UDP keys are bound to; 0 while unknown.
     fn address_seen_by_server(&self) -> u32 {
         self.session.id().map_or(0, |id| id.public_ip())
@@ -717,7 +828,8 @@ impl Network {
             .map(|file| Offer { hash: file.hash, name: file.name.clone(), size: file.size, complete: true })
             .collect();
         let now = Instant::now();
-        let due = self.publisher.tick(now, self.session.id(), self.session.server(), self.shared.listen_port, &offers);
+        let due =
+            self.publisher.tick(now, self.session.id(), self.session.server(), self.shared.listen_port(), &offers);
         if let Some((packet, hashes)) = due
             && self.session.send(packet)
         {
@@ -924,7 +1036,7 @@ impl Network {
         download_manager::Settings {
             obfuscation: preferences.obfuscation,
             max_sources_per_file: MAX_SOURCES_PER_FILE,
-            listen_port: self.shared.listen_port,
+            listen_port: self.shared.listen_port(),
             filter_lan: preferences.filter_lan_addresses,
         }
     }
@@ -1089,9 +1201,7 @@ impl Network {
             saving.abort();
         }
         self.save_servers();
-        if let Some(relay) = &self.server_relay {
-            relay.close();
-        }
+        self.close_sockets();
         // The servers' spam shares change with every UDP answer.
         let spam_file = self.shared.dirs.config.join(spam_filter::FILE_NAME);
         if let Err(e) = self.spam.save(&spam_file) {
@@ -1267,5 +1377,13 @@ impl SpamRater for Rater<'_> {
 
     fn answered(&mut self, server_ip: u32, results: u32, spam: u32) {
         self.filter.answered(server_ip, results, spam);
+    }
+}
+
+impl Drop for Network {
+    fn drop(&mut self) {
+        for task in [self.accepting.take(), self.following.take()].into_iter().flatten() {
+            task.abort();
+        }
     }
 }

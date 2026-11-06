@@ -9,6 +9,7 @@ pub mod network;
 use std::collections::BTreeMap;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tokio::net::TcpListener;
@@ -61,7 +62,8 @@ pub struct ServerContext {
 pub struct Shared {
     dirs: AppDirectories,
     user_hash: [u8; 16],
-    listen_port: u16,
+    // 0 while nothing listens, as while the chosen network interface is gone.
+    listen_port: AtomicU16,
     preferences: watch::Sender<Preferences>,
     routes: Routes,
     events: broadcast::Sender<EngineEvent>,
@@ -72,6 +74,10 @@ pub struct Shared {
 }
 
 impl Shared {
+    fn listen_port(&self) -> u16 {
+        self.listen_port.load(Ordering::Relaxed)
+    }
+
     /// Our greeting as it stands: on the server we are on, not on Kad yet.
     pub fn our_hello(&self) -> Hello {
         let preferences = self.preferences.borrow().clone();
@@ -90,7 +96,7 @@ impl Shared {
             | hello::MISC2_SUPPORTS_CAPTCHA
             | crypt_options(preferences.obfuscation);
         let ours = Ours { nick: &preferences.nick, udp_port: 0, kad_port: 0, misc_options1, misc_options2 };
-        Hello::of(self.user_hash, context.client_id, self.listen_port, &ours, context.ip, context.port)
+        Hello::of(self.user_hash, context.client_id, self.listen_port(), &ours, context.ip, context.port)
     }
 }
 
@@ -153,7 +159,7 @@ impl Engine {
         let shared = Arc::new(Shared {
             dirs,
             user_hash,
-            listen_port,
+            listen_port: AtomicU16::new(listen_port),
             preferences,
             routes,
             events,
@@ -177,7 +183,7 @@ impl Engine {
 
     /// The TCP port clients reach us on; 0 when we could not listen.
     pub fn listen_port(&self) -> u16 {
-        self.shared.listen_port
+        self.shared.listen_port()
     }
 
     pub fn user_hash(&self) -> [u8; 16] {
