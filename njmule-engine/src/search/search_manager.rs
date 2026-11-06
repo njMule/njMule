@@ -162,6 +162,11 @@ impl SearchManager {
         Self { no_udp: true, ..self }
     }
 
+    /// Whether there is a UDP socket from now on, as the network interface goes and comes back.
+    pub fn set_udp(&mut self, open: bool) {
+        self.no_udp = !open;
+    }
+
     /// Starts a search on the connected server, or on Kad; for the server, the server and global searches still open
     /// end, as server answers carry no search id to tell them apart.
     pub fn start(
