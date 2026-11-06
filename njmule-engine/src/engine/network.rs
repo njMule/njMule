@@ -28,6 +28,7 @@ use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
 use crate::config::proxy_settings::ProxySettings;
+use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::download::download_manager::{self, Action, DownloadEvent, DownloadManager, ServerLink};
 use crate::download::download_session;
 use crate::download::finished_downloads::FinishedDownloads;
@@ -61,7 +62,7 @@ use crate::server::server_route::ServerRoute;
 use crate::server::server_session::{Context, Notice, Outcome, ServerSession};
 use crate::server::server_udp::ServerUdp;
 use crate::upload::credits::{self, Credits};
-use crate::upload::upload_manager::{Sent, UploadManager};
+use crate::upload::upload_manager::{self, BlockRead, UploadManager};
 
 /// How long changes of the list wait to be saved together.
 const SAVE_DELAY: Duration = Duration::from_secs(30);
@@ -127,6 +128,7 @@ enum Tick {
     // The wait for the identification of a client we said hello to is over.
     ProbeOver(LinkId),
     Second,
+    Uploads,
     Search(Timer),
     Hashed(Found, Result<FileHashes, String>),
     ProxyChanged(ProxySettings),
@@ -137,8 +139,6 @@ enum Tick {
 /// How often the network interface of the preferences is looked at: it may go, as a VPN that drops, come back, or
 /// come back with another address.
 const BIND_CHECK_SECONDS: u32 = 10;
-/// How often the credits are saved, besides on stopping.
-const CREDITS_SAVE_SECONDS: u32 = 13 * 60;
 
 // What the connections to other clients bring.
 enum PeerEvent {
@@ -185,7 +185,7 @@ struct Queues {
     links: mpsc::UnboundedReceiver<LinkEvent>,
     peers: mpsc::UnboundedReceiver<PeerEvent>,
     disk: mpsc::UnboundedReceiver<DiskDone>,
-    sent: mpsc::UnboundedReceiver<Sent>,
+    reads: mpsc::UnboundedReceiver<BlockRead>,
 }
 
 pub struct Network {
@@ -225,10 +225,8 @@ pub struct Network {
     peers: HashMap<LinkId, Peer>,
     probes: HashMap<LinkId, Probe>,
     next_link: LinkId,
-    // Our key, which clients ask us to prove we own, and the keys they proved to own, kept with their credits.
+    // Our key, which clients ask us to prove we own; the keys they proved to own are kept with the uploads' credits.
     identities: Identities,
-    credits: Credits,
-    since_credits_save: u32,
     // The clients met, by user hash.
     history: ClientHistory,
     link_events: mpsc::UnboundedSender<LinkEvent>,
@@ -289,10 +287,21 @@ pub fn start(
             }
         }
     });
+    // The upload queue is served ten times a second, which spreads the budget over the second.
+    let serving = ticks_in.clone();
+    let serve = tokio::spawn(async move {
+        let mut every = tokio::time::interval(upload_manager::TICK);
+        loop {
+            every.tick().await;
+            if serving.send(Tick::Uploads).is_err() {
+                break;
+            }
+        }
+    });
     let (links_in, links) = mpsc::unbounded_channel();
     let (peers_in, peers) = mpsc::unbounded_channel();
     let (disk_in, disk) = mpsc::unbounded_channel();
-    let (sent_in, sent) = mpsc::unbounded_channel();
+    let (reads_in, reads) = mpsc::unbounded_channel();
     let preferences = shared.preferences.borrow().clone();
     let temp = preferences.temp_dir.clone().unwrap_or_else(|| dirs.temp.clone());
     let incoming = preferences.incoming_dir.clone().unwrap_or_else(|| dirs.downloads.clone());
@@ -342,23 +351,22 @@ pub fn start(
         publisher: FilePublisher::default(),
         downloads,
         finished,
-        uploads: UploadManager::new(sent_in),
+        uploads: UploadManager::new(reads_in, credits, upload_settings(&preferences)),
         global: GlobalSources::default(),
         peers: HashMap::new(),
         probes: HashMap::new(),
         next_link: 1,
         identities,
-        credits,
-        since_credits_save: 0,
         history,
         link_events: links_in,
         peer_events: peers_in,
     };
     network.attach(listener, udp);
-    let queues = Queues { commands, outcomes, ticks, datagrams, links, peers, disk, sent };
+    let queues = Queues { commands, outcomes, ticks, datagrams, links, peers, disk, reads };
     Ok(tokio::spawn(async move {
         network.run(queues).await;
         publish.abort();
+        serve.abort();
         hashing.abort();
     }))
 }
@@ -386,10 +394,7 @@ impl Network {
                     self.downloads.disk_done(done, &ours);
                     self.after_downloads();
                 }
-                Some(sent) = queues.sent.recv() => {
-                    let files = &self.shared_files;
-                    self.uploads.block_sent(&sent, &|hash: &[u8; 16]| files.get(hash).cloned());
-                }
+                Some(read) = queues.reads.recv() => self.uploads.block_read(read, Instant::now()),
             }
         }
     }
@@ -534,7 +539,7 @@ impl Network {
     }
 
     fn known_clients(&mut self) -> Vec<KnownClient> {
-        let credits = &self.credits;
+        let credits = self.uploads.credits();
         self.history
             .clients(now_seconds())
             .into_iter()
@@ -689,6 +694,11 @@ impl Network {
                 self.save_servers();
             }
             Tick::ProbeOver(link) => self.settle_probe(link),
+            Tick::Uploads => {
+                let settings = upload_settings(&self.preferences());
+                let files = &self.shared_files;
+                self.uploads.tick(settings, &|hash: &[u8; 16]| files.get(hash).cloned(), Instant::now());
+            }
             Tick::Second => {
                 self.publish_files();
                 self.second();
@@ -696,11 +706,6 @@ impl Network {
                 if self.since_bind_check >= BIND_CHECK_SECONDS {
                     self.since_bind_check = 0;
                     self.check_binding();
-                }
-                self.since_credits_save = self.since_credits_save.saturating_add(1);
-                if self.since_credits_save >= CREDITS_SAVE_SECONDS {
-                    self.since_credits_save = 0;
-                    self.credits.save();
                 }
             }
             Tick::ProxyChanged(proxy) => {
@@ -964,7 +969,6 @@ impl Network {
         if let Some((route, packet)) = self.global.tick(Instant::now(), &self.servers, &wanting, &asking) {
             self.send_routed(&route, &packet);
         }
-        self.uploads.fill_slots();
         self.after_downloads();
     }
 
@@ -1146,7 +1150,7 @@ impl Network {
                     handle.close();
                     return;
                 };
-                let pinned = pinned_key(&self.credits, &hello);
+                let pinned = pinned_key(self.uploads.credits(), &hello);
                 let (session, send) = self.identities.start(
                     &hello,
                     handle.remote().ip(),
@@ -1161,7 +1165,7 @@ impl Network {
                 handle.set_timeout(peer_greetings::IDLE_TIMEOUT);
             }
             (Some(_), Some(session)) => {
-                if !identification(session, &mut self.credits, &handle, packet)
+                if !identification(session, self.uploads.credits_mut(), &handle, packet)
                     && packet.protocol() == protocol::EDONKEY
                     && packet.opcode() == client::HELLO
                 {
@@ -1276,7 +1280,7 @@ impl Network {
             return;
         };
         if let Some(session) = self.peers.get_mut(&link).and_then(|peer| peer.identity.as_mut())
-            && identification(session, &mut self.credits, &handle, packet)
+            && identification(session, self.uploads.credits_mut(), &handle, packet)
         {
             return;
         }
@@ -1286,7 +1290,17 @@ impl Network {
             }
             Side::Upload => {
                 let files = &self.shared_files;
-                self.uploads.received(&handle, &hello, packet, ours, &|hash: &[u8; 16]| files.get(hash).cloned());
+                let visibility = self.preferences().shared_files_visibility;
+                // Friends are not kept yet: none may look when only friends may.
+                let visible =
+                    || (visibility == SharedFilesVisibility::Everybody).then(|| files.files().cloned().collect());
+                let find = |hash: &[u8; 16]| files.get(hash).cloned();
+                let trusted = self
+                    .peers
+                    .get(&link)
+                    .and_then(|peer| peer.identity.as_ref())
+                    .is_none_or(|session| session.trust().credits());
+                self.uploads.received(&handle, &hello, trusted, packet, ours, &find, &visible, Instant::now());
             }
             Side::Download | Side::Buddy => {
                 tracing::debug!("Nothing on {} takes opcode {:#04x}", handle.remote(), packet.opcode());
@@ -1310,7 +1324,7 @@ impl Network {
             return;
         };
         let (remote, local) = (peer.handle.remote().ip(), peer.handle.local());
-        let pinned = pinned_key(&self.credits, hello);
+        let pinned = pinned_key(self.uploads.credits(), hello);
         let (session, send) = self.identities.start(hello, remote, local, pinned, our_public_address, &mut self.random);
         send_all(&peer.handle, send);
         peer.identity = Some(session);
@@ -1480,7 +1494,7 @@ impl Network {
             saving.abort();
         }
         self.save_servers();
-        self.credits.save();
+        self.uploads.close();
         self.history.save();
         self.close_sockets();
         // The servers' spam shares change with every UDP answer.
@@ -1712,4 +1726,11 @@ fn settle(probe: &mut Probe) {
 // The time in seconds since 1970, as the client history dates what it sees.
 fn now_seconds() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs())
+}
+
+fn upload_settings(preferences: &Preferences) -> upload_manager::Settings {
+    upload_manager::Settings {
+        max_upload_kibps: preferences.max_upload_kibps,
+        queue_size: usize::try_from(preferences.upload_queue_size).unwrap_or(usize::MAX),
+    }
 }

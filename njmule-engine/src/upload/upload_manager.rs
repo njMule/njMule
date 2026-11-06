@@ -1,77 +1,245 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The clients that download from us: their sessions, the upload slots and the queue waiting for them, and the blocks
-//! read from our files and sent. Credits, bans, the upload limit and partial files wait for their ports.
+//! The clients that download from us: their sessions, the upload slots and the queue waiting for them, ordered by how
+//! long each waited, its credits and the priority of its file. The slots share the upload budget in turn; a slot goes
+//! back to the queue after about a part while others wait, or when its client leaves it idle. Bans, calling clients
+//! back, UDP re-asks, source exchange and partial files wait for their ports.
 
-use std::collections::{HashMap, HashSet};
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
-use std::path::PathBuf;
+use std::collections::{HashMap, VecDeque};
+use std::io;
+use std::net::IpAddr;
+use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::api::upload_priority::UploadPriority;
 use crate::files::hash::ed2k;
 use crate::files::shared_files::SharedFile;
 use crate::peer::peer_link::{LinkHandle, LinkId};
-use crate::protocol::ed2k::client_messages::SendingPart;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::packet::Packet;
-use crate::upload::upload_session::{Block, Request, UploadSession};
+use crate::upload::blocks;
+use crate::upload::credits::Credits;
+use crate::upload::upload_session::{Block, Request, UploadSession, Visible};
+use crate::upload::uploadable::Uploadable;
+use crate::util::rate_meter::RateMeter;
 
-/// Bytes a slot sends before its client goes back to the queue.
+/// Payload a slot gets before the client waits again, while others wait.
 pub const SESSION_LIMIT: u64 = ed2k::PARTSIZE + 20_480;
-/// Slots open at once, without an upload limit.
-pub const MAX_SLOTS: usize = 10;
+/// A waiting client that does not ask again for this long is forgotten.
+pub const PURGE_AFTER: Duration = Duration::from_secs(3600);
+/// Clients of one address that may wait at once.
+pub const MAX_WAITING_PER_IP: usize = 3;
+pub const MIN_SLOTS: usize = 2;
+pub const MAX_SLOTS: usize = 100;
+/// Slots open at once without an upload limit.
+pub const UNLIMITED_SLOTS: usize = 10;
+/// How often the queue is served.
+pub const TICK: Duration = Duration::from_millis(100);
+/// While others wait, a slot goes back to the queue when its client asks for nothing this long.
+pub const FIRST_REQUEST_WAIT: Duration = Duration::from_secs(15);
+pub const IDLE_SLOT: Duration = Duration::from_secs(30);
+/// File data a slot may have waiting in its connection before it gets more: a second's worth at its rate, at least
+/// this. A client that reads slowly holds back only its own data, and the budget goes to the others.
+pub const MIN_QUEUED: u64 = ed2k::EMBLOCKSIZE;
+// Well below what a connection holds before it drops a peer that does not read.
+const MAX_QUEUED: u64 = 4 << 20;
+const WAITING_TIMEOUT: Duration = Duration::from_secs(40);
+// Throttled slots may send nothing for a while; the client keeps its connection.
+const SLOT_TIMEOUT: Duration = Duration::from_secs(300);
+const CREDITS_SAVE: Duration = Duration::from_secs(13 * 60);
+const RATE_SECONDS: usize = 5;
+// Protocol byte, length and opcode before each payload.
+const HEADER: u64 = 6;
+const MIN_COMPRESSIBLE: u64 = 32;
 
-const CHUNK: usize = 10 * 1024;
+/// What the uploads need from the preferences: the upload limit, 0 for none, and how many clients may wait.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Settings {
+    pub max_upload_kibps: u32,
+    pub queue_size: usize,
+}
 
-/// A block sent to the client of a link.
+/// A block read from its file, or why it could not be.
 #[derive(Debug)]
-pub struct Sent {
+pub struct BlockRead {
     pub link: LinkId,
-    pub bytes: u64,
+    pub block: Block,
+    pub packets: io::Result<Vec<Packet>>,
+}
+
+/// A client of ours: waiting, or uploading with what it got in this slot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadState {
+    pub user_hash: [u8; 16],
+    pub file: [u8; 16],
+    /// None while it waits.
+    pub sent: Option<u64>,
+}
+
+type Priorities = Box<dyn Fn(&[u8; 16]) -> UploadPriority + Send>;
+
+/// Our complete file of a hash.
+pub type Find<'a> = &'a dyn Fn(&[u8; 16]) -> Option<SharedFile>;
+
+struct Client {
+    user_hash: [u8; 16],
+    ip: IpAddr,
+    file: [u8; 16],
+    // The connection it waits on.
+    link: Option<LinkId>,
+    wait_start: Instant,
+    // When it was last heard of, to forget it when it stops asking.
+    last_ask: Instant,
+    // Whether credits applied when it was last connected.
+    trusted: bool,
+}
+
+// A packet to send and the file bytes it completes.
+struct Item {
+    packet: Packet,
+    payload: u64,
+}
+
+struct Slot {
+    client: Client,
+    link: LinkId,
+    out: VecDeque<Item>,
+    sent: u64,
+    rate: Option<RateMeter>,
+    reading: bool,
+    // Whether the client asked for a block we have, and since when it has nothing to send.
+    requested: bool,
+    idle_since: Instant,
 }
 
 pub struct UploadManager {
     sessions: HashMap<LinkId, UploadSession>,
-    // The links with a slot, and the bytes each slot sent.
-    slots: IndexMap<LinkId, u64>,
-    // The clients waiting for a slot, by user hash, first come first.
-    waiting: IndexMap<[u8; 16], LinkId>,
-    // Links a block is being read and sent for.
-    sending: HashSet<LinkId>,
-    sent: UnboundedSender<Sent>,
+    // The clients waiting for a slot, by user hash.
+    waiting: IndexMap<[u8; 16], Client>,
+    slots: Vec<Slot>,
+    settings: Settings,
+    // Bytes the slots may still send in this tick; u64::MAX without a limit.
+    budget: u64,
+    // The slot served first in the next round.
+    turn: usize,
+    reads: UnboundedSender<BlockRead>,
+    credits: Credits,
+    priorities: Priorities,
+    next_credits_save: Option<Instant>,
+    // The start of the meters' clock.
+    epoch: Instant,
+    // Payload bytes sent in this session.
+    uploaded: u64,
 }
 
 impl UploadManager {
-    pub fn new(sent: UnboundedSender<Sent>) -> Self {
+    /// Blocks read go to `reads`, for [`Self::block_read`]; `credits` order the queue and count what is sent.
+    pub fn new(reads: UnboundedSender<BlockRead>, credits: Credits, settings: Settings) -> Self {
         Self {
             sessions: HashMap::new(),
-            slots: IndexMap::new(),
             waiting: IndexMap::new(),
-            sending: HashSet::new(),
-            sent,
+            slots: Vec::new(),
+            settings,
+            budget: u64::MAX,
+            turn: 0,
+            reads,
+            credits,
+            priorities: Box::new(|_| UploadPriority::Auto),
+            next_credits_save: None,
+            epoch: Instant::now(),
+            uploaded: 0,
         }
     }
 
-    /// A packet of a link's upload side, whose client greeted us as `peer`.
+    /// Where the upload priority of a shared file comes from; without it every file is [`UploadPriority::Auto`].
+    pub fn set_priorities(&mut self, priorities: impl Fn(&[u8; 16]) -> UploadPriority + Send + 'static) {
+        self.priorities = Box::new(priorities);
+    }
+
+    pub fn credits(&self) -> &Credits {
+        &self.credits
+    }
+
+    pub fn credits_mut(&mut self) -> &mut Credits {
+        &mut self.credits
+    }
+
+    /// Clients waiting for a slot.
+    pub fn waiting_count(&self) -> usize {
+        self.waiting.len()
+    }
+
+    /// Clients with a slot.
+    pub fn slot_count(&self) -> usize {
+        self.slots.len()
+    }
+
+    /// Payload bytes sent in this session.
+    pub fn uploaded(&self) -> u64 {
+        self.uploaded
+    }
+
+    /// Slots and waiting clients, for diagnostics.
+    pub fn describe(&self) -> String {
+        let mut text = format!("waiting {}", self.waiting.len());
+        for slot in &self.slots {
+            let pending = self.sessions.get(&slot.link).is_some_and(UploadSession::has_pending_blocks);
+            text.push_str(&format!(
+                "; slot sent {}{}{}",
+                slot.sent,
+                if slot.reading { " reading" } else { "" },
+                if pending { " pending" } else { "" }
+            ));
+        }
+        text
+    }
+
+    /// The clients with a slot, then the waiting ones from the best score down.
+    pub fn uploads(&self, now: Instant) -> Vec<UploadState> {
+        let slots = self.slots.iter().map(|slot| UploadState {
+            user_hash: slot.client.user_hash,
+            file: slot.client.file,
+            sent: Some(slot.sent),
+        });
+        let scoring = Scoring::new(self, now);
+        let mut waiting: Vec<(&Client, f64)> =
+            self.waiting.values().map(|client| (client, scoring.of(client))).collect();
+        waiting.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let waiting = waiting.into_iter().map(|(client, _)| UploadState {
+            user_hash: client.user_hash,
+            file: client.file,
+            sent: None,
+        });
+        slots.chain(waiting).collect()
+    }
+
+    /// The place in the queue of the client waiting with `user_hash`.
+    pub fn rank_of(&self, user_hash: &[u8; 16], now: Instant) -> Option<usize> {
+        self.waiting.get(user_hash).map(|client| self.rank(client, now))
+    }
+
+    /// A packet of a link's upload side, whose client greeted us as `peer`; `trusted` when credits apply to it.
+    #[allow(clippy::too_many_arguments)]
     pub fn received(
         &mut self,
         link: &LinkHandle,
         peer: &Hello,
+        trusted: bool,
         packet: &Packet,
         ours: &Hello,
-        find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>,
+        find: Find<'_>,
+        visible: Visible<'_>,
+        now: Instant,
     ) {
         let session = self.sessions.entry(link.id()).or_insert_with(|| UploadSession::new(link.clone(), peer.clone()));
-        match session.received(packet, ours, find) {
-            Ok(Some(Request::Upload(_))) => self.requested(link.id()),
-            Ok(Some(Request::Blocks)) => self.send_next(link.id(), find),
-            Ok(Some(Request::Stopped)) => {
-                self.slots.shift_remove(&link.id());
-            }
+        session.set_trusted(trusted);
+        match session.received(packet, ours, find, visible) {
+            Ok(Some(Request::Upload(file))) => self.requested(link.id(), file, now),
+            Ok(Some(Request::Blocks)) => self.blocks_requested(link.id(), find, now),
+            Ok(Some(Request::Stopped)) => self.slot_gone(link.id()),
             Ok(Some(Request::Misbehaved)) => {
                 tracing::debug!("{} changed its user hash", link.remote());
                 link.close();
@@ -80,119 +248,399 @@ impl UploadManager {
             Err(e) => {
                 tracing::debug!("Bad packet from {}: {e}", link.remote());
                 link.close();
+                self.credits.save();
             }
         }
     }
 
+    /// The connection of a link closed.
     pub fn closed(&mut self, link: LinkId) {
-        if let Some(session) = self.sessions.remove(&link) {
-            self.waiting.shift_remove(&session.user_hash());
+        let trusted = self.sessions.remove(&link).map(|session| session.is_trusted());
+        self.slot_gone(link);
+        for client in self.waiting.values_mut().filter(|client| client.link == Some(link)) {
+            client.trusted = trusted.unwrap_or(client.trusted);
+            client.link = None;
         }
-        self.slots.shift_remove(&link);
-        self.sending.remove(&link);
     }
 
-    /// A block went out: the next follows, unless the slot has sent its share.
-    pub fn block_sent(&mut self, sent: &Sent, find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>) {
-        self.sending.remove(&sent.link);
-        let Some(total) = self.slots.get_mut(&sent.link) else {
+    /// Ends the uploads, saving the credits.
+    pub fn close(&mut self) {
+        for slot in self.slots.drain(..) {
+            if let Some(session) = self.sessions.get(&slot.link) {
+                session.link().close();
+            }
+        }
+        self.waiting.clear();
+        self.credits.save();
+    }
+
+    /// One step of the queue: the budget renewed, slots fed, ended and filled.
+    pub fn tick(&mut self, settings: Settings, find: Find<'_>, now: Instant) {
+        self.settings = settings;
+        let limit = u64::from(settings.max_upload_kibps);
+        // Nothing carries over from unlimited: the sum would overflow and stop the uploads.
+        let carried = if self.budget == u64::MAX { 0 } else { self.budget };
+        self.budget = if limit == 0 {
+            u64::MAX
+        } else {
+            carried.saturating_add(limit.saturating_mul(1024) / 10).min(limit.saturating_mul(1024))
+        };
+        self.waiting.retain(|_, client| {
+            now.saturating_duration_since(client.last_ask) <= PURGE_AFTER && find(&client.file).is_some()
+        });
+        let waiting = !self.waiting.is_empty();
+        let mut requeued = Vec::new();
+        for at in 0..self.slots.len() {
+            self.read(at, find);
+            let Some(slot) = self.slots.get_mut(at) else {
+                continue;
+            };
+            let busy = slot.reading
+                || !slot.out.is_empty()
+                || self
+                    .sessions
+                    .get(&slot.link)
+                    .is_some_and(|session| session.has_pending_blocks() || session.link().queued_data() > 0);
+            let wait = if slot.requested { IDLE_SLOT } else { FIRST_REQUEST_WAIT };
+            if slot.sent >= SESSION_LIMIT && waiting && slot.out.is_empty() && !slot.reading {
+                requeued.push(slot.link);
+            } else if busy {
+                slot.idle_since = now;
+            } else if waiting && now.saturating_duration_since(slot.idle_since) > wait {
+                // A client that holds a slot without asking for data we have keeps others waiting.
+                tracing::debug!("A client left its upload slot idle");
+                requeued.push(slot.link);
+            }
+        }
+        for link in requeued {
+            self.requeue(link, now);
+        }
+        self.send(now);
+        self.fill_slots(now);
+        let save_at = *self.next_credits_save.get_or_insert(now.checked_add(CREDITS_SAVE).unwrap_or(now));
+        if now >= save_at {
+            self.next_credits_save = now.checked_add(CREDITS_SAVE);
+            self.credits.save();
+        }
+    }
+
+    /// A block read for a slot: its packets go out within what the budget of this tick has left.
+    pub fn block_read(&mut self, read: BlockRead, now: Instant) {
+        let Some(slot) = self.slots.iter_mut().find(|slot| slot.link == read.link) else {
             return;
         };
-        *total = total.saturating_add(sent.bytes);
-        if *total >= SESSION_LIMIT {
-            self.slots.shift_remove(&sent.link);
-            if let Some(session) = self.sessions.get_mut(&sent.link) {
-                let user = session.user_hash();
-                self.waiting.insert(user, sent.link);
-                let rank = u32::try_from(self.waiting.len()).unwrap_or(u32::MAX);
-                session.end_slot(rank);
+        slot.reading = false;
+        let packets = match read.packets {
+            Ok(packets) => packets,
+            Err(e) => {
+                tracing::warn!("Cannot read a block for an upload: {e}");
+                let link = slot.link;
+                self.slots.retain(|slot| slot.link != link);
+                if let Some(session) = self.sessions.get(&link) {
+                    session.link().close();
+                }
+                return;
             }
-            self.fill_slots();
-            return;
+        };
+        let length = read.block.end.saturating_sub(read.block.start);
+        let last = packets.len().saturating_sub(1);
+        for (at, packet) in packets.into_iter().enumerate() {
+            slot.out.push_back(Item { packet, payload: if at == last { length } else { 0 } });
         }
-        self.send_next(sent.link, find);
+        // At once: waiting for the next tick would cap each slot at a block a tick, whatever the line.
+        self.send(now);
     }
 
-    /// The waiting clients take the slots that are free.
-    pub fn fill_slots(&mut self) {
-        while self.slots.len() < MAX_SLOTS {
-            let Some((_, link)) = self.waiting.shift_remove_index(0) else {
+    // The client asks for an upload of `file`: a slot when one is free and nobody waits, else a place in the queue.
+    fn requested(&mut self, link: LinkId, file: [u8; 16], now: Instant) {
+        let Some(session) = self.sessions.get(&link) else {
+            return;
+        };
+        let (user_hash, ip, trusted) = (session.user_hash(), session.link().remote().ip(), session.is_trusted());
+        if let Some(slot) = self.slots.iter_mut().find(|slot| slot.client.user_hash == user_hash) {
+            if slot.client.ip != ip {
                 return;
-            };
+            }
+            // Already uploading to it, maybe over a new connection or for another file.
+            slot.link = link;
+            slot.client.file = file;
             if let Some(session) = self.sessions.get_mut(&link) {
-                self.slots.insert(link, 0);
+                session.link().set_timeout(SLOT_TIMEOUT);
                 session.accept();
             }
+            return;
+        }
+        if let Some(client) = self.waiting.get_mut(&user_hash) {
+            if client.ip != ip {
+                tracing::debug!("{ip} claims the user hash of a client waiting from elsewhere");
+                return;
+            }
+            client.last_ask = now;
+            client.link = Some(link);
+            client.file = file;
+            client.trusted = trusted;
+            self.tell_rank(link, &user_hash, now);
+            return;
+        }
+        let same_ip = self.waiting.values().filter(|client| client.ip == ip).count();
+        if self.waiting.len() >= self.settings.queue_size || same_ip >= MAX_WAITING_PER_IP {
+            return;
+        }
+        let client = Client { user_hash, ip, file, link: Some(link), wait_start: now, last_ask: now, trusted };
+        if self.waiting.is_empty() && self.can_open_slot() {
+            self.open(client, link, now);
+            return;
+        }
+        self.waiting.insert(user_hash, client);
+        self.tell_rank(link, &user_hash, now);
+    }
+
+    fn tell_rank(&self, link: LinkId, user_hash: &[u8; 16], now: Instant) {
+        let rank = self.rank_of(user_hash, now).unwrap_or(1);
+        if let Some(session) = self.sessions.get(&link) {
+            session.send_rank(u32::try_from(rank).unwrap_or(u32::MAX));
         }
     }
 
-    fn requested(&mut self, link: LinkId) {
-        let Some(session) = self.sessions.get_mut(&link) else {
+    fn blocks_requested(&mut self, link: LinkId, find: Find<'_>, now: Instant) {
+        let Some(at) = self.slots.iter().position(|slot| slot.link == link) else {
             return;
         };
-        if self.slots.contains_key(&link) {
-            // Already uploading to it, maybe for another file.
-            session.accept();
-            return;
+        if let Some(slot) = self.slots.get_mut(at) {
+            slot.requested = true;
+            slot.idle_since = now;
         }
-        let user = session.user_hash();
-        if self.waiting.is_empty() && self.slots.len() < MAX_SLOTS {
-            self.slots.insert(link, 0);
-            session.accept();
-            return;
-        }
-        self.waiting.insert(user, link);
-        let rank = self.waiting.get_index_of(&user).map_or(0, |at| at.saturating_add(1));
-        session.send_rank(u32::try_from(rank).unwrap_or(u32::MAX));
+        self.read(at, find);
     }
 
-    // One block at a time per slot, read and sent off the engine's task.
-    fn send_next(&mut self, link: LinkId, find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>) {
-        if self.sending.contains(&link) || !self.slots.contains_key(&link) {
-            return;
-        }
-        let Some(session) = self.sessions.get_mut(&link) else {
+    // The slot of the link ends: the client stopped, or left.
+    fn slot_gone(&mut self, link: LinkId) {
+        self.slots.retain(|slot| slot.link != link);
+    }
+
+    // The next block of a slot is read, and compressed, off the engine's task.
+    fn read(&mut self, at: usize, find: Find<'_>) {
+        let Some(slot) = self.slots.get_mut(at) else {
             return;
         };
+        let Some(session) = self.sessions.get_mut(&slot.link) else {
+            return;
+        };
+        if slot.reading || !slot.out.is_empty() || !session.link().is_open() {
+            return;
+        }
         let Some(block) = session.next_block() else {
             return;
         };
-        let Some(file) = find(&block.file) else {
+        let Some(file) = find(&block.file).map(|file| Uploadable::of(&file)) else {
             return;
         };
-        self.sending.insert(link);
-        let (handle, sent) = (session.link().clone(), self.sent.clone());
+        slot.client.file = file.hash;
+        slot.reading = true;
+        let length = block.end.saturating_sub(block.start);
+        // A client tells in its hello which version of compression it takes.
+        let compress =
+            file.compressible() && length >= MIN_COMPRESSIBLE && session.peer().misc_options1() >> 20 & 0x0F != 0;
+        let (link, reads) = (slot.link, self.reads.clone());
         tokio::task::spawn_blocking(move || {
-            let bytes = match send_block(&handle, &file.path, &block) {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    tracing::warn!("Cannot read {} for {}: {e}", file.path.display(), handle.remote());
-                    handle.close();
-                    0
-                }
-            };
-            let _ = sent.send(Sent { link: handle.id(), bytes });
+            let packets = usize::try_from(length)
+                .map_err(io::Error::other)
+                .and_then(|length| blocks::read_packets(&file.data, file.hash, block.start, length, compress));
+            let _ = reads.send(BlockRead { link, block, packets });
         });
+    }
+
+    // One data packet per slot in turn, while the budget lasts: every slot whose client reads what it gets has an equal
+    // share. The budget is spent on what goes out, as a slot holds little more than it sends.
+    fn send(&mut self, now: Instant) {
+        let clock = self.clock(now);
+        let mut progress = true;
+        while self.budget > 0 && progress && !self.slots.is_empty() {
+            progress = false;
+            let count = self.slots.len();
+            for step in 0..count {
+                if self.budget == 0 {
+                    break;
+                }
+                let at = self.turn.saturating_add(step).checked_rem(count).unwrap_or(0);
+                let Some(slot) = self.slots.get_mut(at) else {
+                    continue;
+                };
+                let Some(session) = self.sessions.get(&slot.link) else {
+                    continue;
+                };
+                let rate = slot.rate.as_mut().map_or(0, |rate| rate.rate(clock));
+                if session.link().queued_data() >= rate.clamp(MIN_QUEUED, MAX_QUEUED) {
+                    continue;
+                }
+                let Some(item) = slot.out.pop_front() else {
+                    continue;
+                };
+                progress = true;
+                let wire = u64::try_from(item.packet.length()).unwrap_or(u64::MAX).saturating_add(HEADER);
+                if self.budget != u64::MAX {
+                    self.budget = self.budget.saturating_sub(wire);
+                }
+                if session.link().send_data(item.packet) {
+                    slot.sent = slot.sent.saturating_add(item.payload);
+                    self.uploaded = self.uploaded.saturating_add(item.payload);
+                    if let Some(rate) = &mut slot.rate {
+                        rate.add(item.payload, clock);
+                    }
+                    if session.is_trusted() {
+                        self.credits.uploaded(slot.client.user_hash, wire);
+                    }
+                }
+            }
+            self.turn = self.turn.saturating_add(1).checked_rem(self.slots.len()).unwrap_or(0);
+        }
+    }
+
+    // About one part sent while others wait, or a slot left idle: the client waits again, from now.
+    fn requeue(&mut self, link: LinkId, now: Instant) {
+        let Some(at) = self.slots.iter().position(|slot| slot.link == link) else {
+            return;
+        };
+        let slot = self.slots.remove(at);
+        let mut client = slot.client;
+        client.link = Some(link);
+        client.wait_start = now;
+        client.last_ask = now;
+        let user_hash = client.user_hash;
+        self.waiting.insert(user_hash, client);
+        let rank = self.rank_of(&user_hash, now).unwrap_or(1);
+        if let Some(session) = self.sessions.get_mut(&link) {
+            session.end_slot(u32::try_from(rank).unwrap_or(u32::MAX));
+            session.link().set_timeout(WAITING_TIMEOUT);
+        }
+    }
+
+    // The best clients connected take the slots that can open.
+    fn fill_slots(&mut self, now: Instant) {
+        while !self.waiting.is_empty() && self.can_open_slot() {
+            let scoring = Scoring::new(self, now);
+            let best = self
+                .waiting
+                .values()
+                .filter(|client| client.link.is_some_and(|link| self.is_open(link)))
+                .map(|client| (client.user_hash, scoring.of(client)))
+                .max_by(|a, b| a.1.total_cmp(&b.1));
+            let Some((user_hash, _)) = best else {
+                return;
+            };
+            let Some(client) = self.waiting.shift_remove(&user_hash) else {
+                return;
+            };
+            let Some(link) = client.link else {
+                return;
+            };
+            self.open(client, link, now);
+        }
+    }
+
+    fn open(&mut self, client: Client, link: LinkId, now: Instant) {
+        let Some(session) = self.sessions.get_mut(&link) else {
+            return;
+        };
+        session.link().set_timeout(SLOT_TIMEOUT);
+        session.accept();
+        tracing::debug!("Upload slot for {}", session.link().remote());
+        self.slots.push(Slot {
+            client,
+            link,
+            out: VecDeque::new(),
+            sent: 0,
+            rate: RateMeter::new(RATE_SECONDS),
+            reading: false,
+            requested: false,
+            idle_since: now,
+        });
+    }
+
+    fn can_open_slot(&self) -> bool {
+        let open = self.slots.len();
+        if open >= MAX_SLOTS {
+            return false;
+        }
+        if open < MIN_SLOTS {
+            return true;
+        }
+        let limit = u64::from(self.settings.max_upload_kibps);
+        if limit == 0 {
+            return open < UNLIMITED_SLOTS;
+        }
+        let open_now = u64::try_from(open).unwrap_or(u64::MAX);
+        let per_slot = if open <= 3 { 3_072 } else { open_now.saturating_mul(1_024).min(25_600) };
+        let allowed =
+            usize::try_from(limit.saturating_mul(1_024).checked_div(per_slot).unwrap_or(0)).unwrap_or(usize::MAX);
+        open < allowed.max(MIN_SLOTS)
+    }
+
+    fn is_open(&self, link: LinkId) -> bool {
+        self.sessions.get(&link).is_some_and(|session| session.link().is_open())
+    }
+
+    fn rank(&self, client: &Client, now: Instant) -> usize {
+        let scoring = Scoring::new(self, now);
+        let score = scoring.of(client);
+        let better = self
+            .waiting
+            .values()
+            .filter(|other| other.user_hash != client.user_hash && scoring.of(other) > score)
+            .count();
+        better.saturating_add(1)
+    }
+
+    // Monotonic nanoseconds for the meters.
+    fn clock(&self, now: Instant) -> i64 {
+        i64::try_from(now.saturating_duration_since(self.epoch).as_nanos()).unwrap_or(i64::MAX)
     }
 }
 
-fn send_block(link: &LinkHandle, path: &PathBuf, block: &Block) -> std::io::Result<u64> {
-    let mut file = File::open(path)?;
-    file.seek(SeekFrom::Start(block.start))?;
-    let length = usize::try_from(block.end.saturating_sub(block.start)).unwrap_or(0);
-    let mut data = vec![0u8; length];
-    file.read_exact(&mut data)?;
-    let wide = block.end > 0xFFFF_FFFF;
-    let mut start = block.start;
-    for chunk in data.chunks(CHUNK) {
-        let end = start.saturating_add(u64::try_from(chunk.len()).unwrap_or(0));
-        let packet = (SendingPart { file: block.file, start, end, data: chunk.to_vec() })
-            .encode(wide)
-            .map_err(std::io::Error::other)?;
-        if !link.send_data(packet) {
-            break;
+/// Scores at one moment: waiting time times credits times the factor of the file's priority. The factors, which count
+/// the clients of each file, are worked out once, so a pass over the queue costs a score per client.
+struct Scoring<'a> {
+    manager: &'a UploadManager,
+    now: Instant,
+    requesters: HashMap<[u8; 16], usize>,
+}
+
+impl<'a> Scoring<'a> {
+    fn new(manager: &'a UploadManager, now: Instant) -> Self {
+        let mut requesters: HashMap<[u8; 16], usize> = HashMap::new();
+        let files =
+            manager.waiting.values().map(|client| client.file).chain(manager.slots.iter().map(|slot| slot.client.file));
+        for file in files {
+            let count = requesters.entry(file).or_default();
+            *count = count.saturating_add(1);
         }
-        start = end;
+        Self { manager, now, requesters }
     }
-    Ok(u64::try_from(length).unwrap_or(0))
+
+    fn of(&self, client: &Client) -> f64 {
+        let trusted = client
+            .link
+            .and_then(|link| self.manager.sessions.get(&link))
+            .map_or(client.trusted, UploadSession::is_trusted);
+        let waited = self.now.saturating_duration_since(client.wait_start).as_secs_f64();
+        let ratio = self.manager.credits.ratio(&client.user_hash, trusted);
+        waited * ratio * f64::from(self.factor(&client.file)) / 10.0
+    }
+
+    // The factor of a file's level, in tenths.
+    fn factor(&self, file: &[u8; 16]) -> u8 {
+        match (self.manager.priorities)(file) {
+            UploadPriority::VeryLow => 2,
+            UploadPriority::Low => 6,
+            UploadPriority::Normal => 7,
+            UploadPriority::High => 9,
+            UploadPriority::Release => 18,
+            // Files many clients want get a lower priority, so rare files spread first.
+            UploadPriority::Auto => match self.requesters.get(file).copied().unwrap_or(0) {
+                count if count > 20 => 6,
+                count if count > 1 => 7,
+                _ => 9,
+            },
+        }
+    }
 }
