@@ -6,6 +6,7 @@
 
 pub mod kad_contact;
 pub mod kad_identity;
+pub mod kad_index;
 pub mod kad_lower_case;
 pub mod keywords;
 pub mod lookup;
