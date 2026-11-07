@@ -26,21 +26,22 @@ use njmule_engine::api::download_info::{DownloadInfo, DownloadPriority, Download
 use njmule_engine::api::ed2k_link::{FileLink, Source};
 use njmule_engine::api::file_comment::FileComment;
 use njmule_engine::config::obfuscation_mode::ObfuscationMode;
-use njmule_engine::download::download_manager::REASK_INTERVAL;
 use njmule_engine::download::download_manager::{self, CALLBACK_WAIT, DownloadEvent, KadSource, MIN_REASK};
+use njmule_engine::download::download_manager::{REASK_INTERVAL, UDP_REASK_LEAD};
 use njmule_engine::download::download_queue::SPACE_CHECK;
 use njmule_engine::files::hash::aich_recovery;
 use njmule_engine::files::hash::ed2k::EMBLOCKSIZE;
 use njmule_engine::files::hash::file_hasher;
 use njmule_engine::protocol::ed2k::client_messages::{
-    self, CompressedPart, FileName, FileStatus, HashSet, Range, RequestParts, SendingPart,
+    self, CompressedPart, FileName, FileStatus, HashSet, PartStatus, Range, RequestParts, SendingPart,
 };
+use njmule_engine::protocol::ed2k::client_reasks;
 use njmule_engine::protocol::ed2k::file_description;
 use njmule_engine::protocol::ed2k::hello;
 use njmule_engine::protocol::ed2k::server_messages::{FoundSources, Source as Found};
 use njmule_engine::protocol::ed2k::source_exchange as exchange;
 use njmule_engine::protocol::io::PacketWriter;
-use njmule_engine::protocol::packet::opcodes::{client, extended};
+use njmule_engine::protocol::packet::opcodes::{client, client_udp, extended};
 use njmule_engine::protocol::packet::{Packet, protocol};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -48,6 +49,7 @@ use scripted_source::{Link, ScriptedSource, WAIT};
 
 const OUR_ID: u32 = u32::from_le_bytes([198, 51, 100, 7]);
 const PEER: [u8; 16] = [0x5e; 16];
+const SOURCE_UDP_PORT: u16 = 4673;
 const UNKNOWN: [u8; 16] = [0x3a; 16];
 const BLOCKED_IP: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 9);
 
@@ -464,6 +466,84 @@ impl Sources {
 
     fn given_kad_that_looks_for_sources(&mut self) {
         self.kad = true;
+    }
+
+    async fn given_a_source_taking_udp_reasks_on_its_port(&mut self, udp_port: u16) {
+        let misc1 = client_reasks::UDP_VERSION << hello::MISC1_UDP_VERSION_SHIFT;
+        self.source = Some(ScriptedSource::with_udp_port(PEER, misc1, 0, udp_port).await);
+    }
+
+    // Re-asks over UDP go through Kad's port, which needs Kad running.
+    fn given_the_manager_asking_again_over_udp(&mut self) {
+        self.given_kad_that_looks_for_sources();
+        self.given_the_manager();
+    }
+
+    async fn given_a_queued_source_asked_again_over_udp(&mut self) {
+        self.given_a_source_taking_udp_reasks_on_its_port(SOURCE_UDP_PORT).await;
+        self.given_the_manager_asking_again_over_udp();
+        self.given_a_download_from_the_source("udp.bin", [0x41; 16]).await;
+        self.given_the_source_queued_us_at(5).await;
+        self.given_the_connection_closed_while_queued().await;
+        self.when_time_passes(REASK_INTERVAL - Duration::from_secs(60));
+        self.then_the_source_is_asked_again_over_udp_for_the_file(SOURCE_UDP_PORT).await;
+    }
+
+    async fn given_the_source_answered_over_udp(&self, answer: Packet) {
+        self.when_the_source_answers_over_udp(answer).await;
+    }
+
+    async fn when_the_source_answers_over_udp(&self, answer: Packet) {
+        let from = SocketAddr::from((Ipv4Addr::LOCALHOST, SOURCE_UDP_PORT));
+        self.run(move |lab| lab.reask_answered(from, &answer)).await;
+    }
+
+    fn given_the_source_tells_its_ipv6_address(&self, address: &str) {
+        self.source().announce_ipv6(address.parse().unwrap());
+    }
+
+    async fn when_an_answer_comes_over_udp_from_another_port(&self, answer: Packet) {
+        let from = SocketAddr::from((Ipv4Addr::LOCALHOST, SOURCE_UDP_PORT + 1));
+        self.run(move |lab| lab.reask_answered(from, &answer)).await;
+    }
+
+    async fn when_the_source_tells_it_has_no_part(&mut self) {
+        let mut status = PacketWriter::new();
+        status.hash16(&self.hash).u16(1).u8(0);
+        self.link().send(&Packet::written(protocol::EDONKEY, client::FILESTATUS, status)).await;
+    }
+
+    async fn then_the_source_is_asked_again_over_udp_for_the_file(&self, udp_port: u16) {
+        self.downloads().wait_for("a re-ask over UDP", |lab| !lab.kad_sent().is_empty()).await;
+        let (to, packet, _) = self.run(|lab| lab.kad_sent().remove(0)).await;
+        assert_eq!(to, SocketAddr::from((Ipv4Addr::LOCALHOST, udp_port)));
+        assert_eq!(packet.opcode(), client_udp::REASKFILEPING);
+        assert_eq!(client_reasks::Ping::file(&packet).unwrap(), self.hash);
+    }
+
+    async fn then_the_source_is_asked_again_over_udp_plain_at(&self, to: SocketAddr) {
+        self.downloads().wait_for("a re-ask over UDP", |lab| !lab.kad_sent().is_empty()).await;
+        let (sent_to, packet, key) = self.run(|lab| lab.kad_sent().remove(0)).await;
+        assert_eq!((sent_to, key), (to, None), "plain, at its IPv6 address");
+        assert_eq!(client_reasks::Ping::file(&packet).unwrap(), self.hash);
+    }
+
+    async fn then_the_source_still_shows_the_rank(&self, rank: u32) {
+        tokio::time::sleep(download_lab::TICK * 3).await;
+        let seen = self.await_source(|_| true).await;
+        assert_eq!(seen.queue_rank, rank);
+    }
+
+    async fn then_the_source_shows_the_rank(&self, rank: u32) {
+        self.await_source(move |s| s.queue_rank == rank).await;
+    }
+
+    async fn then_the_source_is_in_the_state(&self, state: SourceState) {
+        self.await_source(move |s| s.state == state).await;
+    }
+
+    async fn then_the_source_is_not_connected_to_within(&self, wait: Duration) {
+        assert!(!self.source().called_within(wait).await);
     }
 
     async fn given_kad_looked_for_its_sources(&self) {
@@ -1719,4 +1799,126 @@ async fn should_leave_out_the_kad_sources_of_a_stopped_download() {
     sources.when_kad_finds_a_source_once_the_download_is_stopped().await;
 
     sources.then_the_download_got_no_source();
+}
+
+#[tokio::test]
+async fn should_ask_a_queued_source_again_over_udp_shortly_before_its_time() {
+    let mut sources = Sources::new();
+    sources.given_a_source_taking_udp_reasks_on_its_port(SOURCE_UDP_PORT).await;
+    sources.given_the_manager_asking_again_over_udp();
+    sources.given_a_download_from_the_source("udp.bin", [0x41; 16]).await;
+    sources.given_the_source_queued_us_at(5).await;
+    sources.given_the_connection_closed_while_queued().await;
+
+    sources.when_time_passes(REASK_INTERVAL - Duration::from_secs(60));
+
+    sources.then_the_source_is_asked_again_over_udp_for_the_file(SOURCE_UDP_PORT).await;
+}
+
+#[tokio::test]
+async fn should_take_the_rank_a_source_gives_over_udp() {
+    let mut sources = Sources::new();
+    sources.given_a_queued_source_asked_again_over_udp().await;
+
+    sources.when_the_source_answers_over_udp(ack(2)).await;
+
+    sources.then_the_source_shows_the_rank(2).await;
+}
+
+#[tokio::test]
+async fn should_tell_a_source_whose_queue_is_full() {
+    let mut sources = Sources::new();
+    sources.given_a_queued_source_asked_again_over_udp().await;
+
+    sources.when_the_source_answers_over_udp(client_reasks::queue_full()).await;
+
+    sources.then_the_source_is_in_the_state(SourceState::QueueFull).await;
+}
+
+#[tokio::test]
+async fn should_tell_a_source_that_has_no_part_the_download_needs() {
+    let mut sources = Sources::new();
+    sources.given_a_source_taking_udp_reasks_on_its_port(SOURCE_UDP_PORT).await;
+    sources.given_the_manager_asking_again_over_udp();
+    sources.given_a_download_from_the_source("none.bin", [0x42; 16]).await;
+    sources.given_the_source_asked_for_the_file().await;
+
+    sources.when_the_source_tells_it_has_no_part().await;
+
+    sources.then_the_source_is_in_the_state(SourceState::NoNeededParts).await;
+}
+
+#[tokio::test]
+async fn should_not_connect_when_its_time_comes_to_a_source_that_answered_over_udp() {
+    let mut sources = Sources::new();
+    sources.given_a_queued_source_asked_again_over_udp().await;
+    sources.given_the_source_answered_over_udp(ack(2)).await;
+
+    sources.when_time_passes(UDP_REASK_LEAD);
+
+    sources.then_the_source_is_not_connected_to_within(Duration::from_secs(2)).await;
+}
+
+#[tokio::test]
+async fn should_connect_when_its_time_comes_to_a_source_that_did_not_answer_over_udp() {
+    let mut sources = Sources::new();
+    sources.given_a_queued_source_asked_again_over_udp().await;
+
+    sources.when_time_passes(UDP_REASK_LEAD);
+
+    sources.then_the_source_is_connected_to().await;
+}
+
+#[tokio::test]
+async fn should_drop_a_source_that_says_over_udp_it_no_longer_has_the_file() {
+    let mut sources = Sources::new();
+    sources.given_a_queued_source_asked_again_over_udp().await;
+
+    sources.when_the_source_answers_over_udp(client_reasks::file_not_found()).await;
+
+    sources.then_the_download_has_sources(0).await;
+    sources.then_each_part_is_known_at_sources(0).await;
+}
+
+fn ack(rank: u32) -> Packet {
+    client_reasks::Ack { parts: Some(PartStatus::COMPLETE), rank }.encode(client_reasks::UDP_VERSION).unwrap()
+}
+
+// Rust's own: the answers no source of ours sent, and a source told at its IPv6 address.
+
+#[tokio::test]
+async fn should_ignore_a_re_ask_answer_from_a_port_not_asked() {
+    let mut sources = Sources::new();
+    sources.given_a_queued_source_asked_again_over_udp().await;
+
+    sources.when_an_answer_comes_over_udp_from_another_port(ack(2)).await;
+
+    sources.then_the_source_still_shows_the_rank(5).await;
+}
+
+#[tokio::test]
+async fn should_ignore_a_re_ask_answer_that_does_not_decode() {
+    let mut sources = Sources::new();
+    sources.given_a_queued_source_asked_again_over_udp().await;
+
+    sources.when_the_source_answers_over_udp(Packet::of(protocol::EMULE, client_udp::REASKACK, vec![1])).await;
+
+    sources.then_the_source_still_shows_the_rank(5).await;
+}
+
+#[tokio::test]
+async fn should_ask_a_queued_source_again_over_udp_plain_at_the_ipv6_address_it_told() {
+    let mut sources = Sources::new();
+    sources.given_we_have_the_ipv6_address("2001:db8::99");
+    sources.given_a_source_taking_udp_reasks_on_its_port(SOURCE_UDP_PORT).await;
+    sources.given_the_source_tells_its_ipv6_address("2001:db8::61");
+    sources.given_the_manager_asking_again_over_udp();
+    sources.given_a_download_from_the_source("udp6.bin", [0x4e; 16]).await;
+    sources.given_the_source_queued_us_at(5).await;
+    sources.given_the_connection_closed_while_queued().await;
+
+    sources.when_time_passes(REASK_INTERVAL - Duration::from_secs(60));
+
+    let at = SocketAddr::from(("2001:db8::61".parse::<Ipv6Addr>().unwrap(), SOURCE_UDP_PORT));
+    sources.then_the_source_is_asked_again_over_udp_plain_at(at).await;
 }

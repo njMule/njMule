@@ -1055,8 +1055,9 @@ impl Network {
         let settings = self.settings();
         let context = self.shared.context.lock().map(|context| *context).unwrap_or_default();
         let obfuscation = self.preferences().obfuscation;
+        let our_ip = self.our_public_ip();
         let mut server = SessionLink { session: &mut self.session, context, obfuscation };
-        let mut kad = self.kad.finding();
+        let mut kad = self.kad.finding(our_ip);
         let kad = kad.as_mut().map(|finding| finding as &mut dyn KadLink);
         self.downloads.tick(&mut server, kad, &settings, &ours);
         let connected = self.session.server().map(server_list::address_of);

@@ -83,9 +83,10 @@ impl KadSide {
         }
     }
 
-    /// What finds the sources of downloads on Kad, while it runs.
-    pub(super) fn finding(&mut self) -> Option<KadFinding<'_>> {
-        self.running.as_mut().map(|running| KadFinding { node: &mut running.node })
+    /// What finds the sources of downloads on Kad and re-asks them over its port, while it runs; `our_ip` is part of
+    /// the key of obfuscated re-asks.
+    pub(super) fn finding(&mut self, our_ip: u32) -> Option<KadFinding<'_>> {
+        self.running.as_mut().map(|running| KadFinding { node: &mut running.node, socket: &running.socket, our_ip })
     }
 
     /// What starts keyword searches on Kad, while it runs.
@@ -95,9 +96,11 @@ impl KadSide {
     }
 }
 
-/// Finds the sources of downloads on the node.
+/// Finds the sources of downloads on the node, and re-asks sources over its socket.
 pub(super) struct KadFinding<'a> {
     node: &'a mut KadNode,
+    socket: &'a KadSocket,
+    our_ip: u32,
 }
 
 impl KadLink for KadFinding<'_> {
@@ -108,6 +111,16 @@ impl KadLink for KadFinding<'_> {
     // Firewalled, our address and port may be those of another client behind the same router.
     fn public_ip(&self) -> u32 {
         if self.node.is_firewalled() { 0 } else { self.node.public_ip() }
+    }
+
+    // Clients do not obfuscate their datagrams over IPv6.
+    fn send_datagram(&mut self, to: SocketAddr, packet: &Packet, obfuscate_for: Option<[u8; 16]>) {
+        match to {
+            SocketAddr::V4(v4) => {
+                self.socket.send_client(u32::from(*v4.ip()), v4.port(), packet, obfuscate_for, self.our_ip);
+            }
+            SocketAddr::V6(_) => self.socket.send_client_to(to, packet),
+        }
     }
 }
 
@@ -363,12 +376,21 @@ impl Network {
         }
     }
 
-    // A client datagram on Kad's port: a client waiting in our queue asks again for its place, which is answered over the
-    // same port, obfuscated for it when we know its user hash, plain over IPv6.
+    // A client datagram on Kad's port: a source answers our re-ask, or a client waiting in our queue asks again for its
+    // place, which is answered over the same port, obfuscated for it when we know its user hash, plain over IPv6.
     fn client_datagram(&mut self, from: SocketAddr, packet: &Packet) {
-        if packet.opcode() != client_udp::REASKFILEPING {
-            tracing::trace!("Client datagram {:#04x} from {from}", packet.opcode());
-            return;
+        match packet.opcode() {
+            client_udp::REASKFILEPING => {}
+            client_udp::REASKACK | client_udp::QUEUEFULL | client_udp::FILENOTFOUND => {
+                let ours = self.shared.our_hello();
+                self.downloads.reask_answered(from, packet, &ours);
+                self.after_downloads();
+                return;
+            }
+            _ => {
+                tracing::trace!("Client datagram {:#04x} from {from}", packet.opcode());
+                return;
+            }
         }
         let (files, downloads) = (&self.shared_files, &self.downloads);
         let find = |hash: &[u8; 16]| super::uploadable(files, downloads, hash);
@@ -389,7 +411,7 @@ impl Network {
     }
 
     // Our public IPv4 address, as the server or Kad sees it; 0 while unknown.
-    fn our_public_ip(&self) -> u32 {
+    pub(super) fn our_public_ip(&self) -> u32 {
         let server_seen = self.address_seen_by_server();
         if server_seen != 0 {
             return server_seen;

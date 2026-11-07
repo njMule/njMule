@@ -29,15 +29,19 @@ use crate::download::known_sources::{self, Candidate, Standing};
 use crate::files::comment_filter::CommentFilter;
 use crate::files::hash::aich_recovery;
 use crate::files::hash::aich_votes::AichVotes;
+use crate::files::hash::ed2k;
 use crate::files::part_file::{self, KnownSource, PartFile, Status};
 use crate::files::part_file_storage::DiskDone;
 use crate::peer::peer_link::{LinkHandle, LinkId};
 use crate::peer::peer_software;
-use crate::protocol::ed2k::hello::Hello;
+use crate::protocol::ed2k::client_messages::{FileStatus, PartStatus};
+use crate::protocol::ed2k::client_reasks;
+use crate::protocol::ed2k::hello::{self, Hello};
 use crate::protocol::ed2k::server_datagrams::SourceQuery;
 use crate::protocol::ed2k::server_messages::{FoundSources, LOW_ID_LIMIT};
 use crate::protocol::ed2k::source_exchange as exchange;
 use crate::protocol::packet::Packet;
+use crate::protocol::packet::opcodes::client_udp;
 use crate::security::path_sanitizer;
 use crate::server::server_list;
 use crate::util::{instants, ipv4, ipv6, white_space};
@@ -90,6 +94,12 @@ const MAX_LINK_HOSTS: usize = 16;
 const MAX_COMMENTS: usize = 100;
 // The bytes from the start a player needs to show a file while it grows.
 const PREVIEW_START: u64 = 16 * 1024;
+/// A queued source is asked again over UDP this long before it is due over TCP.
+pub const UDP_REASK_LEAD: Duration = Duration::from_secs(2 * 60);
+// Nor later than this before its time: the TCP ask would cross the answer.
+const UDP_REASK_LAST: Duration = Duration::from_secs(1);
+// Pings judged by their answers only after this many.
+const PINGS_BEFORE_JUDGING: u32 = 3;
 // Kad is asked for the sources of a download one hour later each time, up to seven.
 const KAD_SEARCH_STEP: Duration = Duration::from_secs(60 * 60);
 const KAD_SEARCH_MAX_STEPS: u32 = 7;
@@ -132,6 +142,9 @@ pub trait KadLink {
     fn find_sources(&mut self, file: &[u8; 16], size: u64) -> bool;
     /// Our address where Kad found us reachable; 0 when unknown or firewalled.
     fn public_ip(&self) -> u32;
+    /// Sends a client packet over Kad's UDP port, which clients take re-asks on, obfuscated for `obfuscate_for` when
+    /// given.
+    fn send_datagram(&mut self, to: SocketAddr, packet: &Packet, obfuscate_for: Option<[u8; 16]>);
 }
 
 /// A source Kad found, at the address it listens at. A `firewalled` one cannot be connected to: it connects to us when
@@ -231,6 +244,17 @@ struct Client {
     ipv6: Option<Ipv6Addr>,
     // The downloads asked for on the current connection.
     tried: Vec<[u8; 16]>,
+    // Whether it keeps us in its queue, as its last session ended.
+    queued: bool,
+    // The UDP port and re-ask version its hello gave, and whether it exchanges sources.
+    udp_port: u16,
+    udp_version: u32,
+    exchanges_sources: bool,
+    // The download it was asked again for over UDP, and where the answer comes from, until it comes.
+    pinged: Option<[u8; 16]>,
+    pinged_at: Option<IpAddr>,
+    pings: u32,
+    unanswered_pings: u32,
 }
 
 // A client as a source of one download.
@@ -246,6 +270,8 @@ struct Source {
     away_until: Option<Instant>,
     // When it was last asked for other sources.
     sources_asked: Option<Instant>,
+    // Whether its queue was full, as it last answered over UDP.
+    queue_full: bool,
 }
 
 struct Entry {
@@ -674,6 +700,8 @@ impl DownloadManager {
                     state_of(session.state())
                 } else if parts.as_deref().is_some_and(|parts| !needed(&download.file, parts)) {
                     SourceState::NoNeededParts
+                } else if source.queue_full {
+                    SourceState::QueueFull
                 } else {
                     SourceState::Waiting
                 };
@@ -812,6 +840,144 @@ impl DownloadManager {
         }
     }
 
+    /// A source answered a UDP re-ask from `from`: it keeps our place, it has no room, or it does not have the file. An
+    /// answer nobody asked for is ignored.
+    pub fn reask_answered(&mut self, from: SocketAddr, packet: &Packet, ours: &Hello) {
+        let pinged = self.clients.iter().find_map(|(address, client)| {
+            let asked = client.udp_port == from.port() && client.pinged_at == Some(from.ip());
+            client.pinged.filter(|_| asked).map(|hash| (*address, hash))
+        });
+        let Some((address, hash)) = pinged else {
+            tracing::debug!("Unasked re-ask answer from {from}");
+            return;
+        };
+        let Some(client) = self.clients.get_mut(&address) else {
+            return;
+        };
+        client.pinged = None;
+        client.pinged_at = None;
+        let udp_version = client.udp_version;
+        if !self.entries.get(&hash).is_some_and(|entry| entry.sources.contains_key(&address)) {
+            return;
+        }
+        let now = (self.clock)();
+        let size = self.queue.get(&hash).map_or(0, |d| d.file.size());
+        let rank = match packet.opcode() {
+            client_udp::FILENOTFOUND => {
+                tracing::debug!("{address} no longer has the file");
+                self.detach(&hash, &address, ours);
+                self.settle(ours);
+                return;
+            }
+            client_udp::REASKACK => match client_reasks::Ack::decode(packet, udp_version) {
+                Ok(ack) => {
+                    let status = ack.parts.map(|parts| FileStatus {
+                        file: hash,
+                        part_count: parts.part_count,
+                        parts: parts.parts,
+                    });
+                    if let Some(status) = status.filter(|status| status.fits(size)) {
+                        self.set_parts(&hash, &address, Some(status.data_parts(size)));
+                    }
+                    ack.rank
+                }
+                Err(e) => {
+                    tracing::debug!("Bad re-ask answer from {address}: {e}");
+                    if let Some(client) = self.clients.get_mut(&address) {
+                        client.unanswered_pings = client.unanswered_pings.saturating_add(1);
+                    }
+                    return;
+                }
+            },
+            _ => 0,
+        };
+        // Still queued, a full queue included: asked again a whole interval from now.
+        if let Some(source) = self.entries.get_mut(&hash).and_then(|entry| entry.sources.get_mut(&address)) {
+            source.rank = rank;
+            source.queue_full = packet.opcode() == client_udp::QUEUEFULL;
+        }
+        if let Some(client) = self.clients.get_mut(&address) {
+            client.last_ask = now;
+            client.next_ask = instants::later(now, REASK_INTERVAL);
+        }
+        if let Some(entry) = self.entries.get_mut(&hash) {
+            entry.changed = true;
+        }
+    }
+
+    // A queued source due over TCP soon is asked over UDP first; one due for its sources waits for TCP, which asks for
+    // them too.
+    fn ping_queued(
+        &mut self,
+        hash: &[u8; 16],
+        size: u64,
+        kad: &mut dyn KadLink,
+        now: Instant,
+        settings: &Settings,
+        ours: &Hello,
+    ) {
+        let addresses: Vec<SocketAddr> =
+            self.entries.get(hash).map(|e| e.sources.keys().copied().collect()).unwrap_or_default();
+        let over_ipv6 = ours.ipv6().is_some() && settings.obfuscation != ObfuscationMode::Required;
+        let complete = self.complete_sources(hash, size);
+        let verified = self.queue.get(hash).map(|d| d.verified_parts().to_vec()).unwrap_or_default();
+        for address in addresses {
+            let Some(client) = self.clients.get(&address) else {
+                continue;
+            };
+            let window = client.next_ask >= instants::later(now, UDP_REASK_LAST)
+                && client.next_ask.saturating_duration_since(now) <= UDP_REASK_LEAD;
+            let idle = client.current == *hash && client.session.is_none() && client.pinged.is_none();
+            if !idle || !client.queued || !window {
+                continue;
+            }
+            if client.exchanges_sources && self.sources_due(hash, &address, now) {
+                continue;
+            }
+            // Over IPv6 plain, which obfuscation required forbids; over IPv4 as the client can be asked.
+            let at_ipv6 = if over_ipv6 { ipv6_ping_target(&address, client) } else { None };
+            let (target, key) = match at_ipv6 {
+                Some(target) => (target, None),
+                None if may_ping(&address, client) => {
+                    let crypt = settings.obfuscation != ObfuscationMode::Disabled
+                        && client.crypt_options & CRYPT_SUPPORTED != 0;
+                    let key = if crypt { client.user_hash } else { None };
+                    if settings.obfuscation == ObfuscationMode::Required && key.is_none() {
+                        continue;
+                    }
+                    (SocketAddr::new(address.ip(), client.udp_port), key)
+                }
+                None => continue,
+            };
+            let ping = client_reasks::Ping {
+                file: *hash,
+                parts: PartStatus::of(size, &verified),
+                complete_sources: u32::try_from(complete).unwrap_or(u32::MAX),
+            };
+            let Ok(packet) = ping.encode(client.udp_version) else {
+                continue;
+            };
+            kad.send_datagram(target, &packet, key);
+            if let Some(client) = self.clients.get_mut(&address) {
+                client.pinged = Some(*hash);
+                client.pinged_at = Some(target.ip());
+                client.pings = client.pings.saturating_add(1);
+            }
+        }
+    }
+
+    // The sources known to have the whole file.
+    fn complete_sources(&self, hash: &[u8; 16], size: u64) -> usize {
+        let parts = ed2k::part_count(size);
+        self.entries.get(hash).map_or(0, |entry| {
+            entry
+                .sources
+                .values()
+                .filter(|source| source.parts.as_ref().is_some_and(|p| p.iter().filter(|has| **has).count() >= parts))
+                .count()
+        })
+    }
+
     // Asks Kad for the sources of a running download, when its time has come and Kad has room for one more search.
     fn search_kad(&mut self, hash: &[u8; 16], size: u64, kad: &mut dyn KadLink, now: Instant, settings: &Settings) {
         self.kad_searching.retain(|over| now < *over);
@@ -913,6 +1079,9 @@ impl DownloadManager {
                     self.server_requests_due =
                         instants::later(now.max(self.server_requests_due), SERVER_REQUEST_CREDIT);
                     entry.next_server_ask = instants::later(now, SERVER_SOURCES_INTERVAL);
+                }
+                if let Some(kad) = kad.as_deref_mut() {
+                    self.ping_queued(&hash, size, kad, now, settings, ours);
                 }
                 starting = starting.saturating_add(self.start_sessions(
                     &hash,
@@ -1515,11 +1684,20 @@ impl DownloadManager {
         }
     }
 
-    // Rare files may ask a source every 40 minutes, others every 160; a file waits for answers.
+    // Asks a source for other sources when they are due, and remembers when.
     fn may_sources_be_asked(&mut self, hash: &[u8; 16], address: &SocketAddr) -> bool {
         let now = (self.clock)();
+        let due = self.sources_due(hash, address, now);
+        if due && let Some(source) = self.entries.get_mut(hash).and_then(|entry| entry.sources.get_mut(address)) {
+            source.sources_asked = Some(now);
+        }
+        due
+    }
+
+    // Rare files may ask a source every 40 minutes, others every 160; a file waits for answers.
+    fn sources_due(&self, hash: &[u8; 16], address: &SocketAddr, now: Instant) -> bool {
         let max_sources = self.settings.as_ref().map_or(0, |settings| settings.max_sources_per_file);
-        let Some(entry) = self.entries.get_mut(hash) else {
+        let Some(entry) = self.entries.get(hash) else {
             return false;
         };
         let known = entry.sources.len();
@@ -1527,19 +1705,15 @@ impl DownloadManager {
             return false;
         }
         let since_answer = entry.sources_answered.map_or(Duration::MAX, |at| now.saturating_duration_since(at));
-        let Some(source) = entry.sources.get_mut(address) else {
+        let Some(source) = entry.sources.get(address) else {
             return false;
         };
         let asked = source.sources_asked.map(|at| now.saturating_duration_since(at));
         let rare_due = asked.is_none_or(|since| since >= SX_RARE_INTERVAL);
         let common_due = asked.is_none_or(|since| since >= SX_INTERVAL);
-        let due = (known <= SX_VERY_RARE && rare_due)
+        (known <= SX_VERY_RARE && rare_due)
             || (known <= SX_RARE && rare_due && since_answer >= SX_RARE_ANSWER_GAP)
-            || (common_due && since_answer >= SX_ANSWER_GAP);
-        if due {
-            source.sources_asked = Some(now);
-        }
-        due
+            || (common_due && since_answer >= SX_ANSWER_GAP)
     }
 
     // The sources another client told of: those it may pass on and we can reach, IPv6 ones when we have IPv6 too.
@@ -1859,6 +2033,15 @@ impl DownloadManager {
             client.user_hash = Some(hash);
             client.crypt_options = session.peer_crypt_options();
         }
+        if let Some(hello) = session.peer() {
+            client.udp_port = hello.udp_port();
+            client.udp_version = hello.udp_version();
+            client.exchanges_sources = hello.misc_options2() & hello::MISC2_SOURCE_EXCHANGE2 != 0;
+            if hello.ipv6().is_some() {
+                client.ipv6 = hello.ipv6();
+            }
+        }
+        client.queued = outcome == Outcome::Queued;
         tracing::debug!("{address} ({outcome:?}): {reason}");
         let now = (self.clock)();
         match outcome {
@@ -1882,6 +2065,7 @@ impl DownloadManager {
             (rank, self.entries.get_mut(&hash).and_then(|e| e.sources.get_mut(&address)))
         {
             source.rank = rank;
+            source.queue_full = false;
         }
         if outcome == Outcome::Gone {
             self.detach(&hash, &address, ours);
@@ -2064,6 +2248,11 @@ impl DownloadManager {
             if client.current != *hash || client.session.is_some() || now < client.next_ask {
                 continue;
             }
+            if client.pinged.take().is_some() {
+                // No answer over UDP in time: asked over TCP.
+                client.pinged_at = None;
+                client.unanswered_pings = client.unanswered_pings.saturating_add(1);
+            }
             if !suits_obfuscation(settings.obfuscation, client.crypt_options, client.user_hash) {
                 continue;
             }
@@ -2154,6 +2343,14 @@ impl DownloadManager {
             pinned: false,
             ipv6: None,
             tried: Vec::new(),
+            queued: false,
+            udp_port: 0,
+            udp_version: 0,
+            exchanges_sources: false,
+            pinged: None,
+            pinged_at: None,
+            pings: 0,
+            unanswered_pings: 0,
         });
         client.sources.push(*hash);
         let current_active = self.queue.get(&client.current).is_some_and(|d| d.is_active());
@@ -2376,6 +2573,28 @@ fn suits_obfuscation(mode: ObfuscationMode, crypt_options: u8, user_hash: Option
 }
 
 // A source the network told us about: a public-looking address, not ourselves.
+// Re-asks over UDP need its port and a version that takes them, and go to HighIDs at IPv4 addresses that answer them.
+fn may_ping(address: &SocketAddr, client: &Client) -> bool {
+    client.udp_port != 0
+        && client.udp_version >= 3
+        && client.low_id == 0
+        && address.is_ipv4()
+        && (client.pings <= PINGS_BEFORE_JUDGING
+            || client.unanswered_pings.saturating_mul(10) <= client.pings.saturating_mul(3))
+}
+
+// Over IPv6 a re-ask goes to the IPv6 address the client was added at, or to the one it told it has.
+fn ipv6_ping_target(address: &SocketAddr, client: &Client) -> Option<SocketAddr> {
+    if client.udp_port == 0 || client.udp_version < 3 {
+        return None;
+    }
+    let at = match address.ip() {
+        IpAddr::V6(added) => Some(added),
+        IpAddr::V4(_) => client.ipv6,
+    };
+    at.map(|ip| SocketAddr::from((ip, client.udp_port)))
+}
+
 fn usable(ip: u32, port: u16, settings: &Settings, our_id: u32) -> bool {
     port != 0
         && server_list::is_usable(ip)

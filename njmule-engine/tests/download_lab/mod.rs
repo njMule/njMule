@@ -58,6 +58,8 @@ pub struct Engine {
     pub kad_running: bool,
     pub kad_asked: Vec<[u8; 16]>,
     pub kad_public_ip: u32,
+    /// The client datagrams sent over Kad's port: where, what, and the user hash that obfuscates them.
+    pub kad_sent: Vec<(SocketAddr, njmule_engine::protocol::packet::Packet, Option<[u8; 16]>)>,
 }
 
 /// Kad as a stand-in: it records the searches it is asked for, which find what the tests say.
@@ -71,6 +73,15 @@ impl KadLink for Kad {
 
     fn public_ip(&self) -> u32 {
         self.0.lock().unwrap().kad_public_ip
+    }
+
+    fn send_datagram(
+        &mut self,
+        to: SocketAddr,
+        packet: &njmule_engine::protocol::packet::Packet,
+        obfuscate_for: Option<[u8; 16]>,
+    ) {
+        self.0.lock().unwrap().kad_sent.push((to, packet.clone(), obfuscate_for));
     }
 }
 
@@ -174,6 +185,18 @@ impl Lab {
     /// The files Kad was asked the sources of, in order.
     pub fn kad_asked(&self) -> Vec<[u8; 16]> {
         self.kad.0.lock().unwrap().kad_asked.clone()
+    }
+
+    /// A source answered a re-ask over Kad's port from `from`, as the network hands it over.
+    pub fn reask_answered(&mut self, from: SocketAddr, packet: &njmule_engine::protocol::packet::Packet) {
+        let ours = self.ours.clone();
+        self.manager.reask_answered(from, packet, &ours);
+        self.after();
+    }
+
+    /// The client datagrams sent over Kad's port so far.
+    pub fn kad_sent(&self) -> Vec<(SocketAddr, njmule_engine::protocol::packet::Packet, Option<[u8; 16]>)> {
+        self.kad.0.lock().unwrap().kad_sent.clone()
     }
 
     /// Kad found `sources` for `file`, as the network hands them over.
