@@ -12,7 +12,10 @@ use std::time::{Duration, Instant};
 use njmule_engine::kad::kad_identity::KadIdentity;
 use njmule_engine::kad::kad_node::{Host, KadNode, Settings, Transport};
 use njmule_engine::kad::uint128::UInt128;
+use njmule_engine::persist::format::nodes_dat::{self, UdpKey};
+use njmule_engine::protocol::kad::kad_messages::Entry;
 use njmule_engine::protocol::packet::Packet;
+use njmule_engine::protocol::tag::{Tag, TagName, file_tag};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
@@ -138,4 +141,30 @@ impl KadLab {
 /// Settings of a node at TCP port 4662 that trusts no address and blocks none.
 pub fn settings() -> Settings {
     Settings::new(4662, [0; 16], 0, Arc::new(|_| false), Arc::new(|_| false))
+}
+
+/// The contents of a nodes.dat with one verified contact of id `id` at `ip`.
+pub fn one_contact(id: UInt128, ip: u32) -> nodes_dat::Contents {
+    let contact = nodes_dat::Contact {
+        id,
+        ip,
+        udp_port: PORT,
+        tcp_port: 4662,
+        version: 8,
+        contact_type: 0,
+        udp_key: UdpKey::default(),
+        verified: true,
+    };
+    nodes_dat::Contents { file_version: 2, bootstrap: false, contacts: vec![contact] }
+}
+
+/// A file entry of a name and a size, as searches answer and keyword publishes carry.
+pub fn file(id: UInt128, name: &str, size: u64) -> Entry {
+    Entry {
+        id,
+        tags: vec![
+            Tag::String { name: TagName::id(file_tag::FILENAME), value: name.to_owned() },
+            Tag::Int { name: TagName::id(file_tag::FILESIZE), value: size },
+        ],
+    }
 }
