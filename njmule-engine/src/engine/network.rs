@@ -8,6 +8,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -74,6 +75,8 @@ const MAX_CALLBACKS_OPEN: usize = 8;
 const CRYPT_REQUESTED_OR_REQUIRED: u8 = 0x06;
 /// Sources kept per download at most.
 const MAX_SOURCES_PER_FILE: usize = 400;
+// The links of the downloads deleted for receiving nothing, in the config directory.
+const DELETED_LINKS_FILE: &str = "deleted-downloads.txt";
 
 /// What the API asks the network side.
 #[derive(Debug)]
@@ -314,7 +317,13 @@ pub fn start(
     let incoming = preferences.incoming_dir.clone().unwrap_or_else(|| dirs.downloads.clone());
     let watched = shared.preferences.subscribe();
     let min_free = Box::new(move || u64::from(watched.borrow().min_free_space_mib).saturating_mul(1024 * 1024));
-    let downloads = DownloadManager::open(&temp, &incoming, min_free, disk_in, Box::new(Instant::now))?;
+    let deleted_links = dirs.config.join(DELETED_LINKS_FILE);
+    // The IP filter is not loaded yet: it blocks none.
+    let hooks = download_manager::Hooks {
+        blocked: Box::new(|_| false),
+        keep_link: Box::new(move |link| keep_link(&deleted_links, link)),
+    };
+    let downloads = DownloadManager::open(&temp, &incoming, min_free, disk_in, Box::new(Instant::now), hooks)?;
     let finished = FinishedDownloads::load(&dirs.config);
     let spam_file = dirs.config.join(spam_filter::FILE_NAME);
     let spam = SpamFilter::load(&spam_file).unwrap_or_else(|e| {
@@ -1052,6 +1061,10 @@ impl Network {
                     self.publish(EngineEvent::DownloadFailed { download: info, reason });
                 }
                 DownloadEvent::Removed(hash) => self.publish(EngineEvent::DownloadRemoved(hash)),
+                DownloadEvent::CorruptSender(ip) => {
+                    self.uploads.ban(ip, Instant::now(), "it sent corrupt data");
+                    tracing::warn!("Banned {ip} for two hours: it sent corrupt data");
+                }
             }
         }
     }
@@ -1418,6 +1431,7 @@ impl Network {
             filter_lan: preferences.filter_lan_addresses,
             clean_up_new_names: preferences.clean_up_new_names,
             name_cleanups: preferences.name_cleanups.clone(),
+            auto_delete_days: preferences.auto_delete_days,
         }
     }
 
@@ -1815,4 +1829,17 @@ fn upload_settings(preferences: &Preferences) -> upload_manager::Settings {
         queue_size: usize::try_from(preferences.upload_queue_size).unwrap_or(usize::MAX),
         obfuscation: preferences.obfuscation != ObfuscationMode::Disabled,
     }
+}
+
+// The link of a download deleted for receiving nothing, kept at the end of `file`; false when it cannot be kept.
+fn keep_link(file: &Path, link: &FileLink) -> bool {
+    let kept = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(file)
+        .and_then(|mut out| std::io::Write::write_all(&mut out, format!("{}\n", link.to_uri()).as_bytes()));
+    if let Err(e) = &kept {
+        tracing::warn!("Cannot keep the link of {} in {}, so it is not deleted: {e}", link.name, file.display());
+    }
+    kept.is_ok()
 }

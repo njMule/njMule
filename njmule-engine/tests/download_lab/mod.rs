@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 use njmule_engine::api::download_info::{DownloadInfo, SourceInfo};
 use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::config::obfuscation_mode::ObfuscationMode;
-use njmule_engine::download::download_manager::{Action, DownloadEvent, DownloadManager, ServerLink, Settings};
+use njmule_engine::download::download_manager::{Action, DownloadEvent, DownloadManager, Hooks, ServerLink, Settings};
 use njmule_engine::download::download_session;
 use njmule_engine::files::part_file_storage::DiskDone;
 use njmule_engine::net::routes::Routes;
@@ -39,6 +39,29 @@ use tokio::sync::{mpsc, oneshot};
 pub const TICK: Duration = Duration::from_millis(100);
 pub const WAIT: Duration = Duration::from_secs(20);
 pub const PORT: u16 = 4662;
+
+/// The IP filter the downloads see, and the links of downloads deleted for receiving nothing.
+#[derive(Default)]
+pub struct Engine {
+    pub blocked: Vec<u32>,
+    pub keeps_links: bool,
+    pub kept_links: Vec<String>,
+}
+
+fn hooks(engine: &Arc<Mutex<Engine>>) -> Hooks {
+    let filter = Arc::clone(engine);
+    let keeper = Arc::clone(engine);
+    Hooks {
+        blocked: Box::new(move |ip| filter.lock().unwrap().blocked.contains(&ip)),
+        keep_link: Box::new(move |link| {
+            let mut engine = keeper.lock().unwrap();
+            if engine.keeps_links {
+                engine.kept_links.push(link.to_uri());
+            }
+            engine.keeps_links
+        }),
+    }
+}
 
 /// What the downloads asked of the server, and what it answers.
 #[derive(Default)]
@@ -198,6 +221,7 @@ impl Lab {
 pub struct Downloads {
     pub dir: tempfile::TempDir,
     pub server: Arc<Mutex<FakeServer>>,
+    pub engine: Arc<Mutex<Engine>>,
     offset: Arc<AtomicU64>,
     jobs: mpsc::UnboundedSender<Job>,
     serving: Option<tokio::task::JoinHandle<()>>,
@@ -208,11 +232,17 @@ pub struct Downloads {
 impl Downloads {
     /// The downloads of a client with `our_id` (an IP in the order the network gives it) with `settings`.
     pub fn start(user_hash: [u8; 16], our_id: u32, settings: Settings) -> Self {
+        Self::start_with(user_hash, our_id, settings, Engine::default())
+    }
+
+    /// As [`start`](Self::start), with the IP filter and the keeping of links of `engine`.
+    pub fn start_with(user_hash: [u8; 16], our_id: u32, settings: Settings, engine: Engine) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let server = Arc::new(Mutex::new(FakeServer { client_id: our_id, ..FakeServer::default() }));
+        let engine = Arc::new(Mutex::new(engine));
         let offset = Arc::new(AtomicU64::new(0));
-        let (jobs, serving) = open(dir.path(), user_hash, our_id, settings, &server, &offset);
-        Self { dir, server, offset, jobs, serving: Some(serving), user_hash, our_id }
+        let (jobs, serving) = open(dir.path(), user_hash, our_id, settings, &server, &engine, &offset);
+        Self { dir, server, engine, offset, jobs, serving: Some(serving), user_hash, our_id }
     }
 
     /// Closes the downloads, which saves them, and opens them again from their files.
@@ -223,7 +253,8 @@ impl Downloads {
         if let Some(old) = self.serving.take() {
             old.await.unwrap();
         }
-        let (jobs, serving) = open(self.dir.path(), self.user_hash, self.our_id, settings, &self.server, &self.offset);
+        let (jobs, serving) =
+            open(self.dir.path(), self.user_hash, self.our_id, settings, &self.server, &self.engine, &self.offset);
         self.jobs = jobs;
         self.serving = Some(serving);
     }
@@ -237,6 +268,7 @@ impl Downloads {
             filter_lan: true,
             clean_up_new_names: false,
             name_cleanups: String::new(),
+            auto_delete_days: 0,
         }
     }
 
@@ -279,6 +311,7 @@ fn open(
     our_id: u32,
     settings: Settings,
     server: &Arc<Mutex<FakeServer>>,
+    engine: &Arc<Mutex<Engine>>,
     offset: &Arc<AtomicU64>,
 ) -> (mpsc::UnboundedSender<Job>, tokio::task::JoinHandle<()>) {
     let base = Instant::now();
@@ -286,7 +319,8 @@ fn open(
     let clock = Box::new(move || base + Duration::from_millis(ticks.load(Ordering::Relaxed)));
     let (disk_in, disk) = mpsc::unbounded_channel();
     let manager =
-        DownloadManager::open(&dir.join("temp"), &dir.join("incoming"), Box::new(|| 0), disk_in, clock).unwrap();
+        DownloadManager::open(&dir.join("temp"), &dir.join("incoming"), Box::new(|| 0), disk_in, clock, hooks(engine))
+            .unwrap();
     let ours = Ours { nick: "test", udp_port: 0, kad_port: 0, misc_options1: 0, misc_options2: 0 };
     let (link_events, links) = mpsc::unbounded_channel();
     let (connected_in, connected) = mpsc::unbounded_channel();
@@ -321,7 +355,11 @@ async fn serve(
             Some(done) = disk.recv() => lab.disk(done),
             _ = every.tick() => lab.tick(),
             job = jobs.recv() => match job {
-                Some(job) => job(&mut lab),
+                // What the job had the downloads ask for is done, and what they told is kept.
+                Some(job) => {
+                    job(&mut lab);
+                    lab.after();
+                }
                 None => {
                     let ours = lab.ours.clone();
                     lab.manager.close(&ours);

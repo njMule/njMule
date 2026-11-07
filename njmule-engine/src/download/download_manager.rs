@@ -36,7 +36,7 @@ use crate::protocol::ed2k::server_messages::{FoundSources, LOW_ID_LIMIT};
 use crate::protocol::packet::Packet;
 use crate::security::path_sanitizer;
 use crate::server::server_list;
-use crate::util::{instants, ipv4, white_space};
+use crate::util::{instants, ipv4, ipv6, white_space};
 
 /// A source that keeps us in its queue is asked again this often.
 pub const REASK_INTERVAL: Duration = Duration::from_secs(29 * 60);
@@ -54,6 +54,8 @@ pub const MAX_CALLBACKS: usize = 32;
 pub const CALLBACK_WAIT: Duration = Duration::from_secs(60);
 /// Sessions starting at once at most.
 pub const MAX_STARTING: usize = 8;
+/// How long the sources at an address that sent corrupt data are kept out.
+pub const CORRUPT_BAN: Duration = Duration::from_secs(2 * 60 * 60);
 
 const MAX_FAILURES: u32 = 3;
 const RATE_WINDOW: usize = 5;
@@ -65,6 +67,21 @@ const PREVIEW_START: u64 = 16 * 1024;
 
 /// What the downloads take the time from: [`Instant::now`] but in tests.
 pub type Clock = Box<dyn Fn() -> Instant + Send>;
+
+/// What the engine does for the downloads.
+pub struct Hooks {
+    /// Whether the IP filter blocks an IPv4 address, as [`crate::util::ipv4`] holds it.
+    pub blocked: Box<dyn Fn(u32) -> bool + Send>,
+    /// Keeps the link of a download about to be deleted for receiving nothing; false keeps the download.
+    pub keep_link: Box<dyn FnMut(&FileLink) -> bool + Send>,
+}
+
+impl Hooks {
+    /// No IP filter, and no link kept, so that no idle download is deleted.
+    pub fn none() -> Self {
+        Self { blocked: Box::new(|_| false), keep_link: Box::new(|_| false) }
+    }
+}
 
 /// The server connection, as far as the downloads use it.
 pub trait ServerLink {
@@ -89,6 +106,8 @@ pub struct Settings {
     /// Whether the names of new downloads are tidied, without the words of `name_cleanups` (apart by `|`).
     pub clean_up_new_names: bool,
     pub name_cleanups: String,
+    /// A running download that receives nothing for this many days is deleted, 0 for never.
+    pub auto_delete_days: u32,
 }
 
 /// What the downloads ask of the network side.
@@ -118,6 +137,8 @@ pub enum DownloadEvent {
         reason: String,
     },
     Removed([u8; 16]),
+    /// The source at the address sent corrupt data: its sources were dropped, and none is taken there for a while.
+    CorruptSender(IpAddr),
 }
 
 // A firewalled source asked through the server to connect to us.
@@ -215,6 +236,11 @@ pub struct DownloadManager {
     events: Vec<DownloadEvent>,
     clock: Clock,
     categories: Vec<Category>,
+    hooks: Hooks,
+    // Until when the sources at each address that sent corrupt data, IPv6 ones by their /64, are kept out.
+    corrupt_senders: HashMap<IpAddr, Instant>,
+    // How far the idle time of the downloads is counted.
+    idle_counted: Instant,
 }
 
 impl DownloadManager {
@@ -226,6 +252,7 @@ impl DownloadManager {
         min_free: download_queue::MinFree,
         disk: UnboundedSender<DiskDone>,
         clock: Clock,
+        hooks: Hooks,
     ) -> io::Result<Self> {
         let incoming = incoming_dir.to_path_buf();
         let queue = DownloadQueue::load(temp_dir, Box::new(move |_| incoming.clone()), min_free, disk)?;
@@ -243,6 +270,9 @@ impl DownloadManager {
             events: Vec::new(),
             clock,
             categories: Vec::new(),
+            hooks,
+            corrupt_senders: HashMap::new(),
+            idle_counted: now,
         })
     }
 
@@ -481,6 +511,46 @@ impl DownloadManager {
         self.queue.get_mut(hash)
     }
 
+    /// Adds a source the user typed, LAN addresses too, as long as the IP filter allows it; false for an unknown
+    /// download or a refused source.
+    pub fn add_source_by_hand(&mut self, hash: &[u8; 16], address: SocketAddr, settings: &Settings) -> bool {
+        let Some(before) = self.entries.get(hash).map(|entry| entry.sources.len()) else {
+            return false;
+        };
+        self.add_link_source(hash, address, settings);
+        if self.entries.get(hash).is_some_and(|entry| entry.sources.len() > before) {
+            self.progress(hash);
+            return true;
+        }
+        false
+    }
+
+    /// Drops the sources the IP filter now refuses, ending their sessions; returns how many. LAN sources stay: some
+    /// were given by the user.
+    pub fn drop_blocked_sources(&mut self, ours: &Hello) -> usize {
+        let blocked: Vec<SocketAddr> = self
+            .clients
+            .keys()
+            .filter(|address| match address.ip() {
+                IpAddr::V4(ip) => (self.hooks.blocked)(u32::from(ip)),
+                IpAddr::V6(_) => false,
+            })
+            .copied()
+            .collect();
+        self.drop_sources(&blocked, "the IP filter blocks it", ours)
+    }
+
+    /// Drops the sources at `ip`, which sent corrupt data, and keeps them out while [`CORRUPT_BAN`] lasts.
+    pub fn ban_corrupt_sender(&mut self, ip: IpAddr, ours: &Hello) {
+        tracing::info!("{ip} sent corrupt data: its sources are dropped");
+        let sender = ipv6::network(ip);
+        self.corrupt_senders.insert(sender, instants::later((self.clock)(), CORRUPT_BAN));
+        let at: Vec<SocketAddr> =
+            self.clients.keys().filter(|address| ipv6::network(address.ip()) == sender).copied().collect();
+        self.drop_sources(&at, "it sent corrupt data", ours);
+        self.events.push(DownloadEvent::CorruptSender(ip));
+    }
+
     /// The sources of every download, as the list of downloading clients shows them.
     pub fn sources(&self) -> Vec<SourceInfo> {
         let mut all = Vec::new();
@@ -564,7 +634,7 @@ impl DownloadManager {
                 continue;
             }
             let ip = ipv4::from_ed2k(source.client_id);
-            if !usable(ip, source.port, settings, our_id) {
+            if !usable(ip, source.port, settings, our_id) || !self.allowed(IpAddr::V4(Ipv4Addr::from(ip))) {
                 continue;
             }
             let address = SocketAddr::from((Ipv4Addr::from(ip), source.port));
@@ -612,7 +682,17 @@ impl DownloadManager {
         }
         self.send_callbacks(server, now);
         let mut starting = self.clients.values().filter(|c| c.session.as_ref().is_some_and(is_starting)).count();
+        self.corrupt_senders.retain(|_, until| now < *until);
+        // Only the time it could have received counts: running, with room on the disk, and with eD2K up.
+        let online = server.client_id() != 0;
+        let counted = now.saturating_duration_since(self.idle_counted).as_secs();
+        self.idle_counted = instants::later(self.idle_counted, Duration::from_secs(counted));
+        let limit = u64::from(settings.auto_delete_days).saturating_mul(24 * 60 * 60);
+        let mut stale = Vec::new();
         for hash in self.by_priority() {
+            if self.idle_too_long(&hash, online, counted, limit) {
+                stale.push(hash);
+            }
             let Some(entry) = self.entries.get_mut(&hash) else {
                 continue;
             };
@@ -646,7 +726,68 @@ impl DownloadManager {
                 self.progress(&hash);
             }
         }
+        for hash in stale {
+            self.delete_idle(&hash, settings.auto_delete_days, ours);
+        }
         self.settle(ours);
+    }
+
+    // Whether a running download received nothing for `limit` seconds, counting `seconds` more of idle time unless it
+    // received data; 0 counts no limit.
+    fn idle_too_long(&mut self, hash: &[u8; 16], online: bool, seconds: u64, limit: u64) -> bool {
+        let received = self.entries.get(hash).is_some_and(|entry| entry.received > 0);
+        let Some((active, idle)) = self.queue.get(hash).map(|d| (d.is_active(), d.file.idle_seconds())) else {
+            return false;
+        };
+        if received {
+            self.queue.set_idle_seconds(hash, 0);
+        } else if online && active {
+            self.queue.set_idle_seconds(hash, idle.saturating_add(seconds));
+        }
+        limit > 0 && active && self.queue.get(hash).is_some_and(|d| d.file.idle_seconds() >= limit)
+    }
+
+    fn delete_idle(&mut self, hash: &[u8; 16], days: u32, ours: &Hello) {
+        let Some(file) = self.queue.get(hash).map(|d| &d.file) else {
+            return;
+        };
+        let name = file.name().to_owned();
+        let link =
+            FileLink::new(name.clone(), file.size(), file.hash(), file.aich_hash(), Vec::new(), Vec::new(), Vec::new());
+        if !link.is_ok_and(|link| (self.hooks.keep_link)(&link)) {
+            // Without its link kept the download stays, and counts its days again.
+            self.queue.set_idle_seconds(hash, 0);
+            return;
+        }
+        tracing::info!("Deleting {name}: it ran {days} days without receiving data");
+        self.cancel(hash, ours);
+    }
+
+    // Takes the sources at `addresses` off every download, ending their sessions; returns how many there were.
+    fn drop_sources(&mut self, addresses: &[SocketAddr], reason: &str, ours: &Hello) -> usize {
+        let mut dropped = 0usize;
+        for address in addresses {
+            let Some(hashes) = self.clients.get(address).map(|client| client.sources.clone()) else {
+                continue;
+            };
+            tracing::debug!("Dropping the source {address}: {reason}");
+            for hash in hashes {
+                self.detach(&hash, address, ours);
+                dropped = dropped.saturating_add(1);
+            }
+        }
+        self.settle(ours);
+        dropped
+    }
+
+    // Whether a source at `ip` may be taken: neither blocked by the IP filter nor at an address that sent corrupt data.
+    fn allowed(&self, ip: IpAddr) -> bool {
+        let blocked = match ip {
+            IpAddr::V4(ip) => (self.hooks.blocked)(u32::from(ip)),
+            IpAddr::V6(_) => false,
+        };
+        let now = (self.clock)();
+        !blocked && !self.corrupt_senders.get(&ipv6::network(ip)).is_some_and(|until| now < *until)
     }
 
     /// The connection asked for by [`Action::Connect`] is open, or could not be.
@@ -892,7 +1033,7 @@ impl DownloadManager {
             QueueEvent::Corrupt { hash, part } => self.recover(&hash, part),
             QueueEvent::CorruptSenders { ips, .. } => {
                 for ip in ips {
-                    tracing::info!("{ip} sent corrupt data");
+                    self.ban_corrupt_sender(ip, ours);
                 }
             }
             QueueEvent::DiskSpace(enough) => {
@@ -1224,12 +1365,13 @@ impl DownloadManager {
         }
     }
 
-    // No client is at 0.x.x.x, at a multicast address or above, nor at an IPv6 address no host has.
+    // No client is at 0.x.x.x, at a multicast address or above, nor at an IPv6 address no host has; the IP filter
+    // applies.
     fn add_link_source(&mut self, hash: &[u8; 16], address: SocketAddr, settings: &Settings) {
         let fits = match address.ip() {
             IpAddr::V4(ip) => {
                 let first = ip.octets()[0];
-                first != 0 && first < 224
+                first != 0 && first < 224 && !(self.hooks.blocked)(u32::from(ip))
             }
             IpAddr::V6(ip) => !ip.is_multicast() && !ip.is_unspecified(),
         };
