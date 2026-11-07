@@ -8,6 +8,7 @@ pub mod kad_contact;
 pub mod kad_identity;
 pub mod kad_lower_case;
 pub mod keywords;
+pub mod lookup;
 pub mod packet_tracking;
 pub mod proven_ids;
 pub mod response_times;
