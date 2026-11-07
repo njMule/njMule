@@ -405,11 +405,14 @@ public final class PortForwarding implements AutoCloseable {
         return opened.size();
     }
 
-    private static void closePinhole(Gateway router, Pinhole p) {
+    // Whether the router closed it; one that did not closes it at the end of its lease.
+    private static boolean closePinhole(Gateway router, Pinhole p) {
         try {
             router.closePinhole(p.id());
+            return true;
         } catch (IOException e) {
             logger.debug("{}: cannot close the pinhole for {}: {}", router.protocol(), p.mapping(), e.getMessage());
+            return false;
         }
     }
 
@@ -461,17 +464,37 @@ public final class PortForwarding implements AutoCloseable {
         if (router == null) {
             return;
         }
+        List<String> removed = new ArrayList<>();
         for (Mapping m : this.mapped) {
             try {
                 router.deleteMapping(m.protocol(), m.port());
+                removed.add(m.toString());
             } catch (IOException e) {
-                logger.debug("{}: cannot remove {}: {}", router.protocol(), m, e.getMessage());
+                logger.info(
+                        "{}: the router at {} did not remove {}, which ends with its lease: {}",
+                        router.protocol(),
+                        router.host(),
+                        m,
+                        e.getMessage());
             }
+        }
+        if (!removed.isEmpty()) {
+            logger.info("{}: {} removed from {}", router.protocol(), String.join(" and ", removed), router.host());
         }
         this.mapped.clear();
         Gateway opener = this.ipv6Firewall != null ? this.ipv6Firewall : router;
+        List<String> closedPinholes = new ArrayList<>();
         for (Pinhole p : this.pinholes) {
-            closePinhole(opener, p);
+            if (closePinhole(opener, p)) {
+                closedPinholes.add(p.mapping().toString());
+            }
+        }
+        if (!closedPinholes.isEmpty()) {
+            logger.info(
+                    "{}: the IPv6 firewall of {} closed to {}",
+                    opener.protocol(),
+                    opener.host(),
+                    String.join(" and ", closedPinholes));
         }
         this.pinholes.clear();
         router.close();

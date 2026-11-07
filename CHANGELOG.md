@@ -15,6 +15,8 @@ All notable changes to this project are documented here. The format follows
 - njMule now stands for New Jack Mule (a jack is the male donkey, a mule's sire) instead of Next
   generation Java Mule: in the About window, the packages' descriptions, the README and the user
   guide.
+- The log tells which ports njMule removed from the router when it stops, and which the router
+  kept.
 
 ### Fixed
 

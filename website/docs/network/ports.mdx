@@ -184,7 +184,9 @@ flowchart TD
   mapping the router lost. A router that only keeps permanent mappings gets permanent ones.
 - With NAT-PMP and PCP a mapping counts only when the router keeps the same port outside, since
   that is the port the networks are told.
-- When njMule exits, it removes the mappings it made, and only those.
+- When njMule exits, it removes the mappings it made, and only those, and the log tells which
+  (`UPnP: TCP 4662 and UDP 4672 removed from 192.168.1.1`). A router that does not answer
+  within five seconds drops them when their lease ends.
 
 The log tells the outcome, for example `UPnP: TCP 4662 and UDP 4672 forwarded by 192.168.1.1`,
 `UPnP: the router at 192.168.1.1 refused TCP 4662 (…)` or `UPnP, NAT-PMP and PCP: no router
