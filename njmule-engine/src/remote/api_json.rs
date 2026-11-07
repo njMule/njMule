@@ -26,6 +26,7 @@ use crate::files::file_types;
 use crate::files::part_file::PartMap;
 use crate::files::shared_files::SharedFile;
 use crate::persist::preferences_codec;
+use crate::remote::rate_history::Rate;
 
 // The passwords the preferences hold, which never leave.
 const SECRETS: [&str; 2] = ["notify.smtpPassword", "proxy.password"];
@@ -183,6 +184,16 @@ pub fn status(status: &EngineStatus, incoming_free: Option<u64>, temp_free: Opti
         }
     }
     out
+}
+
+/// The speed limits, in KiB/s, 0 for none.
+pub fn limits(preferences: &Preferences) -> Value {
+    json!({"uploadKiBps": preferences.max_upload_kibps, "downloadKiBps": preferences.max_download_kibps})
+}
+
+/// Rates `step` seconds apart, oldest first, each as `[down, up]` in bytes a second.
+pub fn rates(step: u32, rates: &[Rate]) -> Value {
+    json!({"step": step, "rates": rates.iter().map(|rate| json!([rate.down, rate.up])).collect::<Vec<_>>()})
 }
 
 /// The answer of a call that only needs to be done.

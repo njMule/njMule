@@ -45,7 +45,7 @@ async fn running_with(preferences: &str) -> Running {
     let port = free_port::free_port();
     fs::write(dirs.config.join("njmule.properties"), format!("net.tcpPort={port}\n{preferences}")).unwrap();
     let engine = Engine::start(dirs).await.unwrap();
-    let endpoint = ControlEndpoint::start(engine.clone()).await.unwrap();
+    let endpoint = ControlEndpoint::start(engine.clone(), None).await.unwrap();
     let line = endpoint.control_line();
     let control: Value = serde_json::from_str(line.strip_prefix("njmule-control ").expect("the control line")).unwrap();
     let url = control["url"].as_str().unwrap();
