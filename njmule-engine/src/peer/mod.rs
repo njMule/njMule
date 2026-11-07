@@ -3,6 +3,7 @@
 
 //! Other clients: greeting them and telling what they run.
 
+pub mod buddy_link;
 pub mod client_history;
 pub mod identities;
 pub mod identity_handshake;
