@@ -9,7 +9,7 @@ pub mod network;
 use std::collections::BTreeMap;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rand::SeedableRng;
@@ -43,6 +43,7 @@ use crate::persist::format::server_met::Server;
 use crate::persist::{preferences_codec, user_hash_store};
 use crate::protocol::ed2k::client_reasks;
 use crate::protocol::ed2k::hello::{self, Hello, Ours};
+use crate::protocol::ed2k::server_messages::LOW_ID_LIMIT;
 use crate::protocol::kad::kad_messages;
 use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::Address;
@@ -77,6 +78,8 @@ pub struct Shared {
     // What our hello tells of Kad while it is connected: its UDP port (low 16 bits), and whether firewalled clients may
     // call us back over it directly (bit 16); 0 otherwise.
     kad_announced: AtomicU32,
+    // Our Kad buddy's IPv4 address and UDP port while firewalled with one, as `ip << 16 | port`; 0 otherwise.
+    kad_buddy: AtomicU64,
     preferences: watch::Sender<Preferences>,
     routes: Routes,
     events: broadcast::Sender<EngineEvent>,
@@ -96,6 +99,11 @@ impl Shared {
     fn announce_kad(&self, udp_port: u16, direct_callback: bool) {
         let announced = if udp_port == 0 { 0 } else { u32::from(udp_port) | u32::from(direct_callback) << 16 };
         self.kad_announced.store(announced, Ordering::Relaxed);
+    }
+
+    /// Tells our hello the address and UDP port of our Kad buddy while we are firewalled with one, 0 otherwise.
+    fn announce_buddy(&self, ip: u32, udp_port: u16) {
+        self.kad_buddy.store(u64::from(ip) << 16 | u64::from(udp_port), Ordering::Relaxed);
     }
 
     /// Our greeting as it stands: on the server we are on, and on Kad while it is connected, which takes re-asks over
@@ -126,7 +134,12 @@ impl Shared {
             }
         }
         let ours = Ours { nick: &preferences.nick, udp_port: kad_port, kad_port, misc_options1, misc_options2 };
-        Hello::of(self.user_hash, context.client_id, self.listen_port(), &ours, context.ip, context.port)
+        let hello = Hello::of(self.user_hash, context.client_id, self.listen_port(), &ours, context.ip, context.port);
+        // Firewalled with a buddy: clients that know us reach us through it.
+        let buddy = self.kad_buddy.load(Ordering::Relaxed);
+        let buddy_ip = u32::try_from(buddy >> 16).unwrap_or(0);
+        let buddy_port = u16::try_from(buddy & 0xFFFF).unwrap_or(0);
+        if buddy_ip != 0 && context.client_id < LOW_ID_LIMIT { hello.with_buddy(buddy_ip, buddy_port) } else { hello }
     }
 }
 
@@ -191,6 +204,7 @@ impl Engine {
             user_hash,
             listen_port: AtomicU16::new(listen_port),
             kad_announced: AtomicU32::new(0),
+            kad_buddy: AtomicU64::new(0),
             preferences,
             routes,
             events,

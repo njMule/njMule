@@ -7,14 +7,14 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{self, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use tokio::sync::mpsc;
 
-use super::{Network, Rater, Tick};
+use super::{Network, PeerEvent, Rater, Tick};
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::{Buddy, KadInfo};
 use crate::api::kad_search_info::KadSearchInfo;
@@ -23,16 +23,20 @@ use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::download::download_manager::{KadLink, KadSource};
 use crate::engine::{Shared, crypt_options};
 use crate::kad::kad_identity::KadIdentity;
-use crate::kad::kad_node::{self, BuddyState, Host, KadEvent, KadNode, SearchHandle, Settings};
+use crate::kad::kad_node::{self, Buddies, BuddyState, Host, KadEvent, KadNode, SearchHandle, Settings};
 use crate::kad::kad_publisher::{self, KadPublisher};
 use crate::kad::kad_socket::{Incoming, KadSocket, Keys};
+use crate::kad::uint128::UInt128;
 use crate::net::relay_keeper::{Level, RelayKeeper};
 use crate::net::routes::Routes;
 use crate::net::tcp_connector;
+use crate::peer::buddy_link::{BuddyAction, BuddyLink};
 use crate::peer::peer_greetings;
+use crate::peer::peer_link::{LinkHandle, LinkId};
 use crate::persist::format::nodes_dat;
+use crate::protocol::ed2k::client_reasks::Relayed;
 use crate::protocol::ed2k::hello::Hello;
-use crate::protocol::ed2k::low_id_messages::UdpCheckRequest;
+use crate::protocol::ed2k::low_id_messages::{Callback, UdpCheckRequest};
 use crate::protocol::ed2k::server_messages::LOW_ID_LIMIT;
 use crate::protocol::packet::opcodes::{client, client_udp, extended};
 use crate::protocol::packet::{Packet, frame_limits, protocol};
@@ -68,18 +72,27 @@ pub(super) struct KadSide {
     known: Arc<Mutex<HashSet<u32>>>,
     // The keyword searches Kad runs, by the number the search manager gave them.
     searches: HashMap<SearchHandle, u64>,
+    // The TCP link to our buddy, or to the firewalled node we serve, which the node shares.
+    buddies: Arc<Mutex<BuddyLink>>,
 }
 
 impl KadSide {
     pub(super) fn new(incoming: mpsc::UnboundedSender<Incoming>) -> Self {
+        let known: Arc<Mutex<HashSet<u32>>> = Arc::default();
+        let dealt_with = Arc::clone(&known);
+        let buddies = BuddyLink::new(
+            Box::new(Instant::now),
+            Box::new(move |ip| dealt_with.lock().unwrap_or_else(PoisonError::into_inner).contains(&ip)),
+        );
         Self {
             running: None,
             stopped_by_hand: false,
             port_taken: 0,
             since_port_retry: 0,
             incoming,
-            known: Arc::default(),
+            known,
             searches: HashMap::new(),
+            buddies: Arc::new(Mutex::new(buddies)),
         }
     }
 
@@ -217,6 +230,7 @@ impl Network {
         let mut node = KadNode::new(identity, Box::new(socket.transport()), Box::new(host), settings, config, {
             Box::new(Instant::now)
         });
+        node.use_buddies(Box::new(SharedBuddies(Arc::clone(&self.kad.buddies))));
         node.load_nodes();
         node.load_index();
         tracing::info!("Kad id {} on UDP port {}", identity.id().to_hex(), socket.port());
@@ -233,6 +247,7 @@ impl Network {
         let Some(mut running) = self.kad.running.take() else {
             return;
         };
+        self.buddies().release();
         running.node.close();
         running.relay.close();
         tokio::spawn(running.socket.close());
@@ -243,6 +258,7 @@ impl Network {
     pub(super) fn take_kad_socket(&mut self) -> Option<KadSocket> {
         self.kad.searches.clear();
         let mut running = self.kad.running.take()?;
+        self.buddies().release();
         running.node.close();
         running.relay.close();
         self.kad.port_taken = 0;
@@ -368,6 +384,8 @@ impl Network {
                 if let Some(running) = &mut self.kad.running {
                     running.node.received(ip, port, &packet, receiver_key, sender_key);
                 }
+                // A node may have offered to be our buddy.
+                self.buddy_actions();
             }
             Incoming::Client { ip, port, packet } => {
                 self.client_datagram(SocketAddr::from((Ipv4Addr::from(ip), port)), &packet);
@@ -376,22 +394,28 @@ impl Network {
         }
     }
 
-    // A client datagram on Kad's port: a source answers our re-ask, or a client waiting in our queue asks again for its
-    // place, which is answered over the same port, obfuscated for it when we know its user hash, plain over IPv6.
+    // A client datagram on Kad's port: a source answers our re-ask, a client waiting in our queue asks again for its
+    // place, or one asks again for its place in the queue of the firewalled node we serve as its buddy.
     fn client_datagram(&mut self, from: SocketAddr, packet: &Packet) {
         match packet.opcode() {
-            client_udp::REASKFILEPING => {}
+            client_udp::REASKFILEPING => self.answer_reask(from, packet),
             client_udp::REASKACK | client_udp::QUEUEFULL | client_udp::FILENOTFOUND => {
                 let ours = self.shared.our_hello();
                 self.downloads.reask_answered(from, packet, &ours);
                 self.after_downloads();
-                return;
             }
-            _ => {
-                tracing::trace!("Client datagram {:#04x} from {from}", packet.opcode());
-                return;
+            client_udp::REASKCALLBACKUDP => {
+                if let SocketAddr::V4(v4) = from {
+                    self.buddies().relay_reask(u32::from(*v4.ip()), v4.port(), packet);
+                }
             }
+            _ => tracing::trace!("Client datagram {:#04x} from {from}", packet.opcode()),
         }
+    }
+
+    // The re-ask of a client waiting in our queue, answered over Kad's port, obfuscated for it when we know its user
+    // hash, plain over IPv6.
+    fn answer_reask(&mut self, from: SocketAddr, packet: &Packet) {
         let (files, downloads) = (&self.shared_files, &self.downloads);
         let find = |hash: &[u8; 16]| super::uploadable(files, downloads, hash);
         let Some(answer) = self.uploads.reasked(from.ip(), from.port(), packet, &find, Instant::now()) else {
@@ -460,6 +484,123 @@ impl Network {
                 self.start_kad();
             }
         }
+        if self.kad.running.is_some() {
+            self.buddies().tick();
+            self.buddy_actions();
+        }
+        // Firewalled with a buddy: clients that know us reach us through it.
+        let firewalled = self.kad.running.as_ref().is_some_and(|running| {
+            running.node.is_connected() && running.node.is_firewalled() && running.node.buddy_ip() != 0
+        });
+        let (ip, port) = if firewalled {
+            let buddy = self.buddies();
+            (buddy.buddy_ip(), buddy.buddy_udp_port())
+        } else {
+            (0, 0)
+        };
+        self.shared.announce_buddy(ip, port);
+    }
+
+    fn buddies(&self) -> MutexGuard<'_, BuddyLink> {
+        self.kad.buddies.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(super) fn has_buddy_link(&self, link: LinkId) -> bool {
+        self.buddies().has_link(link)
+    }
+
+    /// The client on `link`, which we connected to, answered our hello.
+    pub(super) fn buddy_greeted(&mut self, link: LinkId, hello: &Hello) {
+        self.buddies().greeted(link, hello);
+        self.buddy_actions();
+    }
+
+    /// A client that connected to us greeted us: the firewalled node we agreed to serve becomes our buddy.
+    pub(super) fn buddy_adopt(&mut self, link: &LinkHandle, hello: &Hello) {
+        self.buddies().adopt(link, hello);
+    }
+
+    pub(super) fn buddy_packet(&mut self, link: LinkId, packet: &Packet) {
+        self.buddies().received(link, packet);
+        self.buddy_actions();
+    }
+
+    pub(super) fn buddy_closed(&mut self, link: LinkId, reason: Option<&str>) {
+        self.buddies().closed(link, reason);
+        self.buddy_actions();
+    }
+
+    // Our hello goes first on the connection to a node that offered to be our buddy, which answers it.
+    pub(super) fn buddy_dialed(&mut self, attempt: u64, result: io::Result<tcp_connector::Connection>) {
+        match result {
+            Ok(connection) => {
+                let handle = self.new_link(connection, None);
+                handle.set_timeout(peer_greetings::HELLO_TIMEOUT);
+                let wanted = self.buddies().opened(attempt, &handle);
+                match self.shared.our_hello().to_peer_at(&handle.remote().ip()).encode(false) {
+                    Ok(hello) if wanted => {
+                        handle.send(hello);
+                    }
+                    Ok(_) => handle.close(),
+                    Err(e) => {
+                        tracing::warn!("Cannot greet {}: {e}", handle.remote());
+                        handle.close();
+                    }
+                }
+            }
+            Err(e) => self.buddies().failed(attempt, &e.to_string()),
+        }
+        self.buddy_actions();
+    }
+
+    // Acts on what the buddy link asked for or passed on.
+    fn buddy_actions(&mut self) {
+        let actions = self.buddies().take_actions();
+        for action in actions {
+            match action {
+                BuddyAction::Connect { attempt, address, user_hash, connect_options } => {
+                    self.dial_buddy(attempt, address, user_hash, connect_options);
+                }
+                BuddyAction::CallBack(callback) => self.relayed_callback(&callback),
+                BuddyAction::AnswerReask(reask) => self.relayed_reask(&reask),
+                BuddyAction::Rendezvous { from, .. } => {
+                    tracing::debug!("Ignoring a rendezvous relayed from {from}: no traversal of routers");
+                }
+            }
+        }
+    }
+
+    fn dial_buddy(&mut self, attempt: u64, address: SocketAddrV4, user_hash: [u8; 16], connect_options: u8) {
+        let obfuscation = self.shared.preferences.borrow().obfuscation;
+        let obfuscate_for =
+            (connect_options & 0x01 != 0 && obfuscation != ObfuscationMode::Disabled).then_some(user_hash);
+        let events = self.peer_events.clone();
+        let routes = self.shared.routes.clone();
+        tokio::spawn(async move {
+            let mut random = StdRng::from_rng(&mut rand::rng());
+            let timeout = peer_greetings::HELLO_TIMEOUT;
+            let connection =
+                tcp_connector::connect_to_client(address.into(), obfuscate_for, timeout, &routes, &mut random).await;
+            let _ = events.send(PeerEvent::BuddyDialed(attempt, Box::new(connection)));
+        });
+    }
+
+    // Our buddy relays a client's callback request: for a file we share or download, we connect to it.
+    fn relayed_callback(&mut self, callback: &Callback) {
+        let file = callback.file.to_big_endian();
+        let ours = self.kad.running.as_ref().is_some_and(|running| running.node.is_our_buddy_id(callback.buddy_id));
+        if !ours || (self.shared_files.get(&file).is_none() && self.downloads.find(&file).is_none()) {
+            tracing::debug!("Ignoring a callback relayed for {}", callback.file.to_hex());
+            return;
+        }
+        let address = SocketAddrV4::new(Ipv4Addr::from(callback.requester_ip), callback.requester_port);
+        self.call_client_back(address, None, "through our buddy");
+    }
+
+    // Our buddy relays the re-ask of a client: answered straight to the client, as one it sent us.
+    fn relayed_reask(&mut self, reask: &Relayed) {
+        let from = SocketAddr::from((Ipv4Addr::from(reask.requester_ip), reask.requester_port));
+        self.answer_reask(from, &reask.ping);
     }
 
     // What Kad's searches found goes to the searches still open, and the sources to the downloads; the notes have no
@@ -735,4 +876,43 @@ async fn ask_for_datagram(
     })
     .await;
     Ok(true)
+}
+
+/// The buddy link as the Kad node holds it, shared with the network.
+struct SharedBuddies(Arc<Mutex<BuddyLink>>);
+
+impl SharedBuddies {
+    fn link(&self) -> MutexGuard<'_, BuddyLink> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+impl Buddies for SharedBuddies {
+    fn state(&self) -> BuddyState {
+        self.link().state()
+    }
+
+    fn buddy_ip(&self) -> u32 {
+        self.link().buddy_ip()
+    }
+
+    fn buddy_udp_port(&self) -> u16 {
+        self.link().buddy_udp_port()
+    }
+
+    fn offered(&mut self, ip: u32, tcp_port: u16, udp_port: u16, user_hash: [u8; 16], connect_options: u8) {
+        self.link().offered(ip, tcp_port, udp_port, user_hash, connect_options);
+    }
+
+    fn asked(&mut self, ip: u32, tcp_port: u16, udp_port: u16, user_hash: [u8; 16], buddy_id: UInt128) -> bool {
+        self.link().asked(ip, tcp_port, udp_port, user_hash, buddy_id)
+    }
+
+    fn relay(&mut self, buddy_id: UInt128, file: UInt128, requester_ip: u32, requester_port: u16) -> bool {
+        self.link().relay(buddy_id, file, requester_ip, requester_port)
+    }
+
+    fn release(&mut self) {
+        self.link().release();
+    }
 }
