@@ -211,8 +211,8 @@ pub fn source(info: &SourceInfo) -> Value {
         "parts": info.parts,
         "partCount": info.part_count,
         "reportedName": info.reported_name,
-        "askedFor": null,
-        "askedForName": "",
+        "askedFor": info.asked_for.as_ref().map(hash),
+        "askedForName": info.asked_for_name,
         "country": null,
     })
 }

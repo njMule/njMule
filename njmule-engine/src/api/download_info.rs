@@ -139,4 +139,7 @@ pub struct SourceInfo {
     pub parts: usize,
     pub part_count: usize,
     pub reported_name: Option<String>,
+    /// In state [`SourceState::A4af`], the download the client is asked for instead, with its name.
+    pub asked_for: Option<[u8; 16]>,
+    pub asked_for_name: String,
 }

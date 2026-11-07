@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use download_lab::{Downloads, Engine, Lab};
 use njmule_engine::api::category;
-use njmule_engine::api::download_info::{DownloadInfo, DownloadStatus, SourceInfo, SourceState};
+use njmule_engine::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus, SourceInfo, SourceState};
 use njmule_engine::api::ed2k_link::{FileLink, Source};
 use njmule_engine::download::download_manager::{self, CALLBACK_WAIT, DownloadEvent, MIN_REASK};
 use njmule_engine::download::download_queue::SPACE_CHECK;
@@ -43,6 +43,7 @@ use scripted_source::{Link, ScriptedSource, WAIT};
 
 const OUR_ID: u32 = u32::from_le_bytes([198, 51, 100, 7]);
 const PEER: [u8; 16] = [0x5e; 16];
+const UNKNOWN: [u8; 16] = [0x3a; 16];
 
 // A download of three blocks with a trusted AICH hash, whose first source, unable to send recovery data, sent the last
 // block corrupt; a second source, able to, was then added by hand.
@@ -598,6 +599,32 @@ impl Sources {
                 addresses.into_iter().map(|address| lab.manager.add_source_by_hand(&hash, address, &settings)).collect()
             })
             .await;
+    }
+
+    async fn when_every_change_is_asked_for_the_unknown_download(&mut self) {
+        self.results = self
+            .run(|lab| {
+                let (ours, settings) = (lab.ours.clone(), lab.settings.clone());
+                let at = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), download_lab::PORT);
+                vec![
+                    lab.manager.stop_by_schedule(&UNKNOWN, &ours),
+                    lab.manager.set_priority(&UNKNOWN, DownloadPriority::High),
+                    lab.manager.cancel(&UNKNOWN, &ours),
+                    lab.manager.resume(&UNKNOWN, &ours),
+                    lab.manager.set_preview_first(&UNKNOWN, true),
+                    lab.manager.set_category(&UNKNOWN, category::NONE),
+                    lab.manager.add_source_by_hand(&UNKNOWN, at, &settings),
+                ]
+            })
+            .await;
+    }
+
+    async fn then_the_unknown_download_has_no_comments(&self) {
+        assert!(self.run(|lab| lab.manager.comments(&UNKNOWN)).await.is_empty());
+    }
+
+    async fn then_the_unknown_download_has_no_source_to_pass_on(&self) {
+        assert!(self.run(|lab| lab.manager.exchangeable(&UNKNOWN)).await.is_empty());
     }
 
     async fn when_the_download_is_set_to_preview_first(&mut self) {
@@ -1287,4 +1314,17 @@ async fn should_ask_firewalled_sources_through_the_server_one_at_a_time_and_not_
     sources.when_the_server_finds(8000).await;
 
     sources.then_no_more_callbacks_are_asked_for().await;
+}
+
+#[tokio::test]
+async fn should_change_nothing_for_an_unknown_download() {
+    let mut sources = Sources::new();
+    sources.given_the_manager();
+    sources.given_a_paused_download("known.bin", [0x3b; 16]).await;
+
+    sources.when_every_change_is_asked_for_the_unknown_download().await;
+
+    sources.then_every_one_is_refused();
+    sources.then_the_unknown_download_has_no_comments().await;
+    sources.then_the_unknown_download_has_no_source_to_pass_on().await;
 }
