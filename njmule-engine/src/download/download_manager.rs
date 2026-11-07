@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The downloads and their sources: the clients known to have each file, one session at a time with each client, the
-//! sources the servers find and the firewalled ones asked through the server to connect to us. Kad, the exchange of
-//! sources between clients, asking another file of a client (A4AF) and the download limit wait for their ports.
+//! sources the servers and Kad find, and the firewalled ones asked through the server to connect to us.
 
 use std::collections::HashMap;
 use std::io;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -91,6 +90,13 @@ const MAX_LINK_HOSTS: usize = 16;
 const MAX_COMMENTS: usize = 100;
 // The bytes from the start a player needs to show a file while it grows.
 const PREVIEW_START: u64 = 16 * 1024;
+// Kad is asked for the sources of a download one hour later each time, up to seven.
+const KAD_SEARCH_STEP: Duration = Duration::from_secs(60 * 60);
+const KAD_SEARCH_MAX_STEPS: u32 = 7;
+// Searches for sources running on Kad at once, a second apart at least, each counted for its life.
+const KAD_SEARCHES: usize = 5;
+const KAD_SEARCH_GAP: Duration = Duration::from_secs(1);
+const KAD_SEARCH_LIFE: Duration = Duration::from_secs(45);
 
 // How a client's download stands against its others, the better the greater: not swapped away from, may have parts we
 // need, takes A4AF sources by itself, priority, parts known, the current one.
@@ -117,6 +123,26 @@ pub trait ServerLink {
     fn ask_sources(&mut self, file: &[u8; 16], size: u64) -> bool;
     /// Asks the server to have the LowID client `low_id` connect to us.
     fn request_callback(&mut self, low_id: u32) -> bool;
+}
+
+/// Kad, as far as the downloads use it.
+pub trait KadLink {
+    /// Starts a search for the sources of a file, which come back through [`DownloadManager::found_on_kad`]; false when
+    /// Kad cannot search for it now.
+    fn find_sources(&mut self, file: &[u8; 16], size: u64) -> bool;
+    /// Our address where Kad found us reachable; 0 when unknown or firewalled.
+    fn public_ip(&self) -> u32;
+}
+
+/// A source Kad found, at the address it listens at. A `firewalled` one cannot be connected to: it connects to us when
+/// asked, which needs Kad's callbacks, unless it is reached at its IPv6 address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KadSource {
+    pub address: SocketAddrV4,
+    pub user_hash: Option<[u8; 16]>,
+    pub crypt_options: u8,
+    pub firewalled: bool,
+    pub ipv6: Option<Ipv6Addr>,
 }
 
 /// What the downloads need from the preferences.
@@ -240,6 +266,9 @@ struct Entry {
     comments: IndexMap<SocketAddr, PeerComment>,
     // When a source last told the other sources it knows.
     sources_answered: Option<Instant>,
+    // When Kad is asked for its sources next, and how many times it was.
+    next_kad_search: Instant,
+    kad_steps: u32,
 }
 
 impl Entry {
@@ -258,6 +287,8 @@ impl Entry {
             stopped_by_schedule: false,
             comments: IndexMap::new(),
             sources_answered: None,
+            next_kad_search: now,
+            kad_steps: 0,
         }
     }
 
@@ -298,6 +329,9 @@ pub struct DownloadManager {
     // The settings and our client id the last tick saw, for what the sources tell between ticks.
     settings: Option<Settings>,
     our_id: u32,
+    // When each search for sources running on Kad counts as over, and when the next may start.
+    kad_searching: Vec<Instant>,
+    next_kad_start: Instant,
 }
 
 impl DownloadManager {
@@ -335,6 +369,8 @@ impl DownloadManager {
             comment_filter: CommentFilter::default(),
             settings: None,
             our_id: 0,
+            kad_searching: Vec::new(),
+            next_kad_start: now,
         })
     }
 
@@ -438,6 +474,8 @@ impl DownloadManager {
         if let Some(entry) = self.entries.get_mut(hash) {
             entry.next_server_ask = now;
             entry.stopped_by_schedule = false;
+            entry.next_kad_search = now;
+            entry.kad_steps = 0;
         }
         self.progress(hash);
         self.settle(ours);
@@ -721,6 +759,80 @@ impl DownloadManager {
         tracing::debug!("{added} of {} sources from the server are new", found.sources.len());
     }
 
+    /// Sources Kad found for `file`. A stopped download takes none, nor any source with our user hash or at our address,
+    /// as the server with our HighID or Kad (`kad_public_ip`) sees it; a firewalled one only at its IPv6 address, while
+    /// we have IPv6 too.
+    pub fn found_on_kad(
+        &mut self,
+        file: &[u8; 16],
+        sources: &[KadSource],
+        kad_public_ip: u32,
+        settings: &Settings,
+        ours: &Hello,
+    ) {
+        // A stopped download has forgotten its sources and takes none until it is resumed.
+        if self.queue.get(file).is_none_or(|d| d.file.status() == Status::Stopped) {
+            return;
+        }
+        let our_id = self.our_id;
+        for source in sources {
+            if source.user_hash == Some(ours.user_hash) {
+                continue;
+            }
+            let address = if source.firewalled {
+                match (ours.ipv6(), source.ipv6) {
+                    (Some(our_ipv6), Some(their_ipv6)) if our_ipv6 != their_ipv6 => {
+                        SocketAddr::from((their_ipv6, source.address.port()))
+                    }
+                    _ => continue,
+                }
+            } else {
+                let ip = u32::from(*source.address.ip());
+                let at_ours = source.address.port() == settings.listen_port && ip == kad_public_ip;
+                if at_ours
+                    || !usable(ip, source.address.port(), settings, our_id)
+                    || !self.allowed(IpAddr::V4(*source.address.ip()))
+                {
+                    continue;
+                }
+                SocketAddr::V4(source.address)
+            };
+            if self.add_source(file, address, settings)
+                && let Some(client) = self.clients.get_mut(&address)
+            {
+                // A client known already keeps the user hash it told us itself.
+                if client.user_hash.is_none() && source.user_hash.is_some() {
+                    client.user_hash = source.user_hash;
+                    client.crypt_options = source.crypt_options;
+                }
+                if client.ipv6.is_none() {
+                    client.ipv6 = source.ipv6;
+                }
+            }
+        }
+    }
+
+    // Asks Kad for the sources of a running download, when its time has come and Kad has room for one more search.
+    fn search_kad(&mut self, hash: &[u8; 16], size: u64, kad: &mut dyn KadLink, now: Instant, settings: &Settings) {
+        self.kad_searching.retain(|over| now < *over);
+        let due = self
+            .entries
+            .get(hash)
+            .is_some_and(|entry| now >= entry.next_kad_search && entry.sources.len() < settings.max_sources_per_file);
+        if !due || self.kad_searching.len() >= KAD_SEARCHES || now < self.next_kad_start {
+            return;
+        }
+        if !kad.find_sources(hash, size) {
+            return;
+        }
+        self.kad_searching.push(instants::later(now, KAD_SEARCH_LIFE));
+        self.next_kad_start = instants::later(now, KAD_SEARCH_GAP);
+        if let Some(entry) = self.entries.get_mut(hash) {
+            entry.kad_steps = entry.kad_steps.saturating_add(1).min(KAD_SEARCH_MAX_STEPS);
+            entry.next_kad_search = instants::later(now, KAD_SEARCH_STEP.saturating_mul(entry.kad_steps));
+        }
+    }
+
     /// The host names of a link's sources resolved: each address becomes a source.
     pub fn resolved(&mut self, file: &[u8; 16], addresses: &[SocketAddr], settings: &Settings) {
         for address in addresses {
@@ -728,8 +840,15 @@ impl DownloadManager {
         }
     }
 
-    /// Once a second: sessions that stalled, callbacks, the server asked for sources, sessions started.
-    pub fn tick(&mut self, server: &mut dyn ServerLink, settings: &Settings, ours: &Hello) {
+    /// Once a second: sessions that stalled, callbacks, the server and Kad, when it runs, asked for sources, sessions
+    /// started.
+    pub fn tick(
+        &mut self,
+        server: &mut dyn ServerLink,
+        mut kad: Option<&mut dyn KadLink>,
+        settings: &Settings,
+        ours: &Hello,
+    ) {
         let now = (self.clock)();
         self.queue.tick(now);
         let addresses: Vec<SocketAddr> = self.clients.keys().copied().collect();
@@ -765,8 +884,8 @@ impl DownloadManager {
         }
         let mut starting = self.clients.values().filter(|c| c.session.as_ref().is_some_and(is_starting)).count();
         self.corrupt_senders.retain(|_, until| now < *until);
-        // Only the time it could have received counts: running, with room on the disk, and with eD2K up.
-        let online = server.client_id() != 0;
+        // Only the time it could have received counts: running, with room on the disk, and with eD2K or Kad up.
+        let online = server.client_id() != 0 || kad.is_some();
         let counted = now.saturating_duration_since(self.idle_counted).as_secs();
         self.idle_counted = instants::later(self.idle_counted, Duration::from_secs(counted));
         let limit = u64::from(settings.auto_delete_days).saturating_mul(24 * 60 * 60);
@@ -802,6 +921,9 @@ impl DownloadManager {
                     server,
                     settings,
                 ));
+                if let Some(kad) = kad.as_deref_mut() {
+                    self.search_kad(&hash, size, kad, now, settings);
+                }
             }
             let changed = self.entries.get_mut(&hash).is_some_and(|entry| std::mem::take(&mut entry.changed));
             if changed {

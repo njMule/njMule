@@ -15,7 +15,7 @@
 mod download_lab;
 mod scripted_source;
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -27,7 +27,7 @@ use njmule_engine::api::ed2k_link::{FileLink, Source};
 use njmule_engine::api::file_comment::FileComment;
 use njmule_engine::config::obfuscation_mode::ObfuscationMode;
 use njmule_engine::download::download_manager::REASK_INTERVAL;
-use njmule_engine::download::download_manager::{self, CALLBACK_WAIT, DownloadEvent, MIN_REASK};
+use njmule_engine::download::download_manager::{self, CALLBACK_WAIT, DownloadEvent, KadSource, MIN_REASK};
 use njmule_engine::download::download_queue::SPACE_CHECK;
 use njmule_engine::files::hash::aich_recovery;
 use njmule_engine::files::hash::ed2k::EMBLOCKSIZE;
@@ -80,6 +80,8 @@ struct Sources {
     results: Vec<bool>,
     accepted: bool,
     passed_on: bool,
+    kad: bool,
+    source_count: usize,
 }
 
 impl Sources {
@@ -104,6 +106,8 @@ impl Sources {
             results: Vec::new(),
             accepted: false,
             passed_on: false,
+            kad: false,
+            source_count: 0,
         }
     }
 
@@ -458,12 +462,45 @@ impl Sources {
         self.found(hash, vec![(low_id, None)]).await;
     }
 
+    fn given_kad_that_looks_for_sources(&mut self) {
+        self.kad = true;
+    }
+
+    async fn given_kad_looked_for_its_sources(&self) {
+        let hash = self.hash;
+        self.downloads().wait_for("Kad searched", move |lab| lab.kad_asked().contains(&hash)).await;
+    }
+
+    async fn when_kad_finds_a_source_once_the_download_is_stopped(&mut self) {
+        let hash = self.hash;
+        let found = KadSource {
+            address: SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 60), download_lab::PORT),
+            user_hash: None,
+            crypt_options: 0,
+            firewalled: false,
+            ipv6: None,
+        };
+        self.source_count = self
+            .run(move |lab| {
+                let ours = lab.ours.clone();
+                lab.manager.stop(&hash, &ours);
+                lab.kad_found(&hash, &[found]);
+                lab.manager.download(&hash).unwrap().sources
+            })
+            .await;
+    }
+
+    fn then_the_download_got_no_source(&self) {
+        assert_eq!(self.source_count, 0);
+    }
+
     fn given_the_manager(&mut self) {
         let engine = Engine {
             min_free: self.min_free,
             incoming: self.incoming.clone(),
             our_ipv6: self.our_ipv6,
             blocked: vec![u32::from(BLOCKED_IP)],
+            kad_running: self.kad,
             ..Engine::default()
         };
         let mut settings = Downloads::settings();
@@ -1669,4 +1706,17 @@ async fn should_hang_up_on_a_connected_source_the_ip_filter_comes_to_block() {
 
     sources.then_the_connection_closes().await;
     sources.then_the_download_has_sources(0).await;
+}
+
+#[tokio::test]
+async fn should_leave_out_the_kad_sources_of_a_stopped_download() {
+    let mut sources = Sources::new();
+    sources.given_kad_that_looks_for_sources();
+    sources.given_the_manager();
+    sources.given_a_download("kad.bin", [0x39; 16]).await;
+    sources.given_kad_looked_for_its_sources().await;
+
+    sources.when_kad_finds_a_source_once_the_download_is_stopped().await;
+
+    sources.then_the_download_got_no_source();
 }

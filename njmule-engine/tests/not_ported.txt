@@ -134,10 +134,6 @@ UploadManagerTest.shouldPassAClientsUdpTestRequestToKadWithItsAddress
 UInt128Test.shouldRefuseBigEndianBytesOfTheWrongLength
 UInt128Test.shouldRefuseABitOutsideTheId
 
-# Kad's sources come with Kad (area 5).
-DownloadManagerTest.shouldKeepOnlyUsableSourcesFromKad
-DownloadSourcesTest.shouldLeaveOutTheKadSourcesOfAStoppedDownload
-DownloadOwnSourceTest.shouldLeaveOutAKadSourceWithOurUserHashOrAtOurAddress
 # The next pieces of the download manager: re-asks over UDP (sent through the client UDP port, which comes with Kad).
 DownloadSourcesTest.shouldAskAQueuedSourceAgainOverUdpShortlyBeforeItsTime
 DownloadSourcesTest.shouldAskAQueuedSourceAtAnIpv6AddressAgainOverUdpPlain
