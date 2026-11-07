@@ -1061,6 +1061,15 @@ impl Network {
                     self.publish(EngineEvent::DownloadFailed { download: info, reason });
                 }
                 DownloadEvent::Removed(hash) => self.publish(EngineEvent::DownloadRemoved(hash)),
+                DownloadEvent::DiskSpace(true) => {
+                    tracing::info!("There is free space on the temp disk again: downloads go on");
+                }
+                DownloadEvent::DiskSpace(false) => {
+                    tracing::warn!("Not enough free space on the temp disk: downloads wait until there is room");
+                }
+                DownloadEvent::CorruptPart { info, part } => {
+                    tracing::warn!("Part {part} of {} arrived corrupt and is downloaded again", info.name);
+                }
                 DownloadEvent::CorruptSender(ip) => {
                     self.uploads.ban(ip, Instant::now(), "it sent corrupt data");
                     tracing::warn!("Banned {ip} for two hours: it sent corrupt data");

@@ -172,6 +172,31 @@ impl DownloadSession {
         }
     }
 
+    /// The session, for diagnostics: the source, where it stands and the blocks it waits for.
+    pub fn describe(&self) -> String {
+        let state = match self.state {
+            State::Connecting => "CONNECTING",
+            State::Greeting => "GREETING",
+            State::Requesting => "REQUESTING",
+            State::Queued => "QUEUED",
+            State::Downloading => "DOWNLOADING",
+            State::Ended => "ENDED",
+        };
+        let mut text = format!("{} {state}", self.address);
+        for pending in self.pending.values() {
+            let missing: Vec<String> =
+                pending.missing.iter().map(|gap| format!("{}..{}", gap.start, gap.end)).collect();
+            text.push_str(&format!(
+                " [{}-{} missing {}{}]",
+                pending.block.start,
+                pending.block.end,
+                missing.join(","),
+                if pending.inflater.is_some() { " inflating" } else { "" }
+            ));
+        }
+        text
+    }
+
     pub fn take_notes(&mut self) -> Vec<Note> {
         std::mem::take(&mut self.notes)
     }
