@@ -22,7 +22,7 @@ use crate::api::engine_event::EngineEvent;
 use crate::api::file_history::FileHistory;
 use crate::api::file_names;
 use crate::api::nj_mule_engine::NjMuleEngine;
-use crate::api::search_request;
+use crate::api::{nj_mule_info, search_request};
 use crate::config::bind_interface;
 use crate::engine::NotesError;
 use crate::engine::network::{ConnectError, MoreAnswer};
@@ -35,11 +35,16 @@ use crate::server::server_list::Address;
 // The searches started through the API, with the results the engine's events bring.
 type Searches = Arc<Mutex<SearchCollector>>;
 
+/// The version of the API, which its paths carry.
+pub const VERSION: u32 = 1;
+
 /// The calls, relative to the API's base path.
 pub fn router<E: NjMuleEngine>(engine: E) -> Router {
     let searches = Searches::default();
     collect(&engine, Arc::clone(&searches));
     Router::new()
+        .route("/", get(api_info))
+        .route("/status", get(status::<E>))
         .route("/preferences", get(preferences::<E>).patch(update_preferences::<E>))
         .route(
             "/preferences/passwords",
@@ -216,6 +221,36 @@ fn number(body: &Value, name: &str) -> Result<u32, ApiError> {
         .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Missing number: {name}")))
 }
 
+/// Name and version of njMule and of the API, and the system it runs on, which a report of a problem needs.
+async fn api_info() -> Json<Value> {
+    let system = sysinfo::System::name().unwrap_or_default();
+    let version = sysinfo::System::os_version().unwrap_or_default();
+    Json(json!({
+        "name": nj_mule_info::NAME,
+        "version": nj_mule_info::version(),
+        "api": VERSION,
+        "system": {"name": system, "version": version, "arch": std::env::consts::ARCH},
+    }))
+}
+
+async fn status<E: NjMuleEngine>(State(engine): State<E>) -> Result<Json<Value>, ApiError> {
+    let status = engine
+        .status()
+        .await
+        .ok_or_else(|| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "The engine is stopping."))?;
+    let preferences = engine.preferences();
+    let dirs = engine.directories();
+    let incoming = preferences.effective_incoming_dir(&dirs);
+    let temp = preferences.effective_temp_dir(&dirs);
+    // Asked of the system off the engine's task: a network drive may take a moment.
+    let (incoming_free, temp_free) =
+        tokio::task::spawn_blocking(move || (fs4::available_space(&incoming).ok(), fs4::available_space(&temp).ok()))
+            .await
+            .unwrap_or_default();
+    let reach = api_json::Reach { upnp: preferences.upnp, router_traversal: preferences.router_traversal() };
+    Ok(Json(api_json::status(&status, incoming_free, temp_free, reach)))
+}
+
 async fn preferences<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
     Json(api_json::preferences(&engine.preferences()))
 }
@@ -382,9 +417,8 @@ async fn start_search<E: NjMuleEngine>(
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "Missing text: query"));
     };
     let asked = body.get("scope").and_then(Value::as_str).unwrap_or("server");
-    // Automatic: where the networks connected allow, which the engine picks.
     let scope = if asked.eq_ignore_ascii_case("automatic") {
-        None
+        Some(automatic_scope(&engine).await?)
     } else {
         Some(
             Scope::parse(asked)
@@ -399,6 +433,18 @@ async fn start_search<E: NjMuleEngine>(
     })?;
     collected(&searches).started(started, Asked { expression, scope: asked.to_ascii_lowercase() });
     Ok((StatusCode::CREATED, Json(json!({"id": started}))).into_response())
+}
+
+// As the desktop app picks it: the network connected, Kad with both unless the server is a static or a big one.
+async fn automatic_scope<E: NjMuleEngine>(engine: &E) -> Result<Scope, ApiError> {
+    let status = engine
+        .status()
+        .await
+        .ok_or_else(|| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "The engine is stopping."))?;
+    let kad_connected = status.kad.as_ref().is_some_and(|kad| kad.connected);
+    let known = engine.servers().await.len();
+    search_request::automatic(status.server.is_some(), kad_connected, status.server.as_ref(), known)
+        .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, "Not connected to a server or to Kad."))
 }
 
 /// Tells whether a search would take an expression, before it starts.

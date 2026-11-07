@@ -5,6 +5,7 @@
 //! front ends follow.
 
 pub mod network;
+pub mod totals;
 
 use std::collections::BTreeMap;
 use std::io;
@@ -22,6 +23,7 @@ use tokio::task::JoinSet;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::engine_status::EngineStatus;
 use crate::api::file_history::FileHistory;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::KadInfo;
@@ -534,6 +536,11 @@ impl Engine {
         self.ask(Command::FileHistory).await.unwrap_or_default()
     }
 
+    /// What the engine is doing now; none once it stopped.
+    pub async fn status(&self) -> Option<EngineStatus> {
+        self.ask(Command::Status).await.map(|status| *status)
+    }
+
     /// Downloads and uploads in detail, for diagnosing tests.
     pub async fn describe(&self) -> String {
         self.ask(Command::Describe).await.unwrap_or_default()
@@ -556,6 +563,14 @@ impl Engine {
 }
 
 impl NjMuleEngine for Engine {
+    fn directories(&self) -> AppDirectories {
+        self.shared.dirs.clone()
+    }
+
+    fn status(&self) -> impl Future<Output = Option<EngineStatus>> + Send {
+        Engine::status(self)
+    }
+
     fn preferences(&self) -> Preferences {
         Engine::preferences(self)
     }

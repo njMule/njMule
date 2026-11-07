@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 use crate::api::download_info::{DownloadInfo, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::engine_status::EngineStatus;
 use crate::api::file_comment::FileComment;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::{Buddy, KadInfo};
@@ -118,6 +119,70 @@ pub fn shared_by_client(file: &SearchResult) -> Option<Value> {
         "type": file.file_type,
         "link": link,
     }))
+}
+
+/// Where a front end reads whether the router is asked to forward our ports, and to let firewalled clients through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reach {
+    pub upnp: bool,
+    pub router_traversal: bool,
+}
+
+/// The status, with the free space of the incoming and temporary folders when it could be read.
+pub fn status(status: &EngineStatus, incoming_free: Option<u64>, temp_free: Option<u64>, reach: Reach) -> Value {
+    let mut out = json!({
+        "upnp": reach.upnp,
+        "routerTraversal": reach.router_traversal,
+        "relatedSearch": status.related_search,
+        "server": status.server.as_ref().map_or(Value::Null, server),
+        "clientId": status.client_id,
+        "lowId": status.low_id,
+        "obfuscated": status.obfuscated,
+        "kad": status.kad.as_ref().map_or(Value::Null, kad),
+        "downloadBytesPerSecond": status.download_bytes_per_second,
+        "uploadBytesPerSecond": status.upload_bytes_per_second,
+        "downloaded": status.downloaded,
+        "uploaded": status.uploaded,
+        "downloads": status.downloads,
+        "uploads": status.uploads,
+        "queued": status.queued,
+        "sharedFiles": status.shared_files,
+        "totalDownloaded": status.total_downloaded,
+        "totalUploaded": status.total_uploaded,
+        "sessions": status.sessions,
+        "sessionSeconds": status.session_seconds,
+        "totalSeconds": status.total_seconds,
+        "publicIp": status.public_ip,
+        "tcpPort": status.tcp_port,
+        "overheadUploaded": status.overhead_uploaded,
+        "overheadDownloaded": status.overhead_downloaded,
+        "forwarding": status.forwarding,
+        "router": status.router,
+    });
+    if let Some(fields) = out.as_object_mut() {
+        if incoming_free.is_some() || temp_free.is_some() {
+            let mut free = Map::new();
+            if let Some(incoming) = incoming_free {
+                free.insert("incoming".to_owned(), json!(incoming));
+            }
+            if let Some(temp) = temp_free {
+                free.insert("temp".to_owned(), json!(temp));
+            }
+            fields.insert("freeSpace".to_owned(), Value::Object(free));
+        }
+        if let Some(ipv6) = &status.public_ipv6 {
+            fields.insert("publicIpv6".to_owned(), json!(ipv6));
+        }
+        // Present while the network interface the preferences bind to is gone, which keeps njMule offline.
+        if let Some(missing) = &status.missing_interface {
+            fields.insert("missingInterface".to_owned(), json!(missing));
+        }
+        // Present while another program holds Kad's UDP port, which Kad tries again.
+        if let Some(port) = status.kad_port_taken {
+            fields.insert("kadPortTaken".to_owned(), json!(port));
+        }
+    }
+    out
 }
 
 /// The answer of a call that only needs to be done.

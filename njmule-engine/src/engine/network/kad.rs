@@ -74,7 +74,7 @@ pub(super) struct KadSide {
     // Disconnected by the user: new ports and interfaces do not start it again.
     stopped_by_hand: bool,
     // The UDP port another program held when Kad started, tried again until it is free; 0 when none.
-    port_taken: u16,
+    pub(super) port_taken: u16,
     since_port_retry: u32,
     incoming: mpsc::UnboundedSender<Incoming>,
     // The clients we deal with, which cannot be UDP test helpers.

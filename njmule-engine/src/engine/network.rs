@@ -7,7 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -21,6 +21,7 @@ use tokio::task::JoinHandle;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::engine_status::EngineStatus;
 use crate::api::file_history::FileHistory;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::KadInfo;
@@ -36,18 +37,18 @@ use crate::api::spam_marks::SpamMarks;
 use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
-use crate::config::proxy_settings::ProxySettings;
 use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::download::download_manager::{self, Action, DownloadEvent, DownloadManager, KadLink, ServerLink};
 use crate::download::download_session;
 use crate::download::finished_downloads::FinishedDownloads;
+use crate::engine::totals::{self, Totals};
 use crate::engine::{ServerContext, Shared};
 use crate::files::hash::file_hasher::FileHashes;
 use crate::files::part_file_storage::DiskDone;
 use crate::files::shared_files::{self, Found, SharedFile, SharedFiles};
 use crate::kad::kad_socket::Incoming;
 use crate::net::relay_keeper::{Level, RelayKeeper};
-use crate::net::tcp_connector;
+use crate::net::{public_ipv6, tcp_connector, traffic};
 use crate::peer::client_history::ClientHistory;
 use crate::peer::identities::{self, Identities, Session, Trust};
 use crate::peer::identity_handshake::{Identity, Outcome as Identification};
@@ -153,6 +154,7 @@ pub enum Command {
     PeerComments([u8; 16], oneshot::Sender<Vec<PeerComment>>),
     /// Downloads and uploads in detail, for diagnosing tests.
     Describe(oneshot::Sender<String>),
+    Status(oneshot::Sender<Box<EngineStatus>>),
     /// Says hello to a client and runs the identification: told once its outcome is known, the connection closes or
     /// the wait is over.
     Hello(SocketAddr, oneshot::Sender<io::Result<PeerInfo>>),
@@ -204,11 +206,10 @@ enum Tick {
     Uploads,
     Search(Timer),
     Hashed(Found, Result<FileHashes, String>),
-    ProxyChanged(ProxySettings),
     // The sockets opened for a binding, which a newer one may have replaced meanwhile.
     Rebound(Binding, Option<TcpListener>, Option<UdpSocket>),
-    // The preferences changed; what they were.
-    PreferencesChanged(Box<Preferences>),
+    // The preferences changed.
+    PreferencesChanged,
     // A UDP test helper's link ended, after asking it for its datagram or not.
     KadUdpCheckEnded(u32, bool),
     // Kad's socket left its port: Kad starts again.
@@ -292,6 +293,8 @@ pub struct Network {
     datagrams: mpsc::UnboundedSender<(SocketAddr, Packet)>,
     accepting: Option<JoinHandle<()>>,
     following: Option<JoinHandle<()>>,
+    // The preferences as the network last applied them.
+    applied: Preferences,
     // The interface the sockets are on, and the seconds since it was last looked at.
     binding: Binding,
     since_bind_check: u32,
@@ -302,6 +305,11 @@ pub struct Network {
     callbacks: HashMap<SocketAddr, Instant>,
     calling: HashSet<SocketAddr>,
     our_ip: u32,
+    // The all-time totals before this session, and when it started.
+    totals: Totals,
+    started: Instant,
+    // Our public IPv6 address, which clients may reach us at; checked again with the interface.
+    our_ipv6: Option<Ipv6Addr>,
     searches: SearchManager,
     known_searches: HashSet<u64>,
     spam: SpamFilter,
@@ -342,16 +350,13 @@ pub fn start(
     let (ticks_in, ticks) = mpsc::unbounded_channel();
     let (datagrams_in, datagrams) = mpsc::unbounded_channel();
     let server_udp_keys: Arc<Mutex<HashMap<(u32, u16), u32>>> = Arc::default();
-    // The proxy as it changes, for the relay of the server socket.
+    // The preferences as they change; a command that comes first applies them itself.
     let mut changes = shared.preferences.subscribe();
-    let proxies = ticks_in.clone();
+    let applied = changes.borrow_and_update().clone();
+    let told = ticks_in.clone();
     let following = tokio::spawn(async move {
-        let mut was = changes.borrow_and_update().clone();
         while changes.changed().await.is_ok() {
-            let now = changes.borrow_and_update().clone();
-            let proxy = now.proxy.clone();
-            let changed = Tick::PreferencesChanged(Box::new(std::mem::replace(&mut was, now)));
-            if proxies.send(Tick::ProxyChanged(proxy)).is_err() || proxies.send(changed).is_err() {
+            if told.send(Tick::PreferencesChanged).is_err() {
                 return;
             }
         }
@@ -417,6 +422,8 @@ pub fn start(
     let identities = Identities::new(Identity::of(identities::load_or_create_key(&dirs.config)?));
     let credits = Credits::load(&dirs.config, credits::system_clock());
     let history = ClientHistory::load(&dirs.config, now_seconds());
+    let totals = Totals::load(&dirs.config.join(totals::FILE_NAME));
+    let our_ipv6 = public_ipv6::find(&shared.routes);
     // The guard's clock.
     let started = Instant::now();
     let mut network = Network {
@@ -438,6 +445,7 @@ pub fn start(
         datagrams: datagrams_in,
         accepting: None,
         following: Some(following),
+        applied,
         binding,
         since_bind_check: 0,
         server_udp_keys,
@@ -446,6 +454,9 @@ pub fn start(
         callbacks: HashMap::new(),
         calling: HashSet::new(),
         our_ip: 0,
+        totals,
+        started,
+        our_ipv6,
         searches: SearchManager::default().without_udp(),
         known_searches: HashSet::new(),
         spam,
@@ -510,6 +521,8 @@ impl Network {
     }
 
     fn command(&mut self, command: Command) {
+        // A command sent after a change of the preferences finds it applied.
+        self.apply_preferences();
         match command {
             Command::Kad(answer) => {
                 let _ = answer.send(self.kad_info());
@@ -722,6 +735,9 @@ impl Network {
             Command::PeerComments(hash, answer) => {
                 let _ = answer.send(self.downloads.comments(&hash));
             }
+            Command::Status(answer) => {
+                let _ = answer.send(Box::new(self.status()));
+            }
             Command::Describe(answer) => {
                 let _ = answer.send(format!(
                     "downloads:\n{}uploads: {}",
@@ -924,19 +940,13 @@ impl Network {
                     self.check_binding();
                 }
             }
-            Tick::ProxyChanged(proxy) => {
-                // TCP reads the proxy at each connection; UDP keeps an association with it.
-                if let Some(relay) = &self.server_relay {
-                    relay.follow(proxy);
-                }
-            }
             Tick::Rebound(binding, listener, udp) => {
                 if binding == self.binding {
                     self.attach(listener, udp);
                     self.kad_start_again();
                 }
             }
-            Tick::PreferencesChanged(was) => self.kad_preferences(was.kad_enabled, was.udp_port),
+            Tick::PreferencesChanged => self.apply_preferences(),
             Tick::KadUdpCheckEnded(ip, asked) => self.kad_udp_check_ended(ip, asked),
             Tick::KadStart => self.kad_start_again(),
             Tick::Search(timer) => {
@@ -1062,7 +1072,31 @@ impl Network {
     }
 
     // The interface may go (a VPN that drops), come back, or come back with another address.
+    // What follows a change of the preferences, once for each change.
+    fn apply_preferences(&mut self) {
+        let now = self.shared.preferences.borrow().clone();
+        if now == self.applied {
+            return;
+        }
+        let was = std::mem::replace(&mut self.applied, now);
+        // TCP reads the proxy at each connection; UDP keeps an association with it.
+        if was.proxy != self.applied.proxy
+            && let Some(relay) = &self.server_relay
+        {
+            relay.follow(self.applied.proxy.clone());
+        }
+        self.kad_preferences(was.kad_enabled, was.udp_port);
+    }
+
     fn check_binding(&mut self) {
+        let ipv6 = public_ipv6::find(&self.shared.routes);
+        if ipv6 != self.our_ipv6 {
+            match ipv6 {
+                Some(ip) => tracing::info!("Clients may reach us at {ip}"),
+                None => tracing::info!("No public IPv6 address now"),
+            }
+            self.our_ipv6 = ipv6;
+        }
         let now = self.shared.routes.binding();
         if now != self.binding {
             self.rebind(now);
@@ -1863,6 +1897,7 @@ impl Network {
     }
 
     fn stop(&mut self) {
+        self.totals.save(self.downloads.downloaded(), self.uploads.uploaded(), self.session_seconds());
         let ours = self.shared.our_hello();
         self.downloads.close(&ours);
         for peer in self.peers.values() {
@@ -1893,6 +1928,55 @@ impl Network {
         let server = self.session.id().and(self.session.server()).map(|server| self.info(server));
         let kad_connected = self.kad_info().is_some_and(|kad| kad.connected);
         search_request::automatic(server.is_some(), kad_connected, server.as_ref(), self.servers.all().len())
+    }
+
+    fn status(&mut self) -> EngineStatus {
+        let id = self.session.id();
+        let downloaded = self.downloads.downloaded();
+        let uploaded = self.uploads.uploaded();
+        let session_seconds = self.session_seconds();
+        EngineStatus {
+            server: id.and(self.session.server()).map(|server| self.info(server)),
+            client_id: id.map_or(0, |id| id.client_id),
+            low_id: id.is_some_and(|id| id.is_low_id()),
+            obfuscated: self.session.is_obfuscated(),
+            kad: self.kad_info(),
+            download_bytes_per_second: self.downloads.rate(),
+            upload_bytes_per_second: self.uploads.rate(Instant::now()),
+            downloaded,
+            uploaded,
+            downloads: self.downloads.downloads().len(),
+            uploads: self.uploads.slot_count(),
+            queued: self.uploads.waiting_count(),
+            shared_files: self.shared_files.files().count(),
+            total_downloaded: totals::add(self.totals.downloaded(), downloaded),
+            total_uploaded: totals::add(self.totals.uploaded(), uploaded),
+            sessions: totals::add(self.totals.sessions(), 1),
+            session_seconds,
+            total_seconds: totals::add(self.totals.seconds(), session_seconds),
+            public_ip: id
+                .map(|id| id.public_ip())
+                .filter(|ip| *ip != 0)
+                .map(|ip| Ipv4Addr::from(ip).to_string())
+                .unwrap_or_default(),
+            tcp_port: self.shared.listen_port(),
+            related_search: id.is_some_and(|id| id.has(server_messages::TCP_RELATED_SEARCH)),
+            missing_interface: match &self.binding {
+                Binding::Missing(choice) => Some(choice.clone()),
+                Binding::Any | Binding::Bound(_) => None,
+            },
+            public_ipv6: self.our_ipv6.map(|ip| ip.to_string()),
+            overhead_uploaded: traffic::overhead_sent(),
+            // What came besides the files: the packets of file data count by their payload only.
+            overhead_downloaded: traffic::received_bytes().saturating_sub(downloaded),
+            forwarding: "off".to_owned(),
+            router: String::new(),
+            kad_port_taken: Some(self.kad.port_taken).filter(|port| *port != 0),
+        }
+    }
+
+    fn session_seconds(&self) -> u64 {
+        self.started.elapsed().as_secs()
     }
 
     fn info(&self, server: &Server) -> ServerInfo {

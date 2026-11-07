@@ -134,11 +134,6 @@ DownloadSourcesTest.shouldTakeTheRankASourceGivesOverUdpFromItsIpv6Address
 DownloadSourcesTest.shouldLetASourceWaitWhileOurConnectionsAreAtTheirLimit
 
 # The remote-control API.
-# The Rust engine picks the networks of an automatic search itself: the API picks them once it knows the engine's
-# status, which comes with the calls on the engine's state.
-RemoteApiTest.shouldSearchKadAutomaticallyFromASmallServerAmongMany
-RemoteApiTest.shouldStayOnABigServerAutomatically
-RemoteApiTest.shouldRefuseAnAutomaticSearchWithNoNetwork
 # The shared folders and the paths of the engine's computer come with the calls on shared files.
 RemoteApiTest.shouldShareAFolderWithItsSubfolders
 RemoteApiTest.shouldAskFirstBeforeSharingAWholeDrive
@@ -166,8 +161,6 @@ RemoteApiTest.shouldAddTheServersOfAServerMetOfTheEnginesComputer
 RemoteApiTest.shouldRefuseAListFileThatIsNotThere
 RemoteApiTest.shouldAddTheContactsOfANodesDatSent
 # Status, ports, limits, rates, schedule, categories, IP filter and stop come with the calls on the engine's state.
-RemoteApiTest.shouldTellItsNameAndVersionToATokenHolder
-RemoteApiTest.shouldTellTheJavaAndTheSystemItRunsOnToATokenHolder
 RemoteApiTest.shouldStartATestOfThePorts
 RemoteApiTest.shouldAnswerATestOfThePortsWithoutWaitingForItsEnd
 RemoteApiTest.shouldSetTheSpeedLimits
@@ -258,3 +251,5 @@ EngineApiTest.shouldFailTheHelloToAHostThatCannotBeResolved
 # A bootstrap while Kad is off, and a recheck while it runs, come with the calls on Kad.
 EngineApiTest.shouldRefuseAKadBootstrapWhileKadDoesNotRun
 EngineApiTest.shouldHandKadCommandsToARunningKad
+# Java only: the Rust engine runs on no Java; it tells the system it runs on as the Java engine does.
+RemoteApiTest.shouldTellTheJavaAndTheSystemItRunsOnToATokenHolder

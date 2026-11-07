@@ -9,6 +9,7 @@ pub mod ed2k_link;
 pub mod ed2k_link_codec;
 pub mod emule_history;
 pub mod engine_event;
+pub mod engine_status;
 pub mod file_comment;
 pub mod file_history;
 pub mod file_names;
