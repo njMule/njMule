@@ -6,24 +6,32 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
+mod queue_lab;
+
 use std::collections::HashMap;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use njmule_engine::api::download_info::DownloadPriority;
+use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::upload_priority::UploadPriority;
+use njmule_engine::files::hash::ed2k::{self, PARTSIZE};
+use njmule_engine::files::part_file;
 use njmule_engine::files::shared_files::SharedFile;
 use njmule_engine::net::tcp_connection::{TcpConnection, read_packet, write_packet};
 use njmule_engine::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId};
-use njmule_engine::protocol::ed2k::client_messages::{self, PartStatus, Range, RequestParts, SendingPart};
+use njmule_engine::protocol::ed2k::client_messages::{self, FileStatus, PartStatus, Range, RequestParts, SendingPart};
 use njmule_engine::protocol::ed2k::client_reasks::{self, Ack, Ping};
 use njmule_engine::protocol::ed2k::hello::{Hello, Ours};
+use njmule_engine::protocol::ed2k::source_exchange as exchange;
 use njmule_engine::protocol::packet::opcodes::{client, extended};
-use njmule_engine::protocol::packet::{Packet, frame_limits, protocol};
+use njmule_engine::protocol::packet::{Packet, frame_limits, packing, protocol};
 use njmule_engine::upload::credits::Credits;
 use njmule_engine::upload::upload_manager::{self, BlockRead, FileCounts, ReaskAnswer, Settings, UploadManager};
 use njmule_engine::upload::upload_session::{self, MAX_BLOCK};
 use njmule_engine::upload::uploadable::Uploadable;
+use queue_lab::QueueLab;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use tokio::sync::{mpsc, oneshot};
@@ -63,6 +71,9 @@ struct Loop {
     manager: UploadManager,
     links: HashMap<LinkId, (LinkHandle, Option<Hello>)>,
     shared: Arc<Mutex<HashMap<[u8; 16], SharedFile>>>,
+    // Our downloads with their checked parts, and the sources each of them has.
+    downloads: Arc<Mutex<HashMap<[u8; 16], Uploadable>>>,
+    download_sources: Arc<Mutex<Vec<exchange::Source>>>,
     settings: Arc<Mutex<Settings>>,
     base: Instant,
     offset: Arc<Mutex<Duration>>,
@@ -76,6 +87,20 @@ struct Loop {
 impl Loop {
     fn now(&self) -> Instant {
         self.base + *self.offset.lock().unwrap()
+    }
+
+    // Our file of a hash: a shared one, else a download.
+    fn finder(&self) -> impl Fn(&[u8; 16]) -> Option<Uploadable> + use<> {
+        let shared = Arc::clone(&self.shared);
+        let downloads = Arc::clone(&self.downloads);
+        move |hash: &[u8; 16]| {
+            shared
+                .lock()
+                .unwrap()
+                .get(hash)
+                .map(Uploadable::of)
+                .or_else(|| downloads.lock().unwrap().get(hash).cloned())
+        }
     }
 
     fn event(&mut self, event: LinkEvent) {
@@ -101,10 +126,14 @@ impl Loop {
                     return;
                 };
                 let handle = handle.clone();
-                let shared = Arc::clone(&self.shared);
-                let find = move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).map(Uploadable::of);
+                let find = self.finder();
+                let downloads = Arc::clone(&self.downloads);
+                let told = Arc::clone(&self.download_sources);
+                let sources = move |hash: &[u8; 16]| {
+                    downloads.lock().unwrap().contains_key(hash).then(|| told.lock().unwrap().clone())
+                };
                 let ours = self.ours.clone();
-                self.manager.received(&handle, &peer, true, &packet, &ours, &find, &|| None, &|_| None, now);
+                self.manager.received(&handle, &peer, true, &packet, &ours, &find, &|| None, &sources, now);
                 self.calls();
             }
             LinkEvent::Closed(link, _) => {
@@ -120,9 +149,8 @@ impl Loop {
     fn tick(&mut self) {
         let now = self.now();
         let settings = *self.settings.lock().unwrap();
-        let shared = Arc::clone(&self.shared);
-        self.manager
-            .tick(settings, &move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).map(Uploadable::of), now);
+        let find = self.finder();
+        self.manager.tick(settings, &find, now);
         self.calls();
     }
 
@@ -176,8 +204,8 @@ async fn serve(
             Some(event) = events.recv() => state.event(event),
             Some(read) = reads.recv() => {
                 let now = state.now();
-                let shared = Arc::clone(&state.shared);
-                state.manager.block_read(read, &move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).map(Uploadable::of), now);
+                let find = state.finder();
+                state.manager.block_read(read, &find, now);
             }
             _ = every.tick() => state.tick(),
             job = jobs.recv() => match job {
@@ -224,11 +252,16 @@ impl Downloader {
     }
 
     async fn next(&mut self) -> Packet {
-        tokio::time::timeout(WAIT, read_packet(&mut self.input, &frame_limits::client))
+        let packet = tokio::time::timeout(WAIT, read_packet(&mut self.input, &frame_limits::client))
             .await
             .expect("a packet in time")
             .unwrap()
-            .expect("the connection open")
+            .expect("the connection open");
+        if packet.protocol() == protocol::PACKED {
+            packing::unpack(packet, packing::MAX_CLIENT_UNPACKED).unwrap()
+        } else {
+            packet
+        }
     }
 
     // The next packet, if one comes within `silence`.
@@ -271,6 +304,17 @@ struct Uploads {
     offset: Arc<Mutex<Duration>>,
     settings: Arc<Mutex<Settings>>,
     shared: Arc<Mutex<HashMap<[u8; 16], SharedFile>>>,
+    downloads: Arc<Mutex<HashMap<[u8; 16], Uploadable>>>,
+    download_sources: Arc<Mutex<Vec<exchange::Source>>>,
+    // The downloads' queue, its files kept while the test runs; the download followed and its last part.
+    queue: Option<QueueLab>,
+    download: [u8; 16],
+    last_part: Vec<u8>,
+    our_ipv6: Option<Ipv6Addr>,
+    // What the client followed was told last: a file's status, a block, sources.
+    status: Option<FileStatus>,
+    block: Option<SendingPart>,
+    told_sources: Vec<exchange::Source>,
     priorities: Arc<Mutex<HashMap<[u8; 16], UploadPriority>>>,
     dir: tempfile::TempDir,
     clients: HashMap<u8, Downloader>,
@@ -300,6 +344,15 @@ impl Uploads {
             offset: Arc::default(),
             settings: Arc::new(Mutex::new(Settings { max_upload_kibps: 0, queue_size: 100, obfuscation: false })),
             shared: Arc::default(),
+            downloads: Arc::default(),
+            download_sources: Arc::default(),
+            queue: None,
+            download: [0; 16],
+            last_part: Vec::new(),
+            our_ipv6: None,
+            status: None,
+            block: None,
+            told_sources: Vec::new(),
             priorities: Arc::default(),
             dir: tempfile::tempdir().unwrap(),
             clients: HashMap::new(),
@@ -371,11 +424,17 @@ impl Uploads {
         let priorities = Arc::clone(&self.priorities);
         manager.set_priorities(move |hash| priorities.lock().unwrap().get(hash).copied().unwrap_or_default());
         manager.count_in(Box::new(Counted(Arc::clone(&self.counted))));
-        let ours = Hello::of(OURS, 0, 4662, &plain("test"), 0, 0);
+        let plain_ours = Hello::of(OURS, 0, 4662, &plain("test"), 0, 0);
+        let ours = match self.our_ipv6 {
+            Some(address) => plain_ours.with_ipv6(&address),
+            None => plain_ours,
+        };
         let state = Loop {
             manager,
             links: HashMap::new(),
             shared: Arc::clone(&self.shared),
+            downloads: Arc::clone(&self.downloads),
+            download_sources: Arc::clone(&self.download_sources),
             settings: Arc::clone(&self.settings),
             base: Instant::now(),
             offset: Arc::clone(&self.offset),
@@ -1052,6 +1111,296 @@ impl Uploads {
         }
     }
 
+    // Downloads shared with their checked parts, and their sources told.
+
+    fn given_a_download_with_only_its_last_part_checked(&mut self, name: &str, last_size: usize, seed: u8) {
+        self.last_part = random(last_size, seed);
+        let parts = vec![[0xC1; 16], ed2k::md4(&self.last_part)];
+        let link = FileLink::new(
+            name.to_owned(),
+            PARTSIZE + last_size as u64,
+            ed2k::file_hash(&parts).unwrap(),
+            None,
+            parts,
+            Vec::new(),
+            Vec::new(),
+        )
+        .unwrap();
+        let last = self.last_part.clone();
+        self.add_download(&link, Some(&last));
+    }
+
+    fn given_a_download_of_whole_parts_with_only_its_second_checked(&mut self, name: &str, seed: u8) {
+        let second = random(PARTSIZE as usize, seed);
+        let parts = vec![[0xC2; 16], ed2k::md4(&second), ed2k::EMPTY_PART_HASH];
+        let hash = ed2k::file_hash(&parts).unwrap();
+        let link = FileLink::new(name.to_owned(), 2 * PARTSIZE, hash, None, parts, Vec::new(), Vec::new()).unwrap();
+        self.add_download(&link, Some(&second));
+    }
+
+    async fn given_a_download_with_nothing_to_share_yet(&mut self) {
+        self.add_download(&FileLink::of("pending.bin", 5000, [90; 16]).unwrap(), None);
+        self.given_the_shared_file("known.bin", 3000, 24);
+        self.given_the_uploads_started().await;
+    }
+
+    fn given_the_download_has_sources(&self, count: u8) {
+        *self.download_sources.lock().unwrap() =
+            (1..=count).map(|at| ipv4_source(Ipv4Addr::new(198, 51, 100, at), [100 + at; 16], None)).collect();
+    }
+
+    fn given_the_download_has_an_ipv4_source_and_one_at_its_ipv6_address_alone(&self) {
+        *self.download_sources.lock().unwrap() = vec![
+            ipv4_source(Ipv4Addr::new(198, 51, 100, 1), [101; 16], Some("2001:db8::60".parse().unwrap())),
+            exchange::Source::ipv6_only("2001:db8::61".parse().unwrap(), 4662, Some([102; 16])),
+        ];
+    }
+
+    fn given_we_have_the_ipv6_address(&mut self, address: &str) {
+        self.our_ipv6 = Some(address.parse().unwrap());
+    }
+
+    async fn given_a_client_connected(&mut self, seed: u8) {
+        self.client = seed;
+        self.client_of(seed, 0).await;
+    }
+
+    async fn given_a_client_taking_the_extended_source_exchange_connected(&mut self, seed: u8) {
+        let ipv6: Ipv6Addr = "2001:db8::1:1".parse().unwrap();
+        let hello = Hello::of([seed; 16], 0, 5000 + u16::from(seed), &plain("extended"), 0, 0).with_ipv6(&ipv6);
+        let client = Downloader::connect(self.port, &hello).await;
+        self.clients.insert(seed, client);
+        self.hellos.insert(seed, hello);
+        self.client = seed;
+    }
+
+    async fn given_the_client_told_the_download_has_only_its_last_part(&mut self) {
+        self.when_the_client_asks_for_the_download().await;
+        self.then_the_status_tells_parts(2);
+        self.then_the_status_lacks_part(0);
+        self.then_the_status_has_part(1, "the checked part");
+    }
+
+    async fn given_no_blocks_sent_before_the_slot(&mut self) {
+        let file = self.download;
+        let seen = self.slot_asked_after_blocks(file, Range { start: PARTSIZE, end: PARTSIZE + 10 }).await;
+        assert!(!seen.iter().any(is_sending_part), "no blocks before the slot");
+    }
+
+    async fn given_the_slot_given_again_with_nothing_of_another_file(&mut self) {
+        let seen = self.slot_asked_after_blocks([78; 16], Range { start: 0, end: 10 }).await;
+        assert!(!seen.iter().any(is_sending_part), "asked again, the slot is given again; nothing of another file");
+    }
+
+    async fn given_only_the_checked_part_sent(&mut self) {
+        self.when_the_client_asks_for_blocks_of_both_parts().await;
+        self.then_the_block_sent_starts_at(PARTSIZE, "only the checked part");
+        self.then_the_block_sent_is_the_start_of_the_last_part(500);
+    }
+
+    async fn when_the_client_asks_for_the_download(&mut self) {
+        let file = self.download;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&client_messages::for_file(client::SETREQFILEID, &file)).await;
+        let seen = client.until(protocol::EDONKEY, client::FILESTATUS).await;
+        self.status = Some(FileStatus::decode(seen.last().unwrap()).unwrap());
+    }
+
+    async fn when_the_client_asks_for_blocks_of_both_parts(&mut self) {
+        let file = self.download;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        let ranges = [Range { start: 0, end: 1000 }, Range { start: PARTSIZE, end: PARTSIZE + 500 }];
+        client.send(&blocks(file, &ranges)).await;
+        let seen = client.until(protocol::EDONKEY, client::SENDINGPART).await;
+        self.block = Some(SendingPart::decode(seen.last().unwrap()).unwrap());
+    }
+
+    async fn when_the_client_asks_for_the_sources_of_the_download(&mut self) {
+        let file = self.download;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&exchange::request(&file)).await;
+        let seen = client.until(protocol::EMULE, extended::ANSWERSOURCES2).await;
+        self.told_sources = exchange::Answer::decode(seen.last().unwrap()).unwrap().sources;
+    }
+
+    async fn when_the_client_asks_for_the_sources_of_the_download_the_extended_way(&mut self) {
+        let file = self.download;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&exchange::request_in_version(&file, exchange::EXTENDED_VERSION)).await;
+        let seen = client.until(protocol::EMULE, extended::ANSWERSOURCES2).await;
+        self.told_sources = exchange::Answer::decode_extended(seen.last().unwrap()).unwrap().sources;
+    }
+
+    async fn when_a_client_asks_for_it_and_for_unknown_files(&mut self, unknown: usize) {
+        self.client = 30;
+        let client = self.client_of(30, 0).await;
+        client.send(&client_messages::for_file(client::SETREQFILEID, &[90; 16])).await;
+        client.until(protocol::EDONKEY, client::FILEREQANSNOFIL).await;
+        for at in 0..unknown {
+            client.send(&client_messages::for_file(client::SETREQFILEID, &[100 + at as u8; 16])).await;
+            client.until(protocol::EDONKEY, client::FILEREQANSNOFIL).await;
+        }
+    }
+
+    fn then_the_status_tells_parts(&self, count: usize) {
+        assert_eq!(self.status.as_ref().unwrap().part_count, count);
+    }
+
+    fn then_the_status_has_part(&self, part: usize, why: &str) {
+        assert!(self.status.as_ref().unwrap().has(part), "{why}");
+    }
+
+    fn then_the_status_lacks_part(&self, part: usize) {
+        assert!(!self.status.as_ref().unwrap().has(part));
+    }
+
+    fn then_the_block_sent_starts_at(&self, start: u64, why: &str) {
+        assert_eq!(self.block.as_ref().unwrap().start, start, "{why}");
+    }
+
+    fn then_the_block_sent_is_the_start_of_the_last_part(&self, length: usize) {
+        assert_eq!(self.block.as_ref().unwrap().data, self.last_part[..length]);
+    }
+
+    fn then_the_sources_told_are(&self, count: usize, why: &str) {
+        assert_eq!(self.told_sources.len(), count, "{why}");
+    }
+
+    fn then_one_source_told_is_at(&self, ipv6: &str) {
+        let alone: Vec<_> = self.told_sources.iter().filter(|source| source.is_ipv6_only()).collect();
+        assert_eq!(alone.len(), 1);
+        assert_eq!(alone[0].ipv6, Some(ipv6.parse().unwrap()));
+    }
+
+    async fn then_it_still_gets_answers(&mut self) {
+        let file = self.files["known.bin"].hash;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&client_messages::for_file(client::REQUESTFILENAME, &file)).await;
+        client.until(protocol::EDONKEY, client::REQFILENAMEANSWER).await;
+    }
+
+    // Sources of a shared file: the clients waiting for it or downloading it.
+
+    async fn given_a_file_with_a_waiting_client(&mut self) {
+        self.given_the_settings(1, 100);
+        self.given_the_shared_file("other.bin", 3000, 19);
+        self.given_the_shared_file("sought.bin", 3000, 18);
+        self.given_the_uploads_started().await;
+        let file = self.files["sought.bin"].hash;
+        for seed in 1..=3 {
+            self.ask(seed, file).await;
+        }
+    }
+
+    async fn given_a_client_that_asked_for_another_file(&mut self) {
+        self.client = 4;
+        let other = self.files["other.bin"].hash;
+        let client = self.client_of(4, 0).await;
+        client.send(&client_messages::for_file(client::REQUESTFILENAME, &other)).await;
+        client.until(protocol::EDONKEY, client::REQFILENAMEANSWER).await;
+    }
+
+    async fn given_a_client_told_its_sources(&mut self) {
+        self.given_a_client_that_asked_for_another_file().await;
+        self.then_it_hears_the_sources_once_it_asked_for_the_file().await;
+        self.await_described(", 1 source answers", "the answer remembered").await;
+    }
+
+    // A client asking again right away is banned, and with it the address the slot holders share.
+    async fn given_their_address_banned_for_a_client_that_asked_too_often(&mut self) {
+        self.client = 5;
+        self.given_the_client_waits_at(5, 1, "behind the busy slots").await;
+        self.given_it_asked_again_right_away(upload_manager::BAD_LIMIT - 1).await;
+        let file = self.file.as_ref().unwrap().hash;
+        let eager = self.clients.get_mut(&5).unwrap();
+        eager.send(&client_messages::for_file(client::STARTUPLOADREQ, &file)).await;
+        assert!(eager.closed_within(WAIT).await, "banned");
+        self.client = 1;
+        self.file = Some(self.files["busy.bin"].clone());
+    }
+
+    async fn when_it_asks_for_the_sources_of_the_file(&mut self) {
+        let file = self.file.as_ref().unwrap().hash;
+        self.clients.get_mut(&self.client).unwrap().send(&exchange::request(&file)).await;
+    }
+
+    async fn when_a_slot_holder_asks_for_the_sources_of_its_file(&mut self) {
+        self.when_it_asks_for_the_sources_of_the_file().await;
+    }
+
+    fn when_the_longest_wait_for_sources_passes(&self) {
+        self.given_time_passed(Duration::from_secs(161 * 60));
+    }
+
+    async fn then_it_hears_no_sources(&mut self) {
+        let file = self.file.as_ref().unwrap().hash;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&client_messages::for_file(client::REQUESTFILENAME, &file)).await;
+        let seen = client.until(protocol::EDONKEY, client::REQFILENAMEANSWER).await;
+        assert!(!seen.iter().any(is_source_answer), "no sources");
+    }
+
+    async fn then_it_hears_the_sources_once_it_asked_for_the_file(&mut self) {
+        let file = self.file.as_ref().unwrap().hash;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&client_messages::for_file(client::REQUESTFILENAME, &file)).await;
+        client.until(protocol::EDONKEY, client::REQFILENAMEANSWER).await;
+        client.send(&exchange::request(&file)).await;
+        let seen = client.until(protocol::EMULE, extended::ANSWERSOURCES2).await;
+        assert_eq!(exchange::Answer::decode(seen.last().unwrap()).unwrap().sources.len(), 3);
+    }
+
+    async fn then_no_source_answer_is_remembered(&self) {
+        self.await_described(", 0 source answers", "the answer forgotten").await;
+    }
+
+    // A download in a queue of its own, with its second part from `second` checked.
+    fn add_download(&mut self, link: &FileLink, second: Option<&[u8]>) {
+        let mut lab = QueueLab::load();
+        let hash = lab.queue.add(link, 0, DownloadPriority::Auto).unwrap();
+        if let Some(data) = second {
+            lab.queue.received(&hash, PARTSIZE, data, None);
+            let deadline = Instant::now() + WAIT;
+            while !part_file::has(lab.queue.get(&hash).unwrap().verified_parts(), 1) {
+                assert!(Instant::now() < deadline, "the part checked");
+                lab.next(Duration::from_millis(20), |_| None::<()>);
+            }
+        }
+        let download = lab.queue.get(&hash).unwrap();
+        let file = &download.file;
+        let uploadable = Uploadable::partial(
+            hash,
+            file.name(),
+            file.size(),
+            file.part_hashes(),
+            download.verified_parts(),
+            file.data_file(),
+            file.aich_hash(),
+        );
+        self.downloads.lock().unwrap().insert(hash, uploadable);
+        self.download = hash;
+        self.queue = Some(lab);
+    }
+
+    // Blocks asked for before the slot, then the slot: the packets up to it.
+    async fn slot_asked_after_blocks(&mut self, file: [u8; 16], range: Range) -> Vec<Packet> {
+        let download = self.download;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&blocks(file, &[range])).await;
+        client.send(&client_messages::for_file(client::STARTUPLOADREQ, &download)).await;
+        client.until(protocol::EDONKEY, client::ACCEPTUPLOADREQ).await
+    }
+
+    async fn await_described(&self, part: &str, why: &str) {
+        let deadline = Instant::now() + WAIT;
+        let mut described = String::new();
+        while !described.contains(part) && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            described = self.on_loop(|state| state.manager.describe()).await;
+        }
+        assert!(described.contains(part), "{why}: {described}");
+    }
+
     async fn waiting_files(&self) -> Vec<String> {
         let names: HashMap<[u8; 16], String> = self.files.values().map(|file| (file.hash, file.name.clone())).collect();
         let now = self.on_loop(|state| state.manager.uploads(state.now())).await;
@@ -1063,6 +1412,31 @@ impl Uploads {
 async fn closed_port() -> u16 {
     let probe = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
     probe.local_addr().unwrap().port()
+}
+
+fn random(size: usize, seed: u8) -> Vec<u8> {
+    (0..size).map(|at| ((at * 131 + usize::from(seed) * 17) % 251) as u8).collect()
+}
+
+fn ipv4_source(ip: Ipv4Addr, user_hash: [u8; 16], ipv6: Option<Ipv6Addr>) -> exchange::Source {
+    exchange::Source {
+        ip: u32::from(ip),
+        low_id: 0,
+        port: 4662,
+        server_ip: 0,
+        server_port: 0,
+        user_hash: Some(user_hash),
+        crypt_options: 0,
+        ipv6,
+    }
+}
+
+fn is_sending_part(packet: &Packet) -> bool {
+    packet.protocol() == protocol::EDONKEY && packet.opcode() == client::SENDINGPART
+}
+
+fn is_source_answer(packet: &Packet) -> bool {
+    packet.protocol() == protocol::EMULE && packet.opcode() == extended::ANSWERSOURCES2
 }
 
 fn plain(nick: &str) -> Ours<'_> {
@@ -1489,4 +1863,135 @@ async fn should_queue_little_for_a_client_that_reads_nothing_and_let_our_answers
 
     uploads.then_little_of_what_it_asked_for_was_queued();
     uploads.then_our_answer_came_before_most_of_the_data();
+}
+
+#[tokio::test]
+async fn should_share_only_the_checked_parts_of_a_download() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_download_with_only_its_last_part_checked("partial.bin", 1000, 11);
+    uploads.given_the_download_has_sources(20);
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+    uploads.given_the_client_told_the_download_has_only_its_last_part().await;
+    uploads.given_no_blocks_sent_before_the_slot().await;
+    uploads.given_the_slot_given_again_with_nothing_of_another_file().await;
+
+    uploads.when_the_client_asks_for_blocks_of_both_parts().await;
+
+    uploads.then_the_block_sent_starts_at(PARTSIZE, "only the checked part");
+    uploads.then_the_block_sent_is_the_start_of_the_last_part(500);
+}
+
+#[tokio::test]
+async fn should_share_ipv6_sources_the_extended_way_with_a_client_taking_it() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_download_with_only_its_last_part_checked("six.bin", 1000, 11);
+    uploads.given_the_download_has_an_ipv4_source_and_one_at_its_ipv6_address_alone();
+    uploads.given_we_have_the_ipv6_address("2001:db8::99");
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_taking_the_extended_source_exchange_connected(1).await;
+    uploads.given_the_client_told_the_download_has_only_its_last_part().await;
+    uploads.given_no_blocks_sent_before_the_slot().await;
+    uploads.given_the_slot_given_again_with_nothing_of_another_file().await;
+    uploads.given_only_the_checked_part_sent().await;
+
+    uploads.when_the_client_asks_for_the_sources_of_the_download_the_extended_way().await;
+
+    uploads
+        .then_the_sources_told_are(2, "the IPv4 source with its IPv6 address, and the one at its IPv6 address alone");
+    uploads.then_one_source_told_is_at("2001:db8::61");
+}
+
+#[tokio::test]
+async fn should_leave_sources_at_an_ipv6_address_alone_out_for_a_client_not_taking_the_extended_way() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_download_with_only_its_last_part_checked("six.bin", 1000, 11);
+    uploads.given_the_download_has_an_ipv4_source_and_one_at_its_ipv6_address_alone();
+    uploads.given_we_have_the_ipv6_address("2001:db8::99");
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+    uploads.given_the_client_told_the_download_has_only_its_last_part().await;
+    uploads.given_no_blocks_sent_before_the_slot().await;
+    uploads.given_the_slot_given_again_with_nothing_of_another_file().await;
+    uploads.given_only_the_checked_part_sent().await;
+
+    uploads.when_the_client_asks_for_the_sources_of_the_download().await;
+
+    uploads.then_the_sources_told_are(1, "only the IPv4 source");
+}
+
+#[tokio::test]
+async fn should_share_the_sources_of_a_download() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_download_with_only_its_last_part_checked("partial.bin", 1000, 11);
+    uploads.given_the_download_has_sources(20);
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+    uploads.given_the_client_told_the_download_has_only_its_last_part().await;
+    uploads.given_no_blocks_sent_before_the_slot().await;
+    uploads.given_the_slot_given_again_with_nothing_of_another_file().await;
+    uploads.given_only_the_checked_part_sent().await;
+
+    uploads.when_the_client_asks_for_the_sources_of_the_download().await;
+
+    uploads.then_the_sources_told_are(20, "the download's sources, packed");
+}
+
+#[tokio::test]
+async fn should_tell_the_empty_last_part_of_a_download_of_whole_parts_too() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_download_of_whole_parts_with_only_its_second_checked("whole.bin", 15);
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+
+    uploads.when_the_client_asks_for_the_download().await;
+
+    uploads.then_the_status_tells_parts(3);
+    uploads.then_the_status_lacks_part(0);
+    uploads.then_the_status_has_part(1, "the checked part");
+    uploads.then_the_status_has_part(2, "the empty part a whole number of parts ends with");
+}
+
+#[tokio::test]
+async fn should_not_count_files_we_download_as_unknown() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_download_with_nothing_to_share_yet().await;
+
+    uploads.when_a_client_asks_for_it_and_for_unknown_files(upload_session::UNKNOWN_FILES_LIMIT - 1).await;
+
+    uploads.then_it_still_gets_answers().await;
+}
+
+#[tokio::test]
+async fn should_tell_sources_only_for_a_file_the_client_asked_for_on_its_connection() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_file_with_a_waiting_client().await;
+    uploads.given_a_client_that_asked_for_another_file().await;
+
+    uploads.when_it_asks_for_the_sources_of_the_file().await;
+
+    uploads.then_it_hears_no_sources().await;
+    uploads.then_it_hears_the_sources_once_it_asked_for_the_file().await;
+}
+
+#[tokio::test]
+async fn should_tell_no_sources_to_a_client_at_a_banned_address() {
+    let mut uploads = Uploads::new();
+    uploads.given_two_slots_busy_under_a_limit().await;
+    uploads.given_their_address_banned_for_a_client_that_asked_too_often().await;
+
+    uploads.when_a_slot_holder_asks_for_the_sources_of_its_file().await;
+
+    uploads.then_it_hears_no_sources().await;
+}
+
+#[tokio::test]
+async fn should_forget_the_source_answers_given_once_they_can_be_asked_again() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_file_with_a_waiting_client().await;
+    uploads.given_a_client_told_its_sources().await;
+
+    uploads.when_the_longest_wait_for_sources_passes();
+
+    uploads.then_no_source_answer_is_remembered().await;
 }
