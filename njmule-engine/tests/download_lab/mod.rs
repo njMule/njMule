@@ -23,7 +23,9 @@ use std::time::{Duration, Instant};
 use njmule_engine::api::download_info::{DownloadInfo, SourceInfo};
 use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::config::obfuscation_mode::ObfuscationMode;
-use njmule_engine::download::download_manager::{Action, DownloadEvent, DownloadManager, Hooks, ServerLink, Settings};
+use njmule_engine::download::download_manager::{
+    Action, DownloadEvent, DownloadManager, Hooks, KadLink, ServerLink, Settings,
+};
 use njmule_engine::download::download_session;
 use njmule_engine::files::part_file_storage::DiskDone;
 use njmule_engine::net::routes::Routes;
@@ -52,6 +54,24 @@ pub struct Engine {
     pub incoming: Option<std::path::PathBuf>,
     /// Our IPv6 address, which our hello gives.
     pub our_ipv6: Option<std::net::Ipv6Addr>,
+    /// Whether Kad runs, the files it was asked the sources of, and our address where it finds us reachable.
+    pub kad_running: bool,
+    pub kad_asked: Vec<[u8; 16]>,
+    pub kad_public_ip: u32,
+}
+
+/// Kad as a stand-in: it records the searches it is asked for, which find what the tests say.
+struct Kad(Arc<Mutex<Engine>>);
+
+impl KadLink for Kad {
+    fn find_sources(&mut self, file: &[u8; 16], _size: u64) -> bool {
+        self.0.lock().unwrap().kad_asked.push(*file);
+        true
+    }
+
+    fn public_ip(&self) -> u32 {
+        self.0.lock().unwrap().kad_public_ip
+    }
 }
 
 fn hooks(engine: &Arc<Mutex<Engine>>) -> Hooks {
@@ -114,6 +134,7 @@ pub struct Lab {
     pub settings: Settings,
     pub events: Vec<DownloadEvent>,
     server: Server,
+    kad: Kad,
     links: HashMap<LinkId, LinkHandle>,
     greeted: HashMap<LinkId, bool>,
     next_link: LinkId,
@@ -144,7 +165,23 @@ impl Lab {
 
     pub fn tick(&mut self) {
         let ours = self.ours.clone();
-        self.manager.tick(&mut self.server, &self.settings, &ours);
+        let running = self.kad.0.lock().unwrap().kad_running;
+        let kad = if running { Some(&mut self.kad as &mut dyn KadLink) } else { None };
+        self.manager.tick(&mut self.server, kad, &self.settings, &ours);
+        self.after();
+    }
+
+    /// The files Kad was asked the sources of, in order.
+    pub fn kad_asked(&self) -> Vec<[u8; 16]> {
+        self.kad.0.lock().unwrap().kad_asked.clone()
+    }
+
+    /// Kad found `sources` for `file`, as the network hands them over.
+    pub fn kad_found(&mut self, file: &[u8; 16], sources: &[njmule_engine::download::download_manager::KadSource]) {
+        let ours = self.ours.clone();
+        let public_ip = self.kad.0.lock().unwrap().kad_public_ip;
+        let settings = self.settings.clone();
+        self.manager.found_on_kad(file, sources, public_ip, &settings, &ours);
         self.after();
     }
 
@@ -411,6 +448,7 @@ fn open(
         settings,
         events: Vec::new(),
         server: Server(Arc::clone(server)),
+        kad: Kad(Arc::clone(engine)),
         links: HashMap::new(),
         greeted: HashMap::new(),
         next_link: 1,

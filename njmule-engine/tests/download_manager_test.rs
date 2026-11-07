@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The Java engine's DownloadManagerTest, under its names: what the user does with downloads and where their sources
-//! come from, on the downloads as the engine runs them. Kad's sources wait for Kad (`tests/not_ported.txt`); the
-//! sources Kad finds in the Java tests of corrupt senders come from the server here.
+//! come from, on the downloads as the engine runs them. The sources Kad finds in the Java tests of corrupt senders come
+//! from the server here.
 
 #![allow(
     clippy::unwrap_used,
@@ -15,7 +15,7 @@
 
 mod download_lab;
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -24,7 +24,7 @@ use njmule_engine::api::category::{self, Category};
 use njmule_engine::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus};
 use njmule_engine::api::ed2k_link::{Ed2kLink, FileLink, Source};
 use njmule_engine::config::next_download::NextDownload;
-use njmule_engine::download::download_manager::DownloadEvent;
+use njmule_engine::download::download_manager::{DownloadEvent, KadSource};
 use njmule_engine::protocol::ed2k::server_messages::{FoundSources, Source as Found};
 
 const OUR_ID: u32 = u32::from_le_bytes([198, 51, 100, 7]);
@@ -56,6 +56,8 @@ struct Manager {
     next: Option<DownloadInfo>,
     preview: Option<PathBuf>,
     dropped: usize,
+    kad: bool,
+    our_ipv6: Option<std::net::Ipv6Addr>,
 }
 
 impl Manager {
@@ -74,6 +76,8 @@ impl Manager {
             next: None,
             preview: None,
             dropped: 0,
+            kad: false,
+            our_ipv6: None,
         }
     }
 
@@ -84,13 +88,84 @@ impl Manager {
             settings.name_cleanups = words.to_owned();
         }
         settings.auto_delete_days = self.idle_days;
-        let engine =
-            Engine { blocked: vec![u32::from(BLOCKED_IP)], keeps_links: self.keeps_links, ..Engine::default() };
+        let engine = Engine {
+            blocked: vec![u32::from(BLOCKED_IP)],
+            keeps_links: self.keeps_links,
+            kad_running: self.kad,
+            our_ipv6: self.our_ipv6,
+            ..Engine::default()
+        };
         let downloads = Downloads::start_with([0xab; 16], OUR_ID, settings, engine);
         downloads.server.lock().unwrap().connected = self.answers;
         let categories = self.categories.clone();
         downloads.run(move |lab| lab.manager.set_categories(categories)).await;
         self.downloads = Some(downloads);
+    }
+
+    fn given_kad_that_looks_for_sources(&mut self) {
+        self.kad = true;
+    }
+
+    async fn given_a_download_that_kad_searches(&mut self, name: &str, hash: [u8; 16]) {
+        self.hash = hash;
+        let link = FileLink::of(name, 5000, hash).unwrap();
+        self.run(move |lab| lab.add(&link)).await;
+        self.downloads().wait_for("Kad searched", move |lab| lab.kad_asked().contains(&hash)).await;
+    }
+
+    fn given_we_have_the_ipv6_address(&mut self, address: &str) {
+        self.our_ipv6 = Some(address.parse().unwrap());
+    }
+
+    async fn when_kad_finds_firewalled_sources(&mut self, found: &[(Ipv4Addr, Option<&str>)]) {
+        let hash = self.hash;
+        let sources: Vec<KadSource> = found
+            .iter()
+            .map(|&(ip, ipv6)| KadSource {
+                address: SocketAddrV4::new(ip, PORT),
+                user_hash: Some([0x5a; 16]),
+                crypt_options: 0,
+                firewalled: true,
+                ipv6: ipv6.map(|address| address.parse().unwrap()),
+            })
+            .collect();
+        self.run(move |lab| lab.kad_found(&hash, &sources)).await;
+    }
+
+    async fn then_the_sources_are(&self, expected: &[&str]) {
+        let hash = self.hash;
+        let found: Vec<String> = self
+            .run(move |lab| {
+                lab.manager.sources().into_iter().filter(|source| source.file == hash).map(|s| s.address).collect()
+            })
+            .await;
+        assert_eq!(found, expected);
+    }
+
+    async fn given_the_download_paused(&mut self) {
+        let hash = self.hash;
+        self.run(move |lab| pause(lab, &hash)).await;
+    }
+
+    async fn when_kad_finds(&mut self, found: &[(Ipv4Addr, u16)]) {
+        let hash = self.hash;
+        let sources: Vec<KadSource> = found
+            .iter()
+            .map(|&(ip, port)| KadSource {
+                address: SocketAddrV4::new(ip, port),
+                user_hash: None,
+                crypt_options: 0,
+                firewalled: false,
+                ipv6: None,
+            })
+            .collect();
+        self.info = Some(
+            self.run(move |lab| {
+                lab.kad_found(&hash, &sources);
+                lab.manager.download(&hash).unwrap()
+            })
+            .await,
+        );
     }
 
     async fn given_the_download_manager_with_a_server_that_answers(&mut self) {
@@ -1195,4 +1270,48 @@ async fn should_ask_the_server_for_sources_again_at_once_when_it_connects() {
     manager.when_the_server_connects_again().await;
 
     manager.then_the_server_is_asked_for_the_sources_again().await;
+}
+
+#[tokio::test]
+async fn should_keep_only_usable_sources_from_kad() {
+    let mut manager = Manager::new();
+    manager.given_kad_that_looks_for_sources();
+    manager.given_the_download_manager().await;
+    manager.given_a_download_that_kad_searches("kad.bin", [0x12; 16]).await;
+    manager.given_the_download_paused().await;
+
+    manager
+        .when_kad_finds(&[
+            (Ipv4Addr::new(127, 0, 0, 1), PORT),
+            (Ipv4Addr::new(224, 0, 0, 1), PORT),
+            (BLOCKED_IP, PORT),
+            (Ipv4Addr::from(OUR_ID.to_le_bytes()), PORT),
+            (Ipv4Addr::new(192, 168, 1, 20), PORT),
+            (Ipv4Addr::new(10, 1, 2, 3), PORT),
+            (Ipv4Addr::new(192, 0, 2, 10), 0),
+            (Ipv4Addr::new(192, 0, 2, 10), PORT),
+        ])
+        .await;
+
+    manager.then_the_resulting_download_has_sources(1);
+}
+
+// Rust's own: Java's tests reach it with Kad's callbacks, which are not kept yet.
+#[tokio::test]
+async fn should_take_a_firewalled_kad_source_only_at_its_ipv6_address_while_we_have_ipv6() {
+    let mut manager = Manager::new();
+    manager.given_kad_that_looks_for_sources();
+    manager.given_we_have_the_ipv6_address("2001:db8::1");
+    manager.given_the_download_manager().await;
+    manager.given_a_download_that_kad_searches("kad.bin", [0x13; 16]).await;
+
+    manager
+        .when_kad_finds_firewalled_sources(&[
+            (Ipv4Addr::new(192, 0, 2, 71), Some("2001:db8::7")),
+            (Ipv4Addr::new(192, 0, 2, 72), None),
+            (Ipv4Addr::new(192, 0, 2, 73), Some("2001:db8::1")),
+        ])
+        .await;
+
+    manager.then_the_sources_are(&["[2001:db8::7]:4662"]).await;
 }

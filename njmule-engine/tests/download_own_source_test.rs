@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadOwnSourceTest, under its names: the downloads take no source that is ourselves. Kad's
-//! sources and those other clients tell of wait for their ports (`tests/not_ported.txt`).
+//! The Java engine's DownloadOwnSourceTest, under its names: the downloads take no source that is ourselves, from the
+//! server, Kad or another client.
 
 #![allow(
     clippy::unwrap_used,
@@ -15,10 +15,11 @@
 mod download_lab;
 mod scripted_source;
 
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
-use download_lab::{Downloads, PORT};
+use download_lab::{Downloads, Engine, PORT};
 use njmule_engine::api::ed2k_link::FileLink;
+use njmule_engine::download::download_manager::KadSource;
 use njmule_engine::protocol::ed2k::client_messages::FileStatus;
 use njmule_engine::protocol::ed2k::hello;
 use njmule_engine::protocol::ed2k::server_messages::{FoundSources, Source as Found};
@@ -30,6 +31,7 @@ use scripted_source::{Link, ScriptedSource, WAIT};
 const OUR_ID: u32 = u32::from_le_bytes([198, 51, 100, 7]);
 const OURS: [u8; 16] = [0xab; 16];
 const PEER: [u8; 16] = [0x5a; 16];
+const OUR_KAD_IP: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 8);
 const THEIR_IP: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 70);
 const FILE: [u8; 16] = [0x65; 16];
 const OTHER_FILE: [u8; 16] = [0x66; 16];
@@ -48,6 +50,31 @@ impl OwnSource {
     async fn given_a_download(&mut self) {
         self.downloads = Some(Downloads::start(OURS, OUR_ID, Downloads::settings()));
         self.downloads().add(FileLink::of("ours.bin", 5000, FILE).unwrap()).await;
+    }
+
+    // Kad runs, finding us reachable at our address.
+    async fn given_a_download_kad_searches_for(&mut self) {
+        let kad = Engine { kad_running: true, kad_public_ip: u32::from(OUR_KAD_IP), ..Engine::default() };
+        self.downloads = Some(Downloads::start_with(OURS, OUR_ID, Downloads::settings(), kad));
+        self.downloads().add(FileLink::of("ours.bin", 5000, FILE).unwrap()).await;
+    }
+
+    async fn given_kad_searches_for_its_sources(&self) {
+        self.downloads().wait_for("Kad searched", |lab| !lab.kad_asked().is_empty()).await;
+    }
+
+    async fn when_kad_finds_sources(&self, found: Vec<(Ipv4Addr, u16, [u8; 16])>) {
+        let sources: Vec<KadSource> = found
+            .into_iter()
+            .map(|(ip, port, user_hash)| KadSource {
+                address: SocketAddrV4::new(ip, port),
+                user_hash: Some(user_hash),
+                crypt_options: 0,
+                firewalled: false,
+                ipv6: None,
+            })
+            .collect();
+        self.downloads().run(move |lab| lab.kad_found(&FILE, &sources)).await;
     }
 
     async fn given_a_source_of(&mut self, user_hash: [u8; 16], misc2: u32) {
@@ -163,4 +190,25 @@ async fn should_leave_out_an_exchanged_source_with_our_user_hash() {
 
     let source = own.source.as_ref().unwrap().address();
     own.then_the_sources_of_the_download_are(&[source, SocketAddr::from((THEIR_IP, PORT))]).await;
+}
+
+#[tokio::test]
+async fn should_leave_out_a_kad_source_with_our_user_hash_or_at_our_address() {
+    let mut own = OwnSource::new();
+    own.given_a_download_kad_searches_for().await;
+    own.given_kad_searches_for_its_sources().await;
+
+    own.when_kad_finds_sources(vec![
+        (Ipv4Addr::new(192, 0, 2, 72), PORT, OURS),
+        (OUR_KAD_IP, PORT, PEER),
+        (OUR_KAD_IP, PORT + 1, PEER),
+        (THEIR_IP, PORT, PEER),
+    ])
+    .await;
+
+    own.then_the_sources_of_the_download_are(&[
+        SocketAddr::from((OUR_KAD_IP, PORT + 1)),
+        SocketAddr::from((THEIR_IP, PORT)),
+    ])
+    .await;
 }

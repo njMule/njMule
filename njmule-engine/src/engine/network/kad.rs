@@ -20,6 +20,7 @@ use crate::api::kad_info::{Buddy, KadInfo};
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
+use crate::download::download_manager::{KadLink, KadSource};
 use crate::engine::{Shared, crypt_options};
 use crate::kad::kad_identity::KadIdentity;
 use crate::kad::kad_node::{self, BuddyState, Host, KadEvent, KadNode, SearchHandle, Settings};
@@ -82,10 +83,31 @@ impl KadSide {
         }
     }
 
+    /// What finds the sources of downloads on Kad, while it runs.
+    pub(super) fn finding(&mut self) -> Option<KadFinding<'_>> {
+        self.running.as_mut().map(|running| KadFinding { node: &mut running.node })
+    }
+
     /// What starts keyword searches on Kad, while it runs.
     pub(super) fn searching(&mut self) -> Option<KadSearching<'_>> {
         let running = self.running.as_mut()?;
         Some(KadSearching { node: &mut running.node, searches: &mut self.searches })
+    }
+}
+
+/// Finds the sources of downloads on the node.
+pub(super) struct KadFinding<'a> {
+    node: &'a mut KadNode,
+}
+
+impl KadLink for KadFinding<'_> {
+    fn find_sources(&mut self, file: &[u8; 16], size: u64) -> bool {
+        self.node.find_sources(*file, size)
+    }
+
+    // Firewalled, our address and port may be those of another client behind the same router.
+    fn public_ip(&self) -> u32 {
+        if self.node.is_firewalled() { 0 } else { self.node.public_ip() }
     }
 }
 
@@ -378,19 +400,55 @@ impl Network {
         }
     }
 
-    // What Kad's searches found goes to the searches still open; the sources and notes have no taker yet.
+    // What Kad's searches found goes to the searches still open, and the sources to the downloads; the notes have no
+    // taker yet.
     fn kad_events(&mut self, events: Vec<KadEvent>) {
         for event in events {
-            if let KadEvent::Files { search, results } = event
-                && let Some(&number) = self.kad.searches.get(&search)
-            {
-                let found = results.into_iter().map(kad_node::FileResult::into_search_result).collect();
-                let preferences = self.preferences();
-                let mut effects = Vec::new();
-                self.searches.kad_results(number, found, &mut Rater::of(&mut self.spam, &preferences), &mut effects);
-                self.search_effects(effects);
+            match event {
+                KadEvent::Files { search, results } => {
+                    let Some(&number) = self.kad.searches.get(&search) else {
+                        continue;
+                    };
+                    let found = results.into_iter().map(kad_node::FileResult::into_search_result).collect();
+                    let preferences = self.preferences();
+                    let mut effects = Vec::new();
+                    self.searches.kad_results(
+                        number,
+                        found,
+                        &mut Rater::of(&mut self.spam, &preferences),
+                        &mut effects,
+                    );
+                    self.search_effects(effects);
+                }
+                KadEvent::Sources { file, sources } => self.kad_sources_found(&file, &sources),
+                KadEvent::Notes { .. } | KadEvent::NotesEnded { .. } => {}
             }
         }
+    }
+
+    // A firewalled source can only connect to us: useless while we cannot be called back, by the server with our
+    // HighID, or by Kad that finds us reachable.
+    fn kad_sources_found(&mut self, file: &[u8; 16], found: &[kad_node::Source]) {
+        let Some(running) = &self.kad.running else {
+            return;
+        };
+        let high_id = self.shared.context.lock().is_ok_and(|context| context.client_id >= LOW_ID_LIMIT);
+        let callable = !running.node.is_firewalled() || high_id;
+        let public_ip = if running.node.is_firewalled() { 0 } else { running.node.public_ip() };
+        let kept: Vec<KadSource> = found
+            .iter()
+            .filter(|source| !source.is_firewalled() || callable)
+            .map(|source| KadSource {
+                address: SocketAddrV4::new(Ipv4Addr::from(source.ip), source.tcp_port),
+                user_hash: Some(source.user_hash),
+                crypt_options: source.connect_options,
+                firewalled: source.is_firewalled(),
+                ipv6: source.ipv6,
+            })
+            .collect();
+        let (settings, ours) = (self.settings(), self.shared.our_hello());
+        self.downloads.found_on_kad(file, &kept, public_ip, &settings, &ours);
+        self.after_downloads();
     }
 
     /// The search manager ended a search over Kad: so does the node.
