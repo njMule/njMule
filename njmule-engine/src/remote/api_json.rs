@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 use crate::api::download_info::{DownloadInfo, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::file_comment::FileComment;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::{Buddy, KadInfo};
 use crate::api::kad_note::KadNote;
@@ -20,6 +21,7 @@ use crate::api::server_info::ServerInfo;
 use crate::config::bind_interface::Candidate;
 use crate::config::preferences::Preferences;
 use crate::files::file_types;
+use crate::files::part_file::PartMap;
 use crate::files::shared_files::SharedFile;
 use crate::persist::preferences_codec;
 
@@ -187,18 +189,24 @@ pub fn download(info: &DownloadInfo, with_parts: bool) -> Value {
         "kind": kind(&info.name),
     });
     if with_parts && let Value::Object(fields) = &mut data {
-        let spans = |spans: &[(u64, u64)]| spans.iter().map(|(start, end)| json!([start, end])).collect::<Vec<_>>();
-        fields.insert(
-            "parts".to_owned(),
-            json!({
-                "size": info.parts.size,
-                "missing": spans(&info.parts.missing),
-                "requested": spans(&info.parts.requested),
-                "sources": info.parts.sources,
-            }),
-        );
+        fields.insert("parts".to_owned(), parts(&info.parts));
     }
     data
+}
+
+/// The map of a download's parts.
+pub fn download_parts(info: &DownloadInfo) -> Value {
+    json!({"hash": hash(&info.hash), "parts": parts(&info.parts)})
+}
+
+fn parts(map: &PartMap) -> Value {
+    let spans = |spans: &[(u64, u64)]| spans.iter().map(|(start, end)| json!([start, end])).collect::<Vec<_>>();
+    json!({
+        "size": map.size,
+        "missing": spans(&map.missing),
+        "requested": spans(&map.requested),
+        "sources": map.sources,
+    })
 }
 
 /// A source of a download, as the list of downloading clients shows it.
@@ -352,11 +360,16 @@ pub fn kad_contact(contact: &KadContactInfo) -> Value {
 
 /// A note Kad gave on a file: who published it, the name it gives the file, and its comment.
 pub fn kad_note(note: &KadNote) -> Value {
+    comment(&note.publisher, &note.file_name, &note.comment)
+}
+
+/// A rating and comment of a file: who gave it, under which name of the file.
+pub fn comment(who: &str, file_name: &str, comment: &FileComment) -> Value {
     json!({
-        "who": note.publisher,
-        "fileName": note.file_name,
-        "rating": note.comment.rating(),
-        "text": note.comment.text(),
+        "who": who,
+        "fileName": file_name,
+        "rating": comment.rating(),
+        "text": comment.text(),
     })
 }
 

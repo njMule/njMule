@@ -9,6 +9,7 @@ pub mod network;
 use std::collections::BTreeMap;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -18,7 +19,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinSet;
 
-use crate::api::download_info::{DownloadInfo, SourceInfo};
+use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::kad_contact_info::KadContactInfo;
@@ -26,7 +27,9 @@ use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
+use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::api::nj_mule_info;
+use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::PeerInfo;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
@@ -35,7 +38,7 @@ use crate::config::bind_interface::{self, Binding};
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
 use crate::config::shared_files_visibility::SharedFilesVisibility;
-use crate::engine::network::{Command, ConnectError, MoreAnswer};
+use crate::engine::network::{Command, ConnectError, DownloadChange, MoreAnswer};
 use crate::files::shared_files::SharedFile;
 use crate::net::routes::Routes;
 use crate::peer::{peer_greetings, shared_files_browser};
@@ -435,6 +438,79 @@ impl Engine {
         while tasks.join_next().await.is_some() {}
     }
 
+    /// Stops a download and forgets its sources; false when unknown.
+    pub async fn stop_download(&self, hash: [u8; 16]) -> bool {
+        self.change_download(hash, DownloadChange::Stop).await.unwrap_or(false)
+    }
+
+    /// Takes back a download cancelled in the last seconds, with what it had; false when it cannot be.
+    pub async fn restore_download(&self, hash: [u8; 16]) -> bool {
+        self.change_download(hash, DownloadChange::Restore).await.unwrap_or(false)
+    }
+
+    /// Asks for the first and last parts first, so that the file can be previewed early.
+    pub async fn set_download_preview(&self, hash: [u8; 16], preview_first: bool) -> bool {
+        self.change_download(hash, DownloadChange::PreviewFirst(preview_first)).await.unwrap_or(false)
+    }
+
+    /// Takes the sources shared with other downloads whenever they are free to move.
+    pub async fn set_download_auto_swap(&self, hash: [u8; 16], auto_swap: bool) -> bool {
+        self.change_download(hash, DownloadChange::AutoSwap(auto_swap)).await.unwrap_or(false)
+    }
+
+    pub async fn set_download_priority(&self, hash: [u8; 16], priority: DownloadPriority) -> bool {
+        self.change_download(hash, DownloadChange::Priority(priority)).await.unwrap_or(false)
+    }
+
+    /// Moves a download to a category; 0 takes it out of every category.
+    pub async fn set_download_category(&self, hash: [u8; 16], category: u32) -> bool {
+        self.change_download(hash, DownloadChange::Category(category)).await.unwrap_or(false)
+    }
+
+    /// Renames a download; false when unknown, an error for a blank name.
+    pub async fn rename_download(&self, hash: [u8; 16], name: String) -> Result<bool, String> {
+        self.change_download(hash, DownloadChange::Rename(name)).await
+    }
+
+    /// Adds a client known to have the file as a source of a download; false when unknown or refused.
+    pub async fn add_source(&self, download: [u8; 16], source: SocketAddr) -> bool {
+        self.change_download(download, DownloadChange::AddSource(source)).await.unwrap_or(false)
+    }
+
+    /// Moves a source asked for another file to this download, when it is free to move.
+    pub async fn swap_source_to_download(&self, download: [u8; 16], source: SocketAddr) -> bool {
+        self.change_download(download, DownloadChange::SwapSource(source)).await.unwrap_or(false)
+    }
+
+    /// Moves the sources shared with other downloads to this one now; answers how many.
+    pub async fn swap_sources_to_download(&self, hash: [u8; 16]) -> usize {
+        self.ask(|reply| Command::SwapSources(hash, true, reply)).await.unwrap_or(0)
+    }
+
+    /// Moves this download's sources shared with others to them now; answers how many.
+    pub async fn swap_sources_from_download(&self, hash: [u8; 16]) -> usize {
+        self.ask(|reply| Command::SwapSources(hash, false, reply)).await.unwrap_or(0)
+    }
+
+    /// The data file of a download, once the start of the file has come.
+    pub async fn download_data(&self, hash: [u8; 16]) -> Option<PathBuf> {
+        self.ask(|reply| Command::DownloadData(hash, reply)).await.flatten()
+    }
+
+    /// The comments the sources of a download gave on it.
+    pub async fn peer_comments(&self, download: [u8; 16]) -> Vec<PeerComment> {
+        self.ask(|reply| Command::PeerComments(download, reply)).await.unwrap_or_default()
+    }
+
+    /// Downloads and uploads in detail, for diagnosing tests.
+    pub async fn describe(&self) -> String {
+        self.ask(Command::Describe).await.unwrap_or_default()
+    }
+
+    async fn change_download(&self, hash: [u8; 16], change: DownloadChange) -> Result<bool, String> {
+        self.ask(|reply| Command::ChangeDownload(hash, change, reply)).await.unwrap_or(Ok(false))
+    }
+
     async fn ask<T>(&self, command: impl FnOnce(oneshot::Sender<T>) -> Command) -> Option<T> {
         let (reply, answer) = oneshot::channel();
         self.shared.commands.send(command(reply)).ok()?;
@@ -444,6 +520,200 @@ impl Engine {
     fn publish(&self, event: EngineEvent) {
         // Without a front end following, nobody misses the event.
         let _ = self.shared.events.send(event);
+    }
+}
+
+impl NjMuleEngine for Engine {
+    fn preferences(&self) -> Preferences {
+        Engine::preferences(self)
+    }
+
+    fn update_preferences(&self, changes: &BTreeMap<String, String>) -> Result<Preferences, String> {
+        Engine::update_preferences(self, changes)
+    }
+
+    fn subscribe(&self) -> broadcast::Receiver<EngineEvent> {
+        Engine::subscribe(self)
+    }
+
+    fn stopped(&self) -> futures_util::future::BoxFuture<'static, ()> {
+        Box::pin(Engine::stopped(self))
+    }
+
+    fn hello(&self, address: SocketAddr) -> impl Future<Output = io::Result<PeerInfo>> + Send {
+        Engine::hello(self, address)
+    }
+
+    fn browse(&self, address: SocketAddr) -> impl Future<Output = io::Result<Vec<SearchResult>>> + Send {
+        Engine::browse(self, address)
+    }
+
+    fn known_clients(&self) -> impl Future<Output = Vec<KnownClient>> + Send {
+        Engine::known_clients(self)
+    }
+
+    fn import_servers(&self, servers: Vec<Server>) -> impl Future<Output = usize> + Send {
+        Engine::import_servers(self, servers)
+    }
+
+    fn connect_server(&self, address: Option<Address>) -> impl Future<Output = Result<(), ConnectError>> + Send {
+        Engine::connect_server(self, address)
+    }
+
+    fn disconnect_server(&self) -> impl Future<Output = ()> + Send {
+        Engine::disconnect_server(self)
+    }
+
+    fn servers(&self) -> impl Future<Output = Vec<ServerInfo>> + Send {
+        Engine::servers(self)
+    }
+
+    fn set_static_server(&self, address: Address, wanted: bool) -> impl Future<Output = bool> + Send {
+        Engine::set_static_server(self, address, wanted)
+    }
+
+    fn kad(&self) -> impl Future<Output = Option<KadInfo>> + Send {
+        Engine::kad(self)
+    }
+
+    fn kad_contacts(&self) -> impl Future<Output = Vec<KadContactInfo>> + Send {
+        Engine::kad_contacts(self)
+    }
+
+    fn kad_searches(&self) -> impl Future<Output = Vec<KadSearchInfo>> + Send {
+        Engine::kad_searches(self)
+    }
+
+    fn kad_notes(&self, file: [u8; 16]) -> impl Future<Output = Vec<KadNote>> + Send {
+        Engine::kad_notes(self, file)
+    }
+
+    fn search_kad_notes(&self, file: [u8; 16]) -> impl Future<Output = Result<Vec<KadNote>, NotesError>> + Send {
+        Engine::search_kad_notes(self, file)
+    }
+
+    fn connect_kad(&self) -> impl Future<Output = ()> + Send {
+        Engine::connect_kad(self)
+    }
+
+    fn disconnect_kad(&self) -> impl Future<Output = ()> + Send {
+        Engine::disconnect_kad(self)
+    }
+
+    fn recheck_kad(&self) -> impl Future<Output = bool> + Send {
+        Engine::recheck_kad(self)
+    }
+
+    fn bootstrap_kad(&self, node: SocketAddrV4) -> impl Future<Output = ()> + Send {
+        Engine::bootstrap_kad(self, node)
+    }
+
+    fn add_kad_contacts(&self, contents: nodes_dat::Contents) -> impl Future<Output = io::Result<usize>> + Send {
+        Engine::add_kad_contacts(self, contents)
+    }
+
+    fn start_search(
+        &self,
+        query: String,
+        scope: Option<Scope>,
+    ) -> impl Future<Output = Result<u64, StartError>> + Send {
+        Engine::start_search(self, query, scope)
+    }
+
+    fn more_results(&self, search: u64) -> impl Future<Output = MoreAnswer> + Send {
+        Engine::more_results(self, search)
+    }
+
+    fn shared_files(&self) -> impl Future<Output = Vec<SharedFile>> + Send {
+        Engine::shared_files(self)
+    }
+
+    fn add_download(
+        &self,
+        link: FileLink,
+        paused: Option<bool>,
+    ) -> impl Future<Output = Result<DownloadInfo, String>> + Send {
+        Engine::add_download(self, link, paused)
+    }
+
+    fn downloads(&self) -> impl Future<Output = Vec<DownloadInfo>> + Send {
+        Engine::downloads(self)
+    }
+
+    fn sources(&self) -> impl Future<Output = Vec<SourceInfo>> + Send {
+        Engine::sources(self)
+    }
+
+    fn pause_download(&self, hash: [u8; 16]) -> impl Future<Output = Option<DownloadInfo>> + Send {
+        Engine::pause_download(self, hash)
+    }
+
+    fn resume_download(&self, hash: [u8; 16]) -> impl Future<Output = Option<DownloadInfo>> + Send {
+        Engine::resume_download(self, hash)
+    }
+
+    fn cancel_download(&self, hash: [u8; 16]) -> impl Future<Output = bool> + Send {
+        Engine::cancel_download(self, hash)
+    }
+
+    fn clear_completed_downloads(&self) -> impl Future<Output = usize> + Send {
+        Engine::clear_completed_downloads(self)
+    }
+
+    fn clear_completed_download(&self, hash: [u8; 16]) -> impl Future<Output = bool> + Send {
+        Engine::clear_completed_download(self, hash)
+    }
+
+    fn stop_download(&self, hash: [u8; 16]) -> impl Future<Output = bool> + Send {
+        Engine::stop_download(self, hash)
+    }
+
+    fn restore_download(&self, hash: [u8; 16]) -> impl Future<Output = bool> + Send {
+        Engine::restore_download(self, hash)
+    }
+
+    fn set_download_preview(&self, hash: [u8; 16], preview_first: bool) -> impl Future<Output = bool> + Send {
+        Engine::set_download_preview(self, hash, preview_first)
+    }
+
+    fn set_download_auto_swap(&self, hash: [u8; 16], auto_swap: bool) -> impl Future<Output = bool> + Send {
+        Engine::set_download_auto_swap(self, hash, auto_swap)
+    }
+
+    fn set_download_priority(&self, hash: [u8; 16], priority: DownloadPriority) -> impl Future<Output = bool> + Send {
+        Engine::set_download_priority(self, hash, priority)
+    }
+
+    fn set_download_category(&self, hash: [u8; 16], category: u32) -> impl Future<Output = bool> + Send {
+        Engine::set_download_category(self, hash, category)
+    }
+
+    fn rename_download(&self, hash: [u8; 16], name: String) -> impl Future<Output = Result<bool, String>> + Send {
+        Engine::rename_download(self, hash, name)
+    }
+
+    fn add_source(&self, download: [u8; 16], source: SocketAddr) -> impl Future<Output = bool> + Send {
+        Engine::add_source(self, download, source)
+    }
+
+    fn swap_source_to_download(&self, download: [u8; 16], source: SocketAddr) -> impl Future<Output = bool> + Send {
+        Engine::swap_source_to_download(self, download, source)
+    }
+
+    fn swap_sources_to_download(&self, hash: [u8; 16]) -> impl Future<Output = usize> + Send {
+        Engine::swap_sources_to_download(self, hash)
+    }
+
+    fn swap_sources_from_download(&self, hash: [u8; 16]) -> impl Future<Output = usize> + Send {
+        Engine::swap_sources_from_download(self, hash)
+    }
+
+    fn download_data(&self, hash: [u8; 16]) -> impl Future<Output = Option<PathBuf>> + Send {
+        Engine::download_data(self, hash)
+    }
+
+    fn peer_comments(&self, download: [u8; 16]) -> impl Future<Output = Vec<PeerComment>> + Send {
+        Engine::peer_comments(self, download)
     }
 }
 

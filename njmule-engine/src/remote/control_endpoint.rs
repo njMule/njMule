@@ -19,7 +19,7 @@ use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-use crate::engine::Engine;
+use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::remote::remote_api::{self, ApiError};
 
 const BASE_PATH: &str = "/api/v1";
@@ -36,7 +36,7 @@ pub struct ControlEndpoint {
 
 impl ControlEndpoint {
     /// Serves the API of `engine` on a free loopback port.
-    pub async fn start(engine: Engine) -> io::Result<Self> {
+    pub async fn start<E: NjMuleEngine>(engine: E) -> io::Result<Self> {
         let mut secret = [0u8; 32];
         rand::rng().fill_bytes(&mut secret);
         let token = data_encoding::BASE64URL_NOPAD.encode(&secret);

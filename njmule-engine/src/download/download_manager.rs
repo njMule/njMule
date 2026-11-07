@@ -587,6 +587,15 @@ impl DownloadManager {
         self.queue.get(hash).is_some_and(|d| d.file.status() == Status::Stopped) || self.stop(hash, ours)
     }
 
+    /// Takes back a download cancelled less than the grace ago, as it was; false when it cannot be.
+    pub fn restore(&mut self, hash: &[u8; 16], ours: &Hello) -> bool {
+        if self.entries.contains_key(hash) || !self.queue.restore(hash) {
+            return false;
+        }
+        self.settle(ours);
+        self.entries.contains_key(hash)
+    }
+
     /// The categories downloads may be in; downloads in one that is gone have none.
     pub fn set_categories(&mut self, categories: Vec<Category>) {
         self.categories = categories;

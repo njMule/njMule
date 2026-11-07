@@ -8,7 +8,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -18,7 +18,7 @@ use tokio::net::{TcpListener, UdpSocket};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
-use crate::api::download_info::{DownloadInfo, SourceInfo};
+use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::kad_contact_info::KadContactInfo;
@@ -26,6 +26,7 @@ use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
+use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::{Identification as PeerIdentification, PeerInfo};
 use crate::api::search_request;
 use crate::api::search_result::SearchResult;
@@ -95,6 +96,24 @@ const DELETED_LINKS_FILE: &str = "deleted-downloads.txt";
 /// Where the outcome of a search for notes comes: the notes then known, or why Kad could not search.
 pub type NotesOutcome = oneshot::Receiver<Result<Vec<KadNote>, String>>;
 
+/// What the API changes in a download.
+#[derive(Debug)]
+pub enum DownloadChange {
+    /// Pauses it and forgets its sources.
+    Stop,
+    /// Takes it back after a cancel, while its files are kept.
+    Restore,
+    PreviewFirst(bool),
+    AutoSwap(bool),
+    Priority(DownloadPriority),
+    Category(u32),
+    Rename(String),
+    /// A source the user typed.
+    AddSource(SocketAddr),
+    /// Asks the source for this download, when it is free to move.
+    SwapSource(SocketAddr),
+}
+
 /// What the API asks the network side.
 #[derive(Debug)]
 pub enum Command {
@@ -115,6 +134,14 @@ pub enum Command {
     CancelDownload([u8; 16], oneshot::Sender<bool>),
     ClearCompleted(oneshot::Sender<usize>),
     ClearCompletedOne([u8; 16], oneshot::Sender<bool>),
+    /// A change to a download: whether it was made (false for an unknown download), or why it was refused.
+    ChangeDownload([u8; 16], DownloadChange, oneshot::Sender<Result<bool, String>>),
+    /// Moves the sources shared with other downloads to this one (`true`) or this one's to the others: how many.
+    SwapSources([u8; 16], bool, oneshot::Sender<usize>),
+    DownloadData([u8; 16], oneshot::Sender<Option<PathBuf>>),
+    PeerComments([u8; 16], oneshot::Sender<Vec<PeerComment>>),
+    /// Downloads and uploads in detail, for diagnosing tests.
+    Describe(oneshot::Sender<String>),
     /// Says hello to a client and runs the identification: told once its outcome is known, the connection closes or
     /// the wait is over.
     Hello(SocketAddr, oneshot::Sender<io::Result<PeerInfo>>),
@@ -626,6 +653,34 @@ impl Network {
                 }
                 let _ = answer.send(cleared);
             }
+            Command::ChangeDownload(hash, change, answer) => {
+                let changed = self.change_download(&hash, change);
+                self.after_downloads();
+                let _ = answer.send(changed);
+            }
+            Command::SwapSources(hash, here, answer) => {
+                let ours = self.shared.our_hello();
+                let moved = if here {
+                    self.downloads.swap_sources_here(&hash, &ours)
+                } else {
+                    self.downloads.swap_sources_away(&hash, &ours)
+                };
+                self.after_downloads();
+                let _ = answer.send(moved);
+            }
+            Command::DownloadData(hash, answer) => {
+                let _ = answer.send(self.downloads.data_file(&hash));
+            }
+            Command::PeerComments(hash, answer) => {
+                let _ = answer.send(self.downloads.comments(&hash));
+            }
+            Command::Describe(answer) => {
+                let _ = answer.send(format!(
+                    "downloads:\n{}uploads: {}",
+                    self.downloads.describe(),
+                    self.uploads.describe()
+                ));
+            }
             Command::Hello(address, answer) => {
                 let events = self.peer_events.clone();
                 let routes = self.shared.routes.clone();
@@ -1116,6 +1171,24 @@ impl Network {
     }
 
     // Acts on what the downloads asked and tells what they did.
+    fn change_download(&mut self, hash: &[u8; 16], change: DownloadChange) -> Result<bool, String> {
+        let ours = self.shared.our_hello();
+        Ok(match change {
+            DownloadChange::Stop => self.downloads.stop(hash, &ours),
+            DownloadChange::Restore => self.downloads.restore(hash, &ours),
+            DownloadChange::PreviewFirst(value) => self.downloads.set_preview_first(hash, value),
+            DownloadChange::AutoSwap(value) => self.downloads.set_auto_swap(hash, value),
+            DownloadChange::Priority(priority) => self.downloads.set_priority(hash, priority),
+            DownloadChange::Category(id) => self.downloads.set_category(hash, id),
+            DownloadChange::Rename(name) => self.downloads.rename(hash, &name).map_err(str::to_owned)?,
+            DownloadChange::AddSource(address) => {
+                let settings = self.settings();
+                self.downloads.add_source_by_hand(hash, address, &settings)
+            }
+            DownloadChange::SwapSource(address) => self.downloads.swap_source(hash, address, &ours),
+        })
+    }
+
     fn after_downloads(&mut self) {
         for action in self.downloads.take_actions() {
             match action {
