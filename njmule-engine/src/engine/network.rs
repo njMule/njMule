@@ -314,7 +314,7 @@ pub fn start(
     let incoming = preferences.incoming_dir.clone().unwrap_or_else(|| dirs.downloads.clone());
     let watched = shared.preferences.subscribe();
     let min_free = Box::new(move || u64::from(watched.borrow().min_free_space_mib).saturating_mul(1024 * 1024));
-    let downloads = DownloadManager::open(&temp, &incoming, min_free, disk_in)?;
+    let downloads = DownloadManager::open(&temp, &incoming, min_free, disk_in, Box::new(Instant::now))?;
     let finished = FinishedDownloads::load(&dirs.config);
     let spam_file = dirs.config.join(spam_filter::FILE_NAME);
     let spam = SpamFilter::load(&spam_file).unwrap_or_else(|e| {

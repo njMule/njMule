@@ -662,6 +662,11 @@ impl DownloadSession {
         if self.state != State::Downloading || data.is_empty() {
             return;
         }
+        // Cancelled behind the session's back: nothing it receives can be kept.
+        if ctx.queue.get(&self.download).is_none() {
+            self.close("the download is gone", ctx);
+            return;
+        }
         let bytes = u64::try_from(data.len()).unwrap_or(u64::MAX);
         let end = start.saturating_add(bytes);
         let Some(target) = self.pending.values().position(|pending| pending.contains(start, end)) else {

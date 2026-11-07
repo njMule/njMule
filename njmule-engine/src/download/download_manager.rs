@@ -57,6 +57,9 @@ const CRYPT_SUPPORTED: u8 = 0x01;
 const CRYPT_REQUIRED: u8 = 0x07;
 const MAX_LINK_HOSTS: usize = 16;
 
+/// What the downloads take the time from: [`Instant::now`] but in tests.
+pub type Clock = Box<dyn Fn() -> Instant + Send>;
+
 /// The server connection, as far as the downloads use it.
 pub trait ServerLink {
     /// Our client id on the server, zero when not connected.
@@ -198,6 +201,7 @@ pub struct DownloadManager {
     server_requests_due: Instant,
     actions: Vec<Action>,
     events: Vec<DownloadEvent>,
+    clock: Clock,
 }
 
 impl DownloadManager {
@@ -208,10 +212,11 @@ impl DownloadManager {
         incoming_dir: &Path,
         min_free: download_queue::MinFree,
         disk: UnboundedSender<DiskDone>,
+        clock: Clock,
     ) -> io::Result<Self> {
         let incoming = incoming_dir.to_path_buf();
         let queue = DownloadQueue::load(temp_dir, Box::new(move |_| incoming.clone()), min_free, disk)?;
-        let now = Instant::now();
+        let now = clock();
         let entries = queue.all().map(|d| (d.hash(), Entry::new(d.file.part_count(), now))).collect();
         Ok(Self {
             queue,
@@ -223,6 +228,7 @@ impl DownloadManager {
             server_requests_due: now,
             actions: Vec::new(),
             events: Vec::new(),
+            clock,
         })
     }
 
@@ -277,7 +283,7 @@ impl DownloadManager {
         if !self.entries.contains_key(hash) || !self.queue.resume(hash) {
             return false;
         }
-        let now = Instant::now();
+        let now = (self.clock)();
         let addresses: Vec<SocketAddr> =
             self.entries.get(hash).map(|e| e.sources.keys().copied().collect()).unwrap_or_default();
         for address in addresses {
@@ -366,7 +372,7 @@ impl DownloadManager {
 
     /// A server connection was made: it is asked for the sources of every download.
     pub fn server_connected(&mut self) {
-        let now = Instant::now();
+        let now = (self.clock)();
         self.server_requests_due = now;
         for entry in self.entries.values_mut() {
             entry.next_server_ask = now;
@@ -418,7 +424,7 @@ impl DownloadManager {
 
     /// Once a second: sessions that stalled, callbacks, the server asked for sources, sessions started.
     pub fn tick(&mut self, server: &mut dyn ServerLink, settings: &Settings, ours: &Hello) {
-        let now = Instant::now();
+        let now = (self.clock)();
         self.queue.tick(now);
         let addresses: Vec<SocketAddr> = self.clients.keys().copied().collect();
         for address in &addresses {
@@ -602,9 +608,9 @@ impl DownloadManager {
         ours: &Hello,
         work: impl FnOnce(&mut DownloadSession, &mut Context<'_, StdRng>),
     ) {
-        let Self { queue, clients, random, .. } = self;
+        let Self { queue, clients, random, clock, .. } = self;
         if let Some(session) = clients.get_mut(address).and_then(|c| c.session.as_mut()) {
-            let mut ctx = Context { queue, ours, random, now: Instant::now() };
+            let mut ctx = Context { queue, ours, random, now: clock() };
             work(session, &mut ctx);
         }
     }
@@ -637,7 +643,7 @@ impl DownloadManager {
         match event {
             QueueEvent::Added(hash) => {
                 let parts = self.queue.get(&hash).map_or(0, |d| d.file.part_count());
-                self.entries.insert(hash, Entry::new(parts, Instant::now()));
+                self.entries.insert(hash, Entry::new(parts, (self.clock)()));
                 if let Some(info) = self.info(&hash) {
                     self.events.push(DownloadEvent::Added(info));
                 }
@@ -769,7 +775,7 @@ impl DownloadManager {
             client.crypt_options = session.peer_crypt_options();
         }
         tracing::debug!("{address} ({outcome:?}): {reason}");
-        let now = Instant::now();
+        let now = (self.clock)();
         match outcome {
             Outcome::Queued | Outcome::Later => {
                 client.failures = 0;
@@ -835,7 +841,7 @@ impl DownloadManager {
         if !known && !self.add_source(&callback.file, address, settings) {
             return false;
         }
-        let now = Instant::now();
+        let now = (self.clock)();
         let Some(client) = self.clients.get_mut(&address) else {
             return false;
         };
@@ -890,8 +896,8 @@ impl DownloadManager {
             if let Some(old_link) = session.link() {
                 self.links.remove(&old_link.id());
             }
-            let Self { queue, random, .. } = self;
-            session.close("the source called back", &mut Context { queue, ours, random, now: Instant::now() });
+            let Self { queue, random, clock, .. } = self;
+            session.close("the source called back", &mut Context { queue, ours, random, now: clock() });
         }
         // The file it was asked for last needs no request again, another does.
         let known = self
@@ -901,7 +907,7 @@ impl DownloadManager {
             .and_then(|_| self.entries.get(&hash))
             .and_then(|e| e.sources.get(&address))
             .and_then(|s| s.parts.clone());
-        let now = Instant::now();
+        let now = (self.clock)();
         let Some(client) = self.clients.get_mut(&address) else {
             return false;
         };
@@ -933,7 +939,7 @@ impl DownloadManager {
         {
             return;
         }
-        self.callbacks.insert(low_id, Callback { file: *file, user_hash, since: Instant::now(), requested: false });
+        self.callbacks.insert(low_id, Callback { file: *file, user_hash, since: (self.clock)(), requested: false });
     }
 
     fn send_callbacks(&mut self, server: &mut dyn ServerLink, now: Instant) {
@@ -1039,7 +1045,7 @@ impl DownloadManager {
         }
         entry.sources.insert(address, Source::default());
         entry.changed = true;
-        let now = Instant::now();
+        let now = (self.clock)();
         let client = self.clients.entry(address).or_insert_with(|| Client {
             sources: Vec::new(),
             current: *hash,
@@ -1102,8 +1108,8 @@ impl DownloadManager {
             if let Some(link) = session.link() {
                 self.links.remove(&link.id());
             }
-            let Self { queue, random, .. } = self;
-            session.close("the source is dropped", &mut Context { queue, ours, random, now: Instant::now() });
+            let Self { queue, random, clock, .. } = self;
+            session.close("the source is dropped", &mut Context { queue, ours, random, now: clock() });
         }
         let Some(client) = self.clients.get_mut(address) else {
             return;
@@ -1181,7 +1187,7 @@ impl DownloadManager {
         }
         // The part waits a little for the recovery data rather than come again whole.
         download.file.hold(part);
-        entry.holds.push((part, instants::later(Instant::now(), RECOVERY_WAIT)));
+        entry.holds.push((part, instants::later((self.clock)(), RECOVERY_WAIT)));
         let addresses: Vec<SocketAddr> = entry.sources.keys().copied().collect();
         for address in addresses {
             if let Some(session) = self
