@@ -994,10 +994,24 @@ impl Network {
         self.after_downloads();
     }
 
+    // A greeted connection of a client listening at `address` that the downloads do not use yet.
+    fn open_link_to(&self, address: SocketAddr) -> Option<(LinkHandle, Hello)> {
+        self.peers.iter().find_map(|(id, peer)| {
+            let hello = peer.hello.as_ref()?;
+            let listens = SocketAddr::new(peer.handle.remote().ip(), hello.tcp_port);
+            (peer.incoming && listens == address && !self.downloads.has_link(*id))
+                .then(|| (peer.handle.clone(), hello.clone()))
+        })
+    }
+
     // Acts on what the downloads asked and tells what they did.
     fn after_downloads(&mut self) {
         for action in self.downloads.take_actions() {
             match action {
+                // A client connected to download from us is asked over the same connection.
+                Action::Connect { address, .. } if let Some((link, hello)) = self.open_link_to(address) => {
+                    self.downloads.connected_over(address, link, hello, &self.shared.our_hello());
+                }
                 Action::Connect { address, obfuscate_for } => {
                     let events = self.peer_events.clone();
                     let routes = self.shared.routes.clone();

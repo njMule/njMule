@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use std::io;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -872,6 +872,18 @@ impl DownloadManager {
             Ok(link) => link.close(),
             Err(reason) => self.with_session(&address, ours, |session, ctx| session.unreachable(&reason, ctx)),
         }
+        self.settle(ours);
+    }
+
+    /// The client to connect to is connected to us already, for our files: it is asked over its own connection.
+    pub fn connected_over(&mut self, address: SocketAddr, link: LinkHandle, hello: Hello, ours: &Hello) {
+        let connecting =
+            self.clients.get(&address).and_then(|c| c.session.as_ref()).is_some_and(|s| s.state() == State::Connecting);
+        if !connecting {
+            return;
+        }
+        self.links.insert(link.id(), address);
+        self.with_session(&address, ours, |session, ctx| session.adopt(link, hello, None, false, ctx));
         self.settle(ours);
     }
 
@@ -2206,4 +2218,10 @@ pub fn passes_on(ip: u32, asker: IpAddr) -> bool {
 
 fn wall_seconds() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs())
+}
+
+/// The address to reach a client at over IPv6: when both of us have it and IPv4 does not do (`wanted`), as when the
+/// client is firewalled there or did not answer on it.
+pub fn ipv6_route(we_have_ipv6: bool, theirs: Option<Ipv6Addr>, port: u16, wanted: bool) -> Option<SocketAddr> {
+    theirs.filter(|_| we_have_ipv6 && wanted).map(|address| SocketAddr::new(IpAddr::V6(address), port))
 }
