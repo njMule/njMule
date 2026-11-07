@@ -1486,9 +1486,6 @@ impl Network {
         {
             return;
         }
-        if self.kad_client_packet(handle.remote(), packet) {
-            return;
-        }
         match peer_link::side_of(packet) {
             Side::Download if self.downloads.has_link(link) => {
                 self.downloads.received(link, packet, ours);
@@ -1546,6 +1543,8 @@ impl Network {
 
     // The clients whose turn came while they were not connected are called.
     fn after_uploads(&mut self) {
+        let requests = self.uploads.take_kad_requests();
+        self.kad_requests(requests);
         for call in self.uploads.take_calls() {
             let events = self.peer_events.clone();
             let routes = self.shared.routes.clone();

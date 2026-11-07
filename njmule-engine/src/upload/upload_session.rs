@@ -14,6 +14,7 @@ use crate::peer::peer_link::LinkHandle;
 use crate::protocol::ed2k::client_messages::{self, FileName, RequestParts};
 use crate::protocol::ed2k::file_entry::FileEntry;
 use crate::protocol::ed2k::hello::{self, Hello};
+use crate::protocol::ed2k::low_id_messages::UdpCheckRequest;
 use crate::protocol::ed2k::source_exchange as exchange;
 use crate::protocol::io::{DecodeError, PacketWriter, StringEncoding};
 use crate::protocol::packet::opcodes::{client, extended};
@@ -66,6 +67,10 @@ pub enum Request {
     FileGone,
     /// The client asks for the other sources of a file.
     Sources(exchange::Request),
+    /// The client, a Kad node, confirms it reached our TCP port.
+    Reached,
+    /// The client, a Kad node, asks for the datagram of its UDP firewall test.
+    UdpCheck(UdpCheckRequest),
 }
 
 pub struct UploadSession {
@@ -256,6 +261,10 @@ impl UploadSession {
             }
             (protocol::EMULE, extended::REQUESTSOURCES2) => {
                 return Ok(Some(Request::Sources(exchange::Request::decode(packet)?)));
+            }
+            (protocol::EMULE, extended::KAD_FWTCPCHECK_ACK) => return Ok(Some(Request::Reached)),
+            (protocol::EMULE, extended::FWCHECKUDPREQ) => {
+                return Ok(Some(Request::UdpCheck(UdpCheckRequest::decode(packet)?)));
             }
             (protocol::EMULE, extended::AICHFILEHASHREQ) => {
                 let hash = client_messages::file_of(packet)?;

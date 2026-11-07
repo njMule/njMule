@@ -119,13 +119,8 @@ SharedFilesTest.shouldUnshareAFileWhoseContentChangesUnderItsOldHash
 # A file look-up cannot fault in the Rust engine: it answers a file or none, and none is a file we do not have.
 UploadManagerTest.shouldEndOnlyTheSessionOfTheClientWhoseFileLookUpFaults
 
-# One scenario goes through every request a session takes, Kad's check that a client reached us among them: Kad
-# comes in area 5.
-UploadManagerTest.shouldEndTheConnectionOnARequestThatDoesNotDecodeAndSaveTheCredits
-
-# Friends and Kad are not kept by the Rust engine yet.
+# Friends are not kept by the Rust engine yet.
 UploadManagerTest.shouldLetTheFriendWithTheFriendSlotPassAFullQueue
-UploadManagerTest.shouldPassAClientsUdpTestRequestToKadWithItsAddress
 
 # Rust takes a hash as an array of 16 bytes, so another length does not compile; a bit index is unsigned, and reads 0
 # past the id.

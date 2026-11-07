@@ -24,12 +24,15 @@ use njmule_engine::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId};
 use njmule_engine::protocol::ed2k::client_messages::{self, FileStatus, PartStatus, Range, RequestParts, SendingPart};
 use njmule_engine::protocol::ed2k::client_reasks::{self, Ack, Ping};
 use njmule_engine::protocol::ed2k::hello::{Hello, Ours};
+use njmule_engine::protocol::ed2k::low_id_messages::UdpCheckRequest;
 use njmule_engine::protocol::ed2k::source_exchange as exchange;
 use njmule_engine::protocol::io::PacketWriter;
 use njmule_engine::protocol::packet::opcodes::{client, extended};
 use njmule_engine::protocol::packet::{Packet, frame_limits, packing, protocol};
-use njmule_engine::upload::credits::Credits;
-use njmule_engine::upload::upload_manager::{self, BlockRead, FileCounts, ReaskAnswer, Settings, UploadManager};
+use njmule_engine::upload::credits::{self, Credits};
+use njmule_engine::upload::upload_manager::{
+    self, BlockRead, FileCounts, KadRequest, ReaskAnswer, Settings, UploadManager,
+};
 use njmule_engine::upload::upload_session::{self, FILES_DIRECTORY, MAX_BLOCK};
 use njmule_engine::upload::uploadable::Uploadable;
 use queue_lab::QueueLab;
@@ -84,6 +87,8 @@ struct Loop {
     // The links of our calls, by the user hash called, until the hello answer.
     calling: HashMap<LinkId, [u8; 16]>,
     called: mpsc::UnboundedSender<([u8; 16], std::io::Result<TcpStream>)>,
+    // What clients told our Kad node, in order.
+    kad: Vec<KadRequest>,
 }
 
 impl Loop {
@@ -159,6 +164,7 @@ impl Loop {
     }
 
     fn calls(&mut self) {
+        self.kad.extend(self.manager.take_kad_requests());
         for call in self.manager.take_calls() {
             let called = self.called.clone();
             tokio::spawn(async move {
@@ -452,6 +458,7 @@ impl Uploads {
             reads: Some(reads),
             calling: HashMap::new(),
             called: called_in,
+            kad: Vec::new(),
         };
         let (jobs, jobs_out) = mpsc::unbounded_channel();
         self.jobs = jobs;
@@ -1503,6 +1510,95 @@ impl Uploads {
         client.send(&Packet::empty(protocol::EDONKEY, client::CANCELTRANSFER)).await;
     }
 
+    async fn given_the_sources_of_the_download_told(&mut self, count: usize) {
+        self.when_the_client_asks_for_the_sources_of_the_download().await;
+        self.then_the_sources_told_are(count, "the download's sources, packed");
+    }
+
+    async fn given_the_sources_asked_again_at_once_by_an_old_client_and_for_a_file_we_do_not_have(&mut self) {
+        let file = self.download;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&exchange::request(&file)).await;
+        client.send(&exchange::request_in_version(&file, 0)).await;
+        client.send(&exchange::request(&[77; 16])).await;
+    }
+
+    async fn given_the_client_confirmed_it_reached_us(&mut self) {
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&Packet::empty(protocol::EMULE, extended::KAD_FWTCPCHECK_ACK)).await;
+    }
+
+    async fn given_packets_of_an_unknown_opcode(&mut self, opcode: u8) {
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&Packet::empty(protocol::EMULE, opcode)).await;
+        client.send(&Packet::empty(protocol::EDONKEY, opcode)).await;
+    }
+
+    // Listed to anybody, as our files are visible.
+    async fn given_the_shared_directory_listed_empty(&mut self, directory: &str) {
+        self.given_our_files_visible();
+        let client = self.clients.get_mut(&self.client).unwrap();
+        let mut asked = PacketWriter::new();
+        asked.u16(u16::try_from(directory.len()).unwrap()).bytes(directory.as_bytes());
+        client.send(&Packet::written(protocol::EDONKEY, client::ASKSHAREDFILESDIR, asked)).await;
+        let seen = client.until(protocol::EDONKEY, client::ASKSHAREDFILESDIRANS).await;
+        let listing = seen.last().unwrap();
+        let mut input = listing.reader();
+        let length = usize::from(input.u16().unwrap());
+        input.bytes(length).unwrap();
+        assert_eq!(input.u32().unwrap(), 0, "no files in another directory");
+    }
+
+    async fn given_kad_told_of_the_address_that_reached_us(&self, address: &str) {
+        let ip = u32::from(address.parse::<Ipv4Addr>().unwrap());
+        self.await_kad_told("the confirmation").await;
+        assert_eq!(self.on_loop(|state| state.kad.clone()).await, vec![KadRequest::Reached(ip)]);
+    }
+
+    async fn given_no_sources_told_when_the_client_asks_for_the_file_name(&mut self) {
+        let file = self.download;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&client_messages::for_file(client::REQUESTFILENAME, &file)).await;
+        let seen = client.until(protocol::EDONKEY, client::REQFILENAMEANSWER).await;
+        assert!(
+            !seen
+                .iter()
+                .any(|packet| (packet.protocol(), packet.opcode()) == (protocol::EMULE, extended::ANSWERSOURCES2)),
+            "no sources told"
+        );
+    }
+
+    async fn when_it_asks_for_its_udp_test(&mut self, request: UdpCheckRequest) {
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&request.encode()).await;
+    }
+
+    async fn then_kad_hears_of_the_udp_test(&self, ip: &str, internal_port: u16, external_port: u16, known: bool) {
+        self.await_kad_told("the UDP test request").await;
+        let request = UdpCheckRequest { internal_port, external_port, sender_key: 99 };
+        let ip = u32::from(ip.parse::<Ipv4Addr>().unwrap());
+        let expected = KadRequest::UdpCheck { ip, request, known };
+        assert_eq!(self.on_loop(|state| state.kad.clone()).await, vec![expected]);
+    }
+
+    async fn then_the_credits_are_saved_within(&self, duration: Duration) {
+        self.given_time_passed(duration);
+        let saved = self.dir.path().join(credits::FILE_NAME);
+        let deadline = Instant::now() + WAIT;
+        while !saved.exists() {
+            assert!(Instant::now() < deadline, "waited in vain for the credits saved");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    async fn await_kad_told(&self, what: &str) {
+        let deadline = Instant::now() + WAIT;
+        while self.on_loop(|state| state.kad.is_empty()).await {
+            assert!(Instant::now() < deadline, "waited in vain for {what}");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
     async fn when_the_client_sends_a_request_that_does_not_decode(&mut self) {
         let client = self.clients.get_mut(&self.client).unwrap();
         client.send(&Packet::of(protocol::EDONKEY, client::REQUESTPARTS, vec![1])).await;
@@ -2425,4 +2521,43 @@ async fn should_answer_nothing_to_a_reask_for_another_file_than_the_one_awaited(
     uploads.when_it_reasks_for("busy.bin").await;
 
     uploads.then_there_is_no_answer();
+}
+
+#[tokio::test]
+async fn should_end_the_connection_on_a_request_that_does_not_decode_and_save_the_credits() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_download_with_only_its_last_part_checked("partial.bin", 1000, 11);
+    uploads.given_the_download_has_sources(20);
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+    uploads.given_the_client_told_the_download_has_only_its_last_part().await;
+    uploads.given_no_blocks_sent_before_the_slot().await;
+    uploads.given_the_slot_given_again_with_nothing_of_another_file().await;
+    uploads.given_only_the_checked_part_sent().await;
+    uploads.given_the_sources_of_the_download_told(20).await;
+    uploads.given_the_sources_asked_again_at_once_by_an_old_client_and_for_a_file_we_do_not_have().await;
+    uploads.given_the_client_confirmed_it_reached_us().await;
+    uploads.given_packets_of_an_unknown_opcode(0x7F).await;
+    uploads.given_the_shared_directory_listed_empty("Films").await;
+    uploads.given_kad_told_of_the_address_that_reached_us("127.0.0.1").await;
+    // Asked again at once, or by an old client, or for a file we do not have: no answer.
+    uploads.given_no_sources_told_when_the_client_asks_for_the_file_name().await;
+
+    uploads.when_the_client_sends_a_request_that_does_not_decode().await;
+
+    uploads.then_the_connection_ends().await;
+    uploads.then_the_credits_are_saved_within(Duration::from_secs(13 * 60)).await;
+}
+
+#[tokio::test]
+async fn should_pass_a_clients_udp_test_request_to_kad_with_its_address() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(21).await;
+
+    uploads
+        .when_it_asks_for_its_udp_test(UdpCheckRequest { internal_port: 4673, external_port: 5000, sender_key: 99 })
+        .await;
+
+    uploads.then_kad_hears_of_the_udp_test("127.0.0.1", 4673, 5000, false).await;
 }

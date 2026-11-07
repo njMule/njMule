@@ -47,6 +47,7 @@ use crate::protocol::packet::{Packet, frame_limits, protocol};
 use crate::search::search_expr::SearchExpr;
 use crate::search::search_manager::KadSearches;
 use crate::server::server_list;
+use crate::upload::upload_manager::KadRequest;
 use crate::util::ipv4;
 
 /// How often a Kad port another program holds is tried again.
@@ -785,40 +786,23 @@ impl Network {
         }
     }
 
-    /// Kad's own packets on a client's connection: the client checked our TCP port and tells so, or asks us for a
-    /// datagram to test its UDP port. Whether the packet was one of them.
-    pub(super) fn kad_client_packet(&mut self, from: SocketAddr, packet: &Packet) -> bool {
-        let IpAddr::V4(ip) = from.ip() else {
-            return false;
+    /// What clients told our Kad node over their upload connections: that they reached our TCP port, or that they
+    /// want the datagram of their UDP firewall test.
+    pub(super) fn kad_requests(&mut self, requests: Vec<KadRequest>) {
+        let Some(running) = &mut self.kad.running else {
+            return;
         };
-        if packet.protocol() != protocol::EMULE {
-            return false;
-        }
-        let ip = u32::from(ip);
-        match packet.opcode() {
-            extended::KAD_FWTCPCHECK_ACK => {
-                if let Some(running) = &mut self.kad.running {
-                    running.node.reachable_confirmed(ip);
-                }
-                true
+        for request in requests {
+            match request {
+                KadRequest::Reached(ip) => running.node.reachable_confirmed(ip),
+                KadRequest::UdpCheck { ip, request, known } => running.node.udp_check_requested(
+                    ip,
+                    request.internal_port,
+                    request.external_port,
+                    request.sender_key,
+                    known,
+                ),
             }
-            extended::FWCHECKUDPREQ => {
-                match (&mut self.kad.running, UdpCheckRequest::decode(packet)) {
-                    // Whether we deal with the client otherwise, a download or an upload, is not told: its test is
-                    // taken as worth sending.
-                    (Some(running), Ok(request)) => running.node.udp_check_requested(
-                        ip,
-                        request.internal_port,
-                        request.external_port,
-                        request.sender_key,
-                        false,
-                    ),
-                    (_, Err(e)) => tracing::debug!("Bad UDP test request from {from}: {e}"),
-                    (None, Ok(_)) => {}
-                }
-                true
-            }
-            _ => false,
         }
     }
 
