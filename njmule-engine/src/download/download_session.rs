@@ -12,6 +12,7 @@ use indexmap::IndexMap;
 use rand::Rng;
 use rangemap::RangeSet;
 
+use crate::api::file_comment::FileComment;
 use crate::download::block_inflater::BlockInflater;
 use crate::download::download_queue::DownloadQueue;
 use crate::files::part_file::{self, Block};
@@ -19,6 +20,7 @@ use crate::peer::peer_link::LinkHandle;
 use crate::protocol::ed2k::client_messages::{
     self, BLOCKS_PER_REQUEST, CompressedPart, FileName, FileStatus, HashSet, Range, RequestParts, SendingPart,
 };
+use crate::protocol::ed2k::file_description;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::io::{DecodeError, PacketWriter};
 use crate::protocol::packet::opcodes::{client, extended};
@@ -92,6 +94,13 @@ pub enum Note {
     AichAnnounced([u8; 20]),
     /// The source told the name it gives the file, made fit to show.
     Named(String),
+    /// The source has nothing for the download asked for: no part we need, or not the file at all. The downloads have
+    /// the session ask for another ([`DownloadSession::ask_for`]) or give up ([`DownloadSession::give_up`]).
+    NothingHere {
+        has_file: bool,
+    },
+    /// The source told what it says of the file.
+    Commented(FileComment),
 }
 
 /// What a session works with.
@@ -146,6 +155,8 @@ pub struct DownloadSession {
     // The compressed bytes still to come of streams that failed, by block start: dropped as they arrive.
     broken: HashMap<u64, u64>,
     notes: Vec<Note>,
+    // The downloads asked for on this connection, whose hash sets still count after a swap to another.
+    asked: Vec<[u8; 16]>,
 }
 
 impl DownloadSession {
@@ -169,6 +180,7 @@ impl DownloadSession {
             corrupt_streams: 0,
             broken: HashMap::new(),
             notes: Vec::new(),
+            asked: vec![download],
         }
     }
 
@@ -279,6 +291,29 @@ impl DownloadSession {
             Err(e) => tracing::warn!("Cannot greet {}: {e}", self.address),
         }
         self.link = Some(link);
+    }
+
+    /// Asks the source for `download` instead, on the same connection, after it had nothing for the last one.
+    pub fn ask_for<R: Rng>(&mut self, download: [u8; 16], ctx: &mut Context<'_, R>) {
+        if self.state == State::Ended {
+            return;
+        }
+        tracing::debug!("Asking {} for another download", self.address);
+        self.source_parts = None;
+        self.download = download;
+        if !self.asked.contains(&download) {
+            self.asked.push(download);
+        }
+        self.request_file(ctx);
+    }
+
+    /// Ends the session of a source that has nothing for the download, and no other to be asked for.
+    pub fn give_up<R: Rng>(&mut self, has_file: bool, ctx: &mut Context<'_, R>) {
+        if has_file {
+            self.close("the source has no part we need", ctx);
+        } else {
+            self.end(Outcome::Gone, "the source does not have the file", ctx);
+        }
     }
 
     /// The source answered our hello.
@@ -410,7 +445,7 @@ impl DownloadSession {
             }
             client::FILEREQANSNOFIL => {
                 if client_messages::file_of(packet)? == self.download {
-                    self.end(Outcome::Gone, "the source does not have the file", ctx);
+                    self.nothing_here(false, ctx);
                 }
             }
             client::HASHSETANSWER => self.hash_set(HashSet::decode(packet)?, ctx),
@@ -443,6 +478,7 @@ impl DownloadSession {
                 self.compressed(CompressedPart::decode(packet)?, ctx)?;
             }
             extended::AICHANSWER => self.aich_answer(packet)?,
+            extended::FILEDESC => self.notes.push(Note::Commented(file_description::decode(packet)?)),
             extended::AICHFILEHASHANS => {
                 let mut input = packet.reader();
                 if input.hash16()? == self.download {
@@ -505,7 +541,7 @@ impl DownloadSession {
         self.source_parts = Some(parts);
         self.notes.push(Note::PartsKnown);
         if !needed {
-            self.close("the source has no part we need", ctx);
+            self.nothing_here(true, ctx);
             return;
         }
         if !self.upload_requested {
@@ -518,8 +554,9 @@ impl DownloadSession {
         self.start_downloading(ctx);
     }
 
+    // The hash set of a download asked for before a swap to another still counts, while the download is ours.
     fn hash_set<R: Rng>(&mut self, set: HashSet, ctx: &mut Context<'_, R>) {
-        if set.file != self.download {
+        if !self.asked.contains(&set.file) {
             return;
         }
         let Some(download) = ctx.queue.get_mut(&set.file) else {
@@ -527,6 +564,15 @@ impl DownloadSession {
         };
         if !download.file.has_hash_set() && download.file.set_hash_set(set.parts) {
             ctx.queue.hash_set_known(&set.file);
+        }
+    }
+
+    // One file request at a time: another download may be asked for until an upload is.
+    fn nothing_here<R: Rng>(&mut self, has_file: bool, ctx: &mut Context<'_, R>) {
+        if self.upload_requested || self.state == State::Ended {
+            self.give_up(has_file, ctx);
+        } else {
+            self.notes.push(Note::NothingHere { has_file });
         }
     }
 

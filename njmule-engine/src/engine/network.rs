@@ -1441,6 +1441,7 @@ impl Network {
             clean_up_new_names: preferences.clean_up_new_names,
             name_cleanups: preferences.name_cleanups.clone(),
             auto_delete_days: preferences.auto_delete_days,
+            comment_filter: preferences.comment_filter.clone(),
         }
     }
 

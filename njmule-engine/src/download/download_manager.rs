@@ -19,12 +19,15 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::api::category::{self, Category};
 use crate::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus, SourceInfo, SourceState};
 use crate::api::ed2k_link::{self, FileLink};
+use crate::api::file_comment::FileComment;
 use crate::api::file_names;
+use crate::api::peer_comment::PeerComment;
 use crate::config::next_download::NextDownload;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::download::download_queue::{self, DownloadQueue, QueueEvent};
 use crate::download::download_session::{Context, DownloadSession, Note, Outcome, State};
 use crate::download::known_sources::{self, Candidate, Standing};
+use crate::files::comment_filter::CommentFilter;
 use crate::files::hash::aich_recovery;
 use crate::files::hash::aich_votes::AichVotes;
 use crate::files::part_file::{self, KnownSource, PartFile, Status};
@@ -44,6 +47,15 @@ use crate::util::{instants, ipv4, ipv6, white_space};
 pub const REASK_INTERVAL: Duration = Duration::from_secs(29 * 60);
 /// Sources ban clients that ask more often than this.
 pub const MIN_REASK: Duration = Duration::from_secs(10 * 60);
+/// A client asked for another download, or again before its time, waits at least this long since its last ask: a margin
+/// over [`MIN_REASK`], which the source measures from when our request reached it.
+pub const EARLIEST_REASK: Duration = Duration::from_secs(11 * 60);
+/// A place in a client's queue this good or better is kept rather than swapped for another download.
+pub const GOOD_RANK: u32 = 50;
+// A source that told it has no part we need is asked for something else first this long.
+const NO_PARTS_WAIT: Duration = Duration::from_secs(58 * 60);
+// A source swapped away from by hand waits this long before it is asked for that download again by itself.
+const AWAY: Duration = Duration::from_secs(60 * 60);
 /// The server is asked for the sources of each download this often.
 pub const SERVER_SOURCES_INTERVAL: Duration = Duration::from_secs(20 * 60);
 /// Source requests a server takes in a row; then it takes one more each [`SERVER_REQUEST_CREDIT`].
@@ -66,8 +78,14 @@ const RATE_WINDOW: usize = 5;
 const CRYPT_SUPPORTED: u8 = 0x01;
 const CRYPT_REQUIRED: u8 = 0x07;
 const MAX_LINK_HOSTS: usize = 16;
+// The comments kept of each download at most.
+const MAX_COMMENTS: usize = 100;
 // The bytes from the start a player needs to show a file while it grows.
 const PREVIEW_START: u64 = 16 * 1024;
+
+// How a client's download stands against its others, the better the greater: not swapped away from, may have parts we
+// need, takes A4AF sources by itself, priority, parts known, the current one.
+type Standing4af = (bool, bool, bool, u8, bool, bool);
 
 /// What the downloads take the time from: [`Instant::now`] but in tests.
 pub type Clock = Box<dyn Fn() -> Instant + Send>;
@@ -112,6 +130,8 @@ pub struct Settings {
     pub name_cleanups: String,
     /// A running download that receives nothing for this many days is deleted, 0 for never.
     pub auto_delete_days: u32,
+    /// Words, apart by `|`, that leave the sources' comments holding them out.
+    pub comment_filter: String,
 }
 
 /// What the downloads ask of the network side.
@@ -177,6 +197,10 @@ struct Client {
     last_ask: Instant,
     asked: bool,
     failures: u32,
+    // Swapped by hand: asked for its current download at its time, whatever the others offer.
+    pinned: bool,
+    // The downloads asked for on the current connection.
+    tried: Vec<[u8; 16]>,
 }
 
 // A client as a source of one download.
@@ -187,6 +211,9 @@ struct Source {
     rank: u32,
     received: u64,
     reported_name: Option<String>,
+    // When the parts were told, and until when the source is swapped away from by hand.
+    parts_at: Option<Instant>,
+    away_until: Option<Instant>,
 }
 
 struct Entry {
@@ -203,6 +230,8 @@ struct Entry {
     aich_votes: AichVotes,
     // Stopped by a scheduler rule: no resume of the next download starts it again.
     stopped_by_schedule: bool,
+    // What the sources said of the file, the latest of each, in the order they said it.
+    comments: IndexMap<SocketAddr, PeerComment>,
 }
 
 impl Entry {
@@ -219,6 +248,7 @@ impl Entry {
             holds: Vec::new(),
             aich_votes: AichVotes::new(),
             stopped_by_schedule: false,
+            comments: IndexMap::new(),
         }
     }
 
@@ -255,6 +285,7 @@ pub struct DownloadManager {
     // The sources kept from the last run are taken at the first tick, which knows the settings and the server.
     known_taken: bool,
     next_sources_kept: Instant,
+    comment_filter: CommentFilter,
 }
 
 impl DownloadManager {
@@ -289,6 +320,7 @@ impl DownloadManager {
             idle_counted: now,
             known_taken: false,
             next_sources_kept: instants::later(now, KEEP_SOURCES_INTERVAL),
+            comment_filter: CommentFilter::default(),
         })
     }
 
@@ -369,6 +401,7 @@ impl DownloadManager {
         }
         self.queue.pause(hash);
         self.close_sessions(hash, "the download is paused", ours);
+        self.release(hash);
         self.progress(hash);
         true
     }
@@ -382,10 +415,14 @@ impl DownloadManager {
         let addresses: Vec<SocketAddr> =
             self.entries.get(hash).map(|e| e.sources.keys().copied().collect()).unwrap_or_default();
         for address in addresses {
-            if let Some(client) = self.clients.get_mut(&address)
-                && client.current == *hash
-            {
+            let Some(client) = self.clients.get_mut(&address) else {
+                continue;
+            };
+            if client.current == *hash {
                 client.next_ask = earliest_ask(client, now);
+            } else if client.session.is_none() && !self.queue.get(&client.current).is_some_and(|d| d.is_active()) {
+                // Idle while the download it was asked for waits: asked for this one now.
+                self.swap(&address, *hash, now);
             }
         }
         if let Some(entry) = self.entries.get_mut(hash) {
@@ -604,6 +641,12 @@ impl DownloadManager {
                     parts: parts.as_deref().map_or(0, |parts| parts.iter().filter(|has| **has).count()),
                     part_count: download.file.part_count(),
                     reported_name: source.reported_name.clone(),
+                    asked_for: a4af.then_some(client.current),
+                    asked_for_name: if a4af {
+                        self.queue.get(&client.current).map(|d| d.file.name().to_owned()).unwrap_or_default()
+                    } else {
+                        String::new()
+                    },
                 });
             }
         }
@@ -697,6 +740,7 @@ impl DownloadManager {
             self.unhold(&hash, part, ours);
         }
         self.send_callbacks(server, now);
+        self.comment_filter = CommentFilter::of(&settings.comment_filter);
         if !std::mem::replace(&mut self.known_taken, true) {
             let hashes: Vec<[u8; 16]> = self.entries.keys().copied().collect();
             for hash in hashes {
@@ -903,6 +947,34 @@ impl DownloadManager {
             self.close_sessions(&hash, "shutting down", ours);
         }
         self.queue.close();
+    }
+
+    /// What the sources of the download said of the file.
+    pub fn comments(&self, hash: &[u8; 16]) -> Vec<PeerComment> {
+        self.entries.get(hash).map(|entry| entry.comments.values().cloned().collect()).unwrap_or_default()
+    }
+
+    // A comment holding a word of the filter is left out, as spam; a source keeps its latest one.
+    fn commented(&mut self, hash: &[u8; 16], address: SocketAddr, comment: FileComment) {
+        if comment.is_empty() || self.comment_filter.leaves_out(comment.text()) {
+            return;
+        }
+        let user = self
+            .clients
+            .get(&address)
+            .and_then(|c| c.session.as_ref())
+            .and_then(DownloadSession::peer)
+            .and_then(Hello::nick)
+            .map_or_else(|| address.ip().to_string(), str::to_owned);
+        let (Some(entry), Some(download)) = (self.entries.get_mut(hash), self.queue.get(hash)) else {
+            return;
+        };
+        let file_name = download.file.name().to_owned();
+        entry.comments.shift_remove(&address);
+        entry.comments.insert(address, PeerComment { user, file_name, comment });
+        while entry.comments.len() > MAX_COMMENTS {
+            entry.comments.shift_remove_index(0);
+        }
     }
 
     /// Downloads, sources and sessions, for diagnostics.
@@ -1283,7 +1355,256 @@ impl DownloadManager {
                 }
             }
             Note::Ended { outcome, reason } => self.ended(address, outcome, &reason, ours),
+            Note::Commented(comment) => self.commented(&hash, address, comment),
+            Note::NothingHere { has_file } => match self.another(&address, has_file, ours) {
+                Some(next) => self.with_session(&address, ours, |session, ctx| session.ask_for(next, ctx)),
+                None => self.with_session(&address, ours, |session, ctx| session.give_up(has_file, ctx)),
+            },
         }
+    }
+
+    // The client has nothing for the download its session asks for: the next of its downloads that may have something,
+    // asked for on the same connection; a download it lacks loses it as a source.
+    fn another(&mut self, address: &SocketAddr, has_file: bool, ours: &Hello) -> Option<[u8; 16]> {
+        let now = (self.clock)();
+        let client = self.clients.get_mut(address)?;
+        let from = client.current;
+        if !client.tried.contains(&from) {
+            client.tried.push(from);
+        }
+        let tried = client.tried.clone();
+        let parts = client.session.as_ref().and_then(|s| s.source_parts().map(<[bool]>::to_vec));
+        if let Some(parts) = parts {
+            self.set_parts(&from, address, Some(parts));
+        }
+        let next = self.best(address, now, &tried)?;
+        if self.has_nothing(&next, address, now) || self.is_away(&next, address, now) {
+            return None;
+        }
+        self.make_current(address, next);
+        if let Some(client) = self.clients.get_mut(address) {
+            client.requested = Some(next);
+            client.tried.push(next);
+        }
+        if !has_file {
+            self.detach(&from, address, ours);
+        }
+        Some(next)
+    }
+
+    // The download of the client's sources it is best asked for, of those not in `skipped`: one not swapped away from
+    // by hand, one that may have parts we need, of a download that takes A4AF sources by itself, of a higher priority,
+    // whose parts we know, the current one, the first found; none when no download of it runs.
+    fn best(&self, address: &SocketAddr, now: Instant, skipped: &[[u8; 16]]) -> Option<[u8; 16]> {
+        let client = self.clients.get(address)?;
+        let mut best: Option<([u8; 16], Standing4af)> = None;
+        for hash in client.sources.iter().filter(|hash| !skipped.contains(hash)) {
+            let Some(file) = self.queue.get(hash).filter(|d| d.is_active()).map(|d| &d.file) else {
+                continue;
+            };
+            let Some(entry) = self.entries.get(hash) else {
+                continue;
+            };
+            let Some(source) = entry.sources.get(address) else {
+                continue;
+            };
+            let key = (
+                !self.is_away(hash, address, now),
+                !self.has_nothing(hash, address, now),
+                file.auto_swap(),
+                file.priority().effective(entry.sources.len()).rank(),
+                source.parts.is_some(),
+                *hash == client.current,
+            );
+            if best.is_none_or(|(_, top)| key > top) {
+                best = Some((*hash, key));
+            }
+        }
+        best.map(|(hash, _)| hash)
+    }
+
+    fn is_away(&self, hash: &[u8; 16], address: &SocketAddr, now: Instant) -> bool {
+        self.source(hash, address).and_then(|source| source.away_until).is_some_and(|until| now < until)
+    }
+
+    // The client told lately that it has no part of the file we need.
+    fn has_nothing(&self, hash: &[u8; 16], address: &SocketAddr, now: Instant) -> bool {
+        let (Some(source), Some(download)) = (self.source(hash, address), self.queue.get(hash)) else {
+            return false;
+        };
+        let (Some(parts), Some(at)) = (&source.parts, source.parts_at) else {
+            return false;
+        };
+        now.saturating_duration_since(at) < NO_PARTS_WAIT && !needed(&download.file, parts)
+    }
+
+    fn source(&self, hash: &[u8; 16], address: &SocketAddr) -> Option<&Source> {
+        self.entries.get(hash).and_then(|entry| entry.sources.get(address))
+    }
+
+    // A place in the client's queue that a swap could lose: a slot, or a good rank.
+    fn holds_place(&self, address: &SocketAddr) -> bool {
+        let Some(client) = self.clients.get(address) else {
+            return false;
+        };
+        let session = client.session.as_ref();
+        if session.is_some_and(|s| s.state() == State::Downloading) {
+            return true;
+        }
+        let told = session.map_or(0, DownloadSession::queue_rank);
+        let rank = if told > 0 { told } else { self.source(&client.current, address).map_or(0, |s| s.rank) };
+        rank > 0 && rank <= GOOD_RANK
+    }
+
+    // At its time the client is asked for the download it is best asked for: the one swapped to by hand, or the one
+    // asked for while we keep a good place in its queue for it, otherwise the best of its sources.
+    fn choose_to_ask(&self, address: &SocketAddr, now: Instant) -> Option<[u8; 16]> {
+        let client = self.clients.get(address)?;
+        if client.pinned || self.holds_place(address) {
+            return Some(client.current);
+        }
+        Some(self.best(address, now, &[]).unwrap_or(client.current))
+    }
+
+    fn make_current(&mut self, address: &SocketAddr, hash: [u8; 16]) {
+        let Some(client) = self.clients.get_mut(address) else {
+            return;
+        };
+        if client.current != hash {
+            let old = std::mem::replace(&mut client.current, hash);
+            for changed in [old, hash] {
+                if let Some(entry) = self.entries.get_mut(&changed) {
+                    entry.changed = true;
+                }
+            }
+        }
+    }
+
+    // Asked for another download, at the client's time but no later than the shortest wait sources allow.
+    fn swap(&mut self, address: &SocketAddr, to: [u8; 16], now: Instant) {
+        self.make_current(address, to);
+        if let Some(client) = self.clients.get_mut(address) {
+            client.pinned = false;
+            let allowed = earliest_ask(client, now);
+            if client.next_ask > allowed {
+                client.next_ask = allowed;
+            }
+        }
+    }
+
+    // The download does not run any more: the clients asked for it are asked for another they are sources of.
+    fn release(&mut self, hash: &[u8; 16]) {
+        let now = (self.clock)();
+        let addresses: Vec<SocketAddr> =
+            self.entries.get(hash).map(|e| e.sources.keys().copied().collect()).unwrap_or_default();
+        for address in addresses {
+            let idle = self.clients.get(&address).is_some_and(|c| c.current == *hash && c.session.is_none());
+            if idle && let Some(next) = self.best(&address, now, &[]) {
+                self.swap(&address, next, now);
+            }
+        }
+    }
+
+    // By hand a client waiting in a queue moves too; one being asked or sending data does not.
+    fn swap_by_hand(&mut self, to: [u8; 16], address: &SocketAddr, ours: &Hello) -> bool {
+        let Some(state) = self.clients.get(address).map(|c| c.session.as_ref().map(DownloadSession::state)) else {
+            return false;
+        };
+        match state {
+            Some(State::Queued | State::Ended) => {
+                self.with_session(address, ours, |session, ctx| session.close("swapped to another download", ctx));
+                self.settle(ours);
+            }
+            Some(_) => return false,
+            None => {}
+        }
+        let now = (self.clock)();
+        if let Some(source) = self.entries.get_mut(&to).and_then(|e| e.sources.get_mut(address)) {
+            source.away_until = None;
+        }
+        self.swap(address, to, now);
+        if let Some(client) = self.clients.get_mut(address) {
+            client.pinned = true;
+        }
+        tracing::debug!("{address} swapped by hand");
+        true
+    }
+
+    /// Swaps the A4AF sources of the download to it: each client is asked for it next, unless it sends us data or is
+    /// being asked now; returns how many were swapped.
+    pub fn swap_sources_here(&mut self, hash: &[u8; 16], ours: &Hello) -> usize {
+        if !self.entries.contains_key(hash) || !self.queue.get(hash).is_some_and(|d| d.is_active()) {
+            return 0;
+        }
+        let addresses: Vec<SocketAddr> =
+            self.entries.get(hash).map(|e| e.sources.keys().copied().collect()).unwrap_or_default();
+        let mut swapped = 0usize;
+        for address in addresses {
+            let a4af = self.clients.get(&address).is_some_and(|c| c.current != *hash);
+            if a4af && self.swap_by_hand(*hash, &address, ours) {
+                swapped = swapped.saturating_add(1);
+            }
+        }
+        swapped
+    }
+
+    /// Swaps the clients asked for the download to another download they are sources of, which goes first for a
+    /// while; returns how many were swapped.
+    pub fn swap_sources_away(&mut self, hash: &[u8; 16], ours: &Hello) -> usize {
+        if !self.entries.contains_key(hash) {
+            return 0;
+        }
+        let now = (self.clock)();
+        let addresses: Vec<SocketAddr> =
+            self.entries.get(hash).map(|e| e.sources.keys().copied().collect()).unwrap_or_default();
+        let mut swapped = 0usize;
+        for address in addresses {
+            if !self.clients.get(&address).is_some_and(|c| c.current == *hash) {
+                continue;
+            }
+            if let Some(next) = self.best(&address, now, &[*hash])
+                && self.swap_by_hand(next, &address, ours)
+            {
+                if let Some(source) = self.entries.get_mut(hash).and_then(|e| e.sources.get_mut(&address)) {
+                    source.away_until = Some(instants::later(now, AWAY));
+                }
+                swapped = swapped.saturating_add(1);
+            }
+        }
+        swapped
+    }
+
+    /// Swaps the client at `address`, an A4AF source of the download, to it; false if it is none, the download does
+    /// not run or the client cannot move now.
+    pub fn swap_source(&mut self, hash: &[u8; 16], address: SocketAddr, ours: &Hello) -> bool {
+        let a4af = self.entries.get(hash).is_some_and(|e| e.sources.contains_key(&address))
+            && self.queue.get(hash).is_some_and(|d| d.is_active())
+            && self.clients.get(&address).is_some_and(|c| c.current != *hash);
+        a4af && self.swap_by_hand(*hash, &address, ours)
+    }
+
+    /// Has the A4AF sources of the download swapped to it whenever they are free to move, or stops; kept with the
+    /// download. False if unknown.
+    pub fn set_auto_swap(&mut self, hash: &[u8; 16], value: bool) -> bool {
+        if !self.entries.contains_key(hash) {
+            return false;
+        }
+        self.queue.set_auto_swap(hash, value);
+        if value && self.queue.get(hash).is_some_and(|d| d.is_active()) {
+            // Those free now move at once, keeping their clock.
+            let now = (self.clock)();
+            let addresses: Vec<SocketAddr> =
+                self.entries.get(hash).map(|e| e.sources.keys().copied().collect()).unwrap_or_default();
+            for address in addresses {
+                let free =
+                    self.clients.get(&address).is_some_and(|c| c.current != *hash && c.session.is_none() && !c.pinned);
+                if free && !self.holds_place(&address) && self.best(&address, now, &[]) == Some(*hash) {
+                    self.make_current(&address, *hash);
+                }
+            }
+        }
+        self.progress(hash);
+        true
     }
 
     fn ended(&mut self, address: SocketAddr, outcome: Outcome, reason: &str, ours: &Hello) {
@@ -1516,20 +1837,27 @@ impl DownloadManager {
             if !suits_obfuscation(settings.obfuscation, client.crypt_options, client.user_hash) {
                 continue;
             }
+            let chosen = self.choose_to_ask(&address, now).unwrap_or(*hash);
+            self.make_current(&address, chosen);
+            let Some(client) = self.clients.get_mut(&address) else {
+                continue;
+            };
+            client.pinned = false;
             if client.low_id != 0 {
                 // Firewalled: asked again through the server, while it keeps the same LowID.
                 client.next_ask = instants::later(now, REASK_INTERVAL);
                 let (low_id, user_hash, crypt) = (client.low_id, client.user_hash, client.crypt_options);
                 if server.client_id() >= LOW_ID_LIMIT {
-                    self.ask_callback(hash, low_id, user_hash, crypt, settings);
+                    self.ask_callback(&chosen, low_id, user_hash, crypt, settings);
                 }
                 continue;
             }
             client.asked = true;
             client.last_ask = now;
             client.next_ask = instants::later(now, REASK_INTERVAL);
-            client.requested = Some(*hash);
-            client.session = Some(DownloadSession::new(*hash, address, now));
+            client.requested = Some(chosen);
+            client.tried = vec![chosen];
+            client.session = Some(DownloadSession::new(chosen, address, now));
             // Obfuscated only towards sources known to take it, which needs their user hash.
             let crypt =
                 settings.obfuscation != ObfuscationMode::Disabled && client.crypt_options & CRYPT_SUPPORTED != 0;
@@ -1593,6 +1921,8 @@ impl DownloadManager {
             last_ask: now,
             asked: false,
             failures: 0,
+            pinned: false,
+            tried: Vec::new(),
         });
         client.sources.push(*hash);
         let current_active = self.queue.get(&client.current).is_some_and(|d| d.is_active());
@@ -1634,6 +1964,7 @@ impl DownloadManager {
             return;
         };
         client.sources.retain(|source| source != hash);
+        client.tried.retain(|tried| tried != hash);
         if client.requested == Some(*hash) {
             client.requested = None;
         }
@@ -1649,11 +1980,16 @@ impl DownloadManager {
         let Some(client) = self.clients.get_mut(address) else {
             return;
         };
-        match client.sources.first() {
+        match client.sources.first().copied() {
             None => {
                 self.clients.shift_remove(address);
             }
-            Some(first) if client.current == *hash => client.current = *first,
+            Some(first) if client.current == *hash => {
+                client.current = first;
+                let now = (self.clock)();
+                let next = self.best(address, now, &[]).unwrap_or(first);
+                self.swap(address, next, now);
+            }
             Some(_) => {}
         }
     }
@@ -1691,6 +2027,7 @@ impl DownloadManager {
             download.file.add_availability(new, true);
         }
         source.parts = parts;
+        source.parts_at = Some((self.clock)());
     }
 
     // Blocks were let go or a part may be downloaded again: a session with nothing to ask for asks now.
@@ -1815,8 +2152,9 @@ fn usable(ip: u32, port: u16, settings: &Settings, our_id: u32) -> bool {
         && !(port == settings.listen_port && ipv4::to_ed2k(ip) == our_id)
 }
 
+// The soonest a client may be asked again, without being taken for one that asks too often.
 fn earliest_ask(client: &Client, now: Instant) -> Instant {
-    if client.asked { now.max(instants::later(client.last_ask, MIN_REASK)) } else { now }
+    if client.asked { now.max(instants::later(client.last_ask, EARLIEST_REASK)) } else { now }
 }
 
 fn is_starting(session: &DownloadSession) -> bool {
