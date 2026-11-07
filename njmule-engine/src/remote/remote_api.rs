@@ -16,7 +16,7 @@ use crate::api::ed2k_link::Ed2kLink;
 use crate::config::bind_interface;
 use crate::engine::Engine;
 use crate::engine::network::{ConnectError, MoreAnswer};
-use crate::persist::format::server_met;
+use crate::persist::format::{nodes_dat, server_met};
 use crate::remote::{api_json, event_streams};
 use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::Address;
@@ -47,6 +47,26 @@ pub fn router(engine: Engine) -> Router {
         .route("/downloads/{hash}/pause", post(pause_download))
         .route("/downloads/{hash}/resume", post(resume_download))
         .route("/sources", get(sources))
+        .route("/kad", get(|State(engine): State<Engine>| async move {
+            Json(engine.kad().await.as_ref().map_or(Value::Null, api_json::kad))
+        }))
+        .route("/kad/contacts", get(|State(engine): State<Engine>| async move {
+            Json(Value::Array(engine.kad_contacts().await.iter().map(api_json::kad_contact).collect()))
+        }))
+        .route("/kad/searches", get(|State(engine): State<Engine>| async move {
+            Json(Value::Array(engine.kad_searches().await.iter().map(api_json::kad_search).collect()))
+        }))
+        .route("/kad/connect", post(|State(engine): State<Engine>| async move {
+            engine.connect_kad().await;
+            Json(api_json::ok())
+        }))
+        .route("/kad/disconnect", post(|State(engine): State<Engine>| async move {
+            engine.disconnect_kad().await;
+            Json(api_json::ok())
+        }))
+        .route("/kad/recheck", post(recheck_kad))
+        .route("/kad/bootstrap", post(bootstrap_kad))
+        .route("/kad/nodes", post(add_kad_contacts))
         .route("/servers", get(servers))
         .route("/servers/import", post(import_servers))
         .route("/servers/connect", post(connect_server))
@@ -126,19 +146,62 @@ async fn servers(State(engine): State<Engine>) -> Json<Value> {
 
 /// The servers of a `server.met` sent in Base64 (`data`) or read from the engine's computer (`path`).
 async fn import_servers(State(engine): State<Engine>, Json(body): Json<Value>) -> Result<Json<Value>, ApiError> {
-    let file = if let Some(data) = body.get("data").and_then(Value::as_str) {
-        // Padding is accepted, not required.
-        data_encoding::BASE64_NOPAD
-            .decode(data.trim().trim_end_matches('=').as_bytes())
-            .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "The data is not Base64."))?
-    } else if let Some(path) = body.get("path").and_then(Value::as_str) {
-        std::fs::read(path).map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, format!("Cannot read {path}: {e}")))?
-    } else {
-        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Give the list as data or as a path."));
-    };
+    let file = list_file(&body)?;
     let read = server_met::read(&file)
         .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a server list: {e}")))?;
     Ok(Json(json!({"added": engine.import_servers(read).await})))
+}
+
+async fn recheck_kad(State(engine): State<Engine>) -> Result<Json<Value>, ApiError> {
+    if engine.recheck_kad().await {
+        Ok(Json(api_json::ok()))
+    } else {
+        Err(ApiError::new(StatusCode::CONFLICT, "Kad is not running."))
+    }
+}
+
+/// Joins Kad through the node at `address`, an IPv4 address or a name with its UDP port.
+async fn bootstrap_kad(State(engine): State<Engine>, Json(body): Json<Value>) -> Result<Json<Value>, ApiError> {
+    let Some(text) = body.get("address").and_then(Value::as_str) else {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Give the node's address."));
+    };
+    let invalid = || ApiError::new(StatusCode::BAD_REQUEST, format!("Not a node's address: {text}"));
+    let node = tokio::net::lookup_host(text)
+        .await
+        .map_err(|_| invalid())?
+        .find_map(|address| match address {
+            std::net::SocketAddr::V4(v4) if v4.port() != 0 => Some(v4),
+            _ => None,
+        })
+        .ok_or_else(invalid)?;
+    engine.bootstrap_kad(node).await;
+    Ok(Json(api_json::ok()))
+}
+
+/// The contacts of a `nodes.dat` sent in Base64 (`data`) or read from the engine's computer (`path`).
+async fn add_kad_contacts(State(engine): State<Engine>, Json(body): Json<Value>) -> Result<Json<Value>, ApiError> {
+    let file = list_file(&body)?;
+    let read =
+        nodes_dat::read(&file).map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a nodes.dat: {e}")))?;
+    let added = engine
+        .add_kad_contacts(read)
+        .await
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, format!("Cannot keep the contacts: {e}")))?;
+    Ok(Json(json!({"added": added})))
+}
+
+// A list file sent in Base64 (`data`) or read from the engine's computer (`path`).
+fn list_file(body: &Value) -> Result<Vec<u8>, ApiError> {
+    if let Some(data) = body.get("data").and_then(Value::as_str) {
+        // Padding is accepted, not required.
+        data_encoding::BASE64_NOPAD
+            .decode(data.trim().trim_end_matches('=').as_bytes())
+            .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "The data is not Base64."))
+    } else if let Some(path) = body.get("path").and_then(Value::as_str) {
+        std::fs::read(path).map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, format!("Cannot read {path}: {e}")))
+    } else {
+        Err(ApiError::new(StatusCode::BAD_REQUEST, "Give the list as data or as a path."))
+    }
 }
 
 async fn connect_server(State(engine): State<Engine>, body: Option<Json<Value>>) -> Result<Json<Value>, ApiError> {

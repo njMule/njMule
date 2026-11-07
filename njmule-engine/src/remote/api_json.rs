@@ -8,6 +8,9 @@ use serde_json::{Map, Value, json};
 use crate::api::download_info::{DownloadInfo, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::kad_contact_info::KadContactInfo;
+use crate::api::kad_info::{Buddy, KadInfo};
+use crate::api::kad_search_info::{KadSearchInfo, Kind};
 use crate::api::known_client::KnownClient;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
@@ -308,6 +311,57 @@ pub fn server(info: &ServerInfo) -> Value {
         "obfuscation": info.obfuscation,
         "static": info.is_static,
         "country": null,
+    })
+}
+
+/// The state of Kad.
+pub fn kad(info: &KadInfo) -> Value {
+    json!({
+        "connected": info.connected,
+        "firewalled": info.firewalled,
+        "contacts": info.contacts,
+        "verifiedContacts": info.verified_contacts,
+        "id": info.id,
+        "publicIp": info.public_ip,
+        "udpPort": info.udp_port,
+        "udpFirewalled": info.udp_firewalled,
+        "udpVerified": info.udp_verified,
+        "buddy": match info.buddy {
+            Buddy::None => "none",
+            Buddy::Connecting => "connecting",
+            Buddy::Connected => "connected",
+            Buddy::Serving => "serving",
+        },
+        "users": info.users,
+        "files": info.files,
+    })
+}
+
+pub fn kad_contact(contact: &KadContactInfo) -> Value {
+    json!({
+        "id": contact.id,
+        "address": contact.address,
+        "type": contact.contact_type,
+        "distance": contact.distance,
+        "version": contact.version,
+        "verified": contact.verified,
+        "country": contact.country,
+    })
+}
+
+pub fn kad_search(search: &KadSearchInfo) -> Value {
+    json!({
+        "target": search.target,
+        "kind": match search.kind {
+            Kind::Node => "node",
+            Kind::Keyword => "keyword",
+            Kind::Sources => "sources",
+            Kind::Notes => "notes",
+            Kind::StoreKeyword => "store_keyword",
+            Kind::StoreSource => "store_source",
+            Kind::StoreNotes => "store_notes",
+        },
+        "answers": search.answers,
     })
 }
 
