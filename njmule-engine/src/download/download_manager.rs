@@ -78,6 +78,8 @@ pub const RECOVERY_WAIT: Duration = Duration::from_secs(30);
 /// Firewalled sources asked for at once, and how long a callback is awaited.
 pub const MAX_CALLBACKS: usize = 32;
 pub const CALLBACK_WAIT: Duration = Duration::from_secs(60);
+/// A buddy or a firewalled source is asked for a callback this rarely at most: receivers drop more.
+pub const KAD_CALLBACK_GAP: Duration = Duration::from_secs(3 * 60);
 /// Sessions starting at once at most.
 pub const MAX_STARTING: usize = 8;
 /// How long the sources at an address that sent corrupt data are kept out.
@@ -145,17 +147,35 @@ pub trait KadLink {
     /// Sends a client packet over Kad's UDP port, which clients take re-asks on, obfuscated for `obfuscate_for` when
     /// given.
     fn send_datagram(&mut self, to: SocketAddr, packet: &Packet, obfuscate_for: Option<[u8; 16]>);
+    /// Asks a firewalled source to connect to us for `file`, as its `callback` says; false when it cannot be asked now.
+    fn request_callback(&mut self, source: &KadSource, file: &[u8; 16]) -> bool;
 }
 
-/// A source Kad found, at the address it listens at. A `firewalled` one cannot be connected to: it connects to us when
-/// asked, which needs Kad's callbacks, unless it is reached at its IPv6 address.
+/// A source Kad found, at the address it listens at. A firewalled one cannot be connected to: it is asked to connect to
+/// us as its `callback` says, unless it is reached at its IPv6 address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KadSource {
     pub address: SocketAddrV4,
     pub user_hash: Option<[u8; 16]>,
     pub crypt_options: u8,
-    pub firewalled: bool,
+    pub callback: Option<KadCallback>,
     pub ipv6: Option<Ipv6Addr>,
+}
+
+/// How a firewalled Kad source is asked to connect to us: through the buddy at `buddy_ip` and `buddy_port` that knows
+/// it by `buddy_id` (the big-endian bytes of its Kad id), or, with no buddy, by a datagram to its own Kad `udp_port`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KadCallback {
+    pub buddy_ip: u32,
+    pub buddy_port: u16,
+    pub buddy_id: Option<[u8; 16]>,
+    pub udp_port: u16,
+}
+
+impl KadCallback {
+    pub fn via_buddy(&self) -> bool {
+        self.buddy_id.is_some()
+    }
 }
 
 /// What the downloads need from the preferences.
@@ -213,12 +233,24 @@ pub enum DownloadEvent {
     },
 }
 
-// A firewalled source asked through the server to connect to us.
+// A firewalled source asked to connect to us, through the server or through Kad.
 struct Callback {
     file: [u8; 16],
     user_hash: Option<[u8; 16]>,
+    crypt_options: u8,
+    // How a firewalled Kad source is asked; none for one asked through the server.
+    kad: Option<KadSource>,
     since: Instant,
     requested: bool,
+}
+
+impl Callback {
+    // Where a Kad request goes: the buddy, or the source itself.
+    fn target(&self) -> Option<u32> {
+        let kad = self.kad.as_ref()?;
+        let route = kad.callback?;
+        Some(if route.via_buddy() { route.buddy_ip } else { u32::from(*kad.address.ip()) })
+    }
 }
 
 // A client known as a source of one or more downloads: one session at a time, for the download it is asked for.
@@ -255,6 +287,8 @@ struct Client {
     pinged_at: Option<IpAddr>,
     pings: u32,
     unanswered_pings: u32,
+    // How a source firewalled on Kad is asked to connect to us; none for any other source.
+    kad: Option<KadSource>,
 }
 
 // A client as a source of one download.
@@ -336,6 +370,10 @@ pub struct DownloadManager {
     links: HashMap<LinkId, SocketAddr>,
     // Firewalled sources asked, through the server, to connect to us: by their LowID.
     callbacks: IndexMap<u32, Callback>,
+    // Sources firewalled on Kad asked to connect to us, by their user hash, and when each buddy or source was last
+    // asked.
+    kad_callbacks: IndexMap<[u8; 16], Callback>,
+    kad_callback_targets: HashMap<u32, Instant>,
     random: StdRng,
     // When the server will have credited back every source request sent.
     server_requests_due: Instant,
@@ -381,6 +419,8 @@ impl DownloadManager {
             clients: IndexMap::new(),
             links: HashMap::new(),
             callbacks: IndexMap::new(),
+            kad_callbacks: IndexMap::new(),
+            kad_callback_targets: HashMap::new(),
             random: StdRng::from_rng(&mut rand::rng()),
             server_requests_due: now,
             actions: Vec::new(),
@@ -517,6 +557,7 @@ impl DownloadManager {
         self.forget(hash, ours);
         self.entries.shift_remove(hash);
         self.callbacks.retain(|_, callback| callback.file != *hash);
+        self.kad_callbacks.retain(|_, callback| callback.file != *hash);
         self.queue.cancel(hash);
         self.events.push(DownloadEvent::Removed(*hash));
         true
@@ -532,6 +573,7 @@ impl DownloadManager {
         self.forget(hash, ours);
         self.queue.set_known_sources(hash, &[]);
         self.callbacks.retain(|_, callback| callback.file != *hash);
+        self.kad_callbacks.retain(|_, callback| callback.file != *hash);
         self.progress(hash);
         true
     }
@@ -807,12 +849,16 @@ impl DownloadManager {
             if source.user_hash == Some(ours.user_hash) {
                 continue;
             }
-            let address = if source.firewalled {
+            let address = if source.callback.is_some() {
+                // Firewalled, it is reached at its IPv6 address when we have IPv6 too, with no callback.
                 match (ours.ipv6(), source.ipv6) {
                     (Some(our_ipv6), Some(their_ipv6)) if our_ipv6 != their_ipv6 => {
                         SocketAddr::from((their_ipv6, source.address.port()))
                     }
-                    _ => continue,
+                    _ => {
+                        self.ask_kad_callback(file, source, settings);
+                        continue;
+                    }
                 }
             } else {
                 let ip = u32::from(*source.address.ip());
@@ -936,9 +982,18 @@ impl DownloadManager {
             }
             // Over IPv6 plain, which obfuscation required forbids; over IPv4 as the client can be asked.
             let at_ipv6 = if over_ipv6 { ipv6_ping_target(&address, client) } else { None };
-            let (target, key) = match at_ipv6 {
-                Some(target) => (target, None),
-                None if may_ping(&address, client) => {
+            let buddy = buddy_of(client);
+            let (target, key) = match (at_ipv6, buddy) {
+                (Some(target), _) => (target, None),
+                (None, _) if !may_ping(&address, client) => continue,
+                // Plain, as the buddy's obfuscation is unknown; the source answers from its own port.
+                (None, Some(route)) => {
+                    if settings.obfuscation == ObfuscationMode::Required || (self.hooks.blocked)(route.buddy_ip) {
+                        continue;
+                    }
+                    (SocketAddr::from((Ipv4Addr::from(route.buddy_ip), route.buddy_port)), None)
+                }
+                (None, None) => {
                     let crypt = settings.obfuscation != ObfuscationMode::Disabled
                         && client.crypt_options & CRYPT_SUPPORTED != 0;
                     let key = if crypt { client.user_hash } else { None };
@@ -947,20 +1002,23 @@ impl DownloadManager {
                     }
                     (SocketAddr::new(address.ip(), client.udp_port), key)
                 }
-                None => continue,
             };
             let ping = client_reasks::Ping {
                 file: *hash,
                 parts: PartStatus::of(size, &verified),
                 complete_sources: u32::try_from(complete).unwrap_or(u32::MAX),
             };
-            let Ok(packet) = ping.encode(client.udp_version) else {
+            let encoded = match buddy.and_then(|route| route.buddy_id).filter(|_| at_ipv6.is_none()) {
+                Some(buddy_id) => ping.encode_through_buddy(&buddy_id, client.udp_version),
+                None => ping.encode(client.udp_version),
+            };
+            let Ok(packet) = encoded else {
                 continue;
             };
             kad.send_datagram(target, &packet, key);
             if let Some(client) = self.clients.get_mut(&address) {
                 client.pinged = Some(*hash);
-                client.pinged_at = Some(target.ip());
+                client.pinged_at = Some(at_ipv6.map_or(address.ip(), |at| at.ip()));
                 client.pings = client.pings.saturating_add(1);
             }
         }
@@ -1035,6 +1093,7 @@ impl DownloadManager {
             self.unhold(&hash, part, ours);
         }
         self.send_callbacks(server, now);
+        self.send_kad_callbacks(kad.as_deref_mut(), now);
         self.comment_filter = CommentFilter::of(&settings.comment_filter);
         self.settings = Some(settings.clone());
         self.our_id = server.client_id();
@@ -1211,7 +1270,9 @@ impl DownloadManager {
         if hello.user_hash == ours.user_hash {
             return false;
         }
-        let adopted = self.adopt_callback(link, hello, server_ip, settings, ours) || self.adopt_slot(link, hello, ours);
+        let adopted = self.adopt_callback(link, hello, server_ip, settings, ours)
+            || self.adopt_kad_callback(link, hello, settings, ours)
+            || self.adopt_slot(link, hello, ours);
         self.settle(ours);
         adopted
     }
@@ -1332,7 +1393,8 @@ impl DownloadManager {
                 continue;
             };
             // A firewalled source passed on by its address would be tried in vain.
-            let Some(user_hash) = client.user_hash.filter(|_| source.parts.is_some() && client.low_id == 0) else {
+            let firewalled = client.low_id != 0 || client.kad.is_some();
+            let Some(user_hash) = client.user_hash.filter(|_| source.parts.is_some() && !firewalled) else {
                 continue;
             };
             match address.ip() {
@@ -1409,7 +1471,7 @@ impl DownloadManager {
                 } else {
                     continue;
                 };
-                if client.low_id != 0 {
+                if client.low_id != 0 || client.kad.is_some() {
                     continue;
                 }
                 let known = KnownSource {
@@ -2102,6 +2164,28 @@ impl DownloadManager {
         let Some(callback) = self.callbacks.shift_remove(&hello.client_id) else {
             return false;
         };
+        self.called_back(link, hello, &callback, settings, ours)
+    }
+
+    // A source firewalled on Kad we asked to call us, recognised by its user hash.
+    fn adopt_kad_callback(&mut self, link: &LinkHandle, hello: &Hello, settings: &Settings, ours: &Hello) -> bool {
+        if !self.kad_callbacks.get(&hello.user_hash).is_some_and(|callback| callback.requested) {
+            return false;
+        }
+        let Some(callback) = self.kad_callbacks.shift_remove(&hello.user_hash) else {
+            return false;
+        };
+        self.called_back(link, hello, &callback, settings, ours)
+    }
+
+    fn called_back(
+        &mut self,
+        link: &LinkHandle,
+        hello: &Hello,
+        callback: &Callback,
+        settings: &Settings,
+        ours: &Hello,
+    ) -> bool {
         if self.queue.get(&callback.file).is_none_or(|d| !d.is_active()) {
             return false;
         }
@@ -2117,8 +2201,15 @@ impl DownloadManager {
         if client.session.is_some() {
             return false;
         }
-        client.low_id = hello.client_id;
+        match &callback.kad {
+            Some(kad) => {
+                client.low_id = 0;
+                client.kad = Some(follow_buddy(kad, hello));
+            }
+            None => client.low_id = hello.client_id,
+        }
         client.user_hash = Some(hello.user_hash);
+        client.crypt_options = callback.crypt_options;
         client.asked = true;
         client.last_ask = now;
         client.next_ask = instants::later(now, REASK_INTERVAL);
@@ -2208,7 +2299,67 @@ impl DownloadManager {
         {
             return;
         }
-        self.callbacks.insert(low_id, Callback { file: *file, user_hash, since: (self.clock)(), requested: false });
+        let since = (self.clock)();
+        let callback = Callback { file: *file, user_hash, crypt_options: crypt, kad: None, since, requested: false };
+        self.callbacks.insert(low_id, callback);
+    }
+
+    // Queues a callback request for a source firewalled on Kad, unless we talk with it already.
+    fn ask_kad_callback(&mut self, file: &[u8; 16], source: &KadSource, settings: &Settings) {
+        let Some(user) = source.user_hash else {
+            return;
+        };
+        let Some(entry) = self.entries.get(file) else {
+            return;
+        };
+        let talking = entry
+            .sources
+            .keys()
+            .any(|address| self.clients.get(address).is_some_and(|c| c.session.is_some() && c.user_hash == Some(user)));
+        if talking
+            || !suits_obfuscation(settings.obfuscation, source.crypt_options, Some(user))
+            || self.callbacks.len().saturating_add(self.kad_callbacks.len()) >= MAX_CALLBACKS
+            || self.kad_callbacks.contains_key(&user)
+            || entry.sources.len() >= settings.max_sources_per_file
+        {
+            return;
+        }
+        let callback = Callback {
+            file: *file,
+            user_hash: Some(user),
+            crypt_options: source.crypt_options,
+            kad: Some(source.clone()),
+            since: (self.clock)(),
+            requested: false,
+        };
+        self.kad_callbacks.insert(user, callback);
+    }
+
+    // One request a tick, each buddy or source asked once in a while: they drop requests that come too often.
+    fn send_kad_callbacks(&mut self, kad: Option<&mut (dyn KadLink + '_)>, now: Instant) {
+        self.kad_callback_targets.retain(|_, at| now.saturating_duration_since(*at) < KAD_CALLBACK_GAP);
+        self.kad_callbacks.retain(|_, callback| now.saturating_duration_since(callback.since) < CALLBACK_WAIT);
+        let targets = &self.kad_callback_targets;
+        let next = self.kad_callbacks.iter().find_map(|(user, callback)| {
+            let target = callback.target()?;
+            (!callback.requested && !targets.contains_key(&target)).then_some((*user, target))
+        });
+        let Some((user, target)) = next else {
+            return;
+        };
+        let asked = match (kad, self.kad_callbacks.get(&user)) {
+            (Some(kad), Some(Callback { kad: Some(source), file, .. })) => kad.request_callback(source, file),
+            _ => false,
+        };
+        if !asked {
+            self.kad_callbacks.shift_remove(&user);
+            return;
+        }
+        if let Some(callback) = self.kad_callbacks.get_mut(&user) {
+            callback.requested = true;
+            callback.since = now;
+        }
+        self.kad_callback_targets.insert(target, now);
     }
 
     fn send_callbacks(&mut self, server: &mut dyn ServerLink, now: Instant) {
@@ -2269,6 +2420,12 @@ impl DownloadManager {
                 if server.client_id() >= LOW_ID_LIMIT {
                     self.ask_callback(&chosen, low_id, user_hash, crypt, settings);
                 }
+                continue;
+            }
+            if let Some(kad) = client.kad.clone() {
+                // Firewalled on Kad: asked again through its buddy, or directly.
+                client.next_ask = instants::later(now, REASK_INTERVAL);
+                self.ask_kad_callback(&chosen, &kad, settings);
                 continue;
             }
             client.asked = true;
@@ -2351,6 +2508,7 @@ impl DownloadManager {
             pinged_at: None,
             pings: 0,
             unanswered_pings: 0,
+            kad: None,
         });
         client.sources.push(*hash);
         let current_active = self.queue.get(&client.current).is_some_and(|d| d.is_active());
@@ -2573,14 +2731,38 @@ fn suits_obfuscation(mode: ObfuscationMode, crypt_options: u8, user_hash: Option
 }
 
 // A source the network told us about: a public-looking address, not ourselves.
-// Re-asks over UDP need its port and a version that takes them, and go to HighIDs at IPv4 addresses that answer them.
+// Re-asks over UDP need its port and a version that takes them, and go to HighIDs at IPv4 addresses that answer them,
+// or through its buddy to a source firewalled on Kad.
 fn may_ping(address: &SocketAddr, client: &Client) -> bool {
     client.udp_port != 0
         && client.udp_version >= 3
         && client.low_id == 0
         && address.is_ipv4()
+        && (client.kad.is_none() || buddy_of(client).is_some())
         && (client.pings <= PINGS_BEFORE_JUDGING
             || client.unanswered_pings.saturating_mul(10) <= client.pings.saturating_mul(3))
+}
+
+// The buddy a source firewalled on Kad is reached through; none for any other source.
+fn buddy_of(client: &Client) -> Option<KadCallback> {
+    client
+        .kad
+        .as_ref()
+        .and_then(|kad| kad.callback)
+        .filter(|route| route.via_buddy() && route.buddy_ip != 0 && route.buddy_port != 0)
+}
+
+// A firewalled source names its current buddy in its hello: the next callback goes there.
+fn follow_buddy(source: &KadSource, hello: &Hello) -> KadSource {
+    let mut followed = source.clone();
+    if let Some(route) = followed.callback.as_mut().filter(|route| route.via_buddy())
+        && hello.buddy_ip() != 0
+        && hello.buddy_udp_port() != 0
+    {
+        route.buddy_ip = hello.buddy_ip();
+        route.buddy_port = hello.buddy_udp_port();
+    }
+    followed
 }
 
 // Over IPv6 a re-ask goes to the IPv6 address the client was added at, or to the one it told it has.

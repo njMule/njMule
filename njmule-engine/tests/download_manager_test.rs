@@ -24,7 +24,7 @@ use njmule_engine::api::category::{self, Category};
 use njmule_engine::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus};
 use njmule_engine::api::ed2k_link::{Ed2kLink, FileLink, Source};
 use njmule_engine::config::next_download::NextDownload;
-use njmule_engine::download::download_manager::{DownloadEvent, KadSource};
+use njmule_engine::download::download_manager::{DownloadEvent, KadCallback, KadSource};
 use njmule_engine::protocol::ed2k::server_messages::{FoundSources, Source as Found};
 
 const OUR_ID: u32 = u32::from_le_bytes([198, 51, 100, 7]);
@@ -125,7 +125,7 @@ impl Manager {
                 address: SocketAddrV4::new(ip, PORT),
                 user_hash: Some([0x5a; 16]),
                 crypt_options: 0,
-                firewalled: true,
+                callback: Some(KadCallback { buddy_ip: 0, buddy_port: 0, buddy_id: None, udp_port: 4672 }),
                 ipv6: ipv6.map(|address| address.parse().unwrap()),
             })
             .collect();
@@ -155,7 +155,7 @@ impl Manager {
                 address: SocketAddrV4::new(ip, port),
                 user_hash: None,
                 crypt_options: 0,
-                firewalled: false,
+                callback: None,
                 ipv6: None,
             })
             .collect();

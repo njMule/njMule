@@ -557,7 +557,7 @@ impl Sources {
             address: SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 60), download_lab::PORT),
             user_hash: None,
             crypt_options: 0,
-            firewalled: false,
+            callback: None,
             ipv6: None,
         };
         self.source_count = self

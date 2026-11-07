@@ -20,7 +20,7 @@ use crate::api::kad_info::{Buddy, KadInfo};
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
-use crate::download::download_manager::{KadLink, KadSource};
+use crate::download::download_manager::{KadCallback, KadLink, KadSource};
 use crate::engine::{Shared, crypt_options};
 use crate::kad::kad_identity::KadIdentity;
 use crate::kad::kad_node::{self, Buddies, BuddyState, Host, KadEvent, KadNode, SearchHandle, Settings};
@@ -36,12 +36,13 @@ use crate::peer::peer_link::{LinkHandle, LinkId};
 use crate::persist::format::nodes_dat;
 use crate::protocol::ed2k::client_reasks::Relayed;
 use crate::protocol::ed2k::hello::Hello;
-use crate::protocol::ed2k::low_id_messages::{Callback, UdpCheckRequest};
+use crate::protocol::ed2k::low_id_messages::{Callback, DirectCallbackRequest, UdpCheckRequest};
 use crate::protocol::ed2k::server_messages::LOW_ID_LIMIT;
 use crate::protocol::packet::opcodes::{client, client_udp, extended};
 use crate::protocol::packet::{Packet, frame_limits, protocol};
 use crate::search::search_expr::SearchExpr;
 use crate::search::search_manager::KadSearches;
+use crate::server::server_list;
 use crate::util::ipv4;
 
 /// How often a Kad port another program holds is tried again.
@@ -50,6 +51,9 @@ pub(super) const PORT_RETRY_SECONDS: u32 = 10;
 const UDP_CHECK_WAIT: Duration = peer_greetings::IDLE_TIMEOUT;
 // Kad nodes before this version do not know the UDP test.
 const UDP_CHECK_VERSION: u32 = 6;
+// Connect options: obfuscation supported, and requested.
+const CONNECT_SUPPORTED: u8 = 0x01;
+const CONNECT_REQUESTED: u8 = 0x02;
 
 /// The node on its socket, and what keeps them going.
 struct Running {
@@ -96,10 +100,11 @@ impl KadSide {
         }
     }
 
-    /// What finds the sources of downloads on Kad and re-asks them over its port, while it runs; `our_ip` is part of
-    /// the key of obfuscated re-asks.
-    pub(super) fn finding(&mut self, our_ip: u32) -> Option<KadFinding<'_>> {
-        self.running.as_mut().map(|running| KadFinding { node: &mut running.node, socket: &running.socket, our_ip })
+    /// What finds the sources of downloads on Kad, asks the firewalled ones to call us and re-asks sources over its
+    /// port, while it runs; `our_ip` is part of the key of obfuscated re-asks.
+    pub(super) fn finding<'a>(&'a mut self, our_ip: u32, calling: Calling<'a>) -> Option<KadFinding<'a>> {
+        let running = self.running.as_mut()?;
+        Some(KadFinding { node: &mut running.node, socket: &running.socket, our_ip, calling })
     }
 
     /// What starts keyword searches on Kad, while it runs.
@@ -109,11 +114,21 @@ impl KadSide {
     }
 }
 
-/// Finds the sources of downloads on the node, and re-asks sources over its socket.
+/// Finds the sources of downloads on the node, asks the firewalled ones to call us, and re-asks sources over its socket.
 pub(super) struct KadFinding<'a> {
     node: &'a mut KadNode,
     socket: &'a KadSocket,
     our_ip: u32,
+    calling: Calling<'a>,
+}
+
+/// What a firewalled source asked to call us needs to know, and whom we do not ask.
+pub(super) struct Calling<'a> {
+    pub(super) obfuscation: ObfuscationMode,
+    pub(super) filter_lan: bool,
+    pub(super) tcp_port: u16,
+    pub(super) user_hash: [u8; 16],
+    pub(super) banned: &'a dyn Fn(u32) -> bool,
 }
 
 impl KadLink for KadFinding<'_> {
@@ -134,6 +149,45 @@ impl KadLink for KadFinding<'_> {
             }
             SocketAddr::V6(_) => self.socket.send_client_to(to, packet),
         }
+    }
+
+    // Through the buddy of the source, plain; or straight to its Kad port, obfuscated when either side asks for it.
+    fn request_callback(&mut self, source: &KadSource, file: &[u8; 16]) -> bool {
+        let Some(route) = source.callback else {
+            return false;
+        };
+        if let Some(buddy_id) = route.buddy_id {
+            let buddy = kad_node::Buddy {
+                ip: route.buddy_ip,
+                udp_port: route.buddy_port,
+                id: UInt128::from_big_endian(buddy_id),
+            };
+            return !(self.calling.banned)(route.buddy_ip) && self.node.request_callback(&buddy, *file);
+        }
+        let ip = u32::from(*source.address.ip());
+        let Some(user_hash) = source.user_hash else {
+            return false;
+        };
+        if route.udp_port == 0
+            || !server_list::is_usable(ip)
+            || (self.calling.filter_lan && server_list::is_lan(ip))
+            || (self.calling.banned)(ip)
+        {
+            return false;
+        }
+        let mode = self.calling.obfuscation;
+        let obfuscate = source.crypt_options & CONNECT_SUPPORTED != 0
+            && mode != ObfuscationMode::Disabled
+            && (source.crypt_options & CONNECT_REQUESTED != 0 || mode != ObfuscationMode::Supported);
+        let request = DirectCallbackRequest {
+            tcp_port: self.calling.tcp_port,
+            user_hash: self.calling.user_hash,
+            connect_options: kad_options(mode),
+        }
+        .encode();
+        let key = obfuscate.then_some(user_hash);
+        self.socket.send_client(ip, route.udp_port, &request, key, self.node.public_ip());
+        true
     }
 }
 
@@ -645,7 +699,7 @@ impl Network {
                 address: SocketAddrV4::new(Ipv4Addr::from(source.ip), source.tcp_port),
                 user_hash: Some(source.user_hash),
                 crypt_options: source.connect_options,
-                firewalled: source.is_firewalled(),
+                callback: callback_of(source),
                 ipv6: source.ipv6,
             })
             .collect();
@@ -758,6 +812,24 @@ impl Network {
         if self.preferences().kad_enabled && !self.kad.stopped_by_hand {
             self.start_kad();
         }
+    }
+}
+
+// How a firewalled source is asked to call us: through its buddy, or straight to its Kad port.
+fn callback_of(source: &kad_node::Source) -> Option<KadCallback> {
+    match source.buddy {
+        Some(buddy) => Some(KadCallback {
+            buddy_ip: buddy.ip,
+            buddy_port: buddy.udp_port,
+            buddy_id: Some(buddy.id.to_big_endian()),
+            udp_port: source.udp_port,
+        }),
+        None => source.direct_callback.then_some(KadCallback {
+            buddy_ip: 0,
+            buddy_port: 0,
+            buddy_id: None,
+            udp_port: source.udp_port,
+        }),
     }
 }
 
