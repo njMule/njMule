@@ -20,6 +20,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinSet;
 
+use crate::api::category::Category;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
@@ -34,6 +35,7 @@ use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::api::nj_mule_info;
 use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::PeerInfo;
+use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::api::spam_marks::SpamMarks;
@@ -536,6 +538,29 @@ impl Engine {
         self.ask(Command::FileHistory).await.unwrap_or_default()
     }
 
+    /// The searches left open at the last exit.
+    pub async fn saved_searches(&self) -> Vec<SavedSearch> {
+        self.ask(Command::SavedSearches).await.unwrap_or_default()
+    }
+
+    /// Keeps these searches for the next start, in place of those kept before.
+    pub async fn save_searches(&self, searches: Vec<SavedSearch>) -> Result<(), String> {
+        self.ask(|reply| Command::SaveSearches(searches, reply))
+            .await
+            .unwrap_or_else(|| Err("the engine is stopping".to_owned()))
+    }
+
+    pub async fn categories(&self) -> Vec<Category> {
+        self.ask(Command::Categories).await.unwrap_or_default()
+    }
+
+    /// Replaces the categories, kept in their file; they must be valid and have different ids.
+    pub async fn set_categories(&self, categories: Vec<Category>) -> Result<(), String> {
+        self.ask(|reply| Command::SetCategories(categories, reply))
+            .await
+            .unwrap_or_else(|| Err("the engine is stopping".to_owned()))
+    }
+
     /// What the engine is doing now; none once it stopped.
     pub async fn status(&self) -> Option<EngineStatus> {
         self.ask(Command::Status).await.map(|status| *status)
@@ -569,6 +594,22 @@ impl NjMuleEngine for Engine {
 
     fn status(&self) -> impl Future<Output = Option<EngineStatus>> + Send {
         Engine::status(self)
+    }
+
+    fn categories(&self) -> impl Future<Output = Vec<Category>> + Send {
+        Engine::categories(self)
+    }
+
+    fn saved_searches(&self) -> impl Future<Output = Vec<SavedSearch>> + Send {
+        Engine::saved_searches(self)
+    }
+
+    fn save_searches(&self, searches: Vec<SavedSearch>) -> impl Future<Output = Result<(), String>> + Send {
+        Engine::save_searches(self, searches)
+    }
+
+    fn set_categories(&self, categories: Vec<Category>) -> impl Future<Output = Result<(), String>> + Send {
+        Engine::set_categories(self, categories)
     }
 
     fn preferences(&self) -> Preferences {

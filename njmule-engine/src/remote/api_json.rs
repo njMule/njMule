@@ -5,6 +5,7 @@
 
 use serde_json::{Map, Value, json};
 
+use crate::api::category::Category;
 use crate::api::download_info::{DownloadInfo, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
@@ -17,6 +18,7 @@ use crate::api::kad_search_info::{KadSearchInfo, Kind};
 use crate::api::known_client::KnownClient;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
+use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::{Media, SearchResult};
 use crate::api::server_info::ServerInfo;
 use crate::api::spam_marks::SpamMarks;
@@ -184,6 +186,32 @@ pub fn status(status: &EngineStatus, incoming_free: Option<u64>, temp_free: Opti
         }
     }
     out
+}
+
+pub fn category(category: &Category) -> Value {
+    let mut out = json!({
+        "id": category.id,
+        "name": category.name,
+        "comment": category.comment,
+        "priority": category.priority.name(),
+        "color": category.color,
+        "patterns": category.patterns,
+        "regex": category.regex,
+    });
+    if let (Some(incoming), Some(fields)) = (&category.incoming, out.as_object_mut()) {
+        fields.insert("incoming".to_owned(), json!(incoming.to_string_lossy()));
+    }
+    out
+}
+
+/// A search left open, with its results.
+pub fn saved_search(search: &SavedSearch) -> Value {
+    json!({
+        "title": search.title,
+        "query": search.request.expression,
+        "scope": search.request.scope.name(),
+        "results": search.results.iter().map(search_result).collect::<Vec<_>>(),
+    })
 }
 
 /// The speed limits, in KiB/s, 0 for none.

@@ -41,6 +41,14 @@ pub enum Scope {
 }
 
 impl Scope {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Server => "server",
+            Self::Global => "global",
+            Self::Kad => "kad",
+        }
+    }
+
     pub fn parse(text: &str) -> Option<Self> {
         match text.trim().to_lowercase().as_str() {
             "server" => Some(Self::Server),
