@@ -11,6 +11,7 @@ pub mod kad_lower_case;
 pub mod kad_node;
 pub mod kad_notes;
 pub mod kad_publisher;
+pub mod kad_socket;
 pub mod keywords;
 pub mod lookup;
 pub mod packet_tracking;

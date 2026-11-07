@@ -5,10 +5,14 @@
 //! while that relay is being reached, so that none leaves outside the proxy.
 
 use std::fmt;
-use std::net::SocketAddr;
+use std::io;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
+use tokio::net::UdpSocket;
+
 use crate::net::socks5_udp::{self, Socks5Udp};
+use crate::net::traffic;
 
 #[derive(Debug, Clone)]
 pub enum UdpRoute {
@@ -56,4 +60,31 @@ impl fmt::Display for UdpRoute {
             Self::Through(relay) => write!(f, "through {}", relay.relay()),
         }
     }
+}
+
+/// Sends `datagram` to `to` on `socket` along `route`, unless the route holds it. A socket bound to IPv6 and IPv4 at
+/// once reaches an IPv4 address as its mapped IPv6 one.
+pub fn transmit(socket: &Arc<UdpSocket>, route: &UdpRoute, to: SocketAddr, datagram: &[u8]) -> io::Result<()> {
+    let Some((target, data)) = route.outgoing(to, datagram) else {
+        return Ok(());
+    };
+    let target = match (target, socket.local_addr()?) {
+        (SocketAddr::V4(v4), SocketAddr::V6(_)) => SocketAddr::new(IpAddr::V6(v4.ip().to_ipv6_mapped()), v4.port()),
+        _ => target,
+    };
+    match socket.try_send_to(&data, target) {
+        Ok(_) => {}
+        // Not known writable yet, as a socket just opened, or its buffer full: sent once it is.
+        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+            let socket = Arc::clone(socket);
+            tokio::spawn(async move {
+                if let Err(e) = socket.send_to(&data, target).await {
+                    tracing::debug!("Cannot send a datagram to {target}: {e}");
+                }
+            });
+        }
+        Err(e) => return Err(e),
+    }
+    traffic::sent(datagram.len(), false);
+    Ok(())
 }
