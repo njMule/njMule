@@ -107,13 +107,6 @@ pub struct Hooks {
     pub keep_link: Box<dyn FnMut(&FileLink) -> bool + Send>,
 }
 
-impl Hooks {
-    /// No IP filter, and no link kept, so that no idle download is deleted.
-    pub fn none() -> Self {
-        Self { blocked: Box::new(|_| false), keep_link: Box::new(|_| false) }
-    }
-}
-
 /// The server connection, as far as the downloads use it.
 pub trait ServerLink {
     /// Our client id on the server, zero when not connected.
@@ -351,10 +344,6 @@ impl DownloadManager {
 
     pub fn take_events(&mut self) -> Vec<DownloadEvent> {
         std::mem::take(&mut self.events)
-    }
-
-    pub fn temp_dir(&self) -> &Path {
-        self.queue.temp_dir()
     }
 
     /// Adds a download, or the link's sources to the existing one of the same file. A new download goes in the first

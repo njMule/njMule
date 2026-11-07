@@ -224,10 +224,6 @@ impl DownloadSession {
         std::mem::take(&mut self.notes)
     }
 
-    pub fn download(&self) -> [u8; 16] {
-        self.download
-    }
-
     pub fn address(&self) -> SocketAddr {
         self.address
     }
