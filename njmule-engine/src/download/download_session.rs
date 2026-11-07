@@ -669,7 +669,7 @@ impl DownloadSession {
             return;
         };
         self.progress_at = ctx.now;
-        ctx.queue.received(&self.download, start, data);
+        ctx.queue.received(&self.download, start, data, Some(self.address.ip()));
         self.notes.push(Note::Received { bytes, transferred });
         let Some((&key, pending)) = self.pending.get_index_mut(target) else {
             return;

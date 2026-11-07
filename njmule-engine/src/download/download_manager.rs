@@ -201,9 +201,16 @@ pub struct DownloadManager {
 }
 
 impl DownloadManager {
-    /// Loads the downloads of `temp_dir`; finished files go to `incoming_dir`, disk work reports to `disk`.
-    pub fn open(temp_dir: &Path, incoming_dir: &Path, disk: UnboundedSender<DiskDone>) -> io::Result<Self> {
-        let queue = DownloadQueue::load(temp_dir, incoming_dir, disk)?;
+    /// Loads the downloads of `temp_dir`; finished files go to `incoming_dir`, downloads wait while the temp disk has
+    /// less free space than `min_free`, disk work reports to `disk`.
+    pub fn open(
+        temp_dir: &Path,
+        incoming_dir: &Path,
+        min_free: download_queue::MinFree,
+        disk: UnboundedSender<DiskDone>,
+    ) -> io::Result<Self> {
+        let incoming = incoming_dir.to_path_buf();
+        let queue = DownloadQueue::load(temp_dir, Box::new(move |_| incoming.clone()), min_free, disk)?;
         let now = Instant::now();
         let entries = queue.all().map(|d| (d.hash(), Entry::new(d.file.part_count(), now))).collect();
         Ok(Self {
@@ -674,6 +681,22 @@ impl DownloadManager {
                 }
             }
             QueueEvent::Corrupt { hash, part } => self.recover(&hash, part),
+            QueueEvent::CorruptSenders { ips, .. } => {
+                for ip in ips {
+                    tracing::info!("{ip} sent corrupt data");
+                }
+            }
+            QueueEvent::DiskSpace(enough) => {
+                let hashes: Vec<[u8; 16]> = self.entries.keys().copied().collect();
+                for hash in hashes {
+                    if let Some(entry) = self.entries.get_mut(&hash) {
+                        entry.changed = true;
+                    }
+                    if !enough {
+                        self.close_sessions(&hash, "not enough free disk space", ours);
+                    }
+                }
+            }
         }
     }
 

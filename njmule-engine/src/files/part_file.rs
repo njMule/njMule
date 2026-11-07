@@ -19,13 +19,18 @@ use crate::files::file_types;
 use crate::files::hash::ed2k;
 use crate::persist::atomic_files;
 use crate::persist::format::part_met::{self, Contents, Gap};
+use crate::protocol::io::{DecodeError, PacketReader, PacketWriter};
 use crate::protocol::tag::{Tag, TagName, file_tag, tags};
 
-// njMule's own tags, which other clients skip: the parts that passed their check and the place of the download in
-// the order downloads were added. Those of later ports are kept as they were read.
+// njMule's own tags, which other clients skip: the parts that passed their check, the place of the download in the
+// order downloads were added, whether it takes sources of other downloads, the sources kept for the next run and how
+// long it ran without data.
 const VERIFIED_TAG: &[u8] = b"njm_verified";
 const ADDED_TAG: &[u8] = b"njm_added";
-const KEPT_TAGS: [&[u8]; 3] = [b"njm_a4af_auto", b"njm_sources", b"njm_idle"];
+const AUTO_SWAP_TAG: &[u8] = b"njm_a4af_auto";
+const SOURCES_TAG: &[u8] = b"njm_sources";
+const IDLE_TAG: &[u8] = b"njm_idle";
+const SOURCES_VERSION: u8 = 1;
 
 pub const DATA_SUFFIX: &str = ".part";
 pub const MET_SUFFIX: &str = ".part.met";
@@ -98,7 +103,9 @@ pub struct PartFile {
     category: u32,
     added: u64,
     preview_first: bool,
-    kept: Vec<Tag>,
+    auto_swap: bool,
+    known_sources: Vec<KnownSource>,
+    idle_seconds: u64,
 }
 
 impl PartFile {
@@ -154,7 +161,9 @@ impl PartFile {
             category: 0,
             added: 0,
             preview_first: false,
-            kept: Vec::new(),
+            auto_swap: false,
+            known_sources: Vec::new(),
+            idle_seconds: 0,
         })
     }
 
@@ -185,12 +194,11 @@ impl PartFile {
         file.added = tags::int_value_named(&contents.tags, &TagName::of_bytes(ADDED_TAG)).unwrap_or(0);
         // Bit 0: first and last parts first, for a preview.
         file.preview_first = tags::int_value(&contents.tags, file_tag::DL_PREVIEW).unwrap_or(0) & 1 != 0;
-        file.kept = contents
-            .tags
-            .iter()
-            .filter(|tag| KEPT_TAGS.iter().any(|kept| tag.name().to_bytes() == *kept))
-            .cloned()
-            .collect();
+        file.auto_swap = tags::int_value_named(&contents.tags, &TagName::of_bytes(AUTO_SWAP_TAG)).unwrap_or(0) != 0;
+        file.idle_seconds = tags::int_value_named(&contents.tags, &TagName::of_bytes(IDLE_TAG)).unwrap_or(0);
+        if let Some(Tag::Blob { value, .. }) = tags::find(&contents.tags, &TagName::of_bytes(SOURCES_TAG)) {
+            file.known_sources = read_sources(value);
+        }
         // Parts checked before are trusted only while the data file is as it was saved.
         if data_date(&file.data_file()) == Some(contents.mtime) {
             if let Some(Tag::Blob { value, .. }) = tags::find(&contents.tags, &TagName::of_bytes(VERIFIED_TAG)) {
@@ -231,6 +239,12 @@ impl PartFile {
         if self.added > 0 {
             tags.push(Tag::Int { name: TagName::of_bytes(ADDED_TAG), value: self.added });
         }
+        if self.auto_swap {
+            tags.push(Tag::Int { name: TagName::of_bytes(AUTO_SWAP_TAG), value: 1 });
+        }
+        if self.idle_seconds > 0 {
+            tags.push(Tag::Int { name: TagName::of_bytes(IDLE_TAG), value: self.idle_seconds });
+        }
         if let Some(aich) = self.aich_hash {
             let value = data_encoding::BASE32_NOPAD.encode(&aich);
             tags.push(Tag::String { name: TagName::id(file_tag::AICH_HASH), value });
@@ -238,7 +252,9 @@ impl PartFile {
         if self.verified.iter().any(|&verified| verified) {
             tags.push(Tag::Blob { name: TagName::of_bytes(VERIFIED_TAG), value: to_bytes(&self.verified) });
         }
-        tags.extend(self.kept.iter().cloned());
+        if !self.known_sources.is_empty() {
+            tags.push(Tag::Blob { name: TagName::of_bytes(SOURCES_TAG), value: write_sources(&self.known_sources) });
+        }
         let gaps: Vec<Gap> = self.missing.iter().filter_map(|gap| Gap::new(gap.start, gap.end)).collect();
         let large = self.size > ed2k::OLD_MAX_FILE_SIZE;
         Contents {
@@ -318,8 +334,41 @@ impl PartFile {
         self.added = added;
     }
 
+    /// Whether the first and last parts come first, for a preview.
     pub fn preview_first(&self) -> bool {
         self.preview_first
+    }
+
+    pub fn set_preview_first(&mut self, value: bool) {
+        self.preview_first = value;
+    }
+
+    /// Whether the download takes the sources of other downloads that have nothing for them.
+    pub fn auto_swap(&self) -> bool {
+        self.auto_swap
+    }
+
+    pub fn set_auto_swap(&mut self, value: bool) {
+        self.auto_swap = value;
+    }
+
+    /// The sources kept from the last run, or to keep for the next.
+    pub fn known_sources(&self) -> &[KnownSource] {
+        &self.known_sources
+    }
+
+    /// Keeps `sources`, at most [`MAX_KNOWN_SOURCES`], for the next run.
+    pub fn set_known_sources(&mut self, sources: &[KnownSource]) {
+        self.known_sources = sources.iter().take(MAX_KNOWN_SOURCES).copied().collect();
+    }
+
+    /// How long the download has run without data, in seconds.
+    pub fn idle_seconds(&self) -> u64 {
+        self.idle_seconds
+    }
+
+    pub fn set_idle_seconds(&mut self, seconds: u64) {
+        self.idle_seconds = seconds;
     }
 
     pub fn data_file(&self) -> PathBuf {
@@ -597,6 +646,48 @@ pub fn write_met(met: &Path, contents: &Contents, data: &Path) -> io::Result<()>
 /// Reads a part.met, or its backup when the file itself is gone or broken.
 pub fn read_met(met: &Path) -> io::Result<Contents> {
     atomic_files::read(met, |data| part_met::read(data).map_err(|e| invalid(&e.to_string())))
+}
+
+// The version, then each source: address and port, when it was last good, its crypt options, whether its user hash
+// follows, the user hash.
+fn write_sources(sources: &[KnownSource]) -> Vec<u8> {
+    let mut out = PacketWriter::new();
+    out.u8(SOURCES_VERSION);
+    for source in sources {
+        out.u32(source.ip).u16(source.port).u64(source.seen).u8(source.crypt_options);
+        match &source.user_hash {
+            Some(user_hash) => out.u8(1).hash16(user_hash),
+            None => out.u8(0),
+        };
+    }
+    out.into_byte_array()
+}
+
+// Sources another version wrote, or cut short, are left out rather than read wrong.
+fn read_sources(data: &[u8]) -> Vec<KnownSource> {
+    let mut input = PacketReader::of(data);
+    if input.u8().ok() != Some(SOURCES_VERSION) {
+        return Vec::new();
+    }
+    let mut sources = Vec::new();
+    while input.has_remaining() && sources.len() < MAX_KNOWN_SOURCES {
+        let source = (|| {
+            let ip = input.u32()?;
+            let port = input.u16()?;
+            let seen = input.u64()?;
+            let crypt_options = input.u8()?;
+            let user_hash = if input.u8()? == 1 { Some(input.hash16()?) } else { None };
+            Ok::<_, DecodeError>(KnownSource { ip, port, seen, user_hash, crypt_options })
+        })();
+        match source {
+            Ok(source) => sources.push(source),
+            Err(e) => {
+                tracing::debug!("Leaving out the sources kept of a download: {e}");
+                return Vec::new();
+            }
+        }
+    }
+    sources
 }
 
 /// `001`, `002`, ...: the base name of download number `n`.
