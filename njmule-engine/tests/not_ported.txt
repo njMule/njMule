@@ -114,14 +114,14 @@ SharedFilesTest.shouldTakeTheUsableRecordsOfAnotherClient
 SharedFilesTest.shouldTreatPrivateDirectoriesAsPrivate
 SharedFilesTest.shouldUnshareAFileWhoseContentChangesUnderItsOldHash
 
-# The upload manager is ported in pieces: this one needs the downloads.
+# The upload manager is ported in pieces: the twins of partial files and source answers come with the next one.
 UploadManagerTest.shouldNotCountFilesWeDownloadAsUnknown
 
 
 # A file look-up cannot fault in the Rust engine: it answers a file or none, and none is a file we do not have.
 UploadManagerTest.shouldEndOnlyTheSessionOfTheClientWhoseFileLookUpFaults
 
-# The upload manager is ported in pieces: source exchange and partial files, which need the downloads' port.
+# The upload manager is ported in pieces: the twins of partial files and source answers come with the next one.
 UploadManagerTest.shouldEndTheConnectionOnARequestThatDoesNotDecodeAndSaveTheCredits
 UploadManagerTest.shouldForgetTheSourceAnswersGivenOnceTheyCanBeAskedAgain
 UploadManagerTest.shouldLeaveSourcesAtAnIpv6AddressAloneOutForAClientNotTakingTheExtendedWay

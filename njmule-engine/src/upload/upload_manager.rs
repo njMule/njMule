@@ -17,12 +17,13 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::api::upload_priority::UploadPriority;
 use crate::files::hash::ed2k;
-use crate::files::shared_files::SharedFile;
 use crate::peer::peer_link::{LinkHandle, LinkId};
 use crate::protocol::ed2k::client_messages::PartStatus;
 use crate::protocol::ed2k::client_reasks::{self, Ack};
 use crate::protocol::ed2k::hello::{self, Hello};
+use crate::protocol::ed2k::source_exchange as exchange;
 use crate::protocol::packet::Packet;
+use crate::protocol::packet::packing;
 use crate::upload::blocks;
 use crate::upload::credits::Credits;
 use crate::upload::request_tracker::{Key, RequestTracker};
@@ -46,6 +47,12 @@ const UNKNOWN_FILES_DROPS: u32 = 2;
 const QUEUE_FULL_MARGIN: usize = 50;
 // How often the request histories are purged.
 const REQUESTS_PURGE: Duration = Duration::from_secs(60);
+// A client asking for the sources of a rare file is answered every 40 minutes at most, of another every 160; answers
+// above a few hundred bytes are packed.
+const SX_RARE_INTERVAL: Duration = Duration::from_secs(40 * 60);
+const SX_INTERVAL: Duration = Duration::from_secs(160 * 60);
+const SX_RARE_SOURCES: usize = 50;
+const SX_PACK_ABOVE: usize = 354;
 /// A waiting client that does not ask again for this long is forgotten.
 pub const PURGE_AFTER: Duration = Duration::from_secs(3600);
 /// Clients of one address that may wait at once.
@@ -132,7 +139,10 @@ pub struct UploadState {
 type Priorities = Box<dyn Fn(&[u8; 16]) -> UploadPriority + Send>;
 
 /// Our complete file of a hash.
-pub type Find<'a> = &'a dyn Fn(&[u8; 16]) -> Option<SharedFile>;
+pub use crate::upload::upload_session::Find;
+/// The sources of a file we download, to tell clients asking for them: none for a file we do not download, the
+/// sources of a running download (the list empty while it waits).
+pub type Sources<'a> = &'a dyn Fn(&[u8; 16]) -> Option<Vec<exchange::Source>>;
 
 struct Client {
     user_hash: [u8; 16],
@@ -178,6 +188,8 @@ struct Slot {
 }
 
 pub struct UploadManager {
+    // When each client, by its address and the port it listens on, was last told sources.
+    sources_answered: HashMap<(IpAddr, u16), Instant>,
     sessions: HashMap<LinkId, UploadSession>,
     // The clients waiting for a slot, by user hash.
     waiting: IndexMap<[u8; 16], Client>,
@@ -208,6 +220,7 @@ impl UploadManager {
     /// Blocks read go to `reads`, for [`Self::block_read`]; `credits` order the queue and count what is sent.
     pub fn new(reads: UnboundedSender<BlockRead>, credits: Credits, settings: Settings) -> Self {
         Self {
+            sources_answered: HashMap::new(),
             sessions: HashMap::new(),
             waiting: IndexMap::new(),
             slots: Vec::new(),
@@ -388,7 +401,11 @@ impl UploadManager {
     /// Slots and waiting clients, for diagnostics.
     pub fn describe(&self) -> String {
         let called = self.waiting.values().filter(|client| client.next_connect).count();
-        let mut text = format!("waiting {}, {called} called when they ask", self.waiting.len());
+        let mut text = format!(
+            "waiting {}, {called} called when they ask, {} source answers",
+            self.waiting.len(),
+            self.sources_answered.len()
+        );
         for slot in &self.slots {
             let pending = self.sessions.get(&slot.link).is_some_and(UploadSession::has_pending_blocks);
             text.push_str(&format!(
@@ -472,6 +489,7 @@ impl UploadManager {
         ours: &Hello,
         find: Find<'_>,
         visible: Visible<'_>,
+        sources: Sources<'_>,
         now: Instant,
     ) {
         if !self.sessions.contains_key(&link.id()) && self.is_banned(link.remote().ip(), now) {
@@ -487,6 +505,7 @@ impl UploadManager {
                 }
             }
             Ok(Some(Request::Blocks)) => self.blocks_requested(link.id(), find, now),
+            Ok(Some(Request::Sources(request))) => self.answer_sources(link.id(), &request, ours, find, sources, now),
             Ok(Some(Request::Stopped)) => self.slot_gone(link.id()),
             Ok(Some(Request::FileGone)) => {
                 tracing::debug!("{} asked for blocks of a file we no longer share", link.remote());
@@ -588,6 +607,8 @@ impl UploadManager {
         if now >= purge_at {
             self.next_purge = now.checked_add(REQUESTS_PURGE);
             self.requests.purge(now);
+            // An answer older than the longest wait no longer holds anyone back.
+            self.sources_answered.retain(|_, at| now.saturating_duration_since(*at) < SX_INTERVAL);
         }
         self.send(now);
         self.fill_slots(now);
@@ -608,7 +629,6 @@ impl UploadManager {
             Ok(packets) => packets,
             Err(e) => {
                 let moved = find(&read.block.file)
-                    .map(|file| Uploadable::of(&file))
                     .filter(|file| file.data != read.path && file.has(read.block.start, read.block.end));
                 match moved {
                     Some(file) => self.spawn_read(at, file, read.block),
@@ -721,6 +741,93 @@ impl UploadManager {
         }
     }
 
+    // A client that asked for the file on this connection is told its other sources: those of our download, else the
+    // clients that wait for or download it from us, not more often than a rare file needs. IPv6 sources only the
+    // extended way, LAN and loopback ones only within the client's network.
+    fn answer_sources(
+        &mut self,
+        id: LinkId,
+        request: &exchange::Request,
+        ours: &Hello,
+        find: Find<'_>,
+        sources: Sources<'_>,
+        now: Instant,
+    ) {
+        let Some(session) = self.sessions.get(&id) else {
+            return;
+        };
+        let ip = session.link().remote().ip();
+        if !session.asked(&request.file) || self.is_banned(ip, now) || request.version < 1 {
+            return;
+        }
+        if !find(&request.file).is_some_and(|file| file.is_shareable()) {
+            return;
+        }
+        let peer = session.peer().clone();
+        let downloaded = sources(&request.file);
+        let mut told = downloaded.clone().unwrap_or_default();
+        let rare = downloaded.is_some() && told.len() <= SX_RARE_SOURCES;
+        let asker = (ip, peer.tcp_port);
+        let wait = if rare { SX_RARE_INTERVAL } else { SX_INTERVAL };
+        if self.sources_answered.get(&asker).is_some_and(|at| now.saturating_duration_since(*at) < wait) {
+            return;
+        }
+        if told.is_empty() {
+            told = self.uploaders(&request.file);
+        }
+        let extended = peer.supports_extended_source_exchange() && ours.supports_extended_source_exchange();
+        told.retain(|source| {
+            (extended || !source.is_ipv6_only())
+                && source.user_hash != Some(peer.user_hash)
+                && (source.is_ipv6_only() || crate::download::download_manager::passes_on(source.ip, ip))
+        });
+        if told.is_empty() {
+            return;
+        }
+        self.sources_answered.insert(asker, now);
+        told.truncate(exchange::MAX_SOURCES);
+        let version = request.version.min(exchange::VERSION);
+        let answer = if extended {
+            exchange::Answer { version: exchange::EXTENDED_VERSION, file: request.file, sources: told }
+                .encode_extended()
+        } else {
+            exchange::Answer { version, file: request.file, sources: told }.encode()
+        };
+        let Ok(answer) = answer else {
+            return;
+        };
+        let answer =
+            if answer.length() > SX_PACK_ABOVE { packing::pack(answer.clone()).unwrap_or(answer) } else { answer };
+        if let Some(session) = self.sessions.get(&id) {
+            session.link().send(answer);
+        }
+    }
+
+    // The clients waiting for or downloading the file from us, which a client asking for sources may be told.
+    fn uploaders(&self, file: &[u8; 16]) -> Vec<exchange::Source> {
+        self.waiting
+            .values()
+            .chain(self.slots.iter().map(|slot| &slot.client))
+            .filter(|client| client.file == *file && !client.low_id)
+            .filter_map(|client| match client.ip {
+                IpAddr::V4(ip) => Some(exchange::Source {
+                    ip: u32::from(ip),
+                    low_id: 0,
+                    port: client.port,
+                    server_ip: 0,
+                    server_port: 0,
+                    user_hash: Some(client.user_hash),
+                    crypt_options: 0,
+                    ipv6: None,
+                }),
+                IpAddr::V6(ip) if ipv6::is_public(&ip) => {
+                    Some(exchange::Source::ipv6_only(ip, client.port, Some(client.user_hash)))
+                }
+                IpAddr::V6(_) => None,
+            })
+            .collect()
+    }
+
     fn blocks_requested(&mut self, link: LinkId, find: Find<'_>, now: Instant) {
         let Some(at) = self.slots.iter().position(|slot| slot.link == link) else {
             return;
@@ -761,7 +868,7 @@ impl UploadManager {
         let Some(block) = session.next_block() else {
             return;
         };
-        let Some(file) = find(&block.file).map(|file| Uploadable::of(&file)) else {
+        let Some(file) = find(&block.file).filter(Uploadable::is_shareable) else {
             // Its file is no longer shared: the slot ends.
             let link = slot.link;
             tracing::debug!("The file of an upload slot is gone");

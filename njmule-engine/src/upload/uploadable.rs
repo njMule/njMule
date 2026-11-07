@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use crate::files::hash::ed2k;
 use crate::files::shared_files::SharedFile;
+use crate::protocol::ed2k::client_messages::{FileStatus, PartStatus};
 
 // Already compressed: zlib would only cost time.
 const PACKED: [&str; 34] = [
@@ -25,6 +26,7 @@ pub struct Uploadable {
     /// The parts that can be sent, none for a complete file.
     pub parts: Option<Vec<bool>>,
     pub data: PathBuf,
+    pub aich_hash: Option<[u8; 20]>,
 }
 
 impl Uploadable {
@@ -36,6 +38,44 @@ impl Uploadable {
             part_hashes: file.part_hashes.clone(),
             parts: None,
             data: file.path.clone(),
+            aich_hash: file.aich_hash,
+        }
+    }
+
+    /// A file being downloaded, of which the `verified` parts can be sent from its data file.
+    pub fn partial(
+        hash: [u8; 16],
+        name: &str,
+        size: u64,
+        part_hashes: &[[u8; 16]],
+        verified: &[bool],
+        data: PathBuf,
+        aich_hash: Option<[u8; 20]>,
+    ) -> Self {
+        Self {
+            hash,
+            name: name.to_owned(),
+            size,
+            part_hashes: part_hashes.to_vec(),
+            parts: Some(verified.to_vec()),
+            data,
+            aich_hash,
+        }
+    }
+
+    /// Whether any of it can be sent: a download with no part checked is ours, but has nothing to give yet.
+    pub fn is_shareable(&self) -> bool {
+        self.parts.as_ref().is_none_or(|parts| parts.contains(&true))
+    }
+
+    /// OP_FILESTATUS of the file: no bits for a complete file, else the checked parts.
+    pub fn status(&self) -> FileStatus {
+        match &self.parts {
+            None => FileStatus { file: self.hash, part_count: 0, parts: Vec::new() },
+            Some(parts) => {
+                let status = PartStatus::of(self.size, parts);
+                FileStatus { file: self.hash, part_count: status.part_count, parts: status.parts }
+            }
         }
     }
 
