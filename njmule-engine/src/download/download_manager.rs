@@ -145,6 +145,11 @@ pub enum DownloadEvent {
     CorruptSender(IpAddr),
     /// The temp disk has dropped below (false), or come back above (true), the free space downloads need.
     DiskSpace(bool),
+    /// `part` of the download failed its check and is downloaded again.
+    CorruptPart {
+        info: DownloadInfo,
+        part: usize,
+    },
 }
 
 // A firewalled source asked through the server to connect to us.
@@ -900,6 +905,34 @@ impl DownloadManager {
         self.queue.close();
     }
 
+    /// Downloads, sources and sessions, for diagnostics.
+    pub fn describe(&self) -> String {
+        let mut text = String::new();
+        for (hash, entry) in &self.entries {
+            let Some(file) = self.queue.get(hash).map(|d| &d.file) else {
+                continue;
+            };
+            text.push_str(&format!("{} missing {}:", file.name(), file.missing_bytes()));
+            for address in entry.sources.keys() {
+                let Some(client) = self.clients.get(address) else {
+                    continue;
+                };
+                let shown = match client.session.as_ref().filter(|_| client.current == *hash) {
+                    Some(session) => session.describe(),
+                    None if client.current == *hash => address.to_string(),
+                    None => format!("{address} A4AF"),
+                };
+                text.push(' ');
+                text.push_str(&shown);
+                if client.failures > 0 {
+                    text.push_str(&format!(" (failed {})", client.failures));
+                }
+            }
+            text.push('\n');
+        }
+        text
+    }
+
     /// Sources of an active download that we spoke with, for other clients asking for sources: HighIDs with a known
     /// user hash, and those at a public IPv6 address alone.
     pub fn exchangeable(&self, hash: &[u8; 16]) -> Vec<exchange::Source> {
@@ -1172,7 +1205,12 @@ impl DownloadManager {
                     self.events.push(DownloadEvent::Failed { info, reason });
                 }
             }
-            QueueEvent::Corrupt { hash, part } => self.recover(&hash, part),
+            QueueEvent::Corrupt { hash, part } => {
+                if let Some(info) = self.info(&hash) {
+                    self.events.push(DownloadEvent::CorruptPart { info, part });
+                }
+                self.recover(&hash, part);
+            }
             QueueEvent::CorruptSenders { ips, .. } => {
                 for ip in ips {
                     self.ban_corrupt_sender(ip, ours);

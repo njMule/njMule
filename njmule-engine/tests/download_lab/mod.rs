@@ -47,6 +47,8 @@ pub struct Engine {
     pub keeps_links: bool,
     pub kept_links: Vec<String>,
     pub min_free: u64,
+    /// Where finished files go; the lab's `incoming` directory when none.
+    pub incoming: Option<std::path::PathBuf>,
 }
 
 fn hooks(engine: &Arc<Mutex<Engine>>) -> Hooks {
@@ -64,7 +66,8 @@ fn hooks(engine: &Arc<Mutex<Engine>>) -> Hooks {
     }
 }
 
-/// What the downloads asked of the server, and what it answers.
+/// What the downloads asked of the server, and what it answers: sources only while connected, and a callback to any
+/// LowID but the refused ones.
 #[derive(Default)]
 pub struct FakeServer {
     pub client_id: u32,
@@ -72,6 +75,7 @@ pub struct FakeServer {
     pub connected: bool,
     pub asked: Vec<[u8; 16]>,
     pub callbacks: Vec<u32>,
+    pub refused: Vec<u32>,
 }
 
 struct Server(Arc<Mutex<FakeServer>>);
@@ -95,10 +99,8 @@ impl ServerLink for Server {
 
     fn request_callback(&mut self, low_id: u32) -> bool {
         let mut server = self.0.lock().unwrap();
-        if server.connected {
-            server.callbacks.push(low_id);
-        }
-        server.connected
+        server.callbacks.push(low_id);
+        !server.refused.contains(&low_id)
     }
 }
 
@@ -328,9 +330,8 @@ fn open(
     let (disk_in, disk) = mpsc::unbounded_channel();
     let room = Arc::clone(engine);
     let min_free = Box::new(move || room.lock().unwrap().min_free);
-    let manager =
-        DownloadManager::open(&dir.join("temp"), &dir.join("incoming"), min_free, disk_in, clock, hooks(engine))
-            .unwrap();
+    let incoming = engine.lock().unwrap().incoming.clone().unwrap_or_else(|| dir.join("incoming"));
+    let manager = DownloadManager::open(&dir.join("temp"), &incoming, min_free, disk_in, clock, hooks(engine)).unwrap();
     let ours = Ours { nick: "test", udp_port: 0, kad_port: 0, misc_options1: 0, misc_options2: 0 };
     let (link_events, links) = mpsc::unbounded_channel();
     let (connected_in, connected) = mpsc::unbounded_channel();
