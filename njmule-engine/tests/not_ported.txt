@@ -139,6 +139,7 @@ UploadManagerTest.shouldPassAClientsUdpTestRequestToKadWithItsAddress
 # Kad's sources come with Kad (area 5).
 DownloadManagerTest.shouldKeepOnlyUsableSourcesFromKad
 DownloadSourcesTest.shouldLeaveOutTheKadSourcesOfAStoppedDownload
+DownloadOwnSourceTest.shouldLeaveOutAKadSourceWithOurUserHashOrAtOurAddress
 # The next pieces of the download manager: re-asks over UDP (sent through the client UDP port, which comes with Kad).
 DownloadSourcesTest.shouldAskAQueuedSourceAgainOverUdpShortlyBeforeItsTime
 DownloadSourcesTest.shouldAskAQueuedSourceAtAnIpv6AddressAgainOverUdpPlain
@@ -149,7 +150,8 @@ DownloadSourcesTest.shouldTakeTheRankASourceGivesOverUdp
 DownloadSourcesTest.shouldTakeTheRankASourceGivesOverUdpFromItsIpv6Address
 DownloadSourcesTest.shouldTellASourceThatHasNoPartTheDownloadNeeds
 DownloadSourcesTest.shouldTellASourceWhoseQueueIsFull
-# The next pieces of the download manager: the exchange of sources and the comments of sources.
+# The next pieces of the download manager: the exchange of sources.
+DownloadOwnSourceTest.shouldLeaveOutAnExchangedSourceWithOurUserHash
 DownloadSourcesTest.shouldHearTheCommentAndOtherSourcesOfASourceThatKeepsUsInItsQueue
 DownloadSourcesTest.shouldTakeNoMoreFirewalledSourcesIntoAFullSourceList
 DownloadSourcesTest.shouldTakeNoSourceByHandIntoAFullSourceList

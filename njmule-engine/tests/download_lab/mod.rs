@@ -27,6 +27,7 @@ use njmule_engine::download::download_manager::{Action, DownloadEvent, DownloadM
 use njmule_engine::download::download_session;
 use njmule_engine::files::part_file_storage::DiskDone;
 use njmule_engine::net::routes::Routes;
+use njmule_engine::net::tcp_connection::TcpConnection;
 use njmule_engine::net::tcp_connector::{self, Connection};
 use njmule_engine::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId};
 use njmule_engine::protocol::ed2k::hello::{Hello, Ours};
@@ -116,6 +117,11 @@ pub struct Lab {
     next_link: LinkId,
     link_events: mpsc::UnboundedSender<LinkEvent>,
     connected: mpsc::UnboundedSender<(SocketAddr, std::io::Result<Connection>)>,
+    // Clients that connected to us and have not greeted yet, and those greeted that the downloads did not take.
+    incoming: Vec<LinkId>,
+    peers: HashMap<LinkId, Hello>,
+    /// How each client that connected to us was taken: "adopted" by the downloads, or "refused".
+    pub routed: Vec<String>,
 }
 
 pub type Job = Box<dyn FnOnce(&mut Lab) + Send>;
@@ -144,6 +150,14 @@ impl Lab {
     fn after(&mut self) {
         for action in self.manager.take_actions() {
             match action {
+                // A client connected to download from us is asked over the same connection.
+                Action::Connect { address, .. } if self.peer_listening_at(address).is_some() => {
+                    let id = self.peer_listening_at(address).unwrap();
+                    let hello = self.peers.remove(&id).unwrap();
+                    let handle = self.links[&id].clone();
+                    let ours = self.ours.clone();
+                    self.manager.connected_over(address, handle, hello, &ours);
+                }
                 Action::Connect { address, obfuscate_for } => {
                     let connected = self.connected.clone();
                     tokio::spawn(async move {
@@ -196,9 +210,52 @@ impl Lab {
         self.after();
     }
 
+    fn peer_listening_at(&self, address: SocketAddr) -> Option<LinkId> {
+        self.peers.iter().find_map(|(id, hello)| {
+            let remote = self.links.get(id)?.remote();
+            (SocketAddr::new(remote.ip(), hello.tcp_port) == address).then_some(*id)
+        })
+    }
+
+    // A client connected to us: offered to the downloads once it greets us, as the engine does.
+    fn accepted(&mut self, stream: tokio::net::TcpStream) {
+        let remote = stream.peer_addr().unwrap();
+        let local = stream.local_addr().ok().map(|address| address.ip());
+        let (input, output) = stream.into_split();
+        let connection = TcpConnection::over(input, output, remote, local, frame_limits::client_handshake);
+        let id = self.next_link;
+        self.next_link += 1;
+        let handle = peer_link::start(id, connection, self.link_events.clone());
+        self.links.insert(id, handle);
+        self.incoming.push(id);
+    }
+
+    fn greeting(&mut self, link: LinkId, packet: &njmule_engine::protocol::packet::Packet) {
+        self.incoming.retain(|id| *id != link);
+        let (Ok(hello), Some(handle)) = (Hello::decode(packet), self.links.get(&link).cloned()) else {
+            return;
+        };
+        let ours = self.ours.clone();
+        handle.send(ours.to_peer_at(&handle.remote().ip()).encode(true).unwrap());
+        self.greeted.insert(link, true);
+        let server_ip = self.server.server_ip();
+        let settings = self.settings.clone();
+        let adopted = self.manager.adopt(&handle, &hello, server_ip, &settings, &ours);
+        self.routed.push(if adopted { "adopted" } else { "refused" }.to_owned());
+        if !adopted {
+            self.peers.insert(link, hello);
+        }
+    }
+
     fn event(&mut self, event: LinkEvent) {
         let ours = self.ours.clone();
         match event {
+            LinkEvent::Packet(link, packet)
+                if self.incoming.contains(&link)
+                    && (packet.protocol(), packet.opcode()) == (protocol::EDONKEY, client::HELLO) =>
+            {
+                self.greeting(link, &packet);
+            }
             LinkEvent::Packet(link, packet) => {
                 if !self.greeted.contains_key(&link)
                     && (packet.protocol(), packet.opcode()) == (protocol::EDONKEY, client::HELLOANSWER)
@@ -213,6 +270,8 @@ impl Lab {
             }
             LinkEvent::Closed(link, reason) => {
                 self.links.remove(&link);
+                self.incoming.retain(|id| *id != link);
+                self.peers.remove(&link);
                 self.greeted.remove(&link);
                 self.manager.closed(link, reason.as_deref(), &ours);
             }
@@ -230,6 +289,8 @@ impl Lab {
 /// The downloads on their loop, and what the tests reach them through.
 pub struct Downloads {
     pub dir: tempfile::TempDir,
+    /// Where the downloads take connections of clients.
+    pub port: u16,
     pub server: Arc<Mutex<FakeServer>>,
     pub engine: Arc<Mutex<Engine>>,
     offset: Arc<AtomicU64>,
@@ -251,8 +312,8 @@ impl Downloads {
         let server = Arc::new(Mutex::new(FakeServer { client_id: our_id, ..FakeServer::default() }));
         let engine = Arc::new(Mutex::new(engine));
         let offset = Arc::new(AtomicU64::new(0));
-        let (jobs, serving) = open(dir.path(), user_hash, our_id, settings, &server, &engine, &offset);
-        Self { dir, server, engine, offset, jobs, serving: Some(serving), user_hash, our_id }
+        let (jobs, serving, port) = open(dir.path(), user_hash, our_id, settings, &server, &engine, &offset);
+        Self { dir, port, server, engine, offset, jobs, serving: Some(serving), user_hash, our_id }
     }
 
     /// Closes the downloads, which saves them, and opens them again from their files.
@@ -263,8 +324,9 @@ impl Downloads {
         if let Some(old) = self.serving.take() {
             old.await.unwrap();
         }
-        let (jobs, serving) =
+        let (jobs, serving, port) =
             open(self.dir.path(), self.user_hash, self.our_id, settings, &self.server, &self.engine, &self.offset);
+        self.port = port;
         self.jobs = jobs;
         self.serving = Some(serving);
     }
@@ -324,7 +386,7 @@ fn open(
     server: &Arc<Mutex<FakeServer>>,
     engine: &Arc<Mutex<Engine>>,
     offset: &Arc<AtomicU64>,
-) -> (mpsc::UnboundedSender<Job>, tokio::task::JoinHandle<()>) {
+) -> (mpsc::UnboundedSender<Job>, tokio::task::JoinHandle<()>, u16) {
     let base = Instant::now();
     let ticks = Arc::clone(offset);
     let clock = Box::new(move || base + Duration::from_millis(ticks.load(Ordering::Relaxed)));
@@ -348,8 +410,15 @@ fn open(
         next_link: 1,
         link_events,
         connected: connected_in,
+        incoming: Vec::new(),
+        peers: HashMap::new(),
+        routed: Vec::new(),
     };
-    (jobs_in, tokio::spawn(serve(lab, jobs, links, connected, disk)))
+    let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+    (jobs_in, tokio::spawn(serve(lab, jobs, links, connected, disk, listener)), port)
 }
 
 async fn serve(
@@ -358,10 +427,12 @@ async fn serve(
     mut links: mpsc::UnboundedReceiver<LinkEvent>,
     mut connected: mpsc::UnboundedReceiver<(SocketAddr, std::io::Result<Connection>)>,
     mut disk: mpsc::UnboundedReceiver<DiskDone>,
+    listener: tokio::net::TcpListener,
 ) {
     let mut every = tokio::time::interval(TICK);
     loop {
         tokio::select! {
+            Ok((stream, _)) = listener.accept() => lab.accepted(stream),
             Some(event) = links.recv() => lab.event(event),
             Some((address, result)) = connected.recv() => lab.connection(address, result),
             Some(done) = disk.recv() => lab.disk(done),

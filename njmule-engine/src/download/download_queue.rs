@@ -874,7 +874,8 @@ impl DownloadQueue {
         fs4::available_space(&self.temp_dir).is_ok_and(|free| free < (self.min_free)().max(FULL_DISK_RESERVE))
     }
 
-    fn save_changed(&mut self) {
+    /// Saves the part files whose progress or settings changed; the tick does it every [`SAVE_INTERVAL`].
+    pub fn save_changed(&mut self) {
         for download in self.downloads.values_mut() {
             // One being moved is complete and saved: its part.met goes once it is moved.
             if download.dirty && !download.finishing {
