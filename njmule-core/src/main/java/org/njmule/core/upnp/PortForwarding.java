@@ -189,7 +189,7 @@ public final class PortForwarding implements AutoCloseable {
 
     private void run() {
         try {
-            Duration retry = FIRST_RETRY;
+            Duration retry = this.routers.firstRetry();
             Optional<Outcome> failure = findAndMap(Optional.empty());
             while (failure.isPresent() && !this.closed) {
                 this.started.countDown();

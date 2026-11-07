@@ -2115,7 +2115,7 @@ final class Network {
             this.session.connect(this.session.server());
         }
         if (kadFirewalled) {
-            this.kad.recheckFirewall();
+            recheckKadFirewall();
         }
     }
 

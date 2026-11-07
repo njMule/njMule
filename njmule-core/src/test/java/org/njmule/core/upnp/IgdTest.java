@@ -20,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
@@ -48,6 +50,7 @@ class IgdTest {
     private Throwable exception;
     private byte[] answer;
     private String reason;
+    private InetSocketAddress multicast;
 
     @AfterEach
     void close() throws IOException {
@@ -191,6 +194,15 @@ class IgdTest {
     }
 
     @Test
+    void shouldSearchAMulticastAddressOnEveryNetworkWithoutFailing() throws IOException {
+        givenAMulticastAddressNoRouterListensAt();
+
+        whenAGatewayIsSoughtThere(NONE_WAIT);
+
+        thenNoGatewayIsFound("no router listens at that group and port");
+    }
+
+    @Test
     void shouldAskADeviceAnnouncedTwiceOnce() throws IOException {
         givenAGatewayOf(IP, "/ctl");
         givenADeviceThatCannotBeReadAnsweringFirst(2);
@@ -291,6 +303,11 @@ class IgdTest {
         this.gateway.announceOn(host);
     }
 
+    // Never SSDP's own group and port: the real router must not answer a test.
+    private void givenAMulticastAddressNoRouterListensAt() throws IOException {
+        this.multicast = new InetSocketAddress(InetAddress.ofLiteral("239.255.255.251"), FreePorts.udp());
+    }
+
     private void givenTheGatewayMissesTheFirstSearches() {
         this.gateway.missTheFirstSearches();
     }
@@ -318,6 +335,10 @@ class IgdTest {
 
     private void whenAGatewayIsSought(Duration wait) throws IOException {
         this.found = Igd.discover(this.gateway.ssdp(), wait);
+    }
+
+    private void whenAGatewayIsSoughtThere(Duration wait) throws IOException {
+        this.found = Igd.discover(this.multicast, wait);
     }
 
     private void whenAPortIsMapped(String protocol, int port, String description, long lease) {

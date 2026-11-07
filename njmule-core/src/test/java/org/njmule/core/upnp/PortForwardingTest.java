@@ -243,6 +243,22 @@ class PortForwardingTest {
     }
 
     @Test
+    void shouldForwardThePortsOnceARouterThatFailedAnswersAgain() throws Exception {
+        givenAGatewayOf(IP, "/ctl");
+        // Longer than the router is waited for.
+        givenTheGatewayTakesForEachMapping(Duration.ofSeconds(6));
+        givenAForwardingStarted(OptionalInt.empty());
+        givenAWaitForTheRenewalOf(PortForwarding.FIRST_RETRY);
+        givenTheGatewayTakesForEachMapping(Duration.ZERO);
+
+        whenTheWaitForTheRenewalEnds();
+
+        thenTheMappingsAskedForAre(2, "asked again once the router answers");
+        thenALineIsLoggedSaying("UPnP failed");
+        thenALineIsLoggedSaying("TCP 4662 forwarded");
+    }
+
+    @Test
     void shouldWaitTwiceAsLongEachTimeTheRouterStaysSilent() throws Exception {
         givenAGatewayOf(IP, "/ctl");
         givenTheGatewayAnswersNoSearch();

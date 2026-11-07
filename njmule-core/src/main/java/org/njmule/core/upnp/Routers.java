@@ -17,6 +17,7 @@
 package org.njmule.core.upnp;
 
 import java.net.InetSocketAddress;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -24,12 +25,14 @@ import java.util.function.Supplier;
 /**
  * Where the router that forwards our ports is looked for: UPnP's search address, then the NAT-PMP and PCP port of the
  * default gateway, read again at each search; and the PCP port of the IPv6 default gateway, which may open its IPv6
- * firewall when UPnP does not.
+ * firewall when UPnP does not. When none answers, they are looked for again after {@code firstRetry}, then after twice
+ * as long each time, up to half an hour.
  */
 public record Routers(
         InetSocketAddress ssdp,
         Supplier<Optional<InetSocketAddress>> natPmp,
-        Supplier<Optional<InetSocketAddress>> pcpIpv6) {
+        Supplier<Optional<InetSocketAddress>> pcpIpv6,
+        Duration firstRetry) {
 
     /** This computer's: SSDP's multicast address, and port 5351 of the default gateways. */
     public static final Routers OF_THIS_COMPUTER = new Routers(
@@ -41,6 +44,15 @@ public record Routers(
         Objects.requireNonNull(ssdp, "ssdp");
         Objects.requireNonNull(natPmp, "natPmp");
         Objects.requireNonNull(pcpIpv6, "pcpIpv6");
+        Objects.requireNonNull(firstRetry, "firstRetry");
+    }
+
+    /** Looked for again a minute after none answered. */
+    public Routers(
+            InetSocketAddress ssdp,
+            Supplier<Optional<InetSocketAddress>> natPmp,
+            Supplier<Optional<InetSocketAddress>> pcpIpv6) {
+        this(ssdp, natPmp, pcpIpv6, PortForwarding.FIRST_RETRY);
     }
 
     /** Without an IPv6 gateway to ask. */
@@ -51,5 +63,10 @@ public record Routers(
     /** UPnP's search at {@code ssdp} only. */
     public static Routers upnpOnly(InetSocketAddress ssdp) {
         return new Routers(ssdp, Optional::empty);
+    }
+
+    /** The same routers, looked for again {@code wait} after none answered. */
+    public Routers retryingAfter(Duration wait) {
+        return new Routers(this.ssdp, this.natPmp, this.pcpIpv6, wait);
     }
 }
