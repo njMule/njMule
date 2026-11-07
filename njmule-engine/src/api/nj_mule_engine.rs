@@ -7,11 +7,12 @@
 use std::collections::BTreeMap;
 use std::io;
 use std::net::{SocketAddr, SocketAddrV4};
+use std::path::PathBuf;
 
 use futures_util::future::BoxFuture;
 use tokio::sync::broadcast;
 
-use crate::api::download_info::{DownloadInfo, SourceInfo};
+use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::kad_contact_info::KadContactInfo;
@@ -19,6 +20,7 @@ use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
+use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::PeerInfo;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
@@ -128,4 +130,42 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
 
     /// Takes one completed download off the list; its file stays.
     fn clear_completed_download(&self, hash: [u8; 16]) -> impl Future<Output = bool> + Send;
+
+    /// Stops a download and forgets its sources; false when unknown.
+    fn stop_download(&self, hash: [u8; 16]) -> impl Future<Output = bool> + Send;
+
+    /// Takes back a download cancelled in the last seconds, with what it had; false when it cannot be.
+    fn restore_download(&self, hash: [u8; 16]) -> impl Future<Output = bool> + Send;
+
+    /// Asks for the first and last parts first, so that the file can be previewed early.
+    fn set_download_preview(&self, hash: [u8; 16], preview_first: bool) -> impl Future<Output = bool> + Send;
+
+    /// Takes the sources shared with other downloads whenever they are free to move.
+    fn set_download_auto_swap(&self, hash: [u8; 16], auto_swap: bool) -> impl Future<Output = bool> + Send;
+
+    fn set_download_priority(&self, hash: [u8; 16], priority: DownloadPriority) -> impl Future<Output = bool> + Send;
+
+    /// Moves a download to a category; 0 takes it out of every category.
+    fn set_download_category(&self, hash: [u8; 16], category: u32) -> impl Future<Output = bool> + Send;
+
+    /// Renames a download; false when unknown, an error for a blank name.
+    fn rename_download(&self, hash: [u8; 16], name: String) -> impl Future<Output = Result<bool, String>> + Send;
+
+    /// Adds a client known to have the file as a source of a download; false when unknown or refused.
+    fn add_source(&self, download: [u8; 16], source: SocketAddr) -> impl Future<Output = bool> + Send;
+
+    /// Moves a source asked for another file to this download, when it is free to move.
+    fn swap_source_to_download(&self, download: [u8; 16], source: SocketAddr) -> impl Future<Output = bool> + Send;
+
+    /// Moves the sources shared with other downloads to this one now; answers how many.
+    fn swap_sources_to_download(&self, hash: [u8; 16]) -> impl Future<Output = usize> + Send;
+
+    /// Moves this download's sources shared with others to them now; answers how many.
+    fn swap_sources_from_download(&self, hash: [u8; 16]) -> impl Future<Output = usize> + Send;
+
+    /// The data file of a download, once the start of the file has come.
+    fn download_data(&self, hash: [u8; 16]) -> impl Future<Output = Option<PathBuf>> + Send;
+
+    /// The comments the sources of a download gave on it.
+    fn peer_comments(&self, download: [u8; 16]) -> impl Future<Output = Vec<PeerComment>> + Send;
 }

@@ -5,14 +5,17 @@
 
 use std::collections::BTreeMap;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::rejection::JsonRejection;
+use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde_json::{Value, json};
 
+use crate::api::download_info::{DownloadInfo, DownloadPriority};
 use crate::api::ed2k_link::Ed2kLink;
+use crate::api::file_names;
 use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::config::bind_interface;
 use crate::engine::NotesError;
@@ -48,9 +51,23 @@ pub fn router<E: NjMuleEngine>(engine: E) -> Router {
         .route("/downloads", get(downloads::<E>).post(add_downloads::<E>))
         .route("/downloads/completed", delete(clear_completed_downloads::<E>))
         .route("/downloads/completed/{hash}", delete(clear_completed_download::<E>))
-        .route("/downloads/{hash}", delete(cancel_download::<E>))
+        .route("/names/cleanup", post(clean_up_name::<E>))
+        .route("/downloads/{hash}", get(download::<E>).delete(cancel_download::<E>))
         .route("/downloads/{hash}/pause", post(pause_download::<E>))
         .route("/downloads/{hash}/resume", post(resume_download::<E>))
+        .route("/downloads/{hash}/stop", post(stop_download::<E>))
+        .route("/downloads/{hash}/restore", post(restore_download::<E>))
+        .route("/downloads/{hash}/parts", get(download_parts::<E>))
+        .route("/downloads/{hash}/data", get(download_data::<E>))
+        .route("/downloads/{hash}/comments", get(peer_comments::<E>))
+        .route("/downloads/{hash}/preview", put(set_download_preview::<E>))
+        .route("/downloads/{hash}/autoswap", put(set_download_auto_swap::<E>))
+        .route("/downloads/{hash}/swap", post(swap_sources::<E>))
+        .route("/downloads/{hash}/priority", put(set_download_priority::<E>))
+        .route("/downloads/{hash}/category", put(set_download_category::<E>))
+        .route("/downloads/{hash}/name", put(rename_download::<E>))
+        .route("/downloads/{hash}/sources", post(add_download_source::<E>))
+        .route("/downloads/{hash}/sources/swap", post(swap_source_to_download::<E>))
         .route("/sources", get(sources::<E>))
         .route("/files/{hash}/notes", get(list_kad_notes::<E>).post(search_kad_notes::<E>))
         .route(
@@ -116,13 +133,53 @@ impl IntoResponse for ApiError {
     }
 }
 
+/// A JSON body; one that does not parse is malformed.
+pub struct Body(pub Value);
+
+impl<S: Send + Sync> FromRequest<S> for Body {
+    type Rejection = ApiError;
+
+    async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
+        match Json::<Value>::from_request(request, state).await {
+            Ok(Json(value)) => Ok(Self(value)),
+            Err(JsonRejection::JsonSyntaxError(e)) => Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Malformed JSON: {}",
+                    std::error::Error::source(&e).map_or_else(|| e.body_text(), ToString::to_string)
+                ),
+            )),
+            Err(rejection) => Err(ApiError::new(rejection.status(), rejection.body_text())),
+        }
+    }
+}
+
+fn text<'a>(body: &'a Value, name: &str) -> Result<&'a str, ApiError> {
+    body.get(name)
+        .and_then(Value::as_str)
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Missing text: {name}")))
+}
+
+fn flag(body: &Value, name: &str) -> Result<bool, ApiError> {
+    body.get(name)
+        .and_then(Value::as_bool)
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Missing truth value: {name}")))
+}
+
+fn number(body: &Value, name: &str) -> Result<u32, ApiError> {
+    body.get(name)
+        .and_then(Value::as_u64)
+        .and_then(|n| u32::try_from(n).ok())
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Missing number: {name}")))
+}
+
 async fn preferences<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
     Json(api_json::preferences(&engine.preferences()))
 }
 
 async fn update_preferences<E: NjMuleEngine>(
     State(engine): State<E>,
-    Json(body): Json<Value>,
+    Body(body): Body,
 ) -> Result<Json<Value>, ApiError> {
     let Value::Object(fields) = body else {
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "Preferences are an object"));
@@ -172,10 +229,7 @@ async fn servers<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
 }
 
 /// The servers of a `server.met` sent in Base64 (`data`) or read from the engine's computer (`path`).
-async fn import_servers<E: NjMuleEngine>(
-    State(engine): State<E>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
+async fn import_servers<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
     let file = list_file(&body)?;
     let read = server_met::read(&file)
         .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a server list: {e}")))?;
@@ -191,10 +245,7 @@ async fn recheck_kad<E: NjMuleEngine>(State(engine): State<E>) -> Result<Json<Va
 }
 
 /// Joins Kad through the node at `address`, an IPv4 address or a name with its UDP port.
-async fn bootstrap_kad<E: NjMuleEngine>(
-    State(engine): State<E>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
+async fn bootstrap_kad<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
     let Some(text) = body.get("address").and_then(Value::as_str) else {
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "Give the node's address."));
     };
@@ -212,10 +263,7 @@ async fn bootstrap_kad<E: NjMuleEngine>(
 }
 
 /// The contacts of a `nodes.dat` sent in Base64 (`data`) or read from the engine's computer (`path`).
-async fn add_kad_contacts<E: NjMuleEngine>(
-    State(engine): State<E>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
+async fn add_kad_contacts<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
     let file = list_file(&body)?;
     let read =
         nodes_dat::read(&file).map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a nodes.dat: {e}")))?;
@@ -264,7 +312,7 @@ async fn disconnect_server<E: NjMuleEngine>(State(engine): State<E>) -> Json<Val
 async fn set_static_server<E: NjMuleEngine>(
     State(engine): State<E>,
     Path(address): Path<String>,
-    Json(body): Json<Value>,
+    Body(body): Body,
 ) -> Result<Json<Value>, ApiError> {
     let address = server_address(&address)?;
     let Some(wanted) = body.get("static").and_then(Value::as_bool) else {
@@ -282,7 +330,7 @@ fn server_address(text: &str) -> Result<Address, ApiError> {
 }
 
 /// Starts a search: `query`, and `scope` (`server` by default, `global`, `kad` or `automatic`).
-async fn start_search<E: NjMuleEngine>(State(engine): State<E>, Json(body): Json<Value>) -> Result<Response, ApiError> {
+async fn start_search<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Response, ApiError> {
     let Some(query) = body.get("query").and_then(Value::as_str) else {
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "Missing text: query"));
     };
@@ -321,10 +369,7 @@ async fn shared_files<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
 }
 
 /// Adds the downloads of `links` (one link or a list), paused when `paused` says so.
-async fn add_downloads<E: NjMuleEngine>(
-    State(engine): State<E>,
-    Json(body): Json<Value>,
-) -> Result<Response, ApiError> {
+async fn add_downloads<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Response, ApiError> {
     let texts: Vec<&str> = match body.get("links") {
         Some(Value::Array(links)) => links.iter().map(|link| link.as_str().unwrap_or_default()).collect(),
         Some(Value::String(link)) => vec![link.as_str()],
@@ -387,6 +432,170 @@ async fn cancel_download<E: NjMuleEngine>(
     Path(hash): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     if engine.cancel_download(file_hash(&hash)?).await { Ok(Json(api_json::ok())) } else { Err(no_download()) }
+}
+
+async fn download<E: NjMuleEngine>(State(engine): State<E>, Path(hash): Path<String>) -> Result<Json<Value>, ApiError> {
+    let info = known_download(&engine, file_hash(&hash)?).await?;
+    Ok(Json(api_json::download(&info, false)))
+}
+
+async fn download_parts<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let info = known_download(&engine, file_hash(&hash)?).await?;
+    Ok(Json(api_json::download_parts(&info)))
+}
+
+// A download as it is now; an unknown one is not found.
+async fn known_download<E: NjMuleEngine>(engine: &E, hash: [u8; 16]) -> Result<DownloadInfo, ApiError> {
+    engine.downloads().await.into_iter().find(|info| info.hash == hash).ok_or_else(no_download)
+}
+
+// A change to a download: an unknown one is not found, the others are answered as they are now.
+async fn changed<E: NjMuleEngine>(engine: &E, hash: [u8; 16], made: bool) -> Result<Json<Value>, ApiError> {
+    if !made {
+        return Err(no_download());
+    }
+    let info = known_download(engine, hash).await?;
+    Ok(Json(api_json::download(&info, false)))
+}
+
+async fn stop_download<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let hash = file_hash(&hash)?;
+    let made = engine.stop_download(hash).await;
+    changed(&engine, hash, made).await
+}
+
+async fn restore_download<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let hash = file_hash(&hash)?;
+    let made = engine.restore_download(hash).await;
+    changed(&engine, hash, made).await
+}
+
+async fn set_download_preview<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let hash = file_hash(&hash)?;
+    let made = engine.set_download_preview(hash, flag(&body, "previewFirst")?).await;
+    changed(&engine, hash, made).await
+}
+
+async fn set_download_auto_swap<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let hash = file_hash(&hash)?;
+    let made = engine.set_download_auto_swap(hash, flag(&body, "autoSwap")?).await;
+    changed(&engine, hash, made).await
+}
+
+async fn set_download_priority<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let hash = file_hash(&hash)?;
+    let asked = text(&body, "priority")?;
+    let priority = DownloadPriority::of_name(asked.trim())
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Unknown value: {asked}")))?;
+    let made = engine.set_download_priority(hash, priority).await;
+    changed(&engine, hash, made).await
+}
+
+async fn set_download_category<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let hash = file_hash(&hash)?;
+    let made = engine.set_download_category(hash, number(&body, "category")?).await;
+    changed(&engine, hash, made).await
+}
+
+async fn rename_download<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let hash = file_hash(&hash)?;
+    let made = engine
+        .rename_download(hash, text(&body, "name")?.to_owned())
+        .await
+        .map_err(|reason| ApiError::new(StatusCode::BAD_REQUEST, reason))?;
+    changed(&engine, hash, made).await
+}
+
+async fn add_download_source<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let hash = file_hash(&hash)?;
+    let source = client_address(text(&body, "address")?.trim()).await?;
+    let made = engine.add_source(hash, source).await;
+    changed(&engine, hash, made).await
+}
+
+async fn swap_source_to_download<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let hash = file_hash(&hash)?;
+    let source = client_address(text(&body, "address")?.trim()).await?;
+    Ok(Json(json!({"moved": engine.swap_source_to_download(hash, source).await})))
+}
+
+/// Moves the sources shared with other downloads: `here`, to this one, or `away`, this one's to the others.
+async fn swap_sources<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let hash = file_hash(&hash)?;
+    let moved = match text(&body, "direction")? {
+        "here" => engine.swap_sources_to_download(hash).await,
+        "away" => engine.swap_sources_from_download(hash).await,
+        other => return Err(ApiError::new(StatusCode::BAD_REQUEST, format!("Unknown value: {other}"))),
+    };
+    Ok(Json(json!({"added": moved})))
+}
+
+/// Where the data of a download is, which a player on this computer can show while it grows.
+async fn download_data<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let data = engine
+        .download_data(file_hash(&hash)?)
+        .await
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "The start of the file has not come yet."))?;
+    let data = std::path::absolute(&data).unwrap_or(data);
+    Ok(Json(json!({"path": data.to_string_lossy()})))
+}
+
+async fn peer_comments<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let comments = engine.peer_comments(file_hash(&hash)?).await;
+    Ok(Json(Value::Array(comments.iter().map(|c| api_json::comment(&c.user, &c.file_name, &c.comment)).collect())))
+}
+
+// The words taken out are those of the preferences, as for the names of new downloads.
+async fn clean_up_name<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let clean = file_names::clean_up(text(&body, "name")?, &engine.preferences().name_cleanups);
+    Ok(Json(json!({"name": clean})))
 }
 
 async fn list_kad_notes<E: NjMuleEngine>(
