@@ -114,23 +114,12 @@ SharedFilesTest.shouldTakeTheUsableRecordsOfAnotherClient
 SharedFilesTest.shouldTreatPrivateDirectoriesAsPrivate
 SharedFilesTest.shouldUnshareAFileWhoseContentChangesUnderItsOldHash
 
-# The upload manager is ported in pieces: the twins of partial files and source answers come with the next one.
-UploadManagerTest.shouldNotCountFilesWeDownloadAsUnknown
-
-
 # A file look-up cannot fault in the Rust engine: it answers a file or none, and none is a file we do not have.
 UploadManagerTest.shouldEndOnlyTheSessionOfTheClientWhoseFileLookUpFaults
 
-# The upload manager is ported in pieces: the twins of partial files and source answers come with the next one.
+# One scenario goes through every request a session takes, Kad's check that a client reached us among them: Kad
+# comes in area 5.
 UploadManagerTest.shouldEndTheConnectionOnARequestThatDoesNotDecodeAndSaveTheCredits
-UploadManagerTest.shouldForgetTheSourceAnswersGivenOnceTheyCanBeAskedAgain
-UploadManagerTest.shouldLeaveSourcesAtAnIpv6AddressAloneOutForAClientNotTakingTheExtendedWay
-UploadManagerTest.shouldShareIpv6SourcesTheExtendedWayWithAClientTakingIt
-UploadManagerTest.shouldShareOnlyTheCheckedPartsOfADownload
-UploadManagerTest.shouldShareTheSourcesOfADownload
-UploadManagerTest.shouldTellNoSourcesToAClientAtABannedAddress
-UploadManagerTest.shouldTellSourcesOnlyForAFileTheClientAskedForOnItsConnection
-UploadManagerTest.shouldTellTheEmptyLastPartOfADownloadOfWholePartsToo
 
 # Friends and Kad are not kept by the Rust engine yet.
 UploadManagerTest.shouldLetTheFriendWithTheFriendSlotPassAFullQueue
