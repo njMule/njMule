@@ -142,16 +142,6 @@ RemoteApiTest.shouldRefuseToShareWhatIsNoFolder
 RemoteApiTest.shouldStopSharingASharedFolder
 RemoteApiTest.shouldNotFindAFolderThatIsNotShared
 RemoteApiTest.shouldTellWhatAPathNamesOnTheEnginesComputer
-# The Rust engine checks the preferences it is given itself: the calls on preferences, their defaults and folders
-# come with the API's settings.
-RemoteApiTest.shouldGiveThePreferencesByTheirKeysButNotTheProxyPassword
-RemoteApiTest.shouldTellWhichPasswordsAreSetWithoutGivingThem
-RemoteApiTest.shouldClearAPasswordSetEmpty
-RemoteApiTest.shouldGiveTheDefaultPreferencesWhateverWasChanged
-RemoteApiTest.shouldGiveTheFoldersWithTheDefaultsOfThoseLeftEmpty
-RemoteApiTest.shouldChangeOnlyThePreferencesNamed
-RemoteApiTest.shouldRefuseAWrongPreferenceNamingIt
-RemoteApiTest.shouldRefuseAnUnknownPreference
 # The Rust API reads server.met and nodes.dat itself and has no server priority, country or list addresses yet: they
 # come with the calls on servers.
 RemoteApiTest.shouldSetThePriorityOfAServer
@@ -163,14 +153,11 @@ RemoteApiTest.shouldAddTheContactsOfANodesDatSent
 # Status, ports, limits, rates, schedule, categories, IP filter and stop come with the calls on the engine's state.
 RemoteApiTest.shouldStartATestOfThePorts
 RemoteApiTest.shouldAnswerATestOfThePortsWithoutWaitingForItsEnd
-RemoteApiTest.shouldSetTheSpeedLimits
-RemoteApiTest.shouldGiveTheRatesOfTheLastMinutes
 RemoteApiTest.shouldReplaceTheRulesOfTheSchedule
 RemoteApiTest.shouldRefuseARuleWithoutATime
 RemoteApiTest.shouldReplaceTheCategories
 RemoteApiTest.shouldRefuseACategoryWithoutAName
 RemoteApiTest.shouldNotUpdateTheIpFilterWithoutLists
-RemoteApiTest.shouldStopNjMuleWhenAsked
 # The Rust engine keeps no rating or comment of ours yet: it comes with the files area.
 RemoteApiTest.shouldKeepOurRatingAndCommentOfAFile
 RemoteApiTest.shouldRefuseARatingAboveFive

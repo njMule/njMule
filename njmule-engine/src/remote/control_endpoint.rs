@@ -20,7 +20,7 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 use crate::api::nj_mule_engine::NjMuleEngine;
-use crate::remote::remote_api::{self, ApiError};
+use crate::remote::remote_api::{self, ApiError, Exit};
 
 const BASE_PATH: &str = "/api/v1";
 // The origins of the desktop shell's own pages (Tauri: Windows, then macOS and Linux); no web page has them.
@@ -35,8 +35,8 @@ pub struct ControlEndpoint {
 }
 
 impl ControlEndpoint {
-    /// Serves the API of `engine` on a free loopback port.
-    pub async fn start<E: NjMuleEngine>(engine: E) -> io::Result<Self> {
+    /// Serves the API of `engine` on a free loopback port; `exit` stops njMule when the API is asked to.
+    pub async fn start<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> io::Result<Self> {
         let mut secret = [0u8; 32];
         rand::rng().fill_bytes(&mut secret);
         let token = data_encoding::BASE64URL_NOPAD.encode(&secret);
@@ -44,7 +44,7 @@ impl ControlEndpoint {
         let address = listener.local_addr()?;
         let url = format!("http://{address}{BASE_PATH}");
         let app = Router::new()
-            .nest(BASE_PATH, remote_api::router(engine))
+            .nest(BASE_PATH, remote_api::router(engine, exit))
             .layer(middleware::from_fn_with_state(token.clone(), guard));
         let (stop, mut stopped) = watch::channel(false);
         let serving = tokio::spawn(async move {

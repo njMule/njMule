@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::io;
 use std::net::{SocketAddr, SocketAddrV4};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -38,6 +39,7 @@ use njmule_engine::files::part_file::PartMap;
 use njmule_engine::files::shared_files::SharedFile;
 use njmule_engine::persist::format::nodes_dat;
 use njmule_engine::persist::format::server_met::Server;
+use njmule_engine::persist::preferences_codec;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use njmule_engine::search::search_manager::{Scope, StartError};
 use njmule_engine::server::server_list::{Address, Priority};
@@ -72,6 +74,8 @@ struct Fake {
     downloaded_before: HashSet<[u8; 16]>,
     connected: Option<bool>,
     servers_known: usize,
+    // Kept as the engine keeps them.
+    preferences: Preferences,
 }
 
 #[derive(Clone)]
@@ -105,7 +109,7 @@ impl FakeEngine {
 
 impl NjMuleEngine for FakeEngine {
     fn preferences(&self) -> Preferences {
-        Preferences::default()
+        self.with(|fake| fake.preferences.clone())
     }
 
     fn directories(&self) -> AppDirectories {
@@ -116,8 +120,12 @@ impl NjMuleEngine for FakeEngine {
         self.with(|fake| fake.connected).map(status)
     }
 
-    fn update_preferences(&self, _changes: &BTreeMap<String, String>) -> Result<Preferences, String> {
-        Ok(Preferences::default())
+    // As the engine does: all the changes, or none.
+    fn update_preferences(&self, changes: &BTreeMap<String, String>) -> Result<Preferences, String> {
+        self.with(|fake| {
+            fake.preferences = preferences_codec::apply(&fake.preferences, changes)?;
+            Ok(fake.preferences.clone())
+        })
     }
 
     fn subscribe(&self) -> broadcast::Receiver<EngineEvent> {
@@ -472,6 +480,7 @@ struct Api {
     status: u16,
     headers: Vec<(String, String)>,
     body: String,
+    exited: Arc<AtomicBool>,
 }
 
 impl Api {
@@ -486,11 +495,14 @@ impl Api {
             status: 0,
             headers: Vec::new(),
             body: String::new(),
+            exited: Arc::default(),
         }
     }
 
     async fn given_the_api_runs(&mut self) {
-        let endpoint = ControlEndpoint::start(self.engine.clone()).await.unwrap();
+        let exited = Arc::clone(&self.exited);
+        let exit = Arc::new(move || exited.store(true, Ordering::SeqCst));
+        let endpoint = ControlEndpoint::start(self.engine.clone(), Some(exit)).await.unwrap();
         let control: Value =
             serde_json::from_str(endpoint.control_line().strip_prefix("njmule-control ").unwrap()).unwrap();
         let url = control["url"].as_str().unwrap();
@@ -534,6 +546,19 @@ impl Api {
 
     fn given_the_engine_knows_the_kad_contact(&self, contact: KadContactInfo) {
         self.engine.with(|fake| fake.kad_contacts.push(contact));
+    }
+
+    fn given_the_nick_was_changed(&self) {
+        self.given_the_preference("user.nick", "Night Owl");
+    }
+
+    fn given_the_proxy_password_is(&self, password: &str) {
+        self.given_the_preference("proxy.password", password);
+    }
+
+    fn given_the_preference(&self, key: &str, value: &str) {
+        let changes = BTreeMap::from([(key.to_owned(), value.to_owned())]);
+        self.engine.update_preferences(&changes).unwrap();
     }
 
     fn given_the_engine_connected(&self, connected: bool) {
@@ -641,6 +666,37 @@ impl Api {
     fn then_the_answer_asks_for_a_bearer_token(&self) {
         self.then_the_header_is("WWW-Authenticate", "Bearer");
         self.then_the_header_is("Content-Type", "application/json");
+    }
+
+    fn then_the_body_is(&self, body: &str) {
+        assert_eq!(self.body, body);
+    }
+
+    fn then_the_body_does_not_contain(&self, text: &str) {
+        assert!(!self.body.contains(text), "no {text} in {}", self.body);
+    }
+
+    fn then_the_proxy_password_is_empty(&self) {
+        assert!(self.engine.preferences().proxy.password.is_empty());
+    }
+
+    async fn then_the_nick_is_still(&mut self, nick: &str) {
+        self.when_called("GET", "/api/v1/preferences", "").await;
+        self.then_the_body_contains(&[&format!("\"user.nick\":\"{nick}\"")]);
+    }
+
+    fn then_the_folders_are_the_profiles_own(&self) {
+        let dirs = AppDirectories::under_root(self.dir.path()).unwrap();
+        self.then_the_body_has("/incoming", &json!(dirs.downloads.to_string_lossy()));
+        self.then_the_body_has("/temp", &json!(dirs.temp.to_string_lossy()));
+    }
+
+    fn then_the_upload_limit_is(&self, kibps: u32) {
+        assert_eq!(self.engine.preferences().max_upload_kibps, kibps);
+    }
+
+    fn then_nj_mule_was_stopped(&self) {
+        assert!(self.exited.load(Ordering::SeqCst));
     }
 
     fn then_the_body_contains(&self, parts: &[&str]) {
@@ -1144,4 +1200,133 @@ async fn should_refuse_an_automatic_search_with_no_network() {
 
     api.then_the_status_is(409);
     api.then_the_body_contains(&["Not connected"]);
+}
+
+#[tokio::test]
+async fn should_give_the_preferences_by_their_keys_but_not_the_proxy_password() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("GET", "/api/v1/preferences", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&["\"user.nick\":\"njMule\"", "\"net.tcpPort\":\"4662\""]);
+    api.then_the_body_does_not_contain("proxy.password");
+}
+
+#[tokio::test]
+async fn should_tell_which_passwords_are_set_without_giving_them() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_proxy_password_is("hunter22");
+
+    api.when_called("GET", "/api/v1/preferences/passwords", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_is("{\"notify.smtpPassword\":false,\"proxy.password\":true}");
+}
+
+#[tokio::test]
+async fn should_clear_a_password_set_empty() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_proxy_password_is("hunter22");
+
+    api.when_called("PATCH", "/api/v1/preferences", "{\"proxy.password\":\"\"}").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_does_not_contain("proxy.password");
+    api.then_the_proxy_password_is_empty();
+}
+
+#[tokio::test]
+async fn should_give_the_default_preferences_whatever_was_changed() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_nick_was_changed();
+
+    api.when_called("GET", "/api/v1/preferences/defaults", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&["\"user.nick\":\"njMule\"", "\"net.tcpPort\":\"4662\""]);
+    api.then_the_body_does_not_contain("proxy.password");
+}
+
+#[tokio::test]
+async fn should_give_the_folders_with_the_defaults_of_those_left_empty() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("GET", "/api/v1/folders", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_folders_are_the_profiles_own();
+}
+
+#[tokio::test]
+async fn should_change_only_the_preferences_named() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("PATCH", "/api/v1/preferences", "{\"user.nick\":\"Night Owl\"}").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&["\"user.nick\":\"Night Owl\"", "\"net.tcpPort\":\"4662\""]);
+}
+
+#[tokio::test]
+async fn should_refuse_a_wrong_preference_naming_it() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("PATCH", "/api/v1/preferences", "{\"user.nick\":\"ok\",\"net.tcpPort\":\"99999\"}").await;
+
+    api.then_the_status_is(400);
+    api.then_the_body_contains(&["net.tcpPort"]);
+    api.then_the_nick_is_still("njMule").await;
+}
+
+#[tokio::test]
+async fn should_refuse_an_unknown_preference() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("PATCH", "/api/v1/preferences", "{\"no.such.key\":\"1\"}").await;
+
+    api.then_the_status_is(400);
+    api.then_the_body_contains(&["Unknown preference: no.such.key"]);
+}
+
+#[tokio::test]
+async fn should_give_the_rates_of_the_last_minutes() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("GET", "/api/v1/rates?span=600", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&["\"step\":1", "\"rates\":["]);
+}
+
+#[tokio::test]
+async fn should_set_the_speed_limits() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("PUT", "/api/v1/limits", "{\"uploadKiBps\":50,\"downloadKiBps\":0}").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&["\"uploadKiBps\":50", "\"downloadKiBps\":0"]);
+    api.then_the_upload_limit_is(50);
+}
+
+#[tokio::test]
+async fn should_stop_nj_mule_when_asked() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("POST", "/api/v1/shutdown", "").await;
+
+    api.then_the_status_is(202);
+    api.then_nj_mule_was_stopped();
 }

@@ -8,6 +8,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use clap::Parser;
@@ -18,6 +19,7 @@ use njmule_engine::engine::Engine;
 use njmule_engine::files::hash::file_hasher;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use tokio::io::AsyncReadExt;
+use tokio::sync::Notify;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 
@@ -120,8 +122,11 @@ async fn run(dirs: AppDirectories, switches: Vec<String>) -> io::Result<()> {
     tracing::debug!("Switches: {switches:?}");
     let engine = Engine::start(dirs).await?;
     let control = std::env::var("NJMULE_CONTROL_ENDPOINT").is_ok_and(|value| value == "1");
+    // Asked for by the API, as the end of the input is by the starting process.
+    let exit = Arc::new(Notify::new());
     let endpoint = if control {
-        let endpoint = ControlEndpoint::start(engine.clone()).await?;
+        let asked = Arc::clone(&exit);
+        let endpoint = ControlEndpoint::start(engine.clone(), Some(Arc::new(move || asked.notify_one()))).await?;
         // Printed once the API answers: the starting process calls it right away.
         println!("{}", endpoint.control_line());
         Some(endpoint)
@@ -130,6 +135,7 @@ async fn run(dirs: AppDirectories, switches: Vec<String>) -> io::Result<()> {
     };
     tokio::select! {
         () = end_of_input(), if control => {}
+        () = exit.notified() => {}
         _ = tokio::signal::ctrl_c() => {}
     }
     engine.stop().await;

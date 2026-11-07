@@ -6,6 +6,7 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequest, Path, Query, Request, State};
@@ -24,9 +25,11 @@ use crate::api::file_names;
 use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::api::{nj_mule_info, search_request};
 use crate::config::bind_interface;
+use crate::config::preferences::Preferences;
 use crate::engine::NotesError;
 use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::persist::format::{nodes_dat, server_met};
+use crate::remote::rate_history::{self, RateHistory};
 use crate::remote::search_collector::{Asked, SearchCollector};
 use crate::remote::{api_json, event_streams};
 use crate::search::search_manager::{Scope, StartError};
@@ -34,16 +37,37 @@ use crate::server::server_list::Address;
 
 // The searches started through the API, with the results the engine's events bring.
 type Searches = Arc<Mutex<SearchCollector>>;
+// The rates of each second, which the API reads from the engine's status.
+type Rates = Arc<Mutex<RateHistory>>;
+
+/// What stops njMule when the API is asked to: the program around the engine gives it.
+pub type Exit = Arc<dyn Fn() + Send + Sync>;
+
+#[derive(Clone)]
+struct Exiting(Option<Exit>);
+
+// How long between two samples of the rates.
+const RATE_SAMPLE: Duration = Duration::from_secs(1);
+// The span of the rates a front end gets when it asks for none.
+const DEFAULT_RATE_SPAN: usize = 600;
+const SECONDS_IN_A_MINUTE: usize = 60;
 
 /// The version of the API, which its paths carry.
 pub const VERSION: u32 = 1;
 
 /// The calls, relative to the API's base path.
-pub fn router<E: NjMuleEngine>(engine: E) -> Router {
+pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
     let searches = Searches::default();
     collect(&engine, Arc::clone(&searches));
+    let rates = Rates::default();
+    sample_rates(&engine, Arc::clone(&rates));
     Router::new()
         .route("/", get(api_info))
+        .route("/rates", get(rates_of))
+        .route("/limits", get(limits::<E>).put(set_limits::<E>))
+        .route("/preferences/defaults", get(|| async { Json(api_json::preferences(&Preferences::default())) }))
+        .route("/folders", get(folders::<E>))
+        .route("/shutdown", post(shutdown))
         .route("/status", get(status::<E>))
         .route("/preferences", get(preferences::<E>).patch(update_preferences::<E>))
         .route(
@@ -135,7 +159,89 @@ pub fn router<E: NjMuleEngine>(engine: E) -> Router {
         .fallback(|| async { ApiError::new(StatusCode::NOT_FOUND, "No such call") })
         .method_not_allowed_fallback(|| async { ApiError::new(StatusCode::METHOD_NOT_ALLOWED, "No such method") })
         .layer(Extension(searches))
+        .layer(Extension(rates))
+        .layer(Extension(Exiting(exit)))
         .with_state(engine)
+}
+
+// Reads the rates from the engine's status each second until the engine stops; a status that does not come leaves
+// its second out.
+fn sample_rates<E: NjMuleEngine>(engine: &E, rates: Rates) {
+    let engine = engine.clone();
+    let stopped = engine.stopped();
+    tokio::spawn(async move {
+        tokio::pin!(stopped);
+        let mut ticks = tokio::time::interval(RATE_SAMPLE);
+        ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tokio::select! {
+                () = &mut stopped => return,
+                _ = ticks.tick() => {}
+            }
+            if let Ok(Some(status)) = tokio::time::timeout(RATE_SAMPLE, engine.status()).await {
+                sampled(&rates).add(status.download_bytes_per_second, status.upload_bytes_per_second);
+            }
+        }
+    });
+}
+
+fn sampled(rates: &Rates) -> MutexGuard<'_, RateHistory> {
+    rates.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The rates of the last `span` seconds: each second's, or each minute's beyond an hour.
+async fn rates_of(
+    Extension(rates): Extension<Rates>,
+    Query(query): Query<BTreeMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    let span = match query.get("span") {
+        None => DEFAULT_RATE_SPAN,
+        Some(text) => text
+            .parse()
+            .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a number of seconds: {text}")))?,
+    };
+    let history = sampled(&rates);
+    Ok(Json(if span > rate_history::SECONDS_KEPT {
+        api_json::rates(60, &history.minutes(span.checked_div(SECONDS_IN_A_MINUTE).unwrap_or(0)))
+    } else {
+        api_json::rates(1, &history.seconds(span))
+    }))
+}
+
+async fn limits<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    Json(api_json::limits(&engine.preferences()))
+}
+
+/// Sets the speed limits given, in KiB/s, 0 for none; the others stay.
+async fn set_limits<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let mut changes = BTreeMap::new();
+    for (field, key) in [("uploadKiBps", "limits.uploadKiBps"), ("downloadKiBps", "limits.downloadKiBps")] {
+        if body.get(field).is_some() {
+            changes.insert(key.to_owned(), number(&body, field)?.to_string());
+        }
+    }
+    let now = engine.update_preferences(&changes).map_err(|reason| ApiError::new(StatusCode::BAD_REQUEST, reason))?;
+    Ok(Json(api_json::limits(&now)))
+}
+
+/// The folders downloads go to, the profile's own where the preferences name none.
+async fn folders<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    let preferences = engine.preferences();
+    let dirs = engine.directories();
+    Json(json!({
+        "incoming": preferences.effective_incoming_dir(&dirs).to_string_lossy(),
+        "temp": preferences.effective_temp_dir(&dirs).to_string_lossy(),
+    }))
+}
+
+/// Stops njMule, after the answer.
+async fn shutdown(Extension(exiting): Extension<Exiting>) -> Result<Response, ApiError> {
+    let Exiting(Some(exit)) = exiting else {
+        return Err(ApiError::new(StatusCode::NOT_IMPLEMENTED, "This njMule cannot be stopped from here."));
+    };
+    tracing::info!("Exiting as the remote-control API asked");
+    exit();
+    Ok((StatusCode::ACCEPTED, Json(api_json::ok())).into_response())
 }
 
 // Gathers the results of the searches until the engine stops.
