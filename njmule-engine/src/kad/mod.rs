@@ -9,6 +9,7 @@ pub mod kad_identity;
 pub mod kad_index;
 pub mod kad_lower_case;
 pub mod kad_notes;
+pub mod kad_publisher;
 pub mod keywords;
 pub mod lookup;
 pub mod packet_tracking;
