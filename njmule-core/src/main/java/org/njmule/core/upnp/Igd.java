@@ -83,6 +83,8 @@ public final class Igd implements Gateway {
     private static final int MAX_REASON = 120;
     // For the whole answer, headers and body.
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(5);
+    // The searches sent within a discovery's wait, evenly spaced from its start.
+    private static final int SEARCH_ROUNDS = 3;
     private static final String[] DEVICES = {
         "urn:schemas-upnp-org:device:InternetGatewayDevice:2", "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
     };
@@ -107,7 +109,7 @@ public final class Igd implements Gateway {
         this.http = http;
     }
 
-    /** Asks {@code target} (normally {@link #SSDP}) for a gateway and waits up to {@code wait}. */
+    /** Asks {@code target} (normally {@link #SSDP}) for a gateway, a few times, and waits up to {@code wait}. */
     public static Optional<Igd> discover(InetSocketAddress target, Duration wait) throws IOException {
         // The router is on the LAN: never through the proxy of the preferences.
         HttpClient http = new HttpClient();
@@ -126,30 +128,26 @@ public final class Igd implements Gateway {
             // UPnP Device Architecture: a TTL of 2 for discovery.
             socket.setTimeToLive(2);
             List<NetworkInterface> lans = target.getAddress().isMulticastAddress() ? lans() : List.of();
-            for (String device : DEVICES) {
-                byte[] search = search(device, target);
-                if (lans.isEmpty()) {
-                    socket.send(new DatagramPacket(search, search.length, target));
-                }
-                for (NetworkInterface lan : lans) {
-                    try {
-                        socket.setNetworkInterface(lan);
-                        socket.send(new DatagramPacket(search, search.length, target));
-                    } catch (IOException e) {
-                        logger.debug("UPnP: cannot search on {}: {}", lan.getName(), e.getMessage());
-                    }
-                }
-            }
-            long deadline = System.nanoTime() + wait.toNanos();
+            long start = System.nanoTime();
+            long deadline = start + wait.toNanos();
+            long interval = wait.toNanos() / SEARCH_ROUNDS;
+            int rounds = 0;
+            long nextRound = start;
             byte[] buffer = new byte[2048];
             while (System.nanoTime() < deadline) {
-                int left = (int) Math.max(1, (deadline - System.nanoTime()) / 1_000_000);
-                socket.setSoTimeout(left);
+                // UDP loses datagrams: UPnP Device Architecture asks for each search to be sent more than once.
+                if (rounds < SEARCH_ROUNDS && System.nanoTime() >= nextRound) {
+                    sendSearches(socket, lans, target);
+                    rounds++;
+                    nextRound = start + interval * rounds;
+                }
+                long until = rounds < SEARCH_ROUNDS ? Math.min(nextRound, deadline) : deadline;
+                socket.setSoTimeout((int) Math.max(1, (until - System.nanoTime()) / 1_000_000));
                 DatagramPacket answer = new DatagramPacket(buffer, buffer.length);
                 try {
                     socket.receive(answer);
                 } catch (SocketTimeoutException e) {
-                    break;
+                    continue;
                 }
                 Optional<URI> location =
                         location(new String(answer.getData(), 0, answer.getLength(), StandardCharsets.ISO_8859_1));
@@ -473,6 +471,24 @@ public final class Igd implements Gateway {
                     && (host.isSiteLocalAddress() || host.isLinkLocalAddress() || host.isLoopbackAddress());
         } catch (IllegalArgumentException e) {
             return false;
+        }
+    }
+
+    private static void sendSearches(MulticastSocket socket, List<NetworkInterface> lans, InetSocketAddress target)
+            throws IOException {
+        for (String device : DEVICES) {
+            byte[] search = search(device, target);
+            if (lans.isEmpty()) {
+                socket.send(new DatagramPacket(search, search.length, target));
+            }
+            for (NetworkInterface lan : lans) {
+                try {
+                    socket.setNetworkInterface(lan);
+                    socket.send(new DatagramPacket(search, search.length, target));
+                } catch (IOException e) {
+                    logger.debug("UPnP: cannot search on {}: {}", lan.getName(), e.getMessage());
+                }
+            }
         }
     }
 

@@ -58,6 +58,7 @@ class PortForwardingTest {
     private String answer;
     private Optional<URI> location;
     private volatile Optional<Inet6Address> ourIpv6 = Optional.empty();
+    private Duration closing = Duration.ZERO;
 
     @AfterEach
     void close() throws IOException {
@@ -217,6 +218,73 @@ class PortForwardingTest {
     }
 
     @Test
+    void shouldLookForTheRouterAgainAMinuteAfterNoneAnswered() throws Exception {
+        givenAGatewayOf(IP, "/ctl");
+        givenTheGatewayAnswersNoSearch();
+
+        whenAForwardingStarts(OptionalInt.empty());
+
+        thenTheOnlyLineLoggedSays("no router answered");
+        thenTheNextWaitIs(PortForwarding.FIRST_RETRY);
+    }
+
+    @Test
+    void shouldForwardThePortsOnceTheRouterAnswersALaterSearch() throws Exception {
+        givenAGatewayOf(IP, "/ctl");
+        givenTheGatewayAnswersNoSearch();
+        givenAForwardingStarted(OptionalInt.empty());
+        givenAWaitForTheRenewalOf(PortForwarding.FIRST_RETRY);
+        givenTheGatewayAnswersAgain();
+
+        whenTheWaitForTheRenewalEnds();
+
+        thenTheMappingsAskedForAre(1, "once the router answers");
+        thenALineIsLoggedSaying("TCP 4662 forwarded");
+    }
+
+    @Test
+    void shouldForwardThePortsOnceARouterThatFailedAnswersAgain() throws Exception {
+        givenAGatewayOf(IP, "/ctl");
+        // Longer than the router is waited for.
+        givenTheGatewayTakesForEachMapping(Duration.ofSeconds(6));
+        givenAForwardingStarted(OptionalInt.empty());
+        givenAWaitForTheRenewalOf(PortForwarding.FIRST_RETRY);
+        givenTheGatewayTakesForEachMapping(Duration.ZERO);
+
+        whenTheWaitForTheRenewalEnds();
+
+        thenTheMappingsAskedForAre(2, "asked again once the router answers");
+        thenALineIsLoggedSaying("UPnP failed");
+        thenALineIsLoggedSaying("TCP 4662 forwarded");
+    }
+
+    @Test
+    void shouldWaitTwiceAsLongEachTimeTheRouterStaysSilent() throws Exception {
+        givenAGatewayOf(IP, "/ctl");
+        givenTheGatewayAnswersNoSearch();
+        givenAForwardingStarted(OptionalInt.empty());
+        givenAWaitForTheRenewalOf(PortForwarding.FIRST_RETRY);
+
+        whenTheWaitForTheRenewalEnds();
+
+        thenTheNextWaitIs(PortForwarding.FIRST_RETRY.multipliedBy(2));
+        thenTheOnlyLineLoggedSays("no router answered");
+    }
+
+    @Test
+    void shouldStopLookingForTheRouterAtOnceWhenClosed() throws Exception {
+        givenAGatewayOf(IP, "/ctl");
+        givenTheGatewayAnswersNoSearch();
+        givenAForwardingStarted(OptionalInt.empty());
+        givenAWaitForTheRenewalOf(PortForwarding.FIRST_RETRY);
+
+        whenTheForwardingIsClosed();
+
+        thenItClosedWithin(Duration.ofSeconds(1));
+        thenTheGatewayWasAskedNothing();
+    }
+
+    @Test
     void shouldRemoveTheMappingAtTheAddressTheRouterMovedTo() throws Exception {
         givenAGatewayOf(IP, "/ctl");
         givenAForwardingStarted(OptionalInt.empty());
@@ -354,6 +422,14 @@ class PortForwardingTest {
         this.gateway.status(control, status);
     }
 
+    private void givenTheGatewayAnswersNoSearch() {
+        this.gateway.stopAnswering();
+    }
+
+    private void givenTheGatewayAnswersAgain() {
+        this.gateway.answerAgain();
+    }
+
     private void givenTheGatewayKeepsOnlyPermanentMappings() {
         this.gateway.onlyPermanentLeases();
     }
@@ -432,7 +508,9 @@ class PortForwardingTest {
     }
 
     private void whenTheForwardingIsClosed() {
+        long start = System.nanoTime();
         this.forwarding.close();
+        this.closing = Duration.ofNanos(System.nanoTime() - start);
     }
 
     private void whenTheWaitForTheRenewalEnds() {
@@ -453,6 +531,21 @@ class PortForwardingTest {
 
     private void thenTheLastLineLoggedSays(String text) {
         assertThat(this.log).last().asString().contains(text);
+    }
+
+    // The line comes off the test's thread, just after the mappings.
+    private void thenALineIsLoggedSaying(String text) throws InterruptedException {
+        assertThat(await(() -> this.log.stream().anyMatch(l -> l.contains(text))))
+                .as("a line saying %s in %s", text, this.log)
+                .isTrue();
+    }
+
+    private void thenTheNextWaitIs(Duration expected) throws InterruptedException {
+        assertThat(this.renewals.asked.poll(10, TimeUnit.SECONDS)).isEqualTo(expected);
+    }
+
+    private void thenItClosedWithin(Duration most) {
+        assertThat(this.closing).isLessThan(most);
     }
 
     private void thenTheGatewayWasAskedTimes(int count) {

@@ -90,6 +90,8 @@ import org.njmule.core.search.SpamFilter;
 import org.njmule.core.search.StoredSearches;
 import org.njmule.core.server.ScriptedServer;
 import org.njmule.core.server.ServerList;
+import org.njmule.core.upnp.FakeGateway;
+import org.njmule.core.upnp.Routers;
 import org.njmule.core.util.Ipv4;
 
 /** The network side of the engine on its own, with the events and the log it reports recorded. */
@@ -169,6 +171,8 @@ class NetworkTest {
     private byte[] remembered;
     private EngineEvent.ServerConnected connected;
     private EngineEvent.ServerDisconnected disconnected;
+    private Optional<Routers> routers = Optional.empty();
+    private FakeGateway gateway;
 
     @BeforeEach
     void open() throws IOException {
@@ -196,6 +200,9 @@ class NetworkTest {
         }
         if (this.peerConnection != null) {
             this.peerConnection.close();
+        }
+        if (this.gateway != null) {
+            this.gateway.close();
         }
         if (this.peerSocket != null) {
             this.peerSocket.close();
@@ -605,6 +612,34 @@ class NetworkTest {
     }
 
     @Test
+    void shouldLogInAgainAndRecheckKadOnceTheRouterAnswersALaterSearch() throws Exception {
+        givenKadIsEnabled();
+        givenARouterThatAnswersNoSearch();
+        givenALoginTo(ScriptedServer.start(12_345, 0));
+        givenTheServerGotALogin();
+        givenTheLogTells("no router answered");
+
+        whenTheRouterAnswersAgain();
+
+        thenTheServerGotALoginAgain();
+        thenTheLogTells("the router answered at last");
+        thenTheLogTells("Kad: checking the firewall again");
+    }
+
+    @Test
+    void shouldNotLogInAgainWhenTheRouterAnswersLateToAHighId() throws Exception {
+        givenARouterThatAnswersNoSearch();
+        givenALoginTo(ScriptedServer.start(HIGH_ID, 0));
+        givenTheServerGotALogin();
+        givenTheLogTells("no router answered");
+
+        whenTheRouterAnswersAgain();
+
+        thenTheLogTells("forwarded");
+        thenTheServerGotNoLoginAgain();
+    }
+
+    @Test
     void shouldFindTheTcpPortOpenWhenTheServerTakesUsAgainWithAHighId() throws Exception {
         givenALoginTo(ScriptedServer.start(HIGH_ID, 0));
         givenTheServerGotALogin();
@@ -973,6 +1008,36 @@ class NetworkTest {
 
     private void thenBothAskedTheSameTest() {
         assertThat(this.nextPortTest).isSameAs(this.firstPortTest).isNotDone();
+    }
+
+    private void givenARouterThatAnswersNoSearch() throws IOException {
+        this.gateway = FakeGateway.start("urn:schemas-upnp-org:service:WANIPConnection:1", "/ctl");
+        this.gateway.stopAnswering();
+        this.routers = Optional.of(Routers.upnpOnly(this.gateway.ssdp()).retryingAfter(Duration.ofMillis(100)));
+    }
+
+    // The router is found within the next round of searches.
+    private void whenTheRouterAnswersAgain() {
+        this.gateway.answerAgain();
+    }
+
+    private void givenTheLogTells(String text) throws InterruptedException {
+        thenTheLogTells(text);
+    }
+
+    private void thenTheLogTells(String text) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        while (this.log.stream().noneMatch(l -> l.text().contains(text)) && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        assertThat(this.log)
+                .as("a line telling %s", text)
+                .anyMatch(l -> l.text().contains(text));
+    }
+
+    private void thenTheServerGotNoLoginAgain() throws InterruptedException {
+        assertThat(this.scripted.next(Opcodes.Server.LOGINREQUEST.code(), Duration.ofSeconds(1)))
+                .isEmpty();
     }
 
     private void thenTheServerGotALoginAgain() throws InterruptedException {
@@ -1966,7 +2031,7 @@ class NetworkTest {
                 USER,
                 this.dirs.data().resolve("temp"),
                 () -> this.dirs.data().resolve("incoming"),
-                Optional.empty(),
+                this.routers,
                 automaticConnections));
         return this.network;
     }

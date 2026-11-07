@@ -2087,12 +2087,35 @@ final class Network {
 
     // An answer to mappings asked before the last ones no longer tells how the router stands.
     private void forwardingOutcome(int run, PortForwarding.Outcome outcome, String router) {
+        boolean testing = this.portCheck != null && !this.portCheck.isOver();
         if (run == this.upnpRun) {
+            PortTest.Forwarding before = this.upnpAnswer;
             this.upnpAnswer = PortCheck.forwarding(outcome);
             this.upnpRouter = router;
+            boolean late = before == PortTest.Forwarding.NO_ROUTER || before == PortTest.Forwarding.FAILED;
+            boolean open = outcome == PortForwarding.Outcome.FORWARDED || outcome == PortForwarding.Outcome.PARTLY;
+            if (late && open && !testing) {
+                checkReachAgain();
+            }
         }
-        if (this.portCheck != null && !this.portCheck.isOver()) {
+        if (testing) {
             this.portCheck.forwarded(outcome, router);
+        }
+    }
+
+    // The router answered a later search: the server and Kad check our ports again, as in a port test.
+    private void checkReachAgain() {
+        boolean lowId = this.session.id().map(ServerMessages.IdChange::isLowId).orElse(false);
+        boolean kadFirewalled = this.kad != null && this.kad.isFirewalled();
+        if (!lowId && !kadFirewalled) {
+            return;
+        }
+        this.userLog.log(LogLine.Level.INFO, "UPnP: the router answered at last, checking the ports again");
+        if (lowId) {
+            this.session.connect(this.session.server());
+        }
+        if (kadFirewalled) {
+            recheckKadFirewall();
         }
     }
 

@@ -15,9 +15,14 @@ All notable changes to this project are documented here. The format follows
 - njMule now stands for New Jack Mule (a jack is the male donkey, a mule's sire) instead of Next
   generation Java Mule: in the About window, the packages' descriptions, the README and the user
   guide.
+- The log tells which ports njMule removed from the router when it stops, and which the router
+  kept.
 
 ### Fixed
 
+- A router that misses njMule's UPnP search no longer leaves you on a LowID for the whole session:
+  the search is sent three times, and while no router answers njMule looks again after 1, 2, 4…
+  minutes (at most every 30), then logs in to the server again once the ports are forwarded.
 - The remote-control API's document lets the schedule's active rule be null, as the API answers
   when no rule applies; clients generated from the document no longer reject that answer.
 - An eD2K link naming a source by an IPv6 address with a zone id (`[fe80::1%eth0]:4662`) keeps its

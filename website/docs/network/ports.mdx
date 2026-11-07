@@ -166,11 +166,17 @@ flowchart TD
     C -- found --> D[Forward TCP and UDP, renew every half hour]
     C -- none --> E[Ask NAT-PMP or PCP at the default gateway]
     E -- answers --> D
-    E -- none --> F[Log: no router answered] --> H
+    E -- none --> F[Log: no router answered] --> G[Look again after 1, 2, 4… minutes, up to 30]
+    G --> C
 ```
 
 - njMule looks for a UPnP router on every local network of the computer (virtual adapters of
-  WSL, Hyper-V or a VPN do not hide it) and waits three seconds for an answer.
+  WSL, Hyper-V or a VPN do not hide it) and waits three seconds for an answer, asking three
+  times in that while, since a search or its answer may be lost on the way.
+- When no router answers, njMule looks again after a minute, then after two, four and so on,
+  at most every half hour, until one does. The log tells *no router answered* only once. A
+  router found that way gets the ports forwarded, and njMule logs in to the server again and
+  has Kad check its ports, so that a LowID turns into a HighID without a port test.
 - A router that does not speak UPnP is asked through **NAT-PMP**, or **PCP**, its successor, at the
   default gateway (port 5351), read from the system's routing table.
 - The TCP port is forwarded always, the UDP port while Kad runs. The mappings are named `njMule`,
@@ -178,7 +184,9 @@ flowchart TD
   mapping the router lost. A router that only keeps permanent mappings gets permanent ones.
 - With NAT-PMP and PCP a mapping counts only when the router keeps the same port outside, since
   that is the port the networks are told.
-- When njMule exits, it removes the mappings it made, and only those.
+- When njMule exits, it removes the mappings it made, and only those, and the log tells which
+  (`UPnP: TCP 4662 and UDP 4672 removed from 192.168.1.1`). A router that does not answer
+  within five seconds drops them when their lease ends.
 
 The log tells the outcome, for example `UPnP: TCP 4662 and UDP 4672 forwarded by 192.168.1.1`,
 `UPnP: the router at 192.168.1.1 refused TCP 4662 (…)` or `UPnP, NAT-PMP and PCP: no router
