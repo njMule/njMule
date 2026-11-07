@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's PartFileTest, under their names; those of the sources kept for the next run, of
-//! files above 4 GiB on the disk and its properties over any file wait for their ports.
+//! The examples of the Java engine's PartFileTest, under their names; those of files above 4 GiB on the disk and its
+//! properties over any file wait for their ports.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]
 
@@ -11,7 +11,7 @@ use std::path::Path;
 
 use njmule_engine::api::download_info::DownloadPriority;
 use njmule_engine::files::hash::ed2k::{self, EMBLOCKSIZE, PARTSIZE};
-use njmule_engine::files::part_file::{Block, PartFile, Status};
+use njmule_engine::files::part_file::{Block, KnownSource, PartFile, Status};
 use njmule_engine::files::part_file_storage::{DiskDone, Done, PartFileStorage};
 use njmule_engine::persist::format::part_met;
 use rand::rngs::StdRng;
@@ -396,6 +396,46 @@ fn should_keep_whether_it_is_stopped_and_its_category() {
     assert_eq!(saved.download_priority(), Some(2));
 }
 
+#[test]
+fn should_remember_that_the_preview_comes_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut file = with_hash_set(dir.path(), 3, "film.mkv", 3 * P + 100, &[hash(1), hash(2), hash(3), hash(4)]);
+    file.set_preview_first(true);
+    file.save().unwrap();
+
+    let loaded = PartFile::load(dir.path(), 3).unwrap();
+
+    assert!(loaded.preview_first());
+}
+
+#[test]
+fn should_keep_the_sources_kept_for_the_next_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let sources = [
+        KnownSource { ip: 0x5511_7400, port: 4662, seen: 1_760_000_000, user_hash: Some(hash(7)), crypt_options: 0x03 },
+        KnownSource { ip: 0x0A00_0002, port: 51_000, seen: 1_760_000_100, user_hash: None, crypt_options: 0 },
+    ];
+    let mut file = PartFile::create(3, dir.path(), "a.bin", 5000, hash(1), None, Vec::new()).unwrap();
+    file.set_known_sources(&sources);
+    file.save().unwrap();
+
+    let loaded = PartFile::load(dir.path(), 3).unwrap();
+
+    assert_eq!(loaded.known_sources(), sources);
+}
+
+#[test]
+fn should_keep_how_long_it_ran_without_data() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut file = PartFile::create(3, dir.path(), "a.bin", 5000, hash(1), None, Vec::new()).unwrap();
+    file.set_idle_seconds(86_400);
+    file.save().unwrap();
+
+    let loaded = PartFile::load(dir.path(), 3).unwrap();
+
+    assert_eq!(loaded.idle_seconds(), 86_400);
+}
+
 // The disk thread's next report.
 fn next(done: &mut mpsc::UnboundedReceiver<DiskDone>) -> Done {
     done.blocking_recv().unwrap().work
@@ -415,8 +455,8 @@ fn written_out_of_order(
 ) -> (PartFileStorage, mpsc::UnboundedReceiver<DiskDone>) {
     let (sender, mut done) = mpsc::unbounded_channel();
     let storage = PartFileStorage::open(&dir.join("001.part"), 1, sender).unwrap();
-    storage.write(middle as u64, data[middle..].to_vec());
-    storage.write(0, data[..middle].to_vec());
+    storage.write(middle as u64, data[middle..].to_vec(), None);
+    storage.write(0, data[..middle].to_vec(), None);
     for _ in 0..2 {
         assert!(matches!(next(&mut done), Done::Written { result: Ok(()), .. }));
     }

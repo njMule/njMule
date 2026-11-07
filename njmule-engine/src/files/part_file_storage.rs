@@ -6,10 +6,11 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc;
+use std::sync::{Arc, Condvar, Mutex, PoisonError, mpsc};
+use std::time::{Duration, Instant};
 
 use md4::{Digest, Md4};
 use sha1::Sha1;
@@ -31,26 +32,127 @@ pub struct DiskDone {
 
 #[derive(Debug)]
 pub enum Done {
-    Written { start: u64, end: u64, result: Result<(), String> },
-    PartHashed { part: usize, recheck: bool, result: Result<[u8; 16], String> },
-    BlocksHashed { part: usize, result: Result<Vec<[u8; 20]>, String> },
-    Saved { generation: u64, result: Result<(), String> },
-    Finished(Result<PathBuf, String>),
+    /// Data written, from the source at `source` when known.
+    Written {
+        start: u64,
+        end: u64,
+        source: Option<IpAddr>,
+        result: Result<(), String>,
+    },
+    PartHashed {
+        part: usize,
+        recheck: bool,
+        result: Result<[u8; 16], String>,
+    },
+    BlocksHashed {
+        part: usize,
+        result: Result<Vec<[u8; 20]>, String>,
+    },
+    Saved {
+        generation: u64,
+        result: Result<(), String>,
+    },
+    Finished(Result<PathBuf, FinishFailure>),
+}
+
+/// Why the finished file could not be moved; `held` when the data file itself could not be, as while another program
+/// holds it.
+#[derive(Debug)]
+pub struct FinishFailure {
+    pub reason: String,
+    pub held: bool,
+}
+
+impl FinishFailure {
+    fn of(e: &io::Error) -> Self {
+        Self { reason: e.to_string(), held: false }
+    }
 }
 
 enum Work {
-    Write { start: u64, data: Vec<u8> },
+    Write { start: u64, data: Vec<u8>, source: Option<IpAddr> },
     HashPart { size: u64, part: usize, recheck: bool },
     HashBlocks { size: u64, part: usize },
     SaveMet { met: PathBuf, contents: Box<Contents>, generation: u64 },
     Finish { directory: PathBuf, name: String },
-    Close { delete: Vec<PathBuf> },
+    Close,
+}
+
+type AfterClose = Box<dyn FnOnce() + Send>;
+
+/// The end of a disk thread, once its last work is done: waited for, or work run once it comes.
+#[derive(Clone, Default)]
+pub struct DiskClosed(Arc<ClosedState>);
+
+#[derive(Default)]
+struct ClosedState {
+    state: Mutex<(bool, Vec<AfterClose>)>,
+    signal: Condvar,
+}
+
+impl DiskClosed {
+    pub fn is_closed(&self) -> bool {
+        self.0.state.lock().unwrap_or_else(PoisonError::into_inner).0
+    }
+
+    /// Waits at most `timeout` for the end; whether it came.
+    pub fn wait(&self, timeout: Duration) -> bool {
+        let deadline = Instant::now().checked_add(timeout);
+        let mut state = self.0.state.lock().unwrap_or_else(PoisonError::into_inner);
+        while !state.0 {
+            let left = deadline.map_or(timeout, |deadline| deadline.saturating_duration_since(Instant::now()));
+            if left.is_zero() {
+                return false;
+            }
+            state = self.0.signal.wait_timeout(state, left).unwrap_or_else(PoisonError::into_inner).0;
+        }
+        true
+    }
+
+    /// Runs `work` once the thread has ended: at once, on this thread, when it has already.
+    pub fn then(&self, work: impl FnOnce() + Send + 'static) {
+        let mut state = self.0.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if state.0 {
+            drop(state);
+            work();
+        } else {
+            state.1.push(Box::new(work));
+        }
+    }
+
+    // The work asked for runs before the end is told, so that whoever waits finds it done.
+    fn close(&self) {
+        loop {
+            let after = {
+                let mut state = self.0.state.lock().unwrap_or_else(PoisonError::into_inner);
+                if state.1.is_empty() {
+                    state.0 = true;
+                    break;
+                }
+                std::mem::take(&mut state.1)
+            };
+            for work in after {
+                work();
+            }
+        }
+        self.0.signal.notify_all();
+    }
+}
+
+// Ends the thread's watch however the thread ends.
+struct CloseOnDrop(DiskClosed);
+
+impl Drop for CloseOnDrop {
+    fn drop(&mut self) {
+        self.0.close();
+    }
 }
 
 /// A download's data file, open on its own thread until it is finished or closed.
 pub struct PartFileStorage {
     work: Option<mpsc::Sender<Work>>,
     saves: Arc<AtomicU64>,
+    closed: DiskClosed,
 }
 
 impl PartFileStorage {
@@ -61,10 +163,20 @@ impl PartFileStorage {
         let saves = Arc::new(AtomicU64::new(0));
         let latest = saves.clone();
         let path = path.to_path_buf();
+        let closed = DiskClosed::default();
+        let ending = CloseOnDrop(closed.clone());
         std::thread::Builder::new()
             .name(format!("njmule-disk-{}", path.file_name().unwrap_or_default().to_string_lossy()))
-            .spawn(move || run(file, &path, &queue, &latest, download, &done))?;
-        Ok(Self { work: Some(work), saves })
+            .spawn(move || {
+                let _ending = ending;
+                run(file, &path, &queue, &latest, download, &done);
+            })?;
+        Ok(Self { work: Some(work), saves, closed })
+    }
+
+    /// The end of the thread, after its last work.
+    pub fn closed(&self) -> DiskClosed {
+        self.closed.clone()
     }
 
     /// Whether the file still takes work: not after [`finish`](Self::finish) or [`close`](Self::close).
@@ -72,8 +184,9 @@ impl PartFileStorage {
         self.work.is_some()
     }
 
-    pub fn write(&self, start: u64, data: Vec<u8>) {
-        self.send(Work::Write { start, data });
+    /// Writes `data` at `start`; `source` is told back with the outcome.
+    pub fn write(&self, start: u64, data: Vec<u8>, source: Option<IpAddr>) {
+        self.send(Work::Write { start, data, source });
     }
 
     /// The MD4 of a data part, read back after the writes queued before it.
@@ -104,9 +217,9 @@ impl PartFileStorage {
         self.work = None;
     }
 
-    /// Closes the file after the queued work, then deletes `delete`, as for a cancelled download.
-    pub fn close(&mut self, delete: Vec<PathBuf>) {
-        self.send(Work::Close { delete });
+    /// Closes the file after the queued work.
+    pub fn close(&mut self) {
+        self.send(Work::Close);
         self.work = None;
     }
 
@@ -120,7 +233,7 @@ impl PartFileStorage {
 
 impl Drop for PartFileStorage {
     fn drop(&mut self) {
-        self.close(Vec::new());
+        self.close();
     }
 }
 
@@ -137,10 +250,10 @@ fn run(
     };
     while let Ok(work) = queue.recv() {
         match work {
-            Work::Write { start, data } => {
+            Work::Write { start, data, source } => {
                 let end = start.saturating_add(u64::try_from(data.len()).unwrap_or(u64::MAX));
                 let result = write_at(&mut file, start, &data).map_err(|e| e.to_string());
-                report(Done::Written { start, end, result });
+                report(Done::Written { start, end, source, result });
             }
             Work::HashPart { size, part, recheck } => {
                 let result = hash_part(&mut file, size, part).map_err(|e| e.to_string());
@@ -163,23 +276,13 @@ fn run(
                 report(Done::Saved { generation, result });
             }
             Work::Finish { directory, name } => {
-                let result = file.sync_all().map_err(|e| e.to_string());
+                let result = file.sync_all().map_err(|e| FinishFailure::of(&e));
                 drop(file);
-                report(Done::Finished(
-                    result.and_then(|()| finish(path, &directory, &name).map_err(|e| e.to_string())),
-                ));
+                report(Done::Finished(result.and_then(|()| finish(path, &directory, &name))));
                 return;
             }
-            Work::Close { delete } => {
+            Work::Close => {
                 let _ = file.sync_all();
-                drop(file);
-                for gone in delete {
-                    if let Err(e) = fs::remove_file(&gone)
-                        && e.kind() != ErrorKind::NotFound
-                    {
-                        tracing::warn!("Cannot delete {}: {e}", gone.display());
-                    }
-                }
                 return;
             }
         }
@@ -233,10 +336,11 @@ fn read_range(file: &mut File, start: u64, end: u64, chunk: usize, mut take: imp
 }
 
 // Reserved and moved in one step, so two finished files never take the same name; across volumes, a hidden copy is
-// flushed and renamed over the reserved name, so a crash never leaves a truncated file to share.
-fn finish(data: &Path, directory: &Path, name: &str) -> io::Result<PathBuf> {
-    fs::create_dir_all(directory)?;
-    let target = path_sanitizer::reserve(directory, name)?;
+// flushed and renamed over the reserved name, so a crash never leaves a truncated file to share. A data file that
+// cannot be moved but is there is held, as by a virus scanner or an indexer that opened it.
+fn finish(data: &Path, directory: &Path, name: &str) -> Result<PathBuf, FinishFailure> {
+    fs::create_dir_all(directory).map_err(|e| FinishFailure::of(&e))?;
+    let target = path_sanitizer::reserve(directory, name).map_err(|e| FinishFailure::of(&e))?;
     match fs::rename(data, &target) {
         Ok(()) => Ok(target),
         Err(e) if e.kind() == ErrorKind::CrossesDevices => {
@@ -249,7 +353,7 @@ fn finish(data: &Path, directory: &Path, name: &str) -> io::Result<PathBuf> {
             if let Err(e) = copied {
                 let _ = fs::remove_file(&copy);
                 let _ = fs::remove_file(&target);
-                return Err(e);
+                return Err(FinishFailure::of(&e));
             }
             if let Err(e) = fs::remove_file(data) {
                 tracing::warn!("Cannot delete {} after copying it to {}: {e}", data.display(), target.display());
@@ -258,7 +362,7 @@ fn finish(data: &Path, directory: &Path, name: &str) -> io::Result<PathBuf> {
         }
         Err(e) => {
             let _ = fs::remove_file(&target);
-            Err(e)
+            Err(FinishFailure { reason: e.to_string(), held: e.kind() != ErrorKind::NotFound })
         }
     }
 }
