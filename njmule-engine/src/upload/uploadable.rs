@@ -7,8 +7,8 @@
 use std::path::PathBuf;
 
 use crate::files::hash::ed2k;
-use crate::protocol::ed2k::client_messages::{FileStatus, PartStatus};
 use crate::files::shared_files::SharedFile;
+use crate::protocol::ed2k::client_messages::{FileStatus, PartStatus};
 
 // Already compressed: zlib would only cost time.
 const PACKED: [&str; 34] = [

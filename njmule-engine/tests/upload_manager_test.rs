@@ -121,7 +121,8 @@ impl Loop {
         let now = self.now();
         let settings = *self.settings.lock().unwrap();
         let shared = Arc::clone(&self.shared);
-        self.manager.tick(settings, &move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).map(Uploadable::of), now);
+        self.manager
+            .tick(settings, &move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).map(Uploadable::of), now);
         self.calls();
     }
 

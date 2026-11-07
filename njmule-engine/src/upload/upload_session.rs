@@ -11,15 +11,15 @@ use crate::files::file_types;
 use crate::files::hash::ed2k;
 use crate::files::shared_files::SharedFile;
 use crate::peer::peer_link::LinkHandle;
-use crate::protocol::ed2k::source_exchange as exchange;
-use crate::upload::uploadable::Uploadable;
 use crate::protocol::ed2k::client_messages::{self, FileName, RequestParts};
 use crate::protocol::ed2k::file_entry::FileEntry;
 use crate::protocol::ed2k::hello::{self, Hello};
+use crate::protocol::ed2k::source_exchange as exchange;
 use crate::protocol::io::{DecodeError, PacketWriter, StringEncoding};
 use crate::protocol::packet::opcodes::{client, extended};
 use crate::protocol::packet::{Packet, protocol};
 use crate::protocol::tag::{Ed2kTagFormat, Tag, TagName, file_tag};
+use crate::upload::uploadable::Uploadable;
 
 /// Blocks a client may have waiting at once.
 pub const MAX_PENDING_BLOCKS: usize = 32;

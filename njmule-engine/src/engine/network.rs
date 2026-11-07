@@ -63,8 +63,8 @@ use crate::server::server_route::ServerRoute;
 use crate::server::server_session::{Context, Notice, Outcome, ServerSession};
 use crate::server::server_udp::ServerUdp;
 use crate::upload::credits::{self, Credits};
-use crate::upload::uploadable::Uploadable;
 use crate::upload::upload_manager::{self, BlockRead, UploadManager};
+use crate::upload::uploadable::Uploadable;
 
 /// How long changes of the list wait to be saved together.
 const SAVE_DELAY: Duration = Duration::from_secs(30);
@@ -1391,7 +1391,17 @@ impl Network {
                     .get(&link)
                     .and_then(|peer| peer.identity.as_ref())
                     .is_none_or(|session| session.trust().credits());
-                self.uploads.received(&handle, &hello, trusted, packet, ours, &find, &visible, &sources, Instant::now());
+                self.uploads.received(
+                    &handle,
+                    &hello,
+                    trusted,
+                    packet,
+                    ours,
+                    &find,
+                    &visible,
+                    &sources,
+                    Instant::now(),
+                );
                 self.after_uploads();
             }
             Side::Download | Side::Buddy => {

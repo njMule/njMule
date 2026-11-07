@@ -21,13 +21,13 @@ use crate::peer::peer_link::{LinkHandle, LinkId};
 use crate::protocol::ed2k::client_messages::PartStatus;
 use crate::protocol::ed2k::client_reasks::{self, Ack};
 use crate::protocol::ed2k::hello::{self, Hello};
+use crate::protocol::ed2k::source_exchange as exchange;
 use crate::protocol::packet::Packet;
+use crate::protocol::packet::packing;
 use crate::upload::blocks;
 use crate::upload::credits::Credits;
 use crate::upload::request_tracker::{Key, RequestTracker};
 use crate::upload::upload_session::{Block, Request, UploadSession, Visible};
-use crate::protocol::ed2k::source_exchange as exchange;
-use crate::protocol::packet::packing;
 use crate::upload::uploadable::Uploadable;
 use crate::util::ipv6;
 use crate::util::rate_meter::RateMeter;
@@ -788,14 +788,16 @@ impl UploadManager {
         told.truncate(exchange::MAX_SOURCES);
         let version = request.version.min(exchange::VERSION);
         let answer = if extended {
-            exchange::Answer { version: exchange::EXTENDED_VERSION, file: request.file, sources: told }.encode_extended()
+            exchange::Answer { version: exchange::EXTENDED_VERSION, file: request.file, sources: told }
+                .encode_extended()
         } else {
             exchange::Answer { version, file: request.file, sources: told }.encode()
         };
         let Ok(answer) = answer else {
             return;
         };
-        let answer = if answer.length() > SX_PACK_ABOVE { packing::pack(answer.clone()).unwrap_or(answer) } else { answer };
+        let answer =
+            if answer.length() > SX_PACK_ABOVE { packing::pack(answer.clone()).unwrap_or(answer) } else { answer };
         if let Some(session) = self.sessions.get(&id) {
             session.link().send(answer);
         }
