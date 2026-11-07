@@ -40,12 +40,13 @@ pub const TICK: Duration = Duration::from_millis(100);
 pub const WAIT: Duration = Duration::from_secs(20);
 pub const PORT: u16 = 4662;
 
-/// The IP filter the downloads see, and the links of downloads deleted for receiving nothing.
+/// The IP filter the downloads see, the free space they need and the links of downloads deleted for receiving nothing.
 #[derive(Default)]
 pub struct Engine {
     pub blocked: Vec<u32>,
     pub keeps_links: bool,
     pub kept_links: Vec<String>,
+    pub min_free: u64,
 }
 
 fn hooks(engine: &Arc<Mutex<Engine>>) -> Hooks {
@@ -157,8 +158,15 @@ impl Lab {
                     });
                 }
                 Action::Resolve { file, hosts } => {
-                    let found: Vec<SocketAddr> =
-                        hosts.iter().filter_map(|host| format!("{}:{}", host.host, host.port).parse().ok()).collect();
+                    // Looked up here, as the names the tests give are the loopback's.
+                    let found: Vec<SocketAddr> = hosts
+                        .iter()
+                        .filter_map(|host| {
+                            std::net::ToSocketAddrs::to_socket_addrs(&(host.host.as_str(), host.port))
+                                .ok()?
+                                .find(SocketAddr::is_ipv4)
+                        })
+                        .collect();
                     let settings = self.settings.clone();
                     self.manager.resolved(&file, &found, &settings);
                 }
@@ -318,8 +326,10 @@ fn open(
     let ticks = Arc::clone(offset);
     let clock = Box::new(move || base + Duration::from_millis(ticks.load(Ordering::Relaxed)));
     let (disk_in, disk) = mpsc::unbounded_channel();
+    let room = Arc::clone(engine);
+    let min_free = Box::new(move || room.lock().unwrap().min_free);
     let manager =
-        DownloadManager::open(&dir.join("temp"), &dir.join("incoming"), Box::new(|| 0), disk_in, clock, hooks(engine))
+        DownloadManager::open(&dir.join("temp"), &dir.join("incoming"), min_free, disk_in, clock, hooks(engine))
             .unwrap();
     let ours = Ours { nick: "test", udp_port: 0, kad_port: 0, misc_options1: 0, misc_options2: 0 };
     let (link_events, links) = mpsc::unbounded_channel();

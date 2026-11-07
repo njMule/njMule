@@ -24,15 +24,17 @@ use crate::config::next_download::NextDownload;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::download::download_queue::{self, DownloadQueue, QueueEvent};
 use crate::download::download_session::{Context, DownloadSession, Note, Outcome, State};
+use crate::download::known_sources::{self, Candidate, Standing};
 use crate::files::hash::aich_recovery;
 use crate::files::hash::aich_votes::AichVotes;
-use crate::files::part_file::{self, PartFile, Status};
+use crate::files::part_file::{self, KnownSource, PartFile, Status};
 use crate::files::part_file_storage::DiskDone;
 use crate::peer::peer_link::{LinkHandle, LinkId};
 use crate::peer::peer_software;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams::SourceQuery;
 use crate::protocol::ed2k::server_messages::{FoundSources, LOW_ID_LIMIT};
+use crate::protocol::ed2k::source_exchange as exchange;
 use crate::protocol::packet::Packet;
 use crate::security::path_sanitizer;
 use crate::server::server_list;
@@ -56,6 +58,8 @@ pub const CALLBACK_WAIT: Duration = Duration::from_secs(60);
 pub const MAX_STARTING: usize = 8;
 /// How long the sources at an address that sent corrupt data are kept out.
 pub const CORRUPT_BAN: Duration = Duration::from_secs(2 * 60 * 60);
+/// The sources that served each download are kept for the next run this often, and when the downloads close.
+pub const KEEP_SOURCES_INTERVAL: Duration = Duration::from_secs(10 * 60);
 
 const MAX_FAILURES: u32 = 3;
 const RATE_WINDOW: usize = 5;
@@ -139,6 +143,8 @@ pub enum DownloadEvent {
     Removed([u8; 16]),
     /// The source at the address sent corrupt data: its sources were dropped, and none is taken there for a while.
     CorruptSender(IpAddr),
+    /// The temp disk has dropped below (false), or come back above (true), the free space downloads need.
+    DiskSpace(bool),
 }
 
 // A firewalled source asked through the server to connect to us.
@@ -241,6 +247,9 @@ pub struct DownloadManager {
     corrupt_senders: HashMap<IpAddr, Instant>,
     // How far the idle time of the downloads is counted.
     idle_counted: Instant,
+    // The sources kept from the last run are taken at the first tick, which knows the settings and the server.
+    known_taken: bool,
+    next_sources_kept: Instant,
 }
 
 impl DownloadManager {
@@ -273,6 +282,8 @@ impl DownloadManager {
             hooks,
             corrupt_senders: HashMap::new(),
             idle_counted: now,
+            known_taken: false,
+            next_sources_kept: instants::later(now, KEEP_SOURCES_INTERVAL),
         })
     }
 
@@ -681,6 +692,16 @@ impl DownloadManager {
             self.unhold(&hash, part, ours);
         }
         self.send_callbacks(server, now);
+        if !std::mem::replace(&mut self.known_taken, true) {
+            let hashes: Vec<[u8; 16]> = self.entries.keys().copied().collect();
+            for hash in hashes {
+                self.take_known_sources(&hash, server.client_id(), settings, ours);
+            }
+        }
+        if now >= self.next_sources_kept {
+            self.next_sources_kept = instants::later(now, KEEP_SOURCES_INTERVAL);
+            self.keep_known_sources();
+        }
         let mut starting = self.clients.values().filter(|c| c.session.as_ref().is_some_and(is_starting)).count();
         self.corrupt_senders.retain(|_, until| now < *until);
         // Only the time it could have received counts: running, with room on the disk, and with eD2K up.
@@ -869,11 +890,128 @@ impl DownloadManager {
 
     /// Ends every session and saves the downloads.
     pub fn close(&mut self, ours: &Hello) {
+        if self.known_taken {
+            self.keep_known_sources();
+        }
         let hashes: Vec<[u8; 16]> = self.entries.keys().copied().collect();
         for hash in hashes {
             self.close_sessions(&hash, "shutting down", ours);
         }
         self.queue.close();
+    }
+
+    /// Sources of an active download that we spoke with, for other clients asking for sources: HighIDs with a known
+    /// user hash, and those at a public IPv6 address alone.
+    pub fn exchangeable(&self, hash: &[u8; 16]) -> Vec<exchange::Source> {
+        let (Some(entry), true) = (self.entries.get(hash), self.queue.get(hash).is_some_and(|d| d.is_active())) else {
+            return Vec::new();
+        };
+        let mut sources = Vec::new();
+        for (address, source) in &entry.sources {
+            let Some(client) = self.clients.get(address) else {
+                continue;
+            };
+            // A firewalled source passed on by its address would be tried in vain.
+            let Some(user_hash) = client.user_hash.filter(|_| source.parts.is_some() && client.low_id == 0) else {
+                continue;
+            };
+            match address.ip() {
+                IpAddr::V4(ip) => sources.push(exchange::Source {
+                    ip: u32::from(ip),
+                    low_id: 0,
+                    port: address.port(),
+                    server_ip: 0,
+                    server_port: 0,
+                    user_hash: Some(user_hash),
+                    crypt_options: client.crypt_options,
+                    ipv6: None,
+                }),
+                IpAddr::V6(ip) if ipv6::is_public(&ip) => {
+                    sources.push(exchange::Source::ipv6_only(ip, address.port(), Some(user_hash)));
+                }
+                IpAddr::V6(_) => {}
+            }
+        }
+        sources
+    }
+
+    // The sources kept from the last run, unless the download is stopped or they are now refused.
+    fn take_known_sources(&mut self, hash: &[u8; 16], our_id: u32, settings: &Settings, ours: &Hello) {
+        let Some(file) = self.queue.get(hash).map(|d| &d.file).filter(|file| file.status() != Status::Stopped) else {
+            return;
+        };
+        for known in known_sources::young(file.known_sources(), wall_seconds()) {
+            let first = known.ip >> 24;
+            let ip = IpAddr::V4(Ipv4Addr::from(known.ip));
+            if known.user_hash == Some(ours.user_hash)
+                || known.port == 0
+                || first == 0
+                || first >= 224
+                || !self.allowed(ip)
+                || (known.port == settings.listen_port && ipv4::to_ed2k(known.ip) == our_id)
+            {
+                continue;
+            }
+            let address = SocketAddr::new(ip, known.port);
+            if self.add_source(hash, address, settings)
+                && let Some(client) = self.clients.get_mut(&address)
+                && client.user_hash.is_none()
+            {
+                client.user_hash = known.user_hash;
+                client.crypt_options = known.crypt_options;
+            }
+        }
+    }
+
+    // The sources reached directly that served each download, best first, joined by those kept before; a LowID's id
+    // changes with its server, so it is found again instead.
+    fn keep_known_sources(&mut self) {
+        let now = wall_seconds();
+        let mut kept = Vec::new();
+        for (hash, entry) in &self.entries {
+            let Some(file) = self.queue.get(hash).map(|d| &d.file).filter(|file| file.status() != Status::Stopped)
+            else {
+                continue;
+            };
+            let mut candidates = Vec::new();
+            for (address, source) in &entry.sources {
+                let (Some(client), IpAddr::V4(ip)) = (self.clients.get(address), address.ip()) else {
+                    continue;
+                };
+                let session = client.session.as_ref().filter(|_| client.current == *hash);
+                let rank = session.map_or(source.rank, DownloadSession::queue_rank);
+                let standing = if session.is_some_and(|s| s.state() == State::Downloading) {
+                    Standing::Downloading
+                } else if rank > 0 {
+                    Standing::Queued
+                } else if source.parts.is_some() || source.received > 0 {
+                    Standing::Answered
+                } else {
+                    continue;
+                };
+                if client.low_id != 0 {
+                    continue;
+                }
+                let known = KnownSource {
+                    ip: u32::from(ip),
+                    port: address.port(),
+                    seen: now,
+                    user_hash: client.user_hash,
+                    crypt_options: client.crypt_options,
+                };
+                let parts = source.parts.as_deref().map_or(0, |parts| parts.iter().filter(|has| **has).count());
+                candidates.push(Candidate {
+                    source: known,
+                    standing,
+                    rank,
+                    parts: u32::try_from(parts).unwrap_or(u32::MAX),
+                });
+            }
+            kept.push((*hash, known_sources::choose(&candidates, file.known_sources(), now)));
+        }
+        for (hash, sources) in kept {
+            self.queue.set_known_sources(&hash, &sources);
+        }
     }
 
     fn info(&self, hash: &[u8; 16]) -> Option<DownloadInfo> {
@@ -890,7 +1028,11 @@ impl DownloadManager {
             name: file.name().to_owned(),
             size: file.size(),
             completed: file.completed_bytes(),
-            status: status(file.status()),
+            status: if file.status() == Status::Downloading && self.queue.is_space_short() {
+                DownloadStatus::NoSpace
+            } else {
+                status(file.status())
+            },
             priority: file.priority(),
             category: file.category(),
             sources: entry.sources.len(),
@@ -1037,15 +1179,25 @@ impl DownloadManager {
                 }
             }
             QueueEvent::DiskSpace(enough) => {
+                let now = (self.clock)();
                 let hashes: Vec<[u8; 16]> = self.entries.keys().copied().collect();
                 for hash in hashes {
                     if let Some(entry) = self.entries.get_mut(&hash) {
                         entry.changed = true;
+                        if enough {
+                            entry.next_server_ask = now;
+                        }
                     }
                     if !enough {
                         self.close_sessions(&hash, "not enough free disk space", ours);
                     }
                 }
+                if enough {
+                    for client in self.clients.values_mut() {
+                        client.next_ask = earliest_ask(client, now);
+                    }
+                }
+                self.events.push(DownloadEvent::DiskSpace(enough));
             }
         }
     }
@@ -1655,4 +1807,27 @@ fn status(status: Status) -> DownloadStatus {
         Status::Error => DownloadStatus::Error,
         Status::Complete => DownloadStatus::Complete,
     }
+}
+
+/// Whether a source at `ip` (as [`crate::util::ipv4`] holds it) may be passed on to the client at `asker`: a public
+/// address to anyone, a LAN address within the LAN or this machine, a loopback address within this machine.
+pub fn passes_on(ip: u32, asker: IpAddr) -> bool {
+    let first = ip >> 24;
+    if first == 0 || first >= 224 {
+        return false;
+    }
+    let loopback = first == 127;
+    if !loopback && !ipv4::is_lan(ip) {
+        return true;
+    }
+    let IpAddr::V4(asker) = asker else {
+        return false;
+    };
+    let at = u32::from(asker);
+    let asker_loopback = at >> 24 == 127;
+    if loopback { asker_loopback } else { asker_loopback || ipv4::is_lan(at) }
+}
+
+fn wall_seconds() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs())
 }

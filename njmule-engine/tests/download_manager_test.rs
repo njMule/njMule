@@ -83,7 +83,7 @@ impl Manager {
         }
         settings.auto_delete_days = self.idle_days;
         let engine =
-            Engine { blocked: vec![u32::from(BLOCKED_IP)], keeps_links: self.keeps_links, kept_links: Vec::new() };
+            Engine { blocked: vec![u32::from(BLOCKED_IP)], keeps_links: self.keeps_links, ..Engine::default() };
         let downloads = Downloads::start_with([0xab; 16], OUR_ID, settings, engine);
         downloads.server.lock().unwrap().connected = self.answers;
         let categories = self.categories.clone();
