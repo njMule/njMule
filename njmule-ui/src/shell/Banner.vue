@@ -4,7 +4,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
-import { type BannerKind, bannerKind } from '../banner';
+import { type BannerKind, bannerKind, unreachableText } from '../banner';
 import { t } from '../i18n';
 import { connection, status } from '../model/engine';
 import { current } from '../places';
@@ -46,7 +46,7 @@ const text = computed(() => {
         case 'offline':
             return t('nj.banner.offline');
         case 'unreachable':
-            return t('nj.banner.unreachable', status.value?.tcpPort ?? 0);
+            return t(unreachableText(status.value), status.value?.tcpPort ?? 0);
         default:
             return '';
     }

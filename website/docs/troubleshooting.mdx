@@ -135,7 +135,9 @@ had them before. On macOS the app declares the `ed2k` scheme by itself. See
 
 **What you see:** a banner says *Others cannot reach you on port 4662 (LowID): open it in your
 router, or turn on UPnP in the options.* The top bar shows **Low ID**, and the eD2K card of the
-network says **Not reachable from outside**.
+network says **Not reachable from outside**. With UPnP on, the banner tells what the router did
+instead: *the router did not open it through UPnP* (steps 2 and 3 below), or *although the router
+forwards it* (step 4, and the paragraph after the steps on a second router or a shared address).
 
 **Why:** the server could not connect back to your client port (TCP). The router does not forward
 it to your computer, a firewall blocks it, UPnP is off or failed, or another program holds the port.

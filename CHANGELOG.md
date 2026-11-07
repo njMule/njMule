@@ -22,6 +22,9 @@ All notable changes to this project are documented here. The format follows
   when no rule applies; clients generated from the document no longer reject that answer.
 - An eD2K link naming a source by an IPv6 address with a zone id (`[fe80::1%eth0]:4662`) keeps its
   other sources and is no longer refused on machines without that interface: the source is dropped.
+- The banner for others not reaching you (LowID) no longer asks to turn on UPnP when it is already
+  on: it points to the router's UPnP when the router did not open the port, and to the firewall or
+  a second router when the router forwards it.
 
 ## [0.3.1] - 2026-11-03
 

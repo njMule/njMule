@@ -32,3 +32,21 @@ export function bannerKind(connection: Connection, status: Status | null): Banne
     const reachable = (connection === 'connected' && !status.lowId) || (kadUp && !kad.firewalled);
     return (lowId || (kadUp && kad.firewalled)) && !reachable ? 'unreachable' : 'none';
 }
+
+/** The text of the unreachable banner, by what the router answered through UPnP. */
+export type UnreachableText = 'nj.banner.unreachable' | 'nj.banner.unreachableUpnp' | 'nj.banner.unreachableForwarded';
+
+/**
+ * Turning UPnP on is advice only while the router is not asked; once asked, the router itself is what to look at: its
+ * UPnP, or its firewall and the computer's when it forwards the port and still nobody gets through.
+ */
+export function unreachableText(status: Status | null): UnreachableText {
+    switch (status?.forwarding ?? 'off') {
+        case 'off':
+            return 'nj.banner.unreachable';
+        case 'forwarded':
+            return 'nj.banner.unreachableForwarded';
+        default:
+            return 'nj.banner.unreachableUpnp';
+    }
+}
