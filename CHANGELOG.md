@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-07
+
 ### Changed
 
 - njMule now stands for New Jack Mule (a jack is the male donkey, a mule's sire) instead of Next
