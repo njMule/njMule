@@ -21,6 +21,7 @@ use crate::peer::peer_link::{LinkHandle, LinkId};
 use crate::protocol::ed2k::client_messages::PartStatus;
 use crate::protocol::ed2k::client_reasks::{self, Ack};
 use crate::protocol::ed2k::hello::{self, Hello};
+use crate::protocol::ed2k::low_id_messages::UdpCheckRequest;
 use crate::protocol::ed2k::source_exchange as exchange;
 use crate::protocol::packet::Packet;
 use crate::protocol::packet::packing;
@@ -144,6 +145,16 @@ pub use crate::upload::upload_session::Find;
 /// sources of a running download (the list empty while it waits).
 pub type Sources<'a> = &'a dyn Fn(&[u8; 16]) -> Option<Vec<exchange::Source>>;
 
+/// What clients that run Kad tell our Kad node over their upload connections, from their IPv4 address (in the order the
+/// network gives it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KadRequest {
+    /// The client confirms it reached our TCP port.
+    Reached(u32),
+    /// The client asks for the datagram of its UDP firewall test; `known` when it waits for or has an upload slot.
+    UdpCheck { ip: u32, request: UdpCheckRequest, known: bool },
+}
+
 struct Client {
     user_hash: [u8; 16],
     ip: IpAddr,
@@ -213,6 +224,8 @@ pub struct UploadManager {
     next_purge: Option<Instant>,
     // The clients to call, for the network.
     calls: Vec<Call>,
+    // What clients told our Kad node, for the network.
+    kad_requests: Vec<KadRequest>,
     counts: Option<Box<dyn FileCounts>>,
 }
 
@@ -237,6 +250,7 @@ impl UploadManager {
             requests: RequestTracker::new(MIN_REQUEST_TIME, IDLE_SLOTS_WINDOW),
             next_purge: None,
             calls: Vec::new(),
+            kad_requests: Vec::new(),
             counts: None,
         }
     }
@@ -424,6 +438,16 @@ impl UploadManager {
         std::mem::take(&mut self.calls)
     }
 
+    /// What clients told our Kad node, since asked last.
+    pub fn take_kad_requests(&mut self) -> Vec<KadRequest> {
+        std::mem::take(&mut self.kad_requests)
+    }
+
+    /// Whether a client at `ip` waits in our queue or has a slot.
+    pub fn knows(&self, ip: IpAddr) -> bool {
+        self.slots.iter().any(|slot| slot.client.ip == ip) || self.waiting.values().any(|client| client.ip == ip)
+    }
+
     /// A client we called answered our hello over `link`: its slot, when it is the client we called.
     pub fn called(&mut self, user_hash: [u8; 16], link: &LinkHandle, peer: &Hello, trusted: bool, now: Instant) {
         let Some(client) = self.waiting.get_mut(&user_hash) else {
@@ -506,6 +530,18 @@ impl UploadManager {
             }
             Ok(Some(Request::Blocks)) => self.blocks_requested(link.id(), find, now),
             Ok(Some(Request::Sources(request))) => self.answer_sources(link.id(), &request, ours, find, sources, now),
+            Ok(Some(Request::Reached)) => {
+                if let IpAddr::V4(ip) = link.remote().ip() {
+                    self.kad_requests.push(KadRequest::Reached(u32::from(ip)));
+                }
+            }
+            Ok(Some(Request::UdpCheck(request))) => {
+                let from = link.remote().ip();
+                if let IpAddr::V4(ip) = from {
+                    let known = self.knows(from);
+                    self.kad_requests.push(KadRequest::UdpCheck { ip: u32::from(ip), request, known });
+                }
+            }
             Ok(Some(Request::Stopped)) => self.slot_gone(link.id()),
             Ok(Some(Request::FileGone)) => {
                 tracing::debug!("{} asked for blocks of a file we no longer share", link.remote());
