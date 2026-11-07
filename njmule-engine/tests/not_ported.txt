@@ -47,6 +47,10 @@ BytesTest
 LittleEndianTest
 # The Java engine reads the Downloads folder from reg.exe's answer; Rust asks the Known Folder API.
 KnownFoldersTest
+# Buddies and Kad's callbacks reach firewalled clients through Kad (area 5); NAT traversal needs QUIC and uTP (area 7).
+BuddyLinkTest
+DownloadKadCallbackTest
+NatTraversalTest
 
 # Ed2kLinkTest: not ported yet.
 Ed2kLinkTest.shouldDropAnIpv6SourceWithAZoneIdButKeepTheLink

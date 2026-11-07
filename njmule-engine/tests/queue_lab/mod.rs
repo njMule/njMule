@@ -70,4 +70,48 @@ impl QueueLab {
         }
         self.events.extend(self.queue.take_events());
     }
+
+    /// The queue closed and loaded again over the same directory, as at a restart.
+    pub fn reload(&mut self) {
+        self.queue.close();
+        self.settle();
+        let (done, disk) = mpsc::unbounded_channel();
+        let incoming = self.dir.path().join("incoming");
+        let free = Arc::clone(&self.min_free);
+        self.queue = DownloadQueue::load(
+            &self.dir.path().join("temp"),
+            Box::new(move |_: &PartFile| incoming.clone()),
+            Box::new(move || free.load(Ordering::Relaxed)),
+            done,
+        )
+        .unwrap();
+        self.disk = disk;
+        self.events.clear();
+    }
+}
+
+/// A directory nobody may write into, nor move a file out of, until this goes: what another program holding its files
+/// does to them on Windows.
+#[cfg(unix)]
+pub struct ReadOnly(std::path::PathBuf);
+
+#[cfg(unix)]
+impl ReadOnly {
+    pub fn of(directory: &std::path::Path) -> Self {
+        set_mode(directory, 0o555);
+        Self(directory.to_path_buf())
+    }
+}
+
+#[cfg(unix)]
+impl Drop for ReadOnly {
+    fn drop(&mut self) {
+        set_mode(&self.0, 0o755);
+    }
+}
+
+#[cfg(unix)]
+fn set_mode(directory: &std::path::Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(directory, std::fs::Permissions::from_mode(mode)).unwrap();
 }

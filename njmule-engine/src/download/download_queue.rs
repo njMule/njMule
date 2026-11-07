@@ -321,10 +321,6 @@ impl DownloadQueue {
         Ok(hash)
     }
 
-    pub fn temp_dir(&self) -> &Path {
-        &self.temp_dir
-    }
-
     /// Whether downloads wait because the temp disk has less free space than they need.
     pub fn is_space_short(&self) -> bool {
         self.space_short.load(Ordering::Relaxed)

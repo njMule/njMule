@@ -112,14 +112,6 @@ impl UploadSession {
         &self.link
     }
 
-    pub fn file(&self) -> Option<[u8; 16]> {
-        self.file
-    }
-
-    pub fn has_slot(&self) -> bool {
-        self.slot
-    }
-
     pub fn peer(&self) -> &Hello {
         &self.peer
     }

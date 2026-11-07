@@ -4,7 +4,6 @@
 //! The Java engine's DownloadDiskSpaceTest, under its names: Windows refuses writes into a range another handle locked,
 //! as it refuses those to a full disk.
 
-#![cfg(windows)]
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -15,6 +14,7 @@
 
 mod queue_lab;
 
+#[cfg(windows)]
 use std::fs::{File, OpenOptions};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -33,6 +33,7 @@ const WAIT: Duration = Duration::from_secs(30);
 struct DiskSpace {
     lab: QueueLab,
     hash: [u8; 16],
+    #[cfg(windows)]
     other: Option<File>,
 }
 
@@ -42,14 +43,34 @@ impl DiskSpace {
         let link = FileLink::of("full.bin", 400_000, [0xd1; 16]).unwrap();
         let hash = lab.queue.add(&link, 0, DownloadPriority::Auto).unwrap();
         lab.queue.get_mut(&hash).unwrap().file.next_blocks(&[true], 1, &mut StdRng::seed_from_u64(1));
-        Self { lab, hash, other: None }
+        Self {
+            lab,
+            hash,
+            #[cfg(windows)]
+            other: None,
+        }
     }
 
+    // Windows refuses writes into a range another handle locked.
+    #[cfg(windows)]
     fn given_its_data_cannot_be_written(&mut self) {
         let data = self.lab.queue.get(&self.hash).unwrap().file.data_file();
         let other = OpenOptions::new().write(true).open(data).unwrap();
         other.lock().unwrap();
         self.other = Some(other);
+    }
+
+    // Elsewhere a lock binds no writer: the data file becomes /dev/full, which takes no write, and the queue opens it
+    // again as at a restart.
+    #[cfg(unix)]
+    fn given_its_data_cannot_be_written(&mut self) {
+        let data = self.lab.queue.get(&self.hash).unwrap().file.data_file();
+        self.lab.queue.close();
+        std::fs::remove_file(&data).unwrap();
+        std::os::unix::fs::symlink("/dev/full", &data).unwrap();
+        self.lab.reload();
+        let hash = self.hash;
+        self.lab.queue.get_mut(&hash).unwrap().file.next_blocks(&[true], 1, &mut StdRng::seed_from_u64(1));
     }
 
     fn given_data_arrived_while_the_disk_was_out_of_space(&mut self) {
@@ -64,6 +85,7 @@ impl DiskSpace {
     }
 
     fn when_there_is_room_again(&mut self) {
+        #[cfg(windows)]
         if let Some(other) = self.other.take() {
             other.unlock().unwrap();
         }

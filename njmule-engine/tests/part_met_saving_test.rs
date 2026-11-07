@@ -4,7 +4,6 @@
 //! The Java engine's PartMetSavingTest, under its names: a part.met another program holds is saved on the download's
 //! disk thread, not on the engine's.
 
-#![cfg(windows)]
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -15,7 +14,10 @@
 
 mod queue_lab;
 
-use std::fs::{self, File, OpenOptions};
+use std::fs;
+#[cfg(windows)]
+use std::fs::{File, OpenOptions};
+#[cfg(windows)]
 use std::os::windows::fs::OpenOptionsExt;
 use std::time::{Duration, Instant};
 
@@ -25,12 +27,19 @@ use njmule_engine::persist::format::part_met;
 use queue_lab::QueueLab;
 
 // Shared for reading and writing but not for deleting: no file can be renamed over it, as while a backup reads it.
+#[cfg(windows)]
 const SHARE_READ_AND_WRITE: u32 = 0x1 | 0x2;
+
+// What keeps the part.met from being replaced: another program's handle on Windows, elsewhere its directory.
+#[cfg(windows)]
+type Holder = File;
+#[cfg(unix)]
+type Holder = queue_lab::ReadOnly;
 
 struct Saving {
     lab: QueueLab,
     hash: [u8; 16],
-    holder: Option<File>,
+    holder: Option<Holder>,
     engine_busy: Duration,
 }
 
@@ -52,7 +61,11 @@ impl Saving {
 
     fn given_another_program_holds_its_part_met(&mut self) {
         let met = self.lab.queue.get(&self.hash).unwrap().file.met_file();
-        self.holder = Some(OpenOptions::new().read(true).share_mode(SHARE_READ_AND_WRITE).open(met).unwrap());
+        #[cfg(windows)]
+        let holder = OpenOptions::new().read(true).share_mode(SHARE_READ_AND_WRITE).open(met).unwrap();
+        #[cfg(unix)]
+        let holder = queue_lab::ReadOnly::of(met.parent().unwrap());
+        self.holder = Some(holder);
     }
 
     fn when_the_download_is_paused_and_saved(&mut self) {

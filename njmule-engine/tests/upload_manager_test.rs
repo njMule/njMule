@@ -25,11 +25,12 @@ use njmule_engine::protocol::ed2k::client_messages::{self, FileStatus, PartStatu
 use njmule_engine::protocol::ed2k::client_reasks::{self, Ack, Ping};
 use njmule_engine::protocol::ed2k::hello::{Hello, Ours};
 use njmule_engine::protocol::ed2k::source_exchange as exchange;
+use njmule_engine::protocol::io::PacketWriter;
 use njmule_engine::protocol::packet::opcodes::{client, extended};
 use njmule_engine::protocol::packet::{Packet, frame_limits, packing, protocol};
 use njmule_engine::upload::credits::Credits;
 use njmule_engine::upload::upload_manager::{self, BlockRead, FileCounts, ReaskAnswer, Settings, UploadManager};
-use njmule_engine::upload::upload_session::{self, MAX_BLOCK};
+use njmule_engine::upload::upload_session::{self, FILES_DIRECTORY, MAX_BLOCK};
 use njmule_engine::upload::uploadable::Uploadable;
 use queue_lab::QueueLab;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
@@ -74,6 +75,7 @@ struct Loop {
     // Our downloads with their checked parts, and the sources each of them has.
     downloads: Arc<Mutex<HashMap<[u8; 16], Uploadable>>>,
     download_sources: Arc<Mutex<Vec<exchange::Source>>>,
+    visible: Arc<Mutex<Option<Vec<SharedFile>>>>,
     settings: Arc<Mutex<Settings>>,
     base: Instant,
     offset: Arc<Mutex<Duration>>,
@@ -133,7 +135,9 @@ impl Loop {
                     downloads.lock().unwrap().contains_key(hash).then(|| told.lock().unwrap().clone())
                 };
                 let ours = self.ours.clone();
-                self.manager.received(&handle, &peer, true, &packet, &ours, &find, &|| None, &sources, now);
+                let visible = Arc::clone(&self.visible);
+                let visible = move || visible.lock().unwrap().clone();
+                self.manager.received(&handle, &peer, true, &packet, &ours, &find, &visible, &sources, now);
                 self.calls();
             }
             LinkEvent::Closed(link, _) => {
@@ -306,6 +310,9 @@ struct Uploads {
     shared: Arc<Mutex<HashMap<[u8; 16], SharedFile>>>,
     downloads: Arc<Mutex<HashMap<[u8; 16], Uploadable>>>,
     download_sources: Arc<Mutex<Vec<exchange::Source>>>,
+    visible: Arc<Mutex<Option<Vec<SharedFile>>>>,
+    // What a client got up to an answer.
+    seen: Vec<Packet>,
     // The downloads' queue, its files kept while the test runs; the download followed and its last part.
     queue: Option<QueueLab>,
     download: [u8; 16],
@@ -346,6 +353,8 @@ impl Uploads {
             shared: Arc::default(),
             downloads: Arc::default(),
             download_sources: Arc::default(),
+            visible: Arc::default(),
+            seen: Vec::new(),
             queue: None,
             download: [0; 16],
             last_part: Vec::new(),
@@ -435,6 +444,7 @@ impl Uploads {
             shared: Arc::clone(&self.shared),
             downloads: Arc::clone(&self.downloads),
             download_sources: Arc::clone(&self.download_sources),
+            visible: Arc::clone(&self.visible),
             settings: Arc::clone(&self.settings),
             base: Instant::now(),
             offset: Arc::clone(&self.offset),
@@ -1401,6 +1411,177 @@ impl Uploads {
         assert!(described.contains(part), "{why}: {described}");
     }
 
+    // The other requests of a client.
+
+    fn given_the_file_followed_is(&mut self, name: &str) {
+        self.file = Some(self.files[name].clone());
+    }
+
+    async fn given_the_address_banned(&self, address: &str) {
+        self.when_the_address_is_banned(address).await;
+    }
+
+    fn given_no_longer_shared(&self, name: &str) {
+        self.shared.lock().unwrap().remove(&self.files[name].hash);
+    }
+
+    async fn when_it_asks_for_the_sources_of(&mut self, name: &str) {
+        let file = self.files[name].hash;
+        self.clients.get_mut(&self.client).unwrap().send(&exchange::request(&file)).await;
+    }
+
+    async fn when_it_reasks_for(&mut self, name: &str) {
+        let file = self.files[name].hash;
+        self.when_a_reask_for_the_file_comes_from(4672, file).await;
+    }
+
+    fn given_our_files_visible(&self) {
+        *self.visible.lock().unwrap() = Some(self.shared.lock().unwrap().values().cloned().collect());
+    }
+
+    fn given_the_aich_hash_of_the_file(&self, aich_hash: [u8; 20]) {
+        let mut file = self.file.clone().unwrap();
+        file.aich_hash = Some(aich_hash);
+        self.shared.lock().unwrap().insert(file.hash, file);
+    }
+
+    async fn given_the_files_of_the_directory_listed(&mut self, directory: &str) {
+        self.when_the_client_asks_for_the_files_of(directory).await;
+        self.then_the_files_listed_are(1);
+    }
+
+    async fn when_the_client_sends(&mut self, packet: Packet, answer: (u8, u8)) {
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&packet).await;
+        let seen = client.until(answer.0, answer.1).await;
+        self.answer = seen.last().cloned();
+    }
+
+    async fn when_the_client_asks_for_the_hash_set_of_the_download(&mut self) {
+        let file = self.download;
+        let packet = client_messages::for_file(client::HASHSETREQUEST, &file);
+        self.when_the_client_sends(packet, (protocol::EDONKEY, client::HASHSETANSWER)).await;
+    }
+
+    async fn when_the_client_asks_for_our_directories(&mut self) {
+        let packet = Packet::empty(protocol::EDONKEY, client::ASKSHAREDDIRS);
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&packet).await;
+        self.answer = Some(client.next().await);
+    }
+
+    async fn when_the_client_asks_for_the_files_of(&mut self, directory: &str) {
+        let mut out = PacketWriter::new();
+        out.u16(directory.len() as u16).bytes(directory.as_bytes());
+        let packet = Packet::written(protocol::EDONKEY, client::ASKSHAREDFILESDIR, out);
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&packet).await;
+        self.answer = Some(client.next().await);
+    }
+
+    async fn when_the_client_asks_for_its_public_address(&mut self) {
+        let packet = Packet::empty(protocol::EMULE, extended::PUBLICIP_REQ);
+        self.when_the_client_sends(packet, (protocol::EMULE, extended::PUBLICIP_ANSWER)).await;
+    }
+
+    async fn when_the_client_asks_for_the_aich_hash_of_the_file(&mut self) {
+        let file = self.file.as_ref().unwrap().hash;
+        let packet = Packet::of(protocol::EMULE, extended::AICHFILEHASHREQ, file.to_vec());
+        self.when_the_client_sends(packet, (protocol::EMULE, extended::AICHFILEHASHANS)).await;
+    }
+
+    async fn when_the_client_asks_for_aich_recovery_data(&mut self) {
+        let file = self.file.as_ref().unwrap().hash;
+        let mut out = PacketWriter::new();
+        out.hash16(&file).u16(0).bytes(&[0xA1; 20]);
+        let packet = Packet::written(protocol::EMULE, extended::AICHREQUEST, out);
+        self.when_the_client_sends(packet, (protocol::EMULE, extended::AICHANSWER)).await;
+    }
+
+    async fn when_the_client_cancels_its_transfer(&mut self) {
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&Packet::empty(protocol::EDONKEY, client::CANCELTRANSFER)).await;
+    }
+
+    async fn when_the_client_sends_a_request_that_does_not_decode(&mut self) {
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&Packet::of(protocol::EDONKEY, client::REQUESTPARTS, vec![1])).await;
+    }
+
+    async fn when_it_asks_again_at_once_as_an_old_client_and_for_a_file_we_do_not_have(&mut self) {
+        let file = self.file.as_ref().unwrap().hash;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&exchange::request(&file)).await;
+        client.send(&exchange::request_in_version(&file, 0)).await;
+        client.send(&exchange::request(&[77; 16])).await;
+    }
+
+    async fn when_the_uploads_close(&self) {
+        self.on_loop(|state| state.manager.close()).await;
+    }
+
+    fn then_the_hash_set_told_has_parts(&self, count: usize) {
+        let answer = client_messages::HashSet::decode(self.answer.as_ref().unwrap()).unwrap();
+        assert_eq!((answer.file, answer.parts.len()), (self.download, count));
+    }
+
+    fn then_the_answer_is(&self, answer: (u8, u8)) {
+        let packet = self.answer.as_ref().unwrap();
+        assert_eq!((packet.protocol(), packet.opcode()), answer);
+    }
+
+    fn then_the_directory_listed_is(&self, directory: &str) {
+        self.then_the_answer_is((protocol::EDONKEY, client::ASKSHAREDDIRSANS));
+        let mut input = self.answer.as_ref().unwrap().reader();
+        assert_eq!(input.u32().unwrap(), 1);
+        assert_eq!(input.string16().unwrap(), directory);
+    }
+
+    fn then_the_files_listed_are(&self, count: u32) {
+        self.then_the_answer_is((protocol::EDONKEY, client::ASKSHAREDFILESDIRANS));
+        let mut input = self.answer.as_ref().unwrap().reader();
+        let length = usize::from(input.u16().unwrap());
+        input.bytes(length).unwrap();
+        assert_eq!(input.u32().unwrap(), count);
+    }
+
+    // The ask, then a request for the file's name: what comes up to its answer.
+    async fn when_the_client_asks_again_for_the_files_of(&mut self, directory: &str) {
+        let mut out = PacketWriter::new();
+        out.u16(directory.len() as u16).bytes(directory.as_bytes());
+        let file = self.file.as_ref().unwrap().hash;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        client.send(&Packet::written(protocol::EDONKEY, client::ASKSHAREDFILESDIR, out)).await;
+        client.send(&client_messages::for_file(client::REQUESTFILENAME, &file)).await;
+        self.seen = client.until(protocol::EDONKEY, client::REQFILENAMEANSWER).await;
+    }
+
+    fn then_our_files_are_not_listed_again(&self) {
+        assert_eq!(self.seen.len(), 1, "only the name");
+    }
+
+    fn then_the_answer_carries(&self, payload: &[u8]) {
+        assert_eq!(self.answer.as_ref().unwrap().payload(), payload);
+    }
+
+    fn then_the_answer_carries_the_file_hash_then(&self, rest: &[u8]) {
+        let file = self.file.as_ref().unwrap().hash;
+        self.then_the_answer_carries(&[&file[..], rest].concat());
+    }
+
+    async fn when_it_reasks_right_away(&mut self, times: u32) {
+        let file = self.file.as_ref().unwrap().hash;
+        for _ in 0..times {
+            self.given_time_passed(Duration::from_secs(1));
+            self.when_a_reask_for_the_file_comes_from(4672, file).await;
+        }
+    }
+
+    async fn then_the_address_is_banned_for_asking_too_often(&self) {
+        let bans = self.on_loop(|state| state.manager.bans(state.now())).await;
+        assert_eq!(bans.len(), 1);
+    }
+
     async fn waiting_files(&self) -> Vec<String> {
         let names: HashMap<[u8; 16], String> = self.files.values().map(|file| (file.hash, file.name.clone())).collect();
         let now = self.on_loop(|state| state.manager.uploads(state.now())).await;
@@ -1994,4 +2175,254 @@ async fn should_forget_the_source_answers_given_once_they_can_be_asked_again() {
     uploads.when_the_longest_wait_for_sources_passes();
 
     uploads.then_no_source_answer_is_remembered().await;
+}
+
+// Beyond the Java engine's twins: requests its engine tests send through a whole engine, and the edges of the queue.
+
+#[tokio::test]
+async fn should_tell_a_client_the_hash_set_of_a_download() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_download_with_only_its_last_part_checked("partial.bin", 1000, 11);
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+
+    uploads.when_the_client_asks_for_the_hash_set_of_the_download().await;
+
+    uploads.then_the_hash_set_told_has_parts(2);
+}
+
+#[tokio::test]
+async fn should_deny_our_directories_when_nobody_may_see_our_files() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("seen.bin", 3000, 1);
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+
+    uploads.when_the_client_asks_for_our_directories().await;
+
+    uploads.then_the_answer_is((protocol::EDONKEY, client::ASKSHAREDDENIEDANS));
+}
+
+#[tokio::test]
+async fn should_list_one_pseudo_directory_when_our_files_may_be_seen() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("seen.bin", 3000, 1);
+    uploads.given_our_files_visible();
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+
+    uploads.when_the_client_asks_for_our_directories().await;
+
+    uploads.then_the_directory_listed_is(FILES_DIRECTORY);
+}
+
+#[tokio::test]
+async fn should_deny_the_files_of_a_directory_when_nobody_may_see_them() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("seen.bin", 3000, 1);
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+
+    uploads.when_the_client_asks_for_the_files_of(FILES_DIRECTORY).await;
+
+    uploads.then_the_answer_is((protocol::EDONKEY, client::ASKSHAREDDENIEDANS));
+}
+
+#[tokio::test]
+async fn should_list_our_files_in_the_pseudo_directory() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("seen.bin", 3000, 1);
+    uploads.given_our_files_visible();
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+
+    uploads.when_the_client_asks_for_the_files_of(FILES_DIRECTORY).await;
+
+    uploads.then_the_files_listed_are(1);
+}
+
+#[tokio::test]
+async fn should_list_no_file_in_another_directory() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("seen.bin", 3000, 1);
+    uploads.given_our_files_visible();
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+
+    uploads.when_the_client_asks_for_the_files_of("Films").await;
+
+    uploads.then_the_files_listed_are(0);
+}
+
+#[tokio::test]
+async fn should_list_our_files_once_a_connection() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("seen.bin", 3000, 1);
+    uploads.given_our_files_visible();
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+    uploads.given_the_files_of_the_directory_listed(FILES_DIRECTORY).await;
+
+    uploads.when_the_client_asks_again_for_the_files_of(FILES_DIRECTORY).await;
+
+    uploads.then_our_files_are_not_listed_again();
+}
+
+#[tokio::test]
+async fn should_tell_a_client_its_public_address() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+
+    uploads.when_the_client_asks_for_its_public_address().await;
+
+    uploads.then_the_answer_carries(&[127, 0, 0, 1]);
+}
+
+#[tokio::test]
+async fn should_tell_the_aich_hash_of_a_file_that_has_one() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("hashed.bin", 3000, 1);
+    uploads.given_the_aich_hash_of_the_file([0xA1; 20]);
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+
+    uploads.when_the_client_asks_for_the_aich_hash_of_the_file().await;
+
+    uploads.then_the_answer_carries_the_file_hash_then(&[0xA1; 20]);
+}
+
+#[tokio::test]
+async fn should_answer_a_request_for_aich_recovery_data_with_the_file_hash_alone() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("hashed.bin", 3000, 1);
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+
+    uploads.when_the_client_asks_for_aich_recovery_data().await;
+
+    uploads.then_the_answer_carries_the_file_hash_then(&[]);
+}
+
+#[tokio::test]
+async fn should_end_the_slot_of_a_client_that_cancels_its_transfer() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("wanted.bin", 3000, 1);
+    uploads.given_the_uploads_started().await;
+    uploads.client = 1;
+    uploads.given_the_client_got_a_slot(1).await;
+
+    uploads.when_the_client_cancels_its_transfer().await;
+
+    uploads.then_the_slot_is_gone().await;
+}
+
+#[tokio::test]
+async fn should_close_the_connection_of_a_client_whose_request_does_not_decode() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("wanted.bin", 3000, 1);
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_connected(1).await;
+
+    uploads.when_the_client_sends_a_request_that_does_not_decode().await;
+
+    uploads.then_the_connection_ends().await;
+}
+
+#[tokio::test]
+async fn should_tell_no_sources_again_at_once_nor_to_an_old_client_nor_for_a_file_we_do_not_have() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_file_with_a_waiting_client().await;
+    uploads.given_a_client_told_its_sources().await;
+
+    uploads.when_it_asks_again_at_once_as_an_old_client_and_for_a_file_we_do_not_have().await;
+
+    uploads.then_it_hears_no_sources().await;
+}
+
+#[tokio::test]
+async fn should_tell_no_sources_of_a_file_nobody_else_takes() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_file_with_a_waiting_client().await;
+    uploads.given_a_client_that_asked_for_another_file().await;
+    uploads.given_the_file_followed_is("other.bin");
+
+    uploads.when_it_asks_for_the_sources_of_the_file().await;
+
+    uploads.then_it_hears_no_sources().await;
+}
+
+#[tokio::test]
+async fn should_end_the_slot_and_the_connection_whose_block_cannot_be_read() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("moved.txt", 4000, 12);
+    uploads.given_the_file_listed_at("gone.txt");
+    uploads.given_the_uploads_started().await;
+    uploads.client = 1;
+    uploads.given_the_client_got_a_slot(1).await;
+
+    uploads.when_the_client_asks_for_the_block(0, 1000).await;
+
+    uploads.then_the_connection_ends().await;
+    uploads.then_the_slot_is_gone().await;
+}
+
+#[tokio::test]
+async fn should_end_the_slots_when_the_uploads_close() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("wanted.bin", 3000, 1);
+    uploads.given_the_uploads_started().await;
+    uploads.client = 1;
+    uploads.given_the_client_got_a_slot(1).await;
+
+    uploads.when_the_uploads_close().await;
+
+    uploads.then_the_connection_ends().await;
+}
+
+#[tokio::test]
+async fn should_answer_no_reask_from_a_banned_address() {
+    let mut uploads = Uploads::new();
+    uploads.given_two_slots_busy_under_a_limit().await;
+    uploads.given_a_client_waiting_that_takes_udp_reasks_on_port(4672).await;
+    uploads.given_the_address_banned("127.0.0.1").await;
+
+    uploads.when_it_reasks_right_away(1).await;
+
+    uploads.then_there_is_no_answer();
+}
+
+#[tokio::test]
+async fn should_ban_a_client_reasking_too_often_over_udp() {
+    let mut uploads = Uploads::new();
+    uploads.given_two_slots_busy_under_a_limit().await;
+    uploads.given_a_client_waiting_that_takes_udp_reasks_on_port(4672).await;
+
+    uploads.when_it_reasks_right_away(upload_manager::BAD_LIMIT).await;
+
+    uploads.then_there_is_no_answer();
+    uploads.then_the_address_is_banned_for_asking_too_often().await;
+}
+
+#[tokio::test]
+async fn should_tell_no_sources_of_a_file_no_longer_shared() {
+    let mut uploads = Uploads::new();
+    uploads.given_a_file_with_a_waiting_client().await;
+    uploads.given_a_client_that_asked_for_another_file().await;
+    uploads.given_no_longer_shared("other.bin");
+
+    uploads.when_it_asks_for_the_sources_of("other.bin").await;
+
+    uploads.then_it_hears_no_sources().await;
+}
+
+#[tokio::test]
+async fn should_answer_nothing_to_a_reask_for_another_file_than_the_one_awaited() {
+    let mut uploads = Uploads::new();
+    uploads.given_two_slots_busy_under_a_limit().await;
+    uploads.given_a_client_waiting_that_takes_udp_reasks_on_port(4672).await;
+
+    uploads.when_it_reasks_for("busy.bin").await;
+
+    uploads.then_there_is_no_answer();
 }

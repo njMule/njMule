@@ -931,6 +931,18 @@ impl Sources {
         assert_eq!(seen.address, format!("{ip}:{}", self.source().port()));
     }
 
+    fn given_the_ip_filter_blocks_the_loopback(&self) {
+        self.downloads().engine.lock().unwrap().blocked.push(u32::from(Ipv4Addr::LOCALHOST));
+    }
+
+    async fn when_the_blocked_sources_are_dropped(&self) {
+        self.run(|lab| {
+            let ours = lab.ours.clone();
+            lab.manager.drop_blocked_sources(&ours)
+        })
+        .await;
+    }
+
     async fn then_the_download_has_sources(&self, count: usize) {
         let hash = self.hash;
         // Taken at the first tick, if any.
@@ -1640,4 +1652,21 @@ async fn should_take_no_source_by_hand_into_a_full_source_list() {
         .await;
 
     sources.then_every_one_is_refused();
+}
+
+// Beyond the Java engine's twins: a source connected when the IP filter comes to block it is hung up on.
+#[tokio::test]
+async fn should_hang_up_on_a_connected_source_the_ip_filter_comes_to_block() {
+    let mut sources = Sources::new();
+    sources.given_the_data(random(5000, 31));
+    sources.given_a_source(0, 0).await;
+    sources.given_the_manager();
+    sources.given_a_download_of_the_data_from_the_source("blocked.bin").await;
+    sources.given_the_source_gave_us_a_slot().await;
+    sources.given_the_ip_filter_blocks_the_loopback();
+
+    sources.when_the_blocked_sources_are_dropped().await;
+
+    sources.then_the_connection_closes().await;
+    sources.then_the_download_has_sources(0).await;
 }

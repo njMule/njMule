@@ -111,3 +111,55 @@ fn should_start_with_none_from_a_file_it_cannot_read() {
 
     assert!(names(&finished).is_empty());
 }
+
+// Beyond the Java engine's examples: every priority, and lists it cannot take.
+
+#[test]
+fn should_keep_every_priority_across_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut finished = FinishedDownloads::load(dir.path());
+    let priorities = [DownloadPriority::Low, DownloadPriority::Normal, DownloadPriority::High, DownloadPriority::Auto];
+    for (at, priority) in priorities.into_iter().enumerate() {
+        let mut download = completed([at as u8 + 10; 16], &format!("file-{at}"), 0);
+        download.priority = priority;
+        finished.add(&download);
+    }
+
+    let again = FinishedDownloads::load(dir.path());
+
+    assert_eq!(again.downloads().map(|d| d.priority).collect::<Vec<_>>(), priorities);
+}
+
+#[test]
+fn should_leave_out_a_completed_download_of_an_unknown_priority() {
+    let dir = tempfile::tempdir().unwrap();
+    let hash = "01".repeat(16);
+    let list = format!(
+        r#"{{"format":1,"downloads":[{{"hash":"{hash}","name":"a","size":5,"priority":"URGENT","category":0}}]}}"#
+    );
+    fs::write(dir.path().join(FILE_NAME), list).unwrap();
+
+    let finished = FinishedDownloads::load(dir.path());
+
+    assert!(names(&finished).is_empty());
+}
+
+#[test]
+fn should_start_with_none_from_a_file_that_is_no_json() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join(FILE_NAME), "not json").unwrap();
+
+    let finished = FinishedDownloads::load(dir.path());
+
+    assert!(names(&finished).is_empty());
+}
+
+#[test]
+fn should_start_with_none_from_a_list_of_another_format() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join(FILE_NAME), r#"{"format":2,"downloads":[]}"#).unwrap();
+
+    let finished = FinishedDownloads::load(dir.path());
+
+    assert!(names(&finished).is_empty());
+}

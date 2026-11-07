@@ -55,6 +55,7 @@ struct Manager {
     renamed: Option<Result<bool, &'static str>>,
     next: Option<DownloadInfo>,
     preview: Option<PathBuf>,
+    dropped: usize,
 }
 
 impl Manager {
@@ -72,6 +73,7 @@ impl Manager {
             renamed: None,
             next: None,
             preview: None,
+            dropped: 0,
         }
     }
 
@@ -552,6 +554,37 @@ impl Manager {
 
     fn then_there_is_a_file_to_preview(&self) {
         assert!(self.preview.is_some());
+    }
+
+    // The IP filter and the server, as the engine changes them.
+
+    fn given_the_ip_filter_blocks(&self, ip: Ipv4Addr) {
+        self.downloads().engine.lock().unwrap().blocked.push(u32::from(ip));
+    }
+
+    async fn given_the_server_asked_for_the_sources_once(&self) {
+        self.downloads().wait_for("the server asked", |lab| lab.server_asked().len() == 1).await;
+    }
+
+    async fn when_the_blocked_sources_are_dropped(&mut self) {
+        self.dropped = self
+            .run(|lab| {
+                let ours = lab.ours.clone();
+                lab.manager.drop_blocked_sources(&ours)
+            })
+            .await;
+    }
+
+    async fn when_the_server_connects_again(&self) {
+        self.run(|lab| lab.manager.server_connected()).await;
+    }
+
+    fn then_the_sources_dropped_are(&self, count: usize) {
+        assert_eq!(self.dropped, count);
+    }
+
+    async fn then_the_server_is_asked_for_the_sources_again(&self) {
+        self.downloads().wait_for("the server asked again", |lab| lab.server_asked().len() == 2).await;
     }
 
     fn downloads(&self) -> &Downloads {
@@ -1136,4 +1169,30 @@ async fn should_take_a_loopback_source_by_hand_as_the_user_chose() {
     manager.when_a_source_is_added_by_hand(address(Ipv4Addr::LOCALHOST)).await;
 
     manager.then_it_is_accepted();
+}
+
+// Beyond the Java engine's twins: what its engine tests reach through a whole engine.
+
+#[tokio::test]
+async fn should_drop_the_sources_the_ip_filter_blocks_once_it_changes() {
+    let mut manager = Manager::new();
+    manager.given_a_download_with_the_server_sources(&[CORRUPT, HONEST]).await;
+    manager.given_the_ip_filter_blocks(CORRUPT);
+
+    manager.when_the_blocked_sources_are_dropped().await;
+
+    manager.then_the_sources_dropped_are(1);
+    manager.then_its_sources_are(&[HONEST]).await;
+}
+
+#[tokio::test]
+async fn should_ask_the_server_for_sources_again_at_once_when_it_connects() {
+    let mut manager = Manager::new();
+    manager.given_the_download_manager_with_a_server_that_answers().await;
+    manager.given_a_download("asked.bin", [0x5c; 16]).await;
+    manager.given_the_server_asked_for_the_sources_once().await;
+
+    manager.when_the_server_connects_again().await;
+
+    manager.then_the_server_is_asked_for_the_sources_again().await;
 }
