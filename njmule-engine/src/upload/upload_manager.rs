@@ -805,6 +805,7 @@ impl UploadManager {
     fn uploaders(&self, file: &[u8; 16]) -> Vec<exchange::Source> {
         self.waiting
             .values()
+            .chain(self.slots.iter().map(|slot| &slot.client))
             .filter(|client| client.file == *file && !client.low_id)
             .filter_map(|client| match client.ip {
                 IpAddr::V4(ip) => Some(exchange::Source {
