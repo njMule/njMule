@@ -7,6 +7,7 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
 use std::net::Ipv4Addr;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use njmule_engine::kad::kad_contact::KadContact;
@@ -170,7 +171,7 @@ impl Lookups {
             contact.set_verified(true);
             assert_eq!(table.add(contact, false, UdpKey::default(), 0, self.t0), Outcome::Added);
         }
-        let mut started = Lookup::new(self.target, kind, ipv4::is_lan, self.t0);
+        let mut started = Lookup::new(self.target, kind, Arc::new(ipv4::is_lan), self.t0);
         started.start(&table, &mut self.sent);
         self.lookup = Some(started);
     }

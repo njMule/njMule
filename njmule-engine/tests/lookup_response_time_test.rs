@@ -6,6 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use njmule_engine::kad::kad_contact::KadContact;
@@ -72,7 +73,7 @@ impl ResponseTime {
             contact.set_verified(true);
             table.add(contact, false, UdpKey::default(), 0, self.clock);
         }
-        let mut lookup = Lookup::new(self.target, kind, |_| false, self.clock);
+        let mut lookup = Lookup::new(self.target, kind, Arc::new(|_| false), self.clock);
         lookup.start(&table, &mut self.asked);
         self.lookup = Some(lookup);
     }

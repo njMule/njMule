@@ -5,6 +5,7 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use njmule_engine::kad::kad_contact::KadContact;
@@ -69,7 +70,7 @@ impl Stopping {
             table.add(contact, false, UdpKey::default(), 0, self.clock);
         }
         assert!(table.size() >= usize::try_from(nodes.min(40)).unwrap());
-        let mut lookup = Lookup::new(self.target, kind, ipv4::is_lan, self.clock);
+        let mut lookup = Lookup::new(self.target, kind, Arc::new(ipv4::is_lan), self.clock);
         lookup.start(&table, &mut self.sent);
         self.lookup = Some(lookup);
     }
