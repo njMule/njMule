@@ -184,6 +184,8 @@ enum PeerEvent {
     Resolved([u8; 16], Vec<SocketAddr>),
     // The connection of a hello asked through the API, and who waits for the answer.
     Probed(Box<io::Result<tcp_connector::Connection>>, oneshot::Sender<io::Result<PeerInfo>>),
+    // The connection to a node that offered to be our Kad buddy, by the buddy link's attempt.
+    BuddyDialed(u64, Box<io::Result<tcp_connector::Connection>>),
 }
 
 // How long a client we call for its upload slot has to accept the connection.
@@ -1222,6 +1224,7 @@ impl Network {
                     let _ = answer.send(Err(e));
                 }
             },
+            PeerEvent::BuddyDialed(attempt, result) => self.buddy_dialed(attempt, *result),
         }
         self.after_downloads();
     }
@@ -1390,6 +1393,7 @@ impl Network {
                 }
                 self.downloads.closed(link, reason.as_deref(), &ours);
                 self.uploads.closed(link);
+                self.buddy_closed(link, reason.as_deref());
             }
         }
         self.after_downloads();
@@ -1429,6 +1433,7 @@ impl Network {
                     self.uploads.called(user_hash, &handle, &hello, trusted, Instant::now());
                     self.after_uploads();
                 }
+                self.buddy_greeted(link, &hello);
                 self.downloads.greeted(link, hello, ours);
                 return;
             }
@@ -1447,6 +1452,8 @@ impl Network {
             self.identify(link);
             let server_ip = self.shared.context.lock().map(|context| context.ip).unwrap_or(0);
             self.downloads.adopt(&handle, &hello, server_ip, &self.settings(), ours);
+            // The firewalled node we agreed to serve keeps its link as a buddy link too.
+            self.buddy_adopt(&handle, &hello);
             return;
         };
         if let Some(session) = self.peers.get_mut(&link).and_then(|peer| peer.identity.as_mut())
@@ -1490,6 +1497,7 @@ impl Network {
                 );
                 self.after_uploads();
             }
+            Side::Buddy if self.has_buddy_link(link) => self.buddy_packet(link, packet),
             Side::Download | Side::Buddy => {
                 tracing::debug!("Nothing on {} takes opcode {:#04x}", handle.remote(), packet.opcode());
             }
@@ -1615,16 +1623,25 @@ impl Network {
 
     // A server asks us to call a firewalled client: it connects to us no other way.
     fn callback_requested(&mut self, request: &CallbackRequested, preferences: &Preferences) {
-        let address = SocketAddr::from((Ipv4Addr::from(request.endpoint.ip), request.endpoint.port));
+        let address = SocketAddrV4::new(Ipv4Addr::from(request.endpoint.ip), request.endpoint.port);
         // The client may require obfuscation, which needs its user hash.
         let obfuscate = request.user_hash.filter(|_| {
             request.crypt_options & CRYPT_REQUESTED_OR_REQUIRED != 0
                 && preferences.obfuscation != ObfuscationMode::Disabled
         });
-        // Nobody must have us probe our LAN, nor call the same client again and again.
-        let ip = request.endpoint.ip;
-        if !server_list::is_usable(ip) || request.endpoint.port == 0 || self.is_filtered_lan(ip) {
-            tracing::debug!("Ignoring a callback request to {address}");
+        self.call_client_back(address, obfuscate, "for a server");
+    }
+
+    // Connects to a firewalled client that asked for it, then says hello: it connects to us no other way.
+    fn call_client_back(&mut self, to: SocketAddrV4, obfuscate: Option<[u8; 16]>, why: &str) {
+        // Nobody must have us probe our LAN, call a client we banned, nor call the same client again and again.
+        let (ip, address) = (u32::from(*to.ip()), SocketAddr::V4(to));
+        if !server_list::is_usable(ip)
+            || to.port() == 0
+            || self.is_filtered_lan(ip)
+            || self.uploads.is_banned(address.ip(), Instant::now())
+        {
+            tracing::debug!("Ignoring a callback request to {address} ({why})");
             return;
         }
         self.callbacks.retain(|_, at| at.elapsed() < CALLBACK_REPEAT);
