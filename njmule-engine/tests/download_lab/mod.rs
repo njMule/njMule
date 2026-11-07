@@ -103,6 +103,11 @@ impl Lab {
         info
     }
 
+    /// The files the server was asked for the sources of, in order.
+    pub fn server_asked(&self) -> Vec<[u8; 16]> {
+        self.server.0.lock().unwrap().asked.clone()
+    }
+
     pub fn tick(&mut self) {
         let ours = self.ours.clone();
         self.manager.tick(&mut self.server, &self.settings, &ours);
@@ -195,44 +200,32 @@ pub struct Downloads {
     pub server: Arc<Mutex<FakeServer>>,
     offset: Arc<AtomicU64>,
     jobs: mpsc::UnboundedSender<Job>,
+    serving: Option<tokio::task::JoinHandle<()>>,
+    user_hash: [u8; 16],
+    our_id: u32,
 }
 
 impl Downloads {
-    /// The downloads of a client at `our_ip` (in the order the network gives it) with `settings`.
+    /// The downloads of a client with `our_id` (an IP in the order the network gives it) with `settings`.
     pub fn start(user_hash: [u8; 16], our_id: u32, settings: Settings) -> Self {
         let dir = tempfile::tempdir().unwrap();
-        let offset = Arc::new(AtomicU64::new(0));
-        let base = Instant::now();
-        let ticks = Arc::clone(&offset);
-        let clock = Box::new(move || base + Duration::from_millis(ticks.load(Ordering::Relaxed)));
-        let (disk_in, disk) = mpsc::unbounded_channel();
-        let manager = DownloadManager::open(
-            &dir.path().join("temp"),
-            &dir.path().join("incoming"),
-            Box::new(|| 0),
-            disk_in,
-            clock,
-        )
-        .unwrap();
         let server = Arc::new(Mutex::new(FakeServer { client_id: our_id, ..FakeServer::default() }));
-        let ours = Ours { nick: "test", udp_port: 0, kad_port: 0, misc_options1: 0, misc_options2: 0 };
-        let (link_events, links) = mpsc::unbounded_channel();
-        let (connected_in, connected) = mpsc::unbounded_channel();
-        let (jobs_in, jobs) = mpsc::unbounded_channel();
-        let lab = Lab {
-            manager,
-            ours: Hello::of(user_hash, our_id, settings.listen_port, &ours, 0, 0),
-            settings,
-            events: Vec::new(),
-            server: Server(Arc::clone(&server)),
-            links: HashMap::new(),
-            greeted: HashMap::new(),
-            next_link: 1,
-            link_events,
-            connected: connected_in,
-        };
-        tokio::spawn(serve(lab, jobs, links, connected, disk));
-        Self { dir, server, offset, jobs: jobs_in }
+        let offset = Arc::new(AtomicU64::new(0));
+        let (jobs, serving) = open(dir.path(), user_hash, our_id, settings, &server, &offset);
+        Self { dir, server, offset, jobs, serving: Some(serving), user_hash, our_id }
+    }
+
+    /// Closes the downloads, which saves them, and opens them again from their files.
+    pub async fn restart(&mut self) {
+        let settings = self.run(|lab| lab.settings.clone()).await;
+        // The loop closes the downloads once it has no job left to wait for.
+        drop(std::mem::replace(&mut self.jobs, mpsc::unbounded_channel().0));
+        if let Some(old) = self.serving.take() {
+            old.await.unwrap();
+        }
+        let (jobs, serving) = open(self.dir.path(), self.user_hash, self.our_id, settings, &self.server, &self.offset);
+        self.jobs = jobs;
+        self.serving = Some(serving);
     }
 
     /// Settings as most Java tests give them: obfuscation supported, 100 sources a file, LAN sources left out.
@@ -242,6 +235,8 @@ impl Downloads {
             max_sources_per_file: 100,
             listen_port: PORT,
             filter_lan: true,
+            clean_up_new_names: false,
+            name_cleanups: String::new(),
         }
     }
 
@@ -275,6 +270,40 @@ impl Downloads {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     }
+}
+
+// A manager on the files of `dir`, on a loop of its own.
+fn open(
+    dir: &std::path::Path,
+    user_hash: [u8; 16],
+    our_id: u32,
+    settings: Settings,
+    server: &Arc<Mutex<FakeServer>>,
+    offset: &Arc<AtomicU64>,
+) -> (mpsc::UnboundedSender<Job>, tokio::task::JoinHandle<()>) {
+    let base = Instant::now();
+    let ticks = Arc::clone(offset);
+    let clock = Box::new(move || base + Duration::from_millis(ticks.load(Ordering::Relaxed)));
+    let (disk_in, disk) = mpsc::unbounded_channel();
+    let manager =
+        DownloadManager::open(&dir.join("temp"), &dir.join("incoming"), Box::new(|| 0), disk_in, clock).unwrap();
+    let ours = Ours { nick: "test", udp_port: 0, kad_port: 0, misc_options1: 0, misc_options2: 0 };
+    let (link_events, links) = mpsc::unbounded_channel();
+    let (connected_in, connected) = mpsc::unbounded_channel();
+    let (jobs_in, jobs) = mpsc::unbounded_channel();
+    let lab = Lab {
+        manager,
+        ours: Hello::of(user_hash, our_id, settings.listen_port, &ours, 0, 0),
+        settings,
+        events: Vec::new(),
+        server: Server(Arc::clone(server)),
+        links: HashMap::new(),
+        greeted: HashMap::new(),
+        next_link: 1,
+        link_events,
+        connected: connected_in,
+    };
+    (jobs_in, tokio::spawn(serve(lab, jobs, links, connected, disk)))
 }
 
 async fn serve(

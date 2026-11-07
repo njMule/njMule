@@ -1416,6 +1416,8 @@ impl Network {
             max_sources_per_file: MAX_SOURCES_PER_FILE,
             listen_port: self.shared.listen_port(),
             filter_lan: preferences.filter_lan_addresses,
+            clean_up_new_names: preferences.clean_up_new_names,
+            name_cleanups: preferences.name_cleanups.clone(),
         }
     }
 
