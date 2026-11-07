@@ -23,6 +23,7 @@ use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::KadInfo;
+use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::peer_info::{Identification as PeerIdentification, PeerInfo};
@@ -91,6 +92,9 @@ const MAX_SOURCES_PER_FILE: usize = 400;
 // The links of the downloads deleted for receiving nothing, in the config directory.
 const DELETED_LINKS_FILE: &str = "deleted-downloads.txt";
 
+/// Where the outcome of a search for notes comes: the notes then known, or why Kad could not search.
+pub type NotesOutcome = oneshot::Receiver<Result<Vec<KadNote>, String>>;
+
 /// What the API asks the network side.
 #[derive(Debug)]
 pub enum Command {
@@ -118,6 +122,11 @@ pub enum Command {
     Kad(oneshot::Sender<Option<KadInfo>>),
     KadContacts(oneshot::Sender<Vec<KadContactInfo>>),
     KadSearches(oneshot::Sender<Vec<KadSearchInfo>>),
+    /// The notes Kad gave on a file so far.
+    KadNotes([u8; 16], oneshot::Sender<Vec<KadNote>>),
+    /// Starts a search for the notes on a file and hands over where its outcome comes; none for a file neither
+    /// downloaded nor shared.
+    SearchKadNotes([u8; 16], oneshot::Sender<Option<NotesOutcome>>),
     ConnectKad(oneshot::Sender<()>),
     DisconnectKad(oneshot::Sender<()>),
     /// Whether Kad runs, and so checks again whether other nodes reach us.
@@ -472,6 +481,12 @@ impl Network {
             }
             Command::KadSearches(answer) => {
                 let _ = answer.send(self.kad_searches());
+            }
+            Command::KadNotes(file, answer) => {
+                let _ = answer.send(self.kad_notes(&file));
+            }
+            Command::SearchKadNotes(file, answer) => {
+                let _ = answer.send(self.search_kad_notes(file));
             }
             Command::ConnectKad(done) => {
                 self.connect_kad();

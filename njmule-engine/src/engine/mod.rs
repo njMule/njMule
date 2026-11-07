@@ -23,6 +23,7 @@ use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::KadInfo;
+use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::nj_mule_info;
@@ -305,6 +306,23 @@ impl Engine {
         self.ask(Command::KadSearches).await.unwrap_or_default()
     }
 
+    /// The notes Kad gave on a file so far, without those the comment filter leaves out.
+    pub async fn kad_notes(&self, file: [u8; 16]) -> Vec<KadNote> {
+        self.ask(|answer| Command::KadNotes(file, answer)).await.unwrap_or_default()
+    }
+
+    /// Asks Kad for the notes on a file we download or share, and answers those known once the search ends.
+    pub async fn search_kad_notes(&self, file: [u8; 16]) -> Result<Vec<KadNote>, NotesError> {
+        let Some(started) = self.ask(|answer| Command::SearchKadNotes(file, answer)).await else {
+            return Err(NotesError::Kad("njMule is stopping".to_owned()));
+        };
+        let outcome = started.ok_or(NotesError::UnknownFile)?;
+        match outcome.await {
+            Ok(found) => found.map_err(NotesError::Kad),
+            Err(_) => Err(NotesError::Kad("njMule is stopping".to_owned())),
+        }
+    }
+
     /// Joins Kad, also after it was stopped by hand.
     pub async fn connect_kad(&self) {
         let _ = self.ask(Command::ConnectKad).await;
@@ -426,6 +444,24 @@ impl Engine {
     fn publish(&self, event: EngineEvent) {
         // Without a front end following, nobody misses the event.
         let _ = self.shared.events.send(event);
+    }
+}
+
+/// Why Kad was not searched for the notes on a file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NotesError {
+    /// The file is neither downloaded nor shared.
+    UnknownFile,
+    /// Kad could not search: it is not connected, or busy with the file.
+    Kad(String),
+}
+
+impl std::fmt::Display for NotesError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownFile => f.write_str("Neither downloaded nor shared"),
+            Self::Kad(reason) => f.write_str(reason),
+        }
     }
 }
 
