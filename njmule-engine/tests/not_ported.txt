@@ -203,10 +203,6 @@ RemoteApiTest.shouldTakeTheFriendSlotBackWithNull
 # The engine's API.
 # Java only: the engine's events are a Flow publisher in Java, a broadcast channel in Rust, whose readers ask for no count.
 EngineApiTest.shouldFailASubscriberThatAsksForNothing
-# The events missed by a slow reader and the log replayed to late ones come with the calls on the engine's state.
-EngineApiTest.shouldLetASlowSubscriberMissEventsWhileTheOthersGetEverything
-EngineApiTest.shouldReplayTheLogUpToItsLimitToALateSubscriber
-EngineApiTest.shouldSendNowhereWhatIsLoggedAfterTheEnd
 # Lists fetched from addresses or read from files (server.met, nodes.dat, IP filter) come with the calls on servers
 # and the engine's state: the Rust API reads server.met and nodes.dat itself.
 EngineApiTest.shouldNeverFetchAServerListFromThisMachine

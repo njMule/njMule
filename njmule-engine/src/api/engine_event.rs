@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 use crate::api::download_info::DownloadInfo;
+use crate::api::log_line::LogLine;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 
@@ -16,6 +17,8 @@ pub enum EngineEvent {
     },
     Stopping,
     PreferencesChanged,
+    /// A line of the user's log.
+    Log(LogLine),
     ServerConnecting(ServerInfo),
     ServerConnected {
         server: ServerInfo,

@@ -26,7 +26,7 @@ use njmule_engine::api::kad_info::{Buddy, KadInfo};
 use njmule_engine::api::kad_note::KadNote;
 use njmule_engine::api::kad_search_info::KadSearchInfo;
 use njmule_engine::api::known_client::KnownClient;
-use njmule_engine::api::nj_mule_engine::NjMuleEngine;
+use njmule_engine::api::nj_mule_engine::{NjMuleEngine, Subscription};
 use njmule_engine::api::peer_comment::PeerComment;
 use njmule_engine::api::peer_info::PeerInfo;
 use njmule_engine::api::saved_search::SavedSearch;
@@ -150,8 +150,8 @@ impl NjMuleEngine for FakeEngine {
         })
     }
 
-    fn subscribe(&self) -> broadcast::Receiver<EngineEvent> {
-        self.events.subscribe()
+    fn subscribe(&self) -> Subscription {
+        Subscription { missed: Vec::new(), live: self.events.subscribe() }
     }
 
     fn stopped(&self) -> BoxFuture<'static, ()> {

@@ -29,6 +29,7 @@ use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
+use crate::api::log_line::Level as LogLevel;
 use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::{Identification as PeerIdentification, PeerInfo};
 use crate::api::saved_search::SavedSearch;
@@ -687,7 +688,7 @@ impl Network {
                     other => other,
                 };
                 if let Ok(info) = &added {
-                    tracing::info!("Downloading {}", info.name);
+                    self.user_log(LogLevel::Info, format!("Downloading {}", info.name));
                 }
                 self.after_downloads();
                 let _ = answer.send(added);
@@ -872,12 +873,24 @@ impl Network {
 
     fn notice(&mut self, notice: Notice, preferences: &Preferences) {
         match notice {
-            Notice::Connecting(server) => self.publish(EngineEvent::ServerConnecting(self.info(&server))),
+            Notice::Connecting(server) => {
+                let info = self.info(&server);
+                self.user_log(LogLevel::Info, format!("Connecting to {}", describe(&info)));
+                self.publish(EngineEvent::ServerConnecting(info));
+            }
             Notice::Connected { server, id, obfuscated } => {
                 self.our_ip = id.reported_ip;
                 self.set_context(ServerContext { client_id: id.client_id, ip: server.ip, port: server.port });
                 let info = self.info(&server);
-                tracing::info!("Connected to {} with id {}", info.address, id.client_id);
+                self.user_log(
+                    LogLevel::Success,
+                    format!(
+                        "Connected to {} with {}{}",
+                        describe(&info),
+                        id_text(&id),
+                        if obfuscated { ", obfuscated" } else { "" }
+                    ),
+                );
                 self.publish(EngineEvent::ServerConnected {
                     server: info,
                     client_id: id.client_id,
@@ -896,7 +909,7 @@ impl Network {
             }
             Notice::IdChanged { server, id } => {
                 self.set_context(ServerContext { client_id: id.client_id, ip: server.ip, port: server.port });
-                tracing::info!("The server gave us a new id: {}", id.client_id);
+                self.user_log(LogLevel::Info, format!("The server gave us a new id: {}", id_text(&id)));
             }
             Notice::Disconnected { server, reason } => {
                 self.set_context(ServerContext::default());
@@ -907,17 +920,33 @@ impl Network {
                 self.searches.server_lost(&mut effects);
                 self.search_effects(effects);
                 let info = server.as_ref().map(|server| self.info(server));
+                let from = info
+                    .as_ref()
+                    .map_or_else(|| "Not connected".to_owned(), |i| format!("Disconnected from {}", describe(i)));
+                self.user_log(LogLevel::Info, format!("{from}: {reason}"));
                 self.publish(EngineEvent::ServerDisconnected { server: info, reason });
             }
             Notice::AttemptFailed { server, reason } => {
-                tracing::info!("Cannot connect to {}: {reason}", server_list::address_of(&server));
+                let info = self.info(&server);
+                self.user_log(LogLevel::Info, format!("Cannot connect to {}: {reason}", describe(&info)));
             }
             Notice::Retrying(wait) => {
-                tracing::info!("No server accepted the connection: trying again in {} s", wait.as_secs());
+                self.user_log(
+                    LogLevel::Info,
+                    format!("No server accepted the connection: trying again in {} s", wait.as_secs()),
+                );
             }
             Notice::Message { server, line } => {
-                tracing::info!("{}: {line}", server_list::address_of(&server));
-                self.publish(EngineEvent::ServerMessage { server: self.info(&server), text: line });
+                let info = self.info(&server);
+                // Warnings and errors go to the user's log too; the rest belongs to the server's information.
+                if line.starts_with("ERROR") {
+                    self.user_log(LogLevel::Error, line.clone());
+                } else if line.starts_with("WARNING") {
+                    self.user_log(LogLevel::Warning, line.clone());
+                } else {
+                    tracing::info!("{}: {line}", describe(&info));
+                }
+                self.publish(EngineEvent::ServerMessage { server: info, text: line });
             }
             Notice::Updated(server) => self.server_updated(&server),
             Notice::CallbackRequested(request) => self.callback_requested(&request, preferences),
@@ -1081,16 +1110,14 @@ impl Network {
                 Binding::Bound(address) => Some(address),
                 Binding::Any | Binding::Missing(_) => None,
             };
-            self.server_relay = Some(RelayKeeper::start(
-                "Server UDP",
-                udp.router(),
-                self.shared.routes.proxy(),
-                local,
-                |level, text| match level {
-                    Level::Info => tracing::info!("{text}"),
-                    Level::Warning => tracing::warn!("{text}"),
-                },
-            ));
+            self.server_relay =
+                Some(RelayKeeper::start("Server UDP", udp.router(), self.shared.routes.proxy(), local, {
+                    let shared = Arc::clone(&self.shared);
+                    move |level, text| match level {
+                        Level::Info => shared.user_log(LogLevel::Info, text.to_owned()),
+                        Level::Warning => shared.user_log(LogLevel::Warning, text.to_owned()),
+                    }
+                }));
         }
         self.searches.set_udp(udp.is_some());
         self.udp = udp;
@@ -1130,8 +1157,8 @@ impl Network {
         let ipv6 = public_ipv6::find(&self.shared.routes);
         if ipv6 != self.our_ipv6 {
             match ipv6 {
-                Some(ip) => tracing::info!("Clients may reach us at {ip}"),
-                None => tracing::info!("No public IPv6 address now"),
+                Some(ip) => self.user_log(LogLevel::Info, format!("Clients may reach us at the IPv6 address {ip}")),
+                None => self.user_log(LogLevel::Info, "No IPv6 address to be reached at any more".to_owned()),
             }
             self.our_ipv6 = ipv6;
         }
@@ -1151,17 +1178,18 @@ impl Network {
         let preferences = self.preferences();
         let local = match &now {
             Binding::Missing(choice) => {
-                tracing::warn!(
-                    "The network interface {choice} is not available: njMule stays offline until it is back"
-                );
+                self.user_log(LogLevel::Warning, offline(choice));
                 None
             }
             Binding::Bound(address) => {
-                tracing::info!("Connections go through {} ({address})", preferences.bind_interface);
+                self.user_log(
+                    LogLevel::Info,
+                    format!("Connections go through {} ({address})", preferences.bind_interface),
+                );
                 Some(Some(*address))
             }
             Binding::Any => {
-                tracing::info!("Connections go through any network interface");
+                self.user_log(LogLevel::Info, "Connections go through any network interface".to_owned());
                 Some(None)
             }
         };
@@ -1357,7 +1385,7 @@ impl Network {
                 }
                 DownloadEvent::Progress(info) => self.publish(EngineEvent::DownloadProgress(info)),
                 DownloadEvent::Completed { info, path, file } => {
-                    tracing::info!("Finished downloading {}", info.name);
+                    self.user_log(LogLevel::Success, format!("Finished downloading {}", info.name));
                     let shared = self.shared_files.completed(SharedFile {
                         hash: file.hash(),
                         name: path.file_name().map_or_else(|| info.name.clone(), |n| n.to_string_lossy().into_owned()),
@@ -1375,22 +1403,31 @@ impl Network {
                     self.publish(EngineEvent::DownloadCompleted { download: info, file: path });
                 }
                 DownloadEvent::Failed { info, reason } => {
-                    tracing::error!("Download {} stopped: {reason}", info.name);
+                    self.user_log(LogLevel::Error, format!("Download {} stopped: {reason}", info.name));
                     self.publish(EngineEvent::DownloadFailed { download: info, reason });
                 }
                 DownloadEvent::Removed(hash) => self.publish(EngineEvent::DownloadRemoved(hash)),
                 DownloadEvent::DiskSpace(true) => {
-                    tracing::info!("There is free space on the temp disk again: downloads go on");
+                    self.user_log(
+                        LogLevel::Info,
+                        "There is free space on the temp disk again: downloads go on".to_owned(),
+                    );
                 }
                 DownloadEvent::DiskSpace(false) => {
-                    tracing::warn!("Not enough free space on the temp disk: downloads wait until there is room");
+                    self.user_log(
+                        LogLevel::Warning,
+                        "Not enough free space on the temp disk: downloads wait until there is room".to_owned(),
+                    );
                 }
                 DownloadEvent::CorruptPart { info, part } => {
-                    tracing::warn!("Part {part} of {} arrived corrupt and is downloaded again", info.name);
+                    self.user_log(
+                        LogLevel::Warning,
+                        format!("Part {part} of {} is corrupt: downloading it again", info.name),
+                    );
                 }
                 DownloadEvent::CorruptSender(ip) => {
                     self.uploads.ban(ip, Instant::now(), "it sent corrupt data");
-                    tracing::warn!("Banned {ip} for two hours: it sent corrupt data");
+                    self.user_log(LogLevel::Warning, format!("Banned {ip} for two hours: it sent corrupt data"));
                 }
             }
         }
@@ -1810,7 +1847,9 @@ impl Network {
         if statics {
             self.save_statics();
         }
-        tracing::info!("{removed} dead servers removed");
+        let text =
+            if removed == 1 { "1 dead server removed".to_owned() } else { format!("{removed} dead servers removed") };
+        self.user_log(LogLevel::Info, text);
         self.publish(EngineEvent::ServersChanged { count: self.servers.len() });
     }
 
@@ -1833,7 +1872,8 @@ impl Network {
         }
         if added > 0 {
             self.save_servers_soon();
-            tracing::info!("{added} new servers from {from}");
+            let text = if added == 1 { "1 new server".to_owned() } else { format!("{added} new servers") };
+            self.user_log(LogLevel::Info, format!("{text} from {from}"));
             self.publish(EngineEvent::ServersChanged { count: self.servers.len() });
         }
     }
@@ -2049,7 +2089,11 @@ impl Network {
     }
 
     fn publish(&self, event: EngineEvent) {
-        let _ = self.shared.events.send(event);
+        self.shared.publish(event);
+    }
+
+    fn user_log(&self, level: LogLevel, message: String) {
+        self.shared.user_log(level, message);
     }
 
     fn set_context(&self, context: ServerContext) {
@@ -2297,4 +2341,18 @@ fn uploadable(files: &SharedFiles, downloads: &DownloadManager, hash: &[u8; 16])
         file.data_file(),
         file.aich_hash(),
     ))
+}
+
+// A server as the user's log names it: its name, with its address when they differ.
+fn describe(info: &ServerInfo) -> String {
+    if info.name == info.address { info.address.clone() } else { format!("{} ({})", info.name, info.address) }
+}
+
+fn id_text(id: &server_messages::IdChange) -> String {
+    format!("{} {}", if id.is_low_id() { "LowID" } else { "HighID" }, id.client_id)
+}
+
+/// What the user's log tells while the network interface the preferences bind to is gone.
+pub(crate) fn offline(choice: &str) -> String {
+    format!("The network interface {choice} is not available: njMule stays offline until it is back")
 }
