@@ -76,6 +76,11 @@ public final class FakeGateway implements AutoCloseable {
     private volatile List<String> otherLocations = List.of();
     private volatile boolean firewallEnabled = true;
     private final AtomicInteger pinholeIds = new AtomicInteger(100);
+    private final AtomicInteger searchCount = new AtomicInteger();
+    private volatile boolean silent;
+    private volatile boolean missesFirstRound;
+    // When the first search came, 0 before it.
+    private volatile long firstSearch;
 
     private FakeGateway(String description) throws IOException {
         this.description = description;
@@ -165,6 +170,25 @@ public final class FakeGateway implements AutoCloseable {
         this.locationHost = host;
     }
 
+    /** Answers no search, as a router whose answers are lost; its web server still answers. */
+    public void stopAnswering() {
+        this.silent = true;
+    }
+
+    public void answerAgain() {
+        this.silent = false;
+    }
+
+    /** Misses the first round of searches, those that came together, as when their datagrams are lost. */
+    public void missTheFirstSearches() {
+        this.missesFirstRound = true;
+    }
+
+    /** How many searches came, answered or not. */
+    public int searches() {
+        return this.searchCount.get();
+    }
+
     /** Other devices answering discovery first, from these description addresses. */
     public void othersAnswerFirst(List<String> locations) {
         this.otherLocations = List.copyOf(locations);
@@ -202,6 +226,17 @@ public final class FakeGateway implements AutoCloseable {
             try {
                 DatagramPacket search = new DatagramPacket(buffer, buffer.length);
                 this.ssdp.receive(search);
+                this.searchCount.incrementAndGet();
+                long now = System.nanoTime();
+                if (this.firstSearch == 0) {
+                    this.firstSearch = now;
+                }
+                // A round goes out at once: what comes within this of the first search belongs to it.
+                boolean firstRound =
+                        now - this.firstSearch < Duration.ofMillis(200).toNanos();
+                if (this.silent || (this.missesFirstRound && firstRound)) {
+                    continue;
+                }
                 for (String location : this.otherLocations) {
                     announce(search, location);
                 }

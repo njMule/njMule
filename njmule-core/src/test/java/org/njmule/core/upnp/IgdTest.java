@@ -169,6 +169,28 @@ class IgdTest {
     }
 
     @Test
+    void shouldFindAGatewayThatMissedTheFirstSearches() throws IOException {
+        givenAGatewayOf(IP, "/ctl");
+        givenTheGatewayMissesTheFirstSearches();
+
+        whenAGatewayIsSought(WAIT);
+
+        thenAGatewayIsFound();
+    }
+
+    @Test
+    void shouldSearchThreeTimesWithinTheWait() throws IOException {
+        givenAGatewayOf(IP, "/ctl");
+        givenTheGatewayAnswersNoSearch();
+
+        whenAGatewayIsSought(WAIT);
+
+        thenNoGatewayIsFound("a gateway that answers nothing");
+        // Two kinds of gateway are searched for in each round.
+        thenTheSearchesReceivedAre(6);
+    }
+
+    @Test
     void shouldAskADeviceAnnouncedTwiceOnce() throws IOException {
         givenAGatewayOf(IP, "/ctl");
         givenADeviceThatCannotBeReadAnsweringFirst(2);
@@ -269,6 +291,14 @@ class IgdTest {
         this.gateway.announceOn(host);
     }
 
+    private void givenTheGatewayMissesTheFirstSearches() {
+        this.gateway.missTheFirstSearches();
+    }
+
+    private void givenTheGatewayAnswersNoSearch() {
+        this.gateway.stopAnswering();
+    }
+
     private void givenADeviceThatCannotBeReadAnsweringFirst(int times) throws IOException {
         int closed = FreePorts.tcp();
         this.gateway.othersAnswerFirst(Collections.nCopies(times, "http://127.0.0.1:" + closed + "/desc.xml"));
@@ -340,6 +370,10 @@ class IgdTest {
 
     private void thenNoGatewayIsFound(String why) {
         assertThat(this.found).as(why).isEmpty();
+    }
+
+    private void thenTheSearchesReceivedAre(int count) {
+        assertThat(this.gateway.searches()).isEqualTo(count);
     }
 
     private void thenNoExceptionOccurred() {

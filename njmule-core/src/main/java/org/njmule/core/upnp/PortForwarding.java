@@ -35,9 +35,10 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Our ports forwarded by the router while njMule runs: found with UPnP, or else with NAT-PMP or PCP, and mapped on a
- * virtual thread at the start, for a lease renewed at half its time (which also recreates mappings the router lost),
- * unmapped at the end. Only the mappings made here are ever removed. With an IPv6 address of ours, which no NAT hides,
- * the router's IPv6 firewall is opened to the same ports in the same way, when it can be.
+ * virtual thread at the start (looked for again later while none answers), for a lease renewed at half its time (which
+ * also recreates mappings the router lost), unmapped at the end. Only the mappings made here are ever removed. With an
+ * IPv6 address of ours, which no NAT hides, the router's IPv6 firewall is opened to the same ports in the same way,
+ * when it can be.
  */
 public final class PortForwarding implements AutoCloseable {
 
@@ -93,6 +94,10 @@ public final class PortForwarding implements AutoCloseable {
 
     // The shortest wait between renewals, whatever lease a router grants.
     private static final Duration SHORTEST_RENEWAL = Duration.ofSeconds(10);
+
+    // A router that did not answer is looked for again after these waits, doubled from the first up to the longest.
+    static final Duration FIRST_RETRY = Duration.ofMinutes(1);
+    static final Duration LONGEST_RETRY = Duration.ofMinutes(30);
 
     private final Routers routers;
     private final List<Mapping> wanted;
@@ -184,14 +189,14 @@ public final class PortForwarding implements AutoCloseable {
 
     private void run() {
         try {
-            Optional<Gateway> found = discover();
-            if (found.isEmpty()) {
-                this.report.line(Outcome.NO_ROUTER, "", "UPnP, NAT-PMP and PCP: no router answered");
-                return;
+            Duration retry = FIRST_RETRY;
+            Optional<Outcome> failure = findAndMap(Optional.empty());
+            while (failure.isPresent() && !this.closed) {
+                this.started.countDown();
+                this.pause.sleep(retry);
+                retry = longer(retry);
+                failure = findAndMap(failure);
             }
-            this.gateway = found.get();
-            mapAll(true);
-            pinAll();
             this.started.countDown();
             while (!this.closed) {
                 this.pause.sleep(renewal());
@@ -200,16 +205,53 @@ public final class PortForwarding implements AutoCloseable {
         } catch (InterruptedException e) {
             // Closing.
             Thread.currentThread().interrupt();
-        } catch (IOException e) {
-            if (!this.closed) {
-                Gateway found = this.gateway;
-                this.report.line(
-                        Outcome.FAILED,
-                        found == null ? "" : found.host(),
-                        (found == null ? "UPnP" : found.protocol()) + " failed: " + e.getMessage());
-            }
         } finally {
             this.started.countDown();
+        }
+    }
+
+    // Empty once the router is found and asked for the ports, else what went wrong; a failure is reported when it
+    // differs from the one told last, so that a router that stays silent fills no log.
+    private Optional<Outcome> findAndMap(Optional<Outcome> told) throws InterruptedException {
+        try {
+            Optional<Gateway> found = discover();
+            if (found.isEmpty()) {
+                tell(told, Outcome.NO_ROUTER, "", "UPnP, NAT-PMP and PCP: no router answered");
+                return Optional.of(Outcome.NO_ROUTER);
+            }
+            // A router that failed before: each discovery gives a gateway of its own.
+            Gateway old = this.gateway;
+            this.gateway = found.get();
+            if (old != null) {
+                old.close();
+            }
+            mapAll(true);
+            pinAll();
+            return Optional.empty();
+        } catch (IOException e) {
+            if (this.closed) {
+                throw new InterruptedException("closing");
+            }
+            Gateway found = this.gateway;
+            tell(
+                    told,
+                    Outcome.FAILED,
+                    found == null ? "" : found.host(),
+                    (found == null ? "UPnP" : found.protocol()) + " failed: " + e.getMessage());
+            return Optional.of(Outcome.FAILED);
+        }
+    }
+
+    private static Duration longer(Duration retry) {
+        Duration doubled = retry.multipliedBy(2);
+        return doubled.compareTo(LONGEST_RETRY) > 0 ? LONGEST_RETRY : doubled;
+    }
+
+    private void tell(Optional<Outcome> told, Outcome outcome, String router, String text) {
+        if (told.isPresent() && told.get() == outcome) {
+            logger.debug("{}, still: looking again later", text);
+        } else {
+            this.report.line(outcome, router, text);
         }
     }
 
