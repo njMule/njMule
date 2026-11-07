@@ -21,6 +21,9 @@ use tokio::task::JoinHandle;
 use crate::api::download_info::{DownloadInfo, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::kad_contact_info::KadContactInfo;
+use crate::api::kad_info::KadInfo;
+use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::peer_info::{Identification as PeerIdentification, PeerInfo};
 use crate::api::search_result::SearchResult;
@@ -37,6 +40,7 @@ use crate::engine::{ServerContext, Shared};
 use crate::files::hash::file_hasher::FileHashes;
 use crate::files::part_file_storage::DiskDone;
 use crate::files::shared_files::{self, Found, SharedFile, SharedFiles};
+use crate::kad::kad_socket::Incoming;
 use crate::net::relay_keeper::{Level, RelayKeeper};
 use crate::net::tcp_connector;
 use crate::peer::client_history::ClientHistory;
@@ -44,6 +48,7 @@ use crate::peer::identities::{self, Identities, Session, Trust};
 use crate::peer::identity_handshake::{Identity, Outcome as Identification};
 use crate::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId, Side};
 use crate::peer::{peer_greetings, peer_software};
+use crate::persist::format::nodes_dat;
 use crate::persist::format::server_met::Server;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams;
@@ -65,6 +70,10 @@ use crate::server::server_udp::ServerUdp;
 use crate::upload::credits::{self, Credits};
 use crate::upload::upload_manager::{self, BlockRead, UploadManager};
 use crate::upload::uploadable::Uploadable;
+
+mod kad;
+
+use kad::KadSide;
 
 /// How long changes of the list wait to be saved together.
 const SAVE_DELAY: Duration = Duration::from_secs(30);
@@ -102,6 +111,15 @@ pub enum Command {
     /// the wait is over.
     Hello(SocketAddr, oneshot::Sender<io::Result<PeerInfo>>),
     KnownClients(oneshot::Sender<Vec<KnownClient>>),
+    Kad(oneshot::Sender<Option<KadInfo>>),
+    KadContacts(oneshot::Sender<Vec<KadContactInfo>>),
+    KadSearches(oneshot::Sender<Vec<KadSearchInfo>>),
+    ConnectKad(oneshot::Sender<()>),
+    DisconnectKad(oneshot::Sender<()>),
+    /// Whether Kad runs, and so checks again whether other nodes reach us.
+    RecheckKad(oneshot::Sender<bool>),
+    BootstrapKad(SocketAddrV4, oneshot::Sender<()>),
+    AddKadContacts(Box<nodes_dat::Contents>, oneshot::Sender<io::Result<usize>>),
     Stop(oneshot::Sender<()>),
 }
 
@@ -138,6 +156,12 @@ enum Tick {
     ProxyChanged(ProxySettings),
     // The sockets opened for a binding, which a newer one may have replaced meanwhile.
     Rebound(Binding, Option<TcpListener>, Option<UdpSocket>),
+    // The preferences changed; what they were.
+    PreferencesChanged(Box<Preferences>),
+    // A UDP test helper's link ended, after asking it for its datagram or not.
+    KadUdpCheckEnded(u32, bool),
+    // Kad's socket left its port: Kad starts again.
+    KadStart,
 }
 
 /// How often the network interface of the preferences is looked at: it may go, as a VPN that drops, come back, or
@@ -197,6 +221,7 @@ struct Queues {
     peers: mpsc::UnboundedReceiver<PeerEvent>,
     disk: mpsc::UnboundedReceiver<DiskDone>,
     reads: mpsc::UnboundedReceiver<BlockRead>,
+    kad: mpsc::UnboundedReceiver<Incoming>,
 }
 
 pub struct Network {
@@ -242,6 +267,7 @@ pub struct Network {
     history: ClientHistory,
     link_events: mpsc::UnboundedSender<LinkEvent>,
     peer_events: mpsc::UnboundedSender<PeerEvent>,
+    kad: KadSide,
 }
 
 /// Starts the network side; it runs until it is asked to stop.
@@ -267,9 +293,12 @@ pub fn start(
     let mut changes = shared.preferences.subscribe();
     let proxies = ticks_in.clone();
     let following = tokio::spawn(async move {
+        let mut was = changes.borrow_and_update().clone();
         while changes.changed().await.is_ok() {
-            let proxy = changes.borrow_and_update().proxy.clone();
-            if proxies.send(Tick::ProxyChanged(proxy)).is_err() {
+            let now = changes.borrow_and_update().clone();
+            let proxy = now.proxy.clone();
+            let changed = Tick::PreferencesChanged(Box::new(std::mem::replace(&mut was, now)));
+            if proxies.send(Tick::ProxyChanged(proxy)).is_err() || proxies.send(changed).is_err() {
                 return;
             }
         }
@@ -313,6 +342,7 @@ pub fn start(
     let (peers_in, peers) = mpsc::unbounded_channel();
     let (disk_in, disk) = mpsc::unbounded_channel();
     let (reads_in, reads) = mpsc::unbounded_channel();
+    let (kad_in, kad) = mpsc::unbounded_channel();
     let preferences = shared.preferences.borrow().clone();
     let temp = preferences.temp_dir.clone().unwrap_or_else(|| dirs.temp.clone());
     let incoming = preferences.incoming_dir.clone().unwrap_or_else(|| dirs.downloads.clone());
@@ -379,9 +409,13 @@ pub fn start(
         history,
         link_events: links_in,
         peer_events: peers_in,
+        kad: KadSide::new(kad_in),
     };
     network.attach(listener, udp);
-    let queues = Queues { commands, outcomes, ticks, datagrams, links, peers, disk, reads };
+    if preferences.kad_enabled {
+        network.start_kad();
+    }
+    let queues = Queues { commands, outcomes, ticks, datagrams, links, peers, disk, reads, kad };
     Ok(tokio::spawn(async move {
         network.run(queues).await;
         publish.abort();
@@ -413,6 +447,7 @@ impl Network {
                     self.downloads.disk_done(done, &ours);
                     self.after_downloads();
                 }
+                Some(incoming) = queues.kad.recv() => self.kad_incoming(incoming),
                 Some(read) = queues.reads.recv() => {
                     let (files, downloads) = (&self.shared_files, &self.downloads);
                     self.uploads.block_read(read, &|hash: &[u8; 16]| uploadable(files, downloads, hash), Instant::now());
@@ -423,6 +458,33 @@ impl Network {
 
     fn command(&mut self, command: Command) {
         match command {
+            Command::Kad(answer) => {
+                let _ = answer.send(self.kad_info());
+            }
+            Command::KadContacts(answer) => {
+                let _ = answer.send(self.kad_contacts());
+            }
+            Command::KadSearches(answer) => {
+                let _ = answer.send(self.kad_searches());
+            }
+            Command::ConnectKad(done) => {
+                self.connect_kad();
+                let _ = done.send(());
+            }
+            Command::DisconnectKad(done) => {
+                self.disconnect_kad();
+                let _ = done.send(());
+            }
+            Command::RecheckKad(answer) => {
+                let _ = answer.send(self.recheck_kad());
+            }
+            Command::BootstrapKad(node, done) => {
+                self.bootstrap_kad(node);
+                let _ = done.send(());
+            }
+            Command::AddKadContacts(contents, answer) => {
+                let _ = answer.send(self.add_kad_contacts(&contents));
+            }
             Command::ImportServers(read, added) => {
                 let count = self.servers.add_all(read);
                 if count > 0 {
@@ -725,6 +787,7 @@ impl Network {
             Tick::Second => {
                 self.publish_files();
                 self.second();
+                self.kad_second();
                 self.since_bind_check = self.since_bind_check.saturating_add(1);
                 if self.since_bind_check >= BIND_CHECK_SECONDS {
                     self.since_bind_check = 0;
@@ -740,8 +803,12 @@ impl Network {
             Tick::Rebound(binding, listener, udp) => {
                 if binding == self.binding {
                     self.attach(listener, udp);
+                    self.kad_start_again();
                 }
             }
+            Tick::PreferencesChanged(was) => self.kad_preferences(was.kad_enabled, was.udp_port),
+            Tick::KadUdpCheckEnded(ip, asked) => self.kad_udp_check_ended(ip, asked),
+            Tick::KadStart => self.kad_start_again(),
             Tick::Search(timer) => {
                 let connected = self.session.server().map(server_list::address_of);
                 let mut effects = Vec::new();
@@ -878,6 +945,7 @@ impl Network {
         self.binding = now.clone();
         self.with_session(|session, ctx| session.disconnect(ctx));
         let (accepting, udp) = self.close_sockets();
+        let kad_socket = self.take_kad_socket();
         let preferences = self.preferences();
         let local = match &now {
             Binding::Missing(choice) => {
@@ -903,6 +971,9 @@ impl Network {
             }
             if let Some(udp) = udp {
                 udp.close().await;
+            }
+            if let Some(kad_socket) = kad_socket {
+                kad_socket.close().await;
             }
             let Some(local) = local else {
                 return;
@@ -1371,6 +1442,9 @@ impl Network {
         {
             return;
         }
+        if self.kad_client_packet(handle.remote(), packet) {
+            return;
+        }
         match peer_link::side_of(packet) {
             Side::Download if self.downloads.has_link(link) => {
                 self.downloads.received(link, packet, ours);
@@ -1411,7 +1485,8 @@ impl Network {
     }
 
     // Who a greeted client said it is goes into the history, never its address. The countries are not shown yet.
-    fn met(&mut self, hello: &Hello, _address: IpAddr) {
+    fn met(&mut self, hello: &Hello, address: IpAddr) {
+        self.kad_met(hello, address);
         let nick = hello.nick().unwrap_or_default();
         self.history.seen(hello.user_hash, nick, &peer_software::describe(hello), None, now_seconds());
     }
@@ -1631,6 +1706,7 @@ impl Network {
         self.uploads.close();
         self.history.save();
         self.close_sockets();
+        self.stop_kad();
         // The servers' spam shares change with every UDP answer.
         let spam_file = self.shared.dirs.config.join(spam_filter::FILE_NAME);
         if let Err(e) = self.spam.save(&spam_file) {

@@ -14,6 +14,7 @@ pub mod file_names;
 pub mod import_options;
 pub mod import_report;
 pub mod kad_contact_info;
+pub mod kad_info;
 pub mod kad_note;
 pub mod kad_search_info;
 pub mod known_client;

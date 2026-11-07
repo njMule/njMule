@@ -8,7 +8,7 @@ pub mod network;
 
 use std::collections::BTreeMap;
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -21,6 +21,9 @@ use tokio::task::JoinSet;
 use crate::api::download_info::{DownloadInfo, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::kad_contact_info::KadContactInfo;
+use crate::api::kad_info::KadInfo;
+use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
@@ -35,6 +38,7 @@ use crate::engine::network::{Command, ConnectError, MoreAnswer};
 use crate::files::shared_files::SharedFile;
 use crate::net::routes::Routes;
 use crate::peer::{peer_greetings, shared_files_browser};
+use crate::persist::format::nodes_dat;
 use crate::persist::format::server_met::Server;
 use crate::persist::{preferences_codec, user_hash_store};
 use crate::protocol::ed2k::hello::{self, Hello, Ours};
@@ -249,6 +253,46 @@ impl Engine {
 
     pub async fn disconnect_server(&self) {
         let _ = self.ask(Command::DisconnectServer).await;
+    }
+
+    /// The state of Kad, none while it is off.
+    pub async fn kad(&self) -> Option<KadInfo> {
+        self.ask(Command::Kad).await.flatten()
+    }
+
+    pub async fn kad_contacts(&self) -> Vec<KadContactInfo> {
+        self.ask(Command::KadContacts).await.unwrap_or_default()
+    }
+
+    pub async fn kad_searches(&self) -> Vec<KadSearchInfo> {
+        self.ask(Command::KadSearches).await.unwrap_or_default()
+    }
+
+    /// Joins Kad, also after it was stopped by hand.
+    pub async fn connect_kad(&self) {
+        let _ = self.ask(Command::ConnectKad).await;
+    }
+
+    /// Leaves Kad until it is joined again or njMule starts again.
+    pub async fn disconnect_kad(&self) {
+        let _ = self.ask(Command::DisconnectKad).await;
+    }
+
+    /// Checks again whether other Kad nodes reach us; false while Kad is off.
+    pub async fn recheck_kad(&self) -> bool {
+        self.ask(Command::RecheckKad).await.unwrap_or(false)
+    }
+
+    /// Joins Kad through the node at `node`.
+    pub async fn bootstrap_kad(&self, node: SocketAddrV4) {
+        let _ = self.ask(|reply| Command::BootstrapKad(node, reply)).await;
+    }
+
+    /// Adds Kad contacts to `nodes.dat` and to Kad while it runs; answers how many were new.
+    pub async fn add_kad_contacts(&self, contents: nodes_dat::Contents) -> io::Result<usize> {
+        self.ask(|reply| Command::AddKadContacts(Box::new(contents), reply))
+            .await
+            .unwrap_or_else(|| Err(io::Error::other("the engine stopped")))
     }
 
     pub async fn servers(&self) -> Vec<ServerInfo> {
