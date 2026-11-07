@@ -34,7 +34,7 @@ use crate::persist::format::nodes_dat;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::low_id_messages::UdpCheckRequest;
 use crate::protocol::ed2k::server_messages::LOW_ID_LIMIT;
-use crate::protocol::packet::opcodes::{client, extended};
+use crate::protocol::packet::opcodes::{client, client_udp, extended};
 use crate::protocol::packet::{Packet, frame_limits, protocol};
 use crate::search::search_expr::SearchExpr;
 use crate::search::search_manager::KadSearches;
@@ -357,12 +357,44 @@ impl Network {
                 }
             }
             Incoming::Client { ip, port, packet } => {
-                tracing::trace!("Client datagram {:#04x} from {}:{port}", packet.opcode(), Ipv4Addr::from(ip));
+                self.client_datagram(SocketAddr::from((Ipv4Addr::from(ip), port)), &packet);
             }
-            Incoming::ClientOverIpv6 { from, packet } => {
-                tracing::trace!("Client datagram {:#04x} from {from}", packet.opcode());
-            }
+            Incoming::ClientOverIpv6 { from, packet } => self.client_datagram(from, &packet),
         }
+    }
+
+    // A client datagram on Kad's port: a client waiting in our queue asks again for its place, which is answered over the
+    // same port, obfuscated for it when we know its user hash, plain over IPv6.
+    fn client_datagram(&mut self, from: SocketAddr, packet: &Packet) {
+        if packet.opcode() != client_udp::REASKFILEPING {
+            tracing::trace!("Client datagram {:#04x} from {from}", packet.opcode());
+            return;
+        }
+        let (files, downloads) = (&self.shared_files, &self.downloads);
+        let find = |hash: &[u8; 16]| super::uploadable(files, downloads, hash);
+        let Some(answer) = self.uploads.reasked(from.ip(), from.port(), packet, &find, Instant::now()) else {
+            return;
+        };
+        let our_ip = self.our_public_ip();
+        let Some(running) = &self.kad.running else {
+            return;
+        };
+        match from {
+            SocketAddr::V4(v4) => {
+                let ip = u32::from(*v4.ip());
+                running.socket.send_client(ip, v4.port(), &answer.packet, answer.obfuscate_for, our_ip);
+            }
+            SocketAddr::V6(_) => running.socket.send_client_to(from, &answer.packet),
+        }
+    }
+
+    // Our public IPv4 address, as the server or Kad sees it; 0 while unknown.
+    fn our_public_ip(&self) -> u32 {
+        let server_seen = self.address_seen_by_server();
+        if server_seen != 0 {
+            return server_seen;
+        }
+        self.kad.running.as_ref().map_or(0, |running| running.node.public_ip())
     }
 
     /// Each second: the node and its publishes go on, and a port another program held is tried again now and then.
@@ -376,6 +408,14 @@ impl Network {
             })
             .collect();
         *self.kad.known.lock().unwrap_or_else(PoisonError::into_inner) = known;
+        let announced = self
+            .kad
+            .running
+            .as_ref()
+            .filter(|running| running.node.is_connected())
+            .map(|running| (running.node.announced_udp_port(), running.node.supports_direct_callback()));
+        let (udp_port, direct_callback) = announced.unwrap_or((0, false));
+        self.shared.announce_kad(udp_port, direct_callback);
         if let Some(running) = &mut self.kad.running {
             running.node.tick();
             let shared: Vec<kad_publisher::Shared> = self

@@ -5,7 +5,7 @@
 //! hand or when turned off, and moves to a new port. Beyond the Java engine's examples, which read Kad's port in the
 //! engine's status.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
 mod free_port;
 
@@ -17,6 +17,10 @@ use std::time::Duration;
 use njmule_engine::api::kad_info::KadInfo;
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
+use njmule_engine::protocol::ed2k::client_messages::PartStatus;
+use njmule_engine::protocol::ed2k::client_reasks::{self, Ping};
+use njmule_engine::protocol::packet::opcodes::client_udp;
+use njmule_engine::protocol::packet::{Packet, udp_framing};
 use njmule_engine::search::search_manager::{Scope, StartError};
 use rand::RngExt;
 
@@ -30,6 +34,7 @@ struct KadEngine {
     engine: Option<Engine>,
     kad: Option<KadInfo>,
     search: Option<Result<u64, StartError>>,
+    client: Option<UdpSocket>,
 }
 
 impl KadEngine {
@@ -41,6 +46,7 @@ impl KadEngine {
             engine: None,
             kad: None,
             search: None,
+            client: None,
         }
     }
 
@@ -114,6 +120,23 @@ impl KadEngine {
             _ => "",
         };
         assert!(reason.contains(because), "refused as unavailable ({because}), not {refused:?}");
+    }
+
+    // A client asks again over UDP for a file we do not share.
+    fn when_a_client_asks_again_over_udp_for_a_file_we_do_not_share(&mut self) {
+        let client = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        client.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let ping = Ping { file: [0x77; 16], parts: PartStatus::COMPLETE, complete_sources: 0 };
+        let datagram = udp_framing::encode(&ping.encode(client_reasks::UDP_VERSION).unwrap());
+        client.send_to(&datagram, (Ipv4Addr::LOCALHOST, self.udp_port)).unwrap();
+        self.client = Some(client);
+    }
+
+    fn then_the_client_hears_that_we_do_not_have_the_file(&self) {
+        let mut buffer = [0u8; 1024];
+        let (length, _) = self.client.as_ref().unwrap().recv_from(&mut buffer).expect("an answer in time");
+        let answer: Packet = udp_framing::decode(&buffer[..length]).unwrap();
+        assert_eq!(answer.opcode(), client_udp::FILENOTFOUND);
     }
 
     fn then_kad_runs_on_its_port(&self) {
@@ -282,4 +305,16 @@ async fn should_refuse_an_automatic_search_while_no_network_is_connected() {
     kad.when_a_search_starts(None).await;
 
     kad.then_the_search_is_refused_as_unavailable("Not connected to a server or to Kad");
+}
+
+// The client waits for the answer on a thread of its own: the engine answers on another.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn should_answer_a_client_asking_again_over_kads_port_for_a_file_we_do_not_share() {
+    let mut kad = KadEngine::new();
+    kad.given_a_profile_with_kad();
+    kad.given_njmule_running().await;
+
+    kad.when_a_client_asks_again_over_udp_for_a_file_we_do_not_share();
+
+    kad.then_the_client_hears_that_we_do_not_have_the_file();
 }

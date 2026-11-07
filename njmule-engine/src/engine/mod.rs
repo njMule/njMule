@@ -9,7 +9,7 @@ pub mod network;
 use std::collections::BTreeMap;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rand::SeedableRng;
@@ -41,7 +41,9 @@ use crate::peer::{peer_greetings, shared_files_browser};
 use crate::persist::format::nodes_dat;
 use crate::persist::format::server_met::Server;
 use crate::persist::{preferences_codec, user_hash_store};
+use crate::protocol::ed2k::client_reasks;
 use crate::protocol::ed2k::hello::{self, Hello, Ours};
+use crate::protocol::kad::kad_messages;
 use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::Address;
 use crate::server::server_udp::ServerUdp;
@@ -72,6 +74,9 @@ pub struct Shared {
     user_hash: [u8; 16],
     // 0 while nothing listens, as while the chosen network interface is gone.
     listen_port: AtomicU16,
+    // What our hello tells of Kad while it is connected: its UDP port (low 16 bits), and whether firewalled clients may
+    // call us back over it directly (bit 16); 0 otherwise.
+    kad_announced: AtomicU32,
     preferences: watch::Sender<Preferences>,
     routes: Routes,
     events: broadcast::Sender<EngineEvent>,
@@ -86,7 +91,15 @@ impl Shared {
         self.listen_port.load(Ordering::Relaxed)
     }
 
-    /// Our greeting as it stands: on the server we are on, not on Kad yet.
+    /// Tells our hello Kad's UDP port while Kad is connected, 0 otherwise, and whether firewalled clients may call us
+    /// back over it directly.
+    fn announce_kad(&self, udp_port: u16, direct_callback: bool) {
+        let announced = if udp_port == 0 { 0 } else { u32::from(udp_port) | u32::from(direct_callback) << 16 };
+        self.kad_announced.store(announced, Ordering::Relaxed);
+    }
+
+    /// Our greeting as it stands: on the server we are on, and on Kad while it is connected, which takes re-asks over
+    /// its UDP port.
     pub fn our_hello(&self) -> Hello {
         let preferences = self.preferences.borrow().clone();
         let context = self.context.lock().map(|context| *context).unwrap_or_default();
@@ -99,11 +112,20 @@ impl Shared {
         if preferences.shared_files_visibility == SharedFilesVisibility::Nobody {
             misc_options1 |= hello::MISC1_NO_VIEW_SHARED_FILES;
         }
-        let misc_options2 = hello::MISC2_LARGE_FILES
+        let mut misc_options2 = hello::MISC2_LARGE_FILES
             | hello::MISC2_SOURCE_EXCHANGE2
             | hello::MISC2_SUPPORTS_CAPTCHA
             | crypt_options(preferences.obfuscation);
-        let ours = Ours { nick: &preferences.nick, udp_port: 0, kad_port: 0, misc_options1, misc_options2 };
+        let announced = self.kad_announced.load(Ordering::Relaxed);
+        let kad_port = u16::try_from(announced & 0xFFFF).unwrap_or(0);
+        if kad_port != 0 {
+            misc_options1 |= client_reasks::UDP_VERSION << hello::MISC1_UDP_VERSION_SHIFT;
+            misc_options2 |= u32::from(kad_messages::VERSION);
+            if announced >> 16 & 1 != 0 {
+                misc_options2 |= hello::MISC2_DIRECT_UDP_CALLBACK;
+            }
+        }
+        let ours = Ours { nick: &preferences.nick, udp_port: kad_port, kad_port, misc_options1, misc_options2 };
         Hello::of(self.user_hash, context.client_id, self.listen_port(), &ours, context.ip, context.port)
     }
 }
@@ -168,6 +190,7 @@ impl Engine {
             dirs,
             user_hash,
             listen_port: AtomicU16::new(listen_port),
+            kad_announced: AtomicU32::new(0),
             preferences,
             routes,
             events,
