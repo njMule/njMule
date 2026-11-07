@@ -4,7 +4,7 @@
 //! Kad in the network: the client UDP socket, which Kad shares, and the node on it, started with the preferences or by
 //! hand and ticked each second, and the host the node asks to connect to other clients over TCP.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -14,7 +14,7 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 use tokio::sync::mpsc;
 
-use super::{Network, Tick};
+use super::{Network, Rater, Tick};
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::{Buddy, KadInfo};
 use crate::api::kad_search_info::KadSearchInfo;
@@ -22,7 +22,7 @@ use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::engine::{Shared, crypt_options};
 use crate::kad::kad_identity::KadIdentity;
-use crate::kad::kad_node::{self, BuddyState, Host, KadNode, Settings};
+use crate::kad::kad_node::{self, BuddyState, Host, KadEvent, KadNode, SearchHandle, Settings};
 use crate::kad::kad_publisher::{self, KadPublisher};
 use crate::kad::kad_socket::{Incoming, KadSocket, Keys};
 use crate::net::relay_keeper::{Level, RelayKeeper};
@@ -35,6 +35,8 @@ use crate::protocol::ed2k::low_id_messages::UdpCheckRequest;
 use crate::protocol::ed2k::server_messages::LOW_ID_LIMIT;
 use crate::protocol::packet::opcodes::{client, extended};
 use crate::protocol::packet::{Packet, frame_limits, protocol};
+use crate::search::search_expr::SearchExpr;
+use crate::search::search_manager::KadSearches;
 use crate::util::ipv4;
 
 /// How often a Kad port another program holds is tried again.
@@ -63,6 +65,8 @@ pub(super) struct KadSide {
     incoming: mpsc::UnboundedSender<Incoming>,
     // The clients we deal with, which cannot be UDP test helpers.
     known: Arc<Mutex<HashSet<u32>>>,
+    // The keyword searches Kad runs, by the number the search manager gave them.
+    searches: HashMap<SearchHandle, u64>,
 }
 
 impl KadSide {
@@ -74,7 +78,30 @@ impl KadSide {
             since_port_retry: 0,
             incoming,
             known: Arc::default(),
+            searches: HashMap::new(),
         }
+    }
+
+    /// What starts keyword searches on Kad, while it runs.
+    pub(super) fn searching(&mut self) -> Option<KadSearching<'_>> {
+        let running = self.running.as_mut()?;
+        Some(KadSearching { node: &mut running.node, searches: &mut self.searches })
+    }
+}
+
+/// Starts keyword searches on the node, remembering whose they are.
+pub(super) struct KadSearching<'a> {
+    node: &'a mut KadNode,
+    searches: &'a mut HashMap<SearchHandle, u64>,
+}
+
+impl KadSearches for KadSearching<'_> {
+    fn search(&mut self, search: u64, keyword: &str, expression: &SearchExpr) -> bool {
+        let Some(handle) = self.node.search_keyword(keyword, Some(expression.clone())) else {
+            return false;
+        };
+        self.searches.insert(handle, search);
+        true
     }
 }
 
@@ -167,6 +194,7 @@ impl Network {
 
     /// Stops Kad, saving its contacts and index; the port is free again once the socket's task has ended.
     pub(super) fn stop_kad(&mut self) {
+        self.kad.searches.clear();
         let Some(mut running) = self.kad.running.take() else {
             return;
         };
@@ -178,6 +206,7 @@ impl Network {
     /// Stops Kad for a new network interface and hands its socket over, for the rebinding to wait until it left its
     /// port; Kad starts again on the new interface.
     pub(super) fn take_kad_socket(&mut self) -> Option<KadSocket> {
+        self.kad.searches.clear();
         let mut running = self.kad.running.take()?;
         running.node.close();
         running.relay.close();
@@ -338,13 +367,40 @@ impl Network {
                 })
                 .collect();
             running.publisher.tick(&mut running.node, &shared, &|_| None, Instant::now());
-            // Searches over Kad are not started yet: what they would find has no taker.
-            running.node.take_events();
+            let events = running.node.take_events();
+            self.kad_events(events);
         } else if self.kad.port_taken != 0 {
             self.kad.since_port_retry = self.kad.since_port_retry.saturating_add(1);
             if self.kad.since_port_retry >= PORT_RETRY_SECONDS {
                 self.kad.since_port_retry = 0;
                 self.start_kad();
+            }
+        }
+    }
+
+    // What Kad's searches found goes to the searches still open; the sources and notes have no taker yet.
+    fn kad_events(&mut self, events: Vec<KadEvent>) {
+        for event in events {
+            if let KadEvent::Files { search, results } = event
+                && let Some(&number) = self.kad.searches.get(&search)
+            {
+                let found = results.into_iter().map(kad_node::FileResult::into_search_result).collect();
+                let preferences = self.preferences();
+                let mut effects = Vec::new();
+                self.searches.kad_results(number, found, &mut Rater::of(&mut self.spam, &preferences), &mut effects);
+                self.search_effects(effects);
+            }
+        }
+    }
+
+    /// The search manager ended a search over Kad: so does the node.
+    pub(super) fn stop_kad_search(&mut self, number: u64) {
+        let ended: Vec<SearchHandle> =
+            self.kad.searches.iter().filter(|&(_, &search)| search == number).map(|(&handle, _)| handle).collect();
+        for handle in ended {
+            self.kad.searches.remove(&handle);
+            if let Some(running) = &mut self.kad.running {
+                running.node.end_search(handle);
             }
         }
     }
@@ -422,6 +478,7 @@ impl Network {
 
     /// Stops Kad and starts it again once its socket has left the port, as when the port or the interface changes.
     pub(super) fn restart_kad(&mut self) {
+        self.kad.searches.clear();
         let Some(mut running) = self.kad.running.take() else {
             self.start_kad();
             return;

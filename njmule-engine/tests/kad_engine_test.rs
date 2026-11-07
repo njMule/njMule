@@ -17,6 +17,7 @@ use std::time::Duration;
 use njmule_engine::api::kad_info::KadInfo;
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
+use njmule_engine::search::search_manager::{Scope, StartError};
 use rand::RngExt;
 
 // Beyond the engine's own retry interval of 10 seconds.
@@ -28,11 +29,19 @@ struct KadEngine {
     other_program: Option<UdpSocket>,
     engine: Option<Engine>,
     kad: Option<KadInfo>,
+    search: Option<Result<u64, StartError>>,
 }
 
 impl KadEngine {
     fn new() -> Self {
-        Self { profile: tempfile::tempdir().unwrap(), udp_port: 0, other_program: None, engine: None, kad: None }
+        Self {
+            profile: tempfile::tempdir().unwrap(),
+            udp_port: 0,
+            other_program: None,
+            engine: None,
+            kad: None,
+            search: None,
+        }
     }
 
     fn given_a_profile_with_kad(&mut self) {
@@ -84,6 +93,27 @@ impl KadEngine {
     async fn when_the_udp_port_changes(&mut self) {
         self.udp_port = free_udp_port();
         self.change("net.udpPort", &self.udp_port.to_string());
+    }
+
+    fn given_a_profile_without_kad(&mut self) {
+        self.given_a_profile_with_kad();
+        let dirs = AppDirectories::under_root(self.profile.path()).unwrap();
+        let file = dirs.config.join("njmule.properties");
+        let preferences = fs::read_to_string(&file).unwrap().replace("net.kad.enabled=true", "net.kad.enabled=false");
+        fs::write(file, preferences).unwrap();
+    }
+
+    async fn when_a_search_starts(&mut self, scope: Option<Scope>) {
+        self.search = Some(self.engine().start_search("ubuntu desktop".to_owned(), scope).await);
+    }
+
+    fn then_the_search_is_refused_as_unavailable(&self, because: &str) {
+        let refused = self.search.as_ref().unwrap();
+        let reason = match refused {
+            Err(StartError::Unavailable(reason)) => reason.as_str(),
+            _ => "",
+        };
+        assert!(reason.contains(because), "refused as unavailable ({because}), not {refused:?}");
     }
 
     fn then_kad_runs_on_its_port(&self) {
@@ -219,4 +249,37 @@ async fn should_move_kad_to_a_new_udp_port() {
     kad.when_the_udp_port_changes().await;
 
     kad.then_kad_runs_on_its_port_within(Duration::from_secs(5)).await;
+}
+
+#[tokio::test]
+async fn should_refuse_a_kad_search_while_kad_is_off() {
+    let mut kad = KadEngine::new();
+    kad.given_a_profile_without_kad();
+    kad.given_njmule_running().await;
+
+    kad.when_a_search_starts(Some(Scope::Kad)).await;
+
+    kad.then_the_search_is_refused_as_unavailable("Kad is not running");
+}
+
+#[tokio::test]
+async fn should_refuse_a_kad_search_with_nobody_to_ask() {
+    let mut kad = KadEngine::new();
+    kad.given_a_profile_with_kad();
+    kad.given_njmule_running().await;
+
+    kad.when_a_search_starts(Some(Scope::Kad)).await;
+
+    kad.then_the_search_is_refused_as_unavailable("Kad cannot search");
+}
+
+#[tokio::test]
+async fn should_refuse_an_automatic_search_while_no_network_is_connected() {
+    let mut kad = KadEngine::new();
+    kad.given_a_profile_with_kad();
+    kad.given_njmule_running().await;
+
+    kad.when_a_search_starts(None).await;
+
+    kad.then_the_search_is_refused_as_unavailable("Not connected to a server or to Kad");
 }

@@ -19,7 +19,7 @@ use rand::{RngExt, SeedableRng};
 use crate::api::file_comment::FileComment;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_search_info::{self, KadSearchInfo};
-use crate::api::search_result::Media;
+use crate::api::search_result::{Media, SearchResult};
 use crate::kad::kad_contact::{self, KadContact};
 use crate::kad::kad_identity::KadIdentity;
 use crate::kad::kad_index::{self, KadIndex, Matcher};
@@ -167,6 +167,17 @@ pub struct FileResult {
     pub file_type: Option<String>,
     pub media: Media,
     pub aich_hash: Option<[u8; 20]>,
+}
+
+impl FileResult {
+    /// The result as searches list it: Kad does not tell how many sources have the whole file.
+    pub fn into_search_result(self) -> SearchResult {
+        let mut result =
+            SearchResult::new(self.hash, &self.name, self.size, self.sources, None, self.file_type.as_deref());
+        result.media = self.media;
+        result.aich_hash = self.aich_hash;
+        result
+    }
 }
 
 /// What a search found, or that it ended.
