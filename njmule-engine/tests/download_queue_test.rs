@@ -23,7 +23,9 @@ use njmule_engine::api::download_info::DownloadPriority;
 use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::download::download_queue::{DownloadQueue, QueueEvent};
 use njmule_engine::files::hash::ed2k::{self, EMBLOCKSIZE, PARTSIZE};
-use njmule_engine::files::part_file::{self, Block, KnownSource, PartFile, Status};
+#[cfg(windows)]
+use njmule_engine::files::part_file::Block;
+use njmule_engine::files::part_file::{self, KnownSource, PartFile, Status};
 use njmule_engine::files::part_file_storage::{DiskClosed, DiskDone};
 use njmule_engine::persist::atomic_files;
 use rand::rngs::StdRng;
@@ -58,12 +60,14 @@ struct Queue {
     parts: Vec<[u8; 16]>,
     met: PathBuf,
     file: PathBuf,
+    #[cfg(windows)]
     blocks: Vec<Block>,
     accepted: bool,
     restored: bool,
     closed: Option<DiskClosed>,
     moved_while_finishing: bool,
     kept_after_cancel: Option<bool>,
+    #[cfg(windows)]
     holder: Option<fs::File>,
     adopted: Option<std::io::Result<[u8; 16]>>,
 }
@@ -86,12 +90,14 @@ impl Queue {
             parts: Vec::new(),
             met: PathBuf::new(),
             file: PathBuf::new(),
+            #[cfg(windows)]
             blocks: Vec::new(),
             accepted: false,
             restored: false,
             closed: None,
             moved_while_finishing: false,
             kept_after_cancel: None,
+            #[cfg(windows)]
             holder: None,
             adopted: None,
         }
@@ -222,6 +228,7 @@ impl Queue {
         panic!("the corrupt part was not taken back");
     }
 
+    #[cfg(windows)]
     fn given_the_first_blocks_asked_for(&mut self) {
         self.blocks = self.next_blocks();
     }
@@ -423,6 +430,7 @@ impl Queue {
         self.holder = Some(fs::OpenOptions::new().read(true).share_mode(SHARE_READ_AND_WRITE).open(data).unwrap());
     }
 
+    #[cfg(windows)]
     fn given_the_finished_file_not_moved_for(&mut self, wait: Duration) {
         let deadline = Instant::now() + wait;
         while let Some(event) = self.poll(deadline.saturating_duration_since(Instant::now())) {
@@ -487,6 +495,7 @@ impl Queue {
         assert_eq!(file.idle_seconds(), 4100);
     }
 
+    #[cfg(windows)]
     fn when_the_other_program_lets_it_go(&mut self) {
         self.holder = None;
     }
@@ -507,6 +516,7 @@ impl Queue {
         self.add_download(link);
     }
 
+    #[cfg(windows)]
     fn when_the_blocks_are_asked_for_after_a_pause_and_resume(&mut self) {
         let hash = self.hash;
         self.queue_mut().pause(&hash);
@@ -631,6 +641,7 @@ impl Queue {
         assert!(!self.download().file.has_hash_set(), "asked from the sources");
     }
 
+    #[cfg(windows)]
     fn then_the_blocks_asked_for_are(&mut self, expected: &[Block]) {
         assert_eq!(self.blocks, expected);
     }
@@ -862,6 +873,7 @@ impl Queue {
     }
 
     // The sources have the first part.
+    #[cfg(windows)]
     fn next_blocks(&mut self) -> Vec<Block> {
         let hash = self.hash;
         let file = &mut self.queue_mut().get_mut(&hash).unwrap().file;
