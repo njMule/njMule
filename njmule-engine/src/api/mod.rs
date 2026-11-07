@@ -13,6 +13,7 @@ pub mod file_comment;
 pub mod file_names;
 pub mod import_options;
 pub mod import_report;
+pub mod kad_note;
 pub mod known_client;
 pub mod nj_mule_info;
 pub mod peer_comment;
