@@ -36,6 +36,8 @@ pub struct ScriptedSource {
     misc1: u32,
     misc2: u32,
     udp_port: u16,
+    // The IPv6 address its hello gives, with the extended source exchange.
+    ipv6: std::sync::Mutex<Option<std::net::Ipv6Addr>>,
     accepted: Mutex<mpsc::UnboundedReceiver<TcpStream>>,
     // Taken by a look that leaves it for the next accept.
     waiting: Mutex<Option<TcpStream>>,
@@ -66,10 +68,16 @@ impl ScriptedSource {
             misc1,
             misc2,
             udp_port,
+            ipv6: std::sync::Mutex::new(None),
             accepted: Mutex::new(accepted),
             waiting: Mutex::new(None),
             accepting,
         }
+    }
+
+    /// From now on its hello gives `address` as its IPv6 address, and the extended source exchange with it.
+    pub fn announce_ipv6(&self, address: std::net::Ipv6Addr) {
+        *self.ipv6.lock().unwrap() = Some(address);
     }
 
     pub fn address(&self) -> SocketAddr {
@@ -99,7 +107,11 @@ impl ScriptedSource {
             misc_options1: self.misc1,
             misc_options2: self.misc2,
         };
-        Hello::of(user_hash, client_id, self.port(), &ours, server_ip, 4661)
+        let hello = Hello::of(user_hash, client_id, self.port(), &ours, server_ip, 4661);
+        match *self.ipv6.lock().unwrap() {
+            Some(address) => hello.with_ipv6(&address),
+            None => hello,
+        }
     }
 
     /// Waits for the next downloader and answers its hello.

@@ -56,6 +56,15 @@ pub const GOOD_RANK: u32 = 50;
 const NO_PARTS_WAIT: Duration = Duration::from_secs(58 * 60);
 // A source swapped away from by hand waits this long before it is asked for that download again by itself.
 const AWAY: Duration = Duration::from_secs(60 * 60);
+// A source of a rare file may be asked for other sources every 40 minutes, of another every 160; a file waits for answers
+// between asks, and stops asking near the source limit.
+const SX_RARE_INTERVAL: Duration = Duration::from_secs(40 * 60);
+const SX_INTERVAL: Duration = Duration::from_secs(160 * 60);
+const SX_RARE_ANSWER_GAP: Duration = Duration::from_secs(5 * 60);
+const SX_ANSWER_GAP: Duration = Duration::from_secs(20 * 60);
+const SX_VERY_RARE: usize = 10;
+const SX_RARE: usize = 50;
+const SX_MAX_SOURCES: usize = 750;
 /// The server is asked for the sources of each download this often.
 pub const SERVER_SOURCES_INTERVAL: Duration = Duration::from_secs(20 * 60);
 /// Source requests a server takes in a row; then it takes one more each [`SERVER_REQUEST_CREDIT`].
@@ -199,6 +208,8 @@ struct Client {
     failures: u32,
     // Swapped by hand: asked for its current download at its time, whatever the others offer.
     pinned: bool,
+    // The IPv6 address another client told it has.
+    ipv6: Option<Ipv6Addr>,
     // The downloads asked for on the current connection.
     tried: Vec<[u8; 16]>,
 }
@@ -214,6 +225,8 @@ struct Source {
     // When the parts were told, and until when the source is swapped away from by hand.
     parts_at: Option<Instant>,
     away_until: Option<Instant>,
+    // When it was last asked for other sources.
+    sources_asked: Option<Instant>,
 }
 
 struct Entry {
@@ -232,6 +245,8 @@ struct Entry {
     stopped_by_schedule: bool,
     // What the sources said of the file, the latest of each, in the order they said it.
     comments: IndexMap<SocketAddr, PeerComment>,
+    // When a source last told the other sources it knows.
+    sources_answered: Option<Instant>,
 }
 
 impl Entry {
@@ -249,6 +264,7 @@ impl Entry {
             aich_votes: AichVotes::new(),
             stopped_by_schedule: false,
             comments: IndexMap::new(),
+            sources_answered: None,
         }
     }
 
@@ -286,6 +302,9 @@ pub struct DownloadManager {
     known_taken: bool,
     next_sources_kept: Instant,
     comment_filter: CommentFilter,
+    // The settings and our client id the last tick saw, for what the sources tell between ticks.
+    settings: Option<Settings>,
+    our_id: u32,
 }
 
 impl DownloadManager {
@@ -321,6 +340,8 @@ impl DownloadManager {
             known_taken: false,
             next_sources_kept: instants::later(now, KEEP_SOURCES_INTERVAL),
             comment_filter: CommentFilter::default(),
+            settings: None,
+            our_id: 0,
         })
     }
 
@@ -741,6 +762,8 @@ impl DownloadManager {
         }
         self.send_callbacks(server, now);
         self.comment_filter = CommentFilter::of(&settings.comment_filter);
+        self.settings = Some(settings.clone());
+        self.our_id = server.client_id();
         if !std::mem::replace(&mut self.known_taken, true) {
             let hashes: Vec<[u8; 16]> = self.entries.keys().copied().collect();
             for hash in hashes {
@@ -1368,11 +1391,95 @@ impl DownloadManager {
             }
             Note::Ended { outcome, reason } => self.ended(address, outcome, &reason, ours),
             Note::Commented(comment) => self.commented(&hash, address, comment),
+            Note::SourcesWanted { extended } => {
+                if self.may_sources_be_asked(&hash, &address) {
+                    self.with_session(&address, ours, |session, _| session.ask_sources(extended));
+                }
+            }
+            Note::SourcesFound(answer) => self.sources_found(&address, &answer, ours),
             Note::NothingHere { has_file } => match self.another(&address, has_file, ours) {
                 Some(next) => self.with_session(&address, ours, |session, ctx| session.ask_for(next, ctx)),
                 None => self.with_session(&address, ours, |session, ctx| session.give_up(has_file, ctx)),
             },
         }
+    }
+
+    // Rare files may ask a source every 40 minutes, others every 160; a file waits for answers.
+    fn may_sources_be_asked(&mut self, hash: &[u8; 16], address: &SocketAddr) -> bool {
+        let now = (self.clock)();
+        let max_sources = self.settings.as_ref().map_or(0, |settings| settings.max_sources_per_file);
+        let Some(entry) = self.entries.get_mut(hash) else {
+            return false;
+        };
+        let known = entry.sources.len();
+        if known >= (max_sources.saturating_mul(9) / 10).min(SX_MAX_SOURCES) {
+            return false;
+        }
+        let since_answer = entry.sources_answered.map_or(Duration::MAX, |at| now.saturating_duration_since(at));
+        let Some(source) = entry.sources.get_mut(address) else {
+            return false;
+        };
+        let asked = source.sources_asked.map(|at| now.saturating_duration_since(at));
+        let rare_due = asked.is_none_or(|since| since >= SX_RARE_INTERVAL);
+        let common_due = asked.is_none_or(|since| since >= SX_INTERVAL);
+        let due = (known <= SX_VERY_RARE && rare_due)
+            || (known <= SX_RARE && rare_due && since_answer >= SX_RARE_ANSWER_GAP)
+            || (common_due && since_answer >= SX_ANSWER_GAP);
+        if due {
+            source.sources_asked = Some(now);
+        }
+        due
+    }
+
+    // The sources another client told of: those it may pass on and we can reach, IPv6 ones when we have IPv6 too.
+    fn sources_found(&mut self, from: &SocketAddr, answer: &exchange::Answer, ours: &Hello) {
+        let Some(settings) = self.settings.clone() else {
+            return;
+        };
+        if !self.queue.get(&answer.file).is_some_and(|d| d.is_active()) || !self.entries.contains_key(&answer.file) {
+            return;
+        }
+        if let Some(entry) = self.entries.get_mut(&answer.file) {
+            entry.sources_answered = Some((self.clock)());
+        }
+        let our_ipv6 = ours.ipv6();
+        let mut added = 0usize;
+        for told in &answer.sources {
+            if told.user_hash == Some(ours.user_hash) || (told.ipv6.is_some() && told.ipv6 == our_ipv6) {
+                continue;
+            }
+            let address = if told.is_low_id() || told.is_ipv6_only() {
+                // Reached at its IPv6 address, when we have IPv6 too; a LowID would otherwise need a callback through
+                // its server, and ours may differ.
+                let Some(ipv6) = told.ipv6.filter(|_| our_ipv6.is_some() && told.port != 0) else {
+                    continue;
+                };
+                if !self.allowed(IpAddr::V6(ipv6)) {
+                    continue;
+                }
+                SocketAddr::new(IpAddr::V6(ipv6), told.port)
+            } else {
+                if !usable(told.ip, told.port, &settings, self.our_id)
+                    || !self.allowed(IpAddr::V4(Ipv4Addr::from(told.ip)))
+                {
+                    continue;
+                }
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::from(told.ip)), told.port)
+            };
+            if self.add_source(&answer.file, address, &settings) {
+                if let Some(client) = self.clients.get_mut(&address) {
+                    if client.user_hash.is_none() && told.user_hash.is_some_and(|hash| hash != [0; 16]) {
+                        client.user_hash = told.user_hash;
+                        client.crypt_options = told.crypt_options;
+                    }
+                    if told.ipv6.is_some() && address.is_ipv4() {
+                        client.ipv6 = told.ipv6;
+                    }
+                }
+                added = added.saturating_add(1);
+            }
+        }
+        tracing::debug!("{added} of {} sources from {from} are new", answer.sources.len());
     }
 
     // The client has nothing for the download its session asks for: the next of its downloads that may have something,
@@ -1934,6 +2041,7 @@ impl DownloadManager {
             asked: false,
             failures: 0,
             pinned: false,
+            ipv6: None,
             tried: Vec::new(),
         });
         client.sources.push(*hash);

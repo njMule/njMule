@@ -19,7 +19,12 @@ use std::net::{Ipv4Addr, SocketAddr};
 
 use download_lab::{Downloads, PORT};
 use njmule_engine::api::ed2k_link::FileLink;
+use njmule_engine::protocol::ed2k::client_messages::FileStatus;
+use njmule_engine::protocol::ed2k::hello;
 use njmule_engine::protocol::ed2k::server_messages::{FoundSources, Source as Found};
+use njmule_engine::protocol::ed2k::source_exchange as exchange;
+use njmule_engine::protocol::packet::opcodes::{client, extended};
+use njmule_engine::protocol::packet::protocol;
 use scripted_source::{Link, ScriptedSource, WAIT};
 
 const OUR_ID: u32 = u32::from_le_bytes([198, 51, 100, 7]);
@@ -76,6 +81,29 @@ impl OwnSource {
             .await;
     }
 
+    // Asked for other sources with the file, it tells of them, then queues us.
+    async fn when_the_source_tells_of_sources(&mut self, found: Vec<(Ipv4Addr, [u8; 16])>) {
+        let mut link = self.source.as_ref().unwrap().accept().await;
+        link.until(protocol::EMULE, extended::REQUESTSOURCES2).await;
+        let sources = found
+            .into_iter()
+            .map(|(ip, user_hash)| exchange::Source {
+                ip: u32::from(ip),
+                low_id: 0,
+                port: PORT,
+                server_ip: 0,
+                server_port: 0,
+                user_hash: Some(user_hash),
+                crypt_options: 0,
+                ipv6: None,
+            })
+            .collect();
+        link.send(&exchange::Answer { version: 4, file: FILE, sources }.encode().unwrap()).await;
+        link.send(&FileStatus { file: FILE, part_count: 0, parts: Vec::new() }.encode().unwrap()).await;
+        link.until(protocol::EDONKEY, client::STARTUPLOADREQ).await;
+        self.link = Some(link);
+    }
+
     async fn when_the_source_answers_our_hello(&mut self) {
         self.link = Some(self.source.as_ref().unwrap().accept().await);
     }
@@ -124,4 +152,15 @@ async fn should_drop_a_source_that_turns_out_to_be_ourselves_from_every_download
 
     own.then_the_connection_closes().await;
     own.then_no_download_has_a_source().await;
+}
+
+#[tokio::test]
+async fn should_leave_out_an_exchanged_source_with_our_user_hash() {
+    let mut own = OwnSource::new();
+    own.given_a_source_of(PEER, hello::MISC2_SOURCE_EXCHANGE2).await;
+
+    own.when_the_source_tells_of_sources(vec![(Ipv4Addr::new(192, 0, 2, 73), OURS), (THEIR_IP, PEER)]).await;
+
+    let source = own.source.as_ref().unwrap().address();
+    own.then_the_sources_of_the_download_are(&[source, SocketAddr::from((THEIR_IP, PORT))]).await;
 }
