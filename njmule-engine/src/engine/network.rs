@@ -26,6 +26,7 @@ use crate::api::kad_info::KadInfo;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::peer_info::{Identification as PeerIdentification, PeerInfo};
+use crate::api::search_request;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::config::bind_interface::Binding;
@@ -56,7 +57,9 @@ use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint};
 use crate::protocol::packet::opcodes::{client, server_udp};
 use crate::protocol::packet::{Packet, frame_limits, protocol};
 use crate::protocol::tag::server_tag;
-use crate::search::search_manager::{Effect as SearchEffect, Scope, SearchManager, SpamRater, StartError, Timer};
+use crate::search::search_manager::{
+    Effect as SearchEffect, KadSearches, Scope, SearchManager, SpamRater, StartError, Timer,
+};
 use crate::search::spam_filter::{self, SpamFilter};
 use crate::security::connection_guard::{Admission, ConnectionGuard, Limits, Permit};
 use crate::security::ip_filter::IpFilter;
@@ -96,7 +99,8 @@ pub enum Command {
     DisconnectServer(oneshot::Sender<()>),
     Servers(oneshot::Sender<Vec<ServerInfo>>),
     SetStaticServer(Address, bool, oneshot::Sender<bool>),
-    StartSearch(String, Scope, oneshot::Sender<Result<u64, StartError>>),
+    /// A search where the scope says, or where the networks connected allow when there is none.
+    StartSearch(String, Option<Scope>, oneshot::Sender<Result<u64, StartError>>),
     MoreResults(u64, oneshot::Sender<MoreAnswer>),
     SharedFiles(oneshot::Sender<Vec<SharedFile>>),
     AddDownload(Box<FileLink>, Option<bool>, oneshot::Sender<Result<DownloadInfo, String>>),
@@ -514,11 +518,17 @@ impl Network {
                 let _ = done.send(known);
             }
             Command::StartSearch(query, scope, answer) => {
+                let Some(scope) = scope.or_else(|| self.automatic_scope()) else {
+                    let _ =
+                        answer.send(Err(StartError::Unavailable("Not connected to a server or to Kad.".to_owned())));
+                    return;
+                };
                 let id = self.session.id();
                 let session = &mut self.session;
                 let mut effects = Vec::new();
-                // Kad comes with its port.
-                let started = self.searches.start(&query, scope, id, None, |packet| session.send(packet), &mut effects);
+                let mut kad = self.kad.searching();
+                let kad = kad.as_mut().map(|searching| searching as &mut dyn KadSearches);
+                let started = self.searches.start(&query, scope, id, kad, |packet| session.send(packet), &mut effects);
                 if let Ok(search) = started {
                     self.known_searches.insert(search);
                 }
@@ -1017,8 +1027,7 @@ impl Network {
                         let _ = ticks.send(Tick::Search(timer));
                     });
                 }
-                // No Kad search is started yet.
-                SearchEffect::StopKad(_) => {}
+                SearchEffect::StopKad(search) => self.stop_kad_search(search),
             }
         }
     }
@@ -1712,6 +1721,13 @@ impl Network {
         if let Err(e) = self.spam.save(&spam_file) {
             tracing::warn!("Cannot save {}: {e}", spam_file.display());
         }
+    }
+
+    // As the desktop app picks it: the network connected, Kad with both unless the server is a static or a big one.
+    fn automatic_scope(&self) -> Option<Scope> {
+        let server = self.session.id().and(self.session.server()).map(|server| self.info(server));
+        let kad_connected = self.kad_info().is_some_and(|kad| kad.connected);
+        search_request::automatic(server.is_some(), kad_connected, server.as_ref(), self.servers.all().len())
     }
 
     fn info(&self, server: &Server) -> ServerInfo {

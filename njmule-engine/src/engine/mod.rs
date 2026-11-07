@@ -304,8 +304,8 @@ impl Engine {
         self.ask(|reply| Command::SetStaticServer(address, wanted, reply)).await.unwrap_or(false)
     }
 
-    /// Starts a search; answers its id.
-    pub async fn start_search(&self, query: String, scope: Scope) -> Result<u64, StartError> {
+    /// Starts a search where `scope` says, or where the networks connected allow without one; answers its id.
+    pub async fn start_search(&self, query: String, scope: Option<Scope>) -> Result<u64, StartError> {
         self.ask(|reply| Command::StartSearch(query, scope, reply))
             .await
             .unwrap_or_else(|| Err(StartError::Unavailable("the engine is stopping".to_owned())))

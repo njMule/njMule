@@ -248,9 +248,15 @@ async fn start_search(State(engine): State<Engine>, Json(body): Json<Value>) -> 
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "Missing text: query"));
     };
     let asked = body.get("scope").and_then(Value::as_str).unwrap_or("server");
-    // Automatic: what the networks connected allow, the servers here.
-    let scope = if asked.eq_ignore_ascii_case("automatic") { Some(Scope::Global) } else { Scope::parse(asked) }
-        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a search scope: {asked}")))?;
+    // Automatic: where the networks connected allow, which the engine picks.
+    let scope = if asked.eq_ignore_ascii_case("automatic") {
+        None
+    } else {
+        Some(
+            Scope::parse(asked)
+                .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a search scope: {asked}")))?,
+        )
+    };
     let started = engine.start_search(query.trim().to_owned(), scope).await.map_err(|e| match e {
         StartError::Syntax(error) => ApiError::new(StatusCode::BAD_REQUEST, error.to_string()),
         StartError::NotForKad(reason) => ApiError::new(StatusCode::BAD_REQUEST, reason),

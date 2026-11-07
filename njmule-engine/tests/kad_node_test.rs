@@ -13,9 +13,11 @@ use std::time::{Duration, Instant};
 
 use njmule_engine::api::kad_contact_info::KadContactInfo;
 use njmule_engine::api::kad_search_info::{self, KadSearchInfo};
+use njmule_engine::api::search_result::{Media, SearchResult};
 use njmule_engine::kad::kad_identity::KadIdentity;
 use njmule_engine::kad::kad_node::{
-    Buddies, Buddy, BuddyState, Host, KadEvent, KadNode, NoBuddies, SearchHandle, Settings, Source, Transport,
+    Buddies, Buddy, BuddyState, FileResult, Host, KadEvent, KadNode, NoBuddies, SearchHandle, Settings, Source,
+    Transport,
 };
 use njmule_engine::kad::kad_notes::Finder;
 use njmule_engine::kad::kad_publisher;
@@ -832,4 +834,32 @@ fn when_the_host_is_asked_for_a_udp_test(host: &mut NoChecks) {
 fn then_the_host_knows_no_client_and_has_no_high_id(host: &NoChecks) {
     assert!(!host.is_known_client(ip(30, 1, 1, 1)));
     assert!(!host.has_high_id());
+}
+
+fn when_a_kad_result_is_listed(found: FileResult) -> SearchResult {
+    found.into_search_result()
+}
+
+fn then_it_is_listed_with_all_kad_told(listed: &SearchResult, found: &FileResult) {
+    assert_eq!((listed.hash, listed.name.as_str(), listed.size), (found.hash, found.name.as_str(), found.size));
+    assert_eq!((listed.sources, listed.complete_sources), (found.sources, None), "Kad does not tell complete sources");
+    assert_eq!((listed.file_type.as_deref(), &listed.media), (found.file_type.as_deref(), &found.media));
+    assert_eq!(listed.aich_hash, found.aich_hash);
+}
+
+#[test]
+fn should_list_a_kad_result_with_all_kad_tells_of_it() {
+    let found = FileResult {
+        hash: [4; 16],
+        name: "Night Sky.avi".to_owned(),
+        size: 700_000_000,
+        sources: 9,
+        file_type: Some("Video".to_owned()),
+        media: Media { title: "Night Sky".to_owned(), length: 5400, ..Media::default() },
+        aich_hash: Some([6; 20]),
+    };
+
+    let listed = when_a_kad_result_is_listed(found.clone());
+
+    then_it_is_listed_with_all_kad_told(&listed, &found);
 }
