@@ -60,6 +60,8 @@ pub struct Engine {
     pub kad_public_ip: u32,
     /// The client datagrams sent over Kad's port: where, what, and the user hash that obfuscates them.
     pub kad_sent: Vec<(SocketAddr, njmule_engine::protocol::packet::Packet, Option<[u8; 16]>)>,
+    /// The firewalled sources Kad was asked to have call us, and for which file.
+    pub kad_callbacks: Vec<(njmule_engine::download::download_manager::KadSource, [u8; 16])>,
 }
 
 /// Kad as a stand-in: it records the searches it is asked for, which find what the tests say.
@@ -82,6 +84,15 @@ impl KadLink for Kad {
         obfuscate_for: Option<[u8; 16]>,
     ) {
         self.0.lock().unwrap().kad_sent.push((to, packet.clone(), obfuscate_for));
+    }
+
+    fn request_callback(
+        &mut self,
+        source: &njmule_engine::download::download_manager::KadSource,
+        file: &[u8; 16],
+    ) -> bool {
+        self.0.lock().unwrap().kad_callbacks.push((source.clone(), *file));
+        true
     }
 }
 
@@ -197,6 +208,11 @@ impl Lab {
     /// The client datagrams sent over Kad's port so far.
     pub fn kad_sent(&self) -> Vec<(SocketAddr, njmule_engine::protocol::packet::Packet, Option<[u8; 16]>)> {
         self.kad.0.lock().unwrap().kad_sent.clone()
+    }
+
+    /// The firewalled sources Kad was asked to have call us so far, and for which file.
+    pub fn kad_callbacks(&self) -> Vec<(njmule_engine::download::download_manager::KadSource, [u8; 16])> {
+        self.kad.0.lock().unwrap().kad_callbacks.clone()
     }
 
     /// Kad found `sources` for `file`, as the network hands them over.

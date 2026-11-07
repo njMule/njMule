@@ -1059,7 +1059,17 @@ impl Network {
         let obfuscation = self.preferences().obfuscation;
         let our_ip = self.our_public_ip();
         let mut server = SessionLink { session: &mut self.session, context, obfuscation };
-        let mut kad = self.kad.finding(our_ip);
+        let uploads = &self.uploads;
+        let now = Instant::now();
+        let banned = move |ip: u32| uploads.is_banned(IpAddr::V4(Ipv4Addr::from(ip)), now);
+        let calling = kad::Calling {
+            obfuscation,
+            filter_lan: settings.filter_lan,
+            tcp_port: self.shared.listen_port(),
+            user_hash: self.shared.user_hash,
+            banned: &banned,
+        };
+        let mut kad = self.kad.finding(our_ip, calling);
         let kad = kad.as_mut().map(|finding| finding as &mut dyn KadLink);
         self.downloads.tick(&mut server, kad, &settings, &ours);
         let connected = self.session.server().map(server_list::address_of);

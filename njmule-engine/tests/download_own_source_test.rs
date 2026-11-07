@@ -70,7 +70,7 @@ impl OwnSource {
                 address: SocketAddrV4::new(ip, port),
                 user_hash: Some(user_hash),
                 crypt_options: 0,
-                firewalled: false,
+                callback: None,
                 ipv6: None,
             })
             .collect();
