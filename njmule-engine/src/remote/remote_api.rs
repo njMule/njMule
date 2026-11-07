@@ -14,8 +14,8 @@ use serde_json::{Value, json};
 
 use crate::api::ed2k_link::Ed2kLink;
 use crate::config::bind_interface;
-use crate::engine::Engine;
 use crate::engine::network::{ConnectError, MoreAnswer};
+use crate::engine::{Engine, NotesError};
 use crate::persist::format::{nodes_dat, server_met};
 use crate::remote::{api_json, event_streams};
 use crate::search::search_manager::{Scope, StartError};
@@ -47,6 +47,7 @@ pub fn router(engine: Engine) -> Router {
         .route("/downloads/{hash}/pause", post(pause_download))
         .route("/downloads/{hash}/resume", post(resume_download))
         .route("/sources", get(sources))
+        .route("/files/{hash}/notes", get(list_kad_notes).post(search_kad_notes))
         .route("/kad", get(|State(engine): State<Engine>| async move {
             Json(engine.kad().await.as_ref().map_or(Value::Null, api_json::kad))
         }))
@@ -330,6 +331,23 @@ async fn resume_download(State(engine): State<Engine>, Path(hash): Path<String>)
 
 async fn cancel_download(State(engine): State<Engine>, Path(hash): Path<String>) -> Result<Json<Value>, ApiError> {
     if engine.cancel_download(file_hash(&hash)?).await { Ok(Json(api_json::ok())) } else { Err(no_download()) }
+}
+
+async fn list_kad_notes(State(engine): State<Engine>, Path(hash): Path<String>) -> Result<Json<Value>, ApiError> {
+    let notes = engine.kad_notes(file_hash(&hash)?).await;
+    Ok(Json(Value::Array(notes.iter().map(api_json::kad_note).collect())))
+}
+
+async fn search_kad_notes(State(engine): State<Engine>, Path(hash): Path<String>) -> Result<Json<Value>, ApiError> {
+    let notes = engine.search_kad_notes(file_hash(&hash)?).await.map_err(|refused| match refused {
+        NotesError::UnknownFile => {
+            ApiError::new(StatusCode::BAD_REQUEST, format!("Neither downloaded nor shared: {hash}"))
+        }
+        NotesError::Kad(reason) => {
+            ApiError::new(StatusCode::SERVICE_UNAVAILABLE, format!("The engine cannot do it now: {reason}"))
+        }
+    })?;
+    Ok(Json(Value::Array(notes.iter().map(api_json::kad_note).collect())))
 }
 
 async fn clear_completed_downloads(State(engine): State<Engine>) -> Json<Value> {

@@ -12,18 +12,22 @@ use std::time::{Duration, Instant};
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
-use super::{Network, PeerEvent, Rater, Tick};
+use super::{Network, NotesOutcome, PeerEvent, Rater, Tick};
+use crate::api::download_info::DownloadStatus;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::{Buddy, KadInfo};
+use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::download::download_manager::{KadCallback, KadLink, KadSource};
 use crate::engine::{Shared, crypt_options};
+use crate::files::comment_filter::CommentFilter;
 use crate::kad::kad_identity::KadIdentity;
 use crate::kad::kad_node::{self, Buddies, BuddyState, Host, KadEvent, KadNode, SearchHandle, Settings};
+use crate::kad::kad_notes::{self, KadNotes};
 use crate::kad::kad_publisher::{self, KadPublisher};
 use crate::kad::kad_socket::{Incoming, KadSocket, Keys};
 use crate::kad::uint128::UInt128;
@@ -78,6 +82,8 @@ pub(super) struct KadSide {
     searches: HashMap<SearchHandle, u64>,
     // The TCP link to our buddy, or to the firewalled node we serve, which the node shares.
     buddies: Arc<Mutex<BuddyLink>>,
+    // What Kad nodes said of our files, kept while Kad stops and starts again.
+    notes: KadNotes,
 }
 
 impl KadSide {
@@ -97,6 +103,7 @@ impl KadSide {
             known,
             searches: HashMap::new(),
             buddies: Arc::new(Mutex::new(buddies)),
+            notes: KadNotes::new(Instant::now()),
         }
     }
 
@@ -302,6 +309,7 @@ impl Network {
             return;
         };
         self.buddies().release();
+        self.kad.notes.kad_stopped(&self.comment_filter());
         running.node.close();
         running.relay.close();
         tokio::spawn(running.socket.close());
@@ -313,6 +321,7 @@ impl Network {
         self.kad.searches.clear();
         let mut running = self.kad.running.take()?;
         self.buddies().release();
+        self.kad.notes.kad_stopped(&self.comment_filter());
         running.node.close();
         running.relay.close();
         self.kad.port_taken = 0;
@@ -541,6 +550,7 @@ impl Network {
         if self.kad.running.is_some() {
             self.buddies().tick();
             self.buddy_actions();
+            self.look_for_notes();
         }
         // Firewalled with a buddy: clients that know us reach us through it.
         let firewalled = self.kad.running.as_ref().is_some_and(|running| {
@@ -553,6 +563,50 @@ impl Network {
             (0, 0)
         };
         self.shared.announce_buddy(ip, port);
+    }
+
+    /// The notes Kad gave on `file` so far, without those the comment filter leaves out.
+    pub(super) fn kad_notes(&self, file: &[u8; 16]) -> Vec<KadNote> {
+        self.kad.notes.notes(file, &self.comment_filter())
+    }
+
+    /// Searches Kad for the notes on `file`, which we download or share, and hands over where the notes then known
+    /// come once the search ends, or why it could not start; none for another file.
+    pub(super) fn search_kad_notes(&mut self, file: [u8; 16]) -> Option<NotesOutcome> {
+        let size = self
+            .downloads
+            .find(&file)
+            .map(|d| d.file.size())
+            .or_else(|| self.shared_files.get(&file).map(|f| f.size))?;
+        let (done, outcome) = oneshot::channel();
+        let KadSide { running, notes, .. } = &mut self.kad;
+        let finder = running
+            .as_mut()
+            .filter(|running| running.node.is_connected())
+            .map(|running| &mut running.node as &mut dyn kad_notes::Finder);
+        notes.search(file, size, finder, done);
+        Some(outcome)
+    }
+
+    // Now and then Kad is asked what others said of a running download not asked of yet in this run.
+    fn look_for_notes(&mut self) {
+        let downloads: Vec<kad_notes::Download> = self
+            .downloads
+            .downloads()
+            .iter()
+            .filter(|d| d.status == DownloadStatus::Downloading)
+            .map(|d| kad_notes::Download { hash: d.hash, size: d.size })
+            .collect();
+        let KadSide { running, notes, .. } = &mut self.kad;
+        let finder = running
+            .as_mut()
+            .filter(|running| running.node.is_connected())
+            .map(|running| &mut running.node as &mut dyn kad_notes::Finder);
+        notes.tick(Instant::now(), finder, &downloads);
+    }
+
+    fn comment_filter(&self) -> CommentFilter {
+        CommentFilter::of(&self.shared.preferences.borrow().comment_filter)
     }
 
     fn buddies(&self) -> MutexGuard<'_, BuddyLink> {
@@ -657,8 +711,8 @@ impl Network {
         self.answer_reask(from, &reask.ping);
     }
 
-    // What Kad's searches found goes to the searches still open, and the sources to the downloads; the notes have no
-    // taker yet.
+    // What Kad's searches found goes to the searches still open, the sources to the downloads, and the notes to those
+    // kept of our files.
     fn kad_events(&mut self, events: Vec<KadEvent>) {
         for event in events {
             match event {
@@ -678,7 +732,11 @@ impl Network {
                     self.search_effects(effects);
                 }
                 KadEvent::Sources { file, sources } => self.kad_sources_found(&file, &sources),
-                KadEvent::Notes { .. } | KadEvent::NotesEnded { .. } => {}
+                KadEvent::Notes { file, notes } => self.kad.notes.found(&file, notes),
+                KadEvent::NotesEnded { file } => {
+                    let filter = self.comment_filter();
+                    self.kad.notes.ended(&file, &filter);
+                }
             }
         }
     }

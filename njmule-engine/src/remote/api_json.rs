@@ -10,6 +10,7 @@ use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::{Buddy, KadInfo};
+use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::{KadSearchInfo, Kind};
 use crate::api::known_client::KnownClient;
 use crate::api::nj_mule_info;
@@ -346,6 +347,16 @@ pub fn kad_contact(contact: &KadContactInfo) -> Value {
         "version": contact.version,
         "verified": contact.verified,
         "country": contact.country,
+    })
+}
+
+/// A note Kad gave on a file: who published it, the name it gives the file, and its comment.
+pub fn kad_note(note: &KadNote) -> Value {
+    json!({
+        "who": note.publisher,
+        "fileName": note.file_name,
+        "rating": note.comment.rating(),
+        "text": note.comment.text(),
     })
 }
 
