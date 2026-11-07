@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use njmule_engine::files::hash::ed2k;
 use njmule_engine::kad::kad_contact::KadContact;
+use njmule_engine::kad::kad_identity::KadIdentity;
 use njmule_engine::kad::packet_tracking::{self, PacketTracking};
 use njmule_engine::kad::routing_table::{self, Outcome, RoutingTable};
 use njmule_engine::kad::uint128::UInt128;
@@ -531,4 +532,57 @@ fn should_not_take_an_answer_too_late() {
     basics.when_an_answer_arrives(ADDRESS, kad::RES, 3000 + packet_tracking::ANSWER_WINDOW.as_millis() as u64 + 1);
 
     basics.then_the_answer_is_not_taken("too late");
+}
+
+// Rust's own: what Java's tests reach through the node.
+
+fn when_an_identity_is_made_of(id: u128) -> Option<UInt128> {
+    KadIdentity::new(UInt128(id), 7).map(|identity| identity.id())
+}
+
+fn then_the_identity_is(made: Option<UInt128>, expected: Option<UInt128>) {
+    assert_eq!(made, expected);
+}
+
+fn when_lookups_hold_and_release_a_contact(holds: u32, releases: u32) -> (bool, Option<Instant>) {
+    let mut contact = KadContact::new(UInt128(5), u32::from_be_bytes([20, 1, 1, 1]), 4672, 4662, 8, Instant::now());
+    for _ in 0..holds {
+        contact.hold();
+    }
+    for _ in 0..releases {
+        contact.release();
+    }
+    (contact.in_use(), contact.expires())
+}
+
+fn then_the_contact_is_in_use(state: (bool, Option<Instant>), in_use: bool) {
+    assert_eq!(state.0, in_use);
+}
+
+#[test]
+fn should_refuse_the_zero_id_for_an_identity() {
+    let made = when_an_identity_is_made_of(0);
+
+    then_the_identity_is(made, None);
+}
+
+#[test]
+fn should_make_an_identity_of_any_other_id() {
+    let made = when_an_identity_is_made_of(5);
+
+    then_the_identity_is(made, Some(UInt128(5)));
+}
+
+#[test]
+fn should_keep_a_contact_in_use_while_a_lookup_holds_it() {
+    let state = when_lookups_hold_and_release_a_contact(2, 1);
+
+    then_the_contact_is_in_use(state, true);
+}
+
+#[test]
+fn should_free_a_contact_every_lookup_released() {
+    let state = when_lookups_hold_and_release_a_contact(1, 2);
+
+    then_the_contact_is_in_use(state, false);
 }
