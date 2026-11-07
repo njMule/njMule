@@ -53,21 +53,45 @@ impl Transport for Recording {
     }
 }
 
-/// What the node asked of its host, as text: `reach ip:port` and `udp ip:port`.
+/// A helper the host was asked to connect to for our UDP test.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UdpCheck {
+    pub ip: u32,
+    pub tcp_port: u16,
+    pub internal_port: u16,
+    pub external_port: u16,
+    pub sender_key: u32,
+}
+
+/// A node the host was asked to connect to, to prove it can reach us.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reach {
+    pub ip: u32,
+    pub port: u16,
+    pub user_hash: [u8; 16],
+    pub connect_options: u8,
+}
+
+/// What the node asked of its host, as text: `reach ip:port` and `udp ip:port`, and in full.
 #[derive(Clone, Default)]
 pub struct Checks {
     pub asked: Arc<Mutex<Vec<String>>>,
+    pub reaches: Arc<Mutex<Vec<Reach>>>,
+    pub udp_checks: Arc<Mutex<Vec<UdpCheck>>>,
     pub known_clients: Arc<Mutex<Vec<u32>>>,
     pub high_id: Arc<Mutex<bool>>,
 }
 
 impl Host for Checks {
-    fn check_reachable(&mut self, ip: u32, port: u16, _: [u8; 16], _: u8) {
+    fn check_reachable(&mut self, ip: u32, port: u16, user_hash: [u8; 16], connect_options: u8) {
         self.asked.lock().unwrap().push(format!("reach {}:{port}", std::net::Ipv4Addr::from(ip)));
+        self.reaches.lock().unwrap().push(Reach { ip, port, user_hash, connect_options });
     }
 
-    fn check_udp(&mut self, ip: u32, tcp_port: u16, _: u16, _: u16, _: u32) {
+    fn check_udp(&mut self, ip: u32, tcp_port: u16, internal_port: u16, external_port: u16, sender_key: u32) {
         self.asked.lock().unwrap().push(format!("udp {}:{tcp_port}", std::net::Ipv4Addr::from(ip)));
+        let check = UdpCheck { ip, tcp_port, internal_port, external_port, sender_key };
+        self.udp_checks.lock().unwrap().push(check);
     }
 
     fn is_known_client(&self, ip: u32) -> bool {
