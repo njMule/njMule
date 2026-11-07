@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadManagerTest, under its names: what the user does with downloads, on the downloads as the
-//! engine runs them. Those about where sources come from wait for their port (`tests/not_ported.txt`).
+//! The Java engine's DownloadManagerTest, under its names: what the user does with downloads and where their sources
+//! come from, on the downloads as the engine runs them. Kad's sources wait for Kad (`tests/not_ported.txt`); the
+//! sources Kad finds in the Java tests of corrupt senders come from the server here.
 
 #![allow(
     clippy::unwrap_used,
@@ -14,17 +15,27 @@
 
 mod download_lab;
 
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use download_lab::{Downloads, Lab, PORT};
+use download_lab::{Downloads, Engine, Lab, PORT};
 use njmule_engine::api::category::{self, Category};
 use njmule_engine::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus};
 use njmule_engine::api::ed2k_link::{Ed2kLink, FileLink, Source};
 use njmule_engine::config::next_download::NextDownload;
 use njmule_engine::download::download_manager::DownloadEvent;
+use njmule_engine::protocol::ed2k::server_messages::{FoundSources, Source as Found};
 
 const OUR_ID: u32 = u32::from_le_bytes([198, 51, 100, 7]);
+const BLOCKED_IP: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 9);
+const CORRUPT: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 66);
+const HONEST: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 67);
+const CORRUPT_FILE: [u8; 16] = [0xc0; 16];
+const IDLE_FILE: [u8; 16] = [0x1d; 16];
+// A link with a loopback, a blocked and a LAN source.
+const LINK_WITH_SOURCES: &str = "ed2k://|file|link.bin|5000|34343434343434343434343434343434|/|sources,127.0.0.1:4662,203.0.113.9:4662,\
+     172.20.0.9:4662|/";
 const LINK_TO_STOP: &str = "ed2k://|file|stop.bin|5000|56565656565656565656565656565656|/|sources,192.0.2.10:4662|/";
 const LINK_WITH_ODD_SOURCES: &str = "ed2k://|file|odd.bin|5000|4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a|/|sources,0.1.2.3:4662,\
      224.0.0.251:4662,240.1.2.3:4662,255.255.255.255:4662|/";
@@ -35,6 +46,8 @@ struct Manager {
     downloads: Option<Downloads>,
     categories: Vec<Category>,
     clean_up: Option<&'static str>,
+    idle_days: u32,
+    keeps_links: bool,
     answers: bool,
     hash: [u8; 16],
     info: Option<DownloadInfo>,
@@ -50,6 +63,8 @@ impl Manager {
             downloads: None,
             categories: Vec::new(),
             clean_up: None,
+            idle_days: 0,
+            keeps_links: false,
             answers: false,
             hash: [0; 16],
             info: None,
@@ -66,7 +81,10 @@ impl Manager {
             settings.clean_up_new_names = true;
             settings.name_cleanups = words.to_owned();
         }
-        let downloads = Downloads::start([0xab; 16], OUR_ID, settings);
+        settings.auto_delete_days = self.idle_days;
+        let engine =
+            Engine { blocked: vec![u32::from(BLOCKED_IP)], keeps_links: self.keeps_links, kept_links: Vec::new() };
+        let downloads = Downloads::start_with([0xab; 16], OUR_ID, settings, engine);
         downloads.server.lock().unwrap().connected = self.answers;
         let categories = self.categories.clone();
         downloads.run(move |lab| lab.manager.set_categories(categories)).await;
@@ -92,6 +110,45 @@ impl Manager {
 
     fn given_the_names_of_new_downloads_cleaned_up_of(&mut self, words: &'static str) {
         self.clean_up = Some(words);
+    }
+
+    fn given_downloads_deleted_after_idle_days(&mut self, days: u32) {
+        self.idle_days = days;
+    }
+
+    fn given_the_links_kept(&mut self, kept: bool) {
+        self.keeps_links = kept;
+    }
+
+    async fn given_a_download_idle_for_seconds(&mut self, name: &str, hash: [u8; 16], seconds: u64) {
+        self.given_the_download_manager().await;
+        self.given_a_download(name, hash).await;
+        self.run(move |lab| lab.manager.find_mut(&hash).unwrap().file.set_idle_seconds(seconds)).await;
+    }
+
+    async fn given_a_paused_download_idle_for_seconds(&mut self, name: &str, hash: [u8; 16], seconds: u64) {
+        self.given_the_download_manager().await;
+        self.given_a_paused_download(name, 5000, hash).await;
+        self.run(move |lab| lab.manager.find_mut(&hash).unwrap().file.set_idle_seconds(seconds)).await;
+    }
+
+    // A running download whose sources the server found.
+    async fn given_a_download_with_the_server_sources(&mut self, ips: &[Ipv4Addr]) {
+        self.given_the_download_manager().await;
+        self.given_a_download("corrupt.bin", CORRUPT_FILE).await;
+        self.when_the_server_finds_the_sources_again(ips).await;
+    }
+
+    async fn given_the_source_was_found_sending_corrupt_data(&mut self, ip: Ipv4Addr) {
+        self.when_the_source_is_found_sending_corrupt_data(ip).await;
+    }
+
+    async fn given_the_link_added_paused(&mut self, uri: &str) {
+        self.when_the_link_is_added_paused(uri).await;
+    }
+
+    async fn given_a_source_added_by_hand(&mut self, address: SocketAddr) {
+        self.when_a_source_is_added_by_hand(address).await;
     }
 
     async fn given_a_download(&mut self, name: &str, hash: [u8; 16]) {
@@ -192,6 +249,50 @@ impl Manager {
     async fn given_the_file_written(&mut self, start: u64, end: u64) {
         let hash = self.hash;
         self.run(move |lab| lab.manager.find_mut(&hash).unwrap().file.written(start, end)).await;
+    }
+
+    // A few ticks, a second each on the downloads' clock.
+    async fn when_the_manager_has_run_a_while(&mut self) {
+        for _ in 0..3 {
+            self.downloads().advance(Duration::from_secs(1));
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
+
+    async fn when_the_source_is_found_sending_corrupt_data(&mut self, ip: Ipv4Addr) {
+        self.run(move |lab| {
+            let ours = lab.ours.clone();
+            lab.manager.ban_corrupt_sender(IpAddr::V4(ip), &ours);
+        })
+        .await;
+    }
+
+    async fn when_the_server_finds_the_sources_again(&mut self, ips: &[Ipv4Addr]) {
+        let sources = ips
+            .iter()
+            .map(|ip| Found {
+                client_id: u32::from_le_bytes(ip.octets()),
+                port: PORT,
+                crypt_options: 0,
+                user_hash: None,
+            })
+            .collect();
+        let found = FoundSources { file: CORRUPT_FILE, sources };
+        self.run(move |lab| {
+            let (settings, ours) = (lab.settings.clone(), lab.ours.clone());
+            lab.manager.found_sources(&found, &settings, OUR_ID, &ours);
+        })
+        .await;
+    }
+
+    async fn when_a_source_is_added_by_hand(&mut self, address: SocketAddr) {
+        let hash = self.hash;
+        self.answer = self
+            .run(move |lab| {
+                let settings = lab.settings.clone();
+                lab.manager.add_source_by_hand(&hash, address, &settings)
+            })
+            .await;
     }
 
     async fn when_the_link_is_added_paused(&mut self, uri: &str) {
@@ -304,6 +405,57 @@ impl Manager {
     async fn when_a_file_to_preview_is_asked_for(&mut self) {
         let hash = self.hash;
         self.preview = self.run(move |lab| lab.manager.data_file(&hash)).await;
+    }
+
+    async fn then_the_download_is_gone(&self, gone: bool) {
+        let hash = self.hash;
+        assert_eq!(self.run(move |lab| lab.manager.download(&hash).is_none()).await, gone, "download gone");
+    }
+
+    fn then_the_kept_links_are(&self, links: &[&str]) {
+        assert_eq!(self.downloads().engine.lock().unwrap().kept_links, links);
+    }
+
+    async fn then_its_idle_time_is_below(&self, seconds: u64) {
+        let hash = self.hash;
+        assert!(self.run(move |lab| lab.manager.find(&hash).unwrap().file.idle_seconds()).await < seconds);
+    }
+
+    async fn then_its_sources_are(&self, ips: &[Ipv4Addr]) {
+        let mut sources: Vec<String> = self
+            .run(|lab| {
+                lab.manager
+                    .sources()
+                    .into_iter()
+                    .filter(|source| source.file == CORRUPT_FILE)
+                    .map(|source| source.address)
+                    .collect()
+            })
+            .await;
+        sources.sort();
+        let mut expected: Vec<String> = ips.iter().map(|ip| format!("{ip}:{PORT}")).collect();
+        expected.sort();
+        assert_eq!(sources, expected);
+    }
+
+    async fn then_the_banned_are(&self, ips: &[Ipv4Addr]) {
+        let banned: Vec<IpAddr> = self
+            .run(|lab| {
+                lab.events
+                    .iter()
+                    .filter_map(|event| match event {
+                        DownloadEvent::CorruptSender(ip) => Some(*ip),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .await;
+        assert_eq!(banned, ips.iter().map(|ip| IpAddr::V4(*ip)).collect::<Vec<_>>());
+    }
+
+    async fn then_the_download_now_has_sources(&self, expected: usize) {
+        let hash = self.hash;
+        assert_eq!(self.run(move |lab| lab.manager.download(&hash).unwrap().sources).await, expected);
     }
 
     fn then_the_resulting_download_has_sources(&self, expected: usize) {
@@ -435,6 +587,10 @@ fn pause(lab: &mut Lab, hash: &[u8; 16]) -> bool {
 fn stop(lab: &mut Lab, hash: &[u8; 16]) -> bool {
     let ours = lab.ours.clone();
     lab.manager.stop(hash, &ours)
+}
+
+fn address(ip: Ipv4Addr) -> SocketAddr {
+    SocketAddr::from((ip, PORT))
 }
 
 fn hash_of(octet: u8) -> [u8; 16] {
@@ -848,4 +1004,136 @@ async fn should_preview_with_the_start_of_the_file() {
     manager.when_a_file_to_preview_is_asked_for().await;
 
     manager.then_there_is_a_file_to_preview();
+}
+
+#[tokio::test]
+async fn should_drop_a_source_found_sending_corrupt_data_and_report_it_for_a_ban() {
+    let mut manager = Manager::new();
+    manager.given_a_download_with_the_server_sources(&[CORRUPT, HONEST]).await;
+
+    manager.when_the_source_is_found_sending_corrupt_data(CORRUPT).await;
+
+    manager.then_its_sources_are(&[HONEST]).await;
+    manager.then_the_banned_are(&[CORRUPT]).await;
+}
+
+#[tokio::test]
+async fn should_delete_a_running_download_idle_for_the_days_set_and_keep_its_link_first() {
+    let mut manager = Manager::new();
+    manager.given_downloads_deleted_after_idle_days(1);
+    manager.given_the_links_kept(true);
+    manager.given_a_download_idle_for_seconds("idle.bin", IDLE_FILE, 86_399).await;
+
+    manager.when_the_manager_has_run_a_while().await;
+
+    manager.then_the_download_is_gone(true).await;
+    manager.then_the_kept_links_are(&["ed2k://|file|idle.bin|5000|1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D1D|/"]);
+}
+
+#[tokio::test]
+async fn should_leave_a_paused_download_alone_whatever_its_idle_time() {
+    let mut manager = Manager::new();
+    manager.given_downloads_deleted_after_idle_days(1);
+    manager.given_the_links_kept(true);
+    manager.given_a_paused_download_idle_for_seconds("paused.bin", IDLE_FILE, 86_400).await;
+
+    manager.when_the_manager_has_run_a_while().await;
+
+    manager.then_the_download_is_gone(false).await;
+    manager.then_the_kept_links_are(&[]);
+}
+
+#[tokio::test]
+async fn should_keep_a_download_whose_link_cannot_be_kept_and_count_its_days_again() {
+    let mut manager = Manager::new();
+    manager.given_downloads_deleted_after_idle_days(1);
+    manager.given_the_links_kept(false);
+    manager.given_a_download_idle_for_seconds("kept.bin", IDLE_FILE, 86_399).await;
+
+    manager.when_the_manager_has_run_a_while().await;
+
+    manager.then_the_download_is_gone(false).await;
+    manager.then_its_idle_time_is_below(86_399).await;
+}
+
+#[tokio::test]
+async fn should_not_take_again_a_source_found_sending_corrupt_data() {
+    let mut manager = Manager::new();
+    manager.given_a_download_with_the_server_sources(&[CORRUPT, HONEST]).await;
+    manager.given_the_source_was_found_sending_corrupt_data(CORRUPT).await;
+
+    manager.when_the_server_finds_the_sources_again(&[CORRUPT, HONEST]).await;
+
+    manager.then_its_sources_are(&[HONEST]).await;
+}
+
+#[tokio::test]
+async fn should_take_the_link_sources_the_ip_filter_allows() {
+    let mut manager = Manager::new();
+    manager.given_the_download_manager().await;
+
+    manager.when_the_link_is_added_paused(LINK_WITH_SOURCES).await;
+
+    manager.then_the_resulting_download_has_sources(2);
+}
+
+#[tokio::test]
+async fn should_take_a_source_added_by_hand() {
+    let mut manager = Manager::new();
+    manager.given_the_download_manager().await;
+    manager.given_the_link_added_paused(LINK_WITH_SOURCES).await;
+
+    manager.when_a_source_is_added_by_hand(address(Ipv4Addr::new(10, 0, 0, 5))).await;
+
+    manager.then_it_is_accepted();
+    manager.then_the_download_now_has_sources(3).await;
+}
+
+#[tokio::test]
+async fn should_not_take_a_source_added_by_hand_twice() {
+    let mut manager = Manager::new();
+    manager.given_the_download_manager().await;
+    manager.given_the_link_added_paused(LINK_WITH_SOURCES).await;
+    manager.given_a_source_added_by_hand(address(Ipv4Addr::new(10, 0, 0, 5))).await;
+
+    manager.when_a_source_is_added_by_hand(address(Ipv4Addr::new(10, 0, 0, 5))).await;
+
+    manager.then_it_is_refused("known already");
+    manager.then_the_download_now_has_sources(3).await;
+}
+
+#[tokio::test]
+async fn should_apply_the_ip_filter_to_a_source_added_by_hand() {
+    let mut manager = Manager::new();
+    manager.given_the_download_manager().await;
+    manager.given_the_link_added_paused(LINK_WITH_SOURCES).await;
+
+    manager.when_a_source_is_added_by_hand(address(BLOCKED_IP)).await;
+
+    manager.then_it_is_refused("the IP filter still applies");
+}
+
+#[tokio::test]
+async fn should_refuse_sources_by_hand_no_client_can_have() {
+    for ip in [Ipv4Addr::UNSPECIFIED, Ipv4Addr::new(0, 0, 0, 1), Ipv4Addr::new(239, 255, 255, 250), Ipv4Addr::BROADCAST]
+    {
+        let mut manager = Manager::new();
+        manager.given_the_download_manager().await;
+        manager.given_the_link_added_paused(LINK_WITH_ODD_SOURCES).await;
+
+        manager.when_a_source_is_added_by_hand(address(ip)).await;
+
+        manager.then_it_is_refused(&ip.to_string());
+    }
+}
+
+#[tokio::test]
+async fn should_take_a_loopback_source_by_hand_as_the_user_chose() {
+    let mut manager = Manager::new();
+    manager.given_the_download_manager().await;
+    manager.given_the_link_added_paused(LINK_WITH_ODD_SOURCES).await;
+
+    manager.when_a_source_is_added_by_hand(address(Ipv4Addr::LOCALHOST)).await;
+
+    manager.then_it_is_accepted();
 }
