@@ -129,6 +129,11 @@ UploadManagerTest.shouldEndTheConnectionOnARequestThatDoesNotDecodeAndSaveTheCre
 UploadManagerTest.shouldLetTheFriendWithTheFriendSlotPassAFullQueue
 UploadManagerTest.shouldPassAClientsUdpTestRequestToKadWithItsAddress
 
+# Rust takes a hash as an array of 16 bytes, so another length does not compile; a bit index is unsigned, and reads 0
+# past the id.
+UInt128Test.shouldRefuseBigEndianBytesOfTheWrongLength
+UInt128Test.shouldRefuseABitOutsideTheId
+
 # Kad's sources come with Kad (area 5).
 DownloadManagerTest.shouldKeepOnlyUsableSourcesFromKad
 DownloadSourcesTest.shouldLeaveOutTheKadSourcesOfAStoppedDownload
