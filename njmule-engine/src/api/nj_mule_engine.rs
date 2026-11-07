@@ -15,6 +15,7 @@ use tokio::sync::broadcast;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::file_history::FileHistory;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
@@ -24,6 +25,7 @@ use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::PeerInfo;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
+use crate::api::spam_marks::SpamMarks;
 use crate::config::preferences::Preferences;
 use crate::engine::NotesError;
 use crate::engine::network::{ConnectError, MoreAnswer};
@@ -168,4 +170,22 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
 
     /// The comments the sources of a download gave on it.
     fn peer_comments(&self, download: [u8; 16]) -> impl Future<Output = Vec<PeerComment>> + Send;
+
+    /// Whether the server holds more results of a search, which [`more_results`](Self::more_results) asks for.
+    fn has_more_results(&self, search: u64) -> impl Future<Output = bool> + Send;
+
+    /// Stops a search: no more of its results come.
+    fn stop_search(&self, search: u64) -> impl Future<Output = ()> + Send;
+
+    /// Rates results for spam by the marks as they are now; off in the preferences, nothing is spam.
+    fn rate_spam(&self, results: Vec<SearchResult>) -> impl Future<Output = Vec<SearchResult>> + Send;
+
+    /// Marks results as spam, or as not spam, and keeps the marks; answers them all.
+    fn mark_spam(&self, results: Vec<SearchResult>, is_spam: bool) -> impl Future<Output = SpamMarks> + Send;
+
+    /// The files marked as spam or as not spam, and the names of those marked spam.
+    fn spam_marks(&self) -> impl Future<Output = SpamMarks> + Send;
+
+    /// The files downloaded or hashed before, and those cancelled.
+    fn file_history(&self) -> impl Future<Output = FileHistory> + Send;
 }

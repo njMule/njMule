@@ -3,30 +3,42 @@
 
 //! The remote-control API (`openapi.yaml`): the calls the front ends make, answered from the engine.
 
-use std::collections::BTreeMap;
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, HashSet};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequest, Path, Query, Request, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use serde_json::{Value, json};
+use tokio::sync::broadcast;
 
-use crate::api::download_info::{DownloadInfo, DownloadPriority};
+use crate::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus};
 use crate::api::ed2k_link::Ed2kLink;
+use crate::api::engine_event::EngineEvent;
+use crate::api::file_history::FileHistory;
 use crate::api::file_names;
 use crate::api::nj_mule_engine::NjMuleEngine;
+use crate::api::search_request;
 use crate::config::bind_interface;
 use crate::engine::NotesError;
 use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::persist::format::{nodes_dat, server_met};
+use crate::remote::search_collector::{Asked, SearchCollector};
 use crate::remote::{api_json, event_streams};
 use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::Address;
 
+// The searches started through the API, with the results the engine's events bring.
+type Searches = Arc<Mutex<SearchCollector>>;
+
 /// The calls, relative to the API's base path.
 pub fn router<E: NjMuleEngine>(engine: E) -> Router {
+    let searches = Searches::default();
+    collect(&engine, Arc::clone(&searches));
     Router::new()
         .route("/preferences", get(preferences::<E>).patch(update_preferences::<E>))
         .route(
@@ -45,8 +57,13 @@ pub fn router<E: NjMuleEngine>(engine: E) -> Router {
         )
         .route("/clients/{address}/hello", post(hello::<E>))
         .route("/clients/{address}/files", post(browse_client::<E>))
-        .route("/searches", post(start_search::<E>))
+        .route("/searches", get(list_searches::<E>).post(start_search::<E>))
+        .route("/searches/check", post(check_search))
+        .route("/searches/spam", get(spam_marks::<E>))
+        .route("/searches/{id}", get(search_results::<E>).delete(stop_search::<E>))
         .route("/searches/{id}/more", post(more_results::<E>))
+        .route("/searches/{id}/spam", post(mark_spam::<E>))
+        .route("/searches/{id}/download", post(download_search_result::<E>))
         .route("/shared", get(shared_files::<E>))
         .route("/downloads", get(downloads::<E>).post(add_downloads::<E>))
         .route("/downloads/completed", delete(clear_completed_downloads::<E>))
@@ -112,7 +129,33 @@ pub fn router<E: NjMuleEngine>(engine: E) -> Router {
         .route("/servers/{address}/static", axum::routing::put(set_static_server::<E>))
         .fallback(|| async { ApiError::new(StatusCode::NOT_FOUND, "No such call") })
         .method_not_allowed_fallback(|| async { ApiError::new(StatusCode::METHOD_NOT_ALLOWED, "No such method") })
+        .layer(Extension(searches))
         .with_state(engine)
+}
+
+// Gathers the results of the searches until the engine stops.
+fn collect<E: NjMuleEngine>(engine: &E, searches: Searches) {
+    let mut events = engine.subscribe();
+    let stopped = engine.stopped();
+    tokio::spawn(async move {
+        tokio::pin!(stopped);
+        loop {
+            let event = tokio::select! {
+                () = &mut stopped => return,
+                event = events.recv() => event,
+            };
+            match event {
+                Ok(EngineEvent::SearchResults { search, results }) => collected(&searches).add(search, results),
+                Ok(EngineEvent::SearchEnded { search, .. }) => collected(&searches).ended(search),
+                Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                Err(broadcast::error::RecvError::Closed) => return,
+            }
+        }
+    });
+}
+
+fn collected(searches: &Searches) -> MutexGuard<'_, SearchCollector> {
+    searches.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// An error answer: its status and `{"error": message}`.
@@ -330,7 +373,11 @@ fn server_address(text: &str) -> Result<Address, ApiError> {
 }
 
 /// Starts a search: `query`, and `scope` (`server` by default, `global`, `kad` or `automatic`).
-async fn start_search<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Response, ApiError> {
+async fn start_search<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Extension(searches): Extension<Searches>,
+    Body(body): Body,
+) -> Result<Response, ApiError> {
     let Some(query) = body.get("query").and_then(Value::as_str) else {
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "Missing text: query"));
     };
@@ -344,21 +391,189 @@ async fn start_search<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body
                 .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a search scope: {asked}")))?,
         )
     };
-    let started = engine.start_search(query.trim().to_owned(), scope).await.map_err(|e| match e {
+    let expression = query.trim().to_owned();
+    let started = engine.start_search(expression.clone(), scope).await.map_err(|e| match e {
         StartError::Syntax(error) => ApiError::new(StatusCode::BAD_REQUEST, error.to_string()),
         StartError::NotForKad(reason) => ApiError::new(StatusCode::BAD_REQUEST, reason),
         StartError::Unavailable(reason) => ApiError::new(StatusCode::CONFLICT, reason),
     })?;
+    collected(&searches).started(started, Asked { expression, scope: asked.to_ascii_lowercase() });
     Ok((StatusCode::CREATED, Json(json!({"id": started}))).into_response())
+}
+
+/// Tells whether a search would take an expression, before it starts.
+async fn check_search(Body(body): Body) -> Result<Json<Value>, ApiError> {
+    search_request::check_expression(text(&body, "query")?.trim())
+        .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error.to_string()))?;
+    Ok(Json(api_json::ok()))
+}
+
+async fn list_searches<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Extension(searches): Extension<Searches>,
+) -> Json<Value> {
+    let listed = collected(&searches).searches();
+    let mut answer = Vec::with_capacity(listed.len());
+    for search in listed {
+        // Those the server holds more results of wait for them to be asked, as in the search's results.
+        let running = search.running && !engine.has_more_results(search.id).await;
+        answer.push(json!({
+            "id": search.id,
+            "query": search.asked.expression,
+            "scope": search.asked.scope,
+            "running": running,
+            "results": search.results,
+        }));
+    }
+    Json(Value::Array(answer))
+}
+
+/// The results of a search, those with the most sources first and spam last.
+async fn search_results<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Extension(searches): Extension<Searches>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let id = search_id(&id)?;
+    let found = collected(&searches).results(id).ok_or_else(no_search)?;
+    // Rated now, as the files marked since they came make them.
+    let mut rated = engine.rate_spam(found).await;
+    rated.sort_by_key(|result| (result.is_spam(), Reverse(result.sources)));
+    let more = engine.has_more_results(id).await;
+    // A search the server holds more results of waits for them to be asked: nothing comes until then.
+    let running = collected(&searches).running(id) && !more;
+    let known = Known::now(&engine).await;
+    let results: Vec<Value> = rated.iter().map(|result| api_json::found(result, known.of(&result.hash))).collect();
+    Ok(Json(json!({"id": id, "running": running, "more": more, "results": results})))
+}
+
+// What we know of files: downloading, shared, or downloaded or cancelled before; the first that holds wins.
+struct Known {
+    downloading: HashSet<[u8; 16]>,
+    shared: HashSet<[u8; 16]>,
+    history: FileHistory,
+}
+
+impl Known {
+    async fn now<E: NjMuleEngine>(engine: &E) -> Self {
+        let downloading = engine
+            .downloads()
+            .await
+            .iter()
+            .filter(|download| download.status != DownloadStatus::Complete)
+            .map(|download| download.hash)
+            .collect();
+        let shared = engine.shared_files().await.iter().map(|file| file.hash).collect();
+        Self { downloading, shared, history: engine.file_history().await }
+    }
+
+    fn of(&self, file: &[u8; 16]) -> Option<&'static str> {
+        if self.downloading.contains(file) {
+            Some("downloading")
+        } else if self.shared.contains(file) {
+            Some("shared")
+        } else if self.history.downloaded(file) {
+            Some("downloaded")
+        } else if self.history.cancelled(file) {
+            Some("cancelled")
+        } else {
+            None
+        }
+    }
+}
+
+/// Stops a search and forgets its results.
+async fn stop_search<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Extension(searches): Extension<Searches>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let id = known_search(&searches, &id)?;
+    engine.stop_search(id).await;
+    collected(&searches).forget(id);
+    Ok(Json(api_json::ok()))
+}
+
+async fn download_search_result<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Extension(searches): Extension<Searches>,
+    Path(id): Path<String>,
+    Body(body): Body,
+) -> Result<Response, ApiError> {
+    let id = known_search(&searches, &id)?;
+    let hash = result_hash(text(&body, "hash")?)?;
+    let result = collected(&searches).result(id, &hash).ok_or_else(gone)?;
+    let link = result.link().map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
+    let info = engine
+        .add_download(link, None)
+        .await
+        .map_err(|reason| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, reason))?;
+    Ok((StatusCode::CREATED, Json(api_json::download(&info, false))).into_response())
+}
+
+/// Marks results as spam, or as not spam with `"spam": false`.
+async fn mark_spam<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Extension(searches): Extension<Searches>,
+    Path(id): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let id = known_search(&searches, &id)?;
+    let Some(hashes) = body.get("hashes").and_then(Value::as_array) else {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Missing list: hashes"));
+    };
+    let mut marked = Vec::with_capacity(hashes.len());
+    for hash in hashes {
+        let hash = result_hash(hash.as_str().unwrap_or_default())?;
+        marked.push(collected(&searches).result(id, &hash).ok_or_else(gone)?);
+    }
+    let is_spam = body.get("spam").and_then(Value::as_bool).unwrap_or(true);
+    engine.mark_spam(marked, is_spam).await;
+    Ok(Json(api_json::ok()))
+}
+
+async fn spam_marks<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    Json(api_json::spam_marks(&engine.spam_marks().await))
+}
+
+// A search started here; any other is not found.
+fn known_search(searches: &Searches, id: &str) -> Result<u64, ApiError> {
+    let id = search_id(id)?;
+    collected(searches).results(id).map(|_| id).ok_or_else(no_search)
+}
+
+fn search_id(text: &str) -> Result<u64, ApiError> {
+    text.parse().map_err(|_| no_search())
+}
+
+fn no_search() -> ApiError {
+    ApiError::new(StatusCode::NOT_FOUND, "No such search")
+}
+
+fn gone() -> ApiError {
+    ApiError::new(StatusCode::NOT_FOUND, "That result is gone: search again.")
+}
+
+// The hash of a result in a body: 32 hex digits.
+fn result_hash(text: &str) -> Result<[u8; 16], ApiError> {
+    data_encoding::HEXUPPER_PERMISSIVE
+        .decode(text.as_bytes())
+        .ok()
+        .and_then(|bytes| <[u8; 16]>::try_from(bytes).ok())
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a file hash: {text}")))
 }
 
 async fn more_results<E: NjMuleEngine>(
     State(engine): State<E>,
+    Extension(searches): Extension<Searches>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
-    let id: u64 = id.parse().map_err(|_| ApiError::new(StatusCode::NOT_FOUND, "No such search"))?;
+    let id = known_search(&searches, &id)?;
     match engine.more_results(id).await {
-        MoreAnswer::Asked => Ok(Json(api_json::ok())),
+        MoreAnswer::Asked => {
+            collected(&searches).resumed(id);
+            Ok(Json(api_json::ok()))
+        }
         MoreAnswer::Refused => Err(ApiError::new(StatusCode::CONFLICT, "That search cannot get more results.")),
         MoreAnswer::Unknown => Err(ApiError::new(StatusCode::NOT_FOUND, "No such search")),
     }

@@ -21,6 +21,7 @@ use tokio::task::JoinHandle;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::file_history::FileHistory;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
@@ -31,6 +32,7 @@ use crate::api::peer_info::{Identification as PeerIdentification, PeerInfo};
 use crate::api::search_request;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
+use crate::api::spam_marks::SpamMarks;
 use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
@@ -125,6 +127,15 @@ pub enum Command {
     /// A search where the scope says, or where the networks connected allow when there is none.
     StartSearch(String, Option<Scope>, oneshot::Sender<Result<u64, StartError>>),
     MoreResults(u64, oneshot::Sender<MoreAnswer>),
+    /// Whether the server holds more results of a search, which `MoreResults` asks for.
+    HasMoreResults(u64, oneshot::Sender<bool>),
+    StopSearch(u64, oneshot::Sender<()>),
+    /// Rates results for spam by the marks as they are now; off in the preferences, nothing is spam.
+    RateSpam(Vec<SearchResult>, oneshot::Sender<Vec<SearchResult>>),
+    /// Marks results as spam, or as not spam, and keeps the marks.
+    MarkSpam(Vec<SearchResult>, bool, oneshot::Sender<SpamMarks>),
+    SpamMarks(oneshot::Sender<SpamMarks>),
+    FileHistory(oneshot::Sender<FileHistory>),
     SharedFiles(oneshot::Sender<Vec<SharedFile>>),
     AddDownload(Box<FileLink>, Option<bool>, oneshot::Sender<Result<DownloadInfo, String>>),
     Downloads(oneshot::Sender<Vec<DownloadInfo>>),
@@ -590,6 +601,43 @@ impl Network {
                 let asked = self.searches.more(search, |packet| session.send(packet), &mut effects);
                 let _ = answer.send(if asked { MoreAnswer::Asked } else { MoreAnswer::Refused });
                 self.search_effects(effects);
+            }
+            Command::HasMoreResults(search, answer) => {
+                let _ = answer.send(self.searches.has_more(search));
+            }
+            Command::StopSearch(search, answer) => {
+                let mut effects = Vec::new();
+                self.searches.stop(search, &mut effects);
+                self.search_effects(effects);
+                let _ = answer.send(());
+            }
+            Command::RateSpam(results, answer) => {
+                let spam = Rater::of(&mut self.spam, &self.shared.preferences.borrow());
+                let rated = results
+                    .into_iter()
+                    .map(|mut result| {
+                        result.spam_rating = spam.rate(&result);
+                        result
+                    })
+                    .collect();
+                let _ = answer.send(rated);
+            }
+            Command::MarkSpam(results, is_spam, answer) => {
+                for result in &results {
+                    self.spam.mark(result, is_spam);
+                }
+                let spam_file = self.shared.dirs.config.join(spam_filter::FILE_NAME);
+                if let Err(e) = self.spam.save(&spam_file) {
+                    tracing::warn!("Cannot save {}: {e}", spam_file.display());
+                }
+                let _ = answer.send(self.spam.marks());
+            }
+            Command::SpamMarks(answer) => {
+                let _ = answer.send(self.spam.marks());
+            }
+            Command::FileHistory(answer) => {
+                // No file cancelled before is kept yet.
+                let _ = answer.send(FileHistory::of(self.shared_files.known_hashes(), HashSet::new()));
             }
             Command::SharedFiles(answer) => {
                 let _ = answer.send(self.shared_files.files().cloned().collect());

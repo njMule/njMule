@@ -18,6 +18,7 @@ use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
 use crate::api::search_result::{Media, SearchResult};
 use crate::api::server_info::ServerInfo;
+use crate::api::spam_marks::SpamMarks;
 use crate::config::bind_interface::Candidate;
 use crate::config::preferences::Preferences;
 use crate::files::file_types;
@@ -241,6 +242,27 @@ fn kind(name: &str) -> &'static str {
         Some(_) => "program",
         None => "other",
     }
+}
+
+/// A file a search found, with what we know of it: downloading, shared, downloaded or cancelled before.
+pub fn found(result: &SearchResult, known: Option<&str>) -> Value {
+    let mut out = search_result(result);
+    if let (Some(known), Some(fields)) = (known, out.as_object_mut()) {
+        fields.insert("known".to_owned(), json!(known));
+    }
+    out
+}
+
+/// The files marked as spam or as not spam, and the names of those marked spam, each sorted.
+pub fn spam_marks(marks: &SpamMarks) -> Value {
+    let sorted = |hashes: &std::collections::HashSet<[u8; 16]>| {
+        let mut texts: Vec<String> = hashes.iter().map(hash).collect();
+        texts.sort();
+        texts
+    };
+    let mut names: Vec<&String> = marks.names.iter().collect();
+    names.sort();
+    json!({"spam": sorted(&marks.spam), "notSpam": sorted(&marks.not_spam), "names": names})
 }
 
 /// A file a search found.
