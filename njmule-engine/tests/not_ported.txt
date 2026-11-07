@@ -134,21 +134,11 @@ DownloadSourcesTest.shouldTakeTheRankASourceGivesOverUdpFromItsIpv6Address
 DownloadSourcesTest.shouldLetASourceWaitWhileOurConnectionsAreAtTheirLimit
 
 # The remote-control API.
-# The Rust API keeps no searches yet: their results, list, spam marks and checks come with the calls on searches.
-RemoteApiTest.shouldGiveTheResultsOfASearchItStarted
-RemoteApiTest.shouldTellASearchRunsWithNoMoreResultsToAskForWhileTheServerHoldsNone
-RemoteApiTest.shouldTellASearchTheServerHoldsMoreResultsOfWaitsForThemToBeAsked
-RemoteApiTest.shouldListASearchTheServerHoldsMoreResultsOfAsWaitingForThem
-RemoteApiTest.shouldListAnEndedSearchAsNotRunning
-RemoteApiTest.shouldAskTheServerForMoreResultsOfASearch
+# The Rust engine picks the networks of an automatic search itself: the API picks them once it knows the engine's
+# status, which comes with the calls on the engine's state.
 RemoteApiTest.shouldSearchKadAutomaticallyFromASmallServerAmongMany
 RemoteApiTest.shouldStayOnABigServerAutomatically
 RemoteApiTest.shouldRefuseAnAutomaticSearchWithNoNetwork
-RemoteApiTest.shouldListTheSearchesStartedWithWhatTheyAskedFor
-RemoteApiTest.shouldMarkAResultOfASearchAsSpam
-RemoteApiTest.shouldTakeAWellFormedSearchExpression
-RemoteApiTest.shouldTellWhatIsWrongWithAMalformedSearchExpression
-RemoteApiTest.shouldTellTheResultsWhoseFilesAreDownloadedAlready
 # The shared folders and the paths of the engine's computer come with the calls on shared files.
 RemoteApiTest.shouldShareAFolderWithItsSubfolders
 RemoteApiTest.shouldAskFirstBeforeSharingAWholeDrive
@@ -250,10 +240,6 @@ EngineApiTest.shouldKeepTheKadContactsOfANodesDatFile
 EngineApiTest.shouldRefuseAFileThatIsNoNodesDat
 EngineApiTest.shouldKeepTheKadContactsOfANodesDatSent
 EngineApiTest.shouldRefuseAsTheCallersErrorContentThatIsNoNodesDat
-# Spam marks come with the calls on searches.
-EngineApiTest.shouldMarkSpamThroughTheEngine
-EngineApiTest.shouldRateALookalikeOfASearchResultMarkedAsSpam
-EngineApiTest.shouldRateNothingAsSpamWithTheSpamFilterOff
 # Bans come with the calls on uploads and bans.
 EngineApiTest.shouldLiftABanOnlyFromAnAddress
 # Shared folders come with the calls on shared files.

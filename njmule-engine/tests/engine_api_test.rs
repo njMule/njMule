@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use njmule_engine::api::download_info::{DownloadPriority, DownloadStatus};
 use njmule_engine::api::ed2k_link::FileLink;
+use njmule_engine::api::search_result::SearchResult;
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
 
@@ -59,12 +60,49 @@ async fn should_not_recheck_the_kad_firewall_nor_list_anything_while_kad_does_no
     api.then_there_are_no_kad_searches().await;
 }
 
+#[tokio::test]
+async fn should_mark_spam_through_the_engine() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+
+    api.when_the_search_result_is_marked_as_spam([0xb2; 16], "spam.exe").await;
+
+    api.then_the_spam_is(&[[0xb2; 16]]).await;
+}
+
+#[tokio::test]
+async fn should_rate_a_lookalike_of_a_search_result_marked_as_spam() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_the_search_result_marked_as_spam([0xb2; 16], "Free movie player.exe").await;
+
+    api.when_the_result_is_rated(result([0xc3; 16], "free movie player.EXE")).await;
+
+    api.then_the_rated_result_is_spam(true);
+}
+
+#[tokio::test]
+async fn should_rate_nothing_as_spam_with_the_spam_filter_off() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine_without_the_spam_filter().await;
+    api.given_the_search_result_marked_as_spam([0xb2; 16], "Free movie player.exe").await;
+
+    api.when_the_result_is_rated(result([0xb2; 16], "Free movie player.exe")).await;
+
+    api.then_the_rated_result_is_spam(false);
+}
+
+fn result(hash: [u8; 16], name: &str) -> SearchResult {
+    SearchResult::new(hash, name, 10, 1, Some(0), None)
+}
+
 struct EngineApi {
     profile: tempfile::TempDir,
     engine: Option<Engine>,
     swap_answers: Vec<String>,
     stopped: bool,
     firewall_rechecked: bool,
+    rated: Vec<SearchResult>,
 }
 
 impl EngineApi {
@@ -75,13 +113,44 @@ impl EngineApi {
             swap_answers: Vec::new(),
             stopped: false,
             firewall_rechecked: false,
+            rated: Vec::new(),
         }
     }
 
     async fn given_a_running_engine(&mut self) {
+        self.start("").await;
+    }
+
+    async fn given_a_running_engine_without_the_spam_filter(&mut self) {
+        self.start("search.spamFilter=false\n").await;
+    }
+
+    async fn given_the_search_result_marked_as_spam(&self, hash: [u8; 16], name: &str) {
+        self.when_the_search_result_is_marked_as_spam(hash, name).await;
+    }
+
+    async fn when_the_search_result_is_marked_as_spam(&self, hash: [u8; 16], name: &str) {
+        within(self.engine().mark_spam(vec![result(hash, name)], true)).await;
+    }
+
+    async fn when_the_result_is_rated(&mut self, found: SearchResult) {
+        self.rated = within(self.engine().rate_spam(vec![found])).await;
+    }
+
+    async fn then_the_spam_is(&self, hashes: &[[u8; 16]]) {
+        let marks = within(self.engine().spam_marks()).await;
+        assert_eq!(marks.spam, hashes.iter().copied().collect());
+    }
+
+    fn then_the_rated_result_is_spam(&self, spam: bool) {
+        assert_eq!(self.rated.len(), 1);
+        assert_eq!(self.rated[0].is_spam(), spam);
+    }
+
+    async fn start(&mut self, preferences: &str) {
         let dirs = AppDirectories::under_root(self.profile.path()).unwrap();
         fs::create_dir_all(&dirs.config).unwrap();
-        let preferences = format!("net.tcpPort={}\nnet.kad.enabled=false\n", free_port::free_port());
+        let preferences = format!("net.tcpPort={}\nnet.kad.enabled=false\n{preferences}", free_port::free_port());
         fs::write(dirs.config.join("njmule.properties"), preferences).unwrap();
         self.engine = Some(Engine::start(dirs).await.unwrap());
     }

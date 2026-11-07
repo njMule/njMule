@@ -22,6 +22,7 @@ use tokio::task::JoinSet;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::file_history::FileHistory;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
@@ -33,6 +34,7 @@ use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::PeerInfo;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
+use crate::api::spam_marks::SpamMarks;
 use crate::config::app_directories::AppDirectories;
 use crate::config::bind_interface::{self, Binding};
 use crate::config::obfuscation_mode::ObfuscationMode;
@@ -502,6 +504,36 @@ impl Engine {
         self.ask(|reply| Command::PeerComments(download, reply)).await.unwrap_or_default()
     }
 
+    /// Whether the server holds more results of a search, which [`more_results`](Self::more_results) asks for.
+    pub async fn has_more_results(&self, search: u64) -> bool {
+        self.ask(|reply| Command::HasMoreResults(search, reply)).await.unwrap_or(false)
+    }
+
+    /// Stops a search: no more of its results come.
+    pub async fn stop_search(&self, search: u64) -> () {
+        self.ask(|reply| Command::StopSearch(search, reply)).await.unwrap_or_default()
+    }
+
+    /// Rates results for spam by the marks as they are now; off in the preferences, nothing is spam.
+    pub async fn rate_spam(&self, results: Vec<SearchResult>) -> Vec<SearchResult> {
+        self.ask(|reply| Command::RateSpam(results, reply)).await.unwrap_or_default()
+    }
+
+    /// Marks results as spam, or as not spam, and keeps the marks; answers them all.
+    pub async fn mark_spam(&self, results: Vec<SearchResult>, is_spam: bool) -> SpamMarks {
+        self.ask(|reply| Command::MarkSpam(results, is_spam, reply)).await.unwrap_or_default()
+    }
+
+    /// The files marked as spam or as not spam, and the names of those marked spam.
+    pub async fn spam_marks(&self) -> SpamMarks {
+        self.ask(Command::SpamMarks).await.unwrap_or_default()
+    }
+
+    /// The files downloaded or hashed before, and those cancelled.
+    pub async fn file_history(&self) -> FileHistory {
+        self.ask(Command::FileHistory).await.unwrap_or_default()
+    }
+
     /// Downloads and uploads in detail, for diagnosing tests.
     pub async fn describe(&self) -> String {
         self.ask(Command::Describe).await.unwrap_or_default()
@@ -714,6 +746,30 @@ impl NjMuleEngine for Engine {
 
     fn peer_comments(&self, download: [u8; 16]) -> impl Future<Output = Vec<PeerComment>> + Send {
         Engine::peer_comments(self, download)
+    }
+
+    fn has_more_results(&self, search: u64) -> impl Future<Output = bool> + Send {
+        Engine::has_more_results(self, search)
+    }
+
+    fn stop_search(&self, search: u64) -> impl Future<Output = ()> + Send {
+        Engine::stop_search(self, search)
+    }
+
+    fn rate_spam(&self, results: Vec<SearchResult>) -> impl Future<Output = Vec<SearchResult>> + Send {
+        Engine::rate_spam(self, results)
+    }
+
+    fn mark_spam(&self, results: Vec<SearchResult>, is_spam: bool) -> impl Future<Output = SpamMarks> + Send {
+        Engine::mark_spam(self, results, is_spam)
+    }
+
+    fn spam_marks(&self) -> impl Future<Output = SpamMarks> + Send {
+        Engine::spam_marks(self)
+    }
+
+    fn file_history(&self) -> impl Future<Output = FileHistory> + Send {
+        Engine::file_history(self)
     }
 }
 

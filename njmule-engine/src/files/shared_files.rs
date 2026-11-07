@@ -160,6 +160,11 @@ impl SharedFiles {
         file
     }
 
+    /// The files shared now or hashed before, by their hash.
+    pub fn known_hashes(&self) -> std::collections::HashSet<[u8; 16]> {
+        self.files.keys().copied().chain(self.known.values().map(|known| known.file_hash)).collect()
+    }
+
     pub fn files(&self) -> impl Iterator<Item = &SharedFile> {
         self.files.values()
     }

@@ -6,16 +6,18 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io;
 use std::net::{SocketAddr, SocketAddrV4};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use futures_util::future::BoxFuture;
 use njmule_engine::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus, SourceInfo};
 use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::engine_event::EngineEvent;
+use njmule_engine::api::file_history::FileHistory;
 use njmule_engine::api::kad_contact_info::KadContactInfo;
 use njmule_engine::api::kad_info::KadInfo;
 use njmule_engine::api::kad_note::KadNote;
@@ -26,6 +28,7 @@ use njmule_engine::api::peer_comment::PeerComment;
 use njmule_engine::api::peer_info::PeerInfo;
 use njmule_engine::api::search_result::SearchResult;
 use njmule_engine::api::server_info::ServerInfo;
+use njmule_engine::api::spam_marks::SpamMarks;
 use njmule_engine::config::preferences::Preferences;
 use njmule_engine::engine::NotesError;
 use njmule_engine::engine::network::{ConnectError, MoreAnswer};
@@ -60,6 +63,11 @@ struct Fake {
     known_server: Option<String>,
     // A client and the name of the one file it shares.
     sharing: Option<(SocketAddr, String)>,
+    searching_as: Option<u64>,
+    more_held: bool,
+    asking_more: bool,
+    marking_spam: bool,
+    downloaded_before: HashSet<[u8; 16]>,
 }
 
 #[derive(Clone)]
@@ -179,12 +187,23 @@ impl NjMuleEngine for FakeEngine {
         Ok(0)
     }
 
-    async fn start_search(&self, _query: String, _scope: Option<Scope>) -> Result<u64, StartError> {
-        Err(StartError::Unavailable("not faked".to_owned()))
+    async fn start_search(&self, query: String, scope: Option<Scope>) -> Result<u64, StartError> {
+        self.with(|fake| {
+            let id = fake.searching_as.ok_or_else(|| StartError::Unavailable("not faked".to_owned()))?;
+            let scope = scope.map_or_else(|| "AUTOMATIC".to_owned(), |scope| format!("{scope:?}").to_uppercase());
+            fake.calls.push(format!("search {query} {scope}"));
+            Ok(id)
+        })
     }
 
-    async fn more_results(&self, _search: u64) -> MoreAnswer {
-        MoreAnswer::Unknown
+    async fn more_results(&self, search: u64) -> MoreAnswer {
+        self.with(|fake| {
+            if !fake.asking_more {
+                return MoreAnswer::Refused;
+            }
+            fake.calls.push(format!("more {search}"));
+            MoreAnswer::Asked
+        })
     }
 
     async fn shared_files(&self) -> Vec<SharedFile> {
@@ -290,6 +309,37 @@ impl NjMuleEngine for FakeEngine {
 
     async fn peer_comments(&self, _download: [u8; 16]) -> Vec<PeerComment> {
         Vec::new()
+    }
+
+    async fn has_more_results(&self, _search: u64) -> bool {
+        self.with(|fake| fake.more_held)
+    }
+
+    async fn stop_search(&self, search: u64) {
+        self.with(|fake| fake.calls.push(format!("stop {search}")));
+    }
+
+    async fn rate_spam(&self, results: Vec<SearchResult>) -> Vec<SearchResult> {
+        results
+    }
+
+    async fn mark_spam(&self, results: Vec<SearchResult>, is_spam: bool) -> SpamMarks {
+        self.with(|fake| {
+            if fake.marking_spam {
+                for result in results {
+                    fake.calls.push(format!("spam {} {is_spam}", result.name));
+                }
+            }
+        });
+        SpamMarks::default()
+    }
+
+    async fn spam_marks(&self) -> SpamMarks {
+        SpamMarks::default()
+    }
+
+    async fn file_history(&self) -> FileHistory {
+        self.with(|fake| FileHistory::of(fake.downloaded_before.clone(), HashSet::new()))
     }
 }
 
@@ -400,9 +450,60 @@ impl Api {
         self.engine.with(|fake| fake.kad_contacts.push(contact));
     }
 
+    fn given_the_engine_searches_as(&self, id: u64) {
+        self.engine.with(|fake| fake.searching_as = Some(id));
+    }
+
+    fn given_the_server_holds_more_results(&self) {
+        self.engine.with(|fake| fake.more_held = true);
+    }
+
+    fn given_the_engine_asks_for_more_results(&self) {
+        self.engine.with(|fake| fake.asking_more = true);
+    }
+
+    fn given_the_engine_marks_spam(&self) {
+        self.engine.with(|fake| fake.marking_spam = true);
+    }
+
+    fn given_the_engine_downloaded_before(&self, file: &str) {
+        self.engine.with(|fake| fake.downloaded_before.insert(hash(file)));
+    }
+
+    fn given_the_engine_finds(&self, search: u64, name: &str) {
+        let results = vec![SearchResult::new(hash(HASH), name, 5000, 3, Some(1), None)];
+        self.engine.events.send(EngineEvent::SearchResults { search, results }).unwrap();
+    }
+
+    fn given_the_engine_ended_the_search(&self, search: u64) {
+        self.engine.events.send(EngineEvent::SearchEnded { search, results: 0 }).unwrap();
+    }
+
+    async fn given_a_search_started(&mut self, body: &str, answered: &str) {
+        self.when_called("POST", "/api/v1/searches", body).await;
+        self.then_the_status_is(201);
+        self.then_the_body_contains(&[answered]);
+    }
+
+    async fn given_the_results_came(&mut self, path: &str, name: &str) {
+        self.when_the_results_are_asked_until_they_come(path, name).await;
+        self.then_the_body_contains(&[name]);
+    }
+
     fn given_a_client_sharing(&self, client: &str, name: &str) {
         let sharing = (client.parse().unwrap(), name.to_owned());
         self.engine.with(|fake| fake.sharing = Some(sharing));
+    }
+
+    async fn when_the_results_are_asked_until_they_come(&mut self, path: &str, text: &str) {
+        let end = Instant::now() + Duration::from_secs(10);
+        loop {
+            self.when_called("GET", path, "").await;
+            if self.body.contains(text) || Instant::now() > end {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
     }
 
     async fn when_called(&mut self, method: &str, path: &str, body: &str) {
@@ -462,6 +563,11 @@ impl Api {
     fn then_the_data_is_in(&self, name: &str) {
         let path = self.dir.path().join(name);
         self.then_the_body_has("/path", &json!(path.to_string_lossy()));
+    }
+
+    fn then_the_body_lists(&self, entry: &Value) {
+        let body: Value = serde_json::from_str(&self.body).unwrap();
+        assert!(body.as_array().unwrap().contains(entry), "{entry} in {}", self.body);
     }
 
     fn then_the_body_is_a_list(&self) {
@@ -742,4 +848,153 @@ async fn should_list_the_network_interfaces_of_the_engines_computer() {
 
     api.then_the_status_is(200);
     api.then_the_body_is_a_list();
+}
+
+#[tokio::test]
+async fn should_give_the_results_of_a_search_it_started() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_searches_as(7);
+    api.given_a_search_started("{\"query\":\"talk\",\"scope\":\"kad\"}", "\"id\":7").await;
+    api.given_the_engine_finds(7, "talk.bin");
+
+    api.when_the_results_are_asked_until_they_come("/api/v1/searches/7", "talk.bin").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&["\"name\":\"talk.bin\""]);
+    api.then_the_engine_was_asked("search talk KAD");
+}
+
+#[tokio::test]
+async fn should_tell_a_search_runs_with_no_more_results_to_ask_for_while_the_server_holds_none() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_searches_as(7);
+    api.given_a_search_started("{\"query\":\"talk\",\"scope\":\"server\"}", "\"id\":7").await;
+    api.given_the_engine_finds(7, "talk.bin");
+
+    api.when_the_results_are_asked_until_they_come("/api/v1/searches/7", "talk.bin").await;
+
+    api.then_the_body_has("/running", &json!(true));
+    api.then_the_body_has("/more", &json!(false));
+}
+
+#[tokio::test]
+async fn should_tell_a_search_the_server_holds_more_results_of_waits_for_them_to_be_asked() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_searches_as(7);
+    api.given_a_search_started("{\"query\":\"talk\",\"scope\":\"server\"}", "\"id\":7").await;
+    api.given_the_engine_finds(7, "talk.bin");
+    api.given_the_server_holds_more_results();
+
+    api.when_the_results_are_asked_until_they_come("/api/v1/searches/7", "talk.bin").await;
+
+    api.then_the_body_has("/running", &json!(false));
+    api.then_the_body_has("/more", &json!(true));
+}
+
+#[tokio::test]
+async fn should_list_a_search_the_server_holds_more_results_of_as_waiting_for_them() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_searches_as(7);
+    api.given_a_search_started("{\"query\":\"talk\",\"scope\":\"server\"}", "7").await;
+    api.given_the_server_holds_more_results();
+
+    api.when_called("GET", "/api/v1/searches", "").await;
+
+    api.then_the_body_lists(&json!({"id": 7, "query": "talk", "scope": "server", "running": false, "results": 0}));
+}
+
+#[tokio::test]
+async fn should_list_an_ended_search_as_not_running() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_searches_as(7);
+    api.given_a_search_started("{\"query\":\"talk\",\"scope\":\"kad\"}", "7").await;
+    api.given_the_engine_ended_the_search(7);
+
+    api.when_the_results_are_asked_until_they_come("/api/v1/searches", "\"running\":false").await;
+
+    api.then_the_body_lists(&json!({"id": 7, "query": "talk", "scope": "kad", "running": false, "results": 0}));
+}
+
+#[tokio::test]
+async fn should_ask_the_server_for_more_results_of_a_search() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_searches_as(7);
+    api.given_a_search_started("{\"query\":\"talk\",\"scope\":\"server\"}", "7").await;
+    api.given_the_engine_asks_for_more_results();
+
+    api.when_called("POST", "/api/v1/searches/7/more", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_engine_was_asked("more 7");
+}
+
+#[tokio::test]
+async fn should_mark_a_result_of_a_search_as_spam() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_searches_as(7);
+    api.given_the_engine_marks_spam();
+    api.given_a_search_started("{\"query\":\"talk\",\"scope\":\"kad\"}", "\"id\":7").await;
+    api.given_the_engine_finds(7, "talk.bin");
+    api.given_the_results_came("/api/v1/searches/7", "talk.bin").await;
+
+    api.when_called("POST", "/api/v1/searches/7/spam", &format!("{{\"hashes\":[\"{HASH}\"],\"spam\":true}}"))
+        .await;
+
+    api.then_the_status_is(200);
+    api.then_the_engine_was_asked("spam talk.bin true");
+}
+
+#[tokio::test]
+async fn should_tell_the_results_whose_files_are_downloaded_already() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_searches_as(7);
+    api.given_the_engine_downloaded_before(HASH);
+    api.given_a_search_started("{\"query\":\"talk\",\"scope\":\"kad\"}", "\"id\":7").await;
+    api.given_the_engine_finds(7, "talk.bin");
+
+    api.when_the_results_are_asked_until_they_come("/api/v1/searches/7", "talk.bin").await;
+
+    api.then_the_body_contains(&["\"known\":\"downloaded\""]);
+}
+
+#[tokio::test]
+async fn should_list_the_searches_started_with_what_they_asked_for() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_searches_as(7);
+    api.given_a_search_started("{\"query\":\"talk\",\"scope\":\"kad\"}", "7").await;
+
+    api.when_called("GET", "/api/v1/searches", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_lists(&json!({"id": 7, "query": "talk", "scope": "kad", "running": true, "results": 0}));
+}
+
+#[tokio::test]
+async fn should_take_a_well_formed_search_expression() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("POST", "/api/v1/searches/check", "{\"query\":\"talk AND (night OR day) @size>10m\"}").await;
+
+    api.then_the_status_is(200);
+}
+
+#[tokio::test]
+async fn should_tell_what_is_wrong_with_a_malformed_search_expression() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("POST", "/api/v1/searches/check", "{\"query\":\"talk AND\"}").await;
+
+    api.then_the_status_is(400);
+    api.then_the_body_contains(&["AND"]);
 }
