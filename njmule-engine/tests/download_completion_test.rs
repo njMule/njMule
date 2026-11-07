@@ -4,7 +4,6 @@
 //! The Java engine's DownloadCompletionTest, under its names: a finished file another program holds is moved once it
 //! is free.
 
-#![cfg(windows)]
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -15,7 +14,10 @@
 
 mod queue_lab;
 
-use std::fs::{self, OpenOptions};
+use std::fs;
+#[cfg(windows)]
+use std::fs::OpenOptions;
+#[cfg(windows)]
 use std::os::windows::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -29,6 +31,7 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
 // Shared for reading and writing but not for deleting, as a virus scanner opens it: the file cannot be moved.
+#[cfg(windows)]
 const SHARE_READ_AND_WRITE: u32 = 0x1 | 0x2;
 
 struct Completion {
@@ -50,7 +53,11 @@ impl Completion {
 
     fn given_another_program_holds_its_data_for(&mut self, time: Duration) {
         let data = self.lab.queue.get(&self.hash).unwrap().file.data_file();
+        #[cfg(windows)]
         let holder = OpenOptions::new().read(true).share_mode(SHARE_READ_AND_WRITE).open(data).unwrap();
+        // Elsewhere an open file moves: its directory refuses it instead.
+        #[cfg(unix)]
+        let holder = queue_lab::ReadOnly::of(data.parent().unwrap());
         std::thread::spawn(move || {
             std::thread::sleep(time);
             drop(holder);
