@@ -23,6 +23,7 @@ use njmule_engine::protocol::packet::{Packet, frame_limits, protocol};
 use njmule_engine::upload::credits::Credits;
 use njmule_engine::upload::upload_manager::{self, BlockRead, FileCounts, ReaskAnswer, Settings, UploadManager};
 use njmule_engine::upload::upload_session::{self, MAX_BLOCK};
+use njmule_engine::upload::uploadable::Uploadable;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use tokio::sync::{mpsc, oneshot};
@@ -101,9 +102,9 @@ impl Loop {
                 };
                 let handle = handle.clone();
                 let shared = Arc::clone(&self.shared);
-                let find = move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).cloned();
+                let find = move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).map(Uploadable::of);
                 let ours = self.ours.clone();
-                self.manager.received(&handle, &peer, true, &packet, &ours, &find, &|| None, now);
+                self.manager.received(&handle, &peer, true, &packet, &ours, &find, &|| None, &|_| None, now);
                 self.calls();
             }
             LinkEvent::Closed(link, _) => {
@@ -120,7 +121,7 @@ impl Loop {
         let now = self.now();
         let settings = *self.settings.lock().unwrap();
         let shared = Arc::clone(&self.shared);
-        self.manager.tick(settings, &move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).cloned(), now);
+        self.manager.tick(settings, &move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).map(Uploadable::of), now);
         self.calls();
     }
 
@@ -175,7 +176,7 @@ async fn serve(
             Some(read) = reads.recv() => {
                 let now = state.now();
                 let shared = Arc::clone(&state.shared);
-                state.manager.block_read(read, &move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).cloned(), now);
+                state.manager.block_read(read, &move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).map(Uploadable::of), now);
             }
             _ = every.tick() => state.tick(),
             job = jobs.recv() => match job {
@@ -762,7 +763,7 @@ impl Uploads {
             .on_loop(move |state| {
                 let now = state.now();
                 let shared = Arc::clone(&state.shared);
-                let find = move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).cloned();
+                let find = move |hash: &[u8; 16]| shared.lock().unwrap().get(hash).map(Uploadable::of);
                 state.manager.reasked(Ipv4Addr::LOCALHOST.into(), port, &ping, &find, now)
             })
             .await;

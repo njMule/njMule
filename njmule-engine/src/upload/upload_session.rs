@@ -11,7 +11,9 @@ use crate::files::file_types;
 use crate::files::hash::ed2k;
 use crate::files::shared_files::SharedFile;
 use crate::peer::peer_link::LinkHandle;
-use crate::protocol::ed2k::client_messages::{self, FileName, FileStatus, RequestParts};
+use crate::protocol::ed2k::source_exchange as exchange;
+use crate::upload::uploadable::Uploadable;
+use crate::protocol::ed2k::client_messages::{self, FileName, RequestParts};
 use crate::protocol::ed2k::file_entry::FileEntry;
 use crate::protocol::ed2k::hello::{self, Hello};
 use crate::protocol::io::{DecodeError, PacketWriter, StringEncoding};
@@ -24,6 +26,8 @@ pub const MAX_PENDING_BLOCKS: usize = 32;
 /// The largest block a client may ask for.
 pub const MAX_BLOCK: u64 = 3 * ed2k::EMBLOCKSIZE;
 /// Files neither shared nor downloaded a client may ask us for on one connection before it is dropped.
+// The files a client asked for on one connection that are remembered.
+const MAX_NAMED: usize = 32;
 pub const UNKNOWN_FILES_LIMIT: usize = 6;
 /// The answer to a client browsing our files stays below this size, which every client takes.
 pub const MAX_SHARED_LIST: usize = 1_000_000;
@@ -32,6 +36,8 @@ pub const FILES_DIRECTORY: &str = "!Other";
 
 /// The shared files a client may browse; none when the preferences do not let it look.
 pub type Visible<'a> = &'a dyn Fn() -> Option<Vec<SharedFile>>;
+/// Our file of a hash to upload: a complete one, or a download with its checked parts.
+pub type Find<'a> = &'a dyn Fn(&[u8; 16]) -> Option<Uploadable>;
 
 /// One requested block of a file.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -58,9 +64,13 @@ pub enum Request {
     UnknownFiles,
     /// The client asked for blocks of a file we no longer share.
     FileGone,
+    /// The client asks for the other sources of a file.
+    Sources(exchange::Request),
 }
 
 pub struct UploadSession {
+    // The files the client asked for on this connection, the latest last.
+    named: VecDeque<[u8; 16]>,
     link: LinkHandle,
     peer: Hello,
     file: Option<[u8; 16]>,
@@ -80,6 +90,7 @@ pub struct UploadSession {
 impl UploadSession {
     pub fn new(link: LinkHandle, peer: Hello) -> Self {
         Self {
+            named: VecDeque::new(),
             link,
             peer,
             file: None,
@@ -165,7 +176,7 @@ impl UploadSession {
         &mut self,
         packet: &Packet,
         ours: &Hello,
-        find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>,
+        find: Find<'_>,
         visible: Visible<'_>,
     ) -> Result<Option<Request>, DecodeError> {
         let request = self.request(packet, ours, find, visible)?;
@@ -180,7 +191,7 @@ impl UploadSession {
         &mut self,
         packet: &Packet,
         ours: &Hello,
-        find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>,
+        find: Find<'_>,
         visible: Visible<'_>,
     ) -> Result<Option<Request>, DecodeError> {
         match (packet.protocol(), packet.opcode()) {
@@ -198,16 +209,18 @@ impl UploadSession {
             (protocol::EDONKEY, client::REQUESTFILENAME) => {
                 let hash = client_messages::file_of(packet)?;
                 if let Some(file) = self.lookup(&hash, find) {
+                    self.name(hash);
                     self.send_or_log((FileName { file: hash, name: file.name }).encode());
                     return Ok(Some(Request::Named(hash)));
                 }
             }
             (protocol::EDONKEY, client::SETREQFILEID) => {
                 let hash = client_messages::file_of(packet)?;
-                self.file = self.lookup(&hash, find).map(|file| file.hash);
-                if self.file.is_some() {
-                    // A complete file: no bits.
-                    self.send_or_log((FileStatus { file: hash, part_count: 0, parts: Vec::new() }).encode());
+                let found = self.lookup(&hash, find);
+                self.file = found.as_ref().map(|file| file.hash);
+                if let Some(file) = found {
+                    self.name(hash);
+                    self.send_or_log(file.status().encode());
                 } else {
                     self.link.send(client_messages::for_file(client::FILEREQANSNOFIL, &hash));
                 }
@@ -222,6 +235,7 @@ impl UploadSession {
                 if packet.length() >= 16 {
                     let hash = client_messages::file_of(packet)?;
                     if let Some(file) = self.lookup(&hash, find) {
+                        self.name(file.hash);
                         self.file = Some(file.hash);
                     }
                 }
@@ -247,6 +261,9 @@ impl UploadSession {
                 if let IpAddr::V4(ip) = self.link.remote().ip() {
                     self.link.send(Packet::of(protocol::EMULE, extended::PUBLICIP_ANSWER, ip.octets().to_vec()));
                 }
+            }
+            (protocol::EMULE, extended::REQUESTSOURCES2) => {
+                return Ok(Some(Request::Sources(exchange::Request::decode(packet)?)));
             }
             (protocol::EMULE, extended::AICHFILEHASHREQ) => {
                 let hash = client_messages::file_of(packet)?;
@@ -312,15 +329,15 @@ impl UploadSession {
         }
     }
 
-    // Only blocks of the file in upload, of at most three block sizes, are taken.
-    fn blocks(&mut self, request: &RequestParts, find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>) -> Option<Request> {
+    // Only blocks of the file in upload, of at most three block sizes, and of parts we can send, are taken.
+    fn blocks(&mut self, request: &RequestParts, find: Find<'_>) -> Option<Request> {
         let file = self.file.filter(|file| self.slot && *file == request.file)?;
-        let Some(size) = find(&file).map(|file| file.size) else {
+        let Some(found) = find(&file).filter(Uploadable::is_shareable) else {
             return Some(Request::FileGone);
         };
         for range in request.ranges.iter().filter(|range| !range.is_empty()) {
             let block = Block { file, start: range.start, end: range.end };
-            if range.end.saturating_sub(range.start) > MAX_BLOCK || range.end > size {
+            if range.end.saturating_sub(range.start) > MAX_BLOCK || !found.has(range.start, range.end) {
                 tracing::debug!("Refusing block {}-{} to {}", range.start, range.end, self.link.remote());
                 continue;
             }
@@ -332,8 +349,22 @@ impl UploadSession {
         (!self.pending.is_empty()).then_some(Request::Blocks)
     }
 
-    // Files above 4 GB only for clients that can take them; a client asking for many files we do not have floods us.
-    fn lookup(&mut self, hash: &[u8; 16], find: &dyn Fn(&[u8; 16]) -> Option<SharedFile>) -> Option<SharedFile> {
+    /// Whether the client asked for `file` of ours on this connection, by name, status or upload.
+    pub fn asked(&self, file: &[u8; 16]) -> bool {
+        self.named.contains(file)
+    }
+
+    fn name(&mut self, file: [u8; 16]) {
+        self.named.retain(|named| *named != file);
+        self.named.push_back(file);
+        if self.named.len() > MAX_NAMED {
+            self.named.pop_front();
+        }
+    }
+
+    // Files above 4 GB only for clients that can take them; a client asking for many files we do not have floods us. A
+    // download with nothing to give yet is ours, but no file to answer with.
+    fn lookup(&mut self, hash: &[u8; 16], find: Find<'_>) -> Option<Uploadable> {
         let found = find(hash);
         if found.is_none() && self.unknown.insert(*hash) && self.unknown.len() >= UNKNOWN_FILES_LIMIT {
             tracing::debug!("{} asked for {} files we do not have", self.link.remote(), self.unknown.len());
@@ -341,7 +372,7 @@ impl UploadSession {
             self.flooded = true;
         }
         let large = self.peer.misc_options2() & hello::MISC2_LARGE_FILES != 0;
-        found.filter(|file| large || file.size <= ed2k::OLD_MAX_FILE_SIZE)
+        found.filter(|file| file.is_shareable() && (large || file.size <= ed2k::OLD_MAX_FILE_SIZE))
     }
 
     fn send_or_log(&self, packet: Result<Packet, crate::protocol::io::EncodeError>) {

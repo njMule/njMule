@@ -63,6 +63,7 @@ use crate::server::server_route::ServerRoute;
 use crate::server::server_session::{Context, Notice, Outcome, ServerSession};
 use crate::server::server_udp::ServerUdp;
 use crate::upload::credits::{self, Credits};
+use crate::upload::uploadable::Uploadable;
 use crate::upload::upload_manager::{self, BlockRead, UploadManager};
 
 /// How long changes of the list wait to be saved together.
@@ -413,8 +414,8 @@ impl Network {
                     self.after_downloads();
                 }
                 Some(read) = queues.reads.recv() => {
-                    let files = &self.shared_files;
-                    self.uploads.block_read(read, &|hash: &[u8; 16]| files.get(hash).cloned(), Instant::now());
+                    let (files, downloads) = (&self.shared_files, &self.downloads);
+                    self.uploads.block_read(read, &|hash: &[u8; 16]| uploadable(files, downloads, hash), Instant::now());
                 }
             }
         }
@@ -717,8 +718,8 @@ impl Network {
             Tick::ProbeOver(link) => self.settle_probe(link),
             Tick::Uploads => {
                 let settings = upload_settings(&self.preferences());
-                let files = &self.shared_files;
-                self.uploads.tick(settings, &|hash: &[u8; 16]| files.get(hash).cloned(), Instant::now());
+                let (files, downloads) = (&self.shared_files, &self.downloads);
+                self.uploads.tick(settings, &|hash: &[u8; 16]| uploadable(files, downloads, hash), Instant::now());
                 self.after_uploads();
             }
             Tick::Second => {
@@ -1380,13 +1381,17 @@ impl Network {
                 // Friends are not kept yet: none may look when only friends may.
                 let visible =
                     || (visibility == SharedFilesVisibility::Everybody).then(|| files.files().cloned().collect());
-                let find = |hash: &[u8; 16]| files.get(hash).cloned();
+                let downloads = &self.downloads;
+                let find = |hash: &[u8; 16]| uploadable(files, downloads, hash);
+                let sources = |hash: &[u8; 16]| {
+                    downloads.find(hash).map(|d| if d.is_active() { downloads.exchangeable(hash) } else { Vec::new() })
+                };
                 let trusted = self
                     .peers
                     .get(&link)
                     .and_then(|peer| peer.identity.as_ref())
                     .is_none_or(|session| session.trust().credits());
-                self.uploads.received(&handle, &hello, trusted, packet, ours, &find, &visible, Instant::now());
+                self.uploads.received(&handle, &hello, trusted, packet, ours, &find, &visible, &sources, Instant::now());
                 self.after_uploads();
             }
             Side::Download | Side::Buddy => {
@@ -1866,4 +1871,22 @@ fn keep_link(file: &Path, link: &FileLink) -> bool {
         tracing::warn!("Cannot keep the link of {} in {}, so it is not deleted: {e}", link.name, file.display());
     }
     kept.is_ok()
+}
+
+// Our file of a hash to upload: a shared one, else a download with its checked parts.
+fn uploadable(files: &SharedFiles, downloads: &DownloadManager, hash: &[u8; 16]) -> Option<Uploadable> {
+    if let Some(file) = files.get(hash) {
+        return Some(Uploadable::of(file));
+    }
+    let download = downloads.find(hash)?;
+    let file = &download.file;
+    Some(Uploadable::partial(
+        *hash,
+        file.name(),
+        file.size(),
+        file.part_hashes(),
+        download.verified_parts(),
+        file.data_file(),
+        file.aich_hash(),
+    ))
 }
