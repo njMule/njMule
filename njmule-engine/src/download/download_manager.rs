@@ -16,8 +16,11 @@ use rand::SeedableRng;
 use rand::rngs::StdRng;
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::api::category::{self, Category};
 use crate::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus, SourceInfo, SourceState};
 use crate::api::ed2k_link::{self, FileLink};
+use crate::api::file_names;
+use crate::config::next_download::NextDownload;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::download::download_queue::{self, DownloadQueue, QueueEvent};
 use crate::download::download_session::{Context, DownloadSession, Note, Outcome, State};
@@ -31,8 +34,9 @@ use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams::SourceQuery;
 use crate::protocol::ed2k::server_messages::{FoundSources, LOW_ID_LIMIT};
 use crate::protocol::packet::Packet;
+use crate::security::path_sanitizer;
 use crate::server::server_list;
-use crate::util::{instants, ipv4};
+use crate::util::{instants, ipv4, white_space};
 
 /// A source that keeps us in its queue is asked again this often.
 pub const REASK_INTERVAL: Duration = Duration::from_secs(29 * 60);
@@ -56,6 +60,8 @@ const RATE_WINDOW: usize = 5;
 const CRYPT_SUPPORTED: u8 = 0x01;
 const CRYPT_REQUIRED: u8 = 0x07;
 const MAX_LINK_HOSTS: usize = 16;
+// The bytes from the start a player needs to show a file while it grows.
+const PREVIEW_START: u64 = 16 * 1024;
 
 /// What the downloads take the time from: [`Instant::now`] but in tests.
 pub type Clock = Box<dyn Fn() -> Instant + Send>;
@@ -80,6 +86,9 @@ pub struct Settings {
     pub listen_port: u16,
     /// Whether sources at LAN addresses the network gives are left out.
     pub filter_lan: bool,
+    /// Whether the names of new downloads are tidied, without the words of `name_cleanups` (apart by `|`).
+    pub clean_up_new_names: bool,
+    pub name_cleanups: String,
 }
 
 /// What the downloads ask of the network side.
@@ -160,6 +169,8 @@ struct Entry {
     recovery_tried: Vec<bool>,
     holds: Vec<(usize, Instant)>,
     aich_votes: AichVotes,
+    // Stopped by a scheduler rule: no resume of the next download starts it again.
+    stopped_by_schedule: bool,
 }
 
 impl Entry {
@@ -175,6 +186,7 @@ impl Entry {
             recovery_tried: vec![false; parts],
             holds: Vec::new(),
             aich_votes: AichVotes::new(),
+            stopped_by_schedule: false,
         }
     }
 
@@ -202,6 +214,7 @@ pub struct DownloadManager {
     actions: Vec<Action>,
     events: Vec<DownloadEvent>,
     clock: Clock,
+    categories: Vec<Category>,
 }
 
 impl DownloadManager {
@@ -229,6 +242,7 @@ impl DownloadManager {
             actions: Vec::new(),
             events: Vec::new(),
             clock,
+            categories: Vec::new(),
         })
     }
 
@@ -244,10 +258,45 @@ impl DownloadManager {
         self.queue.temp_dir()
     }
 
-    /// Adds a download, or the link's sources to the existing one of the same file.
+    /// Adds a download, or the link's sources to the existing one of the same file. A new download goes in the first
+    /// category whose names it matches, with that category's priority.
     pub fn add(&mut self, link: &FileLink, settings: &Settings, ours: &Hello) -> io::Result<DownloadInfo> {
+        self.add_in(link, None, settings, ours)
+    }
+
+    /// Adds a download in `chosen`, a known category or none; without one, in the category its name falls in.
+    pub fn add_in(
+        &mut self,
+        added: &FileLink,
+        chosen: Option<u32>,
+        settings: &Settings,
+        ours: &Hello,
+    ) -> io::Result<DownloadInfo> {
+        let is_new = self.queue.get(&added.hash).is_none();
+        let cleaned;
+        let link = if is_new && settings.clean_up_new_names {
+            cleaned = added
+                .with_name(&file_names::clean_up(&added.name, &settings.name_cleanups))
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+            &cleaned
+        } else {
+            added
+        };
+        // A link of another file under the same hash would give sources that cannot serve this one.
         let known = self.queue.get(&link.hash).map(|d| download_queue::same_file(&d.file, link));
-        let hash = self.queue.add(link, 0, DownloadPriority::Auto)?;
+        let (mut category, mut priority) = (category::NONE, DownloadPriority::Auto);
+        if is_new {
+            // Set before the download is announced, so the news of it tells them.
+            let name = path_sanitizer::file_name(&link.name);
+            let given = match chosen {
+                Some(id) => self.category(id),
+                None => self.categories.iter().find(|c| c.matches(&name)),
+            };
+            if let Some(given) = given {
+                (category, priority) = (given.id, given.priority);
+            }
+        }
+        let hash = self.queue.add(link, category, priority)?;
         self.settle(ours);
         if known != Some(false) {
             self.add_link_sources(&hash, &link.sources, settings);
@@ -295,6 +344,7 @@ impl DownloadManager {
         }
         if let Some(entry) = self.entries.get_mut(hash) {
             entry.next_server_ask = now;
+            entry.stopped_by_schedule = false;
         }
         self.progress(hash);
         self.settle(ours);
@@ -313,6 +363,122 @@ impl DownloadManager {
         self.queue.cancel(hash);
         self.events.push(DownloadEvent::Removed(*hash));
         true
+    }
+
+    /// Pauses the download and forgets its sources: resumed, it looks for them again.
+    pub fn stop(&mut self, hash: &[u8; 16], ours: &Hello) -> bool {
+        if !self.entries.contains_key(hash) {
+            return false;
+        }
+        self.queue.stop(hash);
+        self.close_sessions(hash, "the download is stopped", ours);
+        self.forget(hash, ours);
+        self.queue.set_known_sources(hash, &[]);
+        self.callbacks.retain(|_, callback| callback.file != *hash);
+        self.progress(hash);
+        true
+    }
+
+    /// Stops the download as a scheduler rule asks, also one stopped already: no other leaving starts it again.
+    pub fn stop_by_schedule(&mut self, hash: &[u8; 16], ours: &Hello) -> bool {
+        let Some(entry) = self.entries.get_mut(hash) else {
+            return false;
+        };
+        entry.stopped_by_schedule = true;
+        self.queue.get(hash).is_some_and(|d| d.file.status() == Status::Stopped) || self.stop(hash, ours)
+    }
+
+    /// The categories downloads may be in; downloads in one that is gone have none.
+    pub fn set_categories(&mut self, categories: Vec<Category>) {
+        self.categories = categories;
+        let hashes: Vec<[u8; 16]> = self.entries.keys().copied().collect();
+        for hash in hashes {
+            let id = self.queue.get(&hash).map_or(category::NONE, |d| d.file.category());
+            if id != category::NONE && self.category(id).is_none() {
+                self.queue.set_category(&hash, category::NONE);
+                self.progress(&hash);
+            }
+        }
+    }
+
+    /// Puts the download in a category, with its priority; [`category::NONE`] takes it out of any.
+    pub fn set_category(&mut self, hash: &[u8; 16], id: u32) -> bool {
+        if !self.entries.contains_key(hash) || (id != category::NONE && self.category(id).is_none()) {
+            return false;
+        }
+        let priority = self.category(id).map(|c| c.priority);
+        self.queue.set_category(hash, id);
+        if let Some(priority) = priority.filter(|p| *p != DownloadPriority::Auto) {
+            self.queue.set_priority(hash, priority);
+        }
+        self.progress(hash);
+        true
+    }
+
+    /// Names the download `name`, made a safe file name, which its file gets once complete; false for no such
+    /// download, an error for a blank name.
+    pub fn rename(&mut self, hash: &[u8; 16], name: &str) -> Result<bool, &'static str> {
+        if white_space::strip(name).is_empty() {
+            return Err("a download needs a name");
+        }
+        if !self.entries.contains_key(hash) {
+            return Ok(false);
+        }
+        self.queue.rename(hash, path_sanitizer::file_name(name));
+        self.progress(hash);
+        Ok(true)
+    }
+
+    pub fn set_priority(&mut self, hash: &[u8; 16], priority: DownloadPriority) -> bool {
+        if !self.entries.contains_key(hash) {
+            return false;
+        }
+        self.queue.set_priority(hash, priority);
+        self.progress(hash);
+        true
+    }
+
+    pub fn set_preview_first(&mut self, hash: &[u8; 16], value: bool) -> bool {
+        if !self.entries.contains_key(hash) {
+            return false;
+        }
+        self.queue.set_preview_first(hash, value);
+        self.progress(hash);
+        true
+    }
+
+    /// Resumes the paused or stopped download of highest priority, the first added among equals: one of `category`
+    /// first, unless `mode` takes any; returns it, if there was one. Downloads a scheduler rule stopped wait.
+    pub fn resume_next(&mut self, category: u32, mode: NextDownload, ours: &Hello) -> Option<DownloadInfo> {
+        let mut next = None;
+        if matches!(mode, NextDownload::SameCategoryFirst | NextDownload::SameCategory) {
+            next = self.first_paused(|file| file.category() == category);
+        }
+        if next.is_none() && matches!(mode, NextDownload::Any | NextDownload::SameCategoryFirst) {
+            next = self.first_paused(|_| true);
+        }
+        let hash = next?;
+        self.resume(&hash, ours);
+        self.info(&hash)
+    }
+
+    /// The data file of the download, which a player can show while it grows once the start of it has come.
+    pub fn data_file(&self, hash: &[u8; 16]) -> Option<PathBuf> {
+        let file = &self.queue.get(hash).filter(|_| self.entries.contains_key(hash))?.file;
+        file.is_complete_between(0, file.size().min(PREVIEW_START)).then(|| file.data_file())
+    }
+
+    /// The download of `hash`, whose checked parts other clients may download.
+    pub fn find(&self, hash: &[u8; 16]) -> Option<&download_queue::Download> {
+        self.queue.get(hash).filter(|_| self.entries.contains_key(hash))
+    }
+
+    /// The download of `hash` to change, as the tests do.
+    pub fn find_mut(&mut self, hash: &[u8; 16]) -> Option<&mut download_queue::Download> {
+        if !self.entries.contains_key(hash) {
+            return None;
+        }
+        self.queue.get_mut(hash)
     }
 
     /// The sources of every download, as the list of downloading clients shows them.
@@ -358,15 +524,16 @@ impl DownloadManager {
         all
     }
 
-    /// The downloads that want more sources, for the other servers to be asked.
+    /// The active downloads to ask other servers about, the highest priority first: those below three quarters of the
+    /// source limit, which leaves room for the sources other ways bring.
     pub fn wanting_sources(&self, settings: &Settings) -> Vec<SourceQuery> {
-        self.entries
-            .iter()
-            .filter(|(hash, entry)| {
-                entry.sources.len() < settings.max_sources_per_file
-                    && self.queue.get(hash).is_some_and(|d| d.is_active())
+        let enough = settings.max_sources_per_file.saturating_mul(3) / 4;
+        self.by_priority()
+            .into_iter()
+            .filter(|hash| self.entries.get(hash).is_some_and(|entry| entry.sources.len() < enough))
+            .filter_map(|hash| {
+                self.queue.get(&hash).filter(|d| d.is_active()).map(|d| SourceQuery { file: hash, size: d.file.size() })
             })
-            .filter_map(|(hash, _)| self.queue.get(hash).map(|d| SourceQuery { file: *hash, size: d.file.size() }))
             .collect()
     }
 
@@ -445,8 +612,7 @@ impl DownloadManager {
         }
         self.send_callbacks(server, now);
         let mut starting = self.clients.values().filter(|c| c.session.as_ref().is_some_and(is_starting)).count();
-        let hashes: Vec<[u8; 16]> = self.entries.keys().copied().collect();
-        for hash in hashes {
+        for hash in self.by_priority() {
             let Some(entry) = self.entries.get_mut(&hash) else {
                 continue;
             };
@@ -591,8 +757,45 @@ impl DownloadManager {
             bytes_per_second: entry.rate(),
             parts: file.map(),
             preview_first: file.preview_first(),
-            auto_swap: false,
+            auto_swap: file.auto_swap(),
         })
+    }
+
+    // The downloads, the highest effective priority first, in the order they were added among equals.
+    fn by_priority(&self) -> Vec<[u8; 16]> {
+        let mut sorted: Vec<([u8; 16], DownloadPriority)> = self
+            .entries
+            .iter()
+            .filter_map(|(hash, entry)| {
+                self.queue.get(hash).map(|d| (*hash, d.file.priority().effective(entry.sources.len())))
+            })
+            .collect();
+        sorted.sort_by_key(|(_, priority)| std::cmp::Reverse(priority.rank()));
+        sorted.into_iter().map(|(hash, _)| hash).collect()
+    }
+
+    // The paused or stopped download `wanted` takes of highest priority, the first among equals; none a scheduler rule
+    // stopped.
+    fn first_paused(&self, wanted: impl Fn(&PartFile) -> bool) -> Option<[u8; 16]> {
+        let mut best: Option<([u8; 16], DownloadPriority)> = None;
+        for (hash, entry) in &self.entries {
+            let Some(file) = self.queue.get(hash).map(|d| &d.file) else {
+                continue;
+            };
+            let priority = file.priority().effective(entry.sources.len());
+            if matches!(file.status(), Status::Paused | Status::Stopped)
+                && !entry.stopped_by_schedule
+                && wanted(file)
+                && best.is_none_or(|(_, top)| priority.rank() > top.rank())
+            {
+                best = Some((*hash, priority));
+            }
+        }
+        best.map(|(hash, _)| hash)
+    }
+
+    fn category(&self, id: u32) -> Option<&Category> {
+        self.categories.iter().find(|c| c.id == id)
     }
 
     fn progress(&mut self, hash: &[u8; 16]) {

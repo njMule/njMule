@@ -39,7 +39,29 @@ pub enum DownloadPriority {
     Auto,
 }
 
+// Sources a download with AUTO priority counts as rare below, and as common above.
+const FEW_SOURCES: usize = 20;
+const MANY_SOURCES: usize = 100;
+
 impl DownloadPriority {
+    /// The priority it acts with, for a file with `sources` known sources: AUTO puts rare files first.
+    pub fn effective(self, sources: usize) -> Self {
+        match self {
+            Self::Auto if sources > MANY_SOURCES => Self::Low,
+            Self::Auto if sources > FEW_SOURCES => Self::Normal,
+            Self::Auto => Self::High,
+            other => other,
+        }
+    }
+
+    /// Where an effective priority comes in the order downloads act in: the higher, the sooner.
+    pub fn rank(self) -> u8 {
+        match self {
+            Self::Low => 0,
+            Self::Normal | Self::Auto => 1,
+            Self::High => 2,
+        }
+    }
     pub fn name(self) -> &'static str {
         match self {
             Self::Low => "low",
