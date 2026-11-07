@@ -21,10 +21,12 @@ use download_lab::Downloads;
 use njmule_engine::api::download_info::SourceState;
 use njmule_engine::download::download_session::{DATA_TIMEOUT, MAX_UNEXPECTED, UNEXPECTED_GAP};
 use njmule_engine::files::hash::ed2k::{self, EMBLOCKSIZE};
-use njmule_engine::protocol::ed2k::client_messages::{CompressedPart, FileStatus, Range, RequestParts, SendingPart};
+use njmule_engine::protocol::ed2k::client_messages::{
+    CompressedPart, FileStatus, HashSet, Range, RequestParts, SendingPart,
+};
 use njmule_engine::protocol::io::PacketWriter;
 use njmule_engine::protocol::packet::opcodes::{client, extended};
-use njmule_engine::protocol::packet::{Packet, protocol};
+use njmule_engine::protocol::packet::{Packet, packing, protocol};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use scripted_source::{Link, ScriptedSource, WAIT};
@@ -44,6 +46,8 @@ struct Slot {
     link: Option<Link>,
     requested: Vec<Range>,
     sent: u64,
+    // The part hashes of a file of two parts.
+    parts: Vec<[u8; 16]>,
 }
 
 impl Slot {
@@ -51,7 +55,16 @@ impl Slot {
         let mut data = vec![0u8; 4 * EMBLOCKSIZE as usize + 30_000];
         StdRng::seed_from_u64(data.len() as u64).fill(&mut data[..]);
         let hash = ed2k::md4(&data);
-        Self { data, hash, source: None, downloads: None, link: None, requested: Vec::new(), sent: 0 }
+        Self {
+            data,
+            hash,
+            source: None,
+            downloads: None,
+            link: None,
+            requested: Vec::new(),
+            sent: 0,
+            parts: Vec::new(),
+        }
     }
 
     async fn given_a_source_that_gave_us_a_slot(&mut self) {
@@ -169,6 +182,62 @@ impl Slot {
         }
     }
 
+    // The first block asked for, deflated whole and sent in chunks.
+    async fn when_the_source_sends_the_first_block_compressed(&mut self) {
+        let block = self.requested[0];
+        let packed = packing::deflate(&self.data[block.start as usize..block.end as usize], 9);
+        let compressed_size = packed.len() as u32;
+        for chunk in packed.chunks(CHUNK as usize) {
+            let part =
+                CompressedPart { file: self.hash, block_start: block.start, compressed_size, chunk: chunk.to_vec() };
+            self.link().send(&part.encode(false).unwrap()).await;
+        }
+    }
+
+    async fn when_the_source_cancels_the_transfer(&mut self) {
+        self.link().send(&Packet::empty(protocol::EDONKEY, client::CANCELTRANSFER)).await;
+    }
+
+    // The three blocks asked for at a time: the one after them, once the first came.
+    async fn then_the_next_block_is_asked_for(&mut self) {
+        let asked = self.link().until(protocol::EDONKEY, client::REQUESTPARTS).await.pop().unwrap();
+        let ranges = RequestParts::decode(&asked).unwrap().ranges;
+        assert!(ranges.iter().any(|range| range.start == 3 * EMBLOCKSIZE), "{ranges:?}");
+    }
+
+    async fn then_the_source_waits_in_its_queue_again(&mut self) {
+        self.downloads()
+            .wait_for("queued", |lab| lab.manager.sources().first().is_some_and(|s| s.state == SourceState::Queued))
+            .await;
+        assert!(self.downloads().run(|lab| lab.manager.describe()).await.contains("QUEUED"));
+    }
+
+    // The link gives no hash set of the file of two parts: the source is asked for it.
+    async fn given_a_source_asked_for_the_hash_set_of_a_file_of_two_parts(&mut self) {
+        let source = ScriptedSource::new(PEER, 0, 0).await;
+        let downloads = Downloads::start([0xab; 16], OUR_ID, Downloads::settings());
+        self.parts = vec![[0x21; 16], [0x22; 16]];
+        self.hash = ed2k::file_hash(&self.parts).unwrap();
+        downloads.add(source.link("parts.bin", ed2k::PARTSIZE + 1000, self.hash)).await;
+        let mut link = source.accept().await;
+        link.until(protocol::EDONKEY, client::HASHSETREQUEST).await;
+        self.source = Some(source);
+        self.downloads = Some(downloads);
+        self.link = Some(link);
+    }
+
+    async fn when_the_source_tells_the_hash_set(&mut self) {
+        let set = HashSet { file: self.hash, parts: self.parts.clone() };
+        self.link().send(&set.encode().unwrap()).await;
+    }
+
+    async fn then_the_download_knows_its_hash_set(&self) {
+        let hash = self.hash;
+        self.downloads()
+            .wait_for("the hash set", move |lab| lab.manager.find(&hash).is_some_and(|d| d.file.has_hash_set()))
+            .await;
+    }
+
     fn downloads(&self) -> &Downloads {
         self.downloads.as_ref().unwrap()
     }
@@ -244,4 +313,36 @@ async fn should_drop_a_source_whose_compressed_data_does_not_inflate_again_and_a
 
     slot.then_the_connection_closes().await;
     slot.then_the_download_has_no_source().await;
+}
+
+// Beyond the Java engine's twins: what its engine tests reach through a whole engine.
+
+#[tokio::test]
+async fn should_take_a_block_sent_compressed_and_ask_for_the_next() {
+    let mut slot = Slot::new();
+    slot.given_a_source_that_gave_us_a_slot().await;
+
+    slot.when_the_source_sends_the_first_block_compressed().await;
+
+    slot.then_the_next_block_is_asked_for().await;
+}
+
+#[tokio::test]
+async fn should_wait_in_the_source_queue_again_when_the_source_cancels_the_transfer() {
+    let mut slot = Slot::new();
+    slot.given_a_source_that_gave_us_a_slot().await;
+
+    slot.when_the_source_cancels_the_transfer().await;
+
+    slot.then_the_source_waits_in_its_queue_again().await;
+}
+
+#[tokio::test]
+async fn should_take_the_hash_set_a_source_tells() {
+    let mut slot = Slot::new();
+    slot.given_a_source_asked_for_the_hash_set_of_a_file_of_two_parts().await;
+
+    slot.when_the_source_tells_the_hash_set().await;
+
+    slot.then_the_download_knows_its_hash_set().await;
 }
