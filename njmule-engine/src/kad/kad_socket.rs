@@ -189,7 +189,7 @@ impl Transport for KadTransport {
 fn bind(local: Option<Ipv4Addr>, port: u16) -> io::Result<std::net::UdpSocket> {
     let socket = match local {
         Some(local) => std::net::UdpSocket::bind((local, port))?,
-        None => match bind_dual_stack(port) {
+        None => match free_for_ipv4(port).and_then(|()| bind_dual_stack(port)) {
             Ok(socket) => socket,
             Err(e) => {
                 tracing::debug!("No IPv6 for the client UDP port {port}: {e}");
@@ -199,6 +199,14 @@ fn bind(local: Option<Ipv4Addr>, port: u16) -> io::Result<std::net::UdpSocket> {
     };
     socket.set_nonblocking(true)?;
     Ok(socket)
+}
+
+// Windows lets an IPv6 socket take a port another program holds for IPv4: the IPv4 datagrams would go to that program.
+fn free_for_ipv4(port: u16) -> io::Result<()> {
+    if port != 0 {
+        std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port))?;
+    }
+    Ok(())
 }
 
 fn bind_dual_stack(port: u16) -> io::Result<std::net::UdpSocket> {

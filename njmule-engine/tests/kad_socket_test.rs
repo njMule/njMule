@@ -441,3 +441,25 @@ async fn should_drop_the_datagrams_of_a_blocked_address_unread() {
 
     alone.then_the_socket_hears_nothing().await;
 }
+
+fn when_a_socket_opens_on_the_port_of(other_program: &std::net::UdpSocket) -> std::io::Result<KadSocket> {
+    let dir = tempfile::tempdir().unwrap();
+    let identity = KadIdentity::load_or_create(dir.path(), &mut rand::rng()).unwrap();
+    let keys = Keys { user_hash: [0; 16], identity, blocked: Arc::new(|_| false) };
+    let port = other_program.local_addr().unwrap().port();
+    KadSocket::open(None, port, keys, mpsc::unbounded_channel().0)
+}
+
+fn then_the_port_is_taken(opened: std::io::Result<KadSocket>) {
+    assert_eq!(opened.err().map(|e| e.kind()), Some(std::io::ErrorKind::AddrInUse));
+}
+
+// Windows lets an IPv6 socket take a port another program holds for IPv4 alone.
+#[tokio::test]
+async fn should_not_take_a_port_another_program_holds_for_ipv4() {
+    let other_program = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+
+    let opened = when_a_socket_opens_on_the_port_of(&other_program);
+
+    then_the_port_is_taken(opened);
+}
