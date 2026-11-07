@@ -24,6 +24,9 @@ use download_lab::{Downloads, Engine, Lab};
 use njmule_engine::api::category;
 use njmule_engine::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus, SourceInfo, SourceState};
 use njmule_engine::api::ed2k_link::{FileLink, Source};
+use njmule_engine::api::file_comment::FileComment;
+use njmule_engine::config::obfuscation_mode::ObfuscationMode;
+use njmule_engine::download::download_manager::REASK_INTERVAL;
 use njmule_engine::download::download_manager::{self, CALLBACK_WAIT, DownloadEvent, MIN_REASK};
 use njmule_engine::download::download_queue::SPACE_CHECK;
 use njmule_engine::files::hash::aich_recovery;
@@ -32,8 +35,10 @@ use njmule_engine::files::hash::file_hasher;
 use njmule_engine::protocol::ed2k::client_messages::{
     self, CompressedPart, FileName, FileStatus, HashSet, Range, RequestParts, SendingPart,
 };
+use njmule_engine::protocol::ed2k::file_description;
 use njmule_engine::protocol::ed2k::hello;
 use njmule_engine::protocol::ed2k::server_messages::{FoundSources, Source as Found};
+use njmule_engine::protocol::ed2k::source_exchange as exchange;
 use njmule_engine::protocol::io::PacketWriter;
 use njmule_engine::protocol::packet::opcodes::{client, extended};
 use njmule_engine::protocol::packet::{Packet, protocol};
@@ -44,6 +49,7 @@ use scripted_source::{Link, ScriptedSource, WAIT};
 const OUR_ID: u32 = u32::from_le_bytes([198, 51, 100, 7]);
 const PEER: [u8; 16] = [0x5e; 16];
 const UNKNOWN: [u8; 16] = [0x3a; 16];
+const BLOCKED_IP: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 9);
 
 // A download of three blocks with a trusted AICH hash, whose first source, unable to send recovery data, sent the last
 // block corrupt; a second source, able to, was then added by hand.
@@ -57,6 +63,8 @@ struct Recovery {
 struct Sources {
     downloads: Option<Downloads>,
     min_free: u64,
+    max_sources: usize,
+    our_ipv6: Option<Ipv6Addr>,
     incoming: Option<PathBuf>,
     data: Vec<u8>,
     recovery: Option<Recovery>,
@@ -79,6 +87,8 @@ impl Sources {
         Self {
             downloads: None,
             min_free: 0,
+            max_sources: 100,
+            our_ipv6: None,
             incoming: None,
             data: Vec::new(),
             recovery: None,
@@ -449,8 +459,16 @@ impl Sources {
     }
 
     fn given_the_manager(&mut self) {
-        let engine = Engine { min_free: self.min_free, incoming: self.incoming.clone(), ..Engine::default() };
-        self.downloads = Some(Downloads::start_with([0xab; 16], OUR_ID, Downloads::settings(), engine));
+        let engine = Engine {
+            min_free: self.min_free,
+            incoming: self.incoming.clone(),
+            our_ipv6: self.our_ipv6,
+            blocked: vec![u32::from(BLOCKED_IP)],
+            ..Engine::default()
+        };
+        let mut settings = Downloads::settings();
+        settings.max_sources_per_file = self.max_sources;
+        self.downloads = Some(Downloads::start_with([0xab; 16], OUR_ID, settings, engine));
     }
 
     async fn given_a_download_from_the_source(&mut self, name: &str, file: [u8; 16]) {
@@ -517,6 +535,190 @@ impl Sources {
             })
             .await;
         assert!(stopped);
+    }
+
+    fn given_we_have_the_ipv6_address(&mut self, address: &str) {
+        self.our_ipv6 = Some(address.parse().unwrap());
+    }
+
+    async fn given_a_source_announcing_the_ipv6_address(&mut self, misc2: u32, address: &str) {
+        let source = ScriptedSource::new(PEER, 0, misc2).await;
+        source.announce_ipv6(address.parse().unwrap());
+        self.source = Some(source);
+    }
+
+    fn given_a_maximum_of_sources(&mut self, max: usize) {
+        self.max_sources = max;
+    }
+
+    async fn given_we_asked_the_source_for_other_sources_the_extended_way(&mut self) {
+        let mut link = self.source().accept().await;
+        let asked = link.until(protocol::EMULE, extended::REQUESTSOURCES2).await.pop().unwrap();
+        assert_eq!(asked.payload()[0], exchange::EXTENDED_VERSION, "version 1 asks for the extended form");
+        self.link = Some(link);
+    }
+
+    async fn given_we_asked_the_source_for_the_aich_hash_and_other_sources(&mut self) {
+        let mut link = self.source().accept().await;
+        let asked = names(&link.until(protocol::EMULE, extended::REQUESTSOURCES2).await);
+        assert_eq!(asked, ["REQUESTFILENAME", "SETREQFILEID", "AICHFILEHASHREQ", "REQUESTSOURCES2"]);
+        self.link = Some(link);
+    }
+
+    async fn given_the_source_shown_as_asked(&mut self) {
+        let asking = self.await_source(|s| s.state == SourceState::Asking).await;
+        assert_eq!(asking.nick.as_deref(), Some("scripted"));
+        let described = self.run(|lab| lab.manager.describe()).await;
+        assert!(described.contains("talk.bin missing 5000:") && described.contains("REQUESTING"), "{described}");
+    }
+
+    // From now on only sources known to take obfuscation are asked: none of those it tells of, nor this one.
+    async fn given_only_sources_known_to_take_obfuscation_asked(&mut self) {
+        self.run(|lab| lab.settings.obfuscation = ObfuscationMode::Required).await;
+    }
+
+    async fn given_the_source_told_its_comments_and_other_sources_and_queued_us_at(&mut self, rank: u32) {
+        let hash = self.hash;
+        let link = self.link();
+        link.send(&file_description::encode(&FileComment::of("a fine copy", 4)).unwrap()).await;
+        link.send(&file_description::encode(&FileComment::of("free SPAM inside", 1)).unwrap()).await;
+        link.send(&file_description::encode(&FileComment::of("", 0)).unwrap()).await;
+        link.send(&aich_hash([0x32; 16], [0; 20])).await;
+        link.send(&aich_hash(hash, [0; 20])).await;
+        let answer = exchange::Answer {
+            version: 4,
+            file: hash,
+            sources: vec![
+                exchange::Source { low_id: 1234, ..exchanged(Ipv4Addr::UNSPECIFIED) },
+                exchanged(BLOCKED_IP),
+                exchanged(Ipv4Addr::new(10, 1, 2, 3)),
+                exchanged(Ipv4Addr::new(192, 0, 2, 50)),
+                exchanged(Ipv4Addr::new(192, 0, 2, 51)),
+            ],
+        };
+        link.send(&answer.encode().unwrap()).await;
+        let again = exchange::Answer { version: 4, file: hash, sources: vec![exchanged(Ipv4Addr::new(192, 0, 2, 52))] };
+        link.send(&again.encode().unwrap()).await;
+        link.send(&whole_file([0x32; 16])).await;
+        link.send(&whole_file(hash)).await;
+        link.until(protocol::EDONKEY, client::STARTUPLOADREQ).await;
+        let mut ranked = PacketWriter::new();
+        ranked.u32(rank);
+        link.send(&Packet::written(protocol::EDONKEY, client::QUEUERANK, ranked)).await;
+    }
+
+    // Queued from the upload request on; the rank comes after.
+    async fn given_we_were_queued_at(&mut self, rank: u32) {
+        let queued = self.await_source(|s| s.state == SourceState::Queued && s.queue_rank != 0).await;
+        assert_eq!((queued.queue_rank, queued.parts), (rank, 1));
+    }
+
+    async fn given_the_good_comment_and_the_public_sources_it_told_of_taken(&mut self) {
+        let hash = self.hash;
+        assert_eq!(self.run(move |lab| lab.manager.download(&hash).unwrap().sources).await, 3, "the public sources");
+        let comments = self.run(move |lab| lab.manager.comments(&hash)).await;
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].user, "scripted");
+        assert_eq!(comments[0].comment, FileComment::of("a fine copy", 4));
+    }
+
+    async fn given_the_aich_hash_of_one_source_not_trusted(&mut self) {
+        let hash = self.hash;
+        let aich = self.run(move |lab| lab.manager.find(&hash).unwrap().file.aich_hash()).await;
+        assert_eq!(aich, None, "one source alone is no reason to trust a hash");
+    }
+
+    async fn given_the_source_not_passed_on_yet(&mut self) {
+        let hash = self.hash;
+        assert!(self.run(move |lab| lab.manager.exchangeable(&hash)).await.is_empty(), "not before its parts");
+    }
+
+    async fn given_the_source_can_be_passed_on(&mut self) {
+        let hash = self.hash;
+        let passed = self.run(move |lab| lab.manager.exchangeable(&hash)).await;
+        assert_eq!(passed.len(), 1);
+        assert_eq!((passed[0].port, passed[0].user_hash), (self.source().port(), Some(PEER)));
+    }
+
+    // Asked again in time, plain once allowed: not for more sources, asked for less than 40 minutes ago.
+    async fn given_plain_connections_allowed_again(&mut self) {
+        self.run(|lab| lab.settings.obfuscation = ObfuscationMode::Supported).await;
+    }
+
+    fn given_time_passed(&mut self, duration: Duration) {
+        self.downloads().advance(duration);
+    }
+
+    async fn given_the_source_asked_again_but_not_for_more_sources(&mut self) {
+        let asked = self.ask_for_an_upload_slot().await;
+        assert!(!asked.contains(&"REQUESTSOURCES2".to_owned()), "{asked:?}");
+    }
+
+    async fn given_the_source_asked_for_no_more_sources(&mut self) {
+        let asked = self.ask_for_an_upload_slot().await;
+        assert!(!asked.contains(&"REQUESTSOURCES2".to_owned()), "a full list wants no more sources");
+    }
+
+    async fn when_the_source_answers_the_extended_way_with_a_high_id_a_low_id_and_a_source_at_an_ipv6_address_alone(
+        &mut self,
+    ) {
+        let hash = self.hash;
+        let answer = exchange::Answer {
+            version: exchange::EXTENDED_VERSION,
+            file: hash,
+            sources: vec![
+                exchange::Source {
+                    ipv6: Some("2001:db8::60".parse().unwrap()),
+                    ..exchanged(Ipv4Addr::new(192, 0, 2, 60))
+                },
+                exchange::Source::ipv6_only("2001:db8::61".parse().unwrap(), download_lab::PORT, None),
+                exchange::Source {
+                    low_id: 1234,
+                    ipv6: Some("2001:db8::62".parse().unwrap()),
+                    ..exchanged(Ipv4Addr::UNSPECIFIED)
+                },
+                // Ourselves, at our own IPv6 address.
+                exchange::Source::ipv6_only("2001:db8::99".parse().unwrap(), download_lab::PORT, None),
+            ],
+        };
+        self.link().send(&answer.encode_extended().unwrap()).await;
+    }
+
+    async fn when_the_download_is_paused(&mut self) {
+        let hash = self.hash;
+        self.run(move |lab| {
+            let ours = lab.ours.clone();
+            lab.manager.pause(&hash, &ours)
+        })
+        .await;
+    }
+
+    async fn when_the_server_finds_a_low_id(&mut self, low_id: u32) {
+        self.callbacks_before = self.callbacks().len();
+        let hash = self.hash;
+        self.found(hash, vec![(low_id, None)]).await;
+    }
+
+    async fn then_a_source_is_shown_at(&self, address: &str) {
+        let wanted = address.to_owned();
+        let shown = self.run(|lab| lab.manager.sources().into_iter().map(|s| s.address).collect::<Vec<_>>()).await;
+        assert!(shown.contains(&wanted), "{shown:?}");
+    }
+
+    async fn then_no_callback_is_asked_for(&self) {
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        assert!(self.callbacks().is_empty());
+    }
+
+    // Asks for the file and for an upload slot; the names of the packets read.
+    async fn ask_for_an_upload_slot(&mut self) -> Vec<String> {
+        let hash = self.hash;
+        let mut link = self.source().accept().await;
+        let mut asked = names(&link.until(protocol::EDONKEY, client::SETREQFILEID).await);
+        link.send(&whole_file(hash)).await;
+        asked.extend(names(&link.until(protocol::EDONKEY, client::STARTUPLOADREQ).await));
+        self.link = Some(link);
+        asked
     }
 
     fn given_a_minimum_free_space_of(&mut self, bytes: u64) {
@@ -977,6 +1179,45 @@ fn whole_file(file: [u8; 16]) -> Packet {
     FileStatus { file, part_count: 0, parts: Vec::new() }.encode().unwrap()
 }
 
+// A HighID source at `ip`, as another client tells of it.
+fn exchanged(ip: Ipv4Addr) -> exchange::Source {
+    exchange::Source {
+        ip: u32::from(ip),
+        low_id: 0,
+        port: download_lab::PORT,
+        server_ip: 0,
+        server_port: 0,
+        user_hash: None,
+        crypt_options: 0,
+        ipv6: None,
+    }
+}
+
+fn aich_hash(file: [u8; 16], master: [u8; 20]) -> Packet {
+    let mut out = PacketWriter::new();
+    out.hash16(&file).hash20(&master);
+    Packet::written(protocol::EMULE, extended::AICHFILEHASHANS, out)
+}
+
+// The names of the packets a downloader sends a source, as the Java tests read them.
+fn names(packets: &[Packet]) -> Vec<String> {
+    packets
+        .iter()
+        .map(|packet| {
+            match (packet.protocol(), packet.opcode()) {
+                (protocol::EDONKEY, client::REQUESTFILENAME) => "REQUESTFILENAME",
+                (protocol::EDONKEY, client::SETREQFILEID) => "SETREQFILEID",
+                (protocol::EDONKEY, client::STARTUPLOADREQ) => "STARTUPLOADREQ",
+                (protocol::EDONKEY, client::HASHSETREQUEST) => "HASHSETREQUEST",
+                (protocol::EMULE, extended::AICHFILEHASHREQ) => "AICHFILEHASHREQ",
+                (protocol::EMULE, extended::REQUESTSOURCES2) => "REQUESTSOURCES2",
+                _ => "?",
+            }
+            .to_owned()
+        })
+        .collect()
+}
+
 fn random(size: usize, seed: u64) -> Vec<u8> {
     let mut data = vec![0u8; size];
     StdRng::seed_from_u64(seed).fill(&mut data[..]);
@@ -1327,4 +1568,76 @@ async fn should_change_nothing_for_an_unknown_download() {
     sources.then_every_one_is_refused();
     sources.then_the_unknown_download_has_no_comments().await;
     sources.then_the_unknown_download_has_no_source_to_pass_on().await;
+}
+
+#[tokio::test]
+async fn should_take_the_ipv6_sources_of_an_extended_answer_when_we_have_ipv6() {
+    let mut sources = Sources::new();
+    sources.given_we_have_the_ipv6_address("2001:db8::99");
+    sources.given_a_source_announcing_the_ipv6_address(hello::MISC2_SOURCE_EXCHANGE2, "2001:db8::50").await;
+    sources.given_the_manager();
+    sources.given_a_download_from_the_source("six.bin", [0x4e; 16]).await;
+    sources.given_we_asked_the_source_for_other_sources_the_extended_way().await;
+
+    sources
+        .when_the_source_answers_the_extended_way_with_a_high_id_a_low_id_and_a_source_at_an_ipv6_address_alone()
+        .await;
+
+    sources.then_the_download_has_sources(4).await;
+    sources.then_a_source_is_shown_at("[2001:db8::61]:4662").await;
+}
+
+#[tokio::test]
+async fn should_hear_the_comment_and_other_sources_of_a_source_that_keeps_us_in_its_queue() {
+    let mut sources = Sources::new();
+    sources.given_a_source(1 << hello::MISC1_AICH_SHIFT, hello::MISC2_SOURCE_EXCHANGE2).await;
+    sources.given_the_manager();
+    sources.given_a_download_from_the_source("talk.bin", [0x31; 16]).await;
+    sources.given_we_asked_the_source_for_the_aich_hash_and_other_sources().await;
+    sources.given_the_source_shown_as_asked().await;
+    sources.given_only_sources_known_to_take_obfuscation_asked().await;
+    sources.given_the_source_told_its_comments_and_other_sources_and_queued_us_at(3).await;
+    sources.given_we_were_queued_at(3).await;
+    sources.given_the_good_comment_and_the_public_sources_it_told_of_taken().await;
+    sources.given_the_aich_hash_of_one_source_not_trusted().await;
+    sources.given_the_source_not_passed_on_yet().await;
+    sources.given_the_connection_closed_while_queued().await;
+    sources.given_the_source_can_be_passed_on().await;
+    sources.given_plain_connections_allowed_again().await;
+    sources.given_time_passed(REASK_INTERVAL);
+    sources.given_the_source_asked_again_but_not_for_more_sources().await;
+
+    sources.when_the_download_is_paused().await;
+
+    sources.then_the_connection_closes().await;
+}
+
+#[tokio::test]
+async fn should_take_no_more_firewalled_sources_into_a_full_source_list() {
+    let mut sources = Sources::new();
+    sources.given_a_maximum_of_sources(1);
+    sources.given_a_source(0, hello::MISC2_SOURCE_EXCHANGE2).await;
+    sources.given_the_manager();
+    sources.given_a_download_from_the_source("full.bin", [0x38; 16]).await;
+    sources.given_the_source_asked_for_no_more_sources().await;
+
+    sources.when_the_server_finds_a_low_id(5000).await;
+
+    sources.then_no_callback_is_asked_for().await;
+}
+
+#[tokio::test]
+async fn should_take_no_source_by_hand_into_a_full_source_list() {
+    let mut sources = Sources::new();
+    sources.given_a_maximum_of_sources(1);
+    sources.given_a_source(0, hello::MISC2_SOURCE_EXCHANGE2).await;
+    sources.given_the_manager();
+    sources.given_a_download_from_the_source("full.bin", [0x38; 16]).await;
+    sources.given_the_source_asked_for_no_more_sources().await;
+
+    sources
+        .when_sources_are_added_by_hand(vec![SocketAddr::new("127.0.0.2".parse().unwrap(), download_lab::PORT)])
+        .await;
+
+    sources.then_every_one_is_refused();
 }

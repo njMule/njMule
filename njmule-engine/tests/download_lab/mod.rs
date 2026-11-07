@@ -50,6 +50,8 @@ pub struct Engine {
     pub min_free: u64,
     /// Where finished files go; the lab's `incoming` directory when none.
     pub incoming: Option<std::path::PathBuf>,
+    /// Our IPv6 address, which our hello gives.
+    pub our_ipv6: Option<std::net::Ipv6Addr>,
 }
 
 fn hooks(engine: &Arc<Mutex<Engine>>) -> Hooks {
@@ -394,6 +396,7 @@ fn open(
     let room = Arc::clone(engine);
     let min_free = Box::new(move || room.lock().unwrap().min_free);
     let incoming = engine.lock().unwrap().incoming.clone().unwrap_or_else(|| dir.join("incoming"));
+    let our_ipv6 = engine.lock().unwrap().our_ipv6;
     let manager = DownloadManager::open(&dir.join("temp"), &incoming, min_free, disk_in, clock, hooks(engine)).unwrap();
     let ours = Ours { nick: "test", udp_port: 0, kad_port: 0, misc_options1: 0, misc_options2: 0 };
     let (link_events, links) = mpsc::unbounded_channel();
@@ -401,7 +404,10 @@ fn open(
     let (jobs_in, jobs) = mpsc::unbounded_channel();
     let lab = Lab {
         manager,
-        ours: Hello::of(user_hash, our_id, settings.listen_port, &ours, 0, 0),
+        ours: match our_ipv6 {
+            Some(address) => Hello::of(user_hash, our_id, settings.listen_port, &ours, 0, 0).with_ipv6(&address),
+            None => Hello::of(user_hash, our_id, settings.listen_port, &ours, 0, 0),
+        },
         settings,
         events: Vec::new(),
         server: Server(Arc::clone(server)),

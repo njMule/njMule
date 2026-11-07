@@ -21,7 +21,8 @@ use crate::protocol::ed2k::client_messages::{
     self, BLOCKS_PER_REQUEST, CompressedPart, FileName, FileStatus, HashSet, Range, RequestParts, SendingPart,
 };
 use crate::protocol::ed2k::file_description;
-use crate::protocol::ed2k::hello::Hello;
+use crate::protocol::ed2k::hello::{Hello, MISC2_SOURCE_EXCHANGE2};
+use crate::protocol::ed2k::source_exchange as exchange;
 use crate::protocol::io::{DecodeError, PacketWriter};
 use crate::protocol::packet::opcodes::{client, extended};
 use crate::protocol::packet::{Packet, protocol};
@@ -101,6 +102,13 @@ pub enum Note {
     },
     /// The source told what it says of the file.
     Commented(FileComment),
+    /// The source exchanges sources: the downloads may have the session ask it for those it knows
+    /// ([`DownloadSession::ask_sources`]), the extended way when both of us take it.
+    SourcesWanted {
+        extended: bool,
+    },
+    /// The source told the sources it knows of a file the session asked it about.
+    SourcesFound(exchange::Answer),
 }
 
 /// What a session works with.
@@ -157,6 +165,8 @@ pub struct DownloadSession {
     notes: Vec<Note>,
     // The downloads asked for on this connection, whose hash sets still count after a swap to another.
     asked: Vec<[u8; 16]>,
+    // The files the source was asked for other sources of, whose answers count.
+    sources_asked: Vec<[u8; 16]>,
 }
 
 impl DownloadSession {
@@ -181,6 +191,7 @@ impl DownloadSession {
             broken: HashMap::new(),
             notes: Vec::new(),
             asked: vec![download],
+            sources_asked: Vec::new(),
         }
     }
 
@@ -478,6 +489,20 @@ impl DownloadSession {
                 self.compressed(CompressedPart::decode(packet)?, ctx)?;
             }
             extended::AICHANSWER => self.aich_answer(packet)?,
+            extended::ANSWERSOURCES2 => {
+                let extended = self.peer.as_ref().is_some_and(Hello::supports_extended_source_exchange)
+                    && packet.reader().u8()? == exchange::EXTENDED_VERSION;
+                let answer = if extended {
+                    exchange::Answer::decode_extended(packet)?
+                } else {
+                    exchange::Answer::decode(packet)?
+                };
+                // Only answers we asked for, about a file we asked for.
+                if let Some(at) = self.sources_asked.iter().position(|file| *file == answer.file) {
+                    self.sources_asked.swap_remove(at);
+                    self.notes.push(Note::SourcesFound(answer));
+                }
+            }
             extended::FILEDESC => self.notes.push(Note::Commented(file_description::decode(packet)?)),
             extended::AICHFILEHASHANS => {
                 let mut input = packet.reader();
@@ -532,6 +557,22 @@ impl DownloadSession {
         if !has_hash_set {
             self.send(client_messages::for_file(client::HASHSETREQUEST, &file));
         }
+        let exchanges = self.peer.as_ref().is_some_and(|peer| peer.misc_options2() & MISC2_SOURCE_EXCHANGE2 != 0);
+        if exchanges {
+            let extended = self.peer.as_ref().is_some_and(Hello::supports_extended_source_exchange)
+                && ctx.ours.supports_extended_source_exchange();
+            self.notes.push(Note::SourcesWanted { extended });
+        }
+    }
+
+    /// Asks the source for the other sources it knows of the file asked for, the extended way when both take it.
+    pub fn ask_sources(&mut self, extended: bool) {
+        let file = self.download;
+        if !self.sources_asked.contains(&file) {
+            self.sources_asked.push(file);
+        }
+        let version = if extended { exchange::EXTENDED_VERSION } else { exchange::VERSION };
+        self.send(exchange::request_in_version(&file, version));
     }
 
     fn set_parts<R: Rng>(&mut self, parts: Vec<bool>, ctx: &mut Context<'_, R>) {
