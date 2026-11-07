@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::net::traffic;
-use crate::net::udp_route::UdpRoute;
+use crate::net::udp_route::{self, UdpRoute};
 use crate::protocol::crypt::datagram_obfuscation;
 use crate::protocol::packet::{Packet, protocol, udp_framing};
 use crate::server::server_route::ServerRoute;
@@ -108,24 +108,7 @@ impl ServerUdp {
 
     fn transmit(&self, to: SocketAddr, datagram: &[u8]) -> io::Result<()> {
         let route = self.shared.route.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        let Some((target, data)) = route.outgoing(to, datagram) else {
-            return Ok(());
-        };
-        match self.socket.try_send_to(&data, target) {
-            Ok(_) => {}
-            // Not known writable yet, as a socket just opened, or its buffer full: sent once it is.
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                let socket = Arc::clone(&self.socket);
-                tokio::spawn(async move {
-                    if let Err(e) = socket.send_to(&data, target).await {
-                        tracing::debug!("Cannot send a datagram to {target}: {e}");
-                    }
-                });
-            }
-            Err(e) => return Err(e),
-        }
-        traffic::sent(datagram.len(), false);
-        Ok(())
+        udp_route::transmit(&self.socket, &route, to, datagram)
     }
 }
 
