@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::io;
 use std::net::{SocketAddr, SocketAddrV4};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -17,9 +17,10 @@ use futures_util::future::BoxFuture;
 use njmule_engine::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus, SourceInfo};
 use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::engine_event::EngineEvent;
+use njmule_engine::api::engine_status::EngineStatus;
 use njmule_engine::api::file_history::FileHistory;
 use njmule_engine::api::kad_contact_info::KadContactInfo;
-use njmule_engine::api::kad_info::KadInfo;
+use njmule_engine::api::kad_info::{Buddy, KadInfo};
 use njmule_engine::api::kad_note::KadNote;
 use njmule_engine::api::kad_search_info::KadSearchInfo;
 use njmule_engine::api::known_client::KnownClient;
@@ -29,6 +30,7 @@ use njmule_engine::api::peer_info::PeerInfo;
 use njmule_engine::api::search_result::SearchResult;
 use njmule_engine::api::server_info::ServerInfo;
 use njmule_engine::api::spam_marks::SpamMarks;
+use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::config::preferences::Preferences;
 use njmule_engine::engine::NotesError;
 use njmule_engine::engine::network::{ConnectError, MoreAnswer};
@@ -38,7 +40,7 @@ use njmule_engine::persist::format::nodes_dat;
 use njmule_engine::persist::format::server_met::Server;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use njmule_engine::search::search_manager::{Scope, StartError};
-use njmule_engine::server::server_list::Address;
+use njmule_engine::server::server_list::{Address, Priority};
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -68,17 +70,21 @@ struct Fake {
     asking_more: bool,
     marking_spam: bool,
     downloaded_before: HashSet<[u8; 16]>,
+    connected: Option<bool>,
+    servers_known: usize,
 }
 
 #[derive(Clone)]
 struct FakeEngine {
     fake: Arc<Mutex<Fake>>,
     events: broadcast::Sender<EngineEvent>,
+    dirs: AppDirectories,
 }
 
 impl FakeEngine {
-    fn new() -> Self {
-        Self { fake: Arc::default(), events: broadcast::channel(16).0 }
+    fn new(root: &Path) -> Self {
+        let dirs = AppDirectories::under_root(root).unwrap();
+        Self { fake: Arc::default(), events: broadcast::channel(16).0, dirs }
     }
 
     fn with<T>(&self, work: impl FnOnce(&mut Fake) -> T) -> T {
@@ -100,6 +106,14 @@ impl FakeEngine {
 impl NjMuleEngine for FakeEngine {
     fn preferences(&self) -> Preferences {
         Preferences::default()
+    }
+
+    fn directories(&self) -> AppDirectories {
+        self.dirs.clone()
+    }
+
+    async fn status(&self) -> Option<EngineStatus> {
+        self.with(|fake| fake.connected).map(status)
     }
 
     fn update_preferences(&self, _changes: &BTreeMap<String, String>) -> Result<Preferences, String> {
@@ -143,7 +157,7 @@ impl NjMuleEngine for FakeEngine {
     async fn disconnect_server(&self) {}
 
     async fn servers(&self) -> Vec<ServerInfo> {
-        Vec::new()
+        vec![server(); self.with(|fake| fake.servers_known)]
     }
 
     async fn set_static_server(&self, address: Address, wanted: bool) -> bool {
@@ -361,6 +375,77 @@ fn download() -> DownloadInfo {
     }
 }
 
+fn server() -> ServerInfo {
+    ServerInfo {
+        address: "203.0.113.10:4661".to_owned(),
+        name: "Lighthouse".to_owned(),
+        description: "Stable".to_owned(),
+        users: 412_345,
+        files: 25_153_045,
+        max_users: 454_300,
+        failed: 0,
+        priority: Priority::High,
+        ping: 24,
+        soft_files: 28_864_150,
+        hard_files: 37_111_050,
+        low_id_users: 82_469,
+        version: "17.15".to_owned(),
+        obfuscation: true,
+        is_static: false,
+    }
+}
+
+fn kad() -> KadInfo {
+    KadInfo {
+        connected: true,
+        contacts: 1243,
+        verified_contacts: 873,
+        firewalled: false,
+        id: "8F3C2A1D90B44E6E9A0C7E51D2B3F4A5".to_owned(),
+        public_ip: "198.51.100.23".to_owned(),
+        udp_port: 4672,
+        udp_firewalled: false,
+        udp_verified: true,
+        buddy: Buddy::None,
+        users: 2_100_000,
+        files: 310_000_000,
+    }
+}
+
+// Connected to a server and to Kad, or to neither.
+fn status(connected: bool) -> EngineStatus {
+    EngineStatus {
+        server: connected.then(server),
+        client_id: 0x1764_3C6A,
+        low_id: false,
+        obfuscated: true,
+        kad: connected.then(kad),
+        download_bytes_per_second: 1_322_500,
+        upload_bytes_per_second: 98_100,
+        downloaded: 2_576_980_378,
+        uploaded: 640_942_080,
+        downloads: 11,
+        uploads: 3,
+        queued: 7,
+        shared_files: 26,
+        total_downloaded: 442_381_959_168,
+        total_uploaded: 308_163_100_672,
+        sessions: 214,
+        session_seconds: 3 * 3600 + 42 * 60,
+        total_seconds: 1_911 * 3600,
+        public_ip: "198.51.100.23".to_owned(),
+        tcp_port: 4662,
+        related_search: false,
+        missing_interface: None,
+        public_ipv6: None,
+        overhead_uploaded: 0,
+        overhead_downloaded: 0,
+        forwarding: "off".to_owned(),
+        router: String::new(),
+        kad_port_taken: None,
+    }
+}
+
 fn kad_contact_in(country: &str) -> KadContactInfo {
     KadContactInfo {
         id: "8F3C2A1D90B44E6E9A0C7E51D2B3F4A5".to_owned(),
@@ -391,9 +476,10 @@ struct Api {
 
 impl Api {
     fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
         Self {
-            dir: tempfile::tempdir().unwrap(),
-            engine: FakeEngine::new(),
+            engine: FakeEngine::new(dir.path()),
+            dir,
             endpoint: None,
             address: None,
             token: String::new(),
@@ -448,6 +534,14 @@ impl Api {
 
     fn given_the_engine_knows_the_kad_contact(&self, contact: KadContactInfo) {
         self.engine.with(|fake| fake.kad_contacts.push(contact));
+    }
+
+    fn given_the_engine_connected(&self, connected: bool) {
+        self.engine.with(|fake| fake.connected = Some(connected));
+    }
+
+    fn given_the_engine_knows_servers(&self, count: usize) {
+        self.engine.with(|fake| fake.servers_known = count);
     }
 
     fn given_the_engine_searches_as(&self, id: u64) {
@@ -997,4 +1091,57 @@ async fn should_tell_what_is_wrong_with_a_malformed_search_expression() {
 
     api.then_the_status_is(400);
     api.then_the_body_contains(&["AND"]);
+}
+
+#[tokio::test]
+async fn should_tell_its_name_and_version_to_a_token_holder() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("GET", "/api/v1", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&["\"name\":\"njMule\"", "\"api\":1"]);
+}
+
+#[tokio::test]
+async fn should_search_kad_automatically_from_a_small_server_among_many() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_searches_as(8);
+    api.given_the_engine_connected(true);
+    api.given_the_engine_knows_servers(40);
+
+    api.when_called("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"automatic\"}").await;
+
+    api.then_the_status_is(201);
+    api.then_the_engine_was_asked("search talk KAD");
+}
+
+#[tokio::test]
+async fn should_stay_on_a_big_server_automatically() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_searches_as(8);
+    api.given_the_engine_connected(true);
+    api.given_the_engine_knows_servers(1);
+
+    api.when_called("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"automatic\"}").await;
+
+    api.then_the_status_is(201);
+    api.then_the_engine_was_asked("search talk SERVER");
+}
+
+#[tokio::test]
+async fn should_refuse_an_automatic_search_with_no_network() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_searches_as(8);
+    api.given_the_engine_connected(false);
+    api.given_the_engine_knows_servers(1);
+
+    api.when_called("POST", "/api/v1/searches", "{\"query\":\"talk\",\"scope\":\"automatic\"}").await;
+
+    api.then_the_status_is(409);
+    api.then_the_body_contains(&["Not connected"]);
 }

@@ -216,8 +216,8 @@ pub struct UploadManager {
     next_credits_save: Option<Instant>,
     // The start of the meters' clock.
     epoch: Instant,
-    // Payload bytes sent in this session.
-    uploaded: u64,
+    // Payload sent in this session, and its rate.
+    sending: Option<RateMeter>,
     // Banned addresses, IPv6 ones by /64, until when.
     bans: HashMap<IpAddr, Instant>,
     requests: RequestTracker,
@@ -245,7 +245,7 @@ impl UploadManager {
             priorities: Box::new(|_| UploadPriority::Auto),
             next_credits_save: None,
             epoch: Instant::now(),
-            uploaded: 0,
+            sending: RateMeter::new(RATE_SECONDS),
             bans: HashMap::new(),
             requests: RequestTracker::new(MIN_REQUEST_TIME, IDLE_SLOTS_WINDOW),
             next_purge: None,
@@ -343,7 +343,13 @@ impl UploadManager {
 
     /// Payload bytes sent in this session.
     pub fn uploaded(&self) -> u64 {
-        self.uploaded
+        self.sending.as_ref().map_or(0, RateMeter::total)
+    }
+
+    /// Payload bytes per second sent of late.
+    pub fn rate(&mut self, now: Instant) -> u64 {
+        let clock = self.clock(now);
+        self.sending.as_mut().map_or(0, |meter| meter.rate(clock))
     }
 
     /// The banned addresses with the time left.
@@ -978,7 +984,9 @@ impl UploadManager {
                 }
                 if session.link().send_data(item.packet) {
                     slot.sent = slot.sent.saturating_add(item.payload);
-                    self.uploaded = self.uploaded.saturating_add(item.payload);
+                    if let Some(meter) = &mut self.sending {
+                        meter.add(item.payload, clock);
+                    }
                     if let Some(counts) = &mut self.counts
                         && item.payload > 0
                     {

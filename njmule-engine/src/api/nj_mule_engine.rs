@@ -15,6 +15,7 @@ use tokio::sync::broadcast;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::engine_status::EngineStatus;
 use crate::api::file_history::FileHistory;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::KadInfo;
@@ -26,6 +27,7 @@ use crate::api::peer_info::PeerInfo;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::api::spam_marks::SpamMarks;
+use crate::config::app_directories::AppDirectories;
 use crate::config::preferences::Preferences;
 use crate::engine::NotesError;
 use crate::engine::network::{ConnectError, MoreAnswer};
@@ -37,6 +39,12 @@ use crate::server::server_list::Address;
 
 pub trait NjMuleEngine: Clone + Send + Sync + 'static {
     fn preferences(&self) -> Preferences;
+
+    /// The folders of the profile.
+    fn directories(&self) -> AppDirectories;
+
+    /// What the engine is doing now; none once it stopped.
+    fn status(&self) -> impl Future<Output = Option<EngineStatus>> + Send;
 
     /// Changes the preferences named in `changes`, all or none, and saves them.
     fn update_preferences(&self, changes: &BTreeMap<String, String>) -> Result<Preferences, String>;

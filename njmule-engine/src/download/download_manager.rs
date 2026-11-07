@@ -44,6 +44,7 @@ use crate::protocol::packet::Packet;
 use crate::protocol::packet::opcodes::client_udp;
 use crate::security::path_sanitizer;
 use crate::server::server_list;
+use crate::util::rate_meter::RateMeter;
 use crate::util::{instants, ipv4, ipv6, white_space};
 
 /// A source that keeps us in its queue is asked again this often.
@@ -396,6 +397,10 @@ pub struct DownloadManager {
     // When each search for sources running on Kad counts as over, and when the next may start.
     kad_searching: Vec<Instant>,
     next_kad_start: Instant,
+    // Payload received in this session, and its rate.
+    receiving: Option<RateMeter>,
+    // The start of the meter's clock.
+    epoch: Instant,
 }
 
 impl DownloadManager {
@@ -437,7 +442,24 @@ impl DownloadManager {
             our_id: 0,
             kad_searching: Vec::new(),
             next_kad_start: now,
+            receiving: RateMeter::new(RATE_WINDOW),
+            epoch: now,
         })
+    }
+
+    /// Payload bytes per second received of late.
+    pub fn rate(&mut self) -> u64 {
+        let now = self.meter_clock();
+        self.receiving.as_mut().map_or(0, |meter| meter.rate(now))
+    }
+
+    /// Payload bytes received in this session.
+    pub fn downloaded(&self) -> u64 {
+        self.receiving.as_ref().map_or(0, RateMeter::total)
+    }
+
+    fn meter_clock(&self) -> i64 {
+        i64::try_from((self.clock)().saturating_duration_since(self.epoch).as_nanos()).unwrap_or(i64::MAX)
     }
 
     pub fn take_actions(&mut self) -> Vec<Action> {
@@ -1704,6 +1726,10 @@ impl DownloadManager {
         };
         match note {
             Note::Received { bytes, .. } => {
+                let now = self.meter_clock();
+                if let Some(meter) = &mut self.receiving {
+                    meter.add(bytes, now);
+                }
                 if let Some(entry) = self.entries.get_mut(&hash) {
                     entry.received = entry.received.saturating_add(bytes);
                     if let Some(source) = entry.sources.get_mut(&address) {
