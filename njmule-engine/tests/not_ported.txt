@@ -155,8 +155,6 @@ RemoteApiTest.shouldStartATestOfThePorts
 RemoteApiTest.shouldAnswerATestOfThePortsWithoutWaitingForItsEnd
 RemoteApiTest.shouldReplaceTheRulesOfTheSchedule
 RemoteApiTest.shouldRefuseARuleWithoutATime
-RemoteApiTest.shouldReplaceTheCategories
-RemoteApiTest.shouldRefuseACategoryWithoutAName
 RemoteApiTest.shouldNotUpdateTheIpFilterWithoutLists
 # The Rust engine keeps no rating or comment of ours yet: it comes with the files area.
 RemoteApiTest.shouldKeepOurRatingAndCommentOfAFile

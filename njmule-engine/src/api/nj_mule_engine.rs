@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use futures_util::future::BoxFuture;
 use tokio::sync::broadcast;
 
+use crate::api::category::Category;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
@@ -24,6 +25,7 @@ use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::PeerInfo;
+use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::api::spam_marks::SpamMarks;
@@ -45,6 +47,18 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
 
     /// What the engine is doing now; none once it stopped.
     fn status(&self) -> impl Future<Output = Option<EngineStatus>> + Send;
+
+    /// The searches left open at the last exit.
+    fn saved_searches(&self) -> impl Future<Output = Vec<SavedSearch>> + Send;
+
+    /// Keeps these searches for the next start, in place of those kept before.
+    fn save_searches(&self, searches: Vec<SavedSearch>) -> impl Future<Output = Result<(), String>> + Send;
+
+    /// The categories downloads may be in, by id.
+    fn categories(&self) -> impl Future<Output = Vec<Category>> + Send;
+
+    /// Replaces the categories, kept in their file; they must be valid and have different ids.
+    fn set_categories(&self, categories: Vec<Category>) -> impl Future<Output = Result<(), String>> + Send;
 
     /// Changes the preferences named in `changes`, all or none, and saves them.
     fn update_preferences(&self, changes: &BTreeMap<String, String>) -> Result<Preferences, String>;

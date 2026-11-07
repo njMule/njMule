@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use futures_util::future::BoxFuture;
+use njmule_engine::api::category::Category;
 use njmule_engine::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus, SourceInfo};
 use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::engine_event::EngineEvent;
@@ -28,6 +29,7 @@ use njmule_engine::api::known_client::KnownClient;
 use njmule_engine::api::nj_mule_engine::NjMuleEngine;
 use njmule_engine::api::peer_comment::PeerComment;
 use njmule_engine::api::peer_info::PeerInfo;
+use njmule_engine::api::saved_search::SavedSearch;
 use njmule_engine::api::search_result::SearchResult;
 use njmule_engine::api::server_info::ServerInfo;
 use njmule_engine::api::spam_marks::SpamMarks;
@@ -76,6 +78,7 @@ struct Fake {
     servers_known: usize,
     // Kept as the engine keeps them.
     preferences: Preferences,
+    categories: Vec<Category>,
 }
 
 #[derive(Clone)]
@@ -114,6 +117,25 @@ impl NjMuleEngine for FakeEngine {
 
     fn directories(&self) -> AppDirectories {
         self.dirs.clone()
+    }
+
+    async fn saved_searches(&self) -> Vec<SavedSearch> {
+        Vec::new()
+    }
+
+    async fn save_searches(&self, _searches: Vec<SavedSearch>) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn categories(&self) -> Vec<Category> {
+        self.with(|fake| fake.categories.clone())
+    }
+
+    // As the engine does: valid categories only.
+    async fn set_categories(&self, categories: Vec<Category>) -> Result<(), String> {
+        let valid = categories.into_iter().map(Category::validated).collect::<Result<Vec<_>, _>>()?;
+        self.with(|fake| fake.categories = valid);
+        Ok(())
     }
 
     async fn status(&self) -> Option<EngineStatus> {
@@ -1329,4 +1351,35 @@ async fn should_stop_nj_mule_when_asked() {
 
     api.then_the_status_is(202);
     api.then_nj_mule_was_stopped();
+}
+
+#[tokio::test]
+async fn should_replace_the_categories() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called(
+        "PUT",
+        "/api/v1/categories",
+        "[{\"id\":1,\"name\":\"Films\",\"color\":3,\"patterns\":\"*.mkv|*.avi\",\"priority\":\"high\"}]",
+    )
+    .await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&[
+        "\"name\":\"Films\"",
+        "\"color\":3",
+        "\"patterns\":\"*.mkv|*.avi\"",
+        "\"priority\":\"high\"",
+    ]);
+}
+
+#[tokio::test]
+async fn should_refuse_a_category_without_a_name() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("PUT", "/api/v1/categories", "[{\"id\":1,\"name\":\" \"}]").await;
+
+    api.then_the_status_is(400);
 }

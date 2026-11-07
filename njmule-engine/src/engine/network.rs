@@ -18,6 +18,7 @@ use tokio::net::{TcpListener, UdpSocket};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
+use crate::api::category::Category;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
@@ -30,6 +31,7 @@ use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::{Identification as PeerIdentification, PeerInfo};
+use crate::api::saved_search::SavedSearch;
 use crate::api::search_request;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
@@ -54,6 +56,7 @@ use crate::peer::identities::{self, Identities, Session, Trust};
 use crate::peer::identity_handshake::{Identity, Outcome as Identification};
 use crate::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId, Side};
 use crate::peer::{peer_greetings, peer_software};
+use crate::persist::categories_codec;
 use crate::persist::format::nodes_dat;
 use crate::persist::format::server_met::Server;
 use crate::protocol::ed2k::hello::Hello;
@@ -66,6 +69,7 @@ use crate::search::search_manager::{
     Effect as SearchEffect, KadSearches, Scope, SearchManager, SpamRater, StartError, Timer,
 };
 use crate::search::spam_filter::{self, SpamFilter};
+use crate::search::stored_searches;
 use crate::security::connection_guard::{Admission, ConnectionGuard, Limits, Permit};
 use crate::security::ip_filter::IpFilter;
 use crate::server::file_publisher::{FilePublisher, Offer};
@@ -155,6 +159,13 @@ pub enum Command {
     /// Downloads and uploads in detail, for diagnosing tests.
     Describe(oneshot::Sender<String>),
     Status(oneshot::Sender<Box<EngineStatus>>),
+    Categories(oneshot::Sender<Vec<Category>>),
+    /// The searches left open at the last exit.
+    SavedSearches(oneshot::Sender<Vec<SavedSearch>>),
+    /// Keeps these searches for the next start, in place of those kept before.
+    SaveSearches(Vec<SavedSearch>, oneshot::Sender<Result<(), String>>),
+    /// Replaces the categories, which must be valid and have different ids; answers why not.
+    SetCategories(Vec<Category>, oneshot::Sender<Result<(), String>>),
     /// Says hello to a client and runs the identification: told once its outcome is known, the connection closes or
     /// the wait is over.
     Hello(SocketAddr, oneshot::Sender<io::Result<PeerInfo>>),
@@ -305,6 +316,8 @@ pub struct Network {
     callbacks: HashMap<SocketAddr, Instant>,
     calling: HashSet<SocketAddr>,
     our_ip: u32,
+    // The categories downloads may be in, by id.
+    categories: Vec<Category>,
     // The all-time totals before this session, and when it started.
     totals: Totals,
     started: Instant,
@@ -412,7 +425,12 @@ pub fn start(
         blocked: Box::new(|_| false),
         keep_link: Box::new(move |link| keep_link(&deleted_links, link)),
     };
-    let downloads = DownloadManager::open(&temp, &incoming, min_free, disk_in, Box::new(Instant::now), hooks)?;
+    let mut downloads = DownloadManager::open(&temp, &incoming, min_free, disk_in, Box::new(Instant::now), hooks)?;
+    let categories = categories_codec::load(&dirs.config.join(categories_codec::FILE_NAME)).unwrap_or_else(|e| {
+        tracing::warn!("Cannot read the categories: {e}");
+        Vec::new()
+    });
+    downloads.set_categories(categories.clone());
     let finished = FinishedDownloads::load(&dirs.config);
     let spam_file = dirs.config.join(spam_filter::FILE_NAME);
     let spam = SpamFilter::load(&spam_file).unwrap_or_else(|e| {
@@ -454,6 +472,7 @@ pub fn start(
         callbacks: HashMap::new(),
         calling: HashSet::new(),
         our_ip: 0,
+        categories,
         totals,
         started,
         our_ipv6,
@@ -734,6 +753,25 @@ impl Network {
             }
             Command::PeerComments(hash, answer) => {
                 let _ = answer.send(self.downloads.comments(&hash));
+            }
+            Command::SavedSearches(answer) => {
+                let file = self.shared.dirs.config.join(stored_searches::FILE_NAME);
+                let _ = answer.send(stored_searches::load(&file).unwrap_or_else(|e| {
+                    tracing::warn!("Cannot read the searches left open: {e}");
+                    Vec::new()
+                }));
+            }
+            Command::SaveSearches(searches, answer) => {
+                let file = self.shared.dirs.config.join(stored_searches::FILE_NAME);
+                let _ = answer.send(
+                    stored_searches::save(&file, &searches).map_err(|e| format!("Cannot keep the searches: {e}")),
+                );
+            }
+            Command::Categories(answer) => {
+                let _ = answer.send(self.categories.clone());
+            }
+            Command::SetCategories(categories, answer) => {
+                let _ = answer.send(self.set_categories(categories));
             }
             Command::Status(answer) => {
                 let _ = answer.send(Box::new(self.status()));
@@ -1973,6 +2011,25 @@ impl Network {
             router: String::new(),
             kad_port_taken: Some(self.kad.port_taken).filter(|port| *port != 0),
         }
+    }
+
+    fn set_categories(&mut self, categories: Vec<Category>) -> Result<(), String> {
+        let mut ids = HashSet::new();
+        let mut valid = Vec::with_capacity(categories.len());
+        for category in categories {
+            let category = category.validated()?;
+            if !ids.insert(category.id) {
+                return Err(format!("two categories with the id {}", category.id));
+            }
+            valid.push(category);
+        }
+        valid.sort_by_key(|category| category.id);
+        categories_codec::save(&self.shared.dirs.config.join(categories_codec::FILE_NAME), &valid)
+            .map_err(|e| format!("Cannot save the categories: {e}"))?;
+        self.categories = valid.clone();
+        self.downloads.set_categories(valid);
+        self.after_downloads();
+        Ok(())
     }
 
     fn session_seconds(&self) -> u64 {

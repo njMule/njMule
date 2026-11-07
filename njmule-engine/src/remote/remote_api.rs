@@ -5,6 +5,7 @@
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -17,6 +18,7 @@ use axum::{Extension, Json, Router};
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
 
+use crate::api::category::Category;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus};
 use crate::api::ed2k_link::Ed2kLink;
 use crate::api::engine_event::EngineEvent;
@@ -31,7 +33,7 @@ use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::persist::format::{nodes_dat, server_met};
 use crate::remote::rate_history::{self, RateHistory};
 use crate::remote::search_collector::{Asked, SearchCollector};
-use crate::remote::{api_json, event_streams};
+use crate::remote::{api_json, api_reader, event_streams};
 use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::Address;
 
@@ -67,6 +69,7 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
         .route("/limits", get(limits::<E>).put(set_limits::<E>))
         .route("/preferences/defaults", get(|| async { Json(api_json::preferences(&Preferences::default())) }))
         .route("/folders", get(folders::<E>))
+        .route("/categories", get(categories::<E>).put(set_categories::<E>))
         .route("/shutdown", post(shutdown))
         .route("/status", get(status::<E>))
         .route("/preferences", get(preferences::<E>).patch(update_preferences::<E>))
@@ -89,6 +92,7 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
         .route("/searches", get(list_searches::<E>).post(start_search::<E>))
         .route("/searches/check", post(check_search))
         .route("/searches/spam", get(spam_marks::<E>))
+        .route("/searches/saved", get(saved_searches::<E>).put(save_searches::<E>))
         .route("/searches/{id}", get(search_results::<E>).delete(stop_search::<E>))
         .route("/searches/{id}/more", post(more_results::<E>))
         .route("/searches/{id}/spam", post(mark_spam::<E>))
@@ -232,6 +236,40 @@ async fn folders<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
         "incoming": preferences.effective_incoming_dir(&dirs).to_string_lossy(),
         "temp": preferences.effective_temp_dir(&dirs).to_string_lossy(),
     }))
+}
+
+async fn categories<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    Json(Value::Array(engine.categories().await.iter().map(api_json::category).collect()))
+}
+
+/// Replaces the categories; answers them as they are kept.
+async fn set_categories<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let Some(given) = body.as_array() else {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Categories are a list"));
+    };
+    let mut all = Vec::with_capacity(given.len());
+    for item in given {
+        let priority = match item.get("priority") {
+            None => DownloadPriority::Auto,
+            Some(_) => {
+                let asked = text(item, "priority")?;
+                DownloadPriority::of_name(asked.trim())
+                    .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Unknown value: {asked}")))?
+            }
+        };
+        all.push(Category {
+            id: number(item, "id")?,
+            name: text(item, "name")?.to_owned(),
+            incoming: item.get("incoming").and_then(Value::as_str).map(PathBuf::from),
+            comment: item.get("comment").and_then(Value::as_str).unwrap_or_default().to_owned(),
+            color: item.get("color").and_then(Value::as_u64).and_then(|c| u32::try_from(c).ok()).unwrap_or(0),
+            priority,
+            patterns: item.get("patterns").and_then(Value::as_str).unwrap_or_default().to_owned(),
+            regex: item.get("regex").and_then(Value::as_bool).unwrap_or(false),
+        });
+    }
+    engine.set_categories(all).await.map_err(|reason| ApiError::new(StatusCode::BAD_REQUEST, reason))?;
+    Ok(Json(Value::Array(engine.categories().await.iter().map(api_json::category).collect())))
 }
 
 /// Stops njMule, after the answer.
@@ -681,6 +719,28 @@ async fn mark_spam<E: NjMuleEngine>(
     }
     let is_spam = body.get("spam").and_then(Value::as_bool).unwrap_or(true);
     engine.mark_spam(marked, is_spam).await;
+    Ok(Json(api_json::ok()))
+}
+
+/// The search tabs left open at the last exit, when the preferences keep them.
+async fn saved_searches<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    Json(Value::Array(engine.saved_searches().await.iter().map(api_json::saved_search).collect()))
+}
+
+/// Keeps these searches for the next start, in place of those kept before.
+async fn save_searches<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let Some(given) = body.as_array() else {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Saved searches are a list"));
+    };
+    let searches = given
+        .iter()
+        .map(api_reader::saved_search)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|reason| ApiError::new(StatusCode::BAD_REQUEST, reason))?;
+    engine
+        .save_searches(searches)
+        .await
+        .map_err(|reason| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, reason))?;
     Ok(Json(api_json::ok()))
 }
 
