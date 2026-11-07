@@ -18,6 +18,7 @@ pub mod kad_info;
 pub mod kad_note;
 pub mod kad_search_info;
 pub mod known_client;
+pub mod nj_mule_engine;
 pub mod nj_mule_info;
 pub mod peer_comment;
 pub mod peer_info;

@@ -13,12 +13,12 @@ use futures_util::stream::{self, Stream, StreamExt};
 use serde_json::{Map, Value};
 use tokio_stream::wrappers::BroadcastStream;
 
-use crate::engine::Engine;
+use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::remote::api_json;
 
 const KEEP_ALIVE: Duration = Duration::from_secs(15);
 
-pub fn stream(engine: &Engine) -> Sse<impl Stream<Item = Result<Event, Infallible>> + use<>> {
+pub fn stream<E: NjMuleEngine>(engine: &E) -> Sse<impl Stream<Item = Result<Event, Infallible>> + use<E>> {
     let events = BroadcastStream::new(engine.subscribe()).scan((0u64, false), |(id, ended), received| {
         if *ended {
             return ready(None);

@@ -26,6 +26,7 @@ use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
+use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
 use crate::api::search_result::SearchResult;
@@ -444,6 +445,148 @@ impl Engine {
     fn publish(&self, event: EngineEvent) {
         // Without a front end following, nobody misses the event.
         let _ = self.shared.events.send(event);
+    }
+}
+
+impl NjMuleEngine for Engine {
+    fn preferences(&self) -> Preferences {
+        Engine::preferences(self)
+    }
+
+    fn update_preferences(&self, changes: &BTreeMap<String, String>) -> Result<Preferences, String> {
+        Engine::update_preferences(self, changes)
+    }
+
+    fn subscribe(&self) -> broadcast::Receiver<EngineEvent> {
+        Engine::subscribe(self)
+    }
+
+    fn stopped(&self) -> futures_util::future::BoxFuture<'static, ()> {
+        Box::pin(Engine::stopped(self))
+    }
+
+    fn hello(&self, address: SocketAddr) -> impl Future<Output = io::Result<PeerInfo>> + Send {
+        Engine::hello(self, address)
+    }
+
+    fn browse(&self, address: SocketAddr) -> impl Future<Output = io::Result<Vec<SearchResult>>> + Send {
+        Engine::browse(self, address)
+    }
+
+    fn known_clients(&self) -> impl Future<Output = Vec<KnownClient>> + Send {
+        Engine::known_clients(self)
+    }
+
+    fn import_servers(&self, servers: Vec<Server>) -> impl Future<Output = usize> + Send {
+        Engine::import_servers(self, servers)
+    }
+
+    fn connect_server(&self, address: Option<Address>) -> impl Future<Output = Result<(), ConnectError>> + Send {
+        Engine::connect_server(self, address)
+    }
+
+    fn disconnect_server(&self) -> impl Future<Output = ()> + Send {
+        Engine::disconnect_server(self)
+    }
+
+    fn servers(&self) -> impl Future<Output = Vec<ServerInfo>> + Send {
+        Engine::servers(self)
+    }
+
+    fn set_static_server(&self, address: Address, wanted: bool) -> impl Future<Output = bool> + Send {
+        Engine::set_static_server(self, address, wanted)
+    }
+
+    fn kad(&self) -> impl Future<Output = Option<KadInfo>> + Send {
+        Engine::kad(self)
+    }
+
+    fn kad_contacts(&self) -> impl Future<Output = Vec<KadContactInfo>> + Send {
+        Engine::kad_contacts(self)
+    }
+
+    fn kad_searches(&self) -> impl Future<Output = Vec<KadSearchInfo>> + Send {
+        Engine::kad_searches(self)
+    }
+
+    fn kad_notes(&self, file: [u8; 16]) -> impl Future<Output = Vec<KadNote>> + Send {
+        Engine::kad_notes(self, file)
+    }
+
+    fn search_kad_notes(&self, file: [u8; 16]) -> impl Future<Output = Result<Vec<KadNote>, NotesError>> + Send {
+        Engine::search_kad_notes(self, file)
+    }
+
+    fn connect_kad(&self) -> impl Future<Output = ()> + Send {
+        Engine::connect_kad(self)
+    }
+
+    fn disconnect_kad(&self) -> impl Future<Output = ()> + Send {
+        Engine::disconnect_kad(self)
+    }
+
+    fn recheck_kad(&self) -> impl Future<Output = bool> + Send {
+        Engine::recheck_kad(self)
+    }
+
+    fn bootstrap_kad(&self, node: SocketAddrV4) -> impl Future<Output = ()> + Send {
+        Engine::bootstrap_kad(self, node)
+    }
+
+    fn add_kad_contacts(&self, contents: nodes_dat::Contents) -> impl Future<Output = io::Result<usize>> + Send {
+        Engine::add_kad_contacts(self, contents)
+    }
+
+    fn start_search(
+        &self,
+        query: String,
+        scope: Option<Scope>,
+    ) -> impl Future<Output = Result<u64, StartError>> + Send {
+        Engine::start_search(self, query, scope)
+    }
+
+    fn more_results(&self, search: u64) -> impl Future<Output = MoreAnswer> + Send {
+        Engine::more_results(self, search)
+    }
+
+    fn shared_files(&self) -> impl Future<Output = Vec<SharedFile>> + Send {
+        Engine::shared_files(self)
+    }
+
+    fn add_download(
+        &self,
+        link: FileLink,
+        paused: Option<bool>,
+    ) -> impl Future<Output = Result<DownloadInfo, String>> + Send {
+        Engine::add_download(self, link, paused)
+    }
+
+    fn downloads(&self) -> impl Future<Output = Vec<DownloadInfo>> + Send {
+        Engine::downloads(self)
+    }
+
+    fn sources(&self) -> impl Future<Output = Vec<SourceInfo>> + Send {
+        Engine::sources(self)
+    }
+
+    fn pause_download(&self, hash: [u8; 16]) -> impl Future<Output = Option<DownloadInfo>> + Send {
+        Engine::pause_download(self, hash)
+    }
+
+    fn resume_download(&self, hash: [u8; 16]) -> impl Future<Output = Option<DownloadInfo>> + Send {
+        Engine::resume_download(self, hash)
+    }
+
+    fn cancel_download(&self, hash: [u8; 16]) -> impl Future<Output = bool> + Send {
+        Engine::cancel_download(self, hash)
+    }
+
+    fn clear_completed_downloads(&self) -> impl Future<Output = usize> + Send {
+        Engine::clear_completed_downloads(self)
+    }
+
+    fn clear_completed_download(&self, hash: [u8; 16]) -> impl Future<Output = bool> + Send {
+        Engine::clear_completed_download(self, hash)
     }
 }
 
