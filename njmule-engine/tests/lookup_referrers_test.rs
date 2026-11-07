@@ -6,6 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use njmule_engine::kad::kad_contact::KadContact;
@@ -67,7 +68,7 @@ impl Referrers {
             assert_eq!(table.add(contact, false, UdpKey::default(), 0, clock), Outcome::Added);
         }
         let mut sent = Sent::default();
-        let mut lookup = Lookup::new(target, Kind::Keyword, |_| false, clock);
+        let mut lookup = Lookup::new(target, Kind::Keyword, Arc::new(|_| false), clock);
         lookup.start(&table, &mut sent);
         Self { target, sent, times: ResponseTimes::new(), clock, lookup }
     }

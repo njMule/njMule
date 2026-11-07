@@ -377,14 +377,28 @@ impl RoutingTable {
 
     /// A random id inside `zone`.
     pub fn random_id_in(&self, zone: &Zone, random: &mut impl Rng) -> UInt128 {
+        self.random_id_in_zone(zone.level, zone.index, random)
+    }
+
+    /// A random id inside the zone of `level` and `index`.
+    pub fn random_id_in_zone(&self, level: u32, index: UInt128, random: &mut impl Rng) -> UInt128 {
         let mut distance = UInt128::random(random);
-        if zone.level > 0 {
-            let free = UInt128::BITS.saturating_sub(zone.level);
-            let prefix = zone.index.0.checked_shl(free).unwrap_or(0);
+        if level > 0 {
+            let free = UInt128::BITS.saturating_sub(level);
+            let prefix = index.0.checked_shl(free).unwrap_or(0);
             let mask = u128::MAX.checked_shl(free).unwrap_or(0);
             distance = UInt128(prefix | (distance.0 & !mask));
         }
         distance ^ self.own
+    }
+
+    /// Moves a contact to the end of its bin, as one checked last.
+    pub fn to_back(&mut self, id: &UInt128) {
+        let bin = &mut leaf_mut(&mut self.root, *id ^ self.own).bin;
+        if let Some(at) = bin.iter().position(|kept| kept == id) {
+            bin.remove(at);
+            bin.push(*id);
+        }
     }
 
     /// Merges sibling leaves that together hold fewer than half a bin.

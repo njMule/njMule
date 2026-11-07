@@ -5,6 +5,8 @@
 //! the nodes that answered and are close enough get the actual request (a search or a publish).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::kad::kad_contact;
@@ -87,6 +89,9 @@ impl Kind {
     }
 }
 
+/// Whether an address (host order) is on a LAN, or otherwise trusted, and so not held to the subnet rules.
+pub type AddressTest = Arc<dyn Fn(u32) -> bool + Send + Sync>;
+
 /// What the sender of a request tells the lookup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Requested {
@@ -106,11 +111,10 @@ pub trait Requests {
     fn request(&mut self, target: UInt128, kind: Kind, contact: &Contact) -> Requested;
 }
 
-#[derive(Debug)]
 pub struct Lookup {
     target: UInt128,
     kind: Kind,
-    lan: fn(u32) -> bool,
+    lan: AddressTest,
     started: Instant,
     // Both by distance to the target.
     possible: BTreeMap<UInt128, Contact>,
@@ -138,7 +142,7 @@ pub struct Lookup {
 
 impl Lookup {
     /// A lookup towards `target`; `lan` tells the addresses not held to the subnet rule.
-    pub fn new(target: UInt128, kind: Kind, lan: fn(u32) -> bool, now: Instant) -> Self {
+    pub fn new(target: UInt128, kind: Kind, lan: AddressTest, now: Instant) -> Self {
         Self {
             target,
             kind,
@@ -455,5 +459,17 @@ impl Lookup {
         self.tried.insert(distance, *contact);
         self.asked_at.insert(distance, now);
         requests.ask(self.target, self.kind, contact, count);
+    }
+}
+
+impl fmt::Debug for Lookup {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Lookup")
+            .field("target", &self.target)
+            .field("kind", &self.kind)
+            .field("tried", &self.tried.len())
+            .field("answers", &self.answers)
+            .field("stopped", &self.stopped)
+            .finish_non_exhaustive()
     }
 }
