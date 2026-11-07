@@ -14,7 +14,11 @@ use std::time::{Duration, Instant};
 use njmule_engine::api::kad_contact_info::KadContactInfo;
 use njmule_engine::api::kad_search_info::{self, KadSearchInfo};
 use njmule_engine::kad::kad_identity::KadIdentity;
-use njmule_engine::kad::kad_node::{Host, KadEvent, KadNode, SearchHandle, Settings, Transport};
+use njmule_engine::kad::kad_node::{
+    Buddies, Buddy, BuddyState, Host, KadEvent, KadNode, NoBuddies, SearchHandle, Settings, Source, Transport,
+};
+use njmule_engine::kad::kad_notes::Finder;
+use njmule_engine::kad::kad_publisher;
 use njmule_engine::kad::keywords;
 use njmule_engine::kad::uint128::UInt128;
 use njmule_engine::persist::format::nodes_dat::{self, UdpKey};
@@ -632,4 +636,200 @@ fn should_no_longer_be_connected_when_nothing_arrives_for_twenty_minutes() {
     node.when_minutes_pass_in_steps_of_ten_seconds(21);
 
     node.then_the_node_is_not_connected();
+}
+
+/// What the node answers directly and through the traits the publisher and the notes see it by.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Answers {
+    ready: bool,
+    connected: bool,
+    firewalled: bool,
+    reachable: bool,
+    buddy_ip: u32,
+    keyword_published: bool,
+    source_published: bool,
+    note_published: bool,
+    notes_found: bool,
+}
+
+// Rust's own: what Java's tests reach through the engine.
+impl Node {
+    fn when_the_node_is_read_directly(&mut self) -> Answers {
+        let node = &mut self.node;
+        Answers {
+            ready: node.is_ready(),
+            connected: node.is_connected(),
+            firewalled: node.is_firewalled(),
+            reachable: node.is_reachable(),
+            buddy_ip: node.buddy_ip(),
+            keyword_published: node.publish_keyword("ubuntu", vec![file()]),
+            source_published: node.publish_source([1; 16], 1_000),
+            note_published: node.publish_note([1; 16], "ubuntu.iso", 1_000),
+            notes_found: node.find_notes([1; 16], 1_000),
+        }
+    }
+
+    fn when_the_node_is_read_through_the_traits(&mut self) -> Answers {
+        let publisher: &mut dyn kad_publisher::Node = &mut self.node;
+        let mut answers = Answers {
+            ready: publisher.is_ready(),
+            connected: publisher.is_connected(),
+            firewalled: publisher.is_firewalled(),
+            reachable: publisher.is_reachable(),
+            buddy_ip: publisher.buddy_ip(),
+            keyword_published: publisher.publish_keyword("ubuntu", vec![file()]),
+            source_published: publisher.publish_source([1; 16], 1_000),
+            note_published: publisher.publish_note([1; 16], "ubuntu.iso", 1_000),
+            notes_found: false,
+        };
+        let finder: &mut dyn Finder = &mut self.node;
+        assert_eq!(finder.is_ready(), answers.ready);
+        answers.notes_found = finder.find_notes([1; 16], 1_000);
+        answers
+    }
+
+    fn when_the_index_is_loaded(&mut self) {
+        self.node.load_index();
+    }
+
+    fn then_the_traits_answer_as_the_node(&self, direct: &Answers, through: &Answers) {
+        assert_eq!(direct, through);
+    }
+
+    fn then_there_is_no_buddy(&self) {
+        assert_eq!(self.node.buddy_state(), BuddyState::None);
+        assert_eq!(self.node.buddy_ip(), 0);
+    }
+
+    fn then_our_own_udp_port_is_announced_and_untested(&self) {
+        assert_eq!(self.node.announced_udp_port(), 0, "none in the settings");
+        assert_eq!(self.node.udp_test_open(), None);
+    }
+
+    fn then_the_index_is_empty(&self) {
+        assert_eq!(self.node.indexed(), (0, 0));
+        assert_eq!(self.node.indexed_notes(), 0);
+    }
+
+    fn then_the_table_holds_the_contacts(&self, count: usize) {
+        assert_eq!(self.node.table().size(), count);
+    }
+}
+
+fn file() -> Entry {
+    Entry {
+        id: UInt128(7),
+        tags: vec![
+            Tag::String { name: TagName::id(file_tag::FILENAME), value: "ubuntu.iso".to_owned() },
+            Tag::Int { name: TagName::id(file_tag::FILESIZE), value: 1_000 },
+        ],
+    }
+}
+
+fn source(buddy: Option<Buddy>, direct_callback: bool) -> Source {
+    Source {
+        user_hash: [3; 16],
+        ip: ip(30, 1, 1, 1),
+        tcp_port: 4662,
+        connect_options: 0,
+        udp_port: PORT,
+        buddy,
+        direct_callback,
+        ipv6: None,
+    }
+}
+
+#[test]
+fn should_answer_the_publisher_and_the_notes_as_the_node_itself() {
+    let (mut node, mut twin) = (Node::new(), Node::new());
+    node.given_contacts_at(&[ip(70, 1, 1, 1)]);
+    twin.given_contacts_at(&[ip(70, 1, 1, 1)]);
+
+    let (direct, through) = (node.when_the_node_is_read_directly(), twin.when_the_node_is_read_through_the_traits());
+
+    node.then_the_traits_answer_as_the_node(&direct, &through);
+}
+
+#[test]
+fn should_have_no_buddy_without_buddy_links() {
+    let node = Node::new();
+
+    let links = when_buddy_links_that_are_none_are_asked();
+
+    then_the_links_have_no_buddy_and_take_none(links);
+    node.then_there_is_no_buddy();
+}
+
+#[test]
+fn should_announce_its_own_udp_port_while_no_test_says_otherwise() {
+    let node = Node::new();
+
+    node.then_our_own_udp_port_is_announced_and_untested();
+}
+
+#[test]
+fn should_start_with_an_empty_index_when_none_was_saved() {
+    let mut node = Node::new();
+
+    node.when_the_index_is_loaded();
+
+    node.then_the_index_is_empty();
+}
+
+#[test]
+fn should_hold_the_contacts_in_its_table() {
+    let mut node = Node::new();
+
+    node.given_contacts_at(&[ip(70, 1, 1, 1), ip(71, 1, 1, 1)]);
+
+    node.then_the_table_holds_the_contacts(2);
+}
+
+#[test]
+fn should_tell_a_source_reached_through_a_buddy_or_a_callback_firewalled() {
+    let buddy = Some(Buddy { ip: ip(31, 1, 1, 1), udp_port: PORT, id: UInt128(9) });
+
+    let firewalled = when_sources_tell_whether_they_are_firewalled(&[(buddy, false), (None, true), (None, false)]);
+
+    then_the_firewalled_ones_are(&firewalled, &[true, true, false]);
+}
+
+#[test]
+fn should_leave_udp_tests_and_known_clients_to_hosts_that_have_them() {
+    let mut host = NoChecks;
+
+    when_the_host_is_asked_for_a_udp_test(&mut host);
+
+    then_the_host_knows_no_client_and_has_no_high_id(&host);
+}
+
+fn when_buddy_links_that_are_none_are_asked() -> NoBuddies {
+    let mut links = NoBuddies;
+    links.offered(1, 2, 3, [0; 16], 0);
+    links.release();
+    links
+}
+
+fn then_the_links_have_no_buddy_and_take_none(mut links: NoBuddies) {
+    assert_eq!(links.state(), BuddyState::None);
+    assert_eq!((links.buddy_ip(), links.buddy_udp_port()), (0, 0));
+    assert!(!links.asked(1, 2, 3, [0; 16], UInt128(4)));
+    assert!(!links.relay(UInt128(4), UInt128(5), 1, 2));
+}
+
+fn when_sources_tell_whether_they_are_firewalled(sources: &[(Option<Buddy>, bool)]) -> Vec<bool> {
+    sources.iter().map(|&(buddy, direct_callback)| source(buddy, direct_callback).is_firewalled()).collect()
+}
+
+fn then_the_firewalled_ones_are(firewalled: &[bool], expected: &[bool]) {
+    assert_eq!(firewalled, expected);
+}
+
+fn when_the_host_is_asked_for_a_udp_test(host: &mut NoChecks) {
+    host.check_udp(ip(30, 1, 1, 1), 4662, PORT, PORT, 7);
+}
+
+fn then_the_host_knows_no_client_and_has_no_high_id(host: &NoChecks) {
+    assert!(!host.is_known_client(ip(30, 1, 1, 1)));
+    assert!(!host.has_high_id());
 }

@@ -15,12 +15,15 @@ use std::time::{Duration, Instant};
 
 use fake_socks5_proxy::FakeSocks5Proxy;
 use njmule_engine::kad::kad_identity::KadIdentity;
-use njmule_engine::kad::kad_node::{Host, KadNode, Settings};
+use njmule_engine::kad::kad_node::{Host, KadNode, Settings, Transport};
 use njmule_engine::kad::kad_socket::{Incoming, KadSocket, Keys};
+use njmule_engine::kad::uint128::UInt128;
 use njmule_engine::net::socks5_udp::Socks5Udp;
 use njmule_engine::net::udp_route::UdpRoute;
+use njmule_engine::protocol::crypt::datagram_obfuscation;
+use njmule_engine::protocol::kad::kad_messages;
 use njmule_engine::protocol::packet::opcodes::client_udp;
-use njmule_engine::protocol::packet::{Packet, protocol};
+use njmule_engine::protocol::packet::{Packet, packing, protocol, udp_framing};
 use tokio::sync::mpsc;
 
 // Enough rounds to meet the close race, which most rounds lose on Linux when the port is not waited for.
@@ -267,4 +270,174 @@ async fn should_leave_the_port_of_a_closed_socket_free_at_once() {
     sockets.when_sockets_are_closed_and_their_ports_bound_again(ROUNDS).await;
 
     sockets.then_the_port_was_busy_times(0);
+}
+
+// Rust's own: what the Java engine's tests reach through the engine.
+
+const THEIR_USER_HASH: [u8; 16] = [0x5A; 16];
+const QUIET: Duration = Duration::from_millis(300);
+
+/// A socket alone, the plain socket it talks to, and what each received.
+struct Alone {
+    socket: KadSocket,
+    incoming: mpsc::UnboundedReceiver<Incoming>,
+    peer: tokio::net::UdpSocket,
+    peer_id: UInt128,
+    received: Option<Vec<u8>>,
+}
+
+impl Alone {
+    async fn new(local: Option<Ipv4Addr>, blocked: bool) -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let identity = KadIdentity::load_or_create(dir.path(), &mut rand::rng()).unwrap();
+        let keys = Keys { user_hash: [0; 16], identity, blocked: Arc::new(move |_| blocked) };
+        let (receiver, incoming) = mpsc::unbounded_channel();
+        let socket = KadSocket::open(local, 0, keys, receiver).unwrap();
+        let peer = tokio::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        Self { socket, incoming, peer, peer_id: UInt128::random(&mut rand::rng()), received: None }
+    }
+
+    fn peer_port(&self) -> u16 {
+        self.peer.local_addr().unwrap().port()
+    }
+
+    fn given_the_socket_is_held(&self) {
+        (self.socket.router())(UdpRoute::Held);
+    }
+
+    fn when_a_client_packet_is_sent(&self, user_hash: Option<[u8; 16]>) {
+        let packet = Packet::of(protocol::EMULE, client_udp::REASKFILEPING, vec![1; 16]);
+        self.socket.send_client(LOOPBACK, self.peer_port(), &packet, user_hash, LOOPBACK);
+    }
+
+    fn when_a_large_kad_packet_is_sent_for_the_peer(&self) {
+        let mut transport = self.socket.transport();
+        transport.send(LOOPBACK, self.peer_port(), &large_kad_packet(), Some(self.peer_id), 0, 0);
+    }
+
+    async fn when_the_peer_sends(&self, packets: &[Packet]) {
+        let to = SocketAddr::from((Ipv4Addr::LOCALHOST, self.socket.port()));
+        for packet in packets {
+            self.peer.send_to(&udp_framing::encode(packet), to).await.unwrap();
+        }
+    }
+
+    async fn then_the_peer_receives(&mut self) {
+        let mut buffer = vec![0; 8 * 1024];
+        let received = tokio::time::timeout(Duration::from_secs(5), self.peer.recv_from(&mut buffer)).await;
+        let (length, _) = received.expect("a datagram").unwrap();
+        buffer.truncate(length);
+        self.received = Some(buffer);
+    }
+
+    async fn then_the_peer_receives_nothing(&self) {
+        let mut buffer = vec![0; 8 * 1024];
+        assert!(tokio::time::timeout(QUIET, self.peer.recv_from(&mut buffer)).await.is_err());
+    }
+
+    fn then_it_opens_with_the_peers_user_hash_as(&self, opcode: u8, kind: datagram_obfuscation::Kind) {
+        let data = self.received.as_ref().unwrap();
+        let opened = datagram_obfuscation::decode_from_client(data, &THEIR_USER_HASH, [127, 0, 0, 1], None, 0).unwrap();
+        assert_eq!((opened.packet.protocol(), opened.packet.opcode(), opened.kind), (protocol::EMULE, opcode, kind));
+    }
+
+    fn then_it_opens_with_the_peers_kad_id_as_the_large_packet(&self) {
+        let data = self.received.as_ref().unwrap();
+        let id = self.peer_id.to_wire_bytes();
+        let opened = datagram_obfuscation::decode_from_client(data, &[0; 16], [127, 0, 0, 1], Some(&id), 0).unwrap();
+        assert_eq!(opened.kind, datagram_obfuscation::Kind::KadIdKey);
+        assert_eq!(opened.packet.protocol(), protocol::KAD_PACKED);
+        assert_eq!(packing::unpack(opened.packet, 250_000).unwrap(), large_kad_packet());
+    }
+
+    async fn then_the_socket_hears(&mut self, expected: &[(u8, u8)]) {
+        let mut heard = Vec::new();
+        while heard.len() < expected.len() {
+            let incoming = tokio::time::timeout(Duration::from_secs(5), self.incoming.recv()).await;
+            heard.push(match incoming.expect("a packet").unwrap() {
+                Incoming::Kad { packet, .. } | Incoming::Client { packet, .. } => (packet.protocol(), packet.opcode()),
+                Incoming::ClientOverIpv6 { packet, .. } => (0, packet.opcode()),
+            });
+        }
+        assert_eq!(heard, expected);
+    }
+
+    async fn then_the_socket_hears_nothing(&mut self) {
+        assert!(tokio::time::timeout(QUIET, self.incoming.recv()).await.is_err());
+    }
+}
+
+fn large_kad_packet() -> Packet {
+    Packet::of(protocol::KAD, 0x33, vec![7; 400])
+}
+
+#[tokio::test]
+async fn should_send_a_client_packet_obfuscated_for_its_receiver() {
+    let mut alone = Alone::new(None, false).await;
+
+    alone.when_a_client_packet_is_sent(Some(THEIR_USER_HASH));
+
+    alone.then_the_peer_receives().await;
+    alone.then_it_opens_with_the_peers_user_hash_as(client_udp::REASKFILEPING, datagram_obfuscation::Kind::Ed2k);
+}
+
+#[tokio::test]
+async fn should_send_a_client_packet_plain_without_the_receivers_user_hash() {
+    let mut alone = Alone::new(None, false).await;
+
+    alone.when_a_client_packet_is_sent(None);
+
+    alone.then_the_peer_receives().await;
+    alone.then_it_opens_with_the_peers_user_hash_as(client_udp::REASKFILEPING, datagram_obfuscation::Kind::Plain);
+}
+
+#[tokio::test]
+async fn should_send_a_large_kad_packet_packed_and_obfuscated_with_the_receivers_id() {
+    let mut alone = Alone::new(None, false).await;
+
+    alone.when_a_large_kad_packet_is_sent_for_the_peer();
+
+    alone.then_the_peer_receives().await;
+    alone.then_it_opens_with_the_peers_kad_id_as_the_large_packet();
+}
+
+#[tokio::test]
+async fn should_send_nothing_on_a_held_route() {
+    let alone = Alone::new(None, false).await;
+    alone.given_the_socket_is_held();
+
+    alone.when_a_client_packet_is_sent(None);
+
+    alone.then_the_peer_receives_nothing().await;
+}
+
+#[tokio::test]
+async fn should_pass_on_packed_kad_packets_and_client_packets_and_drop_others() {
+    let mut alone = Alone::new(Some(Ipv4Addr::LOCALHOST), false).await;
+
+    alone
+        .when_the_peer_sends(&[
+            packing::pack(large_kad_packet()).unwrap(),
+            Packet::of(protocol::EDONKEY, 0x96, vec![0; 4]),
+            Packet::of(protocol::EMULE, client_udp::REASKFILEPING, vec![1; 16]),
+            kad_messages::ping(),
+        ])
+        .await;
+
+    alone
+        .then_the_socket_hears(&[
+            (protocol::KAD, 0x33),
+            (protocol::EMULE, client_udp::REASKFILEPING),
+            (protocol::KAD, 0x60),
+        ])
+        .await;
+}
+
+#[tokio::test]
+async fn should_drop_the_datagrams_of_a_blocked_address_unread() {
+    let mut alone = Alone::new(None, true).await;
+
+    alone.when_the_peer_sends(&[kad_messages::ping()]).await;
+
+    alone.then_the_socket_hears_nothing().await;
 }
