@@ -15,6 +15,7 @@
 mod free_port;
 
 use std::fs;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::time::{Duration, Instant};
 
 use njmule_engine::api::category::Category;
@@ -156,6 +157,38 @@ async fn should_send_nowhere_what_is_logged_after_the_end() {
 
     api.then_the_events_are_completed().await;
     api.then_the_last_event_is_the_stop();
+}
+
+#[tokio::test]
+async fn should_lift_a_ban_only_from_an_address() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+
+    api.when_the_ban_is_lifted_from("not an address").await;
+
+    api.then_the_address_is_refused();
+}
+
+#[tokio::test]
+async fn should_refuse_a_kad_bootstrap_while_kad_does_not_run() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+
+    api.when_kad_is_bootstrapped_from(4672).await;
+
+    api.then_the_bootstrap_is_refused();
+}
+
+#[tokio::test]
+async fn should_hand_kad_commands_to_a_running_kad() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine_with_kad().await;
+    api.given_kad_runs().await;
+    api.given_kad_is_bootstrapped_from_a_closed_port_of_this_machine().await;
+
+    api.when_the_kad_firewall_is_rechecked().await;
+
+    api.then_the_firewall_recheck_is(true);
 }
 
 #[tokio::test]
@@ -383,6 +416,9 @@ struct EngineApi {
     swap_answers: Vec<String>,
     stopped: bool,
     firewall_rechecked: bool,
+    unbanned: Option<Result<bool, String>>,
+    bootstrapped: Option<Result<(), String>>,
+    kad_port: u16,
     rated: Vec<SearchResult>,
     recorder: Option<Recorder>,
     slow: Option<Recorder>,
@@ -403,6 +439,9 @@ impl EngineApi {
             swap_answers: Vec::new(),
             stopped: false,
             firewall_rechecked: false,
+            unbanned: None,
+            bootstrapped: None,
+            kad_port: 0,
             rated: Vec::new(),
             recorder: None,
             slow: None,
@@ -488,6 +527,43 @@ impl EngineApi {
 
     async fn when_the_film_is_stopped(&mut self) {
         self.stopped = within(self.engine().stop_download(FILM)).await;
+    }
+
+    async fn given_a_running_engine_with_kad(&mut self) {
+        self.kad_port = free_port::free_port();
+        self.start(&format!("net.kad.enabled=true\nnet.udpPort={}\n", self.kad_port)).await;
+    }
+
+    async fn given_kad_runs(&self) {
+        let deadline = Instant::now() + WAIT;
+        while within(self.engine().kad()).await.is_none() {
+            assert!(Instant::now() < deadline, "Kad runs");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    // A bootstrap request to a closed port on this machine.
+    async fn given_kad_is_bootstrapped_from_a_closed_port_of_this_machine(&mut self) {
+        let closed = if self.kad_port == u16::MAX { self.kad_port - 1 } else { self.kad_port + 1 };
+        self.when_kad_is_bootstrapped_from(closed).await;
+        assert_eq!(self.bootstrapped, Some(Ok(())));
+    }
+
+    async fn when_the_ban_is_lifted_from(&mut self, address: &str) {
+        self.unbanned = Some(within(self.engine().unban(address.to_owned())).await);
+    }
+
+    async fn when_kad_is_bootstrapped_from(&mut self, port: u16) {
+        let node = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
+        self.bootstrapped = Some(within(self.engine().bootstrap_kad(node)).await);
+    }
+
+    fn then_the_address_is_refused(&self) {
+        assert!(matches!(self.unbanned, Some(Err(_))), "{:?}", self.unbanned);
+    }
+
+    fn then_the_bootstrap_is_refused(&self) {
+        assert!(matches!(self.bootstrapped, Some(Err(_))), "{:?}", self.bootstrapped);
     }
 
     async fn when_the_kad_firewall_is_rechecked(&mut self) {

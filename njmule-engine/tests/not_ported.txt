@@ -189,8 +189,6 @@ RemoteApiTest.shouldTakeTheFriendSlotBackWithNull
 # The engine's API.
 # Java only: the engine's events are a Flow publisher in Java, a broadcast channel in Rust, whose readers ask for no count.
 EngineApiTest.shouldFailASubscriberThatAsksForNothing
-# Bans come with the calls on uploads and bans.
-EngineApiTest.shouldLiftABanOnlyFromAnAddress
 # Shared folders come with the calls on shared files.
 EngineApiTest.shouldShareAndUnshareFoldersThroughTheEngine
 # The categories of an eMule profile come with its import.
@@ -201,8 +199,5 @@ EngineApiTest.shouldLetGoOfTheConfigurationAfterAStartThatFails
 EngineApiTest.shouldLeaveTheWayClearWhenABackupCannotBeWritten
 # The Rust API looks a client's name up itself and hands the engine an address.
 EngineApiTest.shouldFailTheHelloToAHostThatCannotBeResolved
-# A bootstrap while Kad is off, and a recheck while it runs, come with the calls on Kad.
-EngineApiTest.shouldRefuseAKadBootstrapWhileKadDoesNotRun
-EngineApiTest.shouldHandKadCommandsToARunningKad
 # Java only: the Rust engine runs on no Java; it tells the system it runs on as the Java engine does.
 RemoteApiTest.shouldTellTheJavaAndTheSystemItRunsOnToATokenHolder

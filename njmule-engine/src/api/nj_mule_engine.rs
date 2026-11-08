@@ -31,6 +31,7 @@ use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::api::spam_marks::SpamMarks;
+use crate::api::upload_info::{BanInfo, UploadInfo};
 use crate::config::app_directories::AppDirectories;
 use crate::config::preferences::Preferences;
 use crate::config::schedule::{Rule, Schedule};
@@ -159,8 +160,8 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
     /// Checks again whether other Kad nodes reach us; false while Kad is off.
     fn recheck_kad(&self) -> impl Future<Output = bool> + Send;
 
-    /// Joins Kad through the node at `node`.
-    fn bootstrap_kad(&self, node: SocketAddrV4) -> impl Future<Output = ()> + Send;
+    /// Joins Kad through the node at `node`; why not while Kad does not run.
+    fn bootstrap_kad(&self, node: SocketAddrV4) -> impl Future<Output = Result<(), String>> + Send;
 
     /// Adds the Kad contacts of a nodes.dat to ours and to Kad while it runs; answers how many were new.
     fn add_kad_contacts(&self, source: ListSource) -> impl Future<Output = Result<usize, ListError>> + Send;
@@ -186,6 +187,15 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
     fn downloads(&self) -> impl Future<Output = Vec<DownloadInfo>> + Send;
 
     fn sources(&self) -> impl Future<Output = Vec<SourceInfo>> + Send;
+
+    /// The clients we upload to, then those waiting for their slot, the next one first.
+    fn uploads(&self) -> impl Future<Output = Vec<UploadInfo>> + Send;
+
+    /// The addresses banned, with the time left.
+    fn bans(&self) -> impl Future<Output = Vec<BanInfo>> + Send;
+
+    /// Lifts the ban on an IPv4 address; false when it was not banned, why not when `ip` is no address.
+    fn unban(&self, ip: String) -> impl Future<Output = Result<bool, String>> + Send;
 
     /// Pauses a download; answers it as it is now, none when unknown.
     fn pause_download(&self, hash: [u8; 16]) -> impl Future<Output = Option<DownloadInfo>> + Send;

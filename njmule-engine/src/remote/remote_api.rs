@@ -130,6 +130,9 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
         .route("/downloads/{hash}/sources", post(add_download_source::<E>))
         .route("/downloads/{hash}/sources/swap", post(swap_source_to_download::<E>))
         .route("/sources", get(sources::<E>))
+        .route("/uploads", get(uploads::<E>))
+        .route("/bans", get(bans::<E>))
+        .route("/bans/{address}", axum::routing::delete(unban::<E>))
         .route("/files/{hash}/notes", get(list_kad_notes::<E>).post(search_kad_notes::<E>))
         .route(
             "/kad",
@@ -606,8 +609,25 @@ async fn bootstrap_kad<E: NjMuleEngine>(State(engine): State<E>, Body(body): Bod
             _ => None,
         })
         .ok_or_else(invalid)?;
-    engine.bootstrap_kad(node).await;
+    engine.bootstrap_kad(node).await.map_err(cannot_now)?;
     Ok(Json(api_json::ok()))
+}
+
+async fn uploads<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    Json(Value::Array(engine.uploads().await.iter().map(api_json::upload).collect()))
+}
+
+async fn bans<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    Json(Value::Array(engine.bans().await.iter().map(api_json::ban).collect()))
+}
+
+/// Lifts the ban on an IPv4 address.
+async fn unban<E: NjMuleEngine>(State(engine): State<E>, Path(address): Path<String>) -> Result<Json<Value>, ApiError> {
+    match engine.unban(address).await {
+        Ok(true) => Ok(Json(api_json::ok())),
+        Ok(false) => Err(ApiError::new(StatusCode::NOT_FOUND, "No such ban")),
+        Err(reason) => Err(ApiError::new(StatusCode::BAD_REQUEST, reason)),
+    }
 }
 
 /// The contacts of a `nodes.dat` sent in Base64 (`data`) or read from the engine's computer (`path`).
