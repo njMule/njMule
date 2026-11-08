@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-mod free_port;
+use crate::free_port;
 
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};

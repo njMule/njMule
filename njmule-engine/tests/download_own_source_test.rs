@@ -12,8 +12,8 @@
     clippy::indexing_slicing
 )]
 
-mod download_lab;
-mod scripted_source;
+use crate::download_lab;
+use crate::scripted_source;
 
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 

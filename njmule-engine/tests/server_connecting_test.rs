@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 
-mod scripted_server;
+use crate::scripted_server;
 
 use std::time::Duration;
 

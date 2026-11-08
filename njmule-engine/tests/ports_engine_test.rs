@@ -5,8 +5,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects)]
 
-mod free_port;
-mod scripted_server;
+use crate::free_port;
+use crate::scripted_server;
 
 use std::fs;
 use std::time::{Duration, Instant};

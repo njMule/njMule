@@ -7,7 +7,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
-mod canonical;
+use crate::canonical;
 
 use canonical::packet_decoders::{Decoder, decoder};
 use njmule_engine::protocol::packet::Packet;

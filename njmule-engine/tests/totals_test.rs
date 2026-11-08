@@ -5,7 +5,7 @@
 
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
 
-mod free_port;
+use crate::free_port;
 
 use std::fs;
 use std::path::PathBuf;

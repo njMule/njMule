@@ -13,7 +13,7 @@
     clippy::panic
 )]
 
-mod download_lab;
+use crate::download_lab;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::PathBuf;

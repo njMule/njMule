@@ -12,7 +12,7 @@
     clippy::indexing_slicing
 )]
 
-mod queue_lab;
+use crate::queue_lab;
 
 use std::fs;
 #[cfg(windows)]

@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
-mod canonical;
+use crate::canonical;
 
 use canonical::Canonical;
 use njmule_engine::protocol::io::PacketWriter;

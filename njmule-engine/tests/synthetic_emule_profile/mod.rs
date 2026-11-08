@@ -4,7 +4,7 @@
 //! An eMule profile made up for tests: config, temp, incoming and one shared directory, as the Java engine's tests make
 //! it.
 
-#![allow(dead_code, clippy::unwrap_used)]
+#![allow(dead_code, clippy::unwrap_used, clippy::indexing_slicing)]
 
 use std::collections::BTreeMap;
 use std::fs;

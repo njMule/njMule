@@ -164,6 +164,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   holds its lints (no unwrap, index, panic or unchecked arithmetic on network input), `cargo deny
   check` its crates' licenses, advisories and sources (`deny.toml`). Port a Java package with the
   same names in snake_case and its tests under the same names, and keep the corpora green. The
+  files of `tests/` are the modules of one test executable, `tests/main.rs`: declare a new one
+  there (`mod foo_test;`), and run one file's tests with `cargo test --test suite foo_test::`. The
   areas ported whole are listed in `tests/ported_areas.txt`; each of their packages keeps at least
   the line coverage of its Java twin (`tests/java_coverage.txt`, from JaCoCo):
   `cargo llvm-cov --json --summary-only --output-path target/coverage.json`, then

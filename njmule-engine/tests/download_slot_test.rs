@@ -12,8 +12,8 @@
     clippy::panic
 )]
 
-mod download_lab;
-mod scripted_source;
+use crate::download_lab;
+use crate::scripted_source;
 
 use std::time::Duration;
 

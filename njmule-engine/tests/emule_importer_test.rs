@@ -5,7 +5,7 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
-mod synthetic_emule_profile;
+use crate::synthetic_emule_profile;
 
 use std::collections::HashMap;
 use std::fs;

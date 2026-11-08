@@ -9,10 +9,16 @@ license = "GPL-3.0-or-later"
 edition = "2024"
 rust-version = "1.99"
 publish = false
+# The tests of `tests/` are the modules of one executable, `tests/main.rs`.
+autotests = false
 
 [[bin]]
 name = "njmule"
 path = "src/main.rs"
+
+[[test]]
+name = "suite"
+path = "tests/main.rs"
 
 [dependencies]
 axum = "0.8.9"

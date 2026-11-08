@@ -12,7 +12,7 @@
     clippy::arithmetic_side_effects
 )]
 
-mod canonical;
+use crate::canonical;
 
 use canonical::Canonical;
 use njmule_engine::persist::format::cancelled_met;

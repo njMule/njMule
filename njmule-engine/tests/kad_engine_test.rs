@@ -7,7 +7,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
-mod free_port;
+use crate::free_port;
 
 use std::collections::BTreeMap;
 use std::fs;
