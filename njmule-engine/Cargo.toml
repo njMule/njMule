@@ -81,6 +81,14 @@ panic = "deny"
 indexing_slicing = "deny"
 arithmetic_side_effects = "deny"
 
+# Each test file links its own executable: full debug info made a PDB of about 200 MB for each one. Line tables keep
+# the file and line of a backtrace.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 # Silent wrapping in release builds is a bug class Java does not have: checked through the betas.
 overflow-checks = true
