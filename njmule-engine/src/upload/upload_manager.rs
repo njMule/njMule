@@ -18,6 +18,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::api::upload_priority::UploadPriority;
 use crate::files::hash::ed2k;
 use crate::peer::peer_link::{LinkHandle, LinkId};
+use crate::peer::peer_software;
 use crate::protocol::ed2k::client_messages::PartStatus;
 use crate::protocol::ed2k::client_reasks::{self, Ack};
 use crate::protocol::ed2k::hello::{self, Hello};
@@ -135,6 +136,15 @@ pub struct UploadState {
     pub file: [u8; 16],
     /// None while it waits.
     pub sent: Option<u64>,
+    /// Its address, with the port it listens on.
+    pub address: SocketAddr,
+    pub nick: Option<String>,
+    /// Its program and version, as its hello tells them.
+    pub software: String,
+    /// Payload bytes per second its slot got of late; 0 while it waits.
+    pub rate: u64,
+    /// How long it waited for its slot, or has waited so far.
+    pub waited: Duration,
 }
 
 type Priorities = Box<dyn Fn(&[u8; 16]) -> UploadPriority + Send>;
@@ -178,6 +188,8 @@ struct Client {
     last_ask: Instant,
     // Whether credits applied when it was last connected.
     trusted: bool,
+    // What it told of itself when it first asked.
+    hello: Hello,
 }
 
 // A packet to send and the file bytes it completes.
@@ -485,22 +497,22 @@ impl UploadManager {
     }
 
     /// The clients with a slot, then the waiting ones from the best score down.
-    pub fn uploads(&self, now: Instant) -> Vec<UploadState> {
-        let slots = self.slots.iter().map(|slot| UploadState {
-            user_hash: slot.client.user_hash,
-            file: slot.client.file,
-            sent: Some(slot.sent),
-        });
+    pub fn uploads(&mut self, now: Instant) -> Vec<UploadState> {
+        let clock = self.clock(now);
+        let mut all: Vec<UploadState> = self
+            .slots
+            .iter_mut()
+            .map(|slot| {
+                let rate = slot.rate.as_mut().map_or(0, |meter| meter.rate(clock));
+                state(&slot.client, Some(slot.sent), rate, now)
+            })
+            .collect();
         let scoring = Scoring::new(self, now);
         let mut waiting: Vec<(&Client, f64)> =
             self.waiting.values().map(|client| (client, scoring.of(client))).collect();
         waiting.sort_by(|a, b| b.1.total_cmp(&a.1));
-        let waiting = waiting.into_iter().map(|(client, _)| UploadState {
-            user_hash: client.user_hash,
-            file: client.file,
-            sent: None,
-        });
-        slots.chain(waiting).collect()
+        all.extend(waiting.into_iter().map(|(client, _)| state(client, None, 0, now)));
+        all
     }
 
     /// The place in the queue of the client waiting with `user_hash`.
@@ -767,6 +779,7 @@ impl UploadManager {
             wait_start: now,
             last_ask: now,
             trusted,
+            hello: session.peer().clone(),
         };
         if self.waiting.is_empty() && self.can_open_slot(false) {
             self.open(client, link, now);
@@ -1192,5 +1205,18 @@ impl<'a> Scoring<'a> {
                 _ => 9,
             },
         }
+    }
+}
+
+fn state(client: &Client, sent: Option<u64>, rate: u64, now: Instant) -> UploadState {
+    UploadState {
+        user_hash: client.user_hash,
+        file: client.file,
+        sent,
+        address: SocketAddr::new(client.ip, client.port),
+        nick: client.hello.nick().map(str::to_owned),
+        software: peer_software::describe(&client.hello),
+        rate,
+        waited: now.saturating_duration_since(client.wait_start),
     }
 }

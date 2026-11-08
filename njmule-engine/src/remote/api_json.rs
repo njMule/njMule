@@ -25,6 +25,7 @@ use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::{Media, SearchResult};
 use crate::api::server_info::ServerInfo;
 use crate::api::spam_marks::SpamMarks;
+use crate::api::upload_info::{BanInfo, UploadInfo};
 use crate::config::bind_interface::Candidate;
 use crate::config::preferences::Preferences;
 use crate::config::schedule::{Rule, Schedule, time_text};
@@ -86,6 +87,26 @@ pub fn network_interface(candidate: &Candidate) -> Value {
         "displayName": candidate.display_name,
         "addresses": candidate.addresses.iter().map(ToString::to_string).collect::<Vec<_>>(),
     })
+}
+
+/// A client we upload to or that waits for its slot.
+pub fn upload(info: &UploadInfo) -> Value {
+    json!({
+        "address": info.address,
+        "userHash": hash(&info.user_hash),
+        "nick": info.nick,
+        "software": info.software,
+        "file": info.file,
+        "state": info.state.name(),
+        "transferred": info.transferred,
+        "bytesPerSecond": info.bytes_per_second,
+        "waitingSeconds": info.waiting_seconds,
+        "country": info.country,
+    })
+}
+
+pub fn ban(info: &BanInfo) -> Value {
+    json!({"address": info.address, "secondsLeft": info.seconds_left})
 }
 
 pub fn port_test(test: &PortTest) -> Value {

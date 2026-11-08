@@ -16,7 +16,7 @@ pub mod totals;
 
 use std::collections::BTreeMap;
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -50,6 +50,7 @@ use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::api::spam_marks::SpamMarks;
+use crate::api::upload_info::{BanInfo, UploadInfo};
 use crate::config::app_directories::AppDirectories;
 use crate::config::bind_interface::{self, Binding};
 use crate::config::obfuscation_mode::ObfuscationMode;
@@ -564,9 +565,13 @@ impl Engine {
         self.ask(Command::RecheckKad).await.unwrap_or(false)
     }
 
-    /// Joins Kad through the node at `node`.
-    pub async fn bootstrap_kad(&self, node: SocketAddrV4) {
-        let _ = self.ask(|reply| Command::BootstrapKad(node, reply)).await;
+    /// Joins Kad through the node at `node`; why not while Kad does not run.
+    pub async fn bootstrap_kad(&self, node: SocketAddrV4) -> Result<(), String> {
+        if self.ask(|reply| Command::BootstrapKad(node, reply)).await.unwrap_or(false) {
+            Ok(())
+        } else {
+            Err("Kad is not running".to_owned())
+        }
     }
 
     /// Adds the Kad contacts of a nodes.dat to ours and to Kad while it runs; answers how many were new.
@@ -624,6 +629,29 @@ impl Engine {
     /// The downloads, the completed ones last.
     pub async fn downloads(&self) -> Vec<DownloadInfo> {
         self.ask(Command::Downloads).await.unwrap_or_default()
+    }
+
+    /// The clients we upload to, then those waiting for their slot, the next one first.
+    pub async fn uploads(&self) -> Vec<UploadInfo> {
+        let mut uploads = self.ask(Command::Uploads).await.unwrap_or_default();
+        let table = self.countries();
+        if table.size() > 0 {
+            for upload in &mut uploads {
+                upload.country = table.country_of(&upload.address);
+            }
+        }
+        uploads
+    }
+
+    /// The addresses banned, with the time left.
+    pub async fn bans(&self) -> Vec<BanInfo> {
+        self.ask(Command::Bans).await.unwrap_or_default()
+    }
+
+    /// Lifts the ban on an IPv4 address; false when it was not banned, why not when `ip` is no address.
+    pub async fn unban(&self, ip: String) -> Result<bool, String> {
+        let address: Ipv4Addr = ip.trim().parse().map_err(|_| format!("Not an IPv4 address: {ip}"))?;
+        Ok(self.ask(|reply| Command::Unban(IpAddr::V4(address), reply)).await.unwrap_or(false))
     }
 
     pub async fn sources(&self) -> Vec<SourceInfo> {
@@ -1025,7 +1053,7 @@ impl NjMuleEngine for Engine {
         Engine::recheck_kad(self)
     }
 
-    fn bootstrap_kad(&self, node: SocketAddrV4) -> impl Future<Output = ()> + Send {
+    fn bootstrap_kad(&self, node: SocketAddrV4) -> impl Future<Output = Result<(), String>> + Send {
         Engine::bootstrap_kad(self, node)
     }
 
@@ -1063,6 +1091,18 @@ impl NjMuleEngine for Engine {
 
     fn sources(&self) -> impl Future<Output = Vec<SourceInfo>> + Send {
         Engine::sources(self)
+    }
+
+    fn uploads(&self) -> impl Future<Output = Vec<UploadInfo>> + Send {
+        Engine::uploads(self)
+    }
+
+    fn bans(&self) -> impl Future<Output = Vec<BanInfo>> + Send {
+        Engine::bans(self)
+    }
+
+    fn unban(&self, ip: String) -> impl Future<Output = Result<bool, String>> + Send {
+        Engine::unban(self, ip)
     }
 
     fn pause_download(&self, hash: [u8; 16]) -> impl Future<Output = Option<DownloadInfo>> + Send {

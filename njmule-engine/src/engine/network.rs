@@ -38,6 +38,7 @@ use crate::api::search_request;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::api::spam_marks::SpamMarks;
+use crate::api::upload_info::{BanInfo, UploadInfo, UploadState};
 use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
@@ -156,6 +157,11 @@ pub enum Command {
     AddDownload(Box<FileLink>, Option<bool>, oneshot::Sender<Result<DownloadInfo, String>>),
     Downloads(oneshot::Sender<Vec<DownloadInfo>>),
     Sources(oneshot::Sender<Vec<SourceInfo>>),
+    /// The clients we upload to, then those waiting for their slot, the next one first.
+    Uploads(oneshot::Sender<Vec<UploadInfo>>),
+    Bans(oneshot::Sender<Vec<BanInfo>>),
+    /// Lifts the ban on an address; false when it was not banned.
+    Unban(IpAddr, oneshot::Sender<bool>),
     PauseDownload([u8; 16], oneshot::Sender<Option<DownloadInfo>>),
     ResumeDownload([u8; 16], oneshot::Sender<Option<DownloadInfo>>),
     CancelDownload([u8; 16], oneshot::Sender<bool>),
@@ -211,7 +217,8 @@ pub enum Command {
     DisconnectKad(oneshot::Sender<()>),
     /// Whether Kad runs, and so checks again whether other nodes reach us.
     RecheckKad(oneshot::Sender<bool>),
-    BootstrapKad(SocketAddrV4, oneshot::Sender<()>),
+    /// Joins Kad through a node; false while Kad does not run.
+    BootstrapKad(SocketAddrV4, oneshot::Sender<bool>),
     AddKadContacts(Box<nodes_dat::Contents>, oneshot::Sender<io::Result<usize>>),
     Stop(oneshot::Sender<()>),
 }
@@ -630,9 +637,8 @@ impl Network {
             Command::RecheckKad(answer) => {
                 let _ = answer.send(self.recheck_kad());
             }
-            Command::BootstrapKad(node, done) => {
-                self.bootstrap_kad(node);
-                let _ = done.send(());
+            Command::BootstrapKad(node, answer) => {
+                let _ = answer.send(self.bootstrap_kad(node));
             }
             Command::AddKadContacts(contents, answer) => {
                 let _ = answer.send(self.add_kad_contacts(&contents));
@@ -792,6 +798,20 @@ impl Network {
             }
             Command::Sources(answer) => {
                 let _ = answer.send(self.downloads.sources());
+            }
+            Command::Uploads(answer) => {
+                let _ = answer.send(self.upload_infos());
+            }
+            Command::Bans(answer) => {
+                let bans = self.uploads.bans(Instant::now());
+                let _ = answer.send(
+                    bans.into_iter()
+                        .map(|ban| BanInfo { address: ban.address.to_string(), seconds_left: ban.left.as_secs() })
+                        .collect(),
+                );
+            }
+            Command::Unban(ip, answer) => {
+                let _ = answer.send(self.uploads.unban(ip));
             }
             Command::PauseDownload(hash, answer) => {
                 let ours = self.shared.our_hello();
@@ -2265,6 +2285,34 @@ impl Network {
 
     fn preferences(&self) -> Preferences {
         self.applied.clone()
+    }
+
+    fn upload_infos(&mut self) -> Vec<UploadInfo> {
+        let uploads = self.uploads.uploads(Instant::now());
+        uploads
+            .into_iter()
+            .map(|upload| UploadInfo {
+                address: upload.address.to_string(),
+                user_hash: upload.user_hash,
+                nick: upload.nick,
+                software: upload.software,
+                file: self.file_name(&upload.file),
+                state: if upload.sent.is_some() { UploadState::Uploading } else { UploadState::Queued },
+                transferred: upload.sent.unwrap_or(0),
+                bytes_per_second: upload.rate,
+                waiting_seconds: upload.waited.as_secs(),
+                country: None,
+            })
+            .collect()
+    }
+
+    // The name of a file we share or download; its hash when it is neither any more.
+    fn file_name(&self, hash: &[u8; 16]) -> String {
+        self.shared_files
+            .get(hash)
+            .map(|file| file.name.clone())
+            .or_else(|| self.downloads.download(hash).map(|download| download.name))
+            .unwrap_or_else(|| data_encoding::HEXUPPER.encode(hash))
     }
 
     // A server the user gave: high priority when the preferences ask for it.

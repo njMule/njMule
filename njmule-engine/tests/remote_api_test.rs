@@ -35,6 +35,7 @@ use njmule_engine::api::saved_search::SavedSearch;
 use njmule_engine::api::search_result::SearchResult;
 use njmule_engine::api::server_info::ServerInfo;
 use njmule_engine::api::spam_marks::SpamMarks;
+use njmule_engine::api::upload_info::{BanInfo, UploadInfo};
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::config::preferences::Preferences;
 use njmule_engine::config::schedule::{Rule, Schedule};
@@ -301,7 +302,9 @@ impl NjMuleEngine for FakeEngine {
         false
     }
 
-    async fn bootstrap_kad(&self, _node: SocketAddrV4) {}
+    async fn bootstrap_kad(&self, _node: SocketAddrV4) -> Result<(), String> {
+        Ok(())
+    }
 
     async fn add_kad_contacts(&self, source: ListSource) -> Result<usize, ListError> {
         self.with(|fake| fake.calls.push(format!("add_kad_contacts {}", described(&source))));
@@ -348,6 +351,18 @@ impl NjMuleEngine for FakeEngine {
 
     async fn sources(&self) -> Vec<SourceInfo> {
         Vec::new()
+    }
+
+    async fn uploads(&self) -> Vec<UploadInfo> {
+        Vec::new()
+    }
+
+    async fn bans(&self) -> Vec<BanInfo> {
+        Vec::new()
+    }
+
+    async fn unban(&self, _ip: String) -> Result<bool, String> {
+        Ok(false)
     }
 
     async fn pause_download(&self, hash: [u8; 16]) -> Option<DownloadInfo> {

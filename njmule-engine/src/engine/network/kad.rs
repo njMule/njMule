@@ -401,10 +401,13 @@ impl Network {
         true
     }
 
-    pub(super) fn bootstrap_kad(&mut self, node: SocketAddrV4) {
-        if let Some(running) = &mut self.kad.running {
-            running.node.bootstrap(u32::from(*node.ip()), node.port());
-        }
+    /// Joins Kad through `node`; false while Kad does not run.
+    pub(super) fn bootstrap_kad(&mut self, node: SocketAddrV4) -> bool {
+        let Some(running) = &mut self.kad.running else {
+            return false;
+        };
+        running.node.bootstrap(u32::from(*node.ip()), node.port());
+        true
     }
 
     /// Adds Kad contacts to the running node and to `nodes.dat`; how many were new to the node, or to the file while Kad
