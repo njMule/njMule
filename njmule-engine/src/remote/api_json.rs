@@ -401,11 +401,7 @@ pub fn event(event: &EngineEvent) -> (&'static str, Value) {
         }
         EngineEvent::DownloadRemoved(removed) => ("download.removed", json!({"hash": hash(removed)})),
         EngineEvent::MessageReceived { address, user_hash, nick, text } => {
-            let mut fields = json!({"address": address, "userHash": hash(user_hash), "text": text});
-            if let (Some(nick), Value::Object(fields)) = (nick, &mut fields) {
-                fields.insert("nick".to_owned(), json!(nick));
-            }
-            ("message.received", fields)
+            ("message.received", json!({"address": address, "userHash": hash(user_hash), "nick": nick, "text": text}))
         }
         // The picture stays out: the conversations give it.
         EngineEvent::CaptchaRequested { address, user_hash, .. } => {

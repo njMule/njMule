@@ -5,12 +5,16 @@
 
 use std::path::PathBuf;
 
+use strum::{EnumDiscriminants, VariantArray};
+
 use crate::api::download_info::DownloadInfo;
 use crate::api::log_line::LogLine;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// An event, of one of the kinds that `EventKind` lists.
+#[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants)]
+#[strum_discriminants(name(EventKind), derive(Hash, VariantArray))]
 pub enum EngineEvent {
     Started {
         version: String,

@@ -6,6 +6,8 @@
 //! checks that none is left out.
 
 // What the tests share.
+mod api_contract;
+mod api_samples;
 mod canonical;
 mod download_lab;
 mod fake_socks5_proxy;
@@ -182,6 +184,7 @@ mod rate_history_test;
 mod rate_meter_test;
 mod rc4_test;
 mod relay_keeper_test;
+mod remote_api_contract_test;
 mod remote_api_test;
 mod request_tracker_test;
 mod result_names_test;
