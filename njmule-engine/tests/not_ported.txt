@@ -101,7 +101,7 @@ DownloadSourcesTest.shouldLetASourceWaitWhileOurConnectionsAreAtTheirLimit
 ApiSpecificationTest.shouldBeAValidOpenApi32Description
 # The Rust API lacks the operations of the notifications, the web interface, the desktop window and the updates.
 ApiSpecificationTest.shouldHaveAHandlerForEveryOperation
-# The Rust engine tells no free disk space nor updates yet, whose events the document describes.
+# The Rust engine tells no updates yet, whose events the document describes.
 ApiSpecificationTest.shouldDescribeEveryEventOfTheStream
 # Guests, the web interface, its guard and the desktop window's token come with the web interface.
 RemoteApiTest.shouldRefuseAnAddressItsGuardStops

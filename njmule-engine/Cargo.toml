@@ -64,7 +64,7 @@ strum = { version = "0.28.0", features = ["derive"] }
 subtle = "2.6.1"
 sysinfo = { version = "0.40.1", default-features = false, features = ["system"] }
 time = "0.3.55"
-tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "io-util", "io-std", "sync", "time", "fs", "signal"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "io-util", "io-std", "sync", "time", "fs", "signal", "process"] }
 tokio-stream = { version = "0.1.19", features = ["sync"] }
 tracing = "0.1.44"
 tracing-appender = "0.2.5"

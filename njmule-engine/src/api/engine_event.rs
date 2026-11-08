@@ -65,6 +65,11 @@ pub enum EngineEvent {
     },
     /// The download left the list: cancelled, or cleared once complete.
     DownloadRemoved([u8; 16]),
+    /// Whether the temp folder holds enough free space for the downloads, told as it changes.
+    DiskSpace {
+        directory: PathBuf,
+        enough: bool,
+    },
     /// A client's message that the chat filter let show; `address` is its IP and the port it listens on.
     MessageReceived {
         address: String,

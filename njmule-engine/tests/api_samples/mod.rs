@@ -354,6 +354,7 @@ pub fn events() -> Vec<EngineEvent> {
         EngineEvent::DownloadCompleted { download: download(), file: PathBuf::from("incoming").join("talk.bin") },
         EngineEvent::DownloadFailed { download: download(), reason: "disk full".to_owned() },
         EngineEvent::DownloadRemoved(HASH),
+        EngineEvent::DiskSpace { directory: PathBuf::from("temp"), enough: false },
         EngineEvent::MessageReceived { address: PEER.to_owned(), user_hash: USER, nick: None, text: "hi".to_owned() },
         EngineEvent::CaptchaRequested { address: PEER.to_owned(), user_hash: USER, image: vec![1, 2] },
         EngineEvent::CaptchaAnswered { address: PEER.to_owned(), solved: true },
