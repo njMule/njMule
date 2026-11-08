@@ -30,6 +30,7 @@ use crate::api::port_test::PortTest;
 use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
+use crate::api::shared_directory::SharedDirectory;
 use crate::api::spam_marks::SpamMarks;
 use crate::api::upload_info::{BanInfo, UploadInfo};
 use crate::config::app_directories::AppDirectories;
@@ -172,6 +173,15 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
 
     /// Asks the server for more results of a search.
     fn more_results(&self, search: u64) -> impl Future<Output = MoreAnswer> + Send;
+
+    /// The folders shared alone, then those shared with their subfolders.
+    fn shared_directories(&self) -> impl Future<Output = Vec<SharedDirectory>> + Send;
+
+    /// Shares a folder from now on, with its subfolders (also those made later) or alone; why not for a private one.
+    fn share_directory(&self, dir: PathBuf, subdirectories: bool) -> impl Future<Output = Result<(), String>> + Send;
+
+    /// Stops sharing a folder, alone or with its subfolders.
+    fn unshare_directory(&self, dir: PathBuf) -> impl Future<Output = Result<(), String>> + Send;
 
     /// The files we share, those hashed so far.
     fn shared_files(&self) -> impl Future<Output = Vec<SharedFile>> + Send;

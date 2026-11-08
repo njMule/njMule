@@ -24,6 +24,7 @@ use crate::api::port_test::PortTest;
 use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::{Media, SearchResult};
 use crate::api::server_info::ServerInfo;
+use crate::api::shared_directory::SharedDirectory;
 use crate::api::spam_marks::SpamMarks;
 use crate::api::upload_info::{BanInfo, UploadInfo};
 use crate::config::bind_interface::Candidate;
@@ -103,6 +104,10 @@ pub fn upload(info: &UploadInfo) -> Value {
         "waitingSeconds": info.waiting_seconds,
         "country": info.country,
     })
+}
+
+pub fn shared_directory(directory: &SharedDirectory) -> Value {
+    json!({"path": directory.path.to_string_lossy(), "subdirectories": directory.subdirectories})
 }
 
 pub fn ban(info: &BanInfo) -> Value {

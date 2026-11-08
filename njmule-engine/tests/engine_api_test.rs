@@ -160,6 +160,17 @@ async fn should_send_nowhere_what_is_logged_after_the_end() {
 }
 
 #[tokio::test]
+async fn should_share_and_unshare_folders_through_the_engine() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_the_folder_is_shared("films").await;
+
+    api.when_the_folder_is_unshared("films").await;
+
+    api.then_no_folder_is_shared().await;
+}
+
+#[tokio::test]
 async fn should_lift_a_ban_only_from_an_address() {
     let mut api = EngineApi::new();
     api.given_a_running_engine().await;
@@ -556,6 +567,22 @@ impl EngineApi {
     async fn when_kad_is_bootstrapped_from(&mut self, port: u16) {
         let node = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
         self.bootstrapped = Some(within(self.engine().bootstrap_kad(node)).await);
+    }
+
+    async fn given_the_folder_is_shared(&self, name: &str) {
+        let folder = self.profile.path().join(name);
+        fs::create_dir_all(&folder).unwrap();
+        within(self.engine().share_directory(folder.clone(), false)).await.unwrap();
+        let shared = within(self.engine().shared_directories()).await;
+        assert_eq!(shared.iter().map(|directory| directory.path.clone()).collect::<Vec<_>>(), [folder]);
+    }
+
+    async fn when_the_folder_is_unshared(&self, name: &str) {
+        within(self.engine().unshare_directory(self.profile.path().join(name))).await.unwrap();
+    }
+
+    async fn then_no_folder_is_shared(&self) {
+        assert_eq!(within(self.engine().shared_directories()).await, []);
     }
 
     fn then_the_address_is_refused(&self) {
