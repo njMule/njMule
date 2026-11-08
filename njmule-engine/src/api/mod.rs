@@ -25,6 +25,7 @@ pub mod nj_mule_engine;
 pub mod nj_mule_info;
 pub mod peer_comment;
 pub mod peer_info;
+pub mod port_test;
 pub mod saved_search;
 pub mod search_request;
 pub mod search_result;

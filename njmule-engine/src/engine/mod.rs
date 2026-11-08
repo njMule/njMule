@@ -6,6 +6,7 @@
 
 pub mod event_replay;
 pub mod network;
+pub mod port_check;
 pub mod scheduler;
 pub mod totals;
 
@@ -38,6 +39,7 @@ use crate::api::nj_mule_engine::{NjMuleEngine, Subscription};
 use crate::api::nj_mule_info;
 use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::PeerInfo;
+use crate::api::port_test::PortTest;
 use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
@@ -630,6 +632,17 @@ impl Engine {
             .unwrap_or_else(|| Err("the engine is stopping".to_owned()))
     }
 
+    /// Tests our ports, a test already running on them going on: a new login to the server and Kad's checks. Answers
+    /// the test as it stands, none once the engine stopped; it goes on for minutes at most.
+    pub async fn test_ports(&self) -> Option<PortTest> {
+        self.ask(Command::TestPorts).await
+    }
+
+    /// The test of our ports running or run last; none before the first.
+    pub async fn port_test(&self) -> Option<PortTest> {
+        self.ask(Command::PortTest).await.flatten()
+    }
+
     /// What the engine is doing now; none once it stopped.
     pub async fn status(&self) -> Option<EngineStatus> {
         self.ask(Command::Status).await.map(|status| *status)
@@ -690,6 +703,14 @@ impl NjMuleEngine for Engine {
 
     fn update_schedule(&self, schedule: Schedule) -> impl Future<Output = Result<Schedule, String>> + Send {
         Engine::update_schedule(self, schedule)
+    }
+
+    fn test_ports(&self) -> impl Future<Output = Option<PortTest>> + Send {
+        Engine::test_ports(self)
+    }
+
+    fn port_test(&self) -> impl Future<Output = Option<PortTest>> + Send {
+        Engine::port_test(self)
     }
 
     fn preferences(&self) -> Preferences {
