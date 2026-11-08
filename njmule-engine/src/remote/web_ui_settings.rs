@@ -4,6 +4,7 @@
 //! Whether the web interface runs, on which port, whether other computers may reach it, the hashes of its passwords,
 //! the host names it answers to and the proxies it trusts; kept in `webui.properties` of the config folder.
 
+use std::fmt;
 use std::io::{self, ErrorKind};
 use std::net::IpAddr;
 use std::path::Path;
@@ -19,7 +20,7 @@ pub const DEFAULT_PORT: u16 = 4711;
 const MAX_NAME: usize = 253;
 const MAX_LABEL: usize = 63;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct WebUiSettings {
     pub enabled: bool,
     pub port: u16,
@@ -35,6 +36,21 @@ pub struct WebUiSettings {
     pub proxies: Vec<String>,
     /// The hash of the password of a guest, who may only look; empty for no guest.
     pub guest_password_hash: String,
+}
+
+// Without the password hashes, which a log line would spread.
+impl fmt::Debug for WebUiSettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WebUiSettings")
+            .field("enabled", &self.enabled)
+            .field("port", &self.port)
+            .field("lan", &self.lan)
+            .field("api", &self.api)
+            .field("hosts", &self.hosts)
+            .field("proxies", &self.proxies)
+            .field("guest", &self.has_guest())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for WebUiSettings {
