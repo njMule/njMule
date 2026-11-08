@@ -33,6 +33,7 @@ use njmule_engine::api::kad_search_info::KadSearchInfo;
 use njmule_engine::api::known_client::KnownClient;
 use njmule_engine::api::list_source::{ListError, ListSource};
 use njmule_engine::api::nj_mule_engine::{NjMuleEngine, Subscription};
+use njmule_engine::api::notification_result::NotificationResult;
 use njmule_engine::api::peer_comment::PeerComment;
 use njmule_engine::api::peer_info::PeerInfo;
 use njmule_engine::api::port_test::{Forwarding, PortTest, Reach};
@@ -217,6 +218,10 @@ impl NjMuleEngine for FakeEngine {
 
     async fn emule_history(&self) -> EmuleHistory {
         self.with(|fake| fake.emule_history.clone())
+    }
+
+    async fn test_notifications(&self) -> Vec<NotificationResult> {
+        Vec::new()
     }
 
     async fn finish_setup(&self) -> Result<(), String> {

@@ -11,6 +11,7 @@ mod import_target;
 mod instance_lock;
 pub mod ip_filter_lists;
 pub mod network;
+pub mod notifier;
 pub mod port_check;
 pub mod scheduler;
 pub mod server_lists;
@@ -53,6 +54,7 @@ use crate::api::list_source::{ListError, ListSource};
 use crate::api::log_line::{Level, LogLine};
 use crate::api::nj_mule_engine::{NjMuleEngine, Subscription};
 use crate::api::nj_mule_info;
+use crate::api::notification_result::NotificationResult;
 use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::PeerInfo;
 use crate::api::port_test::PortTest;
@@ -76,6 +78,7 @@ use crate::engine::event_replay::EventReplay;
 use crate::engine::import_target::ImportTarget;
 use crate::engine::instance_lock::InstanceLock;
 use crate::engine::network::{Command, ConnectError, DownloadChange, MoreAnswer};
+use crate::engine::notifier::Notifier;
 use crate::engine::switches::Switches;
 use crate::net::country_table::CountryTable;
 use crate::net::routes::Routes;
@@ -142,15 +145,20 @@ pub struct Shared {
     instance: Mutex<Option<InstanceLock>>,
     // Whether an eMule runs, which keeps an imported identity waiting.
     emule_running: fn() -> bool,
+    // Tells of events by e-mail and through a web hook.
+    notifier: Arc<Notifier>,
 }
 
 // Hands each event to what tells the user of it, until the engine stops.
-async fn tell(mut events: broadcast::Receiver<EngineEvent>, runner: EventCommandRunner) {
+async fn tell(mut events: broadcast::Receiver<EngineEvent>, runner: EventCommandRunner, notifier: Arc<Notifier>) {
     loop {
         match events.recv().await {
-            Ok(event) => runner.handle(&event),
+            Ok(event) => {
+                runner.handle(&event);
+                notifier.handle(&event);
+            }
             Err(broadcast::error::RecvError::Lagged(missed)) => {
-                tracing::debug!("{missed} events went by the event commands");
+                tracing::debug!("{missed} events went by the event commands and the notifications");
             }
             Err(broadcast::error::RecvError::Closed) => return,
         }
@@ -318,6 +326,8 @@ impl Engine {
             move || proxy.borrow().proxy.clone(),
             move || bind_interface::resolve_now(&interface.borrow().bind_interface),
         );
+        let notifications = preferences.subscribe();
+        let notifier = Arc::new(Notifier::create(move || notifications.borrow().notifications.clone(), routes.clone()));
         let shared = Arc::new(Shared {
             dirs,
             user_hash,
@@ -336,11 +346,12 @@ impl Engine {
             tasks: tokio::sync::Mutex::new(JoinSet::new()),
             instance: Mutex::new(Some(instance)),
             emule_running: switches.emule_running,
+            notifier: Arc::clone(&notifier),
         });
         let engine = Self { shared: shared.clone() };
         let commands = engine.shared.preferences.subscribe();
         let runner = EventCommandRunner::create(move || commands.borrow().event_commands.clone());
-        engine.shared.tasks.lock().await.spawn(tell(engine.subscribe().live, runner));
+        engine.shared.tasks.lock().await.spawn(tell(engine.subscribe().live, runner, notifier));
         let network = network::start(shared, commands_out, udp, listener)?;
         engine.shared.tasks.lock().await.spawn(async move {
             let _ = network.await;
@@ -876,6 +887,11 @@ impl Engine {
         setup_mark::remove(&self.shared.dirs.config).map_err(|e| format!("Cannot mark the setup done: {e}"))
     }
 
+    /// Sends a test message through each notification channel that is on, and tells how each went.
+    pub async fn test_notifications(&self) -> Vec<NotificationResult> {
+        self.shared.notifier.test().await
+    }
+
     /// Stops a download and forgets its sources; false when unknown.
     pub async fn stop_download(&self, hash: [u8; 16]) -> bool {
         self.change_download(hash, DownloadChange::Stop).await.unwrap_or(false)
@@ -1152,6 +1168,10 @@ impl NjMuleEngine for Engine {
 
     fn finish_setup(&self) -> impl Future<Output = Result<(), String>> + Send {
         Engine::finish_setup(self)
+    }
+
+    fn test_notifications(&self) -> impl Future<Output = Vec<NotificationResult>> + Send {
+        Engine::test_notifications(self)
     }
 
     fn status(&self) -> impl Future<Output = Option<EngineStatus>> + Send {

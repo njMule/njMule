@@ -111,6 +111,7 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Re
         )
         .route("/schedule", get(schedule::<E>).put(set_schedule::<E>))
         .route("/ports/test", get(port_test::<E>).post(test_ports::<E>))
+        .route("/notifications/test", post(test_notifications::<E>))
         .route("/ipfilter", post(update_ip_filter::<E>))
         .route("/ipfilter/lists", post(update_ip_filter_lists::<E>))
         .route("/interfaces", get(network_interfaces))
@@ -454,6 +455,11 @@ async fn set_schedule<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body
         ApiError::new(StatusCode::SERVICE_UNAVAILABLE, format!("The engine cannot do it now: {reason}"))
     })?;
     Ok(Json(api_json::schedule(&now, engine.active_rule().await.as_ref())))
+}
+
+// Waits for each channel, as long as the network takes.
+async fn test_notifications<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    Json(Value::Array(engine.test_notifications().await.iter().map(api_json::notification_result).collect()))
 }
 
 async fn port_test<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
