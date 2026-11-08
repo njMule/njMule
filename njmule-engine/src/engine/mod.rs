@@ -4,12 +4,14 @@
 //! The engine: one profile, its preferences and identity, the listening socket, the network side, and the events its
 //! front ends follow.
 
+pub mod countries;
 pub mod event_replay;
 pub mod ip_filter_lists;
 pub mod network;
 pub mod port_check;
 pub mod scheduler;
 pub mod server_lists;
+pub mod switches;
 pub mod totals;
 
 use std::collections::BTreeMap;
@@ -18,6 +20,7 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Instant, SystemTime};
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -53,9 +56,12 @@ use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
 use crate::config::schedule::{Rule, Schedule};
 use crate::config::shared_files_visibility::SharedFilesVisibility;
+use crate::engine::countries::Step;
 use crate::engine::event_replay::EventReplay;
 use crate::engine::network::{Command, ConnectError, DownloadChange, MoreAnswer};
+use crate::engine::switches::Switches;
 use crate::files::shared_files::SharedFile;
+use crate::net::country_table::CountryTable;
 use crate::net::routes::Routes;
 use crate::net::web_lists::WebLists;
 use crate::peer::{peer_greetings, shared_files_browser};
@@ -107,6 +113,8 @@ pub struct Shared {
     context: Mutex<ServerContext>,
     // What a late follower missed, recorded as the events are sent.
     replay: Mutex<EventReplay>,
+    // The countries of addresses, empty while unknown or turned off.
+    countries: watch::Sender<Arc<CountryTable>>,
     // Set with the event that tells the stop, the last one sent.
     ended: AtomicBool,
     commands: mpsc::UnboundedSender<Command>,
@@ -200,8 +208,14 @@ impl Shared {
 }
 
 impl Engine {
-    /// Opens the profile under `dirs`, starts listening for clients and starts the network side.
+    /// Opens the profile under `dirs`, starts listening for clients and starts the network side; it reaches no third
+    /// party on its own.
     pub async fn start(dirs: AppDirectories) -> io::Result<Self> {
+        Self::start_with(dirs, Switches::QUIET).await
+    }
+
+    /// As [`Engine::start`], with what the `switches` allow.
+    pub async fn start_with(dirs: AppDirectories, switches: Switches) -> io::Result<Self> {
         dirs.create_all()?;
         let preferences = preferences_codec::load(&dirs.config.join(preferences_codec::FILE_NAME))?;
         let user_hash = user_hash_store::load_or_create(&dirs.config, &mut rand::rng())?;
@@ -266,6 +280,7 @@ impl Engine {
             events,
             context: Mutex::new(ServerContext::default()),
             replay: Mutex::default(),
+            countries: watch::Sender::new(Arc::new(CountryTable::empty())),
             ended: AtomicBool::new(false),
             commands,
             stop: watch::Sender::new(false),
@@ -281,11 +296,85 @@ impl Engine {
             engine.user_log(level, message);
         }
         engine.user_log(Level::Info, format!("{} {} started", nj_mule_info::NAME, nj_mule_info::version()));
+        let following = engine.clone();
+        engine.shared.tasks.lock().await.spawn(async move { following.follow_countries(switches).await });
         if engine.preferences().update_servers_at_start {
             let updating = engine.clone();
             engine.shared.tasks.lock().await.spawn(async move { updating.update_server_lists().await });
         }
         Ok(engine)
+    }
+
+    // The table of countries, looked at shortly after the start, then every hour and as the preferences turn it on or
+    // off.
+    async fn follow_countries(&self, switches: Switches) {
+        let mut preferences = self.shared.preferences.subscribe();
+        let mut showing = preferences.borrow_and_update().show_countries;
+        let mut tried = None;
+        tokio::time::sleep(countries::FIRST_CHECK).await;
+        loop {
+            self.update_countries(switches, &mut tried).await;
+            let next = tokio::time::sleep(countries::CHECK);
+            tokio::pin!(next);
+            loop {
+                tokio::select! {
+                    () = &mut next => break,
+                    changed = preferences.changed() => {
+                        if changed.is_err() {
+                            return;
+                        }
+                        let now = preferences.borrow_and_update().show_countries;
+                        if now != showing {
+                            showing = now;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    async fn update_countries(&self, switches: Switches, tried: &mut Option<Instant>) {
+        if !self.preferences().show_countries {
+            self.shared.countries.send_replace(Arc::new(CountryTable::empty()));
+            return;
+        }
+        let cache = self.shared.dirs.cache.clone();
+        let held = self.shared.countries.borrow().size() > 0;
+        let table =
+            match countries::step(switches.countries, countries::written(&cache), SystemTime::now(), *tried, held) {
+                Step::Nothing => return,
+                Step::Read => tokio::task::spawn_blocking(move || countries::read(&cache))
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|read| read),
+                Step::Fetch => {
+                    *tried = Some(Instant::now());
+                    let web = WebLists::create(self.shared.routes.clone());
+                    let fetched = countries::fetch(&web, &cache).await;
+                    if let Ok(table) = &fetched {
+                        self.user_log(
+                            Level::Info,
+                            format!("Country database updated: {} ranges (IP Geolocation by DB-IP)", table.size()),
+                        );
+                    }
+                    fetched
+                }
+            };
+        match table {
+            // Turned off meanwhile, the table is let go.
+            Ok(table) if self.preferences().show_countries => {
+                self.shared.countries.send_replace(Arc::new(table));
+            }
+            Ok(_) => {
+                self.shared.countries.send_replace(Arc::new(CountryTable::empty()));
+            }
+            Err(e) => self.user_log(Level::Warning, format!("Country database not updated: {e}")),
+        }
+    }
+
+    fn countries(&self) -> Arc<CountryTable> {
+        self.shared.countries.borrow().clone()
     }
 
     // The server lists of addresses.dat, taken again at each start when the preferences ask for it; each tells its
@@ -429,7 +518,14 @@ impl Engine {
     }
 
     pub async fn kad_contacts(&self) -> Vec<KadContactInfo> {
-        self.ask(Command::KadContacts).await.unwrap_or_default()
+        let mut contacts = self.ask(Command::KadContacts).await.unwrap_or_default();
+        let table = self.countries();
+        if table.size() > 0 {
+            for contact in &mut contacts {
+                contact.country = table.country_of(&contact.address);
+            }
+        }
+        contacts
     }
 
     pub async fn kad_searches(&self) -> Vec<KadSearchInfo> {
@@ -486,7 +582,14 @@ impl Engine {
     }
 
     pub async fn servers(&self) -> Vec<ServerInfo> {
-        self.ask(Command::Servers).await.unwrap_or_default()
+        let mut servers = self.ask(Command::Servers).await.unwrap_or_default();
+        let table = self.countries();
+        if table.size() > 0 {
+            for server in &mut servers {
+                server.country = table.country_of(&server.address);
+            }
+        }
+        servers
     }
 
     /// Puts a known server in the static list or takes it out; false for an unknown server.
@@ -524,7 +627,14 @@ impl Engine {
     }
 
     pub async fn sources(&self) -> Vec<SourceInfo> {
-        self.ask(Command::Sources).await.unwrap_or_default()
+        let mut sources = self.ask(Command::Sources).await.unwrap_or_default();
+        let table = self.countries();
+        if table.size() > 0 {
+            for source in &mut sources {
+                source.country = table.country_of(&source.address);
+            }
+        }
+        sources
     }
 
     /// Pauses a download; answers it as it is now, none when unknown.

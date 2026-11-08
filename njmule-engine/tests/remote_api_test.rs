@@ -84,6 +84,8 @@ struct Fake {
     // The test of the ports as it stands.
     port_test: Option<PortTest>,
     server_lists: Vec<String>,
+    // The country of the servers known, when known.
+    server_country: Option<String>,
 }
 
 #[derive(Clone)]
@@ -240,7 +242,7 @@ impl NjMuleEngine for FakeEngine {
     async fn disconnect_server(&self) {}
 
     async fn servers(&self) -> Vec<ServerInfo> {
-        vec![server(); self.with(|fake| fake.servers_known)]
+        self.with(|fake| vec![ServerInfo { country: fake.server_country.clone(), ..server() }; fake.servers_known])
     }
 
     async fn add_server(&self, address: Address) -> bool {
@@ -497,6 +499,7 @@ fn server() -> ServerInfo {
         version: "17.15".to_owned(),
         obfuscation: true,
         is_static: false,
+        country: None,
     }
 }
 
@@ -660,6 +663,13 @@ impl Api {
 
     fn given_the_engine_knows_the_server(&self, known: &str) {
         self.engine.with(|fake| fake.known_server = Some(known.to_owned()));
+    }
+
+    fn given_the_engine_knows_a_server_in(&self, country: &str) {
+        self.engine.with(|fake| {
+            fake.servers_known = 1;
+            fake.server_country = Some(country.to_owned());
+        });
     }
 
     fn given_the_engine_knows_the_kad_contact(&self, contact: KadContactInfo) {
@@ -903,6 +913,18 @@ async fn should_list_the_downloads_as_json() {
         "\"status\":\"paused\"",
         "\"priority\":\"normal\"",
     ]);
+}
+
+#[tokio::test]
+async fn should_give_the_country_of_a_server_when_it_is_known() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_knows_a_server_in("nl");
+
+    api.when_called("GET", "/api/v1/servers", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&["\"name\":\"Lighthouse\"", "\"country\":\"nl\""]);
 }
 
 #[tokio::test]

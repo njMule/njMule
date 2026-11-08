@@ -392,7 +392,7 @@ pub fn source(info: &SourceInfo) -> Value {
         "reportedName": info.reported_name,
         "askedFor": info.asked_for.as_ref().map(hash),
         "askedForName": info.asked_for_name,
-        "country": null,
+        "country": info.country,
     })
 }
 
@@ -507,7 +507,7 @@ pub fn server(info: &ServerInfo) -> Value {
         "version": info.version,
         "obfuscation": info.obfuscation,
         "static": info.is_static,
-        "country": null,
+        "country": info.country,
     })
 }
 

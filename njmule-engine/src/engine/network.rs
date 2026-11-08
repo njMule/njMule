@@ -1928,11 +1928,16 @@ impl Network {
         }
     }
 
-    // Who a greeted client said it is goes into the history, never its address. The countries are not shown yet.
+    // Who a greeted client said it is goes into the history, with the country of its address, never the address.
     fn met(&mut self, hello: &Hello, address: IpAddr) {
         self.kad_met(hello, address);
         let nick = hello.nick().unwrap_or_default();
-        self.history.seen(hello.user_hash, nick, &peer_software::describe(hello), None, now_seconds());
+        let country = match address {
+            IpAddr::V4(v4) => self.shared.countries.borrow().country(u32::from(v4)),
+            IpAddr::V6(_) => None,
+        };
+        let software = peer_software::describe(hello);
+        self.history.seen(hello.user_hash, nick, &software, country.as_deref(), now_seconds());
     }
 
     // Whether credits apply to the client of a link: its identity proven, or it does not take part.
