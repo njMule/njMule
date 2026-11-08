@@ -43,10 +43,10 @@ impl ControlEndpoint {
         let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).await?;
         let address = listener.local_addr()?;
         let url = format!("http://{address}{BASE_PATH}");
-        let app = Router::new()
-            .nest(BASE_PATH, remote_api::router(engine, exit))
-            .layer(middleware::from_fn_with_state(token.clone(), guard));
         let (stop, mut stopped) = watch::channel(false);
+        let app = Router::new()
+            .nest(BASE_PATH, remote_api::router(engine, exit, stop.subscribe()))
+            .layer(middleware::from_fn_with_state(token.clone(), guard));
         let serving = tokio::spawn(async move {
             axum::serve(listener, app)
                 .with_graceful_shutdown(async move {

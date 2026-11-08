@@ -17,7 +17,7 @@ use axum::routing::{delete, get, post, put};
 use axum::{Extension, Json, Router};
 use reqwest::Url;
 use serde_json::{Value, json};
-use tokio::sync::broadcast;
+use tokio::sync::{Semaphore, broadcast, watch};
 
 use crate::api::category::Category;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus};
@@ -63,8 +63,8 @@ const SECONDS_IN_A_MINUTE: usize = 60;
 /// The version of the API, which its paths carry.
 pub const VERSION: u32 = 1;
 
-/// The calls, relative to the API's base path.
-pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
+/// The calls, relative to the API's base path; `closing` says when the API closes, which ends the event streams.
+pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Receiver<bool>) -> Router {
     let searches = Searches::default();
     let log = Log::default();
     collect(&engine, Arc::clone(&searches), Arc::clone(&log));
@@ -183,6 +183,7 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
         .layer(Extension(log))
         .layer(Extension(rates))
         .layer(Extension(Exiting(exit)))
+        .layer(Extension(Streams { open: Arc::new(Semaphore::new(event_streams::MAX_STREAMS)), closing }))
         .with_state(engine)
 }
 
@@ -532,8 +533,31 @@ async fn update_preferences<E: NjMuleEngine>(
     Ok(Json(api_json::preferences(&changed)))
 }
 
-async fn events<E: NjMuleEngine>(State(engine): State<E>) -> Response {
-    event_streams::stream(&engine).into_response()
+/// What the event streams share: their places, and when the API closes.
+#[derive(Clone)]
+struct Streams {
+    open: Arc<Semaphore>,
+    closing: watch::Receiver<bool>,
+}
+
+/// Follows the engine's events; `types` takes the prefixes of the names wanted, separated by commas.
+async fn events<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Extension(streams): Extension<Streams>,
+    Query(parameters): Query<Vec<(String, String)>>,
+) -> Result<Response, ApiError> {
+    let wanted: Vec<String> = parameters
+        .iter()
+        .filter(|(name, _)| name == "types")
+        .flat_map(|(_, value)| value.split(','))
+        .map(str::trim)
+        .filter(|prefix| !prefix.is_empty())
+        .map(str::to_owned)
+        .collect();
+    let permit = Arc::clone(&streams.open)
+        .try_acquire_owned()
+        .map_err(|_| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "Too many event streams."))?;
+    Ok(event_streams::stream(&engine, wanted, streams.closing, permit).into_response())
 }
 
 async fn hello<E: NjMuleEngine>(State(engine): State<E>, Path(address): Path<String>) -> Result<Json<Value>, ApiError> {

@@ -145,9 +145,6 @@ RemoteApiTest.shouldTellWhatAPathNamesOnTheEnginesComputer
 # The Rust engine keeps no rating or comment of ours yet: it comes with the files area.
 RemoteApiTest.shouldKeepOurRatingAndCommentOfAFile
 RemoteApiTest.shouldRefuseARatingAboveFive
-# The Rust event stream takes no event types yet, and ends with the engine.
-RemoteApiTest.shouldStreamTheEngineEvents
-RemoteApiTest.shouldEndTheStreamsWhenItCloses
 # The checks against openapi.yaml come with the API's specification.
 RemoteApiTest.shouldServeItsOpenApiDocument
 RemoteApiTest.shouldRefuseAParameterTheDocumentDoesNotAllow
