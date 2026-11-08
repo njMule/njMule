@@ -68,8 +68,9 @@ use crate::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId, Side};
 use crate::peer::{peer_greetings, peer_software};
 use crate::persist::categories_codec;
 use crate::persist::format::ip_filter_dat::Range;
-use crate::persist::format::nodes_dat;
+use crate::persist::format::known_met::KnownFile;
 use crate::persist::format::server_met::Server;
+use crate::persist::format::{known2_met, nodes_dat};
 use crate::persist::schedule_codec;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams;
@@ -237,6 +238,12 @@ pub enum Command {
     /// Joins Kad through a node; false while Kad does not run.
     BootstrapKad(SocketAddrV4, oneshot::Sender<bool>),
     AddKadContacts(Box<nodes_dat::Contents>, oneshot::Sender<io::Result<usize>>),
+    /// Remembers another client's records of its files, and of their AICH trees; answers how many were new.
+    AddKnownFiles(Vec<KnownFile>, Vec<known2_met::Entry>, oneshot::Sender<usize>),
+    /// Where another client's download is copied before it is adopted.
+    TempDir(oneshot::Sender<PathBuf>),
+    /// Takes over another client's download, its part.met and data copied into our temp folder, in a category.
+    AdoptDownload(PathBuf, PathBuf, u32, oneshot::Sender<io::Result<DownloadInfo>>),
     Stop(oneshot::Sender<()>),
 }
 
@@ -656,6 +663,21 @@ impl Network {
             }
             Command::AddKadContacts(contents, answer) => {
                 let _ = answer.send(self.add_kad_contacts(&contents));
+            }
+            Command::AddKnownFiles(files, trees, answer) => {
+                let _ = answer.send(self.add_known_files(&files, &trees));
+            }
+            Command::TempDir(answer) => {
+                let _ = answer.send(self.downloads.temp_dir());
+            }
+            Command::AdoptDownload(met, data, category, answer) => {
+                let ours = self.shared.our_hello();
+                let adopted = self.downloads.adopt_download(&met, &data, category, &ours);
+                if let Ok(info) = &adopted {
+                    self.user_log(LogLevel::Info, format!("Downloading {}, taken from eMule", info.name));
+                }
+                self.after_downloads();
+                let _ = answer.send(adopted);
             }
             Command::ImportServers(read, added) => {
                 let count = self.servers.add_all(read);

@@ -6,6 +6,7 @@
 
 pub mod countries;
 pub mod event_replay;
+mod import_target;
 mod instance_lock;
 pub mod ip_filter_lists;
 pub mod network;
@@ -34,9 +35,12 @@ use tokio::task::JoinSet;
 use crate::api::category::Category;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
+use crate::api::emule_history::EmuleHistory;
 use crate::api::engine_event::EngineEvent;
 use crate::api::engine_status::EngineStatus;
 use crate::api::file_history::FileHistory;
+use crate::api::import_options::ImportOptions;
+use crate::api::import_report::ImportReport;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
@@ -65,6 +69,7 @@ use crate::config::schedule::{Rule, Schedule};
 use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::engine::countries::Step;
 use crate::engine::event_replay::EventReplay;
+use crate::engine::import_target::ImportTarget;
 use crate::engine::instance_lock::InstanceLock;
 use crate::engine::network::{Command, ConnectError, DownloadChange, MoreAnswer};
 use crate::engine::switches::Switches;
@@ -72,8 +77,10 @@ use crate::net::country_table::CountryTable;
 use crate::net::routes::Routes;
 use crate::net::web_lists::WebLists;
 use crate::peer::{peer_greetings, shared_files_browser};
-use crate::persist::format::nodes_dat;
+use crate::persist::emule_importer::EmuleImporter;
+use crate::persist::format::known_met::KnownFile;
 use crate::persist::format::server_met::{self, Server};
+use crate::persist::format::{known2_met, nodes_dat};
 use crate::persist::{atomic_files, emule_importer, preferences_codec, user_hash_store};
 use crate::protocol::ed2k::client_reasks;
 use crate::protocol::ed2k::hello::{self, Hello, Ours};
@@ -129,6 +136,8 @@ pub struct Shared {
     tasks: tokio::sync::Mutex<JoinSet<()>>,
     // The lock of the configuration, let go once the engine stopped.
     instance: Mutex<Option<InstanceLock>>,
+    // Whether an eMule runs, which keeps an imported identity waiting.
+    emule_running: fn() -> bool,
 }
 
 impl Shared {
@@ -239,7 +248,7 @@ impl Engine {
         if created {
             setup_mark::make(&dirs.config)?;
         }
-        emule_importer::apply_pending_identity(&dirs.config, &emule_importer::is_emule_running)?;
+        emule_importer::apply_pending_identity(&dirs.config, &switches.emule_running)?;
         emule_importer::apply_pending_files(&dirs.config);
         let user_hash = user_hash_store::load_or_create(&dirs.config, &mut rand::rng())?;
         // What the user's log tells of the start, once the front ends can follow it.
@@ -309,6 +318,7 @@ impl Engine {
             stop: watch::Sender::new(false),
             tasks: tokio::sync::Mutex::new(JoinSet::new()),
             instance: Mutex::new(Some(instance)),
+            emule_running: switches.emule_running,
         });
         let engine = Self { shared: shared.clone() };
         let network = network::start(shared, commands_out, udp, listener)?;
@@ -433,8 +443,17 @@ impl Engine {
     /// Changes the preferences named in `changes`, all or none, and saves them; preferences as they were change
     /// nothing.
     pub fn update_preferences(&self, changes: &BTreeMap<String, String>) -> Result<Preferences, String> {
+        self.change_preferences(&|current| preferences_codec::apply(current, changes))
+    }
+
+    /// Changes the preferences as `change` makes them from those of now, and saves them; preferences that are not valid
+    /// are refused, and preferences as they were change nothing.
+    pub fn change_preferences(
+        &self,
+        change: &dyn Fn(&Preferences) -> Result<Preferences, String>,
+    ) -> Result<Preferences, String> {
         let current = self.preferences();
-        let changed = preferences_codec::apply(&current, changes)?;
+        let changed = change(&current)?.validated()?;
         if changed == current {
             return Ok(changed);
         }
@@ -608,10 +627,61 @@ impl Engine {
             nodes_dat::read(data).map_err(|e| format!("not a nodes.dat: {e}"))
         })
         .await?;
+        self.keep_kad_contacts(contents).await.map_err(ListError::Failed)
+    }
+
+    /// Keeps the Kad contacts read from a list; answers how many were new.
+    pub async fn keep_kad_contacts(&self, contents: nodes_dat::Contents) -> Result<usize, String> {
         self.ask(|reply| Command::AddKadContacts(Box::new(contents), reply))
             .await
             .unwrap_or_else(|| Err(io::Error::other("the engine stopped")))
-            .map_err(|e| ListError::Failed(format!("Cannot keep the contacts: {e}")))
+            .map_err(|e| format!("Cannot keep the contacts: {e}"))
+    }
+
+    /// Remembers another client's records of its files, and their AICH trees, so that its files are shared without
+    /// hashing them again; answers how many records were new.
+    pub async fn add_known_files(&self, files: Vec<KnownFile>, trees: Vec<known2_met::Entry>) -> usize {
+        self.ask(|reply| Command::AddKnownFiles(files, trees, reply)).await.unwrap_or(0)
+    }
+
+    /// Where another client's download is copied before it is adopted; none once the engine stopped.
+    pub async fn temp_dir(&self) -> Option<PathBuf> {
+        self.ask(Command::TempDir).await
+    }
+
+    /// Takes over another client's download, its part.met and data copied into [`Engine::temp_dir`] under names the
+    /// loader leaves alone, in `category` when we have it.
+    pub async fn adopt_download(&self, met: PathBuf, data: PathBuf, category: u32) -> io::Result<DownloadInfo> {
+        self.ask(|reply| Command::AdoptDownload(met, data, category, reply))
+            .await
+            .unwrap_or_else(|| Err(io::Error::other("the engine stopped")))
+    }
+
+    /// Imports an eMule profile from its configuration folder `emule`, read off the engine's task; a dry run only reads
+    /// it.
+    pub async fn import_from_emule(&self, emule: PathBuf, options: ImportOptions) -> Result<ImportReport, String> {
+        let engine = self.clone();
+        let runtime = tokio::runtime::Handle::current();
+        tokio::task::spawn_blocking(move || {
+            let running = engine.shared.emule_running;
+            let mut target = ImportTarget::new(engine, runtime);
+            EmuleImporter::new(&emule, options, &mut target, &running).run()
+        })
+        .await
+        .map_err(|e| format!("The import stopped: {e}"))
+    }
+
+    /// The configuration folder of the eMule of this computer, when one is found.
+    pub async fn emule_profile(&self) -> Option<PathBuf> {
+        let env: BTreeMap<String, String> = std::env::vars_os()
+            .filter_map(|(name, value)| Some((name.into_string().ok()?, value.into_string().ok()?)))
+            .collect();
+        emule_importer::find_config_directory(&env)
+    }
+
+    /// What was typed in the boxes of the eMule imported, which the interfaces offer again.
+    pub async fn emule_history(&self) -> EmuleHistory {
+        emule_importer::history(&self.shared.dirs.config)
     }
 
     pub async fn servers(&self) -> Vec<ServerInfo> {
@@ -994,6 +1064,22 @@ impl NjMuleEngine for Engine {
 
     fn setup_pending(&self) -> impl Future<Output = bool> + Send {
         Engine::setup_pending(self)
+    }
+
+    fn import_from_emule(
+        &self,
+        emule: PathBuf,
+        options: ImportOptions,
+    ) -> impl Future<Output = Result<ImportReport, String>> + Send {
+        Engine::import_from_emule(self, emule, options)
+    }
+
+    fn emule_profile(&self) -> impl Future<Output = Option<PathBuf>> + Send {
+        Engine::emule_profile(self)
+    }
+
+    fn emule_history(&self) -> impl Future<Output = EmuleHistory> + Send {
+        Engine::emule_history(self)
     }
 
     fn finish_setup(&self) -> impl Future<Output = Result<(), String>> + Send {

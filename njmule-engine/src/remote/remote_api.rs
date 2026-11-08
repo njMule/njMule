@@ -25,6 +25,7 @@ use crate::api::ed2k_link::Ed2kLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::file_history::FileHistory;
 use crate::api::file_names;
+use crate::api::import_options::ImportOptions;
 use crate::api::list_source::{ListError, ListSource};
 use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::api::shared_directory::{self, SharedDirectory};
@@ -88,6 +89,11 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Re
             get(|State(engine): State<E>| async move { Json(json!({"pending": engine.setup_pending().await})) }),
         )
         .route("/setup/done", post(finish_setup::<E>))
+        .route("/import/emule", get(emule_profile::<E>).post(import_emule::<E>))
+        .route(
+            "/import/emule/history",
+            get(|State(engine): State<E>| async move { Json(api_json::emule_history(&engine.emule_history().await)) }),
+        )
         .route("/preferences", get(preferences::<E>).patch(update_preferences::<E>))
         .route(
             "/preferences/passwords",
@@ -295,12 +301,7 @@ async fn shared_directories<E: NjMuleEngine>(State(engine): State<E>) -> Json<Va
 /// Shares a folder of the engine's computer, with its subfolders unless `subdirectories` is false. One that may hold
 /// personal or system files is shared only with `everything`.
 async fn share_directory<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
-    let typed = text(&body, "path")?;
-    let dir = PathBuf::from(typed.trim());
-    if typed.contains('\0') || !dir.is_absolute() || !dir.is_dir() {
-        return Err(ApiError::new(StatusCode::BAD_REQUEST, format!("Not a folder of this computer: {typed}")));
-    }
-    let dir = shared_directory::absolute(&dir);
+    let dir = folder_of_this_computer(text(&body, "path")?)?;
     if SharedDirectory::is_sensitive(&dir) && !body.get("everything").and_then(Value::as_bool).unwrap_or(false) {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
@@ -718,6 +719,37 @@ async fn set_server_lists<E: NjMuleEngine>(State(engine): State<E>, Body(body): 
         .collect::<Result<Vec<_>, _>>()?;
     engine.set_server_list_addresses(addresses.clone()).await.map_err(cannot_now)?;
     Ok(Json(json!({"addresses": addresses})))
+}
+
+// A folder of the engine's computer, as typed, without its `.` and `..`.
+fn folder_of_this_computer(typed: &str) -> Result<PathBuf, ApiError> {
+    let dir = PathBuf::from(typed.trim());
+    if typed.contains('\0') || !dir.is_absolute() || !dir.is_dir() {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, format!("Not a folder of this computer: {typed}")));
+    }
+    Ok(shared_directory::absolute(&dir))
+}
+
+/// Imports the eMule profile of a configuration folder, or only reads it in a dry run, the default, which changes
+/// nothing.
+async fn import_emule<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let folder = folder_of_this_computer(text(&body, "path")?)?;
+    let option = |name: &str, default: bool| body.get(name).and_then(Value::as_bool).unwrap_or(default);
+    let options = ImportOptions {
+        dry_run: option("dryRun", true),
+        identity: option("identity", false),
+        downloads: option("downloads", false),
+    };
+    let report = engine
+        .import_from_emule(folder, options)
+        .await
+        .map_err(|reason| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, reason))?;
+    Ok(Json(api_json::import_report(&report)))
+}
+
+/// The configuration folder of the eMule of the engine's computer, when one is found.
+async fn emule_profile<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    Json(engine.emule_profile().await.map_or_else(|| json!({}), |path| json!({"path": path})))
 }
 
 async fn finish_setup<E: NjMuleEngine>(State(engine): State<E>) -> Result<Json<Value>, ApiError> {

@@ -525,6 +525,23 @@ impl DownloadManager {
         self.entries.keys().filter_map(|hash| self.info(hash)).collect()
     }
 
+    /// Where another client's download is copied before [`DownloadManager::adopt_download`].
+    pub fn temp_dir(&self) -> PathBuf {
+        self.queue.temp_dir().to_path_buf()
+    }
+
+    /// Takes over a download another client left, copied into our temp folder, in `category` when it is one of ours,
+    /// with its priority; else in none.
+    pub fn adopt_download(&mut self, met: &Path, data: &Path, category: u32, ours: &Hello) -> io::Result<DownloadInfo> {
+        let ours_category = if self.category(category).is_some() { category } else { category::NONE };
+        let hash = self.queue.adopt(met, data, ours_category)?;
+        self.settle(ours);
+        if ours_category != category::NONE {
+            self.set_category(&hash, ours_category);
+        }
+        self.info(&hash).ok_or_else(|| io::Error::other("the download is gone"))
+    }
+
     pub fn download(&self, hash: &[u8; 16]) -> Option<DownloadInfo> {
         self.info(hash)
     }

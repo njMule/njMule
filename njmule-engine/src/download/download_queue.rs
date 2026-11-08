@@ -285,6 +285,11 @@ impl DownloadQueue {
         Ok(link.hash)
     }
 
+    /// Where the downloads keep their parts.
+    pub fn temp_dir(&self) -> &Path {
+        &self.temp_dir
+    }
+
     /// Takes over a download another client left in `met` and `data`, both already in our temp directory, in
     /// `category`: they get the next free number and the complete parts are checked again.
     pub fn adopt(&mut self, met: &Path, data: &Path, category: u32) -> io::Result<[u8; 16]> {

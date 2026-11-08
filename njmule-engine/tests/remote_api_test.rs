@@ -18,9 +18,12 @@ use futures_util::future::BoxFuture;
 use njmule_engine::api::category::Category;
 use njmule_engine::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus, SourceInfo};
 use njmule_engine::api::ed2k_link::FileLink;
+use njmule_engine::api::emule_history::EmuleHistory;
 use njmule_engine::api::engine_event::EngineEvent;
 use njmule_engine::api::engine_status::EngineStatus;
 use njmule_engine::api::file_history::FileHistory;
+use njmule_engine::api::import_options::ImportOptions;
+use njmule_engine::api::import_report::{ImportReport, Item, Outcome};
 use njmule_engine::api::kad_contact_info::KadContactInfo;
 use njmule_engine::api::kad_info::{Buddy, KadInfo};
 use njmule_engine::api::kad_note::KadNote;
@@ -92,6 +95,10 @@ struct Fake {
     // The folders shared, with their subfolders.
     shared: Vec<PathBuf>,
     setup_pending: bool,
+    // Whether the engine reads the eMule profiles it is given, the one it finds, and what was typed in eMule's boxes.
+    reads_emule_profiles: bool,
+    emule_profile: Option<PathBuf>,
+    emule_history: EmuleHistory,
 }
 
 #[derive(Clone)]
@@ -143,6 +150,25 @@ impl NjMuleEngine for FakeEngine {
 
     async fn setup_pending(&self) -> bool {
         self.with(|fake| fake.setup_pending)
+    }
+
+    async fn import_from_emule(&self, emule: PathBuf, options: ImportOptions) -> Result<ImportReport, String> {
+        self.with(|fake| {
+            if !fake.reads_emule_profiles {
+                return Err("no import expected".to_owned());
+            }
+            fake.calls.push(format!("import {}{}", emule.display(), if options.dry_run { " dry" } else { "" }));
+            let item = Item::text("server.met", Outcome::WouldImport, "12 servers");
+            Ok(ImportReport { dry_run: options.dry_run, items: vec![item], start_at_login: false })
+        })
+    }
+
+    async fn emule_profile(&self) -> Option<PathBuf> {
+        self.with(|fake| fake.emule_profile.clone())
+    }
+
+    async fn emule_history(&self) -> EmuleHistory {
+        self.with(|fake| fake.emule_history.clone())
     }
 
     async fn finish_setup(&self) -> Result<(), String> {
@@ -816,6 +842,22 @@ impl Api {
     fn given_the_data_of_the_download_in(&self, data: Option<&str>) {
         let data = data.map(|name| self.dir.path().join(name));
         self.engine.with(|fake| fake.data = data);
+    }
+
+    fn test_folder(&self) -> PathBuf {
+        self.dir.path().to_path_buf()
+    }
+
+    fn given_the_engine_reads_emule_profiles(&self) {
+        self.engine.with(|fake| fake.reads_emule_profiles = true);
+    }
+
+    fn given_the_engine_finds_an_emule_profile(&self, profile: Option<PathBuf>) {
+        self.engine.with(|fake| fake.emule_profile = profile);
+    }
+
+    fn given_the_engine_kept_the_emule_history(&self, typed: EmuleHistory) {
+        self.engine.with(|fake| fake.emule_history = typed);
     }
 
     fn given_the_engine_waits_to_be_set_up(&self, pending: bool) {
@@ -1954,6 +1996,70 @@ async fn should_refuse_a_rule_without_a_time() {
     api.when_called("PUT", "/api/v1/schedule", "{\"rules\":[{\"start\":\"late\",\"end\":\"06:00\"}]}").await;
 
     api.then_the_status_is(400);
+}
+
+#[tokio::test]
+async fn should_check_an_emule_profile_without_importing_it() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_reads_emule_profiles();
+
+    api.when_called("POST", "/api/v1/import/emule", &json!({ "path": api.test_folder() }).to_string()).await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&["\"dryRun\":true", "\"file\":\"server.met\"", "\"outcome\":\"would_import\""]);
+    api.then_the_engine_was_asked(&format!("import {} dry", api.test_folder().display()));
+}
+
+#[tokio::test]
+async fn should_refuse_to_import_what_is_no_folder() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_reads_emule_profiles();
+
+    api.when_called("POST", "/api/v1/import/emule", &json!({ "path": api.file("none") }).to_string()).await;
+
+    api.then_the_status_is(400);
+    api.then_the_engine_was_not_asked();
+}
+
+#[tokio::test]
+async fn should_tell_the_emule_profile_found_on_its_computer() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_finds_an_emule_profile(Some(api.test_folder()));
+
+    api.when_called("GET", "/api/v1/import/emule", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_is(&json!({ "path": api.test_folder() }).to_string());
+}
+
+#[tokio::test]
+async fn should_tell_no_path_when_its_computer_has_no_emule_profile() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_finds_an_emule_profile(None);
+
+    api.when_called("GET", "/api/v1/import/emule", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_is("{}");
+}
+
+#[tokio::test]
+async fn should_tell_what_was_typed_in_the_boxes_of_the_emule_imported() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_kept_the_emule_history(EmuleHistory {
+        searches: vec!["talk".to_owned(), "linux iso".to_owned()],
+        server_lists: vec!["http://example.org/server.met".to_owned()],
+    });
+
+    api.when_called("GET", "/api/v1/import/emule/history", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_is("{\"searches\":[\"talk\",\"linux iso\"],\"serverLists\":[\"http://example.org/server.met\"]}");
 }
 
 #[tokio::test]

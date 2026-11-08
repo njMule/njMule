@@ -20,6 +20,8 @@ use crate::api::shared_file_info::SharedFileInfo;
 use crate::api::upload_priority::UploadPriority;
 use crate::files::hash::file_hasher::FileHashes;
 use crate::files::shared_files::{self, Changes, Found, Listing, Sharing};
+use crate::persist::format::known_met::KnownFile;
+use crate::persist::format::known2_met;
 use crate::upload::upload_manager::{FileCounts, UploadManager};
 
 /// A file that changed while it was hashed is looked at again this long after, once a copy is done.
@@ -226,6 +228,16 @@ impl Network {
         {
             tracing::warn!("Cannot save the known files: {e}");
         }
+    }
+
+    /// Remembers another client's records of its files, and their trees, then looks at the folders again so that the
+    /// files they name are shared without hashing them; answers how many records were new.
+    pub(super) fn add_known_files(&mut self, files: &[KnownFile], trees: &[known2_met::Entry]) -> usize {
+        let added = self.shared_files.add_known(files, trees);
+        if added > 0 {
+            self.scan_shares();
+        }
+        added
     }
 
     pub(super) fn shared_directories(&self) -> Vec<SharedDirectory> {

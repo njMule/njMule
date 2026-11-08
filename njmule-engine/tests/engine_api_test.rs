@@ -13,6 +13,7 @@
 )]
 
 use crate::free_port;
+use crate::synthetic_emule_profile::SyntheticEmuleProfile;
 
 use std::fs;
 use std::io;
@@ -23,6 +24,7 @@ use njmule_engine::api::category::Category;
 use njmule_engine::api::download_info::{DownloadPriority, DownloadStatus};
 use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::engine_event::EngineEvent;
+use njmule_engine::api::import_options::ImportOptions;
 use njmule_engine::api::list_source::{ListError, ListSource};
 use njmule_engine::api::log_line::Level;
 use njmule_engine::api::nj_mule_engine::Subscription;
@@ -117,6 +119,17 @@ async fn should_rate_nothing_as_spam_with_the_spam_filter_off() {
 
 fn result(hash: [u8; 16], name: &str) -> SearchResult {
     SearchResult::new(hash, name, 10, 1, Some(0), None)
+}
+
+#[tokio::test]
+async fn should_take_the_categories_of_an_import_when_we_have_none() {
+    let mut api = EngineApi::new();
+    api.given_an_emule_profile_with_the_category("Films");
+    api.given_a_running_engine().await;
+
+    api.when_the_emule_profile_is_imported().await;
+
+    api.then_the_category_names_are(&["Films"]).await;
 }
 
 #[tokio::test]
@@ -469,6 +482,7 @@ struct EngineApi {
     ranges: Vec<Range>,
     saved_preferences: String,
     started: Option<io::Result<()>>,
+    emule: Option<SyntheticEmuleProfile>,
 }
 
 impl EngineApi {
@@ -494,6 +508,7 @@ impl EngineApi {
             ranges: Vec::new(),
             saved_preferences: String::new(),
             started: None,
+            emule: None,
         }
     }
 
@@ -538,6 +553,27 @@ impl EngineApi {
         let preferences = format!("net.tcpPort={}\nnet.kad.enabled=false\n{preferences}", free_port::free_port());
         fs::write(dirs.config.join("njmule.properties"), preferences).unwrap();
         dirs
+    }
+
+    // Beside our profile, not in it.
+    fn given_an_emule_profile_with_the_category(&mut self, title: &str) {
+        let emule = SyntheticEmuleProfile::create(&self.profile.path().join("emule"));
+        emule.write("Category.ini", format!("[Cat#1]\r\nTitle={title}\r\n").as_bytes());
+        self.emule = Some(emule);
+    }
+
+    async fn when_the_emule_profile_is_imported(&self) {
+        let emule = self.emule.as_ref().expect("an eMule profile").config.clone();
+        let nothing_more = ImportOptions { dry_run: false, identity: false, downloads: false };
+        tokio::time::timeout(Duration::from_secs(30), self.engine().import_from_emule(emule, nothing_more))
+            .await
+            .expect("imported in time")
+            .unwrap();
+    }
+
+    async fn then_the_category_names_are(&self, names: &[&str]) {
+        let categories = within(self.engine().categories()).await;
+        assert_eq!(categories.iter().map(|category| category.name.as_str()).collect::<Vec<_>>(), names);
     }
 
     fn given_a_temporary_folder_that_is_a_file(&mut self) {

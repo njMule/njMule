@@ -37,6 +37,8 @@ pub struct SyntheticEmuleProfile {
     pub shared: PathBuf,
     pub shared_file: PathBuf,
     pub download_data: Vec<u8>,
+    /// The hash of the download half done.
+    pub half_hash: [u8; 16],
 }
 
 fn random_bytes(size: usize) -> Vec<u8> {
@@ -88,7 +90,7 @@ impl SyntheticEmuleProfile {
         let half_hash = hash_of(root, &other).ed2k.file_hash();
         let mut half_data = other;
         half_data[DOWNLOAD_SIZE / 2..].fill(0);
-        let profile = Self { config, temp, incoming, shared, shared_file, download_data };
+        let profile = Self { config, temp, incoming, shared, shared_file, download_data, half_hash };
         let ini = [
             "[eMule]".to_owned(),
             format!("Nick={NICK}"),

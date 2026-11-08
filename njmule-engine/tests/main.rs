@@ -69,6 +69,8 @@ mod emule_importer_test;
 mod emule_notifier_import_test;
 mod emule_profile_test;
 mod engine_api_test;
+mod engine_import_manifest_test;
+mod engine_import_test;
 mod engine_schedule_test;
 mod engine_test;
 mod event_commands_codec_test;
