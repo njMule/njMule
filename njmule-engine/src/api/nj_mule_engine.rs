@@ -31,6 +31,7 @@ use crate::api::server_info::ServerInfo;
 use crate::api::spam_marks::SpamMarks;
 use crate::config::app_directories::AppDirectories;
 use crate::config::preferences::Preferences;
+use crate::config::schedule::{Rule, Schedule};
 use crate::engine::NotesError;
 use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::files::shared_files::SharedFile;
@@ -67,6 +68,15 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
 
     /// Replaces the categories, kept in their file; they must be valid and have different ids.
     fn set_categories(&self, categories: Vec<Category>) -> impl Future<Output = Result<(), String>> + Send;
+
+    /// The times of the week when other limits apply.
+    fn schedule(&self) -> impl Future<Output = Schedule> + Send;
+
+    /// The rule of the schedule in force, if any.
+    fn active_rule(&self) -> impl Future<Output = Option<Rule>> + Send;
+
+    /// Saves the schedule and puts it in place of the one before; answers it as kept, or why it cannot be.
+    fn update_schedule(&self, schedule: Schedule) -> impl Future<Output = Result<Schedule, String>> + Send;
 
     /// Changes the preferences named in `changes`, all or none, and saves them.
     fn update_preferences(&self, changes: &BTreeMap<String, String>) -> Result<Preferences, String>;

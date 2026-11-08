@@ -150,11 +150,9 @@ RemoteApiTest.shouldKeepTheAddressesOfTheServerLists
 RemoteApiTest.shouldAddTheServersOfAServerMetOfTheEnginesComputer
 RemoteApiTest.shouldRefuseAListFileThatIsNotThere
 RemoteApiTest.shouldAddTheContactsOfANodesDatSent
-# Status, ports, limits, rates, schedule, categories, IP filter and stop come with the calls on the engine's state.
+# The test of the ports and the IP filter come with the calls on the engine's state.
 RemoteApiTest.shouldStartATestOfThePorts
 RemoteApiTest.shouldAnswerATestOfThePortsWithoutWaitingForItsEnd
-RemoteApiTest.shouldReplaceTheRulesOfTheSchedule
-RemoteApiTest.shouldRefuseARuleWithoutATime
 RemoteApiTest.shouldNotUpdateTheIpFilterWithoutLists
 # The Rust engine keeps no rating or comment of ours yet: it comes with the files area.
 RemoteApiTest.shouldKeepOurRatingAndCommentOfAFile
@@ -218,10 +216,7 @@ EngineApiTest.shouldRefuseAsTheCallersErrorContentThatIsNoNodesDat
 EngineApiTest.shouldLiftABanOnlyFromAnAddress
 # Shared folders come with the calls on shared files.
 EngineApiTest.shouldShareAndUnshareFoldersThroughTheEngine
-# The schedule and the categories come with the calls on the engine's state.
-EngineApiTest.shouldLetRulesGoOfDeletedCategoriesAndKeepTheActiveRuleActive
-EngineApiTest.shouldGoOnWithoutActingAgainWhenARuleIsEditedWhileItHolds
-EngineApiTest.shouldRefuseAScheduleThatCannotBeSaved
+# The categories of an eMule profile come with its import.
 EngineApiTest.shouldTakeTheCategoriesOfAnImportWhenWeHaveNone
 # The Rust engine keeps no copy of the configuration at its start yet.
 EngineApiTest.shouldKeepNoCopyOfTheConfigurationWhenNoneIsWanted
