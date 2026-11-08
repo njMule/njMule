@@ -202,6 +202,8 @@ pub enum Command {
     Schedule(oneshot::Sender<Schedule>),
     /// The rule of the schedule in force, if any.
     ActiveRule(oneshot::Sender<Option<Rule>>),
+    /// The preferences in force: those saved, with what the rule in force changes in them.
+    Effective(oneshot::Sender<Preferences>),
     /// Saves the schedule and puts it in place of the one before; answers it as kept, or why it cannot be.
     SetSchedule(Schedule, oneshot::Sender<Result<Schedule, String>>),
     /// Tests our ports, a test already running on them going on; answers the test as it stands.
@@ -917,6 +919,9 @@ impl Network {
             }
             Command::ActiveRule(answer) => {
                 let _ = answer.send(self.scheduler.active().cloned());
+            }
+            Command::Effective(answer) => {
+                let _ = answer.send(self.applied.clone());
             }
             Command::SetSchedule(schedule, answer) => {
                 let _ = answer.send(self.set_schedule(schedule));

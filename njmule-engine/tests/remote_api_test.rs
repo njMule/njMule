@@ -91,6 +91,7 @@ struct Fake {
     server_country: Option<String>,
     // The folders shared, with their subfolders.
     shared: Vec<PathBuf>,
+    setup_pending: bool,
 }
 
 #[derive(Clone)]
@@ -138,6 +139,18 @@ impl NjMuleEngine for FakeEngine {
 
     fn directories(&self) -> AppDirectories {
         self.dirs.clone()
+    }
+
+    async fn setup_pending(&self) -> bool {
+        self.with(|fake| fake.setup_pending)
+    }
+
+    async fn finish_setup(&self) -> Result<(), String> {
+        self.with(|fake| {
+            fake.setup_pending = false;
+            fake.calls.push("finish setup".to_owned());
+        });
+        Ok(())
     }
 
     async fn saved_searches(&self) -> Vec<SavedSearch> {
@@ -803,6 +816,10 @@ impl Api {
     fn given_the_data_of_the_download_in(&self, data: Option<&str>) {
         let data = data.map(|name| self.dir.path().join(name));
         self.engine.with(|fake| fake.data = data);
+    }
+
+    fn given_the_engine_waits_to_be_set_up(&self, pending: bool) {
+        self.engine.with(|fake| fake.setup_pending = pending);
     }
 
     fn given_the_engine_knows_the_server(&self, known: &str) {
@@ -1937,6 +1954,30 @@ async fn should_refuse_a_rule_without_a_time() {
     api.when_called("PUT", "/api/v1/schedule", "{\"rules\":[{\"start\":\"late\",\"end\":\"06:00\"}]}").await;
 
     api.then_the_status_is(400);
+}
+
+#[tokio::test]
+async fn should_tell_that_nj_mule_waits_to_be_set_up() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_waits_to_be_set_up(true);
+
+    api.when_called("GET", "/api/v1/setup", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_is("{\"pending\":true}");
+}
+
+#[tokio::test]
+async fn should_mark_the_setup_done() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_waits_to_be_set_up(true);
+
+    api.when_called("POST", "/api/v1/setup/done", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_engine_was_asked("finish setup");
 }
 
 #[tokio::test]

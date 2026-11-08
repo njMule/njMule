@@ -6,15 +6,18 @@
 
 pub mod countries;
 pub mod event_replay;
+mod instance_lock;
 pub mod ip_filter_lists;
 pub mod network;
 pub mod port_check;
 pub mod scheduler;
 pub mod server_lists;
+pub mod setup_mark;
 pub mod switches;
 pub mod totals;
 
 use std::collections::BTreeMap;
+use std::fs;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::PathBuf;
@@ -62,6 +65,7 @@ use crate::config::schedule::{Rule, Schedule};
 use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::engine::countries::Step;
 use crate::engine::event_replay::EventReplay;
+use crate::engine::instance_lock::InstanceLock;
 use crate::engine::network::{Command, ConnectError, DownloadChange, MoreAnswer};
 use crate::engine::switches::Switches;
 use crate::net::country_table::CountryTable;
@@ -70,7 +74,7 @@ use crate::net::web_lists::WebLists;
 use crate::peer::{peer_greetings, shared_files_browser};
 use crate::persist::format::nodes_dat;
 use crate::persist::format::server_met::{self, Server};
-use crate::persist::{preferences_codec, user_hash_store};
+use crate::persist::{atomic_files, emule_importer, preferences_codec, user_hash_store};
 use crate::protocol::ed2k::client_reasks;
 use crate::protocol::ed2k::hello::{self, Hello, Ours};
 use crate::protocol::ed2k::server_messages::LOW_ID_LIMIT;
@@ -123,6 +127,8 @@ pub struct Shared {
     commands: mpsc::UnboundedSender<Command>,
     stop: watch::Sender<bool>,
     tasks: tokio::sync::Mutex<JoinSet<()>>,
+    // The lock of the configuration, let go once the engine stopped.
+    instance: Mutex<Option<InstanceLock>>,
 }
 
 impl Shared {
@@ -220,7 +226,21 @@ impl Engine {
     /// As [`Engine::start`], with what the `switches` allow.
     pub async fn start_with(dirs: AppDirectories, switches: Switches) -> io::Result<Self> {
         dirs.create_all()?;
-        let preferences = preferences_codec::load(&dirs.config.join(preferences_codec::FILE_NAME))?;
+        // Before touching any file: another engine may be using them.
+        let instance = InstanceLock::acquire(&dirs.config)?;
+        let preferences_file = dirs.config.join(preferences_codec::FILE_NAME);
+        atomic_files::cleanup_interrupted_write(&preferences_file);
+        let created = !preferences_file.exists();
+        let preferences = preferences_codec::load(&preferences_file)?;
+        // Where the downloads go, complete and in parts, which need not be the default folders.
+        fs::create_dir_all(preferences.effective_incoming_dir(&dirs))?;
+        fs::create_dir_all(preferences.effective_temp_dir(&dirs))?;
+        preferences_codec::save(&preferences_file, &preferences)?;
+        if created {
+            setup_mark::make(&dirs.config)?;
+        }
+        emule_importer::apply_pending_identity(&dirs.config, &emule_importer::is_emule_running)?;
+        emule_importer::apply_pending_files(&dirs.config);
         let user_hash = user_hash_store::load_or_create(&dirs.config, &mut rand::rng())?;
         // What the user's log tells of the start, once the front ends can follow it.
         let mut told = Vec::new();
@@ -288,6 +308,7 @@ impl Engine {
             commands,
             stop: watch::Sender::new(false),
             tasks: tokio::sync::Mutex::new(JoinSet::new()),
+            instance: Mutex::new(Some(instance)),
         });
         let engine = Self { shared: shared.clone() };
         let network = network::start(shared, commands_out, udp, listener)?;
@@ -409,9 +430,14 @@ impl Engine {
         self.shared.preferences.borrow().clone()
     }
 
-    /// Changes the preferences named in `changes`, all or none, and saves them.
+    /// Changes the preferences named in `changes`, all or none, and saves them; preferences as they were change
+    /// nothing.
     pub fn update_preferences(&self, changes: &BTreeMap<String, String>) -> Result<Preferences, String> {
-        let changed = preferences_codec::apply(&self.preferences(), changes)?;
+        let current = self.preferences();
+        let changed = preferences_codec::apply(&current, changes)?;
+        if changed == current {
+            return Ok(changed);
+        }
         let file = self.shared.dirs.config.join(preferences_codec::FILE_NAME);
         if let Err(e) = preferences_codec::save(&file, &changed) {
             tracing::warn!("Cannot save {}: {e}", file.display());
@@ -732,7 +758,8 @@ impl Engine {
         }
     }
 
-    /// Stops the network side, which saves what it keeps, and the listening, and waits for the tasks to end.
+    /// Stops the network side, which saves what it keeps, and the listening, and waits for the tasks to end; then
+    /// another engine may start on the configuration.
     pub async fn stop(&self) {
         self.publish(EngineEvent::Stopping);
         let _ = self.ask(Command::Stop).await;
@@ -740,6 +767,23 @@ impl Engine {
         let mut tasks = self.shared.tasks.lock().await;
         tasks.abort_all();
         while tasks.join_next().await.is_some() {}
+        self.shared.instance.lock().unwrap_or_else(PoisonError::into_inner).take();
+    }
+
+    /// Whether the engine runs: true until it is stopped.
+    pub fn is_running(&self) -> bool {
+        !*self.shared.stop.borrow()
+    }
+
+    /// Whether njMule waits for the questions of its first start: from the start that created its configuration until
+    /// an interface says they were answered or put aside.
+    pub async fn setup_pending(&self) -> bool {
+        setup_mark::present(&self.shared.dirs.config)
+    }
+
+    /// Marks the questions of the first start answered or put aside.
+    pub async fn finish_setup(&self) -> Result<(), String> {
+        setup_mark::remove(&self.shared.dirs.config).map_err(|e| format!("Cannot mark the setup done: {e}"))
     }
 
     /// Stops a download and forgets its sources; false when unknown.
@@ -869,6 +913,15 @@ impl Engine {
         self.ask(Command::ActiveRule).await.flatten()
     }
 
+    /// The preferences in force: those saved, with what the rule in force changes in them; those saved once the engine
+    /// stopped.
+    pub async fn effective_preferences(&self) -> Preferences {
+        match self.ask(Command::Effective).await {
+            Some(effective) => effective,
+            None => self.preferences(),
+        }
+    }
+
     /// Saves the schedule and puts it in place of the one before; answers it as kept, or why it cannot be.
     pub async fn update_schedule(&self, schedule: Schedule) -> Result<Schedule, String> {
         self.ask(|reply| Command::SetSchedule(schedule, reply))
@@ -937,6 +990,14 @@ impl Engine {
 impl NjMuleEngine for Engine {
     fn directories(&self) -> AppDirectories {
         self.shared.dirs.clone()
+    }
+
+    fn setup_pending(&self) -> impl Future<Output = bool> + Send {
+        Engine::setup_pending(self)
+    }
+
+    fn finish_setup(&self) -> impl Future<Output = Result<(), String>> + Send {
+        Engine::finish_setup(self)
     }
 
     fn status(&self) -> impl Future<Output = Option<EngineStatus>> + Send {
