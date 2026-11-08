@@ -122,6 +122,8 @@ RemoteApiTest.shouldRefuseAWebInterfaceTheEngineRefuses
 RemoteApiTest.shouldGiveTheApiTokenToTheDesktopWindow
 RemoteApiTest.shouldRefuseTheApiTokenToABrowser
 RemoteApiTest.shouldRefuseTheOldTokenOnceTheDesktopWindowRenewedIt
+# The answers to the desktop window, its settings and those of the web interface, come with the web interface.
+RemoteApiContractTest.shouldAnswerTheDesktopWindowAsTheDocumentDescribesIt
 
 # The engine's API.
 # Java only: the engine's events are a Flow publisher in Java, a broadcast channel in Rust, whose readers ask for no count.

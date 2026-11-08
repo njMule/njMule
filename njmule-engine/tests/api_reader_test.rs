@@ -6,9 +6,9 @@
 #![allow(clippy::unwrap_used)]
 
 use njmule_engine::api::saved_search::SavedSearch;
-use njmule_engine::api::search_request::{Scope, SearchRequest};
-use njmule_engine::api::search_result::{Media, Name, SearchResult};
 use njmule_engine::remote::{api_json, api_reader};
+
+use crate::api_samples::saved_search;
 
 #[test]
 fn should_read_back_the_saved_search_the_api_writes() {
@@ -33,16 +33,4 @@ impl Reader {
     fn then_it_is(&self, expected: &SavedSearch) {
         assert_eq!(self.read.as_ref(), Some(expected));
     }
-}
-
-fn saved_search() -> SavedSearch {
-    let mut result = SearchResult::new([0xab; 16], "talk.bin", 5000, 3, None, Some("Pro"));
-    result.media = Media::new("Ann", "Talks", "Opening", 3725, 192, "mp3");
-    result.spam_rating = 70;
-    result.aich_hash = Some([0x5a; 20]);
-    result.names = vec![
-        Name { name: "talk.bin".to_owned(), sources: 2, complete_sources: Some(1) },
-        Name { name: "talk (2).bin".to_owned(), sources: 1, complete_sources: None },
-    ];
-    SavedSearch { title: "talks".to_owned(), request: SearchRequest::new("talk", Scope::Global), results: vec![result] }
 }
