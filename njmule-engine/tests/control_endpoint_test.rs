@@ -10,6 +10,9 @@ use crate::free_port;
 
 use std::fs;
 use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
@@ -21,16 +24,19 @@ use njmule_engine::protocol::packet::{Packet, frame_limits, protocol};
 use njmule_engine::protocol::tag::tag_codec::write_ed2k_list;
 use njmule_engine::protocol::tag::{Ed2kTagFormat, Tag, TagName, file_tag};
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
+use njmule_engine::remote::web_ui_settings::WebUiSettings;
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 struct Running {
     _profile: tempfile::TempDir,
+    config: PathBuf,
     engine: Engine,
     endpoint: ControlEndpoint,
     address: SocketAddr,
     token: String,
+    exited: Arc<AtomicBool>,
 }
 
 async fn running() -> Running {
@@ -44,25 +50,36 @@ async fn running_with(preferences: &str) -> Running {
     // The preferences take no port of 0.
     let port = free_port::free_port();
     fs::write(dirs.config.join("njmule.properties"), format!("net.tcpPort={port}\n{preferences}")).unwrap();
+    let config = dirs.config.clone();
     let engine = Engine::start(dirs).await.unwrap();
-    let endpoint = ControlEndpoint::start(engine.clone(), None).await.unwrap();
+    let exited = Arc::new(AtomicBool::new(false));
+    let exiting = Arc::clone(&exited);
+    let exit = Arc::new(move || exiting.store(true, Ordering::SeqCst));
+    let endpoint = ControlEndpoint::start(engine.clone(), Some(exit)).await.unwrap();
     let line = endpoint.control_line();
     let control: Value = serde_json::from_str(line.strip_prefix("njmule-control ").expect("the control line")).unwrap();
     let url = control["url"].as_str().unwrap();
     let address = url.strip_prefix("http://").unwrap().strip_suffix("/api/v1").unwrap().parse().unwrap();
     let token = control["token"].as_str().unwrap().to_owned();
-    Running { _profile: profile, engine, endpoint, address, token }
+    Running { _profile: profile, config, engine, endpoint, address, token, exited }
 }
 
 impl Running {
     async fn call(&self, request_line: &str, headers: &[String]) -> (u16, String) {
+        self.call_with_body(request_line, headers, "").await
+    }
+
+    async fn call_with_body(&self, request_line: &str, headers: &[String], body: &str) -> (u16, String) {
         let mut stream = TcpStream::connect(self.address).await.unwrap();
         let mut request = format!("{request_line} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n");
         for header in headers {
             request.push_str(header);
             request.push_str("\r\n");
         }
-        request.push_str("\r\n");
+        if !body.is_empty() {
+            request.push_str("Content-Type: application/json\r\n");
+        }
+        request.push_str(&format!("Content-Length: {}\r\n\r\n{body}", body.len()));
         stream.write_all(request.as_bytes()).await.unwrap();
         let mut answer = Vec::new();
         stream.read_to_end(&mut answer).await.unwrap();
@@ -78,6 +95,32 @@ impl Running {
         self.engine.stop().await;
         self.endpoint.stop().await;
     }
+}
+
+#[tokio::test]
+async fn should_let_the_window_turn_the_web_interface_on() {
+    let running = running().await;
+
+    let (status, answer) = running
+        .call_with_body("PATCH /api/v1/webui", &[running.bearer()], r#"{"enabled":true,"password":"long enough"}"#)
+        .await;
+
+    assert_eq!(status, 200, "{answer}");
+    // The web interface starts next time.
+    assert!(WebUiSettings::load(&running.config).usable());
+    running.stop().await;
+}
+
+#[tokio::test]
+async fn should_stop_nj_mule_when_the_window_asks() {
+    let running = running().await;
+
+    let (status, answer) =
+        running.call("POST /api/v1/shutdown", &[running.bearer(), "Origin: tauri://localhost".to_owned()]).await;
+
+    assert_eq!(status, 202, "{answer}");
+    assert!(running.exited.load(Ordering::SeqCst));
+    running.stop().await;
 }
 
 #[tokio::test]

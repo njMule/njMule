@@ -116,6 +116,8 @@ RemoteApiTest.shouldRefuseToCheckAFolderForAGuest
 RemoteApiTest.shouldRefuseTheFirstStartToAGuest
 RemoteApiTest.shouldRefuseTheWebInterfaceSettingsToAGuest
 RemoteApiTest.shouldRefuseTheOldTokenOnceTheDesktopWindowRenewedIt
+# Java only: a password kept as a char array is wiped once used; Rust strings are not.
+WebUiPartsTest.shouldWipeAPasswordOnceUsed
 # The answers to the desktop window come with its settings (eD2K links, start at login), with the launcher.
 RemoteApiContractTest.shouldAnswerTheDesktopWindowAsTheDocumentDescribesIt
 

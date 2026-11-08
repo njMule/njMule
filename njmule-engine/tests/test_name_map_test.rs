@@ -13,7 +13,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const JAVA_TESTS: &str = "../njmule-core/src/test/java";
+// The engine's tests, then those of its web interface.
+const JAVA_TESTS: [&str; 2] = ["../njmule-core/src/test/java", "../njmule-http/src/test/java"];
 const NOT_PORTED: &str = "tests/not_ported.txt";
 // The packages of org.njmule.core, with those under them, whose test classes all have Rust twins.
 const AREAS: &str = "tests/ported_areas.txt";
@@ -119,10 +120,12 @@ fn should_find_every_test_of_a_ported_java_class_in_rust_or_among_those_not_port
     let (twins, rust) = rust_tests();
     let areas = listed(AREAS);
     let mut java = Vec::new();
-    files(Path::new(JAVA_TESTS), &mut java);
+    for root in JAVA_TESTS {
+        files(Path::new(root), &mut java);
+    }
     let mut missing = BTreeMap::new();
     let mut known = BTreeSet::new();
-    let core = Path::new(JAVA_TESTS).join("org/njmule/core");
+    let core = Path::new(JAVA_TESTS[0]).join("org/njmule/core");
     for path in java.iter().filter(|path| path.extension().is_some_and(|extension| extension == "java")) {
         let class = path.file_stem().unwrap().to_string_lossy().into_owned();
         if !class.ends_with("Test") {
