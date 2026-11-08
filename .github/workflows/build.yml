@@ -106,6 +106,10 @@ jobs:
                           - 'njmule-http/src/test/java/**'
                           # The API's document, which the Rust engine serves and checks every call against.
                           - 'njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml'
+                          # The login page's style sheet and the browser icons, which the web interface carries.
+                          - 'njmule-http/src/main/resources/org/njmule/http/style.css'
+                          - 'branding/njmule-icon.svg'
+                          - 'branding/generated/njmule-32.png'
                           - 'njmule-testkit/**'
                           - 'tools/engine_coverage.py'
                           - '.github/workflows/build.yml'

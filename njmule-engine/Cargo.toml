@@ -24,6 +24,7 @@ path = "tests/main.rs"
 axum = "0.8.9"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 clap = { version = "4.6.7", features = ["derive"] }
+cookie = "0.18.2"
 data-encoding = "2.11.1"
 dirs = "7.0.0"
 dunce = "1.0.5"
@@ -54,6 +55,7 @@ rand = "0.10.3"
 rc4 = "0.2.0"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "socks"] }
 rsa = { version = "0.9.10", features = ["getrandom"] }
+rust-embed = { version = "8.13.0", default-features = false }
 same-file = "1.0.6"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-platform-verifier = "0.7.1"
@@ -71,6 +73,7 @@ time = "0.3.55"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "io-util", "io-std", "sync", "time", "fs", "signal", "process"] }
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["tls12"] }
 tokio-stream = { version = "0.1.19", features = ["sync"] }
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
 tracing = "0.1.44"
 tracing-appender = "0.2.5"
 tracing-subscriber = "0.3.23"

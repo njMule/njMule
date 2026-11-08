@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The `njmule` executable: runs the engine on a profile, logging to standard error and to the profile's `logs`
-//! folder. With `NJMULE_CONTROL_ENDPOINT=1` it serves the API on a loopback port, prints where on a `njmule-control`
-//! line, and stops when its standard input ends. With `--hash` it prints the eD2K links of files instead.
+//! folder, with the web interface its settings turn on. With `NJMULE_CONTROL_ENDPOINT=1` it serves the API on a
+//! loopback port, prints where on a `njmule-control` line, and stops when its standard input ends. With `--hash` it
+//! prints the eD2K links of files instead.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -19,8 +20,11 @@ use njmule_engine::engine::Engine;
 use njmule_engine::engine::switches::Switches;
 use njmule_engine::files::hash::file_hasher;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
+use njmule_engine::remote::live_web_ui::LiveWebUi;
+use njmule_engine::remote::remote_api::Exit;
+use njmule_engine::remote::web_ui_settings::WebUiSettings;
 use tokio::io::AsyncReadExt;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, mpsc};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 
@@ -121,13 +125,28 @@ fn log_to(dirs: &AppDirectories) {
 
 async fn run(dirs: AppDirectories, switches: Vec<String>) -> io::Result<()> {
     tracing::debug!("Switches: {switches:?}");
+    let config = dirs.config.clone();
     let engine = Engine::start_with(dirs, Switches::of(&switches)).await?;
     let control = std::env::var("NJMULE_CONTROL_ENDPOINT").is_ok_and(|value| value == "1");
     // Asked for by the API, as the end of the input is by the starting process.
     let exit = Arc::new(Notify::new());
+    let asked = Arc::clone(&exit);
+    let stop: Exit = Arc::new(move || asked.notify_one());
+    let web = Arc::new(LiveWebUi::new(engine.clone(), Some(Arc::clone(&stop))));
+    web.apply(WebUiSettings::load(&config)).await;
     let endpoint = if control {
-        let asked = Arc::clone(&exit);
-        let endpoint = ControlEndpoint::start(engine.clone(), Some(Arc::new(move || asked.notify_one()))).await?;
+        // The web interface follows the settings the window saves.
+        let (changed, mut changes) = mpsc::unbounded_channel();
+        let following = Arc::clone(&web);
+        tokio::spawn(async move {
+            while let Some(settings) = changes.recv().await {
+                following.apply(settings).await;
+            }
+        });
+        let endpoint = ControlEndpoint::start_with(engine.clone(), Some(stop), move |settings: &WebUiSettings| {
+            let _ = changed.send(settings.clone());
+        })
+        .await?;
         // Printed once the API answers: the starting process calls it right away.
         println!("{}", endpoint.control_line());
         Some(endpoint)
@@ -139,6 +158,7 @@ async fn run(dirs: AppDirectories, switches: Vec<String>) -> io::Result<()> {
         () = exit.notified() => {}
         _ = tokio::signal::ctrl_c() => {}
     }
+    web.close().await;
     engine.stop().await;
     if let Some(endpoint) = endpoint
         && tokio::time::timeout(API_STOP_WAIT, endpoint.stop()).await.is_err()

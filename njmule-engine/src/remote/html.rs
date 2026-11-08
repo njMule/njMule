@@ -6,6 +6,22 @@
 
 use crate::api::nj_mule_info;
 
+/// The style sheet of the login page.
+pub const STYLE: &str = include_str!("../../../njmule-http/src/main/resources/org/njmule/http/style.css");
+
+// The browser icons, from the branding.
+const ICON_SVG: &[u8] = include_bytes!("../../../branding/njmule-icon.svg");
+const ICON_PNG: &[u8] = include_bytes!("../../../branding/generated/njmule-32.png");
+
+/// The icon at `path`, if it is one, with its content type.
+pub fn icon(path: &str) -> Option<(&'static str, &'static [u8])> {
+    match path {
+        "/favicon.svg" => Some(("image/svg+xml", ICON_SVG)),
+        "/favicon.png" => Some(("image/png", ICON_PNG)),
+        _ => None,
+    }
+}
+
 /// `value` safe in element content and in quoted attributes: `& < > " '` as `&amp; &lt; &gt; &quot; &#39;`, as the Java
 /// engine writes them (the escaping crates write the apostrophe in hexadecimal).
 pub fn text(value: &str) -> String {

@@ -99,23 +99,10 @@ DownloadSourcesTest.shouldLetASourceWaitWhileOurConnectionsAreAtTheirLimit
 # The API's document.
 # Java only: the one document both engines serve is checked against the OpenAPI schemas by the Java test.
 ApiSpecificationTest.shouldBeAValidOpenApi32Description
-# The Rust API lacks the operations of the web interface, the desktop window and the updates.
+# The Rust API lacks the operations of the desktop window and the updates.
 ApiSpecificationTest.shouldHaveAHandlerForEveryOperation
 # The Rust engine tells no updates yet, whose events the document describes.
 ApiSpecificationTest.shouldDescribeEveryEventOfTheStream
-# Guests, the web interface's server, its guard and its API token holders come with the web interface.
-RemoteApiTest.shouldRefuseAnAddressItsGuardStops
-RemoteApiTest.shouldTellAGuestNeitherTheJavaNorTheSystem
-RemoteApiTest.shouldRefuseTheFoldersToAGuest
-RemoteApiTest.shouldRefuseTheDataOfADownloadToAGuest
-RemoteApiTest.shouldLetAGuestReadTheTransfers
-RemoteApiTest.shouldRefuseAGuestWhatIsNotTransfersSearchesServersKadOrStatistics
-RemoteApiTest.shouldRefuseAGuestAnyChange
-RemoteApiTest.shouldRefuseTheNetworkInterfacesToAGuest
-RemoteApiTest.shouldRefuseToCheckAFolderForAGuest
-RemoteApiTest.shouldRefuseTheFirstStartToAGuest
-RemoteApiTest.shouldRefuseTheWebInterfaceSettingsToAGuest
-RemoteApiTest.shouldRefuseTheOldTokenOnceTheDesktopWindowRenewedIt
 # Java only: a password kept as a char array is wiped once used; Rust strings are not.
 WebUiPartsTest.shouldWipeAPasswordOnceUsed
 # The answers to the desktop window come with its settings (eD2K links, start at login), with the launcher.

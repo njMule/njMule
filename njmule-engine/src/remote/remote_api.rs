@@ -5,6 +5,7 @@
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime};
@@ -74,6 +75,21 @@ pub enum Caller {
     Local,
 }
 
+/// The client of a request, which the server that hosts the API tells in its extensions: the address it came from, or
+/// the client a proxy it trusts names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Client(pub IpAddr);
+
+/// Whether a client that sent a wrong or no token may try again now; each call counts as a failed attempt.
+pub type Guard = Arc<dyn Fn(IpAddr) -> bool + Send + Sync>;
+
+/// The callers that send the API token kept in `config`, whom a host lets in through [`token_holders`].
+#[derive(Clone)]
+pub struct TokenHolders {
+    pub config: PathBuf,
+    pub guard: Guard,
+}
+
 // The web interface's settings, when the API's host has a web interface.
 #[derive(Clone)]
 struct WebInterface(Option<Arc<SettingsFile>>);
@@ -83,6 +99,32 @@ const RATE_SAMPLE: Duration = Duration::from_secs(1);
 // The span of the rates a front end gets when it asks for none.
 const DEFAULT_RATE_SPAN: usize = 600;
 const SECONDS_IN_A_MINUTE: usize = 60;
+
+// What a guest of the web interface may read: the transfers, the searches made, the servers, Kad and the statistics;
+// never the settings, the log, the chats, the shared files or the files' data.
+const GUEST_READS: [&str; 18] = [
+    "getApi",
+    "getStatus",
+    "getLimits",
+    "getRates",
+    "streamEvents",
+    "listDownloads",
+    "getDownload",
+    "getDownloadParts",
+    "listPeerComments",
+    "listSources",
+    "listUploads",
+    "listServers",
+    "getKad",
+    "listKadContacts",
+    "listKadSearches",
+    "listSearches",
+    "getSearchResults",
+    "listCategories",
+];
+
+// The events a guest follows, by the prefixes of their names.
+const GUEST_EVENTS: [&str; 6] = ["started", "stopping", "server", "search", "download", "disk"];
 
 /// The version of the API, which its paths carry.
 pub const VERSION: u32 = 1;
@@ -621,6 +663,12 @@ async fn follows_the_document(request: Request, next: Next) -> Result<Response, 
     let Some(operation) = route.operation(request.method().as_str()) else {
         return Ok(next.run(request).await);
     };
+    if request.extensions().get::<Caller>() == Some(&Caller::Guest) && !GUEST_READS.contains(&operation.id.as_str()) {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "A guest can only look at the transfers, searches, servers, Kad and statistics.",
+        ));
+    }
     let query: HashMap<String, String> =
         form_urlencoded::parse(request.uri().query().unwrap_or_default().as_bytes()).into_owned().collect();
     operation
@@ -721,6 +769,43 @@ fn local_only(caller: Option<Extension<Caller>>) -> Result<(), ApiError> {
     } else {
         Err(ApiError::new(StatusCode::FORBIDDEN, "Only the desktop app's window on njMule's computer can do this."))
     }
+}
+
+/// Lets a caller that sends the API token as a bearer token in as an admin. A wrong or missing token counts as a failed
+/// attempt of its client, which the guard may stop for a while.
+pub async fn token_holders(State(holders): State<TokenHolders>, mut request: Request, next: Next) -> Response {
+    let given = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split_once(' '))
+        .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("Bearer"))
+        .map(|(_, credentials)| credentials.trim().to_owned());
+    let token = match api_token::load(&holders.config) {
+        Ok(token) => token,
+        Err(e) => {
+            tracing::warn!("Cannot read the API token: {e}");
+            return ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "The API token cannot be read.").into_response();
+        }
+    };
+    if let (Some(token), Some(given)) = (&token, &given)
+        && api_token::matches(token, given)
+    {
+        request.extensions_mut().insert(Caller::Admin);
+        return next.run(request).await;
+    }
+    let client = request.extensions().get::<Client>().map_or(IpAddr::V4(Ipv4Addr::LOCALHOST), |client| client.0);
+    let refusal = if !(holders.guard)(client) {
+        ApiError::new(StatusCode::TOO_MANY_REQUESTS, "Too many attempts: wait a minute.")
+    } else if given.is_some() {
+        tracing::warn!("Wrong API token from {client}");
+        ApiError::new(StatusCode::UNAUTHORIZED, "Wrong token.")
+    } else {
+        ApiError::new(StatusCode::UNAUTHORIZED, "Send the API token as a bearer token.")
+    };
+    let mut refused = refusal.into_response();
+    refused.headers_mut().insert(header::WWW_AUTHENTICATE, header::HeaderValue::from_static("Bearer"));
+    refused
 }
 
 fn web_interface(web: WebInterface) -> Result<Arc<SettingsFile>, ApiError> {
@@ -830,16 +915,19 @@ fn number(body: &Value, name: &str) -> Result<u32, ApiError> {
         .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Missing number: {name}")))
 }
 
-/// Name and version of njMule and of the API, and the system it runs on, which a report of a problem needs.
-async fn api_info() -> Json<Value> {
-    let system = sysinfo::System::name().unwrap_or_default();
-    let version = sysinfo::System::os_version().unwrap_or_default();
-    Json(json!({
-        "name": nj_mule_info::NAME,
-        "version": nj_mule_info::version(),
-        "api": VERSION,
-        "system": {"name": system, "version": version, "arch": std::env::consts::ARCH},
-    }))
+/// Name and version of njMule and of the API, and the system it runs on, which a report of a problem needs: for those
+/// who may change things only.
+async fn api_info(caller: Option<Extension<Caller>>) -> Json<Value> {
+    let mut info = serde_json::Map::new();
+    info.insert("name".to_owned(), json!(nj_mule_info::NAME));
+    info.insert("version".to_owned(), json!(nj_mule_info::version()));
+    info.insert("api".to_owned(), json!(VERSION));
+    if caller.map(|Extension(caller)| caller) != Some(Caller::Guest) {
+        let system = sysinfo::System::name().unwrap_or_default();
+        let version = sysinfo::System::os_version().unwrap_or_default();
+        info.insert("system".to_owned(), json!({"name": system, "version": version, "arch": std::env::consts::ARCH}));
+    }
+    Json(Value::Object(info))
 }
 
 async fn status<E: NjMuleEngine>(State(engine): State<E>) -> Result<Json<Value>, ApiError> {
@@ -894,9 +982,10 @@ struct Streams {
 async fn events<E: NjMuleEngine>(
     State(engine): State<E>,
     Extension(streams): Extension<Streams>,
+    caller: Option<Extension<Caller>>,
     Query(parameters): Query<Vec<(String, String)>>,
 ) -> Result<Response, ApiError> {
-    let wanted: Vec<String> = parameters
+    let mut wanted: Vec<String> = parameters
         .iter()
         .filter(|(name, _)| name == "types")
         .flat_map(|(_, value)| value.split(','))
@@ -904,10 +993,26 @@ async fn events<E: NjMuleEngine>(
         .filter(|prefix| !prefix.is_empty())
         .map(str::to_owned)
         .collect();
+    if caller.map(|Extension(caller)| caller) == Some(Caller::Guest) {
+        guest_events(&mut wanted)?;
+    }
     let permit = Arc::clone(&streams.open)
         .try_acquire_owned()
         .map_err(|_| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "Too many event streams."))?;
     Ok(event_streams::stream(&engine, wanted, streams.closing, permit).into_response())
+}
+
+// All the guest's events when it asks for all, else those it asks for among them.
+fn guest_events(wanted: &mut Vec<String>) -> Result<(), ApiError> {
+    if wanted.is_empty() {
+        wanted.extend(GUEST_EVENTS.map(str::to_owned));
+        return Ok(());
+    }
+    wanted.retain(|prefix| GUEST_EVENTS.iter().any(|event| prefix.starts_with(event)));
+    if wanted.is_empty() {
+        return Err(ApiError::new(StatusCode::FORBIDDEN, "A guest cannot follow these events."));
+    }
+    Ok(())
 }
 
 async fn hello<E: NjMuleEngine>(State(engine): State<E>, Path(address): Path<String>) -> Result<Json<Value>, ApiError> {
