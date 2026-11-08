@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{Request, State};
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use rand::Rng;
@@ -23,9 +23,10 @@ use tokio::task::JoinHandle;
 use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::remote::remote_api::{self, ApiError, Caller, Exit};
 use crate::remote::settings_file::SettingsFile;
+use crate::remote::web_ui_settings::WebUiSettings;
 
-// The origins of the desktop shell's own pages (Tauri: Windows, then macOS and Linux); no web page has them.
-const SHELL_ORIGINS: [&str; 3] = ["http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"];
+/// The origins of the desktop shell's own pages (Tauri: Windows, then macOS and Linux); no web page has them.
+pub(crate) const SHELL_ORIGINS: [&str; 3] = ["http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"];
 
 /// A running endpoint.
 pub struct ControlEndpoint {
@@ -38,6 +39,16 @@ pub struct ControlEndpoint {
 impl ControlEndpoint {
     /// Serves the API of `engine` on a free loopback port; `exit` stops njMule when the API is asked to.
     pub async fn start<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> io::Result<Self> {
+        Self::start_with(engine, exit, |_| {}).await
+    }
+
+    /// As [`ControlEndpoint::start`]; `web_changed` hears the web interface's settings the window saves, to follow them
+    /// at once.
+    pub async fn start_with<E: NjMuleEngine>(
+        engine: E,
+        exit: Option<Exit>,
+        web_changed: impl Fn(&WebUiSettings) + Send + Sync + 'static,
+    ) -> io::Result<Self> {
         let mut secret = [0u8; 32];
         rand::rng().fill_bytes(&mut secret);
         let token = data_encoding::BASE64URL_NOPAD.encode(&secret);
@@ -45,8 +56,7 @@ impl ControlEndpoint {
         let address = listener.local_addr()?;
         let url = format!("http://{address}{}", remote_api::PREFIX);
         let (stop, mut stopped) = watch::channel(false);
-        // The engine serves no web interface of its own yet: the window's changes wait in the file.
-        let web = Arc::new(SettingsFile::new(engine.directories().config.clone(), |_| {}));
+        let web = Arc::new(SettingsFile::new(engine.directories().config.clone(), web_changed));
         let app = Router::new()
             .nest(remote_api::PREFIX, remote_api::router(engine, exit, stop.subscribe(), Some(web)))
             .layer(middleware::from_fn_with_state(token.clone(), guard));
@@ -72,13 +82,31 @@ impl ControlEndpoint {
     }
 }
 
-// Lets through the requests that carry the token and come from no web page, or from the desktop shell's.
+/// Tells a browser what a page of the desktop shell may send across origins.
+pub(crate) fn preflight() -> Response {
+    let mut answer = StatusCode::NO_CONTENT.into_response();
+    let headers = answer.headers_mut();
+    headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("GET, POST, PUT, PATCH, DELETE"));
+    headers
+        .insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("Authorization, Content-Type, Accept"));
+    headers.insert(header::ACCESS_CONTROL_MAX_AGE, HeaderValue::from_static("600"));
+    answer
+}
+
+// Lets through the requests that carry the token and come from no web page, or from the desktop shell's, whose pages
+// ask first what they may send.
 async fn guard(State(token): State<String>, request: Request, next: Next) -> Response {
     let origin = request.headers().get(header::ORIGIN).cloned();
     if let Some(origin) = &origin
         && !SHELL_ORIGINS.iter().any(|shell| origin.as_bytes() == shell.as_bytes())
     {
         return ApiError::new(StatusCode::FORBIDDEN, "Origin not allowed").into_response();
+    }
+    if let Some(origin) = origin.clone().filter(|_| request.method() == Method::OPTIONS) {
+        let mut answer = preflight();
+        answer.headers_mut().insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        answer.headers_mut().insert(header::VARY, HeaderValue::from_static("Origin"));
+        return answer;
     }
     let presented = request
         .headers()

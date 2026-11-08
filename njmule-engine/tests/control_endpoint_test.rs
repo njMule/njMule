@@ -184,11 +184,12 @@ async fn should_refuse_a_page_of_another_origin_even_with_the_token() {
 async fn should_let_the_shells_pages_call_across_origins() {
     let running = running().await;
 
-    let (status, answer) =
-        running.call("GET /api/v1/preferences", &[running.bearer(), "Origin: tauri://localhost".to_owned()]).await;
+    let (status, answer) = running.call("OPTIONS /api/v1/downloads", &["Origin: tauri://localhost".to_owned()]).await;
 
-    assert_eq!(status, 200);
-    assert!(answer.to_ascii_lowercase().contains("access-control-allow-origin: tauri://localhost"), "{answer}");
+    assert_eq!(status, 204);
+    let answer = answer.to_ascii_lowercase();
+    assert!(answer.contains("access-control-allow-origin: tauri://localhost"), "{answer}");
+    assert!(answer.contains("access-control-allow-headers: authorization"), "{answer}");
     running.stop().await;
 }
 
