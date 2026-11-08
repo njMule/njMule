@@ -164,6 +164,14 @@ impl NjMuleEngine for FakeEngine {
         self.with(|fake| fake.port_test.clone())
     }
 
+    async fn update_ip_filter(&self, _url: String) -> Result<usize, String> {
+        Ok(1)
+    }
+
+    async fn update_ip_filter_lists(&self, urls: Vec<String>) -> Result<usize, String> {
+        Ok(urls.len())
+    }
+
     async fn status(&self) -> Option<EngineStatus> {
         self.with(|fake| fake.connected).map(status)
     }
@@ -1444,6 +1452,17 @@ async fn should_answer_a_test_of_the_ports_without_waiting_for_its_end() {
 
     api.then_the_status_is(202);
     api.then_the_body_contains(&["\"tcp\":\"open\"", "\"udp\":\"testing\"", "\"done\":false"]);
+}
+
+// The preferences hold no list.
+#[tokio::test]
+async fn should_not_update_the_ip_filter_without_lists() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("POST", "/api/v1/ipfilter/lists", "").await;
+
+    api.then_the_status_is(409);
 }
 
 #[tokio::test]

@@ -254,7 +254,7 @@ impl Network {
                 return;
             }
         };
-        let keys = Keys { user_hash: self.shared.user_hash, identity, blocked: Arc::new(|_| false) };
+        let keys = Keys { user_hash: self.shared.user_hash, identity, blocked: Arc::new(self.ip_blocks()) };
         let socket = match KadSocket::open(local, preferences.udp_port, keys, self.kad.incoming.clone()) {
             Ok(socket) => socket,
             Err(e) if e.kind() == ErrorKind::AddrInUse => {
@@ -297,7 +297,7 @@ impl Network {
             user_hash: self.shared.user_hash,
             options: Arc::new(move || kad_options(watched.borrow().obfuscation)),
             trusted: Arc::new(move |ip| ipv4::is_lan(ip) && !lan.borrow().filter_lan_addresses),
-            blocked: Arc::new(|_| false),
+            blocked: Arc::new(self.ip_blocks()),
             udp_port: socket.port(),
             ipv6: Arc::new(move || crate::net::public_ipv6::find(&routes)),
             comments: Arc::new(|_| None),
@@ -331,6 +331,15 @@ impl Network {
             tcp: running.node.tcp_check_open(),
             udp: running.node.udp_test_open(),
         })
+    }
+
+    /// Drops the contacts the IP filter now refuses; how many.
+    pub(super) fn kad_filters_changed(&mut self) -> usize {
+        self.kad.running.as_mut().map_or(0, |running| running.node.filters_changed())
+    }
+
+    fn ip_blocks(&self) -> impl Fn(u32) -> bool + Send + Sync + 'static {
+        super::filter::ip_test(&self.ip_filter)
     }
 
     /// The UDP port of Kad; 0 while it does not run.

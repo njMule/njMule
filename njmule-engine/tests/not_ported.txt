@@ -150,8 +150,6 @@ RemoteApiTest.shouldKeepTheAddressesOfTheServerLists
 RemoteApiTest.shouldAddTheServersOfAServerMetOfTheEnginesComputer
 RemoteApiTest.shouldRefuseAListFileThatIsNotThere
 RemoteApiTest.shouldAddTheContactsOfANodesDatSent
-# The IP filter comes with the calls on the engine's state.
-RemoteApiTest.shouldNotUpdateTheIpFilterWithoutLists
 # The Rust engine keeps no rating or comment of ours yet: it comes with the files area.
 RemoteApiTest.shouldKeepOurRatingAndCommentOfAFile
 RemoteApiTest.shouldRefuseARatingAboveFive
@@ -199,12 +197,10 @@ RemoteApiTest.shouldTakeTheFriendSlotBackWithNull
 # The engine's API.
 # Java only: the engine's events are a Flow publisher in Java, a broadcast channel in Rust, whose readers ask for no count.
 EngineApiTest.shouldFailASubscriberThatAsksForNothing
-# Lists fetched from addresses or read from files (server.met, nodes.dat, IP filter) come with the calls on servers
-# and the engine's state: the Rust API reads server.met and nodes.dat itself.
+# Server lists and Kad contacts fetched from addresses or read from files come with the calls on servers and Kad: the
+# Rust API reads server.met and nodes.dat itself.
 EngineApiTest.shouldNeverFetchAServerListFromThisMachine
-EngineApiTest.shouldNeverFetchAnIpFilterFromThisMachine
 EngineApiTest.shouldNeverFetchKadContactsFromThisMachine
-EngineApiTest.shouldReadAnIpFilterAtAnAddressWithoutAPathInEitherForm
 EngineApiTest.shouldUpdateTheServerListsAtTheStartWhenThePreferencesAskForIt
 EngineApiTest.shouldKeepTheKadContactsOfANodesDatFile
 EngineApiTest.shouldRefuseAFileThatIsNoNodesDat

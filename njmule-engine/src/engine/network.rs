@@ -15,7 +15,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use tokio::net::{TcpListener, UdpSocket};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
 use crate::api::category::Category;
@@ -46,6 +46,7 @@ use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::download::download_manager::{self, Action, DownloadEvent, DownloadManager, KadLink, ServerLink};
 use crate::download::download_session;
 use crate::download::finished_downloads::FinishedDownloads;
+use crate::engine::ip_filter_lists;
 use crate::engine::port_check::PortCheck;
 use crate::engine::scheduler::{self, Change, Scheduler};
 use crate::engine::totals::{self, Totals};
@@ -62,6 +63,7 @@ use crate::peer::identity_handshake::{Identity, Outcome as Identification};
 use crate::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId, Side};
 use crate::peer::{peer_greetings, peer_software};
 use crate::persist::categories_codec;
+use crate::persist::format::ip_filter_dat::Range;
 use crate::persist::format::nodes_dat;
 use crate::persist::format::server_met::Server;
 use crate::persist::schedule_codec;
@@ -89,6 +91,7 @@ use crate::upload::credits::{self, Credits};
 use crate::upload::upload_manager::{self, BlockRead, UploadManager};
 use crate::upload::uploadable::Uploadable;
 
+mod filter;
 mod kad;
 mod ports;
 
@@ -184,6 +187,8 @@ pub enum Command {
     TestPorts(oneshot::Sender<PortTest>),
     /// The test of our ports running or run last; none before the first.
     PortTest(oneshot::Sender<Option<PortTest>>),
+    /// Replaces the IP filter with these ranges, kept in its file; answers how many it has, or why not.
+    SetIpFilter(Vec<Range>, oneshot::Sender<Result<usize, String>>),
     /// Says hello to a client and runs the identification: told once its outcome is known, the connection closes or
     /// the wait is over.
     Hello(SocketAddr, oneshot::Sender<io::Result<PeerInfo>>),
@@ -243,6 +248,8 @@ enum Tick {
     KadUdpCheckEnded(u32, bool),
     // Kad's socket left its port: Kad starts again.
     KadStart,
+    // The lists of the preferences fetched for the IP filter, or why none could be.
+    IpFilterFetched(Result<Vec<Range>, String>),
 }
 
 /// How often the network interface of the preferences is looked at: it may go, as a VPN that drops, come back, or
@@ -327,6 +334,13 @@ pub struct Network {
     applied: Preferences,
     scheduler: Scheduler,
     since_schedule_check: u32,
+    // The IP filter, which the guard, the server list, the downloads and Kad read from their tasks too.
+    ip_filter: watch::Sender<Arc<IpFilter>>,
+    // When the lists of the preferences are next looked at, whether they are being fetched, and when the last update
+    // that failed was tried.
+    ip_filter_check_at: Instant,
+    ip_filter_updating: bool,
+    ip_filter_tried: Option<Instant>,
     // The test of our ports running or run last, and the Kad node it counts on.
     port_check: Option<PortCheck>,
     port_check_kad: Option<KadRound>,
@@ -444,9 +458,12 @@ pub fn start(
     let watched = shared.preferences.subscribe();
     let min_free = Box::new(move || u64::from(watched.borrow().min_free_space_mib).saturating_mul(1024 * 1024));
     let deleted_links = dirs.config.join(DELETED_LINKS_FILE);
-    // The IP filter is not loaded yet: it blocks none.
+    let ip_filter = watch::Sender::new(Arc::new(filter::load_ip_filter(&dirs.config, &preferences)));
+    let lan = shared.preferences.subscribe();
+    let blocked = filter::ip_test(&ip_filter);
+    servers.filter(move |ip| blocked(ip) || (lan.borrow().filter_lan_addresses && server_list::is_lan(ip)));
     let hooks = download_manager::Hooks {
-        blocked: Box::new(|_| false),
+        blocked: Box::new(filter::ip_test(&ip_filter)),
         keep_link: Box::new(move |link| keep_link(&deleted_links, link)),
     };
     let mut downloads = DownloadManager::open(&temp, &incoming, min_free, disk_in, Box::new(Instant::now), hooks)?;
@@ -478,7 +495,10 @@ pub fn start(
         saving: None,
         udp: None,
         guard: Arc::new(ConnectionGuard::new(
-            || Arc::new(IpFilter::empty()),
+            {
+                let filter = ip_filter.subscribe();
+                move || filter.borrow().clone()
+            },
             |_| false,
             |_| false,
             || Limits::DEFAULT,
@@ -491,6 +511,10 @@ pub fn start(
         applied,
         scheduler,
         since_schedule_check: 0,
+        ip_filter,
+        ip_filter_check_at: started.checked_add(ip_filter_lists::FIRST_CHECK).unwrap_or(started),
+        ip_filter_updating: false,
+        ip_filter_tried: None,
         port_check: None,
         port_check_kad: None,
         binding,
@@ -819,6 +843,9 @@ impl Network {
             Command::PortTest(answer) => {
                 let _ = answer.send(self.port_test());
             }
+            Command::SetIpFilter(ranges, answer) => {
+                let _ = answer.send(self.set_ip_filter(&ranges));
+            }
             Command::Status(answer) => {
                 let _ = answer.send(Box::new(self.status()));
             }
@@ -884,6 +911,9 @@ impl Network {
         };
         if address.ip != 0 && self.is_filtered_lan(address.ip) {
             return Err(ConnectError::Refused(format!("LAN addresses are filtered: {address}")));
+        }
+        if address.ip != 0 && self.blocks(address.ip) {
+            return Err(ConnectError::Refused(format!("The IP filter blocks {address}")));
         }
         let server = self.servers.get(&address).cloned().unwrap_or_else(|| by_hand(&address));
         if self.servers.add(server.clone()) {
@@ -1058,6 +1088,7 @@ impl Network {
                     self.refresh_schedule();
                 }
                 self.tick_port_check();
+                self.check_ip_filter_lists();
             }
             Tick::Rebound(binding, listener, udp) => {
                 if binding == self.binding {
@@ -1068,6 +1099,7 @@ impl Network {
             Tick::PreferencesChanged => self.refresh_schedule(),
             Tick::KadUdpCheckEnded(ip, asked) => self.kad_udp_check_ended(ip, asked),
             Tick::KadStart => self.kad_start_again(),
+            Tick::IpFilterFetched(ranges) => self.ip_filter_fetched(ranges),
             Tick::Search(timer) => {
                 let connected = self.session.server().map(server_list::address_of);
                 let mut effects = Vec::new();
@@ -1203,6 +1235,7 @@ impl Network {
             relay.follow(self.applied.proxy.clone());
         }
         self.kad_preferences(was.kad_enabled, was.udp_port);
+        self.ip_filter_preferences(&was);
     }
 
     // Puts the rule that holds now in force, and applies the preferences it gives.
