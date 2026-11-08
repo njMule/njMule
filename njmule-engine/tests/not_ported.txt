@@ -142,14 +142,9 @@ RemoteApiTest.shouldRefuseToShareWhatIsNoFolder
 RemoteApiTest.shouldStopSharingASharedFolder
 RemoteApiTest.shouldNotFindAFolderThatIsNotShared
 RemoteApiTest.shouldTellWhatAPathNamesOnTheEnginesComputer
-# The Rust API reads server.met and nodes.dat itself and has no server priority, country or list addresses yet: they
-# come with the calls on servers.
+# The Rust engine has no server priority nor country yet: they come with the calls on servers.
 RemoteApiTest.shouldSetThePriorityOfAServer
 RemoteApiTest.shouldGiveTheCountryOfAServerWhenItIsKnown
-RemoteApiTest.shouldKeepTheAddressesOfTheServerLists
-RemoteApiTest.shouldAddTheServersOfAServerMetOfTheEnginesComputer
-RemoteApiTest.shouldRefuseAListFileThatIsNotThere
-RemoteApiTest.shouldAddTheContactsOfANodesDatSent
 # The Rust engine keeps no rating or comment of ours yet: it comes with the files area.
 RemoteApiTest.shouldKeepOurRatingAndCommentOfAFile
 RemoteApiTest.shouldRefuseARatingAboveFive
@@ -197,15 +192,6 @@ RemoteApiTest.shouldTakeTheFriendSlotBackWithNull
 # The engine's API.
 # Java only: the engine's events are a Flow publisher in Java, a broadcast channel in Rust, whose readers ask for no count.
 EngineApiTest.shouldFailASubscriberThatAsksForNothing
-# Server lists and Kad contacts fetched from addresses or read from files come with the calls on servers and Kad: the
-# Rust API reads server.met and nodes.dat itself.
-EngineApiTest.shouldNeverFetchAServerListFromThisMachine
-EngineApiTest.shouldNeverFetchKadContactsFromThisMachine
-EngineApiTest.shouldUpdateTheServerListsAtTheStartWhenThePreferencesAskForIt
-EngineApiTest.shouldKeepTheKadContactsOfANodesDatFile
-EngineApiTest.shouldRefuseAFileThatIsNoNodesDat
-EngineApiTest.shouldKeepTheKadContactsOfANodesDatSent
-EngineApiTest.shouldRefuseAsTheCallersErrorContentThatIsNoNodesDat
 # Bans come with the calls on uploads and bans.
 EngineApiTest.shouldLiftABanOnlyFromAnAddress
 # Shared folders come with the calls on shared files.

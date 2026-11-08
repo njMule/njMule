@@ -23,6 +23,7 @@ use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
+use crate::api::list_source::{ListError, ListSource};
 use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::PeerInfo;
 use crate::api::port_test::PortTest;
@@ -36,8 +37,6 @@ use crate::config::schedule::{Rule, Schedule};
 use crate::engine::NotesError;
 use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::files::shared_files::SharedFile;
-use crate::persist::format::nodes_dat;
-use crate::persist::format::server_met::Server;
 use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::Address;
 
@@ -110,8 +109,14 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
     /// The clients met in the last 90 days, those met last first.
     fn known_clients(&self) -> impl Future<Output = Vec<KnownClient>> + Send;
 
-    /// Adds the servers not known yet; answers how many.
-    fn import_servers(&self, servers: Vec<Server>) -> impl Future<Output = usize> + Send;
+    /// Adds the servers of a server.met not known yet; answers how many.
+    fn add_servers(&self, source: ListSource) -> impl Future<Output = Result<usize, ListError>> + Send;
+
+    /// The addresses of the server lists, which the engine takes again at its start when the preferences ask for it.
+    fn server_list_addresses(&self) -> impl Future<Output = Vec<String>> + Send;
+
+    /// Replaces the addresses of the server lists, http or https ones.
+    fn set_server_list_addresses(&self, addresses: Vec<String>) -> impl Future<Output = Result<(), String>> + Send;
 
     /// Connects to the server at `address` (added to the list if new), or to any known one.
     fn connect_server(&self, address: Option<Address>) -> impl Future<Output = Result<(), ConnectError>> + Send;
@@ -148,8 +153,8 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
     /// Joins Kad through the node at `node`.
     fn bootstrap_kad(&self, node: SocketAddrV4) -> impl Future<Output = ()> + Send;
 
-    /// Adds Kad contacts to `nodes.dat` and to Kad while it runs; answers how many were new.
-    fn add_kad_contacts(&self, contents: nodes_dat::Contents) -> impl Future<Output = io::Result<usize>> + Send;
+    /// Adds the Kad contacts of a nodes.dat to ours and to Kad while it runs; answers how many were new.
+    fn add_kad_contacts(&self, source: ListSource) -> impl Future<Output = Result<usize, ListError>> + Send;
 
     /// Starts a search where `scope` says, or where the networks connected allow without one; answers its id.
     fn start_search(&self, query: String, scope: Option<Scope>)

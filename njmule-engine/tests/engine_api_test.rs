@@ -4,7 +4,13 @@
 //! The examples of the Java EngineApiTest that the Rust engine answers, under their names: the API's calls through a
 //! running engine.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 
 mod free_port;
 
@@ -15,6 +21,7 @@ use njmule_engine::api::category::Category;
 use njmule_engine::api::download_info::{DownloadPriority, DownloadStatus};
 use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::engine_event::EngineEvent;
+use njmule_engine::api::list_source::{ListError, ListSource};
 use njmule_engine::api::log_line::Level;
 use njmule_engine::api::nj_mule_engine::Subscription;
 use njmule_engine::api::search_result::SearchResult;
@@ -22,7 +29,9 @@ use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::config::schedule::{DayOfWeek, Rule, Schedule};
 use njmule_engine::engine::Engine;
 use njmule_engine::engine::ip_filter_lists;
+use njmule_engine::kad::uint128::UInt128;
 use njmule_engine::persist::format::ip_filter_dat::Range;
+use njmule_engine::persist::format::nodes_dat::{self, Contact, UdpKey};
 use njmule_engine::persist::schedule_codec;
 use strum::VariantArray;
 
@@ -150,6 +159,86 @@ async fn should_send_nowhere_what_is_logged_after_the_end() {
 }
 
 #[tokio::test]
+async fn should_never_fetch_a_server_list_from_this_machine() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+
+    api.when_a_server_list_is_fetched_from(LOCAL_LIST).await;
+
+    api.then_the_list_fails_with("local or private");
+}
+
+#[tokio::test]
+async fn should_never_fetch_kad_contacts_from_this_machine() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+
+    api.when_kad_contacts_are_fetched_from(LOCAL_LIST).await;
+
+    api.then_the_list_fails_with("local or private");
+}
+
+#[tokio::test]
+async fn should_keep_the_kad_contacts_of_a_nodes_dat_file() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_a_nodes_dat_file_with_contacts(2);
+
+    api.when_the_kad_contacts_of_the_file_are_added().await;
+
+    api.then_the_new_contacts_are(2);
+    api.then_our_nodes_dat_holds(2);
+}
+
+#[tokio::test]
+async fn should_refuse_a_file_that_is_no_nodes_dat() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_a_file_of(&[1, 2, 3]);
+
+    api.when_the_kad_contacts_of_the_file_are_added().await;
+
+    api.then_the_list_fails_with("not a nodes.dat");
+}
+
+#[tokio::test]
+async fn should_keep_the_kad_contacts_of_a_nodes_dat_sent() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_a_nodes_dat_file_with_contacts(2);
+
+    api.when_the_kad_contacts_of_the_content_are_added().await;
+
+    api.then_the_new_contacts_are(2);
+    api.then_our_nodes_dat_holds(2);
+}
+
+#[tokio::test]
+async fn should_refuse_as_the_callers_error_content_that_is_no_nodes_dat() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_a_file_of(&[1, 2, 3]);
+
+    api.when_the_kad_contacts_of_the_content_are_added().await;
+
+    api.then_the_content_is_refused_as_the_callers_error();
+}
+
+#[tokio::test]
+async fn should_update_the_server_lists_at_the_start_when_the_preferences_ask_for_it() {
+    let mut api = EngineApi::new();
+    api.given_a_profile_with("server.updateAtStart=true\n");
+    api.given_the_server_list_addresses_file(
+        "http://127.0.0.1:9/server.met\nftp://lists.example/server.met\nhttp://bad host/server.met\n",
+    );
+
+    api.when_the_engine_starts().await;
+
+    api.then_the_server_list_addresses_are_only_the_web_ones(&["http://127.0.0.1:9/server.met"]).await;
+    api.then_the_log_warns("Cannot update the server list from 127.0.0.1").await;
+}
+
+#[tokio::test]
 async fn should_never_fetch_an_ip_filter_from_this_machine() {
     let mut api = EngineApi::new();
     api.given_a_running_engine().await;
@@ -208,6 +297,20 @@ async fn should_refuse_a_schedule_that_cannot_be_saved() {
     api.when_the_schedule_is_emptied().await;
 
     api.then_the_schedule_is_refused();
+}
+
+// A contact of a public address, its id and address told by `n`.
+fn contact(n: u8) -> Contact {
+    Contact {
+        id: UInt128(u128::from(n)),
+        ip: u32::from_be_bytes([81, 2, 3, n]),
+        udp_port: 4672,
+        tcp_port: 4662,
+        version: 8,
+        contact_type: 0,
+        udp_key: UdpKey::default(),
+        verified: false,
+    }
 }
 
 fn stop_films() -> Rule {
@@ -285,6 +388,9 @@ struct EngineApi {
     slow: Option<Recorder>,
     schedule_update: Option<Result<Schedule, String>>,
     fetched: Option<Result<usize, String>>,
+    listed: Option<Result<usize, ListError>>,
+    given_preferences: String,
+    file: Vec<u8>,
     list: Vec<u8>,
     ranges: Vec<Range>,
 }
@@ -302,6 +408,9 @@ impl EngineApi {
             slow: None,
             schedule_update: None,
             fetched: None,
+            listed: None,
+            given_preferences: String::new(),
+            file: Vec::new(),
             list: Vec::new(),
             ranges: Vec::new(),
         }
@@ -511,6 +620,83 @@ impl EngineApi {
 
     fn then_the_last_event_is_the_stop(&self) {
         assert_eq!(self.recorder.as_ref().unwrap().events.last(), Some(&EngineEvent::Stopping));
+    }
+
+    fn given_a_profile_with(&mut self, preferences: &str) {
+        preferences.clone_into(&mut self.given_preferences);
+    }
+
+    fn given_the_server_list_addresses_file(&self, text: &str) {
+        let config = AppDirectories::under_root(self.profile.path()).unwrap().config;
+        fs::create_dir_all(&config).unwrap();
+        fs::write(config.join("addresses.dat"), text).unwrap();
+    }
+
+    fn given_a_nodes_dat_file_with_contacts(&mut self, count: u8) {
+        let contacts: Vec<Contact> = (1..=count).map(contact).collect();
+        self.given_a_file_of(&nodes_dat::write(&contacts).unwrap());
+    }
+
+    fn given_a_file_of(&mut self, data: &[u8]) {
+        self.file = data.to_vec();
+        fs::write(self.list_file(), data).unwrap();
+    }
+
+    async fn when_the_engine_starts(&mut self) {
+        let preferences = self.given_preferences.clone();
+        self.start(&preferences).await;
+        self.recorder = Some(Recorder::of(&self.engine()));
+    }
+
+    async fn when_a_server_list_is_fetched_from(&mut self, url: &str) {
+        self.listed = Some(within(self.engine().add_servers(ListSource::Web(url.to_owned()))).await);
+    }
+
+    async fn when_kad_contacts_are_fetched_from(&mut self, url: &str) {
+        self.listed = Some(within(self.engine().add_kad_contacts(ListSource::Web(url.to_owned()))).await);
+    }
+
+    async fn when_the_kad_contacts_of_the_file_are_added(&mut self) {
+        let file = ListSource::File(self.list_file());
+        self.listed = Some(within(self.engine().add_kad_contacts(file)).await);
+    }
+
+    async fn when_the_kad_contacts_of_the_content_are_added(&mut self) {
+        let content = ListSource::Data(self.file.clone());
+        self.listed = Some(within(self.engine().add_kad_contacts(content)).await);
+    }
+
+    fn then_the_list_fails_with(&self, text: &str) {
+        match self.listed.as_ref().unwrap() {
+            Err(ListError::Failed(reason)) => assert!(reason.contains(text), "{reason}"),
+            other => panic!("not failed: {other:?}"),
+        }
+    }
+
+    fn then_the_content_is_refused_as_the_callers_error(&self) {
+        assert!(matches!(self.listed, Some(Err(ListError::NotAList(_)))), "{:?}", self.listed);
+    }
+
+    fn then_the_new_contacts_are(&self, count: usize) {
+        assert_eq!(self.listed, Some(Ok(count)));
+    }
+
+    fn then_our_nodes_dat_holds(&self, count: usize) {
+        let ours = fs::read(self.engine().directories().config.join("nodes.dat")).unwrap();
+        assert_eq!(nodes_dat::read(&ours).unwrap().contacts.len(), count);
+    }
+
+    async fn then_the_server_list_addresses_are_only_the_web_ones(&self, addresses: &[&str]) {
+        assert_eq!(within(self.engine().server_list_addresses()).await, addresses);
+    }
+
+    async fn then_the_log_warns(&mut self, start: &str) {
+        assert!(self.recorder.as_mut().unwrap().await_log(start).await, "{start}");
+    }
+
+    // A list the user picked, outside the profile's folders.
+    fn list_file(&self) -> std::path::PathBuf {
+        self.profile.path().join("picked.dat")
     }
 
     fn given_the_ip_filter_list(&mut self, list: &str) {
