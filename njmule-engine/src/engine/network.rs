@@ -78,7 +78,7 @@ use crate::persist::schedule_codec;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams;
 use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint};
-use crate::protocol::packet::opcodes::{client, server_udp};
+use crate::protocol::packet::opcodes::{client, extended, server_udp};
 use crate::protocol::packet::{Packet, frame_limits, protocol};
 use crate::protocol::tag::server_tag;
 use crate::search::search_manager::{
@@ -356,7 +356,13 @@ struct Peer {
     upload_for: Option<[u8; 16]>,
     // Held while the connection lives: the guard counts it.
     _permit: Option<Permit>,
+    // What a friend asks that others may not, held until its identity is proven or fails: user hashes travel in clear,
+    // and clients ask for our files or write before their signature comes.
+    held: Vec<Packet>,
 }
+
+/// Packets of a friend held at most while its identity is being proven.
+const MAX_HELD: usize = 16;
 
 // A hello of ours asked through the API: the client's answer, then the identification.
 struct Probe {
@@ -1938,6 +1944,7 @@ impl Network {
                 called_back: None,
                 upload_for: None,
                 _permit: permit,
+                held: Vec::new(),
             },
         );
         handle
@@ -2031,9 +2038,23 @@ impl Network {
             self.buddy_adopt(&handle, &hello);
             return;
         };
-        if let Some(session) = self.peers.get_mut(&link).and_then(|peer| peer.identity.as_mut())
-            && identification(session, self.uploads.credits_mut(), &handle, packet)
-        {
+        if let Some(session) = self.peers.get_mut(&link).and_then(|peer| peer.identity.as_mut()) {
+            let settled = session.is_settled();
+            if identification(session, self.uploads.credits_mut(), &handle, packet) {
+                if !settled
+                    && self.peers.get(&link).and_then(|peer| peer.identity.as_ref()).is_some_and(Session::is_settled)
+                {
+                    self.identity_settled(link, ours);
+                }
+                return;
+            }
+        }
+        if self.waits_for_proof(link, &hello, packet) {
+            if let Some(peer) = self.peers.get_mut(&link)
+                && peer.held.len() < MAX_HELD
+            {
+                peer.held.push(packet.clone());
+            }
             return;
         }
         if messaging::is_chat(packet) && self.chat_incoming(link, handle.remote(), &hello, packet) {
@@ -2095,6 +2116,33 @@ impl Network {
     }
 
     // Whether credits apply to the client of a link: its identity proven, or it does not take part.
+    // What a friend may do that others may not waits until its key is proven: browsing our files, and chatting.
+    fn waits_for_proof(&self, link: LinkId, hello: &Hello, packet: &Packet) -> bool {
+        let for_friends = match packet.protocol() {
+            protocol::EDONKEY => matches!(
+                packet.opcode(),
+                client::ASKSHAREDFILES | client::ASKSHAREDDIRS | client::ASKSHAREDFILESDIR | client::MESSAGE
+            ),
+            protocol::EMULE => matches!(packet.opcode(), extended::CHATCAPTCHAREQ | extended::CHATCAPTCHARES),
+            _ => false,
+        };
+        for_friends
+            && self
+                .peers
+                .get(&link)
+                .and_then(|peer| peer.identity.as_ref())
+                .is_some_and(|session| session.trust() == Trust::Needed)
+            && self.friends.contains(&hello.user_hash)
+    }
+
+    // The identity of a client is proven or failed: what it was held back from goes on.
+    fn identity_settled(&mut self, link: LinkId, ours: &Hello) {
+        let held = self.peers.get_mut(&link).map(|peer| std::mem::take(&mut peer.held)).unwrap_or_default();
+        for packet in held {
+            self.peer_packet(link, &packet, ours);
+        }
+    }
+
     fn trusted(&self, link: LinkId) -> bool {
         self.peers
             .get(&link)

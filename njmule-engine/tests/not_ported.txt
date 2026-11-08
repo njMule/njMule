@@ -121,10 +121,6 @@ RemoteApiTest.shouldGiveTheApiTokenToTheDesktopWindow
 RemoteApiTest.shouldRefuseTheApiTokenToABrowser
 RemoteApiTest.shouldRefuseTheOldTokenOnceTheDesktopWindowRenewedIt
 
-# The chats.
-# A friend's message waits for the proof of its key with the next piece: shown before it, it would be filtered out.
-ChatTest.shouldLetOnlyAFriendThatProvesItsKeyGetPastFriendsOnly
-
 # The engine's API.
 # Java only: the engine's events are a Flow publisher in Java, a broadcast channel in Rust, whose readers ask for no count.
 EngineApiTest.shouldFailASubscriberThatAsksForNothing
