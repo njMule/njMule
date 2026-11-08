@@ -86,6 +86,13 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
     /// The test of our ports running or run last; none before the first.
     fn port_test(&self) -> impl Future<Output = Option<PortTest>> + Send;
 
+    /// Replaces the IP filter with the list at `url`, an http or https address; answers how many ranges it has.
+    fn update_ip_filter(&self, url: String) -> impl Future<Output = Result<usize, String>> + Send;
+
+    /// Replaces the IP filter with the lists at `urls` joined into one; a list that cannot be read is left out and told
+    /// in the log. Answers how many ranges the filter has.
+    fn update_ip_filter_lists(&self, urls: Vec<String>) -> impl Future<Output = Result<usize, String>> + Send;
+
     /// Changes the preferences named in `changes`, all or none, and saves them.
     fn update_preferences(&self, changes: &BTreeMap<String, String>) -> Result<Preferences, String>;
 

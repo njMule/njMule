@@ -15,6 +15,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use axum::{Extension, Json, Router};
+use reqwest::Url;
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
 
@@ -30,6 +31,7 @@ use crate::config::bind_interface;
 use crate::config::preferences::Preferences;
 use crate::config::schedule::Schedule;
 use crate::engine::NotesError;
+use crate::engine::ip_filter_lists;
 use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::persist::format::{nodes_dat, server_met};
 use crate::remote::rate_history::{self, RateHistory};
@@ -85,6 +87,8 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
         )
         .route("/schedule", get(schedule::<E>).put(set_schedule::<E>))
         .route("/ports/test", get(port_test::<E>).post(test_ports::<E>))
+        .route("/ipfilter", post(update_ip_filter::<E>))
+        .route("/ipfilter/lists", post(update_ip_filter_lists::<E>))
         .route("/interfaces", get(network_interfaces))
         .route("/update", get(|| async { Json(api_json::update()) }))
         .route("/events", get(events::<E>))
@@ -312,6 +316,41 @@ async fn test_ports<E: NjMuleEngine>(State(engine): State<E>) -> Result<(StatusC
         .await
         .ok_or_else(|| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "The engine is stopping."))?;
     Ok((StatusCode::ACCEPTED, Json(api_json::port_test(&test))))
+}
+
+/// Replaces the IP filter with the list at an address.
+async fn update_ip_filter<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let url = web_address(text(&body, "url")?)?;
+    let added = engine.update_ip_filter(url).await.map_err(cannot_now)?;
+    Ok(Json(json!({ "added": added })))
+}
+
+/// Replaces the IP filter with the lists of the preferences, joined into one.
+async fn update_ip_filter_lists<E: NjMuleEngine>(State(engine): State<E>) -> Result<Json<Value>, ApiError> {
+    let lists = ip_filter_lists::addresses(&engine.preferences().ip_filter_lists)
+        .iter()
+        .map(|line| web_address(line))
+        .collect::<Result<Vec<_>, _>>()?;
+    if lists.is_empty() {
+        return Err(ApiError::new(StatusCode::CONFLICT, "No IP filter list is set."));
+    }
+    let added = engine.update_ip_filter_lists(lists).await.map_err(cannot_now)?;
+    Ok(Json(json!({ "added": added })))
+}
+
+fn web_address(text: &str) -> Result<String, ApiError> {
+    let text = text.trim();
+    let url =
+        Url::parse(text).map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, format!("Not an address: {text}")))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Only http and https addresses are taken."));
+    }
+    Ok(text.to_owned())
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn cannot_now(reason: String) -> ApiError {
+    ApiError::new(StatusCode::SERVICE_UNAVAILABLE, format!("The engine cannot do it now: {reason}"))
 }
 
 /// Stops njMule, after the answer.

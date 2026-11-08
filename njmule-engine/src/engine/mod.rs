@@ -5,6 +5,7 @@
 //! front ends follow.
 
 pub mod event_replay;
+pub mod ip_filter_lists;
 pub mod network;
 pub mod port_check;
 pub mod scheduler;
@@ -54,6 +55,7 @@ use crate::engine::event_replay::EventReplay;
 use crate::engine::network::{Command, ConnectError, DownloadChange, MoreAnswer};
 use crate::files::shared_files::SharedFile;
 use crate::net::routes::Routes;
+use crate::net::web_lists::WebLists;
 use crate::peer::{peer_greetings, shared_files_browser};
 use crate::persist::format::nodes_dat;
 use crate::persist::format::server_met::Server;
@@ -643,6 +645,28 @@ impl Engine {
         self.ask(Command::PortTest).await.flatten()
     }
 
+    /// Replaces the IP filter with the list at `url`, an http or https address; answers how many ranges it has. Lists
+    /// are fetched from public addresses only.
+    pub async fn update_ip_filter(&self, url: String) -> Result<usize, String> {
+        let web = WebLists::create(self.shared.routes.clone());
+        let ranges = ip_filter_lists::fetch(&web, &url).await?;
+        self.ask(|reply| Command::SetIpFilter(ranges, reply))
+            .await
+            .unwrap_or_else(|| Err("the engine is stopping".to_owned()))
+    }
+
+    /// Replaces the IP filter with the lists at `urls` joined into one; a list that cannot be read is left out and told
+    /// in the log. Answers how many ranges the filter has.
+    pub async fn update_ip_filter_lists(&self, urls: Vec<String>) -> Result<usize, String> {
+        let web = WebLists::create(self.shared.routes.clone());
+        let shared = Arc::clone(&self.shared);
+        let ranges =
+            ip_filter_lists::fetch_joined(&web, &urls, |warning| shared.user_log(Level::Warning, warning)).await?;
+        self.ask(|reply| Command::SetIpFilter(ranges, reply))
+            .await
+            .unwrap_or_else(|| Err("the engine is stopping".to_owned()))
+    }
+
     /// What the engine is doing now; none once it stopped.
     pub async fn status(&self) -> Option<EngineStatus> {
         self.ask(Command::Status).await.map(|status| *status)
@@ -711,6 +735,14 @@ impl NjMuleEngine for Engine {
 
     fn port_test(&self) -> impl Future<Output = Option<PortTest>> + Send {
         Engine::port_test(self)
+    }
+
+    fn update_ip_filter(&self, url: String) -> impl Future<Output = Result<usize, String>> + Send {
+        Engine::update_ip_filter(self, url)
+    }
+
+    fn update_ip_filter_lists(&self, urls: Vec<String>) -> impl Future<Output = Result<usize, String>> + Send {
+        Engine::update_ip_filter_lists(self, urls)
     }
 
     fn preferences(&self) -> Preferences {

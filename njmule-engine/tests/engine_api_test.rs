@@ -21,6 +21,8 @@ use njmule_engine::api::search_result::SearchResult;
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::config::schedule::{DayOfWeek, Rule, Schedule};
 use njmule_engine::engine::Engine;
+use njmule_engine::engine::ip_filter_lists;
+use njmule_engine::persist::format::ip_filter_dat::Range;
 use njmule_engine::persist::schedule_codec;
 use strum::VariantArray;
 
@@ -29,6 +31,7 @@ const FILM: [u8; 16] = [0xf3; 16];
 const WAIT: Duration = Duration::from_secs(5);
 const FILMS: (u32, &str) = (1, "Films");
 const MUSIC: (u32, &str) = (2, "Music");
+const LOCAL_LIST: &str = "http://127.0.0.1:9/list";
 
 #[tokio::test]
 async fn should_swap_sources_and_take_them_by_itself_through_the_engine() {
@@ -147,6 +150,26 @@ async fn should_send_nowhere_what_is_logged_after_the_end() {
 }
 
 #[tokio::test]
+async fn should_never_fetch_an_ip_filter_from_this_machine() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+
+    api.when_an_ip_filter_is_fetched_from(LOCAL_LIST).await;
+
+    api.then_the_fetch_fails_with("local or private");
+}
+
+#[test]
+fn should_read_an_ip_filter_at_an_address_without_a_path_in_either_form() {
+    let mut api = EngineApi::new();
+    api.given_the_ip_filter_list("1.2.3.4 - 1.2.3.5 , 100 , one\n");
+
+    api.when_the_list_is_read_from("urn:lists:ipfilter");
+
+    api.then_the_only_range_is_described_as("one");
+}
+
+#[tokio::test]
 async fn should_let_rules_go_of_deleted_categories_and_keep_the_active_rule_active() {
     let mut api = EngineApi::new();
     api.given_a_running_engine().await;
@@ -261,6 +284,9 @@ struct EngineApi {
     recorder: Option<Recorder>,
     slow: Option<Recorder>,
     schedule_update: Option<Result<Schedule, String>>,
+    fetched: Option<Result<usize, String>>,
+    list: Vec<u8>,
+    ranges: Vec<Range>,
 }
 
 impl EngineApi {
@@ -275,6 +301,9 @@ impl EngineApi {
             recorder: None,
             slow: None,
             schedule_update: None,
+            fetched: None,
+            list: Vec::new(),
+            ranges: Vec::new(),
         }
     }
 
@@ -482,6 +511,28 @@ impl EngineApi {
 
     fn then_the_last_event_is_the_stop(&self) {
         assert_eq!(self.recorder.as_ref().unwrap().events.last(), Some(&EngineEvent::Stopping));
+    }
+
+    fn given_the_ip_filter_list(&mut self, list: &str) {
+        self.list = list.as_bytes().to_vec();
+    }
+
+    async fn when_an_ip_filter_is_fetched_from(&mut self, url: &str) {
+        self.fetched = Some(within(self.engine().update_ip_filter(url.to_owned())).await);
+    }
+
+    fn when_the_list_is_read_from(&mut self, address: &str) {
+        self.ranges = ip_filter_lists::ip_ranges(&self.list, address);
+    }
+
+    fn then_the_fetch_fails_with(&self, text: &str) {
+        let failure = self.fetched.as_ref().unwrap().as_ref().unwrap_err();
+        assert!(failure.contains(text), "{failure}");
+    }
+
+    fn then_the_only_range_is_described_as(&self, description: &str) {
+        assert_eq!(self.ranges.len(), 1);
+        assert_eq!(self.ranges[0].description, description);
     }
 
     async fn given_the_categories(&self, categories: &[(u32, &str)]) {
