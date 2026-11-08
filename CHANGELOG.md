@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-08
+
 ### Fixed
 
 - The window no longer stays empty while njMule starts: it says *Starting njMule…* until the
