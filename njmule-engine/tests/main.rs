@@ -70,6 +70,7 @@ mod emule_notifier_import_test;
 mod emule_profile_test;
 mod engine_api_test;
 mod engine_schedule_test;
+mod engine_test;
 mod event_commands_codec_test;
 mod event_commands_test;
 mod event_replay_test;

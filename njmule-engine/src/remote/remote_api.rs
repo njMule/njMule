@@ -83,6 +83,11 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Re
         .route("/categories", get(categories::<E>).put(set_categories::<E>))
         .route("/shutdown", post(shutdown))
         .route("/status", get(status::<E>))
+        .route(
+            "/setup",
+            get(|State(engine): State<E>| async move { Json(json!({"pending": engine.setup_pending().await})) }),
+        )
+        .route("/setup/done", post(finish_setup::<E>))
         .route("/preferences", get(preferences::<E>).patch(update_preferences::<E>))
         .route(
             "/preferences/passwords",
@@ -713,6 +718,11 @@ async fn set_server_lists<E: NjMuleEngine>(State(engine): State<E>, Body(body): 
         .collect::<Result<Vec<_>, _>>()?;
     engine.set_server_list_addresses(addresses.clone()).await.map_err(cannot_now)?;
     Ok(Json(json!({"addresses": addresses})))
+}
+
+async fn finish_setup<E: NjMuleEngine>(State(engine): State<E>) -> Result<Json<Value>, ApiError> {
+    engine.finish_setup().await.map_err(|reason| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, reason))?;
+    Ok(Json(api_json::ok()))
 }
 
 async fn recheck_kad<E: NjMuleEngine>(State(engine): State<E>) -> Result<Json<Value>, ApiError> {

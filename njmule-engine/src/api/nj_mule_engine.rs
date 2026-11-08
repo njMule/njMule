@@ -57,6 +57,12 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
     /// The folders of the profile.
     fn directories(&self) -> AppDirectories;
 
+    /// Whether njMule waits for the questions of its first start.
+    fn setup_pending(&self) -> impl Future<Output = bool> + Send;
+
+    /// Marks the questions of the first start answered or put aside.
+    fn finish_setup(&self) -> impl Future<Output = Result<(), String>> + Send;
+
     /// What the engine is doing now; none once it stopped.
     fn status(&self) -> impl Future<Output = Option<EngineStatus>> + Send;
 

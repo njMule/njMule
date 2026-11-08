@@ -15,6 +15,7 @@
 use crate::free_port;
 
 use std::fs;
+use std::io;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::time::{Duration, Instant};
 
@@ -116,6 +117,19 @@ async fn should_rate_nothing_as_spam_with_the_spam_filter_off() {
 
 fn result(hash: [u8; 16], name: &str) -> SearchResult {
     SearchResult::new(hash, name, 10, 1, Some(0), None)
+}
+
+#[tokio::test]
+async fn should_let_go_of_the_configuration_after_a_start_that_fails() {
+    let mut api = EngineApi::new();
+    api.given_a_profile_with("");
+    api.given_a_temporary_folder_that_is_a_file();
+    api.given_a_start_failed().await;
+    api.given_the_saved_preferences_are_back();
+
+    api.when_the_engine_starts_and_stops().await;
+
+    api.then_no_exception_occurred();
 }
 
 #[tokio::test]
@@ -453,6 +467,8 @@ struct EngineApi {
     file: Vec<u8>,
     list: Vec<u8>,
     ranges: Vec<Range>,
+    saved_preferences: String,
+    started: Option<io::Result<()>>,
 }
 
 impl EngineApi {
@@ -476,6 +492,8 @@ impl EngineApi {
             file: Vec::new(),
             list: Vec::new(),
             ranges: Vec::new(),
+            saved_preferences: String::new(),
+            started: None,
         }
     }
 
@@ -510,11 +528,49 @@ impl EngineApi {
     }
 
     async fn start(&mut self, preferences: &str) {
+        let dirs = self.profile_with(preferences);
+        self.engine = Some(Engine::start(dirs).await.unwrap());
+    }
+
+    fn profile_with(&self, preferences: &str) -> AppDirectories {
         let dirs = AppDirectories::under_root(self.profile.path()).unwrap();
         fs::create_dir_all(&dirs.config).unwrap();
         let preferences = format!("net.tcpPort={}\nnet.kad.enabled=false\n{preferences}", free_port::free_port());
         fs::write(dirs.config.join("njmule.properties"), preferences).unwrap();
-        self.engine = Some(Engine::start(dirs).await.unwrap());
+        dirs
+    }
+
+    fn given_a_temporary_folder_that_is_a_file(&mut self) {
+        let not_a_folder = self.profile.path().join("not-a-folder");
+        fs::write(&not_a_folder, "x").unwrap();
+        self.saved_preferences = self.given_preferences.clone();
+        // The properties take a slash on every system, where a backslash escapes.
+        let path = not_a_folder.to_string_lossy().replace('\\', "/");
+        self.given_preferences = format!("{}dirs.temp={path}\n", self.given_preferences);
+    }
+
+    async fn given_a_start_failed(&mut self) {
+        self.when_the_engine_starts_and_stops().await;
+        assert!(matches!(self.started, Some(Err(_))), "{:?}", self.started);
+    }
+
+    fn given_the_saved_preferences_are_back(&mut self) {
+        self.given_preferences = self.saved_preferences.clone();
+    }
+
+    async fn when_the_engine_starts_and_stops(&mut self) {
+        let dirs = self.profile_with(&self.given_preferences);
+        self.started = Some(match within(Engine::start(dirs)).await {
+            Ok(engine) => {
+                within(engine.stop()).await;
+                Ok(())
+            }
+            Err(e) => Err(e),
+        });
+    }
+
+    fn then_no_exception_occurred(&self) {
+        assert!(matches!(self.started, Some(Ok(()))), "{:?}", self.started);
     }
 
     async fn given_a_download_without_sources(&mut self) {
