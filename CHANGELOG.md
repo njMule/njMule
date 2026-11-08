@@ -10,6 +10,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- The web interface no longer remembers every missing file a browser asks for: anyone who could
+  reach its port, even before logging in, could fill njMule's memory with made-up names.
+
 ## [0.3.3] - 2026-11-08
 
 ### Fixed

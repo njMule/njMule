@@ -93,7 +93,8 @@ final class WebApp {
         }
     }
 
-    private final ConcurrentMap<String, Optional<File>> files = new ConcurrentHashMap<>();
+    // The files found only: a client asking for names the app has not cannot fill it.
+    private final ConcurrentMap<String, File> files = new ConcurrentHashMap<>();
     private final String page;
 
     WebApp() {
@@ -109,7 +110,13 @@ final class WebApp {
         if (!servable(path)) {
             return Optional.empty();
         }
-        return this.files.computeIfAbsent(path, WebApp::load);
+        // A null from the mapping keeps nothing.
+        return Optional.ofNullable(this.files.computeIfAbsent(path, p -> load(p).orElse(null)));
+    }
+
+    /** The files kept so far. */
+    int keptFiles() {
+        return this.files.size();
     }
 
     private static Optional<File> load(String path) {
