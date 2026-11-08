@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use njmule_engine::api::download_info::DownloadPriority;
 use njmule_engine::api::ed2k_link::FileLink;
+use njmule_engine::api::file_comment::FileComment;
 use njmule_engine::api::upload_priority::UploadPriority;
 use njmule_engine::files::hash::ed2k::{self, PARTSIZE};
 use njmule_engine::files::part_file;
@@ -23,6 +24,7 @@ use njmule_engine::net::tcp_connection::{TcpConnection, read_packet, write_packe
 use njmule_engine::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId};
 use njmule_engine::protocol::ed2k::client_messages::{self, FileStatus, PartStatus, Range, RequestParts, SendingPart};
 use njmule_engine::protocol::ed2k::client_reasks::{self, Ack, Ping};
+use njmule_engine::protocol::ed2k::file_description;
 use njmule_engine::protocol::ed2k::hello::{Hello, Ours};
 use njmule_engine::protocol::ed2k::low_id_messages::UdpCheckRequest;
 use njmule_engine::protocol::ed2k::source_exchange as exchange;
@@ -332,6 +334,9 @@ struct Uploads {
     download: [u8; 16],
     last_part: Vec<u8>,
     our_ipv6: Option<Ipv6Addr>,
+    // Our comment of every file, and what a client heard meanwhile.
+    comment: Option<FileComment>,
+    heard: Vec<Packet>,
     // What the client followed was told last: a file's status, a block, sources.
     status: Option<FileStatus>,
     block: Option<SendingPart>,
@@ -373,6 +378,8 @@ impl Uploads {
             download: [0; 16],
             last_part: Vec::new(),
             our_ipv6: None,
+            comment: None,
+            heard: Vec::new(),
             status: None,
             block: None,
             told_sources: Vec::new(),
@@ -447,6 +454,8 @@ impl Uploads {
         let priorities = Arc::clone(&self.priorities);
         manager.set_priorities(move |hash| priorities.lock().unwrap().get(hash).copied().unwrap_or_default());
         manager.count_in(Box::new(Counted(Arc::clone(&self.counted))));
+        let comment = self.comment.clone();
+        manager.set_comments(move |_| comment.clone());
         let plain_ours = Hello::of(OURS, 0, 4662, &plain("test"), 0, 0);
         let ours = match self.our_ipv6 {
             Some(address) => plain_ours.with_ipv6(&address),
@@ -881,6 +890,42 @@ impl Uploads {
 
     fn then_the_answer_is_plain(&self, expected: Packet) {
         assert_eq!(self.reask_answer, Some(ReaskAnswer { packet: expected, obfuscate_for: None }));
+    }
+
+    // Our comment of a file.
+
+    fn given_our_comment_of_the_file(&mut self, text: &str, rating: u8) {
+        self.comment = Some(FileComment::of(text, rating));
+    }
+
+    // A client of comment version 1, which takes them.
+    async fn given_a_client_taking_comments_connected(&mut self, seed: u8) {
+        let ours = Ours { misc_options1: 1 << 4, ..plain("comments") };
+        let hello = Hello::of([seed; 16], 0, 5000 + u16::from(seed), &ours, 0, 0);
+        let client = Downloader::connect(self.port, &hello).await;
+        self.clients.insert(seed, client);
+        self.hellos.insert(seed, hello);
+        self.client = seed;
+    }
+
+    // Each answer comes before the comment told with it: the third answer comes after whatever the second ask told.
+    async fn when_the_client_asks_for_the_file_by_name_three_times(&mut self) {
+        let file = self.file.as_ref().unwrap().hash;
+        let client = self.clients.get_mut(&self.client).unwrap();
+        for _ in 0..3 {
+            client.send(&client_messages::for_file(client::REQUESTFILENAME, &file)).await;
+            self.heard.extend(client.until(protocol::EDONKEY, client::REQFILENAMEANSWER).await);
+        }
+    }
+
+    fn then_the_client_heard_our_comment_once(&self, text: &str, rating: u8) {
+        let comments: Vec<FileComment> = self
+            .heard
+            .iter()
+            .filter(|packet| packet.protocol() == protocol::EMULE && packet.opcode() == extended::FILEDESC)
+            .map(|packet| file_description::decode(packet).unwrap())
+            .collect();
+        assert_eq!(comments, [FileComment::of(text, rating)]);
     }
 
     // The counts of a file.
@@ -2116,6 +2161,19 @@ async fn should_tell_anyone_over_udp_that_we_do_not_share_the_file() {
     uploads.when_a_reask_for_the_file_comes_from(4672, [0x9D; 16]).await;
 
     uploads.then_the_answer_is_plain(client_reasks::file_not_found());
+}
+
+#[tokio::test]
+async fn should_tell_our_comment_of_a_file_asked_for_by_name_once_a_connection() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("commented.bin", 3000, 42);
+    uploads.given_our_comment_of_the_file("clean copy", 4);
+    uploads.given_the_uploads_started().await;
+    uploads.given_a_client_taking_comments_connected(6).await;
+
+    uploads.when_the_client_asks_for_the_file_by_name_three_times().await;
+
+    uploads.then_the_client_heard_our_comment_once("clean copy", 4);
 }
 
 #[tokio::test]

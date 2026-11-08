@@ -23,6 +23,7 @@ use crate::api::category::Category;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus};
 use crate::api::ed2k_link::Ed2kLink;
 use crate::api::engine_event::EngineEvent;
+use crate::api::file_comment::FileComment;
 use crate::api::file_history::FileHistory;
 use crate::api::file_names;
 use crate::api::import_options::ImportOptions;
@@ -154,6 +155,7 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Re
         .route("/bans", get(bans::<E>))
         .route("/bans/{address}", axum::routing::delete(unban::<E>))
         .route("/files/{hash}/notes", get(list_kad_notes::<E>).post(search_kad_notes::<E>))
+        .route("/files/{hash}/comment", get(file_comment::<E>).put(set_file_comment::<E>))
         .route(
             "/kad",
             get(|State(engine): State<E>| async move {
@@ -1383,6 +1385,34 @@ async fn peer_comments<E: NjMuleEngine>(
 async fn clean_up_name<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
     let clean = file_names::clean_up(text(&body, "name")?, &engine.preferences().name_cleanups);
     Ok(Json(json!({"name": clean})))
+}
+
+/// Our rating and comment of a file; a file we did not comment has rating 0 and no text.
+async fn file_comment<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let comment = engine.file_comment(file_hash(&hash)?).await.unwrap_or(FileComment::NONE);
+    Ok(Json(json!({"rating": comment.rating(), "text": comment.text()})))
+}
+
+/// Keeps our rating, from 0 to 5, and comment of a file; both empty take them away.
+async fn set_file_comment<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let file = file_hash(&hash)?;
+    let rating = u8::try_from(number(&body, "rating")?)
+        .ok()
+        .filter(|rating| *rating <= FileComment::MAX_RATING)
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "A rating goes from 0 to 5."))?;
+    let text = body.get("text").and_then(Value::as_str).unwrap_or_default();
+    engine
+        .set_file_comment(file, FileComment::of(text, rating))
+        .await
+        .map_err(|reason| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, reason))?;
+    Ok(Json(api_json::ok()))
 }
 
 async fn list_kad_notes<E: NjMuleEngine>(

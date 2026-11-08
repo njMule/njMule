@@ -99,9 +99,6 @@ DownloadSourcesTest.shouldTakeTheRankASourceGivesOverUdpFromItsIpv6Address
 DownloadSourcesTest.shouldLetASourceWaitWhileOurConnectionsAreAtTheirLimit
 
 # The remote-control API.
-# The Rust engine keeps no rating or comment of ours yet: it comes with the files area.
-RemoteApiTest.shouldKeepOurRatingAndCommentOfAFile
-RemoteApiTest.shouldRefuseARatingAboveFive
 # The checks against openapi.yaml come with the API's specification.
 RemoteApiTest.shouldServeItsOpenApiDocument
 RemoteApiTest.shouldRefuseAParameterTheDocumentDoesNotAllow

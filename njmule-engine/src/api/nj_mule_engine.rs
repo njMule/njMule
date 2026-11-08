@@ -18,6 +18,7 @@ use crate::api::ed2k_link::FileLink;
 use crate::api::emule_history::EmuleHistory;
 use crate::api::engine_event::EngineEvent;
 use crate::api::engine_status::EngineStatus;
+use crate::api::file_comment::FileComment;
 use crate::api::file_history::FileHistory;
 use crate::api::import_options::ImportOptions;
 use crate::api::import_report::ImportReport;
@@ -289,6 +290,13 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
 
     /// The comments the sources of a download gave on it.
     fn peer_comments(&self, download: [u8; 16]) -> impl Future<Output = Vec<PeerComment>> + Send;
+
+    /// Our rating and comment of a file, if any.
+    fn file_comment(&self, file: [u8; 16]) -> impl Future<Output = Option<FileComment>> + Send;
+
+    /// Keeps our rating and comment of a file; an empty one takes it away.
+    fn set_file_comment(&self, file: [u8; 16], comment: FileComment)
+    -> impl Future<Output = Result<(), String>> + Send;
 
     /// Whether the server holds more results of a search, which [`more_results`](Self::more_results) asks for.
     fn has_more_results(&self, search: u64) -> impl Future<Output = bool> + Send;

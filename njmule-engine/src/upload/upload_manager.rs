@@ -15,12 +15,14 @@ use std::time::{Duration, Instant};
 use indexmap::IndexMap;
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::api::file_comment::FileComment;
 use crate::api::upload_priority::UploadPriority;
 use crate::files::hash::ed2k;
 use crate::peer::peer_link::{LinkHandle, LinkId};
 use crate::peer::peer_software;
 use crate::protocol::ed2k::client_messages::PartStatus;
 use crate::protocol::ed2k::client_reasks::{self, Ack};
+use crate::protocol::ed2k::file_description;
 use crate::protocol::ed2k::hello::{self, Hello};
 use crate::protocol::ed2k::low_id_messages::UdpCheckRequest;
 use crate::protocol::ed2k::source_exchange as exchange;
@@ -241,7 +243,11 @@ pub struct UploadManager {
     // What clients told our Kad node, for the network.
     kad_requests: Vec<KadRequest>,
     counts: Option<Box<dyn FileCounts>>,
+    comments: Comments,
 }
+
+// Our comment of a shared file, which a client asking for it hears.
+type Comments = Box<dyn Fn(&[u8; 16]) -> Option<FileComment> + Send>;
 
 impl UploadManager {
     /// Blocks read go to `reads`, for [`Self::block_read`]; `credits` order the queue and count what is sent.
@@ -267,7 +273,13 @@ impl UploadManager {
             recoveries: Vec::new(),
             kad_requests: Vec::new(),
             counts: None,
+            comments: Box::new(|_| None),
         }
+    }
+
+    /// Where our comments of the shared files come from; without it a client hears none.
+    pub fn set_comments(&mut self, comments: impl Fn(&[u8; 16]) -> Option<FileComment> + Send + 'static) {
+        self.comments = Box::new(comments);
     }
 
     /// Where the upload priority of a shared file comes from; without it every file is [`UploadPriority::Auto`].
@@ -554,6 +566,7 @@ impl UploadManager {
                 if let Some(counts) = &mut self.counts {
                     counts.asked(&file);
                 }
+                self.tell_comment(link.id(), &file);
             }
             Ok(Some(Request::Blocks)) => self.blocks_requested(link.id(), find, now),
             Ok(Some(Request::Sources(request))) => self.answer_sources(link.id(), &request, ours, find, sources, now),
@@ -891,6 +904,24 @@ impl UploadManager {
                 IpAddr::V6(_) => None,
             })
             .collect()
+    }
+
+    // A client that takes comments hears ours on a file it asks for, once a connection.
+    fn tell_comment(&mut self, link: LinkId, file: &[u8; 16]) {
+        let Some(session) = self.sessions.get_mut(&link) else {
+            return;
+        };
+        if !session.comment_once(file) {
+            return;
+        }
+        if let Some(comment) = (self.comments)(file) {
+            match file_description::encode(&comment) {
+                Ok(packet) => {
+                    session.link().send(packet);
+                }
+                Err(e) => tracing::debug!("Cannot tell our comment: {e}"),
+            }
+        }
     }
 
     fn blocks_requested(&mut self, link: LinkId, find: Find<'_>, now: Instant) {

@@ -38,6 +38,7 @@ use crate::api::ed2k_link::FileLink;
 use crate::api::emule_history::EmuleHistory;
 use crate::api::engine_event::EngineEvent;
 use crate::api::engine_status::EngineStatus;
+use crate::api::file_comment::FileComment;
 use crate::api::file_history::FileHistory;
 use crate::api::import_options::ImportOptions;
 use crate::api::import_report::ImportReport;
@@ -920,6 +921,19 @@ impl Engine {
         self.ask(|reply| Command::PeerComments(download, reply)).await.unwrap_or_default()
     }
 
+    /// Our rating and comment of a file, if any.
+    pub async fn file_comment(&self, file: [u8; 16]) -> Option<FileComment> {
+        self.ask(|reply| Command::FileComment(file, reply)).await.flatten()
+    }
+
+    /// Keeps our rating and comment of a file, which our Kad notes and the clients asking for the file hear; an empty
+    /// one takes it away.
+    pub async fn set_file_comment(&self, file: [u8; 16], comment: FileComment) -> Result<(), String> {
+        self.ask(|reply| Command::SetFileComment(file, comment, reply))
+            .await
+            .unwrap_or_else(|| Err("the engine stopped".to_owned()))
+    }
+
     /// Whether the server holds more results of a search, which [`more_results`](Self::more_results) asks for.
     pub async fn has_more_results(&self, search: u64) -> bool {
         self.ask(|reply| Command::HasMoreResults(search, reply)).await.unwrap_or(false)
@@ -1376,6 +1390,18 @@ impl NjMuleEngine for Engine {
 
     fn peer_comments(&self, download: [u8; 16]) -> impl Future<Output = Vec<PeerComment>> + Send {
         Engine::peer_comments(self, download)
+    }
+
+    fn file_comment(&self, file: [u8; 16]) -> impl Future<Output = Option<FileComment>> + Send {
+        Engine::file_comment(self, file)
+    }
+
+    fn set_file_comment(
+        &self,
+        file: [u8; 16],
+        comment: FileComment,
+    ) -> impl Future<Output = Result<(), String>> + Send {
+        Engine::set_file_comment(self, file, comment)
     }
 
     fn has_more_results(&self, search: u64) -> impl Future<Output = bool> + Send {
