@@ -142,4 +142,6 @@ pub struct SourceInfo {
     /// In state [`SourceState::A4af`], the download the client is asked for instead, with its name.
     pub asked_for: Option<[u8; 16]>,
     pub asked_for_name: String,
+    /// The country of its address as an ISO 3166-1 code in lower case, when known.
+    pub country: Option<String>,
 }

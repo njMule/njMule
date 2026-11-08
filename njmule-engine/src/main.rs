@@ -16,6 +16,7 @@ use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::nj_mule_info;
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
+use njmule_engine::engine::switches::Switches;
 use njmule_engine::files::hash::file_hasher;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use tokio::io::AsyncReadExt;
@@ -120,7 +121,7 @@ fn log_to(dirs: &AppDirectories) {
 
 async fn run(dirs: AppDirectories, switches: Vec<String>) -> io::Result<()> {
     tracing::debug!("Switches: {switches:?}");
-    let engine = Engine::start(dirs).await?;
+    let engine = Engine::start_with(dirs, Switches::of(&switches)).await?;
     let control = std::env::var("NJMULE_CONTROL_ENDPOINT").is_ok_and(|value| value == "1");
     // Asked for by the API, as the end of the input is by the starting process.
     let exit = Arc::new(Notify::new());

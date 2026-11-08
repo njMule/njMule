@@ -796,6 +796,7 @@ impl DownloadManager {
                     } else {
                         String::new()
                     },
+                    country: None,
                 });
             }
         }

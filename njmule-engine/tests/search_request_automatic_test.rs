@@ -25,6 +25,7 @@ fn server(users: u64, files: u64, is_static: bool) -> ServerInfo {
         version: String::new(),
         obfuscation: false,
         is_static,
+        country: None,
     }
 }
 

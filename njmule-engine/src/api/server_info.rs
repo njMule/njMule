@@ -24,6 +24,8 @@ pub struct ServerInfo {
     pub version: String,
     pub obfuscation: bool,
     pub is_static: bool,
+    /// Its country as an ISO 3166-1 code in lower case, when known.
+    pub country: Option<String>,
 }
 
 impl ServerInfo {
@@ -45,6 +47,7 @@ impl ServerInfo {
             version: server.version().unwrap_or_default(),
             obfuscation: server_list::supports_obfuscation(server),
             is_static,
+            country: None,
             address,
         }
     }

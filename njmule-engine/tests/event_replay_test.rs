@@ -134,5 +134,6 @@ fn server(address: &str) -> ServerInfo {
         version: String::new(),
         obfuscation: false,
         is_static: false,
+        country: None,
     }
 }
