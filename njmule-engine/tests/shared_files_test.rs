@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's SharedFilesTest for the shared folders and trees, private folders and scans;
-//! those of renames, priorities, counts, AICH trees and other clients' records wait for their ports. The disk is read
-//! and hashed here as the network does it off its task, one step after the other.
+//! The examples of the Java engine's SharedFilesTest: shared folders and trees, private folders, scans, renames,
+//! priorities, counts, AICH trees and other clients' records. The disk is read and hashed here as the network does it
+//! off its task, one step after the other.
 
 #![allow(
     clippy::unwrap_used,
@@ -13,7 +13,7 @@
     clippy::arithmetic_side_effects
 )]
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io;
 use std::ops::ControlFlow;
@@ -31,9 +31,11 @@ use njmule_engine::files::shared_files::{
     self, Changes, Finished, Found, Listing, RenameError, SharedFile, SharedFiles, Sharing,
 };
 use njmule_engine::persist::format::known_met::{self, KnownFile};
-use njmule_engine::persist::format::text_files;
+use njmule_engine::persist::format::{known2_met, text_files};
+use njmule_engine::protocol::tag::{Tag, TagName, file_tag};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
+use sha1::{Digest, Sha1};
 
 #[test]
 fn should_share_the_incoming_and_shared_directories_and_remember_the_hashes() {
@@ -530,6 +532,84 @@ fn should_keep_the_aich_tree_of_a_file_across_runs_without_hashing_it_again() {
     shares.then_the_file_has_an_aich_tree("a.bin");
 }
 
+#[test]
+fn should_take_the_usable_records_of_another_client() {
+    let mut shares = Shares::new();
+    shares.given_the_files_and_the_records_of_another_client();
+
+    shares.when_the_records_of_another_client_are_added();
+
+    shares.then_the_number_of_records_taken_is(2);
+}
+
+#[test]
+fn should_share_the_files_of_another_client_without_hashing_and_only_with_their_own_trees() {
+    let mut shares = Shares::new();
+    shares.given_the_files_and_the_records_of_another_client();
+    shares.given_the_records_of_another_client_are_added();
+
+    shares.when_the_directory_is_shared("incoming");
+
+    shares.then_the_file_is_shared_without_hashing_with_the_aich_hash("a.bin", tree('A'));
+    shares.then_the_file_has_no_aich_tree("a.bin", "one block hash for three blocks");
+    shares.then_the_file_has_no_aich_tree("b.bin", "block hashes of another tree");
+}
+
+#[test]
+fn should_rename_a_file_of_another_client_to_the_name_it_has() {
+    let mut shares = Shares::new();
+    shares.given_the_files_and_the_records_of_another_client();
+    shares.given_the_records_of_another_client_are_added();
+    shares.given_the_directory_is_shared("incoming");
+
+    shares.when_the_file_is_renamed("a.bin", "a.bin");
+
+    shares.then_a_file_is_renamed("the same name");
+}
+
+#[test]
+fn should_rename_nothing_for_a_hash_unknown_to_the_records_of_another_client() {
+    let mut shares = Shares::new();
+    shares.given_the_files_and_the_records_of_another_client();
+    shares.given_the_records_of_another_client_are_added();
+    shares.given_the_directory_is_shared("incoming");
+
+    shares.when_an_unknown_file_is_renamed([0x24; 16], "x.bin");
+
+    shares.then_nothing_is_renamed();
+}
+
+#[test]
+fn should_keep_the_other_tags_of_a_renamed_record_of_another_client() {
+    let mut shares = Shares::new();
+    shares.given_the_files_and_the_records_of_another_client();
+    shares.given_the_records_of_another_client_are_added();
+    shares.given_the_directory_is_shared("incoming");
+    shares.given_the_file_is_renamed("a.bin", "kept.bin");
+
+    shares.when_the_shares_are_closed();
+
+    shares.then_known_met_names_the_record_with_its_other_tags("a.bin", "kept.bin");
+}
+
+#[test]
+fn should_forget_the_files_no_longer_shared_when_they_are_not_to_be_remembered() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_a_file("incoming/a.bin", 20_000, 4);
+    shares.given_a_file("incoming/b.bin", 30_000, 5);
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_report_in_any_order(&["shared a.bin", "shared b.bin"]);
+    shares.given_the_file_is_deleted("incoming/b.bin");
+    shares.given_the_shares_are_scanned();
+    shares.given_the_shares_report(&["unshared b.bin"]);
+    shares.given_the_known_hashes_are_those_of(&["a.bin", "b.bin"]);
+
+    shares.when_the_shares_are_closed_without_remembering_downloads();
+
+    shares.then_known_met_holds_only("a.bin");
+}
+
 fn private_directories() -> Vec<PathBuf> {
     // The home is absolute: joining it to the test folder keeps it as it is.
     let mut directories: Vec<PathBuf> = ["config", "config/sub", "temp", "emule-config"].map(PathBuf::from).into();
@@ -563,6 +643,9 @@ struct Shares {
     first_aich_tree: Option<Arc<AichTree>>,
     aich_tree: Option<Arc<AichTree>>,
     recovery: Option<Vec<u8>>,
+    records: Vec<KnownFile>,
+    trees: Vec<known2_met::Entry>,
+    added: usize,
 }
 
 impl Shares {
@@ -592,6 +675,9 @@ impl Shares {
             first_aich_tree: None,
             aich_tree: None,
             recovery: None,
+            records: Vec::new(),
+            trees: Vec::new(),
+            added: 0,
         }
     }
 
@@ -667,7 +753,103 @@ impl Shares {
     }
 
     fn given_the_shares_are_closed(&mut self) {
+        self.when_the_shares_are_closed();
+    }
+
+    // Two files of another client's, dated alike, and its records: those of the two files with a tag of its own, one
+    // without name or size and one whose part hash is not that of its size; and its trees, one of no file. Our incoming
+    // folder is another, empty one.
+    fn given_the_files_and_the_records_of_another_client(&mut self) {
+        self.given_an_incoming_and_a_config_directory();
+        self.given_a_file("incoming/a.bin", 400_000, 40);
+        self.given_a_file("incoming/b.bin", 400_000, 41);
+        let mtime = 1_700_000_000;
+        for name in ["a.bin", "b.bin"] {
+            set_modified(&self.incoming.join(name), SystemTime::UNIX_EPOCH + Duration::from_secs(mtime.into()));
+        }
+        let sha: [u8; 20] = Sha1::digest([0u8]).as_slice().try_into().unwrap();
+        self.records = vec![
+            known_file("a.bin", self.hash_of("a.bin"), 400_000, tree('A'), mtime),
+            known_file("b.bin", self.hash_of("b.bin"), 400_000, tree('B'), mtime),
+            KnownFile { mtime: 0, file_hash: [0x21; 16], part_hashes: Vec::new(), tags: Vec::new() },
+            KnownFile {
+                mtime: 0,
+                file_hash: [0x22; 16],
+                part_hashes: vec![[0x23; 16]],
+                tags: vec![
+                    Tag::String { name: TagName::id(file_tag::FILENAME), value: "odd.bin".to_owned() },
+                    Tag::Int { name: TagName::id(file_tag::FILESIZE), value: 10 },
+                ],
+            },
+        ];
+        self.trees = vec![
+            known2_met::Entry { master_hash: tree('A'), block_hashes: vec![sha] },
+            known2_met::Entry { master_hash: tree('B'), block_hashes: vec![sha; 3] },
+            known2_met::Entry { master_hash: tree('C'), block_hashes: vec![sha] },
+        ];
+        self.incoming = self.dir.path().join("empty");
+        fs::create_dir_all(&self.incoming).unwrap();
+        self.open();
+    }
+
+    fn given_the_records_of_another_client_are_added(&mut self) {
+        self.when_the_records_of_another_client_are_added();
+    }
+
+    fn given_the_file_is_renamed(&mut self, name: &str, new_name: &str) {
+        self.when_the_file_is_renamed(name, new_name);
+        self.then_a_file_is_renamed("renamed");
+    }
+
+    fn given_the_known_hashes_are_those_of(&self, names: &[&str]) {
+        let hashes: HashSet<[u8; 16]> = names.iter().map(|name| self.hash_of(name)).collect();
+        assert_eq!(self.shares().known_hashes(), hashes, "downloaded before");
+    }
+
+    fn when_the_shares_are_closed(&mut self) {
         let _ = self.shares.take().unwrap().close();
+    }
+
+    fn when_the_shares_are_closed_without_remembering_downloads(&mut self) {
+        let mut shares = self.shares.take().unwrap();
+        shares.remember_downloaded(false);
+        shares.close().unwrap();
+    }
+
+    fn when_the_records_of_another_client_are_added(&mut self) {
+        let (records, trees) = (std::mem::take(&mut self.records), std::mem::take(&mut self.trees));
+        self.added = self.shares_mut().add_known(&records, &trees);
+    }
+
+    fn then_the_number_of_records_taken_is(&self, count: usize) {
+        assert_eq!(self.added, count);
+    }
+
+    fn then_the_file_is_shared_without_hashing_with_the_aich_hash(&self, name: &str, aich_hash: [u8; 20]) {
+        let shared = self.shares().get(&self.hash_of(name)).unwrap();
+        assert_eq!(shared.aich_hash, Some(aich_hash), "shared without hashing");
+    }
+
+    fn then_the_file_has_no_aich_tree(&mut self, name: &str, why: &str) {
+        let hash = self.hash_of(name);
+        assert!(self.shares_mut().aich_tree(&hash).is_none(), "{why}");
+    }
+
+    fn then_a_file_is_renamed(&self, why: &str) {
+        assert!(matches!(self.renamed, Some(Ok(Some(_)))), "{why}: {:?}", self.renamed);
+    }
+
+    fn then_known_met_names_the_record_with_its_other_tags(&self, file: &str, name: &str) {
+        let hash = self.hash_of(file);
+        let records: Vec<KnownFile> = self.known_met().into_iter().filter(|record| record.file_hash == hash).collect();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].name(), Some(name));
+        assert!(records[0].tags.iter().any(|tag| !tag.name().is_id()), "its other tags stay");
+    }
+
+    fn then_known_met_holds_only(&self, name: &str) {
+        let hashes: Vec<[u8; 16]> = self.known_met().iter().map(|record| record.file_hash).collect();
+        assert_eq!(hashes, [self.hash_of(name)]);
     }
 
     fn given_the_shares_are_scanned(&mut self) {
@@ -675,6 +857,10 @@ impl Shares {
     }
 
     fn given_the_directory_is_shared(&mut self, path: &str) {
+        self.when_the_directory_is_shared(path);
+    }
+
+    fn when_the_directory_is_shared(&mut self, path: &str) {
         let dir = self.dir.path().join(path);
         self.shares_mut().add_directory(&dir, false).unwrap();
         self.scan();
@@ -844,7 +1030,7 @@ impl Shares {
 
     // The value other clients write.
     fn given_known_met_holds_one_record_with_the_upload_priority(&self, code: u64) {
-        let records = known_met::read(&fs::read(self.config.join(shared_files::KNOWN_FILE_NAME)).unwrap()).unwrap();
+        let records = self.known_met();
         assert_eq!(records.iter().map(KnownFile::upload_priority).collect::<Vec<_>>(), [Some(code)]);
     }
 
@@ -1203,6 +1389,10 @@ impl Shares {
         Finished { hash: self.hash_of(name), size: data.len() as u64, part_hashes: Vec::new(), aich_hash }
     }
 
+    fn known_met(&self) -> Vec<KnownFile> {
+        known_met::read(&fs::read(self.config.join(shared_files::KNOWN_FILE_NAME)).unwrap()).unwrap()
+    }
+
     fn shares(&self) -> &SharedFiles {
         self.shares.as_ref().unwrap()
     }
@@ -1224,6 +1414,26 @@ impl Shares {
         fs::write(&file, &data).unwrap();
         self.contents.insert(file.file_name().unwrap().to_string_lossy().into_owned(), data);
         file
+    }
+}
+
+// The master hash of a tree, written in base 32 with one letter.
+fn tree(letter: char) -> [u8; 20] {
+    data_encoding::BASE32_NOPAD.decode(letter.to_string().repeat(32).as_bytes()).unwrap().try_into().unwrap()
+}
+
+// A record of another client, with a tag of its own.
+fn known_file(name: &str, hash: [u8; 16], size: u64, aich: [u8; 20], mtime: u32) -> KnownFile {
+    KnownFile {
+        mtime,
+        file_hash: hash,
+        part_hashes: Vec::new(),
+        tags: vec![
+            Tag::String { name: TagName::id(file_tag::FILENAME), value: name.to_owned() },
+            Tag::Int { name: TagName::id(file_tag::FILESIZE), value: size },
+            Tag::String { name: TagName::id(file_tag::AICH_HASH), value: data_encoding::BASE32_NOPAD.encode(&aich) },
+            Tag::String { name: TagName::of_bytes(b"note"), value: "from another client".to_owned() },
+        ],
     }
 }
 

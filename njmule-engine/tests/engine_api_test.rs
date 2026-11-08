@@ -171,6 +171,19 @@ async fn should_share_and_unshare_folders_through_the_engine() {
 }
 
 #[tokio::test]
+async fn should_share_a_file_put_in_a_shared_folder_before_the_next_rescan() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_a_file_in_the_folder("films", "first.bin");
+    api.given_the_folder_is_shared("films").await;
+    api.given_the_file_is_shared("first.bin").await;
+
+    api.when_a_file_is_put_in_the_folder("films", "second.bin");
+
+    api.then_the_file_is_shared("second.bin").await;
+}
+
+#[tokio::test]
 async fn should_lift_a_ban_only_from_an_address() {
     let mut api = EngineApi::new();
     api.given_a_running_engine().await;
@@ -583,6 +596,30 @@ impl EngineApi {
 
     async fn then_no_folder_is_shared(&self) {
         assert_eq!(within(self.engine().shared_directories()).await, []);
+    }
+
+    fn given_a_file_in_the_folder(&self, folder: &str, name: &str) {
+        self.when_a_file_is_put_in_the_folder(folder, name);
+    }
+
+    // Once a file of the folder is shared, the scan that read the folder watches it.
+    async fn given_the_file_is_shared(&self, name: &str) {
+        self.then_the_file_is_shared(name).await;
+    }
+
+    fn when_a_file_is_put_in_the_folder(&self, folder: &str, name: &str) {
+        let folder = self.profile.path().join(folder);
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join(name), name.repeat(1000)).unwrap();
+    }
+
+    // Within half a minute, where the next rescan is ten minutes away.
+    async fn then_the_file_is_shared(&self, name: &str) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !within(self.engine().shared_files()).await.iter().any(|file| file.name == name) {
+            assert!(Instant::now() < deadline, "{name} is not shared");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 
     fn then_the_address_is_refused(&self) {
