@@ -36,6 +36,7 @@ futures-util = "0.3.34"
 http = "1.5.0"
 if-addrs = "0.15.0"
 indexmap = "2.14.2"
+ipnet = "2.12.2"
 java-properties = "2.0.0"
 lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "builder", "tokio1-rustls", "ring", "rustls-platform-verifier"] }
 jsonschema = { version = "0.60.2", default-features = false }
@@ -47,6 +48,7 @@ num-bigint = "0.5.1"
 num-bigint-dig = "0.8.6"
 num-integer = "0.1.47"
 percent-encoding = "2.3.2"
+pbkdf2 = { version = "0.13.0", default-features = false, features = ["hmac"] }
 rangemap = "1.8.0"
 rand = "0.10.3"
 rc4 = "0.2.0"

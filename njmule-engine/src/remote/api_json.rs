@@ -41,6 +41,7 @@ use crate::persist::preferences_codec;
 use crate::remote::conversations::{Author, Chat, Notice};
 use crate::remote::rate_history::Rate;
 use crate::remote::recent_log::Entry;
+use crate::remote::settings_file::WebView;
 
 // The passwords the preferences hold, which never leave.
 const SECRETS: [&str; 2] = ["notify.smtpPassword", "proxy.password"];
@@ -117,6 +118,22 @@ pub fn shared_directory(directory: &SharedDirectory) -> Value {
 
 pub fn ban(info: &BanInfo) -> Value {
     json!({"address": info.address, "secondsLeft": info.seconds_left})
+}
+
+/// The web interface's settings, with whether the caller may change them.
+pub fn web_interface(settings: &WebView, changeable: bool) -> Value {
+    json!({
+        "changeable": changeable,
+        "enabled": settings.enabled,
+        "port": settings.port,
+        "lan": settings.lan,
+        "hosts": settings.hosts,
+        "proxies": settings.proxies,
+        "api": settings.api,
+        "hasPassword": settings.has_password,
+        "hasGuest": settings.has_guest,
+        "url": settings.url,
+    })
 }
 
 /// How a test message went through a notification channel; the error only when it was not sent.

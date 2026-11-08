@@ -103,7 +103,7 @@ ApiSpecificationTest.shouldBeAValidOpenApi32Description
 ApiSpecificationTest.shouldHaveAHandlerForEveryOperation
 # The Rust engine tells no updates yet, whose events the document describes.
 ApiSpecificationTest.shouldDescribeEveryEventOfTheStream
-# Guests, the web interface, its guard and the desktop window's token come with the web interface.
+# Guests, the web interface's server, its guard and its API token holders come with the web interface.
 RemoteApiTest.shouldRefuseAnAddressItsGuardStops
 RemoteApiTest.shouldTellAGuestNeitherTheJavaNorTheSystem
 RemoteApiTest.shouldRefuseTheFoldersToAGuest
@@ -114,15 +114,9 @@ RemoteApiTest.shouldRefuseAGuestAnyChange
 RemoteApiTest.shouldRefuseTheNetworkInterfacesToAGuest
 RemoteApiTest.shouldRefuseToCheckAFolderForAGuest
 RemoteApiTest.shouldRefuseTheFirstStartToAGuest
-RemoteApiTest.shouldGiveTheWebInterfaceSettingsWithoutThePasswords
 RemoteApiTest.shouldRefuseTheWebInterfaceSettingsToAGuest
-RemoteApiTest.shouldChangeTheWebInterfaceForTheDesktopWindow
-RemoteApiTest.shouldRefuseToChangeTheWebInterfaceFromABrowserOrATokenHolder
-RemoteApiTest.shouldRefuseAWebInterfaceTheEngineRefuses
-RemoteApiTest.shouldGiveTheApiTokenToTheDesktopWindow
-RemoteApiTest.shouldRefuseTheApiTokenToABrowser
 RemoteApiTest.shouldRefuseTheOldTokenOnceTheDesktopWindowRenewedIt
-# The answers to the desktop window, its settings and those of the web interface, come with the web interface.
+# The answers to the desktop window come with its settings (eD2K links, start at login), with the launcher.
 RemoteApiContractTest.shouldAnswerTheDesktopWindowAsTheDocumentDescribesIt
 
 # The engine's API.

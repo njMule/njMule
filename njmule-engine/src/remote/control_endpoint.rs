@@ -6,6 +6,7 @@
 
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{Request, State};
@@ -20,7 +21,8 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 use crate::api::nj_mule_engine::NjMuleEngine;
-use crate::remote::remote_api::{self, ApiError, Exit};
+use crate::remote::remote_api::{self, ApiError, Caller, Exit};
+use crate::remote::settings_file::SettingsFile;
 
 // The origins of the desktop shell's own pages (Tauri: Windows, then macOS and Linux); no web page has them.
 const SHELL_ORIGINS: [&str; 3] = ["http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"];
@@ -43,8 +45,10 @@ impl ControlEndpoint {
         let address = listener.local_addr()?;
         let url = format!("http://{address}{}", remote_api::PREFIX);
         let (stop, mut stopped) = watch::channel(false);
+        // The engine serves no web interface of its own yet: the window's changes wait in the file.
+        let web = Arc::new(SettingsFile::new(engine.directories().config.clone(), |_| {}));
         let app = Router::new()
-            .nest(remote_api::PREFIX, remote_api::router(engine, exit, stop.subscribe()))
+            .nest(remote_api::PREFIX, remote_api::router(engine, exit, stop.subscribe(), Some(web)))
             .layer(middleware::from_fn_with_state(token.clone(), guard));
         let serving = tokio::spawn(async move {
             axum::serve(listener, app)
@@ -89,6 +93,9 @@ async fn guard(State(token): State<String>, request: Request, next: Next) -> Res
         refused.headers_mut().insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
         return refused;
     }
+    // Only the window holds the token of this run.
+    let mut request = request;
+    request.extensions_mut().insert(Caller::Local);
     let mut response = next.run(request).await;
     if let Some(origin) = origin {
         response.headers_mut().insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);

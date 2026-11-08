@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
-use std::net::{SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -53,12 +53,16 @@ use njmule_engine::engine::network::{ConnectError, MoreAnswer};
 use njmule_engine::files::part_file::PartMap;
 use njmule_engine::persist::preferences_codec;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
+use njmule_engine::remote::remote_api;
+use njmule_engine::remote::settings_file::SettingsFile;
+use njmule_engine::remote::web_ui_settings::WebUiSettings;
+use njmule_engine::remote::{api_token, passwords};
 use njmule_engine::search::search_manager::{Scope, StartError};
 use njmule_engine::server::server_list::{Address, Priority};
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
-use tokio::sync::broadcast;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{broadcast, watch};
 
 const HASH: &str = "ABABABABABABABABABABABABABABABAB";
 const LINK: &str = "ed2k://|file|talk.bin|5000|ABABABABABABABABABABABABABABABAB|/";
@@ -725,6 +729,8 @@ struct Api {
     kept: Vec<TcpStream>,
     // A folder outside the system's temporary one, which may lie in a personal folder.
     folder: Option<tempfile::TempDir>,
+    // The API served to an admin, as a browser's session or a token holder reaches it.
+    admin_host: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Api {
@@ -744,6 +750,7 @@ impl Api {
             carried: String::new(),
             kept: Vec::new(),
             folder: None,
+            admin_host: None,
         }
     }
 
@@ -833,6 +840,24 @@ impl Api {
             assert!(count > 0, "the stream ended before {text}: {}", self.carried);
             self.carried.push_str(&String::from_utf8_lossy(&read[..count]));
         }
+    }
+
+    // The router alone, without the window's endpoint: its calls come from an admin.
+    async fn given_the_api_runs_for_an_admin(&mut self) {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        self.address = Some(listener.local_addr().unwrap());
+        let web = Arc::new(SettingsFile::new(self.engine.dirs.config.clone(), |_| {}));
+        let closing = watch::channel(false).1;
+        let api = remote_api::router(self.engine.clone(), None, closing, Some(web));
+        let app = axum::Router::new().nest(remote_api::PREFIX, api);
+        self.admin_host = Some(tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        }));
+    }
+
+    fn given_the_web_interface_has_a_password(&self) {
+        let password_hash = passwords::hash_with("long enough", b"saltsaltsaltsalt", 2);
+        WebUiSettings { password_hash, ..WebUiSettings::default() }.save(&self.engine.dirs.config).unwrap();
     }
 
     async fn given_the_api_runs(&mut self) {
@@ -1063,6 +1088,15 @@ impl Api {
         body.clone_into(&mut self.body);
     }
 
+    fn then_the_web_interface_is_only_for_this_computer(&self) {
+        assert!(!WebUiSettings::load(&self.engine.dirs.config).lan);
+    }
+
+    fn then_the_body_holds_the_api_token(&self) {
+        let token = api_token::load(&self.engine.dirs.config).unwrap().unwrap();
+        self.then_the_body_contains(&[&format!(r#""token":"{token}""#)]);
+    }
+
     fn then_the_status_is(&self, status: u16) {
         assert_eq!(self.status, status, "{}", self.body);
     }
@@ -1165,7 +1199,88 @@ impl Drop for Api {
         if let Some(endpoint) = self.endpoint.take() {
             tokio::spawn(endpoint.stop());
         }
+        if let Some(host) = self.admin_host.take() {
+            host.abort();
+        }
     }
+}
+
+#[tokio::test]
+async fn should_give_the_web_interface_settings_without_the_passwords() {
+    let mut api = Api::new();
+    api.given_the_web_interface_has_a_password();
+    api.given_the_api_runs_for_an_admin().await;
+
+    api.when_called("GET", "/api/v1/webui", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&[
+        r#""changeable":false"#,
+        r#""enabled":false"#,
+        r#""port":4711"#,
+        r#""hasPassword":true"#,
+        r#""url":null"#,
+    ]);
+}
+
+#[tokio::test]
+async fn should_change_the_web_interface_for_the_desktop_window() {
+    let mut api = Api::new();
+    api.given_the_web_interface_has_a_password();
+    api.given_the_api_runs().await;
+
+    api.when_called("PATCH", "/api/v1/webui", r#"{"enabled":true,"hosts":["nas.local"]}"#).await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&[
+        r#""changeable":true"#,
+        r#""enabled":true"#,
+        r#""hosts":["nas.local"]"#,
+        r#""url":"http://127.0.0.1:4711/""#,
+    ]);
+}
+
+#[tokio::test]
+async fn should_refuse_to_change_the_web_interface_from_a_browser_or_a_token_holder() {
+    let mut api = Api::new();
+    api.given_the_api_runs_for_an_admin().await;
+
+    api.when_called("PATCH", "/api/v1/webui", r#"{"lan":true}"#).await;
+
+    api.then_the_status_is(403);
+    api.then_the_web_interface_is_only_for_this_computer();
+}
+
+#[tokio::test]
+async fn should_refuse_a_web_interface_the_engine_refuses() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("PATCH", "/api/v1/webui", r#"{"enabled":true}"#).await;
+
+    api.then_the_status_is(400);
+    api.then_the_body_contains(&["needs a password"]);
+}
+
+#[tokio::test]
+async fn should_give_the_api_token_to_the_desktop_window() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("GET", "/api/v1/webui/token", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_holds_the_api_token();
+}
+
+#[tokio::test]
+async fn should_refuse_the_api_token_to_a_browser() {
+    let mut api = Api::new();
+    api.given_the_api_runs_for_an_admin().await;
+
+    api.when_called("GET", "/api/v1/webui/token", "").await;
+
+    api.then_the_status_is(403);
 }
 
 #[tokio::test]
