@@ -26,6 +26,7 @@ use njmule_engine::api::kad_info::{Buddy, KadInfo};
 use njmule_engine::api::kad_note::KadNote;
 use njmule_engine::api::kad_search_info::KadSearchInfo;
 use njmule_engine::api::known_client::KnownClient;
+use njmule_engine::api::list_source::{ListError, ListSource};
 use njmule_engine::api::nj_mule_engine::{NjMuleEngine, Subscription};
 use njmule_engine::api::peer_comment::PeerComment;
 use njmule_engine::api::peer_info::PeerInfo;
@@ -41,8 +42,6 @@ use njmule_engine::engine::NotesError;
 use njmule_engine::engine::network::{ConnectError, MoreAnswer};
 use njmule_engine::files::part_file::PartMap;
 use njmule_engine::files::shared_files::SharedFile;
-use njmule_engine::persist::format::nodes_dat;
-use njmule_engine::persist::format::server_met::Server;
 use njmule_engine::persist::preferences_codec;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use njmule_engine::search::search_manager::{Scope, StartError};
@@ -84,6 +83,7 @@ struct Fake {
     schedule: Schedule,
     // The test of the ports as it stands.
     port_test: Option<PortTest>,
+    server_lists: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -112,6 +112,15 @@ impl FakeEngine {
             }
             made
         })
+    }
+}
+
+// A list's source as the calls the fake records tell it.
+fn described(source: &ListSource) -> String {
+    match source {
+        ListSource::Web(url) => url.clone(),
+        ListSource::File(path) => path.display().to_string(),
+        ListSource::Data(data) => format!("{} bytes", data.len()),
     }
 }
 
@@ -210,8 +219,18 @@ impl NjMuleEngine for FakeEngine {
         Vec::new()
     }
 
-    async fn import_servers(&self, _servers: Vec<Server>) -> usize {
-        0
+    async fn add_servers(&self, source: ListSource) -> Result<usize, ListError> {
+        self.with(|fake| fake.calls.push(format!("add_servers {}", described(&source))));
+        Ok(3)
+    }
+
+    async fn server_list_addresses(&self) -> Vec<String> {
+        self.with(|fake| fake.server_lists.clone())
+    }
+
+    async fn set_server_list_addresses(&self, addresses: Vec<String>) -> Result<(), String> {
+        self.with(|fake| fake.server_lists = addresses);
+        Ok(())
     }
 
     async fn connect_server(&self, _address: Option<Address>) -> Result<(), ConnectError> {
@@ -261,8 +280,9 @@ impl NjMuleEngine for FakeEngine {
 
     async fn bootstrap_kad(&self, _node: SocketAddrV4) {}
 
-    async fn add_kad_contacts(&self, _contents: nodes_dat::Contents) -> io::Result<usize> {
-        Ok(0)
+    async fn add_kad_contacts(&self, source: ListSource) -> Result<usize, ListError> {
+        self.with(|fake| fake.calls.push(format!("add_kad_contacts {}", described(&source))));
+        Ok(2)
     }
 
     async fn start_search(&self, query: String, scope: Option<Scope>) -> Result<u64, StartError> {
@@ -799,6 +819,27 @@ impl Api {
 
     fn then_the_body_is_a_list(&self) {
         assert!(serde_json::from_str::<Value>(&self.body).unwrap().is_array(), "{}", self.body);
+    }
+
+    fn given_a_file(&self, name: &str) {
+        std::fs::write(self.file(name), [0xE0, 0, 0, 0, 0]).unwrap();
+    }
+
+    fn path_body(&self, name: &str) -> String {
+        json!({ "path": self.file(name) }).to_string()
+    }
+
+    fn file(&self, name: &str) -> PathBuf {
+        self.dir.path().join(name)
+    }
+
+    fn then_the_server_lists_are(&self, addresses: &[&str]) {
+        assert_eq!(self.engine.with(|fake| fake.server_lists.clone()), addresses);
+        assert_eq!(self.body, json!({ "addresses": addresses }).to_string());
+    }
+
+    fn then_the_engine_was_not_asked(&self) {
+        assert_eq!(self.engine.with(|fake| fake.calls.clone()), Vec::<String>::new());
     }
 
     fn then_the_engine_was_asked(&self, call: &str) {
@@ -1463,6 +1504,53 @@ async fn should_not_update_the_ip_filter_without_lists() {
     api.when_called("POST", "/api/v1/ipfilter/lists", "").await;
 
     api.then_the_status_is(409);
+}
+
+#[tokio::test]
+async fn should_keep_the_addresses_of_the_server_lists() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("PUT", "/api/v1/servers/lists", "{\"addresses\":[\"https://example.org/server.met\"]}")
+        .await;
+
+    api.then_the_status_is(200);
+    api.then_the_server_lists_are(&["https://example.org/server.met"]);
+}
+
+#[tokio::test]
+async fn should_add_the_servers_of_a_server_met_of_the_engines_computer() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_a_file("server.met");
+
+    api.when_called("POST", "/api/v1/servers/import", &api.path_body("server.met")).await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_is("{\"added\":3}");
+    api.then_the_engine_was_asked(&format!("add_servers {}", api.file("server.met").display()));
+}
+
+#[tokio::test]
+async fn should_refuse_a_list_file_that_is_not_there() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("POST", "/api/v1/servers/import", &api.path_body("nothing.met")).await;
+
+    api.then_the_status_is(400);
+    api.then_the_engine_was_not_asked();
+}
+
+#[tokio::test]
+async fn should_add_the_contacts_of_a_nodes_dat_sent() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("POST", "/api/v1/kad/nodes", "{\"data\":\"AQID\"}").await;
+
+    api.then_the_status_is(200);
+    api.then_the_engine_was_asked("add_kad_contacts 3 bytes");
 }
 
 #[tokio::test]

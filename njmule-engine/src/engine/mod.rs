@@ -9,6 +9,7 @@ pub mod ip_filter_lists;
 pub mod network;
 pub mod port_check;
 pub mod scheduler;
+pub mod server_lists;
 pub mod totals;
 
 use std::collections::BTreeMap;
@@ -35,6 +36,7 @@ use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
+use crate::api::list_source::{ListError, ListSource};
 use crate::api::log_line::{Level, LogLine};
 use crate::api::nj_mule_engine::{NjMuleEngine, Subscription};
 use crate::api::nj_mule_info;
@@ -58,7 +60,7 @@ use crate::net::routes::Routes;
 use crate::net::web_lists::WebLists;
 use crate::peer::{peer_greetings, shared_files_browser};
 use crate::persist::format::nodes_dat;
-use crate::persist::format::server_met::Server;
+use crate::persist::format::server_met::{self, Server};
 use crate::persist::{preferences_codec, user_hash_store};
 use crate::protocol::ed2k::client_reasks;
 use crate::protocol::ed2k::hello::{self, Hello, Ours};
@@ -279,7 +281,23 @@ impl Engine {
             engine.user_log(level, message);
         }
         engine.user_log(Level::Info, format!("{} {} started", nj_mule_info::NAME, nj_mule_info::version()));
+        if engine.preferences().update_servers_at_start {
+            let updating = engine.clone();
+            engine.shared.tasks.lock().await.spawn(async move { updating.update_server_lists().await });
+        }
         Ok(engine)
+    }
+
+    // The server lists of addresses.dat, taken again at each start when the preferences ask for it; each tells its
+    // outcome in the log.
+    async fn update_server_lists(&self) {
+        for url in self.server_list_addresses().await {
+            let host = server_lists::host(&url);
+            match self.add_servers(ListSource::Web(url)).await {
+                Ok(added) => self.user_log(Level::Info, format!("{added} new servers from {host}")),
+                Err(e) => self.user_log(Level::Warning, format!("Cannot update the server list from {host}: {e}")),
+            }
+        }
     }
 
     pub fn directories(&self) -> &AppDirectories {
@@ -344,9 +362,41 @@ impl Engine {
         self.ask(Command::KnownClients).await.unwrap_or_default()
     }
 
+    /// Adds the servers of a server.met not known yet; answers how many.
+    pub async fn add_servers(&self, source: ListSource) -> Result<usize, ListError> {
+        let servers = server_lists::read(source, self.shared.routes.clone(), |data| {
+            server_met::read(data).map_err(|e| format!("not a server.met: {e}"))
+        })
+        .await?;
+        Ok(self.import_servers(servers).await)
+    }
+
     /// Adds the servers not known yet; answers how many.
     pub async fn import_servers(&self, servers: Vec<Server>) -> usize {
         self.ask(|reply| Command::ImportServers(servers, reply)).await.unwrap_or(0)
+    }
+
+    /// The addresses of the server lists, which the engine takes again at its start when the preferences ask for it.
+    pub async fn server_list_addresses(&self) -> Vec<String> {
+        let config = self.shared.dirs.config.clone();
+        let read = tokio::task::spawn_blocking(move || server_lists::load_addresses(&config)).await;
+        match read {
+            Ok(Ok(addresses)) => addresses,
+            Ok(Err(e)) => {
+                tracing::warn!("Cannot read {}: {e}", server_lists::ADDRESSES_FILE);
+                Vec::new()
+            }
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// Replaces the addresses of the server lists, http or https ones.
+    pub async fn set_server_list_addresses(&self, addresses: Vec<String>) -> Result<(), String> {
+        let config = self.shared.dirs.config.clone();
+        tokio::task::spawn_blocking(move || server_lists::save_addresses(&config, &addresses))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| format!("Cannot save {}: {e}", server_lists::ADDRESSES_FILE))
     }
 
     /// Connects to the server at `address` (added to the list if new), or to any known one.
@@ -408,11 +458,16 @@ impl Engine {
         let _ = self.ask(|reply| Command::BootstrapKad(node, reply)).await;
     }
 
-    /// Adds Kad contacts to `nodes.dat` and to Kad while it runs; answers how many were new.
-    pub async fn add_kad_contacts(&self, contents: nodes_dat::Contents) -> io::Result<usize> {
+    /// Adds the Kad contacts of a nodes.dat to ours and to Kad while it runs; answers how many were new.
+    pub async fn add_kad_contacts(&self, source: ListSource) -> Result<usize, ListError> {
+        let contents = server_lists::read(source, self.shared.routes.clone(), |data| {
+            nodes_dat::read(data).map_err(|e| format!("not a nodes.dat: {e}"))
+        })
+        .await?;
         self.ask(|reply| Command::AddKadContacts(Box::new(contents), reply))
             .await
             .unwrap_or_else(|| Err(io::Error::other("the engine stopped")))
+            .map_err(|e| ListError::Failed(format!("Cannot keep the contacts: {e}")))
     }
 
     pub async fn servers(&self) -> Vec<ServerInfo> {
@@ -773,8 +828,16 @@ impl NjMuleEngine for Engine {
         Engine::known_clients(self)
     }
 
-    fn import_servers(&self, servers: Vec<Server>) -> impl Future<Output = usize> + Send {
-        Engine::import_servers(self, servers)
+    fn add_servers(&self, source: ListSource) -> impl Future<Output = Result<usize, ListError>> + Send {
+        Engine::add_servers(self, source)
+    }
+
+    fn server_list_addresses(&self) -> impl Future<Output = Vec<String>> + Send {
+        Engine::server_list_addresses(self)
+    }
+
+    fn set_server_list_addresses(&self, addresses: Vec<String>) -> impl Future<Output = Result<(), String>> + Send {
+        Engine::set_server_list_addresses(self, addresses)
     }
 
     fn connect_server(&self, address: Option<Address>) -> impl Future<Output = Result<(), ConnectError>> + Send {
@@ -829,8 +892,8 @@ impl NjMuleEngine for Engine {
         Engine::bootstrap_kad(self, node)
     }
 
-    fn add_kad_contacts(&self, contents: nodes_dat::Contents) -> impl Future<Output = io::Result<usize>> + Send {
-        Engine::add_kad_contacts(self, contents)
+    fn add_kad_contacts(&self, source: ListSource) -> impl Future<Output = Result<usize, ListError>> + Send {
+        Engine::add_kad_contacts(self, source)
     }
 
     fn start_search(

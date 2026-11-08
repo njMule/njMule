@@ -25,6 +25,7 @@ use crate::api::ed2k_link::Ed2kLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::file_history::FileHistory;
 use crate::api::file_names;
+use crate::api::list_source::{ListError, ListSource};
 use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::api::{nj_mule_info, search_request};
 use crate::config::bind_interface;
@@ -33,7 +34,6 @@ use crate::config::schedule::Schedule;
 use crate::engine::NotesError;
 use crate::engine::ip_filter_lists;
 use crate::engine::network::{ConnectError, MoreAnswer};
-use crate::persist::format::{nodes_dat, server_met};
 use crate::remote::rate_history::{self, RateHistory};
 use crate::remote::recent_log::RecentLog;
 use crate::remote::search_collector::{Asked, SearchCollector};
@@ -168,6 +168,7 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
         .route("/kad/nodes", post(add_kad_contacts::<E>))
         .route("/servers", get(servers::<E>))
         .route("/servers/import", post(import_servers::<E>))
+        .route("/servers/lists", get(server_lists::<E>).put(set_server_lists::<E>))
         .route("/servers/connect", post(connect_server::<E>))
         .route("/servers/disconnect", post(disconnect_server::<E>))
         .route("/servers/{address}/static", axum::routing::put(set_static_server::<E>))
@@ -560,10 +561,25 @@ async fn servers<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
 
 /// The servers of a `server.met` sent in Base64 (`data`) or read from the engine's computer (`path`).
 async fn import_servers<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
-    let file = list_file(&body)?;
-    let read = server_met::read(&file)
-        .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a server list: {e}")))?;
-    Ok(Json(json!({"added": engine.import_servers(read).await})))
+    let added = engine.add_servers(list_source(&body)?).await.map_err(list_failure)?;
+    Ok(Json(json!({"added": added})))
+}
+
+async fn server_lists<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    Json(json!({"addresses": engine.server_list_addresses().await}))
+}
+
+/// Replaces the addresses of the server lists; answers them as kept.
+async fn set_server_lists<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let Some(given) = body.get("addresses").and_then(Value::as_array) else {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Missing list: addresses"));
+    };
+    let addresses = given
+        .iter()
+        .map(|address| web_address(address.as_str().unwrap_or_default()))
+        .collect::<Result<Vec<_>, _>>()?;
+    engine.set_server_list_addresses(addresses.clone()).await.map_err(cannot_now)?;
+    Ok(Json(json!({"addresses": addresses})))
 }
 
 async fn recheck_kad<E: NjMuleEngine>(State(engine): State<E>) -> Result<Json<Value>, ApiError> {
@@ -594,27 +610,36 @@ async fn bootstrap_kad<E: NjMuleEngine>(State(engine): State<E>, Body(body): Bod
 
 /// The contacts of a `nodes.dat` sent in Base64 (`data`) or read from the engine's computer (`path`).
 async fn add_kad_contacts<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
-    let file = list_file(&body)?;
-    let read =
-        nodes_dat::read(&file).map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a nodes.dat: {e}")))?;
-    let added = engine
-        .add_kad_contacts(read)
-        .await
-        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, format!("Cannot keep the contacts: {e}")))?;
+    let added = engine.add_kad_contacts(list_source(&body)?).await.map_err(list_failure)?;
     Ok(Json(json!({"added": added})))
 }
 
-// A list file sent in Base64 (`data`) or read from the engine's computer (`path`).
-fn list_file(body: &Value) -> Result<Vec<u8>, ApiError> {
-    if let Some(data) = body.get("data").and_then(Value::as_str) {
+// A list from the web (`url`), sent in Base64 (`data`) or read from the engine's computer (`path`).
+fn list_source(body: &Value) -> Result<ListSource, ApiError> {
+    if let Some(url) = body.get("url").and_then(Value::as_str) {
+        Ok(ListSource::Web(web_address(url)?))
+    } else if let Some(data) = body.get("data").and_then(Value::as_str) {
         // Padding is accepted, not required.
         data_encoding::BASE64_NOPAD
             .decode(data.trim().trim_end_matches('=').as_bytes())
+            .map(ListSource::Data)
             .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "The data is not Base64."))
     } else if let Some(path) = body.get("path").and_then(Value::as_str) {
-        std::fs::read(path).map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, format!("Cannot read {path}: {e}")))
+        let file = PathBuf::from(path);
+        if !file.is_file() {
+            return Err(ApiError::new(StatusCode::BAD_REQUEST, format!("No file at {path}")));
+        }
+        Ok(ListSource::File(file))
     } else {
-        Err(ApiError::new(StatusCode::BAD_REQUEST, "Give the list as data or as a path."))
+        Err(ApiError::new(StatusCode::BAD_REQUEST, "Give the list as an address, as data or as a path."))
+    }
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn list_failure(error: ListError) -> ApiError {
+    match error {
+        ListError::NotAList(reason) => ApiError::new(StatusCode::BAD_REQUEST, reason),
+        ListError::Failed(reason) => cannot_now(reason),
     }
 }
 
