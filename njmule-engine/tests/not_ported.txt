@@ -142,8 +142,7 @@ RemoteApiTest.shouldRefuseToShareWhatIsNoFolder
 RemoteApiTest.shouldStopSharingASharedFolder
 RemoteApiTest.shouldNotFindAFolderThatIsNotShared
 RemoteApiTest.shouldTellWhatAPathNamesOnTheEnginesComputer
-# The Rust engine has no server priority nor country yet: they come with the calls on servers.
-RemoteApiTest.shouldSetThePriorityOfAServer
+# The Rust engine has no table of countries yet: a server's comes with it.
 RemoteApiTest.shouldGiveTheCountryOfAServerWhenItIsKnown
 # The Rust engine keeps no rating or comment of ours yet: it comes with the files area.
 RemoteApiTest.shouldKeepOurRatingAndCommentOfAFile

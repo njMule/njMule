@@ -82,7 +82,7 @@ use crate::security::connection_guard::{Admission, ConnectionGuard, Limits, Perm
 use crate::security::ip_filter::IpFilter;
 use crate::server::file_publisher::{FilePublisher, Offer};
 use crate::server::global_sources::{Asking, GlobalSources};
-use crate::server::server_list::{self, Address, ServerList};
+use crate::server::server_list::{self, Address, Priority, ServerList};
 use crate::server::server_pinger::{self, Effect, ServerPinger};
 use crate::server::server_route::ServerRoute;
 use crate::server::server_session::{Context, Notice, Outcome, ServerSession};
@@ -187,6 +187,12 @@ pub enum Command {
     TestPorts(oneshot::Sender<PortTest>),
     /// The test of our ports running or run last; none before the first.
     PortTest(oneshot::Sender<Option<PortTest>>),
+    /// Adds a server the user gave; false when it is known already.
+    AddServer(Address, oneshot::Sender<bool>),
+    /// Removes a server, from the static list too; false when it is unknown.
+    RemoveServer(Address, oneshot::Sender<bool>),
+    /// Sets the priority a server is tried with; false when it is unknown.
+    SetServerPriority(Address, Priority, oneshot::Sender<bool>),
     /// Replaces the IP filter with these ranges, kept in its file; answers how many it has, or why not.
     SetIpFilter(Vec<Range>, oneshot::Sender<Result<usize, String>>),
     /// Says hello to a client and runs the identification: told once its outcome is known, the connection closes or
@@ -649,6 +655,37 @@ impl Network {
                 let infos = self.servers.all().iter().map(|server| self.info(server)).collect();
                 let _ = answer.send(infos);
             }
+            Command::AddServer(address, answer) => {
+                let added = self.servers.add(self.by_hand(&address));
+                if added {
+                    self.save_servers();
+                }
+                let _ = answer.send(added);
+            }
+            Command::RemoveServer(address, answer) => {
+                let statics = self.servers.is_static(&address);
+                let removed = self.servers.remove(&address);
+                if removed {
+                    self.save_servers();
+                }
+                if statics {
+                    self.save_statics();
+                }
+                let _ = answer.send(removed);
+            }
+            Command::SetServerPriority(address, priority, answer) => {
+                let known = self.servers.set_priority(&address, priority);
+                if known {
+                    self.save_servers();
+                    if self.servers.is_static(&address) {
+                        self.save_statics();
+                    }
+                    if let Some(server) = self.servers.get(&address).cloned() {
+                        self.publish(EngineEvent::ServerUpdated(self.info(&server)));
+                    }
+                }
+                let _ = answer.send(known);
+            }
             Command::SetStaticServer(address, wanted, done) => {
                 let known = self.servers.get(&address).is_some();
                 if known && self.servers.set_static(&address, wanted) {
@@ -915,7 +952,7 @@ impl Network {
         if address.ip != 0 && self.blocks(address.ip) {
             return Err(ConnectError::Refused(format!("The IP filter blocks {address}")));
         }
-        let server = self.servers.get(&address).cloned().unwrap_or_else(|| by_hand(&address));
+        let server = self.servers.get(&address).cloned().unwrap_or_else(|| self.by_hand(&address));
         if self.servers.add(server.clone()) {
             self.save_servers();
         }
@@ -2225,6 +2262,16 @@ impl Network {
         self.applied.clone()
     }
 
+    // A server the user gave: high priority when the preferences ask for it.
+    fn by_hand(&self, address: &Address) -> Server {
+        let tags = if self.applied.manual_servers_high_priority {
+            vec![server_list::int(server_tag::PREFERENCE, server_list::PRIORITY_HIGH)]
+        } else {
+            Vec::new()
+        };
+        Server { ip: address.ip, port: address.port, tags }
+    }
+
     fn publish(&self, event: EngineEvent) {
         self.shared.publish(event);
     }
@@ -2319,11 +2366,6 @@ async fn accept(
             }
         });
     }
-}
-
-// A server the user gave.
-fn by_hand(address: &Address) -> Server {
-    Server { ip: address.ip, port: address.port, tags: Vec::new() }
 }
 
 // How a server is asked over UDP; the key of an obfuscated route is kept for its answers.

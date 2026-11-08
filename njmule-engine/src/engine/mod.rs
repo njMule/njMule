@@ -67,7 +67,7 @@ use crate::protocol::ed2k::hello::{self, Hello, Ours};
 use crate::protocol::ed2k::server_messages::LOW_ID_LIMIT;
 use crate::protocol::kad::kad_messages;
 use crate::search::search_manager::{Scope, StartError};
-use crate::server::server_list::Address;
+use crate::server::server_list::{Address, Priority};
 use crate::server::server_udp::ServerUdp;
 
 /// Events kept for a front end that reads them late; one that falls further behind loses the stream.
@@ -374,6 +374,21 @@ impl Engine {
     /// Adds the servers not known yet; answers how many.
     pub async fn import_servers(&self, servers: Vec<Server>) -> usize {
         self.ask(|reply| Command::ImportServers(servers, reply)).await.unwrap_or(0)
+    }
+
+    /// Adds a server the user gave; false when it is known already.
+    pub async fn add_server(&self, address: Address) -> bool {
+        self.ask(|reply| Command::AddServer(address, reply)).await.unwrap_or(false)
+    }
+
+    /// Removes a server, from the static list too; false when it is unknown.
+    pub async fn remove_server(&self, address: Address) -> bool {
+        self.ask(|reply| Command::RemoveServer(address, reply)).await.unwrap_or(false)
+    }
+
+    /// Sets the priority a server is tried with; false when it is unknown.
+    pub async fn set_server_priority(&self, address: Address, priority: Priority) -> bool {
+        self.ask(|reply| Command::SetServerPriority(address, priority, reply)).await.unwrap_or(false)
     }
 
     /// The addresses of the server lists, which the engine takes again at its start when the preferences ask for it.
@@ -830,6 +845,18 @@ impl NjMuleEngine for Engine {
 
     fn add_servers(&self, source: ListSource) -> impl Future<Output = Result<usize, ListError>> + Send {
         Engine::add_servers(self, source)
+    }
+
+    fn add_server(&self, address: Address) -> impl Future<Output = bool> + Send {
+        Engine::add_server(self, address)
+    }
+
+    fn remove_server(&self, address: Address) -> impl Future<Output = bool> + Send {
+        Engine::remove_server(self, address)
+    }
+
+    fn set_server_priority(&self, address: Address, priority: Priority) -> impl Future<Output = bool> + Send {
+        Engine::set_server_priority(self, address, priority)
     }
 
     fn server_list_addresses(&self) -> impl Future<Output = Vec<String>> + Send {

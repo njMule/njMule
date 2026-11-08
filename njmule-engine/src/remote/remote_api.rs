@@ -39,7 +39,7 @@ use crate::remote::recent_log::RecentLog;
 use crate::remote::search_collector::{Asked, SearchCollector};
 use crate::remote::{api_json, api_reader, event_streams};
 use crate::search::search_manager::{Scope, StartError};
-use crate::server::server_list::Address;
+use crate::server::server_list::{Address, Priority};
 
 // The searches started through the API, with the results the engine's events bring.
 type Searches = Arc<Mutex<SearchCollector>>;
@@ -166,7 +166,9 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
         .route("/kad/recheck", post(recheck_kad::<E>))
         .route("/kad/bootstrap", post(bootstrap_kad::<E>))
         .route("/kad/nodes", post(add_kad_contacts::<E>))
-        .route("/servers", get(servers::<E>))
+        .route("/servers", get(servers::<E>).post(add_server::<E>))
+        .route("/servers/{address}", axum::routing::delete(remove_server::<E>))
+        .route("/servers/{address}/priority", axum::routing::put(set_server_priority::<E>))
         .route("/servers/import", post(import_servers::<E>))
         .route("/servers/lists", get(server_lists::<E>).put(set_server_lists::<E>))
         .route("/servers/connect", post(connect_server::<E>))
@@ -678,6 +680,41 @@ async fn set_static_server<E: NjMuleEngine>(
     } else {
         Err(ApiError::new(StatusCode::NOT_FOUND, "No such server"))
     }
+}
+
+/// Adds a server by its address; 409 when it is known already.
+async fn add_server<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Response, ApiError> {
+    let address = server_address(text(&body, "address")?)?;
+    if !engine.add_server(address).await {
+        return Err(ApiError::new(StatusCode::CONFLICT, "That server is known already."));
+    }
+    Ok((StatusCode::CREATED, Json(api_json::ok())).into_response())
+}
+
+async fn remove_server<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(address): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    known_server(engine.remove_server(server_address(&address)?).await)
+}
+
+/// Sets the priority a server is tried with: `low`, `normal` or `high`.
+async fn set_server_priority<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(address): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let address = server_address(&address)?;
+    let asked = text(&body, "priority")?;
+    let priority = [Priority::Low, Priority::Normal, Priority::High]
+        .into_iter()
+        .find(|priority| priority.name().eq_ignore_ascii_case(asked.trim()))
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Unknown value: {asked}")))?;
+    known_server(engine.set_server_priority(address, priority).await)
+}
+
+fn known_server(known: bool) -> Result<Json<Value>, ApiError> {
+    if known { Ok(Json(api_json::ok())) } else { Err(ApiError::new(StatusCode::NOT_FOUND, "No such server")) }
 }
 
 fn server_address(text: &str) -> Result<Address, ApiError> {
