@@ -174,6 +174,10 @@ impl NjMuleEngine for FakeEngine {
         Vec::new()
     }
 
+    async fn send_message(&self, to: SocketAddr, text: String) {
+        self.with(|fake| fake.calls.push(format!("message to {to}: {text}")));
+    }
+
     async fn add_friend(&self, friend: Friend) -> Result<(), String> {
         self.with(|fake| fake.calls.push(format!("add friend {}", friend.name)));
         Ok(())
@@ -890,6 +894,17 @@ impl Api {
 
     fn test_folder(&self) -> PathBuf {
         self.dir.path().to_path_buf()
+    }
+
+    async fn given_a_message_sent(&mut self, to: &str, text: &str) {
+        self.when_called("POST", "/api/v1/messages", &json!({"to": to, "text": text}).to_string()).await;
+        self.then_the_status_is(200);
+        self.then_the_engine_was_asked(&format!("message to {to}: {text}"));
+    }
+
+    async fn then_the_conversations_are(&mut self, body: &str) {
+        self.when_called("GET", "/api/v1/conversations", "").await;
+        self.then_the_body_is(body);
     }
 
     // The fake keeps the slot it is given.
@@ -2054,6 +2069,30 @@ async fn should_refuse_a_rule_without_a_time() {
     api.when_called("PUT", "/api/v1/schedule", "{\"rules\":[{\"start\":\"late\",\"end\":\"06:00\"}]}").await;
 
     api.then_the_status_is(400);
+}
+
+#[tokio::test]
+async fn should_keep_the_messages_sent_in_their_conversation() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_a_message_sent("203.0.113.5:4662", "hello").await;
+
+    api.when_called("GET", "/api/v1/conversations", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&["\"address\":\"203.0.113.5:4662\"", "\"author\":\"us\"", "\"text\":\"hello\""]);
+}
+
+#[tokio::test]
+async fn should_forget_a_conversation_that_is_closed() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_a_message_sent("203.0.113.5:4662", "hello").await;
+
+    api.when_called("DELETE", "/api/v1/conversations/203.0.113.5:4662", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_conversations_are("[]").await;
 }
 
 #[tokio::test]

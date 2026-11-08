@@ -298,6 +298,9 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
     /// Our friends, in the order they were added.
     fn friends(&self) -> impl Future<Output = Vec<Friend>> + Send;
 
+    /// Sends a chat message to the client listening at `to`, connecting first if needed.
+    fn send_message(&self, to: SocketAddr, text: String) -> impl Future<Output = ()> + Send;
+
     /// Adds a friend, or changes its name and address; an empty name or no address keeps the known one.
     fn add_friend(&self, friend: Friend) -> impl Future<Output = Result<(), String>> + Send;
 

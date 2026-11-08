@@ -7,7 +7,7 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequest, Path, Query, Request, State};
@@ -39,6 +39,7 @@ use crate::config::schedule::Schedule;
 use crate::engine::NotesError;
 use crate::engine::ip_filter_lists;
 use crate::engine::network::{ConnectError, MoreAnswer};
+use crate::remote::conversations::Conversations;
 use crate::remote::rate_history::{self, RateHistory};
 use crate::remote::recent_log::RecentLog;
 use crate::remote::search_collector::{Asked, SearchCollector};
@@ -50,6 +51,8 @@ use crate::server::server_list::{Address, Priority};
 type Searches = Arc<Mutex<SearchCollector>>;
 // The latest lines of the user's log.
 type Log = Arc<Mutex<RecentLog>>;
+// The chats with other clients.
+type Chats = Arc<Mutex<Conversations>>;
 // The rates of each second, which the API reads from the engine's status.
 type Rates = Arc<Mutex<RateHistory>>;
 
@@ -72,7 +75,8 @@ pub const VERSION: u32 = 1;
 pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Receiver<bool>) -> Router {
     let searches = Searches::default();
     let log = Log::default();
-    collect(&engine, Arc::clone(&searches), Arc::clone(&log));
+    let chats = Chats::default();
+    collect(&engine, Arc::clone(&searches), Arc::clone(&log), Arc::clone(&chats));
     let rates = Rates::default();
     sample_rates(&engine, Arc::clone(&rates));
     Router::new()
@@ -213,10 +217,14 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Re
         .route("/servers/connect", post(connect_server::<E>))
         .route("/servers/disconnect", post(disconnect_server::<E>))
         .route("/servers/{address}/static", axum::routing::put(set_static_server::<E>))
+        .route("/messages", post(send_message::<E>))
+        .route("/conversations", get(conversations))
+        .route("/conversations/{address}", axum::routing::delete(close_conversation))
         .fallback(|| async { ApiError::new(StatusCode::NOT_FOUND, "No such call") })
         .method_not_allowed_fallback(|| async { ApiError::new(StatusCode::METHOD_NOT_ALLOWED, "No such method") })
         .layer(Extension(searches))
         .layer(Extension(log))
+        .layer(Extension(chats))
         .layer(Extension(rates))
         .layer(Extension(Exiting(exit)))
         .layer(Extension(Streams { open: Arc::new(Semaphore::new(event_streams::MAX_STREAMS)), closing }))
@@ -497,12 +505,12 @@ async fn shutdown(Extension(exiting): Extension<Exiting>) -> Result<Response, Ap
 }
 
 // Gathers the results of the searches and the user's log until the engine stops, those logged before first.
-fn collect<E: NjMuleEngine>(engine: &E, searches: Searches, log: Log) {
+fn collect<E: NjMuleEngine>(engine: &E, searches: Searches, log: Log, chats: Chats) {
     let subscription = engine.subscribe();
     let stopped = engine.stopped();
     tokio::spawn(async move {
         for event in subscription.missed {
-            gather(&searches, &log, event);
+            gather(&searches, &log, &chats, event);
         }
         let mut events = subscription.live;
         tokio::pin!(stopped);
@@ -512,7 +520,7 @@ fn collect<E: NjMuleEngine>(engine: &E, searches: Searches, log: Log) {
                 event = events.recv() => event,
             };
             match event {
-                Ok(event) => gather(&searches, &log, event),
+                Ok(event) => gather(&searches, &log, &chats, event),
                 Err(broadcast::error::RecvError::Lagged(_)) => {}
                 Err(broadcast::error::RecvError::Closed) => return,
             }
@@ -520,8 +528,17 @@ fn collect<E: NjMuleEngine>(engine: &E, searches: Searches, log: Log) {
     });
 }
 
-fn gather(searches: &Searches, log: &Log, event: EngineEvent) {
+fn gather(searches: &Searches, log: &Log, chats: &Chats, event: EngineEvent) {
+    let now = SystemTime::now();
     match event {
+        EngineEvent::MessageReceived { address, user_hash, nick, text } => {
+            chatting(chats).received(&address, user_hash, nick.as_deref(), &text, now);
+        }
+        EngineEvent::CaptchaRequested { address, user_hash, image } => {
+            chatting(chats).captcha(&address, user_hash, &image);
+        }
+        EngineEvent::CaptchaAnswered { address, solved } => chatting(chats).answered(&address, solved, now),
+        EngineEvent::MessageFailed { address, reason } => chatting(chats).failed(&address, &reason, now),
         EngineEvent::SearchResults { search, results } => collected(searches).add(search, results),
         EngineEvent::SearchEnded { search, .. } => collected(searches).ended(search),
         EngineEvent::Log(line) => log.lock().unwrap_or_else(PoisonError::into_inner).add(line),
@@ -542,6 +559,39 @@ async fn recent_log(
     };
     let lines = log.lock().unwrap_or_else(PoisonError::into_inner).after(after);
     Ok(Json(Value::Array(lines.iter().map(api_json::log_entry).collect())))
+}
+
+fn chatting(chats: &Chats) -> MutexGuard<'_, Conversations> {
+    chats.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Sends a chat message to the client at `to`, `host:port`; the line is kept once the engine took the message, and a
+/// CAPTCHA it answers is then solved.
+async fn send_message<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Extension(chats): Extension<Chats>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let to = client_address(text(&body, "to")?).await?;
+    let message = text(&body, "text")?.to_owned();
+    engine.send_message(to, message.clone()).await;
+    chatting(&chats).sent(&to.to_string(), &message, SystemTime::now());
+    Ok(Json(api_json::ok()))
+}
+
+async fn conversations(Extension(chats): Extension<Chats>) -> Json<Value> {
+    Json(Value::Array(chatting(&chats).all().iter().map(api_json::chat).collect()))
+}
+
+async fn close_conversation(
+    Extension(chats): Extension<Chats>,
+    Path(address): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    if chatting(&chats).close(&address) {
+        Ok(Json(api_json::ok()))
+    } else {
+        Err(ApiError::new(StatusCode::NOT_FOUND, "No such conversation"))
+    }
 }
 
 fn collected(searches: &Searches) -> MutexGuard<'_, SearchCollector> {

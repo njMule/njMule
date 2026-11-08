@@ -61,4 +61,27 @@ pub enum EngineEvent {
     },
     /// The download left the list: cancelled, or cleared once complete.
     DownloadRemoved([u8; 16]),
+    /// A client's message that the chat filter let show; `address` is its IP and the port it listens on.
+    MessageReceived {
+        address: String,
+        user_hash: [u8; 16],
+        nick: Option<String>,
+        text: String,
+    },
+    /// A client we wrote to wants this CAPTCHA, a BMP picture, solved before it shows our messages.
+    CaptchaRequested {
+        address: String,
+        user_hash: [u8; 16],
+        image: Vec<u8>,
+    },
+    /// The client told whether our answer solved its CAPTCHA.
+    CaptchaAnswered {
+        address: String,
+        solved: bool,
+    },
+    /// Messages to a client could not be delivered.
+    MessageFailed {
+        address: String,
+        reason: String,
+    },
 }

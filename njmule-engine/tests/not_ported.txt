@@ -120,9 +120,10 @@ RemoteApiTest.shouldRefuseAWebInterfaceTheEngineRefuses
 RemoteApiTest.shouldGiveTheApiTokenToTheDesktopWindow
 RemoteApiTest.shouldRefuseTheApiTokenToABrowser
 RemoteApiTest.shouldRefuseTheOldTokenOnceTheDesktopWindowRenewedIt
-# Friends and conversations are not kept by the Rust engine yet.
-RemoteApiTest.shouldKeepTheMessagesSentInTheirConversation
-RemoteApiTest.shouldForgetAConversationThatIsClosed
+
+# The chats.
+# A friend's message waits for the proof of its key with the next piece: shown before it, it would be filtered out.
+ChatTest.shouldLetOnlyAFriendThatProvesItsKeyGetPastFriendsOnly
 
 # The engine's API.
 # Java only: the engine's events are a Flow publisher in Java, a broadcast channel in Rust, whose readers ask for no count.
