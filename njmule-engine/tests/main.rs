@@ -79,6 +79,7 @@ mod engine_import_manifest_test;
 mod engine_import_test;
 mod engine_schedule_test;
 mod engine_test;
+mod event_command_runner_test;
 mod event_commands_codec_test;
 mod event_commands_test;
 mod event_replay_test;

@@ -400,6 +400,9 @@ pub fn event(event: &EngineEvent) -> (&'static str, Value) {
             ("download.failed", json!({"download": download(info, false), "reason": reason}))
         }
         EngineEvent::DownloadRemoved(removed) => ("download.removed", json!({"hash": hash(removed)})),
+        EngineEvent::DiskSpace { directory, enough } => {
+            ("disk.space", json!({"directory": directory.display().to_string(), "enough": enough}))
+        }
         EngineEvent::MessageReceived { address, user_hash, nick, text } => {
             ("message.received", json!({"address": address, "userHash": hash(user_hash), "nick": nick, "text": text}))
         }

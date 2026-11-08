@@ -5,6 +5,7 @@
 //! front ends follow.
 
 pub mod countries;
+pub mod event_command_runner;
 pub mod event_replay;
 mod import_target;
 mod instance_lock;
@@ -70,6 +71,7 @@ use crate::config::preferences::Preferences;
 use crate::config::schedule::{Rule, Schedule};
 use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::engine::countries::Step;
+use crate::engine::event_command_runner::EventCommandRunner;
 use crate::engine::event_replay::EventReplay;
 use crate::engine::import_target::ImportTarget;
 use crate::engine::instance_lock::InstanceLock;
@@ -140,6 +142,19 @@ pub struct Shared {
     instance: Mutex<Option<InstanceLock>>,
     // Whether an eMule runs, which keeps an imported identity waiting.
     emule_running: fn() -> bool,
+}
+
+// Hands each event to what tells the user of it, until the engine stops.
+async fn tell(mut events: broadcast::Receiver<EngineEvent>, runner: EventCommandRunner) {
+    loop {
+        match events.recv().await {
+            Ok(event) => runner.handle(&event),
+            Err(broadcast::error::RecvError::Lagged(missed)) => {
+                tracing::debug!("{missed} events went by the event commands");
+            }
+            Err(broadcast::error::RecvError::Closed) => return,
+        }
+    }
 }
 
 impl Shared {
@@ -323,6 +338,9 @@ impl Engine {
             emule_running: switches.emule_running,
         });
         let engine = Self { shared: shared.clone() };
+        let commands = engine.shared.preferences.subscribe();
+        let runner = EventCommandRunner::create(move || commands.borrow().event_commands.clone());
+        engine.shared.tasks.lock().await.spawn(tell(engine.subscribe().live, runner));
         let network = network::start(shared, commands_out, udp, listener)?;
         engine.shared.tasks.lock().await.spawn(async move {
             let _ = network.await;

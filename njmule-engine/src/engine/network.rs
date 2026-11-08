@@ -1728,17 +1728,19 @@ impl Network {
                     self.publish(EngineEvent::DownloadFailed { download: info, reason });
                 }
                 DownloadEvent::Removed(hash) => self.publish(EngineEvent::DownloadRemoved(hash)),
-                DownloadEvent::DiskSpace(true) => {
-                    self.user_log(
-                        LogLevel::Info,
-                        "There is free space on the temp disk again: downloads go on".to_owned(),
-                    );
-                }
-                DownloadEvent::DiskSpace(false) => {
-                    self.user_log(
-                        LogLevel::Warning,
-                        "Not enough free space on the temp disk: downloads wait until there is room".to_owned(),
-                    );
+                DownloadEvent::DiskSpace(enough) => {
+                    if enough {
+                        self.user_log(
+                            LogLevel::Info,
+                            "There is free space on the temp disk again: downloads go on".to_owned(),
+                        );
+                    } else {
+                        self.user_log(
+                            LogLevel::Warning,
+                            "Not enough free space on the temp disk: downloads wait until there is room".to_owned(),
+                        );
+                    }
+                    self.publish(EngineEvent::DiskSpace { directory: self.downloads.temp_dir(), enough });
                 }
                 DownloadEvent::CorruptPart { info, part } => {
                     self.user_log(
