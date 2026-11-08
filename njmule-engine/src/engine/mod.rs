@@ -922,6 +922,12 @@ impl Engine {
         self.ask(|reply| Command::PeerComments(download, reply)).await.unwrap_or_default()
     }
 
+    /// Sends a chat message to the client listening at `to`, connecting first if needed; a message that cannot be
+    /// delivered is told by [`EngineEvent::MessageFailed`].
+    pub async fn send_message(&self, to: SocketAddr, text: String) {
+        let _ = self.ask(|reply| Command::SendMessage(to, text, reply)).await;
+    }
+
     /// Our friends, in the order they were added.
     pub async fn friends(&self) -> Vec<Friend> {
         self.ask(Command::Friends).await.unwrap_or_default()
@@ -1428,6 +1434,10 @@ impl NjMuleEngine for Engine {
 
     fn friends(&self) -> impl Future<Output = Vec<Friend>> + Send {
         Engine::friends(self)
+    }
+
+    fn send_message(&self, to: SocketAddr, text: String) -> impl Future<Output = ()> + Send {
+        Engine::send_message(self, to, text)
     }
 
     fn add_friend(&self, friend: Friend) -> impl Future<Output = Result<(), String>> + Send {

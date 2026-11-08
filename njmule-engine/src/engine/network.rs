@@ -96,11 +96,13 @@ use crate::server::server_route::ServerRoute;
 use crate::server::server_session::{Context, Notice, Outcome, ServerSession};
 use crate::server::server_udp::ServerUdp;
 use crate::social::friends::Friends;
+use crate::social::messaging::{self, Messaging};
 use crate::upload::credits::{self, Credits};
 use crate::upload::upload_manager::{self, BlockRead, UploadManager};
 use crate::upload::upload_session;
 use crate::upload::uploadable::Uploadable;
 
+mod chats;
 mod filter;
 mod kad;
 mod ports;
@@ -240,6 +242,8 @@ pub enum Command {
     /// Says hello to a client and runs the identification: told once its outcome is known, the connection closes or
     /// the wait is over.
     Hello(SocketAddr, oneshot::Sender<io::Result<PeerInfo>>),
+    /// Sends a chat message to the client listening at the address, connecting first if needed; answers once taken.
+    SendMessage(SocketAddr, String, oneshot::Sender<()>),
     KnownClients(oneshot::Sender<Vec<KnownClient>>),
     Kad(oneshot::Sender<Option<KadInfo>>),
     KadContacts(oneshot::Sender<Vec<KadContactInfo>>),
@@ -329,6 +333,8 @@ enum PeerEvent {
     Probed(Box<io::Result<tcp_connector::Connection>>, oneshot::Sender<io::Result<PeerInfo>>),
     // The connection to a node that offered to be our Kad buddy, by the buddy link's attempt.
     BuddyDialed(u64, Box<io::Result<tcp_connector::Connection>>),
+    // Our own connection for a chat with the client listening at the address.
+    ChatConnected(SocketAddr, Box<io::Result<tcp_connector::Connection>>),
 }
 
 // How long a client we call for its upload slot has to accept the connection.
@@ -428,6 +434,9 @@ pub struct Network {
     friends: Friends,
     // The friend served first, for this run only; only friends get it.
     friend_slot: Option<[u8; 16]>,
+    messaging: Messaging,
+    // Our own connections for chats.
+    chats: HashMap<LinkId, LinkHandle>,
     shared_files: SharedFiles,
     shares: SharesSide,
     publisher: FilePublisher,
@@ -596,6 +605,8 @@ pub fn start(
         comments: Arc::new(Mutex::new(comments)),
         friends,
         friend_slot: None,
+        messaging: Messaging::default(),
+        chats: HashMap::new(),
         shared_files,
         shares,
         publisher: FilePublisher::default(),
@@ -1029,6 +1040,10 @@ impl Network {
                     self.downloads.describe(),
                     self.uploads.describe()
                 ));
+            }
+            Command::SendMessage(to, text, answer) => {
+                self.send_message(to, &text);
+                let _ = answer.send(());
             }
             Command::Hello(address, answer) => {
                 let events = self.peer_events.clone();
@@ -1780,6 +1795,7 @@ impl Network {
                 }
             },
             PeerEvent::BuddyDialed(attempt, result) => self.buddy_dialed(attempt, *result),
+            PeerEvent::ChatConnected(to, result) => self.chat_connected(to, *result),
         }
         self.after_downloads();
     }
@@ -1933,6 +1949,9 @@ impl Network {
             LinkEvent::Packet(link, _) | LinkEvent::Closed(link, _) if self.probes.contains_key(&link) => {
                 self.probe_event(event);
             }
+            LinkEvent::Packet(link, _) | LinkEvent::Closed(link, _) if self.is_chat_link(link) => {
+                self.chat_event(event);
+            }
             LinkEvent::Packet(link, packet) => self.peer_packet(link, &packet, &ours),
             LinkEvent::Closed(link, reason) => {
                 let peer = self.peers.remove(&link);
@@ -1949,6 +1968,7 @@ impl Network {
                 self.downloads.closed(link, reason.as_deref(), &ours);
                 self.uploads.closed(link);
                 self.buddy_closed(link, reason.as_deref());
+                self.chat_link_closed(link);
             }
         }
         self.after_downloads();
@@ -2014,6 +2034,9 @@ impl Network {
         if let Some(session) = self.peers.get_mut(&link).and_then(|peer| peer.identity.as_mut())
             && identification(session, self.uploads.credits_mut(), &handle, packet)
         {
+            return;
+        }
+        if messaging::is_chat(packet) && self.chat_incoming(link, handle.remote(), &hello, packet) {
             return;
         }
         match peer_link::side_of(packet) {
@@ -2303,6 +2326,7 @@ impl Network {
         for probe in self.probes.values() {
             probe.handle.close();
         }
+        self.close_chats();
         self.with_session(|session, ctx| session.disconnect(ctx));
         self.stop_pinging();
         if let Some(saving) = self.saving.take() {

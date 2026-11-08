@@ -37,6 +37,7 @@ use crate::config::schedule::{Rule, Schedule, time_text};
 use crate::files::file_types;
 use crate::files::part_file::PartMap;
 use crate::persist::preferences_codec;
+use crate::remote::conversations::{Author, Chat, Notice};
 use crate::remote::rate_history::Rate;
 use crate::remote::recent_log::Entry;
 
@@ -399,6 +400,23 @@ pub fn event(event: &EngineEvent) -> (&'static str, Value) {
             ("download.failed", json!({"download": download(info, false), "reason": reason}))
         }
         EngineEvent::DownloadRemoved(removed) => ("download.removed", json!({"hash": hash(removed)})),
+        EngineEvent::MessageReceived { address, user_hash, nick, text } => {
+            let mut fields = json!({"address": address, "userHash": hash(user_hash), "text": text});
+            if let (Some(nick), Value::Object(fields)) = (nick, &mut fields) {
+                fields.insert("nick".to_owned(), json!(nick));
+            }
+            ("message.received", fields)
+        }
+        // The picture stays out: the conversations give it.
+        EngineEvent::CaptchaRequested { address, user_hash, .. } => {
+            ("captcha.requested", json!({"address": address, "userHash": hash(user_hash)}))
+        }
+        EngineEvent::CaptchaAnswered { address, solved } => {
+            ("captcha.answered", json!({"address": address, "solved": solved}))
+        }
+        EngineEvent::MessageFailed { address, reason } => {
+            ("message.failed", json!({"address": address, "reason": reason}))
+        }
     }
 }
 
@@ -647,6 +665,45 @@ pub fn kad_search(search: &KadSearchInfo) -> Value {
 /// A hash as the API writes it: 32 upper-case hex digits.
 pub fn hash(hash: &[u8; 16]) -> String {
     data_encoding::HEXUPPER.encode(hash)
+}
+
+/// A chat, the newest lines last, with the CAPTCHA to solve in Base64 when there is one.
+pub fn chat(chat: &Chat) -> Value {
+    let lines: Vec<Value> = chat
+        .lines
+        .iter()
+        .map(|line| {
+            let time = time::OffsetDateTime::from(line.time).format(&Rfc3339).unwrap_or_default();
+            let author = match line.author {
+                Author::Us => "us",
+                Author::Them => "them",
+                Author::Notice => "notice",
+            };
+            let mut fields = json!({"sequence": line.sequence, "time": time, "author": author, "text": line.text});
+            if let (Some(notice), Value::Object(fields)) = (line.notice, &mut fields) {
+                let notice = match notice {
+                    Notice::CaptchaPassed => "captcha_passed",
+                    Notice::CaptchaWrong => "captcha_wrong",
+                    Notice::NotDelivered => "not_delivered",
+                };
+                fields.insert("notice".to_owned(), json!(notice));
+            }
+            fields
+        })
+        .collect();
+    let mut fields = json!({"address": chat.address, "lines": lines});
+    if let Value::Object(fields) = &mut fields {
+        if let Some(user_hash) = &chat.user_hash {
+            fields.insert("userHash".to_owned(), json!(hash(user_hash)));
+        }
+        if let Some(nick) = &chat.nick {
+            fields.insert("nick".to_owned(), json!(nick));
+        }
+        if let Some(image) = &chat.captcha {
+            fields.insert("captcha".to_owned(), json!(data_encoding::BASE64.encode(image)));
+        }
+    }
+    fields
 }
 
 /// A friend, with where it was last seen when known.
