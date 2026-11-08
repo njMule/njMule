@@ -29,6 +29,7 @@ use njmule_engine::api::known_client::KnownClient;
 use njmule_engine::api::nj_mule_engine::{NjMuleEngine, Subscription};
 use njmule_engine::api::peer_comment::PeerComment;
 use njmule_engine::api::peer_info::PeerInfo;
+use njmule_engine::api::port_test::{Forwarding, PortTest, Reach};
 use njmule_engine::api::saved_search::SavedSearch;
 use njmule_engine::api::search_result::SearchResult;
 use njmule_engine::api::server_info::ServerInfo;
@@ -81,6 +82,8 @@ struct Fake {
     preferences: Preferences,
     categories: Vec<Category>,
     schedule: Schedule,
+    // The test of the ports as it stands.
+    port_test: Option<PortTest>,
 }
 
 #[derive(Clone)]
@@ -151,6 +154,14 @@ impl NjMuleEngine for FakeEngine {
     async fn update_schedule(&self, schedule: Schedule) -> Result<Schedule, String> {
         self.with(|fake| fake.schedule.clone_from(&schedule));
         Ok(schedule)
+    }
+
+    async fn test_ports(&self) -> Option<PortTest> {
+        self.with(|fake| fake.port_test.clone())
+    }
+
+    async fn port_test(&self) -> Option<PortTest> {
+        self.with(|fake| fake.port_test.clone())
     }
 
     async fn status(&self) -> Option<EngineStatus> {
@@ -550,6 +561,27 @@ impl Api {
 
     fn given_the_engine_downloads(&self, download: DownloadInfo) {
         self.engine.with(|fake| fake.downloads.push(download));
+    }
+
+    fn given_the_engine_tests_the_ports(&self) {
+        self.given_the_port_test(Forwarding::Asking, Reach::Testing);
+    }
+
+    fn given_the_engine_tests_the_ports_for_minutes(&self) {
+        self.given_the_port_test(Forwarding::Forwarded, Reach::Open);
+    }
+
+    fn given_the_port_test(&self, forwarding: Forwarding, tcp: Reach) {
+        let test = PortTest {
+            tcp_port: 4662,
+            udp_port: 4672,
+            forwarding,
+            router: String::new(),
+            tcp,
+            udp: Reach::Testing,
+            done: false,
+        };
+        self.engine.with(|fake| fake.port_test = Some(test));
     }
 
     fn given_the_engine_adds_downloads(&self) {
@@ -1387,6 +1419,31 @@ async fn should_replace_the_categories() {
         "\"patterns\":\"*.mkv|*.avi\"",
         "\"priority\":\"high\"",
     ]);
+}
+
+#[tokio::test]
+async fn should_start_a_test_of_the_ports() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_tests_the_ports();
+
+    api.when_called("POST", "/api/v1/ports/test", "").await;
+
+    api.then_the_status_is(202);
+    api.then_the_body_contains(&["\"forwarding\":\"asking\"", "\"tcp\":\"testing\"", "\"done\":false"]);
+}
+
+// The Rust engine answers the test as it stands, never its end: a test that runs for minutes is told at once.
+#[tokio::test]
+async fn should_answer_a_test_of_the_ports_without_waiting_for_its_end() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_tests_the_ports_for_minutes();
+
+    api.when_called("POST", "/api/v1/ports/test", "").await;
+
+    api.then_the_status_is(202);
+    api.then_the_body_contains(&["\"tcp\":\"open\"", "\"udp\":\"testing\"", "\"done\":false"]);
 }
 
 #[tokio::test]

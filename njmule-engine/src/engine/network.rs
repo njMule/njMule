@@ -32,6 +32,7 @@ use crate::api::known_client::KnownClient;
 use crate::api::log_line::Level as LogLevel;
 use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::{Identification as PeerIdentification, PeerInfo};
+use crate::api::port_test::PortTest;
 use crate::api::saved_search::SavedSearch;
 use crate::api::search_request;
 use crate::api::search_result::SearchResult;
@@ -45,6 +46,7 @@ use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::download::download_manager::{self, Action, DownloadEvent, DownloadManager, KadLink, ServerLink};
 use crate::download::download_session;
 use crate::download::finished_downloads::FinishedDownloads;
+use crate::engine::port_check::PortCheck;
 use crate::engine::scheduler::{self, Change, Scheduler};
 use crate::engine::totals::{self, Totals};
 use crate::engine::{ServerContext, Shared};
@@ -88,8 +90,10 @@ use crate::upload::upload_manager::{self, BlockRead, UploadManager};
 use crate::upload::uploadable::Uploadable;
 
 mod kad;
+mod ports;
 
 use kad::KadSide;
+use ports::KadRound;
 
 /// How long changes of the list wait to be saved together.
 const SAVE_DELAY: Duration = Duration::from_secs(30);
@@ -176,6 +180,10 @@ pub enum Command {
     ActiveRule(oneshot::Sender<Option<Rule>>),
     /// Saves the schedule and puts it in place of the one before; answers it as kept, or why it cannot be.
     SetSchedule(Schedule, oneshot::Sender<Result<Schedule, String>>),
+    /// Tests our ports, a test already running on them going on; answers the test as it stands.
+    TestPorts(oneshot::Sender<PortTest>),
+    /// The test of our ports running or run last; none before the first.
+    PortTest(oneshot::Sender<Option<PortTest>>),
     /// Says hello to a client and runs the identification: told once its outcome is known, the connection closes or
     /// the wait is over.
     Hello(SocketAddr, oneshot::Sender<io::Result<PeerInfo>>),
@@ -319,6 +327,9 @@ pub struct Network {
     applied: Preferences,
     scheduler: Scheduler,
     since_schedule_check: u32,
+    // The test of our ports running or run last, and the Kad node it counts on.
+    port_check: Option<PortCheck>,
+    port_check_kad: Option<KadRound>,
     // The interface the sockets are on, and the seconds since it was last looked at.
     binding: Binding,
     since_bind_check: u32,
@@ -480,6 +491,8 @@ pub fn start(
         applied,
         scheduler,
         since_schedule_check: 0,
+        port_check: None,
+        port_check_kad: None,
         binding,
         since_bind_check: 0,
         server_udp_keys,
@@ -800,6 +813,12 @@ impl Network {
             Command::SetSchedule(schedule, answer) => {
                 let _ = answer.send(self.set_schedule(schedule));
             }
+            Command::TestPorts(answer) => {
+                let _ = answer.send(self.test_ports());
+            }
+            Command::PortTest(answer) => {
+                let _ = answer.send(self.port_test());
+            }
             Command::Status(answer) => {
                 let _ = answer.send(Box::new(self.status()));
             }
@@ -923,6 +942,7 @@ impl Network {
                     low_id: id.is_low_id(),
                     obfuscated,
                 });
+                self.port_check_logged_in(!id.is_low_id());
                 self.save_servers();
                 self.start_pinging();
                 self.publisher.connected(Instant::now());
@@ -1037,6 +1057,7 @@ impl Network {
                     self.since_schedule_check = 0;
                     self.refresh_schedule();
                 }
+                self.tick_port_check();
             }
             Tick::Rebound(binding, listener, udp) => {
                 if binding == self.binding {
@@ -2056,6 +2077,7 @@ impl Network {
     }
 
     fn stop(&mut self) {
+        self.stop_port_check();
         self.totals.save(self.downloads.downloaded(), self.uploads.uploaded(), self.session_seconds());
         let ours = self.shared.our_hello();
         self.downloads.close(&ours);

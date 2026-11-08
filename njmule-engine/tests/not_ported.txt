@@ -150,9 +150,7 @@ RemoteApiTest.shouldKeepTheAddressesOfTheServerLists
 RemoteApiTest.shouldAddTheServersOfAServerMetOfTheEnginesComputer
 RemoteApiTest.shouldRefuseAListFileThatIsNotThere
 RemoteApiTest.shouldAddTheContactsOfANodesDatSent
-# The test of the ports and the IP filter come with the calls on the engine's state.
-RemoteApiTest.shouldStartATestOfThePorts
-RemoteApiTest.shouldAnswerATestOfThePortsWithoutWaitingForItsEnd
+# The IP filter comes with the calls on the engine's state.
 RemoteApiTest.shouldNotUpdateTheIpFilterWithoutLists
 # The Rust engine keeps no rating or comment of ours yet: it comes with the files area.
 RemoteApiTest.shouldKeepOurRatingAndCommentOfAFile

@@ -20,6 +20,7 @@ use crate::api::known_client::KnownClient;
 use crate::api::log_line::LogLine;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
+use crate::api::port_test::PortTest;
 use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::{Media, SearchResult};
 use crate::api::server_info::ServerInfo;
@@ -84,6 +85,18 @@ pub fn network_interface(candidate: &Candidate) -> Value {
         "name": candidate.name,
         "displayName": candidate.display_name,
         "addresses": candidate.addresses.iter().map(ToString::to_string).collect::<Vec<_>>(),
+    })
+}
+
+pub fn port_test(test: &PortTest) -> Value {
+    json!({
+        "tcpPort": test.tcp_port,
+        "udpPort": test.udp_port,
+        "forwarding": test.forwarding.name(),
+        "router": test.router,
+        "tcp": test.tcp.name(),
+        "udp": test.udp.name(),
+        "done": test.done,
     })
 }
 

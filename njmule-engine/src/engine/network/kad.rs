@@ -69,9 +69,22 @@ struct Running {
     relay: RelayKeeper,
 }
 
+/// What Kad tells of its checks of our ports, while it runs.
+pub(super) struct KadChecks {
+    /// Which start of Kad the node is.
+    pub(super) node: u64,
+    /// How many checks it started.
+    pub(super) rounds: u32,
+    /// How the last ones ended, open or not; none while they run.
+    pub(super) tcp: Option<bool>,
+    pub(super) udp: Option<bool>,
+}
+
 /// Kad as the network holds it: running or not, and why not.
 pub(super) struct KadSide {
     running: Option<Running>,
+    // How many times Kad started.
+    starts: u64,
     // Disconnected by the user: new ports and interfaces do not start it again.
     stopped_by_hand: bool,
     // The UDP port another program held when Kad started, tried again until it is free; 0 when none.
@@ -98,6 +111,7 @@ impl KadSide {
         );
         Self {
             running: None,
+            starts: 0,
             stopped_by_hand: false,
             port_taken: 0,
             since_port_retry: 0,
@@ -305,6 +319,23 @@ impl Network {
             self.kad.port_taken = 0;
         }
         self.kad.running = Some(Running { socket, node, publisher: KadPublisher::new(), relay });
+        self.kad.starts = self.kad.starts.wrapping_add(1);
+    }
+
+    /// What Kad tells of its checks of our ports; none while it does not run.
+    pub(super) fn kad_checks(&self) -> Option<KadChecks> {
+        let running = self.kad.running.as_ref()?;
+        Some(KadChecks {
+            node: self.kad.starts,
+            rounds: running.node.firewall_rounds(),
+            tcp: running.node.tcp_check_open(),
+            udp: running.node.udp_test_open(),
+        })
+    }
+
+    /// The UDP port of Kad; 0 while it does not run.
+    pub(super) fn kad_udp_port(&self) -> u16 {
+        self.kad.running.as_ref().map_or(0, |running| running.socket.port())
     }
 
     /// Stops Kad, saving its contacts and index; the port is free again once the socket's task has ended.

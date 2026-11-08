@@ -25,6 +25,7 @@ use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::PeerInfo;
+use crate::api::port_test::PortTest;
 use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
@@ -77,6 +78,13 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
 
     /// Saves the schedule and puts it in place of the one before; answers it as kept, or why it cannot be.
     fn update_schedule(&self, schedule: Schedule) -> impl Future<Output = Result<Schedule, String>> + Send;
+
+    /// Tests our ports, a test already running on them going on; answers the test as it stands, none once the engine
+    /// stopped.
+    fn test_ports(&self) -> impl Future<Output = Option<PortTest>> + Send;
+
+    /// The test of our ports running or run last; none before the first.
+    fn port_test(&self) -> impl Future<Output = Option<PortTest>> + Send;
 
     /// Changes the preferences named in `changes`, all or none, and saves them.
     fn update_preferences(&self, changes: &BTreeMap<String, String>) -> Result<Preferences, String>;

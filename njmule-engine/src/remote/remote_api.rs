@@ -84,6 +84,7 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
             get(|State(engine): State<E>| async move { Json(api_json::preference_passwords(&engine.preferences())) }),
         )
         .route("/schedule", get(schedule::<E>).put(set_schedule::<E>))
+        .route("/ports/test", get(port_test::<E>).post(test_ports::<E>))
         .route("/interfaces", get(network_interfaces))
         .route("/update", get(|| async { Json(api_json::update()) }))
         .route("/events", get(events::<E>))
@@ -297,6 +298,20 @@ async fn set_schedule<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body
         ApiError::new(StatusCode::SERVICE_UNAVAILABLE, format!("The engine cannot do it now: {reason}"))
     })?;
     Ok(Json(api_json::schedule(&now, engine.active_rule().await.as_ref())))
+}
+
+async fn port_test<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    Json(engine.port_test().await.as_ref().map_or(Value::Null, api_json::port_test))
+}
+
+/// Starts a test of our ports, or follows the one running on them; answers it as it stands, without waiting for its
+/// end.
+async fn test_ports<E: NjMuleEngine>(State(engine): State<E>) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let test = engine
+        .test_ports()
+        .await
+        .ok_or_else(|| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "The engine is stopping."))?;
+    Ok((StatusCode::ACCEPTED, Json(api_json::port_test(&test))))
 }
 
 /// Stops njMule, after the answer.
