@@ -81,14 +81,6 @@ PeerGreetingsTest.shouldSayHelloFirstOverAConnectionThroughRoutersAndHandItOverO
 # The engine's task drives the pinger with its own timer: the pinger holds none to start or stop.
 ServerPingerTest.shouldStartAndStopTheTimerOnce
 
-# Other clients' records and the files forgotten once no longer shared wait for their port.
-SharedFilesTest.shouldForgetTheFilesNoLongerSharedWhenTheyAreNotToBeRemembered
-SharedFilesTest.shouldKeepTheOtherTagsOfARenamedRecordOfAnotherClient
-SharedFilesTest.shouldRenameAFileOfAnotherClientToTheNameItHas
-SharedFilesTest.shouldRenameNothingForAHashUnknownToTheRecordsOfAnotherClient
-SharedFilesTest.shouldShareTheFilesOfAnotherClientWithoutHashingAndOnlyWithTheirOwnTrees
-SharedFilesTest.shouldTakeTheUsableRecordsOfAnotherClient
-
 # A file look-up cannot fault in the Rust engine: it answers a file or none, and none is a file we do not have.
 UploadManagerTest.shouldEndOnlyTheSessionOfTheClientWhoseFileLookUpFaults
 

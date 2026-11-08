@@ -186,7 +186,7 @@ pub struct Places {
 #[derive(Debug, Clone, Default)]
 pub struct Listing {
     pub files: Vec<Looked>,
-    /// The folders looked at: the shared ones and the subfolders of the trees.
+    /// The folders read: the shared ones and the subfolders of the trees, which changes in are watched for.
     pub folders: Vec<PathBuf>,
 }
 
@@ -237,6 +237,8 @@ pub struct SharedFiles {
     finishing: HashMap<PathBuf, Finished>,
     // Whether a scan said which files are shared.
     scanned: bool,
+    // Whether known.met leaves out the files no longer shared, and with them what tells the files downloaded before.
+    forget_downloaded: bool,
     // Whether known.met is behind what is known.
     unsaved: bool,
     closed: bool,
@@ -350,13 +352,46 @@ impl SharedFiles {
         shared.trees_changed = damaged;
         let (records, _) = load(&config.join(KNOWN_FILE_NAME), known_met::read, known_met::salvage);
         for known in records {
-            if let (Some(name), Some(size)) = (known.name().map(str::to_owned), known.size())
-                && known.is_consistent()
-            {
-                shared.known.insert((name, size, known.mtime), known);
+            if let Some(key) = usable_key(&known) {
+                shared.known.insert(key, known);
             }
         }
         shared
+    }
+
+    /// Whether `known.met` keeps the files no longer shared, which tells the files downloaded before.
+    pub fn remember_downloaded(&mut self, remember: bool) {
+        if self.forget_downloaded == remember {
+            self.forget_downloaded = !remember;
+            self.unsaved = true;
+        }
+    }
+
+    /// Remembers the records of another client's files, so that a scan shares the same files without hashing them
+    /// again; returns how many were new. Of its AICH trees, only those of these files are kept.
+    pub fn add_known(&mut self, files: &[KnownFile], trees: &[known2_met::Entry]) -> usize {
+        let mut wanted = HashSet::new();
+        let mut added = 0usize;
+        for file in files {
+            let Some(key) = usable_key(file) else {
+                continue;
+            };
+            if let indexmap::map::Entry::Vacant(vacant) = self.known.entry(key) {
+                vacant.insert(file.clone());
+                added = added.saturating_add(1);
+                wanted.extend(file.aich_hash());
+            }
+        }
+        for tree in trees {
+            if wanted.contains(&tree.master_hash) && !self.aich.contains_key(&tree.master_hash) {
+                self.aich.insert(tree.master_hash, tree.clone());
+                self.trees_changed = true;
+            }
+        }
+        if added > 0 {
+            self.unsaved = true;
+        }
+        added
     }
 
     /// Sets the incoming folders, whose files are shared, and the folders never shared besides the configuration one,
@@ -369,12 +404,16 @@ impl SharedFiles {
     /// Writes `known.met`, the records of the files shared taking the date and the counts of this run, and
     /// `known2_64.met` when the trees changed. Once a scan said which files are shared, a tree no record needs goes, and
     /// so does that of a file not shared for a month: a record keeps the file known as downloaded before, a tree is
-    /// needed only to share it.
+    /// needed only to share it. Then too the records of the files no longer shared go, when they are not remembered.
     pub fn save(&mut self) -> io::Result<()> {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs());
         let mut needed = HashSet::new();
+        let mut records = Vec::with_capacity(self.known.len());
         for record in self.known.values_mut() {
             let shared = self.files.contains_key(&record.file_hash);
+            if self.forget_downloaded && !shared && self.scanned {
+                continue;
+            }
             if shared {
                 set_int(record, file_tag::LASTSHARED, now);
                 if let Some(counts) = self.counts.get(&record.file_hash) {
@@ -387,6 +426,7 @@ impl SharedFiles {
             {
                 needed.insert(aich);
             }
+            records.push(record.clone());
         }
         let before = self.aich.len();
         self.aich.retain(|master, _| needed.contains(master));
@@ -394,7 +434,6 @@ impl SharedFiles {
             self.built.retain(|master, _| needed.contains(master));
             self.trees_changed = true;
         }
-        let records: Vec<KnownFile> = self.known.values().cloned().collect();
         let data = known_met::write(&records).map_err(io::Error::other)?;
         atomic_files::write(&self.config.join(KNOWN_FILE_NAME), &data)?;
         self.unsaved = false;
@@ -918,6 +957,15 @@ impl SharedFiles {
     }
 }
 
+// Where a record is known: its name, size and date. A record without them, or whose part hashes do not make its hash,
+// is of no use.
+fn usable_key(known: &KnownFile) -> Option<Key> {
+    let (Some(name), Some(size)) = (known.name(), known.size()) else {
+        return None;
+    };
+    known.is_consistent().then(|| (name.to_owned(), size, known.mtime))
+}
+
 // The record of a file whose date changed: its other tags, such as its priority, stay.
 fn redated(older: KnownFile, file: &SharedFile) -> KnownFile {
     let moved =
@@ -983,25 +1031,29 @@ pub fn list(places: &Places) -> Listing {
         walk(&shared_directory::absolute(tree), &places.private, &mut folders);
     }
     let mut files = Vec::new();
-    for folder in &folders {
+    let mut read = Vec::new();
+    for folder in folders {
         if !folder.is_dir() {
             continue;
         }
-        if places.private.holds(folder) {
+        if places.private.holds(&folder) {
             tracing::warn!("Not sharing the private folder {}", folder.display());
             continue;
         }
-        match files_in(folder) {
-            Ok(looked) => files.extend(looked),
+        match files_in(&folder) {
+            Ok(looked) => {
+                files.extend(looked);
+                read.push(folder);
+            }
             Err(e) => tracing::warn!("Cannot list the shared folder {}: {e}", folder.display()),
         }
     }
-    Listing { files, folders: folders.into_iter().collect() }
+    Listing { files, folders: read }
 }
 
 /// The files of `folder` that may be shared, looked at one by one, without going into its folders: a file gone
 /// meanwhile is left out and the others are looked at still.
-pub fn files_in(folder: &Path) -> io::Result<impl Iterator<Item = Looked>> {
+pub fn files_in(folder: &Path) -> io::Result<impl Iterator<Item = Looked> + use<>> {
     Ok(fs::read_dir(folder)?.filter_map(Result::ok).filter_map(|entry| {
         let path = entry.path();
         match look(&path) {

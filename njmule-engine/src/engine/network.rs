@@ -270,6 +270,8 @@ enum Tick {
     Hashed(Found, Result<FileHashes, String>),
     // What a scan of the shared folders read.
     Listed(Listing),
+    // A shared folder changed.
+    SharesChanged,
     // The sockets opened for a binding, which a newer one may have replaced meanwhile.
     Rebound(Binding, Option<TcpListener>, Option<UdpSocket>),
     // The preferences changed.
@@ -1191,6 +1193,7 @@ impl Network {
             }
             Tick::Hashed(found, hashes) => self.shares_hashed(found, hashes),
             Tick::Listed(listing) => self.shares_listed(listing),
+            Tick::SharesChanged => self.shares_watched(),
         }
     }
 

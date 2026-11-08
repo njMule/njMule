@@ -4,12 +4,13 @@
 //! The shared files of the network: the folders read off the engine's task at the start, every ten minutes and when
 //! they change, and the files new to them hashed one after the other on a thread of their own.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::mpsc;
 
 use super::{Network, Tick};
@@ -23,6 +24,8 @@ use crate::upload::upload_manager::{FileCounts, UploadManager};
 
 /// A file that changed while it was hashed is looked at again this long after, once a copy is done.
 const RESCAN_DELAY: Duration = Duration::from_secs(5);
+/// A change in a shared folder is looked at this long after the last of a burst, such as a file being copied.
+const WATCH_DELAY: Duration = Duration::from_secs(5);
 
 /// What the network keeps of its scans.
 pub(super) struct SharesSide {
@@ -32,6 +35,10 @@ pub(super) struct SharesSide {
     scanning: bool,
     again: bool,
     next_scan: Instant,
+    // When the folders last changed, a scan follows a moment later; the rescans every ten minutes go on meanwhile.
+    changed_scan: Option<Instant>,
+    // The folders read, watched for changes; none where the system watches nothing.
+    watch: Option<Arc<Mutex<Watch>>>,
     // The incoming and private folders of the last scan, whose change asks for another.
     folders: (Vec<PathBuf>, Vec<PathBuf>),
     // The upload priorities chosen for the files shared, which the upload queue reads; and what it counted of them
@@ -42,6 +49,47 @@ pub(super) struct SharesSide {
 
 // Requests, slots and bytes of a file.
 type Tally = (u64, u64, u64);
+
+// The watches of the folders read, which each scan updates off the engine's task: a folder watch takes a handle of the
+// system, set up in a call each.
+struct Watch {
+    watcher: RecommendedWatcher,
+    watched: HashSet<PathBuf>,
+}
+
+impl Watch {
+    // Each change but a read asks for a scan; reads come from uploads and hashes.
+    fn start(ticks: mpsc::UnboundedSender<Tick>) -> notify::Result<Self> {
+        let watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+            if event.is_ok_and(|event| !matches!(event.kind, EventKind::Access(_))) {
+                let _ = ticks.send(Tick::SharesChanged);
+            }
+        })?;
+        Ok(Self { watcher, watched: HashSet::new() })
+    }
+
+    // Each folder read is watched alone, not its subfolders, which a tree lists when they are shared; the watch of a
+    // folder no longer read ends.
+    fn follow(&mut self, folders: &[PathBuf]) {
+        let read: HashSet<&PathBuf> = folders.iter().collect();
+        let gone: Vec<PathBuf> = self.watched.iter().filter(|dir| !read.contains(dir)).cloned().collect();
+        for dir in gone {
+            self.watched.remove(&dir);
+            let _ = self.watcher.unwatch(&dir);
+        }
+        for dir in folders {
+            if self.watched.contains(dir) {
+                continue;
+            }
+            match self.watcher.watch(dir, RecursiveMode::NonRecursive) {
+                Ok(()) => {
+                    self.watched.insert(dir.clone());
+                }
+                Err(e) => tracing::debug!("Cannot watch {}: {e}", dir.display()),
+            }
+        }
+    }
+}
 
 // Where the upload queue counts, for the shared files to take.
 struct Counter(Arc<Mutex<HashMap<[u8; 16], Tally>>>);
@@ -72,6 +120,10 @@ impl SharesSide {
     /// Starts the hasher, whose hashes come back as ticks. It runs on a thread of its own, not on one of the runtime's,
     /// so that a large file being hashed holds up neither the scans nor the engine's stop.
     pub(super) fn new(ticks: mpsc::UnboundedSender<Tick>) -> Self {
+        let watch = Watch::start(ticks.clone())
+            .map_err(|e| tracing::warn!("Changes in the shared folders show at the next rescan only: {e}"))
+            .ok()
+            .map(|watch| Arc::new(Mutex::new(watch)));
         let (to_hash, files) = std_mpsc::channel::<Found>();
         let started = std::thread::Builder::new().name("njmule-hasher".to_owned()).spawn(move || {
             // Ends once the network is gone.
@@ -90,6 +142,8 @@ impl SharesSide {
             scanning: false,
             again: false,
             next_scan: Instant::now(),
+            changed_scan: None,
+            watch,
             folders: (Vec::new(), Vec::new()),
             priorities: Arc::default(),
             counted: Arc::default(),
@@ -115,14 +169,25 @@ impl Network {
         }
         self.shares.scanning = true;
         self.shares.next_scan = later(shared_files::RESCAN_INTERVAL);
+        self.shares.changed_scan = None;
         let (incoming, private) = self.share_folders();
         self.shared_files.set_folders(incoming.clone(), private.clone());
         self.shares.folders = (incoming, private);
         let places = self.shared_files.places();
         let ticks = self.ticks.clone();
+        let watch = self.shares.watch.clone();
         tokio::task::spawn_blocking(move || {
-            let _ = ticks.send(Tick::Listed(shared_files::list(&places)));
+            let listing = shared_files::list(&places);
+            if let Some(watch) = watch {
+                watch.lock().unwrap_or_else(PoisonError::into_inner).follow(&listing.folders);
+            }
+            let _ = ticks.send(Tick::Listed(listing));
         });
+    }
+
+    /// A shared folder changed: a scan follows once the changes stop for a moment.
+    pub(super) fn shares_watched(&mut self) {
+        self.shares.changed_scan = Some(later(WATCH_DELAY));
     }
 
     pub(super) fn shares_listed(&mut self, listing: Listing) {
@@ -144,12 +209,17 @@ impl Network {
         self.shares_changed(changes);
     }
 
-    /// Each second: a scan when one is due or the incoming or private folders changed, and the known files saved when
-    /// they changed.
+    /// Each second: a scan when one is due, the shared folders changed or the incoming or private folders are others,
+    /// and the known files saved when they changed.
     pub(super) fn shares_second(&mut self) {
-        if Instant::now() >= self.shares.next_scan || self.share_folders() != self.shares.folders {
+        let now = Instant::now();
+        if now >= self.shares.next_scan
+            || self.shares.changed_scan.is_some_and(|due| now >= due)
+            || self.share_folders() != self.shares.folders
+        {
             self.scan_shares();
         }
+        self.shared_files.remember_downloaded(self.applied.remember_downloaded_files);
         self.take_counts();
         if self.shared_files.is_unsaved()
             && let Err(e) = self.shared_files.save()
