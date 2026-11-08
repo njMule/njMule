@@ -107,7 +107,40 @@ pub async fn open(address: SocketAddr, limit: Duration, routes: &Routes) -> io::
         ProxyType::Socks => through_socks(&proxy, address, local, limit).await,
         ProxyType::Http => {
             let mut stream = socks5::connect_to_proxy(&proxy, local, limit).await?;
-            within(limit, http_connect(&mut stream, address)).await?;
+            within(limit, http_connect(&mut stream, &address.to_string())).await?;
+            Ok(stream)
+        }
+    }
+}
+
+/// A TCP connection to `host` at `port` along `routes`, as [`open`]. A proxy looks the name up itself, so that the
+/// lookup does not leave around it.
+pub async fn open_host(host: &str, port: u16, limit: Duration, routes: &Routes) -> io::Result<TcpStream> {
+    if let Ok(ip) = host.trim_start_matches('[').trim_end_matches(']').parse::<IpAddr>() {
+        return open(SocketAddr::new(ip, port), limit, routes).await;
+    }
+    let local = routes.local_address()?;
+    let proxy = routes.proxy();
+    match proxy.kind {
+        ProxyType::None => {
+            let found: Vec<SocketAddr> =
+                within(limit, async { Ok(tokio::net::lookup_host((host, port)).await?.collect()) }).await?;
+            // Bound to an interface, IPv4 only, as for the addresses.
+            let address = found
+                .into_iter()
+                .find(|address| local.is_none() || address.is_ipv4())
+                .ok_or_else(|| io::Error::new(ErrorKind::NotFound, format!("no address of {host} to reach")))?;
+            open(address, limit, routes).await
+        }
+        ProxyType::Socks => {
+            let mut stream = socks5::open(&proxy, local, limit).await?;
+            let target = Target::Name(host.to_owned(), port);
+            within(limit, async { Ok(socks5::request(&mut stream, socks5::CONNECT, &target).await?) }).await?;
+            Ok(stream)
+        }
+        ProxyType::Http => {
+            let mut stream = socks5::connect_to_proxy(&proxy, local, limit).await?;
+            within(limit, http_connect(&mut stream, &format!("{host}:{port}"))).await?;
             Ok(stream)
         }
     }
@@ -138,7 +171,7 @@ async fn through_socks(
 }
 
 // The CONNECT method of an HTTP proxy (RFC 9110): a few lines, where a crate would bring an HTTP stack of its own.
-async fn http_connect(stream: &mut TcpStream, address: SocketAddr) -> io::Result<()> {
+async fn http_connect(stream: &mut TcpStream, address: &str) -> io::Result<()> {
     const MAX_HEAD: usize = 8 * 1024;
     stream.write_all(format!("CONNECT {address} HTTP/1.1\r\nHost: {address}\r\n\r\n").as_bytes()).await?;
     let mut head = Vec::new();

@@ -38,6 +38,7 @@ use njmule_engine::api::kad_search_info::KadSearchInfo;
 use njmule_engine::api::known_client::KnownClient;
 use njmule_engine::api::list_source::{ListError, ListSource};
 use njmule_engine::api::nj_mule_engine::{NjMuleEngine, Subscription};
+use njmule_engine::api::notification_result::NotificationResult;
 use njmule_engine::api::peer_comment::PeerComment;
 use njmule_engine::api::peer_info::PeerInfo;
 use njmule_engine::api::port_test::PortTest;
@@ -158,7 +159,7 @@ async fn should_describe_an_engine_connected_to_nothing() {
     }
 }
 
-// The notifications and the updates wait for their ports.
+// The updates wait for their port.
 fn changes() -> Vec<(&'static str, String, String, u16)> {
     let download = format!("/api/v1/downloads/{HEX}");
     let shared = format!("/api/v1/shared/{HEX}");
@@ -201,6 +202,7 @@ fn changes() -> Vec<(&'static str, String, String, u16)> {
         ("POST", "/api/v1/searches".to_owned(), r#"{"query":"talk","scope":"global"}"#.to_owned(), 201),
         ("POST", "/api/v1/searches/check".to_owned(), r#"{"query":"talk"}"#.to_owned(), 200),
         ("POST", "/api/v1/folders/check".to_owned(), json!({"path": temp}).to_string(), 200),
+        ("POST", "/api/v1/notifications/test".to_owned(), String::new(), 200),
         ("POST", "/api/v1/import/emule".to_owned(), json!({"path": temp, "dryRun": true}).to_string(), 200),
         ("POST", "/api/v1/setup/done".to_owned(), String::new(), 200),
         ("POST", "/api/v1/shutdown".to_owned(), String::new(), 202),
@@ -394,6 +396,16 @@ impl NjMuleEngine for SampleEngine {
 
     async fn finish_setup(&self) -> Result<(), String> {
         self.done(())
+    }
+
+    async fn test_notifications(&self) -> Vec<NotificationResult> {
+        vec![
+            NotificationResult {
+                channel: "email".to_owned(),
+                error: Some("the server refused the password".to_owned()),
+            },
+            NotificationResult { channel: "webhook".to_owned(), error: None },
+        ]
     }
 
     async fn import_from_emule(&self, _emule: PathBuf, _options: ImportOptions) -> Result<ImportReport, String> {

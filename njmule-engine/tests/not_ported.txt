@@ -99,7 +99,7 @@ DownloadSourcesTest.shouldLetASourceWaitWhileOurConnectionsAreAtTheirLimit
 # The API's document.
 # Java only: the one document both engines serve is checked against the OpenAPI schemas by the Java test.
 ApiSpecificationTest.shouldBeAValidOpenApi32Description
-# The Rust API lacks the operations of the notifications, the web interface, the desktop window and the updates.
+# The Rust API lacks the operations of the web interface, the desktop window and the updates.
 ApiSpecificationTest.shouldHaveAHandlerForEveryOperation
 # The Rust engine tells no updates yet, whose events the document describes.
 ApiSpecificationTest.shouldDescribeEveryEventOfTheStream

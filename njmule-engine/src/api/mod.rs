@@ -25,6 +25,7 @@ pub mod list_source;
 pub mod log_line;
 pub mod nj_mule_engine;
 pub mod nj_mule_info;
+pub mod notification_result;
 pub mod peer_comment;
 pub mod peer_info;
 pub mod port_test;

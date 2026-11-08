@@ -22,6 +22,7 @@ use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::log_line::LogLine;
 use crate::api::nj_mule_info;
+use crate::api::notification_result::NotificationResult;
 use crate::api::peer_info::PeerInfo;
 use crate::api::port_test::PortTest;
 use crate::api::saved_search::SavedSearch;
@@ -116,6 +117,15 @@ pub fn shared_directory(directory: &SharedDirectory) -> Value {
 
 pub fn ban(info: &BanInfo) -> Value {
     json!({"address": info.address, "secondsLeft": info.seconds_left})
+}
+
+/// How a test message went through a notification channel; the error only when it was not sent.
+pub fn notification_result(result: &NotificationResult) -> Value {
+    let mut fields = json!({"channel": result.channel, "sent": result.error.is_none()});
+    if let (Some(error), Value::Object(fields)) = (&result.error, &mut fields) {
+        fields.insert("error".to_owned(), json!(error));
+    }
+    fields
 }
 
 pub fn port_test(test: &PortTest) -> Value {

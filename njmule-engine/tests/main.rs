@@ -160,6 +160,7 @@ mod network_binding_test;
 mod night_hours_test;
 mod notes_messages_test;
 mod notification_sound_codec_test;
+mod notifier_test;
 mod obfuscation_test;
 mod opcodes_test;
 mod other_files_test;

@@ -29,6 +29,7 @@ use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::list_source::{ListError, ListSource};
+use crate::api::notification_result::NotificationResult;
 use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::PeerInfo;
 use crate::api::port_test::PortTest;
@@ -67,6 +68,9 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
 
     /// Marks the questions of the first start answered or put aside.
     fn finish_setup(&self) -> impl Future<Output = Result<(), String>> + Send;
+
+    /// Sends a test message through each notification channel that is on, and tells how each went.
+    fn test_notifications(&self) -> impl Future<Output = Vec<NotificationResult>> + Send;
 
     /// Imports an eMule profile from its configuration folder; a dry run only reads it.
     fn import_from_emule(

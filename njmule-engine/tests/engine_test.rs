@@ -17,6 +17,7 @@ use njmule_engine::api::engine_event::EngineEvent;
 use njmule_engine::api::engine_status::EngineStatus;
 use njmule_engine::api::list_source::ListSource;
 use njmule_engine::api::nj_mule_engine::Subscription;
+use njmule_engine::api::notification_result::NotificationResult;
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::config::preferences::Preferences;
 use njmule_engine::config::schedule::{DayOfWeek, Rule, Schedule};
@@ -282,6 +283,16 @@ async fn should_let_the_next_engine_start_once_the_first_is_closed() {
     test.then_no_exception_occurred();
 }
 
+#[tokio::test]
+async fn should_test_no_notification_channel_while_none_is_on() {
+    let mut test = Engines::new();
+    test.given_a_running_engine().await;
+
+    test.when_the_notifications_are_tested().await;
+
+    test.then_no_channel_was_tested();
+}
+
 /// Engines started on a profile of a test folder, with the preferences of a first start, and what they answered.
 struct Engines {
     root: tempfile::TempDir,
@@ -295,6 +306,7 @@ struct Engines {
     added: usize,
     removed: bool,
     status: Option<EngineStatus>,
+    tested: Option<Vec<NotificationResult>>,
 }
 
 impl Engines {
@@ -313,6 +325,7 @@ impl Engines {
             added: 0,
             removed: false,
             status: None,
+            tested: None,
         }
     }
 
@@ -455,6 +468,10 @@ impl Engines {
         self.removed = within(self.engine().remove_server(Address::parse(address).unwrap())).await;
     }
 
+    async fn when_the_notifications_are_tested(&mut self) {
+        self.tested = Some(within(self.engine().test_notifications()).await);
+    }
+
     async fn when_the_engine_status_is_asked(&mut self) {
         self.status = within(self.engine().status()).await;
     }
@@ -464,6 +481,10 @@ impl Engines {
         if let Some(Ok(earlier)) = self.second.replace(second) {
             earlier.stop().await;
         }
+    }
+
+    fn then_no_channel_was_tested(&self) {
+        assert_eq!(self.tested, Some(Vec::new()));
     }
 
     fn then_the_engine_runs(&self) {
