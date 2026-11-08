@@ -177,6 +177,11 @@ impl Drop for ScriptedSource {
     }
 }
 
+/// Whether `packet` belongs to the secure identification.
+pub fn is_identification(packet: &Packet) -> bool {
+    packet.protocol() == protocol::EMULE && IDENTIFICATION.contains(&packet.opcode())
+}
+
 /// One downloader's connection.
 pub struct Link {
     input: OwnedReadHalf,
@@ -196,16 +201,21 @@ impl Link {
     /// The next packet, unpacked; the secure identification is left out.
     pub async fn next(&mut self) -> Packet {
         loop {
-            let packet = tokio::time::timeout(WAIT, read_packet(&mut self.input, &frame_limits::client))
-                .await
-                .expect("a packet in time")
-                .unwrap()
-                .expect("the connection open");
-            let packet = packing::unpack(packet, 1 << 22).unwrap();
-            if packet.protocol() != protocol::EMULE || !IDENTIFICATION.contains(&packet.opcode()) {
+            let packet = self.next_of_any_kind().await;
+            if !is_identification(&packet) {
                 return packet;
             }
         }
+    }
+
+    /// The next packet, unpacked, the secure identification's too.
+    pub async fn next_of_any_kind(&mut self) -> Packet {
+        let packet = tokio::time::timeout(WAIT, read_packet(&mut self.input, &frame_limits::client))
+            .await
+            .expect("a packet in time")
+            .unwrap()
+            .expect("the connection open");
+        packing::unpack(packet, 1 << 22).unwrap()
     }
 
     /// The packets read up to and with the first of `opcode` in `protocol`.

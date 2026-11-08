@@ -7,21 +7,29 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
 use std::fs;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::Arc;
 use std::time::Duration;
 
 use njmule_engine::api::engine_event::EngineEvent;
 use njmule_engine::api::friend::Friend;
 use njmule_engine::config::app_directories::AppDirectories;
+use njmule_engine::crypto::rsa;
 use njmule_engine::engine::Engine;
+use njmule_engine::peer::identity_handshake::{self, Identity, IdentityHandshake};
 use njmule_engine::protocol::ed2k::chat_messages;
-use njmule_engine::protocol::packet::opcodes::client;
+use njmule_engine::protocol::ed2k::hello::{Hello, Ours};
+use njmule_engine::protocol::io::PacketWriter;
+use njmule_engine::protocol::packet::opcodes::{client, extended};
 use njmule_engine::protocol::packet::{Packet, protocol};
 use njmule_engine::server::server_list::Address;
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 
 use crate::free_port;
-use crate::scripted_source::{Link, ScriptedSource};
+use crate::scripted_source::{Link, ScriptedSource, is_identification};
 
 const WAIT: Duration = Duration::from_secs(20);
 const PAL: [u8; 16] = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF];
@@ -91,6 +99,18 @@ async fn should_report_an_unreachable_client() {
 }
 
 #[tokio::test]
+async fn should_let_only_a_friend_that_proves_its_key_get_past_friends_only() {
+    let mut test = Chat::new();
+    test.given_an_engine_with("me", "chat.friendsOnly=true\n").await;
+    test.given_a_friend(PAL, "pal").await;
+    test.given_an_impostor_of_the_friend_wrote("from an impostor").await;
+
+    test.when_the_friend_writes_and_proves_its_key("from the friend").await;
+
+    test.then_the_next_message_shown_is("from the friend").await;
+}
+
+#[tokio::test]
 async fn should_keep_the_friends_across_a_restart() {
     let mut test = Chat::new();
     test.given_an_engine("me").await;
@@ -128,6 +148,8 @@ struct Chat {
     peer: Option<ScriptedSource>,
     client: Option<Link>,
     closed_port: u16,
+    // The hello of a friend, which anyone can send.
+    claimed: Option<Hello>,
     answered: bool,
     removed: Option<bool>,
 }
@@ -144,14 +166,15 @@ impl Chat {
             peer: None,
             client: None,
             closed_port: 0,
+            claimed: None,
             answered: false,
             removed: None,
         }
     }
 
     async fn given_the_engines_of_alice_and_bob(&mut self) {
-        let alice = self.start("alice").await;
-        let bob = self.start("bob").await;
+        let alice = self.start("alice", "").await;
+        let bob = self.start("bob", "").await;
         let (alice_sees, bob_sees) = (alice.subscribe().live, bob.subscribe().live);
         self.alice = Some((alice, alice_sees));
         self.bob = Some((bob, bob_sees));
@@ -187,7 +210,11 @@ impl Chat {
     }
 
     async fn given_an_engine(&mut self, nick: &str) {
-        let engine = self.start(nick).await;
+        self.given_an_engine_with(nick, "").await;
+    }
+
+    async fn given_an_engine_with(&mut self, nick: &str, preferences: &str) {
+        let engine = self.start(nick, preferences).await;
         self.seen = Some(engine.subscribe().live);
         self.engine = Some(engine);
     }
@@ -206,6 +233,31 @@ impl Chat {
         assert_eq!(chat_messages::text(read.last().unwrap()).unwrap(), text);
         self.client = Some(client);
         self.peer = Some(peer);
+    }
+
+    // A friend, whose client takes part in the secure identification.
+    async fn given_a_friend(&mut self, user_hash: [u8; 16], nick: &str) {
+        within(self.engine().add_friend(Friend::new(user_hash, nick, None))).await.unwrap();
+        let ours = Ours {
+            nick,
+            udp_port: 0,
+            kad_port: 0,
+            misc_options1: identity_handshake::SUPPORTED << 16,
+            misc_options2: 0,
+        };
+        self.claimed = Some(Hello::of(user_hash, 0, 4999, &ours, 0, 0));
+    }
+
+    // Anyone can send the friend's user hash: a failed proof shows nothing.
+    async fn given_an_impostor_of_the_friend_wrote(&mut self, text: &str) {
+        let mut impostor = self.connect_as_the_friend().await;
+        assert_eq!(impostor.next().await.opcode(), client::HELLOANSWER);
+        impostor.send(&chat_messages::message(text, true).unwrap()).await;
+        for packet in fake_proof() {
+            impostor.send(&packet).await;
+        }
+        impostor.send(&Packet::empty(protocol::EMULE, extended::PUBLICIP_REQ)).await;
+        impostor.until(protocol::EMULE, extended::PUBLICIP_ANSWER).await;
     }
 
     fn given_a_closed_port(&mut self) {
@@ -238,6 +290,14 @@ impl Chat {
         }
     }
 
+    async fn when_the_friend_writes_and_proves_its_key(&mut self, text: &str) {
+        let mut friend = self.connect_as_the_friend().await;
+        let us = Hello::decode(&friend.next().await).unwrap();
+        friend.send(&chat_messages::message(text, true).unwrap()).await;
+        prove(&mut friend, &us).await;
+        self.client = Some(friend);
+    }
+
     async fn when_we_write_to_the_closed_port(&self, text: &str) {
         let to = SocketAddr::from((Ipv4Addr::LOCALHOST, self.closed_port));
         within(self.engine().send_message(to, text.to_owned())).await;
@@ -246,6 +306,14 @@ impl Chat {
     async fn when_the_engine_restarts(&mut self) {
         within(self.engine().stop()).await;
         self.given_an_engine("me").await;
+    }
+
+    // A connection to the engine, greeted with the friend's hello; its answer is left to read.
+    async fn connect_as_the_friend(&self) -> Link {
+        let port = self.engine().preferences().tcp_port;
+        let mut link = Link::over(TcpStream::connect((Ipv4Addr::LOCALHOST, port)).await.unwrap());
+        link.send(&self.claimed.as_ref().expect("a friend").encode(false).unwrap()).await;
+        link
     }
 
     async fn when_the_friend_is_removed(&mut self, user_hash: [u8; 16]) {
@@ -305,14 +373,16 @@ impl Chat {
         assert_eq!(within(self.engine().friends()).await, Vec::new());
     }
 
-    // An engine on the profile of `nick`, on a free port without Kad; its preferences stay across restarts.
-    async fn start(&self, nick: &str) -> Engine {
+    // An engine on the profile of `nick`, on a free port without Kad and with `extra` preferences; they stay across
+    // restarts.
+    async fn start(&self, nick: &str, extra: &str) -> Engine {
         let dirs = AppDirectories::under_root(&self.dir.path().join(nick)).unwrap();
         fs::create_dir_all(&dirs.config).unwrap();
         let preferences = dirs.config.join("njmule.properties");
         if !preferences.exists() {
             let port = free_port::free_port();
-            fs::write(&preferences, format!("net.tcpPort={port}\nnet.kad.enabled=false\nuser.nick={nick}\n")).unwrap();
+            let text = format!("net.tcpPort={port}\nnet.kad.enabled=false\nuser.nick={nick}\n{extra}");
+            fs::write(&preferences, text).unwrap();
         }
         within(Engine::start(dirs)).await.unwrap()
     }
@@ -362,6 +432,43 @@ async fn next_event<T>(events: &mut broadcast::Receiver<EngineEvent>, of: impl F
 
 fn local(engine: &Engine) -> SocketAddr {
     SocketAddr::from((Ipv4Addr::LOCALHOST, engine.preferences().tcp_port))
+}
+
+// Proves a new key to the engine whose hello answer is `engine`, over the loopback, until our signature is sent;
+// other packets read meanwhile are left out.
+async fn prove(link: &mut Link, engine: &Hello) {
+    let own = Arc::new(Identity::of(rsa::generate(rsa::NETWORK_KEY_BITS).unwrap()));
+    let local = IpAddr::from(Ipv4Addr::LOCALHOST);
+    let mut handshake = IdentityHandshake::new(own, engine, local, None, Some(Ipv4Addr::LOCALHOST), Some(local));
+    let mut outgoing = handshake.start(&mut StdRng::from_rng(&mut rand::rng()));
+    loop {
+        let signed = outgoing.iter().any(|packet| packet.opcode() == extended::SIGNATURE);
+        for packet in outgoing.drain(..) {
+            link.send(&packet).await;
+        }
+        if signed {
+            return;
+        }
+        let packet = link.next_of_any_kind().await;
+        if is_identification(&packet)
+            && let Some(handled) = handshake.received(&packet).unwrap()
+        {
+            outgoing = handled.send;
+        }
+    }
+}
+
+// A key and then a signature that cannot be right: the engine fails the client.
+fn fake_proof() -> [Packet; 2] {
+    let key = Identity::of(rsa::generate(rsa::NETWORK_KEY_BITS).unwrap()).public_key().to_vec();
+    let mut public_key = PacketWriter::new();
+    public_key.u8(u8::try_from(key.len()).unwrap()).bytes(&key);
+    let mut signature = PacketWriter::new();
+    signature.u8(48).bytes(&[0; 48]);
+    [
+        Packet::written(protocol::EMULE, extended::PUBLICKEY, public_key),
+        Packet::written(protocol::EMULE, extended::SIGNATURE, signature),
+    ]
 }
 
 // The start of a BMP file of the given size; the pixels do not matter here.
