@@ -56,6 +56,11 @@ export function t(key: string, ...args: unknown[]): string {
     return args.length === 0 ? pattern : format(pattern, args);
 }
 
+/** Whether the texts read so far have {@code key}, in English at least. */
+export function known(key: string): boolean {
+    return key in chosen.value || key in english.value;
+}
+
 /** Fills in Java's %s, %d, %.1f, %1$s and %% placeholders, which the texts use. */
 export function format(pattern: string, args: unknown[]): string {
     let next = 0;

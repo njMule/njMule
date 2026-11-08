@@ -120,6 +120,24 @@ crash. To run two njMule at once, give the second one a profile of its own with
 desktop window runs at a time, whatever its profile, and a second `njmule-gui` hands its links to it
 ([Portable mode](data/portable.mdx)).
 
+### The window stays on *Starting njMule…*
+
+**What you see:** the window opens but shows *Starting njMule…* for a long while, or
+*njMule could not start* with the reason under it.
+
+**Why:** the window shows the interface once the engine it starts is ready. The first start after
+an update first saves a [copy of the configuration](data/backups.mdx), which takes longer with
+large lists. When the engine is not ready within two minutes, the desktop app says
+*njMule did not start in time.* and ends. Under *njMule could not start* the reason says what
+failed: the engine, as in [The window does not open](#the-window-does-not-open), or the interface
+itself, in the window or in the browser.
+
+**What to do:**
+
+1. Give the first start after an update a little more time.
+2. Close njMule and start it again; in a browser, reload the page.
+3. If it happens again, [report it](#reporting-a-bug) with the message and the [log](#logs).
+
 ### Links open another program
 
 **What you see:** a clicked `ed2k://` link opens eMule or nothing at all.
