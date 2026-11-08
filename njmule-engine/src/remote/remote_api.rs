@@ -45,7 +45,8 @@ use crate::remote::conversations::Conversations;
 use crate::remote::rate_history::{self, RateHistory};
 use crate::remote::recent_log::RecentLog;
 use crate::remote::search_collector::{Asked, SearchCollector};
-use crate::remote::{api_json, api_reader, event_streams};
+use crate::remote::settings_file::{ChangeError, SettingsFile, WebChange};
+use crate::remote::{api_json, api_reader, api_token, event_streams};
 use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::{Address, Priority};
 
@@ -64,6 +65,19 @@ pub type Exit = Arc<dyn Fn() + Send + Sync>;
 #[derive(Clone)]
 struct Exiting(Option<Exit>);
 
+/// Who calls: a guest, an admin, or the desktop app's window on njMule's computer; the server that hosts the API tells
+/// it in each request's extensions, and a request that tells none is an admin's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Caller {
+    Guest,
+    Admin,
+    Local,
+}
+
+// The web interface's settings, when the API's host has a web interface.
+#[derive(Clone)]
+struct WebInterface(Option<Arc<SettingsFile>>);
+
 // How long between two samples of the rates.
 const RATE_SAMPLE: Duration = Duration::from_secs(1);
 // The span of the rates a front end gets when it asks for none.
@@ -75,8 +89,14 @@ pub const VERSION: u32 = 1;
 /// Where the API is served.
 pub const PREFIX: &str = "/api/v1";
 
-/// The calls, relative to the API's base path; `closing` says when the API closes, which ends the event streams.
-pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Receiver<bool>) -> Router {
+/// The calls, relative to the API's base path; `closing` says when the API closes, which ends the event streams, and
+/// `web` holds the web interface's settings, when the host has one.
+pub fn router<E: NjMuleEngine>(
+    engine: E,
+    exit: Option<Exit>,
+    closing: watch::Receiver<bool>,
+    web: Option<Arc<SettingsFile>>,
+) -> Router {
     let searches = Searches::default();
     let log = Log::default();
     let chats = Chats::default();
@@ -225,6 +245,8 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Re
         .route("/messages", post(send_message::<E>))
         .route("/conversations", get(conversations))
         .route("/conversations/{address}", axum::routing::delete(close_conversation))
+        .route("/webui", get(web_settings).patch(change_web_settings))
+        .route("/webui/token", get(api_token::<E>).post(renew_api_token::<E>))
         .route(
             "/openapi.yaml",
             get(|| async {
@@ -239,6 +261,7 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Re
         .layer(Extension(chats))
         .layer(Extension(rates))
         .layer(Extension(Exiting(exit)))
+        .layer(Extension(WebInterface(web)))
         .layer(Extension(Streams { open: Arc::new(Semaphore::new(event_streams::MAX_STREAMS)), closing }))
         .with_state(engine)
 }
@@ -688,6 +711,104 @@ impl<S: Send + Sync> FromRequest<S> for Body {
             Err(rejection) => Err(ApiError::new(rejection.status(), rejection.body_text())),
         }
     }
+}
+
+// What only the desktop app's window on njMule's computer may do: a browser's session or a token sent from elsewhere
+// must not open the web interface wider, or take the API token with it.
+fn local_only(caller: Option<Extension<Caller>>) -> Result<(), ApiError> {
+    if caller.map(|Extension(caller)| caller) == Some(Caller::Local) {
+        Ok(())
+    } else {
+        Err(ApiError::new(StatusCode::FORBIDDEN, "Only the desktop app's window on njMule's computer can do this."))
+    }
+}
+
+fn web_interface(web: WebInterface) -> Result<Arc<SettingsFile>, ApiError> {
+    web.0.ok_or_else(|| ApiError::new(StatusCode::NOT_IMPLEMENTED, "This njMule has no web interface."))
+}
+
+// With whether this caller may change them, so that a form offers the changes only where they are taken.
+async fn web_settings(
+    Extension(web): Extension<WebInterface>,
+    caller: Option<Extension<Caller>>,
+) -> Result<Json<Value>, ApiError> {
+    let changeable = caller.map(|Extension(caller)| caller) == Some(Caller::Local);
+    Ok(Json(api_json::web_interface(&web_interface(web)?.settings(), changeable)))
+}
+
+async fn change_web_settings(
+    Extension(web): Extension<WebInterface>,
+    caller: Option<Extension<Caller>>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    local_only(caller)?;
+    let web = web_interface(web)?;
+    let port = optional(&body, "port", number)?
+        .map(|port| {
+            u16::try_from(port).map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a port: {port}")))
+        })
+        .transpose()?;
+    let change = WebChange {
+        enabled: optional(&body, "enabled", flag)?,
+        port,
+        lan: optional(&body, "lan", flag)?,
+        hosts: optional(&body, "hosts", texts)?,
+        proxies: optional(&body, "proxies", texts)?,
+        api: optional(&body, "api", flag)?,
+        password: optional(&body, "password", owned_text)?,
+        guest_password: optional(&body, "guestPassword", owned_text)?,
+    };
+    // A new password takes its many rounds of hashing.
+    let changed = tokio::task::spawn_blocking(move || web.change(change))
+        .await
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    match changed {
+        Ok(settings) => Ok(Json(api_json::web_interface(&settings, true))),
+        Err(ChangeError::Invalid(reason)) => Err(ApiError::new(StatusCode::BAD_REQUEST, reason)),
+        Err(ChangeError::Io(e)) => Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+async fn api_token<E: NjMuleEngine>(
+    State(engine): State<E>,
+    caller: Option<Extension<Caller>>,
+) -> Result<Json<Value>, ApiError> {
+    local_only(caller)?;
+    token_answer(api_token::load_or_create(&engine.directories().config))
+}
+
+async fn renew_api_token<E: NjMuleEngine>(
+    State(engine): State<E>,
+    caller: Option<Extension<Caller>>,
+) -> Result<Json<Value>, ApiError> {
+    local_only(caller)?;
+    token_answer(api_token::renew(&engine.directories().config))
+}
+
+fn token_answer(token: std::io::Result<String>) -> Result<Json<Value>, ApiError> {
+    token
+        .map(|token| Json(json!({"token": token})))
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, format!("Cannot keep the API token: {e}")))
+}
+
+// A value the body may leave out, read as `read` reads it when given.
+fn optional<T>(
+    body: &Value,
+    name: &str,
+    read: impl Fn(&Value, &str) -> Result<T, ApiError>,
+) -> Result<Option<T>, ApiError> {
+    body.get(name).map(|_| read(body, name)).transpose()
+}
+
+fn texts(body: &Value, name: &str) -> Result<Vec<String>, ApiError> {
+    body.get(name)
+        .and_then(Value::as_array)
+        .and_then(|values| values.iter().map(|value| value.as_str().map(str::to_owned)).collect())
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Missing texts: {name}")))
+}
+
+fn owned_text(body: &Value, name: &str) -> Result<String, ApiError> {
+    text(body, name).map(str::to_owned)
 }
 
 fn text<'a>(body: &'a Value, name: &str) -> Result<&'a str, ApiError> {

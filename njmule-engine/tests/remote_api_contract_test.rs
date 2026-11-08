@@ -72,7 +72,6 @@ const HEX: &str = "ABABABABABABABABABABABABABABABAB";
 const LINK: &str = "ed2k://|file|talk.bin|5000|ABABABABABABABABABABABABABABABAB|/";
 const LIST: &str = r#"{"url":"http://example.org/list.met"}"#;
 
-// The web interface's settings wait for the web interface.
 fn reads() -> Vec<String> {
     let download = format!("/api/v1/downloads/{HEX}");
     let file = format!("/api/v1/files/{HEX}");
@@ -113,6 +112,7 @@ fn reads() -> Vec<String> {
         "/api/v1/import/emule",
         "/api/v1/import/emule/history",
         "/api/v1/setup",
+        "/api/v1/webui",
         "/api/v1/interfaces",
         "/api/v1/preferences/passwords",
     ]
