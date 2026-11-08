@@ -27,6 +27,7 @@ use crate::api::file_history::FileHistory;
 use crate::api::file_names;
 use crate::api::list_source::{ListError, ListSource};
 use crate::api::nj_mule_engine::NjMuleEngine;
+use crate::api::shared_directory::{self, SharedDirectory};
 use crate::api::{nj_mule_info, search_request};
 use crate::config::bind_interface;
 use crate::config::preferences::Preferences;
@@ -77,6 +78,7 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Re
         .route("/limits", get(limits::<E>).put(set_limits::<E>))
         .route("/preferences/defaults", get(|| async { Json(api_json::preferences(&Preferences::default())) }))
         .route("/folders", get(folders::<E>))
+        .route("/folders/check", post(check_folder))
         .route("/categories", get(categories::<E>).put(set_categories::<E>))
         .route("/shutdown", post(shutdown))
         .route("/status", get(status::<E>))
@@ -109,6 +111,10 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Re
         .route("/searches/{id}/spam", post(mark_spam::<E>))
         .route("/searches/{id}/download", post(download_search_result::<E>))
         .route("/shared", get(shared_files::<E>))
+        .route(
+            "/shared/directories",
+            get(shared_directories::<E>).post(share_directory::<E>).delete(unshare_directory::<E>),
+        )
         .route("/downloads", get(downloads::<E>).post(add_downloads::<E>))
         .route("/downloads/completed", delete(clear_completed_downloads::<E>))
         .route("/downloads/completed/{hash}", delete(clear_completed_download::<E>))
@@ -255,6 +261,70 @@ async fn folders<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
         "incoming": preferences.effective_incoming_dir(&dirs).to_string_lossy(),
         "temp": preferences.effective_temp_dir(&dirs).to_string_lossy(),
     }))
+}
+
+/// What a path typed names on the engine's computer: `folder`, `file`, `missing` or `invalid`. A relative one is taken
+/// from where njMule runs, as the preferences take it.
+async fn check_folder(Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let typed = text(&body, "path")?.trim();
+    let kind = if typed.contains('\0') {
+        "invalid"
+    } else {
+        match std::path::absolute(if typed.is_empty() { "." } else { typed }) {
+            Ok(path) if path.is_dir() => "folder",
+            Ok(path) if path.exists() => "file",
+            Ok(_) => "missing",
+            Err(_) => "invalid",
+        }
+    };
+    Ok(Json(json!({"kind": kind})))
+}
+
+async fn shared_directories<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    Json(Value::Array(engine.shared_directories().await.iter().map(api_json::shared_directory).collect()))
+}
+
+/// Shares a folder of the engine's computer, with its subfolders unless `subdirectories` is false. One that may hold
+/// personal or system files is shared only with `everything`.
+async fn share_directory<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let typed = text(&body, "path")?;
+    let dir = PathBuf::from(typed.trim());
+    if typed.contains('\0') || !dir.is_absolute() || !dir.is_dir() {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, format!("Not a folder of this computer: {typed}")));
+    }
+    let dir = shared_directory::absolute(&dir);
+    if SharedDirectory::is_sensitive(&dir) && !body.get("everything").and_then(Value::as_bool).unwrap_or(false) {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "This folder may hold personal or system files: share it with everything set to true.",
+        ));
+    }
+    let subdirectories = body.get("subdirectories").and_then(Value::as_bool).unwrap_or(true);
+    engine
+        .share_directory(dir, subdirectories)
+        .await
+        .map_err(|reason| ApiError::new(StatusCode::BAD_REQUEST, reason))?;
+    Ok(Json(api_json::ok()))
+}
+
+/// Stops sharing a folder shared, given by its `path` as listed.
+async fn unshare_directory<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Query(query): Query<BTreeMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    let path = query.get("path").ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Missing text: path"))?;
+    let dir = engine
+        .shared_directories()
+        .await
+        .into_iter()
+        .map(|directory| directory.path)
+        .find(|dir| dir.to_string_lossy() == path.as_str())
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Not found."))?;
+    engine
+        .unshare_directory(dir)
+        .await
+        .map_err(|reason| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, reason))?;
+    Ok(Json(api_json::ok()))
 }
 
 async fn categories<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {

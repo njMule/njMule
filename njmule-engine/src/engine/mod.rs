@@ -49,6 +49,7 @@ use crate::api::port_test::PortTest;
 use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
+use crate::api::shared_directory::SharedDirectory;
 use crate::api::spam_marks::SpamMarks;
 use crate::api::upload_info::{BanInfo, UploadInfo};
 use crate::config::app_directories::AppDirectories;
@@ -614,6 +615,25 @@ impl Engine {
         self.ask(|reply| Command::MoreResults(search, reply)).await.unwrap_or(MoreAnswer::Unknown)
     }
 
+    /// The folders shared alone, then those shared with their subfolders.
+    pub async fn shared_directories(&self) -> Vec<SharedDirectory> {
+        self.ask(Command::SharedDirectories).await.unwrap_or_default()
+    }
+
+    /// Shares a folder from now on, with its subfolders (also those made later) or alone; why not for a private one.
+    pub async fn share_directory(&self, dir: PathBuf, subdirectories: bool) -> Result<(), String> {
+        self.ask(|reply| Command::ShareDirectory(dir, subdirectories, reply))
+            .await
+            .unwrap_or_else(|| Err("the engine is stopping".to_owned()))
+    }
+
+    /// Stops sharing a folder, alone or with its subfolders.
+    pub async fn unshare_directory(&self, dir: PathBuf) -> Result<(), String> {
+        self.ask(|reply| Command::UnshareDirectory(dir, reply))
+            .await
+            .unwrap_or_else(|| Err("the engine is stopping".to_owned()))
+    }
+
     /// The files we share, those hashed so far.
     pub async fn shared_files(&self) -> Vec<SharedFile> {
         self.ask(Command::SharedFiles).await.unwrap_or_default()
@@ -1071,6 +1091,18 @@ impl NjMuleEngine for Engine {
 
     fn more_results(&self, search: u64) -> impl Future<Output = MoreAnswer> + Send {
         Engine::more_results(self, search)
+    }
+
+    fn shared_directories(&self) -> impl Future<Output = Vec<SharedDirectory>> + Send {
+        Engine::shared_directories(self)
+    }
+
+    fn share_directory(&self, dir: PathBuf, subdirectories: bool) -> impl Future<Output = Result<(), String>> + Send {
+        Engine::share_directory(self, dir, subdirectories)
+    }
+
+    fn unshare_directory(&self, dir: PathBuf) -> impl Future<Output = Result<(), String>> + Send {
+        Engine::unshare_directory(self, dir)
     }
 
     fn shared_files(&self) -> impl Future<Output = Vec<SharedFile>> + Send {

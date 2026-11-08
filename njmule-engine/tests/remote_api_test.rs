@@ -34,6 +34,7 @@ use njmule_engine::api::port_test::{Forwarding, PortTest, Reach};
 use njmule_engine::api::saved_search::SavedSearch;
 use njmule_engine::api::search_result::SearchResult;
 use njmule_engine::api::server_info::ServerInfo;
+use njmule_engine::api::shared_directory::SharedDirectory;
 use njmule_engine::api::spam_marks::SpamMarks;
 use njmule_engine::api::upload_info::{BanInfo, UploadInfo};
 use njmule_engine::config::app_directories::AppDirectories;
@@ -87,6 +88,8 @@ struct Fake {
     server_lists: Vec<String>,
     // The country of the servers known, when known.
     server_country: Option<String>,
+    // The folders shared, with their subfolders.
+    shared: Vec<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -328,6 +331,22 @@ impl NjMuleEngine for FakeEngine {
             fake.calls.push(format!("more {search}"));
             MoreAnswer::Asked
         })
+    }
+
+    async fn shared_directories(&self) -> Vec<SharedDirectory> {
+        self.with(|fake| {
+            fake.shared.iter().map(|path| SharedDirectory { path: path.clone(), subdirectories: true }).collect()
+        })
+    }
+
+    async fn share_directory(&self, dir: PathBuf, subdirectories: bool) -> Result<(), String> {
+        self.with(|fake| fake.calls.push(format!("share {} {subdirectories}", dir.display())));
+        Ok(())
+    }
+
+    async fn unshare_directory(&self, dir: PathBuf) -> Result<(), String> {
+        self.with(|fake| fake.calls.push(format!("unshare {}", dir.display())));
+        Ok(())
     }
 
     async fn shared_files(&self) -> Vec<SharedFile> {
@@ -601,6 +620,8 @@ struct Api {
     carried: String,
     // Streams kept open meanwhile.
     kept: Vec<TcpStream>,
+    // A folder outside the system's temporary one, which may lie in a personal folder.
+    folder: Option<tempfile::TempDir>,
 }
 
 impl Api {
@@ -619,7 +640,37 @@ impl Api {
             stream: None,
             carried: String::new(),
             kept: Vec::new(),
+            folder: None,
         }
+    }
+
+    fn given_the_engine_shares(&self, folders: &[PathBuf]) {
+        self.engine.with(|fake| fake.shared = folders.to_vec());
+    }
+
+    // Where the system keeps temporary folders inside the user's own, such a folder is shared only on request: the
+    // folder is made in the build's own.
+    fn given_a_folder_that_holds_nothing_personal(&mut self) {
+        let folder = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+        assert!(!SharedDirectory::is_sensitive(folder.path()), "{} is personal", folder.path().display());
+        self.folder = Some(folder);
+    }
+
+    fn folder(&self) -> PathBuf {
+        self.folder.as_ref().unwrap().path().to_path_buf()
+    }
+
+    fn root(&self) -> PathBuf {
+        self.dir.path().ancestors().last().unwrap().to_path_buf()
+    }
+
+    fn path_kind_body(&self, kind: &str) -> String {
+        let path = match kind {
+            "folder" => self.dir.path().to_path_buf(),
+            "file" => self.file("talk.met"),
+            _ => self.file("nothing here"),
+        };
+        json!({ "path": path }).to_string()
     }
 
     // Opens the stream and waits for its first lines, once the API follows the engine for it.
@@ -1691,6 +1742,92 @@ async fn should_add_the_contacts_of_a_nodes_dat_sent() {
 }
 
 #[tokio::test]
+async fn should_share_a_folder_with_its_subfolders() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_shares(&[]);
+    api.given_a_folder_that_holds_nothing_personal();
+
+    api.when_called("POST", "/api/v1/shared/directories", &folder_body(&api.folder(), false)).await;
+
+    api.then_the_status_is(200);
+    api.then_the_engine_was_asked(&format!("share {} true", api.folder().display()));
+}
+
+#[tokio::test]
+async fn should_ask_first_before_sharing_a_whole_drive() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_shares(&[]);
+
+    api.when_called("POST", "/api/v1/shared/directories", &folder_body(&api.root(), false)).await;
+
+    api.then_the_status_is(409);
+    api.then_the_engine_was_not_asked();
+}
+
+#[tokio::test]
+async fn should_share_a_whole_drive_when_told_everything() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_shares(&[]);
+
+    api.when_called("POST", "/api/v1/shared/directories", &folder_body(&api.root(), true)).await;
+
+    api.then_the_status_is(200);
+    api.then_the_engine_was_asked(&format!("share {} true", api.root().display()));
+}
+
+#[tokio::test]
+async fn should_refuse_to_share_what_is_no_folder() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_shares(&[]);
+
+    api.when_called("POST", "/api/v1/shared/directories", &folder_body(&api.file("missing"), false)).await;
+
+    api.then_the_status_is(400);
+    api.then_the_engine_was_not_asked();
+}
+
+#[tokio::test]
+async fn should_stop_sharing_a_shared_folder() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_shares(&[api.dir.path().to_path_buf()]);
+
+    api.when_called("DELETE", &format!("/api/v1/shared/directories?path={}", encoded(api.dir.path())), "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_engine_was_asked(&format!("unshare {}", api.dir.path().display()));
+}
+
+#[tokio::test]
+async fn should_not_find_a_folder_that_is_not_shared() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_shares(&[]);
+
+    api.when_called("DELETE", &format!("/api/v1/shared/directories?path={}", encoded(api.dir.path())), "").await;
+
+    api.then_the_status_is(404);
+}
+
+#[tokio::test]
+async fn should_tell_what_a_path_names_on_the_engines_computer() {
+    for kind in ["folder", "file", "missing"] {
+        let mut api = Api::new();
+        api.given_the_api_runs().await;
+        api.given_a_file("talk.met");
+
+        api.when_called("POST", "/api/v1/folders/check", &api.path_kind_body(kind)).await;
+
+        api.then_the_status_is(200);
+        api.then_the_body_is(&json!({ "kind": kind }).to_string());
+    }
+}
+
+#[tokio::test]
 async fn should_stream_the_engine_events() {
     let mut api = Api::new();
     api.given_the_api_runs().await;
@@ -1776,4 +1913,12 @@ async fn should_refuse_a_category_without_a_name() {
     api.when_called("PUT", "/api/v1/categories", "[{\"id\":1,\"name\":\" \"}]").await;
 
     api.then_the_status_is(400);
+}
+
+fn folder_body(folder: &Path, everything: bool) -> String {
+    json!({ "path": folder, "everything": everything }).to_string()
+}
+
+fn encoded(path: &Path) -> String {
+    percent_encoding::utf8_percent_encode(&path.to_string_lossy(), percent_encoding::NON_ALPHANUMERIC).to_string()
 }

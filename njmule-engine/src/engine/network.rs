@@ -37,6 +37,7 @@ use crate::api::saved_search::SavedSearch;
 use crate::api::search_request;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
+use crate::api::shared_directory::SharedDirectory;
 use crate::api::spam_marks::SpamMarks;
 use crate::api::upload_info::{BanInfo, UploadInfo, UploadState};
 use crate::config::bind_interface::Binding;
@@ -54,7 +55,7 @@ use crate::engine::totals::{self, Totals};
 use crate::engine::{ServerContext, Shared};
 use crate::files::hash::file_hasher::FileHashes;
 use crate::files::part_file_storage::DiskDone;
-use crate::files::shared_files::{self, Found, SharedFile, SharedFiles};
+use crate::files::shared_files::{Found, Listing, SharedFile, SharedFiles};
 use crate::kad::kad_socket::Incoming;
 use crate::net::relay_keeper::{Level, RelayKeeper};
 use crate::net::{public_ipv6, tcp_connector, traffic};
@@ -95,9 +96,11 @@ use crate::upload::uploadable::Uploadable;
 mod filter;
 mod kad;
 mod ports;
+mod shares;
 
 use kad::KadSide;
 use ports::KadRound;
+use shares::SharesSide;
 
 /// How long changes of the list wait to be saved together.
 const SAVE_DELAY: Duration = Duration::from_secs(30);
@@ -154,6 +157,11 @@ pub enum Command {
     SpamMarks(oneshot::Sender<SpamMarks>),
     FileHistory(oneshot::Sender<FileHistory>),
     SharedFiles(oneshot::Sender<Vec<SharedFile>>),
+    /// The folders shared alone, then those shared with their subfolders.
+    SharedDirectories(oneshot::Sender<Vec<SharedDirectory>>),
+    /// Shares a folder, with its subfolders or alone; why not for a private one.
+    ShareDirectory(PathBuf, bool, oneshot::Sender<Result<(), String>>),
+    UnshareDirectory(PathBuf, oneshot::Sender<Result<(), String>>),
     AddDownload(Box<FileLink>, Option<bool>, oneshot::Sender<Result<DownloadInfo, String>>),
     Downloads(oneshot::Sender<Vec<DownloadInfo>>),
     Sources(oneshot::Sender<Vec<SourceInfo>>),
@@ -253,6 +261,8 @@ enum Tick {
     Uploads,
     Search(Timer),
     Hashed(Found, Result<FileHashes, String>),
+    // What a scan of the shared folders read.
+    Listed(Listing),
     // The sockets opened for a binding, which a newer one may have replaced meanwhile.
     Rebound(Binding, Option<TcpListener>, Option<UdpSocket>),
     // The preferences changed.
@@ -378,6 +388,7 @@ pub struct Network {
     known_searches: HashSet<u64>,
     spam: SpamFilter,
     shared_files: SharedFiles,
+    shares: SharesSide,
     publisher: FilePublisher,
     downloads: DownloadManager,
     finished: FinishedDownloads,
@@ -426,19 +437,9 @@ pub fn start(
         }
     });
     let binding = shared.routes.binding();
-    // The incoming folder is shared: the files known from before at once, the others once hashed.
-    let mut shared_files = SharedFiles::load(&dirs.config);
-    let to_hash: Vec<Found> =
-        shared_files::scan(&dirs.downloads).into_iter().filter(|found| !shared_files.take_known(found)).collect();
-    let hashed = ticks_in.clone();
-    let hashing = tokio::task::spawn_blocking(move || {
-        for found in to_hash {
-            let hashes = shared_files::hash(&found).map_err(|e| e.to_string());
-            if hashed.send(Tick::Hashed(found, hashes)).is_err() {
-                return;
-            }
-        }
-    });
+    // A scan at the start shares the files known from before at once, the others once hashed.
+    let shared_files = SharedFiles::load(&dirs.config);
+    let shares = SharesSide::new(ticks_in.clone());
     let seconds = ticks_in.clone();
     let publish = tokio::spawn(async move {
         let mut every = tokio::time::interval(SECOND);
@@ -546,6 +547,7 @@ pub fn start(
         known_searches: HashSet::new(),
         spam,
         shared_files,
+        shares,
         publisher: FilePublisher::default(),
         downloads,
         finished,
@@ -563,6 +565,7 @@ pub fn start(
     network.attach(listener, udp);
     // The network starts with the limits of the rule in force, which then acts once.
     network.refresh_schedule();
+    network.scan_shares();
     if preferences.kad_enabled {
         network.start_kad();
     }
@@ -571,7 +574,6 @@ pub fn start(
         network.run(queues).await;
         publish.abort();
         serve.abort();
-        hashing.abort();
     }))
 }
 
@@ -771,6 +773,15 @@ impl Network {
             }
             Command::SharedFiles(answer) => {
                 let _ = answer.send(self.shared_files.files().cloned().collect());
+            }
+            Command::SharedDirectories(answer) => {
+                let _ = answer.send(self.shared_directories());
+            }
+            Command::ShareDirectory(dir, subdirectories, answer) => {
+                let _ = answer.send(self.share_directory(&dir, subdirectories));
+            }
+            Command::UnshareDirectory(dir, answer) => {
+                let _ = answer.send(self.unshare_directory(&dir));
             }
             Command::AddDownload(link, paused, answer) => {
                 let ours = self.shared.our_hello();
@@ -1146,6 +1157,7 @@ impl Network {
                 }
                 self.tick_port_check();
                 self.check_ip_filter_lists();
+                self.shares_second();
             }
             Tick::Rebound(binding, listener, udp) => {
                 if binding == self.binding {
@@ -1163,17 +1175,8 @@ impl Network {
                 self.searches.timer(timer, &self.servers, connected, &mut effects);
                 self.search_effects(effects);
             }
-            Tick::Hashed(found, hashes) => match hashes {
-                Ok(hashes) => {
-                    let file = self.shared_files.hashed(found, &hashes);
-                    tracing::info!("Sharing {}", file.name);
-                    if let Err(e) = self.shared_files.save(&self.shared.dirs.config) {
-                        tracing::warn!("Cannot save the known files: {e}");
-                    }
-                    self.publisher.changed(None);
-                }
-                Err(e) => tracing::warn!("Cannot hash {}: {e}", found.path.display()),
-            },
+            Tick::Hashed(found, hashes) => self.shares_hashed(found, hashes),
+            Tick::Listed(listing) => self.shares_listed(listing),
         }
     }
 
@@ -1587,9 +1590,6 @@ impl Network {
                         part_hashes: file.part_hashes().to_vec(),
                         aich_hash: file.aich_hash(),
                     });
-                    if let Err(e) = self.shared_files.save(&self.shared.dirs.config) {
-                        tracing::warn!("Cannot save the known files: {e}");
-                    }
                     self.publisher.changed(Some(shared.hash));
                     self.finished.add(&info);
                     self.publish(EngineEvent::DownloadCompleted { download: info, file: path });
@@ -2190,6 +2190,9 @@ impl Network {
         self.save_servers();
         self.uploads.close();
         self.history.save();
+        if let Err(e) = self.shared_files.close() {
+            tracing::warn!("Cannot save the known files: {e}");
+        }
         self.close_sockets();
         self.stop_kad();
         // The servers' spam shares change with every UDP answer.
