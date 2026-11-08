@@ -28,6 +28,7 @@ use crate::api::file_names;
 use crate::api::list_source::{ListError, ListSource};
 use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::api::shared_directory::{self, SharedDirectory};
+use crate::api::upload_priority::UploadPriority;
 use crate::api::{nj_mule_info, search_request};
 use crate::config::bind_interface;
 use crate::config::preferences::Preferences;
@@ -111,6 +112,8 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Re
         .route("/searches/{id}/spam", post(mark_spam::<E>))
         .route("/searches/{id}/download", post(download_search_result::<E>))
         .route("/shared", get(shared_files::<E>))
+        .route("/shared/{hash}/name", put(rename_shared_file::<E>))
+        .route("/shared/{hash}/priority", put(set_upload_priority::<E>))
         .route(
             "/shared/directories",
             get(shared_directories::<E>).post(share_directory::<E>).delete(unshare_directory::<E>),
@@ -305,6 +308,37 @@ async fn share_directory<E: NjMuleEngine>(State(engine): State<E>, Body(body): B
         .await
         .map_err(|reason| ApiError::new(StatusCode::BAD_REQUEST, reason))?;
     Ok(Json(api_json::ok()))
+}
+
+/// Renames a shared file; others find it under the new name once it is published again.
+async fn rename_shared_file<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let hash = file_hash(&hash)?;
+    let renamed = engine
+        .rename_shared_file(hash, text(&body, "name")?.to_owned())
+        .await
+        .map_err(|reason| ApiError::new(StatusCode::BAD_REQUEST, reason))?;
+    shared_known(renamed)
+}
+
+/// Sets the upload priority of a shared file: `very_low`, `low`, `normal`, `high`, `release` or `auto`.
+async fn set_upload_priority<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(hash): Path<String>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    let hash = file_hash(&hash)?;
+    let asked = text(&body, "priority")?;
+    let priority = UploadPriority::of_name(asked.trim())
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Unknown value: {asked}")))?;
+    shared_known(engine.set_upload_priority(hash, priority).await)
+}
+
+fn shared_known(known: bool) -> Result<Json<Value>, ApiError> {
+    if known { Ok(Json(api_json::ok())) } else { Err(ApiError::new(StatusCode::NOT_FOUND, "Not found.")) }
 }
 
 /// Stops sharing a folder shared, given by its `path` as listed.

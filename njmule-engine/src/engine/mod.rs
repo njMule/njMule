@@ -50,8 +50,10 @@ use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::api::shared_directory::SharedDirectory;
+use crate::api::shared_file_info::SharedFileInfo;
 use crate::api::spam_marks::SpamMarks;
 use crate::api::upload_info::{BanInfo, UploadInfo};
+use crate::api::upload_priority::UploadPriority;
 use crate::config::app_directories::AppDirectories;
 use crate::config::bind_interface::{self, Binding};
 use crate::config::obfuscation_mode::ObfuscationMode;
@@ -62,7 +64,6 @@ use crate::engine::countries::Step;
 use crate::engine::event_replay::EventReplay;
 use crate::engine::network::{Command, ConnectError, DownloadChange, MoreAnswer};
 use crate::engine::switches::Switches;
-use crate::files::shared_files::SharedFile;
 use crate::net::country_table::CountryTable;
 use crate::net::routes::Routes;
 use crate::net::web_lists::WebLists;
@@ -635,8 +636,21 @@ impl Engine {
     }
 
     /// The files we share, those hashed so far.
-    pub async fn shared_files(&self) -> Vec<SharedFile> {
+    pub async fn shared_files(&self) -> Vec<SharedFileInfo> {
         self.ask(Command::SharedFiles).await.unwrap_or_default()
+    }
+
+    /// Renames a shared file in its folder; false for a file not shared, why not for a name never shared or a move that
+    /// fails.
+    pub async fn rename_shared_file(&self, hash: [u8; 16], name: String) -> Result<bool, String> {
+        self.ask(|reply| Command::RenameSharedFile(hash, name, reply))
+            .await
+            .unwrap_or_else(|| Err("the engine is stopping".to_owned()))
+    }
+
+    /// Sets the upload priority of a shared file; false for a file not shared.
+    pub async fn set_upload_priority(&self, hash: [u8; 16], priority: UploadPriority) -> bool {
+        self.ask(|reply| Command::SetUploadPriority(hash, priority, reply)).await.unwrap_or(false)
     }
 
     /// Adds a download, paused when `paused` says so or, without it, as the preferences say.
@@ -1105,8 +1119,16 @@ impl NjMuleEngine for Engine {
         Engine::unshare_directory(self, dir)
     }
 
-    fn shared_files(&self) -> impl Future<Output = Vec<SharedFile>> + Send {
+    fn shared_files(&self) -> impl Future<Output = Vec<SharedFileInfo>> + Send {
         Engine::shared_files(self)
+    }
+
+    fn rename_shared_file(&self, hash: [u8; 16], name: String) -> impl Future<Output = Result<bool, String>> + Send {
+        Engine::rename_shared_file(self, hash, name)
+    }
+
+    fn set_upload_priority(&self, hash: [u8; 16], priority: UploadPriority) -> impl Future<Output = bool> + Send {
+        Engine::set_upload_priority(self, hash, priority)
     }
 
     fn add_download(

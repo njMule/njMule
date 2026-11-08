@@ -4,16 +4,22 @@
 //! The shared files of the network: the folders read off the engine's task at the start, every ten minutes and when
 //! they change, and the files new to them hashed one after the other on a thread of their own.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc as std_mpsc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 
 use super::{Network, Tick};
+use crate::api::log_line::Level as LogLevel;
 use crate::api::shared_directory::SharedDirectory;
+use crate::api::shared_file_info::SharedFileInfo;
+use crate::api::upload_priority::UploadPriority;
 use crate::files::hash::file_hasher::FileHashes;
 use crate::files::shared_files::{self, Changes, Found, Listing, Sharing};
+use crate::upload::upload_manager::{FileCounts, UploadManager};
 
 /// A file that changed while it was hashed is looked at again this long after, once a copy is done.
 const RESCAN_DELAY: Duration = Duration::from_secs(5);
@@ -28,6 +34,38 @@ pub(super) struct SharesSide {
     next_scan: Instant,
     // The incoming and private folders of the last scan, whose change asks for another.
     folders: (Vec<PathBuf>, Vec<PathBuf>),
+    // The upload priorities chosen for the files shared, which the upload queue reads; and what it counted of them
+    // since the shared files last took it.
+    priorities: Arc<Mutex<HashMap<[u8; 16], UploadPriority>>>,
+    counted: Arc<Mutex<HashMap<[u8; 16], Tally>>>,
+}
+
+// Requests, slots and bytes of a file.
+type Tally = (u64, u64, u64);
+
+// Where the upload queue counts, for the shared files to take.
+struct Counter(Arc<Mutex<HashMap<[u8; 16], Tally>>>);
+
+impl Counter {
+    fn add(&self, file: &[u8; 16], requests: u64, accepted: u64, bytes: u64) {
+        let mut counted = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let tally = counted.entry(*file).or_default();
+        *tally = (tally.0.saturating_add(requests), tally.1.saturating_add(accepted), tally.2.saturating_add(bytes));
+    }
+}
+
+impl FileCounts for Counter {
+    fn asked(&mut self, file: &[u8; 16]) {
+        self.add(file, 1, 0, 0);
+    }
+
+    fn accepted(&mut self, file: &[u8; 16]) {
+        self.add(file, 0, 1, 0);
+    }
+
+    fn sent(&mut self, file: &[u8; 16], bytes: u64) {
+        self.add(file, 0, 0, bytes);
+    }
 }
 
 impl SharesSide {
@@ -47,7 +85,24 @@ impl SharesSide {
         if let Err(e) = started {
             tracing::error!("Cannot start the hasher, new files are not shared: {e}");
         }
-        Self { to_hash, scanning: false, again: false, next_scan: Instant::now(), folders: (Vec::new(), Vec::new()) }
+        Self {
+            to_hash,
+            scanning: false,
+            again: false,
+            next_scan: Instant::now(),
+            folders: (Vec::new(), Vec::new()),
+            priorities: Arc::default(),
+            counted: Arc::default(),
+        }
+    }
+
+    /// Lets the upload queue read the priorities of the files and count their requests, slots and bytes.
+    pub(super) fn wire(&self, uploads: &mut UploadManager) {
+        let priorities = Arc::clone(&self.priorities);
+        uploads.set_priorities(move |file| {
+            priorities.lock().unwrap_or_else(PoisonError::into_inner).get(file).copied().unwrap_or(UploadPriority::Auto)
+        });
+        uploads.count_in(Box::new(Counter(Arc::clone(&self.counted))));
     }
 }
 
@@ -95,6 +150,7 @@ impl Network {
         if Instant::now() >= self.shares.next_scan || self.share_folders() != self.shares.folders {
             self.scan_shares();
         }
+        self.take_counts();
         if self.shared_files.is_unsaved()
             && let Err(e) = self.shared_files.save()
         {
@@ -121,9 +177,56 @@ impl Network {
         Ok(())
     }
 
+    /// The files shared, with their priority and what they were asked for and sent.
+    pub(super) fn shared_file_infos(&mut self) -> Vec<SharedFileInfo> {
+        self.take_counts();
+        let files = &self.shared_files;
+        files
+            .files()
+            .map(|file| SharedFileInfo {
+                hash: file.hash,
+                name: file.name.clone(),
+                size: file.size,
+                path: file.path.clone(),
+                priority: files.priority(&file.hash),
+                statistics: files.statistics(&file.hash),
+            })
+            .collect()
+    }
+
+    /// Renames a shared file in its folder; false for a file not shared, why not for a name never shared or a move
+    /// that fails.
+    pub(super) fn rename_shared_file(&mut self, hash: &[u8; 16], name: &str) -> Result<bool, String> {
+        match self.shared_files.rename(hash, name) {
+            Ok(Some((file, changes))) => {
+                if !changes.sharing.is_empty() {
+                    self.user_log(LogLevel::Info, format!("Renamed to {}", file.path.display()));
+                }
+                self.shares_changed(changes);
+                Ok(true)
+            }
+            Ok(None) => Ok(false),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    /// Sets the upload priority of a shared file; false for a file not shared.
+    pub(super) fn set_upload_priority(&mut self, hash: &[u8; 16], priority: UploadPriority) -> bool {
+        let set = self.shared_files.set_priority(hash, priority);
+        if set {
+            self.follow_priority(hash);
+        }
+        set
+    }
+
     fn shares_changed(&mut self, changes: Changes) {
         if changes.sharing.iter().any(|sharing| matches!(sharing, Sharing::Shared(_))) {
             self.publisher.changed(None);
+        }
+        for sharing in &changes.sharing {
+            match sharing {
+                Sharing::Shared(file) | Sharing::Unshared(file) => self.follow_priority(&file.hash),
+            }
         }
         for found in changes.to_hash {
             if self.shares.to_hash.send(found).is_err() {
@@ -132,6 +235,24 @@ impl Network {
         }
         if changes.rescan {
             self.shares.next_scan = self.shares.next_scan.min(later(RESCAN_DELAY));
+        }
+    }
+
+    // The upload queue reads the priority chosen for a file shared; none, it takes the automatic one.
+    fn follow_priority(&self, hash: &[u8; 16]) {
+        let priority = self.shared_files.get(hash).map(|_| self.shared_files.priority(hash));
+        let mut priorities = self.shares.priorities.lock().unwrap_or_else(PoisonError::into_inner);
+        match priority {
+            Some(priority) if priority != UploadPriority::Auto => priorities.insert(*hash, priority),
+            _ => priorities.remove(hash),
+        };
+    }
+
+    // What the upload queue counted, into the statistics of the shared files.
+    fn take_counts(&mut self) {
+        let counted = std::mem::take(&mut *self.shares.counted.lock().unwrap_or_else(PoisonError::into_inner));
+        for (file, (requests, accepted, bytes)) in counted {
+            self.shared_files.counted(&file, requests, accepted, bytes);
         }
     }
 

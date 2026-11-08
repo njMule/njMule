@@ -5,17 +5,20 @@
 //! subfolders. Hashes are remembered in `known.met` by name, size and modification time, so unchanged files are not
 //! hashed again. The disk is read off the engine's task ([`list`], [`hash`]); this state only decides what is shared.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use indexmap::{IndexMap, IndexSet};
 use walkdir::WalkDir;
 
 use crate::api::ed2k_link::FileLink;
 use crate::api::shared_directory::{self, SharedDirectory};
+use crate::api::shared_file_info::Statistics;
+use crate::api::upload_priority::UploadPriority;
 use crate::files::hash::ed2k;
 use crate::files::hash::file_hasher::{self, FileHashes};
 use crate::files::part_file;
@@ -23,6 +26,7 @@ use crate::persist::atomic_files;
 use crate::persist::format::known_met::{self, KnownFile};
 use crate::persist::format::text_files;
 use crate::protocol::tag::{Tag, TagName, file_tag};
+use crate::security::path_sanitizer;
 
 pub const KNOWN_FILE_NAME: &str = "known.met";
 /// The folders shared alone, besides the incoming ones, one a line as other clients write them.
@@ -200,9 +204,63 @@ pub struct SharedFiles {
     // Files hashed before.
     known: IndexMap<Key, KnownFile>,
     hashing: HashSet<PathBuf>,
+    // The asks, slots and bytes of the shared files in this run.
+    counts: HashMap<[u8; 16], Counts>,
     // Whether known.met is behind what is known.
     unsaved: bool,
     closed: bool,
+}
+
+// The counts of a run, which start from the totals known.met kept; both are written back at each save.
+#[derive(Debug, Clone, Copy, Default)]
+struct Counts {
+    requests_before: u64,
+    accepted_before: u64,
+    transferred_before: u64,
+    requests: u64,
+    accepted: u64,
+    transferred: u64,
+}
+
+impl Counts {
+    fn before(record: &KnownFile) -> Self {
+        Self {
+            requests_before: record.requests(),
+            accepted_before: record.accepted(),
+            transferred_before: record.transferred(),
+            ..Self::default()
+        }
+    }
+
+    fn statistics(&self) -> Statistics {
+        Statistics {
+            requests: self.requests,
+            accepted: self.accepted,
+            transferred: self.transferred,
+            total_requests: self.requests_before.saturating_add(self.requests),
+            total_accepted: self.accepted_before.saturating_add(self.accepted),
+            total_transferred: self.transferred_before.saturating_add(self.transferred),
+        }
+    }
+}
+
+/// Why a shared file cannot be renamed.
+#[derive(Debug)]
+pub enum RenameError {
+    /// A name the scans never share, such as that of a backup or of a hidden file: renamed so, the file would be
+    /// unshared a moment later.
+    NeverShared(String),
+    /// The file could not be moved: another file has the name, or the disk refused.
+    Failed(io::Error),
+}
+
+impl fmt::Display for RenameError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NeverShared(name) => write!(f, "A file named {name} is not shared"),
+            Self::Failed(e) => write!(f, "Cannot rename the file: {e}"),
+        }
+    }
 }
 
 // The file, else its backup; when both are damaged, what comes before the damage, from the one that keeps more.
@@ -267,7 +325,17 @@ impl SharedFiles {
         self.private = private;
     }
 
+    /// Writes `known.met`; the records of the files shared take the date and the counts of this run.
     pub fn save(&mut self) -> io::Result<()> {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs());
+        for record in self.known.values_mut() {
+            if self.files.contains_key(&record.file_hash) {
+                set_int(record, file_tag::LASTSHARED, now);
+                if let Some(counts) = self.counts.get(&record.file_hash) {
+                    with_totals(record, &counts.statistics());
+                }
+            }
+        }
         let records: Vec<KnownFile> = self.known.values().cloned().collect();
         let data = known_met::write(&records).map_err(io::Error::other)?;
         atomic_files::write(&self.config.join(KNOWN_FILE_NAME), &data)?;
@@ -459,6 +527,92 @@ impl SharedFiles {
         file
     }
 
+    /// A request of the shared file with `hash`, counted in its statistics.
+    pub fn asked(&mut self, hash: &[u8; 16]) {
+        self.counted(hash, 1, 0, 0);
+    }
+
+    /// An upload slot for the shared file with `hash`, counted in its statistics.
+    pub fn accepted(&mut self, hash: &[u8; 16]) {
+        self.counted(hash, 0, 1, 0);
+    }
+
+    /// Bytes of the shared file with `hash` that went out, counted in its statistics.
+    pub fn sent(&mut self, hash: &[u8; 16], bytes: u64) {
+        self.counted(hash, 0, 0, bytes);
+    }
+
+    /// Requests, slots and bytes of the shared file with `hash`, counted at once.
+    pub fn counted(&mut self, hash: &[u8; 16], requests: u64, accepted: u64, bytes: u64) {
+        let Some(file) = self.files.get(hash) else {
+            return;
+        };
+        let record = self.known.get(&file.key());
+        let counts = self.counts.entry(*hash).or_insert_with(|| record.map_or_else(Counts::default, Counts::before));
+        counts.requests = counts.requests.saturating_add(requests);
+        counts.accepted = counts.accepted.saturating_add(accepted);
+        counts.transferred = counts.transferred.saturating_add(bytes);
+    }
+
+    /// What the shared file with `hash` was asked for and sent, in this run and in all; nothing for a file not shared.
+    pub fn statistics(&self, hash: &[u8; 16]) -> Statistics {
+        if let Some(counts) = self.counts.get(hash) {
+            return counts.statistics();
+        }
+        self.record_of(hash).map(|record| Counts::before(record).statistics()).unwrap_or_default()
+    }
+
+    /// The upload priority of the file shared with `hash`: automatic unless one was chosen.
+    pub fn priority(&self, hash: &[u8; 16]) -> UploadPriority {
+        self.record_of(hash)
+            .and_then(KnownFile::upload_priority)
+            .map_or(UploadPriority::Auto, UploadPriority::of_code)
+    }
+
+    /// Sets the upload priority of a shared file, kept in `known.met`; false for a file not shared.
+    pub fn set_priority(&mut self, hash: &[u8; 16], priority: UploadPriority) -> bool {
+        let Some(file) = self.files.get(hash) else {
+            return false;
+        };
+        let key = file.key();
+        let mut record = self.known.get(&key).cloned().unwrap_or_else(|| file.record());
+        set_int(&mut record, file_tag::ULPRIORITY, priority.code());
+        self.known.insert(key, record);
+        self.unsaved = true;
+        true
+    }
+
+    fn record_of(&self, hash: &[u8; 16]) -> Option<&KnownFile> {
+        self.files.get(hash).and_then(|file| self.known.get(&file.key()))
+    }
+
+    /// Renames a shared file in its folder; its hashes and priority stay known under the new name. None for a file not
+    /// shared; the file as it was for an empty name or the same one.
+    pub fn rename(&mut self, hash: &[u8; 16], new_name: &str) -> Result<Option<(SharedFile, Changes)>, RenameError> {
+        let Some(file) = self.files.get(hash).cloned() else {
+            return Ok(None);
+        };
+        let name = path_sanitizer::file_name(new_name);
+        if new_name.trim().is_empty() || name == file.name {
+            return Ok(Some((file, Changes::default())));
+        }
+        if name.starts_with('.') || is_skipped(&name) {
+            return Err(RenameError::NeverShared(name));
+        }
+        let target = file.path.with_file_name(&name);
+        move_file(&file.path, &target).map_err(RenameError::Failed)?;
+        let mtime = fs::metadata(&target).map_or(file.mtime, |metadata| mtime(&metadata));
+        let renamed = SharedFile { path: target, name, mtime, ..file.clone() };
+        let record = self.known.shift_remove(&file.key());
+        self.known
+            .insert(renamed.key(), record.map_or_else(|| renamed.record(), |known| with_name(known, &renamed)));
+        let mut changes = Changes::default();
+        self.unshare(&file, &mut changes);
+        self.share(renamed.clone(), &mut changes);
+        self.unsaved = true;
+        Ok(Some((renamed, changes)))
+    }
+
     /// The files shared now or hashed before, by their hash.
     pub fn known_hashes(&self) -> HashSet<[u8; 16]> {
         self.files.keys().copied().chain(self.known.values().map(|known| known.file_hash)).collect()
@@ -585,6 +739,44 @@ fn with_aich(mut known: KnownFile, aich: Option<[u8; 20]>) -> KnownFile {
     known.tags.retain(|tag| *tag.name() != TagName::id(file_tag::AICH_HASH));
     known.tags.push(aich_tag(aich));
     known
+}
+
+// The record of a renamed file: its name and date change, its other tags stay.
+fn with_name(mut known: KnownFile, file: &SharedFile) -> KnownFile {
+    known.tags.retain(|tag| *tag.name() != TagName::id(file_tag::FILENAME));
+    known.tags.push(Tag::String { name: TagName::id(file_tag::FILENAME), value: file.name.clone() });
+    known.mtime = file.mtime;
+    known
+}
+
+// The totals of all runs, as other clients keep them: the counts on 32 bits, the bytes on two.
+fn with_totals(known: &mut KnownFile, statistics: &Statistics) {
+    let low = u64::from(u32::MAX);
+    set_int(known, file_tag::ATREQUESTED, statistics.total_requests.min(low));
+    set_int(known, file_tag::ATACCEPTED, statistics.total_accepted.min(low));
+    set_int(known, file_tag::ATTRANSFERRED, statistics.total_transferred & low);
+    set_int(known, file_tag::ATTRANSFERREDHI, statistics.total_transferred >> 32);
+}
+
+fn set_int(known: &mut KnownFile, id: u8, value: u64) {
+    known.tags.retain(|tag| *tag.name() != TagName::id(id));
+    known.tags.push(Tag::Int { name: TagName::id(id), value });
+}
+
+// Moves a file to a free name. A change of case only is made through another name: a system that ignores case does not
+// see it as a move.
+fn move_file(from: &Path, to: &Path) -> io::Result<()> {
+    if to.exists() {
+        if !same_file::is_same_file(from, to)? {
+            return Err(io::Error::new(io::ErrorKind::AlreadyExists, format!("{} exists", to.display())));
+        }
+        let step = atomic_files::tmp_path(to);
+        fs::rename(from, &step)?;
+        return fs::rename(&step, to).inspect_err(|_| {
+            let _ = fs::rename(&step, from);
+        });
+    }
+    fs::rename(from, to)
 }
 
 fn aich_tag(aich: [u8; 20]) -> Tag {

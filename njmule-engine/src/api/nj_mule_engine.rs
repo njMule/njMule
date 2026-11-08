@@ -31,14 +31,15 @@ use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::api::shared_directory::SharedDirectory;
+use crate::api::shared_file_info::SharedFileInfo;
 use crate::api::spam_marks::SpamMarks;
 use crate::api::upload_info::{BanInfo, UploadInfo};
+use crate::api::upload_priority::UploadPriority;
 use crate::config::app_directories::AppDirectories;
 use crate::config::preferences::Preferences;
 use crate::config::schedule::{Rule, Schedule};
 use crate::engine::NotesError;
 use crate::engine::network::{ConnectError, MoreAnswer};
-use crate::files::shared_files::SharedFile;
 use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::{Address, Priority};
 
@@ -183,8 +184,15 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
     /// Stops sharing a folder, alone or with its subfolders.
     fn unshare_directory(&self, dir: PathBuf) -> impl Future<Output = Result<(), String>> + Send;
 
-    /// The files we share, those hashed so far.
-    fn shared_files(&self) -> impl Future<Output = Vec<SharedFile>> + Send;
+    /// The files we share, those hashed so far, with their priority and what they were asked for and sent.
+    fn shared_files(&self) -> impl Future<Output = Vec<SharedFileInfo>> + Send;
+
+    /// Renames a shared file in its folder; false for a file not shared, why not for a name never shared or a move that
+    /// fails.
+    fn rename_shared_file(&self, hash: [u8; 16], name: String) -> impl Future<Output = Result<bool, String>> + Send;
+
+    /// Sets the upload priority of a shared file; false for a file not shared.
+    fn set_upload_priority(&self, hash: [u8; 16], priority: UploadPriority) -> impl Future<Output = bool> + Send;
 
     /// Adds a download, paused when `paused` says so or, without it, as the preferences say.
     fn add_download(

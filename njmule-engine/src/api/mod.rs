@@ -32,6 +32,7 @@ pub mod search_request;
 pub mod search_result;
 pub mod server_info;
 pub mod shared_directory;
+pub mod shared_file_info;
 pub mod spam_marks;
 pub mod upload_info;
 pub mod upload_priority;

@@ -15,11 +15,15 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use njmule_engine::api::shared_file_info::Statistics;
+use njmule_engine::api::upload_priority::UploadPriority;
 use njmule_engine::files::hash::ed2k;
-use njmule_engine::files::shared_files::{self, Changes, Listing, SharedFiles, Sharing};
+use njmule_engine::files::shared_files::{self, Changes, Listing, RenameError, SharedFile, SharedFiles, Sharing};
+use njmule_engine::persist::format::known_met::{self, KnownFile};
 use njmule_engine::persist::format::text_files;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -256,6 +260,160 @@ fn should_find_the_files_of_a_folder_but_not_its_folders_or_empty_files() {
     shares.then_the_files_found_are(&["a.iso", "b.avi"]);
 }
 
+#[test]
+fn should_count_the_requests_slots_and_bytes_of_a_shared_file() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_a_file("incoming/a.bin", 20_000, 3);
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_report(&["shared a.bin"]);
+
+    shares.when_the_file_is_asked_for_twice_and_sent_once("a.bin", 9_000);
+
+    shares.then_its_statistics_are("a.bin", statistics([2, 1, 9_000, 2, 1, 9_000]));
+}
+
+#[test]
+fn should_add_the_counts_of_a_run_to_the_totals_known_met_keeps() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_a_file("incoming/a.bin", 20_000, 3);
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_report(&["shared a.bin"]);
+    shares.given_the_file_asked_for_twice_and_sent_once("a.bin", 9_000);
+    shares.given_the_shares_are_closed();
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_are_scanned();
+
+    shares.when_the_file_is_asked_for_twice_and_sent_once("a.bin", 1_000);
+
+    shares.then_its_statistics_are("a.bin", statistics([2, 1, 1_000, 4, 2, 10_000]));
+}
+
+#[test]
+fn should_keep_the_upload_priority_of_each_file_in_known_met() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_a_file("incoming/a.bin", 20_000, 3);
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_report(&["shared a.bin"]);
+    shares.given_the_upload_priority_is("a.bin", UploadPriority::Auto);
+    shares.given_the_upload_priority_is_set("a.bin", UploadPriority::Release);
+    shares.given_the_upload_priority_of_an_unknown_file_cannot_be_set([0; 16], UploadPriority::Low);
+    shares.given_the_shares_are_closed();
+    shares.given_known_met_holds_one_record_with_the_upload_priority(3);
+    shares.given_the_shares_are_open();
+
+    shares.when_the_shares_are_scanned();
+
+    shares.then_the_upload_priority_is("a.bin", UploadPriority::Release);
+}
+
+#[test]
+fn should_rename_a_shared_file_and_keep_what_is_known_of_it() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_a_file("incoming/a.bin", 20_000, 6);
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_report(&["shared a.bin"]);
+    shares.given_the_upload_priority_is_set("a.bin", UploadPriority::High);
+
+    shares.when_the_file_is_renamed("a.bin", "b?.bin");
+
+    shares.then_the_renamed_file_is_named("b_.bin");
+    shares.then_the_file_has_the_content_of("incoming/b_.bin", "a.bin");
+    shares.then_the_file_does_not_exist("incoming/a.bin");
+    shares.then_the_shares_report(&["unshared a.bin", "shared b_.bin"]);
+    shares.then_the_upload_priority_is("a.bin", UploadPriority::High);
+}
+
+#[test]
+fn should_refuse_to_rename_a_shared_file_over_another_file() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_a_file("incoming/a.bin", 20_000, 6);
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_report(&["shared a.bin"]);
+    shares.given_a_one_byte_file("incoming/c.bin");
+
+    shares.when_the_file_is_renamed("a.bin", "c.bin");
+
+    shares.then_the_rename_fails_with(io::ErrorKind::AlreadyExists);
+}
+
+#[test]
+fn should_rename_nothing_for_an_unknown_hash() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_a_file("incoming/a.bin", 20_000, 6);
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_report(&["shared a.bin"]);
+
+    shares.when_an_unknown_file_is_renamed([0; 16], "d.bin");
+
+    shares.then_nothing_is_renamed();
+}
+
+#[test]
+fn should_keep_every_upload_priority_under_the_code_other_clients_use() {
+    for priority in UploadPriority::ALL {
+        let mut shares = Shares::new();
+        shares.given_an_incoming_and_a_config_directory();
+        shares.given_a_file("incoming/a.bin", 2000, 42);
+        shares.given_the_shares_are_open();
+        shares.given_the_shares_report(&["shared a.bin"]);
+
+        shares.when_the_upload_priority_is_set("a.bin", priority);
+
+        shares.then_the_upload_priority_is("a.bin", priority);
+    }
+}
+
+#[test]
+fn should_give_an_unknown_file_the_automatic_upload_priority() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_a_file("incoming/a.bin", 2000, 42);
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_report(&["shared a.bin"]);
+
+    shares.when_the_upload_priority_is_asked_for([0x25; 16]);
+
+    shares.then_the_upload_priority_answered_is(UploadPriority::Auto);
+}
+
+#[test]
+fn should_change_the_case_of_a_name_too_when_renaming() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_a_file("incoming/movie.avi", 3000, 34);
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_report(&["shared movie.avi"]);
+
+    shares.when_the_file_is_renamed("movie.avi", "Movie.avi");
+
+    shares.then_the_renamed_file_is_named("Movie.avi");
+    shares.then_the_incoming_directory_holds_only("Movie.avi");
+    shares.then_the_file_is_shared_under_the_name("movie.avi", "Movie.avi");
+}
+
+#[test]
+fn should_refuse_names_that_are_never_shared() {
+    for name in ["kept.bak", "kept.tmp", "001.part", "Desktop.ini", "link.lnk", ".hidden"] {
+        let mut shares = Shares::new();
+        shares.given_an_incoming_and_a_config_directory();
+        shares.given_a_file("incoming/kept.bin", 3000, 35);
+        shares.given_the_shares_are_open();
+        shares.given_the_shares_report(&["shared kept.bin"]);
+
+        shares.when_the_file_is_renamed("kept.bin", name);
+
+        shares.then_the_rename_is_refused_as_never_shared();
+        shares.then_the_file_exists("incoming/kept.bin");
+        shares.then_the_file_is_shared_under_the_name("kept.bin", "kept.bin");
+    }
+}
+
 fn private_directories() -> Vec<PathBuf> {
     // The home is absolute: joining it to the test folder keeps it as it is.
     let mut directories: Vec<PathBuf> = ["config", "config/sub", "temp", "emule-config"].map(PathBuf::from).into();
@@ -279,6 +437,8 @@ struct Shares {
     tracked: PathBuf,
     old_hash: [u8; 16],
     found: Vec<String>,
+    renamed: Option<Result<Option<SharedFile>, RenameError>>,
+    priority: Option<UploadPriority>,
 }
 
 impl Shares {
@@ -299,6 +459,8 @@ impl Shares {
             tracked: PathBuf::new(),
             old_hash: [0; 16],
             found: Vec::new(),
+            renamed: None,
+            priority: None,
         }
     }
 
@@ -532,6 +694,120 @@ impl Shares {
             .collect();
     }
 
+    fn given_the_file_asked_for_twice_and_sent_once(&mut self, name: &str, bytes: u64) {
+        self.when_the_file_is_asked_for_twice_and_sent_once(name, bytes);
+    }
+
+    fn given_the_upload_priority_is(&self, name: &str, expected: UploadPriority) {
+        self.then_the_upload_priority_is(name, expected);
+    }
+
+    fn given_the_upload_priority_is_set(&mut self, name: &str, priority: UploadPriority) {
+        let hash = self.hash_of(name);
+        assert!(self.shares_mut().set_priority(&hash, priority));
+    }
+
+    fn given_the_upload_priority_of_an_unknown_file_cannot_be_set(&mut self, hash: [u8; 16], priority: UploadPriority) {
+        assert!(!self.shares_mut().set_priority(&hash, priority));
+    }
+
+    // The value other clients write.
+    fn given_known_met_holds_one_record_with_the_upload_priority(&self, code: u64) {
+        let records = known_met::read(&fs::read(self.config.join(shared_files::KNOWN_FILE_NAME)).unwrap()).unwrap();
+        assert_eq!(records.iter().map(KnownFile::upload_priority).collect::<Vec<_>>(), [Some(code)]);
+    }
+
+    fn when_the_file_is_asked_for_twice_and_sent_once(&mut self, name: &str, bytes: u64) {
+        let hash = self.hash_of(name);
+        let shares = self.shares_mut();
+        shares.asked(&hash);
+        shares.asked(&hash);
+        shares.accepted(&hash);
+        shares.sent(&hash, bytes);
+    }
+
+    fn when_the_file_is_renamed(&mut self, name: &str, new_name: &str) {
+        let hash = self.hash_of(name);
+        self.when_an_unknown_file_is_renamed(hash, new_name);
+    }
+
+    fn when_an_unknown_file_is_renamed(&mut self, hash: [u8; 16], new_name: &str) {
+        let renamed = self.shares_mut().rename(&hash, new_name);
+        self.renamed = Some(renamed.map(|renamed| {
+            renamed.map(|(file, changes)| {
+                self.record(changes);
+                file
+            })
+        }));
+    }
+
+    fn when_the_upload_priority_is_set(&mut self, name: &str, priority: UploadPriority) {
+        let hash = self.hash_of(name);
+        self.shares_mut().set_priority(&hash, priority);
+    }
+
+    fn when_the_upload_priority_is_asked_for(&mut self, hash: [u8; 16]) {
+        self.priority = Some(self.shares().priority(&hash));
+    }
+
+    fn then_its_statistics_are(&self, name: &str, expected: Statistics) {
+        assert_eq!(self.shares().statistics(&self.hash_of(name)), expected);
+    }
+
+    fn then_the_upload_priority_is(&self, name: &str, expected: UploadPriority) {
+        assert_eq!(self.shares().priority(&self.hash_of(name)), expected);
+    }
+
+    fn then_the_upload_priority_answered_is(&self, expected: UploadPriority) {
+        assert_eq!(self.priority, Some(expected));
+    }
+
+    fn then_the_renamed_file_is_named(&self, name: &str) {
+        match &self.renamed {
+            Some(Ok(Some(file))) => assert_eq!(file.name, name),
+            other => panic!("not renamed: {other:?}"),
+        }
+    }
+
+    fn then_the_file_has_the_content_of(&self, path: &str, original: &str) {
+        assert_eq!(fs::read(self.dir.path().join(path)).unwrap(), self.contents[original]);
+    }
+
+    fn then_the_file_does_not_exist(&self, path: &str) {
+        assert!(!self.dir.path().join(path).exists());
+    }
+
+    fn then_the_file_exists(&self, path: &str) {
+        assert!(self.dir.path().join(path).exists());
+    }
+
+    fn then_the_rename_fails_with(&self, kind: io::ErrorKind) {
+        match &self.renamed {
+            Some(Err(RenameError::Failed(e))) => assert_eq!(e.kind(), kind),
+            other => panic!("not failed: {other:?}"),
+        }
+    }
+
+    fn then_the_rename_is_refused_as_never_shared(&self) {
+        assert!(matches!(self.renamed, Some(Err(RenameError::NeverShared(_)))), "{:?}", self.renamed);
+    }
+
+    fn then_nothing_is_renamed(&self) {
+        assert!(matches!(self.renamed, Some(Ok(None))), "{:?}", self.renamed);
+    }
+
+    fn then_the_incoming_directory_holds_only(&self, name: &str) {
+        let names: Vec<String> = fs::read_dir(&self.incoming)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(names, [name]);
+    }
+
+    fn then_the_file_is_shared_under_the_name(&self, file: &str, name: &str) {
+        assert_eq!(self.shares().get(&self.hash_of(file)).unwrap().name, name);
+    }
+
     fn then_the_shares_report(&mut self, expected: &[&str]) {
         let reported: Vec<String> = self.events.drain(..expected.len().min(self.events.len())).collect();
         assert_eq!(reported, expected);
@@ -672,6 +948,11 @@ impl Shares {
         self.contents.insert(file.file_name().unwrap().to_string_lossy().into_owned(), data);
         file
     }
+}
+
+fn statistics(counts: [u64; 6]) -> Statistics {
+    let [requests, accepted, transferred, total_requests, total_accepted, total_transferred] = counts;
+    Statistics { requests, accepted, transferred, total_requests, total_accepted, total_transferred }
 }
 
 fn bytes(size: usize, seed: u64) -> Vec<u8> {

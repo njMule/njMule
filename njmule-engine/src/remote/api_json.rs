@@ -25,6 +25,7 @@ use crate::api::saved_search::SavedSearch;
 use crate::api::search_result::{Media, SearchResult};
 use crate::api::server_info::ServerInfo;
 use crate::api::shared_directory::SharedDirectory;
+use crate::api::shared_file_info::SharedFileInfo;
 use crate::api::spam_marks::SpamMarks;
 use crate::api::upload_info::{BanInfo, UploadInfo};
 use crate::config::bind_interface::Candidate;
@@ -32,7 +33,6 @@ use crate::config::preferences::Preferences;
 use crate::config::schedule::{Rule, Schedule, time_text};
 use crate::files::file_types;
 use crate::files::part_file::PartMap;
-use crate::files::shared_files::SharedFile;
 use crate::persist::preferences_codec;
 use crate::remote::rate_history::Rate;
 use crate::remote::recent_log::Entry;
@@ -496,21 +496,22 @@ pub fn search_result(result: &SearchResult) -> Value {
 }
 
 /// A shared file: what it is, where it lies and how much it was asked for.
-pub fn shared_file(file: &SharedFile) -> Value {
+pub fn shared_file(file: &SharedFileInfo) -> Value {
+    let statistics = &file.statistics;
     json!({
         "hash": hash(&file.hash),
         "name": file.name,
         "size": file.size,
         "path": file.path.display().to_string(),
-        "priority": "normal",
+        "priority": file.priority.name(),
         "link": file.link().to_uri(),
         "statistics": {
-            "requests": 0,
-            "accepted": 0,
-            "transferred": 0,
-            "totalRequests": 0,
-            "totalAccepted": 0,
-            "totalTransferred": 0,
+            "requests": statistics.requests,
+            "accepted": statistics.accepted,
+            "transferred": statistics.transferred,
+            "totalRequests": statistics.total_requests,
+            "totalAccepted": statistics.total_accepted,
+            "totalTransferred": statistics.total_transferred,
         },
     })
 }

@@ -38,8 +38,10 @@ use crate::api::search_request;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
 use crate::api::shared_directory::SharedDirectory;
+use crate::api::shared_file_info::SharedFileInfo;
 use crate::api::spam_marks::SpamMarks;
 use crate::api::upload_info::{BanInfo, UploadInfo, UploadState};
+use crate::api::upload_priority::UploadPriority;
 use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
@@ -156,7 +158,11 @@ pub enum Command {
     MarkSpam(Vec<SearchResult>, bool, oneshot::Sender<SpamMarks>),
     SpamMarks(oneshot::Sender<SpamMarks>),
     FileHistory(oneshot::Sender<FileHistory>),
-    SharedFiles(oneshot::Sender<Vec<SharedFile>>),
+    SharedFiles(oneshot::Sender<Vec<SharedFileInfo>>),
+    /// Renames a shared file; false for a file not shared, why not for a name refused or a move that fails.
+    RenameSharedFile([u8; 16], String, oneshot::Sender<Result<bool, String>>),
+    /// Sets the upload priority of a shared file; false for a file not shared.
+    SetUploadPriority([u8; 16], UploadPriority, oneshot::Sender<bool>),
     /// The folders shared alone, then those shared with their subfolders.
     SharedDirectories(oneshot::Sender<Vec<SharedDirectory>>),
     /// Shares a folder, with its subfolders or alone; why not for a private one.
@@ -562,6 +568,7 @@ pub fn start(
         peer_events: peers_in,
         kad: KadSide::new(kad_in),
     };
+    network.shares.wire(&mut network.uploads);
     network.attach(listener, udp);
     // The network starts with the limits of the rule in force, which then acts once.
     network.refresh_schedule();
@@ -772,7 +779,13 @@ impl Network {
                 let _ = answer.send(FileHistory::of(self.shared_files.known_hashes(), HashSet::new()));
             }
             Command::SharedFiles(answer) => {
-                let _ = answer.send(self.shared_files.files().cloned().collect());
+                let _ = answer.send(self.shared_file_infos());
+            }
+            Command::RenameSharedFile(hash, name, answer) => {
+                let _ = answer.send(self.rename_shared_file(&hash, &name));
+            }
+            Command::SetUploadPriority(hash, priority, answer) => {
+                let _ = answer.send(self.set_upload_priority(&hash, priority));
             }
             Command::SharedDirectories(answer) => {
                 let _ = answer.send(self.shared_directories());
