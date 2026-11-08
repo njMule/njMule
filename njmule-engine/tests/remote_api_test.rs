@@ -596,6 +596,11 @@ struct Api {
     headers: Vec<(String, String)>,
     body: String,
     exited: Arc<AtomicBool>,
+    // An event stream open, and what it carried so far.
+    stream: Option<TcpStream>,
+    carried: String,
+    // Streams kept open meanwhile.
+    kept: Vec<TcpStream>,
 }
 
 impl Api {
@@ -611,6 +616,68 @@ impl Api {
             headers: Vec::new(),
             body: String::new(),
             exited: Arc::default(),
+            stream: None,
+            carried: String::new(),
+            kept: Vec::new(),
+        }
+    }
+
+    // Opens the stream and waits for its first lines, once the API follows the engine for it.
+    async fn given_an_event_stream_open(&mut self, types: &str) {
+        let mut stream = TcpStream::connect(self.address.unwrap()).await.unwrap();
+        let request = format!(
+            "GET /api/v1/events?types={types} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {}\r\n\r\n",
+            self.token
+        );
+        stream.write_all(request.as_bytes()).await.unwrap();
+        self.stream = Some(stream);
+        self.until_the_stream_carries("njMule events").await;
+    }
+
+    async fn given_event_streams_open(&mut self, count: usize) {
+        for _ in 0..count {
+            self.given_an_event_stream_open("").await;
+            self.kept.extend(self.stream.take());
+            self.carried.clear();
+        }
+    }
+
+    fn when_the_engine_announces(&self, event: EngineEvent) {
+        self.engine.events.send(event).unwrap();
+    }
+
+    async fn when_the_api_closes(&mut self) {
+        self.endpoint.take().unwrap().stop().await;
+    }
+
+    async fn then_the_stream_carries(&mut self, texts: &[&str]) {
+        for text in texts {
+            self.until_the_stream_carries(text).await;
+        }
+    }
+
+    fn then_the_stream_never_carried(&self, text: &str) {
+        assert!(!self.carried.contains(text), "{}", self.carried);
+    }
+
+    async fn then_the_stream_ends(&mut self) {
+        let stream = self.stream.as_mut().unwrap();
+        let mut rest = Vec::new();
+        tokio::time::timeout(Duration::from_secs(5), stream.read_to_end(&mut rest))
+            .await
+            .expect("the stream ends")
+            .unwrap();
+    }
+
+    async fn until_the_stream_carries(&mut self, text: &str) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let stream = self.stream.as_mut().unwrap();
+        while !self.carried.contains(text) {
+            let mut read = [0u8; 4096];
+            let left = deadline.saturating_duration_since(Instant::now());
+            let count = tokio::time::timeout(left, stream.read(&mut read)).await.expect(text).unwrap();
+            assert!(count > 0, "the stream ended before {text}: {}", self.carried);
+            self.carried.push_str(&String::from_utf8_lossy(&read[..count]));
         }
     }
 
@@ -1621,6 +1688,52 @@ async fn should_add_the_contacts_of_a_nodes_dat_sent() {
 
     api.then_the_status_is(200);
     api.then_the_engine_was_asked("add_kad_contacts 3 bytes");
+}
+
+#[tokio::test]
+async fn should_stream_the_engine_events() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_an_event_stream_open("download").await;
+
+    api.when_the_engine_announces(EngineEvent::DownloadAdded(download()));
+
+    api.then_the_stream_carries(&["event: download.added", "\"name\":\"talk.bin\""]).await;
+}
+
+#[tokio::test]
+async fn should_leave_out_of_a_stream_the_events_not_asked_for() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_an_event_stream_open("server").await;
+
+    api.when_the_engine_announces(EngineEvent::DownloadAdded(download()));
+    api.when_the_engine_announces(EngineEvent::ServerDisconnected { server: None, reason: "lost".to_owned() });
+
+    api.then_the_stream_carries(&["event: server.disconnected"]).await;
+    api.then_the_stream_never_carried("download.added");
+}
+
+#[tokio::test]
+async fn should_refuse_an_event_stream_past_the_limit() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_event_streams_open(8).await;
+
+    api.when_called("GET", "/api/v1/events", "").await;
+
+    api.then_the_status_is(503);
+}
+
+#[tokio::test]
+async fn should_end_the_streams_when_it_closes() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_an_event_stream_open("").await;
+
+    api.when_the_api_closes().await;
+
+    api.then_the_stream_ends().await;
 }
 
 #[tokio::test]
