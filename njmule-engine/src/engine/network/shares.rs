@@ -219,7 +219,7 @@ impl Network {
         set
     }
 
-    fn shares_changed(&mut self, changes: Changes) {
+    pub(super) fn shares_changed(&mut self, changes: Changes) {
         if changes.sharing.iter().any(|sharing| matches!(sharing, Sharing::Shared(_))) {
             self.publisher.changed(None);
         }

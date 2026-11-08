@@ -29,7 +29,7 @@ use crate::protocol::packet::packing;
 use crate::upload::blocks;
 use crate::upload::credits::Credits;
 use crate::upload::request_tracker::{Key, RequestTracker};
-use crate::upload::upload_session::{Block, Request, UploadSession, Visible};
+use crate::upload::upload_session::{Block, RecoveryAsked, Request, UploadSession, Visible};
 use crate::upload::uploadable::Uploadable;
 use crate::util::ipv6;
 use crate::util::rate_meter::RateMeter;
@@ -236,6 +236,8 @@ pub struct UploadManager {
     next_purge: Option<Instant>,
     // The clients to call, for the network.
     calls: Vec<Call>,
+    // The requests of AICH recovery data, with the link to answer on.
+    recoveries: Vec<(LinkHandle, RecoveryAsked)>,
     // What clients told our Kad node, for the network.
     kad_requests: Vec<KadRequest>,
     counts: Option<Box<dyn FileCounts>>,
@@ -262,6 +264,7 @@ impl UploadManager {
             requests: RequestTracker::new(MIN_REQUEST_TIME, IDLE_SLOTS_WINDOW),
             next_purge: None,
             calls: Vec::new(),
+            recoveries: Vec::new(),
             kad_requests: Vec::new(),
             counts: None,
         }
@@ -456,6 +459,12 @@ impl UploadManager {
         std::mem::take(&mut self.calls)
     }
 
+    /// The requests of AICH recovery data since asked last, each to answer on its link with
+    /// [`recovery_answer`](crate::upload::upload_session::recovery_answer).
+    pub fn take_recoveries(&mut self) -> Vec<(LinkHandle, RecoveryAsked)> {
+        std::mem::take(&mut self.recoveries)
+    }
+
     /// What clients told our Kad node, since asked last.
     pub fn take_kad_requests(&mut self) -> Vec<KadRequest> {
         std::mem::take(&mut self.kad_requests)
@@ -560,6 +569,7 @@ impl UploadManager {
                     self.kad_requests.push(KadRequest::UdpCheck { ip: u32::from(ip), request, known });
                 }
             }
+            Ok(Some(Request::Recovery(asked))) => self.recoveries.push((link.clone(), asked)),
             Ok(Some(Request::Stopped)) => self.slot_gone(link.id()),
             Ok(Some(Request::FileGone)) => {
                 tracing::debug!("{} asked for blocks of a file we no longer share", link.remote());

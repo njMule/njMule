@@ -71,6 +71,26 @@ pub enum Request {
     Reached,
     /// The client, a Kad node, asks for the datagram of its UDP firewall test.
     UdpCheck(UdpCheckRequest),
+    /// The client asks for the AICH recovery data of a part, which the shared files give.
+    Recovery(RecoveryAsked),
+}
+
+/// A part of a file whose AICH recovery data a client asks for, for the tree with `master`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecoveryAsked {
+    pub file: [u8; 16],
+    pub part: u16,
+    pub master: [u8; 20],
+}
+
+/// The answer to a request of recovery data: the data when there is some, else the file hash alone.
+pub fn recovery_answer(asked: &RecoveryAsked, data: Option<&[u8]>) -> Packet {
+    let mut out = PacketWriter::new();
+    out.hash16(&asked.file);
+    if let Some(data) = data {
+        out.u16(asked.part).hash20(&asked.master).bytes(data);
+    }
+    Packet::written(protocol::EMULE, extended::AICHANSWER, out)
 }
 
 pub struct UploadSession {
@@ -274,12 +294,12 @@ impl UploadSession {
                     self.link.send(Packet::written(protocol::EMULE, extended::AICHFILEHASHANS, out));
                 }
             }
-            // Without the AICH tree of the file at hand, the answer is the file hash alone.
             (protocol::EMULE, extended::AICHREQUEST) => {
                 let mut input = packet.reader();
-                let mut out = PacketWriter::new();
-                out.hash16(&input.hash16()?);
-                self.link.send(Packet::written(protocol::EMULE, extended::AICHANSWER, out));
+                let file = input.hash16()?;
+                let part = input.u16()?;
+                let master = input.hash20()?;
+                return Ok(Some(Request::Recovery(RecoveryAsked { file, part, master })));
             }
             _ => {}
         }
