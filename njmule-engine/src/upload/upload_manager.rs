@@ -84,13 +84,14 @@ const RATE_SECONDS: usize = 5;
 const HEADER: u64 = 6;
 const MIN_COMPRESSIBLE: u64 = 32;
 
-/// What the uploads need from the preferences: the upload limit, 0 for none, how many clients may wait, and whether
-/// the clients we call are reached obfuscated when they take it.
+/// What the uploads need from the preferences: the upload limit, 0 for none, how many clients may wait, whether the
+/// clients we call are reached obfuscated when they take it, and the friend served before anyone else.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Settings {
     pub max_upload_kibps: u32,
     pub queue_size: usize,
     pub obfuscation: bool,
+    pub friend_slot: Option<[u8; 16]>,
 }
 
 /// A client whose turn came while it was not connected: we call it, obfuscated with its user hash when it takes it.
@@ -323,8 +324,10 @@ impl UploadManager {
         if client.file != hash || client.next_connect {
             return None;
         }
-        let (client_port, version) = (client.port, client.udp_version);
-        if self.requests.asked(Key { ip, port: client_port }, hash, now) >= BAD_LIMIT {
+        let (client_port, version, trusted) = (client.port, client.udp_version, client.trusted);
+        if self.requests.asked(Key { ip, port: client_port }, hash, now) >= BAD_LIMIT
+            && !self.has_friend_slot(&user_hash, trusted)
+        {
             self.ban(ip, now, "asked again too often");
             return None;
         }
@@ -644,6 +647,7 @@ impl UploadManager {
             now.saturating_duration_since(client.last_ask) <= PURGE_AFTER && find(&client.file).is_some()
         });
         let waiting = !self.waiting.is_empty();
+        let friend = self.settings.friend_slot;
         let mut requeued = Vec::new();
         let mut idle = Vec::new();
         for at in 0..self.slots.len() {
@@ -651,6 +655,8 @@ impl UploadManager {
             let Some(slot) = self.slots.get_mut(at) else {
                 continue;
             };
+            let trusted = self.sessions.get(&slot.link).map_or(slot.client.trusted, UploadSession::is_trusted);
+            let friend_slot = trusted && friend == Some(slot.client.user_hash);
             let busy = slot.reading
                 || !slot.out.is_empty()
                 || self
@@ -658,7 +664,7 @@ impl UploadManager {
                     .get(&slot.link)
                     .is_some_and(|session| session.has_pending_blocks() || session.link().queued_data() > 0);
             let wait = if slot.requested { IDLE_SLOT } else { FIRST_REQUEST_WAIT };
-            if slot.sent >= SESSION_LIMIT && waiting && slot.out.is_empty() && !slot.reading {
+            if slot.sent >= SESSION_LIMIT && waiting && slot.out.is_empty() && !slot.reading && !friend_slot {
                 requeued.push(slot.link);
             } else if busy {
                 slot.idle_since = now;
@@ -667,7 +673,7 @@ impl UploadManager {
                 tracing::debug!("A client left its upload slot idle");
                 requeued.push(slot.link);
                 if !slot.requested {
-                    idle.push(Key { ip: slot.client.ip, port: slot.client.port });
+                    idle.push((Key { ip: slot.client.ip, port: slot.client.port }, friend_slot));
                 }
             }
         }
@@ -675,8 +681,8 @@ impl UploadManager {
             self.requeue(link, now);
         }
         // Taking slots and asking for nothing, over and over, keeps others from them: the client is banned.
-        for key in idle {
-            if self.requests.idle_slot(key, now) >= IDLE_SLOTS_LIMIT {
+        for (key, friend_slot) in idle {
+            if self.requests.idle_slot(key, now) >= IDLE_SLOTS_LIMIT && !friend_slot {
                 self.ban(key.ip, now, "took slots and asked for nothing");
             }
         }
@@ -747,9 +753,9 @@ impl UploadManager {
             tracing::debug!("{ip} claims the user hash of a client from elsewhere");
             return;
         }
-        // A client asking for the same file again too soon, with no slower ask between, is banned, also when it left
-        // the queue meanwhile; a slot it holds runs on.
-        if self.requests.asked(Key { ip, port }, file, now) >= BAD_LIMIT {
+        // A client asking for the same file again too soon, with no slower ask between, is banned unless it holds the
+        // friend slot, also when it left the queue meanwhile; a slot it holds runs on.
+        if self.requests.asked(Key { ip, port }, file, now) >= BAD_LIMIT && !self.has_friend_slot(&user_hash, trusted) {
             self.ban(ip, now, "asked again too often");
             if !holds_slot && let Some(session) = self.sessions.get(&link) {
                 session.link().close();
@@ -781,7 +787,9 @@ impl UploadManager {
             return;
         }
         let same_ip = self.waiting.values().filter(|client| client.ip == ip).count();
-        if self.waiting.len() >= self.settings.queue_size || same_ip >= MAX_WAITING_PER_IP {
+        if (self.waiting.len() >= self.settings.queue_size && !self.has_friend_slot(&user_hash, trusted))
+            || same_ip >= MAX_WAITING_PER_IP
+        {
             return;
         }
         let low_id = session.peer().client_id != 0 && session.peer().client_id < 0x0100_0000;
@@ -1195,6 +1203,12 @@ impl UploadManager {
         better.saturating_add(1)
     }
 
+    // The friend with the friend slot comes before anyone and keeps its slot; only with its identity trusted, as
+    // anyone can send a user hash.
+    fn has_friend_slot(&self, user_hash: &[u8; 16], trusted: bool) -> bool {
+        trusted && self.settings.friend_slot == Some(*user_hash)
+    }
+
     // Monotonic nanoseconds for the meters.
     fn clock(&self, now: Instant) -> i64 {
         i64::try_from(now.saturating_duration_since(self.epoch).as_nanos()).unwrap_or(i64::MAX)
@@ -1226,6 +1240,10 @@ impl<'a> Scoring<'a> {
             .link
             .and_then(|link| self.manager.sessions.get(&link))
             .map_or(client.trusted, UploadSession::is_trusted);
+        // The friend with the friend slot, unless it has a LowID, comes before anyone.
+        if !client.low_id && self.manager.has_friend_slot(&client.user_hash, trusted) {
+            return f64::MAX;
+        }
         let waited = self.now.saturating_duration_since(client.wait_start).as_secs_f64();
         let ratio = self.manager.credits.ratio(&client.user_hash, trusted);
         waited * ratio * f64::from(self.factor(&client.file)) / 10.0

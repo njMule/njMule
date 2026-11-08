@@ -25,6 +25,7 @@ use crate::api::engine_event::EngineEvent;
 use crate::api::engine_status::EngineStatus;
 use crate::api::file_comment::FileComment;
 use crate::api::file_history::FileHistory;
+use crate::api::friend::Friend;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
@@ -94,6 +95,7 @@ use crate::server::server_pinger::{self, Effect, ServerPinger};
 use crate::server::server_route::ServerRoute;
 use crate::server::server_session::{Context, Notice, Outcome, ServerSession};
 use crate::server::server_udp::ServerUdp;
+use crate::social::friends::Friends;
 use crate::upload::credits::{self, Credits};
 use crate::upload::upload_manager::{self, BlockRead, UploadManager};
 use crate::upload::upload_session;
@@ -209,6 +211,16 @@ pub enum Command {
     Effective(oneshot::Sender<Preferences>),
     /// Our rating and comment of a file, if any.
     FileComment([u8; 16], oneshot::Sender<Option<FileComment>>),
+    /// Our friends, in the order they were added.
+    Friends(oneshot::Sender<Vec<Friend>>),
+    /// Adds a friend, or changes its name and address.
+    AddFriend(Friend, oneshot::Sender<Result<(), String>>),
+    /// Removes a friend, and the friend slot with it; false when it is none.
+    RemoveFriend([u8; 16], oneshot::Sender<Result<bool, String>>),
+    /// The friend served first, if any.
+    FriendSlot(oneshot::Sender<Option<[u8; 16]>>),
+    /// Gives the friend slot to a friend, or takes it back with none; false for one who is no friend.
+    SetFriendSlot(Option<[u8; 16]>, oneshot::Sender<bool>),
     /// Keeps our rating and comment of a file; an empty one takes it away.
     SetFileComment([u8; 16], FileComment, oneshot::Sender<Result<(), String>>),
     /// Saves the schedule and puts it in place of the one before; answers it as kept, or why it cannot be.
@@ -413,6 +425,9 @@ pub struct Network {
     spam: SpamFilter,
     // Our ratings and comments of files, which Kad notes and the clients asking for a file carry.
     comments: Arc<Mutex<FileComments>>,
+    friends: Friends,
+    // The friend served first, for this run only; only friends get it.
+    friend_slot: Option<[u8; 16]>,
     shared_files: SharedFiles,
     shares: SharesSide,
     publisher: FilePublisher,
@@ -524,6 +539,7 @@ pub fn start(
         tracing::warn!("Cannot read {}, no file comments: {e}", comments_file.display());
         FileComments::empty(&comments_file)
     });
+    let friends = Friends::load(&dirs.config);
     let identities = Identities::new(Identity::of(identities::load_or_create_key(&dirs.config)?));
     let credits = Credits::load(&dirs.config, credits::system_clock());
     let history = ClientHistory::load(&dirs.config, now_seconds());
@@ -578,12 +594,14 @@ pub fn start(
         known_searches: HashSet::new(),
         spam,
         comments: Arc::new(Mutex::new(comments)),
+        friends,
+        friend_slot: None,
         shared_files,
         shares,
         publisher: FilePublisher::default(),
         downloads,
         finished,
-        uploads: UploadManager::new(reads_in, credits, upload_settings(&preferences)),
+        uploads: UploadManager::new(reads_in, credits, upload_settings(&preferences, None)),
         global: GlobalSources::default(),
         peers: HashMap::new(),
         probes: HashMap::new(),
@@ -960,6 +978,29 @@ impl Network {
             Command::Effective(answer) => {
                 let _ = answer.send(self.applied.clone());
             }
+            Command::Friends(answer) => {
+                let _ = answer.send(self.friends.all());
+            }
+            Command::AddFriend(friend, answer) => {
+                let _ = answer.send(self.friends.add(&friend).map_err(|e| format!("Cannot save the friends: {e}")));
+            }
+            Command::RemoveFriend(user_hash, answer) => {
+                if self.friend_slot == Some(user_hash) {
+                    self.friend_slot = None;
+                }
+                let removed = self.friends.remove(&user_hash);
+                let _ = answer.send(removed.map_err(|e| format!("Cannot save the friends: {e}")));
+            }
+            Command::FriendSlot(answer) => {
+                let _ = answer.send(self.friend_slot);
+            }
+            Command::SetFriendSlot(friend, answer) => {
+                let given = friend.is_none_or(|friend| self.friends.contains(&friend));
+                if given {
+                    self.friend_slot = friend;
+                }
+                let _ = answer.send(given);
+            }
             Command::FileComment(file, answer) => {
                 let _ = answer.send(self.comments_of()(&file));
             }
@@ -1201,7 +1242,7 @@ impl Network {
             }
             Tick::ProbeOver(link) => self.settle_probe(link),
             Tick::Uploads => {
-                let settings = upload_settings(&self.preferences());
+                let settings = upload_settings(&self.preferences(), self.friend_slot);
                 let (files, downloads) = (&self.shared_files, &self.downloads);
                 self.uploads.tick(settings, &|hash: &[u8; 16]| uploadable(files, downloads, hash), Instant::now());
                 self.after_uploads();
@@ -1980,21 +2021,24 @@ impl Network {
                 self.downloads.received(link, packet, ours);
             }
             Side::Upload => {
-                let files = &self.shared_files;
-                let visibility = self.preferences().shared_files_visibility;
-                // Friends are not kept yet: none may look when only friends may.
-                let visible =
-                    || (visibility == SharedFilesVisibility::Everybody).then(|| files.files().cloned().collect());
-                let downloads = &self.downloads;
-                let find = |hash: &[u8; 16]| uploadable(files, downloads, hash);
-                let sources = |hash: &[u8; 16]| {
-                    downloads.find(hash).map(|d| if d.is_active() { downloads.exchangeable(hash) } else { Vec::new() })
-                };
                 let trusted = self
                     .peers
                     .get(&link)
                     .and_then(|peer| peer.identity.as_ref())
                     .is_none_or(|session| session.trust().credits());
+                let files = &self.shared_files;
+                // A friend counts with its identity proven, as anyone can send a user hash.
+                let may_look = match self.preferences().shared_files_visibility {
+                    SharedFilesVisibility::Everybody => true,
+                    SharedFilesVisibility::Friends => trusted && self.friends.contains(&hello.user_hash),
+                    SharedFilesVisibility::Nobody => false,
+                };
+                let visible = || may_look.then(|| files.files().cloned().collect());
+                let downloads = &self.downloads;
+                let find = |hash: &[u8; 16]| uploadable(files, downloads, hash);
+                let sources = |hash: &[u8; 16]| {
+                    downloads.find(hash).map(|d| if d.is_active() { downloads.exchangeable(hash) } else { Vec::new() })
+                };
                 self.uploads.received(
                     &handle,
                     &hello,
@@ -2616,11 +2660,12 @@ fn now_seconds() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs())
 }
 
-fn upload_settings(preferences: &Preferences) -> upload_manager::Settings {
+fn upload_settings(preferences: &Preferences, friend_slot: Option<[u8; 16]>) -> upload_manager::Settings {
     upload_manager::Settings {
         max_upload_kibps: preferences.max_upload_kibps,
         queue_size: usize::try_from(preferences.upload_queue_size).unwrap_or(usize::MAX),
         obfuscation: preferences.obfuscation != ObfuscationMode::Disabled,
+        friend_slot,
     }
 }
 

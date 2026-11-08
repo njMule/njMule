@@ -13,6 +13,7 @@ pub mod engine_status;
 pub mod file_comment;
 pub mod file_history;
 pub mod file_names;
+pub mod friend;
 pub mod import_options;
 pub mod import_report;
 pub mod kad_contact_info;

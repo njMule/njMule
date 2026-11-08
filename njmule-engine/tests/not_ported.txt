@@ -84,9 +84,6 @@ ServerPingerTest.shouldStartAndStopTheTimerOnce
 # A file look-up cannot fault in the Rust engine: it answers a file or none, and none is a file we do not have.
 UploadManagerTest.shouldEndOnlyTheSessionOfTheClientWhoseFileLookUpFaults
 
-# Friends are not kept by the Rust engine yet.
-UploadManagerTest.shouldLetTheFriendWithTheFriendSlotPassAFullQueue
-
 # Rust takes a hash as an array of 16 bytes, so another length does not compile; a bit index is unsigned, and reads 0
 # past the id.
 UInt128Test.shouldRefuseBigEndianBytesOfTheWrongLength
@@ -126,8 +123,6 @@ RemoteApiTest.shouldRefuseTheOldTokenOnceTheDesktopWindowRenewedIt
 # Friends and conversations are not kept by the Rust engine yet.
 RemoteApiTest.shouldKeepTheMessagesSentInTheirConversation
 RemoteApiTest.shouldForgetAConversationThatIsClosed
-RemoteApiTest.shouldGiveTheFriendSlotToAFriend
-RemoteApiTest.shouldTakeTheFriendSlotBackWithNull
 
 # The engine's API.
 # Java only: the engine's events are a Flow publisher in Java, a broadcast channel in Rust, whose readers ask for no count.

@@ -24,6 +24,7 @@ use njmule_engine::api::category::Category;
 use njmule_engine::api::download_info::{DownloadPriority, DownloadStatus};
 use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::engine_event::EngineEvent;
+use njmule_engine::api::friend::Friend;
 use njmule_engine::api::import_options::ImportOptions;
 use njmule_engine::api::list_source::{ListError, ListSource};
 use njmule_engine::api::log_line::Level;
@@ -40,6 +41,8 @@ use njmule_engine::persist::schedule_codec;
 use strum::VariantArray;
 
 const SONG: [u8; 16] = [0xf4; 16];
+const PAL: [u8; 16] = [0xA1; 16];
+const USER: [u8; 16] = [0xB2; 16];
 const FILM: [u8; 16] = [0xf3; 16];
 const WAIT: Duration = Duration::from_secs(5);
 const FILMS: (u32, &str) = (1, "Films");
@@ -119,6 +122,31 @@ async fn should_rate_nothing_as_spam_with_the_spam_filter_off() {
 
 fn result(hash: [u8; 16], name: &str) -> SearchResult {
     SearchResult::new(hash, name, 10, 1, Some(0), None)
+}
+
+#[tokio::test]
+async fn should_give_the_friend_slot_only_to_a_friend() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_the_friend(PAL, "pal").await;
+
+    api.when_the_friend_slot_is_given_to(USER).await;
+
+    api.then_the_engine_answers(false);
+}
+
+#[tokio::test]
+async fn should_take_the_friend_slot_away_with_the_friend() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_the_friend(PAL, "pal").await;
+    api.given_the_friend_slot_is_given_to(PAL).await;
+
+    api.when_the_friend_is_removed(PAL).await;
+
+    api.then_the_engine_answers(true);
+    api.then_there_is_no_friend_slot().await;
+    api.then_there_are_no_friends().await;
 }
 
 #[tokio::test]
@@ -483,6 +511,7 @@ struct EngineApi {
     saved_preferences: String,
     started: Option<io::Result<()>>,
     emule: Option<SyntheticEmuleProfile>,
+    answered: Option<bool>,
 }
 
 impl EngineApi {
@@ -509,6 +538,7 @@ impl EngineApi {
             saved_preferences: String::new(),
             started: None,
             emule: None,
+            answered: None,
         }
     }
 
@@ -553,6 +583,35 @@ impl EngineApi {
         let preferences = format!("net.tcpPort={}\nnet.kad.enabled=false\n{preferences}", free_port::free_port());
         fs::write(dirs.config.join("njmule.properties"), preferences).unwrap();
         dirs
+    }
+
+    async fn given_the_friend(&self, user_hash: [u8; 16], name: &str) {
+        within(self.engine().add_friend(Friend::new(user_hash, name, None))).await.unwrap();
+    }
+
+    async fn given_the_friend_slot_is_given_to(&mut self, user_hash: [u8; 16]) {
+        self.when_the_friend_slot_is_given_to(user_hash).await;
+        self.then_the_engine_answers(true);
+    }
+
+    async fn when_the_friend_slot_is_given_to(&mut self, user_hash: [u8; 16]) {
+        self.answered = Some(within(self.engine().set_friend_slot(Some(user_hash))).await);
+    }
+
+    async fn when_the_friend_is_removed(&mut self, user_hash: [u8; 16]) {
+        self.answered = Some(within(self.engine().remove_friend(user_hash)).await.unwrap());
+    }
+
+    fn then_the_engine_answers(&self, answer: bool) {
+        assert_eq!(self.answered, Some(answer));
+    }
+
+    async fn then_there_is_no_friend_slot(&self) {
+        assert_eq!(within(self.engine().friend_slot()).await, None);
+    }
+
+    async fn then_there_are_no_friends(&self) {
+        assert_eq!(within(self.engine().friends()).await, Vec::new());
     }
 
     // Beside our profile, not in it.
