@@ -15,9 +15,12 @@ use tokio::sync::broadcast;
 use crate::api::category::Category;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
 use crate::api::ed2k_link::FileLink;
+use crate::api::emule_history::EmuleHistory;
 use crate::api::engine_event::EngineEvent;
 use crate::api::engine_status::EngineStatus;
 use crate::api::file_history::FileHistory;
+use crate::api::import_options::ImportOptions;
+use crate::api::import_report::ImportReport;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
@@ -62,6 +65,19 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
 
     /// Marks the questions of the first start answered or put aside.
     fn finish_setup(&self) -> impl Future<Output = Result<(), String>> + Send;
+
+    /// Imports an eMule profile from its configuration folder; a dry run only reads it.
+    fn import_from_emule(
+        &self,
+        emule: PathBuf,
+        options: ImportOptions,
+    ) -> impl Future<Output = Result<ImportReport, String>> + Send;
+
+    /// The configuration folder of the eMule of this computer, when one is found.
+    fn emule_profile(&self) -> impl Future<Output = Option<PathBuf>> + Send;
+
+    /// What was typed in the boxes of the eMule imported, which the interfaces offer again.
+    fn emule_history(&self) -> impl Future<Output = EmuleHistory> + Send;
 
     /// What the engine is doing now; none once it stopped.
     fn status(&self) -> impl Future<Output = Option<EngineStatus>> + Send;

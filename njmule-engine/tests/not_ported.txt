@@ -126,12 +126,6 @@ RemoteApiTest.shouldRefuseAWebInterfaceTheEngineRefuses
 RemoteApiTest.shouldGiveTheApiTokenToTheDesktopWindow
 RemoteApiTest.shouldRefuseTheApiTokenToABrowser
 RemoteApiTest.shouldRefuseTheOldTokenOnceTheDesktopWindowRenewedIt
-# The eMule import comes with the engine's import target.
-RemoteApiTest.shouldCheckAnEmuleProfileWithoutImportingIt
-RemoteApiTest.shouldRefuseToImportWhatIsNoFolder
-RemoteApiTest.shouldTellTheEmuleProfileFoundOnItsComputer
-RemoteApiTest.shouldTellNoPathWhenItsComputerHasNoEmuleProfile
-RemoteApiTest.shouldTellWhatWasTypedInTheBoxesOfTheEmuleImported
 # Friends and conversations are not kept by the Rust engine yet.
 RemoteApiTest.shouldKeepTheMessagesSentInTheirConversation
 RemoteApiTest.shouldForgetAConversationThatIsClosed
@@ -141,8 +135,6 @@ RemoteApiTest.shouldTakeTheFriendSlotBackWithNull
 # The engine's API.
 # Java only: the engine's events are a Flow publisher in Java, a broadcast channel in Rust, whose readers ask for no count.
 EngineApiTest.shouldFailASubscriberThatAsksForNothing
-# The categories of an eMule profile come with its import.
-EngineApiTest.shouldTakeTheCategoriesOfAnImportWhenWeHaveNone
 # The Rust engine keeps no copy of the configuration at its start yet.
 EngineApiTest.shouldKeepNoCopyOfTheConfigurationWhenNoneIsWanted
 EngineApiTest.shouldLeaveTheWayClearWhenABackupCannotBeWritten

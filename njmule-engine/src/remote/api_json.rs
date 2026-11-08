@@ -9,9 +9,11 @@ use time::format_description::well_known::Rfc3339;
 use crate::api::category::Category;
 use crate::api::download_info::{DownloadInfo, SourceInfo};
 use crate::api::ed2k_link::FileLink;
+use crate::api::emule_history::EmuleHistory;
 use crate::api::engine_event::EngineEvent;
 use crate::api::engine_status::EngineStatus;
 use crate::api::file_comment::FileComment;
+use crate::api::import_report::{Arg, ImportReport};
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::{Buddy, KadInfo};
 use crate::api::kad_note::KadNote;
@@ -314,6 +316,43 @@ pub fn rates(step: u32, rates: &[Rate]) -> Value {
 /// The answer of a call that only needs to be done.
 pub fn ok() -> Value {
     json!({"ok": true})
+}
+
+/// What an import took or would take, each file with its outcome, its detail in English and its phrases, whose keys
+/// the interfaces translate.
+pub fn import_report(report: &ImportReport) -> Value {
+    let items: Vec<Value> = report
+        .items
+        .iter()
+        .map(|item| {
+            let phrases: Vec<Value> = item
+                .phrases
+                .iter()
+                .map(|phrase| {
+                    let args: Vec<Value> = phrase
+                        .args
+                        .iter()
+                        .map(|arg| match arg {
+                            Arg::Text(text) => json!(text),
+                            Arg::Number(number) => json!(number),
+                        })
+                        .collect();
+                    json!({"key": phrase.key.translation_key(), "args": args})
+                })
+                .collect();
+            json!({
+                "file": item.file,
+                "outcome": item.outcome.name().to_lowercase(),
+                "detail": item.detail(),
+                "phrases": phrases,
+            })
+        })
+        .collect();
+    json!({"dryRun": report.dry_run, "startAtLogin": report.start_at_login, "items": items})
+}
+
+pub fn emule_history(typed: &EmuleHistory) -> Value {
+    json!({"searches": typed.searches, "serverLists": typed.server_lists})
 }
 
 pub fn error(message: &str) -> Value {
