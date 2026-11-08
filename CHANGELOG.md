@@ -10,6 +10,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The window no longer stays empty while njMule starts: it says *Starting njMule…* until the
+  interface shows, and why when njMule or its interface cannot start.
+
 ## [0.3.2] - 2026-11-07
 
 ### Changed
