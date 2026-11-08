@@ -12,6 +12,7 @@ use crate::files::hash::ed2k;
 use crate::files::shared_files::SharedFile;
 use crate::peer::peer_link::LinkHandle;
 use crate::protocol::ed2k::client_messages::{self, FileName, RequestParts};
+use crate::protocol::ed2k::file_description;
 use crate::protocol::ed2k::file_entry::FileEntry;
 use crate::protocol::ed2k::hello::{self, Hello};
 use crate::protocol::ed2k::low_id_messages::UdpCheckRequest;
@@ -110,6 +111,8 @@ pub struct UploadSession {
     trusted: bool,
     // The client asked for too many files we do not have; told once.
     flooded: bool,
+    // The files whose comment the client heard, or would have: once a connection.
+    commented: HashSet<[u8; 16]>,
 }
 
 impl UploadSession {
@@ -126,7 +129,14 @@ impl UploadSession {
             slot: false,
             trusted: false,
             flooded: false,
+            commented: HashSet::new(),
         }
+    }
+
+    /// Whether the client is to hear our comment of `file` now: it takes comments, and was not told on this
+    /// connection.
+    pub fn comment_once(&mut self, file: &[u8; 16]) -> bool {
+        file_description::accepted(&self.peer) && self.commented.insert(*file)
     }
 
     pub fn user_hash(&self) -> [u8; 16] {

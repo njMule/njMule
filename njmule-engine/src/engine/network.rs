@@ -23,6 +23,7 @@ use crate::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus, 
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::engine_status::EngineStatus;
+use crate::api::file_comment::FileComment;
 use crate::api::file_history::FileHistory;
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::KadInfo;
@@ -55,6 +56,7 @@ use crate::engine::port_check::PortCheck;
 use crate::engine::scheduler::{self, Change, Scheduler};
 use crate::engine::totals::{self, Totals};
 use crate::engine::{ServerContext, Shared};
+use crate::files::file_comments::{self, FileComments};
 use crate::files::hash::file_hasher::FileHashes;
 use crate::files::part_file_storage::DiskDone;
 use crate::files::shared_files::{Finished, Found, Listing, SharedFiles};
@@ -205,6 +207,10 @@ pub enum Command {
     ActiveRule(oneshot::Sender<Option<Rule>>),
     /// The preferences in force: those saved, with what the rule in force changes in them.
     Effective(oneshot::Sender<Preferences>),
+    /// Our rating and comment of a file, if any.
+    FileComment([u8; 16], oneshot::Sender<Option<FileComment>>),
+    /// Keeps our rating and comment of a file; an empty one takes it away.
+    SetFileComment([u8; 16], FileComment, oneshot::Sender<Result<(), String>>),
     /// Saves the schedule and puts it in place of the one before; answers it as kept, or why it cannot be.
     SetSchedule(Schedule, oneshot::Sender<Result<Schedule, String>>),
     /// Tests our ports, a test already running on them going on; answers the test as it stands.
@@ -405,6 +411,8 @@ pub struct Network {
     searches: SearchManager,
     known_searches: HashSet<u64>,
     spam: SpamFilter,
+    // Our ratings and comments of files, which Kad notes and the clients asking for a file carry.
+    comments: Arc<Mutex<FileComments>>,
     shared_files: SharedFiles,
     shares: SharesSide,
     publisher: FilePublisher,
@@ -511,6 +519,11 @@ pub fn start(
         tracing::warn!("Cannot read {}: {e}", spam_file.display());
         SpamFilter::default()
     });
+    let comments_file = dirs.config.join(file_comments::FILE_NAME);
+    let comments = FileComments::load(&comments_file).unwrap_or_else(|e| {
+        tracing::warn!("Cannot read {}, no file comments: {e}", comments_file.display());
+        FileComments::empty(&comments_file)
+    });
     let identities = Identities::new(Identity::of(identities::load_or_create_key(&dirs.config)?));
     let credits = Credits::load(&dirs.config, credits::system_clock());
     let history = ClientHistory::load(&dirs.config, now_seconds());
@@ -564,6 +577,7 @@ pub fn start(
         searches: SearchManager::default().without_udp(),
         known_searches: HashSet::new(),
         spam,
+        comments: Arc::new(Mutex::new(comments)),
         shared_files,
         shares,
         publisher: FilePublisher::default(),
@@ -581,6 +595,7 @@ pub fn start(
         kad: KadSide::new(kad_in),
     };
     network.shares.wire(&mut network.uploads);
+    network.uploads.set_comments(network.comments_of());
     network.attach(listener, udp);
     // The network starts with the limits of the rule in force, which then acts once.
     network.refresh_schedule();
@@ -944,6 +959,13 @@ impl Network {
             }
             Command::Effective(answer) => {
                 let _ = answer.send(self.applied.clone());
+            }
+            Command::FileComment(file, answer) => {
+                let _ = answer.send(self.comments_of()(&file));
+            }
+            Command::SetFileComment(file, comment, answer) => {
+                let kept = self.comments.lock().unwrap_or_else(PoisonError::into_inner).set(&file, comment);
+                let _ = answer.send(kept.map_err(|e| format!("Cannot save the comments: {e}")));
             }
             Command::SetSchedule(schedule, answer) => {
                 let _ = answer.send(self.set_schedule(schedule));
@@ -2014,6 +2036,12 @@ impl Network {
     }
 
     // The clients whose turn came while they were not connected are called.
+    // Our comment of a file, as the uploads and Kad read it.
+    fn comments_of(&self) -> impl Fn(&[u8; 16]) -> Option<FileComment> + Send + Sync + 'static {
+        let comments = Arc::clone(&self.comments);
+        move |file| comments.lock().unwrap_or_else(PoisonError::into_inner).get(file)
+    }
+
     fn after_uploads(&mut self) {
         let requests = self.uploads.take_kad_requests();
         self.kad_requests(requests);

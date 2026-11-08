@@ -77,6 +77,7 @@ mod event_commands_codec_test;
 mod event_commands_test;
 mod event_replay_test;
 mod exempt_connections_test;
+mod file_comments_test;
 mod file_description_test;
 mod file_hasher_test;
 mod file_names_test;

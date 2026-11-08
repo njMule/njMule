@@ -300,7 +300,7 @@ impl Network {
             blocked: Arc::new(self.ip_blocks()),
             udp_port: socket.port(),
             ipv6: Arc::new(move || crate::net::public_ipv6::find(&routes)),
-            comments: Arc::new(|_| None),
+            comments: Arc::new(self.comments_of()),
         };
         let host = NetworkHost {
             shared: Arc::clone(&self.shared),

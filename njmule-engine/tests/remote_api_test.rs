@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::net::{SocketAddr, SocketAddrV4};
 use std::path::{Path, PathBuf};
@@ -21,6 +21,7 @@ use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::emule_history::EmuleHistory;
 use njmule_engine::api::engine_event::EngineEvent;
 use njmule_engine::api::engine_status::EngineStatus;
+use njmule_engine::api::file_comment::FileComment;
 use njmule_engine::api::file_history::FileHistory;
 use njmule_engine::api::import_options::ImportOptions;
 use njmule_engine::api::import_report::{ImportReport, Item, Outcome};
@@ -99,6 +100,9 @@ struct Fake {
     reads_emule_profiles: bool,
     emule_profile: Option<PathBuf>,
     emule_history: EmuleHistory,
+    // Our comments of files, when the engine keeps them.
+    keeps_file_comments: bool,
+    file_comments: HashMap<[u8; 16], FileComment>,
 }
 
 #[derive(Clone)]
@@ -160,6 +164,21 @@ impl NjMuleEngine for FakeEngine {
             fake.calls.push(format!("import {}{}", emule.display(), if options.dry_run { " dry" } else { "" }));
             let item = Item::text("server.met", Outcome::WouldImport, "12 servers");
             Ok(ImportReport { dry_run: options.dry_run, items: vec![item], start_at_login: false })
+        })
+    }
+
+    async fn file_comment(&self, file: [u8; 16]) -> Option<FileComment> {
+        self.with(|fake| fake.file_comments.get(&file).cloned())
+    }
+
+    async fn set_file_comment(&self, file: [u8; 16], comment: FileComment) -> Result<(), String> {
+        self.with(|fake| {
+            if !fake.keeps_file_comments {
+                return Err("no comment expected".to_owned());
+            }
+            fake.calls.push(format!("comment {} {}", comment.rating(), comment.text()));
+            fake.file_comments.insert(file, comment);
+            Ok(())
         })
     }
 
@@ -846,6 +865,15 @@ impl Api {
 
     fn test_folder(&self) -> PathBuf {
         self.dir.path().to_path_buf()
+    }
+
+    fn given_the_engine_keeps_file_comments(&self) {
+        self.engine.with(|fake| fake.keeps_file_comments = true);
+    }
+
+    async fn given_a_file_commented(&mut self, body: &str) {
+        self.when_called("PUT", &format!("/api/v1/files/{HASH}/comment"), body).await;
+        self.then_the_status_is(200);
     }
 
     fn given_the_engine_reads_emule_profiles(&self) {
@@ -1994,6 +2022,30 @@ async fn should_refuse_a_rule_without_a_time() {
     api.given_the_api_runs().await;
 
     api.when_called("PUT", "/api/v1/schedule", "{\"rules\":[{\"start\":\"late\",\"end\":\"06:00\"}]}").await;
+
+    api.then_the_status_is(400);
+}
+
+#[tokio::test]
+async fn should_keep_our_rating_and_comment_of_a_file() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_keeps_file_comments();
+    api.given_a_file_commented("{\"rating\":4,\"text\":\"clean copy\"}").await;
+
+    api.when_called("GET", &format!("/api/v1/files/{HASH}/comment"), "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_is("{\"rating\":4,\"text\":\"clean copy\"}");
+}
+
+#[tokio::test]
+async fn should_refuse_a_rating_above_five() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_keeps_file_comments();
+
+    api.when_called("PUT", &format!("/api/v1/files/{HASH}/comment"), "{\"rating\":6}").await;
 
     api.then_the_status_is(400);
 }
