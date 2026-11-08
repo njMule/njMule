@@ -16,9 +16,9 @@ use crate::api::file_comment::FileComment;
 use crate::api::friend::Friend;
 use crate::api::import_report::{Arg, ImportReport};
 use crate::api::kad_contact_info::KadContactInfo;
-use crate::api::kad_info::{Buddy, KadInfo};
+use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
-use crate::api::kad_search_info::{KadSearchInfo, Kind};
+use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::log_line::LogLine;
 use crate::api::nj_mule_info;
@@ -608,12 +608,7 @@ pub fn kad(info: &KadInfo) -> Value {
         "udpPort": info.udp_port,
         "udpFirewalled": info.udp_firewalled,
         "udpVerified": info.udp_verified,
-        "buddy": match info.buddy {
-            Buddy::None => "none",
-            Buddy::Connecting => "connecting",
-            Buddy::Connected => "connected",
-            Buddy::Serving => "serving",
-        },
+        "buddy": info.buddy.name(),
         "users": info.users,
         "files": info.files,
     })
@@ -649,15 +644,7 @@ pub fn comment(who: &str, file_name: &str, comment: &FileComment) -> Value {
 pub fn kad_search(search: &KadSearchInfo) -> Value {
     json!({
         "target": search.target,
-        "kind": match search.kind {
-            Kind::Node => "node",
-            Kind::Keyword => "keyword",
-            Kind::Sources => "sources",
-            Kind::Notes => "notes",
-            Kind::StoreKeyword => "store_keyword",
-            Kind::StoreSource => "store_source",
-            Kind::StoreNotes => "store_notes",
-        },
+        "kind": search.kind.name(),
         "answers": search.answers,
     })
 }

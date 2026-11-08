@@ -103,6 +103,8 @@ jobs:
                           - 'njmule-core/src/test/resources/golden/**'
                           # The Java tests the port mirrors, which test_name_map_test compares.
                           - 'njmule-core/src/test/java/**'
+                          # The API's document, which the Rust engine serves and checks every call against.
+                          - 'njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml'
                           - 'njmule-testkit/**'
                           - 'tools/engine_coverage.py'
                           - '.github/workflows/build.yml'

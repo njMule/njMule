@@ -29,7 +29,7 @@ impl SearchRequest {
 }
 
 /// Where a search looks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray)]
 pub enum Scope {
     /// The connected server only.
     Server,

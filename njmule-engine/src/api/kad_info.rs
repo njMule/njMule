@@ -6,12 +6,24 @@
 //! `udp_verified` once a UDP test came to an outcome, and how many `users` and `files` the network holds, as estimated.
 
 /// Our Kad buddy: none, one we connect to or have while firewalled, or a firewalled node we serve.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray)]
 pub enum Buddy {
     None,
     Connecting,
     Connected,
     Serving,
+}
+
+impl Buddy {
+    /// The name the API gives it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Connecting => "connecting",
+            Self::Connected => "connected",
+            Self::Serving => "serving",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

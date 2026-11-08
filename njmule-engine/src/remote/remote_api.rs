@@ -4,14 +4,15 @@
 //! The remote-control API (`openapi.yaml`): the calls the front ends make, answered from the engine.
 
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequest, Path, Query, Request, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use axum::{Extension, Json, Router};
@@ -39,6 +40,7 @@ use crate::config::schedule::Schedule;
 use crate::engine::NotesError;
 use crate::engine::ip_filter_lists;
 use crate::engine::network::{ConnectError, MoreAnswer};
+use crate::remote::api_specification::{self, ApiSpecification};
 use crate::remote::conversations::Conversations;
 use crate::remote::rate_history::{self, RateHistory};
 use crate::remote::recent_log::RecentLog;
@@ -70,6 +72,8 @@ const SECONDS_IN_A_MINUTE: usize = 60;
 
 /// The version of the API, which its paths carry.
 pub const VERSION: u32 = 1;
+/// Where the API is served.
+pub const PREFIX: &str = "/api/v1";
 
 /// The calls, relative to the API's base path; `closing` says when the API closes, which ends the event streams.
 pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Receiver<bool>) -> Router {
@@ -220,8 +224,15 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Re
         .route("/messages", post(send_message::<E>))
         .route("/conversations", get(conversations))
         .route("/conversations/{address}", axum::routing::delete(close_conversation))
+        .route(
+            "/openapi.yaml",
+            get(|| async {
+                ([(header::CONTENT_TYPE, "application/yaml; charset=utf-8")], api_specification::DOCUMENT)
+            }),
+        )
         .fallback(|| async { ApiError::new(StatusCode::NOT_FOUND, "No such call") })
         .method_not_allowed_fallback(|| async { ApiError::new(StatusCode::METHOD_NOT_ALLOWED, "No such method") })
+        .layer(middleware::from_fn(follows_the_document))
         .layer(Extension(searches))
         .layer(Extension(log))
         .layer(Extension(chats))
@@ -559,6 +570,42 @@ async fn recent_log(
     };
     let lines = log.lock().unwrap_or_else(PoisonError::into_inner).after(after);
     Ok(Json(Value::Array(lines.iter().map(api_json::log_entry).collect())))
+}
+
+/// Checks a call against the API's document before it is answered: the parameters of its path and query, and its
+/// body. A path or method the document lacks is left to the router, which refuses it.
+async fn follows_the_document(request: Request, next: Next) -> Result<Response, ApiError> {
+    let specification = match ApiSpecification::shipped() {
+        Ok(specification) => specification,
+        Err(e) => return Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    };
+    let segments: Vec<String> = request
+        .uri()
+        .path()
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| percent_encoding::percent_decode_str(segment).decode_utf8_lossy().into_owned())
+        .collect();
+    let Some(route) = specification.route(&segments) else {
+        return Ok(next.run(request).await);
+    };
+    let Some(operation) = route.operation(request.method().as_str()) else {
+        return Ok(next.run(request).await);
+    };
+    let query: HashMap<String, String> =
+        form_urlencoded::parse(request.uri().query().unwrap_or_default().as_bytes()).into_owned().collect();
+    operation
+        .check_arguments(&route.values(&segments), &query)
+        .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e))?;
+    if !operation.takes_body() {
+        return Ok(next.run(request).await);
+    }
+    let (parts, body) = request.into_parts();
+    let bytes = axum::body::to_bytes(body, api_specification::MAX_BODY)
+        .await
+        .map_err(|_| ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, "The body is too large."))?;
+    operation.check_body(&bytes).map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e))?;
+    Ok(next.run(Request::from_parts(parts, axum::body::Body::from(bytes))).await)
 }
 
 fn chatting(chats: &Chats) -> MutexGuard<'_, Conversations> {

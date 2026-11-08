@@ -6,7 +6,7 @@
 use std::time::SystemTime;
 
 /// Severity; `Success` marks a positive outcome that front ends highlight.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray)]
 pub enum Level {
     Debug,
     Info,

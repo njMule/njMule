@@ -5,6 +5,7 @@
 
 pub mod api_json;
 pub mod api_reader;
+pub mod api_specification;
 pub mod control_endpoint;
 pub mod conversations;
 pub mod event_streams;
