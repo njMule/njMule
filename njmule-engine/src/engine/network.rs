@@ -57,7 +57,7 @@ use crate::engine::totals::{self, Totals};
 use crate::engine::{ServerContext, Shared};
 use crate::files::hash::file_hasher::FileHashes;
 use crate::files::part_file_storage::DiskDone;
-use crate::files::shared_files::{Found, Listing, SharedFile, SharedFiles};
+use crate::files::shared_files::{Finished, Found, Listing, SharedFiles};
 use crate::kad::kad_socket::Incoming;
 use crate::net::relay_keeper::{Level, RelayKeeper};
 use crate::net::{public_ipv6, tcp_connector, traffic};
@@ -93,6 +93,7 @@ use crate::server::server_session::{Context, Notice, Outcome, ServerSession};
 use crate::server::server_udp::ServerUdp;
 use crate::upload::credits::{self, Credits};
 use crate::upload::upload_manager::{self, BlockRead, UploadManager};
+use crate::upload::upload_session;
 use crate::upload::uploadable::Uploadable;
 
 mod filter;
@@ -1594,16 +1595,17 @@ impl Network {
                 DownloadEvent::Progress(info) => self.publish(EngineEvent::DownloadProgress(info)),
                 DownloadEvent::Completed { info, path, file } => {
                     self.user_log(LogLevel::Success, format!("Finished downloading {}", info.name));
-                    let shared = self.shared_files.completed(SharedFile {
-                        hash: file.hash(),
-                        name: path.file_name().map_or_else(|| info.name.clone(), |n| n.to_string_lossy().into_owned()),
-                        size: file.size(),
-                        path: path.clone(),
-                        mtime: 0,
-                        part_hashes: file.part_hashes().to_vec(),
-                        aich_hash: file.aich_hash(),
-                    });
-                    self.publisher.changed(Some(shared.hash));
+                    let changes = self.shared_files.finished(
+                        &path,
+                        Finished {
+                            hash: file.hash(),
+                            size: file.size(),
+                            part_hashes: file.part_hashes().to_vec(),
+                            aich_hash: file.aich_hash(),
+                        },
+                    );
+                    self.shares_changed(changes);
+                    self.publisher.changed(Some(file.hash()));
                     self.finished.add(&info);
                     self.publish(EngineEvent::DownloadCompleted { download: info, file: path });
                 }
@@ -1985,6 +1987,10 @@ impl Network {
     fn after_uploads(&mut self) {
         let requests = self.uploads.take_kad_requests();
         self.kad_requests(requests);
+        for (link, asked) in self.uploads.take_recoveries() {
+            let data = self.shared_files.aich_recovery(&asked.file, u32::from(asked.part), &asked.master);
+            link.send(upload_session::recovery_answer(&asked, data.as_deref()));
+        }
         for call in self.uploads.take_calls() {
             let events = self.peer_events.clone();
             let routes = self.shared.routes.clone();

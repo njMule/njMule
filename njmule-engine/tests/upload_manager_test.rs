@@ -49,6 +49,9 @@ const SMALL_SOCKET_BUFFER: u32 = 64 * 1024;
 // The counts of the files, as events.
 struct Counted(Arc<Mutex<Vec<String>>>);
 
+// The master hash of the one AICH tree the shared files have.
+const KNOWN_TREE: [u8; 20] = [0x5A; 20];
+
 impl FileCounts for Counted {
     fn asked(&mut self, file: &[u8; 16]) {
         self.0.lock().unwrap().push(format!("asked {}", hex(file)));
@@ -165,6 +168,11 @@ impl Loop {
 
     fn calls(&mut self) {
         self.kad.extend(self.manager.take_kad_requests());
+        // The shared files give the recovery data of the one tree they have, here the part's number; none of another.
+        for (link, asked) in self.manager.take_recoveries() {
+            let data = (asked.master == KNOWN_TREE).then(|| asked.part.to_le_bytes());
+            link.send(upload_session::recovery_answer(&asked, data.as_ref().map(<[u8; 2]>::as_slice)));
+        }
         for call in self.manager.take_calls() {
             let called = self.called.clone();
             tokio::spawn(async move {
@@ -548,6 +556,21 @@ impl Uploads {
                 received += SendingPart::decode(&packet).unwrap().data.len() as u64;
             }
         }
+    }
+
+    async fn when_the_client_asks_for_the_aich_data_of_part(&mut self, seed: u8, name: &str, part: u16) -> Packet {
+        let file = self.files[name].hash;
+        let client = self.client_of(seed, 0).await;
+        let mut out = PacketWriter::new();
+        out.hash16(&file).u16(part).hash20(&KNOWN_TREE);
+        client.send(&Packet::written(protocol::EMULE, extended::AICHREQUEST, out)).await;
+        client.until(protocol::EMULE, extended::AICHANSWER).await.pop().unwrap()
+    }
+
+    fn then_the_aich_answer_carries(&self, answer: &Packet, name: &str, part: u16) {
+        let mut expected = PacketWriter::new();
+        expected.hash16(&self.files[name].hash).u16(part).hash20(&KNOWN_TREE).bytes(&part.to_le_bytes());
+        assert_eq!(answer, &Packet::written(protocol::EMULE, extended::AICHANSWER, expected));
     }
 
     async fn when_the_client_asks_for(&mut self, seed: u8, name: &str) -> Packet {
@@ -1804,6 +1827,17 @@ async fn should_rank_waiting_clients_by_their_wait_and_their_files_priority() {
 }
 
 #[tokio::test]
+async fn should_answer_a_request_of_aich_recovery_data_on_the_link_it_came_on() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_shared_file("wanted.txt", 5000, 2);
+    uploads.given_the_uploads_started().await;
+
+    let answer = uploads.when_the_client_asks_for_the_aich_data_of_part(1, "wanted.txt", 3).await;
+
+    uploads.then_the_aich_answer_carries(&answer, "wanted.txt", 3);
+}
+
+#[tokio::test]
 async fn should_forget_clients_that_stop_asking() {
     let mut uploads = Uploads::new();
     uploads.given_the_settings(1, 100);
@@ -2389,7 +2423,7 @@ async fn should_tell_the_aich_hash_of_a_file_that_has_one() {
 }
 
 #[tokio::test]
-async fn should_answer_a_request_for_aich_recovery_data_with_the_file_hash_alone() {
+async fn should_answer_a_request_for_aich_recovery_data_of_another_tree_with_the_file_hash_alone() {
     let mut uploads = Uploads::new();
     uploads.given_the_shared_file("hashed.bin", 3000, 1);
     uploads.given_the_uploads_started().await;

@@ -10,6 +10,7 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use indexmap::{IndexMap, IndexSet};
@@ -19,16 +20,20 @@ use crate::api::ed2k_link::FileLink;
 use crate::api::shared_directory::{self, SharedDirectory};
 use crate::api::shared_file_info::Statistics;
 use crate::api::upload_priority::UploadPriority;
-use crate::files::hash::ed2k;
+use crate::files::hash::aich_tree::AichTree;
 use crate::files::hash::file_hasher::{self, FileHashes};
+use crate::files::hash::{aich_recovery, ed2k};
 use crate::files::part_file;
 use crate::persist::atomic_files;
 use crate::persist::format::known_met::{self, KnownFile};
+use crate::persist::format::known2_met;
 use crate::persist::format::text_files;
-use crate::protocol::tag::{Tag, TagName, file_tag};
+use crate::protocol::tag::{Tag, TagName, file_tag, tags};
 use crate::security::path_sanitizer;
 
 pub const KNOWN_FILE_NAME: &str = "known.met";
+/// The AICH trees of the known files, by master hash.
+pub const KNOWN2_FILE_NAME: &str = "known2_64.met";
 /// The folders shared alone, besides the incoming ones, one a line as other clients write them.
 pub const SHARED_DIRS: &str = "shareddir.dat";
 /// The folders shared with their subfolders; other clients know only [`SHARED_DIRS`].
@@ -45,6 +50,10 @@ const HOUR: i64 = 3600;
 const MAX_TREE_DEPTH: usize = 32;
 const MAX_TREE_DIRS: usize = 10_000;
 const HASH_ATTEMPTS: u32 = 10;
+// The AICH tree of a file not shared for so long is dropped; the file is hashed again when it is shared again.
+const TREE_KEPT_UNSHARED: u64 = 31 * 24 * 3600;
+// AICH trees kept built, for the files clients ask recovery data of now.
+const MAX_BUILT_TREES: usize = 64;
 const HASH_RETRY_DELAY: Duration = Duration::from_millis(500);
 const SKIPPED: [&str; 9] = [
     "desktop.ini",
@@ -117,6 +126,16 @@ impl SharedFile {
     fn key(&self) -> Key {
         (self.name.clone(), self.size, self.mtime)
     }
+}
+
+/// A finished download: its hash and part hashes, which its download checked, and the AICH hash of its link or
+/// sources, which nothing proved to be the file's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Finished {
+    pub hash: [u8; 16],
+    pub size: u64,
+    pub part_hashes: Vec<[u8; 16]>,
+    pub aich_hash: Option<[u8; 20]>,
 }
 
 /// A file found in a shared folder: its name, size and modification time, which tell whether it is known.
@@ -206,6 +225,18 @@ pub struct SharedFiles {
     hashing: HashSet<PathBuf>,
     // The asks, slots and bytes of the shared files in this run.
     counts: HashMap<[u8; 16], Counts>,
+    // The AICH trees, by master hash; those built, the least recently asked for first: building one hashes all its
+    // block hashes again.
+    aich: IndexMap<[u8; 20], known2_met::Entry>,
+    built: IndexMap<[u8; 20], Option<Arc<AichTree>>>,
+    // Whether the trees changed since known2_64.met was written; it is not written again otherwise.
+    trees_changed: bool,
+    // Finished downloads hashed again for their own tree; and those that finished while a scan was hashing their file,
+    // maybe before it was whole.
+    awaiting_tree: HashMap<PathBuf, Finished>,
+    finishing: HashMap<PathBuf, Finished>,
+    // Whether a scan said which files are shared.
+    scanned: bool,
     // Whether known.met is behind what is known.
     unsaved: bool,
     closed: bool,
@@ -263,21 +294,27 @@ impl fmt::Display for RenameError {
     }
 }
 
-// The file, else its backup; when both are damaged, what comes before the damage, from the one that keeps more.
-fn read_known(file: &Path) -> Vec<KnownFile> {
-    match atomic_files::read(file, |data| {
-        known_met::read(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+// The file, else its backup; when both are damaged, what comes before the damage, from the one that keeps more. True
+// with what was read from the backup or saved from damage, which the next save writes whole again.
+fn load<T, E: std::error::Error + Send + Sync + 'static>(
+    file: &Path,
+    strict: impl Fn(&[u8]) -> Result<Vec<T>, E>,
+    salvage: impl Fn(&[u8]) -> Vec<T>,
+) -> (Vec<T>, bool) {
+    match atomic_files::read_telling(file, |data| {
+        strict(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }) {
-        Ok(known) => known,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
+        Ok(read) => (read.value, read.from_backup),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => (Vec::new(), false),
         Err(e) => {
             tracing::warn!("Cannot read {}; what can be read of it is kept: {e}", file.display());
-            [atomic_files::bak_path(file), file.to_path_buf()]
+            let best = [atomic_files::bak_path(file), file.to_path_buf()]
                 .iter()
                 .filter_map(|candidate| fs::read(candidate).ok())
-                .map(|data| known_met::salvage(&data))
+                .map(|data| salvage(&data))
                 .max_by_key(Vec::len)
-                .unwrap_or_default()
+                .unwrap_or_default();
+            (best, true)
         }
     }
 }
@@ -308,7 +345,11 @@ impl SharedFiles {
     /// The files hashed before, from `known.met` in `config`; a scan says which are shared.
     pub fn load(config: &Path) -> Self {
         let mut shared = Self { config: config.to_path_buf(), ..Self::default() };
-        for known in read_known(&config.join(KNOWN_FILE_NAME)) {
+        let (trees, damaged) = load(&config.join(KNOWN2_FILE_NAME), known2_met::read, known2_met::salvage);
+        shared.aich = trees.into_iter().map(|entry| (entry.master_hash, entry)).collect();
+        shared.trees_changed = damaged;
+        let (records, _) = load(&config.join(KNOWN_FILE_NAME), known_met::read, known_met::salvage);
+        for known in records {
             if let (Some(name), Some(size)) = (known.name().map(str::to_owned), known.size())
                 && known.is_consistent()
             {
@@ -325,22 +366,79 @@ impl SharedFiles {
         self.private = private;
     }
 
-    /// Writes `known.met`; the records of the files shared take the date and the counts of this run.
+    /// Writes `known.met`, the records of the files shared taking the date and the counts of this run, and
+    /// `known2_64.met` when the trees changed. Once a scan said which files are shared, a tree no record needs goes, and
+    /// so does that of a file not shared for a month: a record keeps the file known as downloaded before, a tree is
+    /// needed only to share it.
     pub fn save(&mut self) -> io::Result<()> {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs());
+        let mut needed = HashSet::new();
         for record in self.known.values_mut() {
-            if self.files.contains_key(&record.file_hash) {
+            let shared = self.files.contains_key(&record.file_hash);
+            if shared {
                 set_int(record, file_tag::LASTSHARED, now);
                 if let Some(counts) = self.counts.get(&record.file_hash) {
                     with_totals(record, &counts.statistics());
                 }
             }
+            let seen = tags::int_value(&record.tags, file_tag::LASTSHARED).unwrap_or(now);
+            if (shared || !self.scanned || now.saturating_sub(seen) < TREE_KEPT_UNSHARED)
+                && let Some(aich) = record.aich_hash()
+            {
+                needed.insert(aich);
+            }
+        }
+        let before = self.aich.len();
+        self.aich.retain(|master, _| needed.contains(master));
+        if self.aich.len() != before {
+            self.built.retain(|master, _| needed.contains(master));
+            self.trees_changed = true;
         }
         let records: Vec<KnownFile> = self.known.values().cloned().collect();
         let data = known_met::write(&records).map_err(io::Error::other)?;
         atomic_files::write(&self.config.join(KNOWN_FILE_NAME), &data)?;
         self.unsaved = false;
+        if self.trees_changed {
+            let trees: Vec<known2_met::Entry> = self.aich.values().cloned().collect();
+            let data = known2_met::write(&trees).map_err(io::Error::other)?;
+            atomic_files::write(&self.config.join(KNOWN2_FILE_NAME), &data)?;
+            self.trees_changed = false;
+        }
         Ok(())
+    }
+
+    /// The AICH tree of the file shared with `hash`, when its block hashes are kept; built once for the requests that
+    /// follow.
+    pub fn aich_tree(&mut self, hash: &[u8; 16]) -> Option<Arc<AichTree>> {
+        let file = self.files.get(hash)?;
+        let entry = self.aich.get(&file.aich_hash?)?;
+        let master = entry.master_hash;
+        if let Some(built) = self.built.shift_remove(&master) {
+            self.built.insert(master, built.clone());
+            return built;
+        }
+        let tree = match AichTree::from_block_hashes(file.size, entry.block_hashes.clone()) {
+            Ok(tree) if tree.master_hash() == master => Some(Arc::new(tree)),
+            Ok(_) => None,
+            Err(e) => {
+                tracing::debug!("Unusable AICH hashes for {}: {e}", file.name);
+                None
+            }
+        };
+        self.built.insert(master, tree.clone());
+        if self.built.len() > MAX_BUILT_TREES {
+            self.built.shift_remove_index(0);
+        }
+        tree
+    }
+
+    /// The AICH recovery data of `part` of the file shared with `hash`, when we have its tree with `master`.
+    pub fn aich_recovery(&mut self, hash: &[u8; 16], part: u32, master: &[u8; 20]) -> Option<Vec<u8>> {
+        let tree = self.aich_tree(hash)?;
+        if tree.master_hash() != *master || !aich_recovery::has_recovery(tree.size(), part) {
+            return None;
+        }
+        aich_recovery::create(&tree, part).ok()
     }
 
     /// Whether `known.met` is behind what is known now.
@@ -439,6 +537,7 @@ impl SharedFiles {
         if self.closed {
             return changes;
         }
+        self.scanned = true;
         let mut seen = HashSet::new();
         for looked in listing.files {
             match looked {
@@ -467,19 +566,86 @@ impl SharedFiles {
         if let Some(record) = self.known_record(&found.name, found.size, found.mtime) {
             let file = SharedFile {
                 hash: record.file_hash,
-                name: found.name,
+                name: found.name.clone(),
                 size: found.size,
-                path: found.path,
+                path: found.path.clone(),
                 mtime: found.mtime,
                 part_hashes: record.part_hashes.clone(),
                 aich_hash: record.aich_hash(),
             };
-            self.share(file, changes);
-            return;
+            let has_tree = file.aich_hash.is_some_and(|aich| self.aich.contains_key(&aich));
+            self.share(file, None, changes);
+            // Without its AICH tree, lost, dropped while the file was not shared or never built, it is hashed again.
+            if has_tree {
+                return;
+            }
         }
         if self.hashing.insert(found.path.clone()) {
             changes.to_hash.push(found);
         }
+    }
+
+    /// Shares a finished download at once, its part hashes known. Its AICH hash comes with the tree that hashing it once
+    /// more gives: the one of the link or of the sources is not proven to be the file's.
+    pub fn finished(&mut self, path: &Path, download: Finished) -> Changes {
+        let mut changes = Changes::default();
+        let (Ok(metadata), Some(name)) = (fs::metadata(path), path.file_name().and_then(|name| name.to_str())) else {
+            tracing::warn!("Cannot share {}", path.display());
+            return changes;
+        };
+        let file = SharedFile {
+            hash: download.hash,
+            name: name.to_owned(),
+            size: download.size,
+            path: path.to_path_buf(),
+            mtime: mtime(&metadata),
+            part_hashes: download.part_hashes.clone(),
+            aich_hash: None,
+        };
+        let mtime = file.mtime;
+        self.share(file, None, &mut changes);
+        self.hash_finished(path, mtime, download, &mut changes);
+        changes
+    }
+
+    // The download checked the parts, not the AICH blocks: hashing the file once more gives its tree, and with it the
+    // recovery data other clients may ask for.
+    fn hash_finished(&mut self, path: &Path, mtime: u32, download: Finished, changes: &mut Changes) {
+        if !self.hashing.insert(path.to_path_buf()) {
+            self.finishing.insert(path.to_path_buf(), download);
+            return;
+        }
+        let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+        changes.to_hash.push(Found { path: path.to_path_buf(), name, size: download.size, mtime });
+        self.awaiting_tree.insert(path.to_path_buf(), download);
+    }
+
+    fn tree_of_finished(&mut self, found: Found, download: Finished, hashes: Result<FileHashes, String>) -> Changes {
+        let mut changes = Changes::default();
+        match &hashes {
+            Err(_) if fs::symlink_metadata(&found.path).is_err() => {
+                // Renamed before it could be read: the copy shared now is hashed instead.
+                if let Some(current) = self.files.get(&download.hash).cloned()
+                    && current.path != found.path
+                {
+                    self.hash_finished(&current.path, current.mtime, download, &mut changes);
+                }
+                return changes;
+            }
+            Ok(hashes) if hashes.ed2k.file_hash() != download.hash => {
+                tracing::warn!("{} changed since its download finished", found.path.display());
+                return changes;
+            }
+            Ok(hashes)
+                if download.aich_hash.is_some()
+                    && hashes.aich.as_ref().map(AichTree::master_hash) != download.aich_hash =>
+            {
+                tracing::warn!("The AICH hash of the link of {} was wrong; the file's own is kept", found.name);
+            }
+            _ => {}
+        }
+        self.hashed_file(found, hashes, &mut changes);
+        changes
     }
 
     /// Takes the hashes of a found file, or why it could not be hashed. A file that changed meanwhile is left for a
@@ -490,22 +656,51 @@ impl SharedFiles {
         if self.closed {
             return changes;
         }
+        if let Some(download) = self.finishing.remove(&found.path) {
+            // What the scan read may not be the whole download, nor still under this name: the file is read once more.
+            if let Some(current) = self.files.get(&download.hash).cloned() {
+                self.hash_finished(&current.path, current.mtime, download, &mut changes);
+            }
+            return changes;
+        }
+        if let Some(download) = self.awaiting_tree.remove(&found.path) {
+            return self.tree_of_finished(found, download, hashes);
+        }
+        self.hashed_file(found, hashes, &mut changes);
+        changes
+    }
+
+    fn hashed_file(&mut self, found: Found, hashes: Result<FileHashes, String>, changes: &mut Changes) {
         let hashes = match hashes {
             Ok(hashes) => hashes,
             Err(e) => {
                 tracing::warn!("Cannot hash {}: {e}", found.path.display());
-                return changes;
+                return;
             }
         };
-        match look(&found.path) {
-            Ok(Some(now)) if now.size == hashes.ed2k.size() && now.mtime == found.mtime => {}
-            Ok(Some(_)) => {
-                // Written to while it was read: the hashes may be of neither content.
+        let tree = hashes.aich.as_ref().map(|tree| known2_met::Entry {
+            master_hash: tree.master_hash(),
+            block_hashes: tree.block_hashes().to_vec(),
+        });
+        match fs::symlink_metadata(&found.path) {
+            Ok(now) if now.len() == hashes.ed2k.size() && mtime(&now) == found.mtime => {}
+            Ok(_) => {
+                // Written to while it was read: the hashes may be of neither content. A scan hashes it again once it
+                // rests.
                 tracing::debug!("{} changed while it was hashed", found.path.display());
                 changes.rescan = true;
-                return changes;
+                return;
             }
-            _ => return changes,
+            Err(_) => {
+                // Renamed or gone while hashed: the copy shared now, if any, gets the AICH tree.
+                if let Some(current) = self.files.get(&hashes.ed2k.file_hash()).cloned()
+                    && current.size == hashes.ed2k.size()
+                {
+                    let master = tree.as_ref().map(|tree| tree.master_hash);
+                    self.share(SharedFile { aich_hash: master, ..current }, tree, changes);
+                }
+                return;
+            }
         }
         let file = SharedFile {
             hash: hashes.ed2k.file_hash(),
@@ -514,17 +709,9 @@ impl SharedFiles {
             path: found.path,
             mtime: found.mtime,
             part_hashes: hashes.ed2k.part_hashes().to_vec(),
-            aich_hash: hashes.aich.as_ref().map(crate::files::hash::aich_tree::AichTree::master_hash),
+            aich_hash: tree.as_ref().map(|tree| tree.master_hash),
         };
-        self.share(file, &mut changes);
-        changes
-    }
-
-    /// Shares a file just downloaded, with the hashes its download checked.
-    pub fn completed(&mut self, mut file: SharedFile) -> SharedFile {
-        file.mtime = fs::metadata(&file.path).map(|metadata| mtime(&metadata)).unwrap_or(0);
-        self.share(file.clone(), &mut Changes::default());
-        file
+        self.share(file, tree, changes);
     }
 
     /// A request of the shared file with `hash`, counted in its statistics.
@@ -608,7 +795,7 @@ impl SharedFiles {
             .insert(renamed.key(), record.map_or_else(|| renamed.record(), |known| with_name(known, &renamed)));
         let mut changes = Changes::default();
         self.unshare(&file, &mut changes);
-        self.share(renamed.clone(), &mut changes);
+        self.share(renamed.clone(), None, &mut changes);
         self.unsaved = true;
         Ok(Some((renamed, changes)))
     }
@@ -626,7 +813,7 @@ impl SharedFiles {
         self.files.get(hash)
     }
 
-    fn share(&mut self, file: SharedFile, changes: &mut Changes) {
+    fn share(&mut self, file: SharedFile, tree: Option<known2_met::Entry>, changes: &mut Changes) {
         if let Some(old) = self.by_path.insert(file.path.clone(), file.clone())
             && old.hash != file.hash
         {
@@ -648,6 +835,12 @@ impl SharedFiles {
                 self.unsaved = true;
             }
             Some(_) => {}
+        }
+        if let Some(tree) = tree {
+            self.built.shift_remove(&tree.master_hash);
+            self.aich.insert(tree.master_hash, tree);
+            self.trees_changed = true;
+            self.unsaved = true;
         }
         if fresh {
             tracing::debug!("Sharing {}", file.path.display());

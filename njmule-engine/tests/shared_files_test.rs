@@ -16,13 +16,20 @@
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io;
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use njmule_engine::api::shared_file_info::Statistics;
 use njmule_engine::api::upload_priority::UploadPriority;
-use njmule_engine::files::hash::ed2k;
-use njmule_engine::files::shared_files::{self, Changes, Listing, RenameError, SharedFile, SharedFiles, Sharing};
+use njmule_engine::files::hash::aich_recovery;
+use njmule_engine::files::hash::aich_tree::AichTree;
+use njmule_engine::files::hash::ed2k::PARTSIZE;
+use njmule_engine::files::hash::file_hasher;
+use njmule_engine::files::shared_files::{
+    self, Changes, Finished, Found, Listing, RenameError, SharedFile, SharedFiles, Sharing,
+};
 use njmule_engine::persist::format::known_met::{self, KnownFile};
 use njmule_engine::persist::format::text_files;
 use rand::rngs::StdRng;
@@ -414,6 +421,115 @@ fn should_refuse_names_that_are_never_shared() {
     }
 }
 
+#[test]
+fn should_build_the_aich_tree_of_a_file_once_for_all_its_requests() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_a_file("incoming/a.bin", 500_000, 7);
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_report(&["shared a.bin"]);
+    shares.given_the_aich_tree_is_requested("a.bin");
+
+    shares.when_the_aich_tree_is_requested("a.bin");
+
+    shares.then_the_same_aich_tree_is_given();
+    shares.then_the_aich_tree_covers_the_file("a.bin");
+}
+
+#[test]
+fn should_keep_a_file_renamed_while_hashed_again_shared_under_its_new_name() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_the_shares_are_open();
+    shares.given_a_file("incoming/done.bin", 600_000, 33);
+    shares.given_the_download("done.bin");
+    shares.given_the_download_finishes_and_is_renamed("done.bin", "renamed.bin");
+    shares.given_the_file_gets_an_aich_tree("done.bin");
+
+    shares.when_the_shares_are_scanned();
+
+    shares.then_the_file_is_shared_as("done.bin", "renamed.bin");
+    shares.then_the_file_has_an_aich_tree("done.bin");
+}
+
+#[test]
+fn should_give_a_file_renamed_before_it_is_hashed_again_its_aich_tree_under_its_new_name() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_the_shares_are_open();
+    shares.given_a_file("incoming/done.bin", 600_000, 37);
+    shares.given_the_download("done.bin");
+    shares.given_the_hashing_thread_busy_with_a_large_file(36, [0x77; 16]);
+
+    shares.when_the_download_finishes_and_is_renamed("done.bin", "renamed.bin");
+
+    shares.then_the_file_gets_an_aich_tree("done.bin");
+    shares.then_the_file_is_shared_as("done.bin", "renamed.bin");
+    shares.then_the_file_with_the_hash_keeps_no_aich_tree([0x77; 16]);
+}
+
+#[test]
+fn should_give_a_download_finished_while_a_scan_waits_to_read_its_file_its_aich_tree_once_renamed() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_the_shares_are_open();
+    shares.given_the_hashing_thread_busy_with_a_large_file(40, [0x66; 16]);
+
+    shares.when_a_download_finishes_after_a_scan_queued_its_file_and_is_renamed("renamed.bin");
+
+    shares.then_the_file_gets_an_aich_tree("done.bin");
+    shares.then_the_file_is_shared_as("done.bin", "renamed.bin");
+}
+
+#[test]
+fn should_hash_a_finished_file_for_its_own_tree_and_leave_out_one_that_cannot_be_hashed() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_the_shares_are_open();
+    shares.given_a_file("other/done.bin", 400_000, 44);
+    shares.given_the_download_with_the_aich_hash("done.bin", [0x18; 20]);
+    shares.given_a_file("extra/gone.bin", 3000, 45);
+    shares.given_the_hashing_thread_busy_with_a_large_file(43, [0x26; 16]);
+    shares.given_the_download_finished_at("never.bin");
+    shares.given_the_download_finished_at("other/done.bin");
+
+    shares.when_a_directory_is_shared_and_its_file_goes_before_it_is_hashed("extra", "extra/gone.bin");
+
+    shares.then_the_file_gets_an_aich_tree("done.bin");
+    shares.then_the_aich_hash_is_the_files_own_not_the_links("done.bin");
+    shares.then_none_of_these_files_is_shared(&["gone.bin", "never.bin"]);
+}
+
+#[test]
+fn should_give_the_recovery_data_of_a_part_only_for_the_tree_asked_for() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_a_file("incoming/big.bin", 2 * PARTSIZE as usize + 1000, 46);
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_report(&["shared big.bin"]);
+
+    shares.when_the_recovery_data_of_the_part_is_asked_for("big.bin", 1);
+
+    shares.then_the_recovery_data_proves_the_part("big.bin", 1);
+    shares.then_none_is_given_for_another_tree("big.bin", 1);
+}
+
+#[test]
+fn should_keep_the_aich_tree_of_a_file_across_runs_without_hashing_it_again() {
+    let mut shares = Shares::new();
+    shares.given_an_incoming_and_a_config_directory();
+    shares.given_a_file("incoming/a.bin", 500_000, 47);
+    shares.given_the_shares_are_open();
+    shares.given_the_shares_report(&["shared a.bin"]);
+    shares.given_the_shares_are_closed();
+
+    shares.when_the_shares_are_opened();
+
+    shares.then_the_shares_report(&["shared a.bin"]);
+    shares.then_the_files_hashed_are(1);
+    shares.then_the_file_has_an_aich_tree("a.bin");
+}
+
 fn private_directories() -> Vec<PathBuf> {
     // The home is absolute: joining it to the test folder keeps it as it is.
     let mut directories: Vec<PathBuf> = ["config", "config/sub", "temp", "emule-config"].map(PathBuf::from).into();
@@ -439,6 +555,14 @@ struct Shares {
     found: Vec<String>,
     renamed: Option<Result<Option<SharedFile>, RenameError>>,
     priority: Option<UploadPriority>,
+    // The files waiting for the hasher, and whether it is busy, so that they wait until a step lets it answer.
+    waiting: VecDeque<Found>,
+    busy: bool,
+    download: Option<Finished>,
+    link_aich_hash: Option<[u8; 20]>,
+    first_aich_tree: Option<Arc<AichTree>>,
+    aich_tree: Option<Arc<AichTree>>,
+    recovery: Option<Vec<u8>>,
 }
 
 impl Shares {
@@ -461,6 +585,13 @@ impl Shares {
             found: Vec::new(),
             renamed: None,
             priority: None,
+            waiting: VecDeque::new(),
+            busy: false,
+            download: None,
+            link_aich_hash: None,
+            first_aich_tree: None,
+            aich_tree: None,
+            recovery: None,
         }
     }
 
@@ -808,6 +939,134 @@ impl Shares {
         assert_eq!(self.shares().get(&self.hash_of(file)).unwrap().name, name);
     }
 
+    fn given_the_aich_tree_is_requested(&mut self, name: &str) {
+        let hash = self.hash_of(name);
+        self.first_aich_tree = Some(self.shares_mut().aich_tree(&hash).unwrap());
+    }
+
+    fn given_the_download(&mut self, name: &str) {
+        self.download = Some(self.finished_of(name, None));
+    }
+
+    fn given_the_download_with_the_aich_hash(&mut self, name: &str, aich_hash: [u8; 20]) {
+        self.link_aich_hash = Some(aich_hash);
+        self.download = Some(self.finished_of(name, Some(aich_hash)));
+    }
+
+    fn given_the_download_finishes_and_is_renamed(&mut self, name: &str, new_name: &str) {
+        self.when_the_download_finishes_and_is_renamed(name, new_name);
+    }
+
+    fn given_the_file_gets_an_aich_tree(&mut self, name: &str) {
+        self.then_the_file_gets_an_aich_tree(name);
+    }
+
+    // The hasher works on a large finished file, whose content is not that of its download: the files after it wait.
+    fn given_the_hashing_thread_busy_with_a_large_file(&mut self, seed: u64, hash: [u8; 16]) {
+        let large = self.write_file("other/large.bin", bytes(300_000, seed));
+        self.busy = true;
+        let busy = Finished { hash, size: 300_000, part_hashes: Vec::new(), aich_hash: None };
+        let changes = self.shares_mut().finished(&large, busy);
+        self.record(changes);
+    }
+
+    fn given_the_download_finished_at(&mut self, path: &str) {
+        let file = self.dir.path().join(path);
+        let download = self.download.clone().unwrap();
+        let changes = self.shares_mut().finished(&file, download);
+        self.record(changes);
+    }
+
+    fn when_the_aich_tree_is_requested(&mut self, name: &str) {
+        let hash = self.hash_of(name);
+        self.aich_tree = self.shares_mut().aich_tree(&hash);
+    }
+
+    // Both before the hasher answers.
+    fn when_the_download_finishes_and_is_renamed(&mut self, name: &str, new_name: &str) {
+        let busy = std::mem::replace(&mut self.busy, true);
+        let done = self.incoming.join(name);
+        let download = self.download.clone().unwrap();
+        let changes = self.shares_mut().finished(&done, download);
+        self.record(changes);
+        self.when_the_file_is_renamed(name, new_name);
+        self.busy = busy;
+    }
+
+    fn when_a_download_finishes_after_a_scan_queued_its_file_and_is_renamed(&mut self, new_name: &str) {
+        let completed = self.write_file("completed/done.bin", bytes(600_000, 41));
+        let done = self.incoming.join("done.bin");
+        fs::rename(&completed, &done).unwrap();
+        self.scan();
+        let download = self.finished_of("done.bin", None);
+        let changes = self.shares_mut().finished(&done, download);
+        self.record(changes);
+        self.when_the_file_is_renamed("done.bin", new_name);
+    }
+
+    fn when_a_directory_is_shared_and_its_file_goes_before_it_is_hashed(&mut self, path: &str, gone: &str) {
+        let dir = self.dir.path().join(path);
+        self.shares_mut().add_directory(&dir, false).unwrap();
+        self.scan();
+        fs::remove_file(self.dir.path().join(gone)).unwrap();
+    }
+
+    fn when_the_recovery_data_of_the_part_is_asked_for(&mut self, name: &str, part: u32) {
+        let hash = self.hash_of(name);
+        let master = self.shares().get(&hash).unwrap().aich_hash.unwrap();
+        self.recovery = self.shares_mut().aich_recovery(&hash, part, &master);
+    }
+
+    fn then_the_same_aich_tree_is_given(&self) {
+        assert!(Arc::ptr_eq(self.aich_tree.as_ref().unwrap(), self.first_aich_tree.as_ref().unwrap()));
+    }
+
+    fn then_the_aich_tree_covers_the_file(&self, name: &str) {
+        assert_eq!(self.first_aich_tree.as_ref().unwrap().size(), self.contents[name].len() as u64);
+    }
+
+    // Once the hasher answered.
+    fn then_the_file_gets_an_aich_tree(&mut self, name: &str) {
+        self.hash_what_waits();
+        self.then_the_file_has_an_aich_tree(name);
+    }
+
+    fn then_the_file_has_an_aich_tree(&mut self, name: &str) {
+        let hash = self.hash_of(name);
+        assert!(self.shares_mut().aich_tree(&hash).is_some(), "no AICH tree for {name}");
+    }
+
+    fn then_the_file_is_shared_as(&self, file: &str, name: &str) {
+        assert_eq!(self.shares().get(&self.hash_of(file)).unwrap().path, self.incoming.join(name));
+    }
+
+    // A file that is not what was downloaded keeps no tree.
+    fn then_the_file_with_the_hash_keeps_no_aich_tree(&self, hash: [u8; 16]) {
+        assert_eq!(self.shares().get(&hash).unwrap().aich_hash, None);
+    }
+
+    fn then_the_aich_hash_is_the_files_own_not_the_links(&self, name: &str) {
+        let own = self.shares().get(&self.hash_of(name)).unwrap().aich_hash;
+        assert!(own.is_some() && own != self.link_aich_hash, "{own:?}");
+    }
+
+    fn then_none_of_these_files_is_shared(&self, names: &[&str]) {
+        for file in self.shares().files() {
+            assert!(!names.contains(&file.name.as_str()), "{} is shared", file.name);
+        }
+    }
+
+    fn then_the_recovery_data_proves_the_part(&self, name: &str, part: u32) {
+        let file = self.shares().get(&self.hash_of(name)).unwrap();
+        let data = self.recovery.as_ref().expect("recovery data");
+        assert!(aich_recovery::verify(file.size, part, &file.aich_hash.unwrap(), data).is_some());
+    }
+
+    fn then_none_is_given_for_another_tree(&mut self, name: &str, part: u32) {
+        let hash = self.hash_of(name);
+        assert_eq!(self.shares_mut().aich_recovery(&hash, part, &[0x55; 20]), None);
+    }
+
     fn then_the_shares_report(&mut self, expected: &[&str]) {
         let reported: Vec<String> = self.events.drain(..expected.len().min(self.events.len())).collect();
         assert_eq!(reported, expected);
@@ -912,20 +1171,36 @@ impl Shares {
         self.record(changes);
     }
 
-    // What changed, then the files to hash, hashed one after the other.
+    // What changed; then the files to hash, hashed one after the other unless the hasher is busy.
     fn record(&mut self, changes: Changes) {
+        self.note(changes);
+        if !self.busy {
+            self.hash_what_waits();
+        }
+    }
+
+    fn note(&mut self, changes: Changes) {
         for sharing in changes.sharing {
             self.events.push_back(match sharing {
                 Sharing::Shared(file) => format!("shared {}", file.name),
                 Sharing::Unshared(file) => format!("unshared {}", file.name),
             });
         }
-        for found in changes.to_hash {
+        self.waiting.extend(changes.to_hash);
+    }
+
+    fn hash_what_waits(&mut self) {
+        while let Some(found) = self.waiting.pop_front() {
             self.hashed += 1;
             let hashes = shared_files::hash(&found).map_err(|e| e.to_string());
             let more = self.shares_mut().hashed(found, hashes);
-            self.record(more);
+            self.note(more);
         }
+    }
+
+    fn finished_of(&self, name: &str, aich_hash: Option<[u8; 20]>) -> Finished {
+        let data = &self.contents[name];
+        Finished { hash: self.hash_of(name), size: data.len() as u64, part_hashes: Vec::new(), aich_hash }
     }
 
     fn shares(&self) -> &SharedFiles {
@@ -936,9 +1211,11 @@ impl Shares {
         self.shares.as_mut().unwrap()
     }
 
-    // The files are smaller than a part, whose hash is the file's.
+    // The eD2K hash of a file's content, as the hasher gives it.
     fn hash_of(&self, name: &str) -> [u8; 16] {
-        ed2k::md4(&self.contents[name])
+        let data = &self.contents[name];
+        let hashes = file_hasher::hash(&mut data.as_slice(), data.len() as u64, |_| ControlFlow::Continue(())).unwrap();
+        hashes.ed2k.file_hash()
     }
 
     fn write_file(&mut self, path: &str, data: Vec<u8>) -> PathBuf {
