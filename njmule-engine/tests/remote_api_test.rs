@@ -243,6 +243,27 @@ impl NjMuleEngine for FakeEngine {
         vec![server(); self.with(|fake| fake.servers_known)]
     }
 
+    async fn add_server(&self, address: Address) -> bool {
+        self.with(|fake| {
+            fake.calls.push(format!("add {address}"));
+            fake.known_server.as_deref() != Some(address.to_string().as_str())
+        })
+    }
+
+    async fn remove_server(&self, address: Address) -> bool {
+        self.with(|fake| {
+            fake.calls.push(format!("remove {address}"));
+            fake.known_server.as_deref() == Some(address.to_string().as_str())
+        })
+    }
+
+    async fn set_server_priority(&self, address: Address, priority: Priority) -> bool {
+        self.with(|fake| {
+            fake.calls.push(format!("priority {address} {}", priority.name()));
+            fake.known_server.as_deref() == Some(address.to_string().as_str())
+        })
+    }
+
     async fn set_static_server(&self, address: Address, wanted: bool) -> bool {
         self.with(|fake| {
             fake.calls.push(format!("static {address} {wanted}"));
@@ -1022,6 +1043,18 @@ async fn should_put_a_server_in_the_static_list() {
 
     api.then_the_status_is(200);
     api.then_the_engine_was_asked("static 203.0.113.10:4661 true");
+}
+
+#[tokio::test]
+async fn should_set_the_priority_of_a_server() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_knows_the_server("203.0.113.10:4661");
+
+    api.when_called("PUT", "/api/v1/servers/203.0.113.10:4661/priority", "{\"priority\":\"high\"}").await;
+
+    api.then_the_status_is(200);
+    api.then_the_engine_was_asked("priority 203.0.113.10:4661 high");
 }
 
 #[tokio::test]

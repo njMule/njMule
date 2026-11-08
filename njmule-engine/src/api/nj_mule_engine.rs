@@ -38,7 +38,7 @@ use crate::engine::NotesError;
 use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::files::shared_files::SharedFile;
 use crate::search::search_manager::{Scope, StartError};
-use crate::server::server_list::Address;
+use crate::server::server_list::{Address, Priority};
 
 /// The events of an engine for one follower: those it missed, the latest log lines and the server's state, then those
 /// that come.
@@ -111,6 +111,15 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
 
     /// Adds the servers of a server.met not known yet; answers how many.
     fn add_servers(&self, source: ListSource) -> impl Future<Output = Result<usize, ListError>> + Send;
+
+    /// Adds a server the user gave; false when it is known already.
+    fn add_server(&self, address: Address) -> impl Future<Output = bool> + Send;
+
+    /// Removes a server, from the static list too; false when it is unknown.
+    fn remove_server(&self, address: Address) -> impl Future<Output = bool> + Send;
+
+    /// Sets the priority a server is tried with; false when it is unknown.
+    fn set_server_priority(&self, address: Address, priority: Priority) -> impl Future<Output = bool> + Send;
 
     /// The addresses of the server lists, which the engine takes again at its start when the preferences ask for it.
     fn server_list_addresses(&self) -> impl Future<Output = Vec<String>> + Send;
