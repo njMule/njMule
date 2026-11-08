@@ -35,15 +35,16 @@ use njmule_engine::api::saved_search::SavedSearch;
 use njmule_engine::api::search_result::SearchResult;
 use njmule_engine::api::server_info::ServerInfo;
 use njmule_engine::api::shared_directory::SharedDirectory;
+use njmule_engine::api::shared_file_info::SharedFileInfo;
 use njmule_engine::api::spam_marks::SpamMarks;
 use njmule_engine::api::upload_info::{BanInfo, UploadInfo};
+use njmule_engine::api::upload_priority::UploadPriority;
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::config::preferences::Preferences;
 use njmule_engine::config::schedule::{Rule, Schedule};
 use njmule_engine::engine::NotesError;
 use njmule_engine::engine::network::{ConnectError, MoreAnswer};
 use njmule_engine::files::part_file::PartMap;
-use njmule_engine::files::shared_files::SharedFile;
 use njmule_engine::persist::preferences_codec;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use njmule_engine::search::search_manager::{Scope, StartError};
@@ -349,8 +350,18 @@ impl NjMuleEngine for FakeEngine {
         Ok(())
     }
 
-    async fn shared_files(&self) -> Vec<SharedFile> {
+    async fn shared_files(&self) -> Vec<SharedFileInfo> {
         Vec::new()
+    }
+
+    async fn rename_shared_file(&self, hash: [u8; 16], name: String) -> Result<bool, String> {
+        self.with(|fake| fake.calls.push(format!("renameShared {} {name}", hex::encode(hash))));
+        Ok(false)
+    }
+
+    async fn set_upload_priority(&self, hash: [u8; 16], priority: UploadPriority) -> bool {
+        self.with(|fake| fake.calls.push(format!("uploadPriority {} {}", hex::encode(hash), priority.name())));
+        false
     }
 
     async fn add_download(&self, link: FileLink, paused: Option<bool>) -> Result<DownloadInfo, String> {
@@ -1811,6 +1822,29 @@ async fn should_not_find_a_folder_that_is_not_shared() {
     api.when_called("DELETE", &format!("/api/v1/shared/directories?path={}", encoded(api.dir.path())), "").await;
 
     api.then_the_status_is(404);
+}
+
+#[tokio::test]
+async fn should_refuse_an_upload_priority_it_does_not_know() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("PUT", &format!("/api/v1/shared/{}/priority", "25".repeat(16)), r#"{"priority":"urgent"}"#)
+        .await;
+
+    api.then_the_status_is(400);
+    api.then_the_engine_was_not_asked();
+}
+
+#[tokio::test]
+async fn should_not_find_a_shared_file_to_rename_that_is_not_shared() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("PUT", &format!("/api/v1/shared/{}/name", "25".repeat(16)), r#"{"name":"b.bin"}"#).await;
+
+    api.then_the_status_is(404);
+    api.then_the_engine_was_asked(&format!("renameShared {} b.bin", "25".repeat(16)));
 }
 
 #[tokio::test]

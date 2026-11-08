@@ -1226,6 +1226,7 @@ dependencies = [
  "reqwest",
  "rsa",
  "rustls",
+ "same-file",
  "semver",
  "serde",
  "serde_json",
