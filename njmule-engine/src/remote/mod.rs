@@ -8,5 +8,6 @@ pub mod api_reader;
 pub mod control_endpoint;
 pub mod event_streams;
 pub mod rate_history;
+pub mod recent_log;
 pub mod remote_api;
 pub mod search_collector;

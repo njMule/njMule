@@ -9,10 +9,13 @@
 mod free_port;
 
 use std::fs;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use njmule_engine::api::download_info::{DownloadPriority, DownloadStatus};
 use njmule_engine::api::ed2k_link::FileLink;
+use njmule_engine::api::engine_event::EngineEvent;
+use njmule_engine::api::log_line::Level;
+use njmule_engine::api::nj_mule_engine::Subscription;
 use njmule_engine::api::search_result::SearchResult;
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
@@ -96,6 +99,84 @@ fn result(hash: [u8; 16], name: &str) -> SearchResult {
     SearchResult::new(hash, name, 10, 1, Some(0), None)
 }
 
+#[tokio::test]
+async fn should_replay_the_log_up_to_its_limit_to_a_late_subscriber() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_the_engine_logged(Level::Debug, "a detail");
+    api.given_the_engine_logged(Level::Error, "a failure");
+    api.given_the_engine_logged_numbered_lines("line ", 150);
+
+    api.when_someone_subscribes();
+
+    api.then_the_subscriber_gets_the_log("line 149").await;
+    api.then_the_first_event_is_the_first_log();
+    api.then_the_first_log_is("line 50");
+}
+
+#[tokio::test]
+async fn should_let_a_slow_subscriber_miss_events_while_the_others_get_everything() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_someone_subscribed();
+    api.given_a_slow_subscriber_reading_one_event().await;
+
+    api.when_the_engine_logs_numbered_lines_in_steps("more ", 3_000).await;
+
+    api.then_the_other_subscriber_still_gets_the_log("more 2999").await;
+    api.then_the_slow_subscriber_missed_events();
+}
+
+#[tokio::test]
+async fn should_send_nowhere_what_is_logged_after_the_end() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_someone_subscribed();
+    api.given_the_engine_is_closed().await;
+
+    api.when_the_engine_logs("too late");
+
+    api.then_the_events_are_completed().await;
+    api.then_the_last_event_is_the_stop();
+}
+
+// A follower of the engine's events, which keeps those it read.
+struct Recorder {
+    subscription: Subscription,
+    events: Vec<EngineEvent>,
+}
+
+impl Recorder {
+    fn of(engine: &Engine) -> Self {
+        let subscription = engine.subscribe();
+        let events = subscription.missed.clone();
+        Self { subscription, events }
+    }
+
+    // Reads until a log line starting with `start` comes, for 10 seconds at most.
+    async fn await_log(&mut self, start: &str) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !self.logs().iter().any(|message| message.starts_with(start)) {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match tokio::time::timeout(left, self.subscription.live.recv()).await {
+                Ok(Ok(event)) => self.events.push(event),
+                Ok(Err(_)) | Err(_) => return false,
+            }
+        }
+        true
+    }
+
+    fn logs(&self) -> Vec<String> {
+        self.events
+            .iter()
+            .filter_map(|event| match event {
+                EngineEvent::Log(line) => Some(line.message.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
 struct EngineApi {
     profile: tempfile::TempDir,
     engine: Option<Engine>,
@@ -103,6 +184,8 @@ struct EngineApi {
     stopped: bool,
     firewall_rechecked: bool,
     rated: Vec<SearchResult>,
+    recorder: Option<Recorder>,
+    slow: Option<Recorder>,
 }
 
 impl EngineApi {
@@ -114,6 +197,8 @@ impl EngineApi {
             stopped: false,
             firewall_rechecked: false,
             rated: Vec::new(),
+            recorder: None,
+            slow: None,
         }
     }
 
@@ -234,6 +319,93 @@ impl EngineApi {
 
     async fn add(&self, name: &str, hash: [u8; 16]) {
         within(self.engine().add_download(FileLink::of(name, 5000, hash).unwrap(), None)).await.unwrap();
+    }
+
+    fn given_the_engine_logged(&self, level: Level, line: &str) {
+        self.engine().user_log(level, line);
+    }
+
+    fn given_the_engine_logged_numbered_lines(&self, prefix: &str, count: usize) {
+        for i in 0..count {
+            self.engine().user_log(Level::Info, format!("{prefix}{i}"));
+        }
+    }
+
+    fn given_someone_subscribed(&mut self) {
+        self.when_someone_subscribes();
+    }
+
+    // It reads the first event, then no more.
+    async fn given_a_slow_subscriber_reading_one_event(&mut self) {
+        let mut slow = Recorder::of(&self.engine());
+        slow.events.clear();
+        self.engine().user_log(Level::Info, "first");
+        let first = within(slow.subscription.live.recv()).await.unwrap();
+        slow.events.push(first);
+        self.slow = Some(slow);
+    }
+
+    async fn given_the_engine_is_closed(&self) {
+        self.engine().stop().await;
+    }
+
+    fn when_someone_subscribes(&mut self) {
+        self.recorder = Some(Recorder::of(&self.engine()));
+    }
+
+    // In steps the others can follow: any subscriber that falls the backlog behind misses events.
+    async fn when_the_engine_logs_numbered_lines_in_steps(&mut self, prefix: &str, count: usize) {
+        for i in 0..count {
+            self.engine().user_log(Level::Info, format!("{prefix}{i}"));
+            if i % 500 == 499 {
+                let line = format!("{prefix}{i}");
+                assert!(self.recorder.as_mut().unwrap().await_log(&line).await);
+            }
+        }
+    }
+
+    fn when_the_engine_logs(&self, line: &str) {
+        self.engine().user_log(Level::Info, line);
+    }
+
+    async fn then_the_subscriber_gets_the_log(&mut self, start: &str) {
+        assert!(self.recorder.as_mut().unwrap().await_log(start).await, "{start} logged");
+    }
+
+    fn then_the_first_event_is_the_first_log(&self) {
+        let recorder = self.recorder.as_ref().unwrap();
+        assert!(matches!(recorder.events.first(), Some(EngineEvent::Log(_))), "{:?}", recorder.events.first());
+    }
+
+    fn then_the_first_log_is(&self, message: &str) {
+        assert_eq!(self.recorder.as_ref().unwrap().logs().first().map(String::as_str), Some(message));
+    }
+
+    async fn then_the_other_subscriber_still_gets_the_log(&mut self, start: &str) {
+        assert!(self.recorder.as_mut().unwrap().await_log(start).await, "the others still get everything");
+    }
+
+    fn then_the_slow_subscriber_missed_events(&mut self) {
+        let slow = self.slow.as_mut().unwrap();
+        assert_eq!(slow.events.len(), 1, "only what it read");
+        assert!(
+            matches!(slow.subscription.live.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_))),
+            "it missed the events it fell behind on"
+        );
+    }
+
+    // Read to the end of what came: nothing comes after.
+    async fn then_the_events_are_completed(&mut self) {
+        let recorder = self.recorder.as_mut().unwrap();
+        while let Ok(Ok(event)) =
+            tokio::time::timeout(Duration::from_millis(200), recorder.subscription.live.recv()).await
+        {
+            recorder.events.push(event);
+        }
+    }
+
+    fn then_the_last_event_is_the_stop(&self) {
+        assert_eq!(self.recorder.as_ref().unwrap().events.last(), Some(&EngineEvent::Stopping));
     }
 
     fn engine(&self) -> Engine {

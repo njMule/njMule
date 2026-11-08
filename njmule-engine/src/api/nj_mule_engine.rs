@@ -39,6 +39,14 @@ use crate::persist::format::server_met::Server;
 use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::Address;
 
+/// The events of an engine for one follower: those it missed, the latest log lines and the server's state, then those
+/// that come.
+#[derive(Debug)]
+pub struct Subscription {
+    pub missed: Vec<EngineEvent>,
+    pub live: broadcast::Receiver<EngineEvent>,
+}
+
 pub trait NjMuleEngine: Clone + Send + Sync + 'static {
     fn preferences(&self) -> Preferences;
 
@@ -63,7 +71,7 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
     /// Changes the preferences named in `changes`, all or none, and saves them.
     fn update_preferences(&self, changes: &BTreeMap<String, String>) -> Result<Preferences, String>;
 
-    fn subscribe(&self) -> broadcast::Receiver<EngineEvent>;
+    fn subscribe(&self) -> Subscription;
 
     /// Completes once the engine stops.
     fn stopped(&self) -> BoxFuture<'static, ()>;

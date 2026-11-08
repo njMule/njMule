@@ -4,6 +4,7 @@
 //! Kad in the network: the client UDP socket, which Kad shares, and the node on it, started with the preferences or by
 //! hand and ticked each second, and the host the node asks to connect to other clients over TCP.
 
+use crate::api::log_line::Level as LogLevel;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
@@ -224,7 +225,7 @@ impl Network {
         }
         let local = match &self.binding {
             Binding::Missing(_) => {
-                tracing::warn!("Kad waits for the network interface to come back");
+                self.user_log(LogLevel::Warning, "Kad waits for the network interface to come back".to_owned());
                 return;
             }
             Binding::Bound(address) => Some(*address),
@@ -246,17 +247,20 @@ impl Network {
                 // Told once; the port is tried again until it is free.
                 if self.kad.port_taken != preferences.udp_port {
                     self.kad.port_taken = preferences.udp_port;
-                    tracing::warn!(
-                        "Cannot start Kad on UDP port {}: another program uses it. njMule tries again every \
-                         {PORT_RETRY_SECONDS} seconds",
-                        preferences.udp_port
+                    self.user_log(
+                        LogLevel::Warning,
+                        format!(
+                            "Cannot start Kad on UDP port {}: another program uses it. njMule tries again every \
+                             {PORT_RETRY_SECONDS} seconds",
+                            preferences.udp_port
+                        ),
                     );
                 }
                 return;
             }
             Err(e) => {
                 self.kad.port_taken = 0;
-                tracing::warn!("Cannot start Kad on UDP port {}: {e}", preferences.udp_port);
+                self.user_log(LogLevel::Warning, format!("Cannot start Kad on UDP port {}: {e}", preferences.udp_port));
                 return;
             }
         };
@@ -297,7 +301,7 @@ impl Network {
         node.load_index();
         tracing::info!("Kad id {} on UDP port {}", identity.id().to_hex(), socket.port());
         if self.kad.port_taken != 0 {
-            tracing::info!("Kad started: UDP port {} is free again", preferences.udp_port);
+            self.user_log(LogLevel::Success, format!("Kad started: UDP port {} is free again", preferences.udp_port));
             self.kad.port_taken = 0;
         }
         self.kad.running = Some(Running { socket, node, publisher: KadPublisher::new(), relay });
@@ -344,7 +348,7 @@ impl Network {
         self.kad.port_taken = 0;
         if self.kad.running.is_some() {
             self.stop_kad();
-            tracing::info!("Kad stopped");
+            self.user_log(LogLevel::Info, "Kad stopped".to_owned());
         }
     }
 

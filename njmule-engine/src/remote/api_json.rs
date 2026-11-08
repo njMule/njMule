@@ -16,6 +16,7 @@ use crate::api::kad_info::{Buddy, KadInfo};
 use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::{KadSearchInfo, Kind};
 use crate::api::known_client::KnownClient;
+use crate::api::log_line::LogLine;
 use crate::api::nj_mule_info;
 use crate::api::peer_info::PeerInfo;
 use crate::api::saved_search::SavedSearch;
@@ -29,6 +30,8 @@ use crate::files::part_file::PartMap;
 use crate::files::shared_files::SharedFile;
 use crate::persist::preferences_codec;
 use crate::remote::rate_history::Rate;
+use crate::remote::recent_log::Entry;
+use time::format_description::well_known::Rfc3339;
 
 // The passwords the preferences hold, which never leave.
 const SECRETS: [&str; 2] = ["notify.smtpPassword", "proxy.password"];
@@ -214,6 +217,21 @@ pub fn saved_search(search: &SavedSearch) -> Value {
     })
 }
 
+/// A line of the user's log: when, how serious and what.
+pub fn log_line(line: &LogLine) -> Value {
+    let time = time::OffsetDateTime::from(line.time).format(&Rfc3339).unwrap_or_default();
+    json!({"time": time, "level": line.level.name(), "message": line.message})
+}
+
+/// A line of the recent log with its number, which the next read starts after.
+pub fn log_entry(entry: &Entry) -> Value {
+    let mut out = log_line(&entry.line);
+    if let Some(fields) = out.as_object_mut() {
+        fields.insert("sequence".to_owned(), json!(entry.sequence));
+    }
+    out
+}
+
 /// The speed limits, in KiB/s, 0 for none.
 pub fn limits(preferences: &Preferences) -> Value {
     json!({"uploadKiBps": preferences.max_upload_kibps, "downloadKiBps": preferences.max_download_kibps})
@@ -239,6 +257,7 @@ pub fn event(event: &EngineEvent) -> (&'static str, Value) {
         EngineEvent::Started { version } => ("started", json!({"version": version})),
         EngineEvent::Stopping => ("stopping", Value::Object(Map::new())),
         EngineEvent::PreferencesChanged => ("preferences.changed", Value::Object(Map::new())),
+        EngineEvent::Log(line) => ("log", log_line(line)),
         EngineEvent::ServerConnecting(info) => ("server.connecting", json!({"server": server(info)})),
         EngineEvent::ServerConnected { server: info, client_id, low_id, obfuscated } => (
             "server.connected",

@@ -4,15 +4,18 @@
 //! The engine: one profile, its preferences and identity, the listening socket, the network side, and the events its
 //! front ends follow.
 
+pub mod event_replay;
 pub mod network;
+
+use crate::engine::event_replay::EventReplay;
 pub mod totals;
 
 use std::collections::BTreeMap;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -31,7 +34,8 @@ use crate::api::kad_info::KadInfo;
 use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
-use crate::api::nj_mule_engine::NjMuleEngine;
+use crate::api::log_line::{Level, LogLine};
+use crate::api::nj_mule_engine::{NjMuleEngine, Subscription};
 use crate::api::nj_mule_info;
 use crate::api::peer_comment::PeerComment;
 use crate::api::peer_info::PeerInfo;
@@ -94,12 +98,47 @@ pub struct Shared {
     routes: Routes,
     events: broadcast::Sender<EngineEvent>,
     context: Mutex<ServerContext>,
+    // What a late follower missed, recorded as the events are sent.
+    replay: Mutex<EventReplay>,
+    // Set with the event that tells the stop, the last one sent.
+    ended: AtomicBool,
     commands: mpsc::UnboundedSender<Command>,
     stop: watch::Sender<bool>,
     tasks: tokio::sync::Mutex<JoinSet<()>>,
 }
 
 impl Shared {
+    // Recorded and sent at once, so that a follower gets each event once: missed or live. Once the engine stops,
+    // the events go nowhere: the last one tells the stop.
+    fn publish(&self, event: EngineEvent) {
+        let mut replay = self.replay.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.ended.load(Ordering::Relaxed) {
+            return;
+        }
+        if event == EngineEvent::Stopping {
+            self.ended.store(true, Ordering::Relaxed);
+        }
+        replay.record(&event);
+        // Without a front end following, nobody misses the event.
+        let _ = self.events.send(event);
+    }
+
+    fn subscribe(&self) -> Subscription {
+        let replay = self.replay.lock().unwrap_or_else(PoisonError::into_inner);
+        Subscription { missed: replay.missed(), live: self.events.subscribe() }
+    }
+
+    /// Tells the user, through the log and the front ends.
+    fn user_log(&self, level: Level, message: String) {
+        match level {
+            Level::Debug => tracing::debug!("{message}"),
+            Level::Info | Level::Success => tracing::info!("{message}"),
+            Level::Warning => tracing::warn!("{message}"),
+            Level::Error => tracing::error!("{message}"),
+        }
+        self.publish(EngineEvent::Log(LogLine::now(level, message)));
+    }
+
     fn listen_port(&self) -> u16 {
         self.listen_port.load(Ordering::Relaxed)
     }
@@ -159,17 +198,17 @@ impl Engine {
         dirs.create_all()?;
         let preferences = preferences_codec::load(&dirs.config.join(preferences_codec::FILE_NAME))?;
         let user_hash = user_hash_store::load_or_create(&dirs.config, &mut rand::rng())?;
+        // What the user's log tells of the start, once the front ends can follow it.
+        let mut told = Vec::new();
         // Sockets go on the network interface of the preferences; while it is gone, none opens and nothing connects.
         let local = match bind_interface::resolve_now(&preferences.bind_interface) {
             Binding::Any => Some(None),
             Binding::Bound(address) => {
-                tracing::info!("Connections go through {} ({address})", preferences.bind_interface);
+                told.push((Level::Info, format!("Connections go through {} ({address})", preferences.bind_interface)));
                 Some(Some(address))
             }
             Binding::Missing(choice) => {
-                tracing::warn!(
-                    "The network interface {choice} is not available: njMule stays offline until it is back"
-                );
+                told.push((Level::Warning, network::offline(&choice)));
                 None
             }
         };
@@ -180,7 +219,7 @@ impl Engine {
                     Ok(listener) => Some(listener),
                     Err(e) => {
                         // Other clients cannot reach us: we get a low id.
-                        tracing::warn!("Cannot listen on TCP port {}: {e}", preferences.tcp_port);
+                        told.push((Level::Warning, format!("Cannot listen on TCP port {}: {e}", preferences.tcp_port)));
                         None
                     }
                 }
@@ -192,7 +231,7 @@ impl Engine {
             Some(local) => match ServerUdp::bind_beside(preferences.udp_port, local).await {
                 Ok(socket) => Some(socket),
                 Err(e) => {
-                    tracing::warn!("Cannot open the server UDP socket: {e}");
+                    told.push((Level::Warning, format!("No server UDP socket: global searches are off ({e})")));
                     None
                 }
             },
@@ -219,6 +258,8 @@ impl Engine {
             routes,
             events,
             context: Mutex::new(ServerContext::default()),
+            replay: Mutex::default(),
+            ended: AtomicBool::new(false),
             commands,
             stop: watch::Sender::new(false),
             tasks: tokio::sync::Mutex::new(JoinSet::new()),
@@ -229,6 +270,10 @@ impl Engine {
             let _ = network.await;
         });
         engine.publish(EngineEvent::Started { version: nj_mule_info::version().to_owned() });
+        for (level, message) in told {
+            engine.user_log(level, message);
+        }
+        engine.user_log(Level::Info, format!("{} {} started", nj_mule_info::NAME, nj_mule_info::version()));
         Ok(engine)
     }
 
@@ -261,8 +306,14 @@ impl Engine {
         Ok(changed)
     }
 
-    pub fn subscribe(&self) -> broadcast::Receiver<EngineEvent> {
-        self.shared.events.subscribe()
+    /// The events from now on, after the latest lines of the log and the server's state.
+    pub fn subscribe(&self) -> Subscription {
+        self.shared.subscribe()
+    }
+
+    /// Tells the user, through the log and the front ends.
+    pub fn user_log(&self, level: Level, message: impl Into<String>) {
+        self.shared.user_log(level, message.into());
     }
 
     /// Says hello to a client and answers what it said, and whether it proved its user hash.
@@ -582,8 +633,7 @@ impl Engine {
     }
 
     fn publish(&self, event: EngineEvent) {
-        // Without a front end following, nobody misses the event.
-        let _ = self.shared.events.send(event);
+        self.shared.publish(event);
     }
 }
 
@@ -620,7 +670,7 @@ impl NjMuleEngine for Engine {
         Engine::update_preferences(self, changes)
     }
 
-    fn subscribe(&self) -> broadcast::Receiver<EngineEvent> {
+    fn subscribe(&self) -> Subscription {
         Engine::subscribe(self)
     }
 

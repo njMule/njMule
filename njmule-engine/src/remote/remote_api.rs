@@ -32,6 +32,7 @@ use crate::engine::NotesError;
 use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::persist::format::{nodes_dat, server_met};
 use crate::remote::rate_history::{self, RateHistory};
+use crate::remote::recent_log::RecentLog;
 use crate::remote::search_collector::{Asked, SearchCollector};
 use crate::remote::{api_json, api_reader, event_streams};
 use crate::search::search_manager::{Scope, StartError};
@@ -39,6 +40,8 @@ use crate::server::server_list::Address;
 
 // The searches started through the API, with the results the engine's events bring.
 type Searches = Arc<Mutex<SearchCollector>>;
+// The latest lines of the user's log.
+type Log = Arc<Mutex<RecentLog>>;
 // The rates of each second, which the API reads from the engine's status.
 type Rates = Arc<Mutex<RateHistory>>;
 
@@ -60,12 +63,14 @@ pub const VERSION: u32 = 1;
 /// The calls, relative to the API's base path.
 pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
     let searches = Searches::default();
-    collect(&engine, Arc::clone(&searches));
+    let log = Log::default();
+    collect(&engine, Arc::clone(&searches), Arc::clone(&log));
     let rates = Rates::default();
     sample_rates(&engine, Arc::clone(&rates));
     Router::new()
         .route("/", get(api_info))
         .route("/rates", get(rates_of))
+        .route("/log", get(recent_log))
         .route("/limits", get(limits::<E>).put(set_limits::<E>))
         .route("/preferences/defaults", get(|| async { Json(api_json::preferences(&Preferences::default())) }))
         .route("/folders", get(folders::<E>))
@@ -163,6 +168,7 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
         .fallback(|| async { ApiError::new(StatusCode::NOT_FOUND, "No such call") })
         .method_not_allowed_fallback(|| async { ApiError::new(StatusCode::METHOD_NOT_ALLOWED, "No such method") })
         .layer(Extension(searches))
+        .layer(Extension(log))
         .layer(Extension(rates))
         .layer(Extension(Exiting(exit)))
         .with_state(engine)
@@ -282,11 +288,15 @@ async fn shutdown(Extension(exiting): Extension<Exiting>) -> Result<Response, Ap
     Ok((StatusCode::ACCEPTED, Json(api_json::ok())).into_response())
 }
 
-// Gathers the results of the searches until the engine stops.
-fn collect<E: NjMuleEngine>(engine: &E, searches: Searches) {
-    let mut events = engine.subscribe();
+// Gathers the results of the searches and the user's log until the engine stops, those logged before first.
+fn collect<E: NjMuleEngine>(engine: &E, searches: Searches, log: Log) {
+    let subscription = engine.subscribe();
     let stopped = engine.stopped();
     tokio::spawn(async move {
+        for event in subscription.missed {
+            gather(&searches, &log, event);
+        }
+        let mut events = subscription.live;
         tokio::pin!(stopped);
         loop {
             let event = tokio::select! {
@@ -294,13 +304,36 @@ fn collect<E: NjMuleEngine>(engine: &E, searches: Searches) {
                 event = events.recv() => event,
             };
             match event {
-                Ok(EngineEvent::SearchResults { search, results }) => collected(&searches).add(search, results),
-                Ok(EngineEvent::SearchEnded { search, .. }) => collected(&searches).ended(search),
-                Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                Ok(event) => gather(&searches, &log, event),
+                Err(broadcast::error::RecvError::Lagged(_)) => {}
                 Err(broadcast::error::RecvError::Closed) => return,
             }
         }
     });
+}
+
+fn gather(searches: &Searches, log: &Log, event: EngineEvent) {
+    match event {
+        EngineEvent::SearchResults { search, results } => collected(searches).add(search, results),
+        EngineEvent::SearchEnded { search, .. } => collected(searches).ended(search),
+        EngineEvent::Log(line) => log.lock().unwrap_or_else(PoisonError::into_inner).add(line),
+        _ => {}
+    }
+}
+
+/// The lines of the user's log numbered above `after`, oldest first.
+async fn recent_log(
+    Extension(log): Extension<Log>,
+    Query(query): Query<BTreeMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    let after = match query.get("after") {
+        None => 0,
+        Some(text) => {
+            text.parse().map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a line number: {text}")))?
+        }
+    };
+    let lines = log.lock().unwrap_or_else(PoisonError::into_inner).after(after);
+    Ok(Json(Value::Array(lines.iter().map(api_json::log_entry).collect())))
 }
 
 fn collected(searches: &Searches) -> MutexGuard<'_, SearchCollector> {

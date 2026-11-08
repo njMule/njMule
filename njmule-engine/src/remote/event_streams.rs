@@ -19,7 +19,9 @@ use crate::remote::api_json;
 const KEEP_ALIVE: Duration = Duration::from_secs(15);
 
 pub fn stream<E: NjMuleEngine>(engine: &E) -> Sse<impl Stream<Item = Result<Event, Infallible>> + use<E>> {
-    let events = BroadcastStream::new(engine.subscribe()).scan((0u64, false), |(id, ended), received| {
+    let subscription = engine.subscribe();
+    let missed = stream::iter(subscription.missed.into_iter().map(Ok));
+    let events = missed.chain(BroadcastStream::new(subscription.live)).scan((0u64, false), |(id, ended), received| {
         if *ended {
             return ready(None);
         }
