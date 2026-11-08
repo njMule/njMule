@@ -5,7 +5,7 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
-mod held;
+use crate::held;
 
 use std::collections::BTreeMap;
 use std::fs;

@@ -184,6 +184,11 @@ The port keeps the Java tests' names. When a Java test class has a Rust twin (`F
 `test_name_map_test` checks both ways, so a test added in Java or lost in Rust fails it, and so does
 a listed test once it is ported. The `engine` job runs it when the Java tests change too.
 
+The files of `njmule-engine/tests` are the modules of one test executable, `tests/main.rs`, so the
+engine is linked once and not once for each file. A new test file is declared there
+(`mod foo_test;`), and `test_name_map_test` fails on a file left out. One file's tests run with
+`cargo test --test suite foo_test::`.
+
 The areas ported whole are listed in `njmule-engine/tests/ported_areas.txt`: every Java test class
 there has a twin, and every package keeps at least the line coverage of the Java package it replaces.
 The Java figures come from JaCoCo and are kept in `njmule-engine/tests/java_coverage.txt`; the

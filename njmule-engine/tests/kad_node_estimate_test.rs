@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
-mod kad_lab;
+use crate::kad_lab;
 
 use kad_lab::{KadLab, PORT, ip};
 use njmule_engine::kad::kad_node::{self, KadNode};

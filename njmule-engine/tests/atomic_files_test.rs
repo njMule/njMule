@@ -7,7 +7,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
-mod held;
+use crate::held;
 
 use std::fs;
 use std::io::{self, ErrorKind};

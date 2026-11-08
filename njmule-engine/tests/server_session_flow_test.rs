@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::panic)]
 
-mod scripted_server;
+use crate::scripted_server;
 
 use std::net::Ipv4Addr;
 use std::time::Duration;

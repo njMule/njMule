@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
-mod kad_lab;
+use crate::kad_lab;
 
 use std::net::Ipv4Addr;
 use std::time::Duration;

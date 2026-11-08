@@ -12,7 +12,7 @@
     clippy::arithmetic_side_effects
 )]
 
-mod free_port;
+use crate::free_port;
 
 use std::fs;
 use std::net::{Ipv4Addr, SocketAddrV4};

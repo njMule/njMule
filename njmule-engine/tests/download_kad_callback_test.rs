@@ -13,8 +13,8 @@
     clippy::panic
 )]
 
-mod download_lab;
-mod scripted_source;
+use crate::download_lab;
+use crate::scripted_source;
 
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::Duration;

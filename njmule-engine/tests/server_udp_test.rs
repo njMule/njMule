@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
-mod fake_socks5_proxy;
+use crate::fake_socks5_proxy;
 
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::Arc;

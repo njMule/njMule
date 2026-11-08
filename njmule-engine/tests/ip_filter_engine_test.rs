@@ -5,7 +5,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-mod free_port;
+use crate::free_port;
 
 use std::collections::BTreeMap;
 use std::fs;

@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used)]
 
-mod scripted_server;
+use crate::scripted_server;
 
 use njmule_engine::config::obfuscation_mode::ObfuscationMode;
 use njmule_engine::persist::format::server_met::Server;

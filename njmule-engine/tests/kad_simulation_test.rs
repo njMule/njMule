@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
-mod kad_wire;
+use crate::kad_wire;
 
 use std::sync::Arc;
 

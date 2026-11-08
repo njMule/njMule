@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
 
-mod fake_socks5_proxy;
+use crate::fake_socks5_proxy;
 
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::Path;

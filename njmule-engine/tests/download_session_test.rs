@@ -12,7 +12,7 @@
     clippy::panic
 )]
 
-mod scripted_source;
+use crate::scripted_source;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};

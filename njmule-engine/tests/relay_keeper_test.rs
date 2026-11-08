@@ -5,7 +5,7 @@
 
 #![allow(clippy::unwrap_used, clippy::panic, clippy::arithmetic_side_effects)]
 
-mod fake_socks5_proxy;
+use crate::fake_socks5_proxy;
 
 use std::net::{Ipv4Addr, TcpListener};
 use std::sync::{Arc, Mutex};
