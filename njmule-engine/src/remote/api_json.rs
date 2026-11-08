@@ -4,6 +4,7 @@
 //! The JSON of the remote-control API, field for field as `openapi.yaml` describes it.
 
 use serde_json::{Map, Value, json};
+use time::format_description::well_known::Rfc3339;
 
 use crate::api::category::Category;
 use crate::api::download_info::{DownloadInfo, SourceInfo};
@@ -25,13 +26,13 @@ use crate::api::server_info::ServerInfo;
 use crate::api::spam_marks::SpamMarks;
 use crate::config::bind_interface::Candidate;
 use crate::config::preferences::Preferences;
+use crate::config::schedule::{Rule, Schedule, time_text};
 use crate::files::file_types;
 use crate::files::part_file::PartMap;
 use crate::files::shared_files::SharedFile;
 use crate::persist::preferences_codec;
 use crate::remote::rate_history::Rate;
 use crate::remote::recent_log::Entry;
-use time::format_description::well_known::Rfc3339;
 
 // The passwords the preferences hold, which never leave.
 const SECRETS: [&str; 2] = ["notify.smtpPassword", "proxy.password"];
@@ -77,7 +78,6 @@ pub fn update() -> Value {
     })
 }
 
-/// No schedule yet: no rules, none active.
 /// A network interface the connections may be bound to.
 pub fn network_interface(candidate: &Candidate) -> Value {
     json!({
@@ -87,8 +87,38 @@ pub fn network_interface(candidate: &Candidate) -> Value {
     })
 }
 
-pub fn schedule() -> Value {
-    json!({"rules": [], "active": null})
+/// The rules of the schedule and the one in force, if any.
+pub fn schedule(schedule: &Schedule, active: Option<&Rule>) -> Value {
+    json!({
+        "rules": schedule.rules.iter().map(rule).collect::<Vec<_>>(),
+        "active": active.map(|rule| rule.name.as_str()),
+    })
+}
+
+fn rule(rule: &Rule) -> Value {
+    let mut out = json!({
+        "name": rule.name,
+        "enabled": rule.enabled,
+        "days": rule.days.iter().map(|day| day.name().to_ascii_lowercase()).collect::<Vec<_>>(),
+        "start": time_text(rule.start),
+        "end": time_text(rule.end),
+    });
+    let limits = [
+        ("uploadKiBps", rule.upload_kibps),
+        ("downloadKiBps", rule.download_kibps),
+        ("maxConnections", rule.max_connections),
+        ("maxSourcesPerFile", rule.max_sources_per_file),
+        ("stopCategory", rule.stop_category),
+        ("resumeCategory", rule.resume_category),
+    ];
+    if let Some(fields) = out.as_object_mut() {
+        for (name, value) in limits {
+            if let Some(value) = value {
+                fields.insert(name.to_owned(), json!(value));
+            }
+        }
+    }
+    out
 }
 
 pub fn peer_info(info: &PeerInfo) -> Value {

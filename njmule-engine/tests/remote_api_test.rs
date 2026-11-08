@@ -35,6 +35,7 @@ use njmule_engine::api::server_info::ServerInfo;
 use njmule_engine::api::spam_marks::SpamMarks;
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::config::preferences::Preferences;
+use njmule_engine::config::schedule::{Rule, Schedule};
 use njmule_engine::engine::NotesError;
 use njmule_engine::engine::network::{ConnectError, MoreAnswer};
 use njmule_engine::files::part_file::PartMap;
@@ -79,6 +80,7 @@ struct Fake {
     // Kept as the engine keeps them.
     preferences: Preferences,
     categories: Vec<Category>,
+    schedule: Schedule,
 }
 
 #[derive(Clone)]
@@ -136,6 +138,19 @@ impl NjMuleEngine for FakeEngine {
         let valid = categories.into_iter().map(Category::validated).collect::<Result<Vec<_>, _>>()?;
         self.with(|fake| fake.categories = valid);
         Ok(())
+    }
+
+    async fn schedule(&self) -> Schedule {
+        self.with(|fake| fake.schedule.clone())
+    }
+
+    async fn active_rule(&self) -> Option<Rule> {
+        None
+    }
+
+    async fn update_schedule(&self, schedule: Schedule) -> Result<Schedule, String> {
+        self.with(|fake| fake.schedule.clone_from(&schedule));
+        Ok(schedule)
     }
 
     async fn status(&self) -> Option<EngineStatus> {
@@ -1372,6 +1387,38 @@ async fn should_replace_the_categories() {
         "\"patterns\":\"*.mkv|*.avi\"",
         "\"priority\":\"high\"",
     ]);
+}
+
+#[tokio::test]
+async fn should_replace_the_rules_of_the_schedule() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called(
+        "PUT",
+        "/api/v1/schedule",
+        "{\"rules\":[{\"name\":\"night\",\"days\":[\"monday\",\"sunday\"],\"start\":\"23:00\",         \"end\":\"06:00\",\"downloadKiBps\":0}]}",
+    )
+    .await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&[
+        "\"name\":\"night\"",
+        "\"days\":[\"monday\",\"sunday\"]",
+        "\"start\":\"23:00\"",
+        "\"downloadKiBps\":0",
+    ]);
+    api.then_the_body_does_not_contain("uploadKiBps");
+}
+
+#[tokio::test]
+async fn should_refuse_a_rule_without_a_time() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("PUT", "/api/v1/schedule", "{\"rules\":[{\"start\":\"late\",\"end\":\"06:00\"}]}").await;
+
+    api.then_the_status_is(400);
 }
 
 #[tokio::test]

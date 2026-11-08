@@ -11,6 +11,7 @@ mod free_port;
 use std::fs;
 use std::time::{Duration, Instant};
 
+use njmule_engine::api::category::Category;
 use njmule_engine::api::download_info::{DownloadPriority, DownloadStatus};
 use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::engine_event::EngineEvent;
@@ -18,11 +19,16 @@ use njmule_engine::api::log_line::Level;
 use njmule_engine::api::nj_mule_engine::Subscription;
 use njmule_engine::api::search_result::SearchResult;
 use njmule_engine::config::app_directories::AppDirectories;
+use njmule_engine::config::schedule::{DayOfWeek, Rule, Schedule};
 use njmule_engine::engine::Engine;
+use njmule_engine::persist::schedule_codec;
+use strum::VariantArray;
 
 const SONG: [u8; 16] = [0xf4; 16];
 const FILM: [u8; 16] = [0xf3; 16];
 const WAIT: Duration = Duration::from_secs(5);
+const FILMS: (u32, &str) = (1, "Films");
+const MUSIC: (u32, &str) = (2, "Music");
 
 #[tokio::test]
 async fn should_swap_sources_and_take_them_by_itself_through_the_engine() {
@@ -140,6 +146,74 @@ async fn should_send_nowhere_what_is_logged_after_the_end() {
     api.then_the_last_event_is_the_stop();
 }
 
+#[tokio::test]
+async fn should_let_rules_go_of_deleted_categories_and_keep_the_active_rule_active() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_the_categories(&[FILMS, MUSIC]).await;
+    api.given_the_schedule_is(&[stop_films(), resume_music()]).await;
+    api.given_the_rule_in_force_is(&stop_films()).await;
+
+    api.when_the_categories_are(&[MUSIC]).await;
+
+    api.then_the_first_rule_stops_no_category().await;
+    api.then_the_second_rule_is(&resume_music()).await;
+    api.then_the_first_rule_is_still_in_force().await;
+    api.then_the_saved_schedule_is_the_one_of_the_engine().await;
+}
+
+#[tokio::test]
+async fn should_go_on_without_acting_again_when_a_rule_is_edited_while_it_holds() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_the_schedule_is(&[night()]).await;
+    api.given_someone_subscribed();
+    api.given_the_schedule_is(&[night()]).await;
+
+    api.when_the_schedule_is(&[late_night()]).await;
+
+    api.then_the_rule_in_force_is(&late_night()).await;
+    api.then_the_scheduler_has_logged_only(&["Scheduler: \"night\" applies now"]).await;
+}
+
+#[tokio::test]
+async fn should_refuse_a_schedule_that_cannot_be_saved() {
+    let mut api = EngineApi::new();
+    api.given_a_running_engine().await;
+    api.given_the_schedule_cannot_be_saved();
+
+    api.when_the_schedule_is_emptied().await;
+
+    api.then_the_schedule_is_refused();
+}
+
+fn stop_films() -> Rule {
+    rule("films off", true, Some(FILMS.0), None)
+}
+
+fn resume_music() -> Rule {
+    rule("music on", false, None, Some(MUSIC.0))
+}
+
+fn night() -> Rule {
+    rule("night", true, None, None)
+}
+
+fn late_night() -> Rule {
+    rule("late night", true, None, None)
+}
+
+// A rule that holds all week.
+fn rule(name: &str, enabled: bool, stop_category: Option<u32>, resume_category: Option<u32>) -> Rule {
+    Rule {
+        enabled,
+        days: DayOfWeek::VARIANTS.iter().copied().collect(),
+        stop_category,
+        resume_category,
+        ..Rule::new(name)
+    }
+}
+
 // A follower of the engine's events, which keeps those it read.
 struct Recorder {
     subscription: Subscription,
@@ -186,6 +260,7 @@ struct EngineApi {
     rated: Vec<SearchResult>,
     recorder: Option<Recorder>,
     slow: Option<Recorder>,
+    schedule_update: Option<Result<Schedule, String>>,
 }
 
 impl EngineApi {
@@ -199,6 +274,7 @@ impl EngineApi {
             rated: Vec::new(),
             recorder: None,
             slow: None,
+            schedule_update: None,
         }
     }
 
@@ -406,6 +482,87 @@ impl EngineApi {
 
     fn then_the_last_event_is_the_stop(&self) {
         assert_eq!(self.recorder.as_ref().unwrap().events.last(), Some(&EngineEvent::Stopping));
+    }
+
+    async fn given_the_categories(&self, categories: &[(u32, &str)]) {
+        self.when_the_categories_are(categories).await;
+    }
+
+    async fn given_the_schedule_is(&self, rules: &[Rule]) {
+        self.when_the_schedule_is(rules).await;
+    }
+
+    async fn given_the_rule_in_force_is(&self, rule: &Rule) {
+        self.then_the_rule_in_force_is(rule).await;
+    }
+
+    // A folder where the new file is written first.
+    fn given_the_schedule_cannot_be_saved(&self) {
+        let temporary = self.engine().directories().config.join(format!("{}.tmp", schedule_codec::FILE_NAME));
+        fs::create_dir_all(&temporary).unwrap();
+        fs::write(temporary.join("keep"), "x").unwrap();
+    }
+
+    async fn when_the_categories_are(&self, categories: &[(u32, &str)]) {
+        let categories = categories
+            .iter()
+            .map(|&(id, name)| Category {
+                id,
+                name: name.to_owned(),
+                incoming: None,
+                comment: String::new(),
+                color: 0,
+                priority: DownloadPriority::Auto,
+                patterns: String::new(),
+                regex: false,
+            })
+            .collect();
+        within(self.engine().set_categories(categories)).await.unwrap();
+    }
+
+    async fn when_the_schedule_is(&self, rules: &[Rule]) {
+        within(self.engine().update_schedule(Schedule { rules: rules.to_vec() })).await.unwrap();
+    }
+
+    async fn when_the_schedule_is_emptied(&mut self) {
+        self.schedule_update = Some(within(self.engine().update_schedule(Schedule::default())).await);
+    }
+
+    async fn then_the_first_rule_stops_no_category(&self) {
+        assert_eq!(within(self.engine().schedule()).await.rules[0].stop_category, None);
+    }
+
+    async fn then_the_second_rule_is(&self, rule: &Rule) {
+        assert_eq!(&within(self.engine().schedule()).await.rules[1], rule);
+    }
+
+    async fn then_the_first_rule_is_still_in_force(&self) {
+        let first = within(self.engine().schedule()).await.rules[0].clone();
+        assert_eq!(within(self.engine().active_rule()).await, Some(first));
+    }
+
+    async fn then_the_saved_schedule_is_the_one_of_the_engine(&self) {
+        let saved = schedule_codec::load(&self.engine().directories().config.join(schedule_codec::FILE_NAME)).unwrap();
+        assert_eq!(saved, within(self.engine().schedule()).await);
+    }
+
+    async fn then_the_rule_in_force_is(&self, rule: &Rule) {
+        assert_eq!(within(self.engine().active_rule()).await.as_ref(), Some(rule));
+    }
+
+    // A line of our own marks the end of what was logged before it.
+    async fn then_the_scheduler_has_logged_only(&mut self, messages: &[&str]) {
+        self.engine().user_log(Level::Info, "done");
+        let recorder = self.recorder.as_mut().unwrap();
+        assert!(recorder.await_log("done").await);
+        let logged: Vec<String> =
+            recorder.logs().into_iter().filter(|message| message.starts_with("Scheduler")).collect();
+        assert_eq!(logged, messages, "only the first rule acted, at the first update");
+    }
+
+    fn then_the_schedule_is_refused(&self) {
+        let refused = self.schedule_update.as_ref().unwrap().as_ref().unwrap_err();
+        assert!(refused.starts_with("Cannot save the schedule"), "{refused}");
     }
 
     fn engine(&self) -> Engine {

@@ -6,8 +6,7 @@
 
 pub mod event_replay;
 pub mod network;
-
-use crate::engine::event_replay::EventReplay;
+pub mod scheduler;
 pub mod totals;
 
 use std::collections::BTreeMap;
@@ -47,7 +46,9 @@ use crate::config::app_directories::AppDirectories;
 use crate::config::bind_interface::{self, Binding};
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
+use crate::config::schedule::{Rule, Schedule};
 use crate::config::shared_files_visibility::SharedFilesVisibility;
+use crate::engine::event_replay::EventReplay;
 use crate::engine::network::{Command, ConnectError, DownloadChange, MoreAnswer};
 use crate::files::shared_files::SharedFile;
 use crate::net::routes::Routes;
@@ -612,6 +613,23 @@ impl Engine {
             .unwrap_or_else(|| Err("the engine is stopping".to_owned()))
     }
 
+    /// The times of the week when other limits apply.
+    pub async fn schedule(&self) -> Schedule {
+        self.ask(Command::Schedule).await.unwrap_or_default()
+    }
+
+    /// The rule of the schedule in force, if any.
+    pub async fn active_rule(&self) -> Option<Rule> {
+        self.ask(Command::ActiveRule).await.flatten()
+    }
+
+    /// Saves the schedule and puts it in place of the one before; answers it as kept, or why it cannot be.
+    pub async fn update_schedule(&self, schedule: Schedule) -> Result<Schedule, String> {
+        self.ask(|reply| Command::SetSchedule(schedule, reply))
+            .await
+            .unwrap_or_else(|| Err("the engine is stopping".to_owned()))
+    }
+
     /// What the engine is doing now; none once it stopped.
     pub async fn status(&self) -> Option<EngineStatus> {
         self.ask(Command::Status).await.map(|status| *status)
@@ -660,6 +678,18 @@ impl NjMuleEngine for Engine {
 
     fn set_categories(&self, categories: Vec<Category>) -> impl Future<Output = Result<(), String>> + Send {
         Engine::set_categories(self, categories)
+    }
+
+    fn schedule(&self) -> impl Future<Output = Schedule> + Send {
+        Engine::schedule(self)
+    }
+
+    fn active_rule(&self) -> impl Future<Output = Option<Rule>> + Send {
+        Engine::active_rule(self)
+    }
+
+    fn update_schedule(&self, schedule: Schedule) -> impl Future<Output = Result<Schedule, String>> + Send {
+        Engine::update_schedule(self, schedule)
     }
 
     fn preferences(&self) -> Preferences {

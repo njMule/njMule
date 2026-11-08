@@ -19,7 +19,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::api::category::Category;
-use crate::api::download_info::{DownloadInfo, DownloadPriority, SourceInfo};
+use crate::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
 use crate::api::engine_status::EngineStatus;
@@ -40,10 +40,12 @@ use crate::api::spam_marks::SpamMarks;
 use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
+use crate::config::schedule::{Rule, Schedule};
 use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::download::download_manager::{self, Action, DownloadEvent, DownloadManager, KadLink, ServerLink};
 use crate::download::download_session;
 use crate::download::finished_downloads::FinishedDownloads;
+use crate::engine::scheduler::{self, Change, Scheduler};
 use crate::engine::totals::{self, Totals};
 use crate::engine::{ServerContext, Shared};
 use crate::files::hash::file_hasher::FileHashes;
@@ -60,6 +62,7 @@ use crate::peer::{peer_greetings, peer_software};
 use crate::persist::categories_codec;
 use crate::persist::format::nodes_dat;
 use crate::persist::format::server_met::Server;
+use crate::persist::schedule_codec;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams;
 use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint};
@@ -167,6 +170,12 @@ pub enum Command {
     SaveSearches(Vec<SavedSearch>, oneshot::Sender<Result<(), String>>),
     /// Replaces the categories, which must be valid and have different ids; answers why not.
     SetCategories(Vec<Category>, oneshot::Sender<Result<(), String>>),
+    /// The rules of the schedule.
+    Schedule(oneshot::Sender<Schedule>),
+    /// The rule of the schedule in force, if any.
+    ActiveRule(oneshot::Sender<Option<Rule>>),
+    /// Saves the schedule and puts it in place of the one before; answers it as kept, or why it cannot be.
+    SetSchedule(Schedule, oneshot::Sender<Result<Schedule, String>>),
     /// Says hello to a client and runs the identification: told once its outcome is known, the connection closes or
     /// the wait is over.
     Hello(SocketAddr, oneshot::Sender<io::Result<PeerInfo>>),
@@ -305,8 +314,11 @@ pub struct Network {
     datagrams: mpsc::UnboundedSender<(SocketAddr, Packet)>,
     accepting: Option<JoinHandle<()>>,
     following: Option<JoinHandle<()>>,
-    // The preferences as the network last applied them.
+    // The preferences in force, the saved ones with the limits of the scheduler's rule, as the network last applied
+    // them: those it reads.
     applied: Preferences,
+    scheduler: Scheduler,
+    since_schedule_check: u32,
     // The interface the sockets are on, and the seconds since it was last looked at.
     binding: Binding,
     since_bind_check: u32,
@@ -432,6 +444,7 @@ pub fn start(
         Vec::new()
     });
     downloads.set_categories(categories.clone());
+    let scheduler = Scheduler::load(dirs.config.join(schedule_codec::FILE_NAME));
     let finished = FinishedDownloads::load(&dirs.config);
     let spam_file = dirs.config.join(spam_filter::FILE_NAME);
     let spam = SpamFilter::load(&spam_file).unwrap_or_else(|e| {
@@ -465,6 +478,8 @@ pub fn start(
         accepting: None,
         following: Some(following),
         applied,
+        scheduler,
+        since_schedule_check: 0,
         binding,
         since_bind_check: 0,
         server_udp_keys,
@@ -496,6 +511,8 @@ pub fn start(
         kad: KadSide::new(kad_in),
     };
     network.attach(listener, udp);
+    // The network starts with the limits of the rule in force, which then acts once.
+    network.refresh_schedule();
     if preferences.kad_enabled {
         network.start_kad();
     }
@@ -774,6 +791,15 @@ impl Network {
             Command::SetCategories(categories, answer) => {
                 let _ = answer.send(self.set_categories(categories));
             }
+            Command::Schedule(answer) => {
+                let _ = answer.send(self.scheduler.schedule().clone());
+            }
+            Command::ActiveRule(answer) => {
+                let _ = answer.send(self.scheduler.active().cloned());
+            }
+            Command::SetSchedule(schedule, answer) => {
+                let _ = answer.send(self.set_schedule(schedule));
+            }
             Command::Status(answer) => {
                 let _ = answer.send(Box::new(self.status()));
             }
@@ -1006,6 +1032,11 @@ impl Network {
                     self.since_bind_check = 0;
                     self.check_binding();
                 }
+                self.since_schedule_check = self.since_schedule_check.saturating_add(1);
+                if self.since_schedule_check >= scheduler::CHECK_SECONDS {
+                    self.since_schedule_check = 0;
+                    self.refresh_schedule();
+                }
             }
             Tick::Rebound(binding, listener, udp) => {
                 if binding == self.binding {
@@ -1013,7 +1044,7 @@ impl Network {
                     self.kad_start_again();
                 }
             }
-            Tick::PreferencesChanged => self.apply_preferences(),
+            Tick::PreferencesChanged => self.refresh_schedule(),
             Tick::KadUdpCheckEnded(ip, asked) => self.kad_udp_check_ended(ip, asked),
             Tick::KadStart => self.kad_start_again(),
             Tick::Search(timer) => {
@@ -1139,7 +1170,7 @@ impl Network {
     // The interface may go (a VPN that drops), come back, or come back with another address.
     // What follows a change of the preferences, once for each change.
     fn apply_preferences(&mut self) {
-        let now = self.shared.preferences.borrow().clone();
+        let now = self.scheduler.effective(&self.shared.preferences.borrow());
         if now == self.applied {
             return;
         }
@@ -1151,6 +1182,56 @@ impl Network {
             relay.follow(self.applied.proxy.clone());
         }
         self.kad_preferences(was.kad_enabled, was.udp_port);
+    }
+
+    // Puts the rule that holds now in force, and applies the preferences it gives.
+    fn refresh_schedule(&mut self) {
+        let change = self.scheduler.refresh(scheduler::local_now());
+        self.schedule_changed(change);
+    }
+
+    fn set_schedule(&mut self, schedule: Schedule) -> Result<Schedule, String> {
+        let rules = schedule.rules.into_iter().map(Rule::validated).collect::<Result<Vec<_>, _>>()?;
+        let change = self
+            .scheduler
+            .update(Schedule { rules }, scheduler::local_now())
+            .map_err(|e| format!("Cannot save the schedule: {e}"))?;
+        self.schedule_changed(change);
+        Ok(self.scheduler.schedule().clone())
+    }
+
+    // A rule acts when it begins.
+    fn schedule_changed(&mut self, change: Option<Change>) {
+        match change {
+            Some(Change::Began(rule)) => {
+                self.schedule_categories(rule.stop_category, rule.resume_category);
+                self.user_log(LogLevel::Info, format!("Scheduler: \"{}\" applies now", rule.name));
+            }
+            Some(Change::Ended) => self.user_log(LogLevel::Info, "Scheduler: the preferences apply again".to_owned()),
+            None => {}
+        }
+        self.apply_preferences();
+    }
+
+    // Stops the downloads of one category, and resumes the paused or stopped ones of another.
+    fn schedule_categories(&mut self, stop: Option<u32>, resume: Option<u32>) {
+        let ours = self.shared.our_hello();
+        for download in self.downloads.downloads() {
+            if stop == Some(download.category) {
+                self.downloads.stop_by_schedule(&download.hash, &ours);
+            } else if resume == Some(download.category)
+                && matches!(download.status, DownloadStatus::Paused | DownloadStatus::Stopped)
+            {
+                self.downloads.resume(&download.hash, &ours);
+            }
+        }
+        self.after_downloads();
+        if let Some(category) = stop {
+            self.user_log(LogLevel::Info, format!("Scheduler: downloads of category {category} stopped"));
+        }
+        if let Some(category) = resume {
+            self.user_log(LogLevel::Info, format!("Scheduler: downloads of category {category} resumed"));
+        }
     }
 
     fn check_binding(&mut self) {
@@ -2066,10 +2147,11 @@ impl Network {
         valid.sort_by_key(|category| category.id);
         categories_codec::save(&self.shared.dirs.config.join(categories_codec::FILE_NAME), &valid)
             .map_err(|e| format!("Cannot save the categories: {e}"))?;
+        let deleted = self.categories.iter().map(|category| category.id).filter(|id| !ids.contains(id)).collect();
         self.categories = valid.clone();
         self.downloads.set_categories(valid);
         self.after_downloads();
-        Ok(())
+        self.scheduler.forget_categories(&deleted).map_err(|e| format!("Cannot save the schedule: {e}"))
     }
 
     fn session_seconds(&self) -> u64 {
@@ -2085,7 +2167,7 @@ impl Network {
     }
 
     fn preferences(&self) -> Preferences {
-        self.shared.preferences.borrow().clone()
+        self.applied.clone()
     }
 
     fn publish(&self, event: EngineEvent) {

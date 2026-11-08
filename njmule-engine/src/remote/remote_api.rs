@@ -28,6 +28,7 @@ use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::api::{nj_mule_info, search_request};
 use crate::config::bind_interface;
 use crate::config::preferences::Preferences;
+use crate::config::schedule::Schedule;
 use crate::engine::NotesError;
 use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::persist::format::{nodes_dat, server_met};
@@ -82,7 +83,7 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> Router {
             "/preferences/passwords",
             get(|State(engine): State<E>| async move { Json(api_json::preference_passwords(&engine.preferences())) }),
         )
-        .route("/schedule", get(|| async { Json(api_json::schedule()) }))
+        .route("/schedule", get(schedule::<E>).put(set_schedule::<E>))
         .route("/interfaces", get(network_interfaces))
         .route("/update", get(|| async { Json(api_json::update()) }))
         .route("/events", get(events::<E>))
@@ -276,6 +277,26 @@ async fn set_categories<E: NjMuleEngine>(State(engine): State<E>, Body(body): Bo
     }
     engine.set_categories(all).await.map_err(|reason| ApiError::new(StatusCode::BAD_REQUEST, reason))?;
     Ok(Json(Value::Array(engine.categories().await.iter().map(api_json::category).collect())))
+}
+
+async fn schedule<E: NjMuleEngine>(State(engine): State<E>) -> Json<Value> {
+    Json(api_json::schedule(&engine.schedule().await, engine.active_rule().await.as_ref()))
+}
+
+/// Replaces the rules of the schedule; answers them with the one in force.
+async fn set_schedule<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let Some(given) = body.get("rules").and_then(Value::as_array) else {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Missing list: rules"));
+    };
+    let rules = given
+        .iter()
+        .map(api_reader::rule)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|reason| ApiError::new(StatusCode::BAD_REQUEST, reason))?;
+    let now = engine.update_schedule(Schedule { rules }).await.map_err(|reason| {
+        ApiError::new(StatusCode::SERVICE_UNAVAILABLE, format!("The engine cannot do it now: {reason}"))
+    })?;
+    Ok(Json(api_json::schedule(&now, engine.active_rule().await.as_ref())))
 }
 
 /// Stops njMule, after the answer.
