@@ -2208,6 +2208,52 @@ async fn should_tell_what_was_typed_in_the_boxes_of_the_emule_imported() {
 }
 
 #[tokio::test]
+async fn should_serve_its_open_api_document() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("GET", "/api/v1/openapi.yaml", "").await;
+
+    api.then_the_status_is(200);
+    api.then_the_header_is("Content-Type", "application/yaml; charset=utf-8");
+    api.then_the_body_contains(&["openapi: 3.2.0", "operationId: getStatus"]);
+}
+
+#[tokio::test]
+async fn should_refuse_a_parameter_the_document_does_not_allow() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("GET", "/api/v1/downloads/talk", "").await;
+
+    api.then_the_status_is(400);
+    api.then_the_body_contains(&["Parameter hash does not follow the API"]);
+}
+
+#[tokio::test]
+async fn should_refuse_a_body_the_document_does_not_allow() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("PUT", "/api/v1/limits", "{\"uploadKiBps\":\"fast\"}").await;
+
+    api.then_the_status_is(400);
+    api.then_the_body_contains(&["Body does not follow the API"]);
+    api.then_the_upload_limit_is(Preferences::default().max_upload_kibps);
+}
+
+#[tokio::test]
+async fn should_refuse_a_missing_body() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("POST", "/api/v1/searches", "").await;
+
+    api.then_the_status_is(400);
+    api.then_the_body_contains(&["needs a JSON body"]);
+}
+
+#[tokio::test]
 async fn should_tell_that_nj_mule_waits_to_be_set_up() {
     let mut api = Api::new();
     api.given_the_api_runs().await;

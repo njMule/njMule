@@ -3,7 +3,7 @@
 
 //! A Kad lookup running now, as the interface lists it: its target in hex, what it is for, and the values it got.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray)]
 pub enum Kind {
     Node,
     Keyword,
@@ -12,6 +12,21 @@ pub enum Kind {
     StoreKeyword,
     StoreSource,
     StoreNotes,
+}
+
+impl Kind {
+    /// The name the API gives it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Node => "node",
+            Self::Keyword => "keyword",
+            Self::Sources => "sources",
+            Self::Notes => "notes",
+            Self::StoreKeyword => "store_keyword",
+            Self::StoreSource => "store_source",
+            Self::StoreNotes => "store_notes",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

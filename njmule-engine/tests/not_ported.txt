@@ -96,11 +96,13 @@ DownloadSourcesTest.shouldTakeTheRankASourceGivesOverUdpFromItsIpv6Address
 DownloadSourcesTest.shouldLetASourceWaitWhileOurConnectionsAreAtTheirLimit
 
 # The remote-control API.
-# The checks against openapi.yaml come with the API's specification.
-RemoteApiTest.shouldServeItsOpenApiDocument
-RemoteApiTest.shouldRefuseAParameterTheDocumentDoesNotAllow
-RemoteApiTest.shouldRefuseABodyTheDocumentDoesNotAllow
-RemoteApiTest.shouldRefuseAMissingBody
+# The API's document.
+# Java only: the one document both engines serve is checked against the OpenAPI schemas by the Java test.
+ApiSpecificationTest.shouldBeAValidOpenApi32Description
+# The Rust API lacks the operations of the notifications, the web interface, the desktop window and the updates.
+ApiSpecificationTest.shouldHaveAHandlerForEveryOperation
+# The Rust engine tells no free disk space nor updates yet, whose events the document describes.
+ApiSpecificationTest.shouldDescribeEveryEventOfTheStream
 # Guests, the web interface, its guard and the desktop window's token come with the web interface.
 RemoteApiTest.shouldRefuseAnAddressItsGuardStops
 RemoteApiTest.shouldTellAGuestNeitherTheJavaNorTheSystem

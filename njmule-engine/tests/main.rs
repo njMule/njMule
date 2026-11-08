@@ -21,6 +21,7 @@ mod synthetic_emule_profile;
 mod aich_recovery_test;
 mod aich_votes_test;
 mod api_reader_test;
+mod api_specification_test;
 mod app_directories_test;
 mod atomic_files_test;
 mod bind_interface_test;

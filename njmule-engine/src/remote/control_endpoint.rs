@@ -22,7 +22,6 @@ use tokio::task::JoinHandle;
 use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::remote::remote_api::{self, ApiError, Exit};
 
-const BASE_PATH: &str = "/api/v1";
 // The origins of the desktop shell's own pages (Tauri: Windows, then macOS and Linux); no web page has them.
 const SHELL_ORIGINS: [&str; 3] = ["http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"];
 
@@ -42,10 +41,10 @@ impl ControlEndpoint {
         let token = data_encoding::BASE64URL_NOPAD.encode(&secret);
         let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).await?;
         let address = listener.local_addr()?;
-        let url = format!("http://{address}{BASE_PATH}");
+        let url = format!("http://{address}{}", remote_api::PREFIX);
         let (stop, mut stopped) = watch::channel(false);
         let app = Router::new()
-            .nest(BASE_PATH, remote_api::router(engine, exit, stop.subscribe()))
+            .nest(remote_api::PREFIX, remote_api::router(engine, exit, stop.subscribe()))
             .layer(middleware::from_fn_with_state(token.clone(), guard));
         let serving = tokio::spawn(async move {
             axum::serve(listener, app)

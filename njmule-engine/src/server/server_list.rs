@@ -29,7 +29,7 @@ pub const PRIORITY_HIGH: u64 = 1;
 pub const PRIORITY_LOW: u64 = 2;
 
 /// The priority a server is tried with.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray)]
 pub enum Priority {
     High,
     Normal,

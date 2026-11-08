@@ -6,7 +6,7 @@
 use crate::files::part_file::PartMap;
 
 /// Where a download stands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray)]
 pub enum DownloadStatus {
     Downloading,
     Paused,
@@ -30,7 +30,7 @@ impl DownloadStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, strum::VariantArray)]
 pub enum DownloadPriority {
     Low,
     Normal,
@@ -97,7 +97,7 @@ pub struct DownloadInfo {
 }
 
 /// What a source of a download is doing for it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray)]
 pub enum SourceState {
     Waiting,
     Connecting,
