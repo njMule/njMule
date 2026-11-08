@@ -40,6 +40,7 @@ use crate::api::engine_event::EngineEvent;
 use crate::api::engine_status::EngineStatus;
 use crate::api::file_comment::FileComment;
 use crate::api::file_history::FileHistory;
+use crate::api::friend::Friend;
 use crate::api::import_options::ImportOptions;
 use crate::api::import_report::ImportReport;
 use crate::api::kad_contact_info::KadContactInfo;
@@ -921,6 +922,35 @@ impl Engine {
         self.ask(|reply| Command::PeerComments(download, reply)).await.unwrap_or_default()
     }
 
+    /// Our friends, in the order they were added.
+    pub async fn friends(&self) -> Vec<Friend> {
+        self.ask(Command::Friends).await.unwrap_or_default()
+    }
+
+    /// Adds a friend, or changes its name and address; an empty name or no address keeps the known one.
+    pub async fn add_friend(&self, friend: Friend) -> Result<(), String> {
+        self.ask(|reply| Command::AddFriend(friend, reply))
+            .await
+            .unwrap_or_else(|| Err("the engine stopped".to_owned()))
+    }
+
+    /// Removes a friend, and the friend slot with it; false when it is none.
+    pub async fn remove_friend(&self, user_hash: [u8; 16]) -> Result<bool, String> {
+        self.ask(|reply| Command::RemoveFriend(user_hash, reply))
+            .await
+            .unwrap_or_else(|| Err("the engine stopped".to_owned()))
+    }
+
+    /// The friend served before anyone else, if any.
+    pub async fn friend_slot(&self) -> Option<[u8; 16]> {
+        self.ask(Command::FriendSlot).await.flatten()
+    }
+
+    /// Gives the friend slot to a friend for this run, or takes it back with none; false for one who is no friend.
+    pub async fn set_friend_slot(&self, friend: Option<[u8; 16]>) -> bool {
+        self.ask(|reply| Command::SetFriendSlot(friend, reply)).await.unwrap_or(false)
+    }
+
     /// Our rating and comment of a file, if any.
     pub async fn file_comment(&self, file: [u8; 16]) -> Option<FileComment> {
         self.ask(|reply| Command::FileComment(file, reply)).await.flatten()
@@ -1394,6 +1424,26 @@ impl NjMuleEngine for Engine {
 
     fn file_comment(&self, file: [u8; 16]) -> impl Future<Output = Option<FileComment>> + Send {
         Engine::file_comment(self, file)
+    }
+
+    fn friends(&self) -> impl Future<Output = Vec<Friend>> + Send {
+        Engine::friends(self)
+    }
+
+    fn add_friend(&self, friend: Friend) -> impl Future<Output = Result<(), String>> + Send {
+        Engine::add_friend(self, friend)
+    }
+
+    fn remove_friend(&self, user_hash: [u8; 16]) -> impl Future<Output = Result<bool, String>> + Send {
+        Engine::remove_friend(self, user_hash)
+    }
+
+    fn friend_slot(&self) -> impl Future<Output = Option<[u8; 16]>> + Send {
+        Engine::friend_slot(self)
+    }
+
+    fn set_friend_slot(&self, friend: Option<[u8; 16]>) -> impl Future<Output = bool> + Send {
+        Engine::set_friend_slot(self, friend)
     }
 
     fn set_file_comment(

@@ -26,6 +26,7 @@ use crate::api::engine_event::EngineEvent;
 use crate::api::file_comment::FileComment;
 use crate::api::file_history::FileHistory;
 use crate::api::file_names;
+use crate::api::friend::Friend;
 use crate::api::import_options::ImportOptions;
 use crate::api::list_source::{ListError, ListSource};
 use crate::api::nj_mule_engine::NjMuleEngine;
@@ -156,6 +157,19 @@ pub fn router<E: NjMuleEngine>(engine: E, exit: Option<Exit>, closing: watch::Re
         .route("/bans/{address}", axum::routing::delete(unban::<E>))
         .route("/files/{hash}/notes", get(list_kad_notes::<E>).post(search_kad_notes::<E>))
         .route("/files/{hash}/comment", get(file_comment::<E>).put(set_file_comment::<E>))
+        .route(
+            "/friends",
+            get(|State(engine): State<E>| async move {
+                Json(Value::Array(engine.friends().await.iter().map(api_json::friend).collect()))
+            })
+            .post(add_friend::<E>),
+        )
+        .route(
+            "/friends/slot",
+            get(|State(engine): State<E>| async move { Json(api_json::friend_slot(engine.friend_slot().await)) })
+                .put(set_friend_slot::<E>),
+        )
+        .route("/friends/{user_hash}", delete(remove_friend::<E>))
         .route(
             "/kad",
             get(|State(engine): State<E>| async move {
@@ -1385,6 +1399,51 @@ async fn peer_comments<E: NjMuleEngine>(
 async fn clean_up_name<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
     let clean = file_names::clean_up(text(&body, "name")?, &engine.preferences().name_cleanups);
     Ok(Json(json!({"name": clean})))
+}
+
+/// Adds a friend by its user hash and name, with where it was seen when given; one known already takes the name and
+/// address given.
+async fn add_friend<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let user_hash = user_hash(text(&body, "userHash")?)?;
+    let name = text(&body, "name")?;
+    let address = body.get("address").map(|_| text(&body, "address").and_then(server_address)).transpose()?;
+    engine
+        .add_friend(Friend::new(user_hash, name, address))
+        .await
+        .map_err(|reason| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, reason))?;
+    Ok(Json(api_json::ok()))
+}
+
+async fn remove_friend<E: NjMuleEngine>(
+    State(engine): State<E>,
+    Path(user_hash_text): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let removed = engine
+        .remove_friend(user_hash(&user_hash_text)?)
+        .await
+        .map_err(|reason| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, reason))?;
+    if removed { Ok(Json(api_json::ok())) } else { Err(ApiError::new(StatusCode::NOT_FOUND, "Not a friend.")) }
+}
+
+/// Gives the friend slot to a friend for this run, or takes it back with a null user hash; answers who has it.
+async fn set_friend_slot<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let friend = match body.get("userHash") {
+        None | Some(Value::Null) => None,
+        Some(_) => Some(user_hash(text(&body, "userHash")?)?),
+    };
+    if !engine.set_friend_slot(friend).await {
+        return Err(ApiError::new(StatusCode::NOT_FOUND, "Not a friend."));
+    }
+    Ok(Json(api_json::friend_slot(engine.friend_slot().await)))
+}
+
+// A user hash, 32 hex digits.
+fn user_hash(text: &str) -> Result<[u8; 16], ApiError> {
+    data_encoding::HEXUPPER_PERMISSIVE
+        .decode(text.as_bytes())
+        .ok()
+        .and_then(|bytes| <[u8; 16]>::try_from(bytes).ok())
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, format!("Not a user hash: {text}")))
 }
 
 /// Our rating and comment of a file; a file we did not comment has rating 0 and no text.

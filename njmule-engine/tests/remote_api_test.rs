@@ -23,6 +23,7 @@ use njmule_engine::api::engine_event::EngineEvent;
 use njmule_engine::api::engine_status::EngineStatus;
 use njmule_engine::api::file_comment::FileComment;
 use njmule_engine::api::file_history::FileHistory;
+use njmule_engine::api::friend::Friend;
 use njmule_engine::api::import_options::ImportOptions;
 use njmule_engine::api::import_report::{ImportReport, Item, Outcome};
 use njmule_engine::api::kad_contact_info::KadContactInfo;
@@ -100,6 +101,8 @@ struct Fake {
     reads_emule_profiles: bool,
     emule_profile: Option<PathBuf>,
     emule_history: EmuleHistory,
+    // The friend served first, which the engine gives to anyone.
+    friend_slot: Option<[u8; 16]>,
     // Our comments of files, when the engine keeps them.
     keeps_file_comments: bool,
     file_comments: HashMap<[u8; 16], FileComment>,
@@ -165,6 +168,28 @@ impl NjMuleEngine for FakeEngine {
             let item = Item::text("server.met", Outcome::WouldImport, "12 servers");
             Ok(ImportReport { dry_run: options.dry_run, items: vec![item], start_at_login: false })
         })
+    }
+
+    async fn friends(&self) -> Vec<Friend> {
+        Vec::new()
+    }
+
+    async fn add_friend(&self, friend: Friend) -> Result<(), String> {
+        self.with(|fake| fake.calls.push(format!("add friend {}", friend.name)));
+        Ok(())
+    }
+
+    async fn remove_friend(&self, _user_hash: [u8; 16]) -> Result<bool, String> {
+        Ok(false)
+    }
+
+    async fn friend_slot(&self) -> Option<[u8; 16]> {
+        self.with(|fake| fake.friend_slot)
+    }
+
+    async fn set_friend_slot(&self, friend: Option<[u8; 16]>) -> bool {
+        self.with(|fake| fake.friend_slot = friend);
+        true
     }
 
     async fn file_comment(&self, file: [u8; 16]) -> Option<FileComment> {
@@ -865,6 +890,11 @@ impl Api {
 
     fn test_folder(&self) -> PathBuf {
         self.dir.path().to_path_buf()
+    }
+
+    // The fake keeps the slot it is given.
+    fn given_the_engine_keeps_the_friend_slot(&self) {
+        self.engine.with(|fake| fake.friend_slot = Some([0x42; 16]));
     }
 
     fn given_the_engine_keeps_file_comments(&self) {
@@ -2024,6 +2054,30 @@ async fn should_refuse_a_rule_without_a_time() {
     api.when_called("PUT", "/api/v1/schedule", "{\"rules\":[{\"start\":\"late\",\"end\":\"06:00\"}]}").await;
 
     api.then_the_status_is(400);
+}
+
+#[tokio::test]
+async fn should_give_the_friend_slot_to_a_friend() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_keeps_the_friend_slot();
+
+    api.when_called("PUT", "/api/v1/friends/slot", &format!("{{\"userHash\":\"{}\"}}", "A1".repeat(16))).await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&[&format!("\"userHash\":\"{}\"", "A1".repeat(16))]);
+}
+
+#[tokio::test]
+async fn should_take_the_friend_slot_back_with_null() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+    api.given_the_engine_keeps_the_friend_slot();
+
+    api.when_called("PUT", "/api/v1/friends/slot", "{\"userHash\":null}").await;
+
+    api.then_the_status_is(200);
+    api.then_the_body_contains(&["\"userHash\":null"]);
 }
 
 #[tokio::test]

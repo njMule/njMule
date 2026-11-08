@@ -20,6 +20,7 @@ use crate::api::engine_event::EngineEvent;
 use crate::api::engine_status::EngineStatus;
 use crate::api::file_comment::FileComment;
 use crate::api::file_history::FileHistory;
+use crate::api::friend::Friend;
 use crate::api::import_options::ImportOptions;
 use crate::api::import_report::ImportReport;
 use crate::api::kad_contact_info::KadContactInfo;
@@ -293,6 +294,21 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
 
     /// Our rating and comment of a file, if any.
     fn file_comment(&self, file: [u8; 16]) -> impl Future<Output = Option<FileComment>> + Send;
+
+    /// Our friends, in the order they were added.
+    fn friends(&self) -> impl Future<Output = Vec<Friend>> + Send;
+
+    /// Adds a friend, or changes its name and address; an empty name or no address keeps the known one.
+    fn add_friend(&self, friend: Friend) -> impl Future<Output = Result<(), String>> + Send;
+
+    /// Removes a friend, and the friend slot with it; false when it is none.
+    fn remove_friend(&self, user_hash: [u8; 16]) -> impl Future<Output = Result<bool, String>> + Send;
+
+    /// The friend served before anyone else, if any.
+    fn friend_slot(&self) -> impl Future<Output = Option<[u8; 16]>> + Send;
+
+    /// Gives the friend slot to a friend for this run, or takes it back with none; false for one who is no friend.
+    fn set_friend_slot(&self, friend: Option<[u8; 16]>) -> impl Future<Output = bool> + Send;
 
     /// Keeps our rating and comment of a file; an empty one takes it away.
     fn set_file_comment(&self, file: [u8; 16], comment: FileComment)

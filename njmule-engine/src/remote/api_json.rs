@@ -13,6 +13,7 @@ use crate::api::emule_history::EmuleHistory;
 use crate::api::engine_event::EngineEvent;
 use crate::api::engine_status::EngineStatus;
 use crate::api::file_comment::FileComment;
+use crate::api::friend::Friend;
 use crate::api::import_report::{Arg, ImportReport};
 use crate::api::kad_contact_info::KadContactInfo;
 use crate::api::kad_info::{Buddy, KadInfo};
@@ -646,4 +647,18 @@ pub fn kad_search(search: &KadSearchInfo) -> Value {
 /// A hash as the API writes it: 32 upper-case hex digits.
 pub fn hash(hash: &[u8; 16]) -> String {
     data_encoding::HEXUPPER.encode(hash)
+}
+
+/// A friend, with where it was last seen when known.
+pub fn friend(friend: &Friend) -> Value {
+    let mut fields = json!({"userHash": hash(&friend.user_hash), "name": friend.name});
+    if let (Some(address), Value::Object(fields)) = (&friend.address, &mut fields) {
+        fields.insert("address".to_owned(), json!(address.to_string()));
+    }
+    fields
+}
+
+/// The friend served before anyone else, null for none.
+pub fn friend_slot(friend: Option<[u8; 16]>) -> Value {
+    json!({"userHash": friend.as_ref().map(hash)})
 }

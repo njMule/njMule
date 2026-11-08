@@ -19,6 +19,7 @@ pub mod remote;
 pub mod search;
 pub mod security;
 pub mod server;
+pub mod social;
 pub mod upload;
 pub mod upnp;
 pub mod util;

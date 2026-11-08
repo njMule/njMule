@@ -368,7 +368,12 @@ impl Uploads {
             jobs,
             port: 0,
             offset: Arc::default(),
-            settings: Arc::new(Mutex::new(Settings { max_upload_kibps: 0, queue_size: 100, obfuscation: false })),
+            settings: Arc::new(Mutex::new(Settings {
+                max_upload_kibps: 0,
+                queue_size: 100,
+                obfuscation: false,
+                friend_slot: None,
+            })),
             shared: Arc::default(),
             downloads: Arc::default(),
             download_sources: Arc::default(),
@@ -413,7 +418,49 @@ impl Uploads {
     // Steps.
 
     fn given_the_settings(&self, max_upload_kibps: u32, queue_size: usize) {
-        *self.settings.lock().unwrap() = Settings { max_upload_kibps, queue_size, obfuscation: false };
+        *self.settings.lock().unwrap() =
+            Settings { max_upload_kibps, queue_size, obfuscation: false, friend_slot: None };
+    }
+
+    // The friend slot goes to the client of `seed`, whose user hash is all `seed`.
+    fn given_the_settings_with_the_friend_slot(&self, max_upload_kibps: u32, queue_size: usize, seed: u8) {
+        let friend_slot = Some([seed; 16]);
+        *self.settings.lock().unwrap() = Settings { max_upload_kibps, queue_size, obfuscation: false, friend_slot };
+    }
+
+    async fn given_the_client_asked(&mut self, seed: u8) {
+        let file = self.file.as_ref().unwrap().hash;
+        self.ask(seed, file).await;
+    }
+
+    async fn given_the_client_turned_away_by_the_full_queue(&mut self, seed: u8) {
+        let file = self.file.as_ref().unwrap().hash;
+        let late = self.client_of(seed, 0).await;
+        late.send(&client_messages::for_file(client::STARTUPLOADREQ, &file)).await;
+        assert!(late.poll(SILENCE).await.is_none(), "the queue is full");
+    }
+
+    // A slot holder asks who else has the file: the other clients of it, not itself.
+    async fn given_a_slot_holder_told_of_the_other_clients_of_the_file(&mut self, holder: u8, others: &[u8]) {
+        let file = self.file.as_ref().unwrap().hash;
+        let asking = self.client_of(holder, 0).await;
+        asking.send(&exchange::request(&file)).await;
+        let seen = asking.until(protocol::EMULE, extended::ANSWERSOURCES2).await;
+        let mut ports: Vec<u16> =
+            exchange::Answer::decode(seen.last().unwrap()).unwrap().sources.iter().map(|source| source.port).collect();
+        ports.sort_unstable();
+        let expected: Vec<u16> = others.iter().map(|seed| 5000 + u16::from(*seed)).collect();
+        assert_eq!(ports, expected);
+    }
+
+    async fn then_the_client_gets_a_slot(&mut self, seed: u8) {
+        self.clients.get_mut(&seed).unwrap().until(protocol::EDONKEY, client::ACCEPTUPLOADREQ).await;
+    }
+
+    // Uploading, or queued, in the order the uploads are listed.
+    async fn then_the_uploads_are(&self, uploading: &[bool]) {
+        let states = self.on_loop(|state| state.manager.uploads(state.now())).await;
+        assert_eq!(states.iter().map(|upload| upload.sent.is_some()).collect::<Vec<_>>(), uploading);
     }
 
     fn given_the_shared_file(&mut self, name: &str, size: usize, seed: u8) {
@@ -1831,6 +1878,26 @@ async fn should_give_a_slot_back_to_the_queue_after_about_a_part_while_others_wa
         .await;
     uploads.then_the_bytes_uploaded_are(18 * MAX_BLOCK).await;
     uploads.then_the_clients_waiting_are(1).await;
+}
+
+#[tokio::test]
+async fn should_let_the_friend_with_the_friend_slot_pass_a_full_queue() {
+    let mut uploads = Uploads::new();
+    uploads.given_the_settings_with_the_friend_slot(1, 1, 9);
+    uploads.given_the_shared_file("wanted.txt", 5000, 2);
+    uploads.given_the_uploads_started().await;
+    uploads.given_the_clients_connected(&[1, 2, 3, 4, 9]).await;
+    uploads.given_the_client_asked(1).await;
+    uploads.given_the_client_asked(2).await;
+    uploads.given_the_client_waits_at(3, 1, "both slots taken").await;
+    uploads.given_the_client_turned_away_by_the_full_queue(4).await;
+    uploads.given_the_client_waits_at(9, 1, "a friend's place").await;
+    uploads.given_a_slot_holder_told_of_the_other_clients_of_the_file(1, &[2, 3, 9]).await;
+
+    uploads.when_the_client_leaves(1);
+
+    uploads.then_the_client_gets_a_slot(9).await;
+    uploads.then_the_uploads_are(&[true, true, false]).await;
 }
 
 #[tokio::test]

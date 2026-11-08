@@ -84,6 +84,7 @@ mod file_names_test;
 mod file_publisher_test;
 mod finished_downloads_test;
 mod framing_test;
+mod friends_test;
 mod global_sources_test;
 mod golden_file_hash_test;
 mod hash_corpus_test;
