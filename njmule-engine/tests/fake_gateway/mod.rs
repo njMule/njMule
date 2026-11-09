@@ -5,13 +5,12 @@
 //! address of its HTTP server, which serves the description and records the SOAP actions.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
-#![expect(dead_code, reason = "the engine's UPnP tests, next, delay the removals")]
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
@@ -23,6 +22,7 @@ pub struct Action {
     pub name: String,
     pub body: String,
     pub at: Instant,
+    pub when: SystemTime,
 }
 
 /// How the description is served.
@@ -301,6 +301,7 @@ async fn answer(mut client: TcpStream, state: Arc<State>) {
         name: name.to_owned(),
         body: format!("{control} {text}"),
         at: Instant::now(),
+        when: SystemTime::now(),
     });
     if name == "AddPinhole" {
         let id = state.pinhole_ids.fetch_add(1, Ordering::SeqCst);
