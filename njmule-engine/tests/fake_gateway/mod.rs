@@ -5,7 +5,7 @@
 //! address of its HTTP server, which serves the description and records the SOAP actions.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
-#![expect(dead_code, reason = "the tests of the forwarding, the next piece, use the rest")]
+#![expect(dead_code, reason = "the engine's UPnP tests, next, delay the removals")]
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
