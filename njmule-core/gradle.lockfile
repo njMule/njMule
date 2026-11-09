@@ -3,7 +3,7 @@
 # This file is expected to be part of source control.
 # To regenerate this file, run: ./gradlew :njmule-core:dependencies --write-locks
 at.favre.lib:hkdf:2.0.0=runtimeClasspath,testFixturesRuntimeClasspath,testRuntimeClasspath
-com.ethlo.time:itu:1.14.0=compileClasspath,runtimeClasspath,testCompileClasspath,testFixturesCompileClasspath,testFixturesRuntimeClasspath,testRuntimeClasspath
+com.ethlo.time:itu:1.17.0=compileClasspath,runtimeClasspath,testCompileClasspath,testFixturesCompileClasspath,testFixturesRuntimeClasspath,testRuntimeClasspath
 com.fasterxml.jackson.core:jackson-annotations:2.22=compileClasspath,openapiCompileClasspath,openapiRuntimeClasspath,runtimeClasspath,testCompileClasspath,testFixturesCompileClasspath,testFixturesRuntimeClasspath,testRuntimeClasspath
 com.github.ben-manes.caffeine:caffeine:3.3.1=annotationProcessor,openapiAnnotationProcessor,testAnnotationProcessor,testFixturesAnnotationProcessor
 com.github.kevinstern:software-and-algorithms:1.0=annotationProcessor,openapiAnnotationProcessor,testAnnotationProcessor,testFixturesAnnotationProcessor
@@ -31,7 +31,7 @@ com.google.jimfs:jimfs:1.3.2=testCompileClasspath,testRuntimeClasspath
 com.google.protobuf:protobuf-java:4.36.2=annotationProcessor,openapiAnnotationProcessor,testAnnotationProcessor,testFixturesAnnotationProcessor
 com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0=spotbugsPlugins
 com.io7m.repackage.io.whitfin:io.whitfin.siphash:2.0.1=runtimeClasspath,testFixturesRuntimeClasspath,testRuntimeClasspath
-com.networknt:json-schema-validator:3.0.8=compileClasspath,runtimeClasspath,testCompileClasspath,testFixturesCompileClasspath,testFixturesRuntimeClasspath,testRuntimeClasspath
+com.networknt:json-schema-validator:3.0.9=compileClasspath,runtimeClasspath,testCompileClasspath,testFixturesCompileClasspath,testFixturesRuntimeClasspath,testRuntimeClasspath
 com.puppycrawl.tools:checkstyle:14.3.0=checkstyle
 commons-beanutils:commons-beanutils:1.11.0=checkstyle
 commons-codec:commons-codec:1.19.0=compileClasspath,runtimeClasspath,testCompileClasspath,testFixturesRuntimeClasspath,testRuntimeClasspath
@@ -111,8 +111,7 @@ org.reflections:reflections:0.10.2=checkstyle
 org.safere:safere:1.1.0=annotationProcessor,openapiAnnotationProcessor,testAnnotationProcessor,testFixturesAnnotationProcessor
 org.semver4j:semver4j:6.0.0=compileClasspath,runtimeClasspath,testCompileClasspath,testFixturesRuntimeClasspath,testRuntimeClasspath
 org.slf4j:slf4j-api:2.0.17=spotbugsSlf4j
-org.slf4j:slf4j-api:2.0.19=testFixturesCompileClasspath
-org.slf4j:slf4j-api:2.0.20=compileClasspath,runtimeClasspath,spotbugs,testCompileClasspath,testFixturesRuntimeClasspath,testRuntimeClasspath
+org.slf4j:slf4j-api:2.0.20=compileClasspath,runtimeClasspath,spotbugs,testCompileClasspath,testFixturesCompileClasspath,testFixturesRuntimeClasspath,testRuntimeClasspath
 org.slf4j:slf4j-simple:2.0.17=spotbugsSlf4j
 org.slf4j:slf4j-simple:2.0.20=checkstyle
 org.snakeyaml:snakeyaml-engine:3.0.1=openapiCompileClasspath,openapiRuntimeClasspath,testCompileClasspath,testRuntimeClasspath
