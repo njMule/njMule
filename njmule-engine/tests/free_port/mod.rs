@@ -7,17 +7,24 @@
 
 #![allow(dead_code)]
 
+use std::collections::HashSet;
 use std::net::{Ipv4Addr, TcpListener};
+use std::sync::{Mutex, PoisonError};
 
 use rand::RngExt;
 
-/// A port free now, below every system's range for outgoing connections, picked at random so that tests side by side
-/// take different ones.
+// The ports given so far: a port is free only until the test it went to listens on it, so no other test gets it.
+static GIVEN: Mutex<Option<HashSet<u16>>> = Mutex::new(None);
+
+/// A port free now, below every system's range for outgoing connections, picked at random and given to one test only.
 pub fn free_port() -> u16 {
     let mut random = rand::rng();
+    let mut given = GIVEN.lock().unwrap_or_else(PoisonError::into_inner);
+    let given = given.get_or_insert_with(HashSet::new);
     loop {
         let port = random.random_range(20_000..32_000);
-        if TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).is_ok() {
+        if !given.contains(&port) && TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).is_ok() {
+            given.insert(port);
             return port;
         }
     }

@@ -21,8 +21,7 @@ pub(super) struct KadRound {
 impl Network {
     /// Tests our ports, a test already running on them going on; answers the test as it stands.
     pub(super) fn test_ports(&mut self) -> PortTest {
-        // No router is asked through UPnP yet: the test runs without it.
-        let upnp = false;
+        let upnp = self.preferences().upnp && self.upnp.available();
         let tcp = self.shared.listen_port();
         let udp = self.kad_udp_port();
         // A test that is over gives way to the new one.
@@ -44,6 +43,9 @@ impl Network {
         self.port_check_step(&mut check);
         let state = check.state().clone();
         self.port_check = Some(check);
+        if upnp {
+            self.restart_forwarding();
+        }
         state
     }
 

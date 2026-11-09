@@ -380,6 +380,9 @@ impl Network {
             Some(running) => running.node.look_for_contacts(),
             None => self.start_kad(),
         }
+        if self.kad.running.is_some() {
+            self.restart_forwarding();
+        }
     }
 
     /// Stops Kad until it is connected again or njMule starts again.
@@ -398,6 +401,7 @@ impl Network {
             return false;
         };
         running.node.recheck_firewall();
+        self.user_log(LogLevel::Info, "Kad: checking the firewall again".to_owned());
         true
     }
 
@@ -901,6 +905,8 @@ impl Network {
         if self.preferences().kad_enabled && !self.kad.stopped_by_hand {
             self.start_kad();
         }
+        // The mappings follow the ports.
+        self.restart_forwarding();
     }
 }
 

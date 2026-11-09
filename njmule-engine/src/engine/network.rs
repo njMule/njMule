@@ -55,6 +55,7 @@ use crate::download::finished_downloads::FinishedDownloads;
 use crate::engine::ip_filter_lists;
 use crate::engine::port_check::PortCheck;
 use crate::engine::scheduler::{self, Change, Scheduler};
+use crate::engine::switches::Upnp;
 use crate::engine::totals::{self, Totals};
 use crate::engine::{ServerContext, Shared};
 use crate::files::file_comments::{self, FileComments};
@@ -101,9 +102,11 @@ use crate::upload::credits::{self, Credits};
 use crate::upload::upload_manager::{self, BlockRead, UploadManager};
 use crate::upload::upload_session;
 use crate::upload::uploadable::Uploadable;
+use crate::upnp::port_forwarding;
 
 mod chats;
 mod filter;
+mod forwarding;
 mod kad;
 mod ports;
 mod shares;
@@ -307,6 +310,8 @@ enum Tick {
     Rebound(Binding, Option<TcpListener>, Option<UdpSocket>),
     // The preferences changed.
     PreferencesChanged,
+    // What the router made of the mappings asked in a run: the outcome, the router and a line for the log.
+    Forwarded(u64, port_forwarding::Outcome, String, String),
     // A UDP test helper's link ended, after asking it for its datagram or not.
     KadUdpCheckEnded(u32, bool),
     // Kad's socket left its port: Kad starts again.
@@ -414,6 +419,8 @@ pub struct Network {
     ip_filter_tried: Option<Instant>,
     // The test of our ports running or run last, and the Kad node it counts on.
     port_check: Option<PortCheck>,
+    // The router asked to forward our ports, and how it answered.
+    upnp: forwarding::Upnp,
     port_check_kad: Option<KadRound>,
     // The interface the sockets are on, and the seconds since it was last looked at.
     binding: Binding,
@@ -468,6 +475,7 @@ pub fn start(
     commands: mpsc::UnboundedReceiver<Command>,
     udp: Option<UdpSocket>,
     listener: Option<TcpListener>,
+    upnp: Upnp,
 ) -> io::Result<JoinHandle<()>> {
     let dirs = &shared.dirs;
     let mut servers = ServerList::load(&dirs.config.join(server_list::FILE_NAME)).unwrap_or_else(|e| {
@@ -628,6 +636,7 @@ pub fn start(
         link_events: links_in,
         peer_events: peers_in,
         kad: KadSide::new(kad_in),
+        upnp: forwarding::Upnp::new(upnp),
     };
     network.shares.wire(&mut network.uploads);
     network.uploads.set_comments(network.comments_of());
@@ -638,6 +647,7 @@ pub fn start(
     if preferences.kad_enabled {
         network.start_kad();
     }
+    network.restart_forwarding();
     let queues = Queues { commands, outcomes, ticks, datagrams, links, peers, disk, reads, kad };
     Ok(tokio::spawn(async move {
         network.run(queues).await;
@@ -653,6 +663,7 @@ impl Network {
                 command = queues.commands.recv() => match command {
                     Some(Command::Stop(done)) => {
                         self.stop();
+                        self.unmap().await;
                         let _ = done.send(());
                         return;
                     }
@@ -1293,6 +1304,7 @@ impl Network {
                 }
             }
             Tick::PreferencesChanged => self.refresh_schedule(),
+            Tick::Forwarded(run, outcome, router, line) => self.forwarded(run, outcome, router, line),
             Tick::KadUdpCheckEnded(ip, asked) => self.kad_udp_check_ended(ip, asked),
             Tick::KadStart => self.kad_start_again(),
             Tick::IpFilterFetched(ranges) => self.ip_filter_fetched(ranges),
@@ -1424,6 +1436,9 @@ impl Network {
         }
         self.kad_preferences(was.kad_enabled, was.udp_port);
         self.ip_filter_preferences(&was);
+        if was.upnp != self.applied.upnp {
+            self.restart_forwarding();
+        }
     }
 
     // Puts the rule that holds now in force, and applies the preferences it gives.
@@ -2443,8 +2458,8 @@ impl Network {
             overhead_uploaded: traffic::overhead_sent(),
             // What came besides the files: the packets of file data count by their payload only.
             overhead_downloaded: traffic::received_bytes().saturating_sub(downloaded),
-            forwarding: "off".to_owned(),
-            router: String::new(),
+            forwarding: self.upnp.answer.name().to_owned(),
+            router: self.upnp.router.clone(),
             kad_port_taken: Some(self.kad.port_taken).filter(|port| *port != 0),
         }
     }

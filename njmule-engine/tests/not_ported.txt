@@ -47,6 +47,8 @@ BytesTest
 LittleEndianTest
 # The Java engine reads the Downloads folder from reg.exe's answer; Rust asks the Known Folder API.
 KnownFoldersTest
+# The Java engine reads the default gateways from the routing table; Rust asks the system through netdev.
+DefaultGatewayTest
 # NAT traversal needs QUIC and uTP (area 7).
 NatTraversalTest
 
@@ -120,3 +122,5 @@ EngineApiTest.shouldFailTheHelloToAHostThatCannotBeResolved
 RemoteApiTest.shouldTellTheJavaAndTheSystemItRunsOnToATokenHolder
 # Java only: the Rust protocol of a mapping is an enum of TCP and UDP; no other can be asked.
 IgdTest.shouldTakeOnlyTcpOrUdp
+# The Rust engine takes a new TCP port at its next start, so it never maps two in a row.
+UpnpTest.shouldLeaveNoMappingBehindWhenThePortsChangeTwiceInARow

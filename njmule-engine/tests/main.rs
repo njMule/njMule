@@ -249,6 +249,7 @@ mod u_int128_test;
 mod upload_manager_test;
 mod upload_session_test;
 mod uploadable_test;
+mod upnp_test;
 mod user_hash_store_test;
 mod web_lists_download_test;
 mod web_lists_test;

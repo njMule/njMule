@@ -19,3 +19,4 @@ peer/
 download/
 upload/
 kad/
+upnp/
