@@ -137,7 +137,7 @@ jobs:
                   fetch-depth: ${{ env.SONAR_TOKEN != '' && '0' || '1' }}
             # The macOS image has no Temurin 25 of its own: the JDK comes from the Actions cache, written here,
             # rather than from GitHub's releases in every job.
-            - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+            - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
               with:
                   distribution: temurin
                   java-version: "25"
@@ -244,7 +244,7 @@ jobs:
                 shell: bash
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+            - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
               with:
                   distribution: temurin
                   java-version: "25"
@@ -310,7 +310,7 @@ jobs:
                   manifest-path: njmule-engine/Cargo.toml
             # The test kit's flows, against the Rust engine's executable through the API, as the native image's job
             # runs them.
-            - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+            - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
               with:
                   distribution: temurin
                   java-version: "25"
@@ -387,7 +387,7 @@ jobs:
             GRAALVM_SHA256: 2733ea1331f1a98b05dd55a768b07347051dad48f030dbbfa191b11a2ccf4144
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+            - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
               with:
                   distribution: temurin
                   java-version: "25"
