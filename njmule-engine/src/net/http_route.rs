@@ -25,11 +25,7 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// A client on the route chosen now; a client for each use, as the route may have changed since the last one. An error
 /// while the interface chosen is gone.
 pub fn client(routes: &Routes) -> io::Result<Client> {
-    static PROVIDER: Once = Once::new();
-    PROVIDER.call_once(|| {
-        // Another part of the process may have chosen one already: then that one serves.
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
+    install_tls();
     let local = routes.local_address()?;
     let mut builder = Client::builder()
         .redirect(redirect::Policy::none())
@@ -57,4 +53,26 @@ pub fn client(routes: &Routes) -> io::Result<Client> {
         builder = builder.proxy(Proxy::all(at).map_err(io::Error::other)?);
     }
     builder.build().map_err(|e| io::Error::other(format!("cannot start the HTTP client: {e}")))
+}
+
+/// A client for a device of this computer's LAN, such as the router's web server: straight, never through the proxy,
+/// and done with a request, its body included, within `timeout`.
+pub fn lan_client(timeout: Duration) -> io::Result<Client> {
+    install_tls();
+    Client::builder()
+        .redirect(redirect::Policy::none())
+        .connect_timeout(timeout)
+        .timeout(timeout)
+        .user_agent(format!("{}/{}", nj_mule_info::NAME, nj_mule_info::version()))
+        .no_proxy()
+        .build()
+        .map_err(|e| io::Error::other(format!("cannot start the HTTP client: {e}")))
+}
+
+fn install_tls() {
+    static PROVIDER: Once = Once::new();
+    PROVIDER.call_once(|| {
+        // Another part of the process may have chosen one already: then that one serves.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
 }
