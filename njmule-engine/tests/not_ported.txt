@@ -118,3 +118,5 @@ EngineApiTest.shouldLeaveTheWayClearWhenABackupCannotBeWritten
 EngineApiTest.shouldFailTheHelloToAHostThatCannotBeResolved
 # Java only: the Rust engine runs on no Java; it tells the system it runs on as the Java engine does.
 RemoteApiTest.shouldTellTheJavaAndTheSystemItRunsOnToATokenHolder
+# Java only: the Rust protocol of a mapping is an enum of TCP and UDP; no other can be asked.
+IgdTest.shouldTakeOnlyTcpOrUdp

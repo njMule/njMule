@@ -5,5 +5,6 @@
 
 pub mod default_gateway;
 pub mod gateway;
+pub mod igd;
 pub mod nat_pmp;
 pub mod port_forwarding;
