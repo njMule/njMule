@@ -20,3 +20,4 @@ download/
 upload/
 kad/
 upnp/
+quic/

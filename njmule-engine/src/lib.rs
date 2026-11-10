@@ -15,6 +15,7 @@ pub mod net;
 pub mod peer;
 pub mod persist;
 pub mod protocol;
+pub mod quic;
 pub mod remote;
 pub mod search;
 pub mod security;
