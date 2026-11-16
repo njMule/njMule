@@ -4,7 +4,7 @@
 # To regenerate this file, run: ./gradlew :njmule-bench:dependencies --write-locks
 at.favre.lib:hkdf:2.0.0=runtimeClasspath,testRuntimeClasspath
 com.ethlo.time:itu:1.17.0=runtimeClasspath,testRuntimeClasspath
-com.fasterxml.jackson.core:jackson-annotations:2.22=runtimeClasspath,testRuntimeClasspath
+com.fasterxml.jackson.core:jackson-annotations:2.23=runtimeClasspath,testRuntimeClasspath
 com.github.ben-manes.caffeine:caffeine:3.3.1=annotationProcessor,testAnnotationProcessor
 com.github.kevinstern:software-and-algorithms:1.0=annotationProcessor,testAnnotationProcessor
 com.github.spotbugs:spotbugs-annotations:4.10.5=spotbugs
@@ -106,7 +106,7 @@ org.xmlresolver:xmlresolver:5.3.3=checkstyle,spotbugs
 org.yaml:snakeyaml:2.7=annotationProcessor,testAnnotationProcessor
 tech.kwik:agent15:4.0=runtimeClasspath,testRuntimeClasspath
 tech.kwik:kwik:0.12.1=runtimeClasspath,testRuntimeClasspath
-tools.jackson.core:jackson-core:3.2.4=runtimeClasspath,testRuntimeClasspath
-tools.jackson.core:jackson-databind:3.2.4=runtimeClasspath,testRuntimeClasspath
-tools.jackson:jackson-bom:3.2.4=runtimeClasspath,testRuntimeClasspath
+tools.jackson.core:jackson-core:3.3.0=runtimeClasspath,testRuntimeClasspath
+tools.jackson.core:jackson-databind:3.3.0=runtimeClasspath,testRuntimeClasspath
+tools.jackson:jackson-bom:3.3.0=runtimeClasspath,testRuntimeClasspath
 empty=shadow
