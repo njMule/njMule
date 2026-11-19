@@ -253,6 +253,8 @@ mod upload_session_test;
 mod uploadable_test;
 mod upnp_test;
 mod user_hash_store_test;
+mod utp_packet_test;
+mod utp_socket_test;
 mod web_lists_download_test;
 mod web_lists_test;
 mod web_ui_answers_test;

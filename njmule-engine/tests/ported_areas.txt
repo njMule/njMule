@@ -21,3 +21,4 @@ upload/
 kad/
 upnp/
 quic/
+utp/
