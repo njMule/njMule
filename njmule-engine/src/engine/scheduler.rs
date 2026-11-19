@@ -115,9 +115,8 @@ impl Scheduler {
 
 /// The date and time on the user's clock, where the rules' windows are.
 pub fn local_now() -> PrimitiveDateTime {
-    // The time crate finds no local offset in a process of many threads on Unix; chrono reads the system's zone itself.
-    let offset =
-        UtcOffset::from_whole_seconds(chrono::Local::now().offset().local_minus_utc()).unwrap_or(UtcOffset::UTC);
+    // The time crate finds no local offset in a process of many threads on Unix; jiff reads the system's zone itself.
+    let offset = UtcOffset::from_whole_seconds(jiff::ZonedDateTime::now().offset().seconds()).unwrap_or(UtcOffset::UTC);
     let now = OffsetDateTime::now_utc().to_offset(offset);
     PrimitiveDateTime::new(now.date(), now.time())
 }
