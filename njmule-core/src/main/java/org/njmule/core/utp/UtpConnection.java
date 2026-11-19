@@ -39,8 +39,9 @@ import org.njmule.core.util.Bytes;
 
 /**
  * One uTP connection: a reliable byte stream with blocking streams. Packets are acknowledged cumulatively and
- * selectively; a packet three later ones were acknowledged past, or whose retransmission timer runs out, is sent again.
- * The window grows in slow start, then by LEDBAT towards a queuing delay of 100 ms, and halves on a loss.
+ * selectively; a packet three later ones were acknowledged past is sent again, and when the retransmission timer runs
+ * out all that were not acknowledged go again. The window grows in slow start, then by LEDBAT towards a queuing delay
+ * of 100 ms, and halves on a loss.
  */
 public final class UtpConnection implements StreamTransport {
 
@@ -81,6 +82,8 @@ public final class UtpConnection implements StreamTransport {
         long sentAt;
         int transmissions;
         boolean acknowledged;
+        // Taken for lost at a timeout and waiting for room in the window; not counted in flight meanwhile.
+        boolean resend;
         // Acknowledged packets past this one, in selective acknowledgements.
         int passed;
 
@@ -317,7 +320,9 @@ public final class UtpConnection implements StreamTransport {
             Out out = this.inFlight.removeFirst();
             if (!out.acknowledged) {
                 bytes += out.payload.length;
-                this.inFlightBytes -= out.payload.length;
+                if (!out.resend) {
+                    this.inFlightBytes -= out.payload.length;
+                }
                 if (out.transmissions == 1) {
                     newestSample = now - out.sentAt;
                 }
@@ -372,7 +377,11 @@ public final class UtpConnection implements StreamTransport {
             if (bit(mask, offset) && !out.acknowledged) {
                 out.acknowledged = true;
                 bytes += out.payload.length;
-                this.inFlightBytes -= out.payload.length;
+                if (out.resend) {
+                    out.resend = false;
+                } else {
+                    this.inFlightBytes -= out.payload.length;
+                }
             }
         }
         for (Out out : this.inFlight) {
@@ -489,6 +498,16 @@ public final class UtpConnection implements StreamTransport {
             return;
         }
         long window = Math.min(this.maxWindow, this.peerWindow);
+        // What a timeout took for lost goes first.
+        for (Out out : this.inFlight) {
+            if (!out.resend) {
+                continue;
+            }
+            if (this.inFlightBytes > 0 && this.inFlightBytes + out.payload.length > window) {
+                return;
+            }
+            transmit(out);
+        }
         while (this.toSendBytes > 0 && this.inFlight.size() < REORDER) {
             int size = (int) Math.min(MSS, this.toSendBytes);
             if (this.inFlightBytes > 0 && this.inFlightBytes + size > window) {
@@ -531,6 +550,10 @@ public final class UtpConnection implements StreamTransport {
     private void transmit(Out out) {
         out.sentAt = this.socket.nanos();
         out.transmissions++;
+        if (out.resend) {
+            out.resend = false;
+            this.inFlightBytes += out.payload.length;
+        }
         send(out.type, out.type == UtpPacket.Type.SYN ? this.receiveId : this.sendId, out.seq, out.payload);
     }
 
@@ -589,18 +612,26 @@ public final class UtpConnection implements StreamTransport {
                 return;
             }
             long now = this.socket.nanos();
-            Out oldest = firstUnacknowledged();
+            Out oldest = firstInFlight();
             if (oldest != null && now - oldest.sentAt > this.rto) {
                 int limit = oldest.type == UtpPacket.Type.SYN ? SYN_TRANSMISSIONS : MAX_TRANSMISSIONS;
                 if (oldest.transmissions >= limit) {
                     end("no answer from " + this.remote, true);
                     return;
                 }
-                // A timeout: the window starts again from one packet, and the timer doubles.
+                // A timeout: the window starts again from one packet, and the timer doubles. Every packet not
+                // acknowledged is taken for lost and goes again from the oldest as the window allows, not one a
+                // timeout.
                 this.slowStartLimit = Math.max(this.maxWindow / 2, 2L * MSS);
                 this.maxWindow = MSS;
                 this.slowStart = true;
                 this.rto = Math.min(this.rto * 2, MAX_RTO);
+                for (Out out : this.inFlight) {
+                    if (!out.acknowledged && !out.resend) {
+                        out.resend = true;
+                        this.inFlightBytes -= out.payload.length;
+                    }
+                }
                 transmit(oldest);
             }
             if (this.state == State.CONNECTED && now - this.lastSent > KEEPALIVE) {
@@ -617,9 +648,10 @@ public final class UtpConnection implements StreamTransport {
         }
     }
 
-    private Out firstUnacknowledged() {
+    // The oldest packet sent and neither acknowledged nor waiting to go again.
+    private Out firstInFlight() {
         for (Out out : this.inFlight) {
-            if (!out.acknowledged) {
+            if (!out.acknowledged && !out.resend) {
                 return out;
             }
         }

@@ -32,8 +32,10 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
@@ -55,6 +57,9 @@ class UtpSocketTest {
     private volatile double loss;
     private volatile int jitterMillis;
     private volatile boolean duplicates;
+    private volatile int lostFrom = -1;
+    private volatile int lostTo = -1;
+    private final Set<Integer> lost = ConcurrentHashMap.newKeySet();
     private UtpSocket near;
     private UtpSocket far;
     private UtpConnection nearSide;
@@ -91,6 +96,18 @@ class UtpSocketTest {
         givenTheNearSideConnected();
 
         whenTheNearSideSendsBytes(4 << 20);
+
+        thenTheFarSideGetsThemAll();
+    }
+
+    @Test
+    void shouldRecoverQuicklyFromTheLossOfManyPacketsAtTheEnd() throws Exception {
+        givenTwoSocketsOnAWire(true);
+        // The connecting side's data starts at sequence number 2: the last 100 of 200 packets.
+        givenTheWireLosesOnceTheDataPacketsFrom(102, 201);
+        givenTheNearSideConnected();
+
+        whenTheNearSideSendsBytesReadWithin(200 * UtpConnection.MSS, Duration.ofSeconds(10));
 
         thenTheFarSideGetsThemAll();
     }
@@ -147,6 +164,11 @@ class UtpSocketTest {
         this.duplicates = true;
     }
 
+    private void givenTheWireLosesOnceTheDataPacketsFrom(int from, int to) {
+        this.lostFrom = from;
+        this.lostTo = to;
+    }
+
     private void givenTheNearSideConnected() throws Exception {
         this.nearSide = this.near.connect(FAR).get(20, TimeUnit.SECONDS);
         this.farSide = this.accepted.poll(20, TimeUnit.SECONDS);
@@ -159,11 +181,15 @@ class UtpSocketTest {
     }
 
     private void whenTheNearSideSendsBytes(int size) throws Exception {
+        whenTheNearSideSendsBytesReadWithin(size, Duration.ofSeconds(100));
+    }
+
+    private void whenTheNearSideSendsBytesReadWithin(int size, Duration wait) throws Exception {
         this.sent = new byte[size];
         new Random(3).nextBytes(this.sent);
         CompletableFuture<byte[]> reading = CompletableFuture.supplyAsync(() -> readExactly(this.farSide, size));
         write(this.nearSide, this.sent);
-        this.got = reading.get(100, TimeUnit.SECONDS);
+        this.got = reading.get(wait.toMillis(), TimeUnit.MILLISECONDS);
     }
 
     private void whenTheNearSideSendsAndCloses(int size) throws Exception {
@@ -223,7 +249,7 @@ class UtpSocketTest {
     // fails is a packet lost, as on a real one.
     @SuppressWarnings("FutureReturnValueIgnored")
     private void carry(byte[] packet, InetSocketAddress from, Supplier<UtpSocket> to) {
-        if (this.chance.nextDouble() < this.loss) {
+        if (this.chance.nextDouble() < this.loss || from.equals(NEAR) && lostOnce(packet)) {
             return;
         }
         int copies = this.duplicates && this.chance.nextDouble() < 0.01 ? 2 : 1;
@@ -231,6 +257,15 @@ class UtpSocketTest {
             long delay = 2L + (this.jitterMillis > 0 ? this.chance.nextInt(this.jitterMillis) : 0);
             this.wire.schedule(() -> to.get().received(from, packet, 0, packet.length), delay, TimeUnit.MILLISECONDS);
         }
+    }
+
+    // The first copy of each data packet the wire is to lose.
+    private boolean lostOnce(byte[] packet) {
+        int seq = (packet[16] & 0xFF) << 8 | packet[17] & 0xFF;
+        return (packet[0] & 0xFF) >>> 4 == UtpPacket.Type.DATA.code()
+                && seq >= this.lostFrom
+                && seq <= this.lostTo
+                && this.lost.add(seq);
     }
 
     private static void write(UtpConnection connection, byte[] bytes) throws IOException {
