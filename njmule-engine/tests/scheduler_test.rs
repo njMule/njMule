@@ -219,7 +219,8 @@ impl SchedulerTest {
     }
 
     fn then_it_tells_the_local_time_of_the_system(&self) {
-        let local = chrono::Local::now().naive_local().and_utc().timestamp();
+        let now = jiff::ZonedDateTime::now();
+        let local = now.timestamp().as_second().saturating_add(i64::from(now.offset().seconds()));
         let told = self.clock.unwrap().assume_utc().unix_timestamp();
         assert!(local.abs_diff(told) <= 2, "{told} is not {local}");
     }
