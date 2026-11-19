@@ -22,7 +22,6 @@ path = "tests/main.rs"
 
 [dependencies]
 axum = "0.8.9"
-chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 clap = { version = "4.6.7", features = ["derive"] }
 cookie = "0.18.2"
 data-encoding = "2.11.1"
@@ -39,7 +38,8 @@ if-addrs = "0.15.0"
 indexmap = "2.14.2"
 ipnet = "2.12.2"
 java-properties = "2.0.0"
-lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "builder", "tokio1-rustls", "ring", "rustls-platform-verifier"] }
+jiff = "1.0.1"
+lettre = { version = "0.11.24", default-features = false, features = ["smtp-transport", "builder", "tokio1-rustls", "ring", "rustls-platform-verifier"] }
 jsonschema = { version = "0.60.2", default-features = false }
 md-5 = "0.11.0"
 md4 = "0.11.0"
