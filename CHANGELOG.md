@@ -10,6 +10,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A connection through routers over uTP no longer stalls for minutes, or breaks, after losing many
+  packets in a row: what the other side did not acknowledge is sent again at once, as fast as the
+  connection allows.
+
 ### Security
 
 - The web interface no longer remembers every missing file a browser asks for: anyone who could
