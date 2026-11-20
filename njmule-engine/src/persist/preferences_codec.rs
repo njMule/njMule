@@ -27,6 +27,12 @@ use crate::util::white_space::strip;
 
 pub const FILE_NAME: &str = "njmule.properties";
 
+/// The file's format, written with the preferences: in format 1 (no such key) the updates' default mode was
+/// [`UpdateMode::Notify`], from format 2 it is [`UpdateMode::Install`].
+const FILE_FORMAT_KEY: &str = "preferences.format";
+
+const FILE_FORMAT: u32 = 2;
+
 type Getter = Box<dyn Fn(&Preferences) -> String + Send + Sync>;
 type Setter = Box<dyn Fn(&mut Preferences, &str) -> Result<(), String> + Send + Sync>;
 
@@ -237,7 +243,7 @@ pub fn load(file: &Path) -> io::Result<Preferences> {
 /// version does not know stay, so that an older version loses none.
 pub fn save(file: &Path, preferences: &Preferences) -> io::Result<()> {
     let mut unknown = property_lines::read(file).unwrap_or_default();
-    unknown.retain(|name, _| !is_key(name));
+    unknown.retain(|name, _| !is_key(name) && name != FILE_FORMAT_KEY);
     let mut text = format(preferences);
     if !unknown.is_empty() {
         text.push_str("# Not used by this version of njMule, kept as they were.\n");
@@ -250,9 +256,15 @@ pub fn save(file: &Path, preferences: &Preferences) -> io::Result<()> {
 
 /// The preferences of the text of a file, each invalid value keeping its default.
 pub fn parse(text: &str) -> Preferences {
-    let properties = property_lines::parse(text);
-    for name in properties.keys().filter(|name| !is_key(name)) {
+    let mut properties = property_lines::parse(text);
+    for name in properties.keys().filter(|name| !is_key(name) && *name != FILE_FORMAT_KEY) {
         tracing::debug!("Keeping the unknown preference {name} as it is");
+    }
+    // Once, in a file of the first format: the former default of the updates becomes the new one.
+    let former = properties.get("update.mode").is_some_and(|mode| strip(mode).eq_ignore_ascii_case("NOTIFY"));
+    if file_format(&properties) < FILE_FORMAT && former {
+        tracing::info!("njMule now installs its new versions on its own (update.mode=INSTALL, formerly NOTIFY)");
+        properties.insert("update.mode".to_owned(), UpdateMode::Install.name().to_owned());
     }
     let mut preferences = Preferences::default();
     for key in KEYS.iter() {
@@ -268,13 +280,20 @@ pub fn parse(text: &str) -> Preferences {
     preferences
 }
 
-/// The text of the file: a comment, then every preference in the order of the keys.
+/// The text of the file: a comment, then every preference and the file's format, sorted by key.
 pub fn format(preferences: &Preferences) -> String {
     let mut text = "# njMule preferences - edited by the application; invalid values revert to defaults.\n".to_owned();
-    for (name, value) in values(preferences) {
+    let mut lines = values(preferences);
+    lines.insert(FILE_FORMAT_KEY.to_owned(), FILE_FORMAT.to_string());
+    for (name, value) in lines {
         property_lines::append(&mut text, &name, &value);
     }
     text
+}
+
+// 1 for a file written before the key; a value that is no number counts as this format, changing nothing.
+fn file_format(properties: &BTreeMap<String, String>) -> u32 {
+    properties.get(FILE_FORMAT_KEY).map_or(1, |value| strip(value).parse().unwrap_or(FILE_FORMAT))
 }
 
 fn set(key: &Key, preferences: &Preferences, value: &str) -> Result<Preferences, String> {

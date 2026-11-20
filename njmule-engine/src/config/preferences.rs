@@ -217,7 +217,7 @@ impl Default for Preferences {
             notification_sound_file: None,
             ip_filter_lists: String::new(),
             ip_filter_update_days: DEFAULT_IP_FILTER_UPDATE_DAYS,
-            update_mode: UpdateMode::Notify,
+            update_mode: UpdateMode::Install,
             update_channel: UpdateChannel::of(nj_mule_info::version()),
             update_install_time: UpdateInstallTime::Exit,
             night_hours: NightHours::default(),

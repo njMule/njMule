@@ -12,6 +12,8 @@ use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::config::obfuscation_mode::ObfuscationMode;
 use njmule_engine::config::preferences::Preferences;
 use njmule_engine::config::proxy_settings::{ProxySettings, ProxyType};
+use njmule_engine::config::update_install_time::UpdateInstallTime;
+use njmule_engine::config::update_mode::UpdateMode;
 use njmule_engine::persist::preferences_codec;
 
 fn with_nick(nick: &str) -> Result<Preferences, String> {
@@ -93,6 +95,14 @@ fn should_use_the_temp_directory_of_the_profile_by_default() {
     let temp = Preferences::default().effective_temp_dir(&dirs);
 
     assert_eq!(temp, dirs.temp);
+}
+
+#[test]
+fn should_install_new_versions_on_their_own_when_nj_mule_closes_by_default() {
+    let preferences = Preferences::default();
+
+    assert_eq!(preferences.update_mode, UpdateMode::Install);
+    assert_eq!(preferences.update_install_time, UpdateInstallTime::Exit);
 }
 
 #[test]

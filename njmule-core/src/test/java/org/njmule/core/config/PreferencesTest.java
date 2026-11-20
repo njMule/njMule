@@ -74,6 +74,14 @@ class PreferencesTest {
         thenTheEffectiveTempDirectoryIsTheOneOfTheProfile();
     }
 
+    @Test
+    void shouldInstallNewVersionsOnTheirOwnWhenNjMuleClosesByDefault() {
+        whenTheDefaultsAreTaken();
+
+        thenTheUpdateModeIs(UpdateMode.INSTALL);
+        thenNewVersionsAreInstalledAt(UpdateInstallTime.EXIT);
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069})
     void shouldNotLetANickReverseOrIsolateTheTextAroundIt(int codePoint) {
@@ -241,6 +249,14 @@ class PreferencesTest {
 
     private void thenTheObfuscationIs(ObfuscationMode expected) {
         assertThat(this.preferences.obfuscation()).isEqualTo(expected);
+    }
+
+    private void thenTheUpdateModeIs(UpdateMode expected) {
+        assertThat(this.preferences.updateMode()).isEqualTo(expected);
+    }
+
+    private void thenNewVersionsAreInstalledAt(UpdateInstallTime expected) {
+        assertThat(this.preferences.updateInstallTime()).isEqualTo(expected);
     }
 
     private void thenTheRouterForwardsThePorts() {

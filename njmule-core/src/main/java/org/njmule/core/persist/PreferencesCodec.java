@@ -57,6 +57,14 @@ public final class PreferencesCodec {
 
     public static final String FILE_NAME = "njmule.properties";
 
+    /**
+     * The file's format, written with the preferences: in format 1 (no such key) the updates' default mode was
+     * {@link UpdateMode#NOTIFY}, from format 2 it is {@link UpdateMode#INSTALL}.
+     */
+    static final String FILE_FORMAT_KEY = "preferences.format";
+
+    static final int FILE_FORMAT = 2;
+
     private static final Logger logger = LoggerFactory.getLogger(PreferencesCodec.class);
 
     private record Key(
@@ -298,16 +306,22 @@ public final class PreferencesCodec {
         } catch (IOException e) {
             return new Properties();
         }
-        props.keySet().removeIf(KEYS::containsKey);
+        props.keySet().removeIf(name -> KEYS.containsKey(name) || FILE_FORMAT_KEY.equals(name));
         return props;
     }
 
     static Preferences parse(Reader reader) throws IOException {
         Properties props = PropertyLines.parse(reader);
         for (String name : props.stringPropertyNames()) {
-            if (!KEYS.containsKey(name)) {
+            if (!KEYS.containsKey(name) && !FILE_FORMAT_KEY.equals(name)) {
                 logger.debug("Keeping the unknown preference {} as it is", name);
             }
+        }
+        // Once, in a file of the first format: the former default of the updates becomes the new one.
+        String mode = props.getProperty("update.mode");
+        if (fileFormat(props) < FILE_FORMAT && mode != null && mode.strip().equalsIgnoreCase("NOTIFY")) {
+            logger.info("njMule now installs its new versions on its own (update.mode=INSTALL, formerly NOTIFY)");
+            props.setProperty("update.mode", UpdateMode.INSTALL.name());
         }
         // In the order the keys are declared: a value checked against others comes after them.
         Preferences.Builder builder = Preferences.defaults().toBuilder();
@@ -330,12 +344,23 @@ public final class PreferencesCodec {
     static void format(Preferences preferences, Writer out) throws IOException {
         StringBuilder text = new StringBuilder(
                 "# njMule preferences - edited by the application; invalid values revert to defaults.\n");
-        for (Key key : KEYS.values().stream()
-                .sorted((a, b) -> a.name().compareTo(b.name()))
-                .toList()) {
-            PropertyLines.append(text, key.name(), key.getter().apply(preferences));
-        }
+        SortedMap<String, String> lines = values(preferences);
+        lines.put(FILE_FORMAT_KEY, Integer.toString(FILE_FORMAT));
+        lines.forEach((name, value) -> PropertyLines.append(text, name, value));
         out.write(text.toString());
+    }
+
+    // 1 for a file written before the key; a value that is no number counts as this format, changing nothing.
+    private static int fileFormat(Properties props) {
+        String value = props.getProperty(FILE_FORMAT_KEY);
+        if (value == null) {
+            return 1;
+        }
+        try {
+            return Integer.parseInt(value.strip());
+        } catch (NumberFormatException e) {
+            return FILE_FORMAT;
+        }
     }
 
     private static Optional<Path> optionalPath(String value) {

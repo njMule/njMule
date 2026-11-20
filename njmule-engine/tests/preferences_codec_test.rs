@@ -71,7 +71,7 @@ fn should_round_trip_through_the_file() {
         name_cleanups: "dvdrip|sponsored".to_owned(),
         search_spam_filter: false,
         clean_up_new_names: true,
-        update_mode: UpdateMode::Install,
+        update_mode: UpdateMode::Download,
         update_install_time: UpdateInstallTime::ExitOrNight,
         night_hours: NightHours::parse("01:00-04:30").unwrap(),
         update_url: Some("http://192.168.1.2:8000/njmule".to_owned()),
@@ -91,7 +91,7 @@ fn should_round_trip_through_the_file() {
     let text = fs::read_to_string(&file).unwrap();
     for part in [
         "net.tcpPort=12345",
-        "update.mode=INSTALL",
+        "update.mode=DOWNLOAD",
         "update.installAt=EXIT_OR_NIGHT",
         "update.nightHours=01\\:00-04\\:30",
     ] {
@@ -212,6 +212,86 @@ fn should_write_a_sorted_and_stable_output() {
     assert_eq!(first, second);
     let lines: Vec<&str> = first.lines().skip(1).collect();
     assert!(lines.is_sorted(), "{first}");
+}
+
+#[test]
+fn should_write_the_format_of_the_file() {
+    let (_directory, file) = file();
+
+    preferences_codec::save(&file, &Preferences::default()).unwrap();
+
+    let saved = property_lines::parse(&fs::read_to_string(&file).unwrap());
+    assert_eq!(saved["preferences.format"], "2");
+}
+
+#[test]
+fn should_not_keep_the_format_as_a_key_of_a_newer_version() {
+    let (_directory, file) = file();
+    fs::write(
+        &file,
+        "preferences.format=2
+net.tcpPort=12345
+",
+    )
+    .unwrap();
+
+    let loaded = preferences_codec::load(&file).unwrap();
+    preferences_codec::save(&file, &Preferences { udp_port: 5000, ..loaded }).unwrap();
+
+    let text = fs::read_to_string(&file).unwrap();
+    assert!(!text.contains("Not used by this version"), "{text}");
+    assert_eq!(property_lines::parse(&text)["preferences.format"], "2");
+}
+
+#[test]
+fn should_install_new_versions_where_a_file_of_the_first_format_kept_the_former_default() {
+    let loaded = preferences_codec::parse(
+        "update.mode=notify
+",
+    );
+
+    assert_eq!(loaded.update_mode, UpdateMode::Install);
+}
+
+#[test]
+fn should_keep_another_update_mode_of_a_file_of_the_first_format() {
+    for mode in [UpdateMode::Off, UpdateMode::Download] {
+        let loaded = preferences_codec::parse(&format!(
+            "update.mode={}
+",
+            mode.name()
+        ));
+
+        assert_eq!(loaded.update_mode, mode);
+    }
+}
+
+#[test]
+fn should_keep_the_update_mode_chosen_after_the_former_default_was_changed() {
+    let (_directory, file) = file();
+    fs::write(
+        &file,
+        "update.mode=NOTIFY
+",
+    )
+    .unwrap();
+    let changed = preferences_codec::load(&file).unwrap();
+    preferences_codec::save(&file, &Preferences { update_mode: UpdateMode::Notify, ..changed }).unwrap();
+
+    let loaded = preferences_codec::load(&file).unwrap();
+
+    assert_eq!(loaded.update_mode, UpdateMode::Notify);
+}
+
+#[test]
+fn should_change_nothing_for_a_format_that_is_no_number() {
+    let loaded = preferences_codec::parse(
+        "preferences.format=two
+update.mode=NOTIFY
+",
+    );
+
+    assert_eq!(loaded.update_mode, UpdateMode::Notify);
 }
 
 #[test]
