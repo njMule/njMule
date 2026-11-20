@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-20
+
 ### Changed
 
 - njMule now keeps itself up to date by default: it downloads each new version in the background,
