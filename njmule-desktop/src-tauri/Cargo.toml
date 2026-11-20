@@ -21,9 +21,9 @@ tauri = { version = "=2.12.5", features = ["tray-icon"] }
 tauri-plugin-single-instance = { version = "=2.5.5", features = ["deep-link"] }
 tauri-plugin-deep-link = "=2.6.3"
 tauri-plugin-dialog = "=2.8.4"
-tauri-plugin-opener = "=2.7.2"
+tauri-plugin-opener = "=2.7.3"
 tauri-plugin-window-state = "=2.5.0"
-tauri-plugin-notification = "=2.8.0"
+tauri-plugin-notification = "=2.8.1"
 # Text only: the clipboard is watched for eD2K links.
 arboard = { version = "=3.7.0", default-features = false }
 serde = { version = "1", features = ["derive"] }
