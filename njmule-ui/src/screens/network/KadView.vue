@@ -251,8 +251,7 @@ onUnmounted(() => window.clearInterval(timer));
                     </Tip>
                 </div>
                 <div class="chart-axis muted">
-                    <span>{{ t('nj.kad.close') }}</span
-                    ><span>{{ t('nj.kad.far') }}</span>
+                    <span>{{ t('nj.kad.close') }}</span><span>{{ t('nj.kad.far') }}</span>
                 </div>
             </section>
             <dl class="card facts">

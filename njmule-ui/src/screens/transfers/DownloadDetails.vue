@@ -553,8 +553,7 @@ defineExpose({ neededHeight });
                                     <span class="small muted state">
                                         <span class="source-dot" :class="sourceDot(sourceShown(s))">{{
                                             sourceDot(sourceShown(s)) === 'unknown' ? '?' : ''
-                                        }}</span
-                                        >{{ t(SOURCE_STATES[sourceShown(s)]) }}
+                                        }}</span>{{ t(SOURCE_STATES[sourceShown(s)]) }}
                                     </span>
                                     <span class="thin-bar has">
                                         <span
