@@ -8,6 +8,7 @@ use crate::api::log_line::Level as LogLevel;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, ErrorKind};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -23,6 +24,7 @@ use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
+use crate::config::preferences::Preferences;
 use crate::download::download_manager::{KadCallback, KadLink, KadSource};
 use crate::engine::{Shared, crypt_options};
 use crate::files::comment_filter::CommentFilter;
@@ -36,12 +38,14 @@ use crate::net::relay_keeper::{Level, RelayKeeper};
 use crate::net::routes::Routes;
 use crate::net::tcp_connector;
 use crate::peer::buddy_link::{BuddyAction, BuddyLink};
+use crate::peer::nat_traversal::{NatTraversal, Request};
 use crate::peer::peer_greetings;
 use crate::peer::peer_link::{LinkHandle, LinkId};
 use crate::persist::format::nodes_dat;
 use crate::protocol::ed2k::client_reasks::Relayed;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::low_id_messages::{Callback, DirectCallbackRequest, UdpCheckRequest};
+use crate::protocol::ed2k::nat_traversal_messages::{OPTION_QUIC, OPTION_UTP};
 use crate::protocol::ed2k::server_messages::LOW_ID_LIMIT;
 use crate::protocol::packet::opcodes::{client, client_udp, extended};
 use crate::protocol::packet::{Packet, frame_limits, protocol};
@@ -67,6 +71,10 @@ struct Running {
     node: KadNode,
     publisher: KadPublisher,
     relay: RelayKeeper,
+    // Connections through routers on the socket; none when they could not start.
+    traversal: Option<Arc<NatTraversal>>,
+    // Whether the node takes callbacks straight to its port, so that clients not expected may connect through routers.
+    reachable: Arc<AtomicBool>,
 }
 
 /// What Kad tells of its checks of our ports, while it runs.
@@ -127,7 +135,13 @@ impl KadSide {
     /// port, while it runs; `our_ip` is part of the key of obfuscated re-asks.
     pub(super) fn finding<'a>(&'a mut self, our_ip: u32, calling: Calling<'a>) -> Option<KadFinding<'a>> {
         let running = self.running.as_mut()?;
-        Some(KadFinding { node: &mut running.node, socket: &running.socket, our_ip, calling })
+        Some(KadFinding {
+            node: &mut running.node,
+            socket: &running.socket,
+            traversal: running.traversal.as_deref(),
+            our_ip,
+            calling,
+        })
     }
 
     /// What starts keyword searches on Kad, while it runs.
@@ -141,6 +155,7 @@ impl KadSide {
 pub(super) struct KadFinding<'a> {
     node: &'a mut KadNode,
     socket: &'a KadSocket,
+    traversal: Option<&'a NatTraversal>,
     our_ip: u32,
     calling: Calling<'a>,
 }
@@ -152,6 +167,12 @@ pub(super) struct Calling<'a> {
     pub(super) tcp_port: u16,
     pub(super) user_hash: [u8; 16],
     pub(super) banned: &'a dyn Fn(u32) -> bool,
+    // The IP filter.
+    pub(super) blocked: &'a dyn Fn(u32) -> bool,
+    // Firewalled sources are met through the routers: we have a low ID and traverse them.
+    pub(super) through_routers: bool,
+    // Our public address as the server or Kad saw it, 0 when unknown.
+    pub(super) public_ip: u32,
 }
 
 impl KadLink for KadFinding<'_> {
@@ -175,10 +196,17 @@ impl KadLink for KadFinding<'_> {
     }
 
     // Through the buddy of the source, plain; or straight to its Kad port, obfuscated when either side asks for it.
+    // When we are firewalled too, the callback could not reach us: the source is met through the routers if it can be.
     fn request_callback(&mut self, source: &KadSource, file: &[u8; 16]) -> bool {
         let Some(route) = source.callback else {
             return false;
         };
+        if let Some(buddy_id) = route.buddy_id
+            && let Some(traversal) = self.traversal
+            && self.meets_through_routers(source)
+        {
+            return self.rendezvous(traversal, source, &route, buddy_id, file);
+        }
         if let Some(buddy_id) = route.buddy_id {
             let buddy = kad_node::Buddy {
                 ip: route.buddy_ip,
@@ -205,11 +233,54 @@ impl KadLink for KadFinding<'_> {
         let request = DirectCallbackRequest {
             tcp_port: self.calling.tcp_port,
             user_hash: self.calling.user_hash,
-            connect_options: kad_options(mode),
+            connect_options: callback_options(mode),
         }
         .encode();
         let key = obfuscate.then_some(user_hash);
         self.socket.send_client(ip, route.udp_port, &request, key, self.node.public_ip());
+        true
+    }
+}
+
+impl KadFinding<'_> {
+    fn meets_through_routers(&self, source: &KadSource) -> bool {
+        self.calling.through_routers && source.crypt_options & OPTION_UTP != 0 && self.node.is_firewalled()
+    }
+
+    // The connection, when it opens, comes as a callback would, through the greetings.
+    fn rendezvous(
+        &self,
+        traversal: &NatTraversal,
+        source: &KadSource,
+        route: &KadCallback,
+        buddy_id: [u8; 16],
+        file: &[u8; 16],
+    ) -> bool {
+        let ip = u32::from(*source.address.ip());
+        let Some(user_hash) = source.user_hash else {
+            return false;
+        };
+        if route.udp_port == 0 || (self.calling.blocked)(ip) || (self.calling.banned)(route.buddy_ip) {
+            return false;
+        }
+        let our_ip = if self.node.public_ip() != 0 { self.node.public_ip() } else { self.calling.public_ip };
+        let announced = self.node.announced_udp_port();
+        let asking = traversal.rendezvous(Request {
+            target: ipv4::socket_address(ip, route.udp_port),
+            target_hash: user_hash,
+            buddy: ipv4::socket_address(route.buddy_ip, route.buddy_port),
+            buddy_id,
+            file: *file,
+            our_ip,
+            our_port: if announced != 0 { announced } else { self.socket.port() },
+            has_quic: source.crypt_options & OPTION_QUIC != 0,
+        });
+        let address = source.address;
+        tokio::spawn(async move {
+            if let Err(e) = asking.await {
+                tracing::debug!("No connection through the routers with {address}: {e}");
+            }
+        });
         true
     }
 }
@@ -295,7 +366,7 @@ impl Network {
         let settings = Settings {
             tcp_port: self.shared.listen_port(),
             user_hash: self.shared.user_hash,
-            options: Arc::new(move || kad_options(watched.borrow().obfuscation)),
+            options: Arc::new(move || kad_options(&watched.borrow())),
             trusted: Arc::new(move |ip| ipv4::is_lan(ip) && !lan.borrow().filter_lan_addresses),
             blocked: Arc::new(self.ip_blocks()),
             udp_port: socket.port(),
@@ -318,8 +389,49 @@ impl Network {
             self.user_log(LogLevel::Success, format!("Kad started: UDP port {} is free again", preferences.udp_port));
             self.kad.port_taken = 0;
         }
-        self.kad.running = Some(Running { socket, node, publisher: KadPublisher::new(), relay });
+        let reachable = Arc::new(AtomicBool::new(false));
+        let traversal = self.start_traversal(&socket, &reachable);
+        self.shared.announce_traversal(traversal.is_some());
+        self.kad.running = Some(Running { socket, node, publisher: KadPublisher::new(), relay, traversal, reachable });
         self.kad.starts = self.kad.starts.wrapping_add(1);
+    }
+
+    // Connections through routers on the client UDP port: its frames go straight to them, and what they open to the
+    // greetings.
+    fn start_traversal(&self, socket: &KadSocket, reachable: &Arc<AtomicBool>) -> Option<Arc<NatTraversal>> {
+        let events = self.peer_events.clone();
+        let watched = self.shared.preferences.subscribe();
+        let user_hash = self.shared.user_hash;
+        let reachable = Arc::clone(reachable);
+        let traversal = NatTraversal::new(
+            socket.client_sender(),
+            Arc::new(move |connection, hello_first| {
+                let _ = events.send(PeerEvent::Routed(Box::new(connection), hello_first));
+            }),
+            Arc::new(move || user_hash),
+            Arc::new(move || callback_options(watched.borrow().obfuscation)),
+            Arc::new(move || reachable.load(Ordering::Relaxed)),
+        );
+        match traversal {
+            Ok(traversal) => {
+                let traversal = Arc::new(traversal);
+                let frames = Arc::downgrade(&traversal);
+                socket.deliver_frames_to(Arc::new(move |from, packet| {
+                    if let Some(traversal) = frames.upgrade() {
+                        traversal.frame(from, packet);
+                    }
+                }));
+                Some(traversal)
+            }
+            Err(e) => {
+                tracing::warn!("Connections through routers cannot start: {e}");
+                None
+            }
+        }
+    }
+
+    fn traversal(&self) -> Option<Arc<NatTraversal>> {
+        self.kad.running.as_ref().and_then(|running| running.traversal.clone())
     }
 
     /// What Kad tells of its checks of our ports; none while it does not run.
@@ -338,7 +450,7 @@ impl Network {
         self.kad.running.as_mut().map_or(0, |running| running.node.filters_changed())
     }
 
-    fn ip_blocks(&self) -> impl Fn(u32) -> bool + Send + Sync + 'static {
+    pub(super) fn ip_blocks(&self) -> impl Fn(u32) -> bool + Send + Sync + 'static {
         super::filter::ip_test(&self.ip_filter)
     }
 
@@ -355,6 +467,7 @@ impl Network {
         };
         self.buddies().release();
         self.kad.notes.kad_stopped(&self.comment_filter());
+        Self::stop_traversal(&self.shared, &mut running);
         running.node.close();
         running.relay.close();
         tokio::spawn(running.socket.close());
@@ -367,10 +480,18 @@ impl Network {
         let mut running = self.kad.running.take()?;
         self.buddies().release();
         self.kad.notes.kad_stopped(&self.comment_filter());
+        Self::stop_traversal(&self.shared, &mut running);
         running.node.close();
         running.relay.close();
         self.kad.port_taken = 0;
         Some(running.socket)
+    }
+
+    fn stop_traversal(shared: &Shared, running: &mut Running) {
+        if let Some(traversal) = running.traversal.take() {
+            traversal.close();
+        }
+        shared.announce_traversal(false);
     }
 
     /// Joins Kad again after a stop by hand, or looks for contacts at once when it runs.
@@ -524,6 +645,11 @@ impl Network {
                     self.buddies().relay_reask(u32::from(*v4.ip()), v4.port(), packet);
                 }
             }
+            client_udp::HOLEPUNCH => {
+                if let Some(traversal) = self.traversal() {
+                    traversal.hole_punched(from);
+                }
+            }
             _ => tracing::trace!("Client datagram {:#04x} from {from}", packet.opcode()),
         }
     }
@@ -578,6 +704,7 @@ impl Network {
         let (udp_port, direct_callback) = announced.unwrap_or((0, false));
         self.shared.announce_kad(udp_port, direct_callback);
         if let Some(running) = &mut self.kad.running {
+            running.reachable.store(running.node.supports_direct_callback(), Ordering::Relaxed);
             running.node.tick();
             let shared: Vec<kad_publisher::Shared> = self
                 .shared_files
@@ -723,9 +850,12 @@ impl Network {
                 }
                 BuddyAction::CallBack(callback) => self.relayed_callback(&callback),
                 BuddyAction::AnswerReask(reask) => self.relayed_reask(&reask),
-                BuddyAction::Rendezvous { from, .. } => {
-                    tracing::debug!("Ignoring a rendezvous relayed from {from}: no traversal of routers");
-                }
+                BuddyAction::Rendezvous { from, rendezvous } => match self.traversal() {
+                    Some(traversal) if self.preferences().router_traversal() => {
+                        traversal.rendezvous_forwarded(from, &rendezvous);
+                    }
+                    _ => tracing::debug!("Ignoring a rendezvous relayed from {from}: no traversal of routers"),
+                },
             }
         }
     }
@@ -802,17 +932,7 @@ impl Network {
         let high_id = self.shared.context.lock().is_ok_and(|context| context.client_id >= LOW_ID_LIMIT);
         let callable = !running.node.is_firewalled() || high_id;
         let public_ip = if running.node.is_firewalled() { 0 } else { running.node.public_ip() };
-        let kept: Vec<KadSource> = found
-            .iter()
-            .filter(|source| !source.is_firewalled() || callable)
-            .map(|source| KadSource {
-                address: SocketAddrV4::new(Ipv4Addr::from(source.ip), source.tcp_port),
-                user_hash: Some(source.user_hash),
-                crypt_options: source.connect_options,
-                callback: callback_of(source),
-                ipv6: source.ipv6,
-            })
-            .collect();
+        let kept = kept_kad_sources(found, callable, self.preferences().router_traversal());
         let (settings, ours) = (self.settings(), self.shared.our_hello());
         self.downloads.found_on_kad(file, &kept, public_ip, &settings, &ours);
         self.after_downloads();
@@ -928,8 +1048,34 @@ fn callback_of(source: &kad_node::Source) -> Option<KadCallback> {
     }
 }
 
-// What the node's connection options say of our obfuscation.
-fn kad_options(mode: ObfuscationMode) -> u8 {
+/// The sources found on Kad worth asking. A firewalled source can only connect to us: useless while we cannot be called
+/// back, unless we are both met through the routers, which takes its buddy and its uTP.
+pub fn kept_kad_sources(found: &[kad_node::Source], callable: bool, traversing: bool) -> Vec<KadSource> {
+    found
+        .iter()
+        .filter(|source| {
+            !source.is_firewalled()
+                || callable
+                || (traversing && source.buddy.is_some() && source.connect_options & OPTION_UTP != 0)
+        })
+        .map(|source| KadSource {
+            address: SocketAddrV4::new(Ipv4Addr::from(source.ip), source.tcp_port),
+            user_hash: Some(source.user_hash),
+            crypt_options: source.connect_options,
+            callback: callback_of(source),
+            ipv6: source.ipv6,
+        })
+        .collect()
+}
+
+/// What Kad tells of how to reach us, as the preferences say now: our obfuscation, and traversal only where we take it.
+pub fn kad_options(preferences: &Preferences) -> u8 {
+    let traversal = if preferences.router_traversal() { OPTION_UTP | OPTION_QUIC } else { 0 };
+    callback_options(preferences.obfuscation) | traversal
+}
+
+// What the connection options of a callback request say of our obfuscation.
+fn callback_options(mode: ObfuscationMode) -> u8 {
     u8::try_from(crypt_options(mode) >> 7).unwrap_or(0)
 }
 

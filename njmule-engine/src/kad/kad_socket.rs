@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The client UDP socket, which Kad shares: datagrams are opened with any of the keys they may be obfuscated with,
-//! unpacked, and their Kad and client packets go to the receiver. Kad stays on IPv4; over IPv6 only client packets come,
-//! plain.
+//! unpacked, and their Kad and client packets go to the receiver; frames of the reserved protocol 0xB2, which carry
+//! connections through routers, go to their own receiver at once. Kad stays on IPv4; over IPv6 only client packets
+//! come, plain.
 
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -41,6 +42,18 @@ pub enum Incoming {
 /// Where the socket's packets go.
 pub type Receiver = mpsc::UnboundedSender<Incoming>;
 
+/// Where the frames of protocol 0xB2 go, from the socket's own task.
+pub type Frames = Arc<dyn Fn(SocketAddr, &Packet) + Send + Sync>;
+
+/// What sends client packets plain, from any task, while the socket is open.
+pub type ClientSender = Arc<dyn Fn(SocketAddr, &Packet) + Send + Sync>;
+
+// What a datagram held.
+enum Opened {
+    Incoming(Incoming),
+    Frame(SocketAddr, Packet),
+}
+
 /// What opens the datagrams: our user hash and Kad identity give the keys, and the IP filter drops some unread.
 #[derive(Clone)]
 pub struct Keys {
@@ -51,11 +64,16 @@ pub struct Keys {
 
 struct Shared {
     route: Mutex<UdpRoute>,
+    frames: Mutex<Option<Frames>>,
 }
 
 impl Shared {
     fn route(&self) -> UdpRoute {
         self.route.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+
+    fn frames(&self) -> Option<Frames> {
+        self.frames.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
 }
 
@@ -70,7 +88,7 @@ impl KadSocket {
     /// receiving.
     pub fn open(local: Option<Ipv4Addr>, port: u16, keys: Keys, receiver: Receiver) -> io::Result<Self> {
         let socket = Arc::new(UdpSocket::from_std(bind(local, port)?)?);
-        let shared = Arc::new(Shared { route: Mutex::new(UdpRoute::Direct) });
+        let shared = Arc::new(Shared { route: Mutex::new(UdpRoute::Direct), frames: Mutex::new(None) });
         let reader = tokio::spawn(receive(Arc::clone(&socket), Arc::clone(&shared), keys, receiver));
         Ok(Self { socket, shared, reader: Some(reader) })
     }
@@ -95,6 +113,23 @@ impl KadSocket {
     /// Sends a client packet plain to an IPv6 address: clients do not obfuscate their datagrams over IPv6.
     pub fn send_client_to(&self, to: SocketAddr, packet: &Packet) {
         self.transmit(to, &udp_framing::encode(packet));
+    }
+
+    /// What sends client packets plain from other tasks; it stops sending once the socket is closed.
+    pub fn client_sender(&self) -> ClientSender {
+        let (socket, shared) = (Arc::downgrade(&self.socket), Arc::clone(&self.shared));
+        Arc::new(move |to, packet| {
+            if let Some(socket) = socket.upgrade()
+                && let Err(e) = udp_route::transmit(&socket, &shared.route(), to, &udp_framing::encode(packet))
+            {
+                tracing::debug!("Cannot send to {to}: {e}");
+            }
+        })
+    }
+
+    /// Hands the frames of protocol 0xB2 to `frames` from now on; they are dropped before.
+    pub fn deliver_frames_to(&self, frames: Frames) {
+        *self.shared.frames.lock().unwrap_or_else(PoisonError::into_inner) = Some(frames);
     }
 
     pub fn port(&self) -> u16 {
@@ -238,19 +273,27 @@ async fn receive(socket: Arc<UdpSocket>, shared: Arc<Shared>, keys: Keys, receiv
         if sender.port() == 0 {
             continue;
         }
-        let incoming = match sender {
+        let opened = match sender {
             SocketAddr::V4(v4) => open(u32::from(*v4.ip()), v4.port(), payload, &keys),
-            SocketAddr::V6(_) => open_over_ipv6(sender, payload),
+            SocketAddr::V6(_) => open_over_ipv6(sender, payload).map(Opened::Incoming),
         };
-        if let Some(incoming) = incoming
-            && receiver.send(incoming).is_err()
-        {
-            return;
+        match opened {
+            Some(Opened::Incoming(incoming)) => {
+                if receiver.send(incoming).is_err() {
+                    return;
+                }
+            }
+            Some(Opened::Frame(from, packet)) => {
+                if let Some(frames) = shared.frames() {
+                    frames(from, &packet);
+                }
+            }
+            None => {}
         }
     }
 }
 
-fn open(ip: u32, port: u16, payload: &[u8], keys: &Keys) -> Option<Incoming> {
+fn open(ip: u32, port: u16, payload: &[u8], keys: &Keys) -> Option<Opened> {
     if (keys.blocked)(ip) {
         return None;
     }
@@ -271,14 +314,15 @@ fn open(ip: u32, port: u16, payload: &[u8], keys: &Keys) -> Option<Incoming> {
             .ok()?;
     }
     match packet.protocol() {
-        protocol::EMULE => Some(Incoming::Client { ip, port, packet }),
-        protocol::KAD => Some(Incoming::Kad {
+        protocol::UDP_RESERVED_2 => Some(Opened::Frame(SocketAddr::from((Ipv4Addr::from(ip), port)), packet)),
+        protocol::EMULE => Some(Opened::Incoming(Incoming::Client { ip, port, packet })),
+        protocol::KAD => Some(Opened::Incoming(Incoming::Kad {
             ip,
             port,
             packet,
             receiver_key: opened.receiver_verify_key,
             sender_key: opened.sender_verify_key,
-        }),
+        })),
         _ => None,
     }
 }
