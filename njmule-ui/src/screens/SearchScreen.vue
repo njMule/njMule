@@ -1165,22 +1165,19 @@ onUnmounted(() => {
                     <div class="search-tip">
                         <Icon name="LABEL" />
                         <div>
-                            <strong>{{ t('nj.search.tipExact') }}</strong
-                            ><code>"night of the living dead"</code>
+                            <strong>{{ t('nj.search.tipExact') }}</strong><code>"night of the living dead"</code>
                         </div>
                     </div>
                     <div class="search-tip">
                         <Icon name="REMOVE_CIRCLE" />
                         <div>
-                            <strong>{{ t('nj.search.tipWithout') }}</strong
-                            ><code>debian -netinst</code>
+                            <strong>{{ t('nj.search.tipWithout') }}</strong><code>debian -netinst</code>
                         </div>
                     </div>
                     <div class="search-tip">
                         <Icon name="LINK" />
                         <div>
-                            <strong>{{ t('nj.search.tipLink') }}</strong
-                            ><code>ed2k://|file|…|/</code>
+                            <strong>{{ t('nj.search.tipLink') }}</strong><code>ed2k://|file|…|/</code>
                         </div>
                     </div>
                 </div>
