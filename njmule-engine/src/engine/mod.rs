@@ -128,6 +128,8 @@ pub struct Shared {
     kad_announced: AtomicU32,
     // Our Kad buddy's IPv4 address and UDP port while firewalled with one, as `ip << 16 | port`; 0 otherwise.
     kad_buddy: AtomicU64,
+    // Whether Kad's port carries connections through routers, which our hello tells while the preferences allow them.
+    kad_traversal: AtomicBool,
     preferences: watch::Sender<Preferences>,
     routes: Routes,
     events: broadcast::Sender<EngineEvent>,
@@ -213,6 +215,11 @@ impl Shared {
         self.kad_buddy.store(u64::from(ip) << 16 | u64::from(udp_port), Ordering::Relaxed);
     }
 
+    /// Tells our hello whether Kad's port carries connections through routers.
+    fn announce_traversal(&self, on: bool) {
+        self.kad_traversal.store(on, Ordering::Relaxed);
+    }
+
     /// Our greeting as it stands: on the server we are on, and on Kad while it is connected, which takes re-asks over
     /// its UDP port.
     pub fn our_hello(&self) -> Hello {
@@ -246,7 +253,16 @@ impl Shared {
         let buddy = self.kad_buddy.load(Ordering::Relaxed);
         let buddy_ip = u32::try_from(buddy >> 16).unwrap_or(0);
         let buddy_port = u16::try_from(buddy & 0xFFFF).unwrap_or(0);
-        if buddy_ip != 0 && context.client_id < LOW_ID_LIMIT { hello.with_buddy(buddy_ip, buddy_port) } else { hello }
+        let hello = if buddy_ip != 0 && context.client_id < LOW_ID_LIMIT {
+            hello.with_buddy(buddy_ip, buddy_port)
+        } else {
+            hello
+        };
+        if self.kad_traversal.load(Ordering::Relaxed) && preferences.router_traversal() {
+            hello.with_router_traversal()
+        } else {
+            hello
+        }
     }
 }
 
@@ -334,6 +350,7 @@ impl Engine {
             listen_port: AtomicU16::new(listen_port),
             kad_announced: AtomicU32::new(0),
             kad_buddy: AtomicU64::new(0),
+            kad_traversal: AtomicBool::new(false),
             preferences,
             routes,
             events,

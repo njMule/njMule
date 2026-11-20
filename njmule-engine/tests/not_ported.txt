@@ -75,7 +75,7 @@ PartFileTest.shouldTrustThePartsCheckedBeforeOnlyWhileTheDataIsUnchanged
 PathSanitizerTest.shouldKeepAnyNameInsideTheDirectory
 PathSanitizerTest.shouldMakeNamesSafeShortAndStable
 
-# Connections through routers come with the port of NAT traversal.
+# The engine takes a connection through routers after a rendezvous from its Kad buddy, which no test double plays.
 PeerGreetingsTest.shouldSayHelloFirstOverAConnectionThroughRoutersAndHandItOverOnTheClientsHello
 
 # The engine's task drives the pinger with its own timer: the pinger holds none to start or stop.

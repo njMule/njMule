@@ -64,10 +64,12 @@ use crate::files::part_file_storage::DiskDone;
 use crate::files::shared_files::{Finished, Found, Listing, SharedFiles};
 use crate::kad::kad_socket::Incoming;
 use crate::net::relay_keeper::{Level, RelayKeeper};
+use crate::net::tcp_connection::TcpConnection;
 use crate::net::{public_ipv6, tcp_connector, traffic};
 use crate::peer::client_history::ClientHistory;
 use crate::peer::identities::{self, Identities, Session, Trust};
 use crate::peer::identity_handshake::{Identity, Outcome as Identification};
+use crate::peer::nat_traversal::RoutedConnection;
 use crate::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId, Side};
 use crate::peer::{peer_greetings, peer_software};
 use crate::persist::categories_codec;
@@ -78,7 +80,7 @@ use crate::persist::format::{known2_met, nodes_dat};
 use crate::persist::schedule_codec;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams;
-use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint};
+use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint, LOW_ID_LIMIT};
 use crate::protocol::packet::opcodes::{client, extended, server_udp};
 use crate::protocol::packet::{Packet, frame_limits, protocol};
 use crate::protocol::tag::server_tag;
@@ -112,6 +114,7 @@ mod ports;
 mod shares;
 
 use kad::KadSide;
+pub use kad::{kad_options, kept_kad_sources};
 use ports::KadRound;
 use shares::SharesSide;
 
@@ -340,6 +343,8 @@ enum PeerEvent {
     BuddyDialed(u64, Box<io::Result<tcp_connector::Connection>>),
     // Our own connection for a chat with the client listening at the address.
     ChatConnected(SocketAddr, Box<io::Result<tcp_connector::Connection>>),
+    // A connection through the routers, and whether we say hello first: we took it.
+    Routed(Box<RoutedConnection>, bool),
 }
 
 // How long a client we call for its upload slot has to accept the connection.
@@ -355,6 +360,8 @@ struct Peer {
     // The secure identification of the client, once it greeted us.
     identity: Option<Session>,
     incoming: bool,
+    // Through the routers: either side's hello may come first, and only a hello gets our answer.
+    routed: bool,
     // The address of a client we call back, free to be called again once it answered our hello or left.
     called_back: Option<SocketAddr>,
     // The user hash of a client we called for its upload slot, until it answers our hello.
@@ -1614,6 +1621,8 @@ impl Network {
         let context = self.shared.context.lock().map(|context| *context).unwrap_or_default();
         let obfuscation = self.preferences().obfuscation;
         let our_ip = self.our_public_ip();
+        let blocked = self.ip_blocks();
+        let through_routers = self.preferences().router_traversal() && context.client_id < LOW_ID_LIMIT;
         let mut server = SessionLink { session: &mut self.session, context, obfuscation };
         let uploads = &self.uploads;
         let now = Instant::now();
@@ -1624,6 +1633,9 @@ impl Network {
             tcp_port: self.shared.listen_port(),
             user_hash: self.shared.user_hash,
             banned: &banned,
+            blocked: &blocked,
+            through_routers,
+            public_ip: our_ip,
         };
         let mut kad = self.kad.finding(our_ip, calling);
         let kad = kad.as_mut().map(|finding| finding as &mut dyn KadLink);
@@ -1777,6 +1789,7 @@ impl Network {
             PeerEvent::Accepted(connection, permit) => {
                 self.new_link(*connection, Some(permit));
             }
+            PeerEvent::Routed(connection, hello_first) => self.through_routers(*connection, hello_first),
             PeerEvent::Connected(address, result) => match *result {
                 Ok(connection) => {
                     let handle = self.new_link(connection, None);
@@ -1946,11 +1959,55 @@ impl Network {
     }
 
     fn new_link(&mut self, connection: tcp_connector::Connection, permit: Option<Permit>) -> LinkHandle {
+        let incoming = permit.is_some();
+        self.link_over(connection.into_tcp_connection(frame_limits::client_handshake), permit, incoming, false)
+    }
+
+    // A connection through the routers: one a client opened counts as coming in, one we asked for as ours. Either way
+    // the client is greeted as one that connected to us, the side that took the connection speaking first.
+    fn through_routers(&mut self, connection: RoutedConnection, hello_first: bool) {
+        if !self.preferences().router_traversal() {
+            return;
+        }
+        let remote = connection.remote_address();
+        let permit = if hello_first {
+            match self.guard.admit(remote.ip()) {
+                Admission::Admitted(permit) => permit,
+                Admission::Refused(reason) => {
+                    tracing::debug!("Refused {remote} through the routers: {reason:?}");
+                    return;
+                }
+            }
+        } else {
+            self.guard.outgoing()
+        };
+        let (input, output) = tokio::io::split(connection);
+        let connection = TcpConnection::over(input, output, remote, None, frame_limits::client_handshake);
+        let handle = self.link_over(connection, Some(permit), true, true);
+        handle.set_timeout(peer_greetings::HELLO_TIMEOUT);
+        if hello_first {
+            match self.shared.our_hello().to_peer_at(&remote.ip()).encode(false) {
+                Ok(hello) => {
+                    handle.send(hello);
+                }
+                Err(e) => {
+                    tracing::warn!("Cannot greet {remote}: {e}");
+                    handle.close();
+                }
+            }
+        }
+    }
+
+    fn link_over(
+        &mut self,
+        connection: TcpConnection,
+        permit: Option<Permit>,
+        incoming: bool,
+        routed: bool,
+    ) -> LinkHandle {
         let id = self.next_link;
         self.next_link = self.next_link.saturating_add(1);
-        let connection = connection.into_tcp_connection(frame_limits::client_handshake);
         let handle = peer_link::start(id, connection, self.link_events.clone());
-        let incoming = permit.is_some();
         self.peers.insert(
             id,
             Peer {
@@ -1958,6 +2015,7 @@ impl Network {
                 hello: None,
                 identity: None,
                 incoming,
+                routed,
                 called_back: None,
                 upload_for: None,
                 _permit: permit,
@@ -2007,7 +2065,8 @@ impl Network {
         let handle = peer.handle.clone();
         let Some(hello) = peer.hello.clone() else {
             let expected = if peer.incoming { client::HELLO } else { client::HELLOANSWER };
-            if packet.protocol() != protocol::EDONKEY || packet.opcode() != expected {
+            let greets = packet.opcode() == expected || (peer.routed && packet.opcode() == client::HELLOANSWER);
+            if packet.protocol() != protocol::EDONKEY || !greets {
                 if peer.incoming {
                     handle.close();
                 }
@@ -2036,11 +2095,13 @@ impl Network {
                 self.downloads.greeted(link, hello, ours);
                 return;
             }
-            match ours.to_peer_at(&handle.remote().ip()).encode(true) {
-                Ok(answer) => {
-                    handle.send(answer);
+            if packet.opcode() == client::HELLO {
+                match ours.to_peer_at(&handle.remote().ip()).encode(true) {
+                    Ok(answer) => {
+                        handle.send(answer);
+                    }
+                    Err(e) => tracing::warn!("Cannot answer {}: {e}", handle.remote()),
                 }
-                Err(e) => tracing::warn!("Cannot answer {}: {e}", handle.remote()),
             }
             // Ourselves, or someone posing as us: it hears who we are, which ends a connection to ourselves.
             if hello.user_hash == ours.user_hash {
