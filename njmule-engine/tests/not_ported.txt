@@ -49,8 +49,6 @@ LittleEndianTest
 KnownFoldersTest
 # The Java engine reads the default gateways from the routing table; Rust asks the system through netdev.
 DefaultGatewayTest
-# NAT traversal needs QUIC and uTP (area 7).
-NatTraversalTest
 
 # Ed2kLinkTest: not ported yet.
 Ed2kLinkTest.shouldDropAnIpv6SourceWithAZoneIdButKeepTheLink
