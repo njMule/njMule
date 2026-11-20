@@ -12,6 +12,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- On a Synology NAS njMule no longer downloads a new version by itself: the Package Center installs
+  it from your computer, so it only tells of it.
 - A connection through routers over uTP no longer stalls for minutes, or breaks, after losing many
   packets in a row: what the other side did not acknowledge is sent again at once, as fast as the
   connection allows.

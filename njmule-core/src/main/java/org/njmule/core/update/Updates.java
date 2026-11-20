@@ -555,7 +555,10 @@ public final class Updates implements AutoCloseable {
                     this.told = available.orElseThrow().version();
                     tell = automatic ? available.orElseThrow() : null;
                 }
+                // The Package Center installs from the browser's computer: a package downloaded on the NAS serves
+                // nobody.
                 fetch = (this.mode == UpdateMode.DOWNLOAD || this.mode == UpdateMode.INSTALL)
+                        && this.installation.kind() != InstallKind.SYNOLOGY
                         && this.status.isWorthTelling()
                         && this.status.available().orElseThrow().download().isPresent()
                         && this.status.ready().isEmpty();
@@ -569,11 +572,11 @@ public final class Updates implements AutoCloseable {
         if (tell != null) {
             this.listener.found(tell);
         }
-        result.complete(after);
         if (fetch) {
-            // Its outcome goes to the listener.
+            // Started before the check answers, its outcome goes to the listener.
             download();
         }
+        result.complete(after);
     }
 
     private UpdateManifest verified(GitHubReleases.Signed signed) throws IOException, SignatureException {

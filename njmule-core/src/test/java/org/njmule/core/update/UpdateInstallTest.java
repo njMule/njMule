@@ -56,6 +56,7 @@ class UpdateInstallTest {
     private static final Instant NOW = Instant.parse("2026-11-03T08:00:00Z");
     private static final String ZIP = "njmule-0.2.0-windows-x64.zip";
     private static final String MSI = "njmule-0.2.0-windows-x64.msi";
+    private static final String SPK = "njmule-0.2.0-synology-x86_64.spk";
 
     @TempDir
     Path dir;
@@ -128,6 +129,18 @@ class UpdateInstallTest {
 
         thenAVersionBecomesReady();
         thenItInstallsWhen(Install.ASKED);
+    }
+
+    @Test
+    void shouldNotDownloadOnItsOwnOnASynologyNas() throws Exception {
+        givenTheInstallation(InstallKind.SYNOLOGY, Installer.NONE);
+        givenANewReleaseWithItsPackage();
+        givenTheMode(UpdateMode.INSTALL);
+
+        whenCheckedOnItsOwn();
+
+        thenTheNewVersionIsKnown("0.2.0");
+        thenNoDownloadStarted();
     }
 
     @Test
@@ -471,6 +484,16 @@ class UpdateInstallTest {
         assertThat(this.status.ready()).isEmpty();
     }
 
+    private void thenTheNewVersionIsKnown(String version) {
+        assertThat(this.status.available()).map(NewVersion::version).contains(version);
+    }
+
+    private void thenNoDownloadStarted() {
+        assertThat(updates().status().download()).isEmpty();
+        assertThat(updates().status().ready()).isEmpty();
+        assertThat(this.web.asked()).noneMatch(uri -> uri.getPath().endsWith(SPK));
+    }
+
     private void thenAVersionBecomesReady() throws InterruptedException {
         long end = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         while (updates().status().ready().isEmpty() && System.nanoTime() < end) {
@@ -539,9 +562,13 @@ class UpdateInstallTest {
     }
 
     private void serveRelease(byte[] sealed, byte[] served) throws Exception {
-        String name =
-                this.kind == InstallKind.MSI ? MSI : this.kind == InstallKind.DEB ? "njmule_0.2.0_amd64.deb" : ZIP;
-        String platform = this.kind == InstallKind.DEB ? "linux-x64" : "windows-x64";
+        String name = switch (this.kind) {
+            case MSI -> MSI;
+            case DEB -> "njmule_0.2.0_amd64.deb";
+            case SYNOLOGY -> SPK;
+            default -> ZIP;
+        };
+        String platform = onLinux() ? "linux-x64" : "windows-x64";
         String sha256 =
                 HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(sealed));
         String asset = """
@@ -578,6 +605,10 @@ class UpdateInstallTest {
                 NOW);
     }
 
+    private boolean onLinux() {
+        return this.kind == InstallKind.DEB || this.kind == InstallKind.SYNOLOGY;
+    }
+
     private Path installed() {
         return this.dir.resolve("installed");
     }
@@ -590,7 +621,7 @@ class UpdateInstallTest {
         if (this.updates == null) {
             Installation installation = new Installation(
                     this.kind, "windows-x64", Optional.of(installed().resolve("njmule.exe")), this.installer);
-            if (this.kind == InstallKind.DEB) {
+            if (onLinux()) {
                 installation = new Installation(this.kind, "linux-x64", Optional.empty(), this.installer);
             }
             this.updates = new Updates(
