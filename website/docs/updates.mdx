@@ -44,7 +44,7 @@ holds four choices, which are also keys of `njmule.properties`:
 
 | Option | Key | Choices | Default |
 |---|---|---|---|
-| **Look for new versions** | `update.mode` | **Only when I ask** (`OFF`), **At each start and every day** (`NOTIFY`), **At each start and every day, and download them** (`DOWNLOAD`), **At each start and every day, and install them** (`INSTALL`) | `NOTIFY` |
+| **Look for new versions** | `update.mode` | **Only when I ask** (`OFF`), **At each start and every day** (`NOTIFY`), **At each start and every day, and download them** (`DOWNLOAD`), **At each start and every day, and install them** (`INSTALL`) | `INSTALL` |
 | **Versions** | `update.channel` | **Releases only** (`STABLE`), **Test versions too** (`PRERELEASE`) | Test versions for a test version of njMule, releases otherwise |
 | **Install them** | `update.installAt` | **When I close njMule** (`EXIT`), **When I close njMule, or in the night hours** (`EXIT_OR_NIGHT`) | `EXIT` |
 | **Night hours** | `update.nightHours` | Two times, as `03:00-05:00`; they may span midnight | `03:00-05:00` |
@@ -52,6 +52,12 @@ holds four choices, which are also keys of `njmule.properties`:
 **Install them** shows with the last mode only, and **Night hours** with the night choice. In the
 night hours njMule restarts by itself to install a new version it has downloaded: meant for a
 computer left on for days.
+
+So by default njMule keeps itself up to date: it downloads each new version in the background and
+installs it the next time you close njMule. To turn that off, choose **At each start and every
+day**, to be only told of new versions, or **Only when I ask**. Up to 0.3.3 the default was
+`NOTIFY`: a configuration that still has it moves to `INSTALL` once, the first time a newer
+njMule starts; choose `NOTIFY` again and it stays.
 
 njMule installs on its own only where it can do so without asking anybody: not an installation for
 every user on Windows, which needs the administrator's rights, and not a version whose installation

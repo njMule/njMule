@@ -388,7 +388,7 @@ public record Preferences(
                 Optional.empty(),
                 "",
                 DEFAULT_IP_FILTER_UPDATE_DAYS,
-                UpdateMode.NOTIFY,
+                UpdateMode.INSTALL,
                 UpdateChannel.of(NjMuleInfo.version()),
                 UpdateInstallTime.EXIT,
                 NightHours.DEFAULT,

@@ -10,6 +10,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- njMule now keeps itself up to date by default: it downloads each new version in the background,
+  checks its signature and installs it when you close njMule, where it can replace its own files.
+  **Options → General → Updates** turns it off (*At each start and every day* only tells of a new
+  version). A configuration still on the former default, which only told, moves to it once.
+
 ### Fixed
 
 - On a Synology NAS njMule no longer downloads a new version by itself: the Package Center installs

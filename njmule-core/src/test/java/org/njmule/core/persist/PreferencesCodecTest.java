@@ -40,6 +40,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.njmule.core.config.NightHours;
 import org.njmule.core.config.ObfuscationMode;
 import org.njmule.core.config.Preferences;
@@ -84,7 +86,7 @@ class PreferencesCodecTest {
 
         thenTheFileLoadsThePreferencesBack();
         thenTheFileContains("net.tcpPort=12345");
-        thenTheFileContains("update.mode=INSTALL");
+        thenTheFileContains("update.mode=DOWNLOAD");
         thenTheFileContains("update.installAt=EXIT_OR_NIGHT");
         thenTheFileContains("update.nightHours=01\\:00-04\\:30");
         thenTheFileDoesNotContain("#Mon");
@@ -199,6 +201,65 @@ class PreferencesCodecTest {
     }
 
     @Test
+    void shouldWriteTheFormatOfTheFile() throws IOException {
+        givenPreferencesUnlikeTheDefaults();
+
+        whenThePreferencesAreSaved();
+
+        thenTheFileHolds("preferences.format", "2");
+    }
+
+    @Test
+    void shouldNotKeepTheFormatAsAKeyOfANewerVersion() throws IOException {
+        givenTheFile("preferences.format=2\nnet.tcpPort=12345\n");
+
+        whenTheFileIsLoadedAndSavedWithTheUdpPort(5000);
+
+        thenTheFileDoesNotContain("Not used by this version");
+        thenTheFileHolds("preferences.format", "2");
+    }
+
+    @Test
+    void shouldInstallNewVersionsWhereAFileOfTheFirstFormatKeptTheFormerDefault() throws IOException {
+        givenTheText("update.mode=notify\n");
+
+        whenTheTextIsParsed();
+
+        thenTheUpdateModeIs(UpdateMode.INSTALL);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = UpdateMode.class,
+            names = {"OFF", "DOWNLOAD"})
+    void shouldKeepAnotherUpdateModeOfAFileOfTheFirstFormat(UpdateMode mode) throws IOException {
+        givenTheText("update.mode=" + mode.name() + "\n");
+
+        whenTheTextIsParsed();
+
+        thenTheUpdateModeIs(mode);
+    }
+
+    @Test
+    void shouldKeepTheUpdateModeChosenAfterTheFormerDefaultWasChanged() throws IOException {
+        givenTheFile("update.mode=NOTIFY\n");
+        givenTheFileWasLoadedAndSavedWithTheUpdateMode(UpdateMode.NOTIFY);
+
+        whenTheFileIsLoaded();
+
+        thenTheUpdateModeIs(UpdateMode.NOTIFY);
+    }
+
+    @Test
+    void shouldChangeNothingForAFormatThatIsNoNumber() throws IOException {
+        givenTheText("preferences.format=two\nupdate.mode=NOTIFY\n");
+
+        whenTheTextIsParsed();
+
+        thenTheUpdateModeIs(UpdateMode.NOTIFY);
+    }
+
+    @Test
     void shouldReadWindowsLineEndsAndPaddedValues() throws IOException {
         givenTheText("net.tcpPort = 12345 \r\nnet.kad.enabled=false");
 
@@ -250,7 +311,7 @@ class PreferencesCodecTest {
                 .nameCleanups("dvdrip|sponsored")
                 .searchSpamFilter(false)
                 .cleanUpNewNames(true)
-                .updateMode(UpdateMode.INSTALL)
+                .updateMode(UpdateMode.DOWNLOAD)
                 .updateInstallTime(UpdateInstallTime.EXIT_OR_NIGHT)
                 .nightHours(NightHours.parse("01:00-04:30"))
                 .updateUrl(Optional.of(URI.create("http://192.168.1.2:8000/njmule")))
@@ -291,6 +352,12 @@ class PreferencesCodecTest {
 
     private void givenTheText(String content) {
         this.text = content;
+    }
+
+    private void givenTheFileWasLoadedAndSavedWithTheUpdateMode(UpdateMode mode) throws IOException {
+        PreferencesCodec.save(
+                this.file,
+                PreferencesCodec.load(this.file).toBuilder().updateMode(mode).build());
     }
 
     private void givenTheFileIsHeldByAnotherProgram() throws IOException {
@@ -421,6 +488,11 @@ class PreferencesCodecTest {
 
     private void thenTheNickKeepsItsDefault() {
         assertThat(this.loaded.nick()).isEqualTo(Preferences.defaults().nick());
+    }
+
+    private void thenTheUpdateModeIs(UpdateMode mode) {
+        assertThat(this.exception).isNull();
+        assertThat(this.loaded.updateMode()).isEqualTo(mode);
     }
 
     private void thenTheMessageFilterIs(String filter) {
