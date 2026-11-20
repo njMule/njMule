@@ -7,6 +7,7 @@ pub mod buddy_link;
 pub mod client_history;
 pub mod identities;
 pub mod identity_handshake;
+pub mod nat_traversal;
 pub mod peer_greetings;
 pub mod peer_link;
 pub mod peer_software;

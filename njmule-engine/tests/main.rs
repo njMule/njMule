@@ -165,6 +165,7 @@ mod mutated_messages_test;
 mod nat_pmp_forwarding_test;
 mod nat_pmp_test;
 mod nat_traversal_messages_test;
+mod nat_traversal_test;
 mod network_binding_test;
 mod night_hours_test;
 mod notes_messages_test;
