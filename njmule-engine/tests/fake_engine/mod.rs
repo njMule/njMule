@@ -31,6 +31,7 @@ use njmule_engine::api::kad_search_info::KadSearchInfo;
 use njmule_engine::api::known_client::KnownClient;
 use njmule_engine::api::list_source::{ListError, ListSource};
 use njmule_engine::api::nj_mule_engine::{NjMuleEngine, Subscription};
+use njmule_engine::api::nj_mule_info;
 use njmule_engine::api::notification_result::NotificationResult;
 use njmule_engine::api::peer_comment::PeerComment;
 use njmule_engine::api::peer_info::PeerInfo;
@@ -41,6 +42,7 @@ use njmule_engine::api::server_info::ServerInfo;
 use njmule_engine::api::shared_directory::SharedDirectory;
 use njmule_engine::api::shared_file_info::SharedFileInfo;
 use njmule_engine::api::spam_marks::SpamMarks;
+use njmule_engine::api::update_status::UpdateStatus;
 use njmule_engine::api::upload_info::{BanInfo, UploadInfo};
 use njmule_engine::api::upload_priority::UploadPriority;
 use njmule_engine::config::app_directories::AppDirectories;
@@ -602,6 +604,26 @@ impl NjMuleEngine for FakeEngine {
 
     async fn file_history(&self) -> FileHistory {
         self.with(|fake| FileHistory::of(fake.downloaded_before.clone(), HashSet::new()))
+    }
+
+    fn update_status(&self) -> UpdateStatus {
+        UpdateStatus::idle(nj_mule_info::version())
+    }
+
+    async fn check_for_update(&self) -> UpdateStatus {
+        self.update_status()
+    }
+
+    async fn skip_update(&self, _version: String) -> Result<UpdateStatus, String> {
+        Ok(self.update_status())
+    }
+
+    async fn download_update(&self) -> Result<UpdateStatus, String> {
+        Err("no new version is known".to_owned())
+    }
+
+    async fn install_update(&self, _restart: bool) -> Result<UpdateStatus, String> {
+        Err("no new version is downloaded yet".to_owned())
     }
 }
 

@@ -82,6 +82,11 @@ impl UpdateHelper {
         )
     }
 
+    /// Runs the installation `plan` describes once the processes `wait_for` have ended; gives the exit code.
+    pub fn install(plan: &Path, wait_for: &[u32]) -> i32 {
+        Self::of(plan).run(wait_for)
+    }
+
     /// Installs once the processes `wait_for` have ended; gives the exit code of this process.
     pub fn run(&self, wait_for: &[u32]) -> i32 {
         let plan = match ApplyPlan::load(&self.plan_file) {
@@ -158,7 +163,7 @@ impl UpdateHelper {
 
     fn roll_back(&self, plan: &ApplyPlan, why: &str) -> i32 {
         tracing::error!("Going back to {} {}: {why}", nj_mule_info::NAME, plan.from);
-        let reason = match swap_of(plan, &self.files, self.commands.clone()).and_then(|swap| swap.roll_back()) {
+        let reason = match swap(plan, &self.files, self.commands.clone()).and_then(|swap| swap.roll_back()) {
             Ok(()) => why.to_owned(),
             Err(e) => format!("{why}; the old files could not all be put back: {e}"),
         };
@@ -197,7 +202,7 @@ impl UpdateHelper {
 /// Swaps the files of `plan` and asks the new program its version; puts the old files back when it does not answer.
 /// Gives why it failed.
 pub fn place(plan: &ApplyPlan, files: &UpdateFiles, commands: Arc<dyn Commands>) -> Option<String> {
-    let swap = match swap_of(plan, files, commands.clone()) {
+    let swap = match swap(plan, files, commands.clone()) {
         Ok(swap) => swap,
         Err(e) => return Some(format!("cannot put the new files in place: {e}")),
     };
@@ -211,7 +216,8 @@ pub fn place(plan: &ApplyPlan, files: &UpdateFiles, commands: Arc<dyn Commands>)
     }
 }
 
-fn swap_of(plan: &ApplyPlan, files: &UpdateFiles, commands: Arc<dyn Commands>) -> std::io::Result<Swap> {
+/// The file swap of `plan`: a macOS bundle or the files of a folder.
+pub fn swap(plan: &ApplyPlan, files: &UpdateFiles, commands: Arc<dyn Commands>) -> std::io::Result<Swap> {
     let journal = files.version(&plan.version)?.join(JOURNAL);
     let missing = || std::io::Error::new(std::io::ErrorKind::InvalidInput, "a plan without the files to swap");
     let staged = plan.staged.as_deref().ok_or_else(missing)?;

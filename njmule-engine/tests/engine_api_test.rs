@@ -35,6 +35,7 @@ use njmule_engine::config::schedule::{DayOfWeek, Rule, Schedule};
 use njmule_engine::engine::Engine;
 use njmule_engine::engine::ip_filter_lists;
 use njmule_engine::kad::uint128::UInt128;
+use njmule_engine::persist::config_backup;
 use njmule_engine::persist::format::ip_filter_dat::Range;
 use njmule_engine::persist::format::nodes_dat::{self, Contact, UdpKey};
 use njmule_engine::persist::schedule_codec;
@@ -167,6 +168,30 @@ async fn should_let_go_of_the_configuration_after_a_start_that_fails() {
     api.given_a_temporary_folder_that_is_a_file();
     api.given_a_start_failed().await;
     api.given_the_saved_preferences_are_back();
+
+    api.when_the_engine_starts_and_stops().await;
+
+    api.then_no_exception_occurred();
+}
+
+#[tokio::test]
+async fn should_keep_no_copy_of_the_configuration_when_none_is_wanted() {
+    let mut api = EngineApi::new();
+    api.given_a_profile_with("backup.copies=0\n");
+
+    api.when_the_engine_starts_and_stops().await;
+
+    api.then_no_exception_occurred();
+    api.then_no_backup_folder_exists();
+}
+
+#[tokio::test]
+async fn should_leave_the_way_clear_when_a_backup_cannot_be_written() {
+    let mut api = EngineApi::new();
+    api.given_a_profile_with("");
+    api.given_a_file_where_the_backup_folder_goes();
+    api.given_the_engine_ran_once().await;
+    api.given_the_file_is_left_where_the_backup_folder_goes();
 
     api.when_the_engine_starts_and_stops().await;
 
@@ -651,6 +676,27 @@ impl EngineApi {
 
     fn given_the_saved_preferences_are_back(&mut self) {
         self.given_preferences = self.saved_preferences.clone();
+    }
+
+    fn given_a_file_where_the_backup_folder_goes(&self) {
+        let dirs = AppDirectories::under_root(self.profile.path()).unwrap();
+        fs::create_dir_all(&dirs.data).unwrap();
+        fs::write(dirs.data.join(config_backup::FOLDER), "not a folder").unwrap();
+    }
+
+    async fn given_the_engine_ran_once(&mut self) {
+        self.when_the_engine_starts_and_stops().await;
+        self.then_no_exception_occurred();
+    }
+
+    fn given_the_file_is_left_where_the_backup_folder_goes(&self) {
+        let dirs = AppDirectories::under_root(self.profile.path()).unwrap();
+        assert!(dirs.data.join(config_backup::FOLDER).is_file());
+    }
+
+    fn then_no_backup_folder_exists(&self) {
+        let dirs = AppDirectories::under_root(self.profile.path()).unwrap();
+        assert!(!dirs.data.join(config_backup::FOLDER).exists());
     }
 
     async fn when_the_engine_starts_and_stops(&mut self) {

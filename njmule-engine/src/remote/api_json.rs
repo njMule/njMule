@@ -21,7 +21,7 @@ use crate::api::kad_note::KadNote;
 use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::log_line::LogLine;
-use crate::api::nj_mule_info;
+use crate::api::new_version::NewVersion;
 use crate::api::notification_result::NotificationResult;
 use crate::api::peer_info::PeerInfo;
 use crate::api::port_test::PortTest;
@@ -31,6 +31,7 @@ use crate::api::server_info::ServerInfo;
 use crate::api::shared_directory::SharedDirectory;
 use crate::api::shared_file_info::SharedFileInfo;
 use crate::api::spam_marks::SpamMarks;
+use crate::api::update_status::UpdateStatus;
 use crate::api::upload_info::{BanInfo, UploadInfo};
 use crate::config::bind_interface::Candidate;
 use crate::config::preferences::Preferences;
@@ -67,23 +68,39 @@ pub fn preference_passwords(preferences: &Preferences) -> Value {
     )
 }
 
-/// No update checks yet: nothing known, nothing to install.
-pub fn update() -> Value {
+/// What njMule knows of its new versions.
+pub fn update(status: &UpdateStatus) -> Value {
     json!({
-        "state": "idle",
-        "current": nj_mule_info::version(),
-        "installation": "unknown",
-        "installer": "none",
-        "canInstall": false,
-        "checking": false,
-        "lastCheck": null,
-        "failure": null,
-        "available": null,
-        "skipped": null,
-        "download": null,
-        "ready": false,
-        "readyFile": null,
-        "install": "asked",
+        "state": status.phase().name(),
+        "current": status.current,
+        "installation": status.installation.name(),
+        "installer": status.installer.name(),
+        "canInstall": status.can_install(),
+        "checking": status.checking,
+        "lastCheck": status.last_check.map(|time| time.to_string()),
+        "failure": status.failure,
+        "available": status.available.as_ref().map_or(Value::Null, new_version),
+        "skipped": status.skipped,
+        "download": status.download.map(|progress| json!({"received": progress.received, "size": progress.size})),
+        "ready": status.ready.is_some(),
+        "readyFile": status.ready.as_ref().map(|file| file.to_string_lossy().into_owned()),
+        "install": status.install.name(),
+    })
+}
+
+/// A version of njMule newer than the one running.
+pub fn new_version(version: &NewVersion) -> Value {
+    json!({
+        "version": version.version,
+        "published": version.published.to_string(),
+        "critical": version.critical,
+        "notes": version.notes,
+        "page": version.page,
+        "download": version.download.as_ref().map(|download| json!({
+            "url": download.url,
+            "size": download.size,
+            "sha256": download.sha256,
+        })),
     })
 }
 
@@ -443,6 +460,10 @@ pub fn event(event: &EngineEvent) -> (&'static str, Value) {
         EngineEvent::MessageFailed { address, reason } => {
             ("message.failed", json!({"address": address, "reason": reason}))
         }
+        EngineEvent::UpdateStatusChanged(status) => ("update.status", json!({"status": update(status)})),
+        EngineEvent::UpdateAvailable(version) => ("update.available", json!({"version": new_version(version)})),
+        EngineEvent::UpdateReady(version) => ("update.ready", json!({"version": new_version(version)})),
+        EngineEvent::UpdateRestart(version) => ("update.restart", json!({"version": version})),
     }
 }
 

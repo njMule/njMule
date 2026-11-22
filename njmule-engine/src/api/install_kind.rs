@@ -57,6 +57,22 @@ impl InstallKind {
         }
     }
 
+    /// The name the remote-control API gives it, as "windows_zip".
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Msi => "msi",
+            Self::WindowsZip => "windows_zip",
+            Self::Dmg => "dmg",
+            Self::Deb => "deb",
+            Self::Rpm => "rpm",
+            Self::Tar => "tar",
+            Self::StaticTar => "static_tar",
+            Self::Synology => "synology",
+            Self::Docker => "docker",
+            Self::Unknown => "unknown",
+        }
+    }
+
     /// The kind named `id`, if any.
     pub fn of(id: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|kind| kind.id() == id)

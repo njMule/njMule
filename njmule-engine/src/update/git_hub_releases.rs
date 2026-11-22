@@ -7,6 +7,7 @@
 
 use std::future::Future;
 use std::io;
+use std::sync::Arc;
 
 use semver::Version;
 use serde_json::Value;
@@ -23,6 +24,12 @@ const MAX_LISTING: usize = 8 * 1024 * 1024;
 /// Fetches the body at an address.
 pub trait Fetcher: Send + Sync {
     fn fetch(&self, url: &str) -> impl Future<Output = io::Result<Vec<u8>>> + Send;
+}
+
+impl<F: Fetcher> Fetcher for Arc<F> {
+    fn fetch(&self, url: &str) -> impl Future<Output = io::Result<Vec<u8>>> + Send {
+        (**self).fetch(url)
+    }
 }
 
 /// A manifest as fetched and its signature file, both unchecked.

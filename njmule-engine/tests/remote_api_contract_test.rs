@@ -48,6 +48,7 @@ use njmule_engine::api::server_info::ServerInfo;
 use njmule_engine::api::shared_directory::SharedDirectory;
 use njmule_engine::api::shared_file_info::SharedFileInfo;
 use njmule_engine::api::spam_marks::SpamMarks;
+use njmule_engine::api::update_status::UpdateStatus;
 use njmule_engine::api::upload_info::{BanInfo, UploadInfo};
 use njmule_engine::api::upload_priority::UploadPriority;
 use njmule_engine::config::app_directories::AppDirectories;
@@ -159,7 +160,6 @@ async fn should_describe_an_engine_connected_to_nothing() {
     }
 }
 
-// The updates wait for their port.
 fn changes() -> Vec<(&'static str, String, String, u16)> {
     let download = format!("/api/v1/downloads/{HEX}");
     let shared = format!("/api/v1/shared/{HEX}");
@@ -199,6 +199,11 @@ fn changes() -> Vec<(&'static str, String, String, u16)> {
         ("POST", "/api/v1/ipfilter".to_owned(), LIST.to_owned(), 200),
         ("POST", "/api/v1/messages".to_owned(), json!({"to": PEER, "text": "hi"}).to_string(), 200),
         ("DELETE", "/api/v1/bans/192.0.2.200".to_owned(), String::new(), 200),
+        ("POST", "/api/v1/update/check".to_owned(), String::new(), 200),
+        ("POST", "/api/v1/update/skip".to_owned(), r#"{"version":"0.2.0"}"#.to_owned(), 200),
+        ("POST", "/api/v1/update/download".to_owned(), String::new(), 202),
+        ("POST", "/api/v1/update/install".to_owned(), String::new(), 202),
+        ("POST", "/api/v1/update/install".to_owned(), r#"{"restart":false}"#.to_owned(), 200),
         ("POST", "/api/v1/searches".to_owned(), r#"{"query":"talk","scope":"global"}"#.to_owned(), 201),
         ("POST", "/api/v1/searches/check".to_owned(), r#"{"query":"talk"}"#.to_owned(), 200),
         ("POST", "/api/v1/folders/check".to_owned(), json!({"path": temp}).to_string(), 200),
@@ -267,7 +272,7 @@ async fn should_answer_a_change_as_the_document_describes_it() {
     }
 }
 
-// The web interface, the desktop window and the updates wait for their ports.
+// The desktop window waits for its port.
 fn refusals() -> Vec<(&'static str, String, &'static str, u16)> {
     let calls = [
         ("GET", "/api/v1/nothing".to_owned(), "", 404),
@@ -292,6 +297,10 @@ fn refusals() -> Vec<(&'static str, String, &'static str, u16)> {
         ("POST", "/api/v1/ipfilter/lists".to_owned(), "", 409),
         ("POST", "/api/v1/searches/check".to_owned(), r#"{"query":"talk OR"}"#, 400),
         ("POST", "/api/v1/import/emule".to_owned(), r#"{"path":"relative"}"#, 400),
+        ("POST", "/api/v1/update/skip".to_owned(), "{}", 400),
+        ("POST", "/api/v1/update/download".to_owned(), "", 409),
+        ("POST", "/api/v1/update/install".to_owned(), "", 409),
+        ("POST", "/api/v1/update/install".to_owned(), r#"{"restart":"now"}"#, 400),
     ];
     calls.to_vec()
 }
@@ -748,6 +757,26 @@ impl NjMuleEngine for SampleEngine {
 
     async fn file_history(&self) -> FileHistory {
         FileHistory::of(HashSet::new(), HashSet::new())
+    }
+
+    fn update_status(&self) -> UpdateStatus {
+        api_samples::update_status()
+    }
+
+    async fn check_for_update(&self) -> UpdateStatus {
+        api_samples::update_status()
+    }
+
+    async fn skip_update(&self, _version: String) -> Result<UpdateStatus, String> {
+        self.done(api_samples::update_status())
+    }
+
+    async fn download_update(&self) -> Result<UpdateStatus, String> {
+        self.done(api_samples::update_status())
+    }
+
+    async fn install_update(&self, restart: bool) -> Result<UpdateStatus, String> {
+        self.done(if restart { api_samples::restarting_update_status() } else { api_samples::at_exit_update_status() })
     }
 }
 

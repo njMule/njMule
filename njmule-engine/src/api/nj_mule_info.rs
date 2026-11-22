@@ -4,6 +4,7 @@
 //! njMule's name and version.
 
 pub const NAME: &str = "njMule";
+pub const HOMEPAGE: &str = "https://github.com/njMule/njMule";
 
 /// The semantic version, from `gradle.properties`.
 pub fn version() -> &'static str {
