@@ -113,8 +113,6 @@ EngineApiTest.shouldFailTheHelloToAHostThatCannotBeResolved
 RemoteApiTest.shouldTellTheJavaAndTheSystemItRunsOnToATokenHolder
 # Java only: the Rust protocol of a mapping is an enum of TCP and UDP; no other can be asked.
 IgdTest.shouldTakeOnlyTcpOrUdp
-# The Rust engine takes a new TCP port at its next start, so it never maps two in a row.
-UpnpTest.shouldLeaveNoMappingBehindWhenThePortsChangeTwiceInARow
 # Java only: Rust threads have no interrupt flag; LinkHandoffTest covers the locked timeout instead.
 LinkHandoffTest.shouldNotTakeAnInstanceHoldingItsLockForGoneInAnInterruptedWait
 # Java only: Rust errors always carry a message (no null-message Throwable), and events use a broadcast channel rather than Flow.Subscriber.

@@ -52,8 +52,10 @@ use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::download::download_manager::{self, Action, DownloadEvent, DownloadManager, KadLink, ServerLink};
 use crate::download::download_session;
 use crate::download::finished_downloads::FinishedDownloads;
+use crate::engine::address_watch::{AddressWatch, Reaction};
 use crate::engine::default_lists;
 use crate::engine::ip_filter_lists;
+use crate::engine::keep_awake::KeepAwake;
 use crate::engine::port_check::PortCheck;
 use crate::engine::scheduler::{self, Change, Scheduler};
 use crate::engine::switches::Upnp;
@@ -82,6 +84,7 @@ use crate::persist::format::server_met::Server;
 use crate::persist::format::{known2_met, nodes_dat};
 use crate::persist::schedule_codec;
 use crate::persist::{atomic_files, categories_codec};
+use crate::protocol::ed2k::client_messages;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams;
 use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint, IdChange, LOW_ID_LIMIT};
@@ -312,8 +315,6 @@ enum Tick {
     Listed(Listing),
     // A shared folder changed.
     SharesChanged,
-    // The sockets opened for a binding, which a newer one may have replaced meanwhile.
-    Rebound(Binding, Option<TcpListener>, Option<UdpSocket>),
     // The preferences changed.
     PreferencesChanged,
     // What the router made of the mappings asked in a run: the outcome, the router and a line for the log.
@@ -331,6 +332,8 @@ enum Tick {
 /// How often the network interface of the preferences is looked at: it may go, as a VPN that drops, come back, or
 /// come back with another address.
 const BIND_CHECK_SECONDS: u32 = 10;
+/// How often the keep-awake helper is updated while files are transferred.
+const KEEP_AWAKE_SECONDS: u32 = 30;
 
 // What the connections to other clients bring.
 enum PeerEvent {
@@ -467,6 +470,9 @@ pub struct Network {
     started: Instant,
     // Our public IPv6 address, which clients may reach us at; checked again with the interface.
     our_ipv6: Option<Ipv6Addr>,
+    addresses: AddressWatch,
+    keep_awake: KeepAwake,
+    since_keep_awake: u32,
     searches: SearchManager,
     known_searches: HashSet<u64>,
     spam: SpamFilter,
@@ -501,7 +507,7 @@ pub struct Network {
 }
 
 /// Starts the network side; it runs until it is asked to stop.
-pub fn start(
+pub async fn start(
     shared: Arc<Shared>,
     commands: mpsc::UnboundedReceiver<Command>,
     udp: Option<UdpSocket>,
@@ -701,6 +707,9 @@ pub fn start(
         totals,
         started,
         our_ipv6,
+        addresses: AddressWatch::default(),
+        keep_awake: KeepAwake::for_this_system(),
+        since_keep_awake: 0,
         searches: SearchManager::default().without_udp(),
         known_searches: HashSet::new(),
         spam,
@@ -733,7 +742,7 @@ pub fn start(
     network.uploads.set_comments(network.comments_of());
     network.attach(listener, udp);
     // The network starts with the limits of the rule in force, which then acts once.
-    network.refresh_schedule();
+    network.refresh_schedule().await;
     let ours = network.shared.our_hello();
     network.downloads.set_download_limit(network.preferences().max_download_kibps, &ours);
     network.scan_shares();
@@ -763,11 +772,11 @@ impl Network {
                         let _ = done.send(());
                         return;
                     }
-                    Some(command) => self.command(command),
+                    Some(command) => self.command(command).await,
                     None => return,
                 },
                 Some(outcome) = queues.outcomes.recv() => self.outcome(outcome),
-                Some(tick) = queues.ticks.recv() => self.tick(tick),
+                Some(tick) = queues.ticks.recv() => self.tick(tick).await,
                 Some((from, packet)) = queues.datagrams.recv() => self.datagram(from, &packet),
                 Some(event) = queues.links.recv() => self.link_event(event),
                 Some(event) = queues.peers.recv() => self.peer_event(event),
@@ -785,9 +794,9 @@ impl Network {
         }
     }
 
-    fn command(&mut self, command: Command) {
+    async fn command(&mut self, command: Command) {
         // A command sent after a change of the preferences finds it applied.
-        self.apply_preferences();
+        self.apply_preferences().await;
         match command {
             Command::Kad(answer) => {
                 let _ = answer.send(self.kad_info());
@@ -1159,7 +1168,7 @@ impl Network {
                 let _ = answer.send(kept.map_err(|e| format!("Cannot save the comments: {e}")));
             }
             Command::SetSchedule(schedule, answer) => {
-                let _ = answer.send(self.set_schedule(schedule));
+                let _ = answer.send(self.set_schedule(schedule).await);
             }
             Command::TestPorts(answer) => {
                 let _ = answer.send(self.test_ports());
@@ -1384,7 +1393,7 @@ impl Network {
         }
     }
 
-    fn tick(&mut self, tick: Tick) {
+    async fn tick(&mut self, tick: Tick) {
         match tick {
             Tick::Ping => {
                 let retries = self.preferences().dead_server_retries;
@@ -1413,24 +1422,23 @@ impl Network {
                 self.since_bind_check = self.since_bind_check.saturating_add(1);
                 if self.since_bind_check >= BIND_CHECK_SECONDS {
                     self.since_bind_check = 0;
-                    self.check_binding();
+                    self.check_binding().await;
+                }
+                self.since_keep_awake = self.since_keep_awake.saturating_add(1);
+                if self.since_keep_awake >= KEEP_AWAKE_SECONDS {
+                    self.since_keep_awake = 0;
+                    self.keep_computer_awake();
                 }
                 self.since_schedule_check = self.since_schedule_check.saturating_add(1);
                 if self.since_schedule_check >= scheduler::CHECK_SECONDS {
                     self.since_schedule_check = 0;
-                    self.refresh_schedule();
+                    self.refresh_schedule().await;
                 }
                 self.tick_port_check();
                 self.check_ip_filter_lists();
                 self.shares_second();
             }
-            Tick::Rebound(binding, listener, udp) => {
-                if binding == self.binding {
-                    self.attach(listener, udp);
-                    self.kad_start_again();
-                }
-            }
-            Tick::PreferencesChanged => self.refresh_schedule(),
+            Tick::PreferencesChanged => self.refresh_schedule().await,
             Tick::Forwarded(run, outcome, router, line) => self.forwarded(run, outcome, router, line),
             Tick::KadUdpCheckEnded(ip, asked) => self.kad_udp_check_ended(ip, asked),
             Tick::KadStart => self.kad_start_again(),
@@ -1560,21 +1568,37 @@ impl Network {
 
     // The interface may go (a VPN that drops), come back, or come back with another address.
     // What follows a change of the preferences, once for each change.
-    fn apply_preferences(&mut self) {
+    async fn apply_preferences(&mut self) {
         let now = self.scheduler.effective(&self.shared.preferences.borrow());
         if now == self.applied {
             return;
         }
         let was = std::mem::replace(&mut self.applied, now);
-        // TCP reads the proxy at each connection; UDP keeps an association with it.
-        if was.proxy != self.applied.proxy
-            && let Some(relay) = &self.server_relay
-        {
-            relay.follow(self.applied.proxy.clone());
+        // Bind interface change takes effect immediately.
+        let mut rebound = false;
+        if was.bind_interface != self.applied.bind_interface {
+            let binding = self.shared.routes.binding();
+            if binding != self.binding {
+                self.rebind(binding).await;
+                rebound = true;
+            }
         }
-        self.kad_preferences(was.kad_enabled, was.udp_port);
+        // TCP port change moves the listener, reconnects the server and refreshes UPnP.
+        let tcp_changed = was.tcp_port != self.applied.tcp_port;
+        if tcp_changed && !rebound && !matches!(self.binding, Binding::Missing(_)) {
+            self.relisten().await;
+        }
+        // TCP reads the proxy at each connection; both UDP sockets keep an association with it.
+        if was.proxy != self.applied.proxy {
+            if let Some(relay) = &self.server_relay {
+                relay.follow(self.applied.proxy.clone());
+            }
+            self.kad_follow_proxy(self.applied.proxy.clone());
+            self.watch_address();
+        }
+        self.kad_preferences(was.kad_enabled, was.udp_port, was.tcp_port);
         self.ip_filter_preferences(&was);
-        if was.upnp != self.applied.upnp {
+        if was.upnp != self.applied.upnp || tcp_changed || was.udp_port != self.applied.udp_port {
             self.restart_forwarding();
         }
         if was.max_download_kibps != self.applied.max_download_kibps {
@@ -1596,6 +1620,48 @@ impl Network {
         {
             tracing::warn!("Cannot clear {}: {e}", cancelled_files::FILE_NAME);
         }
+        if was.prevent_sleep != self.applied.prevent_sleep {
+            self.keep_computer_awake();
+        }
+    }
+
+    // Moves the TCP listener to the new port, then reconnects the server so it sees the new port.
+    async fn relisten(&mut self) {
+        if let Some(accepting) = self.accepting.take() {
+            accepting.abort();
+            let _ = accepting.await;
+        }
+        self.shared.listen_port.store(0, std::sync::atomic::Ordering::Relaxed);
+        let local = match self.binding {
+            Binding::Bound(address) => Some(address),
+            Binding::Any => None,
+            Binding::Missing(_) => return,
+        };
+        let port = self.applied.tcp_port;
+        match tcp_connector::listen(local, port).await {
+            Ok(listener) => {
+                let bound = listener.local_addr().ok().map_or(port, |address| address.port());
+                self.shared.listen_port.store(bound, std::sync::atomic::Ordering::Relaxed);
+                self.accepting = Some(tokio::spawn(accept(
+                    listener,
+                    self.peer_events.clone(),
+                    Arc::clone(&self.shared),
+                    Arc::clone(&self.guard),
+                )));
+                self.user_log(LogLevel::Info, format!("Listening on TCP port {bound}"));
+            }
+            Err(e) => {
+                self.user_log(LogLevel::Warning, format!("Cannot listen on TCP port {port}: {e}"));
+            }
+        }
+        if let Some(server) = self.session.server().cloned() {
+            self.with_session(|session, ctx| session.connect(Some(server), ctx));
+        }
+    }
+
+    fn keep_computer_awake(&mut self) {
+        let transferring = self.downloads.rate() > 0 || self.uploads.rate(Instant::now()) > 0;
+        self.keep_awake.update(self.applied.prevent_sleep, transferring, Instant::now());
     }
 
     // The "connect at start" preference: any known server, when eD2K is on.
@@ -1611,23 +1677,23 @@ impl Network {
     }
 
     // Puts the rule that holds now in force, and applies the preferences it gives.
-    fn refresh_schedule(&mut self) {
+    async fn refresh_schedule(&mut self) {
         let change = self.scheduler.refresh(scheduler::local_now());
-        self.schedule_changed(change);
+        self.schedule_changed(change).await;
     }
 
-    fn set_schedule(&mut self, schedule: Schedule) -> Result<Schedule, String> {
+    async fn set_schedule(&mut self, schedule: Schedule) -> Result<Schedule, String> {
         let rules = schedule.rules.into_iter().map(Rule::validated).collect::<Result<Vec<_>, _>>()?;
         let change = self
             .scheduler
             .update(Schedule { rules }, scheduler::local_now())
             .map_err(|e| format!("Cannot save the schedule: {e}"))?;
-        self.schedule_changed(change);
+        self.schedule_changed(change).await;
         Ok(self.scheduler.schedule().clone())
     }
 
     // A rule acts when it begins.
-    fn schedule_changed(&mut self, change: Option<Change>) {
+    async fn schedule_changed(&mut self, change: Option<Change>) {
         match change {
             Some(Change::Began(rule)) => {
                 self.schedule_categories(rule.stop_category, rule.resume_category);
@@ -1636,7 +1702,7 @@ impl Network {
             Some(Change::Ended) => self.user_log(LogLevel::Info, "Scheduler: the preferences apply again".to_owned()),
             None => {}
         }
-        self.apply_preferences();
+        self.apply_preferences().await;
     }
 
     // Stops the downloads of one category, and resumes the paused or stopped ones of another.
@@ -1660,25 +1726,74 @@ impl Network {
         }
     }
 
-    fn check_binding(&mut self) {
+    async fn check_binding(&mut self) {
+        self.watch_address();
+        let now = self.shared.routes.binding();
+        if now != self.binding {
+            self.rebind(now).await;
+        }
+    }
+
+    // When we move, the server or Kad sees the new address first; the other one has to look again.
+    fn watch_address(&mut self) {
         let ipv6 = public_ipv6::find(&self.shared.routes);
         if ipv6 != self.our_ipv6 {
+            let moved = self.our_ipv6.is_some() && ipv6.is_some();
+            self.our_ipv6 = ipv6;
+            self.shared.set_our_ipv6(ipv6);
             match ipv6 {
                 Some(ip) => self.user_log(LogLevel::Info, format!("Clients may reach us at the IPv6 address {ip}")),
                 None => self.user_log(LogLevel::Info, "No IPv6 address to be reached at any more".to_owned()),
             }
-            self.our_ipv6 = ipv6;
-            self.shared.set_our_ipv6(ipv6);
+            if moved && let Some(ip) = ipv6 {
+                self.tell_ipv6(&ip);
+            }
         }
-        let now = self.shared.routes.binding();
-        if now != self.binding {
-            self.rebind(now);
+        let kad_ip = self.kad.public_ip();
+        let server_ip = self.address_seen_by_server();
+        let old = self.addresses.agreed();
+        match self.addresses.seen(server_ip, kad_ip) {
+            Reaction::RecheckKad => {
+                self.user_log(
+                    LogLevel::Info,
+                    format!(
+                        "Our public address changed from {} to {}: Kad checks its firewall again",
+                        Ipv4Addr::from(old),
+                        Ipv4Addr::from(server_ip)
+                    ),
+                );
+                self.kad_recheck_firewall();
+            }
+            Reaction::ReconnectServer => {
+                self.user_log(
+                    LogLevel::Info,
+                    format!(
+                        "Our public address changed from {} to {}: connecting to the server again",
+                        Ipv4Addr::from(old),
+                        Ipv4Addr::from(kad_ip)
+                    ),
+                );
+                if let Some(server) = self.session.server().cloned() {
+                    self.with_session(|session, ctx| session.connect(Some(server), ctx));
+                }
+            }
+            Reaction::None => {}
+        }
+    }
+
+    // The clients connected now that reach others over IPv6 hear our new address, so that they keep reaching us.
+    fn tell_ipv6(&self, ours: &Ipv6Addr) {
+        let told = client_messages::ipv6_changed(ours);
+        for peer in self.peers.values() {
+            if peer.hello.as_ref().and_then(Hello::ipv6).is_some() {
+                peer.handle.send(told.clone());
+            }
         }
     }
 
     // Every socket bound for the old interface closes; the new one opens them again, or nothing does while it is gone.
     // Connections already made finish as they are: those through a dropped interface end with it.
-    fn rebind(&mut self, now: Binding) {
+    async fn rebind(&mut self, now: Binding) {
         self.binding = now.clone();
         self.with_session(|session, ctx| session.disconnect(ctx));
         let (accepting, udp) = self.close_sockets();
@@ -1701,21 +1816,17 @@ impl Network {
                 Some(None)
             }
         };
-        let ticks = self.ticks.clone();
-        tokio::spawn(async move {
-            // The old sockets leave their ports before the new ones take them.
-            if let Some(accepting) = accepting {
-                let _ = accepting.await;
-            }
-            if let Some(udp) = udp {
-                udp.close().await;
-            }
-            if let Some(kad_socket) = kad_socket {
-                kad_socket.close().await;
-            }
-            let Some(local) = local else {
-                return;
-            };
+        // The old sockets leave their ports before the new ones take them.
+        if let Some(accepting) = accepting {
+            let _ = accepting.await;
+        }
+        if let Some(udp) = udp {
+            udp.close().await;
+        }
+        if let Some(kad_socket) = kad_socket {
+            kad_socket.close().await;
+        }
+        if let Some(local) = local {
             let listener = tcp_connector::listen(local, preferences.tcp_port)
                 .await
                 .inspect_err(|e| tracing::warn!("Cannot listen on TCP port {}: {e}", preferences.tcp_port))
@@ -1724,8 +1835,13 @@ impl Network {
                 .await
                 .inspect_err(|e| tracing::warn!("Cannot open the server UDP socket: {e}"))
                 .ok();
-            let _ = ticks.send(Tick::Rebound(now, listener, udp));
-        });
+            self.attach(listener, udp);
+            self.kad_start_again();
+            if self.automatic_connections {
+                self.connect_at_start();
+            }
+        }
+        self.restart_forwarding();
     }
 
     // Our address as the server we are on sees it, which server UDP keys are bound to; 0 while unknown.
@@ -2661,6 +2777,7 @@ impl Network {
     }
 
     fn stop(&mut self) {
+        self.keep_awake.close();
         self.stop_port_check();
         self.totals.save(self.downloads.downloaded(), self.uploads.uploaded(), self.session_seconds());
         let ours = self.shared.our_hello();
