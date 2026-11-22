@@ -3,10 +3,15 @@
 
 //! Updates of njMule from its signed releases on GitHub.
 
+pub mod apply_plan;
+pub mod archives;
+pub mod commands;
+pub mod disk_images;
 pub mod git_hub_releases;
 pub mod installation;
 pub mod minisign;
 pub mod package_download;
+pub mod swap;
 pub mod update_files;
 pub mod update_manifest;
 pub mod update_state;
