@@ -21,6 +21,7 @@ pub mod search_collector;
 pub mod sessions;
 pub mod settings_file;
 pub mod trusted_proxies;
+pub mod update_help;
 pub mod web_app;
 pub mod web_ui;
 pub mod web_ui_settings;
