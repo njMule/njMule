@@ -18,7 +18,8 @@ use njmule_engine::api::nj_mule_info;
 use njmule_engine::app::desktop_system::DesktopSystem;
 use njmule_engine::app::launch_options::{Action, LaunchOptions};
 use njmule_engine::app::link_handoff::{self, LinkHandoff};
-use njmule_engine::app::{restore_links, updating};
+use njmule_engine::app::web_ui_password::{self, PasswordError, TerminalPasswords};
+use njmule_engine::app::{profile_removal, restore_links, updating, windows_service};
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
 use njmule_engine::engine::switches::Switches;
@@ -101,13 +102,31 @@ fn main() -> ExitCode {
             ExitCode::from(u8::try_from(code).unwrap_or(1))
         }
         Action::ApiToken | Action::NewApiToken => api_token_action(&cli),
+        Action::WebUiPassword => {
+            let mut out = io::stdout();
+            let mut err = io::stderr();
+            let mut passwords = TerminalPasswords;
+            let code = web_ui_password::run_command(&cli, &mut out, &mut err, &mut passwords);
+            ExitCode::from(u8::try_from(code).unwrap_or(1))
+        }
+        Action::RemoveProfile => {
+            let mut out = io::stdout();
+            let mut err = io::stderr();
+            let mut passwords = TerminalPasswords;
+            let code = profile_removal::run_for_this_system(&cli, &mut out, &mut err, |prompt| {
+                web_ui_password::answer(&mut passwords, prompt)
+            });
+            ExitCode::from(u8::try_from(code).unwrap_or(1))
+        }
+        Action::Service => {
+            let mut out = io::stdout();
+            let mut err = io::stderr();
+            let mut passwords = TerminalPasswords;
+            let code = windows_service::run_for_this_system(&cli, &mut out, &mut err, &mut passwords);
+            ExitCode::from(u8::try_from(code).unwrap_or(1))
+        }
         Action::Run => run_action(&cli, &raw_args),
-        Action::WebUiPassword
-        | Action::Remote
-        | Action::CheckUpdate
-        | Action::Update
-        | Action::Service
-        | Action::RemoveProfile => {
+        Action::Remote | Action::CheckUpdate | Action::Update => {
             eprintln!("njmule: command not yet wired in this engine build");
             ExitCode::FAILURE
         }
@@ -183,6 +202,18 @@ fn run_action(cli: &LaunchOptions, raw_args: &[String]) -> ExitCode {
         }
     }
     println!("{}", nj_mule_info::startup_notice("njmule --warranty", "njmule --license"));
+    // A password file (a Docker secret, say) is the password of every start.
+    match web_ui_password::set_from_file(cli, &dirs.config) {
+        Ok(_) => {}
+        Err(PasswordError::Usage(e)) => {
+            eprintln!("{e}");
+            return ExitCode::from(EXIT_USAGE);
+        }
+        Err(PasswordError::Io(e)) => {
+            eprintln!("Cannot set the web interface password: {e}");
+            return ExitCode::FAILURE;
+        }
+    }
     log_to(&dirs);
     let start_arguments = cli.config_dir.as_ref().map_or_else(Vec::new, |dir| {
         let absolute = std::path::absolute(dir).unwrap_or_else(|_| dir.clone());
