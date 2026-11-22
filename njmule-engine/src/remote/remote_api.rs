@@ -20,6 +20,7 @@ use axum::{Extension, Json, Router};
 use reqwest::Url;
 use serde_json::{Value, json};
 use tokio::sync::{Semaphore, broadcast, watch};
+use tower::ServiceExt;
 
 use crate::api::category::Category;
 use crate::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus};
@@ -44,6 +45,7 @@ use crate::engine::ip_filter_lists;
 use crate::engine::network::{ConnectError, MoreAnswer};
 use crate::remote::api_specification::{self, ApiSpecification};
 use crate::remote::conversations::Conversations;
+use crate::remote::desktop_integration::{Change as DesktopChange, DesktopError, DesktopIntegration};
 use crate::remote::rate_history::{self, RateHistory};
 use crate::remote::recent_log::RecentLog;
 use crate::remote::search_collector::{Asked, SearchCollector};
@@ -95,6 +97,10 @@ pub struct TokenHolders {
 #[derive(Clone)]
 struct WebInterface(Option<Arc<SettingsFile>>);
 
+// The desktop app's system settings, when the desktop window runs on njMule's computer.
+#[derive(Clone)]
+struct Desktop(Option<Arc<dyn DesktopIntegration>>);
+
 // How long between two samples of the rates.
 const RATE_SAMPLE: Duration = Duration::from_secs(1);
 // How long a call to check or download an update waits before answering 202.
@@ -134,13 +140,15 @@ pub const VERSION: u32 = 1;
 /// Where the API is served.
 pub const PREFIX: &str = "/api/v1";
 
-/// The calls, relative to the API's base path; `closing` says when the API closes, which ends the event streams, and
-/// `web` holds the web interface's settings, when the host has one.
+/// The calls, relative to the API's base path; `closing` says when the API closes, which ends the event streams, `web`
+/// holds the web interface's settings when the host has one, and `desktop` holds the system's link and autostart
+/// integration for the desktop window on this computer.
 pub fn router<E: NjMuleEngine>(
     engine: E,
     exit: Option<Exit>,
     closing: watch::Receiver<bool>,
     web: Option<Arc<SettingsFile>>,
+    desktop: Option<Arc<dyn DesktopIntegration>>,
 ) -> Router {
     let searches = Searches::default();
     let log = Log::default();
@@ -148,6 +156,60 @@ pub fn router<E: NjMuleEngine>(
     collect(&engine, Arc::clone(&searches), Arc::clone(&log), Arc::clone(&chats));
     let rates = Rates::default();
     sample_rates(&engine, Arc::clone(&rates));
+    routes::<E>()
+        .fallback(|| async { ApiError::new(StatusCode::NOT_FOUND, "No such call") })
+        .method_not_allowed_fallback(|| async { ApiError::new(StatusCode::METHOD_NOT_ALLOWED, "No such method") })
+        .layer(middleware::from_fn(follows_the_document))
+        .layer(Extension(searches))
+        .layer(Extension(log))
+        .layer(Extension(chats))
+        .layer(Extension(rates))
+        .layer(Extension(Exiting(exit)))
+        .layer(Extension(WebInterface(web)))
+        .layer(Extension(Desktop(desktop)))
+        .layer(Extension(Streams { open: Arc::new(Semaphore::new(event_streams::MAX_STREAMS)), closing }))
+        .with_state(engine)
+}
+
+/// The operations of the shipped OpenAPI document that have no matching route or method on this router.
+pub async fn unmatched_operations<E: NjMuleEngine>(engine: E) -> Vec<String> {
+    let Ok(specification) = ApiSpecification::shipped() else {
+        return vec!["specification failed to parse".to_owned()];
+    };
+    let probe = routes::<E>()
+        .route_layer(middleware::from_fn(|_request: Request, _next: Next| async { StatusCode::OK }))
+        .fallback(|| async { StatusCode::NOT_FOUND })
+        .method_not_allowed_fallback(|| async { StatusCode::METHOD_NOT_ALLOWED })
+        .with_state(engine);
+    let mut missing = Vec::new();
+    for operation in specification.operations().values() {
+        let concrete = concrete_path(&operation.path);
+        let method = operation.method.to_ascii_uppercase();
+        let Ok(request) = Request::builder().method(method.as_str()).uri(&concrete).body(axum::body::Body::empty())
+        else {
+            missing.push(format!("{} {method} {}", operation.id, operation.path));
+            continue;
+        };
+        let status = probe.clone().oneshot(request).await.map_or(StatusCode::INTERNAL_SERVER_ERROR, |r| r.status());
+        if status != StatusCode::OK {
+            missing.push(format!("{} {method} {} ({status})", operation.id, operation.path));
+        }
+    }
+    missing
+}
+
+fn concrete_path(template: &str) -> String {
+    if template == "/" {
+        return "/".to_owned();
+    }
+    template
+        .split('/')
+        .map(|segment| if segment.starts_with('{') && segment.ends_with('}') { "sample" } else { segment })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn routes<E: NjMuleEngine>() -> Router<E> {
     Router::new()
         .route("/", get(api_info))
         .route("/rates", get(rates_of))
@@ -296,23 +358,13 @@ pub fn router<E: NjMuleEngine>(
         .route("/conversations/{address}", axum::routing::delete(close_conversation))
         .route("/webui", get(web_settings).patch(change_web_settings))
         .route("/webui/token", get(api_token::<E>).post(renew_api_token::<E>))
+        .route("/desktop", get(desktop_settings).patch(change_desktop_settings))
         .route(
             "/openapi.yaml",
             get(|| async {
                 ([(header::CONTENT_TYPE, "application/yaml; charset=utf-8")], api_specification::DOCUMENT)
             }),
         )
-        .fallback(|| async { ApiError::new(StatusCode::NOT_FOUND, "No such call") })
-        .method_not_allowed_fallback(|| async { ApiError::new(StatusCode::METHOD_NOT_ALLOWED, "No such method") })
-        .layer(middleware::from_fn(follows_the_document))
-        .layer(Extension(searches))
-        .layer(Extension(log))
-        .layer(Extension(chats))
-        .layer(Extension(rates))
-        .layer(Extension(Exiting(exit)))
-        .layer(Extension(WebInterface(web)))
-        .layer(Extension(Streams { open: Arc::new(Semaphore::new(event_streams::MAX_STREAMS)), closing }))
-        .with_state(engine)
 }
 
 // Reads the rates from the engine's status each second until the engine stops; a status that does not come leaves
@@ -875,6 +927,44 @@ async fn renew_api_token<E: NjMuleEngine>(
 ) -> Result<Json<Value>, ApiError> {
     local_only(caller)?;
     token_answer(api_token::renew(&engine.directories().config))
+}
+
+async fn desktop_settings(
+    Extension(desktop): Extension<Desktop>,
+    caller: Option<Extension<Caller>>,
+) -> Result<Json<Value>, ApiError> {
+    local_only(caller)?;
+    let desktop = desktop_integration(desktop)?;
+    let settings = tokio::task::spawn_blocking(move || desktop.settings())
+        .await
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(api_json::desktop(&settings)))
+}
+
+async fn change_desktop_settings(
+    Extension(desktop): Extension<Desktop>,
+    caller: Option<Extension<Caller>>,
+    Body(body): Body,
+) -> Result<Json<Value>, ApiError> {
+    local_only(caller)?;
+    let desktop = desktop_integration(desktop)?;
+    let change =
+        DesktopChange { links: optional(&body, "links", flag)?, autostart: optional(&body, "autostart", flag)? };
+    let changed = tokio::task::spawn_blocking(move || desktop.change(change))
+        .await
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    match changed {
+        Ok(settings) => Ok(Json(api_json::desktop(&settings))),
+        Err(DesktopError::Unsupported(reason)) => Err(ApiError::new(StatusCode::BAD_REQUEST, reason)),
+        Err(DesktopError::Io(e)) => Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+fn desktop_integration(desktop: Desktop) -> Result<Arc<dyn DesktopIntegration>, ApiError> {
+    desktop
+        .0
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_IMPLEMENTED, "Only the desktop app's window sets this."))
 }
 
 fn token_answer(token: std::io::Result<String>) -> Result<Json<Value>, ApiError> {

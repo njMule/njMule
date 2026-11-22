@@ -9,6 +9,7 @@ pub mod api_specification;
 pub mod api_token;
 pub mod control_endpoint;
 pub mod conversations;
+pub mod desktop_integration;
 pub mod event_streams;
 pub mod html;
 pub mod live_web_ui;

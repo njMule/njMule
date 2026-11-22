@@ -14,9 +14,10 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::io;
-use std::net::{SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use futures_util::future::BoxFuture;
@@ -51,20 +52,28 @@ use njmule_engine::api::spam_marks::SpamMarks;
 use njmule_engine::api::update_status::UpdateStatus;
 use njmule_engine::api::upload_info::{BanInfo, UploadInfo};
 use njmule_engine::api::upload_priority::UploadPriority;
+use njmule_engine::app::desktop_system::{DesktopSystem, Toggle};
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::config::preferences::Preferences;
 use njmule_engine::config::schedule::{Rule, Schedule};
 use njmule_engine::engine::NotesError;
 use njmule_engine::engine::network::{ConnectError, MoreAnswer};
 use njmule_engine::persist::preferences_codec;
-use njmule_engine::remote::control_endpoint::ControlEndpoint;
+use njmule_engine::remote::api_token;
+use njmule_engine::remote::desktop_integration::DesktopIntegration;
+use njmule_engine::remote::passwords;
+use njmule_engine::remote::remote_api::{self, Caller, Guard, TokenHolders};
+use njmule_engine::remote::settings_file::SettingsFile;
+use njmule_engine::remote::web_ui_settings::WebUiSettings;
 use njmule_engine::search::search_manager::{Scope, StartError};
 use njmule_engine::server::server_list::{Address, Priority};
-use serde_json::{Value, json};
+use serde_json::json;
 use strum::VariantArray;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
-use tokio::sync::broadcast;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{broadcast, watch};
+use tokio::task::JoinHandle;
+use tower::ServiceExt;
 
 use crate::api_contract;
 use crate::api_samples::{self, HASH, PEER};
@@ -272,9 +281,37 @@ async fn should_answer_a_change_as_the_document_describes_it() {
     }
 }
 
-// The desktop window waits for its port.
+fn window_calls() -> [(&'static str, &'static str, &'static str, u16); 7] {
+    [
+        ("PATCH", "/api/v1/webui", r#"{"enabled":true,"port":8080,"hosts":["nas.local"]}"#, 200),
+        ("PATCH", "/api/v1/webui", r#"{"password":"short"}"#, 400),
+        ("GET", "/api/v1/webui/token", "", 200),
+        ("POST", "/api/v1/webui/token", "", 200),
+        ("GET", "/api/v1/desktop", "", 200),
+        ("PATCH", "/api/v1/desktop", r#"{"links":true}"#, 200),
+        ("PATCH", "/api/v1/desktop", r#"{"autostart":true}"#, 400),
+    ]
+}
+
+#[tokio::test]
+async fn should_answer_the_desktop_window_as_the_document_describes_it() {
+    for (verb, call, body, status) in window_calls() {
+        let mut test = Contract::new();
+        test.given_the_api_runs().await;
+
+        test.when_the_window_calls(verb, call, body).await;
+
+        test.then_the_status_is(status);
+        test.then_the_answer_follows_the_document();
+    }
+}
+
 fn refusals() -> Vec<(&'static str, String, &'static str, u16)> {
     let calls = [
+        ("PATCH", "/api/v1/webui".to_owned(), r#"{"lan":true}"#, 403),
+        ("GET", "/api/v1/webui/token".to_owned(), "", 403),
+        ("GET", "/api/v1/desktop".to_owned(), "", 403),
+        ("PATCH", "/api/v1/desktop".to_owned(), r#"{"links":true}"#, 403),
         ("GET", "/api/v1/nothing".to_owned(), "", 404),
         ("DELETE", "/api/v1/status".to_owned(), "", 405),
         ("GET", "/api/v1/downloads/talk".to_owned(), "", 400),
@@ -780,11 +817,26 @@ impl NjMuleEngine for SampleEngine {
     }
 }
 
+#[derive(Default)]
+struct LinkSwitch(AtomicBool);
+
+impl Toggle for LinkSwitch {
+    fn is_on(&self) -> io::Result<bool> {
+        Ok(self.0.load(Ordering::SeqCst))
+    }
+
+    fn set(&self, on: bool) -> io::Result<()> {
+        self.0.store(on, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
 /// The API on a loopback port with the sample engine behind it, and what it answered or streamed last.
 struct Contract {
     _dir: tempfile::TempDir,
     engine: SampleEngine,
-    endpoint: Option<ControlEndpoint>,
+    stop: Option<watch::Sender<bool>>,
+    server: Option<JoinHandle<()>>,
     address: Option<SocketAddr>,
     token: String,
     method: String,
@@ -806,7 +858,8 @@ impl Contract {
         Self {
             engine: SampleEngine { connected: false, obliging: false, events: broadcast::channel(16).0, dirs },
             _dir: dir,
-            endpoint: None,
+            stop: None,
+            server: None,
             address: None,
             token: String::new(),
             method: String::new(),
@@ -831,13 +884,43 @@ impl Contract {
     }
 
     async fn given_the_api_runs(&mut self) {
-        let endpoint = ControlEndpoint::start(self.engine.clone(), Some(Arc::new(|| {}))).await.unwrap();
-        let control: Value =
-            serde_json::from_str(endpoint.control_line().strip_prefix("njmule-control ").unwrap()).unwrap();
-        let url = control["url"].as_str().unwrap();
-        self.address = Some(url.strip_prefix("http://").unwrap().strip_suffix("/api/v1").unwrap().parse().unwrap());
-        control["token"].as_str().unwrap().clone_into(&mut self.token);
-        self.endpoint = Some(endpoint);
+        let config = self.engine.dirs.config.clone();
+        self.token = api_token::load_or_create(&config).unwrap();
+        let password_hash = passwords::hash_with("long enough", b"saltsaltsaltsalt", 2);
+        WebUiSettings { password_hash, ..WebUiSettings::default() }.save(&config).unwrap();
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        self.address = Some(listener.local_addr().unwrap());
+        let (stop, mut stopped) = watch::channel(false);
+        let web = Arc::new(SettingsFile::new(config.clone(), |_| {}));
+        let desktop: Arc<dyn DesktopIntegration> =
+            Arc::new(DesktopSystem::new(Some(Box::new(LinkSwitch::default())), None));
+        let calls =
+            remote_api::router(self.engine.clone(), Some(Arc::new(|| {})), stop.subscribe(), Some(web), Some(desktop));
+        let local = axum::Router::new().nest(remote_api::PREFIX, calls.clone());
+        let guard: Guard = Arc::new(|_| true);
+        let admin = axum::Router::new()
+            .nest(remote_api::PREFIX, calls)
+            .layer(axum::middleware::from_fn_with_state(TokenHolders { config, guard }, remote_api::token_holders));
+        let app = axum::Router::new().fallback(move |mut request: axum::extract::Request| {
+            let (local, admin) = (local.clone(), admin.clone());
+            async move {
+                if request.headers().get("x-window").is_some() {
+                    request.extensions_mut().insert(Caller::Local);
+                    local.oneshot(request).await.unwrap()
+                } else {
+                    admin.oneshot(request).await.unwrap()
+                }
+            }
+        });
+        let server = tokio::spawn(async move {
+            let _ = axum::serve(listener, app)
+                .with_graceful_shutdown(async move {
+                    let _ = stopped.wait_for(|stop| *stop).await;
+                })
+                .await;
+        });
+        self.stop = Some(stop);
+        self.server = Some(server);
     }
 
     // Log lines come through the engine's events, which the API gathers on its own task.
@@ -895,18 +978,25 @@ impl Contract {
 
     async fn when_called(&mut self, method: &str, path: &str, body: &str) {
         let token = self.token.clone();
-        self.when_called_with(method, path, Some(&token), body).await;
+        self.when_called_with(method, path, Some(&token), false, body).await;
+    }
+
+    async fn when_the_window_calls(&mut self, method: &str, path: &str, body: &str) {
+        self.when_called_with(method, path, None, true, body).await;
     }
 
     async fn when_called_without_the_token(&mut self, method: &str, path: &str) {
-        self.when_called_with(method, path, None, "").await;
+        self.when_called_with(method, path, None, false, "").await;
     }
 
-    async fn when_called_with(&mut self, method: &str, path: &str, token: Option<&str>, body: &str) {
+    async fn when_called_with(&mut self, method: &str, path: &str, token: Option<&str>, window: bool, body: &str) {
         method.clone_into(&mut self.method);
         path.clone_into(&mut self.path);
         let mut stream = TcpStream::connect(self.address.unwrap()).await.unwrap();
         let mut request = format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n");
+        if window {
+            request.push_str("X-Window: 1\r\n");
+        }
         if let Some(token) = token {
             request.push_str(&format!("Authorization: Bearer {token}\r\n"));
         }
@@ -1009,8 +1099,11 @@ impl Contract {
 
 impl Drop for Contract {
     fn drop(&mut self) {
-        if let Some(endpoint) = self.endpoint.take() {
-            tokio::spawn(endpoint.stop());
+        if let Some(stop) = self.stop.take() {
+            stop.send_replace(true);
+        }
+        if let Some(server) = self.server.take() {
+            server.abort();
         }
     }
 }
