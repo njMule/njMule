@@ -3,6 +3,7 @@
 
 //! The remote-control API and the endpoint that serves it.
 
+pub mod api_client;
 pub mod api_json;
 pub mod api_reader;
 pub mod api_specification;

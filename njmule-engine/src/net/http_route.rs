@@ -69,6 +69,18 @@ pub fn lan_client(timeout: Duration) -> io::Result<Client> {
         .map_err(|e| io::Error::other(format!("cannot start the HTTP client: {e}")))
 }
 
+/// A direct client without an overall request timeout, for streaming calls such as server-sent events.
+pub fn direct_client(connect_timeout: Duration) -> io::Result<Client> {
+    install_tls();
+    Client::builder()
+        .redirect(redirect::Policy::none())
+        .connect_timeout(connect_timeout)
+        .user_agent(format!("{}/{}", nj_mule_info::NAME, nj_mule_info::version()))
+        .no_proxy()
+        .build()
+        .map_err(|e| io::Error::other(format!("cannot start the HTTP client: {e}")))
+}
+
 fn install_tls() {
     static PROVIDER: Once = Once::new();
     PROVIDER.call_once(|| {

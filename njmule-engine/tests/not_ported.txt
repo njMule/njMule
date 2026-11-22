@@ -117,3 +117,6 @@ IgdTest.shouldTakeOnlyTcpOrUdp
 UpnpTest.shouldLeaveNoMappingBehindWhenThePortsChangeTwiceInARow
 # Java only: Rust threads have no interrupt flag; LinkHandoffTest covers the locked timeout instead.
 LinkHandoffTest.shouldNotTakeAnInstanceHoldingItsLockForGoneInAnInterruptedWait
+# Java only: Rust errors always carry a message (no null-message Throwable), and events use a broadcast channel rather than Flow.Subscriber.
+NetworkCommandsTest.shouldNameAFailureWithoutAMessageByItsKind
+NetworkCommandsTest.shouldIgnoreTheEndOfTheEventStream

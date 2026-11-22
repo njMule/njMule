@@ -18,7 +18,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::remote::api_json;
 
-const KEEP_ALIVE: Duration = Duration::from_secs(15);
+pub const KEEP_ALIVE: Duration = Duration::from_secs(15);
 /// Streams open at once at most.
 pub const MAX_STREAMS: usize = 8;
 
