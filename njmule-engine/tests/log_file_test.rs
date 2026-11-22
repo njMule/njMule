@@ -21,8 +21,16 @@ fn should_log_its_control_endpoint_in_the_logs_folder_of_its_profile() {
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
+    let mut reader = BufReader::new(engine.stdout.take().unwrap());
     let mut control = String::new();
-    BufReader::new(engine.stdout.take().unwrap()).read_line(&mut control).unwrap();
+    let mut line = String::new();
+    while reader.read_line(&mut line).unwrap() > 0 {
+        if line.starts_with("njmule-control ") {
+            control = line;
+            break;
+        }
+        line.clear();
+    }
 
     drop(engine.stdin.take());
     engine.wait().unwrap();
