@@ -126,8 +126,6 @@ const CALLBACK_REPEAT: Duration = Duration::from_secs(60);
 const MAX_CALLBACKS_OPEN: usize = 8;
 // Crypt options of a callback request: the client asks for or requires obfuscation.
 const CRYPT_REQUESTED_OR_REQUIRED: u8 = 0x06;
-/// Sources kept per download at most.
-const MAX_SOURCES_PER_FILE: usize = 400;
 // The links of the downloads deleted for receiving nothing, in the config directory.
 const DELETED_LINKS_FILE: &str = "deleted-downloads.txt";
 
@@ -650,6 +648,8 @@ pub fn start(
     network.attach(listener, udp);
     // The network starts with the limits of the rule in force, which then acts once.
     network.refresh_schedule();
+    let ours = network.shared.our_hello();
+    network.downloads.set_download_limit(network.preferences().max_download_kibps, &ours);
     network.scan_shares();
     if preferences.kad_enabled {
         network.start_kad();
@@ -1281,10 +1281,14 @@ impl Network {
             }
             Tick::ProbeOver(link) => self.settle_probe(link),
             Tick::Uploads => {
-                let settings = upload_settings(&self.preferences(), self.friend_slot);
+                let preferences = self.preferences();
+                let settings = upload_settings(&preferences, self.friend_slot);
                 let (files, downloads) = (&self.shared_files, &self.downloads);
                 self.uploads.tick(settings, &|hash: &[u8; 16]| uploadable(files, downloads, hash), Instant::now());
                 self.after_uploads();
+                let ours = self.shared.our_hello();
+                self.downloads.refill(preferences.max_download_kibps, &ours);
+                self.after_downloads();
             }
             Tick::Second => {
                 self.publish_files();
@@ -1445,6 +1449,11 @@ impl Network {
         self.ip_filter_preferences(&was);
         if was.upnp != self.applied.upnp {
             self.restart_forwarding();
+        }
+        if was.max_download_kibps != self.applied.max_download_kibps {
+            let ours = self.shared.our_hello();
+            self.downloads.set_download_limit(self.applied.max_download_kibps, &ours);
+            self.after_downloads();
         }
     }
 
@@ -2280,13 +2289,14 @@ impl Network {
         let preferences = self.preferences();
         download_manager::Settings {
             obfuscation: preferences.obfuscation,
-            max_sources_per_file: MAX_SOURCES_PER_FILE,
+            max_sources_per_file: usize::try_from(preferences.max_sources_per_file).unwrap_or(usize::MAX),
             listen_port: self.shared.listen_port(),
             filter_lan: preferences.filter_lan_addresses,
             clean_up_new_names: preferences.clean_up_new_names,
             name_cleanups: preferences.name_cleanups.clone(),
             auto_delete_days: preferences.auto_delete_days,
             comment_filter: preferences.comment_filter.clone(),
+            max_download_kibps: preferences.max_download_kibps,
         }
     }
 

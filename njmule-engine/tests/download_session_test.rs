@@ -21,7 +21,7 @@ use njmule_engine::api::download_info::DownloadPriority;
 use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::file_comment::FileComment;
 use njmule_engine::download::download_queue::DownloadQueue;
-use njmule_engine::download::download_session::{self, Context, DownloadSession, MAX_NAME, Note, State};
+use njmule_engine::download::download_session::{self, Budget, Context, DownloadSession, MAX_NAME, Note, State};
 use njmule_engine::files::part_file::PartFile;
 use njmule_engine::files::part_file_storage::DiskDone;
 use njmule_engine::net::tcp_connection::TcpConnection;
@@ -47,6 +47,7 @@ struct Lab {
     session: DownloadSession,
     ours: Hello,
     random: StdRng,
+    budget: Budget,
     told: mpsc::UnboundedSender<String>,
     connected: mpsc::UnboundedSender<std::io::Result<TcpStream>>,
     links: mpsc::UnboundedSender<LinkEvent>,
@@ -58,8 +59,13 @@ type Job = Box<dyn FnOnce(&mut Lab) + Send>;
 
 impl Lab {
     fn with<T>(&mut self, work: impl FnOnce(&mut DownloadSession, &mut Context<'_, StdRng>) -> T) -> T {
-        let mut ctx =
-            Context { queue: &mut self.queue, ours: &self.ours, random: &mut self.random, now: Instant::now() };
+        let mut ctx = Context {
+            queue: &mut self.queue,
+            ours: &self.ours,
+            random: &mut self.random,
+            budget: &mut self.budget,
+            now: Instant::now(),
+        };
         let result = work(&mut self.session, &mut ctx);
         self.settle();
         result
@@ -355,6 +361,7 @@ impl Session {
             session: DownloadSession::new(file, address, Instant::now()),
             ours: Hello::of([0xab; 16], 0, 4662, &ours, 0, 0),
             random: StdRng::seed_from_u64(1),
+            budget: Budget::default(),
             told: told_in,
             connected: connected_in,
             links: links_in,

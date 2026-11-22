@@ -8,13 +8,14 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use rand::Rng;
 use rangemap::RangeSet;
 
 use crate::api::file_comment::FileComment;
 use crate::download::block_inflater::BlockInflater;
 use crate::download::download_queue::DownloadQueue;
+use crate::files::hash::ed2k;
 use crate::files::part_file::{self, Block};
 use crate::peer::peer_link::LinkHandle;
 use crate::protocol::ed2k::client_messages::{
@@ -111,11 +112,87 @@ pub enum Note {
     SourcesFound(exchange::Answer),
 }
 
+/// Download rate budget shared by every session, replenished ten times a second.
+#[derive(Default)]
+pub struct Budget {
+    limit_kibps: u32,
+    bytes: i64,
+    // Sessions waiting for budget, first come first served.
+    throttled: IndexSet<SocketAddr>,
+}
+
+impl Budget {
+    pub fn set_limit(&mut self, limit_kibps: u32) {
+        self.limit_kibps = limit_kibps;
+        if limit_kibps == 0 {
+            self.bytes = 0;
+        }
+    }
+
+    /// Each tick adds a tenth of the limit, up to a second's worth; without a limit nothing is counted, so a limit set
+    /// later starts from nothing. Returns the waiting sessions that may be woken now.
+    pub fn refill(&mut self, limit_kibps: u32) -> Vec<SocketAddr> {
+        self.limit_kibps = limit_kibps;
+        if limit_kibps == 0 {
+            self.bytes = 0;
+        } else {
+            let second = i64::from(limit_kibps).saturating_mul(1024);
+            self.bytes = self.bytes.saturating_add(second / 10).min(second);
+        }
+        self.drain_ready()
+    }
+
+    /// Removes and returns waiting sessions when there is budget left (or no limit).
+    pub fn drain_ready(&mut self) -> Vec<SocketAddr> {
+        if self.throttled.is_empty() || self.is_exhausted() {
+            return Vec::new();
+        }
+        self.throttled.drain(..).collect()
+    }
+
+    pub fn is_exhausted(&self) -> bool {
+        self.limit_kibps > 0 && self.bytes <= 0
+    }
+
+    pub fn requeue(&mut self, address: SocketAddr) {
+        self.throttled.insert(address);
+    }
+
+    pub fn remove(&mut self, address: &SocketAddr) {
+        self.throttled.shift_remove(address);
+    }
+
+    // Under a limit, the blocks the budget covers, at least one while any budget is left.
+    fn allowance(&mut self, address: SocketAddr, wanted: usize) -> usize {
+        if self.limit_kibps == 0 {
+            return wanted;
+        }
+        if self.bytes <= 0 {
+            self.throttled.insert(address);
+            return 0;
+        }
+        let remaining = u64::try_from(self.bytes).unwrap_or(0);
+        let blocks = remaining
+            .saturating_add(ed2k::EMBLOCKSIZE.saturating_sub(1))
+            .checked_div(ed2k::EMBLOCKSIZE)
+            .and_then(|n| usize::try_from(n).ok())
+            .unwrap_or(usize::MAX);
+        wanted.min(blocks)
+    }
+
+    fn requested(&mut self, bytes: u64) {
+        if self.limit_kibps > 0 {
+            self.bytes = self.bytes.saturating_sub(i64::try_from(bytes).unwrap_or(i64::MAX));
+        }
+    }
+}
+
 /// What a session works with.
 pub struct Context<'a, R: Rng> {
     pub queue: &'a mut DownloadQueue,
     pub ours: &'a Hello,
     pub random: &'a mut R,
+    pub budget: &'a mut Budget,
     pub now: Instant,
 }
 
@@ -644,12 +721,18 @@ impl DownloadSession {
             return;
         }
         let wanted = BLOCKS_PER_REQUEST.saturating_sub(self.pending.len());
+        let allowed = if wanted > 0 { ctx.budget.allowance(self.address, wanted) } else { 0 };
+        if wanted > 0 && allowed == 0 {
+            // Over the download limit: woken once there is budget again, and not idle meanwhile.
+            self.idle_since = None;
+            return;
+        }
         let parts = self.source_parts.clone().unwrap_or_default();
-        let mut next = if wanted > 0 { download.file.next_blocks(&parts, wanted, ctx.random) } else { Vec::new() };
-        if next.is_empty() && wanted > 0 {
+        let mut next = if allowed > 0 { download.file.next_blocks(&parts, allowed, ctx.random) } else { Vec::new() };
+        if next.is_empty() && allowed > 0 {
             // Every missing block is asked of a source already: near the end, some of theirs are asked of this one too.
             let own: Vec<Block> = self.pending.values().map(|pending| pending.block).collect();
-            next = download.file.endgame_blocks(&parts, wanted, &own);
+            next = download.file.endgame_blocks(&parts, allowed, &own);
         }
         if next.is_empty() {
             if self.pending.is_empty() && self.idle_since.is_none() {
@@ -660,13 +743,16 @@ impl DownloadSession {
         self.idle_since = None;
         let mut ranges = [Range::default(); BLOCKS_PER_REQUEST];
         let mut wide = false;
+        let mut bytes = 0u64;
         for (range, block) in ranges.iter_mut().zip(&next) {
             *range = Range { start: block.start, end: block.end };
             wide |= block.end > 0xFFFF_FFFF;
+            bytes = bytes.saturating_add(block.length());
         }
         for block in next {
             self.pending.insert(block.start, Pending::new(block));
         }
+        ctx.budget.requested(bytes);
         self.progress_at = ctx.now;
         match (RequestParts { file: self.download, ranges }).encode(wide) {
             Ok(packet) => self.send(packet),
@@ -877,4 +963,63 @@ pub fn shown(name: &str) -> Option<String> {
         white_space::strip(name).chars().take(MAX_NAME).map(|c| if c.is_control() { ' ' } else { c }).collect();
     let shown = white_space::strip(&shown);
     (!shown.is_empty()).then(|| shown.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+    use super::Budget;
+    use crate::files::hash::ed2k;
+
+    fn peer(port: u16) -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)
+    }
+
+    #[test]
+    fn should_start_from_zero_when_a_limit_is_set_after_running_unlimited() {
+        let mut budget = Budget::default();
+        assert_eq!(budget.allowance(peer(1), 3), 3);
+        budget.requested(ed2k::EMBLOCKSIZE * 3);
+        assert!(budget.refill(0).is_empty());
+
+        budget.set_limit(300);
+        assert_eq!(budget.allowance(peer(1), 3), 0);
+        assert!(budget.is_exhausted());
+
+        let woken = budget.refill(300);
+        assert_eq!(woken, vec![peer(1)]);
+        assert_eq!(budget.allowance(peer(1), 3), 1);
+    }
+
+    #[test]
+    fn should_cap_refill_at_one_second_and_wake_throttled_peers_in_order() {
+        let mut budget = Budget::default();
+        budget.set_limit(300);
+        assert_eq!(budget.allowance(peer(1), 3), 0);
+        assert_eq!(budget.allowance(peer(2), 3), 0);
+
+        let woken = budget.refill(300);
+        assert_eq!(woken, vec![peer(1), peer(2)]);
+        assert_eq!(budget.allowance(peer(1), 3), 1);
+        budget.requested(ed2k::EMBLOCKSIZE);
+        assert!(budget.is_exhausted());
+        assert_eq!(budget.allowance(peer(2), 3), 0);
+
+        for _ in 0..20 {
+            let _ = budget.refill(300);
+        }
+        // Capped at 300 KiB = 307_200 B: covers 2 blocks of 184_320 B (at least one while budget > 0).
+        assert_eq!(budget.allowance(peer(1), 3), 2);
+    }
+
+    #[test]
+    fn should_wake_throttled_peers_when_the_limit_is_lifted() {
+        let mut budget = Budget::default();
+        budget.set_limit(100);
+        assert_eq!(budget.allowance(peer(1), 2), 0);
+        budget.set_limit(0);
+        assert_eq!(budget.drain_ready(), vec![peer(1)]);
+        assert_eq!(budget.allowance(peer(1), 3), 3);
+    }
 }
