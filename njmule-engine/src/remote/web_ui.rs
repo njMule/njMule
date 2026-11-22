@@ -138,7 +138,7 @@ impl WebUi {
         let (stop, mut stopped) = watch::channel(false);
         let sessions = Arc::new(Sessions::default());
         let web = Arc::new(SettingsFile::new(config.clone(), |_| {}));
-        let calls = remote_api::router(engine, exit, stop.subscribe(), Some(web));
+        let calls = remote_api::router(engine, exit, stop.subscribe(), Some(web), None);
         let api = Router::new().nest(remote_api::PREFIX, calls.clone()).fallback(no_such_call);
         // A wrong API token counts as a failed login of its address.
         let token_api = settings.api.then(|| {

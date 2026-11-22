@@ -21,6 +21,7 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 use crate::api::nj_mule_engine::NjMuleEngine;
+use crate::remote::desktop_integration::DesktopIntegration;
 use crate::remote::remote_api::{self, ApiError, Caller, Exit};
 use crate::remote::settings_file::SettingsFile;
 use crate::remote::web_ui_settings::WebUiSettings;
@@ -39,15 +40,16 @@ pub struct ControlEndpoint {
 impl ControlEndpoint {
     /// Serves the API of `engine` on a free loopback port; `exit` stops njMule when the API is asked to.
     pub async fn start<E: NjMuleEngine>(engine: E, exit: Option<Exit>) -> io::Result<Self> {
-        Self::start_with(engine, exit, |_| {}).await
+        Self::start_with(engine, exit, |_| {}, None).await
     }
 
     /// As [`ControlEndpoint::start`]; `web_changed` hears the web interface's settings the window saves, to follow them
-    /// at once.
+    /// at once, and `desktop` gives the window the eD2K links and start-at-login settings of this computer.
     pub async fn start_with<E: NjMuleEngine>(
         engine: E,
         exit: Option<Exit>,
         web_changed: impl Fn(&WebUiSettings) + Send + Sync + 'static,
+        desktop: Option<Arc<dyn DesktopIntegration>>,
     ) -> io::Result<Self> {
         let mut secret = [0u8; 32];
         rand::rng().fill_bytes(&mut secret);
@@ -58,7 +60,7 @@ impl ControlEndpoint {
         let (stop, mut stopped) = watch::channel(false);
         let web = Arc::new(SettingsFile::new(engine.directories().config.clone(), web_changed));
         let app = Router::new()
-            .nest(remote_api::PREFIX, remote_api::router(engine, exit, stop.subscribe(), Some(web)))
+            .nest(remote_api::PREFIX, remote_api::router(engine, exit, stop.subscribe(), Some(web), desktop))
             .layer(middleware::from_fn_with_state(token.clone(), guard));
         let serving = tokio::spawn(async move {
             axum::serve(listener, app)

@@ -193,7 +193,7 @@ impl Api {
         self.address = Some(listener.local_addr().unwrap());
         let web = Arc::new(SettingsFile::new(self.engine.dirs.config.clone(), |_| {}));
         let closing = watch::channel(false).1;
-        let api = remote_api::router(self.engine.clone(), None, closing, Some(web));
+        let api = remote_api::router(self.engine.clone(), None, closing, Some(web), None);
         let app = axum::Router::new().nest(remote_api::PREFIX, api);
         self.admin_host = Some(tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
@@ -208,7 +208,7 @@ impl Api {
         let config = self.engine.dirs.config.clone();
         self.token = api_token::load_or_create(&config).unwrap();
         let web = Arc::new(SettingsFile::new(config.clone(), |_| {}));
-        let calls = remote_api::router(self.engine.clone(), None, watch::channel(false).1, Some(web));
+        let calls = remote_api::router(self.engine.clone(), None, watch::channel(false).1, Some(web), None);
         let named = axum::Router::new().nest(remote_api::PREFIX, calls.clone());
         let attempts = Arc::new(AtomicUsize::new(0));
         let guard: Guard = Arc::new(move |_| attempts.fetch_add(1, Ordering::SeqCst) < ALLOWED_ATTEMPTS);
@@ -686,6 +686,16 @@ async fn should_refuse_the_api_token_to_a_browser() {
     api.when_called("GET", "/api/v1/webui/token", "").await;
 
     api.then_the_status_is(403);
+}
+
+#[tokio::test]
+async fn should_say_when_the_api_has_no_desktop_integration() {
+    let mut api = Api::new();
+    api.given_the_api_runs().await;
+
+    api.when_called("GET", "/api/v1/desktop", "").await;
+
+    api.then_the_status_is(501);
 }
 
 #[tokio::test]

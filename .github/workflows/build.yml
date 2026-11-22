@@ -104,6 +104,7 @@ jobs:
                           # The Java tests the port mirrors, which test_name_map_test compares.
                           - 'njmule-core/src/test/java/**'
                           - 'njmule-http/src/test/java/**'
+                          - 'njmule-app/src/test/java/**'
                           # The API's document, which the Rust engine serves and checks every call against.
                           - 'njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml'
                           # The login page's style sheet and the browser icons, which the web interface carries.

@@ -18,11 +18,13 @@ use clap::Parser;
 use njmule_engine::api::ed2k_link::FileLink;
 use njmule_engine::api::engine_event::EngineEvent;
 use njmule_engine::api::nj_mule_info;
+use njmule_engine::app::desktop_system::DesktopSystem;
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
 use njmule_engine::engine::switches::Switches;
 use njmule_engine::files::hash::file_hasher;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
+use njmule_engine::remote::desktop_integration::DesktopIntegration;
 use njmule_engine::remote::live_web_ui::LiveWebUi;
 use njmule_engine::remote::remote_api::Exit;
 use njmule_engine::remote::web_ui_settings::WebUiSettings;
@@ -88,7 +90,12 @@ fn main() -> ExitCode {
     log_to(&dirs);
     await_end(&cli.wait);
     let switches = cli.switches;
-    let outcome = tokio::runtime::Runtime::new().and_then(|runtime| runtime.block_on(run(dirs, switches)));
+    let start_arguments = cli.config_dir.as_ref().map_or_else(Vec::new, |dir| {
+        let absolute = std::path::absolute(dir).unwrap_or_else(|_| dir.clone());
+        vec!["--config-dir".to_owned(), absolute.to_string_lossy().into_owned()]
+    });
+    let outcome =
+        tokio::runtime::Runtime::new().and_then(|runtime| runtime.block_on(run(dirs, switches, start_arguments)));
     match outcome {
         Ok(Some(install)) => hand_over(&install, &raw_args),
         Ok(None) => ExitCode::SUCCESS,
@@ -206,7 +213,11 @@ fn log_to(dirs: &AppDirectories) {
     }
 }
 
-async fn run(dirs: AppDirectories, switches: Vec<String>) -> io::Result<Option<HandOver>> {
+async fn run(
+    dirs: AppDirectories,
+    switches: Vec<String>,
+    start_arguments: Vec<String>,
+) -> io::Result<Option<HandOver>> {
     tracing::debug!("Switches: {switches:?}");
     let config = dirs.config.clone();
     let engine = Engine::start_with(dirs, Switches::of(&switches)).await?;
@@ -240,9 +251,16 @@ async fn run(dirs: AppDirectories, switches: Vec<String>) -> io::Result<Option<H
                 following.apply(settings).await;
             }
         });
-        let endpoint = ControlEndpoint::start_with(engine.clone(), Some(stop), move |settings: &WebUiSettings| {
-            let _ = changed.send(settings.clone());
-        })
+        let desktop: Option<Arc<dyn DesktopIntegration>> =
+            Some(Arc::new(DesktopSystem::for_this_system(config.clone(), &start_arguments)));
+        let endpoint = ControlEndpoint::start_with(
+            engine.clone(),
+            Some(stop),
+            move |settings: &WebUiSettings| {
+                let _ = changed.send(settings.clone());
+            },
+            desktop,
+        )
         .await?;
         // Printed once the API answers: the starting process calls it right away.
         println!("{}", endpoint.control_line());

@@ -40,6 +40,7 @@ use crate::files::file_types;
 use crate::files::part_file::PartMap;
 use crate::persist::preferences_codec;
 use crate::remote::conversations::{Author, Chat, Notice};
+use crate::remote::desktop_integration::Settings as DesktopSettings;
 use crate::remote::rate_history::Rate;
 use crate::remote::recent_log::Entry;
 use crate::remote::settings_file::WebView;
@@ -150,6 +151,14 @@ pub fn web_interface(settings: &WebView, changeable: bool) -> Value {
         "hasPassword": settings.has_password,
         "hasGuest": settings.has_guest,
         "url": settings.url,
+    })
+}
+
+/// The desktop integration settings of this computer; `null` where this system or installation does not offer one.
+pub fn desktop(settings: &DesktopSettings) -> Value {
+    json!({
+        "links": settings.links,
+        "autostart": settings.autostart,
     })
 }
 

@@ -22,6 +22,17 @@ use serde_json::Value;
 use strum::VariantArray;
 
 use crate::api_samples;
+use crate::fake_engine::FakeEngine;
+
+#[tokio::test]
+async fn should_have_a_handler_for_every_operation() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = FakeEngine::new(dir.path());
+
+    let missing = remote_api::unmatched_operations(engine).await;
+
+    assert!(missing.is_empty(), "OpenAPI operations without a router handler: {missing:#?}");
+}
 
 #[test]
 fn should_list_the_values_of_an_enum_of_the_engine() {

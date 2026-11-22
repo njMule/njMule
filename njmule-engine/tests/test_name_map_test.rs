@@ -13,8 +13,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-// The engine's tests, then those of its web interface.
-const JAVA_TESTS: [&str; 2] = ["../njmule-core/src/test/java", "../njmule-http/src/test/java"];
+// The engine's tests, then those of its web interface and launcher.
+const JAVA_TESTS: [&str; 3] =
+    ["../njmule-core/src/test/java", "../njmule-http/src/test/java", "../njmule-app/src/test/java"];
 const NOT_PORTED: &str = "tests/not_ported.txt";
 // The packages of org.njmule.core, with those under them, whose test classes all have Rust twins.
 const AREAS: &str = "tests/ported_areas.txt";

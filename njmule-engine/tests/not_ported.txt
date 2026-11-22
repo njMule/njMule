@@ -101,12 +101,8 @@ DownloadSourcesTest.shouldLetASourceWaitWhileOurConnectionsAreAtTheirLimit
 # The API's document.
 # Java only: the one document both engines serve is checked against the OpenAPI schemas by the Java test.
 ApiSpecificationTest.shouldBeAValidOpenApi32Description
-# The Rust API lacks the operations of the desktop window.
-ApiSpecificationTest.shouldHaveAHandlerForEveryOperation
 # Java only: a password kept as a char array is wiped once used; Rust strings are not.
 WebUiPartsTest.shouldWipeAPasswordOnceUsed
-# The answers to the desktop window come with its settings (eD2K links, start at login), with the launcher.
-RemoteApiContractTest.shouldAnswerTheDesktopWindowAsTheDocumentDescribesIt
 
 # The engine's API.
 # Java only: the engine's events are a Flow publisher in Java, a broadcast channel in Rust, whose readers ask for no count.
