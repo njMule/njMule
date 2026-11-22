@@ -248,6 +248,17 @@ impl DownloadQueue {
     /// Adds a download in `category` with `priority`. An existing one of the same file gets the link's sources, and
     /// its AICH hash if it has none.
     pub fn add(&mut self, link: &FileLink, category: u32, priority: DownloadPriority) -> io::Result<[u8; 16]> {
+        self.add_with_preview(link, category, priority, false)
+    }
+
+    /// As [`DownloadQueue::add`], setting whether a new download fetches its ends first for previewing.
+    pub fn add_with_preview(
+        &mut self,
+        link: &FileLink,
+        category: u32,
+        priority: DownloadPriority,
+        preview_first: bool,
+    ) -> io::Result<[u8; 16]> {
         if let Some(existing) = self.downloads.get_mut(&link.hash) {
             if same_file(&existing.file, link) {
                 for source in &link.sources {
@@ -275,6 +286,9 @@ impl DownloadQueue {
         )?;
         file.set_category(category);
         file.set_priority(priority);
+        if preview_first {
+            file.set_preview_first(true);
+        }
         file.set_added(self.next_added());
         // Written at once, so that a download that cannot be kept is not added.
         file.save()?;

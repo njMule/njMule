@@ -22,7 +22,7 @@ pub mod totals;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, Weak};
@@ -30,7 +30,6 @@ use std::time::{Duration, Instant, SystemTime};
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
-use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinSet;
 
@@ -85,6 +84,7 @@ use crate::engine::notifier::Notifier;
 use crate::engine::switches::Switches;
 use crate::net::country_table::CountryTable;
 use crate::net::routes::Routes;
+use crate::net::tcp_connector;
 use crate::net::web_lists::WebLists;
 use crate::peer::{peer_greetings, shared_files_browser};
 use crate::persist::emule_importer::EmuleImporter;
@@ -142,6 +142,10 @@ pub struct Shared {
     kad_buddy: AtomicU64,
     // Whether Kad's port carries connections through routers, which our hello tells while the preferences allow them.
     kad_traversal: AtomicBool,
+    // Our client id from Kad when connected: our public IPv4 in eD2K order when open, 1 when firewalled, 0 otherwise.
+    kad_client_id: AtomicU32,
+    // Our public IPv6 address, announced in our hello when known.
+    our_ipv6: Mutex<Option<Ipv6Addr>>,
     preferences: watch::Sender<Preferences>,
     routes: Routes,
     events: broadcast::Sender<EngineEvent>,
@@ -252,11 +256,16 @@ impl Shared {
         self.listen_port.load(Ordering::Relaxed)
     }
 
-    /// Tells our hello Kad's UDP port while Kad is connected, 0 otherwise, and whether firewalled clients may call us
-    /// back over it directly.
-    fn announce_kad(&self, udp_port: u16, direct_callback: bool) {
+    /// Tells our hello Kad's UDP port while Kad is connected, 0 otherwise, whether firewalled clients may call us back
+    /// over it directly, and the client id Kad gives us (our open public IPv4 in eD2K order, 1 when firewalled, 0 off).
+    fn announce_kad(&self, udp_port: u16, direct_callback: bool, client_id: u32) {
         let announced = if udp_port == 0 { 0 } else { u32::from(udp_port) | u32::from(direct_callback) << 16 };
         self.kad_announced.store(announced, Ordering::Relaxed);
+        self.kad_client_id.store(client_id, Ordering::Relaxed);
+    }
+
+    fn set_our_ipv6(&self, ipv6: Option<Ipv6Addr>) {
+        *self.our_ipv6.lock().unwrap_or_else(PoisonError::into_inner) = ipv6;
     }
 
     /// Tells our hello the address and UDP port of our Kad buddy while we are firewalled with one, 0 otherwise.
@@ -297,7 +306,17 @@ impl Shared {
             }
         }
         let ours = Ours { nick: &preferences.nick, udp_port: kad_port, kad_port, misc_options1, misc_options2 };
-        let hello = Hello::of(self.user_hash, context.client_id, self.listen_port(), &ours, context.ip, context.port);
+        // The id peers take us for: our address when Kad finds our port open, else the server's id, else 1 while Kad
+        // is connected but firewalled. Zero would read as a HighID at our address.
+        let kad_id = self.kad_client_id.load(Ordering::Relaxed);
+        let client_id = if kad_id >= LOW_ID_LIMIT {
+            kad_id
+        } else if context.client_id != 0 {
+            context.client_id
+        } else {
+            kad_id
+        };
+        let hello = Hello::of(self.user_hash, client_id, self.listen_port(), &ours, context.ip, context.port);
         // Firewalled with a buddy: clients that know us reach us through it.
         let buddy = self.kad_buddy.load(Ordering::Relaxed);
         let buddy_ip = u32::try_from(buddy >> 16).unwrap_or(0);
@@ -307,10 +326,14 @@ impl Shared {
         } else {
             hello
         };
-        if self.kad_traversal.load(Ordering::Relaxed) && preferences.router_traversal() {
+        let hello = if self.kad_traversal.load(Ordering::Relaxed) && preferences.router_traversal() {
             hello.with_router_traversal()
         } else {
             hello
+        };
+        match *self.our_ipv6.lock().unwrap_or_else(PoisonError::into_inner) {
+            Some(ipv6) => hello.with_ipv6(&ipv6),
+            None => hello,
         }
     }
 }
@@ -360,17 +383,14 @@ impl Engine {
             }
         };
         let listener = match local {
-            Some(local) => {
-                let address = SocketAddr::from((local.unwrap_or(Ipv4Addr::UNSPECIFIED), preferences.tcp_port));
-                match TcpListener::bind(address).await {
-                    Ok(listener) => Some(listener),
-                    Err(e) => {
-                        // Other clients cannot reach us: we get a low id.
-                        told.push((Level::Warning, format!("Cannot listen on TCP port {}: {e}", preferences.tcp_port)));
-                        None
-                    }
+            Some(local) => match tcp_connector::listen(local, preferences.tcp_port).await {
+                Ok(listener) => Some(listener),
+                Err(e) => {
+                    // Other clients cannot reach us: we get a low id.
+                    told.push((Level::Warning, format!("Cannot listen on TCP port {}: {e}", preferences.tcp_port)));
+                    None
                 }
-            }
+            },
             None => None,
         };
         // The servers' UDP answers come to a port of their own, not the one Kad and clients use.
@@ -414,6 +434,8 @@ impl Engine {
                 kad_announced: AtomicU32::new(0),
                 kad_buddy: AtomicU64::new(0),
                 kad_traversal: AtomicBool::new(false),
+                kad_client_id: AtomicU32::new(0),
+                our_ipv6: Mutex::new(None),
                 preferences,
                 routes,
                 events,
@@ -904,7 +926,17 @@ impl Engine {
 
     /// Adds a download, paused when `paused` says so or, without it, as the preferences say.
     pub async fn add_download(&self, link: FileLink, paused: Option<bool>) -> Result<DownloadInfo, String> {
-        self.ask(|reply| Command::AddDownload(Box::new(link), paused, reply))
+        self.add_download_in(link, None, paused).await
+    }
+
+    /// As [`Engine::add_download`], placing a new download in `category` when given instead of matching by name.
+    pub async fn add_download_in(
+        &self,
+        link: FileLink,
+        category: Option<u32>,
+        paused: Option<bool>,
+    ) -> Result<DownloadInfo, String> {
+        self.ask(|reply| Command::AddDownload(Box::new(link), category, paused, reply))
             .await
             .unwrap_or_else(|| Err("the engine is stopping".to_owned()))
     }
@@ -931,10 +963,12 @@ impl Engine {
         self.ask(Command::Bans).await.unwrap_or_default()
     }
 
-    /// Lifts the ban on an IPv4 address; false when it was not banned, why not when `ip` is no address.
+    /// Lifts the ban on an address (IPv4, or IPv6 with optional `/64`); false when it was not banned, why not when `ip`
+    /// is no address.
     pub async fn unban(&self, ip: String) -> Result<bool, String> {
-        let address: Ipv4Addr = ip.trim().parse().map_err(|_| format!("Not an IPv4 address: {ip}"))?;
-        Ok(self.ask(|reply| Command::Unban(IpAddr::V4(address), reply)).await.unwrap_or(false))
+        let trimmed = ip.trim().strip_suffix("/64").unwrap_or(ip.trim());
+        let address: IpAddr = trimmed.parse().map_err(|_| format!("Not an IP address: {ip}"))?;
+        Ok(self.ask(|reply| Command::Unban(address, reply)).await.unwrap_or(false))
     }
 
     pub async fn sources(&self) -> Vec<SourceInfo> {

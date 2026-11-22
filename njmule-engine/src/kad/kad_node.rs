@@ -1062,6 +1062,11 @@ impl KadNode {
         self.firewall_checks.contains_key(&ip)
     }
 
+    /// The IPv4 addresses of the nodes currently asked to connect to our TCP port.
+    pub fn awaited_connections(&self) -> Vec<u32> {
+        self.firewall_checks.keys().copied().collect()
+    }
+
     /// A node we asked to check our TCP port connected and said so.
     pub fn reachable_confirmed(&mut self, ip: u32) {
         if self.firewall_checks.remove(&ip).is_some() {

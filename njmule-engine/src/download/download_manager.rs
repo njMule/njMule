@@ -196,6 +196,8 @@ pub struct Settings {
     pub comment_filter: String,
     /// Download rate limit in KiB/s, 0 for none.
     pub max_download_kibps: u32,
+    /// Whether new downloads fetch their ends first so a player can show them while they grow.
+    pub preview_first: bool,
 }
 
 /// What the downloads ask of the network side.
@@ -405,6 +407,8 @@ pub struct DownloadManager {
     epoch: Instant,
     // Download rate budget shared by the sessions.
     budget: Budget,
+    // Wire bytes received from sessions with a known peer hash, for the credits to count when trusted.
+    credited: Vec<(LinkId, [u8; 16], u64)>,
 }
 
 impl DownloadManager {
@@ -419,7 +423,19 @@ impl DownloadManager {
         hooks: Hooks,
     ) -> io::Result<Self> {
         let incoming = incoming_dir.to_path_buf();
-        let queue = DownloadQueue::load(temp_dir, Box::new(move |_| incoming.clone()), min_free, disk)?;
+        Self::open_with(temp_dir, Box::new(move |_| incoming.clone()), min_free, disk, clock, hooks)
+    }
+
+    /// As [`DownloadManager::open`], choosing the incoming directory per download category dynamically.
+    pub fn open_with(
+        temp_dir: &Path,
+        incoming: download_queue::IncomingDir,
+        min_free: download_queue::MinFree,
+        disk: UnboundedSender<DiskDone>,
+        clock: Clock,
+        hooks: Hooks,
+    ) -> io::Result<Self> {
+        let queue = DownloadQueue::load(temp_dir, incoming, min_free, disk)?;
         let now = clock();
         let entries = queue.all().map(|d| (d.hash(), Entry::new(d.file.part_count(), now))).collect();
         Ok(Self {
@@ -449,6 +465,7 @@ impl DownloadManager {
             receiving: RateMeter::new(RATE_WINDOW),
             epoch: now,
             budget: Budget::default(),
+            credited: Vec::new(),
         })
     }
 
@@ -473,6 +490,11 @@ impl DownloadManager {
 
     pub fn take_events(&mut self) -> Vec<DownloadEvent> {
         std::mem::take(&mut self.events)
+    }
+
+    /// Wire bytes received on each session's link from its peer, to be credited when the peer is trusted.
+    pub fn take_credited(&mut self) -> Vec<(LinkId, [u8; 16], u64)> {
+        std::mem::take(&mut self.credited)
     }
 
     /// Adds a download, or the link's sources to the existing one of the same file. A new download goes in the first
@@ -513,7 +535,7 @@ impl DownloadManager {
                 (category, priority) = (given.id, given.priority);
             }
         }
-        let hash = self.queue.add(link, category, priority)?;
+        let hash = self.queue.add_with_preview(link, category, priority, settings.preview_first)?;
         self.settle(ours);
         if known != Some(false) {
             self.add_link_sources(&hash, &link.sources, settings);
@@ -1776,7 +1798,7 @@ impl DownloadManager {
             return;
         };
         match note {
-            Note::Received { bytes, .. } => {
+            Note::Received { bytes, transferred } => {
                 let now = self.meter_clock();
                 if let Some(meter) = &mut self.receiving {
                     meter.add(bytes, now);
@@ -1786,6 +1808,11 @@ impl DownloadManager {
                     if let Some(source) = entry.sources.get_mut(&address) {
                         source.received = source.received.saturating_add(bytes);
                     }
+                }
+                if let Some(session) = self.clients.get(&address).and_then(|client| client.session.as_ref())
+                    && let (Some(link), Some(peer_hash)) = (session.link(), session.peer_hash())
+                {
+                    self.credited.push((link.id(), peer_hash, transferred));
                 }
             }
             Note::PartsKnown => {

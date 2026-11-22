@@ -131,6 +131,14 @@ impl KadSide {
         }
     }
 
+    pub(super) fn public_ip(&self) -> u32 {
+        self.running.as_ref().map_or(0, |running| running.node.public_ip())
+    }
+
+    pub(super) fn awaited_connections(&self) -> Vec<u32> {
+        self.running.as_ref().map(|running| running.node.awaited_connections()).unwrap_or_default()
+    }
+
     /// What finds the sources of downloads on Kad, asks the firewalled ones to call us and re-asks sources over its
     /// port, while it runs; `our_ip` is part of the key of obfuscated re-asks.
     pub(super) fn finding<'a>(&'a mut self, our_ip: u32, calling: Calling<'a>) -> Option<KadFinding<'a>> {
@@ -466,6 +474,8 @@ impl Network {
             return;
         };
         self.buddies().release();
+        self.shared.announce_kad(0, false, 0);
+        self.sync_guard_kad();
         self.kad.notes.kad_stopped(&self.comment_filter());
         Self::stop_traversal(&self.shared, &mut running);
         running.node.close();
@@ -479,6 +489,8 @@ impl Network {
         self.kad.searches.clear();
         let mut running = self.kad.running.take()?;
         self.buddies().release();
+        self.shared.announce_kad(0, false, 0);
+        self.sync_guard_kad();
         self.kad.notes.kad_stopped(&self.comment_filter());
         Self::stop_traversal(&self.shared, &mut running);
         running.node.close();
@@ -695,14 +707,16 @@ impl Network {
             })
             .collect();
         *self.kad.known.lock().unwrap_or_else(PoisonError::into_inner) = known;
-        let announced = self
-            .kad
-            .running
-            .as_ref()
-            .filter(|running| running.node.is_connected())
-            .map(|running| (running.node.announced_udp_port(), running.node.supports_direct_callback()));
-        let (udp_port, direct_callback) = announced.unwrap_or((0, false));
-        self.shared.announce_kad(udp_port, direct_callback);
+        let announced = self.kad.running.as_ref().filter(|running| running.node.is_connected()).map(|running| {
+            let client_id = if !running.node.is_firewalled() && running.node.public_ip() != 0 {
+                ipv4::to_ed2k(running.node.public_ip())
+            } else {
+                1
+            };
+            (running.node.announced_udp_port(), running.node.supports_direct_callback(), client_id)
+        });
+        let (udp_port, direct_callback, client_id) = announced.unwrap_or((0, false, 0));
+        self.shared.announce_kad(udp_port, direct_callback, client_id);
         if let Some(running) = &mut self.kad.running {
             running.reachable.store(running.node.supports_direct_callback(), Ordering::Relaxed);
             running.node.tick();
@@ -726,6 +740,7 @@ impl Network {
                 self.start_kad();
             }
         }
+        self.sync_guard_kad();
         if self.kad.running.is_some() {
             self.buddies().tick();
             self.buddy_actions();
