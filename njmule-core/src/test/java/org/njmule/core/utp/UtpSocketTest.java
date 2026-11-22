@@ -249,7 +249,7 @@ class UtpSocketTest {
     // fails is a packet lost, as on a real one.
     @SuppressWarnings("FutureReturnValueIgnored")
     private void carry(byte[] packet, InetSocketAddress from, Supplier<UtpSocket> to) {
-        if (this.chance.nextDouble() < this.loss || from.equals(NEAR) && lostOnce(packet)) {
+        if (this.chance.nextDouble() < this.loss || (from.equals(NEAR) && lostOnce(packet))) {
             return;
         }
         int copies = this.duplicates && this.chance.nextDouble() < 0.01 ? 2 : 1;
@@ -261,7 +261,7 @@ class UtpSocketTest {
 
     // The first copy of each data packet the wire is to lose.
     private boolean lostOnce(byte[] packet) {
-        int seq = (packet[16] & 0xFF) << 8 | packet[17] & 0xFF;
+        int seq = ((packet[16] & 0xFF) << 8) | (packet[17] & 0xFF);
         return (packet[0] & 0xFF) >>> 4 == UtpPacket.Type.DATA.code()
                 && seq >= this.lostFrom
                 && seq <= this.lostTo
