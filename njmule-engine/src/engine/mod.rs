@@ -5,6 +5,7 @@
 //! front ends follow.
 
 pub mod countries;
+pub mod default_lists;
 pub mod event_command_runner;
 pub mod event_replay;
 mod import_target;
@@ -456,7 +457,15 @@ impl Engine {
         let commands = engine.shared.preferences.subscribe();
         let runner = EventCommandRunner::create(move || commands.borrow().event_commands.clone());
         engine.shared.tasks.lock().await.spawn(tell(engine.subscribe().live, runner, notifier));
-        let network = network::start(shared, commands_out, udp, listener, switches.upnp)?;
+        let network = network::start(
+            shared,
+            commands_out,
+            udp,
+            listener,
+            switches.upnp,
+            switches.default_lists,
+            switches.automatic_connections,
+        )?;
         engine.shared.tasks.lock().await.spawn(async move {
             let _ = network.await;
         });

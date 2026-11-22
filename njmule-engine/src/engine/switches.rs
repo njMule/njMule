@@ -7,6 +7,7 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use crate::engine::default_lists;
 use crate::persist::emule_importer;
 use crate::update::updates;
 
@@ -20,6 +21,10 @@ pub struct Switches {
     pub upnp: Upnp,
     /// Whether njMule looks for new versions on its own or when asked.
     pub updates: bool,
+    /// Whether a new profile starts with the shipped server list and Kad bootstrap contacts.
+    pub default_lists: bool,
+    /// Whether the engine connects to servers automatically at start and reconnects on drop.
+    pub automatic_connections: bool,
 }
 
 /// Where the router is looked for: nowhere, on this computer's networks, or at a UPnP search address of a test, looked
@@ -37,16 +42,31 @@ pub const COUNTRIES_DISABLED: &str = "njmule.countries.disabled";
 pub const UPNP_DISABLED: &str = "njmule.upnp.disabled";
 /// The switch that keeps njMule from looking for new versions.
 pub const UPDATE_DISABLED: &str = updates::DISABLED_PROPERTY;
+/// The switch that keeps a new profile from loading the shipped server and Kad bootstrap lists.
+pub const DEFAULT_LISTS_DISABLED: &str = default_lists::DISABLED_PROPERTY;
 
 impl Switches {
     /// Nothing fetched from a third party on the engine's own.
-    pub const QUIET: Self =
-        Self { countries: false, emule_running: emule_importer::is_emule_running, upnp: Upnp::Off, updates: false };
+    pub const QUIET: Self = Self {
+        countries: false,
+        emule_running: emule_importer::is_emule_running,
+        upnp: Upnp::Off,
+        updates: false,
+        default_lists: false,
+        automatic_connections: true,
+    };
 
     /// The executable's: everything on, then off what the switches `NAME=VALUE` turn off. Switches the engine does
     /// not have are left alone.
     pub fn of(switches: &[String]) -> Self {
-        let mut on = Self { countries: true, upnp: Upnp::ThisComputer, updates: true, ..Self::QUIET };
+        let mut on = Self {
+            countries: true,
+            upnp: Upnp::ThisComputer,
+            updates: true,
+            default_lists: true,
+            automatic_connections: true,
+            ..Self::QUIET
+        };
         for switch in switches {
             let (name, value) = switch.split_once('=').unwrap_or((switch, "true"));
             if !value.trim().eq_ignore_ascii_case("true") {
@@ -56,6 +76,7 @@ impl Switches {
                 COUNTRIES_DISABLED => on.countries = false,
                 UPNP_DISABLED => on.upnp = Upnp::Off,
                 UPDATE_DISABLED => on.updates = false,
+                DEFAULT_LISTS_DISABLED => on.default_lists = false,
                 _ => {}
             }
         }

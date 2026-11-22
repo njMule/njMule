@@ -3,6 +3,7 @@
 
 //! Files: their hashes and parts.
 
+pub mod cancelled_files;
 pub mod comment_filter;
 pub mod file_comments;
 pub mod file_types;

@@ -52,17 +52,20 @@ use crate::config::shared_files_visibility::SharedFilesVisibility;
 use crate::download::download_manager::{self, Action, DownloadEvent, DownloadManager, KadLink, ServerLink};
 use crate::download::download_session;
 use crate::download::finished_downloads::FinishedDownloads;
+use crate::engine::default_lists;
 use crate::engine::ip_filter_lists;
 use crate::engine::port_check::PortCheck;
 use crate::engine::scheduler::{self, Change, Scheduler};
 use crate::engine::switches::Upnp;
 use crate::engine::totals::{self, Totals};
 use crate::engine::{ServerContext, Shared};
+use crate::files::cancelled_files::{self, CancelledFiles};
 use crate::files::file_comments::{self, FileComments};
 use crate::files::hash::file_hasher::FileHashes;
 use crate::files::part_file::PartFile;
 use crate::files::part_file_storage::DiskDone;
 use crate::files::shared_files::{Finished, Found, Listing, SharedFiles};
+use crate::kad::kad_node::KadNode;
 use crate::kad::kad_socket::Incoming;
 use crate::net::relay_keeper::{Level, RelayKeeper};
 use crate::net::tcp_connection::TcpConnection;
@@ -73,12 +76,12 @@ use crate::peer::identity_handshake::{Identity, Outcome as Identification};
 use crate::peer::nat_traversal::RoutedConnection;
 use crate::peer::peer_link::{self, LinkEvent, LinkHandle, LinkId, Side};
 use crate::peer::{peer_greetings, peer_software};
-use crate::persist::categories_codec;
 use crate::persist::format::ip_filter_dat::Range;
 use crate::persist::format::known_met::KnownFile;
 use crate::persist::format::server_met::Server;
 use crate::persist::format::{known2_met, nodes_dat};
 use crate::persist::schedule_codec;
+use crate::persist::{atomic_files, categories_codec};
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams;
 use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint, IdChange, LOW_ID_LIMIT};
@@ -319,6 +322,8 @@ enum Tick {
     KadUdpCheckEnded(u32, bool),
     // Kad's socket left its port: Kad starts again.
     KadStart,
+    // The server UDP socket moved off Kad's port: attach the new one and start Kad.
+    ServerUdpMoved(Option<UdpSocket>),
     // The lists of the preferences fetched for the IP filter, or why none could be.
     IpFilterFetched(Result<Vec<Range>, String>),
 }
@@ -465,6 +470,7 @@ pub struct Network {
     searches: SearchManager,
     known_searches: HashSet<u64>,
     spam: SpamFilter,
+    cancelled: CancelledFiles,
     // Our ratings and comments of files, which Kad notes and the clients asking for a file carry.
     comments: Arc<Mutex<FileComments>>,
     friends: Friends,
@@ -490,6 +496,8 @@ pub struct Network {
     link_events: mpsc::UnboundedSender<LinkEvent>,
     peer_events: mpsc::UnboundedSender<PeerEvent>,
     kad: KadSide,
+    default_lists: bool,
+    automatic_connections: bool,
 }
 
 /// Starts the network side; it runs until it is asked to stop.
@@ -499,9 +507,14 @@ pub fn start(
     udp: Option<UdpSocket>,
     listener: Option<TcpListener>,
     upnp: Upnp,
+    default_lists: bool,
+    automatic_connections: bool,
 ) -> io::Result<JoinHandle<()>> {
     let dirs = &shared.dirs;
-    let mut servers = ServerList::load(&dirs.config.join(server_list::FILE_NAME)).unwrap_or_else(|e| {
+    let server_met = dirs.config.join(server_list::FILE_NAME);
+    atomic_files::cleanup_interrupted_write(&server_met);
+    let new_profile = !server_met.exists() && !atomic_files::bak_path(&server_met).exists();
+    let mut servers = ServerList::load(&server_met).unwrap_or_else(|e| {
         tracing::warn!("Cannot read the server list: {e}");
         ServerList::default()
     });
@@ -584,6 +597,21 @@ pub fn start(
     let lan = shared.preferences.subscribe();
     let blocked = filter::ip_test(&ip_filter);
     servers.filter(move |ip| blocked(ip) || (lan.borrow().filter_lan_addresses && server_list::is_lan(ip)));
+    // A profile that never had a server list starts from the shipped one; an emptied list stays empty.
+    if new_profile && default_lists {
+        servers.add_all(default_lists::servers());
+    }
+    let mut random = StdRng::from_rng(&mut rand::rng());
+    let cancelled_file = dirs.config.join(cancelled_files::FILE_NAME);
+    let mut cancelled = CancelledFiles::load(&cancelled_file, &mut random).unwrap_or_else(|e| {
+        tracing::warn!("Cannot read {}, starting with an empty cancelled list: {e}", cancelled_file.display());
+        CancelledFiles::empty(cancelled_file)
+    });
+    if !preferences.remember_cancelled_files
+        && let Err(e) = cancelled.clear()
+    {
+        tracing::warn!("Cannot clear {}: {e}", cancelled_files::FILE_NAME);
+    }
     let hooks = download_manager::Hooks {
         blocked: Box::new(filter::ip_test(&ip_filter)),
         keep_link: Box::new(move |link| keep_link(&deleted_links, link)),
@@ -664,7 +692,7 @@ pub fn start(
         since_bind_check: 0,
         server_udp_keys,
         ticks: ticks_in,
-        random: StdRng::from_rng(&mut rand::rng()),
+        random,
         callbacks: HashMap::new(),
         calling: HashSet::new(),
         our_ip: 0,
@@ -676,6 +704,7 @@ pub fn start(
         searches: SearchManager::default().without_udp(),
         known_searches: HashSet::new(),
         spam,
+        cancelled,
         comments: Arc::new(Mutex::new(comments)),
         friends,
         friend_slot: None,
@@ -697,6 +726,8 @@ pub fn start(
         peer_events: peers_in,
         kad: KadSide::new(kad_in),
         upnp: forwarding::Upnp::new(upnp),
+        default_lists,
+        automatic_connections,
     };
     network.shares.wire(&mut network.uploads);
     network.uploads.set_comments(network.comments_of());
@@ -710,6 +741,9 @@ pub fn start(
         network.start_kad();
     }
     network.restart_forwarding();
+    if network.automatic_connections {
+        network.connect_at_start();
+    }
     let queues = Queues { commands, outcomes, ticks, datagrams, links, peers, disk, reads, kad };
     Ok(tokio::spawn(async move {
         network.run(queues).await;
@@ -925,8 +959,8 @@ impl Network {
                 let _ = answer.send(self.spam.marks());
             }
             Command::FileHistory(answer) => {
-                // No file cancelled before is kept yet.
-                let _ = answer.send(FileHistory::of(self.shared_files.known_hashes(), HashSet::new()));
+                let _ = answer
+                    .send(FileHistory::with_cancelled(self.shared_files.known_hashes(), self.cancelled.snapshot()));
             }
             Command::SharedFiles(answer) => {
                 let _ = answer.send(self.shared_file_infos());
@@ -1019,6 +1053,12 @@ impl Network {
                     .as_ref()
                     .is_some_and(|d| matches!(d.status, DownloadStatus::Downloading | DownloadStatus::NoSpace));
                 let cancelled = self.downloads.cancel(&hash, &ours);
+                if cancelled
+                    && self.preferences().remember_cancelled_files
+                    && let Err(e) = self.cancelled.add(&hash, &mut self.random)
+                {
+                    tracing::warn!("Cannot save {}: {e}", cancelled_files::FILE_NAME);
+                }
                 if cancelled && running {
                     self.start_next(category);
                 }
@@ -1225,7 +1265,7 @@ impl Network {
             routes: &self.shared.routes,
             user_hash: self.shared.user_hash,
             listen_port: self.shared.listen_port(),
-            keep_connected: true,
+            keep_connected: self.automatic_connections && preferences.reconnect,
             notices: &mut notices,
         };
         work(&mut self.session, &mut ctx);
@@ -1394,6 +1434,10 @@ impl Network {
             Tick::Forwarded(run, outcome, router, line) => self.forwarded(run, outcome, router, line),
             Tick::KadUdpCheckEnded(ip, asked) => self.kad_udp_check_ended(ip, asked),
             Tick::KadStart => self.kad_start_again(),
+            Tick::ServerUdpMoved(udp) => {
+                self.attach_udp(udp);
+                self.start_kad();
+            }
             Tick::IpFilterFetched(ranges) => self.ip_filter_fetched(ranges),
             Tick::Search(timer) => {
                 let connected = self.session.server().map(server_list::address_of);
@@ -1473,6 +1517,13 @@ impl Network {
         self.accepting = listener.map(|listener| {
             tokio::spawn(accept(listener, self.peer_events.clone(), Arc::clone(&self.shared), Arc::clone(&self.guard)))
         });
+        self.attach_udp(udp);
+    }
+
+    fn attach_udp(&mut self, udp: Option<UdpSocket>) {
+        if let Some(relay) = self.server_relay.take() {
+            relay.close();
+        }
         let udp = udp.map(|socket| ServerUdp::start(socket, self.datagrams.clone()));
         if let Some(udp) = &udp {
             let keys = Arc::clone(&self.server_udp_keys);
@@ -1535,6 +1586,27 @@ impl Network {
             || was.new_connections_per_five_seconds != self.applied.new_connections_per_five_seconds
         {
             self.guard_state.write().unwrap_or_else(PoisonError::into_inner).limits = guard_limits(&self.applied);
+        }
+        if was.ed2k_enabled && !self.applied.ed2k_enabled {
+            self.with_session(|session, ctx| session.disconnect(ctx));
+        }
+        if was.remember_cancelled_files
+            && !self.applied.remember_cancelled_files
+            && let Err(e) = self.cancelled.clear()
+        {
+            tracing::warn!("Cannot clear {}: {e}", cancelled_files::FILE_NAME);
+        }
+    }
+
+    // The "connect at start" preference: any known server, when eD2K is on.
+    fn connect_at_start(&mut self) {
+        let preferences = self.preferences();
+        if !matches!(self.binding, Binding::Missing(_))
+            && preferences.ed2k_enabled
+            && preferences.auto_connect
+            && !self.servers.connectable().is_empty()
+        {
+            self.with_session(|session, ctx| session.connect(None, ctx));
         }
     }
 
@@ -1687,13 +1759,18 @@ impl Network {
         }
     }
 
-    // Offers our files to the server when an offer is due.
+    // Offers our files to the server when an offer is due: complete shared files, then downloads with checked parts.
     fn publish_files(&mut self) {
-        let offers: Vec<Offer> = self
+        let mut offers: Vec<Offer> = self
             .shared_files
             .files()
             .map(|file| Offer { hash: file.hash, name: file.name.clone(), size: file.size, complete: true })
             .collect();
+        for download in self.downloads.downloads() {
+            if self.downloads.find(&download.hash).is_some_and(|d| d.verified_parts().iter().any(|&v| v)) {
+                offers.push(Offer { hash: download.hash, name: download.name, size: download.size, complete: false });
+            }
+        }
         let now = Instant::now();
         let due =
             self.publisher.tick(now, self.session.id(), self.session.server(), self.shared.listen_port(), &offers);
@@ -1763,7 +1840,13 @@ impl Network {
         let ours = self.shared.our_hello();
         Ok(match change {
             DownloadChange::Stop => self.downloads.stop(hash, &ours),
-            DownloadChange::Restore => self.downloads.restore(hash, &ours),
+            DownloadChange::Restore => {
+                let restored = self.downloads.restore(hash, &ours);
+                if restored && let Err(e) = self.cancelled.remove(hash) {
+                    tracing::warn!("Cannot save {}: {e}", cancelled_files::FILE_NAME);
+                }
+                restored
+            }
             DownloadChange::PreviewFirst(value) => self.downloads.set_preview_first(hash, value),
             DownloadChange::AutoSwap(value) => self.downloads.set_auto_swap(hash, value),
             DownloadChange::Priority(priority) => self.downloads.set_priority(hash, priority),
@@ -2282,6 +2365,9 @@ impl Network {
 
     // Who a greeted client said it is goes into the history, with the country of its address, never the address.
     fn met(&mut self, hello: &Hello, address: IpAddr) {
+        if self.preferences().add_servers_from_clients && hello.server_ip != 0 && hello.server_port != 0 {
+            self.servers_learnt(&[Endpoint { ip: hello.server_ip, port: hello.server_port }], "a client");
+        }
         self.kad_met(hello, address);
         let nick = hello.nick().unwrap_or_default();
         let country = match address {
@@ -2993,6 +3079,14 @@ fn describe(info: &ServerInfo) -> String {
 
 fn id_text(id: &server_messages::IdChange) -> String {
     format!("{} {}", if id.is_low_id() { "LowID" } else { "HighID" }, id.client_id)
+}
+
+/// Loads a Kad node's saved contacts, and when `default_lists` is on gives it the shipped bootstrap-only contacts too.
+pub fn load_kad_contacts(node: &mut KadNode, default_lists: bool) {
+    node.load_nodes();
+    if default_lists {
+        node.bootstrap_from(Box::new(default_lists::nodes));
+    }
 }
 
 /// Our public IPv4 address for secure identification: a HighID, else the address the server reports with a LowID, else

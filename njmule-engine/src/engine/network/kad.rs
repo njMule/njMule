@@ -52,11 +52,17 @@ use crate::protocol::packet::{Packet, frame_limits, protocol};
 use crate::search::search_expr::SearchExpr;
 use crate::search::search_manager::KadSearches;
 use crate::server::server_list;
+use crate::server::server_udp::ServerUdp;
 use crate::upload::upload_manager::KadRequest;
 use crate::util::ipv4;
 
 /// How often a Kad port another program holds is tried again.
 pub(super) const PORT_RETRY_SECONDS: u32 = 10;
+// A client asking for a direct callback is answered at most once within this window, up to this many callers.
+const DIRECT_CALLBACK_REPEAT: Duration = Duration::from_secs(60);
+const MAX_DIRECT_CALLERS: usize = 32;
+// Crypt options of a callback request: the client asks for or requires obfuscation.
+const CRYPT_REQUESTED_OR_REQUIRED: u8 = 0x06;
 // The datagram of a UDP test helper comes within this time, or the test counts it as not come.
 const UDP_CHECK_WAIT: Duration = peer_greetings::IDLE_TIMEOUT;
 // Kad nodes before this version do not know the UDP test.
@@ -107,6 +113,8 @@ pub(super) struct KadSide {
     buddies: Arc<Mutex<BuddyLink>>,
     // What Kad nodes said of our files, kept while Kad stops and starts again.
     notes: KadNotes,
+    // Clients that asked for a direct callback lately, by IPv4 address.
+    direct_callers: HashMap<u32, Instant>,
 }
 
 impl KadSide {
@@ -128,6 +136,7 @@ impl KadSide {
             searches: HashMap::new(),
             buddies: Arc::new(Mutex::new(buddies)),
             notes: KadNotes::new(Instant::now()),
+            direct_callers: HashMap::new(),
         }
     }
 
@@ -325,6 +334,31 @@ impl Network {
             Binding::Any => None,
         };
         let preferences = self.preferences();
+        // If the server UDP socket happened to take the port Kad now wants, move it off first.
+        if self.udp.as_ref().is_some_and(|udp| udp.port() == preferences.udp_port) {
+            if let Some(relay) = self.server_relay.take() {
+                relay.close();
+            }
+            let old = self.udp.take();
+            let kad_port = preferences.udp_port;
+            let ticks = self.ticks.clone();
+            tokio::spawn(async move {
+                if let Some(old) = old {
+                    old.close().await;
+                }
+                let moved = ServerUdp::bind_beside(kad_port, local)
+                    .await
+                    .inspect_err(|e| tracing::warn!("Cannot move the server UDP socket off port {kad_port}: {e}"))
+                    .ok();
+                if let Some(socket) = &moved
+                    && let Ok(address) = socket.local_addr()
+                {
+                    tracing::info!("Server UDP socket moved to port {}: Kad takes port {kad_port}", address.port());
+                }
+                let _ = ticks.send(Tick::ServerUdpMoved(moved));
+            });
+            return;
+        }
         let config = &self.shared.dirs.config;
         let identity = match KadIdentity::load_or_create(config, &mut self.random) {
             Ok(identity) => identity,
@@ -390,7 +424,7 @@ impl Network {
             Box::new(Instant::now)
         });
         node.use_buddies(Box::new(SharedBuddies(Arc::clone(&self.kad.buddies))));
-        node.load_nodes();
+        super::load_kad_contacts(&mut node, self.default_lists);
         node.load_index();
         tracing::info!("Kad id {} on UDP port {}", identity.id().to_hex(), socket.port());
         if self.kad.port_taken != 0 {
@@ -548,16 +582,23 @@ impl Network {
     }
 
     /// Adds Kad contacts to the running node and to `nodes.dat`; how many were new to the node, or to the file while Kad
-    /// is off. The file gets them either way: the node saves only contacts it heard from.
+    /// is off. Bootstrap-only lists are never written into `nodes.dat`.
     pub(super) fn add_kad_contacts(&mut self, contents: &nodes_dat::Contents) -> io::Result<usize> {
         let file = self.shared.dirs.config.join(kad_node::NODES_FILE);
         let saved = match std::fs::read(&file) {
-            Ok(data) => nodes_dat::read(&data).map(|read| read.contacts).unwrap_or_default(),
+            Ok(data) => match nodes_dat::read(&data) {
+                Ok(read) if !read.bootstrap => read.contacts,
+                _ => Vec::new(),
+            },
             Err(e) if e.kind() == ErrorKind::NotFound => Vec::new(),
             Err(e) => return Err(e),
         };
         let known: HashSet<_> = saved.iter().map(|contact| contact.id).collect();
-        let fresh: Vec<_> = contents.contacts.iter().filter(|contact| !known.contains(&contact.id)).cloned().collect();
+        let fresh: Vec<_> = if contents.bootstrap {
+            Vec::new()
+        } else {
+            contents.contacts.iter().filter(|contact| !known.contains(&contact.id)).cloned().collect()
+        };
         let added_to_file = fresh.len();
         if added_to_file > 0 {
             let mut all = saved;
@@ -657,12 +698,44 @@ impl Network {
                     self.buddies().relay_reask(u32::from(*v4.ip()), v4.port(), packet);
                 }
             }
+            client_udp::DIRECTCALLBACKREQ => {
+                if let SocketAddr::V4(v4) = from {
+                    self.direct_callback(u32::from(*v4.ip()), packet);
+                }
+            }
             client_udp::HOLEPUNCH => {
                 if let Some(traversal) = self.traversal() {
                     traversal.hole_punched(from);
                 }
             }
             _ => tracing::trace!("Client datagram {:#04x} from {from}", packet.opcode()),
+        }
+    }
+
+    // A client asks us for a direct callback, which only a firewalled Kad node takes.
+    fn direct_callback(&mut self, ip: u32, packet: &Packet) {
+        if !self.kad.running.as_ref().is_some_and(|running| running.node.is_firewalled()) {
+            return;
+        }
+        let now = Instant::now();
+        self.kad.direct_callers.retain(|_, at| now.saturating_duration_since(*at) < DIRECT_CALLBACK_REPEAT);
+        if self.kad.direct_callers.contains_key(&ip) || self.kad.direct_callers.len() >= MAX_DIRECT_CALLERS {
+            tracing::debug!("Ignoring a direct callback request from {}", Ipv4Addr::from(ip));
+            return;
+        }
+        self.kad.direct_callers.insert(ip, now);
+        match DirectCallbackRequest::decode(packet) {
+            Ok(request) => {
+                let obfuscate = (request.connect_options & CRYPT_REQUESTED_OR_REQUIRED != 0
+                    && self.preferences().obfuscation != ObfuscationMode::Disabled)
+                    .then_some(request.user_hash);
+                self.call_client_back(
+                    SocketAddrV4::new(Ipv4Addr::from(ip), request.tcp_port),
+                    obfuscate,
+                    "direct callback",
+                );
+            }
+            Err(e) => tracing::debug!("Bad direct callback request from {}: {e}", Ipv4Addr::from(ip)),
         }
     }
 
@@ -717,10 +790,11 @@ impl Network {
         });
         let (udp_port, direct_callback, client_id) = announced.unwrap_or((0, false, 0));
         self.shared.announce_kad(udp_port, direct_callback, client_id);
+        let comments = self.comments_of();
         if let Some(running) = &mut self.kad.running {
             running.reachable.store(running.node.supports_direct_callback(), Ordering::Relaxed);
             running.node.tick();
-            let shared: Vec<kad_publisher::Shared> = self
+            let mut shared: Vec<kad_publisher::Shared> = self
                 .shared_files
                 .files()
                 .map(|file| kad_publisher::Shared {
@@ -730,7 +804,17 @@ impl Network {
                     complete: true,
                 })
                 .collect();
-            running.publisher.tick(&mut running.node, &shared, &|_| None, Instant::now());
+            for download in self.downloads.downloads() {
+                if self.downloads.find(&download.hash).is_some_and(|d| d.verified_parts().iter().any(|&v| v)) {
+                    shared.push(kad_publisher::Shared {
+                        hash: download.hash,
+                        name: download.name,
+                        size: download.size,
+                        complete: false,
+                    });
+                }
+            }
+            running.publisher.tick(&mut running.node, &shared, &comments, Instant::now());
             let events = running.node.take_events();
             self.kad_events(events);
         } else if self.kad.port_taken != 0 {
