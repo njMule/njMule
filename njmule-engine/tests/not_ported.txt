@@ -118,3 +118,6 @@ LinkHandoffTest.shouldNotTakeAnInstanceHoldingItsLockForGoneInAnInterruptedWait
 # Java only: Rust errors always carry a message (no null-message Throwable), and events use a broadcast channel rather than Flow.Subscriber.
 NetworkCommandsTest.shouldNameAFailureWithoutAMessageByItsKind
 NetworkCommandsTest.shouldIgnoreTheEndOfTheEventStream
+# Java only: Rust processes have no Thread.interrupt() flag; graceful stop is covered via stdin EOF and --exit.
+MainTest.shouldFailAnInterruptedCommandAndStillUnlockTheConfiguration
+MainTest.shouldStopAnInterruptedRunAndStillUnlockTheConfiguration

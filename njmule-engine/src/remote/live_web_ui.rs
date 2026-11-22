@@ -43,8 +43,12 @@ impl<E: NjMuleEngine> LiveWebUi<E> {
             return;
         }
         let port = settings.port;
-        match WebUi::start(self.engine.clone(), settings, self.exit.clone()).await {
-            Ok(ui) => live.running = Some(ui),
+        match WebUi::start(self.engine.clone(), settings.clone(), self.exit.clone()).await {
+            Ok(ui) => {
+                let api = if settings.api { ", with the remote-control API" } else { "" };
+                println!("Web interface on port {}{api}", ui.port());
+                live.running = Some(ui);
+            }
             Err(e) => tracing::warn!("Cannot start the web interface on port {port}: {e}"),
         }
     }
