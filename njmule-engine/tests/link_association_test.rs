@@ -444,7 +444,7 @@ fn should_run_a_command_and_keep_its_output() {
     test.when_the_engine_runs_with("--version");
 
     test.then_the_exit_code_is_zero();
-    test.then_the_output_contains("njmule");
+    test.then_the_output_contains("njMule");
 }
 
 #[test]

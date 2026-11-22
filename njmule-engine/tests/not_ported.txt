@@ -115,3 +115,5 @@ RemoteApiTest.shouldTellTheJavaAndTheSystemItRunsOnToATokenHolder
 IgdTest.shouldTakeOnlyTcpOrUdp
 # The Rust engine takes a new TCP port at its next start, so it never maps two in a row.
 UpnpTest.shouldLeaveNoMappingBehindWhenThePortsChangeTwiceInARow
+# Java only: Rust threads have no interrupt flag; LinkHandoffTest covers the locked timeout instead.
+LinkHandoffTest.shouldNotTakeAnInstanceHoldingItsLockForGoneInAnInterruptedWait

@@ -8,7 +8,7 @@ pub mod countries;
 pub mod event_command_runner;
 pub mod event_replay;
 mod import_target;
-mod instance_lock;
+pub(crate) mod instance_lock;
 pub mod ip_filter_lists;
 pub mod network;
 pub mod notifier;

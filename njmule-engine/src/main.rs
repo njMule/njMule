@@ -3,34 +3,35 @@
 
 //! The `njmule` executable: runs the engine on a profile, logging to standard error and to the profile's `logs`
 //! folder, with the web interface its settings turn on. With `NJMULE_CONTROL_ENDPOINT=1` it serves the API on a
-//! loopback port, prints where on a `njmule-control` line, and stops when its standard input ends. With `--hash` it
-//! prints the eD2K links of files instead; with `--apply-update` it applies a staged update plan once the processes
-//! given with `--wait` have ended.
+//! loopback port, prints where on a `njmule-control` line, and stops when its standard input ends.
 
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::thread;
 use std::time::{Duration, Instant};
 
-use clap::Parser;
-use njmule_engine::api::ed2k_link::FileLink;
+use njmule_engine::api::ed2k_link::{Ed2kLink, FileLink};
 use njmule_engine::api::engine_event::EngineEvent;
+use njmule_engine::api::list_source::ListSource;
 use njmule_engine::api::nj_mule_info;
 use njmule_engine::app::desktop_system::DesktopSystem;
+use njmule_engine::app::launch_options::{Action, LaunchOptions};
+use njmule_engine::app::link_handoff::{self, LinkHandoff};
+use njmule_engine::app::{restore_links, updating};
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
 use njmule_engine::engine::switches::Switches;
 use njmule_engine::files::hash::file_hasher;
+use njmule_engine::remote::api_token;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use njmule_engine::remote::desktop_integration::DesktopIntegration;
 use njmule_engine::remote::live_web_ui::LiveWebUi;
 use njmule_engine::remote::remote_api::Exit;
 use njmule_engine::remote::web_ui_settings::WebUiSettings;
+use njmule_engine::server::server_list::Address;
 use njmule_engine::update::hand_over::HandOver;
-use njmule_engine::update::launcher;
-use njmule_engine::update::update_helper;
+use njmule_engine::update::update_helper::UpdateHelper;
 use tokio::io::AsyncReadExt;
 use tokio::sync::{Notify, broadcast, mpsc};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -38,129 +39,165 @@ use tracing_subscriber::fmt::writer::MakeWriterExt;
 
 /// How long the API may take to finish the calls it is answering when the engine stops.
 const API_STOP_WAIT: Duration = Duration::from_secs(5);
+/// How long `--exit` waits for the running instance to stop.
+const EXIT_WAIT: Duration = Duration::from_secs(30);
 /// Days of logs kept: one file a day.
 const LOG_DAYS: usize = 14;
-/// How long a start waits for the njMule it replaces.
-const EXIT_WAIT: Duration = Duration::from_secs(60);
-const WAIT_POLL: Duration = Duration::from_millis(100);
-/// Exit code that asks systemd (`Restart=on-failure`) to start njMule again once a new version is in place.
-const EXIT_RESTART: u8 = 75;
-const WAIT_OPTION: &str = "--wait";
-
-#[derive(Parser)]
-#[command(name = "njmule", version = nj_mule_info::version(), about = "njMule, an eD2K and Kad client")]
-struct Cli {
-    /// The profile's folder, which keeps everything under it; else the system's places, or beside the executable in
-    /// portable mode.
-    #[arg(long, value_name = "FOLDER")]
-    config_dir: Option<PathBuf>,
-    /// A switch NAME=VALUE, such as njmule.upnp.disabled=true; the engine ignores those it does not have.
-    #[arg(short = 'D', value_name = "NAME=VALUE")]
-    switches: Vec<String>,
-    /// Prints the ed2k link (with AICH hash) of each file and exits.
-    #[arg(long, value_name = "FILE", num_args = 1..)]
-    hash: Vec<PathBuf>,
-    /// Applies the update installation plan left by a previous njMule and exits.
-    #[arg(long, value_name = "PLAN")]
-    apply_update: Option<PathBuf>,
-    /// Waits for this process to end before starting or applying an update; may be repeated.
-    #[arg(long = "wait", value_name = "PID")]
-    wait: Vec<u32>,
-}
+const EXIT_USAGE: u8 = 2;
 
 fn main() -> ExitCode {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
-    let cli = Cli::parse();
-    if let Some(plan) = &cli.apply_update {
-        tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
-        let code = update_helper::UpdateHelper::install(plan, &cli.wait);
-        return ExitCode::from(u8::try_from(code).unwrap_or(1));
-    }
-    if !cli.hash.is_empty() {
-        tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
-        return hash(&cli.hash);
-    }
-    let dirs = match AppDirectories::resolve_current(cli.config_dir.as_deref()) {
-        Ok(dirs) => dirs,
-        Err(e) => {
-            eprintln!("njmule: {e}");
-            return ExitCode::FAILURE;
+    let cli = match LaunchOptions::parse(&raw_args) {
+        Ok(cli) => cli,
+        Err(error) => {
+            eprintln!("{error}");
+            eprint!("{}", LaunchOptions::usage());
+            return ExitCode::from(EXIT_USAGE);
         }
     };
-    log_to(&dirs);
-    await_end(&cli.wait);
-    let switches = cli.switches;
-    let start_arguments = cli.config_dir.as_ref().map_or_else(Vec::new, |dir| {
-        let absolute = std::path::absolute(dir).unwrap_or_else(|_| dir.clone());
-        vec!["--config-dir".to_owned(), absolute.to_string_lossy().into_owned()]
-    });
-    let outcome =
-        tokio::runtime::Runtime::new().and_then(|runtime| runtime.block_on(run(dirs, switches, start_arguments)));
-    match outcome {
-        Ok(Some(install)) => hand_over(&install, &raw_args),
-        Ok(None) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("njmule: {e}");
+    match cli.action {
+        Action::Help => {
+            print!("{}", LaunchOptions::usage());
+            ExitCode::SUCCESS
+        }
+        Action::Version => {
+            println!("{} {} ({})", nj_mule_info::NAME, nj_mule_info::version(), nj_mule_info::LICENSE_ID);
+            ExitCode::SUCCESS
+        }
+        Action::License => {
+            println!("{}", nj_mule_info::license_text().trim_end());
+            ExitCode::SUCCESS
+        }
+        Action::Warranty => {
+            println!("{}", nj_mule_info::warranty_text());
+            ExitCode::SUCCESS
+        }
+        Action::Notice => {
+            println!("{}", nj_mule_info::notice_text().trim_end());
+            ExitCode::SUCCESS
+        }
+        Action::Hash => {
+            tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
+            hash(&cli.files)
+        }
+        Action::ApplyUpdate => {
+            tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
+            let Some(plan) = &cli.apply_update else {
+                return ExitCode::FAILURE;
+            };
+            let wait_for: Vec<u32> = cli.wait_for.iter().filter_map(|&pid| u32::try_from(pid).ok()).collect();
+            let code = UpdateHelper::install(plan, &wait_for);
+            ExitCode::from(u8::try_from(code).unwrap_or(1))
+        }
+        Action::Exit => exit_running(&cli),
+        Action::RestoreLinks => {
+            let dirs = match resolve_dirs(&cli) {
+                Ok(dirs) => dirs,
+                Err(code) => return code,
+            };
+            let mut out = io::stdout();
+            let mut err = io::stderr();
+            let code = restore_links::restore_for_this_system(&dirs.config, &mut out, &mut err);
+            ExitCode::from(u8::try_from(code).unwrap_or(1))
+        }
+        Action::ApiToken | Action::NewApiToken => api_token_action(&cli),
+        Action::Run => run_action(&cli, &raw_args),
+        Action::WebUiPassword
+        | Action::Remote
+        | Action::CheckUpdate
+        | Action::Update
+        | Action::Service
+        | Action::RemoveProfile => {
+            eprintln!("njmule: command not yet wired in this engine build");
             ExitCode::FAILURE
         }
     }
 }
 
-// Waits until the processes `pids` have ended, `EXIT_WAIT` at most in all: a start after an update finds the files
-// and the configuration of the njMule it replaces free only then.
-fn await_end(pids: &[u32]) {
-    if pids.is_empty() {
-        return;
-    }
-    let end = Instant::now().checked_add(EXIT_WAIT).unwrap_or_else(Instant::now);
-    for &pid in pids {
-        while launcher::is_running(pid) {
-            if Instant::now() >= end {
-                tracing::warn!("Process {pid} still runs after {} s: starting anyway", EXIT_WAIT.as_secs());
-                break;
-            }
-            thread::sleep(WAIT_POLL);
-        }
-    }
+fn resolve_dirs(cli: &LaunchOptions) -> Result<AppDirectories, ExitCode> {
+    AppDirectories::resolve_current(cli.config_dir.as_deref()).map_err(|e| {
+        eprintln!("njmule: {e}");
+        ExitCode::FAILURE
+    })
 }
 
-// Hands over a staged update once the engine has stopped: in place under systemd, or to an installer process.
-fn hand_over(install: &HandOver, args: &[String]) -> ExitCode {
-    if under_systemd() {
-        match install.install_here() {
-            Ok(_) => {
-                tracing::info!("{} {} is in place", nj_mule_info::NAME, install.version());
-                return if install.restart() { ExitCode::from(EXIT_RESTART) } else { ExitCode::SUCCESS };
-            }
-            Err(e) => {
-                tracing::error!("Cannot install {} {}: {e}", nj_mule_info::NAME, install.version());
-                return ExitCode::SUCCESS;
-            }
-        }
+fn exit_running(cli: &LaunchOptions) -> ExitCode {
+    let dirs = match resolve_dirs(cli) {
+        Ok(dirs) => dirs,
+        Err(code) => return code,
+    };
+    let config = &dirs.config;
+    if !LinkHandoff::deliver(config, &[link_handoff::EXIT]) {
+        eprintln!("No njMule runs on {}", config.display());
+        return ExitCode::FAILURE;
     }
-    match install.start(&again(args)) {
-        Ok(()) => tracing::info!("Installing {} {} once this process has ended", nj_mule_info::NAME, install.version()),
-        Err(e) => tracing::error!("Cannot install {} {}: {e}", nj_mule_info::NAME, install.version()),
+    // Scripts go on once it has saved and stopped, not as soon as it was asked.
+    if !LinkHandoff::await_gone(config, EXIT_WAIT) {
+        eprintln!("{} on {} still runs after {} s", nj_mule_info::NAME, config.display(), EXIT_WAIT.as_secs());
+        return ExitCode::FAILURE;
     }
+    println!("{} on {} has exited.", nj_mule_info::NAME, config.display());
     ExitCode::SUCCESS
 }
 
-fn under_systemd() -> bool {
-    std::env::var_os("INVOCATION_ID").is_some() && std::env::var_os("JOURNAL_STREAM").is_some()
-}
-
-// The arguments that start njMule again as `args` did, without what waited for an earlier process.
-fn again(args: &[String]) -> Vec<String> {
-    let mut kept = Vec::new();
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        if arg == WAIT_OPTION {
-            let _ = iter.next();
-        } else if !arg.starts_with("--wait=") {
-            kept.push(arg.clone());
+fn api_token_action(cli: &LaunchOptions) -> ExitCode {
+    let dirs = match resolve_dirs(cli) {
+        Ok(dirs) => dirs,
+        Err(code) => return code,
+    };
+    let result = if cli.action == Action::NewApiToken {
+        api_token::renew(&dirs.config)
+    } else {
+        api_token::load_or_create(&dirs.config)
+    };
+    match result {
+        Ok(token) => {
+            println!("{token}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("Cannot keep the API token: {e}");
+            ExitCode::FAILURE
         }
     }
-    kept
+}
+
+fn run_action(cli: &LaunchOptions, raw_args: &[String]) -> ExitCode {
+    if cli.remote_desktop().is_some() {
+        eprintln!(
+            "--remote-url needs --remote here; njmule-gui --remote-url <url> opens the desktop app on that njMule."
+        );
+        return ExitCode::from(EXIT_USAGE);
+    }
+    updating::await_end(&cli.wait_for);
+    let dirs = match resolve_dirs(cli) {
+        Ok(dirs) => dirs,
+        Err(code) => return code,
+    };
+    // Links for the njMule already running go to it, instead of failing on its lock.
+    if !cli.links.is_empty() && !cli.network.is_one_shot() {
+        let uris: Vec<String> = cli.links.iter().map(Ed2kLink::to_uri).collect();
+        if LinkHandoff::deliver(&dirs.config, &uris) {
+            println!("The links went to the {} already running.", nj_mule_info::NAME);
+            return ExitCode::SUCCESS;
+        }
+    }
+    println!("{}", nj_mule_info::startup_notice("njmule --warranty", "njmule --license"));
+    log_to(&dirs);
+    let start_arguments = cli.config_dir.as_ref().map_or_else(Vec::new, |dir| {
+        let absolute = std::path::absolute(dir).unwrap_or_else(|_| dir.clone());
+        vec!["--config-dir".to_owned(), absolute.to_string_lossy().into_owned()]
+    });
+    let outcome = tokio::runtime::Runtime::new()
+        .and_then(|runtime| runtime.block_on(run(dirs, cli.switches.clone(), cli.links.clone(), start_arguments)));
+    match outcome {
+        Ok(Some(install)) => ExitCode::from(updating::hand_over(&install, raw_args, updating::under_systemd_current())),
+        Ok(None) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("Cannot start {}: {e}", nj_mule_info::NAME);
+            ExitCode::FAILURE
+        }
+    }
 }
 
 // The link of each file, with its size, its part hashes and the speed it was hashed at.
@@ -216,13 +253,14 @@ fn log_to(dirs: &AppDirectories) {
 async fn run(
     dirs: AppDirectories,
     switches: Vec<String>,
+    initial_links: Vec<Ed2kLink>,
     start_arguments: Vec<String>,
 ) -> io::Result<Option<HandOver>> {
     tracing::debug!("Switches: {switches:?}");
     let config = dirs.config.clone();
     let engine = Engine::start_with(dirs, Switches::of(&switches)).await?;
     let control = std::env::var("NJMULE_CONTROL_ENDPOINT").is_ok_and(|value| value == "1");
-    // Asked for by the API or by an update restart, as the end of the input is by the starting process.
+    // Asked for by the API, by --exit, or by an update restart, as the end of the input is by the starting process.
     let exit = Arc::new(Notify::new());
     let asked = Arc::clone(&exit);
     let stop: Exit = Arc::new(move || asked.notify_one());
@@ -268,20 +306,79 @@ async fn run(
     } else {
         None
     };
+    for link in initial_links {
+        follow(&engine, link).await;
+    }
+    let (handed_tx, mut handed_rx) = mpsc::unbounded_channel::<Vec<String>>();
+    let handoff = match LinkHandoff::listen_headless(&config, true, move |links| {
+        let _ = handed_tx.send(links);
+    }) {
+        Ok(handoff) => Some(handoff),
+        Err(e) => {
+            tracing::warn!("Later starts cannot hand their links over: {e}");
+            None
+        }
+    };
+    let handoff_engine = engine.clone();
+    let handoff_exit = Arc::clone(&exit);
+    let handoff_task = tokio::spawn(async move {
+        while let Some(links) = handed_rx.recv().await {
+            if links.iter().any(|link| link == link_handoff::EXIT) {
+                handoff_exit.notify_one();
+                return;
+            }
+            for text in links {
+                if let Ok(parsed) = Ed2kLink::parse(&text) {
+                    follow(&handoff_engine, parsed).await;
+                }
+            }
+        }
+    });
     tokio::select! {
         () = end_of_input(), if control => {}
         () = exit.notified() => {}
         _ = tokio::signal::ctrl_c() => {}
+        () = terminate_signal() => {}
     }
     watcher.abort();
+    handoff_task.abort();
+    drop(handoff);
     web.close().await;
-    engine.stop().await;
     if let Some(endpoint) = endpoint
         && tokio::time::timeout(API_STOP_WAIT, endpoint.stop()).await.is_err()
     {
         tracing::warn!("The API did not stop in time");
     }
+    engine.stop().await;
     Ok(engine.update_hand_over())
+}
+
+// A file link downloads, a server link adds the server, a server list or nodes.dat link takes the servers or the Kad
+// contacts at its address.
+async fn follow(engine: &Engine, link: Ed2kLink) {
+    match link {
+        Ed2kLink::File(file) => match engine.add_download(file, None).await {
+            Ok(info) => tracing::info!("Download added: {}", info.name),
+            Err(e) => eprintln!("Cannot add the download: {e}"),
+        },
+        Ed2kLink::Server(server) => {
+            if let Some(address) = Address::parse(&format!("{}:{}", server.host, server.port)) {
+                let added = engine.add_server(address).await;
+                tracing::info!("Server {}:{} added: {added}", server.host, server.port);
+            } else {
+                eprintln!("Cannot add the server: {}:{}", server.host, server.port);
+            }
+        }
+        Ed2kLink::ServerList(list) => match engine.add_servers(ListSource::Web(list.url.clone())).await {
+            Ok(count) => tracing::info!("{count} new servers from {}", list.url),
+            Err(e) => eprintln!("Cannot take the server list: {e}"),
+        },
+        Ed2kLink::NodesList(list) => match engine.add_kad_contacts(ListSource::Web(list.url.clone())).await {
+            Ok(count) => tracing::info!("{count} new Kad contacts from {}", list.url),
+            Err(e) => eprintln!("Cannot take the Kad contacts: {e}"),
+        },
+        other => tracing::info!("Not acting on {}", other.to_uri()),
+    }
 }
 
 // The starting process closes our standard input to stop us.
@@ -289,4 +386,16 @@ async fn end_of_input() {
     let mut input = tokio::io::stdin();
     let mut ignored = [0u8; 256];
     while let Ok(1..) = input.read(&mut ignored).await {}
+}
+
+// SIGTERM on Unix stops njMule cleanly so systemd, Docker and uninstallers let it save first.
+async fn terminate_signal() {
+    #[cfg(unix)]
+    {
+        if let Ok(mut signal) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            let _ = signal.recv().await;
+            return;
+        }
+    }
+    std::future::pending::<()>().await;
 }
