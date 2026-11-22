@@ -84,11 +84,24 @@ fn rust_tests() -> (BTreeSet<String>, BTreeSet<String>) {
         let path = entry.unwrap().path();
         if path.extension().is_some_and(|extension| extension == "rs") {
             twins.insert(path.file_stem().unwrap().to_string_lossy().into_owned());
+            let mut annotated = false;
             for line in fs::read_to_string(&path).unwrap().lines() {
                 let line = line.trim();
-                if let Some(rest) = line.strip_prefix("async ").unwrap_or(line).strip_prefix("fn should_") {
-                    names.insert(key(&format!("should{}", &rest[..rest.find('(').unwrap()])));
+                if line == "#[test]" || line == "#[tokio::test]" || line.starts_with("#[tokio::test(") {
+                    annotated = true;
+                    continue;
                 }
+                if line.starts_with("#[") {
+                    continue;
+                }
+                let stripped = line.strip_prefix("async ").unwrap_or(line);
+                if let Some(rest) = stripped.strip_prefix("fn ")
+                    && (annotated || rest.starts_with("should_"))
+                    && let Some(end) = rest.find('(')
+                {
+                    names.insert(key(&rest[..end]));
+                }
+                annotated = false;
             }
         }
     }

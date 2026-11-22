@@ -8,7 +8,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -73,8 +73,9 @@ pub fn run_command_with_timeout(command: &[String], timeout: Duration) -> io::Re
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
-    let stdout = child.stdout.take().map(copy_output);
-    let stderr = child.stderr.take().map(copy_output);
+    let collected = Arc::new(Mutex::new(Vec::new()));
+    let stdout = child.stdout.take().map(|stream| copy_output(stream, Arc::clone(&collected)));
+    let stderr = child.stderr.take().map(|stream| copy_output(stream, Arc::clone(&collected)));
     let status = wait(&mut child, timeout).inspect_err(|_| {
         let _ = child.kill();
         let _ = child.wait();
@@ -87,18 +88,14 @@ pub fn run_command_with_timeout(command: &[String], timeout: Duration) -> io::Re
             format!("{name} did not finish in {} s", timeout.as_secs()),
         ));
     };
-    let mut output = Vec::new();
     let deadline = Instant::now().checked_add(OUTPUT_AFTER_END);
-    for receiver in [stdout, stderr].into_iter().flatten() {
+    for done in [stdout, stderr].into_iter().flatten() {
         let left = deadline.map_or(Duration::ZERO, |end| end.saturating_duration_since(Instant::now()));
-        match receiver.recv_timeout(left) {
-            Ok(bytes) => output.extend_from_slice(&bytes),
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                tracing::debug!("{name} ended with its output still open");
-            }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {}
+        if matches!(done.recv_timeout(left), Err(mpsc::RecvTimeoutError::Timeout)) {
+            tracing::debug!("{name} ended with its output still open");
         }
     }
+    let output = collected.lock().unwrap_or_else(PoisonError::into_inner).clone();
     Ok(CommandResult { exit: status.code().unwrap_or(-1), output: String::from_utf8_lossy(&output).into_owned() })
 }
 
@@ -115,12 +112,21 @@ fn wait(child: &mut Child, timeout: Duration) -> io::Result<Option<std::process:
     }
 }
 
-fn copy_output(mut stream: impl Read + Send + 'static) -> mpsc::Receiver<Vec<u8>> {
+fn copy_output(mut stream: impl Read + Send + 'static, collected: Arc<Mutex<Vec<u8>>>) -> mpsc::Receiver<()> {
     let (sender, receiver) = mpsc::channel();
     let _ = thread::Builder::new().name("njmule-command-output".to_owned()).spawn(move || {
-        let mut bytes = Vec::new();
-        let _ = stream.read_to_end(&mut bytes);
-        let _ = sender.send(bytes);
+        let mut buf = [0u8; 4096];
+        loop {
+            match stream.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if let Some(slice) = buf.get(..n) {
+                        collected.lock().unwrap_or_else(PoisonError::into_inner).extend_from_slice(slice);
+                    }
+                }
+            }
+        }
+        let _ = sender.send(());
     });
     receiver
 }

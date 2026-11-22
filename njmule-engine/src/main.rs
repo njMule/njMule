@@ -15,20 +15,25 @@ use njmule_engine::api::ed2k_link::{Ed2kLink, FileLink};
 use njmule_engine::api::engine_event::EngineEvent;
 use njmule_engine::api::list_source::ListSource;
 use njmule_engine::api::nj_mule_info;
+use njmule_engine::api::update_status::UpdateStatus;
 use njmule_engine::app::desktop_system::DesktopSystem;
-use njmule_engine::app::launch_options::{Action, LaunchOptions};
+use njmule_engine::app::launch_options::{Action, LaunchOptions, NetworkTasks};
 use njmule_engine::app::link_handoff::{self, LinkHandoff};
+use njmule_engine::app::remote_control::{self, RemoteControl, RemoteError};
+use njmule_engine::app::update_report::UpdateReport;
 use njmule_engine::app::web_ui_password::{self, PasswordError, TerminalPasswords};
-use njmule_engine::app::{profile_removal, restore_links, updating, windows_service};
+use njmule_engine::app::{network_commands, profile_removal, restore_links, updating, windows_service};
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
 use njmule_engine::engine::switches::Switches;
 use njmule_engine::files::hash::file_hasher;
+use njmule_engine::remote::api_client::{ApiClient, ApiError};
 use njmule_engine::remote::api_token;
 use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use njmule_engine::remote::desktop_integration::DesktopIntegration;
 use njmule_engine::remote::live_web_ui::LiveWebUi;
 use njmule_engine::remote::remote_api::Exit;
+use njmule_engine::remote::update_help;
 use njmule_engine::remote::web_ui_settings::WebUiSettings;
 use njmule_engine::server::server_list::Address;
 use njmule_engine::update::hand_over::HandOver;
@@ -45,6 +50,13 @@ const EXIT_WAIT: Duration = Duration::from_secs(30);
 /// Days of logs kept: one file a day.
 const LOG_DAYS: usize = 14;
 const EXIT_USAGE: u8 = 2;
+/// What `--check-update` returns when a newer version is out, as package managers do.
+const EXIT_UPDATE_AVAILABLE: u8 = 100;
+const API_TOKEN_VARIABLE: &str = "NJMULE_API_TOKEN";
+const REMOTE_SEARCH_WAIT: Duration = Duration::from_secs(10);
+const CHECK_UPDATE_WAIT: Duration = Duration::from_secs(4 * 60);
+const DOWNLOAD_WAIT: Duration = Duration::from_secs(2 * 60 * 60);
+const PROGRESS_EVERY: Duration = Duration::from_secs(1);
 
 fn main() -> ExitCode {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
@@ -126,10 +138,9 @@ fn main() -> ExitCode {
             ExitCode::from(u8::try_from(code).unwrap_or(1))
         }
         Action::Run => run_action(&cli, &raw_args),
-        Action::Remote | Action::CheckUpdate | Action::Update => {
-            eprintln!("njmule: command not yet wired in this engine build");
-            ExitCode::FAILURE
-        }
+        Action::Remote => remote_action(&cli),
+        Action::CheckUpdate => check_update_action(&cli),
+        Action::Update => update_action(&cli),
     }
 }
 
@@ -219,14 +230,254 @@ fn run_action(cli: &LaunchOptions, raw_args: &[String]) -> ExitCode {
         let absolute = std::path::absolute(dir).unwrap_or_else(|_| dir.clone());
         vec!["--config-dir".to_owned(), absolute.to_string_lossy().into_owned()]
     });
-    let outcome = tokio::runtime::Runtime::new()
-        .and_then(|runtime| runtime.block_on(run(dirs, cli.switches.clone(), cli.links.clone(), start_arguments)));
+    let outcome = tokio::runtime::Runtime::new().and_then(|runtime| {
+        runtime.block_on(run(dirs, cli.switches.clone(), cli.network.clone(), cli.links.clone(), start_arguments))
+    });
     match outcome {
-        Ok(Some(install)) => ExitCode::from(updating::hand_over(&install, raw_args, updating::under_systemd_current())),
-        Ok(None) => ExitCode::SUCCESS,
+        Ok(RunOutcome::Code(code)) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+        Ok(RunOutcome::HandOver(install)) => {
+            ExitCode::from(updating::hand_over(&install, raw_args, updating::under_systemd_current()))
+        }
         Err(e) => {
             eprintln!("Cannot start {}: {e}", nj_mule_info::NAME);
             ExitCode::FAILURE
+        }
+    }
+}
+
+enum RunOutcome {
+    Code(i32),
+    HandOver(Box<HandOver>),
+}
+
+fn remote_action(cli: &LaunchOptions) -> ExitCode {
+    let Some(remote) = &cli.remote else {
+        return ExitCode::from(EXIT_USAGE);
+    };
+    if remote.command.len() == 1 && remote.command.first().is_some_and(|w| w == "help") {
+        print!("{}", remote_control::COMMANDS);
+        return ExitCode::SUCCESS;
+    }
+    let dirs = match resolve_dirs(cli) {
+        Ok(dirs) => dirs,
+        Err(code) => return code,
+    };
+    let api = if let Some(url) = &remote.url {
+        let token = std::env::var(API_TOKEN_VARIABLE).unwrap_or_default();
+        let token = token.trim();
+        if token.is_empty() {
+            eprintln!("Set {API_TOKEN_VARIABLE} to the API token of that njMule (njmule --api-token there).");
+            return ExitCode::from(EXIT_USAGE);
+        }
+        Some(ApiClient::new(url.clone(), token.to_owned()))
+    } else {
+        match ApiClient::local(&dirs.config) {
+            Ok(api) => api,
+            Err(e) => {
+                eprintln!("Cannot read the settings of the web interface: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    };
+    let Some(api) = api else {
+        eprintln!(
+            "The remote-control API of {} is off: turn the web interface on with its API \
+             (njmule --webui-password --webui-api, or in the settings) and start njMule.",
+            dirs.config.display()
+        );
+        return ExitCode::FAILURE;
+    };
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            eprintln!("Cannot start runtime: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut out = io::stdout();
+    let result = runtime.block_on(async {
+        let mut control = RemoteControl::new(&api, &mut out, REMOTE_SEARCH_WAIT);
+        control.run(&remote.command).await
+    });
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(RemoteError::Usage(message)) => {
+            eprintln!("{message}");
+            eprint!("{}", remote_control::COMMANDS);
+            ExitCode::from(EXIT_USAGE)
+        }
+        Err(RemoteError::Api(ApiError::Failure { message, .. })) => {
+            eprintln!("{message}");
+            ExitCode::FAILURE
+        }
+        Err(RemoteError::Api(ApiError::Io(e))) => {
+            eprintln!("No njMule answers there: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn check_update_action(cli: &LaunchOptions) -> ExitCode {
+    let dirs = match resolve_dirs(cli) {
+        Ok(dirs) => dirs,
+        Err(code) => return code,
+    };
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            eprintln!("Cannot start {} to check: {e}", nj_mule_info::NAME);
+            return ExitCode::FAILURE;
+        }
+    };
+    let switches = Switches::of(&cli.switches);
+    let status = runtime.block_on(async {
+        let engine = Engine::start_with(dirs, switches).await.map_err(|e| format!("start:{e}"))?;
+        let checked = tokio::time::timeout(CHECK_UPDATE_WAIT, engine.check_for_update()).await;
+        engine.stop().await;
+        checked.map_err(|_| "timeout".to_owned())
+    });
+    let status = match status {
+        Ok(status) => status,
+        Err(ref e) if let Some(reason) = e.strip_prefix("start:") => {
+            eprintln!("Cannot start {} to check: {reason}", nj_mule_info::NAME);
+            eprintln!("When it runs, ask it: njmule --remote update check");
+            return ExitCode::FAILURE;
+        }
+        Err(_) => {
+            eprintln!("Cannot check for a new version: timed out");
+            return ExitCode::FAILURE;
+        }
+    };
+    let report = UpdateReport::of(&status);
+    let mut out = io::stdout();
+    let mut err = io::stderr();
+    report.print(&mut out, &mut err);
+    if report.is_available() {
+        ExitCode::from(EXIT_UPDATE_AVAILABLE)
+    } else if status.failure.is_some() {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+fn update_action(cli: &LaunchOptions) -> ExitCode {
+    let dirs = match resolve_dirs(cli) {
+        Ok(dirs) => dirs,
+        Err(code) => return code,
+    };
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            eprintln!("Cannot start {} to update it: {e}", nj_mule_info::NAME);
+            return ExitCode::FAILURE;
+        }
+    };
+    let switches = Switches::of(&cli.switches);
+    let mut out = io::stdout();
+    let mut err = io::stderr();
+    runtime.block_on(async {
+        let engine = match Engine::start_with(dirs, switches).await {
+            Ok(engine) => engine,
+            Err(e) => {
+                eprintln!("Cannot start {} to update it: {e}", nj_mule_info::NAME);
+                eprintln!("When it runs, ask it: njmule --remote update install, or stop it first: njmule --exit");
+                return ExitCode::FAILURE;
+            }
+        };
+        let status = match tokio::time::timeout(CHECK_UPDATE_WAIT, engine.check_for_update()).await {
+            Ok(status) => status,
+            Err(_) => {
+                engine.stop().await;
+                eprintln!("Cannot update: {} did not answer in time", nj_mule_info::NAME);
+                return ExitCode::FAILURE;
+            }
+        };
+        let report = UpdateReport::of(&status);
+        let has_download = status.available.as_ref().and_then(|v| v.download.as_ref()).is_some();
+        if !report.is_available() || !has_download {
+            engine.stop().await;
+            report.print(&mut out, &mut err);
+            return if status.failure.is_some() { ExitCode::FAILURE } else { ExitCode::SUCCESS };
+        }
+        let status = match download_update_with_progress(&engine, &mut out).await {
+            Ok(status) => status,
+            Err(e) => {
+                engine.stop().await;
+                eprintln!("Cannot update: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let Some(ready) = status.ready.clone() else {
+            engine.stop().await;
+            let failure = status.failure.as_deref().unwrap_or("it did not come");
+            eprintln!("Cannot download the new version: {failure}");
+            return ExitCode::FAILURE;
+        };
+        if !status.can_install() {
+            engine.stop().await;
+            println!("Downloaded and checked: {}", ready.display());
+            println!("{}", update_help::how_to_install_file(status.installation, &ready));
+            return ExitCode::SUCCESS;
+        }
+        if let Err(e) = match tokio::time::timeout(CHECK_UPDATE_WAIT, engine.install_update(false)).await {
+            Ok(res) => res,
+            Err(_) => Err(format!("{} did not answer in time", nj_mule_info::NAME)),
+        } {
+            engine.stop().await;
+            eprintln!("Cannot update: {e}");
+            return ExitCode::FAILURE;
+        }
+        engine.stop().await;
+        match engine.update_hand_over() {
+            Some(install) => match install.install_here() {
+                Ok(true) => {
+                    println!("{} {} is installed. Start it again to use it.", nj_mule_info::NAME, install.version());
+                    ExitCode::SUCCESS
+                }
+                Ok(false) => {
+                    println!(
+                        "The installer of {} {} runs once this command has ended.",
+                        nj_mule_info::NAME,
+                        install.version()
+                    );
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("Cannot install {} {}: {e}", nj_mule_info::NAME, install.version());
+                    ExitCode::FAILURE
+                }
+            },
+            None => {
+                eprintln!("Cannot update: no installation was prepared");
+                ExitCode::FAILURE
+            }
+        }
+    })
+}
+
+async fn download_update_with_progress<W: io::Write>(engine: &Engine, out: &mut W) -> Result<UpdateStatus, String> {
+    let mut download = Box::pin(engine.download_update());
+    let start = Instant::now();
+    let mut told: i64 = -1;
+    loop {
+        if start.elapsed() >= DOWNLOAD_WAIT {
+            return Err(format!("{} did not answer in time", nj_mule_info::NAME));
+        }
+        if let Some(progress) = engine.update_status().download {
+            let tenth = progress
+                .received
+                .saturating_mul(10)
+                .checked_div(progress.size)
+                .map_or(10, |value| i64::try_from(value).unwrap_or(10));
+            if tenth > told {
+                told = tenth;
+                let _ = writeln!(out, "Downloading {}%", tenth.saturating_mul(10));
+            }
+        }
+        tokio::select! {
+            result = &mut download => return result,
+            () = tokio::time::sleep(PROGRESS_EVERY) => {}
         }
     }
 }
@@ -284,12 +535,33 @@ fn log_to(dirs: &AppDirectories) {
 async fn run(
     dirs: AppDirectories,
     switches: Vec<String>,
+    tasks: NetworkTasks,
     initial_links: Vec<Ed2kLink>,
     start_arguments: Vec<String>,
-) -> io::Result<Option<HandOver>> {
+) -> io::Result<RunOutcome> {
     tracing::debug!("Switches: {switches:?}");
     let config = dirs.config.clone();
     let engine = Engine::start_with(dirs, Switches::of(&switches)).await?;
+    if tasks.is_one_shot() {
+        let mut out = io::stdout();
+        let mut err = io::stderr();
+        let code = tokio::select! {
+            code = network_commands::run(&engine, &tasks, &mut out, &mut err) => code,
+            _ = tokio::signal::ctrl_c() => 1,
+            () = terminate_signal() => 1,
+        };
+        engine.stop().await;
+        return Ok(RunOutcome::Code(code));
+    }
+    {
+        let mut out = io::stdout();
+        let mut err = io::stderr();
+        let code = network_commands::run(&engine, &tasks, &mut out, &mut err).await;
+        if code != 0 {
+            engine.stop().await;
+            return Ok(RunOutcome::Code(code));
+        }
+    }
     let control = std::env::var("NJMULE_CONTROL_ENDPOINT").is_ok_and(|value| value == "1");
     // Asked for by the API, by --exit, or by an update restart, as the end of the input is by the starting process.
     let exit = Arc::new(Notify::new());
@@ -381,7 +653,10 @@ async fn run(
         tracing::warn!("The API did not stop in time");
     }
     engine.stop().await;
-    Ok(engine.update_hand_over())
+    Ok(match engine.update_hand_over() {
+        Some(install) => RunOutcome::HandOver(Box::new(install)),
+        None => RunOutcome::Code(0),
+    })
 }
 
 // A file link downloads, a server link adds the server, a server list or nodes.dat link takes the servers or the Kad
