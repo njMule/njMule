@@ -21,6 +21,7 @@ pub mod search;
 pub mod security;
 pub mod server;
 pub mod social;
+pub mod update;
 pub mod upload;
 pub mod upnp;
 pub mod util;
