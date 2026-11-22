@@ -48,20 +48,21 @@ async fn should_answer_a_hello_with_ours() {
     assert_eq!(hello.user_hash, engine.user_hash());
     assert_eq!(hello.tcp_port, engine.listen_port());
     let names: Vec<u8> = hello.tags.iter().filter_map(|tag| tag.name().as_id()).collect();
-    assert_eq!(
-        names,
-        [
-            client_tag::NAME,
-            client_tag::VERSION,
-            client_tag::EMULE_UDPPORTS,
-            client_tag::EMULE_MISCOPTIONS1,
-            client_tag::EMULE_MISCOPTIONS2,
-            client_tag::EMULE_VERSION,
-            client_tag::MOD_VERSION,
-            client_tag::MOD_MISCOPTIONS,
-            client_tag::MOD_YOUR_IP,
-        ]
-    );
+    let mut expected = vec![
+        client_tag::NAME,
+        client_tag::VERSION,
+        client_tag::EMULE_UDPPORTS,
+        client_tag::EMULE_MISCOPTIONS1,
+        client_tag::EMULE_MISCOPTIONS2,
+        client_tag::EMULE_VERSION,
+        client_tag::MOD_VERSION,
+        client_tag::MOD_MISCOPTIONS,
+    ];
+    if engine.status().await.unwrap().public_ipv6.is_some() {
+        expected.push(client_tag::MOD_IP_V6);
+    }
+    expected.push(client_tag::MOD_YOUR_IP);
+    assert_eq!(names, expected);
     assert_eq!((hello.misc_options1(), hello.misc_options2()), (0x3013_0014, 0x0000_0D90));
     engine.stop().await;
 }

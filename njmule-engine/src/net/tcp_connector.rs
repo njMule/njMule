@@ -5,13 +5,14 @@
 //! chosen and through the proxy of the preferences, as the routes say.
 
 use std::io::{self, ErrorKind};
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 
 use rand::CryptoRng;
+use socket2::{Domain, Protocol, Socket, Type};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::net::{TcpListener, TcpStream};
 
 use crate::config::proxy_settings::{ProxySettings, ProxyType};
 use crate::net::routes::Routes;
@@ -202,7 +203,48 @@ fn plain(input: OwnedReadHalf, output: OwnedWriteHalf, remote: SocketAddr, local
 
 // Our address on a connection, unless it is the wildcard.
 fn local_of(stream: &TcpStream) -> Option<IpAddr> {
-    stream.local_addr().ok().map(|address| address.ip()).filter(|ip| !ip.is_unspecified())
+    stream.local_addr().ok().map(|address| normalize_ip(address.ip())).filter(|ip| !ip.is_unspecified())
+}
+
+/// Unwraps an IPv4-mapped IPv6 address (`::ffff:a.b.c.d`) from a dual-stack socket back into its IPv4 address.
+pub fn normalize_ip(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+        IpAddr::V4(_) => ip,
+    }
+}
+
+/// Unwraps an IPv4-mapped IPv6 socket address back into its IPv4 socket address.
+pub fn normalize_addr(addr: SocketAddr) -> SocketAddr {
+    SocketAddr::new(normalize_ip(addr.ip()), addr.port())
+}
+
+/// Opens a TCP listener on `port`: bound to `local` when an IPv4 interface is chosen, else dual-stack (`[::]` with
+/// `IPV6_V6ONLY = false`) so both IPv4 and IPv6 clients can connect, falling back to `0.0.0.0` on IPv4-only hosts.
+pub async fn listen(local: Option<Ipv4Addr>, port: u16) -> io::Result<TcpListener> {
+    if let Some(v4) = local {
+        return TcpListener::bind(SocketAddr::from((v4, port))).await;
+    }
+    match bind_dual_stack(port) {
+        Ok(listener) => Ok(listener),
+        Err(e) if is_ipv6_unavailable(&e) => TcpListener::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, port))).await,
+        Err(e) => Err(e),
+    }
+}
+
+fn bind_dual_stack(port: u16) -> io::Result<TcpListener> {
+    let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?;
+    socket.set_only_v6(false)?;
+    #[cfg(not(windows))]
+    socket.set_reuse_address(true)?;
+    socket.set_nonblocking(true)?;
+    socket.bind(&SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)).into())?;
+    socket.listen(1024)?;
+    TcpListener::from_std(socket.into())
+}
+
+fn is_ipv6_unavailable(error: &io::Error) -> bool {
+    matches!(error.kind(), ErrorKind::Unsupported | ErrorKind::AddrNotAvailable | ErrorKind::InvalidInput)
 }
 
 /// Takes a connection a client opened: plain, or obfuscated with keys from our user hash; a plain one is refused unless
@@ -215,7 +257,7 @@ pub async fn accept(
     random: &mut (impl CryptoRng + Send),
 ) -> io::Result<Connection> {
     stream.set_nodelay(true)?;
-    let remote = stream.peer_addr()?;
+    let remote = normalize_addr(stream.peer_addr()?);
     let local = local_of(&stream);
     let mut first = [0u8; 1];
     if within(limit, stream.peek(&mut first)).await? == 0 {

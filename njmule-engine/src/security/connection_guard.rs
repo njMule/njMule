@@ -58,6 +58,10 @@ impl Limits {
         Ok(Self { max_total, max_per_address, max_accepts, rate_window })
     }
 
+    pub fn max_per_address(&self) -> u32 {
+        self.max_per_address
+    }
+
     pub fn rate_window(&self) -> Duration {
         self.rate_window
     }

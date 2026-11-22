@@ -421,6 +421,7 @@ impl Downloads {
             auto_delete_days: 0,
             comment_filter: "spam|fake".to_owned(),
             max_download_kibps: 0,
+            preview_first: false,
         }
     }
 

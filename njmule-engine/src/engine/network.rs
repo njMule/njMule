@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rand::SeedableRng;
@@ -18,7 +18,7 @@ use tokio::net::{TcpListener, UdpSocket};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
-use crate::api::category::Category;
+use crate::api::category::{self, Category};
 use crate::api::download_info::{DownloadInfo, DownloadPriority, DownloadStatus, SourceInfo};
 use crate::api::ed2k_link::FileLink;
 use crate::api::engine_event::EngineEvent;
@@ -60,6 +60,7 @@ use crate::engine::totals::{self, Totals};
 use crate::engine::{ServerContext, Shared};
 use crate::files::file_comments::{self, FileComments};
 use crate::files::hash::file_hasher::FileHashes;
+use crate::files::part_file::PartFile;
 use crate::files::part_file_storage::DiskDone;
 use crate::files::shared_files::{Finished, Found, Listing, SharedFiles};
 use crate::kad::kad_socket::Incoming;
@@ -80,7 +81,7 @@ use crate::persist::format::{known2_met, nodes_dat};
 use crate::persist::schedule_codec;
 use crate::protocol::ed2k::hello::Hello;
 use crate::protocol::ed2k::server_datagrams;
-use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint, LOW_ID_LIMIT};
+use crate::protocol::ed2k::server_messages::{self, CallbackRequested, Endpoint, IdChange, LOW_ID_LIMIT};
 use crate::protocol::packet::opcodes::{client, extended, server_udp};
 use crate::protocol::packet::{Packet, frame_limits, protocol};
 use crate::protocol::tag::server_tag;
@@ -105,6 +106,7 @@ use crate::upload::upload_manager::{self, BlockRead, UploadManager};
 use crate::upload::upload_session;
 use crate::upload::uploadable::Uploadable;
 use crate::upnp::port_forwarding;
+use crate::util::ipv6;
 
 mod chats;
 mod filter;
@@ -180,7 +182,7 @@ pub enum Command {
     /// Shares a folder, with its subfolders or alone; why not for a private one.
     ShareDirectory(PathBuf, bool, oneshot::Sender<Result<(), String>>),
     UnshareDirectory(PathBuf, oneshot::Sender<Result<(), String>>),
-    AddDownload(Box<FileLink>, Option<bool>, oneshot::Sender<Result<DownloadInfo, String>>),
+    AddDownload(Box<FileLink>, Option<u32>, Option<bool>, oneshot::Sender<Result<DownloadInfo, String>>),
     Downloads(oneshot::Sender<Vec<DownloadInfo>>),
     Sources(oneshot::Sender<Vec<SourceInfo>>),
     /// The clients we upload to, then those waiting for their slot, the next one first.
@@ -395,6 +397,20 @@ struct Queues {
     kad: mpsc::UnboundedReceiver<Incoming>,
 }
 
+// Shared read-mostly state consulted by `ConnectionGuard` from the accept loop.
+struct GuardState {
+    banned: HashMap<IpAddr, Instant>,
+    server_ip: u32,
+    kad_awaited: HashSet<u32>,
+    limits: Limits,
+}
+
+impl Default for GuardState {
+    fn default() -> Self {
+        Self { banned: HashMap::new(), server_ip: 0, kad_awaited: HashSet::new(), limits: Limits::DEFAULT }
+    }
+}
+
 pub struct Network {
     shared: Arc<Shared>,
     servers: ServerList,
@@ -405,6 +421,7 @@ pub struct Network {
     udp: Option<ServerUdp>,
     // Admits the connections clients open to us.
     guard: Arc<ConnectionGuard>,
+    guard_state: Arc<RwLock<GuardState>>,
     // Keeps the server socket on the UDP relay of a SOCKS5 proxy, when the preferences have one.
     server_relay: Option<RelayKeeper>,
     datagrams: mpsc::UnboundedSender<(SocketAddr, Packet)>,
@@ -437,8 +454,9 @@ pub struct Network {
     callbacks: HashMap<SocketAddr, Instant>,
     calling: HashSet<SocketAddr>,
     our_ip: u32,
-    // The categories downloads may be in, by id.
+    // The categories downloads may be in, by id, also read by the download queue to pick each file's incoming folder.
     categories: Vec<Category>,
+    categories_live: Arc<Mutex<Vec<Category>>>,
     // The all-time totals before this session, and when it started.
     totals: Totals,
     started: Instant,
@@ -537,7 +555,28 @@ pub fn start(
     let (kad_in, kad) = mpsc::unbounded_channel();
     let preferences = shared.preferences.borrow().clone();
     let temp = preferences.temp_dir.clone().unwrap_or_else(|| dirs.temp.clone());
-    let incoming = preferences.incoming_dir.clone().unwrap_or_else(|| dirs.downloads.clone());
+    let categories = categories_codec::load(&dirs.config.join(categories_codec::FILE_NAME)).unwrap_or_else(|e| {
+        tracing::warn!("Cannot read the categories: {e}");
+        Vec::new()
+    });
+    let categories_live = Arc::new(Mutex::new(categories.clone()));
+    let watched_incoming = shared.preferences.subscribe();
+    let dirs_incoming = dirs.clone();
+    let categories_incoming = Arc::clone(&categories_live);
+    let incoming = Box::new(move |file: &PartFile| {
+        let category_id = file.category();
+        if category_id != category::NONE
+            && let Some(dir) = categories_incoming
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .iter()
+                .find(|c| c.id == category_id)
+                .and_then(|c| c.incoming.clone())
+        {
+            return dir;
+        }
+        watched_incoming.borrow().effective_incoming_dir(&dirs_incoming)
+    });
     let watched = shared.preferences.subscribe();
     let min_free = Box::new(move || u64::from(watched.borrow().min_free_space_mib).saturating_mul(1024 * 1024));
     let deleted_links = dirs.config.join(DELETED_LINKS_FILE);
@@ -549,11 +588,7 @@ pub fn start(
         blocked: Box::new(filter::ip_test(&ip_filter)),
         keep_link: Box::new(move |link| keep_link(&deleted_links, link)),
     };
-    let mut downloads = DownloadManager::open(&temp, &incoming, min_free, disk_in, Box::new(Instant::now), hooks)?;
-    let categories = categories_codec::load(&dirs.config.join(categories_codec::FILE_NAME)).unwrap_or_else(|e| {
-        tracing::warn!("Cannot read the categories: {e}");
-        Vec::new()
-    });
+    let mut downloads = DownloadManager::open_with(&temp, incoming, min_free, disk_in, Box::new(Instant::now), hooks)?;
     downloads.set_categories(categories.clone());
     let scheduler = Scheduler::load(dirs.config.join(schedule_codec::FILE_NAME));
     let finished = FinishedDownloads::load(&dirs.config);
@@ -573,8 +608,10 @@ pub fn start(
     let history = ClientHistory::load(&dirs.config, now_seconds());
     let totals = Totals::load(&dirs.config.join(totals::FILE_NAME));
     let our_ipv6 = public_ipv6::find(&shared.routes);
+    shared.set_our_ipv6(our_ipv6);
     // The guard's clock.
     let started = Instant::now();
+    let guard_state = Arc::new(RwLock::new(GuardState { limits: guard_limits(&applied), ..GuardState::default() }));
     let mut network = Network {
         shared,
         servers,
@@ -588,11 +625,28 @@ pub fn start(
                 let filter = ip_filter.subscribe();
                 move || filter.borrow().clone()
             },
-            |_| false,
-            |_| false,
-            || Limits::DEFAULT,
+            {
+                let state = Arc::clone(&guard_state);
+                move |ip| {
+                    let guard = state.read().unwrap_or_else(PoisonError::into_inner);
+                    (guard.server_ip != 0 && guard.server_ip == ip) || guard.kad_awaited.contains(&ip)
+                }
+            },
+            {
+                let state = Arc::clone(&guard_state);
+                move |address| {
+                    let key = ipv6::network(address);
+                    let guard = state.read().unwrap_or_else(PoisonError::into_inner);
+                    guard.banned.get(&key).is_some_and(|until| Instant::now() < *until)
+                }
+            },
+            {
+                let state = Arc::clone(&guard_state);
+                move || state.read().unwrap_or_else(PoisonError::into_inner).limits
+            },
             move || started.elapsed(),
         )),
+        guard_state,
         server_relay: None,
         datagrams: datagrams_in,
         accepting: None,
@@ -615,6 +669,7 @@ pub fn start(
         calling: HashSet::new(),
         our_ip: 0,
         categories,
+        categories_live,
         totals,
         started,
         our_ipv6,
@@ -891,10 +946,10 @@ impl Network {
             Command::UnshareDirectory(dir, answer) => {
                 let _ = answer.send(self.unshare_directory(&dir));
             }
-            Command::AddDownload(link, paused, answer) => {
+            Command::AddDownload(link, category, paused, answer) => {
                 let ours = self.shared.our_hello();
                 let fresh = self.downloads.download(&link.hash).is_none();
-                let added = self.downloads.add(&link, &self.settings(), &ours).map_err(|e| e.to_string());
+                let added = self.downloads.add_in(&link, category, &self.settings(), &ours).map_err(|e| e.to_string());
                 let paused = paused.unwrap_or_else(|| self.preferences().add_downloads_paused);
                 let added = match added {
                     Ok(info) if fresh && paused => {
@@ -912,7 +967,13 @@ impl Network {
             Command::Downloads(answer) => {
                 let mut all = self.downloads.downloads();
                 let active: HashSet<[u8; 16]> = all.iter().map(|d| d.hash).collect();
-                all.extend(self.finished.downloads().filter(|d| !active.contains(&d.hash)).cloned());
+                let known_categories: HashSet<u32> = self.categories.iter().map(|c| c.id).collect();
+                all.extend(self.finished.downloads().filter(|d| !active.contains(&d.hash)).cloned().map(|mut d| {
+                    if d.category != category::NONE && !known_categories.contains(&d.category) {
+                        d.category = category::NONE;
+                    }
+                    d
+                }));
                 let _ = answer.send(all);
             }
             Command::Sources(answer) => {
@@ -930,7 +991,12 @@ impl Network {
                 );
             }
             Command::Unban(ip, answer) => {
-                let _ = answer.send(self.uploads.unban(ip));
+                let lifted = self.uploads.unban(ip);
+                if lifted {
+                    self.user_log(LogLevel::Info, format!("Ban lifted on {ip}"));
+                    self.sync_guard_bans();
+                }
+                let _ = answer.send(lifted);
             }
             Command::PauseDownload(hash, answer) => {
                 let ours = self.shared.our_hello();
@@ -946,7 +1012,16 @@ impl Network {
             }
             Command::CancelDownload(hash, answer) => {
                 let ours = self.shared.our_hello();
+                let before = self.downloads.download(&hash);
+                let category = before.as_ref().map_or(category::NONE, |d| d.category);
+                // Only a download that was running leaves a place for another.
+                let running = before
+                    .as_ref()
+                    .is_some_and(|d| matches!(d.status, DownloadStatus::Downloading | DownloadStatus::NoSpace));
                 let cancelled = self.downloads.cancel(&hash, &ours);
+                if cancelled && running {
+                    self.start_next(category);
+                }
                 self.after_downloads();
                 let _ = answer.send(cancelled);
             }
@@ -1162,6 +1237,7 @@ impl Network {
     fn notice(&mut self, notice: Notice, preferences: &Preferences) {
         match notice {
             Notice::Connecting(server) => {
+                self.guard_state.write().unwrap_or_else(PoisonError::into_inner).server_ip = server.ip;
                 let info = self.info(&server);
                 self.user_log(LogLevel::Info, format!("Connecting to {}", describe(&info)));
                 self.publish(EngineEvent::ServerConnecting(info));
@@ -1455,6 +1531,11 @@ impl Network {
             self.downloads.set_download_limit(self.applied.max_download_kibps, &ours);
             self.after_downloads();
         }
+        if was.max_connections != self.applied.max_connections
+            || was.new_connections_per_five_seconds != self.applied.new_connections_per_five_seconds
+        {
+            self.guard_state.write().unwrap_or_else(PoisonError::into_inner).limits = guard_limits(&self.applied);
+        }
     }
 
     // Puts the rule that holds now in force, and applies the preferences it gives.
@@ -1515,6 +1596,7 @@ impl Network {
                 None => self.user_log(LogLevel::Info, "No IPv6 address to be reached at any more".to_owned()),
             }
             self.our_ipv6 = ipv6;
+            self.shared.set_our_ipv6(ipv6);
         }
         let now = self.shared.routes.binding();
         if now != self.binding {
@@ -1562,8 +1644,7 @@ impl Network {
             let Some(local) = local else {
                 return;
             };
-            let address = SocketAddr::from((local.unwrap_or(Ipv4Addr::UNSPECIFIED), preferences.tcp_port));
-            let listener = TcpListener::bind(address)
+            let listener = tcp_connector::listen(local, preferences.tcp_port)
                 .await
                 .inspect_err(|e| tracing::warn!("Cannot listen on TCP port {}: {e}", preferences.tcp_port))
                 .ok();
@@ -1697,6 +1778,11 @@ impl Network {
     }
 
     fn after_downloads(&mut self) {
+        for (link, user_hash, transferred) in self.downloads.take_credited() {
+            if self.trusted_peer(link) {
+                self.uploads.credits_mut().downloaded(user_hash, transferred);
+            }
+        }
         for action in self.downloads.take_actions() {
             match action {
                 // A client connected to download from us is asked over the same connection.
@@ -1757,7 +1843,9 @@ impl Network {
                     self.shares_changed(changes);
                     self.publisher.changed(Some(file.hash()));
                     self.finished.add(&info);
+                    let category = info.category;
                     self.publish(EngineEvent::DownloadCompleted { download: info, file: path });
+                    self.start_next(category);
                 }
                 DownloadEvent::Failed { info, reason } => {
                     self.user_log(LogLevel::Error, format!("Download {} stopped: {reason}", info.name));
@@ -1786,6 +1874,7 @@ impl Network {
                 }
                 DownloadEvent::CorruptSender(ip) => {
                     self.uploads.ban(ip, Instant::now(), "it sent corrupt data");
+                    self.sync_guard_bans();
                     self.user_log(LogLevel::Warning, format!("Banned {ip} for two hours: it sent corrupt data"));
                 }
             }
@@ -1962,14 +2051,15 @@ impl Network {
     }
 
     // Our public address, which signatures of the secure identification are bound to: a HighID, else the address the
-    // server reports with a LowID.
+    // server reports with a LowID, else the one Kad nodes see.
     fn our_public_address(&self) -> Option<Ipv4Addr> {
-        Some(self.address_seen_by_server()).filter(|ip| *ip != 0).map(Ipv4Addr::from)
+        public_address(self.session.id().as_ref(), self.kad.public_ip())
     }
 
     fn new_link(&mut self, connection: tcp_connector::Connection, permit: Option<Permit>) -> LinkHandle {
         let incoming = permit.is_some();
-        self.link_over(connection.into_tcp_connection(frame_limits::client_handshake), permit, incoming, false)
+        let permit = permit.unwrap_or_else(|| self.guard.outgoing());
+        self.link_over(connection.into_tcp_connection(frame_limits::client_handshake), Some(permit), incoming, false)
     }
 
     // A connection through the routers: one a client opened counts as coming in, one we asked for as ours. Either way
@@ -2237,6 +2327,37 @@ impl Network {
             .is_none_or(|session| session.trust().credits())
     }
 
+    // Whether an active peer link may be credited with bytes downloaded from it.
+    fn trusted_peer(&self, link: LinkId) -> bool {
+        self.peers
+            .get(&link)
+            .is_some_and(|peer| peer.identity.as_ref().is_none_or(|session| session.trust().credits()))
+    }
+
+    // A download left: a paused one may take its place, as the preferences say.
+    fn start_next(&mut self, category: u32) {
+        let ours = self.shared.our_hello();
+        if let Some(next) = self.downloads.resume_next(category, self.preferences().next_download, &ours) {
+            self.user_log(LogLevel::Info, format!("Resuming {}", next.name));
+        }
+    }
+
+    fn sync_guard_bans(&self) {
+        let now = Instant::now();
+        let banned: HashMap<IpAddr, Instant> = self
+            .uploads
+            .bans(now)
+            .into_iter()
+            .filter_map(|ban| now.checked_add(ban.left).map(|until| (ipv6::network(ban.address), until)))
+            .collect();
+        self.guard_state.write().unwrap_or_else(PoisonError::into_inner).banned = banned;
+    }
+
+    pub(super) fn sync_guard_kad(&self) {
+        let awaited: HashSet<u32> = self.kad.awaited_connections().into_iter().collect();
+        self.guard_state.write().unwrap_or_else(PoisonError::into_inner).kad_awaited = awaited;
+    }
+
     // The clients whose turn came while they were not connected are called.
     // Our comment of a file, as the uploads and Kad read it.
     fn comments_of(&self) -> impl Fn(&[u8; 16]) -> Option<FileComment> + Send + Sync + 'static {
@@ -2245,6 +2366,7 @@ impl Network {
     }
 
     fn after_uploads(&mut self) {
+        self.sync_guard_bans();
         let requests = self.uploads.take_kad_requests();
         self.kad_requests(requests);
         for (link, asked) in self.uploads.take_recoveries() {
@@ -2297,6 +2419,7 @@ impl Network {
             auto_delete_days: preferences.auto_delete_days,
             comment_filter: preferences.comment_filter.clone(),
             max_download_kibps: preferences.max_download_kibps,
+            preview_first: preferences.preview_first,
         }
     }
 
@@ -2550,6 +2673,7 @@ impl Network {
             .map_err(|e| format!("Cannot save the categories: {e}"))?;
         let deleted = self.categories.iter().map(|category| category.id).filter(|id| !ids.contains(id)).collect();
         self.categories = valid.clone();
+        *self.categories_live.lock().unwrap_or_else(PoisonError::into_inner) = valid.clone();
         self.downloads.set_categories(valid);
         self.after_downloads();
         self.scheduler.forget_categories(&deleted).map_err(|e| format!("Cannot save the schedule: {e}"))
@@ -2621,6 +2745,7 @@ impl Network {
         if let Ok(mut current) = self.shared.context.lock() {
             *current = context;
         }
+        self.guard_state.write().unwrap_or_else(PoisonError::into_inner).server_ip = context.ip;
     }
 }
 
@@ -2675,6 +2800,7 @@ async fn accept(
                 continue;
             }
         };
+        let remote = tcp_connector::normalize_addr(remote);
         let permit = match guard.admit(remote.ip()) {
             Admission::Admitted(permit) => permit,
             Admission::Refused(reason) => {
@@ -2867,6 +2993,23 @@ fn describe(info: &ServerInfo) -> String {
 
 fn id_text(id: &server_messages::IdChange) -> String {
     format!("{} {}", if id.is_low_id() { "LowID" } else { "HighID" }, id.client_id)
+}
+
+/// Our public IPv4 address for secure identification: a HighID, else the address the server reports with a LowID, else
+/// the one Kad nodes see.
+pub fn public_address(id: Option<&IdChange>, kad_ip: u32) -> Option<Ipv4Addr> {
+    let ip = id.map(IdChange::public_ip).filter(|ip| *ip != 0).unwrap_or(kad_ip);
+    (ip != 0).then(|| Ipv4Addr::from(ip))
+}
+
+fn guard_limits(preferences: &Preferences) -> Limits {
+    Limits::new(
+        preferences.max_connections,
+        Limits::DEFAULT.max_per_address(),
+        preferences.new_connections_per_five_seconds,
+        Limits::DEFAULT.rate_window(),
+    )
+    .unwrap_or(Limits::DEFAULT)
 }
 
 /// What the user's log tells while the network interface the preferences bind to is gone.
