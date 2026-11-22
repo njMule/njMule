@@ -24,7 +24,7 @@ use crate::api::peer_comment::PeerComment;
 use crate::config::next_download::NextDownload;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::download::download_queue::{self, DownloadQueue, QueueEvent};
-use crate::download::download_session::{Context, DownloadSession, Note, Outcome, State};
+use crate::download::download_session::{Budget, Context, DownloadSession, Note, Outcome, State};
 use crate::download::known_sources::{self, Candidate, Standing};
 use crate::files::comment_filter::CommentFilter;
 use crate::files::hash::aich_recovery;
@@ -194,6 +194,8 @@ pub struct Settings {
     pub auto_delete_days: u32,
     /// Words, apart by `|`, that leave the sources' comments holding them out.
     pub comment_filter: String,
+    /// Download rate limit in KiB/s, 0 for none.
+    pub max_download_kibps: u32,
 }
 
 /// What the downloads ask of the network side.
@@ -401,6 +403,8 @@ pub struct DownloadManager {
     receiving: Option<RateMeter>,
     // The start of the meter's clock.
     epoch: Instant,
+    // Download rate budget shared by the sessions.
+    budget: Budget,
 }
 
 impl DownloadManager {
@@ -444,6 +448,7 @@ impl DownloadManager {
             next_kad_start: now,
             receiving: RateMeter::new(RATE_WINDOW),
             epoch: now,
+            budget: Budget::default(),
         })
     }
 
@@ -1144,6 +1149,7 @@ impl DownloadManager {
         self.send_callbacks(server, now);
         self.send_kad_callbacks(kad.as_deref_mut(), now);
         self.comment_filter = CommentFilter::of(&settings.comment_filter);
+        self.budget.set_limit(settings.max_download_kibps);
         self.settings = Some(settings.clone());
         self.our_id = server.client_id();
         if !std::mem::replace(&mut self.known_taken, true) {
@@ -1618,6 +1624,33 @@ impl DownloadManager {
         }
     }
 
+    /// Replenishes the download rate budget, called ten times a second, and wakes sessions waiting on it.
+    pub fn refill(&mut self, max_download_kibps: u32, ours: &Hello) {
+        let waiting = self.budget.refill(max_download_kibps);
+        self.wake_throttled(waiting, ours);
+    }
+
+    /// Applies a new download rate limit right away; lifting a limit wakes sessions waiting on it.
+    pub fn set_download_limit(&mut self, max_download_kibps: u32, ours: &Hello) {
+        self.budget.set_limit(max_download_kibps);
+        let waiting = self.budget.drain_ready();
+        self.wake_throttled(waiting, ours);
+    }
+
+    fn wake_throttled(&mut self, waiting: Vec<SocketAddr>, ours: &Hello) {
+        if waiting.is_empty() {
+            return;
+        }
+        for address in waiting {
+            if self.budget.is_exhausted() {
+                self.budget.requeue(address);
+            } else {
+                self.with_session(&address, ours, |session, ctx| session.wake(ctx));
+            }
+        }
+        self.settle(ours);
+    }
+
     // Runs `work` on the client's session with what it works with.
     fn with_session(
         &mut self,
@@ -1625,9 +1658,9 @@ impl DownloadManager {
         ours: &Hello,
         work: impl FnOnce(&mut DownloadSession, &mut Context<'_, StdRng>),
     ) {
-        let Self { queue, clients, random, clock, .. } = self;
+        let Self { queue, clients, random, budget, clock, .. } = self;
         if let Some(session) = clients.get_mut(address).and_then(|c| c.session.as_mut()) {
-            let mut ctx = Context { queue, ours, random, now: clock() };
+            let mut ctx = Context { queue, ours, random, budget, now: clock() };
             work(session, &mut ctx);
         }
     }
@@ -2137,6 +2170,7 @@ impl DownloadManager {
             self.links.remove(&link.id());
         }
         self.links.retain(|_, a| *a != address);
+        self.budget.remove(&address);
         let hash = client.current;
         if session.peer_hash() == Some(ours.user_hash) {
             // We reached ourselves: the address is no source of any download.
@@ -2309,8 +2343,9 @@ impl DownloadManager {
             if let Some(old_link) = session.link() {
                 self.links.remove(&old_link.id());
             }
-            let Self { queue, random, clock, .. } = self;
-            session.close("the source called back", &mut Context { queue, ours, random, now: clock() });
+            self.budget.remove(&address);
+            let Self { queue, random, budget, clock, .. } = self;
+            session.close("the source called back", &mut Context { queue, ours, random, budget, now: clock() });
         }
         // The file it was asked for last needs no request again, another does.
         let known = self
@@ -2613,8 +2648,9 @@ impl DownloadManager {
             if let Some(link) = session.link() {
                 self.links.remove(&link.id());
             }
-            let Self { queue, random, clock, .. } = self;
-            session.close("the source is dropped", &mut Context { queue, ours, random, now: clock() });
+            self.budget.remove(address);
+            let Self { queue, random, budget, clock, .. } = self;
+            session.close("the source is dropped", &mut Context { queue, ours, random, budget, now: clock() });
         }
         let Some(client) = self.clients.get_mut(address) else {
             return;
