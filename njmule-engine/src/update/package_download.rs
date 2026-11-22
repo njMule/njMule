@@ -8,6 +8,7 @@ use std::fs::{self, File};
 use std::future::Future;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use data_encoding::HEXLOWER;
 use sha2::{Digest, Sha256};
@@ -27,6 +28,18 @@ pub trait Transfer: Send + Sync {
         size: u64,
         progress: Progress<'_>,
     ) -> impl Future<Output = io::Result<()>> + Send;
+}
+
+impl<T: Transfer> Transfer for Arc<T> {
+    fn download(
+        &self,
+        url: &str,
+        part: &Path,
+        size: u64,
+        progress: Progress<'_>,
+    ) -> impl Future<Output = io::Result<()>> + Send {
+        (**self).download(url, part, size, progress)
+    }
 }
 
 /// The package `download` at `file`, downloaded unless it is there already and whole.

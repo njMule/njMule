@@ -33,6 +33,7 @@ use crate::api::import_options::ImportOptions;
 use crate::api::list_source::{ListError, ListSource};
 use crate::api::nj_mule_engine::NjMuleEngine;
 use crate::api::shared_directory::{self, SharedDirectory};
+use crate::api::update_status::{Install, UpdateStatus};
 use crate::api::upload_priority::UploadPriority;
 use crate::api::{nj_mule_info, search_request};
 use crate::config::bind_interface;
@@ -96,6 +97,8 @@ struct WebInterface(Option<Arc<SettingsFile>>);
 
 // How long between two samples of the rates.
 const RATE_SAMPLE: Duration = Duration::from_secs(1);
+// How long a call to check or download an update waits before answering 202.
+const UPDATE_WAIT: Duration = Duration::from_secs(10);
 // The span of the rates a front end gets when it asks for none.
 const DEFAULT_RATE_SPAN: usize = 600;
 const SECONDS_IN_A_MINUTE: usize = 60;
@@ -177,7 +180,11 @@ pub fn router<E: NjMuleEngine>(
         .route("/ipfilter", post(update_ip_filter::<E>))
         .route("/ipfilter/lists", post(update_ip_filter_lists::<E>))
         .route("/interfaces", get(network_interfaces))
-        .route("/update", get(|| async { Json(api_json::update()) }))
+        .route("/update", get(|State(engine): State<E>| async move { Json(api_json::update(&engine.update_status())) }))
+        .route("/update/check", post(check_for_update::<E>))
+        .route("/update/skip", post(skip_update::<E>))
+        .route("/update/download", post(download_update::<E>))
+        .route("/update/install", post(install_update::<E>))
         .route("/events", get(events::<E>))
         .route(
             "/clients/known",
@@ -1848,6 +1855,53 @@ fn file_hash(text: &str) -> Result<[u8; 16], ApiError> {
 
 fn no_download() -> ApiError {
     ApiError::new(StatusCode::NOT_FOUND, "No such download")
+}
+
+// A check that takes longer than a call waits for goes on: the caller reads its outcome later.
+async fn check_for_update<E: NjMuleEngine>(State(engine): State<E>) -> (StatusCode, Json<Value>) {
+    let status = tokio::time::timeout(UPDATE_WAIT, engine.check_for_update())
+        .await
+        .unwrap_or_else(|_| engine.update_status());
+    let code = if status.checking { StatusCode::ACCEPTED } else { StatusCode::OK };
+    (code, Json(api_json::update(&status)))
+}
+
+async fn skip_update<E: NjMuleEngine>(State(engine): State<E>, Body(body): Body) -> Result<Json<Value>, ApiError> {
+    let version = owned_text(&body, "version")?;
+    let status = engine.skip_update(version).await.map_err(|reason| ApiError::new(StatusCode::BAD_REQUEST, reason))?;
+    Ok(Json(api_json::update(&status)))
+}
+
+async fn download_update<E: NjMuleEngine>(State(engine): State<E>) -> Result<(StatusCode, Json<Value>), ApiError> {
+    update_work(&engine, engine.download_update()).await
+}
+
+async fn install_update<E: NjMuleEngine>(
+    State(engine): State<E>,
+    body: Option<Json<Value>>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let restart = match body.as_ref().and_then(|Json(body)| body.get("restart")) {
+        None => true,
+        Some(Value::Bool(restart)) => *restart,
+        Some(_) => return Err(ApiError::new(StatusCode::BAD_REQUEST, "Missing truth value: restart")),
+    };
+    update_work(&engine, engine.install_update(restart)).await
+}
+
+// A download that takes longer than a call waits for goes on: the caller reads its outcome later. A refusal
+// (nothing to download or install, or not here) is a conflict with the state.
+async fn update_work<E: NjMuleEngine>(
+    engine: &E,
+    work: impl Future<Output = Result<UpdateStatus, String>>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let status = match tokio::time::timeout(UPDATE_WAIT, work).await {
+        Ok(Ok(status)) => status,
+        Ok(Err(reason)) => return Err(ApiError::new(StatusCode::CONFLICT, reason)),
+        Err(_) => engine.update_status(),
+    };
+    let goes_on = status.download.is_some() || status.install == Install::Restart;
+    let code = if goes_on { StatusCode::ACCEPTED } else { StatusCode::OK };
+    Ok((code, Json(api_json::update(&status))))
 }
 
 // The interfaces worth choosing, listed off the engine's task: the system may take a moment.

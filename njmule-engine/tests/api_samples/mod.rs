@@ -17,12 +17,14 @@ use njmule_engine::api::engine_status::EngineStatus;
 use njmule_engine::api::file_comment::FileComment;
 use njmule_engine::api::friend::Friend;
 use njmule_engine::api::import_report::{Arg, ImportReport, Item, Key, Outcome, Phrase};
+use njmule_engine::api::install_kind::InstallKind;
 use njmule_engine::api::kad_contact_info::KadContactInfo;
 use njmule_engine::api::kad_info::{Buddy, KadInfo};
 use njmule_engine::api::kad_note::KadNote;
 use njmule_engine::api::kad_search_info::{KadSearchInfo, Kind};
 use njmule_engine::api::known_client::KnownClient;
 use njmule_engine::api::log_line::{Level, LogLine};
+use njmule_engine::api::new_version::{Download, NewVersion};
 use njmule_engine::api::peer_comment::PeerComment;
 use njmule_engine::api::peer_info::{Identification, PeerInfo};
 use njmule_engine::api::port_test::{Forwarding, PortTest, Reach};
@@ -33,6 +35,7 @@ use njmule_engine::api::server_info::ServerInfo;
 use njmule_engine::api::shared_directory::SharedDirectory;
 use njmule_engine::api::shared_file_info::{SharedFileInfo, Statistics};
 use njmule_engine::api::spam_marks::SpamMarks;
+use njmule_engine::api::update_status::{Install, Installer, Progress, UpdateStatus};
 use njmule_engine::api::upload_info::{BanInfo, UploadInfo, UploadState};
 use njmule_engine::api::upload_priority::UploadPriority;
 use njmule_engine::config::schedule::{DayOfWeek, Rule, Schedule};
@@ -334,6 +337,59 @@ pub fn log_line() -> LogLine {
     LogLine { time, level: Level::Success, message: "Connected".to_owned() }
 }
 
+pub fn new_version() -> NewVersion {
+    NewVersion {
+        version: "0.2.0".to_owned(),
+        published: "2026-11-02T10:00:00Z".parse().unwrap(),
+        critical: true,
+        notes: "### Added\n\n- Updates.".to_owned(),
+        page: "https://github.com/njMule/njMule/releases/tag/v0.2.0".to_owned(),
+        download: Some(Download {
+            url: "https://github.com/njMule/njMule/releases/download/v0.2.0/njmule-0.2.0-windows-x64.msi".to_owned(),
+            size: 31_719_424,
+            sha256: "ab".repeat(32),
+        }),
+    }
+}
+
+pub fn update_status() -> UpdateStatus {
+    UpdateStatus {
+        current: "0.1.0".to_owned(),
+        installation: InstallKind::Msi,
+        installer: Installer::Itself,
+        checking: false,
+        last_check: Some("2026-11-03T08:00:00Z".parse().unwrap()),
+        failure: Some("HTTP 503 from github.com".to_owned()),
+        available: Some(new_version()),
+        skipped: Some("0.1.5".to_owned()),
+        download: Some(Progress::new(1_048_576, 31_719_424)),
+        ready: None,
+        install: Install::Asked,
+    }
+}
+
+/// A version downloaded, which the user asked to install now.
+pub fn restarting_update_status() -> UpdateStatus {
+    UpdateStatus {
+        current: "0.1.0".to_owned(),
+        installation: InstallKind::WindowsZip,
+        installer: Installer::Itself,
+        checking: false,
+        last_check: Some("2026-11-03T08:00:00Z".parse().unwrap()),
+        failure: None,
+        available: Some(new_version()),
+        skipped: None,
+        download: None,
+        ready: Some(PathBuf::from("cache").join("update").join("0.2.0").join("njmule-0.2.0-windows-x64.zip")),
+        install: Install::Restart,
+    }
+}
+
+/// A version downloaded, to install when njMule exits.
+pub fn at_exit_update_status() -> UpdateStatus {
+    UpdateStatus { install: Install::AtExit, ..restarting_update_status() }
+}
+
 /// One event of every kind the engine announces.
 pub fn events() -> Vec<EngineEvent> {
     vec![
@@ -359,5 +415,9 @@ pub fn events() -> Vec<EngineEvent> {
         EngineEvent::CaptchaRequested { address: PEER.to_owned(), user_hash: USER, image: vec![1, 2] },
         EngineEvent::CaptchaAnswered { address: PEER.to_owned(), solved: true },
         EngineEvent::MessageFailed { address: PEER.to_owned(), reason: "no connection".to_owned() },
+        EngineEvent::UpdateStatusChanged(update_status()),
+        EngineEvent::UpdateAvailable(new_version()),
+        EngineEvent::UpdateReady(new_version()),
+        EngineEvent::UpdateRestart("0.2.0".to_owned()),
     ]
 }

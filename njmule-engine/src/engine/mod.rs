@@ -25,8 +25,8 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{Instant, SystemTime};
+use std::sync::{Arc, Mutex, PoisonError, Weak};
+use std::time::{Duration, Instant, SystemTime};
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -52,6 +52,7 @@ use crate::api::kad_search_info::KadSearchInfo;
 use crate::api::known_client::KnownClient;
 use crate::api::list_source::{ListError, ListSource};
 use crate::api::log_line::{Level, LogLine};
+use crate::api::new_version::NewVersion;
 use crate::api::nj_mule_engine::{NjMuleEngine, Subscription};
 use crate::api::nj_mule_info;
 use crate::api::notification_result::NotificationResult;
@@ -64,6 +65,7 @@ use crate::api::server_info::ServerInfo;
 use crate::api::shared_directory::SharedDirectory;
 use crate::api::shared_file_info::SharedFileInfo;
 use crate::api::spam_marks::SpamMarks;
+use crate::api::update_status::UpdateStatus;
 use crate::api::upload_info::{BanInfo, UploadInfo};
 use crate::api::upload_priority::UploadPriority;
 use crate::config::app_directories::AppDirectories;
@@ -72,6 +74,7 @@ use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
 use crate::config::schedule::{Rule, Schedule};
 use crate::config::shared_files_visibility::SharedFilesVisibility;
+use crate::config::update_mode::UpdateMode;
 use crate::engine::countries::Step;
 use crate::engine::event_command_runner::EventCommandRunner;
 use crate::engine::event_replay::EventReplay;
@@ -88,7 +91,7 @@ use crate::persist::emule_importer::EmuleImporter;
 use crate::persist::format::known_met::KnownFile;
 use crate::persist::format::server_met::{self, Server};
 use crate::persist::format::{known2_met, nodes_dat};
-use crate::persist::{atomic_files, emule_importer, preferences_codec, user_hash_store};
+use crate::persist::{atomic_files, config_backup, emule_importer, preferences_codec, user_hash_store};
 use crate::protocol::ed2k::client_reasks;
 use crate::protocol::ed2k::hello::{self, Hello, Ours};
 use crate::protocol::ed2k::server_messages::LOW_ID_LIMIT;
@@ -96,6 +99,8 @@ use crate::protocol::kad::kad_messages;
 use crate::search::search_manager::{Scope, StartError};
 use crate::server::server_list::{Address, Priority};
 use crate::server::server_udp::ServerUdp;
+use crate::update::hand_over::HandOver;
+use crate::update::updates::{self, Listener as UpdateListener, Updates};
 
 /// Events kept for a front end that reads them late; one that falls further behind loses the stream.
 const EVENT_BACKLOG: usize = 1024;
@@ -103,6 +108,13 @@ const EVENT_BACKLOG: usize = 1024;
 const COMMENTS_VERSION: u32 = 1;
 /// The way of proving user hashes announced in the hello.
 const SECURE_IDENT: u32 = 3;
+/// How often a copy of the configuration is written while njMule runs.
+const BACKUP_EVERY: Duration = Duration::from_secs(24 * 3600);
+// The first look for a new version waits for the start to settle; then whether one is due is asked often.
+const UPDATE_FIRST: Duration = Duration::from_secs(2 * 60);
+const UPDATE_TICK: Duration = Duration::from_secs(10 * 60);
+// A new version that ran its engine this long is kept: the installer stops watching it, the old files go.
+const UPDATE_PROVEN: Duration = Duration::from_secs(30);
 
 /// A running engine; clones share it.
 #[derive(Clone)]
@@ -149,6 +161,43 @@ pub struct Shared {
     emule_running: fn() -> bool,
     // Tells of events by e-mail and through a web hook.
     notifier: Arc<Notifier>,
+    // Looks for new versions and stages their installation.
+    updates: Updates,
+}
+
+struct EngineUpdates {
+    shared: Weak<Shared>,
+}
+
+impl UpdateListener for EngineUpdates {
+    fn changed(&self, status: UpdateStatus) {
+        if let Some(shared) = self.shared.upgrade() {
+            shared.publish(EngineEvent::UpdateStatusChanged(status));
+        }
+    }
+
+    fn found(&self, version: NewVersion) {
+        if let Some(shared) = self.shared.upgrade() {
+            shared.user_log(
+                Level::Info,
+                format!("{} {} is available: {}", nj_mule_info::NAME, version.version, version.page),
+            );
+            shared.publish(EngineEvent::UpdateAvailable(version));
+        }
+    }
+
+    fn ready(&self, version: NewVersion) {
+        if let Some(shared) = self.shared.upgrade() {
+            shared.publish(EngineEvent::UpdateReady(version));
+        }
+    }
+
+    fn restart(&self, version: String) {
+        if let Some(shared) = self.shared.upgrade() {
+            shared.user_log(Level::Info, format!("{} restarts to install {version}", nj_mule_info::NAME));
+            shared.publish(EngineEvent::UpdateRestart(version));
+        }
+    }
 }
 
 // Hands each event to what tells the user of it, until the engine stops.
@@ -285,6 +334,10 @@ impl Engine {
         // Where the downloads go, complete and in parts, which need not be the default folders.
         fs::create_dir_all(preferences.effective_incoming_dir(&dirs))?;
         fs::create_dir_all(preferences.effective_temp_dir(&dirs))?;
+        // Before a version that did not run here yet changes anything: the configuration as the last one left it.
+        if updates::starting(&dirs.config) && preferences.backup_copies > 0 {
+            back_up(&dirs, preferences.backup_copies);
+        }
         preferences_codec::save(&preferences_file, &preferences)?;
         if created {
             setup_mark::make(&dirs.config)?;
@@ -334,6 +387,7 @@ impl Engine {
         let listen_port = listener.as_ref().and_then(|l| l.local_addr().ok()).map_or(0, |address| address.port());
         let (events, _) = broadcast::channel(EVENT_BACKLOG);
         let (commands, commands_out) = mpsc::unbounded_channel();
+        let initial_preferences = preferences.clone();
         let preferences = watch::Sender::new(preferences);
         let proxy = preferences.subscribe();
         let interface = preferences.subscribe();
@@ -344,26 +398,37 @@ impl Engine {
         );
         let notifications = preferences.subscribe();
         let notifier = Arc::new(Notifier::create(move || notifications.borrow().notifications.clone(), routes.clone()));
-        let shared = Arc::new(Shared {
-            dirs,
-            user_hash,
-            listen_port: AtomicU16::new(listen_port),
-            kad_announced: AtomicU32::new(0),
-            kad_buddy: AtomicU64::new(0),
-            kad_traversal: AtomicBool::new(false),
-            preferences,
-            routes,
-            events,
-            context: Mutex::new(ServerContext::default()),
-            replay: Mutex::default(),
-            countries: watch::Sender::new(Arc::new(CountryTable::empty())),
-            ended: AtomicBool::new(false),
-            commands,
-            stop: watch::Sender::new(false),
-            tasks: tokio::sync::Mutex::new(JoinSet::new()),
-            instance: Mutex::new(Some(instance)),
-            emule_running: switches.emule_running,
-            notifier: Arc::clone(&notifier),
+        let shared = Arc::new_cyclic(|weak| {
+            let updates = Updates::create(
+                &dirs.config,
+                &dirs.cache,
+                routes.clone(),
+                &initial_preferences,
+                switches.updates,
+                Arc::new(EngineUpdates { shared: weak.clone() }),
+            );
+            Shared {
+                dirs,
+                user_hash,
+                listen_port: AtomicU16::new(listen_port),
+                kad_announced: AtomicU32::new(0),
+                kad_buddy: AtomicU64::new(0),
+                kad_traversal: AtomicBool::new(false),
+                preferences,
+                routes,
+                events,
+                context: Mutex::new(ServerContext::default()),
+                replay: Mutex::default(),
+                countries: watch::Sender::new(Arc::new(CountryTable::empty())),
+                ended: AtomicBool::new(false),
+                commands,
+                stop: watch::Sender::new(false),
+                tasks: tokio::sync::Mutex::new(JoinSet::new()),
+                instance: Mutex::new(Some(instance)),
+                emule_running: switches.emule_running,
+                notifier: Arc::clone(&notifier),
+                updates,
+            }
         });
         let engine = Self { shared: shared.clone() };
         let commands = engine.shared.preferences.subscribe();
@@ -380,11 +445,50 @@ impl Engine {
         engine.user_log(Level::Info, format!("{} {} started", nj_mule_info::NAME, nj_mule_info::version()));
         let following = engine.clone();
         engine.shared.tasks.lock().await.spawn(async move { following.follow_countries(switches).await });
+        let backing_up = engine.clone();
+        engine.shared.tasks.lock().await.spawn(async move { backing_up.follow_backups().await });
+        let updating = engine.clone();
+        engine.shared.tasks.lock().await.spawn(async move { updating.follow_updates().await });
+        let proving = engine.clone();
+        engine.shared.tasks.lock().await.spawn(async move { proving.prove_version().await });
         if engine.preferences().update_servers_at_start {
             let updating = engine.clone();
             engine.shared.tasks.lock().await.spawn(async move { updating.update_server_lists().await });
         }
         Ok(engine)
+    }
+
+    // Daily copies of the configuration while njMule runs; another is written when it stops.
+    async fn follow_backups(&self) {
+        loop {
+            tokio::time::sleep(BACKUP_EVERY).await;
+            let keep = self.preferences().backup_copies;
+            if keep > 0 {
+                let dirs = self.shared.dirs.clone();
+                let _ = tokio::task::spawn_blocking(move || back_up(&dirs, keep)).await;
+            }
+        }
+    }
+
+    // Once after the start settles, then every ten minutes: check when due, and install in the night hours.
+    async fn follow_updates(&self) {
+        tokio::time::sleep(UPDATE_FIRST).await;
+        loop {
+            let now = self.preferences();
+            if now.update_mode != UpdateMode::Off && self.shared.updates.is_due() {
+                drop(self.shared.updates.check(now.update_channel, true));
+            }
+            self.shared.updates.install_if_night(scheduler::local_now().time());
+            tokio::time::sleep(UPDATE_TICK).await;
+        }
+    }
+
+    // This version has run long enough to be kept: mark it and remove the old files an installation kept.
+    async fn prove_version(&self) {
+        tokio::time::sleep(UPDATE_PROVEN).await;
+        if let Some(message) = self.shared.updates.ran_long_enough() {
+            self.user_log(Level::Success, message);
+        }
     }
 
     // The table of countries, looked at shortly after the start, then every hour and as the preferences turn it on or
@@ -510,6 +614,7 @@ impl Engine {
             tracing::warn!("Cannot save {}: {e}", file.display());
         }
         self.shared.preferences.send_replace(changed.clone());
+        self.shared.updates.preferences(&changed);
         self.publish(EngineEvent::PreferencesChanged);
         Ok(changed)
     }
@@ -880,7 +985,14 @@ impl Engine {
     /// another engine may start on the configuration.
     pub async fn stop(&self) {
         self.publish(EngineEvent::Stopping);
+        self.shared.updates.close();
         let _ = self.ask(Command::Stop).await;
+        // After the last saves.
+        let keep = self.preferences().backup_copies;
+        if keep > 0 {
+            let dirs = self.shared.dirs.clone();
+            let _ = tokio::task::spawn_blocking(move || back_up(&dirs, keep)).await;
+        }
         self.shared.stop.send_replace(true);
         let mut tasks = self.shared.tasks.lock().await;
         tasks.abort_all();
@@ -907,6 +1019,40 @@ impl Engine {
     /// Sends a test message through each notification channel that is on, and tells how each went.
     pub async fn test_notifications(&self) -> Vec<NotificationResult> {
         self.shared.notifier.test().await
+    }
+
+    /// What is known of new versions of njMule.
+    pub fn update_status(&self) -> UpdateStatus {
+        self.shared.updates.status()
+    }
+
+    /// Looks for a new version now, or joins the check running.
+    pub async fn check_for_update(&self) -> UpdateStatus {
+        let channel = self.preferences().update_channel;
+        self.shared.updates.check(channel, false).await
+    }
+
+    /// Stops telling of `version`, unless it fixes a security problem; answers the status.
+    pub async fn skip_update(&self, version: String) -> Result<UpdateStatus, String> {
+        let updates = self.shared.updates.clone();
+        tokio::task::spawn_blocking(move || updates.skip(&version))
+            .await
+            .map_err(|e| format!("cannot skip update: {e}"))?
+    }
+
+    /// Downloads the package of the available version, or joins the download running; why not when none can be.
+    pub async fn download_update(&self) -> Result<UpdateStatus, String> {
+        self.shared.updates.download().await
+    }
+
+    /// Installs the version ready, now (`restart`) or when njMule exits; why not when none can be.
+    pub async fn install_update(&self, restart: bool) -> Result<UpdateStatus, String> {
+        self.shared.updates.install(restart)
+    }
+
+    /// Once the engine has stopped: the installation to hand over, when one is due; none while it still runs.
+    pub fn update_hand_over(&self) -> Option<HandOver> {
+        if self.is_running() { None } else { self.shared.updates.hand_over() }
     }
 
     /// Stops a download and forgets its sources; false when unknown.
@@ -1541,6 +1687,40 @@ impl NjMuleEngine for Engine {
 
     fn file_history(&self) -> impl Future<Output = FileHistory> + Send {
         Engine::file_history(self)
+    }
+
+    fn update_status(&self) -> UpdateStatus {
+        Engine::update_status(self)
+    }
+
+    fn check_for_update(&self) -> impl Future<Output = UpdateStatus> + Send {
+        Engine::check_for_update(self)
+    }
+
+    fn skip_update(&self, version: String) -> impl Future<Output = Result<UpdateStatus, String>> + Send {
+        Engine::skip_update(self, version)
+    }
+
+    fn download_update(&self) -> impl Future<Output = Result<UpdateStatus, String>> + Send {
+        Engine::download_update(self)
+    }
+
+    fn install_update(&self, restart: bool) -> impl Future<Output = Result<UpdateStatus, String>> + Send {
+        Engine::install_update(self, restart)
+    }
+}
+
+fn back_up(dirs: &AppDirectories, keep: u32) {
+    let Ok(keep) = usize::try_from(keep) else {
+        return;
+    };
+    if keep == 0 {
+        return;
+    }
+    let folder = dirs.data.join(config_backup::FOLDER);
+    match config_backup::write(&dirs.config, &folder, keep, time::OffsetDateTime::now_utc()) {
+        Ok(copy) => tracing::info!("Configuration backed up to {}", copy.display()),
+        Err(e) => tracing::warn!("Cannot back up the configuration: {e}"),
     }
 }
 

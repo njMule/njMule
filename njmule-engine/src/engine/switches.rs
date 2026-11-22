@@ -8,6 +8,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use crate::persist::emule_importer;
+use crate::update::updates;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Switches {
@@ -17,6 +18,8 @@ pub struct Switches {
     pub emule_running: fn() -> bool,
     /// Where the router that forwards our ports is looked for, when the preferences turn UPnP on.
     pub upnp: Upnp,
+    /// Whether njMule looks for new versions on its own or when asked.
+    pub updates: bool,
 }
 
 /// Where the router is looked for: nowhere, on this computer's networks, or at a UPnP search address of a test, looked
@@ -32,15 +35,18 @@ pub enum Upnp {
 pub const COUNTRIES_DISABLED: &str = "njmule.countries.disabled";
 /// The switch that keeps the router from being asked to forward our ports.
 pub const UPNP_DISABLED: &str = "njmule.upnp.disabled";
+/// The switch that keeps njMule from looking for new versions.
+pub const UPDATE_DISABLED: &str = updates::DISABLED_PROPERTY;
 
 impl Switches {
     /// Nothing fetched from a third party on the engine's own.
-    pub const QUIET: Self = Self { countries: false, emule_running: emule_importer::is_emule_running, upnp: Upnp::Off };
+    pub const QUIET: Self =
+        Self { countries: false, emule_running: emule_importer::is_emule_running, upnp: Upnp::Off, updates: false };
 
     /// The executable's: everything on, then off what the switches `NAME=VALUE` turn off. Switches the engine does
     /// not have are left alone.
     pub fn of(switches: &[String]) -> Self {
-        let mut on = Self { countries: true, upnp: Upnp::ThisComputer, ..Self::QUIET };
+        let mut on = Self { countries: true, upnp: Upnp::ThisComputer, updates: true, ..Self::QUIET };
         for switch in switches {
             let (name, value) = switch.split_once('=').unwrap_or((switch, "true"));
             if !value.trim().eq_ignore_ascii_case("true") {
@@ -49,6 +55,7 @@ impl Switches {
             match name.trim() {
                 COUNTRIES_DISABLED => on.countries = false,
                 UPNP_DISABLED => on.upnp = Upnp::Off,
+                UPDATE_DISABLED => on.updates = false,
                 _ => {}
             }
         }

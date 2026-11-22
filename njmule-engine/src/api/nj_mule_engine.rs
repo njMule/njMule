@@ -39,6 +39,7 @@ use crate::api::server_info::ServerInfo;
 use crate::api::shared_directory::SharedDirectory;
 use crate::api::shared_file_info::SharedFileInfo;
 use crate::api::spam_marks::SpamMarks;
+use crate::api::update_status::UpdateStatus;
 use crate::api::upload_info::{BanInfo, UploadInfo};
 use crate::api::upload_priority::UploadPriority;
 use crate::config::app_directories::AppDirectories;
@@ -338,4 +339,19 @@ pub trait NjMuleEngine: Clone + Send + Sync + 'static {
 
     /// The files downloaded or hashed before, and those cancelled.
     fn file_history(&self) -> impl Future<Output = FileHistory> + Send;
+
+    /// What is known of new versions of njMule.
+    fn update_status(&self) -> UpdateStatus;
+
+    /// Looks for a new version now, or joins the check running.
+    fn check_for_update(&self) -> impl Future<Output = UpdateStatus> + Send;
+
+    /// Stops telling of `version`, unless it fixes a security problem; answers the status.
+    fn skip_update(&self, version: String) -> impl Future<Output = Result<UpdateStatus, String>> + Send;
+
+    /// Downloads the package of the available version, or joins the download running; why not when none can be.
+    fn download_update(&self) -> impl Future<Output = Result<UpdateStatus, String>> + Send;
+
+    /// Installs the version ready, now (`restart`) or when njMule exits; why not when none can be.
+    fn install_update(&self, restart: bool) -> impl Future<Output = Result<UpdateStatus, String>> + Send;
 }

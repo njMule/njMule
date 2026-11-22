@@ -22,3 +22,4 @@ kad/
 upnp/
 quic/
 utp/
+update/

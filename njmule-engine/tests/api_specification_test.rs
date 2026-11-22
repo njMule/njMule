@@ -14,11 +14,14 @@ use njmule_engine::api::search_request::Scope;
 use njmule_engine::api::upload_info::UploadState;
 use njmule_engine::api::upload_priority::UploadPriority;
 use njmule_engine::config::preferences::MAX_RATE_KIBPS;
+use njmule_engine::remote::api_json;
 use njmule_engine::remote::api_specification::{self, ApiSpecification};
 use njmule_engine::remote::remote_api;
 use njmule_engine::server::server_list::Priority;
 use serde_json::Value;
 use strum::VariantArray;
+
+use crate::api_samples;
 
 #[test]
 fn should_list_the_values_of_an_enum_of_the_engine() {
@@ -56,6 +59,15 @@ fn should_offer_the_search_scopes_of_the_engine_and_automatic() {
     test.when_the_values_are_read("/components/schemas/SearchScope/enum");
 
     test.then_they_are_the_names_of_the_scopes_and("automatic");
+}
+
+#[test]
+fn should_describe_every_event_of_the_stream() {
+    let mut test = Specification::new();
+
+    test.when_the_event_names_are_read();
+
+    test.then_they_are_the_names_of_the_samples_and("lost");
 }
 
 #[test]
@@ -159,6 +171,23 @@ impl Specification {
         };
     }
 
+    fn when_the_event_names_are_read(&mut self) {
+        let kinds = shipped().document().pointer("/components/schemas/EngineEvent/oneOf").unwrap().as_array().unwrap();
+        self.found = kinds
+            .iter()
+            .map(|kind| {
+                let target = kind["$ref"].as_str().unwrap().trim_start_matches('#');
+                shipped()
+                    .document()
+                    .pointer(&format!("{target}/properties/event/const"))
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect();
+    }
+
     fn when_a_request_is_routed(&mut self, segments: &[&str]) {
         let segments: Vec<String> = segments.iter().map(|segment| (*segment).to_owned()).collect();
         self.route = shipped().route(&segments).map(|route| route.path.clone());
@@ -176,6 +205,15 @@ impl Specification {
         let mut names: Vec<&str> = Scope::VARIANTS.iter().map(|scope| scope.name()).collect();
         names.push(more);
         assert_eq!(self.found, names);
+    }
+
+    fn then_they_are_the_names_of_the_samples_and(&self, more: &str) {
+        let mut names: Vec<&str> = api_samples::events().iter().map(|event| api_json::event(event).0).collect();
+        names.push(more);
+        names.sort_unstable();
+        let mut found = self.found.clone();
+        found.sort_unstable();
+        assert_eq!(found, names);
     }
 
     fn then_the_only_value_ends_with(&self, end: &str) {

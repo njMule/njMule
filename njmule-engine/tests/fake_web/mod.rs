@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex};
 use njmule_engine::update::git_hub_releases::{Fetcher, GitHubReleases, SIGNATURE_SUFFIX};
 use njmule_engine::update::package_download::{Progress, Transfer};
 use njmule_engine::update::update_manifest::FILE_NAME;
+use tokio::sync::watch;
 
 use crate::test_signing::TestSigning;
 
@@ -35,11 +36,19 @@ pub fn listing() -> String {
     format!("{API}/releases?per_page=10")
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct FakeWeb {
     bodies: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     asked: Arc<Mutex<Vec<String>>>,
     cut_after: Arc<Mutex<Option<u64>>>,
+    released: Arc<watch::Sender<bool>>,
+}
+
+impl Default for FakeWeb {
+    fn default() -> Self {
+        let (released, _) = watch::channel(true);
+        Self { bodies: Arc::default(), asked: Arc::default(), cut_after: Arc::default(), released: Arc::new(released) }
+    }
 }
 
 impl FakeWeb {
@@ -58,6 +67,15 @@ impl FakeWeb {
         *self.cut_after.lock().unwrap() = Some(bytes);
     }
 
+    /// Makes every fetch wait until [`Self::release`].
+    pub fn hold_fetches(&self) {
+        self.released.send_replace(false);
+    }
+
+    pub fn release(&self) {
+        self.released.send_replace(true);
+    }
+
     pub fn asked(&self) -> Vec<String> {
         self.asked.lock().unwrap().clone()
     }
@@ -70,6 +88,8 @@ impl FakeWeb {
 impl Fetcher for FakeWeb {
     async fn fetch(&self, url: &str) -> io::Result<Vec<u8>> {
         self.asked.lock().unwrap().push(url.to_owned());
+        let mut released = self.released.subscribe();
+        let _ = released.wait_for(|ready| *ready).await;
         let body = self.bodies.lock().unwrap().get(url).cloned();
         body.ok_or_else(|| io::Error::other(format!("HTTP 404 from {url}")))
     }

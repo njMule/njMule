@@ -4,16 +4,19 @@
 //! The `njmule` executable: runs the engine on a profile, logging to standard error and to the profile's `logs`
 //! folder, with the web interface its settings turn on. With `NJMULE_CONTROL_ENDPOINT=1` it serves the API on a
 //! loopback port, prints where on a `njmule-control` line, and stops when its standard input ends. With `--hash` it
-//! prints the eD2K links of files instead.
+//! prints the eD2K links of files instead; with `--apply-update` it applies a staged update plan once the processes
+//! given with `--wait` have ended.
 
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 use clap::Parser;
 use njmule_engine::api::ed2k_link::FileLink;
+use njmule_engine::api::engine_event::EngineEvent;
 use njmule_engine::api::nj_mule_info;
 use njmule_engine::config::app_directories::AppDirectories;
 use njmule_engine::engine::Engine;
@@ -23,8 +26,11 @@ use njmule_engine::remote::control_endpoint::ControlEndpoint;
 use njmule_engine::remote::live_web_ui::LiveWebUi;
 use njmule_engine::remote::remote_api::Exit;
 use njmule_engine::remote::web_ui_settings::WebUiSettings;
+use njmule_engine::update::hand_over::HandOver;
+use njmule_engine::update::launcher;
+use njmule_engine::update::update_helper;
 use tokio::io::AsyncReadExt;
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::{Notify, broadcast, mpsc};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 
@@ -32,6 +38,12 @@ use tracing_subscriber::fmt::writer::MakeWriterExt;
 const API_STOP_WAIT: Duration = Duration::from_secs(5);
 /// Days of logs kept: one file a day.
 const LOG_DAYS: usize = 14;
+/// How long a start waits for the njMule it replaces.
+const EXIT_WAIT: Duration = Duration::from_secs(60);
+const WAIT_POLL: Duration = Duration::from_millis(100);
+/// Exit code that asks systemd (`Restart=on-failure`) to start njMule again once a new version is in place.
+const EXIT_RESTART: u8 = 75;
+const WAIT_OPTION: &str = "--wait";
 
 #[derive(Parser)]
 #[command(name = "njmule", version = nj_mule_info::version(), about = "njMule, an eD2K and Kad client")]
@@ -46,10 +58,22 @@ struct Cli {
     /// Prints the ed2k link (with AICH hash) of each file and exits.
     #[arg(long, value_name = "FILE", num_args = 1..)]
     hash: Vec<PathBuf>,
+    /// Applies the update installation plan left by a previous njMule and exits.
+    #[arg(long, value_name = "PLAN")]
+    apply_update: Option<PathBuf>,
+    /// Waits for this process to end before starting or applying an update; may be repeated.
+    #[arg(long = "wait", value_name = "PID")]
+    wait: Vec<u32>,
 }
 
 fn main() -> ExitCode {
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
     let cli = Cli::parse();
+    if let Some(plan) = &cli.apply_update {
+        tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
+        let code = update_helper::UpdateHelper::install(plan, &cli.wait);
+        return ExitCode::from(u8::try_from(code).unwrap_or(1));
+    }
     if !cli.hash.is_empty() {
         tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
         return hash(&cli.hash);
@@ -62,15 +86,74 @@ fn main() -> ExitCode {
         }
     };
     log_to(&dirs);
+    await_end(&cli.wait);
     let switches = cli.switches;
     let outcome = tokio::runtime::Runtime::new().and_then(|runtime| runtime.block_on(run(dirs, switches)));
     match outcome {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(Some(install)) => hand_over(&install, &raw_args),
+        Ok(None) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("njmule: {e}");
             ExitCode::FAILURE
         }
     }
+}
+
+// Waits until the processes `pids` have ended, `EXIT_WAIT` at most in all: a start after an update finds the files
+// and the configuration of the njMule it replaces free only then.
+fn await_end(pids: &[u32]) {
+    if pids.is_empty() {
+        return;
+    }
+    let end = Instant::now().checked_add(EXIT_WAIT).unwrap_or_else(Instant::now);
+    for &pid in pids {
+        while launcher::is_running(pid) {
+            if Instant::now() >= end {
+                tracing::warn!("Process {pid} still runs after {} s: starting anyway", EXIT_WAIT.as_secs());
+                break;
+            }
+            thread::sleep(WAIT_POLL);
+        }
+    }
+}
+
+// Hands over a staged update once the engine has stopped: in place under systemd, or to an installer process.
+fn hand_over(install: &HandOver, args: &[String]) -> ExitCode {
+    if under_systemd() {
+        match install.install_here() {
+            Ok(_) => {
+                tracing::info!("{} {} is in place", nj_mule_info::NAME, install.version());
+                return if install.restart() { ExitCode::from(EXIT_RESTART) } else { ExitCode::SUCCESS };
+            }
+            Err(e) => {
+                tracing::error!("Cannot install {} {}: {e}", nj_mule_info::NAME, install.version());
+                return ExitCode::SUCCESS;
+            }
+        }
+    }
+    match install.start(&again(args)) {
+        Ok(()) => tracing::info!("Installing {} {} once this process has ended", nj_mule_info::NAME, install.version()),
+        Err(e) => tracing::error!("Cannot install {} {}: {e}", nj_mule_info::NAME, install.version()),
+    }
+    ExitCode::SUCCESS
+}
+
+fn under_systemd() -> bool {
+    std::env::var_os("INVOCATION_ID").is_some() && std::env::var_os("JOURNAL_STREAM").is_some()
+}
+
+// The arguments that start njMule again as `args` did, without what waited for an earlier process.
+fn again(args: &[String]) -> Vec<String> {
+    let mut kept = Vec::new();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == WAIT_OPTION {
+            let _ = iter.next();
+        } else if !arg.starts_with("--wait=") {
+            kept.push(arg.clone());
+        }
+    }
+    kept
 }
 
 // The link of each file, with its size, its part hashes and the speed it was hashed at.
@@ -123,15 +206,29 @@ fn log_to(dirs: &AppDirectories) {
     }
 }
 
-async fn run(dirs: AppDirectories, switches: Vec<String>) -> io::Result<()> {
+async fn run(dirs: AppDirectories, switches: Vec<String>) -> io::Result<Option<HandOver>> {
     tracing::debug!("Switches: {switches:?}");
     let config = dirs.config.clone();
     let engine = Engine::start_with(dirs, Switches::of(&switches)).await?;
     let control = std::env::var("NJMULE_CONTROL_ENDPOINT").is_ok_and(|value| value == "1");
-    // Asked for by the API, as the end of the input is by the starting process.
+    // Asked for by the API or by an update restart, as the end of the input is by the starting process.
     let exit = Arc::new(Notify::new());
     let asked = Arc::clone(&exit);
     let stop: Exit = Arc::new(move || asked.notify_one());
+    let mut events = engine.subscribe().live;
+    let restarting = Arc::clone(&exit);
+    let watcher = tokio::spawn(async move {
+        loop {
+            match events.recv().await {
+                Ok(EngineEvent::UpdateRestart(_)) => {
+                    restarting.notify_one();
+                    return;
+                }
+                Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                Err(broadcast::error::RecvError::Closed) => return,
+            }
+        }
+    });
     let web = Arc::new(LiveWebUi::new(engine.clone(), Some(Arc::clone(&stop))));
     web.apply(WebUiSettings::load(&config)).await;
     let endpoint = if control {
@@ -158,6 +255,7 @@ async fn run(dirs: AppDirectories, switches: Vec<String>) -> io::Result<()> {
         () = exit.notified() => {}
         _ = tokio::signal::ctrl_c() => {}
     }
+    watcher.abort();
     web.close().await;
     engine.stop().await;
     if let Some(endpoint) = endpoint
@@ -165,7 +263,7 @@ async fn run(dirs: AppDirectories, switches: Vec<String>) -> io::Result<()> {
     {
         tracing::warn!("The API did not stop in time");
     }
-    Ok(())
+    Ok(engine.update_hand_over())
 }
 
 // The starting process closes our standard input to stop us.

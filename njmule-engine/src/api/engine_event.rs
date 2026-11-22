@@ -9,8 +9,10 @@ use strum::{EnumDiscriminants, VariantArray};
 
 use crate::api::download_info::DownloadInfo;
 use crate::api::log_line::LogLine;
+use crate::api::new_version::NewVersion;
 use crate::api::search_result::SearchResult;
 use crate::api::server_info::ServerInfo;
+use crate::api::update_status::UpdateStatus;
 
 /// An event, of one of the kinds that `EventKind` lists.
 #[derive(Debug, Clone, PartialEq, Eq, EnumDiscriminants)]
@@ -93,4 +95,12 @@ pub enum EngineEvent {
         address: String,
         reason: String,
     },
+    /// What is known of new versions changed: a check or a download started, progressed or ended, or the user chose.
+    UpdateStatusChanged(UpdateStatus),
+    /// A check njMule ran on its own found a new version worth telling the user of; once a run for each.
+    UpdateAvailable(NewVersion),
+    /// The package of a new version is downloaded and checked: it can be installed.
+    UpdateReady(NewVersion),
+    /// njMule is to stop, install this version and start again, as the user or the night hours asked.
+    UpdateRestart(String),
 }
