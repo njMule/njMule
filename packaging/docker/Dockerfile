@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# The headless engine with its web interface, run as an unprivileged user: on amd64 the native
+# The headless engine with its web interface, run as an unprivileged user: on amd64 the Rust
 # njmule executable built fully static with musl, alone on an empty base (no libc, no shell, no
-# package manager); on arm64, where GraalVM builds no static executable, the glibc one on a
-# distroless base. From the repository root, for the platform of the machine that builds it:
+# package manager, plus CA certificates for TLS); on arm64 the glibc executable on a distroless
+# base. From the repository root, for the platform of the machine that builds it:
 #
 #   docker build -f packaging/docker/Dockerfile -t njmule .
 #
@@ -13,45 +13,47 @@
 # the build context "binary", a directory with amd64/njmule (static) and arm64/njmule, and builds
 # both platforms of the image from them.
 
-# native-image does not cross-compile: this stage runs on the platform of the image. On amd64 it
-# takes the musl toolchain GraalVM supports, checked against its SHA-256.
-FROM ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1@sha256:287f82eefd5d631865302df00a8555bcf80e3c0291da171fb7f72d594a542315 AS build
-ARG TARGETARCH
-ARG MUSL=musl-toolchain-1.2.5-oracle-00001-linux-amd64.tar.gz
-ARG MUSL_SHA256=77a60e1d31303f214e1c9d8e5843abcce2743a0c6f6b436e251f69a3161801ad
+FROM eclipse-temurin:25-jdk@sha256:ce2ef9d2d67a68de5e196d4de9d743327c44a10b57fe02ec39f572c652cacfd3 AS ui
 WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/root/.gradle,id=njmule-gradle,sharing=locked \
-    --mount=type=cache,target=/musl,id=njmule-musl,sharing=locked \
+    ./gradlew --no-daemon --console=plain :njmule-ui:compress
+
+FROM rust:1.99.1@sha256:8a4e90c7946b74626488b1446f712c0fe0ed1a596cbd3d871684bc9c5433ae07 AS build
+ARG TARGETARCH
+WORKDIR /src
+COPY . .
+COPY --from=ui /src/njmule-ui/build/shipped /src/njmule-ui/build/shipped
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=njmule-cargo-registry,sharing=locked \
+    --mount=type=cache,target=/src/njmule-engine/target,id=njmule-cargo-target,sharing=locked \
     set -eu; \
-    static=""; \
-    if [ "$TARGETARCH" = amd64 ]; then \
-        if ! echo "$MUSL_SHA256  /musl/$MUSL" | sha256sum --check --status; then \
-            curl -fsSL -o "/musl/$MUSL" "https://gds.oracle.com/download/bfs/archive/$MUSL"; \
-            echo "$MUSL_SHA256  /musl/$MUSL" | sha256sum --check; \
-        fi; \
-        mkdir -p /opt/musl && tar -C /opt/musl -xzf "/musl/$MUSL"; \
-        export PATH="/opt/musl/musl-toolchain/bin:$PATH"; \
-        static="-Pnative.static=musl"; \
-    fi; \
-    ./gradlew --no-daemon --console=plain :njmule-app:nativeCompile $static; \
     mkdir -p "/out/${TARGETARCH}"; \
-    cp njmule-app/build/native/nativeCompile/njmule "/out/${TARGETARCH}/njmule"
+    if [ "$TARGETARCH" = amd64 ]; then \
+        apt-get update -qq && apt-get install -y -qq --no-install-recommends musl-tools; \
+        rustup target add x86_64-unknown-linux-musl; \
+        CC_x86_64_unknown_linux_musl=musl-gcc cargo build --manifest-path njmule-engine/Cargo.toml \
+            --locked --release --target x86_64-unknown-linux-musl --bin njmule; \
+        cp njmule-engine/target/x86_64-unknown-linux-musl/release/njmule "/out/${TARGETARCH}/njmule"; \
+    else \
+        cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule; \
+        cp njmule-engine/target/release/njmule "/out/${TARGETARCH}/njmule"; \
+    fi
 
 FROM scratch AS binary
 COPY --from=build /out/ /
 
-# glibc and zlib (the executable links both), time zones and a passwd file; no shell, no package
-# manager.
+# glibc, CA certificates, time zones and a passwd file; no shell, no package manager.
 FROM gcr.io/distroless/base-debian13:latest@sha256:f5e95195e998742ff590b7569bae479accce1226e51ae6c3118954030121cdcb AS distroless
 
-# The static executable brings what it needs: certificates and time zones are in the image of Java
-# it was built from, and musl reads only the resolver files Docker mounts.
+# The static musl executable needs only the CA certificate bundle (taken from distroless) and the
+# resolver files Docker mounts.
 FROM scratch AS base-amd64
+COPY --from=distroless /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
 FROM distroless AS base-arm64
 
-# The user, its directories, /tmp and the notices (with those of musl and zlib, which the static
-# executable holds), prepared on the build platform: no emulation.
+# The user, its directories, /tmp and the notices (with musl's notice, which the static executable
+# holds), prepared on the build platform: no emulation.
 FROM --platform=${BUILDPLATFORM} busybox:1.38.0@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4 AS layout
 COPY --from=distroless /etc/passwd /etc/group /out/etc/
 COPY LICENSE NOTICE packaging/synology/licenses/musl-COPYRIGHT packaging/synology/licenses/zlib-LICENSE /out/doc/
