@@ -25,6 +25,7 @@ use crate::api::kad_search_info::KadSearchInfo;
 use crate::config::bind_interface::Binding;
 use crate::config::obfuscation_mode::ObfuscationMode;
 use crate::config::preferences::Preferences;
+use crate::config::proxy_settings::ProxySettings;
 use crate::download::download_manager::{KadCallback, KadLink, KadSource};
 use crate::engine::{Shared, crypt_options};
 use crate::files::comment_filter::CommentFilter;
@@ -1084,22 +1085,41 @@ impl Network {
         }
     }
 
-    /// The preferences changed: turning Kad off stops it, on starts it unless it was stopped by hand, and a new UDP
-    /// port moves it.
-    pub(super) fn kad_preferences(&mut self, was_enabled: bool, was_port: u16) {
+    /// The preferences changed: turning Kad off stops it, turning it on clears a manual stop and starts it, and a new
+    /// UDP or TCP port restarts a running node.
+    pub(super) fn kad_preferences(&mut self, was_enabled: bool, was_udp_port: u16, was_tcp_port: u16) {
         let now = self.preferences();
         if was_enabled && !now.kad_enabled {
             self.stop_kad();
             self.kad.port_taken = 0;
             return;
         }
-        if !now.kad_enabled || self.kad.stopped_by_hand {
+        if !was_enabled && now.kad_enabled {
+            self.kad.stopped_by_hand = false;
+        }
+        let ports_changed = was_udp_port != now.udp_port || was_tcp_port != now.tcp_port;
+        if self.kad.running.is_some() {
+            if ports_changed {
+                self.restart_kad();
+            }
             return;
         }
-        if self.kad.running.is_none() {
+        if now.kad_enabled && !self.kad.stopped_by_hand {
             self.start_kad();
-        } else if was_port != now.udp_port {
-            self.restart_kad();
+        }
+    }
+
+    /// Updates Kad's SOCKS5 UDP relay when the proxy preference changes.
+    pub(super) fn kad_follow_proxy(&mut self, proxy: ProxySettings) {
+        if let Some(running) = &self.kad.running {
+            running.relay.follow(proxy);
+        }
+    }
+
+    /// Asks Kad to recheck its firewall without emitting the manual-recheck log line.
+    pub(super) fn kad_recheck_firewall(&mut self) {
+        if let Some(running) = &mut self.kad.running {
+            running.node.recheck_firewall();
         }
     }
 

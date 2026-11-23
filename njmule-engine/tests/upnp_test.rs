@@ -89,6 +89,19 @@ async fn should_not_log_in_again_when_the_router_answers_late_to_a_high_id() {
     test.then_the_server_got_no_login_again().await;
 }
 
+#[tokio::test]
+async fn should_leave_no_mapping_behind_when_the_ports_change_twice_in_a_row() {
+    let mut test = Routing::new();
+    test.given_a_router().await;
+    test.given_an_engine_that_mapped_its_port_on_the_router().await;
+    let second = test.given_the_tcp_port_is_changed_twice_in_a_row().await;
+    test.given_the_router_is_asked_to_map_the_second_port(second).await;
+
+    test.when_the_engine_closes_and_a_second_passes().await;
+
+    test.then_every_port_mapped_is_unmapped_afterwards();
+}
+
 /// A gateway on the loopback, an engine that asks it, a server it logs in to, and the user's log as it came.
 struct Routing {
     profile: tempfile::TempDir,
@@ -143,6 +156,56 @@ impl Routing {
     async fn given_an_engine_that_mapped_its_port_on_the_router(&mut self) {
         self.when_an_engine_starts_with_upnp_on().await;
         assert!(until(|| self.gateway().actions_named("AddPortMapping").len() == 1).await);
+    }
+
+    async fn given_the_tcp_port_is_changed_twice_in_a_row(&self) -> u16 {
+        let first = free_port::free_port();
+        let second = free_port::free_port();
+        self.engine()
+            .change_preferences(&|p| {
+                let mut next = p.clone();
+                next.tcp_port = first;
+                Ok(next)
+            })
+            .unwrap();
+        let _ = self.engine().status().await;
+        self.engine()
+            .change_preferences(&|p| {
+                let mut next = p.clone();
+                next.tcp_port = second;
+                Ok(next)
+            })
+            .unwrap();
+        let _ = self.engine().status().await;
+        second
+    }
+
+    async fn given_the_router_is_asked_to_map_the_second_port(&self, second_port: u16) {
+        let needle = format!(">{second_port}<");
+        assert!(
+            until(|| self.gateway().actions_named("AddPortMapping").iter().any(|a| a.body.contains(&needle))).await
+        );
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+
+    async fn when_the_engine_closes_and_a_second_passes(&mut self) {
+        if let Some(engine) = self.engine.take() {
+            engine.stop().await;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+
+    fn then_every_port_mapped_is_unmapped_afterwards(&self) {
+        let adds = self.gateway().actions_named("AddPortMapping");
+        let deletes = self.gateway().actions_named("DeletePortMapping");
+        for add in adds {
+            let port = external_port(&add.body);
+            let needle = format!(">{port}<");
+            assert!(
+                deletes.iter().any(|d| d.at > add.at && d.body.contains(&needle)),
+                "port {port} was not unmapped after it was mapped"
+            );
+        }
     }
 
     // The loopback is no LAN address it filters.
@@ -247,6 +310,12 @@ impl Drop for Routing {
             tokio::spawn(async move { engine.stop().await });
         }
     }
+}
+
+fn external_port(body: &str) -> &str {
+    let start = body.find("<NewExternalPort>").expect("external port tag") + "<NewExternalPort>".len();
+    let end = body[start..].find("</NewExternalPort>").expect("closing external port tag");
+    &body[start..start + end]
 }
 
 async fn until(condition: impl Fn() -> bool) -> bool {

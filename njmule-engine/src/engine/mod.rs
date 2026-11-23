@@ -4,6 +4,7 @@
 //! The engine: one profile, its preferences and identity, the listening socket, the network side, and the events its
 //! front ends follow.
 
+pub mod address_watch;
 pub mod countries;
 pub mod default_lists;
 pub mod event_command_runner;
@@ -11,6 +12,7 @@ pub mod event_replay;
 mod import_target;
 pub(crate) mod instance_lock;
 pub mod ip_filter_lists;
+pub mod keep_awake;
 pub mod network;
 pub mod notifier;
 pub mod port_check;
@@ -465,7 +467,8 @@ impl Engine {
             switches.upnp,
             switches.default_lists,
             switches.automatic_connections,
-        )?;
+        )
+        .await?;
         engine.shared.tasks.lock().await.spawn(async move {
             let _ = network.await;
         });
