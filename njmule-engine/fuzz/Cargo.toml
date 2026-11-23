@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[package]
+name = "njmule-engine-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+njmule-engine = { path = ".." }
+
+# Standalone workspace so normal `cargo test` / `cargo clippy` on `njmule-engine`
+# does not require nightly or libFuzzer.
+[workspace]
+
+[[bin]]
+name = "packet_framing"
+path = "fuzz_targets/packet_framing.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tag_codec"
+path = "fuzz_targets/tag_codec.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "met_files"
+path = "fuzz_targets/met_files.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kad_messages"
+path = "fuzz_targets/kad_messages.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ed2k_link"
+path = "fuzz_targets/ed2k_link.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "search_parser"
+path = "fuzz_targets/search_parser.rs"
+test = false
+doc = false
+bench = false
