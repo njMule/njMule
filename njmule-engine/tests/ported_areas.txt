@@ -5,21 +5,25 @@
 # each with the packages under it. test_name_map_test wants a Rust twin for each of their Java test classes;
 # tools/engine_coverage.py wants each package's Rust line coverage at least that of its Java twin.
 
-protocol/
-files/hash/
-net/
-util/
-crypto/
+api/
 config/
+crypto/
+download/
+engine/
+files/
+kad/
+net/
+peer/
 persist/
+protocol/
+quic/
+remote/
 search/
 security/
 server/
-peer/
-download/
-upload/
-kad/
-upnp/
-quic/
-utp/
+social/
 update/
+upload/
+upnp/
+util/
+utp/

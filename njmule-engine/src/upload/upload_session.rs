@@ -298,7 +298,7 @@ impl UploadSession {
             }
             (protocol::EMULE, extended::AICHFILEHASHREQ) => {
                 let hash = client_messages::file_of(packet)?;
-                if let Some(master) = self.lookup(&hash, find).and_then(|file| file.aich_hash) {
+                if let Some(master) = find(&hash).and_then(|file| file.aich_hash) {
                     let mut out = PacketWriter::new();
                     out.hash16(&hash).bytes(&master);
                     self.link.send(Packet::written(protocol::EMULE, extended::AICHFILEHASHANS, out));

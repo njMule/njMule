@@ -25,6 +25,8 @@ pub struct Switches {
     pub default_lists: bool,
     /// Whether the engine connects to servers automatically at start and reconnects on drop.
     pub automatic_connections: bool,
+    /// Whether the engine probes and announces the computer's public IPv6 address.
+    pub ipv6: bool,
 }
 
 /// Where the router is looked for: nowhere, on this computer's networks, or at a UPnP search address of a test, looked
@@ -44,6 +46,8 @@ pub const UPNP_DISABLED: &str = "njmule.upnp.disabled";
 pub const UPDATE_DISABLED: &str = updates::DISABLED_PROPERTY;
 /// The switch that keeps a new profile from loading the shipped server and Kad bootstrap lists.
 pub const DEFAULT_LISTS_DISABLED: &str = default_lists::DISABLED_PROPERTY;
+/// The switch that keeps the engine from looking up and announcing the computer's public IPv6 address.
+pub const IPV6_DISABLED: &str = "njmule.ipv6.disabled";
 
 impl Switches {
     /// Nothing fetched from a third party on the engine's own.
@@ -54,6 +58,7 @@ impl Switches {
         updates: false,
         default_lists: false,
         automatic_connections: true,
+        ipv6: false,
     };
 
     /// The executable's: everything on, then off what the switches `NAME=VALUE` turn off. Switches the engine does
@@ -65,6 +70,7 @@ impl Switches {
             updates: true,
             default_lists: true,
             automatic_connections: true,
+            ipv6: true,
             ..Self::QUIET
         };
         for switch in switches {
@@ -77,9 +83,23 @@ impl Switches {
                 UPNP_DISABLED => on.upnp = Upnp::Off,
                 UPDATE_DISABLED => on.updates = false,
                 DEFAULT_LISTS_DISABLED => on.default_lists = false,
+                IPV6_DISABLED => on.ipv6 = false,
                 _ => {}
             }
         }
         on
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_turn_ipv6_off_when_the_switch_asks() {
+        const { assert!(!Switches::QUIET.ipv6) };
+        assert!(Switches::of(&[]).ipv6);
+        assert!(!Switches::of(&[format!("{IPV6_DISABLED}=true")]).ipv6);
+        assert!(Switches::of(&[format!("{IPV6_DISABLED}=false")]).ipv6);
     }
 }

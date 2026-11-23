@@ -278,6 +278,12 @@ impl UploadManager {
         }
     }
 
+    /// Updates the manager's settings immediately so commands like setting the friend slot take effect before the next
+    /// tick.
+    pub fn set_settings(&mut self, settings: Settings) {
+        self.settings = settings;
+    }
+
     /// Where our comments of the shared files come from; without it a client hears none.
     pub fn set_comments(&mut self, comments: impl Fn(&[u8; 16]) -> Option<FileComment> + Send + 'static) {
         self.comments = Box::new(comments);
