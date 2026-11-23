@@ -23,7 +23,6 @@ use lettre::transport::smtp::extension::ClientId;
 use reqwest::Client;
 use reqwest::header::CONTENT_TYPE;
 use rustls::pki_types::ServerName;
-use rustls_platform_verifier::BuilderVerifierExt;
 use serde_json::json;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::TcpStream;
@@ -277,13 +276,9 @@ async fn deliver(routes: &Routes, n: &Notifications, message: &Message) -> Resul
     Ok(())
 }
 
-// TLS from the start, the server's certificate checked against the system's, as for the other connections.
+// TLS from the start, the server's certificate checked against the system's (or bundled roots), as for HTTP.
 async fn tls(stream: TcpStream, host: &str) -> Result<TlsStream<TcpStream>, String> {
-    let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-        .with_safe_default_protocol_versions()
-        .and_then(BuilderVerifierExt::with_platform_verifier)
-        .map_err(|e| e.to_string())?
-        .with_no_client_auth();
+    let config = http_route::tls_client_config().map_err(|e| e.to_string())?;
     let name = ServerName::try_from(host.trim_start_matches('[').trim_end_matches(']').to_owned())
         .map_err(|e| format!("Not a server name: {host} ({e})"))?;
     TlsConnector::from(Arc::new(config)).connect(name, stream).await.map_err(|e| e.to_string())
