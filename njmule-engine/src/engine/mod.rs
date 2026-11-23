@@ -459,16 +459,7 @@ impl Engine {
         let commands = engine.shared.preferences.subscribe();
         let runner = EventCommandRunner::create(move || commands.borrow().event_commands.clone());
         engine.shared.tasks.lock().await.spawn(tell(engine.subscribe().live, runner, notifier));
-        let network = network::start(
-            shared,
-            commands_out,
-            udp,
-            listener,
-            switches.upnp,
-            switches.default_lists,
-            switches.automatic_connections,
-        )
-        .await?;
+        let network = network::start(shared, commands_out, udp, listener, switches).await?;
         engine.shared.tasks.lock().await.spawn(async move {
             let _ = network.await;
         });

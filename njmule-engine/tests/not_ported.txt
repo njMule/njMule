@@ -51,6 +51,12 @@ KnownFoldersTest
 DefaultGatewayTest
 # Runs tools/UpdateManifest.java, the release's Java tool that writes the update manifest.
 UpdateManifestToolTest
+# Rust represents 16- and 20-byte hashes as `[u8; 16]` / `[u8; 20]` with `data_encoding`, with no wrapper classes.
+Hash16Test
+Hash20Test
+# Java's custom single-threaded event loop and process-global routing hooks; Rust drives the engine on a Tokio task with per-engine Routes.
+EngineLoopTest
+EngineRoutesTest
 
 # Ed2kLinkTest: not ported yet.
 Ed2kLinkTest.shouldDropAnIpv6SourceWithAZoneIdButKeepTheLink
@@ -121,3 +127,15 @@ NetworkCommandsTest.shouldIgnoreTheEndOfTheEventStream
 # Java only: Rust processes have no Thread.interrupt() flag; graceful stop is covered via stdin EOF and --exit.
 MainTest.shouldFailAnInterruptedCommandAndStillUnlockTheConfiguration
 MainTest.shouldStopAnInterruptedRunAndStillUnlockTheConfiguration
+# Java only: Rust's Engine::start opens and starts Network atomically (no pre-start or post-close Network state,
+# no direct network.datagram() hook, and late UPnP router discovery is covered in upnp_test).
+NetworkTest.shouldRefuseToShareAFolderBeforeTheStart
+NetworkTest.shouldRefuseToUnshareAFolderBeforeTheStart
+NetworkTest.shouldRefuseToAddKnownFilesBeforeTheStart
+NetworkTest.shouldRenameNoSharedFileBeforeTheStart
+NetworkTest.shouldPrioritiseNoSharedFileBeforeTheStart
+NetworkTest.shouldShareNothingBeforeTheStart
+NetworkTest.shouldIgnoreSettingsChangedBeforeTheStart
+NetworkTest.shouldIgnoreSettingsChangedAfterTheEnd
+NetworkTest.shouldDropADatagramThatIsNoAnswer
+NetworkTest.shouldDropADatagramThatCannotBeRead

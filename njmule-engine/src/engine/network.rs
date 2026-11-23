@@ -58,7 +58,7 @@ use crate::engine::ip_filter_lists;
 use crate::engine::keep_awake::KeepAwake;
 use crate::engine::port_check::PortCheck;
 use crate::engine::scheduler::{self, Change, Scheduler};
-use crate::engine::switches::Upnp;
+use crate::engine::switches::Switches;
 use crate::engine::totals::{self, Totals};
 use crate::engine::{ServerContext, Shared};
 use crate::files::cancelled_files::{self, CancelledFiles};
@@ -504,6 +504,7 @@ pub struct Network {
     kad: KadSide,
     default_lists: bool,
     automatic_connections: bool,
+    probe_ipv6: bool,
 }
 
 /// Starts the network side; it runs until it is asked to stop.
@@ -512,9 +513,7 @@ pub async fn start(
     commands: mpsc::UnboundedReceiver<Command>,
     udp: Option<UdpSocket>,
     listener: Option<TcpListener>,
-    upnp: Upnp,
-    default_lists: bool,
-    automatic_connections: bool,
+    switches: Switches,
 ) -> io::Result<JoinHandle<()>> {
     let dirs = &shared.dirs;
     let server_met = dirs.config.join(server_list::FILE_NAME);
@@ -604,7 +603,7 @@ pub async fn start(
     let blocked = filter::ip_test(&ip_filter);
     servers.filter(move |ip| blocked(ip) || (lan.borrow().filter_lan_addresses && server_list::is_lan(ip)));
     // A profile that never had a server list starts from the shipped one; an emptied list stays empty.
-    if new_profile && default_lists {
+    if new_profile && switches.default_lists {
         servers.add_all(default_lists::servers());
     }
     let mut random = StdRng::from_rng(&mut rand::rng());
@@ -641,7 +640,7 @@ pub async fn start(
     let credits = Credits::load(&dirs.config, credits::system_clock());
     let history = ClientHistory::load(&dirs.config, now_seconds());
     let totals = Totals::load(&dirs.config.join(totals::FILE_NAME));
-    let our_ipv6 = public_ipv6::find(&shared.routes);
+    let our_ipv6 = if switches.ipv6 { public_ipv6::find(&shared.routes) } else { None };
     shared.set_our_ipv6(our_ipv6);
     // The guard's clock.
     let started = Instant::now();
@@ -734,9 +733,10 @@ pub async fn start(
         link_events: links_in,
         peer_events: peers_in,
         kad: KadSide::new(kad_in),
-        upnp: forwarding::Upnp::new(upnp),
-        default_lists,
-        automatic_connections,
+        upnp: forwarding::Upnp::new(switches.upnp),
+        default_lists: switches.default_lists,
+        automatic_connections: switches.automatic_connections,
+        probe_ipv6: switches.ipv6,
     };
     network.shares.wire(&mut network.uploads);
     network.uploads.set_comments(network.comments_of());
@@ -1146,6 +1146,8 @@ impl Network {
             Command::RemoveFriend(user_hash, answer) => {
                 if self.friend_slot == Some(user_hash) {
                     self.friend_slot = None;
+                    let preferences = self.preferences();
+                    self.uploads.set_settings(upload_settings(&preferences, self.friend_slot));
                 }
                 let removed = self.friends.remove(&user_hash);
                 let _ = answer.send(removed.map_err(|e| format!("Cannot save the friends: {e}")));
@@ -1157,6 +1159,8 @@ impl Network {
                 let given = friend.is_none_or(|friend| self.friends.contains(&friend));
                 if given {
                     self.friend_slot = friend;
+                    let preferences = self.preferences();
+                    self.uploads.set_settings(upload_settings(&preferences, self.friend_slot));
                 }
                 let _ = answer.send(given);
             }
@@ -1736,7 +1740,7 @@ impl Network {
 
     // When we move, the server or Kad sees the new address first; the other one has to look again.
     fn watch_address(&mut self) {
-        let ipv6 = public_ipv6::find(&self.shared.routes);
+        let ipv6 = if self.probe_ipv6 { public_ipv6::find(&self.shared.routes) } else { None };
         if ipv6 != self.our_ipv6 {
             let moved = self.our_ipv6.is_some() && ipv6.is_some();
             self.our_ipv6 = ipv6;
@@ -2845,7 +2849,10 @@ impl Network {
                 .filter(|ip| *ip != 0)
                 .map(|ip| Ipv4Addr::from(ip).to_string())
                 .unwrap_or_default(),
-            tcp_port: self.shared.listen_port(),
+            tcp_port: match self.shared.listen_port() {
+                0 => self.preferences().tcp_port,
+                port => port,
+            },
             related_search: id.is_some_and(|id| id.has(server_messages::TCP_RELATED_SEARCH)),
             missing_interface: match &self.binding {
                 Binding::Missing(choice) => Some(choice.clone()),

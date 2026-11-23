@@ -12,7 +12,8 @@ use std::net::{Ipv4Addr, SocketAddr};
 use njmule_engine::peer::peer_link::LinkId;
 use njmule_engine::protocol::ed2k::chat_messages;
 use njmule_engine::protocol::ed2k::hello::{Hello, Ours};
-use njmule_engine::protocol::packet::Packet;
+use njmule_engine::protocol::packet::opcodes::{client, extended};
+use njmule_engine::protocol::packet::{Packet, protocol};
 use njmule_engine::social::chat_filter::ChatFilter;
 use njmule_engine::social::messaging::{Action, ChatEvent, Judge, Messaging};
 
@@ -256,4 +257,55 @@ fn from() -> SocketAddr {
 fn hello(user_hash: [u8; 16], port: u16) -> Hello {
     let ours = Ours { nick: "them", udp_port: 0, kad_port: 0, misc_options1: 0, misc_options2: 0 };
     Hello::of(user_hash, 0, port, &ours, 0, 0)
+}
+
+#[test]
+fn should_ignore_bad_packets_and_unexpected_connections() {
+    let mut messaging = Messaging::default();
+    let addr = SocketAddr::from((Ipv4Addr::new(10, 0, 0, 11), 4662));
+    let filter = ChatFilter::new(false, &[], false);
+    let no_friends = |_: &[u8; 16]| false;
+    let judge = Judge { filter: &filter, friends: &no_friends };
+
+    // Not connecting: rejected and unreachable on an unknown peer is a no-op.
+    assert!(!messaging.connected(addr, 1));
+    messaging.unreachable(addr, "no route");
+    assert!(messaging.take_events().is_empty());
+
+    // Own connection opened: bad hello answer and unknown link are ignored.
+    messaging.send(addr, "hi");
+    assert_eq!(messaging.take_actions(), vec![Action::Connect(addr)]);
+    assert!(messaging.connected(addr, 1));
+    messaging.own_packet(99, &Packet::of(protocol::EDONKEY, client::HELLOANSWER, vec![]), &judge);
+    messaging.own_packet(1, &Packet::of(protocol::EDONKEY, client::HELLOANSWER, vec![0x01]), &judge);
+    assert!(messaging.take_actions().is_empty());
+
+    // Valid hello answer flushes the pending message.
+    let peer = hello(PAL, 4662);
+    messaging.own_packet(1, &peer.encode(true).unwrap(), &judge);
+    assert_eq!(messaging.take_actions().len(), 1);
+
+    // Malformed message, malformed CAPTCHA, and malformed CAPTCHA result produce no events.
+    messaging.own_packet(1, &Packet::of(protocol::EDONKEY, client::MESSAGE, vec![0xFF, 0xFF]), &judge);
+    messaging.own_packet(1, &Packet::of(protocol::EMULE, extended::CHATCAPTCHAREQ, vec![]), &judge);
+    messaging.own_packet(1, &Packet::of(protocol::EMULE, extended::CHATCAPTCHARES, vec![]), &judge);
+    assert!(messaging.take_events().is_empty());
+
+    // Non-chat incoming packet returns false; unasked CAPTCHA on a new peer is ignored.
+    let other = hello(SPAMMER, 4663);
+    assert!(!messaging.incoming(
+        from(),
+        &other,
+        false,
+        2,
+        &Packet::of(protocol::EDONKEY, client::HELLO, vec![]),
+        &judge
+    ));
+    let captcha = Packet::of(protocol::EMULE, extended::CHATCAPTCHAREQ, vec![0, 1, 2, 3]);
+    assert!(messaging.incoming(from(), &other, false, 2, &captcha, &judge));
+    assert!(messaging.take_events().is_empty());
+
+    // Closing an own connection with nothing pending cleans up cleanly.
+    messaging.closed(1);
+    assert_eq!(messaging.conversations(), 1);
 }
