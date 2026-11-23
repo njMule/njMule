@@ -543,6 +543,46 @@ fn should_report_the_links_that_cannot_be_followed() {
     lab.then_the_exit_code_is(EXIT_OK);
 }
 
+#[test]
+fn should_exit_cleanly_while_control_stdin_stays_open_and_log_stopping() {
+    let mut lab = Lab::new();
+    lab.given_an_instance_started_with_control(&["--config-dir", &lab.dir_str()]);
+    lab.given_the_instance_has_printed("njmule-control ");
+
+    lab.when_run_with(&["--config-dir", &lab.dir_str(), "--exit"]);
+
+    lab.then_the_exit_code_is(EXIT_OK);
+    lab.then_the_background_instance_ended_with(EXIT_OK);
+    let logs = fs::read_dir(lab.dir.path().join("logs"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter_map(|e| fs::read_to_string(e.path()).ok())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(logs.contains("Stopping njMule"), "expected 'Stopping njMule' in logs:\n{logs}");
+}
+
+#[cfg(unix)]
+#[test]
+fn should_exit_with_143_and_log_stopping_on_sigterm() {
+    let mut lab = Lab::new();
+    lab.given_an_instance_started_with_control(&["--config-dir", &lab.dir_str()]);
+    lab.given_the_instance_has_printed("njmule-control ");
+
+    let pid = lab.running.as_ref().unwrap().child.id().to_string();
+    let status = Command::new("kill").args(["-TERM", &pid]).status().unwrap();
+    assert!(status.success(), "kill -TERM failed");
+
+    lab.then_the_background_instance_ended_with(143);
+    let logs = fs::read_dir(lab.dir.path().join("logs"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter_map(|e| fs::read_to_string(e.path()).ok())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(logs.contains("Stopping njMule"), "expected 'Stopping njMule' in logs:\n{logs}");
+}
+
 fn handoff_path() -> String {
     format!("config/{}", link_handoff::FILE_NAME)
 }

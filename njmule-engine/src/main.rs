@@ -5,7 +5,7 @@
 //! folder, with the web interface its settings turn on. With `NJMULE_CONTROL_ENDPOINT=1` it serves the API on a
 //! loopback port, prints where on a `njmule-control` line, and stops when its standard input ends.
 
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -38,8 +38,7 @@ use njmule_engine::remote::web_ui_settings::WebUiSettings;
 use njmule_engine::server::server_list::Address;
 use njmule_engine::update::hand_over::HandOver;
 use njmule_engine::update::update_helper::UpdateHelper;
-use tokio::io::AsyncReadExt;
-use tokio::sync::{Notify, broadcast, mpsc};
+use tokio::sync::{Notify, broadcast, mpsc, oneshot};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::writer::MakeWriterExt;
@@ -55,6 +54,8 @@ const LOG_DAYS: usize = 14;
 const EXIT_USAGE: u8 = 2;
 /// What `--check-update` returns when a newer version is out, as package managers do.
 const EXIT_UPDATE_AVAILABLE: u8 = 100;
+/// Exit code after a clean shutdown on SIGTERM (128 + 15), matching systemd `SuccessExitStatus=143` and Docker.
+const EXIT_SIGTERM: i32 = 143;
 const API_TOKEN_VARIABLE: &str = "NJMULE_API_TOKEN";
 const REMOTE_SEARCH_WAIT: Duration = Duration::from_secs(10);
 const CHECK_UPDATE_WAIT: Duration = Duration::from_secs(4 * 60);
@@ -608,7 +609,7 @@ async fn run(
         let code = tokio::select! {
             code = network_commands::run(&engine, &tasks, &mut out, &mut err) => code,
             _ = tokio::signal::ctrl_c() => 1,
-            () = terminate_signal() => 1,
+            () = terminate_signal() => EXIT_SIGTERM,
         };
         engine.stop().await;
         return Ok(RunOutcome::Code(code));
@@ -697,12 +698,13 @@ async fn run(
             }
         }
     });
-    tokio::select! {
-        () = end_of_input(), if control => {}
-        () = exit.notified() => {}
-        _ = tokio::signal::ctrl_c() => {}
-        () = terminate_signal() => {}
-    }
+    let stdin_eof = control.then(watch_stdin_eof);
+    let terminated = tokio::select! {
+        () = await_eof(stdin_eof), if control => false,
+        () = exit.notified() => false,
+        _ = tokio::signal::ctrl_c() => false,
+        () = terminate_signal() => true,
+    };
     watcher.abort();
     handoff_task.abort();
     drop(handoff);
@@ -715,6 +717,7 @@ async fn run(
     engine.stop().await;
     Ok(match engine.update_hand_over() {
         Some(install) => RunOutcome::HandOver(Box::new(install)),
+        None if terminated => RunOutcome::Code(EXIT_SIGTERM),
         None => RunOutcome::Code(0),
     })
 }
@@ -772,11 +775,27 @@ async fn follow(engine: &Engine, link: Ed2kLink) {
     }
 }
 
-// The starting process closes our standard input to stop us.
-async fn end_of_input() {
-    let mut input = tokio::io::stdin();
-    let mut ignored = [0u8; 256];
-    while let Ok(1..) = input.read(&mut ignored).await {}
+// The starting process closes our standard input to stop us. Read on a detached OS thread rather than
+// `tokio::io::stdin()` so shutting down via `--exit`, SIGTERM or an update restart never hangs waiting for the Tokio
+// blocking pool while a parent process still holds stdin open.
+fn watch_stdin_eof() -> oneshot::Receiver<()> {
+    let (tx, rx) = oneshot::channel();
+    let _ = std::thread::Builder::new().name("njmule-stdin".to_owned()).spawn(move || {
+        let mut input = io::stdin();
+        let mut ignored = [0u8; 256];
+        while let Ok(1..) = input.read(&mut ignored) {}
+        let _ = tx.send(());
+    });
+    rx
+}
+
+async fn await_eof(rx: Option<oneshot::Receiver<()>>) {
+    match rx {
+        Some(rx) => {
+            let _ = rx.await;
+        }
+        None => std::future::pending::<()>().await,
+    }
 }
 
 // SIGTERM on Unix stops njMule cleanly so systemd, Docker and uninstallers let it save first.

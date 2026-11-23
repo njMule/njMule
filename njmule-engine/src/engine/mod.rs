@@ -1021,6 +1021,7 @@ impl Engine {
     /// Stops the network side, which saves what it keeps, and the listening, and waits for the tasks to end; then
     /// another engine may start on the configuration.
     pub async fn stop(&self) {
+        tracing::info!("Stopping {}", nj_mule_info::NAME);
         self.publish(EngineEvent::Stopping);
         self.shared.updates.close();
         let _ = self.ask(Command::Stop).await;
