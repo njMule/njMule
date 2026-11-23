@@ -69,6 +69,7 @@ jobs:
               run: |
                   channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
                   rustup toolchain install "$channel" --profile minimal
+                  rustup default "$channel"
             - name: Build the interface, the desktop window, the service and the engine
               shell: bash
               run: |
@@ -197,6 +198,7 @@ jobs:
               run: |
                   channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
                   rustup toolchain install "$channel" --profile minimal
+                  rustup default "$channel"
             - name: Build the interface, the desktop window and the engine
               run: |
                   ./gradlew :njmule-ui:compress :njmule-desktop:shell
@@ -258,6 +260,7 @@ jobs:
                   sudo apt-get install -y -qq --no-install-recommends musl-tools
                   channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
                   rustup toolchain install "$channel" --profile minimal --target x86_64-unknown-linux-musl
+                  rustup default "$channel"
             - name: Build the interface and the static executable
               run: |
                   ./gradlew :njmule-ui:compress
@@ -478,6 +481,7 @@ jobs:
               run: |
                   channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
                   rustup toolchain install "$channel" --profile minimal
+                  rustup default "$channel"
             - name: Build the interface, the desktop window and the engine
               run: |
                   ./gradlew :njmule-ui:compress :njmule-desktop:shell
@@ -575,6 +579,7 @@ jobs:
               run: |
                   channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
                   rustup toolchain install "$channel" --profile minimal
+                  rustup default "$channel"
             - name: Fetch the packages and their update information
               env:
                   GH_TOKEN: ${{ github.token }}
@@ -654,6 +659,7 @@ jobs:
               run: |
                   channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
                   rustup toolchain install "$channel" --profile minimal
+                  rustup default "$channel"
             - name: Fetch the packages and their update information
               env:
                   GH_TOKEN: ${{ github.token }}
@@ -702,6 +708,7 @@ jobs:
               run: |
                   channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
                   rustup toolchain install "$channel" --profile minimal
+                  rustup default "$channel"
             - name: Fetch the packages and their update information
               env:
                   GH_TOKEN: ${{ github.token }}

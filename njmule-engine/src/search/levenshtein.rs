@@ -7,5 +7,7 @@
 pub fn distance(a: &str, b: &str) -> usize {
     let a: Vec<u16> = a.encode_utf16().collect();
     let b: Vec<u16> = b.encode_utf16().collect();
-    strsim::generic_levenshtein(&a, &b)
+    // Pin the iterator types explicitly: on macOS, objc2's blanket IntoIterator impls on Retained otherwise trigger
+    // a trait-solver recursion overflow (E0275) when inferring the parameters of generic_levenshtein.
+    strsim::generic_levenshtein::<Vec<u16>, Vec<u16>, &u16, &u16>(&a, &b)
 }
