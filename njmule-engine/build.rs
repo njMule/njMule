@@ -9,11 +9,16 @@ use std::fs;
 fn main() {
     let file = "../gradle.properties";
     println!("cargo::rerun-if-changed={file}");
-    let text = fs::read_to_string(file).unwrap_or_default();
-    let version = text
-        .lines()
-        .find_map(|line| line.strip_prefix("version=").map(str::trim))
-        .filter(|version| !version.is_empty())
-        .unwrap_or(env!("CARGO_PKG_VERSION"));
+    println!("cargo::rerun-if-changed=../njmule-ui/build/shipped");
+    println!("cargo::rerun-if-env-changed=NJMULE_VERSION");
+    let override_version = std::env::var("NJMULE_VERSION").ok().map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+    let version = override_version.unwrap_or_else(|| {
+        let text = fs::read_to_string(file).unwrap_or_default();
+        text.lines()
+            .find_map(|line| line.strip_prefix("version=").map(str::trim))
+            .filter(|version| !version.is_empty())
+            .unwrap_or(env!("CARGO_PKG_VERSION"))
+            .to_owned()
+    });
     println!("cargo::rustc-env=NJMULE_VERSION={version}");
 }
