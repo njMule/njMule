@@ -41,7 +41,10 @@ use njmule_engine::update::update_helper::UpdateHelper;
 use tokio::io::AsyncReadExt;
 use tokio::sync::{Notify, broadcast, mpsc};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::writer::MakeWriterExt;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::reload;
 
 /// How long the API may take to finish the calls it is answering when the engine stops.
 const API_STOP_WAIT: Duration = Duration::from_secs(5);
@@ -90,11 +93,11 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Action::Hash => {
-            tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
+            init_console_log(cli.log_level.as_deref().unwrap_or("INFO"));
             hash(&cli.files)
         }
         Action::ApplyUpdate => {
-            tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
+            init_console_log(cli.log_level.as_deref().unwrap_or("INFO"));
             let Some(plan) = &cli.apply_update else {
                 return ExitCode::FAILURE;
             };
@@ -225,13 +228,25 @@ fn run_action(cli: &LaunchOptions, raw_args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     }
-    log_to(&dirs);
+    if let Err(e) = dirs.create_all() {
+        eprintln!("Cannot start {}: {e}", nj_mule_info::NAME);
+        return ExitCode::FAILURE;
+    }
+    let log_filter = log_to(&dirs, parse_log_level(cli.log_level.as_deref().unwrap_or("INFO")));
     let start_arguments = cli.config_dir.as_ref().map_or_else(Vec::new, |dir| {
         let absolute = std::path::absolute(dir).unwrap_or_else(|_| dir.clone());
         vec!["--config-dir".to_owned(), absolute.to_string_lossy().into_owned()]
     });
     let outcome = tokio::runtime::Runtime::new().and_then(|runtime| {
-        runtime.block_on(run(dirs, cli.switches.clone(), cli.network.clone(), cli.links.clone(), start_arguments))
+        runtime.block_on(run(
+            dirs,
+            cli.switches.clone(),
+            cli.network.clone(),
+            cli.links.clone(),
+            start_arguments,
+            cli.log_level.clone(),
+            log_filter,
+        ))
     });
     match outcome {
         Ok(RunOutcome::Code(code)) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
@@ -318,6 +333,7 @@ fn remote_action(cli: &LaunchOptions) -> ExitCode {
 }
 
 fn check_update_action(cli: &LaunchOptions) -> ExitCode {
+    init_console_log(cli.log_level.as_deref().unwrap_or("ERROR"));
     let dirs = match resolve_dirs(cli) {
         Ok(dirs) => dirs,
         Err(code) => return code,
@@ -329,7 +345,8 @@ fn check_update_action(cli: &LaunchOptions) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let switches = Switches::of(&cli.switches);
+    let mut switches = Switches::of(&cli.switches);
+    switches.automatic_connections = false;
     let status = runtime.block_on(async {
         let engine = Engine::start_with(dirs, switches).await.map_err(|e| format!("start:{e}"))?;
         let checked = tokio::time::timeout(CHECK_UPDATE_WAIT, engine.check_for_update()).await;
@@ -362,6 +379,7 @@ fn check_update_action(cli: &LaunchOptions) -> ExitCode {
 }
 
 fn update_action(cli: &LaunchOptions) -> ExitCode {
+    init_console_log(cli.log_level.as_deref().unwrap_or("ERROR"));
     let dirs = match resolve_dirs(cli) {
         Ok(dirs) => dirs,
         Err(code) => return code,
@@ -373,7 +391,8 @@ fn update_action(cli: &LaunchOptions) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let switches = Switches::of(&cli.switches);
+    let mut switches = Switches::of(&cli.switches);
+    switches.automatic_connections = false;
     let mut out = io::stdout();
     let mut err = io::stderr();
     runtime.block_on(async {
@@ -514,9 +533,31 @@ fn link(file: &Path) -> io::Result<(FileLink, usize)> {
     Ok((link, hashes.ed2k.part_hashes().len()))
 }
 
+type LogFilterHandle = reload::Handle<LevelFilter, tracing_subscriber::Registry>;
+
+fn parse_log_level(level: &str) -> LevelFilter {
+    match level.trim().to_ascii_uppercase().as_str() {
+        "TRACE" => LevelFilter::TRACE,
+        "DEBUG" => LevelFilter::DEBUG,
+        "WARN" => LevelFilter::WARN,
+        "ERROR" => LevelFilter::ERROR,
+        "OFF" => LevelFilter::OFF,
+        _ => LevelFilter::INFO,
+    }
+}
+
+fn init_console_log(level: &str) {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(parse_log_level(level))
+        .with_writer(io::stderr)
+        .with_ansi(false)
+        .try_init();
+}
+
 // Standard error, and a file a day in the profile's logs folder, where the desktop window points the user; without the
 // file, standard error alone.
-fn log_to(dirs: &AppDirectories) {
+fn log_to(dirs: &AppDirectories, initial: LevelFilter) -> LogFilterHandle {
+    let (filter, handle) = reload::Layer::new(initial);
     let file = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
         .filename_prefix("njmule")
@@ -524,12 +565,17 @@ fn log_to(dirs: &AppDirectories) {
         .max_log_files(LOG_DAYS)
         .build(&dirs.logs);
     match file {
-        Ok(file) => tracing_subscriber::fmt().with_writer(io::stderr.and(file)).with_ansi(false).init(),
+        Ok(file) => {
+            let layer = tracing_subscriber::fmt::layer().with_writer(io::stderr.and(file)).with_ansi(false);
+            let _ = tracing_subscriber::registry().with(filter).with(layer).try_init();
+        }
         Err(e) => {
-            tracing_subscriber::fmt().with_writer(io::stderr).with_ansi(false).init();
+            let layer = tracing_subscriber::fmt::layer().with_writer(io::stderr).with_ansi(false);
+            let _ = tracing_subscriber::registry().with(filter).with(layer).try_init();
             tracing::warn!("Cannot log to {}: {e}", dirs.logs.display());
         }
     }
+    handle
 }
 
 async fn run(
@@ -538,10 +584,24 @@ async fn run(
     tasks: NetworkTasks,
     initial_links: Vec<Ed2kLink>,
     start_arguments: Vec<String>,
+    cli_log_level: Option<String>,
+    log_filter: LogFilterHandle,
 ) -> io::Result<RunOutcome> {
     tracing::debug!("Switches: {switches:?}");
     let config = dirs.config.clone();
-    let engine = Engine::start_with(dirs, Switches::of(&switches)).await?;
+    let logs = dirs.logs.clone();
+    let mut parsed_switches = Switches::of(&switches);
+    if tasks.is_one_shot() {
+        parsed_switches.automatic_connections = false;
+    }
+    let engine = Engine::start_with(dirs, parsed_switches).await?;
+    let effective_level = if tasks.is_one_shot() && cli_log_level.is_none() {
+        "ERROR".to_owned()
+    } else {
+        cli_log_level.unwrap_or_else(|| engine.preferences().log_level)
+    };
+    let _ = log_filter.reload(parse_log_level(&effective_level));
+    tracing::info!("Configuration in {}, logs in {}", config.display(), logs.display());
     if tasks.is_one_shot() {
         let mut out = io::stdout();
         let mut err = io::stderr();
@@ -610,7 +670,7 @@ async fn run(
         None
     };
     for link in initial_links {
-        follow(&engine, link).await;
+        spawn_follow(engine.clone(), link);
     }
     let (handed_tx, mut handed_rx) = mpsc::unbounded_channel::<Vec<String>>();
     let handoff = match LinkHandoff::listen_headless(&config, true, move |links| {
@@ -632,7 +692,7 @@ async fn run(
             }
             for text in links {
                 if let Ok(parsed) = Ed2kLink::parse(&text) {
-                    follow(&handoff_engine, parsed).await;
+                    spawn_follow(handoff_engine.clone(), parsed);
                 }
             }
         }
@@ -660,7 +720,32 @@ async fn run(
 }
 
 // A file link downloads, a server link adds the server, a server list or nodes.dat link takes the servers or the Kad
-// contacts at its address.
+// contacts at its address. Each link runs in its own task so an unreachable list never holds back startup or shutdown.
+fn spawn_follow(engine: Engine, link: Ed2kLink) {
+    match &link {
+        Ed2kLink::ServerList(list) => {
+            if let Err(e) = url::Url::parse(&list.url) {
+                eprintln!("Cannot follow {}: {e}", link.to_uri());
+                return;
+            }
+        }
+        Ed2kLink::NodesList(list) => {
+            if let Err(e) = url::Url::parse(&list.url) {
+                eprintln!("Cannot follow {}: {e}", link.to_uri());
+                return;
+            }
+        }
+        Ed2kLink::File(_) | Ed2kLink::Server(_) => {}
+        other => {
+            tracing::info!("Not acting on {}", other.to_uri());
+            return;
+        }
+    }
+    tokio::spawn(async move {
+        follow(&engine, link).await;
+    });
+}
+
 async fn follow(engine: &Engine, link: Ed2kLink) {
     match link {
         Ed2kLink::File(file) => match engine.add_download(file, None).await {
