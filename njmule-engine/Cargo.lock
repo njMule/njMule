@@ -1800,6 +1800,7 @@ dependencies = [
  "unicode-general-category",
  "url",
  "walkdir",
+ "webpki-root-certs",
  "x509-parser",
  "yaml-rust2",
  "zeroize",
