@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0-beta.1] - 2026-11-24
+
 ### Changed
 
 - njMule's engine is now written in Rust instead of Java: smaller packages, faster startup, and
