@@ -10,6 +10,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- njMule's engine is now written in Rust instead of Java: smaller packages, faster startup, and
+  lower memory use, with the same profile format, desktop app, web interface, and eD2K/Kad network
+  behaviour.
+- On Windows, network interfaces in **Options → Connection** now show the names Windows gives them
+  (for example *Wi-Fi* or *Ethernet*) rather than generated names such as `wlan1` or `eth3`. A
+  profile bound to a generated name stays offline until the interface is picked again.
+
 ## [0.4.0] - 2026-11-20
 
 ### Changed
