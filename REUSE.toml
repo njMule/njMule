@@ -28,6 +28,7 @@ path = [
     "njmule-engine/Cargo.lock",
     "njmule-engine/about.hbs",
     "njmule-engine/tests/golden/**",
+    "njmule-engine/tests/transcripts/**",
     "njmule-desktop/src-tauri/capabilities/*.json",
     "website/*.json",
 ]
