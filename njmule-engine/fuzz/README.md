@@ -28,4 +28,4 @@ cargo +nightly fuzz run packet_framing -- -max_total_time=60
 ```
 
 Seed corpora can be extracted from the golden JSONL test files under
-`njmule-core/src/test/resources/golden/`.
+`njmule-engine/tests/golden/`.

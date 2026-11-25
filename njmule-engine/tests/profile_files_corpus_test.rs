@@ -34,8 +34,7 @@ use njmule_engine::persist::format::text_files::{self, SharedFile, StaticServer}
 use njmule_engine::protocol::io::DecodeError;
 use serde_json::{Value, json};
 
-const CORPUS: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/profile-files.jsonl");
+const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/profile-files.jsonl");
 
 #[test]
 fn should_give_the_recorded_answers() {

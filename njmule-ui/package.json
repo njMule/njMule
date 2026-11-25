@@ -9,7 +9,7 @@
         "node": ">=24"
     },
     "scripts": {
-        "api": "openapi-typescript ../njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml -o build/generated/api.d.ts",
+        "api": "openapi-typescript ../njmule-engine/assets/openapi.yaml -o build/generated/api.d.ts",
         "build": "npm run api && vue-tsc --noEmit && vite build",
         "dev": "vite",
         "test": "npm run api && vitest run",

@@ -9,8 +9,7 @@
 use njmule_engine::kad::{kad_lower_case, keywords};
 use serde_json::{Map, Value, json};
 
-const CORPUS: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/kad-keywords.jsonl");
+const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/kad-keywords.jsonl");
 
 #[test]
 fn should_give_the_recorded_answers() {

@@ -4,7 +4,7 @@
 njMule Java code: MD5 key material, RC4 (with the 1024-byte discard for TCP) and the UDP datagram
 layout, all with fixed inputs instead of random ones.
 
-Usage: python tools/golden/gen_crypt_vectors.py > njmule-core/src/test/resources/golden/obfuscation.txt
+Usage: python tools/golden/gen_crypt_vectors.py > njmule-engine/tests/golden/obfuscation.txt
 """
 
 import hashlib

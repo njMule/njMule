@@ -5,7 +5,7 @@
 The code is written from the eD2K and AICH algorithms independently of the njMule Java code, with
 an explicit hash tree instead of recursion and MD4 from RFC 1320 (Python's hashlib has no MD4). Pure Python is slow: generating takes about a minute.
 
-Usage: python tools/golden/gen_vectors.py > njmule-core/src/test/resources/golden/file-hashes.txt
+Usage: python tools/golden/gen_vectors.py > njmule-engine/tests/golden/file-hashes.txt
 """
 
 import base64

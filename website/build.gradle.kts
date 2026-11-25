@@ -75,7 +75,7 @@ val apiDocs =
         group = "documentation"
         dependsOn(tasks.npmInstall)
         npmCommand = listOf("run", "api")
-        inputs.file(layout.settingsDirectory.file("njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml"))
+        inputs.file(layout.settingsDirectory.file("njmule-engine/assets/openapi.yaml"))
             .withPathSensitivity(PathSensitivity.RELATIVE)
         inputs.files(configFiles).withPathSensitivity(PathSensitivity.RELATIVE)
         outputs.dir("developer/api/reference")

@@ -100,15 +100,10 @@ jobs:
                   filters: |
                       engine:
                           - 'njmule-engine/**'
-                          - 'njmule-core/src/test/resources/golden/**'
                           # The Java tests the port mirrors, which test_name_map_test compares.
                           - 'njmule-core/src/test/java/**'
                           - 'njmule-http/src/test/java/**'
                           - 'njmule-app/src/test/java/**'
-                          # The API's document, which the Rust engine serves and checks every call against.
-                          - 'njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml'
-                          # The login page's style sheet and the browser icons, which the web interface carries.
-                          - 'njmule-http/src/main/resources/org/njmule/http/style.css'
                           - 'branding/njmule-icon.svg'
                           - 'branding/generated/njmule-32.png'
                           - 'njmule-testkit/**'
@@ -415,7 +410,7 @@ jobs:
                   tar -xf "$env:RUNNER_TEMP\graalvm.zip" -C $env:RUNNER_TEMP
                   "GRAALVM_HOME=$env:RUNNER_TEMP\graalvm-community-25.4.4.1.1+1.1" >> $env:GITHUB_ENV
             - name: Build the native executable and the service
-              run: ./gradlew :njmule-app:nativeCompile :njmule-app:nativeService '-Pnative.optimization=-Ob'
+              run: ./gradlew :njmule-app:nativeCompile :nativeService '-Pnative.optimization=-Ob'
             - name: Smoke test
               shell: pwsh
               run: |
@@ -428,7 +423,7 @@ jobs:
             - name: Service test
               shell: pwsh
               run: |
-                  Copy-Item njmule-app/build/launcher/njmule-service.exe njmule-app/build/native/nativeCompile/
+                  Copy-Item build/windows/njmule-service.exe njmule-app/build/native/nativeCompile/
                   ./.github/scripts/windows-service-test.ps1 njmule-app/build/native/nativeCompile/njmule.exe
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:

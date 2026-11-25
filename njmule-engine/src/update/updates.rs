@@ -61,7 +61,7 @@ pub const EVERY: Duration = Duration::from_secs(24 * 3600);
 pub const RETRY: Duration = Duration::from_secs(6 * 3600);
 
 // The signing key first, then the standby key that replaces it if it is ever lost or leaked.
-const KEYS: &str = include_str!("../../../njmule-core/src/main/resources/org/njmule/core/update/keys.pub");
+const KEYS: &str = include_str!("../../assets/keys.pub");
 // Clients started together would otherwise all ask at the same minute.
 const JITTER_MILLIS: u64 = 3600 * 1000;
 // Progress is told at most this often.

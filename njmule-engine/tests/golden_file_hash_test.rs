@@ -13,7 +13,7 @@ use data_encoding::BASE32_NOPAD;
 use njmule_engine::files::hash::aich_tree::AichTree;
 use njmule_engine::files::hash::file_hasher::{self, FileHashes};
 
-const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/file-hashes.txt");
+const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/file-hashes.txt");
 
 fn hashed(input: &mut impl Read, size: u64) -> io::Result<FileHashes> {
     file_hasher::hash(input, size, |_| ControlFlow::Continue(()))

@@ -9,8 +9,8 @@ use crate::persist::format::server_met::{self, Server};
 /// Set to `true`, a new profile starts with no server and no Kad contact: tests must not reach real ones.
 pub const DISABLED_PROPERTY: &str = "njmule.defaultlists.disabled";
 
-const SERVER_MET: &[u8] = include_bytes!("../../../njmule-core/src/main/resources/org/njmule/core/engine/server.met");
-const NODES_DAT: &[u8] = include_bytes!("../../../njmule-core/src/main/resources/org/njmule/core/engine/nodes.dat");
+const SERVER_MET: &[u8] = include_bytes!("../../assets/server.met");
+const NODES_DAT: &[u8] = include_bytes!("../../assets/nodes.dat");
 
 /// The servers shipped with njMule for a brand-new profile.
 pub fn servers() -> Vec<Server> {

@@ -16,7 +16,7 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use serde_json::Value;
 
-const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/packets.jsonl");
+const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/packets.jsonl");
 const SPECIAL_BYTES: [u8; 5] = [0x00, 0x01, 0x7F, 0x80, 0xFF];
 const SPECIAL_NUMBERS: [u64; 7] = [0, 1, 0xFF, 0xFFFF, 0x7FFF_FFFF, 0x8000_0000, 0xFFFF_FFFF];
 

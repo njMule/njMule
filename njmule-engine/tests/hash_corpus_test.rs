@@ -17,7 +17,7 @@ use njmule_engine::files::hash::aich_tree::AichTree;
 use njmule_engine::files::hash::ed2k;
 use serde_json::{Map, Value, json};
 
-const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/hashes.jsonl");
+const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/hashes.jsonl");
 
 #[test]
 fn should_give_the_recorded_answers() {

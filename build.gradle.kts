@@ -46,6 +46,47 @@ tasks.register<Sync>("iconTools") {
     into(layout.buildDirectory.dir("tools"))
 }
 
+// ./gradlew nativeService → build/windows/njmule-service.exe (packaging/windows/service.c), the host of the
+// Windows service that runs njmule.exe headless (njmule --service=install), compiled with the Visual C++ tools.
+val serviceResourceSources =
+    tasks.register<Sync>("nativeServiceResourceSources") {
+        val version = project.version.toString()
+        inputs.property("version", version)
+        from("packaging/windows") {
+            include("njmule-service.rc")
+            filter { line -> line.replace("\${project.version}", version) }
+        }
+        from("branding/generated/njmule.ico")
+        into(layout.buildDirectory.dir("windows-res"))
+    }
+
+val serviceResources =
+    tasks.register<Exec>("nativeServiceResources") {
+        dependsOn(serviceResourceSources)
+        val dir = layout.buildDirectory.dir("windows-res")
+        workingDir(dir)
+        val rc = file("packaging/windows/rc.cmd").path
+        commandLine("cmd", "/c", rc, "njmule-service.rc", "njmule-service.res", project.version)
+        inputs.file(dir.map { it.file("njmule-service.rc") })
+        outputs.file(dir.map { it.file("njmule-service.res") })
+    }
+
+tasks.register<Exec>("nativeService") {
+    group = "build"
+    description = "Builds njmule-service.exe, the Windows service of njMule."
+    dependsOn(serviceResources)
+    val code = file("packaging/windows/service.c")
+    val dir = layout.buildDirectory.dir("windows-res")
+    val exe = layout.buildDirectory.file("windows/njmule-service.exe")
+    val cl = file("packaging/windows/cl.cmd")
+    inputs.files(code, cl)
+    inputs.file(dir.map { it.file("njmule-service.res") })
+    outputs.file(exe)
+    workingDir(dir)
+    commandLine("cmd", "/c", cl.path, exe.get().asFile.path, code.path, "njmule-service.res")
+    doFirst { exe.get().asFile.parentFile.mkdirs() }
+}
+
 // The benchmarks (JMH and its dependencies) are not distributed.
 val distributed = subprojects.filter { it.name !in setOf("njmule-bench", "website") }
 

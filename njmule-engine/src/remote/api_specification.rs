@@ -14,7 +14,7 @@ use serde_json::{Map, Number, Value, json};
 use yaml_rust2::{Yaml, YamlLoader};
 
 /// The document njMule ships, which the Java engine serves too.
-pub const DOCUMENT: &str = include_str!("../../../njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml");
+pub const DOCUMENT: &str = include_str!("../../assets/openapi.yaml");
 /// The largest request body taken.
 pub const MAX_BODY: usize = 1024 * 1024;
 // The document's own address, against which its references resolve; nothing is fetched from it.

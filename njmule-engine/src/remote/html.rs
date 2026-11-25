@@ -7,7 +7,7 @@
 use crate::api::nj_mule_info;
 
 /// The style sheet of the login page.
-pub const STYLE: &str = include_str!("../../../njmule-http/src/main/resources/org/njmule/http/style.css");
+pub const STYLE: &str = include_str!("../../assets/style.css");
 
 // The browser icons, from the branding.
 const ICON_SVG: &[u8] = include_bytes!("../../../branding/njmule-icon.svg");
