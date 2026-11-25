@@ -7,19 +7,17 @@ build/
 # The web app's packages, installed by npm from package-lock.json.
 node_modules/
 .kotlin/
-# Output folders of the former Maven build, still present in older checkouts.
+# --- Rust / Cargo ------------------------------------------------------------
 target/
 
 # The desktop shell's schemas, made by Tauri at each build.
 njmule-desktop/src-tauri/gen/
 
-# --- Java / JVM --------------------------------------------------------------
+# --- Java (Gradle and helper scripts in tools/) ------------------------------
 *.class
 hs_err_pid*
 replay_pid*
 *.log
-*.jfr
-*.hprof
 
 # --- Documentation website (website/): Docusaurus' cache and the pages made by the build --------
 website/.docusaurus/
@@ -28,24 +26,17 @@ website/developer/_generated/
 website/developer/api/reference/
 
 # --- Test tooling ------------------------------------------------------------
-.jqwik-database
 fuzz/crashes/
 
 # --- Archives and packages -----------------------------------------------------
 *.jar
 # The Gradle Wrapper needs its jar (checksum pinned in gradle-wrapper.properties).
 !gradle/wrapper/gradle-wrapper.jar
-*.war
-*.nar
-*.ear
 *.zip
 *.tar.gz
 *.rar
 
-# --- GraalVM native image and installers --------------------------------------
-svm_err_*.md
-*.build_artifacts.txt
-*.iprof
+# --- Installers and native outputs -------------------------------------------
 *.exe
 *.msi
 *.msix

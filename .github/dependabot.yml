@@ -57,6 +57,13 @@ updates:
               patterns:
                   - "vite"
                   - "vitest"
+    # The Rust engine's crates (njmule-engine/Cargo.lock).
+    - package-ecosystem: cargo
+      directory: /njmule-engine
+      schedule:
+          interval: weekly
+      commit-message:
+          prefix: "chore(deps)"
     # The desktop window's Tauri command line, then its Rust crates, the Tauri crate and its plugins together.
     - package-ecosystem: npm
       directory: /njmule-desktop
