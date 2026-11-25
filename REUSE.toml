@@ -27,6 +27,7 @@ path = [
     "njmule-desktop/src-tauri/Cargo.lock",
     "njmule-engine/Cargo.lock",
     "njmule-engine/about.hbs",
+    "njmule-engine/tests/golden/**",
     "njmule-desktop/src-tauri/capabilities/*.json",
     "website/*.json",
 ]
@@ -70,8 +71,8 @@ SPDX-License-Identifier = "MIT"
 # server names, facts not covered by copyright.
 [[annotations]]
 path = [
-    "njmule-core/src/main/resources/org/njmule/core/engine/server.met",
-    "njmule-core/src/main/resources/org/njmule/core/engine/nodes.dat",
+    "njmule-engine/assets/server.met",
+    "njmule-engine/assets/nodes.dat",
 ]
 precedence = "override"
 SPDX-FileCopyrightText = "NONE"

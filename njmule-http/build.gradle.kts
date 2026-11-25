@@ -33,6 +33,9 @@ tasks.processResources {
     from(webApp) {
         into("org/njmule/http/app")
     }
+    from(layout.settingsDirectory.file("njmule-engine/assets/style.css")) {
+        into("org/njmule/http")
+    }
     from(layout.settingsDirectory.file("branding/njmule-icon.svg")) {
         into("org/njmule/http")
         rename { "favicon.svg" }

@@ -9,7 +9,7 @@
 use njmule_engine::api::ed2k_link::{Ed2kLink, Source};
 use serde_json::{Map, Value, json};
 
-const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/ed2k-links.jsonl");
+const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/ed2k-links.jsonl");
 
 #[test]
 fn should_give_the_recorded_answers() {

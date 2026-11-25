@@ -135,7 +135,7 @@ val flags = tasks.register<Sync>("flags") {
     into(layout.buildDirectory.dir("flags/flags"))
 }
 
-val api = rootDir.resolve("njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml")
+val api = rootDir.resolve("njmule-engine/assets/openapi.yaml")
 val npmSources = listOf("src", "index.html", "vite.config.ts", "tsconfig.json", "package.json", "package-lock.json")
 
 val bundle = tasks.register<NpmTask>("bundle") {

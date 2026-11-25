@@ -90,9 +90,9 @@ const config: Config = {
                 docsPluginId: 'developer',
                 config: {
                     njmule: {
-                        specPath: '../njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml',
+                        specPath: '../njmule-engine/assets/openapi.yaml',
                         outputDir: 'developer/api/reference',
-                        downloadUrl: `${repository}/blob/main/njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml`,
+                        downloadUrl: `${repository}/blob/main/njmule-engine/assets/openapi.yaml`,
                         hideSendButton: true,
                         sidebarOptions: { groupPathsBy: 'tag', categoryLinkSource: 'tag' },
                     } satisfies OpenApiPlugin.Options,

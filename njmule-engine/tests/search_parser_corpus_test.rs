@@ -14,8 +14,7 @@ use njmule_engine::search::search_parser::parse;
 use njmule_engine::search::search_tree_codec;
 use serde_json::{Map, Value, json};
 
-const CORPUS: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/search-expressions.jsonl");
+const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/search-expressions.jsonl");
 
 #[test]
 fn should_give_the_recorded_answers() {

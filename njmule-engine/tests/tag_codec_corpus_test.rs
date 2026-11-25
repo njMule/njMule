@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The Java engine's answers in `golden/tag-codec.jsonl`, given again: every case read and written as the corpus
-//! says (`njmule-core/src/test/resources/golden/README.md`).
+//! says (`njmule-engine/tests/golden/README.md`).
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
@@ -13,7 +13,7 @@ use njmule_engine::protocol::tag::tag_codec::{
 use njmule_engine::protocol::tag::{Ed2kTagFormat, Tag};
 use serde_json::{Map, Value, json};
 
-const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/tag-codec.jsonl");
+const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/tag-codec.jsonl");
 const MAX_COUNT: usize = 64;
 
 #[test]

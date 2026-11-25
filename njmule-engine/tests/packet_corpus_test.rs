@@ -13,7 +13,7 @@ use canonical::packet_decoders::{Decoder, decoder};
 use njmule_engine::protocol::packet::Packet;
 use serde_json::{Map, Value, json};
 
-const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/packets.jsonl");
+const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/packets.jsonl");
 
 const NOT_PORTED: &[&str] = &[];
 

@@ -29,8 +29,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, RngExt, SeedableRng};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
 
-const GOLDEN_FILE: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../njmule-core/src/test/resources/golden/obfuscation.txt");
+const GOLDEN_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/obfuscation.txt");
 const USER_HASH: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 const KAD_ID: [u8; 16] = [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31];
 const SENDER_IP: [u8; 4] = [10, 0, 0, 7];

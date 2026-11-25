@@ -73,9 +73,11 @@ tasks.compileJava {
     options.compilerArgs.add("-Xlint:-module")
 }
 
+val engineAssets = layout.settingsDirectory.dir("njmule-engine/assets")
+
 val openApiJson = tasks.register<JavaExec>("openApiJson") {
     description = "Converts the API's OpenAPI document to the JSON the engine reads."
-    val source = file("src/main/resources/org/njmule/core/remote/openapi.yaml")
+    val source = engineAssets.file("openapi.yaml").asFile
     val target = layout.buildDirectory.file("openapi/openapi.json")
     classpath = openapi.runtimeClasspath
     mainClass = "org.njmule.openapi.OpenApiJson"
@@ -89,6 +91,15 @@ tasks.processResources {
     from(openApiJson) {
         into("org/njmule/core/remote")
     }
+    from(engineAssets.file("openapi.yaml")) {
+        into("org/njmule/core/remote")
+    }
+    from(engineAssets.file("keys.pub")) {
+        into("org/njmule/core/update")
+    }
+    from(files(engineAssets.file("server.met"), engineAssets.file("nodes.dat"))) {
+        into("org/njmule/core/engine")
+    }
     val version = project.version.toString()
     inputs.property("version", version)
     from("src/main/resources-filtered") {
@@ -98,6 +109,12 @@ tasks.processResources {
     // ambiguous on the class path).
     from(files(layout.settingsDirectory.file("LICENSE"), layout.settingsDirectory.file("NOTICE"))) {
         into("org/njmule/core/api")
+    }
+}
+
+tasks.processTestResources {
+    from(layout.settingsDirectory.dir("njmule-engine/tests/golden")) {
+        into("golden")
     }
 }
 
