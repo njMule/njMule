@@ -19,7 +19,7 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -1217,6 +1217,8 @@ pub struct BlackBoxEngine {
     token: String,
     api: ApiClient,
     child: Option<Child>,
+    // Keep stdin open while running: with NJMULE_CONTROL_ENDPOINT=1, EOF on stdin triggers shutdown.
+    stdin: Option<ChildStdin>,
     events_rx: mpsc::UnboundedReceiver<(String, Value)>,
     sse_task: JoinHandle<()>,
     log_path: PathBuf,
@@ -1241,10 +1243,12 @@ impl BlackBoxEngine {
                 "-Dnjmule.ipv6.disabled=true",
             ])
             .env("NJMULE_CONTROL_ENDPOINT", "1")
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
             .unwrap();
+        let stdin = child.stdin.take();
         let stdout = child.stdout.take().unwrap();
         let mut reader = BufReader::new(stdout);
         let mut log_file = File::create(&log_path).unwrap();
@@ -1295,7 +1299,7 @@ impl BlackBoxEngine {
         // Give the SSE stream a moment to attach (it sends missed events immediately, or heartbeat/started).
         let _ = tokio::time::timeout(Duration::from_millis(500), ready_rx).await;
 
-        Self { dirs, tcp_port, base, token, api, child: Some(child), events_rx, sse_task, log_path }
+        Self { dirs, tcp_port, base, token, api, child: Some(child), stdin, events_rx, sse_task, log_path }
     }
 
     pub fn api(&self) -> &ApiClient {
@@ -1342,6 +1346,7 @@ impl BlackBoxEngine {
 
     pub async fn stop(mut self) {
         let _ = self.api.post("/shutdown", json!({})).await;
+        drop(self.stdin.take());
         self.sse_task.abort();
         if let Some(mut child) = self.child.take() {
             let start = Instant::now();
