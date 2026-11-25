@@ -7,82 +7,56 @@ This guide is for you if you want to build njMule from its sources, change it, t
 it or drive it from your own programs through its remote-control API. If you only want to use
 njMule, the [user guide](/docs/intro) is the place to start.
 
-njMule is a Java 25 re-implementation of eMule's networks (eD2K and Kad 2), compatible with the
-eMule network and licensed under the GPL 3.0 or later. One engine without any user interface
-(`njmule-core`) runs as a GraalVM native executable that is also the command line. One interface
-(`njmule-ui`), written for the browser, drives it only through its remote-control API: in the
-desktop window, a small Tauri shell that starts the engine, and as the web interface the engine
-serves.
+njMule is a Rust re-implementation of eMule's networks (eD2K and Kad 2), compatible with the eMule
+network and licensed under the GPL 3.0 or later. One headless engine (`njmule-engine`) compiles to
+a standalone native executable `njmule` that is also the command line and web server. One interface
+(`njmule-ui`), written for the browser in Vue 3, drives it only through its remote-control API:
+inside the desktop window (`njmule-desktop`, a Tauri 2 shell that starts the engine) and as the web
+interface the engine serves.
 
 ## Technology stack
 
 | Area | What njMule uses |
 |---|---|
-| Language and build | Java 25 (JPMS modules), Gradle through the Gradle Wrapper, a convention plugin of its own in `build-logic/` |
-| Engine | virtual threads, Bouncy Castle, Guava, Jackson 3, Eclipse Jetty 12 (HTTP client and server), Kwik (QUIC), Angus Mail (e-mail notifications), semver4j, Apache Commons Compress and XZ for Java (update packages) |
-| Remote-control API | an OpenAPI 3.2 document, validated with the networknt JSON Schema validator, served by Jetty |
-| Command line and logging | picocli, SLF4J with Logback |
-| Interface | Vue 3 in TypeScript, built with Vite; Reka UI, TanStack Table and TanStack Virtual; openapi-typescript and openapi-fetch for the API, eventsource-parser for its events; its own SVG line icons and the colours of the AtlantaFX themes |
-| Desktop window | Tauri 2 in Rust, with its single-instance, deep-link, dialog, opener, window-state and notification plugins |
-| Web interface | Jetty, with a login page, sessions and form tokens, serving the interface and the API |
-| Native executables | GraalVM Community Native Image 25.0.4.1.1 (`native-image`); a small C service host on Windows |
-| Tests | JUnit (Jupiter) with AssertJ, jqwik for property-based tests, Jimfs, openapi-parser; Vitest with happy-dom for the interface; `cargo test` for the desktop window |
-| Quality gates | Spotless with palantir-java-format, Checkstyle, Error Prone, JaCoCo, SpotBugs with FindSecBugs, SonarQube Cloud; Prettier and `vue-tsc` for the interface; `cargo fmt` and Clippy for the desktop window |
+| Engine and CLI | Rust (edition 2024, pinned in `njmule-engine/rust-toolchain.toml`), Tokio async runtime, Axum (HTTP server), Quinn + rustls + ring (QUIC / TLS), reqwest (HTTP client), lettre (e-mail notifications), clap (CLI), tracing (logging), jsonschema, minisign-verify, flate2 / lzma-rust2 / tar / zip |
+| Remote-control API | an OpenAPI 3.2 document (`njmule-engine/assets/openapi.yaml`), validated against JSON Schema 2020-12 and served by Axum |
+| Interface | Vue 3 in TypeScript, built with Vite; Reka UI, TanStack Table and TanStack Virtual; openapi-typescript and openapi-fetch for the API, eventsource-parser for its events; original SVG line icons and the colours of the AtlantaFX themes |
+| Desktop window | Tauri 2 in Rust (`njmule-desktop/src-tauri`), with its single-instance, deep-link, dialog, opener, window-state and notification plugins |
+| Web interface | Axum inside `njmule-engine`, embedding the gzipped Vue bundle (`rust-embed`), with a login page, sessions and CSRF tokens |
+| Native executables | Cargo release builds (`lto = "thin"`, `overflow-checks = true`), static musl builds for Synology/Linux, and a small C service host on Windows (`packaging/windows/service.c`) |
+| Build orchestration | Cargo for `njmule-engine` and `njmule-desktop/src-tauri`; Gradle Wrapper for `njmule-ui`, `njmule-desktop`, `website`, `iconTools` and `nativeService` |
+| Tests | `cargo test` with `proptest`, golden corpora, and black-box flow + wire-transcript tests for the engine; Vitest with happy-dom for the interface; `cargo test` for the desktop shell |
+| Quality gates | `cargo fmt`, Clippy (`-D warnings`, `unsafe_code = "forbid"`), `cargo-deny`, `cargo-llvm-cov`, SonarQube Cloud; Prettier and `vue-tsc` for the interface; REUSE compliance |
 | Packages | WiX 5 (Windows MSI), nfpm (deb and rpm), `codesign` and `hdiutil` (macOS), a shell script for the Synology package, Docker |
-| Documentation | Docusaurus 3.10 with the OpenAPI docs plugin; its screenshots taken with Playwright |
+| Documentation | Docusaurus 3.10 with the OpenAPI docs plugin; screenshots captured from a Rust demo binary with Playwright |
 
-Every library and plugin version of the Java build lives in one file,
-[`gradle/libs.versions.toml`](https://github.com/njMule/njMule/blob/main/gradle/libs.versions.toml);
-the npm packages and the Rust crates are pinned in their own lock files: see
-[Dependencies](dependencies.mdx).
+Every dependency is pinned in its lock file (`njmule-engine/Cargo.lock`,
+`njmule-desktop/src-tauri/Cargo.lock`, `package-lock.json`, and Gradle's lock files plus
+`gradle/verification-metadata.xml`): see [Dependencies](dependencies.mdx).
 
 ## Repository layout
 
 | Path | Content |
 |---|---|
-| `njmule-core` (module `org.njmule.core`) | the engine: protocols, files, persistence, networking, and the remote-control API; no dependency on any interface |
-| `njmule-app` (module `org.njmule.app`) | the headless launcher and command line, the Logback set-up, the Windows service commands and their service host |
-| `njmule-ui` | the interface of the desktop window and of the web interface (Vue 3, TypeScript, Vite), with its translations (`i18n/`) and country flags (`flags/`) |
-| `njmule-desktop` | the desktop window: a Tauri 2 shell in Rust (`src-tauri/`) that starts the engine and shows the interface |
-| `njmule-engine` | the engine in Rust, a port of `njmule-core` under way; its tests replay the corpora of the Java engine |
-| `njmule-http` (module `org.njmule.http`) | the web interface on Jetty (password, sessions, form tokens), which serves the interface and the core's remote-control API, and the desktop window's control endpoint |
-| `njmule-testkit` (module `org.njmule.testkit`) | test doubles shared by the modules (a fake server, a fake peer, free ports) and the end-to-end tests |
-| `njmule-bench` | JMH benchmarks; a classpath build so that it reaches internal core packages; never distributed |
+| `njmule-engine` | the Rust engine, CLI, web interface and remote-control API (`src/`, `assets/`, `tests/`, `examples/web_capture_demo.rs`) |
+| `njmule-ui` | the single interface of the desktop window and of the web interface (Vue 3, TypeScript, Vite), with its translations (`i18n/`) and country flags (`flags/`) |
+| `njmule-desktop` | the desktop window: a Tauri 2 shell in Rust (`src-tauri/`) that starts `njmule` and shows `njmule-ui` |
 | `website` | this documentation site (Docusaurus): `docs/` is the user guide, `developer/` this guide |
-| `build-logic/` | the Gradle convention plugin every Java module applies (`njmule.java-conventions`) |
-| `gradle/` | `libs.versions.toml`, `verification-metadata.xml` and the Gradle Wrapper |
-| `config/` | the license header, the Checkstyle and SpotBugs configuration |
-| `packaging/` | Windows installer (WiX), Linux packages (nfpm), macOS bundle metadata, Docker image, Synology package |
+| `gradle/` | `libs.versions.toml` (Node.js and JSVG), `verification-metadata.xml` and the Gradle Wrapper |
+| `packaging/` | Windows installer (WiX) and service host (`service.c`), Linux packages (nfpm), macOS bundle metadata, Docker image, Synology package |
 | `branding/` | original artwork: the master SVG and the PNG, ICO and ICNS files made from it |
-| `tools/` | single-file helper programs (icons, flags, translations, update information) and Docker build scripts |
+| `tools/` | single-file helper programs (icons, flags, translations, update manifest), golden vector generators (`tools/golden/`) and the e2e update server (`tools/e2e-update-server.sh`) |
 | `.github/` | the CI, release and documentation workflows, Dependabot, issue and pull request templates |
 | `LICENSES/` | the texts of every license used in the repository ([REUSE](https://reuse.software)) |
-
-## What each module exports
-
-The Java modules expose only what their `module-info.java` exports:
-
-- **`org.njmule.core`** exports `org.njmule.core.api` (the engine facade, events and application
-  information), `org.njmule.core.config` (preferences and directory layout) and
-  `org.njmule.core.remote` (the remote-control API, which a front end serves on its HTTP server).
-  Everything else is internal; a few codec packages and `org.njmule.core.persist` (the preferences
-  as the profile keeps them) are exported to `org.njmule.testkit` only.
-- **`org.njmule.app`** exports `org.njmule.app` and `org.njmule.app.logging`, and provides njMule's
-  Logback configurator; `org.njmule.app.logging.internal` is not exported.
-- **`org.njmule.http`** exports `org.njmule.http`.
-- **`org.njmule.testkit`** exports `org.njmule.testkit`.
-
-`njmule-bench` is not a module, and `njmule-ui`, `njmule-desktop` and `website` are not Java
-projects.
 
 ## Where to start
 
 1. [Build njMule](building.mdx) and run it from the build.
 2. Read the [code style](code-style.mdx) and the [testing rules](testing.mdx): every change keeps
-   to them, and the build checks most of them.
+   to them, and the build and CI enforce most of them.
 3. Read [Contributing](contributing.mdx) before you open a pull request.
 4. Pick the page of the area you work on: the [interface](interface.mdx),
-   [translations](translations.mdx), [native images](native-images.mdx),
+   [translations](translations.mdx), [native executables](native-images.mdx),
    [packaging](packaging.mdx), [releases](releases.mdx), [benchmarks](benchmarks.mdx) or this
    [documentation](documentation.mdx).
 5. To drive njMule from a script or another program, read the

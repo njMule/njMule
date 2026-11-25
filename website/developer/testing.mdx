@@ -1,343 +1,170 @@
 ---
 title: Testing
-description: How njMule's tests are written and run - the given/when/then style, tags, the test kit, the interface's and the desktop window's tests, the documentation's pictures and the CI.
+description: How njMule's tests are written and run - the given/when/then style, the Rust engine suite, black-box flow transcripts, golden corpora, Vitest, Tauri tests and CI.
 ---
 
 Every change to njMule comes with tests, and every test reads as a short scenario. This page shows
-the style the project requires, the tools the tests are written with, the groups of tests that do
-not run by default, and what the CI runs on every push.
+the style the project requires, the tools the tests are written with, the black-box flow and corpus
+tests, and what CI runs on every push.
 
 ## Tools
 
 | Tool | Used for |
 |---|---|
-| JUnit (Jupiter) | every Java test, including parameterized tests |
-| AssertJ | assertions |
-| jqwik | property-based tests of codecs and parsers |
-| Jimfs | in-memory file systems for simulations whose many nodes would otherwise wait on the disk |
-| openapi-parser | checking that the API's document is a valid OpenAPI 3.2 description |
-| Vitest with happy-dom | the interface's tests |
-| `cargo test` | the desktop window's tests, in Rust |
-
-New behaviour needs tests: unit tests next to the code in each module's `src/test/java`, flows
-across modules in the test kit (see [The test kit](#the-test-kit)), and the interface's logic in its
-Vitest tests (see [Interface tests](#interface-tests)).
+| `cargo test` (`njmule-engine`) | unit, integration, corpus and black-box flow tests of the Rust engine |
+| `proptest` | property-based tests of codecs, parsers and protocol primitives |
+| `cargo-llvm-cov` | line coverage of `njmule-engine` (at least 70% enforced in CI; LCOV uploaded to SonarQube Cloud) |
+| Vitest with happy-dom | unit tests of the Vue interface (`njmule-ui`) |
+| `cargo test` (`njmule-desktop/src-tauri`) | unit tests of the Tauri desktop shell |
 
 ## The given/when/then style
 
-Every test follows the given/when/then form of Gherkin, inside plain JUnit classes (no Cucumber):
+Every test follows the given/when/then form of Gherkin:
 
-- The test method's name states the expected behaviour (`shouldSliceInsideTheSource`), and its body
-  only calls step methods: the `given...()` steps, if any, then **one** `when...()`, then one or
-  more `then...()`.
-- A scenario has one action. Independent cases become separate tests, or one parameterized test;
-  the earlier stages of a longer flow become `given...()` steps.
-- Steps are private methods of the test class, named as sentences in lowerCamelCase, taking
-  parameters when a step is reused with other values. The state they share lives in fields.
-- A `when...()` step that can fail keeps the exception in a field, and `thenExceptionOccurred(...)`
-  or `thenNoExceptionOccurred()` checks it.
+- Each test function has a descriptive `should_...` name stating the expected behaviour, and its
+  body calls helper steps in order: `given_...` (if any), then **one** `when_...`, then one or
+  more `then_...`.
+- A scenario has one action. Independent cases become separate tests (or a loop over cases); the
+  earlier stages of a longer flow become `given_...` steps.
+- Shared state lives in a fixture struct, and a `when_...` step that can fail stores its `Result`
+  for `then_...` to inspect.
 
-A real example, from `njmule-core`'s `BytesTest` (shortened):
+An example in Rust:
 
-```java
-class BytesTest {
+```rust
+#[derive(Default)]
+struct Sanitizer {
+    network_name: String,
+    safe_name: String,
+}
 
-    private byte[] source;
-    private Bytes bytes;
-    private Throwable exception;
-
-    @Test
-    void shouldSliceInsideTheSource() {
-        givenTheSource(1, 2, 3, 4);
-
-        whenASliceIsTaken(1, 3);
-
-        thenTheBytesAre(2, 3, 4);
+impl Sanitizer {
+    fn given_a_name_from_the_network(&mut self, name: impl Into<String>) {
+        self.network_name = name.into();
     }
 
-    @ParameterizedTest
-    @CsvSource({"2, 3", "5, 0", "-1, 2", "0, -1"})
-    void shouldRefuseASliceOutsideTheSource(int offset, int length) {
-        givenTheSource(1, 2, 3, 4);
-
-        whenASliceIsTaken(offset, length);
-
-        thenExceptionOccurred(IndexOutOfBoundsException.class);
+    fn when_the_name_is_made_safe(&mut self) {
+        self.safe_name = path_sanitizer::file_name(&self.network_name);
     }
 
-    private void givenTheSource(int... values) {
-        this.source = toBytes(values);
+    fn then_the_safe_name_is(&self, expected: &str) {
+        assert_eq!(self.safe_name, expected);
     }
 
-    private void whenASliceIsTaken(int offset, int length) {
-        this.exception = catchThrowable(() -> this.bytes = Bytes.of(this.source, offset, length));
+    fn then_the_safe_name_fits_the_length_limit(&self) {
+        assert!(self.safe_name.len() <= 200);
     }
+}
 
-    private void thenTheBytesAre(int... expected) {
-        assertThat(this.exception).isNull();
-        assertThat(this.bytes.toByteArray()).containsExactly(expected);
-    }
+#[test]
+fn should_escape_a_reserved_name_hidden_by_the_length_cut() {
+    let mut test = Sanitizer::default();
+    test.given_a_name_from_the_network(format!("CON{}x", " ".repeat(300)));
 
-    private void thenExceptionOccurred(Class<? extends Throwable> type) {
-        assertThat(this.exception).isInstanceOf(type);
-    }
+    test.when_the_name_is_made_safe();
+
+    test.then_the_safe_name_is("_CON");
+    test.then_the_safe_name_fits_the_length_limit();
 }
 ```
 
-The fields are qualified with `this.` and the steps are called without it, as everywhere in the code
-([Code style](code-style.mdx#fields-and-own-methods)). The interface's Vitest tests follow the same
-form, with `given...`, `when...` and `then...` functions inside each `describe` block.
+The interface's Vitest tests follow the same form, with `given...`, `when...` and `then...`
+functions inside each `describe` block.
 
-## Running tests
+## Running engine tests
 
-`./gradlew build` runs every test that is not excluded by a tag. To run one module's tests, or one
-class:
+From `njmule-engine/`:
 
 ```bash
-./gradlew :njmule-core:test
-./gradlew :njmule-core:test --tests '*TagCodecTest'
+cargo test --locked
 ```
 
-The options that choose and spread the tests (`test.tags`, `test.excludedTags`, `test.forks`,
-`test.maxHeap`, `test.parallelModules`, `-Pnjmule.<name>`) are listed in
-[Building](building.mdx#test-options). On PowerShell, quote every `-P` option that holds a dot.
+The integration tests under `njmule-engine/tests/` are compiled as modules of a single test binary
+(`tests/main.rs`, target name `suite`) so the engine is linked once instead of once per file.
+Declare every new test file in `tests/main.rs` (`mod foo_test;`) — `suite_modules_test` fails if
+any `.rs` file in `tests/` is left out. Run one module's tests with:
 
-Each module's test classes are spread over a few JVMs, each running many classes one after the
-other: what a class leaves in static state, the next one finds, so tests and the engine take back
-what they set. In every test JVM the build also sets four system properties, so that no test
-reaches outside your machine by accident:
+```bash
+cargo test --locked --test suite -- tag_codec_test::
+```
 
-| Property | Effect |
-|---|---|
-| `njmule.upnp.disabled=true` | UPnP stays off: a test never changes your router's port mappings |
-| `njmule.defaultlists.disabled=true` | a new profile starts without the shipped server list and Kad contacts, so no test reaches real servers or nodes |
-| `njmule.update.disabled=true` | njMule never looks for new versions on GitHub |
-| `njmule.countries.disabled=true` | the country database a profile asks for by default is never downloaded |
-
-### Tags
-
-Three groups of tests are left out of the default run (`test.excludedTags`):
-
-| Tag | What the tests do | How to run them |
-|---|---|---|
-| `interop` | talk to a real eMule on your computer: `KadInteropTest` sends Kad bootstrap, hello, lookup and ping messages, and stores and searches a keyword in its index; the UDP port comes from `-Pnjmule.interop.kadPort` (default 14897) | `'-Ptest.tags=interop' '-Ptest.excludedTags=private-fixtures,perf'` |
-| `private-fixtures` | read a real eMule profile, read-only, from the folder in `NJMULE_EMULE_CONFIG` (downloads in progress from `NJMULE_EMULE_TEMP`); they print only counts, never names or hashes | `'-Ptest.excludedTags=interop,perf' '-Ptest.tags=private-fixtures'` |
-| `perf` | measure transfers on the loopback interface ([Throughput tests](#throughput-tests)) | `'-Ptest.tags=perf' '-Ptest.excludedTags=interop'` |
-
-An excluded tag wins over an included one, which is why each command also narrows
-`test.excludedTags`.
+Tests never reach outside the machine: UPnP, default server/node lists, GitHub update checks and
+DB-IP country downloads stay disabled in test configurations.
 
 :::danger[No personal data in the repository]
 Copies of a real eMule profile, captures and screenshots of your own eMule belong in the git-ignored
 `fixtures-private/` folder, never in a commit.
 :::
 
-## The test kit
+## Black-box flows and wire transcripts
 
-`njmule-testkit` holds test doubles that speak the real protocol, and the end-to-end tests that use
-them:
+`njmule-engine/tests/flow_lab.rs` provides in-process protocol doubles (`FakeServer` and `FakePeer`)
+and `BlackBoxEngine`, which launches the real compiled `njmule` binary with
+`NJMULE_CONTROL_ENDPOINT=1` and drives it strictly through its HTTP remote-control API and SSE event
+stream (`server_flow_test.rs`, `search_flow_test.rs`, `download_flow_test.rs`).
 
-| Class | What it is |
-|---|---|
-| `FakeServer` | an in-process eD2K server: logs clients in with a chosen ID, greets them, answers searches with fixed results over TCP and, on the TCP port + 4, over UDP, knows the sources of the files it is given, and records what it receives |
-| `FakePeer` | an in-process client that shares one file: answers hellos and file requests, queues downloaders or gives them a slot (also by calling them back), sends blocks plain or compressed, and can end sessions early, send corrupt parts, go silent or drop its downloaders |
-| `FreePorts` | ports free for a test to bind, below the ranges systems hand out for port 0, so that another program cannot take them between the choice and the bind |
+Every packet received by `FakeServer` and `FakePeer` is recorded in a `Transcript`, masked for
+per-run values (user hash, client ID, ephemeral ports, version, local addresses, random challenges,
+block request ordering, router traversal flag), and compared against the recorded wire transcripts
+in `njmule-engine/tests/transcripts/`. Every expected packet must arrive and every packet of a
+recorded kind must match the transcript.
 
-The end-to-end tests in `njmule-testkit/src/test` drive whole flows against these doubles: server
-log-in, callbacks and searches, downloads with their limits and recovery, source exchange, the
-command line, one njMule per profile (a later start hands its links to the one running, asks it to
-exit with `--exit`, or fails on the lock), the web interface's calls and the remote-control API. Their coverage is aggregated
-into one JaCoCo report with that of the launcher and the web interface.
+## Property-based, fuzz and golden corpus tests
 
-The engine flows also run against an `njmule` executable instead of an engine in their JVM: with
-`-Pnjmule.engine=<path>` each one starts that executable on its profile, as the desktop window does
-(`NJMULE_CONTROL_ENDPOINT=1`), and drives it only through the remote-control API (`ApiEngine`). Its
-output lands in `engine.log` beside the profile. The few steps the API cannot show (two calls that
-must reach the engine in order, the history of cancelled files) are skipped in that mode. Every
-answer and event the executable gives is checked against `openapi.yaml`, strictly (no field the
-document does not name), by `ApiContract`, which the core's tests share with the test kit as
-Gradle test fixtures (`njmule-core/src/testFixtures`, with `Corpus`, `Canonical` and `Mutations`):
-
-```bash
-./gradlew :njmule-app:nativeCompile :njmule-testkit:test "-Pnjmule.engine=$PWD/njmule-app/build/native/nativeCompile/njmule"
-```
-
-`njmule-app/build/install/njmule/bin/njmule` of `:njmule-app:installDist` (`njmule.bat` on Windows)
-serves as well, without the native build.
-
-The Rust engine builds an `njmule` executable of its own, which the flows drive the same way. It
-passes the three of them: `ServerFlowTest` (log-in through the obfuscated probe, low id, dead servers
-and the server list, UDP status and description, call-backs, greetings, the offer of shared files),
-`SearchFlowTest` (server and global searches, more results) and `DownloadFlowTest` (compressed
-blocks, a place in the queue, call-backs, corrupt parts saved by AICH, sources from the servers,
-an upload over the same connection, pause, resume and cancel). The `engine` job of the CI runs them
-against it:
-
-```bash
-cargo build --release --manifest-path njmule-engine/Cargo.toml
-./gradlew :njmule-testkit:test --tests '*ServerFlowTest' --tests '*SearchFlowTest' --tests '*DownloadFlowTest' "-Pnjmule.engine=$PWD/njmule-engine/target/release/njmule"
-```
-
-The port keeps the Java tests' names. When a Java test class has a Rust twin (`FooTest.java` beside
-`njmule-engine/tests/foo_test.rs`), each of its tests appears there in snake case (`shouldX` as
-`should_x`), or is listed in `njmule-engine/tests/not_ported.txt` with the reason it waits.
-`test_name_map_test` checks both ways, so a test added in Java or lost in Rust fails it, and so does
-a listed test once it is ported. The `engine` job runs it when the Java tests change too.
-
-The files of `njmule-engine/tests` are the modules of one test executable, `tests/main.rs`, so the
-engine is linked once and not once for each file. A new test file is declared there
-(`mod foo_test;`), and `test_name_map_test` fails on a file left out. One file's tests run with
-`cargo test --test suite foo_test::`.
-
-The areas ported whole are listed in `njmule-engine/tests/ported_areas.txt`: every Java test class
-there has a twin, and every package keeps at least the line coverage of the Java package it replaces.
-The Java figures come from JaCoCo and are kept in `njmule-engine/tests/java_coverage.txt`; the
-`engine` job measures the Rust tests with cargo-llvm-cov and fails on a package below its Java twin.
-In `njmule-engine`, with rustup's `llvm-tools` and cargo-llvm-cov installed:
-
-```bash
-cargo llvm-cov --locked --json --summary-only --output-path target/coverage.json
-python ../tools/engine_coverage.py check target/coverage.json
-```
-
-`python tools/engine_coverage.py baseline njmule-core/build/reports/jacoco/test/jacocoTestReport.xml`
-writes the Java figures again, after `./gradlew :njmule-core:jacocoTestReport`.
-
-The server, search and download flows also check what the engine sent: every packet `FakeServer`
-and `FakePeer` receive goes into their `Transcript`, which the `Transcripts` extension compares
-after each test with `njmule-testkit/src/test/resources/transcripts/<class>/<test>.txt`. A
-transcript keeps each connection's packets in hex, each line once and sorted, with
-what changes from one run or machine to the next masked: the engine's user hash, ID and port, the
-version it tells, the addresses of the machine, random challenges, the ranges a download picks and
-whether router traversal was up yet. Every recorded packet must come, and a packet of a kind the
-transcript holds (channel, connection, protocol, opcode) must be one of its lines; kinds it does not
-hold are not compared, as an engine sends some on its timers (the offer of a file just completed)
-before or after a test ends. The same transcripts hold in both modes, so an executable must send
-what the engine in the JVM sends. After a change meant to alter the packets, record them again and
-review the difference:
-
-```bash
-./gradlew :njmule-testkit:test --tests '*ServerFlowTest' --tests '*SearchFlowTest' --tests '*DownloadFlowTest' -Pnjmule.transcripts.write=true
-```
-
-Tests never tell peers the machine's public IPv6 address (`njmule.ipv6.disabled`), so that the
-packets stay the same on any network.
-
-## Property-based and fuzz tests
-
-Codecs and parsers have jqwik properties (`@Property`) over generated input: tags, packets, hashes,
-links, search expressions, data files and more. `MutatedMessagesTest` fuzzes the decoders: it
-takes messages of the network built right, changes them 5,000 times as a broken or hostile peer or
-server could, and checks that the decoders refuse them only with a `DecodeException`, never with
-another exception.
-
-The eD2K and AICH hashes and the protocol obfuscation are also checked against golden vectors made
-by an independent Python implementation (`tools/golden/`), stored in
-`njmule-core/src/test/resources/golden/`.
-
-A corpus in the same folder keeps a decoder's inputs with the answers the engine gives them, so that
-another engine can be checked against them: JSON Lines, one case per line, described in the
-folder's `README.md`.
-
-- `tag-codec.jsonl` holds tags, tag lists and Kad tag lists, written right and changed by
-  `Mutations`, with the bytes each read takes and the tags written again, or the refusal
-  (`TagCodecCorpusTest`).
-- `packets.jsonl` holds every eD2K and Kad message of `MutatedMessagesTest`, as made and changed,
-  with the message decoded, in the form of `Canonical`, or the refusal (`PacketCorpusTest`).
-- `profile-files.jsonl` holds the files of a profile (`.met` and `.dat` files, the Kad indexes,
-  `ipfilter.dat` and the other text files), as written and changed, with what their readers give
-  (`ProfileFilesCorpusTest`).
-- `ed2k-links.jsonl`, `kad-keywords.jsonl` and `search-expressions.jsonl` hold texts people and
-  browsers give: links, the names Kad publishes keywords for (with the whole lower case table
-  the keyword ids rest on) and searches, with what the parsers make of them.
-- `hashes.jsonl` holds how files split into eD2K parts, how AICH trees are built from their block
-  hashes and what AICH recovery data proves (`HashCorpusTest`).
-
-The tests check that the engine still answers so, and the Rust engine (`njmule-engine`) replays
-the same files in its own tests: so far `tag-codec.jsonl`, `packets.jsonl`, `ed2k-links.jsonl`,
-`search-expressions.jsonl`, `hashes.jsonl` and `profile-files.jsonl`, with the golden vectors of
-`file-hashes.txt` and `obfuscation.txt`. After a change meant to alter the answers, write them
-again and review the difference:
-
-```bash
-./gradlew :njmule-core:test --tests '*CorpusTest' -Pnjmule.corpus.write=true
-```
-
-The inputs stay the same; delete a file to draw new ones.
+- Codecs and parsers have `proptest` properties and mutation-fuzz tests (`mutated_messages_test.rs`)
+  that mutate valid eD2K and Kad messages thousands of times to verify decoders never panic or
+  overflow on hostile input.
+- Independent golden vectors generated by Python scripts in `tools/golden/` live in
+  `njmule-engine/tests/golden/` (`file-hashes.txt`, `obfuscation.txt`).
+- JSON Lines corpora in `njmule-engine/tests/golden/` check decoder compatibility across:
+  - `tag-codec.jsonl` (`tag_codec_corpus_test`)
+  - `packets.jsonl` (`packet_corpus_test`)
+  - `profile-files.jsonl` (`profile_files_corpus_test`)
+  - `ed2k-links.jsonl` (`ed2k_link_corpus_test`)
+  - `kad-keywords.jsonl` (`keywords_corpus_test`)
+  - `search-expressions.jsonl` (`search_parser_corpus_test`)
+  - `hashes.jsonl` (`hash_corpus_test`)
 
 ## Interface tests
 
-The interface's tests are in `njmule-ui/src/__tests__/*.test.ts`, run by Vitest on happy-dom, a
-browser's document without a browser. They test the interface's logic, such as the formatting of
-sizes and rates, the search syntax, the texts and languages, the places a guest may open, the
-options and the command palette, against the API's types generated from `openapi.yaml`:
+The interface's tests live in `njmule-ui/src/__tests__/*.test.ts` and run with Vitest on happy-dom
+against the TypeScript types generated from `njmule-engine/assets/openapi.yaml`:
 
 ```bash
 ./gradlew :njmule-ui:unitTest
 ```
 
-`./gradlew build` runs them too, with the Prettier check; in `njmule-ui`, `npm run test` runs them
-alone. See [Interface](interface.mdx).
+`./gradlew :njmule-ui:build` runs them together with the Vite bundle and Prettier check; in
+`njmule-ui/`, `npm run test` runs them directly. See [Interface](interface.mdx).
 
 ## Desktop window tests
 
-The desktop window's shell has Rust unit tests beside its code in `njmule-desktop/src-tauri/src`:
-the eD2K links it is handed, its options, the window's place on the screen, the connections to
-other njMules it remembers, and the commands of the installer and of an update. They are not part
-of `./gradlew build`, which needs no Rust; run them in `njmule-desktop/src-tauri` once
-`./gradlew :njmule-ui:site` has built the interface the shell embeds:
+The desktop shell has Rust unit tests beside its code in `njmule-desktop/src-tauri/src`: eD2K link
+handoff, launch options, window placement, saved remote connections, and installer/update commands.
+Run them in `njmule-desktop/src-tauri/` once `./gradlew :njmule-ui:site` has built the interface:
 
 ```bash
 cargo test --locked --release
 ```
 
-The CI runs them, with `cargo fmt --check` and Clippy, on Linux, Windows and macOS
-([Building](building.mdx#the-desktop-window)). Before packing, the release workflow also starts each
-desktop window with `.github/scripts/desktop-smoke-test.ps1` or `desktop-smoke-test.sh`: the window
-tells its version, starts the engine on a profile of its own and takes it along when closed
-([Packaging](packaging.mdx)).
-
-The window starts the Rust engine as well: it logs to the profile's `logs` folder too, where the
-smoke test looks for the start of its control endpoint. To try it, put the two programs side by side
-and run the script on their folder:
-
-```powershell
-./gradlew :njmule-desktop:shell
-cargo build --release --manifest-path njmule-engine/Cargo.toml
-New-Item -ItemType Directory -Force smoke
-Copy-Item njmule-desktop/src-tauri/target/release/njmule-gui.exe, njmule-engine/target/release/njmule.exe smoke
-./.github/scripts/desktop-smoke-test.ps1 smoke
-```
+Before packing, the release workflow also runs `.github/scripts/desktop-smoke-test.ps1` or
+`desktop-smoke-test.sh`: the window prints its version, starts the `njmule` engine beside it on a
+temporary profile, verifies the control endpoint starts, and shuts the engine down cleanly when
+closed.
 
 ## Pictures of the interface
 
-This site's screenshots are taken from the interface itself, on a demo engine: `WebCaptureDemo`, in
-`njmule-http`'s tests, starts a real engine in a temporary profile with no network, answers some of
-its commands with the example data of `CaptureDemo` (free files and documentation addresses only),
-and serves it through the web interface. `website/scripts/capture-web.mjs` then drives the Chrome or
-Edge installed on your computer through Playwright and pictures the places, menus and dialogs the
-pages show, in light and in dark, and the transfers in forced colours (high contrast):
+This site's screenshots are captured from the real Vue interface served by the Rust demo example
+`njmule-engine/examples/web_capture_demo.rs`, which starts an offline engine with synthetic example
+data (free files and RFC 5737 documentation addresses only). `website/scripts/capture-web.mjs`
+drives the installed Chrome or Edge through Playwright and captures every screen, menu and dialog in
+light, dark and forced-colours (high contrast) modes:
 
 ```bash
 ./gradlew :website:webScreenshots
 ```
 
-The pictures land in `website/build/web-captures/`, one folder per set. They are no test: a step
-that fails is reported as "not pictured" and the others go on, while the site's build fails on a
-picture a page names but the run did not make ([Documentation](documentation.mdx#screenshots)).
-
-## Throughput tests
-
-Two tests of the test kit, tagged `perf`, measure how fast a download from a peer on the same
-machine goes (`DownloadThroughputTest`) and how fast njMule sends a shared file to another njMule
-(`UploadThroughputTest`), to find what holds a transfer back on a LAN. They print their speed in
-MiB/s:
-
-```bash
-./gradlew :njmule-testkit:test --tests '*ThroughputTest' '-Ptest.tags=perf' '-Ptest.excludedTags=interop'
-```
-
-For the speed of single operations, see [Benchmarks](benchmarks.mdx).
+The images land in `website/build/web-captures/`. See [Documentation](documentation.mdx#screenshots).
 
 ## Continuous integration
 
@@ -346,15 +173,15 @@ request, and once a week on everything:
 
 | Job | What it does |
 |---|---|
-| verify | `./gradlew build --continue '-Ptest.parallelModules=1'` on Ubuntu, Windows and macOS, starting from the build cache of `main`'s latest build (saved by each build of `main`), so the modules a change leaves alone are not tested again; on Ubuntu then `./gradlew sonar`, once the `SONAR_TOKEN` secret exists, which waits for the quality gate and fails the job when it is red (new code under 80% covered, say); on a failure, the test reports are kept as an artifact |
-| desktop shell | on Ubuntu, Windows and macOS: builds the interface, then `cargo fmt --check`, Clippy with warnings as errors, and `cargo test`; only when the desktop window, the interface, the generated icons or the workflow change, and weekly |
-| native image | the native command-line executable on Linux x64 (in the pinned GraalVM container), Windows x64 and macOS arm64, built with `-Ob`, then started with `--version` and `--license`; on Linux also the test kit's flows against the executable ([The test kit](#the-test-kit)); on Windows also the service host, installed as a real service, tried and removed |
-| synology package | the static musl executable and the `.spk` around it, checked entry by entry; only when the build, the dependencies, the native configuration or the package's files change, and weekly |
-| REUSE compliance | `reuse lint` over the repository |
-| actionlint | lints the workflows when they change |
-| CI result | the one check to require: passes when every job passed or was skipped |
+| `interface (ui)` | `./gradlew :njmule-ui:build :iconTools` (API types, `vue-tsc`, Vite, Vitest, Prettier) |
+| `desktop shell` | on Ubuntu, Windows and macOS: `:njmule-ui:site`, then `cargo fmt --check`, Clippy (`-D warnings`) and `cargo test --locked --release` |
+| `rust engine` | on Ubuntu: `cargo fmt --check`, Clippy (`-D warnings`), `cargo llvm-cov --locked --fail-under-lines 70`, `cargo-deny`, `cargo-about` (`THIRD-PARTY.txt`), `cargo-cyclonedx` (SBOM), and SonarQube Cloud analysis |
+| `engine (windows-x64)` | builds `:njmule-ui:compress`, `:nativeService` and `njmule.exe` in release mode, smoke-tests `--version`/`--license`, and runs the real Windows service install/start/stop/uninstall test |
+| `engine (macos-arm64)` | builds `:njmule-ui:compress` and `njmule` in release mode, and smoke-tests `--version`/`--license` |
+| `synology package (x86_64)` | builds the static musl `njmule` executable, verifies `ldd` reports no dynamic libraries, smoke-tests it, and builds and verifies the `.spk` package |
+| `REUSE compliance` | `reuse lint` across the repository |
+| `actionlint` | lints GitHub Actions workflows when they change |
+| `CI result` | the single required branch check: passes when every job passed or was skipped |
 
-Changes that cannot affect the build (Markdown files, repository metadata, the branding sources,
-`tools/`, the website) skip the build jobs; skipped jobs count as passed. A newer commit of the same
-pull request or branch cancels the run of the older one. The website has a
-workflow of its own ([Documentation](documentation.mdx#deployment)).
+Each job uses path filters so documentation-only changes skip unaffected build jobs. The website has
+its own workflow ([Documentation](documentation.mdx#deployment)).

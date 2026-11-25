@@ -13,9 +13,9 @@ eD2K and Kad, see the [glossary](glossary.mdx).
 ### What is njMule?
 
 njMule, *New Jack Mule* (a jack is the male donkey, the sire of a mule), is a file-sharing
-client for the eD2K and Kad networks, written in Java 25. It comes as a desktop app, as a headless
-engine with a command line, as a web interface you open in a browser and as a JSON remote-control
-API, all driving the same engine.
+client for the eD2K and Kad networks, written in Rust with a Vue interface. It comes as a desktop
+app, as a headless engine with a command line, as a web interface you open in a browser and as a
+JSON remote-control API, all driving the same engine.
 See [Features](features.mdx).
 
 ### Is it eMule?
@@ -30,10 +30,11 @@ Yes. njMule is free software under the GNU General Public License, version 3 or 
 it for any purpose, study and change its source code and share it. There is no account to create
 and nothing to pay. See [License and credits](about/license.mdx).
 
-### Does it need Java?
+### Does it need Java or another runtime?
 
-No. The packages contain native executables built with GraalVM, so no Java runtime has to be
-installed. Only [building njMule from source](/developer/building) needs a JDK 25.
+No. The packages contain standalone native executables compiled from Rust, so no Java or other
+runtime has to be installed. See [Building njMule](/developer/building) if you want to build it from
+source.
 
 ### Does it work with eMule and aMule?
 
@@ -136,9 +137,9 @@ outside your home network, reach it only through a reverse proxy that serves HTT
 ### How much memory and CPU?
 
 It depends on how much you do: how many files you share and download, and how many sources,
-waiting clients and Kad contacts njMule deals with. The native executables start at once, with no
-Java runtime to load. Hashing new shared files reads them once, which keeps the processor and the disk busy
-for a while. **Max. connections**, **Max. Sources/File** and **Queue size** in
+waiting clients and Kad contacts njMule deals with. The native executables start at once and use a
+small amount of memory. Hashing new shared files reads them once, which keeps the processor and the
+disk busy for a while. **Max. connections**, **Max. Sources/File** and **Queue size** in
 **Options → Connection** bound the work. See [Connection options](settings/connection.mdx).
 
 ### Is there a portable version?

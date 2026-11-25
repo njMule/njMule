@@ -84,10 +84,9 @@ in THIRD-PARTY.txt (generated from njmule-engine/Cargo.lock with
                                 under its own license; their copyright files
                                 are in the image under /usr/share/doc
 
-Test-only dependencies (proptest, tempfile, x509-parser, JUnit, AssertJ,
-jqwik, Jimfs) and build tools (Rust, Cargo, Node.js, Vite, TypeScript,
-vue-tsc, Vitest, Prettier, openapi-typescript, the Tauri command line, Gradle)
-are not distributed.
+Test-only dependencies (proptest, tempfile, x509-parser) and build tools
+(Rust, Cargo, Node.js, Vite, TypeScript, vue-tsc, Vitest, Prettier,
+openapi-typescript, the Tauri command line, Gradle) are not distributed.
 
 
 Shipped server list and Kad contacts

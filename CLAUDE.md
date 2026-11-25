@@ -4,16 +4,16 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 # CLAUDE.md — njMule project instructions
 
-njMule — **N**ew **J**ack **Mule** (a jack is the male donkey, a mule's sire): a modern Java 25
-re-implementation of eMule (eD2K + Kad2), wire-compatible with the eMule network. Licensed
-**GPL-3.0-or-later**.
+njMule — **N**ew **J**ack **Mule** (a jack is the male donkey, a mule's sire): a modern Rust
+re-implementation of eMule (eD2K + Kad2), wire-compatible with the eMule network, with a Vue 3 /
+TypeScript user interface and a Tauri 2 desktop shell. Licensed **GPL-3.0-or-later**.
 
-The full implementation plan lives in `docs/PLAN.md` (milestones M0–M8). Read it before starting work.
-`docs/` is **local only**: it is git-ignored by the maintainer's decision and must never be committed.
+Design notes live in `docs/`, which is **local only**: it is git-ignored by the maintainer's
+decision and must never be committed.
 
 **Language: everything in the repository is written in English** — source code, comments, commit
-messages, PR texts, documentation (`docs/`, README, changelog). Only the UI translations
-(the `emule[_<lang>].properties` and `nj[_<lang>].properties` bundles) are in other languages.
+messages, PR texts, documentation (`docs/`, README, changelog). Only the UI translations (the
+`emule[_<lang>].properties` and `nj[_<lang>].properties` bundles) are in other languages.
 
 ## Git conventions (mandatory)
 
@@ -33,10 +33,9 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `perf`, `refactor`, `style`, `test`, `chore`, `revert`.
 - **Breaking changes**: `!` after type/scope (`feat(api)!: …`) and/or a `BREAKING CHANGE: <text>`
   footer → SemVer MAJOR (MINOR while the version is `0.y.z`).
-- **Scopes** (lower-case module/area names): `core`, `api`, `engine`, `protocol`, `net`, `server`,
-  `kad`, `files`, `download`, `upload`, `search`, `persist`, `config`, `security`, `social`,
-  `extras`, `gui`, `webui`, `app`, `testkit`, `bench`, `packaging`, `branding`, `i18n`, `deps`,
-  `docs`, `ci`, `release`.
+- **Scopes** (lower-case module/area names): `engine`, `api`, `protocol`, `net`, `server`, `kad`,
+  `files`, `download`, `upload`, `search`, `persist`, `config`, `security`, `social`, `extras`,
+  `gui`, `webui`, `packaging`, `branding`, `i18n`, `deps`, `docs`, `ci`, `release`.
 - Description: imperative mood, lower case, no trailing period, ≤ 72 characters for the header.
 - Body explains *what* and *why*; wrap at 72 columns. Footers use `Token: value`
   (`Refs: #12`, `Closes: #34`, `BREAKING CHANGE: …`, `Signed-off-by: …`).
@@ -55,8 +54,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   linear history, no force push or deletion, no bypass; no approval is required, the maintainer
   being the only reviewer. The squash commit takes the PR title and the commits' messages, their
   `Signed-off-by` lines included; merged branches are deleted.
-- Dependabot's pull requests are completed on their own branch (locks and checksums rewritten, see
-  Tooling) and squash-merged like the others.
+- Dependabot's pull requests are completed on their own branch (locks and checksums rewritten when
+  Gradle versions change, see Tooling) and squash-merged like the others.
 
 ### Branch names
 
@@ -64,16 +63,17 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 <type>/<short-kebab-case-description>
 ```
 
-- Same `type` vocabulary as commits; optional milestone prefix in the description:
-  `feat/m0-project-skeleton`, `feat/m1-tag-codec`, `fix/server-udp-min-length`, `docs/protocol-spec`,
-  `ci/native-image-job`, `chore/deps-logback-1.6.6`.
+- Same `type` vocabulary as commits: `feat/kad-routing`, `fix/server-udp-min-length`,
+  `docs/protocol-spec`, `ci/sonarqube-rust`, `chore/deps-tokio-1.54`.
 - Lower case, `a-z0-9-` only, ≤ 50 characters, no trailing slash.
 - Release branches (if ever needed): `release/vX.Y.Z`.
 
 ## Versioning
 
-- [Semantic Versioning 2.0.0](https://semver.org/). Single source: `version` in `gradle.properties`.
-- `0.y.z` during milestones, pre-releases `-alpha.N` / `-beta.N` / `-rc.N`, `1.0.0` at feature parity.
+- [Semantic Versioning 2.0.0](https://semver.org/). Single source: `version` in `gradle.properties`
+  (`njmule-engine/build.rs` and `njmule-desktop/build.gradle.kts` read it from there).
+- `0.y.z` during pre-1.0 development, pre-releases `-alpha.N` / `-beta.N` / `-rc.N`, `1.0.0` at
+  feature parity.
 - Tags are annotated: `vX.Y.Z`. `CHANGELOG.md` follows
   [Keep a Changelog](https://keepachangelog.com/): each user-visible change adds a short line under
   `[Unreleased]` (Added, Changed, Fixed, Security).
@@ -82,168 +82,123 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `release.yml`, whose draft release waits for the maintainer's approval of the `release`
   environment and is then published by hand. Then the pinned Roadmap issue (#38) gets the release
   under "Released" and its completed "Next" items ticked.
-- The `release` skill (`.claude/skills/release/SKILL.md`, kept local like `docs/` and never
-  committed) does all of it, with a manual run of
-  `release.yml` on the release branch before the tag, once the maintainer asks for a release of a
-  version: that request is their approval of every step, including the `release` environment and
-  the publication.
+- The local `release` skill (kept local like `docs/` and never committed) automates all of it,
+  with a manual run of `release.yml` on the release branch before the tag, once the maintainer asks
+  for a release of a version: that request is their approval of every step, including the `release`
+  environment and the publication.
 
 ## Project layout
 
 | Path | Content |
 |---|---|
-| `njmule-core` (`org.njmule.core`) | engine and remote-control API; exports only `api`, `config` and `remote` |
-| `njmule-app` (`org.njmule.app`) | headless launcher/CLI, Logback set-up (`logging.internal` is not exported) |
-| `njmule-ui` | the one interface of the desktop window and the web interface (Vue 3, TypeScript, Vite, Reka UI, TanStack Table/Virtual); reaches njMule only through the remote-control API; built into njmule-http's jar; holds the translation bundles (`i18n/`) and flags (`flags/`) |
-| `njmule-desktop` | the desktop window: a Tauri 2 shell (Rust, `src-tauri/`) that starts the native engine with a control endpoint and shows `njmule-ui` |
-| `njmule-engine` | the engine in Rust, being ported from `njmule-core` (phase 2 spike): a Cargo crate of its own, whose tests replay the Java engine's corpora |
-| `njmule-http` (`org.njmule.http`) | njMule over HTTP on Jetty: the web interface (password, sessions, CSRF), which serves `njmule-ui` and the core's remote-control API, and the desktop window's control endpoint |
-| `njmule-testkit` (`org.njmule.testkit`) | test doubles (fake server and peers, from M2) |
-| `njmule-bench` | JMH benchmarks; classpath build so it reaches internal core packages; not distributed |
-| `build-logic/` | Gradle convention plugin shared by the modules (`njmule.java-conventions`) |
-| `gradle/` | `libs.versions.toml` (every library and plugin version) and the Gradle Wrapper |
-| `config/` | license header, Checkstyle and SpotBugs configuration |
-| `branding/` | original artwork (master SVG + generated PNG/ICO/ICNS) — never reuse eMule assets |
-| `tools/` | single-file helper programs (`IconGen.java`) |
+| `njmule-engine` | the Rust engine, CLI, web interface (Axum) and remote-control API (`Cargo.toml`, `src/`, `assets/`, `tests/`, `examples/web_capture_demo.rs`) |
+| `njmule-ui` | the single interface of the desktop window and the web interface (Vue 3, TypeScript, Vite, Reka UI, TanStack Table/Virtual); reaches njMule only through the remote-control API; embedded by `njmule-engine` (gzipped) and `njmule-desktop` (uncompressed); holds the translation bundles (`i18n/`) and flags (`flags/`) |
+| `njmule-desktop` | the desktop window: a Tauri 2 shell (Rust, `src-tauri/`) that starts the `njmule` executable with a control endpoint and shows `njmule-ui` |
 | `website/` | documentation website (Docusaurus): `docs/` user guide, `developer/` developer guide, published on GitHub Pages |
+| `gradle/` | `libs.versions.toml` (Node.js and JSVG versions), `verification-metadata.xml` and the Gradle Wrapper |
+| `packaging/` | Windows installer (WiX 5) and Windows service host (`packaging/windows/service.c`), Linux packages (nfpm), macOS bundle metadata, Docker image, Synology DSM package |
+| `branding/` | original artwork (master SVG + generated PNG/ICO/ICNS) — never reuse eMule assets |
+| `tools/` | single-file helper programs (`IconGen.java`, `FlagGen.java`, `Rc2Properties.java`, `SocialPreview.java`, `UpdateManifest.java`), golden vector generators (`tools/golden/`) and the e2e update server (`tools/e2e-update-server.sh`) |
 | `docs/` (local, git-ignored) | `PLAN.md`, `ARCHITECTURE.md`, `PROTOCOL.md`, `FORMATS.md`, `adr/` |
 
 ## Tooling and commands
 
-- Build with the Gradle Wrapper (Java 25 toolchain): `./gradlew build` (Windows:
-  `.\gradlew.bat build`) runs Spotless, Checkstyle, Error Prone, tests, JaCoCo (core ≥ 70% lines)
-  and SpotBugs + FindSecBugs. Format first with `./gradlew spotlessApply`. The modules share their
-  set-up through `build-logic` (`njmule.java-conventions`); versions live in
-  `gradle/libs.versions.toml`.
-- Builds are incremental and cached (build cache and configuration cache, `gradle.properties`): with
-  nothing changed `./gradlew build` takes about a second, a change re-runs only what depends on it,
-  and worktrees share the build cache in `~/.gradle`. `clean` is never needed for a correct build.
-  In CI the build cache lives apart (`NJMULE_BUILD_CACHE`, `settings.gradle.kts`): each build of
-  `main` saves it and pull requests start from it, so unchanged modules are not tested again.
-- Dependencies are locked and verified: every resolved version is in the `gradle.lockfile` of each
-  project (and `buildscript-`/`settings-gradle.lockfile`), every downloaded artifact is checked
-  against its SHA-256 in `gradle/verification-metadata.xml` (the Node.js archives of every platform
-  included), and any difference fails the build. After changing a version (`libs.versions.toml`, a
-  plugin, Gradle itself) rewrite both, then delete the entries of the versions no longer used and
-  review the new checksums; Dependabot's pull requests need the same step. Without
-  `--refresh-dependencies` Gradle leaves out the parent POMs and BOMs it already holds in its cache,
-  and CI, which starts with an empty one, then fails on them:
+- **Rust engine (`njmule-engine`)**: pinned toolchain in `njmule-engine/rust-toolchain.toml` (installed
+  automatically by `rustup`). Build, lint and test from `njmule-engine/`:
+
+  ```bash
+  cargo fmt --check
+  cargo clippy --locked --all-targets -- -D warnings
+  cargo test --locked
+  cargo deny check
+  ```
+
+  `Cargo.toml` forbids `unsafe_code` and denies `unwrap_used`, `expect_used`, `panic`,
+  `indexing_slicing` and `arithmetic_side_effects` in production code. Release builds keep
+  `overflow-checks = true`, thin LTO and stripped symbols. To embed the compressed web UI in a
+  release binary, build `:njmule-ui:compress` first (`./gradlew :njmule-ui:compress`, then
+  `cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule`).
+- **Engine tests and coverage**: the integration tests of `njmule-engine/tests/` are modules of one
+  test binary (`tests/main.rs`) so the engine is linked once; declare every new test file there
+  (`mod foo_test;`) — `suite_modules_test` fails on any file left out. Run one file with
+  `cargo test --locked --test suite -- foo_test::`. Golden corpora live in `tests/golden/` and
+  recorded wire transcripts for black-box flows in `tests/transcripts/`. Measure coverage with
+  `cargo llvm-cov --locked --fail-under-lines 70` (requires `rustup component add llvm-tools` and
+  `cargo-llvm-cov`).
+- **Notices and SBOM**: generated from `njmule-engine/Cargo.lock`:
+  - `cargo about generate about.hbs -o target/THIRD-PARTY.txt`
+  - `cargo cyclonedx --format json --spec-version 1.6 --describe binaries --no-build-deps --target all`
+- **Static Linux build (musl)**: for Synology DSM and `linux-x64-static` (no system glibc needed),
+  install `musl-tools` and `rustup target add x86_64-unknown-linux-musl`, build `:njmule-ui:compress`,
+  then run:
+
+  ```bash
+  CC_x86_64_unknown_linux_musl=musl-gcc cargo build --manifest-path njmule-engine/Cargo.toml \
+      --locked --release --target x86_64-unknown-linux-musl --bin njmule
+  ```
+
+- **Interface (`njmule-ui`)**: Gradle (JDK 25) downloads the pinned Node.js (`nodejs` in
+  `gradle/libs.versions.toml`, checked in `gradle/verification-metadata.xml` for all five platforms)
+  and runs `npm ci` from `package-lock.json` without install scripts (`.npmrc`).
+  `./gradlew :njmule-ui:build` runs type generation from `njmule-engine/assets/openapi.yaml`
+  (`npm run api`), `vue-tsc`, Vite build (`bundle`), Vitest (`unitTest`), Prettier (`formatCheck`,
+  fix with `npm run format` in `njmule-ui/`), `site` and `compress`. Its texts are the translation
+  keys in `i18n/` (`t('IDS_…')`, `t('nj.…')`), converted to JSON at build time; only literal keys
+  are found. A task that runs `npm ci` empties `node_modules`: stop a Vite dev server first.
+- **Desktop window (`njmule-desktop`)**: pinned Rust in `njmule-desktop/src-tauri/rust-toolchain.toml`;
+  the Tauri CLI comes from npm. `./gradlew :njmule-desktop:shell` builds
+  `njmule-desktop/src-tauri/target/release/njmule-gui(.exe)`, which starts the `njmule(.exe)`
+  executable beside it (or on `PATH`) and shows `njmule-ui`. In `njmule-desktop/src-tauri/`:
+  `cargo fmt --check`, `cargo clippy --locked --release --all-targets -- -D warnings`,
+  `cargo test --locked --release` (after `./gradlew :njmule-ui:site`).
+- **Windows service host**: `./gradlew nativeService` compiles `packaging/windows/service.c` with
+  Visual Studio Build Tools into `build/windows/njmule-service.exe`.
+- **Gradle locking and verification**: every Gradle dependency (`libs.versions.toml`) is locked in
+  `gradle.lockfile` / `buildscript-gradle.lockfile` / `settings-gradle.lockfile` and verified by
+  SHA-256 in `gradle/verification-metadata.xml` (including all five Node.js platform archives).
+  After changing a Gradle or Node.js version, rewrite both (without `--refresh-dependencies`, Gradle
+  can omit cached parent POMs and break CI):
 
   ```bash
   ./gradlew --no-configuration-cache --refresh-dependencies --write-verification-metadata sha256 \
-      --write-locks spotlessCheck :njmule-app:collectReachabilityMetadata \
-      :njmule-app:generateLicenseReport cyclonedxBom
+      --write-locks :iconTools :njmule-ui:nodeSetup :njmule-desktop:nodeSetup :website:nodeSetup
   ```
-- Test options (`-P`): `test.excludedTags` (default `interop,private-fixtures,perf`), `test.tags`,
-  `test.forks` (JVMs per module, default 4), `test.maxHeap` (default 4g) and `test.parallelModules=1` (one module's tests at a time, for
-  machines with few cores; the CI's verify jobs use it on their four CPUs). Any
-  `-Pnjmule.<name>=<value>` reaches the tests as a system property. PowerShell splits an unquoted
-  option at its first dot: write `'-Ptest.forks=1'`. One class:
-  `./gradlew :njmule-core:test --tests '*TagCodecTest'`. The testkit's engine flows run against an
-  `njmule` executable through its API with `-Pnjmule.engine=<path>` (the native one, or `installDist`'s
-  launcher). `-Pnjmule.corpus.write=true` writes the engine's answers into the corpora
-  (`golden/*.jsonl` of `njmule-core`'s tests) instead of checking them. `-Pnjmule.transcripts.write=true` records the
-  packets the server, search and download flows send (`transcripts/` of `njmule-testkit`'s tests). Speed of the transfers on the loopback
-  (prints MiB/s): `./gradlew :njmule-testkit:test --tests '*ThroughputTest' '-Ptest.tags=perf'
-  '-Ptest.excludedTags=interop'`.
-- Interface (`njmule-ui`): Gradle downloads Node.js (`nodejs` in `libs.versions.toml`, checked
-  in `verification-metadata.xml` for every platform) and runs `npm ci` from `package-lock.json`
-  without install scripts (`.npmrc`); `bundle` type-checks and builds it, `unitTest` runs Vitest,
-  `formatCheck` runs Prettier (fix with `npm run format` there). The API's types come from
-  `openapi.yaml` (`npm run api`). Its texts are the translation keys of its bundles in `i18n/`
-  (`t('IDS_…')`, `t('nj.…')`), converted to JSON at build time; only literal keys are found. The
-  themes' colours are CSS custom properties in `src/styles/themes.css`, converted once from
-  AtlantaFX. A task that runs `npm ci` empties `node_modules`: stop a Vite dev server first.
-- Desktop window (`njmule-desktop`): Rust and Cargo from rustup, at the version
-  `src-tauri/rust-toolchain.toml` pins; the Tauri command line comes from npm.
-  `./gradlew :njmule-desktop:shell` builds `src-tauri/target/release/njmule-gui(.exe)`, which starts
-  the `njmule` executable beside it (or on the `PATH`) and shows `njmule-ui`. In `src-tauri`:
-  `cargo test` runs its tests, `cargo fmt` formats it (`rustfmt.toml`: 120 columns).
-- Rust engine (`njmule-engine`): the same pinned Rust; in `njmule-engine`, `cargo test` replays the
-  corpora of `njmule-core/src/test/resources/golden`, `cargo clippy --all-targets -- -D warnings`
-  holds its lints (no unwrap, index, panic or unchecked arithmetic on network input), `cargo deny
-  check` its crates' licenses, advisories and sources (`deny.toml`). Port a Java package with the
-  same names in snake_case and its tests under the same names, and keep the corpora green. The
-  files of `tests/` are the modules of one test executable, `tests/main.rs`: declare a new one
-  there (`mod foo_test;`), and run one file's tests with `cargo test --test suite foo_test::`. The
-  areas ported whole are listed in `tests/ported_areas.txt`; each of their packages keeps at least
-  the line coverage of its Java twin (`tests/java_coverage.txt`, from JaCoCo):
-  `cargo llvm-cov --json --summary-only --output-path target/coverage.json`, then
-  `python ../tools/engine_coverage.py check target/coverage.json` (rustup's `llvm-tools` and
-  `cargo install cargo-llvm-cov --locked`), as the CI's `engine` job does.
-- Documentation website (`website/`, Docusaurus, not part of `build`): `./gradlew :website:site` →
-  `website/build/site` (it takes the interface's screenshots on a demo engine with the installed
-  Chrome or Edge through `website/scripts/capture-web.mjs`, the CLI help with `:njmule-app:cliHelp`,
-  and makes
-  the API reference from `openapi.yaml`); `./gradlew :website:siteCheck` checks its code (Prettier,
-  TypeScript). Preview: `./gradlew :website:prepare`, then `npm start` in `website/`. Pages are MDX
+
+  Then remove stale entries and keep all five `org.nodejs` platform checksums from Node.js's
+  `SHASUMS256.txt`.
+- **Documentation website (`website/`, Docusaurus)**: `./gradlew :website:site` →
+  `website/build/site` (builds `njmule` and `examples/web_capture_demo` via `:website:engineTools`,
+  captures screenshots with Chrome or Edge through `website/scripts/capture-web.mjs`, captures
+  `--help` and `--remote help` via `:website:cliHelp`, and generates the API reference from
+  `njmule-engine/assets/openapi.yaml`); `./gradlew :website:siteCheck` checks Prettier and
+  TypeScript. Preview: `./gradlew :website:prepare`, then `npm start` in `website/`. Pages are MDX
   in English, text under CC BY-SA 4.0; screenshots are never committed (`<Screenshot id="…">`). A
-  user-visible change updates its page in the same branch. `.github/workflows/docs.yml` builds it
-  on the pull requests that change it (not again on `main`) and publishes on GitHub Pages only on a
-  manual run with `deploy` or a `v*` tag.
-- Other tasks: `:njmule-app:generateLicenseReport` (THIRD-PARTY.txt in `build/reports/licenses`),
-  `cyclonedxBom` (SBOM in `build/reports/cyclonedx`), `dependencyCheckAggregate` (OWASP
-  dependency-check, needs `NVD_API_KEY`), `:njmule-app:nativeCompile` (GraalVM native image).
-- Run headless: `./gradlew :njmule-app:run --args="--help"` (module path), or
-  `./gradlew :njmule-app:installDist` and `njmule-app/build/install/njmule/bin/njmule`. Run the
-  desktop window: `./gradlew :njmule-app:nativeCompile :njmule-desktop:shell`, with `njmule(.exe)`
-  copied beside `njmule-gui(.exe)`.
-- Benchmarks: `./gradlew :njmule-bench:shadowJar`, then
-  `java -jar njmule-bench/build/libs/benchmarks.jar` (for the throughput benchmarks one operation is
-  1 MiB, so ops/s = MiB/s).
-- Static analysis on SonarQube Cloud: `./gradlew build sonar -Dsonar.token=<token>` (project
-  `njMule_njMule`, organisation `njmule`); in CI the Linux `verify` job runs it once the
-  `SONAR_TOKEN` secret is set. The analysis waits for the quality gate (`sonar.qualitygate.wait`):
-  a red gate, such as new code under 80% covered, fails that job and so `CI result` and the merge.
-- Native image: GraalVM Community `25.0.4.1.1` (25 Innovation 4, same as CI). Locally it is installed
-  in `%LOCALAPPDATA%\Programs\GraalVM` with `GRAALVM_HOME` set; on Windows `native-image` needs the
-  Visual Studio 2022 Build Tools (C++ workload): `./gradlew :njmule-app:nativeCompile` →
-  `njmule-app/build/native/nativeCompile/njmule.exe`. The Linux x64 binary comes from the pinned
-  container `ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1` through `tools/native-docker.sh`
-  (Gradle on a copy of the sources inside the container, much faster than on the bind mount; its user
-  home in the Docker volume `njmule-gradle`): `docker run --rm -v "$PWD:/work" -v
-  njmule-gradle:/root/.gradle --entrypoint bash <image> /work/tools/native-docker.sh` (Git Bash:
-  prefix `MSYS_NO_PATHCONV=1`) → `njmule-app/build/native-linux/njmule`. A fully static x64 build
-  linked with musl (no system libc needed: Synology DSM has glibc 2.26, our glibc build needs 2.34)
-  comes from `tools/native-static-docker.sh` in the same container, adding `-v njmule-musl:/musl`
-  for the toolchain it downloads and checks (`-Pnative.static=musl`) →
-  `njmule-app/build/native-static/njmule`.
-- Native optimization: `-O2` by default (property `native.optimization`). Checks may build faster
-  with `-Pnative.optimization=-Ob`, as the CI does; releases always pass `-O2`, never `-Ob`.
-- Only GraalVM Community: Oracle GraalVM (PGO) is under GFTC, not compatible with distributing GPL
-  binaries. `./gradlew :njmule-app:nativeService` builds the Windows service host
-  `build/launcher/njmule-service.exe` (`native/windows/service.c`).
-- Installers: every desktop package carries the headless engine `njmule(.exe)` of
-  `:njmule-app:nativeCompile`, also the command line, and the desktop window `njmule-gui(.exe)` of
-  `:njmule-desktop:shell`, which starts the engine beside it and answers the old Windows launcher's
-  commands (`--apply-update`, `--keep-awake`, `--uninstall-profile`, `--restore-links`) and `--exit`,
-  which every uninstaller runs first to have a running njMule save and stop; Windows adds
-  `njmule-service.exe`. `.github/scripts/desktop-smoke-test.*` checks the window starts the engine.
-  WiX **5** (`dotnet tool install --global wix --version 5.0.2`; v6+ need the OSMF EULA)
-  builds the per-user MSI from `packaging/windows/njmule.wxs`; nfpm builds deb/rpm from
-  `packaging/linux/nfpm.yaml`; macOS gets an ad-hoc signed `.app` in a DMG; Synology DSM 7 gets an
-  x86_64 `.spk` from `packaging/synology/build-spk.sh` around the static musl executable. All in
-  `.github/workflows/release.yml` (manual run: packages only; tag `vX.Y.Z`: draft release).
-- Regenerate icons (JSVG renders the SVG): see `branding/README.md`.
-- Library versions are always the latest stable ones (`gradle/libs.versions.toml`); check Maven
-  Central and the Gradle Plugin Portal before adding or bumping.
-  Known constraint: palantir-java-format is pinned to the newest version Spotless supports.
-- GitHub operations use the GitHub CLI (`gh pr create`, `gh release create`, `gh api`); remote is
-  `git@github.com:njMule/njMule.git` (SSH).
+  user-visible change updates its page in the same branch. `.github/workflows/docs.yml` checks PRs
+  and publishes on GitHub Pages only on a manual run with `deploy` or a `v*` tag.
+- **Installers and packages**: every desktop package carries `njmule(.exe)` and `njmule-gui(.exe)`
+  (which handles `--apply-update`, `--keep-awake`, `--uninstall-profile`, `--restore-links`,
+  `--exit`); Windows adds `njmule-service.exe`. WiX **5** (`dotnet tool install --global wix
+  --version 5.0.2`; v6+ require the OSMF EULA) builds the MSI from `packaging/windows/njmule.wxs`;
+  nfpm builds deb/rpm from `packaging/linux/nfpm.yaml`; macOS gets an ad-hoc signed `.app` in a
+  DMG; Synology DSM 7 gets an x86_64 `.spk` from `packaging/synology/build-spk.sh` around the
+  static musl executable; Docker builds multi-arch `linux/amd64` (static musl on `scratch`) and
+  `linux/arm64` (glibc on distroless). All in `.github/workflows/release.yml`.
+- **Static analysis on SonarQube Cloud**: project `njMule_njMule`, organisation `njmule`; CI runs it
+  with `sonar.qualitygate.wait=true` so a red quality gate fails `CI result` and blocks merge.
+- **Regenerate icons** (JSVG renders the SVG via `./gradlew iconTools`): see `branding/README.md`.
+- **GitHub operations**: use `gh` CLI; remote is `git@github.com:njMule/njMule.git` (SSH).
 - Push, PRs, tags and releases only when the maintainer explicitly asks; asking for a release of a
   version asks for all of its steps (the `release` skill).
-- **Every change reaches `main` through a pull request** (since 0.1.0, when the milestones on
-  `main` ended): a branch `<type>/<description>` from the latest `main`, `./gradlew build` green,
-  then the pull request, squash-merged once its checks pass.
+- **Every change reaches `main` through a pull request**: branch `<type>/<description>` from the
+  latest `main`, checks green locally, then squash-merged once `CI result` passes.
 
 ## Licensing rules (GPL-3.0-or-later, REUSE-compliant)
 
-- Every source file starts with the SPDX header from `config/license/header-java.txt`
-  (Spotless enforces it for Java). Other text files carry `SPDX-FileCopyrightText` and
-  `SPDX-License-Identifier` comments; files that cannot (binaries, JSON, images) are covered by
-  `REUSE.toml`.
+- Every source and text file starts with `SPDX-FileCopyrightText` and `SPDX-License-Identifier`
+  comments; files that cannot (binaries, JSON, images, lock files, golden fixtures) are covered by
+  `REUSE.toml`. `reuse lint` runs in CI on every push.
 - Third-party code or assets: record origin and license in `REUSE.toml` and `NOTICE`; only
-  GPL-3.0-compatible licenses are allowed.
+  GPL-3.0-compatible licenses are allowed (`njmule-engine/deny.toml` enforces this for Rust crates).
 - **No graphical asset of eMule** (icons, bitmaps, GIFs, skins, logo) is ever used or derived: all
   artwork is original (`branding/`). eMule's source is used only as a reference for protocol, file
   formats, behaviour and UI strings/translations.
@@ -252,32 +207,16 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 
 ## Code style and formatting
 
-- Java code follows the [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
-  and is formatted with [palantir-java-format](https://github.com/palantir/palantir-java-format) in
-  its **PALANTIR** style: **4-space indent** (8 for continuations), **120 columns**, compact lambdas
-  and call chains, Javadoc reflowed, sorted imports, no wildcard imports.
-- **Indentation: 4 spaces** in every file type (Java, Kotlin build scripts, XML, YAML, scripts); tabs
-  only in Makefiles.
-- **Line endings: LF (Linux style)** everywhere; the only exception is `*.cmd`/`*.bat` (CRLF,
-  required by cmd.exe). Spotless rewrites Java sources with LF; `.gitattributes` normalises the rest.
-- Enforced by Spotless (`spotlessCheck`, part of `./gradlew build`): the build fails on unformatted
-  code or a missing license header. Fix with `./gradlew spotlessApply` before committing.
-- Always qualify instance fields with `this.` (e.g. `this.queue.offer(task)`), also where it is not
-  needed to disambiguate, and call the object's own methods without it (`publish(event)`, not
-  `this.publish(event)`). Checkstyle enforces both (`RequireThis` and a regexp check in
-  `config/checkstyle/checkstyle.xml`).
-- **Never give two members of a type names that differ only in case**, such as a constant
-  `DIRECT` and a field `direct`, or `SETTINGS` and `settings`: SonarQube's rule `java:S1845` marks
-  it a blocker and fails the quality gate, and neither the build nor Checkstyle catches it. Before
-  adding a constant, field or method, check the type's other names, inherited ones included;
-  rename the newcomer (`SETTINGS_PAGE`, `straight`). **This mistake recurs**: it comes back
-  whenever a constant is named after what a field or method of the same type holds or does, as
-  `SECONDS` beside `seconds`, `JSON` beside `json(...)`, `HOST` beside `host(...)`, `ENGLISH`
-  beside `english()`, or a nested type `Windows` beside a field `windows`. Give such a constant
-  what it is, not the same word (`SECONDS_KEPT`, `MAPPER`, `TEMPLATES`), and before each commit
-  compare every new member's lower-cased name with the others of its type.
-- Optional pre-commit hook: `git config core.hooksPath .githooks` (runs `spotlessCheck`).
-- IDEs: install the palantir-java-format plugin (IntelliJ) and honour `.editorconfig`.
+- **Rust (`njmule-engine`, `njmule-desktop/src-tauri`)**: formatted with `cargo fmt` (`rustfmt.toml`:
+  4-space indent, 120 columns) and linted with `cargo clippy --locked --all-targets -- -D warnings`.
+- **TypeScript / Vue (`njmule-ui`, `website`)**: formatted with Prettier (4 spaces, 120 columns,
+  single quotes, LF) and type-checked strictly (`vue-tsc` / `tsc`).
+- **Indentation: 4 spaces** in every file type (Rust, TypeScript, Kotlin build scripts, XML, YAML,
+  scripts); tabs only in Makefiles.
+- **Line endings: LF** everywhere; the only exception is `*.cmd`/`*.bat` (CRLF, required by
+  `cmd.exe`). `.gitattributes` normalises checkouts.
+- Optional pre-commit hook: `git config core.hooksPath .githooks` (runs `cargo fmt --check` on
+  `njmule-engine` and `njmule-desktop/src-tauri`).
 - Markdown is wrapped at ~100 columns.
 
 ## Code comments
@@ -287,12 +226,11 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 - **Never reference the original project's source** in code, comments, tests or commit messages:
   no eMule file names (`*.cpp`, `*.h`), line numbers, C++ classes, functions or variables, and no
   "as eMule does" phrasing; describe the protocol or format itself. Name eMule only where the
-  feature is about it (importing an eMule profile, interoperability tests).
-- No comments that restate the code, no Javadoc on trivial getters, setters, builders or obvious
-  methods; no change-history or "added by" comments.
-- Public API Javadoc: one summary sentence; `@param`/`@return` only when not obvious from the name.
-- Keep comments to one or two lines; trim long explanations to the essential and move design
-  rationale to `docs/` (ARCHITECTURE.md, ADRs).
+  feature is about it (importing an eMule profile, interoperability tests). Never include an eMule
+  version number in committed files.
+- No comments that restate the code, no doc comments on trivial getters or obvious functions; no
+  change-history or "added by" comments.
+- Keep comments to one or two lines; move long design rationale to `docs/` (`ARCHITECTURE.md`, ADRs).
 
 ## UI colours
 
@@ -313,24 +251,22 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 
 ## Engineering rules
 
-- Do not reinvent the wheel: use the JDK or a well-known, maintained open-source library
-  (GPL-3.0-compatible license, native-image friendly) before writing a utility, codec, parser or
-  algorithm. Write our own only for eD2K/Kad-specific code or when no suitable library exists or
-  fits the constraints, and say why in a comment or the commit message.
-- `njmule-core` must never depend on AWT or any interface module.
-- Code must stay GraalVM native-image friendly: no undeclared reflection, no dynamic proxies,
-  register resources and `ServiceLoader` providers in the reachability metadata.
-- Log only through SLF4J with `{}` placeholders; never use external data as a format string.
-  Loggers are `private static final Logger logger` (lowerCamelCase: per the Google style a logger
-  is not a constant), never `LOG`.
+- Do not reinvent the wheel: use the standard library or a well-known, maintained open-source crate
+  or library (GPL-3.0-compatible license) before writing a utility, codec, parser or algorithm. Write
+  our own only for eD2K/Kad-specific code or when no suitable library exists or fits the
+  constraints, and say why in a comment or the commit message.
+- Keep `unsafe_code = "forbid"` in `njmule-engine`, and never panic, unwrap, index-slice or
+  overflow on network input.
+- Log through `tracing` with structured fields or format arguments; sanitize or keep untrusted
+  network strings bounded, and never log secrets (passwords, API tokens).
 - Never write into the user's eMule installation or config directory.
 
 ## Tests
 
-- Every test follows the given/when/then form of Gherkin in plain JUnit (no Cucumber): each test
-  method has a meaningful name stating the expected behaviour and its body only calls private step
-  methods, in order: the `given...()` steps (optional), one `when...()`, then the `then...()`
-  steps. Steps are named as lowerCamelCase sentences and take parameters when reused; shared state
-  lives in fields, and a failing `when...()` keeps its exception for `thenExceptionOccurred(...)` /
-  `thenNoExceptionOccurred()`. A scenario has one action: independent cases become separate (or
-  parameterized) tests, earlier stages of a flow become given steps. Example in `CONTRIBUTING.md`.
+- Every test follows the given/when/then form of Gherkin: each test function has a meaningful
+  `should_...` name stating the expected behaviour, and its body calls helper steps in order —
+  `given_...` (optional), one `when_...`, then one or more `then_...` steps — with shared scenario
+  state in a test fixture struct. A scenario has one action: independent cases become separate tests
+  or a loop over cases, and earlier stages of a flow become `given_...` steps. The interface's
+  Vitest tests follow the same form with `given...` / `when...` / `then...`. Example in
+  `CONTRIBUTING.md`.

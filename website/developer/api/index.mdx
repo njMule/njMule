@@ -11,7 +11,7 @@ search, manage servers and Kad, read the statistics and the log, change the pref
 updates.
 
 The API is described by an [OpenAPI 3.2](https://spec.openapis.org/oas/v3.2.0.html) document,
-[`openapi.yaml`](https://github.com/njMule/njMule/blob/main/njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml),
+[`openapi.yaml`](https://github.com/njMule/njMule/blob/main/njmule-engine/assets/openapi.yaml),
 which is its source: njMule routes every request by the document's paths and operations, and checks
 its parameters and body against the document's schemas (JSON Schema 2020-12) before anything runs.
 The tests hold every answer and every event to the same document. The

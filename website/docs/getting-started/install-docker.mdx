@@ -10,7 +10,7 @@ Docker. This guide describes <DockerImage />. You use it from a browser, through
 
 ## What the image holds
 
-The image holds only njMule's native executable: no Java, no shell, no package manager.
+The image holds only njMule's native executable: no runtime, no shell, no package manager.
 
 | Platform | Executable | Base |
 |---|---|---|
@@ -218,5 +218,5 @@ docker build -f packaging/docker/Dockerfile -t njmule .
 ```
 
 It compiles njMule from the sources inside the build, for the platform of the machine that builds
-it: on amd64 the static executable, with the musl toolchain it downloads and checks, on arm64 the
-glibc one. See [Building](/developer/building).
+it: on amd64 the static musl executable, on arm64 the glibc one. See
+[Building](/developer/building).

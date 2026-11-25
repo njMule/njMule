@@ -59,33 +59,35 @@ What the installer does:
   desktop window answers all three, and the update's `--apply-update`, before it opens any window,
   and runs the engine's commands without a console window.
 
-To build it, stage the engine, the desktop window and the service host, then run WiX from the root of
-the repository (the window needs Rust, see [Building](building.mdx#the-desktop-window)):
+To build it, build the engine, desktop window, service host and `THIRD-PARTY.txt`, then run WiX
+from the root of the repository:
 
 ```powershell
-./gradlew :njmule-app:nativeCompile :njmule-desktop:shell :njmule-app:nativeService
+.\gradlew.bat :njmule-ui:compress :njmule-desktop:shell :nativeService
+cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
+cargo about generate njmule-engine/about.hbs --manifest-path njmule-engine/Cargo.toml -o THIRD-PARTY.txt
 New-Item -ItemType Directory -Force stage\njmule | Out-Null
-Copy-Item njmule-app\build\native\nativeCompile\*, njmule-desktop\src-tauri\target\release\njmule-gui.exe, njmule-app\build\launcher\njmule-service.exe stage\njmule
-wix build packaging\windows\njmule.wxs -wx -arch x64 -d Version=1.2.3 -d Gui=yes -d "BinDir=$PWD\stage\njmule" -d "DocDir=$PWD" -o njmule.msi
+Copy-Item njmule-engine\target\release\njmule.exe, njmule-desktop\src-tauri\target\release\njmule-gui.exe, build\windows\njmule-service.exe stage\njmule
+wix build packaging\windows\njmule.wxs -wx -arch x64 -pdbtype none -d Version=1.2.3 -d Gui=yes -d "BinDir=$PWD\stage\njmule" -d "DocDir=$PWD" -o njmule.msi
 ```
 
 | Variable | What it is |
 |---|---|
 | `Version` | the version as numbers only (`1.2.3`): MSI versions have no pre-release part, so the release workflow passes the version without it |
 | `BinDir` | an absolute folder with the executables; WiX resolves relative paths from the `.wxs` file's own folder |
-| `DocDir` | an absolute path to the repository root, for `LICENSE`, `NOTICE`, `README.md` and `packaging/windows/install.properties` |
+| `DocDir` | an absolute path to the repository root, for `LICENSE`, `NOTICE`, `THIRD-PARTY.txt`, `README.md` and `packaging/windows/install.properties` |
 | `Gui` | `yes` adds the shortcuts and the uninstall actions of the desktop app |
 
 Before packing, the release workflow runs `.github/scripts/desktop-smoke-test.ps1` on the programs:
 the window tells its version, starts the engine on a profile of its own and takes it along when
-closed. It then checks the MSI: it decompiles it and looks for the programs, the
-`install.properties` file and the `--exit` and `--restore-links` actions, installs it for every user
+closed. It then checks the MSI: it decompiles it and looks for the programs, `THIRD-PARTY.txt`,
+`install.properties` and the `--exit` and `--restore-links` actions, installs it for every user
 with the service and checks that the service answers, and installs, runs and uninstalls it on a
 Windows arm64 runner.
 
-The **zip** holds the same files as the stage folder, plus `LICENSE`, `NOTICE`, `README.md`,
-`CHANGELOG.md` and an `install.properties` with `kind=zip`. It runs from any folder, and is portable
-once a `portable.flag` file is put beside the programs.
+The **zip** holds the same files as the stage folder, plus `LICENSE`, `NOTICE`, `THIRD-PARTY.txt`,
+`README.md`, `CHANGELOG.md` and an `install.properties` with `kind=zip`. It runs from any folder,
+and is portable once a `portable.flag` file is put beside the programs.
 
 ## Linux deb and rpm
 
@@ -93,10 +95,12 @@ nfpm builds both from `packaging/linux/nfpm.yaml`, run from the repository root.
 `ARCH` (`amd64` or `arm64`) come from the environment, the programs from a `stage/` folder:
 
 ```bash
-./gradlew :njmule-app:nativeCompile :njmule-desktop:shell
+./gradlew :njmule-ui:compress :njmule-desktop:shell
+cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
+cargo about generate njmule-engine/about.hbs --manifest-path njmule-engine/Cargo.toml -o THIRD-PARTY.txt
 mkdir -p stage/gui stage/doc dist
-install -m 755 njmule-app/build/native/nativeCompile/njmule njmule-desktop/src-tauri/target/release/njmule-gui stage/gui/
-cp README.md CHANGELOG.md NOTICE stage/doc/
+install -m 755 njmule-engine/target/release/njmule njmule-desktop/src-tauri/target/release/njmule-gui stage/gui/
+cp README.md CHANGELOG.md NOTICE THIRD-PARTY.txt stage/doc/
 VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p deb -t dist/
 VERSION=1.2.3 ARCH=amd64 nfpm package -f packaging/linux/nfpm.yaml -p rpm -t dist/
 ```
@@ -120,20 +124,21 @@ and waits up to a minute for them to save and stop; the engine of a window stops
 installing and removing, their scripts refresh the desktop database and the icon cache; a removal
 also says where each user's profile stays, as a package touches no home folder.
 
-The **`.tar.xz` archive** of the release holds the same two programs, `LICENSE`, `NOTICE`, `README.md`, `CHANGELOG.md`, an `install.properties` with `kind=tar`, and a
+The **`.tar.xz` archive** of the release holds the same two programs, `LICENSE`, `NOTICE`,
+`THIRD-PARTY.txt`, `README.md`, `CHANGELOG.md`, an `install.properties` with `kind=tar`, and a
 `share/` folder with the desktop entry, the metadata and the icon for manual desktop integration.
 The **static archive** holds the static headless executable alone, with the licenses of musl and
-zlib that it embeds.
+zlib alongside `THIRD-PARTY.txt`.
 
 ## macOS disk image
 
-The release workflow assembles the application bundle by hand on a macOS runner:
+The release workflow assembles the application bundle on a macOS runner:
 
 ```bash
 app=stage/njMule.app/Contents
 mkdir -p "$app/MacOS" "$app/Resources" dist
-install -m 755 njmule-app/build/native/nativeCompile/njmule njmule-desktop/src-tauri/target/release/njmule-gui "$app/MacOS/"
-cp branding/generated/njmule.icns "$app/Resources/"
+install -m 755 njmule-engine/target/release/njmule njmule-desktop/src-tauri/target/release/njmule-gui "$app/MacOS/"
+cp branding/generated/njmule.icns LICENSE NOTICE THIRD-PARTY.txt "$app/Resources/"
 sed "s/@VERSION@/1.2.3/g" packaging/macos/Info.plist > "$app/Info.plist"
 printf 'kind=dmg\n' > "$app/Resources/install.properties"
 codesign --force --deep --sign - stage/njMule.app
@@ -143,8 +148,9 @@ ln -s /Applications stage/Applications
 hdiutil create -volname njMule -srcfolder stage -ov -format ULMO dist/njmule-1.2.3-macos-arm64.dmg
 ```
 
-- `Info.plist` names `njmule-gui`, the window, as the bundle's executable, `org.njmule.njMule` as its identifier
-  and macOS 13 as its minimum; `@VERSION@` takes the version without its pre-release part.
+- `Info.plist` names `njmule-gui`, the window, as the bundle's executable, `org.njmule.njMule` as
+  its identifier and macOS 13 as its minimum; `@VERSION@` takes the version without its pre-release
+  part.
 - The bundle is **ad-hoc signed** (`--sign -`), not notarized: Gatekeeper asks users to allow its
   first launch ([Install on macOS](/docs/getting-started/install-macos)).
 - *Uninstall njMule*, compiled from `uninstall.applescript`, sits beside the app in the disk image:
@@ -154,13 +160,13 @@ hdiutil create -volname njMule -srcfolder stage -ov -format ULMO dist/njmule-1.2
 
 ## Synology package
 
-`packaging/synology/build-spk.sh` builds a DSM 7 package around a
+`packaging/synology/build-spk.sh` builds a DSM 7 package around the
 [static Linux executable](native-images.mdx#the-static-linux-executable), since DSM's C library is
-too old for the other Linux builds. Run it on Linux, or in a Linux container, so that the archives
+too old for the glibc Linux builds. Run it on Linux, or in a Linux container, so that the archives
 keep the scripts' modes:
 
 ```bash
-packaging/synology/build-spk.sh njmule-app/build/native-static/njmule x86_64 build/synology
+packaging/synology/build-spk.sh njmule-engine/target/x86_64-unknown-linux-musl/release/njmule x86_64 build/synology
 ```
 
 Its arguments are the executable, the architecture (`x86_64` or `armv8`) and an optional output
@@ -183,9 +189,9 @@ the repository root, it compiles njMule for the platform of the machine that bui
 docker build -f packaging/docker/Dockerfile -t njmule .
 ```
 
-- On **amd64** the executable is the static one, linked with musl, alone on an empty base: no C
-  library, no shell, no package manager. On **arm64**, where GraalVM builds no static executable,
-  it is the glibc one on a distroless base.
+- On **amd64** the executable is the static musl build, alone on an empty (`scratch`) base with CA
+  certificates: no C library, no shell, no package manager. On **arm64** it is the glibc build on
+  Google's distroless base.
 - It runs as user and group 1000, keeps everything in the volume `/njmule`, exposes 4662/tcp,
   4672/udp and 4711/tcp, and starts with
   `--webui-password-file /run/secrets/njmule_webui_password --webui-lan`.
@@ -201,12 +207,13 @@ Compose file users start from ([Install with Docker](/docs/getting-started/insta
 
 | Job | Runner | What it makes and checks |
 |---|---|---|
+| `notices` | Ubuntu | generates `THIRD-PARTY.txt` (`cargo-about`) and the CycloneDX SBOM (`cargo-cyclonedx`) once for every package |
 | `windows-x64` | Windows | the engine, the desktop window and the service host; the desktop smoke test; the service installed, answering and removed; the MSI and the zip; the MSI installed for every user with the service |
 | `linux` | Ubuntu x64 and arm64 | the engine and the desktop window; the desktop smoke test under Xvfb; the deb, the rpm and the `.tar.xz` archive |
-| `synology` | Ubuntu x64 | the static executable (checked with `ldd`), the `.spk` and the static archive |
+| `synology` | Ubuntu x64 | the static musl executable (checked with `ldd`), the `.spk` and the static archive |
 | `docker` | Ubuntu | the image for both platforms, tried, then pushed for a tag |
 | `windows-arm64` | Windows on Arm | the x64 MSI installed, run (desktop smoke test), and uninstalled, ed2k links given back |
 | `macos-arm64` | macOS | the engine and the desktop window, the signed bundle, the desktop smoke test on it, and the disk image |
 
-Every native build in the release uses `-O2`. The jobs that follow (the end-to-end update tests and
-the draft release) are described in [Releases](releases.mdx).
+The jobs that follow (the end-to-end update tests and the draft release) are described in
+[Releases](releases.mdx).

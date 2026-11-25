@@ -192,7 +192,19 @@ const config: Config = {
         prism: {
             theme: prismThemes.github,
             darkTheme: prismThemes.dracula,
-            additionalLanguages: ['bash', 'powershell', 'ini', 'properties', 'yaml', 'json', 'nginx', 'java', 'kotlin'],
+            additionalLanguages: [
+                'bash',
+                'powershell',
+                'ini',
+                'properties',
+                'yaml',
+                'json',
+                'nginx',
+                'rust',
+                'toml',
+                'java',
+                'kotlin',
+            ],
         },
         mermaid: { theme: { light: 'neutral', dark: 'dark' } },
         // The code samples of the API reference: the languages a script of njMule is most often written in.

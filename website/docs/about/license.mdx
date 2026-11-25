@@ -42,7 +42,7 @@ SPDX licence identifier, or is listed in
 
 ### What njMule owes to eMule
 
-njMule is an independent re-implementation of the eMule file-sharing client in Java. Its protocol
+njMule is an independent re-implementation of the eMule file-sharing client in Rust. Its protocol
 constants, file formats and algorithms were translated from eMule's source code, the lower-case
 table Kad applies to keywords is taken from eMule's resource files, and the interface texts and
 their translations are converted from eMule's resource files. eMule is copyright (C) 2002-2026
@@ -88,31 +88,14 @@ with the GNU GPL version 3.
 
 | Component | Licence | What it does in njMule |
 |---|---|---|
-| SLF4J API | MIT | Logging interface |
-| Logback (classic, core) | EPL-1.0 or LGPL-2.1, used under LGPL-2.1 | Logging |
-| Bouncy Castle (bcprov) | MIT (Bouncy Castle Licence) | Cryptography (RSA, Diffie-Hellman, the signatures of updates) |
-| Kwik and Agent15 | LGPL-3.0 | QUIC and its TLS 1.3 handshake, for [NAT traversal](../network/nat-traversal.mdx) |
-| HKDF (at.favre.lib) | Apache-2.0 | Used by Kwik |
-| SipHash (io.whitfin) | MIT | Used by Kwik |
-| Guava | Apache-2.0 | Utilities |
-| picocli | Apache-2.0 | Command-line parsing |
-| semver4j | MIT | Comparing versions, for updates |
-| Apache Commons Compress, IO, Lang, Codec | Apache-2.0 | Unpacking update packages |
-| XZ for Java | 0BSD | Unpacking `.xz` update packages |
-| Jackson (core, databind, annotations) | Apache-2.0; Jackson Core bundles FastDoubleParser and Schubfach (MIT) | JSON |
-| networknt JSON Schema Validator | Apache-2.0; bundles parts of Apache Commons Validator (Apache-2.0) | Checking API requests |
-| ethlo ITU | Apache-2.0 | Used by the JSON Schema Validator |
-| Eclipse Jetty (HTTP client and server) | Apache-2.0 or EPL-2.0, used under Apache-2.0 | Web interface and API |
-| Jakarta Mail, Angus Mail | EPL-2.0 or GPL-2.0 with Classpath exception or BSD-3-Clause (EDL 1.0), used under BSD-3-Clause | E-mail notifications |
-| Jakarta Activation, Angus Activation | BSD-3-Clause (EDL 1.0) | Used by the mail library |
+| Rust engine crates (`njmule-engine/Cargo.lock`: tokio, axum, quinn, rustls, ring, reqwest, lettre, serde, clap, tracing, minisign-verify, jsonschema, flate2, lzma-rust2, zip and others) | Mostly Apache-2.0 or MIT (with crates under ISC, BSD-3-Clause, 0BSD, Zlib, CC0-1.0, MIT-0, Unicode-3.0, MPL-2.0, and CDLA-Permissive-2.0 for Mozilla's bundled root CA certificates) | Engine, networking, cryptography, HTTP server and client, CLI, update verification and unpacking |
 | AtlantaFX | MIT | The colours of the interface's themes |
 | Vue, Reka UI, TanStack Table and Virtual, openapi-fetch, eventsource-parser and the packages they bundle (VueUse, Floating UI and others) | MIT | The interface of the desktop app and the web interface |
 | Tauri, its plugins and the Rust crates they use | Mostly MIT or Apache-2.0; cssparser, selectors, dtoa-short and option-ext MPL-2.0, the ICU4X crates Unicode-3.0, clipboard-win and error-code BSL-1.0, a few BSD, Zlib or ISC | The desktop app's window |
-| GraalVM Native Image | GPL-2.0 with Classpath exception | The runtime built into the native executables |
 
-Components used only for testing (JUnit, AssertJ, jqwik, Jimfs, openapi-parser) and the tools that
-build the interface and the desktop window (Node.js, Vite, TypeScript, Vitest, Prettier, Rust and
-Cargo) are not distributed.
+Components used only for testing (proptest, tempfile, x509-parser) and the tools that build the
+engine, the interface and the desktop window (Rust, Cargo, Node.js, Vite, TypeScript, Vitest,
+Prettier, Gradle) are not distributed.
 
 ### Fonts, flags and data
 
@@ -152,9 +135,10 @@ licences; their copyright files are in the image under `/usr/share/doc`.
   lists every component with its version.
 - **The interface** lists its packages and their licence texts at
   `/THIRD-PARTY.md` of the web interface, such as `http://localhost:4711/THIRD-PARTY.md`.
-- **From the sources**, `./gradlew :njmule-app:generateLicenseReport` writes `THIRD-PARTY.txt`, the
-  full list with versions, and `./gradlew cyclonedxBom` the bill of materials. See
-  [Dependencies](/developer/dependencies).
+- **From the sources**, `cargo about generate about.hbs -o target/THIRD-PARTY.txt` (in
+  `njmule-engine`) writes `THIRD-PARTY.txt`, the full list of Rust crates with versions and
+  licences, and `cargo cyclonedx --format json --spec-version 1.6 --describe binaries --no-build-deps --target all`
+  writes the bill of materials. See [Dependencies](/developer/dependencies).
 
 ## Trademarks
 

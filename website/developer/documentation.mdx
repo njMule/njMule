@@ -36,25 +36,25 @@ folders above. Screenshots are never committed.
 
 The site lands in `website/build/site`. The task runs, in order of need:
 
-1. **`:njmule-http:webCaptureArgs`** and **`:website:webScreenshots`**: `scripts/capture-web.mjs`
-   starts the web interface on a demo engine with example data (`WebCaptureDemo`, in
-   `njmule-http`'s tests; [Testing](testing.mdx#pictures-of-the-interface)), signs in, and pictures
-   the interface at 1280×800 with twice the pixels: each place, menu and dialog the pages show, the
-   options pages, a phone-sized page and a guest's page, in light and in dark, and the transfers in
-   forced colours. The pictures of the desktop app's pages come from the same interface in the
-   browser. They land in `website/build/web-captures/`, in the sets `light`, `dark` and
-   `contrast`. The script drives the Chrome or Edge already installed on your computer through
-   Playwright, which downloads no browser; set `NJMULE_CAPTURE_BROWSER` to the path of another
-   Chromium-based browser. A step that fails is reported as "not pictured" and the others go on.
-2. **`:njmule-app:cliHelp`**: what `njmule --help` and `njmule --remote help` print.
+1. **`:website:engineTools`** and **`:website:webScreenshots`**: `:website:engineTools` builds
+   `:njmule-ui:compress`, the `njmule` executable and the `web_capture_demo` example from
+   `njmule-engine`. `scripts/capture-web.mjs` starts `web_capture_demo`
+   ([Testing](testing.mdx#pictures-of-the-interface)), signs in, and pictures the interface at
+   1280×800 with twice the pixels: each place, menu and dialog the pages show, the options pages, a
+   phone-sized page and a guest's page, in light and in dark, and the transfers in forced colours.
+   The pictures of the desktop app's pages come from the same interface in the browser. They land in
+   `website/build/web-captures/`, in the sets `light`, `dark` and `contrast`. The script drives the
+   Chrome or Edge already installed on your computer through Playwright, which downloads no browser;
+   set `NJMULE_CAPTURE_BROWSER` to the path of another Chromium-based browser. A step that fails is
+   reported as "not pictured" and the others go on.
+2. **`:website:cliHelp`**: runs the built `njmule` executable to capture `--help` and `--remote help`.
 3. **`:website:prepare`**: `scripts/prepare.mjs --strict` copies the brand's images and the
    screenshots the pages name into `website/build/generated/static/img`, and writes the partials of
    `_generated/`: the repository's pages without their license comment and title, with their links
    to repository files made absolute, and the command line's help as text blocks. With `--strict`, a
    picture a page names but the build did not make fails the build.
-4. **`:website:apiDocs`**: `docusaurus gen-api-docs` turns
-   `njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml` into the pages of
-   `developer/api/reference/`.
+4. **`:website:apiDocs`**: `docusaurus gen-api-docs` turns `njmule-engine/assets/openapi.yaml` into
+   the pages of `developer/api/reference/`.
 5. `docusaurus build`, with the version of `gradle.properties` shown in the footer.
 
 The build fails on a broken link, a broken anchor or a missing image. The site is not part of
@@ -119,9 +119,9 @@ The pages are **MDX** files (`.mdx`), in English.
 - Use the exact labels the user sees, in **bold**, with menu paths as **⋯ → Import from eMule…**.
   They are in `njmule-ui/i18n/`: `nj.properties` for njMule's own texts, `emule.properties` for the
   `IDS_*` texts ([Translations](translations.mdx)).
-- Take defaults from the code: the preferences in `njmule-core`'s `config` package, the keys of
-  `njmule.properties` in `PreferencesCodec`, the options pages of the interface
-  (`njmule-ui/src/settings.ts`).
+- Take defaults from the code: the preferences in `njmule-engine/src/config/`, the keys of
+  `njmule.properties` in `njmule-engine/src/persist/preferences_codec.rs`, and the options pages of
+  the interface (`njmule-ui/src/settings.ts`).
 - Never reference eMule's source code; name eMule only where the feature is about it (the import,
   compatibility). Do not present njMule as the official eMule client, and describe legal use only.
 - No personal data: in examples, use the documentation addresses (`192.0.2.x`, `198.51.100.x`,
