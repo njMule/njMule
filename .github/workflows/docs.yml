@@ -12,7 +12,8 @@ on:
         paths:
             - "website/**"
             - "njmule-ui/src/**"
-            - "njmule-http/src/test/java/org/njmule/http/*CaptureDemo.java"
+            - "njmule-engine/examples/web_capture_demo.rs"
+            - "njmule-engine/src/app/**"
             - "njmule-engine/assets/openapi.yaml"
             # The version: the release's pull request checks the site its tag will publish.
             - "gradle.properties"
@@ -49,6 +50,11 @@ jobs:
               with:
                   cache-provider: basic
                   cache-read-only: true
+            - name: Install the pinned Rust
+              working-directory: njmule-engine
+              run: |
+                  channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+                  rustup toolchain install "$channel" --profile minimal
             # The pictures come from the interface on a demo engine in the runner's own Chrome; the site fails on
             # a broken link or a missing picture.
             - name: Build the site

@@ -6,7 +6,7 @@ import { load } from 'js-yaml';
 import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
 import generated from './developer/api/reference/sidebar';
 
-const SPECIFICATION = '../njmule-core/src/main/resources/org/njmule/core/remote/openapi.yaml';
+const SPECIFICATION = '../njmule-engine/assets/openapi.yaml';
 // The few fields of the generated sidebar's items this file reads.
 type SidebarItemConfig = string | { type?: string; label?: string; id?: string; items?: SidebarItemConfig[] };
 

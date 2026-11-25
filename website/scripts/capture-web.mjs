@@ -2,24 +2,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Pictures the interface for the documentation, the web interface's and the desktop app's pages alike: starts it on
-// example data (njmule-http's WebCaptureDemo, as its webCaptureArgs task says), signs in and pictures each place,
-// light, dark and in high contrast, with the browser already on this computer (Chrome, Edge or the one
-// NJMULE_CAPTURE_BROWSER names): Playwright downloads none. Usage: node scripts/capture-web.mjs <launcher.json> <output
-// folder>
+// example data (njmule-engine's web_capture_demo example), signs in and pictures each place, light, dark and in high
+// contrast, with the browser already on this computer (Chrome, Edge or the one NJMULE_CAPTURE_BROWSER names):
+// Playwright downloads none. Usage: node scripts/capture-web.mjs <demo executable> <output folder>
 
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { chromium } from 'playwright-core';
 
-const [launcherFile, output] = process.argv.slice(2);
-if (!launcherFile || !output) {
-    console.error('Usage: node scripts/capture-web.mjs <launcher.json> <output folder>');
+const [demoExecutable, output] = process.argv.slice(2);
+if (!demoExecutable || !output) {
+    console.error('Usage: node scripts/capture-web.mjs <demo executable> <output folder>');
     process.exit(2);
 }
-const launcher = JSON.parse(readFileSync(launcherFile, 'utf8'));
 const VIEWPORT = { width: 1280, height: 800 };
 // Twice the pixels, as the desktop app's pictures: sharp on screens of high density, drawn at half their size.
 const CONTEXT = { viewport: VIEWPORT, deviceScaleFactor: 2, locale: 'en-US' };
@@ -28,7 +26,7 @@ const missed = [];
 
 // The web interface on example data, until its standard input closes.
 async function startDemo() {
-    const demo = spawn(launcher.java, [`@${launcher.args}`], { stdio: ['pipe', 'pipe', 'inherit'] });
+    const demo = spawn(demoExecutable, [], { stdio: ['pipe', 'pipe', 'inherit'] });
     const lines = createInterface({ input: demo.stdout });
     const ready = new Promise((resolve, reject) => {
         lines.on('line', (line) => {

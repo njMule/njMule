@@ -20,26 +20,113 @@ node {
     npmInstallCommand = "ci"
 }
 
-// What the site takes from the other projects: how to start the web interface on example data, whose pictures stand
-// for the desktop app's too, and the command line's help. The site is not part of `build`: ./gradlew :website:site
-// builds it.
-val webCaptureDeclared = configurations.dependencyScope("webCaptureDeclared")
-val webCapture =
-    configurations.resolvable("webCapture") {
-        attributes { attribute(Usage.USAGE_ATTRIBUTE, objects.named("njmule-web-capture")) }
-        extendsFrom(webCaptureDeclared.get())
+// What the site takes from the Rust engine: the web interface on example data (whose pictures stand for the desktop
+// app's too) and the command line's help. The site is not part of `build`: ./gradlew :website:site builds it.
+val windows = System.getProperty("os.name").lowercase().startsWith("windows")
+val exeSuffix = if (windows) ".exe" else ""
+
+val engineToolsDir = layout.buildDirectory.dir("engine-tools")
+val cliHelpDir = layout.buildDirectory.dir("cli-help")
+
+abstract class BuildEngineTools : DefaultTask() {
+    @get:Inject
+    abstract val exec: ExecOperations
+
+    @get:Inject
+    abstract val fs: FileSystemOperations
+
+    @get:Internal
+    abstract val engineDir: DirectoryProperty
+
+    @get:Internal
+    abstract val cargoTargetDir: Property<String>
+
+    @get:Input
+    abstract val suffix: Property<String>
+
+    @get:OutputDirectory
+    abstract val output: DirectoryProperty
+
+    @TaskAction
+    fun buildTools() {
+        val dir = engineDir.get().asFile
+        exec.exec {
+            workingDir = dir
+            commandLine("cargo", "build", "--locked", "--bin", "njmule", "--example", "web_capture_demo")
+        }
+        val debugDir = File(cargoTargetDir.get()).resolve("debug")
+        val ext = suffix.get()
+        fs.sync {
+            from(debugDir.resolve("njmule$ext"))
+            from(debugDir.resolve("examples/web_capture_demo$ext"))
+            into(output)
+        }
     }
-val cliHelpDeclared = configurations.dependencyScope("cliHelpDeclared")
-val cliHelp =
-    configurations.resolvable("cliHelp") {
-        attributes { attribute(Usage.USAGE_ATTRIBUTE, objects.named("njmule-cli-help")) }
-        extendsFrom(cliHelpDeclared.get())
+}
+
+val engineTools =
+    tasks.register<BuildEngineTools>("engineTools") {
+        description = "Builds the Rust engine binary and web capture demo for the documentation."
+        group = "documentation"
+        dependsOn(":njmule-ui:compress")
+        val rootDir = layout.settingsDirectory
+        engineDir = rootDir.dir("njmule-engine")
+        cargoTargetDir =
+            providers
+                .environmentVariable("CARGO_TARGET_DIR")
+                .orElse(rootDir.dir("njmule-engine/target").asFile.path)
+        suffix = exeSuffix
+        inputs.files(
+            rootDir.file("njmule-engine/Cargo.toml"),
+            rootDir.file("njmule-engine/Cargo.lock"),
+            rootDir.file("njmule-engine/build.rs"),
+            rootDir.file("njmule-engine/examples/web_capture_demo.rs"),
+            rootDir.file("branding/njmule-icon.svg"),
+            rootDir.file("branding/generated/njmule-32.png"),
+        ).withPathSensitivity(PathSensitivity.RELATIVE)
+        inputs.dir(rootDir.dir("njmule-engine/src")).withPathSensitivity(PathSensitivity.RELATIVE)
+        inputs.dir(rootDir.dir("njmule-engine/assets")).withPathSensitivity(PathSensitivity.RELATIVE)
+        inputs.dir(rootDir.dir("njmule-ui/build/shipped")).withPathSensitivity(PathSensitivity.RELATIVE)
+        output = engineToolsDir
     }
 
-dependencies {
-    webCaptureDeclared(project(":njmule-http"))
-    cliHelpDeclared(project(":njmule-app"))
+// The command line's help and its list of remote commands, as the engine prints them.
+@CacheableTask
+abstract class CliHelp : DefaultTask() {
+    @get:Inject
+    abstract val exec: ExecOperations
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val executable: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val output: DirectoryProperty
+
+    @TaskAction
+    fun print() {
+        val dir = output.get().asFile
+        dir.mkdirs()
+        val exe = executable.get().asFile.path
+        for ((name, arguments) in listOf("help.txt" to listOf("--help"), "remote.txt" to listOf("--remote", "help"))) {
+            dir.resolve(name).outputStream().use { out ->
+                exec.exec {
+                    commandLine(listOf(exe) + arguments)
+                    standardOutput = out
+                }
+            }
+        }
+    }
 }
+
+val cliHelp =
+    tasks.register<CliHelp>("cliHelp") {
+        description = "Prints the command line's help for the documentation."
+        group = "documentation"
+        dependsOn(engineTools)
+        executable = engineToolsDir.map { it.file("njmule$exeSuffix") }
+        output = cliHelpDir
+    }
 
 // The pages as written, without what prepare and apiDocs put among them.
 val pages =
@@ -58,12 +145,12 @@ val webScreenshots =
     tasks.register<NodeTask>("webScreenshots") {
         description = "Pictures the web interface for the documentation."
         group = "documentation"
-        dependsOn(tasks.npmInstall)
+        dependsOn(tasks.npmInstall, engineTools)
         script = file("scripts/capture-web.mjs")
-        val launcher = webCapture.map { it.singleFile.resolve("launcher.json").path }
+        val demo = engineToolsDir.map { it.file("web_capture_demo$exeSuffix").asFile.path }
         val folder = layout.buildDirectory.dir("web-captures")
-        args = launcher.zip(folder) { l, f -> listOf(l, f.asFile.path) }
-        inputs.files(webCapture).withPropertyName("webCapture")
+        args = demo.zip(folder) { d, f -> listOf(d, f.asFile.path) }
+        inputs.files(engineTools).withPropertyName("demo")
         inputs.file("scripts/capture-web.mjs").withPathSensitivity(PathSensitivity.RELATIVE)
         outputs.dir(folder)
     }
@@ -88,11 +175,11 @@ val prepare =
         description = "Puts in place what the site takes from the rest of the repository."
         group = "documentation"
         // The developer guide's sidebar reads the generated API reference: a preview needs it too.
-        dependsOn(tasks.npmInstall, webScreenshots, apiDocs)
+        dependsOn(tasks.npmInstall, webScreenshots, apiDocs, cliHelp)
         script = file("scripts/prepare.mjs")
         val web = layout.buildDirectory.dir("web-captures").map { it.asFile.path }
-        val help = cliHelp.map { it.singleFile.resolve("help.txt").path }
-        val remote = cliHelp.map { it.singleFile.resolve("remote.txt").path }
+        val help = cliHelpDir.map { it.file("help.txt").asFile.path }
+        val remote = cliHelpDir.map { it.file("remote.txt").asFile.path }
         args = web.map { listOf("--strict", "--web", it) }
             .zip(help.zip(remote) { h, r -> listOf("--cli", h, "--remote", r) }) { a, b -> a + b }
         inputs.files(cliHelp, webScreenshots).withPropertyName("generated")
