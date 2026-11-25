@@ -73,6 +73,14 @@ impl ControlEndpoint {
         Ok(Self { url, token, stop, serving })
     }
 
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+
     /// The line that tells the starting process where the API is and how to call it.
     pub fn control_line(&self) -> String {
         format!("njmule-control {}", json!({"url": self.url, "token": self.token}))
