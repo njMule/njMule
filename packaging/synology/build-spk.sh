@@ -38,9 +38,12 @@ install -m 644 "$here/app/config" "$here/app/njmule.sc" "$pkg/app/"
 for size in 16 24 32 48 64 72 256; do
     install -m 644 "$root/branding/generated/njmule-$size.png" "$pkg/app/images/njmule-$size.png"
 done
-# The executable holds musl and zlib, linked statically: their licenses go with it.
+# The executable holds musl linked statically: its license and the Rust crate notices go with it.
 install -m 644 "$root/LICENSE" "$root/NOTICE" "$here/licenses/musl-COPYRIGHT" \
     "$here/licenses/zlib-LICENSE" "$pkg/doc/"
+if [[ -f "$root/THIRD-PARTY.txt" ]]; then
+    install -m 644 "$root/THIRD-PARTY.txt" "$pkg/doc/"
+fi
 # xz despite the name, as Synology's own package toolkit makes it: a third smaller than gzip.
 tar -C "$pkg" --owner=0 --group=0 --sort=name -cJf "$spk/package.tgz" bin app doc
 
