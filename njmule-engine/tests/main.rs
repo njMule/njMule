@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The tests of `tests/` as one executable, a module for each file: the engine is linked once, not once for each
-//! file, which kept a build of the tests large and slow. A file not declared here never runs: the test-name map
+//! file, which kept a build of the tests large and slow. A file not declared here never runs: `suite_modules_test`
 //! checks that none is left out.
 
 // What the tests share.
@@ -297,13 +297,13 @@ mod spam_filter_test;
 mod start_next_download_test;
 mod stored_searches_test;
 mod stream_transport_test;
+mod suite_modules_test;
 mod swap_test;
 mod tag_codec_corpus_test;
 mod tag_codec_test;
 mod tcp_connection_test;
 mod tcp_connector_binding_test;
 mod tcp_listener_test;
-mod test_name_map_test;
 mod text_formats_edge_case_test;
 mod tls_identity_test;
 mod totals_test;

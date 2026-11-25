@@ -3,10 +3,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Builds the Synology DSM 7 package (.spk) around a static Linux executable of the headless
-# launcher (tools/native-static-docker.sh). Run on Linux (or in a Linux container), so that the
-# archives keep the scripts' modes. DSM versions are numbers only: the version of
-# gradle.properties without its pre-release, then a build number that grows with each package
-# (SPK_BUILD, by default the number of commits).
+# engine. Run on Linux (or in a Linux container), so that the archives keep the scripts' modes.
+# DSM versions are numbers only: the version of gradle.properties without its pre-release, then
+# a build number that grows with each package (SPK_BUILD, by default the number of commits).
 #
 # Usage: packaging/synology/build-spk.sh <njmule executable> <x86_64|armv8> [<output dir>]
 set -euo pipefail

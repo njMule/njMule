@@ -2,11 +2,13 @@
 # SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Rejects commits with code that is not palantir-java-format formatted or lacks the license header.
+# Rejects commits with unformatted Rust code in the engine or desktop shell.
 # Enable with: git config core.hooksPath .githooks
 root="$(git rev-parse --show-toplevel)" || exit 1
 cd "$root" || exit 1
-if ! ./gradlew -q spotlessCheck; then
-    echo "Formatting check failed: run './gradlew spotlessApply' and stage the changes." >&2
-    exit 1
-fi
+for crate in njmule-engine njmule-desktop/src-tauri; do
+    if ! cargo fmt --manifest-path "$crate/Cargo.toml" --check; then
+        echo "Formatting check failed in $crate: run 'cargo fmt --manifest-path $crate/Cargo.toml' and stage the changes." >&2
+        exit 1
+    fi
+done

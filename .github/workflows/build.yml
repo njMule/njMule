@@ -20,9 +20,8 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
-    # Changes that cannot affect the build (documents, repository metadata, branding sources, local
-    # tools) skip the build jobs; skipped jobs count as passed, so such commits and PRs stay green. The
-    # weekly run takes no filter and builds everything.
+    # Changes that cannot affect a job skip it; skipped jobs count as passed, so documentation or metadata
+    # pull requests stay green. The weekly run takes no filter and builds everything.
     changes:
         name: detect changes
         runs-on: ubuntu-latest
@@ -30,199 +29,103 @@ jobs:
             contents: read
             pull-requests: read
         outputs:
-            build: ${{ github.event_name == 'schedule' || steps.filter.outputs.build == 'true' }}
+            ui: ${{ github.event_name == 'schedule' || steps.filter.outputs.ui == 'true' }}
+            desktop: ${{ github.event_name == 'schedule' || steps.filter.outputs.desktop == 'true' }}
+            engine: ${{ github.event_name == 'schedule' || steps.filter.outputs.engine == 'true' }}
+            windows: ${{ github.event_name == 'schedule' || steps.filter.outputs.windows == 'true' }}
+            macos: ${{ github.event_name == 'schedule' || steps.filter.outputs.macos == 'true' }}
+            synology: ${{ github.event_name == 'schedule' || steps.filter.outputs.synology == 'true' }}
             workflows: ${{ steps.filter.outputs.workflows == 'true' }}
-            static: ${{ github.event_name == 'schedule' || steps.static.outputs.static == 'true' }}
-            desktop: ${{ github.event_name == 'schedule' || steps.desktop.outputs.desktop == 'true' }}
-            engine: ${{ github.event_name == 'schedule' || steps.engine.outputs.engine == 'true' }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
               if: github.event_name != 'schedule'
               id: filter
               with:
-                  predicate-quantifier: every
                   filters: |
-                      build:
-                          - '**'
-                          - '!**/*.md'
-                          - '!.github/ISSUE_TEMPLATE/**'
-                          - '!.github/CODEOWNERS'
-                          - '!.github/dependabot.yml'
-                          - '!.githooks/**'
-                          - '!.editorconfig'
-                          - '!.gitignore'
-                          - '!AUTHORS'
-                          - '!LICENSES/**'
-                          - '!REUSE.toml'
-                          - '!branding/*'
-                          - '!branding/generated/njmule-avatar-512.png'
-                          - '!branding/generated/njmule-social-preview.png'
-                          - '!tools/**'
-                          - '!website/**'
-                          - '!.github/workflows/docs.yml'
-                      workflows:
-                          - '.github/workflows/**'
-            # Any of these files, unlike the build's filter where a file must pass every pattern: what can break the
-            # static executable and its package rather than the code (the build, the dependencies and GraalVM, the
-            # native configuration, the package's files).
-            - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-              if: github.event_name != 'schedule'
-              id: static
-              with:
-                  filters: |
-                      static:
+                      ui:
+                          - 'njmule-ui/**'
+                          - 'njmule-engine/assets/openapi.yaml'
                           - 'gradle/**'
                           - 'gradle.properties'
-                          - '**/*.gradle.kts'
-                          - '**/*.lockfile'
-                          - 'build-logic/**'
-                          - '**/META-INF/native-image/**'
-                          - 'packaging/synology/**'
-                          - 'branding/generated/**'
-                          - 'tools/native-static-docker.sh'
+                          - 'settings.gradle.kts'
+                          - 'build.gradle.kts'
+                          - '*.lockfile'
                           - '.github/workflows/build.yml'
-            - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-              if: github.event_name != 'schedule'
-              id: desktop
-              with:
-                  filters: |
                       desktop:
                           - 'njmule-desktop/**'
                           - 'njmule-ui/**'
+                          - 'njmule-engine/assets/openapi.yaml'
                           - 'branding/generated/**'
+                          - 'gradle/**'
+                          - 'gradle.properties'
+                          - 'settings.gradle.kts'
+                          - 'build.gradle.kts'
+                          - '*.lockfile'
                           - '.github/workflows/build.yml'
-            # The Rust engine, and the Java engine's corpora its tests replay.
-            - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-              if: github.event_name != 'schedule'
-              id: engine
-              with:
-                  filters: |
                       engine:
                           - 'njmule-engine/**'
-                          # The Java tests the port mirrors, which test_name_map_test compares.
-                          - 'njmule-core/src/test/java/**'
-                          - 'njmule-http/src/test/java/**'
-                          - 'njmule-app/src/test/java/**'
                           - 'branding/njmule-icon.svg'
                           - 'branding/generated/njmule-32.png'
-                          - 'njmule-testkit/**'
-                          - 'tools/engine_coverage.py'
+                          - 'gradle.properties'
                           - '.github/workflows/build.yml'
+                      windows:
+                          - 'njmule-engine/**'
+                          - 'njmule-ui/**'
+                          - 'packaging/windows/**'
+                          - 'branding/njmule-icon.svg'
+                          - 'branding/generated/**'
+                          - 'gradle/**'
+                          - 'gradle.properties'
+                          - 'settings.gradle.kts'
+                          - 'build.gradle.kts'
+                          - '*.lockfile'
+                          - '.github/scripts/windows-service-test.ps1'
+                          - '.github/workflows/build.yml'
+                      macos:
+                          - 'njmule-engine/**'
+                          - 'njmule-ui/**'
+                          - 'branding/njmule-icon.svg'
+                          - 'branding/generated/njmule-32.png'
+                          - 'gradle/**'
+                          - 'gradle.properties'
+                          - 'settings.gradle.kts'
+                          - 'build.gradle.kts'
+                          - '*.lockfile'
+                          - '.github/workflows/build.yml'
+                      synology:
+                          - 'njmule-engine/**'
+                          - 'njmule-ui/**'
+                          - 'packaging/synology/**'
+                          - 'branding/njmule-icon.svg'
+                          - 'branding/generated/**'
+                          - 'gradle/**'
+                          - 'gradle.properties'
+                          - 'settings.gradle.kts'
+                          - 'build.gradle.kts'
+                          - '*.lockfile'
+                          - '.github/workflows/build.yml'
+                      workflows:
+                          - '.github/workflows/**'
 
-    verify:
-        name: verify (${{ matrix.os }})${{ matrix.sonar && ' + SonarQube Cloud' || '' }}
+    # The Vue user interface (type-check, Vite bundle, Vitest, Prettier) and Gradle's root tools.
+    ui:
+        name: interface (ui)
         needs: changes
-        if: needs.changes.outputs.build == 'true'
-        strategy:
-            fail-fast: false
-            matrix:
-                os: [ubuntu-latest, windows-latest, macos-latest]
-                # SonarQube Cloud analyses the Linux build.
-                include:
-                    - os: ubuntu-latest
-                      sonar: true
-        runs-on: ${{ matrix.os }}
-        env:
-            # Skipped until the SONAR_TOKEN secret exists (and on forks, which do not receive it).
-            SONAR_TOKEN: ${{ matrix.sonar && secrets.SONAR_TOKEN || '' }}
+        if: needs.changes.outputs.ui == 'true'
+        runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-              with:
-                  # SonarQube Cloud reads the history (new code, blame).
-                  fetch-depth: ${{ env.SONAR_TOKEN != '' && '0' || '1' }}
-            # The macOS image has no Temurin 25 of its own: the JDK comes from the Actions cache, written here,
-            # rather than from GitHub's releases in every job.
             - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
               with:
                   distribution: temurin
                   java-version: "25"
                   cache-jdk: true
-            # Gradle User Home cache through actions/cache (the open-source provider); also checks the
-            # wrapper jar against the published checksums. Only these jobs write it, so that the one entry
-            # per system holds what the whole build needs; the others read it.
             - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
-            # The task outputs of main's latest build, kept by NJMULE_BUILD_CACHE apart from the Gradle User Home,
-            # whose entry changes only with the build files: the modules a change leaves alone come from the
-            # cache instead of being compiled and tested again.
-            - name: Restore the build cache
-              uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-              with:
-                  path: ${{ runner.temp }}/build-cache
-                  key: build-cache-${{ runner.os }}-${{ github.sha }}
-                  restore-keys: build-cache-${{ runner.os }}-
-            # On Windows the tests' temporary files go to the runner's faster drive, as the Gradle User Home
-            # does. On main the cache grows with each build (a whole build stores about 50 MiB): past 300 MiB it
-            # starts afresh, and this build fills it again.
-            - name: Set up the build
-              shell: bash
-              run: |
-                  echo "NJMULE_BUILD_CACHE=$RUNNER_TEMP/build-cache" >> "$GITHUB_ENV"
-                  if [[ "$RUNNER_OS" == Windows ]]; then
-                      echo "TMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
-                      echo "TEMP=$RUNNER_TEMP" >> "$GITHUB_ENV"
-                  fi
-                  cache="$RUNNER_TEMP/build-cache"
-                  if [[ "$GITHUB_EVENT_NAME" != pull_request && -d "$cache" ]] && (( $(du -sm "$cache" | cut -f1) > 300 )); then
-                      rm -rf "$cache"
-                  fi
-            # One module's tests at a time: on the runners' four CPUs the long timed tests (the Kad
-            # simulation, the window tests) ran out of time next to the other modules' test JVMs. A failure
-            # does not stop the other modules, whose reports come too.
-            - name: Build and test
-              shell: bash
-              run: ./gradlew build --continue '-Ptest.parallelModules=1'
-            - name: Analyse on SonarQube Cloud
-              if: env.SONAR_TOKEN != ''
-              shell: bash
-              run: ./gradlew sonar
-            - name: Upload test reports
-              if: failure()
-              uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-              with:
-                  name: test-reports-${{ matrix.os }}
-                  path: |
-                      **/build/test-results/
-                      **/build/reports/tests/
-            # Before the caches are saved: Windows does not let them read the lock files the daemon holds.
-            - name: Stop Gradle
-              if: always() && runner.os == 'Windows'
-              shell: bash
-              run: ./gradlew --stop
-            # Under this commit; the build-cache-cleanup job then deletes the ones it replaces.
-            - name: Save the build cache
-              if: success() && github.event_name != 'pull_request'
-              uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-              with:
-                  path: ${{ runner.temp }}/build-cache
-                  key: build-cache-${{ runner.os }}-${{ github.sha }}
-
-    # Each build of main saves its build cache under its commit; the older ones go, so that the repository's cache
-    # space keeps the Gradle User Homes. A system whose build failed keeps its previous cache.
-    build-cache-cleanup:
-        name: clean the build caches
-        needs: verify
-        if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.verify.result != 'skipped' }}
-        runs-on: ubuntu-latest
-        permissions:
-            actions: write
-        env:
-            GH_TOKEN: ${{ github.token }}
-            GH_REPO: ${{ github.repository }}
-        steps:
-            - name: Delete the replaced build caches
-              run: |
-                  for os in Linux Windows macOS; do
-                      prefix="build-cache-$os-"
-                      keys=$(gh cache list --ref "$GITHUB_REF" --key "$prefix" --limit 100 --json key --jq '.[].key')
-                      if grep -qx "$prefix$GITHUB_SHA" <<< "$keys"; then
-                          for key in $keys; do
-                              [[ "$key" == "$prefix$GITHUB_SHA" ]] || gh cache delete "$key"
-                          done
-                      fi
-                  done
+            - name: Build, lint and test the interface
+              run: ./gradlew :njmule-ui:build :iconTools
 
     # The desktop window's shell, in Rust, on each system it is packaged for: formatted, linted and tested, with the
     # toolchain src-tauri/rust-toolchain.toml pins and the interface it embeds built first.
@@ -275,6 +178,8 @@ jobs:
               if: always() && runner.os == 'Windows'
               run: ./gradlew --stop
 
+    # The Rust engine: formatted, linted, unit + integration + end-to-end tests with coverage, crate policy,
+    # third-party notices and SBOM.
     engine:
         name: rust engine
         needs: changes
@@ -292,14 +197,11 @@ jobs:
             - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
               with:
                   tool: cargo-llvm-cov@0.9.1, cargo-about@0.9.3, cargo-cyclonedx@0.5.10
-            # The tests replay the corpora the Java engine wrote, in njmule-core's test resources. They run measured:
-            # each ported package must reach the line coverage of its Java twin.
             - name: Format, lint and test
               run: |
                   cargo fmt --check
                   cargo clippy --locked --all-targets -- -D warnings
-                  cargo llvm-cov --locked --json --summary-only --output-path target/coverage.json
-                  python3 ../tools/engine_coverage.py check target/coverage.json
+                  cargo llvm-cov --locked --fail-under-lines 70
             - name: Licenses, advisories and sources of the crates
               uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
               with:
@@ -309,8 +211,15 @@ jobs:
                   cargo about generate about.hbs -o target/THIRD-PARTY.txt
                   cargo cyclonedx --format json --spec-version 1.6 --describe binaries --no-build-deps --target all
                   rm -f njmule_bin.cdx.json
-            # The test kit's flows, against the Rust engine's executable through the API, as the native image's job
-            # runs them.
+
+    # The Windows executable and service host, tested with the real Windows service on the runner.
+    windows:
+        name: engine (windows-x64)
+        needs: changes
+        if: needs.changes.outputs.windows == 'true'
+        runs-on: windows-latest
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
               with:
                   distribution: temurin
@@ -319,13 +228,124 @@ jobs:
             - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
               with:
                   cache-provider: basic
-                  cache-read-only: true
-            - name: End-to-end tests against the executable
+            - name: Install the pinned Rust
+              shell: bash
+              working-directory: njmule-engine
               run: |
-                  cargo build --locked --release
-                  cd ..
-                  ./gradlew :njmule-testkit:test --tests '*ServerFlowTest' --tests '*SearchFlowTest' \
-                      --tests '*DownloadFlowTest' "-Pnjmule.engine=$PWD/njmule-engine/target/release/njmule"
+                  channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+                  rustup toolchain install "$channel" --profile minimal
+                  rustup default "$channel"
+            - name: Build the interface, the engine and the service
+              shell: bash
+              run: |
+                  ./gradlew :njmule-ui:compress :nativeService
+                  cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
+            - name: Smoke test
+              shell: pwsh
+              run: |
+                  njmule-engine/target/release/njmule.exe --version
+                  if (-not ((njmule-engine/target/release/njmule.exe --license) -match "GNU GENERAL PUBLIC LICENSE")) {
+                      throw "license text missing"
+                  }
+            # The runner is an administrator: the real service, as the release checks it before packing, so that a
+            # pull request that breaks it fails here rather than on a tag.
+            - name: Service test
+              shell: pwsh
+              run: |
+                  Copy-Item build/windows/njmule-service.exe njmule-engine/target/release/
+                  ./.github/scripts/windows-service-test.ps1 njmule-engine/target/release/njmule.exe
+            # The basic cache provider saves Gradle's user home without stopping the daemon, whose lock
+            # files Windows does not let it read.
+            - name: Stop Gradle
+              if: always()
+              shell: bash
+              run: ./gradlew --stop
+
+    # macOS is built and smoke-tested here too: the release would otherwise be the first to try it.
+    macos:
+        name: engine (macos-arm64)
+        needs: changes
+        if: needs.changes.outputs.macos == 'true'
+        runs-on: macos-latest
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+              with:
+                  distribution: temurin
+                  java-version: "25"
+                  cache-jdk: true
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+              with:
+                  cache-provider: basic
+            - name: Install the pinned Rust
+              working-directory: njmule-engine
+              run: |
+                  channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+                  rustup toolchain install "$channel" --profile minimal
+                  rustup default "$channel"
+            - name: Build the interface and the engine
+              run: |
+                  ./gradlew :njmule-ui:compress
+                  cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
+            - name: Smoke test
+              run: |
+                  njmule-engine/target/release/njmule --version
+                  njmule-engine/target/release/njmule --license | grep -q "GNU GENERAL PUBLIC LICENSE"
+
+    # The static executable of the Synology package, linked with musl, and the package around it.
+    synology:
+        name: synology package (x86_64)
+        needs: changes
+        if: needs.changes.outputs.synology == 'true'
+        runs-on: ubuntu-24.04
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+              with:
+                  distribution: temurin
+                  java-version: "25"
+                  cache-jdk: true
+                  cache-read-only: true
+            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+              with:
+                  cache-provider: basic
+                  cache-read-only: true
+            - name: Install musl tools and the pinned Rust
+              working-directory: njmule-engine
+              run: |
+                  sudo apt-get update -qq
+                  sudo apt-get install -y -qq --no-install-recommends musl-tools
+                  channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+                  rustup toolchain install "$channel" --profile minimal --target x86_64-unknown-linux-musl
+                  rustup default "$channel"
+            - name: Build the interface and the static executable
+              run: |
+                  ./gradlew :njmule-ui:compress
+                  CC_x86_64_unknown_linux_musl=musl-gcc cargo build --manifest-path njmule-engine/Cargo.toml \
+                      --locked --release --target x86_64-unknown-linux-musl --bin njmule
+            # Static, or it would not start on DSM's old glibc.
+            - name: Smoke test
+              run: |
+                  exe=njmule-engine/target/x86_64-unknown-linux-musl/release/njmule
+                  if ldd "$exe" 2>&1 | grep -q '=>'; then
+                      echo "njmule links to libraries of the system" >&2
+                      ldd "$exe" >&2
+                      exit 1
+                  fi
+                  "$exe" --version
+                  "$exe" --license | grep -q "GNU GENERAL PUBLIC LICENSE"
+            - name: Pack and check the package
+              run: |
+                  mkdir -p build/synology
+                  SPK_BUILD=1 packaging/synology/build-spk.sh \
+                      njmule-engine/target/x86_64-unknown-linux-musl/release/njmule x86_64 build/synology
+                  spk=$(ls build/synology/*.spk)
+                  tar -tf "$spk" > "$RUNNER_TEMP/spk.txt"
+                  for entry in INFO package.tgz scripts/start-stop-status conf/privilege LICENSE PACKAGE_ICON.PNG; do
+                      grep -qx "$entry" "$RUNNER_TEMP/spk.txt" || { echo "$entry missing from the package" >&2; exit 1; }
+                  done
+                  tar -xOf "$spk" INFO | grep -qx 'arch="x86_64"'
+                  tar -xOf "$spk" package.tgz | tar -tJf - | grep -qx 'bin/njmule'
 
     actionlint:
         name: actionlint
@@ -347,193 +367,15 @@ jobs:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
             - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
 
-    native:
-        name: native image (linux-x64)
-        needs: changes
-        if: needs.changes.outputs.build == 'true'
-        runs-on: ubuntu-latest
-        # Same pinned GraalVM Community image as the local Docker build (CLAUDE.md).
-        container: ghcr.io/graalvm/native-image-community:25i4-25.0.4.1.1
-        steps:
-            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            # Gradle User Home cache through actions/cache (the open-source provider); also checks the
-            # wrapper jar against the published checksums. Written here too: the container's user home is
-            # another path, hence another entry.
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
-            - name: Build the native executable
-              run: ./gradlew :njmule-app:nativeCompile '-Pnative.optimization=-Ob'
-            - name: Smoke test
-              run: |
-                  njmule-app/build/native/nativeCompile/njmule --version
-                  njmule-app/build/native/nativeCompile/njmule --license | grep -q "GNU GENERAL PUBLIC LICENSE"
-            # The test kit's flows again, against this executable through its API instead of an engine in their JVM.
-            - name: End-to-end tests against the executable
-              run: ./gradlew :njmule-testkit:test "-Pnjmule.engine=$PWD/njmule-app/build/native/nativeCompile/njmule"
-            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-              with:
-                  name: njmule-linux-x64
-                  path: njmule-app/build/native/nativeCompile/njmule
-
-    native-windows:
-        name: native image (windows-x64)
-        needs: changes
-        if: needs.changes.outputs.build == 'true'
-        runs-on: windows-latest
-        # The same GraalVM Community release as the Linux image; native-image finds the runner's
-        # Visual Studio on its own.
-        env:
-            GRAALVM_URL: https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-25.4.4.1.1/graalvm-community-jdk-25i4-25.0.4.1.1_windows-x64_bin.zip
-            GRAALVM_SHA256: 2733ea1331f1a98b05dd55a768b07347051dad48f030dbbfa191b11a2ccf4144
-        steps:
-            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
-              with:
-                  distribution: temurin
-                  java-version: "25"
-            # Gradle User Home cache through actions/cache (the open-source provider), written by verify; also
-            # checks the wrapper jar against the published checksums.
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
-                  cache-read-only: true
-            - name: Install GraalVM
-              shell: pwsh
-              run: |
-                  # GitHub's releases answer a 5xx now and then.
-                  Invoke-WebRequest $env:GRAALVM_URL -OutFile "$env:RUNNER_TEMP\graalvm.zip" `
-                      -MaximumRetryCount 5 -RetryIntervalSec 15
-                  if ((Get-FileHash "$env:RUNNER_TEMP\graalvm.zip" -Algorithm SHA256).Hash -ne $env:GRAALVM_SHA256) {
-                      throw "GraalVM checksum mismatch"
-                  }
-                  tar -xf "$env:RUNNER_TEMP\graalvm.zip" -C $env:RUNNER_TEMP
-                  "GRAALVM_HOME=$env:RUNNER_TEMP\graalvm-community-25.4.4.1.1+1.1" >> $env:GITHUB_ENV
-            - name: Build the native executable and the service
-              run: ./gradlew :njmule-app:nativeCompile :nativeService '-Pnative.optimization=-Ob'
-            - name: Smoke test
-              shell: pwsh
-              run: |
-                  njmule-app/build/native/nativeCompile/njmule.exe --version
-                  if (-not ((njmule-app/build/native/nativeCompile/njmule.exe --license) -match "GNU GENERAL PUBLIC LICENSE")) {
-                      throw "license text missing"
-                  }
-            # The runner is an administrator: the real service, as the release checks it before packing, so that a
-            # pull request that breaks it fails here rather than on a tag.
-            - name: Service test
-              shell: pwsh
-              run: |
-                  Copy-Item build/windows/njmule-service.exe njmule-app/build/native/nativeCompile/
-                  ./.github/scripts/windows-service-test.ps1 njmule-app/build/native/nativeCompile/njmule.exe
-            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-              with:
-                  name: njmule-windows-x64
-                  path: njmule-app/build/native/nativeCompile/njmule.exe
-            # The basic cache provider saves Gradle's user home without stopping the daemon, whose lock
-            # files Windows does not let it read.
-            - name: Stop Gradle
-              if: always()
-              run: ./gradlew --stop
-
-    # macOS is built and tested here too: the release would otherwise be the first to try it.
-    native-macos:
-        name: native image (macos-arm64)
-        needs: changes
-        if: needs.changes.outputs.build == 'true'
-        runs-on: macos-latest
-        env:
-            GRAALVM_URL: https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-25.4.4.1.1/graalvm-community-jdk-25i4-25.0.4.1.1_macos-aarch64_bin.tar.gz
-            GRAALVM_SHA256: 4ec9932aa4aab1afca0ea31982d32d6f956615c61fe21a227b49756b25adda4f
-        steps:
-            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - name: Install GraalVM
-              run: |
-                  # GitHub's releases answer a 5xx now and then, which curl may report as a receive error (56): only
-                  # --retry-all-errors retries that.
-                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
-                      -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_URL"
-                  echo "$GRAALVM_SHA256  $RUNNER_TEMP/graalvm.tar.gz" | shasum -a 256 -c -
-                  mkdir -p "$RUNNER_TEMP/graalvm"
-                  tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
-                  echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm/Contents/Home" >> "$GITHUB_ENV"
-                  echo "JAVA_HOME=$RUNNER_TEMP/graalvm/Contents/Home" >> "$GITHUB_ENV"
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
-                  cache-read-only: true
-            - name: Build the native executable
-              run: ./gradlew :njmule-app:nativeCompile '-Pnative.optimization=-Ob'
-            - name: Smoke test
-              run: |
-                  njmule-app/build/native/nativeCompile/njmule --version
-                  njmule-app/build/native/nativeCompile/njmule --license | grep -q "GNU GENERAL PUBLIC LICENSE"
-
-    # The static executable of the Synology package, linked with musl, and the package around it; only when what
-    # can break them changes, and weekly.
-    synology:
-        name: synology package (x86_64)
-        needs: changes
-        if: needs.changes.outputs.static == 'true'
-        runs-on: ubuntu-24.04
-        env:
-            GRAALVM_URL: https://github.com/graalvm/graalvm-ce-builds/releases/download/graal-25.4.4.1.1/graalvm-community-jdk-25i4-25.0.4.1.1_linux-x64_bin.tar.gz
-            GRAALVM_SHA256: 05ccbbe783210b6886ff7b08fcd0b061c5dce4852b05db87284fc0e24abb08e2
-            MUSL_URL: https://gds.oracle.com/download/bfs/archive/musl-toolchain-1.2.5-oracle-00001-linux-amd64.tar.gz
-            MUSL_SHA256: 77a60e1d31303f214e1c9d8e5843abcce2743a0c6f6b436e251f69a3161801ad
-        steps:
-            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - name: Install GraalVM and the musl toolchain
-              run: |
-                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
-                      -o "$RUNNER_TEMP/graalvm.tar.gz" "$GRAALVM_URL"
-                  echo "$GRAALVM_SHA256  $RUNNER_TEMP/graalvm.tar.gz" | sha256sum -c -
-                  mkdir -p "$RUNNER_TEMP/graalvm"
-                  tar -C "$RUNNER_TEMP/graalvm" --strip-components=1 -xzf "$RUNNER_TEMP/graalvm.tar.gz"
-                  echo "GRAALVM_HOME=$RUNNER_TEMP/graalvm" >> "$GITHUB_ENV"
-                  echo "JAVA_HOME=$RUNNER_TEMP/graalvm" >> "$GITHUB_ENV"
-                  curl --proto =https --tlsv1.2 -sSfL --retry 5 --retry-delay 15 --retry-all-errors \
-                      -o "$RUNNER_TEMP/musl.tar.gz" "$MUSL_URL"
-                  echo "$MUSL_SHA256  $RUNNER_TEMP/musl.tar.gz" | sha256sum -c -
-                  tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/musl.tar.gz"
-                  echo "$RUNNER_TEMP/musl-toolchain/bin" >> "$GITHUB_PATH"
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
-                  cache-read-only: true
-            - name: Build the static executable
-              run: ./gradlew :njmule-app:nativeCompile '-Pnative.static=musl' '-Pnative.optimization=-Ob'
-            # Static, or it would not start on DSM's old glibc.
-            - name: Smoke test
-              run: |
-                  exe=njmule-app/build/native/nativeCompile/njmule
-                  if ldd "$exe"; then
-                      echo "njmule links to libraries of the system" >&2
-                      exit 1
-                  fi
-                  "$exe" --version
-                  "$exe" --license | grep -q "GNU GENERAL PUBLIC LICENSE"
-            - name: Pack and check the package
-              run: |
-                  mkdir -p build/synology
-                  SPK_BUILD=1 packaging/synology/build-spk.sh njmule-app/build/native/nativeCompile/njmule x86_64 \
-                      build/synology
-                  spk=$(ls build/synology/*.spk)
-                  tar -tf "$spk" > "$RUNNER_TEMP/spk.txt"
-                  for entry in INFO package.tgz scripts/start-stop-status conf/privilege LICENSE PACKAGE_ICON.PNG; do
-                      grep -qx "$entry" "$RUNNER_TEMP/spk.txt" || { echo "$entry missing from the package" >&2; exit 1; }
-                  done
-                  tar -xOf "$spk" INFO | grep -qx 'arch="x86_64"'
-                  tar -xOf "$spk" package.tgz | tar -tJf - | grep -qx 'bin/njmule'
-
     # The one check to require on pull requests: it passes when every job passed or was skipped
     # because the change does not need a build.
     ci:
         name: CI result
         if: always()
-        needs: [changes, verify, desktop, engine, actionlint, reuse, native, native-windows, native-macos, synology]
+        needs: [changes, ui, desktop, engine, windows, macos, synology, actionlint, reuse]
         runs-on: ubuntu-latest
         steps:
             - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
               with:
-                  allowed-skips: verify, desktop, engine, actionlint, native, native-windows, native-macos, synology
+                  allowed-skips: ui, desktop, engine, windows, macos, synology, actionlint
                   jobs: ${{ toJSON(needs) }}
