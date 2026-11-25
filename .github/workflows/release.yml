@@ -44,10 +44,48 @@ jobs:
                   echo "version=${version}" >> "$GITHUB_OUTPUT"
                   echo "numeric=${version%%-*}" >> "$GITHUB_OUTPUT"
 
+    # Third-party crate notices (THIRD-PARTY.txt) and CycloneDX SBOM from the Rust engine's Cargo.lock,
+    # generated once and shared by every package and the draft release.
+    notices:
+        name: third-party notices and SBOM
+        needs: version
+        runs-on: ubuntu-latest
+        env:
+            VERSION: ${{ needs.version.outputs.version }}
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - name: Install the pinned Rust
+              working-directory: njmule-engine
+              run: |
+                  channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+                  rustup toolchain install "$channel" --profile minimal
+                  rustup default "$channel"
+            - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+              with:
+                  tool: cargo-about@0.9.3, cargo-cyclonedx@0.5.10
+            - name: Generate THIRD-PARTY.txt and CycloneDX SBOM
+              working-directory: njmule-engine
+              run: |
+                  mkdir -p ../notices
+                  cargo about generate about.hbs -o ../notices/THIRD-PARTY.txt
+                  cargo cyclonedx --format json --spec-version 1.6 --describe binaries --no-build-deps --target all
+                  jq --arg v "${VERSION}" \
+                      '.metadata.component.version = $v | .metadata.component.purl = (.metadata.component.purl | sub("@0\\.0\\.0"; "@" + $v))' \
+                      njmule_bin.cdx.json > "../notices/njmule-${VERSION}-sbom.cdx.json"
+                  rm -f njmule_bin.cdx.json
+                  ls -lh ../notices
+            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+              with:
+                  name: notices
+                  path: notices/
+
     windows-x64:
         name: windows-x64
-        needs: version
+        needs: [version, notices]
         runs-on: windows-latest
+        permissions:
+            actions: read
+            contents: read
         env:
             VERSION: ${{ needs.version.outputs.version }}
             NUMERIC: ${{ needs.version.outputs.numeric }}
@@ -89,6 +127,13 @@ jobs:
             - name: Service test
               shell: pwsh
               run: ./.github/scripts/windows-service-test.ps1 stage\bin\njmule.exe
+            - name: Fetch third-party notices
+              shell: pwsh
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh run download "$env:GITHUB_RUN_ID" --repo "$env:GITHUB_REPOSITORY" --name notices --dir "$env:RUNNER_TEMP\notices"
+                  Copy-Item "$env:RUNNER_TEMP\notices\THIRD-PARTY.txt" .
             - name: Pack
               shell: pwsh
               run: |
@@ -101,12 +146,12 @@ jobs:
                   wix build packaging/windows/njmule.wxs -wx -arch x64 -pdbtype none -d "Version=$env:NUMERIC" -d "BinDir=$bin" -d "DocDir=$docs" -d Gui=yes -o "dist\$name.msi"
                   # The installer must carry the programs: unpack it and look.
                   wix msi decompile "dist\$name.msi" -x "$env:RUNNER_TEMP\msi" -o "$env:RUNNER_TEMP\msi.wxs"
-                  foreach ($exe in "njmule.exe", "njmule-gui.exe", "njmule-service.exe", "install.properties") {
+                  foreach ($exe in "njmule.exe", "njmule-gui.exe", "njmule-service.exe", "install.properties", "THIRD-PARTY.txt") {
                       if (-not (Select-String -Quiet -SimpleMatch $exe "$env:RUNNER_TEMP\msi.wxs")) { throw "$exe is missing from the MSI" }
                   }
                   if (-not (Select-String -Quiet -SimpleMatch "--restore-links" "$env:RUNNER_TEMP\msi.wxs")) { throw "the uninstaller does not give the ed2k links back" }
                   if (-not (Select-String -Quiet -SimpleMatch "--exit" "$env:RUNNER_TEMP\msi.wxs")) { throw "the uninstaller does not close a running njMule" }
-                  Copy-Item LICENSE, NOTICE, README.md, CHANGELOG.md "stage\$name"
+                  Copy-Item LICENSE, NOTICE, THIRD-PARTY.txt, README.md, CHANGELOG.md "stage\$name"
                   Set-Content -Encoding ascii "stage\$name\install.properties" "kind=zip"
                   Compress-Archive -Path "stage\$name" -DestinationPath "dist\$name.zip"
             # The installer for every user sets the service up, which starts and answers; uninstalling removes it and
@@ -153,7 +198,10 @@ jobs:
 
     linux:
         name: linux-${{ matrix.arch }}
-        needs: version
+        needs: [version, notices]
+        permissions:
+            actions: read
+            contents: read
         strategy:
             matrix:
                 include:
@@ -209,14 +257,20 @@ jobs:
                   install -m 755 njmule-engine/target/release/njmule njmule-desktop/src-tauri/target/release/njmule-gui stage/gui/
                   stage/gui/njmule --version
                   timeout 300 xvfb-run -a bash .github/scripts/desktop-smoke-test.sh stage/gui
+            - name: Fetch third-party notices
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name notices --dir "$RUNNER_TEMP/notices"
+                  cp "$RUNNER_TEMP/notices/THIRD-PARTY.txt" .
             - name: Pack
               run: |
                   name="njmule-${VERSION}-linux-${{ matrix.arch }}"
                   mkdir -p stage/doc dist headless "archive/${name}/share"
-                  cp README.md CHANGELOG.md NOTICE stage/doc/
+                  cp README.md CHANGELOG.md NOTICE THIRD-PARTY.txt stage/doc/
                   "$RUNNER_TEMP/nfpm" package -f packaging/linux/nfpm.yaml -p deb -t dist/
                   "$RUNNER_TEMP/nfpm" package -f packaging/linux/nfpm.yaml -p rpm -t dist/
-                  cp -r stage/gui/. LICENSE NOTICE README.md CHANGELOG.md "archive/${name}/"
+                  cp -r stage/gui/. LICENSE NOTICE THIRD-PARTY.txt README.md CHANGELOG.md "archive/${name}/"
                   cp packaging/linux/org.njmule.njMule.* branding/njmule-icon.svg "archive/${name}/share/"
                   printf 'kind=tar\n' > "archive/${name}/install.properties"
                   "archive/${name}/njmule" --version
@@ -237,8 +291,11 @@ jobs:
     # executable, wrapped by packaging/synology/build-spk.sh.
     synology:
         name: synology-x86_64
-        needs: version
+        needs: [version, notices]
         runs-on: ubuntu-24.04
+        permissions:
+            actions: read
+            contents: read
         env:
             VERSION: ${{ needs.version.outputs.version }}
         steps:
@@ -275,6 +332,12 @@ jobs:
                       exit 1
                   fi
                   "$exe" --version
+            - name: Fetch third-party notices
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name notices --dir "$RUNNER_TEMP/notices"
+                  cp "$RUNNER_TEMP/notices/THIRD-PARTY.txt" .
             - name: Pack
               run: |
                   exe=njmule-engine/target/x86_64-unknown-linux-musl/release/njmule
@@ -286,7 +349,7 @@ jobs:
                   name="njmule-${VERSION}-linux-x64-static"
                   mkdir -p "archive/${name}"
                   install -m 755 "$exe" "archive/${name}/njmule"
-                  cp LICENSE NOTICE README.md CHANGELOG.md packaging/synology/licenses/musl-COPYRIGHT \
+                  cp LICENSE NOTICE THIRD-PARTY.txt README.md CHANGELOG.md packaging/synology/licenses/musl-COPYRIGHT \
                       packaging/synology/licenses/zlib-LICENSE "archive/${name}/"
                   printf 'kind=static-tar\n' > "archive/${name}/install.properties"
                   tar -C archive -cJf "dist/${name}.tar.xz" "${name}"
@@ -306,7 +369,7 @@ jobs:
     # Registry.
     docker:
         name: docker image
-        needs: [version, linux, synology]
+        needs: [version, notices, linux, synology]
         runs-on: ubuntu-24.04
         permissions:
             actions: read
@@ -317,12 +380,15 @@ jobs:
             IMAGE: ghcr.io/njmule/njmule
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - name: Fetch the Linux executables
+            - name: Fetch the Linux executables and notices
               env:
                   GH_TOKEN: ${{ github.token }}
               run: |
                   gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
                       --name headless-linux-x64-static --name headless-linux-arm64 --dir "$RUNNER_TEMP/headless"
+                  gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
+                      --name notices --dir "$RUNNER_TEMP/notices"
+                  cp "$RUNNER_TEMP/notices/THIRD-PARTY.txt" .
                   for pair in x64-static:amd64 arm64:arm64; do
                       install -D -m 755 "$RUNNER_TEMP/headless/headless-linux-${pair%%:*}/njmule" \
                           "$RUNNER_TEMP/binary/${pair##*:}/njmule"
@@ -462,8 +528,11 @@ jobs:
 
     macos-arm64:
         name: macos-arm64
-        needs: version
+        needs: [version, notices]
         runs-on: macos-latest
+        permissions:
+            actions: read
+            contents: read
         env:
             VERSION: ${{ needs.version.outputs.version }}
         steps:
@@ -486,12 +555,18 @@ jobs:
               run: |
                   ./gradlew :njmule-ui:compress :njmule-desktop:shell
                   cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
+            - name: Fetch third-party notices
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name notices --dir "$RUNNER_TEMP/notices"
+                  cp "$RUNNER_TEMP/notices/THIRD-PARTY.txt" .
             - name: Pack
               run: |
                   app=stage/njMule.app/Contents
                   mkdir -p "$app/MacOS" "$app/Resources" dist
                   install -m 755 njmule-engine/target/release/njmule njmule-desktop/src-tauri/target/release/njmule-gui "$app/MacOS/"
-                  cp branding/generated/njmule.icns LICENSE NOTICE "$app/Resources/"
+                  cp branding/generated/njmule.icns LICENSE NOTICE THIRD-PARTY.txt "$app/Resources/"
                   sed "s/@VERSION@/${VERSION%%-*}/g" packaging/macos/Info.plist > "$app/Info.plist"
                   printf 'kind=dmg\n' > "$app/Resources/install.properties"
                   plutil -lint "$app/Info.plist"
@@ -561,7 +636,7 @@ jobs:
     e2e-windows:
         name: e2e update (Windows MSI and zip)
         if: github.event_name == 'workflow_dispatch'
-        needs: [version, e2e-sign]
+        needs: [version, notices, e2e-sign]
         runs-on: windows-latest
         permissions:
             actions: read
@@ -581,11 +656,14 @@ jobs:
                   rustup toolchain install "$channel" --profile minimal
                   rustup default "$channel"
             - name: Fetch the packages and their update information
+              shell: pwsh
               env:
                   GH_TOKEN: ${{ github.token }}
               run: |
                   gh run download "$env:GITHUB_RUN_ID" --repo "$env:GITHUB_REPOSITORY" --name windows-x64 --dir dist
                   gh run download "$env:GITHUB_RUN_ID" --repo "$env:GITHUB_REPOSITORY" --name e2e-update --dir e2e
+                  gh run download "$env:GITHUB_RUN_ID" --repo "$env:GITHUB_REPOSITORY" --name notices --dir "$env:RUNNER_TEMP\notices"
+                  Copy-Item "$env:RUNNER_TEMP\notices\THIRD-PARTY.txt" .
             - name: Build the test version
               shell: bash
               run: |
@@ -783,7 +861,7 @@ jobs:
     release:
         name: draft release
         if: github.ref_type == 'tag'
-        needs: [version, windows-x64, windows-arm64, linux, macos-arm64, docker, synology, virustotal]
+        needs: [version, notices, windows-x64, windows-arm64, linux, macos-arm64, docker, synology, virustotal]
         runs-on: ubuntu-latest
         environment: release
         permissions:
@@ -799,11 +877,6 @@ jobs:
               with:
                   distribution: temurin
                   java-version: "25"
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
-            - name: Software bill of materials
-              run: ./gradlew cyclonedxBom
             - name: Collect the packages
               env:
                   GH_TOKEN: ${{ github.token }}
@@ -811,6 +884,7 @@ jobs:
                   # The packages only: not the headless executables of the Docker image, nor build records.
                   gh run download "${GITHUB_RUN_ID}" --dir packages --name windows-x64 --name linux-x64 \
                       --name linux-arm64 --name macos-arm64 --name synology-x86_64
+                  gh run download "${GITHUB_RUN_ID}" --dir "$RUNNER_TEMP/notices" --name notices
                   mkdir -p dist
                   find packages -type f -exec cp {} dist/ \;
                   # The ~ of a test version's deb and rpm names (dpkg and rpm read the version inside):
@@ -820,7 +894,7 @@ jobs:
                           mv "$file" "${file//\~/.}"
                       fi
                   done
-                  cp build/reports/cyclonedx/bom.json "dist/njmule-${VERSION}-sbom.cdx.json"
+                  cp "$RUNNER_TEMP/notices/njmule-${VERSION}-sbom.cdx.json" "dist/njmule-${VERSION}-sbom.cdx.json"
                   awk -v v="${VERSION}" \
                       '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' \
                       CHANGELOG.md > notes.md

@@ -296,7 +296,7 @@ jobs:
                   rustup toolchain install "$channel" --profile minimal --component rustfmt,clippy,llvm-tools
             - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
               with:
-                  tool: cargo-llvm-cov@0.9.1
+                  tool: cargo-llvm-cov@0.9.1, cargo-about@0.9.3, cargo-cyclonedx@0.5.10
             # The tests replay the corpora the Java engine wrote, in njmule-core's test resources. They run measured:
             # each ported package must reach the line coverage of its Java twin.
             - name: Format, lint and test
@@ -309,6 +309,11 @@ jobs:
               uses: EmbarkStudios/cargo-deny-action@17aeb3c839e42274e2b8adf721c8c65edfdc74dd # v2.1.3
               with:
                   manifest-path: njmule-engine/Cargo.toml
+            - name: Third-party notices and SBOM
+              run: |
+                  cargo about generate about.hbs -o target/THIRD-PARTY.txt
+                  cargo cyclonedx --format json --spec-version 1.6 --describe binaries --no-build-deps --target all
+                  rm -f njmule_bin.cdx.json
             # The test kit's flows, against the Rust engine's executable through the API, as the native image's job
             # runs them.
             - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0

@@ -9,7 +9,7 @@
 
     wix build packaging/windows/njmule.wxs -wx -arch x64 -d Version=1.2.3 -d Gui=yes
         -d BinDir=<absolute dir with the executables> -d DocDir=<absolute dir with LICENSE, NOTICE,
-        README.md> -o njmule.msi
+        THIRD-PARTY.txt, README.md> -o njmule.msi
     (WiX resolves relative directories from this file's own directory.)
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
@@ -41,6 +41,7 @@
             <Files Include="$(var.BinDir)\**"/>
             <File Source="$(var.DocDir)\LICENSE" Name="LICENSE.txt"/>
             <File Source="$(var.DocDir)\NOTICE" Name="NOTICE.txt"/>
+            <File Source="$(var.DocDir)\THIRD-PARTY.txt"/>
             <File Source="$(var.DocDir)\README.md"/>
             <!-- Tells the update check that this copy came from the installer. -->
             <File Source="$(var.DocDir)\packaging\windows\install.properties"/>
