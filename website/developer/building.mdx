@@ -1,34 +1,58 @@
 ---
 title: Building
-description: Build njMule from its sources with the Gradle Wrapper, run its quality gates and tests, and start it from the build.
+description: Build njMule's Rust engine with Cargo and its Vue interface and Tauri desktop window with Gradle, run quality gates and tests, and start njMule from source.
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-njMule builds with the Gradle Wrapper on a Java 25 toolchain. One command format-checks, compiles,
-analyses and tests every module, the interface included; another starts the headless engine straight
-from the build. This page covers that build and the desktop window; the native executables and the
-installers have pages of their own ([Native images](native-images.mdx), [Packaging](packaging.mdx)).
+njMule's engine is a standalone Rust crate (`njmule-engine`), built and tested with Cargo. The
+Gradle Wrapper drives the Vue interface (`njmule-ui`), the Tauri desktop shell (`njmule-desktop`),
+this documentation site (`website`), the Windows service host (`nativeService`) and the icon tools.
+This page covers local builds and checks; release executables and installers have pages of their own
+([Native executables](native-images.mdx), [Packaging](packaging.mdx)).
 
 ## Prerequisites
 
 | Tool | Needed for |
 |---|---|
-| JDK 25 (Eclipse Temurin, for example) | every build; Gradle's toolchain support uses it |
+| [rustup](https://rustup.rs/) | the Rust engine (`njmule-engine`) and the desktop window (`njmule-desktop/src-tauri`); `rustup` installs the pinned Rust toolchain (`rust-toolchain.toml`) on first use |
 | Git | getting the sources |
-| GraalVM Community `25.0.4.1.1`, with `GRAALVM_HOME` set | native executables only ([Native images](native-images.mdx)) |
-| Visual Studio 2022 Build Tools, C++ workload | native executables on Windows only |
-| Docker | Linux native executables without a local GraalVM, the Docker image |
-| [WiX](https://wixtoolset.org/) 5.0.2, [nfpm](https://nfpm.goreleaser.com/) | the Windows MSI, the deb and rpm packages ([Packaging](packaging.mdx)) |
-| [rustup](https://rustup.rs/), which installs the Rust that `njmule-desktop/src-tauri/rust-toolchain.toml` pins; on Linux WebKitGTK 4.1 and GTK 3 with their headers (`libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `librsvg2-dev`, `libayatana-appindicator3-dev`, `libxdo-dev` on Debian and Ubuntu) | the desktop window (`:njmule-desktop:shell`), not part of `build` |
+| JDK 25 (Eclipse Temurin, for example) | Gradle tasks (`njmule-ui`, `njmule-desktop`, `website`, `iconTools`, `nativeService`) |
+| Visual Studio 2022 Build Tools, C++ workload | building Rust binaries and `njmule-service.exe` on Windows |
+| WebKitGTK 4.1 and GTK 3 headers (`libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `librsvg2-dev`, `libayatana-appindicator3-dev`, `libxdo-dev` on Debian/Ubuntu) | the desktop window (`:njmule-desktop:shell`) on Linux |
+| `musl-tools` and `rustup target add x86_64-unknown-linux-musl` | static Linux / Synology builds ([Native executables](native-images.mdx#the-static-linux-executable)) |
+| [WiX](https://wixtoolset.org/) 5.0.2, [nfpm](https://nfpm.goreleaser.com/), Docker | packaging ([Packaging](packaging.mdx)) |
 
 You do not install Gradle or Node.js yourself: the Gradle Wrapper (`gradlew`, `gradlew.bat`)
-downloads the Gradle version the project pins, and Gradle downloads the Node.js release that builds
-the interface, the desktop window's Tauri command line and this site, checked against its SHA-256
-like every other download ([Dependencies](dependencies.mdx)).
+downloads the pinned Gradle version, and Gradle downloads the pinned Node.js release for the
+interface, the desktop shell's Tauri CLI and this site, checked against its SHA-256
+([Dependencies](dependencies.mdx)).
 
-## Build and test
+## Build and test the engine
+
+From `njmule-engine/`:
+
+```bash
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+```
+
+This checks formatting, runs Clippy with warnings as errors (production code forbids `unsafe` and
+denies `unwrap`, `expect`, `panic`, direct indexing and unchecked arithmetic), and runs all unit,
+integration, corpus and black-box flow tests.
+
+To check crate licences, advisories and sources (`deny.toml`), and line coverage:
+
+```bash
+cargo deny check
+cargo llvm-cov --locked --fail-under-lines 70
+```
+
+`cargo llvm-cov` needs `rustup component add llvm-tools` and `cargo install cargo-llvm-cov --locked`.
+
+## Build and test the interface
 
 From the root of your clone:
 
@@ -36,14 +60,14 @@ From the root of your clone:
 <TabItem value="windows" label="Windows" default>
 
 ```powershell
-.\gradlew.bat build
+.\gradlew.bat :njmule-ui:build
 ```
 
 </TabItem>
 <TabItem value="unix" label="macOS and Linux">
 
 ```bash
-./gradlew build
+./gradlew :njmule-ui:build
 ```
 
 </TabItem>
@@ -51,81 +75,56 @@ From the root of your clone:
 
 The rest of this guide writes `./gradlew`; on Windows use `.\gradlew.bat`.
 
-`build` runs, for every module:
-
-- **Spotless**: the Java sources must be formatted with palantir-java-format and start with the
-  license header of `config/license/header-java.txt`, with LF line endings.
-- **Checkstyle**: the conventions the formatter does not cover, such as `this.` on fields
-  ([Code style](code-style.mdx)); any warning fails the build.
-- **Error Prone**: compile-time bug patterns, on top of `javac -Xlint:all`.
-- **The tests** (JUnit), spread over several JVMs per module ([Testing](testing.mdx)).
-- **JaCoCo**: coverage reports for every module, and at least 70% of the lines of `njmule-core`
-  covered (`jacoco.minimum.line.coverage`). The test kit also aggregates one report over the
-  end-to-end tests, which SonarQube Cloud reads too.
-- **SpotBugs with FindSecBugs**: maximum effort, medium confidence, on the production code; the
-  few exclusions are in `config/spotbugs/exclude.xml`, each with its reason.
-- For the interface (`njmule-ui`): the API's types generated from `openapi.yaml`, a type check
-  (`vue-tsc`) and the Vite bundle, the Vitest tests and the Prettier check
-  ([Interface](interface.mdx)).
-
-The desktop window, which needs Rust, is not part of `build` (see [below](#the-desktop-window)), nor
-is the documentation site ([Documentation](documentation.mdx)).
+`:njmule-ui:build` generates the API's TypeScript types from `njmule-engine/assets/openapi.yaml`,
+type-checks (`vue-tsc`), bundles the Vue app with Vite, runs the Vitest unit tests, checks Prettier
+formatting, and produces both the uncompressed desktop bundle (`build/site`) and the gzipped web
+interface assets (`build/shipped`) that `njmule-engine` embeds.
 
 ### Format the sources
 
-Format before you commit, or the build stops at the first unformatted file:
+Format before you commit:
 
-```bash
-./gradlew spotlessApply
-```
-
-The interface's TypeScript and Vue files are formatted with Prettier instead: run `npm run format`
-in `njmule-ui` ([Interface](interface.mdx#formatting-and-types)). The desktop window's Rust code is
-formatted with `cargo fmt` in `njmule-desktop/src-tauri`.
-
-### Incremental builds
-
-Builds are incremental and cached: `gradle.properties` turns on parallel execution, the build cache
-and the configuration cache. With nothing changed, `./gradlew build` takes about a second; a change
-re-runs only what depends on it. Git worktrees of the same clone share the build cache in
-`~/.gradle`. You never need `clean` for a correct build. In CI the build cache lives apart, where
-`NJMULE_BUILD_CACHE` points: each build of `main` saves it, and pull requests start from it.
+- **Rust engine**: `cargo fmt --manifest-path njmule-engine/Cargo.toml`
+- **Desktop shell**: `cargo fmt --manifest-path njmule-desktop/src-tauri/Cargo.toml`
+- **Interface**: `npm run format` in `njmule-ui/` ([Interface](interface.mdx#formatting-and-types))
 
 ## Run from the build
 
-The command line and headless engine, from the module path:
+Run the command line and headless engine straight from Cargo:
 
 ```bash
-./gradlew :njmule-app:run --args="--help"
+cargo run --manifest-path njmule-engine/Cargo.toml -- --help
 ```
 
-`./gradlew :njmule-app:installDist` also installs it with a launcher script in
-`njmule-app/build/install/njmule/`; run `njmule-app/build/install/njmule/bin/njmule`.
+To keep your own settings and downloads out of the way, give it a profile of its own with
+`--config-dir`:
 
-It uses your normal njMule profile. To keep your own settings and downloads out of the way, give it
-a profile of its own with `--config-dir`, for example
-`./gradlew :njmule-app:run --args="--config-dir /home/you/njmule-dev"`. The options are those of the
-[command line](/docs/server/cli). With a web interface password it also serves the interface in your
-browser ([Interface](interface.mdx#working-on-the-interface)).
+```bash
+cargo run --manifest-path njmule-engine/Cargo.toml -- --config-dir /home/you/njmule-dev
+```
+
+To serve the full web interface from a build, run `./gradlew :njmule-ui:compress` first so
+`njmule-engine` embeds the compressed assets from `njmule-ui/build/shipped`. The command-line
+options are documented in [Command line](/docs/server/cli).
 
 ### The desktop window
 
-The desktop window is a Tauri 2 shell written in Rust, in `njmule-desktop/src-tauri`: it starts the
-native engine beside it, which opens a control endpoint for it, and shows the interface, which it
-embeds. Build both:
+The desktop window is a Tauri 2 shell written in Rust in `njmule-desktop/src-tauri`: it starts the
+`njmule` executable beside it (which opens a loopback control endpoint) and shows `njmule-ui`. Build
+both in release mode:
 
 ```bash
-./gradlew :njmule-app:nativeCompile :njmule-desktop:shell
+./gradlew :njmule-ui:compress :njmule-desktop:shell
+cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
 ```
 
-`shell` builds the interface (`:njmule-ui:site`) and runs `tauri build` with the Rust toolchain
-that `njmule-desktop/src-tauri/rust-toolchain.toml` pins. The window lands in
+`:njmule-desktop:shell` builds the interface (`:njmule-ui:site`) and runs `tauri build` with the
+Rust toolchain pinned in `njmule-desktop/src-tauri/rust-toolchain.toml`. The window lands in
 `njmule-desktop/src-tauri/target/release/njmule-gui` (`njmule-gui.exe` on Windows); copy
-`njmule-app/build/native/nativeCompile/njmule` (`njmule.exe`, with the files beside it) next to it,
-or point `NJMULE_CORE` at the engine to start, and run it. `--config-dir <folder>` gives it a
-profile of its own.
+`njmule-engine/target/release/njmule` (`njmule.exe` on Windows) next to it, or point `NJMULE_CORE`
+at the engine binary, and run it. `--config-dir <folder>` gives it a profile of its own.
 
-Cargo checks the shell as the CI does, in `njmule-desktop/src-tauri` once
+Cargo checks the desktop shell as CI does, in `njmule-desktop/src-tauri` once
 `./gradlew :njmule-ui:site` has built the interface it embeds:
 
 ```bash
@@ -134,50 +133,18 @@ cargo clippy --locked --release --all-targets -- -D warnings
 cargo test --locked --release
 ```
 
-`cargo fmt` formats it at 120 columns (`rustfmt.toml`).
-
-## Test options
-
-Gradle properties (`-P`) choose which tests run and how:
-
-| Option | Default | What it does |
-|---|---|---|
-| `test.excludedTags` | `interop,private-fixtures,perf` | JUnit tags left out of the run |
-| `test.tags` | none | run only the tests with these tags |
-| `test.forks` | `4` | JVMs that run one module's test classes at once; `1` runs them one after the other |
-| `test.maxHeap` | `4g` | heap of each test JVM, instead of Gradle's own 512 MiB |
-| `test.parallelModules` | no limit | modules whose tests run at the same time; `1` suits machines with few cores (the CI uses it on its four CPUs) |
-| `njmule.<name>` | none | passed to the tests as the system property `njmule.<name>`, for example `-Pnjmule.interop.kadPort=14897` |
-| `jacoco.minimum.line.coverage` | `0.70` | the share of `njmule-core`'s lines the tests must cover |
-
-Run one test class:
-
-```bash
-./gradlew :njmule-core:test --tests '*TagCodecTest'
-```
-
-:::warning[PowerShell]
-PowerShell splits an unquoted argument at its first dot, so `-Ptest.forks=1` reaches Gradle as two
-arguments. Quote every such option: `'-Ptest.forks=1'`, `'-Ptest.tags=perf'`.
-:::
-
-The tags, the test kit and the interface's tests are explained in [Testing](testing.mdx).
-
 ## Other tasks
 
-| Task | What it makes |
+| Command | What it makes |
 |---|---|
-| `./gradlew :njmule-app:generateLicenseReport` | `build/reports/licenses/THIRD-PARTY.txt`, the third-party licenses of the engine's runtime, which holds every distributed Java dependency |
-| `./gradlew cyclonedxBom` | the CycloneDX software bill of materials in `build/reports/cyclonedx` |
-| `./gradlew dependencyCheckAggregate` | the OWASP dependency-check report; fails on a vulnerability scored 7 or more; needs an NVD API key in `NVD_API_KEY` |
-| `./gradlew build sonar -Dsonar.token=<token>` | a SonarQube Cloud analysis (organisation `njmule`, project `njMule_njMule`); in CI the Linux `verify` job runs it once the `SONAR_TOKEN` secret is set; it waits for the quality gate and fails when the gate is red |
-| `./gradlew iconTools` | copies the JSVG jar the icon tools need into `build/tools` (see `branding/README.md`) |
-| `./gradlew :njmule-app:nativeCompile` | the native command-line executable ([Native images](native-images.mdx)) |
-| `./gradlew :njmule-app:nativeService` | the Windows service host `njmule-service.exe` ([Native images](native-images.mdx#the-windows-service-host)) |
-| `./gradlew :website:site` | this site ([Documentation](documentation.mdx)) |
+| `cargo about generate about.hbs -o target/THIRD-PARTY.txt` (in `njmule-engine`) | third-party crate notices shipped with every package |
+| `cargo cyclonedx --format json --spec-version 1.6 --describe binaries --no-build-deps --target all` (in `njmule-engine`) | CycloneDX software bill of materials |
+| `./gradlew iconTools` | copies the JSVG jar needed by `tools/IconGen.java` into `build/tools` (see `branding/README.md`) |
+| `./gradlew nativeService` | the Windows service host `build/windows/njmule-service.exe` ([Native executables](native-images.mdx#the-windows-service-host)) |
+| `./gradlew :website:site` | this documentation site ([Documentation](documentation.mdx)) |
 
 ## Related pages
 
-- [Dependencies](dependencies.mdx): versions, lock files and checksums.
+- [Dependencies](dependencies.mdx): lock files, crate policy and Gradle checksums.
 - [Testing](testing.mdx): writing and running tests, and what the CI runs.
-- [Code style](code-style.mdx): what Spotless and Checkstyle enforce, and what they cannot.
+- [Code style](code-style.mdx): formatting, Clippy lints and project conventions.

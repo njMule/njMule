@@ -618,7 +618,7 @@ const SYSTEMS: {
         key: 'sources',
         name: 'From the sources',
         short: 'Sources',
-        formats: 'JDK 25 · Gradle',
+        formats: 'Rust · Cargo · Gradle',
         icon: 'CODE',
         page: '/developer/building',
         link: 'Building njMule',
@@ -626,12 +626,18 @@ const SYSTEMS: {
             title: 'Built, changed and run by you',
             command: `git clone ${REPOSITORY}.git`,
             others: [],
-            facts: ['JDK 25', 'Gradle Wrapper', 'GraalVM Community for native builds'],
+            facts: ['Rust (rustup)', 'JDK 25 + Gradle Wrapper for the interface and desktop shell'],
             shell: 'bash',
             steps: [
                 { text: 'Go into the folder the clone made:', command: 'cd njMule' },
-                { text: 'Build it and run every check:', command: './gradlew build' },
-                { text: 'Start the command line:', command: './gradlew :njmule-app:run --args="--help"' },
+                {
+                    text: 'Test the Rust engine:',
+                    command: 'cargo test --manifest-path njmule-engine/Cargo.toml --locked',
+                },
+                {
+                    text: 'Start the command line:',
+                    command: 'cargo run --manifest-path njmule-engine/Cargo.toml -- --help',
+                },
             ],
         }),
     },
@@ -692,7 +698,7 @@ function Install(): ReactNode {
                 <h2 id="install-title" className={styles.sectionTitle}>
                     Install
                 </h2>
-                <p>Native executables everywhere: no Java to install. The system you are on is already chosen.</p>
+                <p>Native executables everywhere: no runtime to install. The system you are on is already chosen.</p>
             </div>
             <div className={styles.systems} role="tablist" aria-label="Your system" onKeyDown={onKeyDown}>
                 {SYSTEMS.map((s, i) => (

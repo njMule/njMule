@@ -33,74 +33,85 @@ LGPL, GPL-2.0-or-later, …), keep their original notices, and record them in `R
 3. Commit with [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
    messages: `<type>[scope][!]: <description>` — types `feat`, `fix`, `build`, `ci`, `docs`,
    `perf`, `refactor`, `style`, `test`, `chore`, `revert`.
-4. Run `./gradlew build` (formatting, Checkstyle, Error Prone, tests, coverage, SpotBugs, and the
-   interface's type check, tests and Prettier check). A new or updated dependency also needs its
-   lock files and checksums rewritten (see
+4. Run the checks for what you changed:
+   - Engine (`njmule-engine/`): `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings`,
+     `cargo test --locked`, `cargo deny check`.
+   - Interface: `./gradlew :njmule-ui:build` (API types, `vue-tsc`, Vite bundle, Vitest, Prettier).
+   - Desktop shell (`njmule-desktop/src-tauri/`, after `./gradlew :njmule-ui:site`):
+     `cargo fmt --check`, `cargo clippy --locked --release --all-targets -- -D warnings`,
+     `cargo test --locked --release`.
+   A new or updated dependency also updates its lock file (`Cargo.lock`, `package-lock.json`, or
+   Gradle lock files and checksums; see
    [Dependencies](https://njmule.github.io/njMule/developer/dependencies)).
 5. Open a pull request whose **title** is a Conventional Commits header; fill in the template.
    PRs are squash-merged.
 
 ## Code style
 
-- [Google Java Style](https://google.github.io/styleguide/javaguide.html) formatted by
-  [palantir-java-format](https://github.com/palantir/palantir-java-format) (PALANTIR style: 4-space
-  indent, 120 columns): run `./gradlew spotlessApply`.
-- Always qualify instance fields with `this.`, and call the object's own methods without it
-  (both enforced by Checkstyle).
-- LF line endings, UTF-8, the SPDX header from `config/license/header-java.txt` on every Java file.
-- The interface (`njmule-ui`) is formatted with Prettier (`npm run format` there), the desktop
-  window's Rust code (`njmule-desktop/src-tauri`) with `cargo fmt`.
-- Comments explain *why*, not *what*; keep them short.
-- Optional hook: `git config core.hooksPath .githooks`.
+- Rust (`njmule-engine`, `njmule-desktop/src-tauri`): formatted with `cargo fmt` (4-space indent,
+  120 columns, `rustfmt.toml`) and checked with Clippy (`-D warnings`). `njmule-engine` forbids
+  `unsafe` code and denies `unwrap_used`, `expect_used`, `panic`, `indexing_slicing` and
+  `arithmetic_side_effects` in production code.
+- LF line endings, UTF-8, and the two `SPDX-FileCopyrightText` / `SPDX-License-Identifier` lines
+  at the top of every source and text file (files that cannot carry comments are listed in
+  `REUSE.toml`).
+- The interface (`njmule-ui`) and website (`website`) are formatted with Prettier (`npm run format`
+  there).
+- Comments explain *why*, not *what*; keep them short. Never reference eMule's C++ source files or
+  symbols.
+- Optional hook: `git config core.hooksPath .githooks` (runs `cargo fmt --check`).
 
 ## Tests
 
-New behaviour needs tests (JUnit Jupiter, AssertJ; jqwik for codecs and parsers; Vitest for the
-interface; `cargo test` for the desktop window). Never commit personal data: copies of a real eMule
-profile, captures or screenshots belong in the git-ignored `fixtures-private/` folder.
+New behaviour needs tests (`cargo test` and `proptest` for the engine, Vitest for the interface,
+`cargo test` for the desktop window). Never commit personal data: copies of a real eMule profile,
+captures or screenshots belong in the git-ignored `fixtures-private/` folder.
 
-Tests follow the given/when/then form of Gherkin inside plain JUnit classes (no Cucumber):
+Tests follow the given/when/then form of Gherkin:
 
-- each test method has a meaningful name that states the expected behaviour, and its body only
-  calls step methods: the `given...()` steps, if any, then one `when...()`, then one or more
-  `then...()`;
-- a scenario has one action: a test of several independent cases becomes several tests (or a
-  parameterized one), and the earlier stages of a longer flow become `given...()` steps;
-- the steps are private methods of the test class, named as sentences in lowerCamelCase and taking
-  parameters when a step is reused with other values; the state they share lives in fields;
-- a `when...()` step that can fail keeps the exception in a field, and `thenExceptionOccurred(...)`
-  or `thenNoExceptionOccurred()` checks it.
+- each test function has a meaningful `should_...` name that states the expected behaviour, and its
+  body calls step methods in order: `given_...` (if any), then **one** `when_...`, then one or
+  more `then_...`;
+- a scenario has one action: independent cases become separate tests, and the earlier stages of a
+  longer flow become `given_...` steps;
+- shared state lives in a fixture struct, and a `when_...` step that can fail stores its `Result`
+  for `then_...` to inspect;
+- integration tests in `njmule-engine/tests/` are modules of one test binary (`tests/main.rs`):
+  declare every new file there (`mod foo_test;`).
 
-```java
-class PathSanitizerTest {
+```rust
+#[derive(Default)]
+struct Sanitizer {
+    network_name: String,
+    safe_name: String,
+}
 
-    private String networkName;
-    private String safeName;
-
-    @Test
-    void shouldEscapeAReservedNameHiddenByTheLengthCut() {
-        givenANameFromTheNetwork("CON" + " ".repeat(300) + "x");
-
-        whenTheNameIsMadeSafe();
-
-        thenTheSafeNameIs("_CON");
-        thenTheSafeNameFitsTheLengthLimit();
+impl Sanitizer {
+    fn given_a_name_from_the_network(&mut self, name: impl Into<String>) {
+        self.network_name = name.into();
     }
 
-    private void givenANameFromTheNetwork(String name) {
-        this.networkName = name;
+    fn when_the_name_is_made_safe(&mut self) {
+        self.safe_name = path_sanitizer::file_name(&self.network_name);
     }
 
-    private void whenTheNameIsMadeSafe() {
-        this.safeName = PathSanitizer.fileName(this.networkName);
+    fn then_the_safe_name_is(&self, expected: &str) {
+        assert_eq!(self.safe_name, expected);
     }
 
-    private void thenTheSafeNameIs(String expected) {
-        assertThat(this.safeName).isEqualTo(expected);
+    fn then_the_safe_name_fits_the_length_limit(&self) {
+        assert!(self.safe_name.len() <= 200);
     }
+}
 
-    private void thenTheSafeNameFitsTheLengthLimit() {
-        assertThat(this.safeName.getBytes(StandardCharsets.UTF_8)).hasSizeLessThanOrEqualTo(200);
-    }
+#[test]
+fn should_escape_a_reserved_name_hidden_by_the_length_cut() {
+    let mut test = Sanitizer::default();
+    test.given_a_name_from_the_network(format!("CON{}x", " ".repeat(300)));
+
+    test.when_the_name_is_made_safe();
+
+    test.then_the_safe_name_is("_CON");
+    test.then_the_safe_name_fits_the_length_limit();
 }
 ```

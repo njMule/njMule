@@ -48,9 +48,9 @@ nodes and its clients. One engine runs it all:
 - 📥 **the import of an eMule profile**, only ever read: servers, contacts, known and shared files,
   preferences, and on request the identity with its credits and the unfinished downloads.
 
-It ships as native executables: **no Java to install**. Networking includes protocol obfuscation,
-IPv6, connections between firewalled clients over uTP or QUIC, UPnP, NAT-PMP and PCP, SOCKS and HTTP
-proxies, binding to a VPN interface and IP filters. The
+It ships as native Rust executables: **no runtime to install**. Networking includes protocol
+obfuscation, IPv6, connections between firewalled clients over uTP or QUIC, UPnP, NAT-PMP and PCP,
+SOCKS and HTTP proxies, binding to a VPN interface and IP filters. The
 [feature tour](https://njmule.github.io/njMule/docs/features) has the complete list.
 
 ## Download
@@ -100,16 +100,18 @@ The documentation's sources are in [`website/`](website); its text is under CC B
 
 ## Building from source
 
-With a JDK 25 (Gradle downloads everything else; the desktop window also needs Rust, from rustup):
+With [rustup](https://rustup.rs/) (which installs the pinned Rust toolchain on first use) and a JDK
+25 for the Gradle Wrapper that drives the Vue interface and Tauri shell:
 
 ```bash
-./gradlew build                                # build, check and test
-./gradlew :njmule-app:run --args="--help"      # the command line
-./gradlew :njmule-desktop:shell                # the desktop window
+cargo test --manifest-path njmule-engine/Cargo.toml --locked        # test the Rust engine
+cargo run --manifest-path njmule-engine/Cargo.toml -- --help        # the command line
+./gradlew :njmule-ui:build                                          # build and test the interface
+./gradlew :njmule-desktop:shell                                     # the desktop window
 ```
 
-[Building njMule](https://njmule.github.io/njMule/developer/building) explains the options, the
-native executables and the packages.
+[Building njMule](https://njmule.github.io/njMule/developer/building) explains the prerequisites,
+release builds and packaging.
 
 ## Contributing
 

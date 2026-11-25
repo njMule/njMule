@@ -71,9 +71,8 @@ The folder holds:
 
 `njmule-gui.exe` is the desktop app's window: it starts `njmule.exe`, the engine, beside it and
 shows its interface in Microsoft Edge WebView2 (see [Requirements](requirements.mdx#web-view)); both
-carry the njMule icon and version, as Explorer and Task Manager show. The other files beside them
-are a library the engine loads and `install.properties`, which tells njMule's update check how it
-was installed.
+carry the njMule icon and version, as Explorer and Task Manager show. Beside them sit
+`THIRD-PARTY.txt` and `install.properties`, which tells njMule's update check how it was installed.
 
 Your settings and downloads are not in the program folder: see
 [Data locations](../data/locations.mdx). By default, completed downloads go to
@@ -105,7 +104,7 @@ it is the file the njMule project built.
 
 ## Windows on Arm
 
-GraalVM, which njMule's engine is built with, does not support Windows on Arm yet. Install the same x64 package: Windows runs it
+There is no native Windows on Arm package yet. Install the same x64 package: Windows runs it
 through its x64 emulation.
 
 ## Firewall

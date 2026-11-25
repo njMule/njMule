@@ -19,10 +19,10 @@ truth: `version` in
 - A new feature raises the minor number, a fix the patch number, a breaking change the major
   number (the minor one while the version is `0.y.z`).
 
-Everything else takes the version from there: the jars' manifests, `njmule --version`, the version
-information of the Windows executables, the packages, and this site's footer. Formats that accept
-numbers only (the MSI, the macOS bundle, the Synology package) get the version without its
-pre-release part.
+Everything else takes the version from there: `njmule --version` (embedded by
+`njmule-engine/build.rs`), the desktop window (`njmule-desktop`), the version information of the
+Windows executables, the packages, and this site's footer. Formats that accept numbers only (the
+MSI, the macOS bundle, the Synology package) get the version without its pre-release part.
 
 ## The changelog
 
@@ -50,10 +50,9 @@ Commit messages, pull request titles and branch names follow
 
 - **Types**: `feat` (a new feature), `fix` (a bug fix), `build`, `ci`, `docs`, `perf`, `refactor`,
   `style`, `test`, `chore`, `revert`.
-- **Scopes**: lower-case module or area names: `core`, `api`, `engine`, `protocol`, `net`,
-  `server`, `kad`, `files`, `download`, `upload`, `search`, `persist`, `config`, `security`,
-  `social`, `extras`, `gui`, `webui`, `app`, `testkit`, `bench`, `packaging`, `branding`, `i18n`,
-  `deps`, `docs`, `ci`, `release`.
+- **Scopes**: lower-case module or area names: `engine`, `api`, `protocol`, `net`, `server`, `kad`,
+  `files`, `download`, `upload`, `search`, `persist`, `config`, `security`, `social`, `extras`,
+  `gui`, `webui`, `packaging`, `branding`, `i18n`, `deps`, `docs`, `ci`, `release`.
 - **Description**: imperative mood, lower case, no final period; the header stays within 72
   characters.
 - **Body**: what changed and why, wrapped at 72 columns.
@@ -91,7 +90,7 @@ runs in two ways:
 | a manual run | builds and tests every package, kept as workflow artifacts, then runs the end-to-end update tests; nothing is published |
 
 The packaging jobs are described in [Packaging](packaging.mdx#the-release-workflows-packaging-jobs).
-Every native build of a release uses `-O2`, never the quicker `-Ob` of the CI checks.
+All engine and desktop executables are built in Rust release mode (`--locked --release`).
 
 ### The draft release
 
@@ -116,7 +115,7 @@ both platforms, and publishes this site ([Documentation](documentation.mdx#deplo
 njMule's update check believes the update information of a release only when it is signed by a key
 built into njMule: [minisign](https://jedisct1.github.io/minisign/), Ed25519 over the BLAKE2b-512
 hash of the file. The public keys are in
-[`keys.pub`](https://github.com/njMule/njMule/blob/main/njmule-core/src/main/resources/org/njmule/core/update/keys.pub):
+[`keys.pub`](https://github.com/njMule/njMule/blob/main/njmule-engine/assets/keys.pub):
 the signing key first, then a standby key that replaces it should it ever be lost or leaked.
 
 - The secret key and its password are secrets of the GitHub environment `release`
