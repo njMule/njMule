@@ -53,7 +53,7 @@ pub async fn fetch(
         progress(download.size);
         return Ok(file.to_path_buf());
     }
-    fs::create_dir_all(update_files::parent(file)?)?;
+    tokio::fs::create_dir_all(update_files::parent(file)?).await?;
     remove_if_there(file)?;
     let part = part_of(file);
     transfer.download(&download.url, &part, download.size, progress).await?;
@@ -65,7 +65,7 @@ pub async fn fetch(
             "the downloaded package does not match its signed hash",
         ));
     }
-    fs::rename(&part, file)?;
+    tokio::fs::rename(&part, file).await?;
     Ok(file.to_path_buf())
 }
 

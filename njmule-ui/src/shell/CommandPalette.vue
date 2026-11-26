@@ -73,6 +73,7 @@ function key(e: KeyboardEvent): void {
                         ref="input"
                         v-model="text"
                         autocomplete="off"
+                        :aria-label="t('nj.palette.prompt')"
                         :placeholder="t('nj.palette.prompt')"
                         @keydown="key"
                     />

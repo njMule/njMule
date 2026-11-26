@@ -509,6 +509,7 @@ function act(row: Row, action: Action): void {
                                         id="option-language"
                                         v-model="languageChoice"
                                         class="field choice"
+                                        :aria-label="rowTitle(row, t)"
                                     >
                                         <option value="">{{ t('nj.settings.systemLanguage') }}</option>
                                         <option v-for="tag in LANGUAGES" :key="tag" :value="tag">
@@ -520,6 +521,7 @@ function act(row: Row, action: Action): void {
                                             id="option-theme"
                                             class="field family"
                                             :value="family"
+                                            :aria-label="rowTitle(row, t)"
                                             @change="setTheme(chosen($event) as Family, mode)"
                                         >
                                             <option v-for="f in FAMILIES" :key="f" :value="f">

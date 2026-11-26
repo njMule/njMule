@@ -73,7 +73,7 @@ pub async fn fetch(web: &WebLists, cache: &Path) -> Result<CountryTable, String>
         let url = format!("{URL}{year:04}-{:02}.csv.gz", u8::from(month));
         match web.fetch(&url).await.and_then(|data| CountryTable::parse(&data)) {
             Ok(table) => {
-                std::fs::create_dir_all(cache).map_err(|e| e.to_string())?;
+                tokio::fs::create_dir_all(cache).await.map_err(|e| e.to_string())?;
                 atomic_files::write(&cache.join(FILE), &table.write()).map_err(|e| e.to_string())?;
                 return Ok(table);
             }

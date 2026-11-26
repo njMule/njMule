@@ -1355,8 +1355,11 @@ impl BlackBoxEngine {
                     break;
                 }
                 if start.elapsed() > WAIT {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    })
+                    .await;
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(50)).await;

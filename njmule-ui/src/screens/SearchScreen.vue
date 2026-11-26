@@ -1274,6 +1274,7 @@ onUnmounted(() => {
                     <Tip :text="t('nj.search.filterHint')">
                         <input
                             v-model="filter"
+                            :aria-label="t('nj.search.filterHint')"
                             :placeholder="t(TEXTS[filterColumn]?.key ?? 'IDS_DL_FILENAME')"
                             @keydown.esc="filter = ''"
                         />

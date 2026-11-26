@@ -74,7 +74,7 @@ export function subfoldersOf(folder: string, files: string[]): string[] {
             found.add(base + sep + rest.split(sep)[0]);
         }
     }
-    return [...found].sort();
+    return [...found].sort((a, b) => a.localeCompare(b));
 }
 
 /** The tree of the places: all files, the incoming folder, each shared folder with its subfolders. */
