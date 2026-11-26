@@ -13,7 +13,7 @@
 # the build context "binary", a directory with amd64/njmule (static) and arm64/njmule, and builds
 # both platforms of the image from them.
 
-FROM node:24.22.1-slim@sha256:be8204d4bd327363357f532187b752ff62759c31bedf98e9e18fc08c9cbd605c AS ui
+FROM node:26.13.0-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 AS ui
 WORKDIR /src
 COPY njmule-engine/assets/openapi.yaml njmule-engine/assets/openapi.yaml
 COPY njmule-ui/ njmule-ui/
